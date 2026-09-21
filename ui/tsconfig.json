@@ -1,5 +1,9 @@
 {
   "extends": "@tsconfig/svelte/tsconfig.json",
-  "compilerOptions": { "verbatimModuleSyntax": true, "isolatedModules": true },
+  "compilerOptions": {
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"]
+  },
   "include": ["src/**/*"]
 }

@@ -6,11 +6,21 @@ pub const PKCE_REDIRECT_URI: &str = "https://tidal.com/android/login/auth";
 pub const AUTHORIZE_URL: &str = "https://login.tidal.com/authorize";
 pub const TOKEN_URL: &str = "https://auth.tidal.com/v1/oauth2/token";
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Pkce {
     pub code_verifier: String,
     pub code_challenge: String,
     pub client_unique_key: String,
+}
+
+impl std::fmt::Debug for Pkce {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Pkce")
+            .field("code_verifier", &"<redacted>")
+            .field("code_challenge", &self.code_challenge)
+            .field("client_unique_key", &"<redacted>")
+            .finish()
+    }
 }
 
 impl Pkce {
@@ -90,5 +100,14 @@ mod tests {
         let p = Pkce::generate();
         assert!(p.code_verifier.len() >= 43);
         assert!(!p.code_challenge.is_empty());
+    }
+
+    #[test]
+    fn debug_redacts_verifier_and_key() {
+        let p = Pkce::from_parts("secret-verifier".into(), "secret-key".into());
+        let s = format!("{p:?}");
+        assert!(!s.contains("secret-verifier"));
+        assert!(!s.contains("secret-key"));
+        assert_eq!(s.matches("<redacted>").count(), 2);
     }
 }

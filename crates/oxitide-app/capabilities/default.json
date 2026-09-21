@@ -3,5 +3,14 @@
   "identifier": "default",
   "description": "default capability",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "https://login.tidal.com/*" },
+        { "url": "https://tidal.com/*" }
+      ]
+    }
+  ]
 }

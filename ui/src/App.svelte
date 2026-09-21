@@ -14,19 +14,46 @@
 
   const nav = createNav();
   let loggedIn = $state(false);
+  let booting = $state(true);
+  let error = $state("");
 
   $effect(() => {
-    api.authStatus().then((v) => (loggedIn = v));
+    api
+      .authRestore()
+      .then((session) => {
+        if (session) loggedIn = true;
+      })
+      .catch((e) => {
+        error = String(e);
+      })
+      .finally(() => {
+        booting = false;
+      });
   });
 
-  function onLogin() { loggedIn = true; }
+  function onLogin() {
+    error = "";
+    loggedIn = true;
+  }
+
+  async function onLogout() {
+    try {
+      await api.authLogout();
+    } catch (e) {
+      error = String(e);
+    }
+    loggedIn = false;
+  }
 </script>
 
-{#if !loggedIn}
+{#if booting}
+  <p class="muted" style="padding:24px">Loading…</p>
+{:else if !loggedIn}
+  {#if error}<p style="color:#ff6b6b;padding:0 24px">{error}</p>{/if}
   <Login onLogin={onLogin} />
 {:else}
   <div class="app">
-    <Sidebar {nav} />
+    <Sidebar {nav} onLogout={onLogout} />
     <main class="main">
       {#if nav.route.name === "home"}<Home {nav} />
       {:else if nav.route.name === "search"}<Search {nav} />

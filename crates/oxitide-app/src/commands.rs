@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
-use oxitide_tidal::auth;
+use oxitide_tidal::auth::{self, SessionInfo};
 use oxitide_tidal::client::TidalClient;
 use oxitide_tidal::pkce::{Pkce, PKCE_CLIENT_ID, TOKEN_URL};
-use oxitide_tidal::token_store::{KeyringStore, TokenStore};
+use oxitide_tidal::token_store::{KeyringStore, TokenSet, TokenStore};
+use oxitide_tidal::Error;
 use serde::Serialize;
 use tauri::State;
 
@@ -70,6 +71,68 @@ pub fn auth_logout(state: State<'_, AppState>) -> Result<(), String> {
     Ok(())
 }
 
+/// Load a persisted session from the store, refreshing on `401`.
+///
+/// Returns `Ok(None)` when there is no stored token or it can no longer be
+/// used, so the UI can fall back to the login screen without a hard error.
+async fn restore_tokens(
+    http: &reqwest::Client,
+    base_url: &str,
+    token_url: &str,
+    store: &dyn TokenStore,
+) -> Result<Option<(SessionInfo, TokenSet)>, String> {
+    let tokens = match store.load() {
+        Ok(Some(tokens)) => tokens,
+        Ok(None) => return Ok(None),
+        Err(e) => return Err(e.to_string()),
+    };
+    match auth::fetch_session(http, base_url, &tokens.access_token).await {
+        Ok(session) => Ok(Some((session, tokens))),
+        Err(Error::Unauthorized) => {
+            let refresh_token = match tokens.refresh_token.clone() {
+                Some(rt) => rt,
+                None => return Ok(None),
+            };
+            let refreshed = match auth::refresh(
+                http,
+                token_url,
+                &refresh_token,
+                Some(refresh_token.as_str()),
+            )
+            .await
+            {
+                Ok(refreshed) => refreshed,
+                Err(_) => return Ok(None),
+            };
+            store.save(&refreshed).map_err(|e| e.to_string())?;
+            match auth::fetch_session(http, base_url, &refreshed.access_token).await {
+                Ok(session) => Ok(Some((session, refreshed))),
+                Err(_) => Ok(None),
+            }
+        }
+        Err(_) => Ok(None),
+    }
+}
+
+#[tauri::command]
+pub async fn auth_restore(state: State<'_, AppState>) -> Result<Option<SessionInfoDto>, String> {
+    let http = reqwest::Client::new();
+    let store: Arc<dyn TokenStore> = Arc::new(KeyringStore);
+    let restored = restore_tokens(&http, API_BASE, TOKEN_URL, store.as_ref()).await?;
+    match restored {
+        None => Ok(None),
+        Some((session, tokens)) => {
+            let client =
+                TidalClient::new(http, API_BASE, TOKEN_URL, session.clone(), tokens, store);
+            state.set_client(client);
+            Ok(Some(SessionInfoDto {
+                country_code: session.country_code,
+                user_id: session.user_id,
+            }))
+        }
+    }
+}
+
 fn require_client(state: &State<'_, AppState>) -> Result<TidalClient, String> {
     state
         .client
@@ -94,7 +157,7 @@ pub async fn get_album(state: State<'_, AppState>, id: u64) -> Result<Album, Str
 
 #[tauri::command]
 pub async fn get_album_tracks(state: State<'_, AppState>, id: u64) -> Result<Vec<Track>, String> {
-    require_client(&state)?.album_tracks(id, 100, 0).await.map_err(|e| e.to_string())
+    require_client(&state)?.album_tracks_all(id).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -104,7 +167,7 @@ pub async fn get_playlist(state: State<'_, AppState>, id: String) -> Result<Play
 
 #[tauri::command]
 pub async fn get_playlist_tracks(state: State<'_, AppState>, id: String) -> Result<Vec<Track>, String> {
-    require_client(&state)?.playlist_tracks(&id, 100, 0).await.map_err(|e| e.to_string())
+    require_client(&state)?.playlist_tracks_all(&id).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -122,27 +185,39 @@ pub async fn search(state: State<'_, AppState>, query: String) -> Result<SearchR
 
 #[tauri::command]
 pub async fn get_favorite_tracks(state: State<'_, AppState>) -> Result<Vec<Track>, String> {
-    require_client(&state)?.favorite_tracks(100, 0).await.map_err(|e| e.to_string())
+    require_client(&state)?.all_favorite_tracks().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn get_favorite_albums(state: State<'_, AppState>) -> Result<Vec<Album>, String> {
-    require_client(&state)?.favorite_albums(100, 0).await.map_err(|e| e.to_string())
+    require_client(&state)?.all_favorite_albums().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn get_favorite_artists(state: State<'_, AppState>) -> Result<Vec<Artist>, String> {
-    require_client(&state)?.favorite_artists(100, 0).await.map_err(|e| e.to_string())
+    require_client(&state)?.all_favorite_artists().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn get_user_playlists(state: State<'_, AppState>) -> Result<Vec<Playlist>, String> {
-    require_client(&state)?.user_playlists(100, 0).await.map_err(|e| e.to_string())
+    require_client(&state)?.all_user_playlists().await.map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use oxitide_tidal::token_store::MemoryStore;
+    use wiremock::matchers::{header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn sample_tokens(access: &str, refresh: Option<&str>) -> TokenSet {
+        TokenSet {
+            access_token: access.into(),
+            refresh_token: refresh.map(|r| r.into()),
+            token_type: "Bearer".into(),
+            expires_at: None,
+        }
+    }
 
     #[test]
     fn login_prompt_serializes_url() {
@@ -157,5 +232,88 @@ mod tests {
         let value = serde_json::to_value(&dto).unwrap();
         assert_eq!(value["country_code"], "GR");
         assert_eq!(value["user_id"], 42);
+    }
+
+    #[tokio::test]
+    async fn restore_tokens_returns_none_without_stored_token() {
+        let server = MockServer::start().await;
+        let store = MemoryStore::default();
+        let http = reqwest::Client::new();
+        let base = format!("{}/", server.uri());
+        let restored = restore_tokens(&http, &base, &format!("{}/token", server.uri()), &store)
+            .await
+            .unwrap();
+        assert!(restored.is_none());
+    }
+
+    #[tokio::test]
+    async fn restore_tokens_uses_valid_stored_token() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/sessions"))
+            .and(header("authorization", "Bearer good"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "sessionId": "s", "countryCode": "GR", "userId": 7
+            })))
+            .mount(&server).await;
+        let store = MemoryStore::default();
+        store.save(&sample_tokens("good", Some("rt"))).unwrap();
+        let http = reqwest::Client::new();
+        let base = format!("{}/", server.uri());
+        let restored = restore_tokens(&http, &base, &format!("{}/token", server.uri()), &store)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(restored.0.user_id, 7);
+        assert_eq!(restored.1.access_token, "good");
+    }
+
+    #[tokio::test]
+    async fn restore_tokens_refreshes_on_unauthorized() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/sessions"))
+            .and(header("authorization", "Bearer stale"))
+            .respond_with(ResponseTemplate::new(401)).mount(&server).await;
+        Mock::given(method("GET")).and(path("/sessions"))
+            .and(header("authorization", "Bearer fresh"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "sessionId": "s", "countryCode": "GR", "userId": 9
+            })))
+            .mount(&server).await;
+        Mock::given(method("POST")).and(path("/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": "fresh", "token_type": "Bearer", "expires_in": 3600
+            })))
+            .mount(&server).await;
+        let store = MemoryStore::default();
+        store.save(&sample_tokens("stale", Some("old-rt"))).unwrap();
+        let http = reqwest::Client::new();
+        let base = format!("{}/", server.uri());
+        let restored = restore_tokens(&http, &base, &format!("{}/token", server.uri()), &store)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(restored.0.user_id, 9);
+        assert_eq!(restored.1.access_token, "fresh");
+        // Refresh response omitted refresh_token: the previous one is preserved
+        // and persisted.
+        assert_eq!(restored.1.refresh_token.as_deref(), Some("old-rt"));
+        assert_eq!(store.load().unwrap().unwrap().access_token, "fresh");
+    }
+
+    #[tokio::test]
+    async fn restore_tokens_returns_none_when_refresh_fails() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/sessions"))
+            .respond_with(ResponseTemplate::new(401)).mount(&server).await;
+        Mock::given(method("POST")).and(path("/token"))
+            .respond_with(ResponseTemplate::new(401)).mount(&server).await;
+        let store = MemoryStore::default();
+        store.save(&sample_tokens("stale", Some("bad-rt"))).unwrap();
+        let http = reqwest::Client::new();
+        let base = format!("{}/", server.uri());
+        let restored = restore_tokens(&http, &base, &format!("{}/token", server.uri()), &store)
+            .await
+            .unwrap();
+        assert!(restored.is_none());
     }
 }

@@ -5,16 +5,31 @@
   let { nav }: { nav: Nav } = $props();
   let query = $state("");
   let results = $state<SearchResults | null>(null);
+  let loading = $state(false);
+  let error = $state("");
 
   async function run() {
     if (query.trim().length === 0) return;
-    results = await api.search(query);
+    loading = true;
+    error = "";
+    try {
+      results = await api.search(query);
+    } catch (e) {
+      error = String(e);
+      results = null;
+    } finally {
+      loading = false;
+    }
   }
 </script>
 
 <h2>Search</h2>
 <input bind:value={query} onkeydown={(e) => e.key === "Enter" && run()} placeholder="Search TIDAL" />
-{#if results}
+{#if loading}
+  <p class="muted">Searching…</p>
+{:else if error}
+  <p style="color:#ff6b6b">{error}</p>
+{:else if results}
   <h3>Tracks</h3>
   <TrackTable tracks={results.tracks.items} />
   <h3>Albums</h3>

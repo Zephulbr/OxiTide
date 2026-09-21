@@ -29,11 +29,14 @@ fn bearer() -> String {
     "Bearer".into()
 }
 
-fn raw_to_tokens(raw: RawToken) -> TokenSet {
+fn raw_to_tokens(raw: RawToken, previous_refresh: Option<&str>) -> TokenSet {
     let expires_at = raw.expires_in.map(|s| now_unix() + s);
+    let refresh_token = raw
+        .refresh_token
+        .or_else(|| previous_refresh.map(|s| s.to_string()));
     TokenSet {
         access_token: raw.access_token,
-        refresh_token: raw.refresh_token,
+        refresh_token,
         token_type: raw.token_type,
         expires_at,
     }
@@ -75,13 +78,14 @@ pub async fn exchange_code(
     if raw.access_token.is_empty() {
         return Err(Error::Auth("empty access token".into()));
     }
-    Ok(raw_to_tokens(raw))
+    Ok(raw_to_tokens(raw, None))
 }
 
 pub async fn refresh(
     http: &reqwest::Client,
     token_url: &str,
     refresh_token: &str,
+    previous_refresh: Option<&str>,
 ) -> Result<TokenSet> {
     let params = [
         ("client_id", PKCE_CLIENT_ID),
@@ -99,7 +103,7 @@ pub async fn refresh(
         return Err(Error::Api { status: status.as_u16(), message });
     }
     let raw: RawToken = resp.json().await?;
-    Ok(raw_to_tokens(raw))
+    Ok(raw_to_tokens(raw, previous_refresh.or(Some(refresh_token))))
 }
 
 pub async fn fetch_session(
@@ -177,6 +181,41 @@ mod tests {
         let err = exchange_code(&http, &format!("{}/token", server.uri()), &pkce,
             "https://tidal.com/android/login/auth?code=XYZ").await.unwrap_err();
         assert!(matches!(err, Error::Unauthorized));
+    }
+
+    #[tokio::test]
+    async fn refresh_keeps_previous_refresh_token_when_omitted() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": "AT2", "token_type": "Bearer", "expires_in": 3600
+            })))
+            .mount(&server)
+            .await;
+        let http = reqwest::Client::new();
+        let tokens = refresh(&http, &format!("{}/token", server.uri()), "old-rt", Some("old-rt"))
+            .await
+            .unwrap();
+        assert_eq!(tokens.access_token, "AT2");
+        assert_eq!(tokens.refresh_token.as_deref(), Some("old-rt"));
+    }
+
+    #[tokio::test]
+    async fn refresh_replaces_refresh_token_when_present() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": "AT3", "refresh_token": "new-rt", "token_type": "Bearer"
+            })))
+            .mount(&server)
+            .await;
+        let http = reqwest::Client::new();
+        let tokens = refresh(&http, &format!("{}/token", server.uri()), "old-rt", Some("old-rt"))
+            .await
+            .unwrap();
+        assert_eq!(tokens.refresh_token.as_deref(), Some("new-rt"));
     }
 
     #[tokio::test]

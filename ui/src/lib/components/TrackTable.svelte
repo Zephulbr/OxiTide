@@ -7,7 +7,7 @@
 <table style="width:100%; border-collapse:collapse">
   <thead><tr><th style="text-align:left">#</th><th style="text-align:left">Title</th><th style="text-align:right">Time</th></tr></thead>
   <tbody>
-    {#each tracks as t, i (t.id)}
+    {#each tracks as t, i (`${t.id}-${i}`)}
       <tr style="border-bottom:1px solid var(--line)">
         <td class="muted">{i + 1}</td>
         <td>{t.title}<span class="muted"> · {t.artists.map((a) => a.name).join(", ")}</span></td>

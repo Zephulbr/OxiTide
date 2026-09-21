@@ -11,10 +11,12 @@ fn main() {
         .init();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             commands::auth_begin,
             commands::auth_complete,
+            commands::auth_restore,
             commands::auth_status,
             commands::auth_logout,
             commands::get_home,

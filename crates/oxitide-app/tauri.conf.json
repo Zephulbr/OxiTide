@@ -13,5 +13,15 @@
     "windows": [{ "title": "OxiTide", "width": 1200, "height": 800 }],
     "security": { "csp": null }
   },
-  "bundle": { "active": true, "targets": ["msi", "nsis"] }
+  "bundle": {
+    "active": true,
+    "targets": ["msi", "nsis"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.png",
+      "icons/icon.ico"
+    ]
+  }
 }

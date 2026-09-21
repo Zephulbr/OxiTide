@@ -5,7 +5,7 @@ use crate::error::{Error, Result};
 pub const KEYRING_SERVICE: &str = "oxitide";
 pub const KEYRING_USER: &str = "tidal";
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct TokenSet {
     pub access_token: String,
     #[serde(default)]
@@ -14,6 +14,20 @@ pub struct TokenSet {
     pub token_type: String,
     #[serde(default)]
     pub expires_at: Option<i64>,
+}
+
+impl std::fmt::Debug for TokenSet {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TokenSet")
+            .field("access_token", &"<redacted>")
+            .field(
+                "refresh_token",
+                &self.refresh_token.as_ref().map(|_| "<redacted>"),
+            )
+            .field("token_type", &self.token_type)
+            .field("expires_at", &self.expires_at)
+            .finish()
+    }
 }
 
 fn default_token_type() -> String {
@@ -106,5 +120,19 @@ mod tests {
         let t: TokenSet = serde_json::from_str(r#"{"access_token":"x"}"#).unwrap();
         assert_eq!(t.token_type, "Bearer");
         assert!(t.refresh_token.is_none());
+    }
+
+    #[test]
+    fn debug_redacts_token_material() {
+        let t = TokenSet {
+            access_token: "super-secret-access".into(),
+            refresh_token: Some("super-secret-refresh".into()),
+            token_type: "Bearer".into(),
+            expires_at: Some(1),
+        };
+        let s = format!("{t:?}");
+        assert!(!s.contains("super-secret-access"));
+        assert!(!s.contains("super-secret-refresh"));
+        assert!(s.contains("<redacted>"));
     }
 }

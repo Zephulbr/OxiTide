@@ -1,4 +1,4 @@
-use crate::client::TidalClient;
+use crate::client::{TidalClient, DEFAULT_PAGE_SIZE};
 use crate::error::Result;
 use crate::models::{Album, Artist, ItemPage, Playlist, Track};
 
@@ -21,6 +21,12 @@ impl TidalClient {
         Ok(page.items)
     }
 
+    /// Fetch every track of an album, walking all pages.
+    pub async fn album_tracks_all(&self, id: u64) -> Result<Vec<Track>> {
+        self.get_all_pages(&format!("albums/{id}/tracks"), &[], DEFAULT_PAGE_SIZE)
+            .await
+    }
+
     pub async fn artist(&self, id: u64) -> Result<Artist> {
         self.get(&format!("artists/{id}"), &[]).await
     }
@@ -33,6 +39,12 @@ impl TidalClient {
         let page: ItemPage<Track> =
             self.get(&format!("playlists/{id}/tracks"), &page_params(limit, offset)).await?;
         Ok(page.items)
+    }
+
+    /// Fetch every track of a playlist, walking all pages.
+    pub async fn playlist_tracks_all(&self, id: &str) -> Result<Vec<Track>> {
+        self.get_all_pages(&format!("playlists/{id}/tracks"), &[], DEFAULT_PAGE_SIZE)
+            .await
     }
 }
 
@@ -71,6 +83,28 @@ mod tests {
         let tracks = client(&server).album_tracks(5, 50, 100).await.unwrap();
         assert_eq!(tracks.len(), 1);
         assert_eq!(tracks[0].title, "T1");
+    }
+
+    #[tokio::test]
+    async fn album_tracks_all_fetches_every_page() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/albums/9/tracks"))
+            .and(query_param("offset", "0"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [{"id": 1, "title": "A"}, {"id": 2, "title": "B"}],
+                "totalNumberOfItems": 3, "limit": 100, "offset": 0
+            })))
+            .mount(&server).await;
+        Mock::given(method("GET")).and(path("/albums/9/tracks"))
+            .and(query_param("offset", "2"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [{"id": 3, "title": "C"}],
+                "totalNumberOfItems": 3, "limit": 100, "offset": 2
+            })))
+            .mount(&server).await;
+        let tracks = client(&server).album_tracks_all(9).await.unwrap();
+        assert_eq!(tracks.len(), 3);
+        assert_eq!(tracks[2].title, "C");
     }
 
     #[tokio::test]

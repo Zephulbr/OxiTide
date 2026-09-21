@@ -1,4 +1,4 @@
-use crate::client::TidalClient;
+use crate::client::{TidalClient, DEFAULT_PAGE_SIZE};
 use crate::error::Result;
 use crate::models::{Album, Artist, ItemPage, Playlist, Track};
 
@@ -41,6 +41,34 @@ impl TidalClient {
             .await?;
         Ok(p.items)
     }
+
+    /// Walk every page of the user's favorite tracks.
+    pub async fn all_favorite_tracks(&self) -> Result<Vec<Track>> {
+        self.get_all_pages(&format!("{}/tracks", self.user_base()), &[], DEFAULT_PAGE_SIZE)
+            .await
+    }
+
+    /// Walk every page of the user's favorite albums.
+    pub async fn all_favorite_albums(&self) -> Result<Vec<Album>> {
+        self.get_all_pages(&format!("{}/albums", self.user_base()), &[], DEFAULT_PAGE_SIZE)
+            .await
+    }
+
+    /// Walk every page of the user's favorite artists.
+    pub async fn all_favorite_artists(&self) -> Result<Vec<Artist>> {
+        self.get_all_pages(&format!("{}/artists", self.user_base()), &[], DEFAULT_PAGE_SIZE)
+            .await
+    }
+
+    /// Walk every page of the user's playlists.
+    pub async fn all_user_playlists(&self) -> Result<Vec<Playlist>> {
+        self.get_all_pages(
+            &format!("users/{}/playlists", self.session().user_id),
+            &[],
+            DEFAULT_PAGE_SIZE,
+        )
+        .await
+    }
 }
 
 #[cfg(test)]
@@ -75,6 +103,28 @@ mod tests {
             .mount(&server).await;
         let tracks = client(&server).favorite_tracks(100, 200).await.unwrap();
         assert_eq!(tracks[0].id, 7);
+    }
+
+    #[tokio::test]
+    async fn all_favorite_tracks_fetches_every_page() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/users/42/favorites/tracks"))
+            .and(query_param("offset", "0"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [{"id": 1, "title": "A"}],
+                "totalNumberOfItems": 2, "limit": 100, "offset": 0
+            })))
+            .mount(&server).await;
+        Mock::given(method("GET")).and(path("/users/42/favorites/tracks"))
+            .and(query_param("offset", "1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [{"id": 2, "title": "B"}],
+                "totalNumberOfItems": 2, "limit": 100, "offset": 1
+            })))
+            .mount(&server).await;
+        let tracks = client(&server).all_favorite_tracks().await.unwrap();
+        assert_eq!(tracks.len(), 2);
+        assert_eq!(tracks[1].id, 2);
     }
 
     #[tokio::test]

@@ -4,15 +4,34 @@
   let { id }: { id: string } = $props();
   let playlist = $state<PlaylistT | null>(null);
   let tracks = $state<Track[]>([]);
+  let loading = $state(true);
+  let error = $state("");
 
   $effect(() => {
-    api.getPlaylist(id).then((p) => (playlist = p));
-    api.getPlaylistTracks(id).then((t) => (tracks = t));
+    loading = true;
+    error = "";
+    Promise.all([api.getPlaylist(id), api.getPlaylistTracks(id)])
+      .then(([p, t]) => {
+        playlist = p;
+        tracks = t;
+      })
+      .catch((e) => {
+        error = String(e);
+      })
+      .finally(() => {
+        loading = false;
+      });
   });
 </script>
 
-{#if playlist}
-  <h2>{playlist.title}</h2>
-  <p class="muted">{playlist.numberOfTracks} tracks</p>
+{#if loading}
+  <p class="muted">Loading…</p>
+{:else if error}
+  <p style="color:#ff6b6b">{error}</p>
+{:else}
+  {#if playlist}
+    <h2>{playlist.title}</h2>
+    <p class="muted">{playlist.numberOfTracks} tracks</p>
+  {/if}
+  <TrackTable {tracks} />
 {/if}
-<TrackTable {tracks} />

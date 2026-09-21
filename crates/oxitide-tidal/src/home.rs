@@ -42,6 +42,14 @@ struct RawModule {
     pub title: String,
     #[serde(default)]
     pub items: Vec<RawItem>,
+    #[serde(default, rename = "pagedList")]
+    pub paged_list: Option<RawPagedList>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawPagedList {
+    #[serde(default)]
+    pub items: Vec<RawItem>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -72,7 +80,13 @@ impl TidalClient {
                 let items: Vec<HomeItem> = row
                     .modules
                     .into_iter()
-                    .flat_map(|m| m.items.into_iter())
+                    .flat_map(|m| {
+                        let mut items = m.items;
+                        if let Some(paged) = m.paged_list {
+                            items.extend(paged.items);
+                        }
+                        items.into_iter()
+                    })
                     .map(|i| HomeItem {
                         id: value_to_id(&i.id),
                         title: i.title,
@@ -135,6 +149,27 @@ mod tests {
         assert_eq!(sections[0].title, "For You");
         assert_eq!(sections[0].items[0].id, "m1");
         assert_eq!(sections[0].items[0].item_type, "MIX");
+    }
+
+    #[tokio::test]
+    async fn home_page_reads_paged_list_items() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/pages/home"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "rows": [
+                    {"title": "For You", "modules": [
+                        {"title": "Paged", "pagedList": {"items": [
+                            {"id": 11, "title": "Paged Item", "type": "ALBUM"}
+                        ]}}
+                    ]}
+                ]
+            })))
+            .mount(&server).await;
+        let sections = client(&server).home_page().await.unwrap();
+        assert_eq!(sections.len(), 1);
+        assert_eq!(sections[0].items.len(), 1);
+        assert_eq!(sections[0].items[0].title, "Paged Item");
+        assert_eq!(sections[0].items[0].item_type, "ALBUM");
     }
 
     #[tokio::test]

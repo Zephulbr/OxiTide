@@ -32,6 +32,7 @@ export const api = {
   authBegin: () => invoke<{ url: string }>("auth_begin"),
   authComplete: (redirectUrl: string) => invoke<SessionInfoDto>("auth_complete", { redirectUrl }),
   authStatus: () => invoke<boolean>("auth_status"),
+  authRestore: () => invoke<SessionInfoDto | null>("auth_restore"),
   authLogout: () => invoke<void>("auth_logout"),
   getHome: () => invoke<HomeSection[]>("get_home"),
   getAlbum: (id: number) => invoke<Album>("get_album", { id }),
