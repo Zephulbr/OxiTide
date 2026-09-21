@@ -2593,6 +2593,7 @@ dependencies = [
 name = "oxitide-app"
 version = "0.1.0"
 dependencies = [
+ "oxitide-audio",
  "oxitide-tidal",
  "reqwest 0.12.28",
  "serde",

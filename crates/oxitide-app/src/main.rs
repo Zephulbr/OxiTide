@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+mod player;
 mod state;
 
 use state::AppState;
@@ -30,6 +31,21 @@ fn main() {
             commands::get_favorite_albums,
             commands::get_favorite_artists,
             commands::get_user_playlists,
+            commands::play_tracks,
+            commands::play_pause,
+            commands::next,
+            commands::prev,
+            commands::seek,
+            commands::set_volume,
+            commands::set_shuffle,
+            commands::set_repeat,
+            commands::queue_reorder,
+            commands::queue_remove,
+            commands::queue_clear,
+            commands::get_playback_state,
+            commands::get_output_devices,
+            commands::set_output_device,
+            commands::set_preferred_quality,
         ])
         .run(tauri::generate_context!())
         .expect("error while running OxiTide");
