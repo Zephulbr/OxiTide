@@ -1,3 +1,4 @@
+pub mod decode;
 pub mod demux;
 pub mod error;
 pub mod fetch;
