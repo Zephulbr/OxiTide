@@ -1,7 +1,6 @@
 # Rust / Cargo
 /target
 **/target
-Cargo.lock
 
 # Tauri
 /crates/oxitide-app/gen
