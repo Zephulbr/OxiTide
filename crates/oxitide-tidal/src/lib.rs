@@ -4,6 +4,7 @@ pub mod client;
 pub mod error;
 pub mod models;
 pub mod pkce;
+pub mod search;
 pub mod token_store;
 
 pub use client::TidalClient;

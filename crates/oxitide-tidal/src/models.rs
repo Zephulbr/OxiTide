@@ -103,16 +103,33 @@ pub struct ItemPage<T> {
     pub offset: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SearchGroup<T> {
+    #[serde(default = "Vec::new")]
+    pub items: Vec<T>,
+}
+
+fn empty_group<T>() -> SearchGroup<T> {
+    SearchGroup { items: Vec::new() }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SearchResults {
-    #[serde(default)]
-    pub tracks: Vec<Track>,
-    #[serde(default)]
-    pub albums: Vec<Album>,
-    #[serde(default)]
-    pub artists: Vec<Artist>,
-    #[serde(default)]
-    pub playlists: Vec<Playlist>,
+    #[serde(default = "empty_group")]
+    pub tracks: SearchGroup<Track>,
+    #[serde(default = "empty_group")]
+    pub albums: SearchGroup<Album>,
+    #[serde(default = "empty_group")]
+    pub artists: SearchGroup<Artist>,
+    #[serde(default = "empty_group")]
+    pub playlists: SearchGroup<Playlist>,
+}
+
+impl SearchResults {
+    pub fn track_items(&self) -> &[Track] { &self.tracks.items }
+    pub fn album_items(&self) -> &[Album] { &self.albums.items }
+    pub fn artist_items(&self) -> &[Artist] { &self.artists.items }
+    pub fn playlist_items(&self) -> &[Playlist] { &self.playlists.items }
 }
 
 #[cfg(test)]
