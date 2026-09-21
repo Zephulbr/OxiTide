@@ -3,21 +3,9 @@
   import type { Player } from "../player.svelte";
   let { player }: { player: Player } = $props();
 
-  let scrubbing = $state(false);
-  let scrubValue = $state(0);
-
-  const position = $derived(
-    scrubbing ? scrubValue : player.state.position_ms,
-  );
+  const position = $derived(player.state.position_ms);
   const duration = $derived(player.state.duration_ms);
-
-  function onSeekInput(e: Event) {
-    scrubValue = Number((e.target as HTMLInputElement).value);
-  }
-  function onSeekCommit() {
-    scrubbing = false;
-    player.seek(scrubValue);
-  }
+  const quality = $derived(player.state.preferred_quality);
 </script>
 
 <div class="player">
@@ -25,6 +13,7 @@
     <div class="now">
       <strong>{player.state.current.title}</strong>
       <span class="muted">{player.state.current.artist}</span>
+      <span class="badge" title="Streaming quality">{quality}</span>
     </div>
     <button onclick={() => player.prev()} aria-label="Previous">⏮</button>
     <button onclick={() => player.playPause()} aria-label="Play/Pause">
@@ -33,10 +22,8 @@
     <button onclick={() => player.next()} aria-label="Next">⏭</button>
     <input
       type="range" min="0" max={Math.max(duration, 1)} value={position}
-      oninput={onSeekInput}
-      onpointerdown={() => (scrubbing = true)}
-      onpointerup={onSeekCommit}
-      onchange={onSeekCommit}
+      disabled
+      aria-label="Playback position (seeking not yet available)"
     />
     <span class="muted">{formatDuration(position / 1000)} / {formatDuration(duration / 1000)}</span>
     <input

@@ -6,7 +6,7 @@ describe("player reducer", () => {
     const next = reduce(emptyState(), {
       type: "state", playing: true, buffering: false, current: null,
       position_ms: 0, duration_ms: 0, volume: 0.5, shuffle: false,
-      repeat: "off", queue: [],
+      repeat: "off", preferred_quality: "lossless", queue: [],
     });
     expect(next.playing).toBe(true);
     expect(next.volume).toBe(0.5);

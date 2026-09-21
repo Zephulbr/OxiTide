@@ -36,7 +36,9 @@ export type RepeatMode = "off" | "all" | "one";
 export interface PlaybackState {
   playing: boolean; buffering: boolean; current?: QueueItem | null;
   position_ms: number; duration_ms: number; volume: number;
-  shuffle: boolean; repeat: RepeatMode; queue: QueueItem[];
+  shuffle: boolean; repeat: RepeatMode;
+  preferred_quality: "low" | "high" | "lossless" | "max";
+  queue: QueueItem[];
 }
 export interface OutputDevice { id: string; name: string; is_default: boolean }
 export type EngineEvent =

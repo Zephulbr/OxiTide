@@ -10,6 +10,7 @@ export interface PlayerState {
   volume: number;
   shuffle: boolean;
   repeat: RepeatMode;
+  preferred_quality: "low" | "high" | "lossless" | "max";
   queue: QueueItem[];
   error: string;
 }
@@ -17,7 +18,8 @@ export interface PlayerState {
 export function emptyState(): PlayerState {
   return {
     playing: false, buffering: false, current: null, position_ms: 0,
-    duration_ms: 0, volume: 1, shuffle: false, repeat: "off", queue: [], error: "",
+    duration_ms: 0, volume: 1, shuffle: false, repeat: "off",
+    preferred_quality: "lossless", queue: [], error: "",
   };
 }
 

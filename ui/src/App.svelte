@@ -72,7 +72,7 @@
       {:else if nav.route.name === "album"}<Album id={nav.route.id} {player} />
       {:else if nav.route.name === "playlist"}<Playlist id={nav.route.id} {player} />
       {:else if nav.route.name === "artist"}<Artist id={nav.route.id} />
-      {:else if nav.route.name === "settings"}<Settings />{/if}
+      {:else if nav.route.name === "settings"}<Settings {player} />{/if}
     </main>
     {#if nav.queueOpen}<aside class="queue"><QueueRail {player} /></aside>{/if}
     <PlayerBar {player} />
