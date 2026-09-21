@@ -1,4 +1,5 @@
 pub mod error;
+pub mod fetch;
 pub mod mpd;
 pub mod source;
 
