@@ -69,9 +69,17 @@ impl Representation {
             .as_ref()
             .ok_or_else(|| Error::Manifest("representation has no SegmentTemplate".into()))?;
         if !t.timeline.is_empty() {
+            let ts = if t.timescale == 0 { 1 } else { t.timescale };
+            let total_secs = mpd_duration.and_then(parse_iso8601_duration);
             let mut n: u64 = 0;
+            let mut time = t.timeline[0].t.unwrap_or(0);
             for e in &t.timeline {
-                n += (e.r.max(-1) + 1) as u64;
+                if let Some(start) = e.t {
+                    time = start;
+                }
+                let reps = repeat_count(e, time, ts, total_secs);
+                n += reps;
+                time += e.d * reps;
             }
             return Ok(n);
         }
@@ -113,13 +121,16 @@ impl Representation {
         let repr_id = self.id.clone().unwrap_or_default();
         let bw = self.bandwidth.unwrap_or(0);
         if !t.timeline.is_empty() {
+            let ts = if t.timescale == 0 { 1 } else { t.timescale };
+            let total_secs = mpd_duration.and_then(parse_iso8601_duration);
             let mut urls = Vec::new();
             let mut time = t.timeline[0].t.unwrap_or(0);
             for e in &t.timeline {
                 if let Some(start) = e.t {
                     time = start;
                 }
-                for _ in 0..(e.r.max(-1) + 1) {
+                let reps = repeat_count(e, time, ts, total_secs);
+                for _ in 0..reps {
                     urls.push(resolve_template(&base, &t.media, &repr_id, bw, 0, time));
                     time += e.d;
                 }
@@ -147,6 +158,20 @@ fn resolve_template(
         .replace("$Time$", &time.to_string())
         .replace("$Bandwidth$", &bandwidth.to_string());
     format!("{base}{expanded}")
+}
+
+fn repeat_count(entry: &TimelineEntry, time: u64, timescale: u64, total_secs: Option<f64>) -> u64 {
+    if entry.r < 0 {
+        match total_secs {
+            Some(total) if entry.d > 0 => {
+                let end_ts = (total * timescale as f64) as u64;
+                (end_ts.saturating_sub(time) / entry.d).max(1)
+            }
+            _ => 1,
+        }
+    } else {
+        entry.r as u64 + 1
+    }
 }
 
 fn parse_iso8601_duration(s: &str) -> Option<f64> {
@@ -366,6 +391,33 @@ mod tests {
             r.media_urls(None, &[]).unwrap(),
             vec!["0.mp4", "176400.mp4", "352800.mp4"]
         );
+    }
+
+    const REPEAT_MPD: &str = r#"<MPD mediaPresentationDuration="PT8S"><Period><AdaptationSet>
+      <Representation id="a" codecs="flac">
+        <SegmentTemplate initialization="init.mp4" media="$Time$.mp4" timescale="1">
+          <SegmentTimeline><S t="0" d="4" r="-1"/></SegmentTimeline>
+        </SegmentTemplate>
+      </Representation>
+    </AdaptationSet></Period></MPD>"#;
+
+    #[test]
+    fn repeat_minus_one_fills_until_duration() {
+        let mpd = parse(REPEAT_MPD).unwrap();
+        let r = mpd.audio_representation().unwrap();
+        assert_eq!(r.segment_count(Some("PT8S")).unwrap(), 2);
+        assert_eq!(
+            r.media_urls(Some("PT8S"), &[]).unwrap(),
+            vec!["0.mp4", "4.mp4"]
+        );
+    }
+
+    #[test]
+    fn repeat_minus_one_without_duration_yields_one_segment() {
+        let mpd = parse(REPEAT_MPD).unwrap();
+        let r = mpd.audio_representation().unwrap();
+        assert_eq!(r.segment_count(None).unwrap(), 1);
+        assert_eq!(r.media_urls(None, &[]).unwrap(), vec!["0.mp4"]);
     }
 
     #[test]
