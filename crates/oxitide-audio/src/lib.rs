@@ -3,6 +3,7 @@ pub mod demux;
 pub mod error;
 pub mod fetch;
 pub mod mpd;
+pub mod output;
 pub mod source;
 
 pub use error::{Error, Result};
