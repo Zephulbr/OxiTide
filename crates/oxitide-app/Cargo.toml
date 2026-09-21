@@ -1,0 +1,4 @@
+[package]
+name = "oxitide-app"
+version.workspace = true
+edition.workspace = true

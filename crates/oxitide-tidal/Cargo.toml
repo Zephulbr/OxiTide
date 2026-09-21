@@ -1,0 +1,18 @@
+[package]
+name = "oxitide-tidal"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+tokio.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+url.workspace = true
+keyring = { version = "3", features = ["windows-native"] }
+
+[dev-dependencies]
+wiremock = "0.6"
