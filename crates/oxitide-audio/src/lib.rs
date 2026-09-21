@@ -1,5 +1,6 @@
 pub mod decode;
 pub mod demux;
+pub mod engine;
 pub mod error;
 pub mod fetch;
 pub mod mpd;
