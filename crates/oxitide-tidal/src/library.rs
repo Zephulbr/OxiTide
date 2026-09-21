@@ -1,6 +1,14 @@
+use serde::Deserialize;
+
 use crate::client::{TidalClient, DEFAULT_PAGE_SIZE};
 use crate::error::Result;
 use crate::models::{Album, Artist, ItemPage, Playlist, Track};
+
+/// Favorites endpoints wrap each entry as `{ "created": ..., "item": {...} }`.
+#[derive(Debug, Deserialize)]
+struct Favorited<T> {
+    item: T,
+}
 
 fn page(limit: u32, offset: u32) -> Vec<(&'static str, String)> {
     vec![("limit", limit.to_string()), ("offset", offset.to_string())]
@@ -12,24 +20,24 @@ impl TidalClient {
     }
 
     pub async fn favorite_tracks(&self, limit: u32, offset: u32) -> Result<Vec<Track>> {
-        let p: ItemPage<Track> = self
+        let p: ItemPage<Favorited<Track>> = self
             .get(&format!("{}/tracks", self.user_base()), &page(limit, offset))
             .await?;
-        Ok(p.items)
+        Ok(p.items.into_iter().map(|f| f.item).collect())
     }
 
     pub async fn favorite_albums(&self, limit: u32, offset: u32) -> Result<Vec<Album>> {
-        let p: ItemPage<Album> = self
+        let p: ItemPage<Favorited<Album>> = self
             .get(&format!("{}/albums", self.user_base()), &page(limit, offset))
             .await?;
-        Ok(p.items)
+        Ok(p.items.into_iter().map(|f| f.item).collect())
     }
 
     pub async fn favorite_artists(&self, limit: u32, offset: u32) -> Result<Vec<Artist>> {
-        let p: ItemPage<Artist> = self
+        let p: ItemPage<Favorited<Artist>> = self
             .get(&format!("{}/artists", self.user_base()), &page(limit, offset))
             .await?;
-        Ok(p.items)
+        Ok(p.items.into_iter().map(|f| f.item).collect())
     }
 
     pub async fn user_playlists(&self, limit: u32, offset: u32) -> Result<Vec<Playlist>> {
@@ -44,20 +52,26 @@ impl TidalClient {
 
     /// Walk every page of the user's favorite tracks.
     pub async fn all_favorite_tracks(&self) -> Result<Vec<Track>> {
-        self.get_all_pages(&format!("{}/tracks", self.user_base()), &[], DEFAULT_PAGE_SIZE)
-            .await
+        let favs: Vec<Favorited<Track>> = self
+            .get_all_pages(&format!("{}/tracks", self.user_base()), &[], DEFAULT_PAGE_SIZE)
+            .await?;
+        Ok(favs.into_iter().map(|f| f.item).collect())
     }
 
     /// Walk every page of the user's favorite albums.
     pub async fn all_favorite_albums(&self) -> Result<Vec<Album>> {
-        self.get_all_pages(&format!("{}/albums", self.user_base()), &[], DEFAULT_PAGE_SIZE)
-            .await
+        let favs: Vec<Favorited<Album>> = self
+            .get_all_pages(&format!("{}/albums", self.user_base()), &[], DEFAULT_PAGE_SIZE)
+            .await?;
+        Ok(favs.into_iter().map(|f| f.item).collect())
     }
 
     /// Walk every page of the user's favorite artists.
     pub async fn all_favorite_artists(&self) -> Result<Vec<Artist>> {
-        self.get_all_pages(&format!("{}/artists", self.user_base()), &[], DEFAULT_PAGE_SIZE)
-            .await
+        let favs: Vec<Favorited<Artist>> = self
+            .get_all_pages(&format!("{}/artists", self.user_base()), &[], DEFAULT_PAGE_SIZE)
+            .await?;
+        Ok(favs.into_iter().map(|f| f.item).collect())
     }
 
     /// Walk every page of the user's playlists.
@@ -98,7 +112,8 @@ mod tests {
         Mock::given(method("GET")).and(path("/users/42/favorites/tracks"))
             .and(query_param("offset", "200")).and(query_param("limit", "100"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "items": [{"id": 7, "title": "Fav"}], "totalNumberOfItems": 201, "limit": 100, "offset": 200
+                "items": [{"created": "2025-01-01T00:00:00.000+0000", "item": {"id": 7, "title": "Fav"}}],
+                "totalNumberOfItems": 201, "limit": 100, "offset": 200
             })))
             .mount(&server).await;
         let tracks = client(&server).favorite_tracks(100, 200).await.unwrap();
@@ -111,14 +126,14 @@ mod tests {
         Mock::given(method("GET")).and(path("/users/42/favorites/tracks"))
             .and(query_param("offset", "0"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "items": [{"id": 1, "title": "A"}],
+                "items": [{"item": {"id": 1, "title": "A"}}],
                 "totalNumberOfItems": 2, "limit": 100, "offset": 0
             })))
             .mount(&server).await;
         Mock::given(method("GET")).and(path("/users/42/favorites/tracks"))
             .and(query_param("offset", "1"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "items": [{"id": 2, "title": "B"}],
+                "items": [{"item": {"id": 2, "title": "B"}}],
                 "totalNumberOfItems": 2, "limit": 100, "offset": 1
             })))
             .mount(&server).await;

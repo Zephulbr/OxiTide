@@ -31,10 +31,10 @@
 {:else if sections.length === 0}
   <p class="muted">Nothing to show yet.</p>
 {:else}
-  {#each sections as section (section.title)}
+  {#each sections as section, si (`${section.title}-${si}`)}
     <h3>{section.title}</h3>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px">
-      {#each section.items as item (item.id)}
+      {#each section.items as item, i (item.id || `${item.title}-${i}`)}
         <button style="text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px;color:inherit">
           <div>{item.title}</div>
           {#if item.subtitle}<div class="muted" style="font-size:12px">{item.subtitle}</div>{/if}

@@ -30,16 +30,15 @@ pub struct HomeSection {
 #[derive(Debug, Deserialize)]
 struct RawRow {
     #[serde(default)]
-    pub title: String,
-    #[serde(default)]
     pub modules: Vec<RawModule>,
 }
 
 #[derive(Debug, Deserialize)]
 struct RawModule {
     #[serde(default)]
-    #[allow(dead_code)]
     pub title: String,
+    #[serde(rename = "type", default)]
+    pub module_type: String,
     #[serde(default)]
     pub items: Vec<RawItem>,
     #[serde(default, rename = "pagedList")]
@@ -57,9 +56,13 @@ struct RawItem {
     #[serde(default)]
     pub id: serde_json::Value,
     #[serde(default)]
+    pub uuid: Option<String>,
+    #[serde(default)]
     pub title: String,
     #[serde(default)]
     pub subtitle: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
     #[serde(rename = "type", default)]
     pub item_type: String,
 }
@@ -71,35 +74,52 @@ struct RawPage {
 }
 
 impl TidalClient {
+    /// Fetch the home feed. TIDAL requires `deviceType`/`platform` on this endpoint.
     pub async fn home_page(&self) -> Result<Vec<HomeSection>> {
-        let raw: RawPage = self.get("pages/home", &[]).await?;
-        let sections = raw
-            .rows
-            .into_iter()
-            .map(|row| {
-                let items: Vec<HomeItem> = row
-                    .modules
+        let params = [
+            ("deviceType", "BROWSER".to_string()),
+            ("platform", "WEB".to_string()),
+        ];
+        let raw: RawPage = self.get("pages/home", &params).await?;
+
+        let mut sections = Vec::new();
+        for row in raw.rows {
+            for module in row.modules {
+                let mut raw_items = module.items;
+                if let Some(paged) = module.paged_list {
+                    raw_items.extend(paged.items);
+                }
+                if raw_items.is_empty() {
+                    continue;
+                }
+                let module_type = module.module_type.clone();
+                let items: Vec<HomeItem> = raw_items
                     .into_iter()
-                    .flat_map(|m| {
-                        let mut items = m.items;
-                        if let Some(paged) = m.paged_list {
-                            items.extend(paged.items);
-                        }
-                        items.into_iter()
-                    })
                     .map(|i| HomeItem {
-                        id: value_to_id(&i.id),
+                        id: item_id(&i),
                         title: i.title,
-                        subtitle: i.subtitle,
-                        item_type: i.item_type,
+                        subtitle: i.subtitle.or(i.description),
+                        item_type: if i.item_type.is_empty() {
+                            module_type.clone()
+                        } else {
+                            i.item_type
+                        },
                     })
                     .collect();
-                HomeSection { title: row.title, items }
-            })
-            .filter(|s| !s.items.is_empty())
-            .collect();
+                sections.push(HomeSection { title: module.title, items });
+            }
+        }
         Ok(sections)
     }
+}
+
+/// TIDAL uses a numeric `id` for tracks/albums and a `uuid` for playlists.
+fn item_id(item: &RawItem) -> String {
+    let from_id = value_to_id(&item.id);
+    if !from_id.is_empty() {
+        return from_id;
+    }
+    item.uuid.clone().unwrap_or_default()
 }
 
 fn value_to_id(v: &serde_json::Value) -> String {
@@ -116,7 +136,7 @@ mod tests {
     use crate::auth::SessionInfo;
     use crate::token_store::{MemoryStore, TokenSet};
     use std::sync::Arc;
-    use wiremock::matchers::{method, path};
+    use wiremock::matchers::{method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn client(server: &MockServer) -> TidalClient {
@@ -130,46 +150,46 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn home_page_flattens_rows_and_skips_empty() {
+    async fn home_page_uses_module_title_and_paged_items() {
         let server = MockServer::start().await;
         Mock::given(method("GET")).and(path("/pages/home"))
+            .and(query_param("deviceType", "BROWSER"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "rows": [
-                    {"title": "For You", "modules": [
-                        {"title": "Mixes", "items": [
-                            {"id": "m1", "title": "Daily Mix", "subtitle": "Made for you", "type": "MIX"}
-                        ]}
+                    {"modules": [
+                        {"type": "PLAYLIST_LIST", "title": "The Hits", "pagedList": {"items": [
+                            {"uuid": "abc-123", "title": "Top Hits", "description": "desc", "type": "EDITORIAL"}
+                        ]}}
                     ]},
-                    {"title": "Empty", "modules": [{"title": "x", "items": []}]}
+                    {"modules": [{"type": "TRACK_LIST", "title": "New Tracks", "items": []}]}
                 ]
             })))
             .mount(&server).await;
         let sections = client(&server).home_page().await.unwrap();
         assert_eq!(sections.len(), 1);
-        assert_eq!(sections[0].title, "For You");
-        assert_eq!(sections[0].items[0].id, "m1");
-        assert_eq!(sections[0].items[0].item_type, "MIX");
+        assert_eq!(sections[0].title, "The Hits");
+        assert_eq!(sections[0].items[0].id, "abc-123");
+        assert_eq!(sections[0].items[0].subtitle.as_deref(), Some("desc"));
+        assert_eq!(sections[0].items[0].item_type, "EDITORIAL");
     }
 
     #[tokio::test]
-    async fn home_page_reads_paged_list_items() {
+    async fn home_page_numeric_id_and_module_type_fallback() {
         let server = MockServer::start().await;
         Mock::given(method("GET")).and(path("/pages/home"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "rows": [
-                    {"title": "For You", "modules": [
-                        {"title": "Paged", "pagedList": {"items": [
-                            {"id": 11, "title": "Paged Item", "type": "ALBUM"}
+                    {"modules": [
+                        {"type": "TRACK_LIST", "title": "New Tracks", "pagedList": {"items": [
+                            {"id": 561714507, "title": "Solaire"}
                         ]}}
                     ]}
                 ]
             })))
             .mount(&server).await;
         let sections = client(&server).home_page().await.unwrap();
-        assert_eq!(sections.len(), 1);
-        assert_eq!(sections[0].items.len(), 1);
-        assert_eq!(sections[0].items[0].title, "Paged Item");
-        assert_eq!(sections[0].items[0].item_type, "ALBUM");
+        assert_eq!(sections[0].items[0].id, "561714507");
+        assert_eq!(sections[0].items[0].item_type, "TRACK_LIST");
     }
 
     #[tokio::test]
