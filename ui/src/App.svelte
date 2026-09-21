@@ -10,12 +10,22 @@
   import Search from "./views/Search.svelte";
   import Library from "./views/Library.svelte";
   import { createNav } from "./lib/nav.svelte";
+  import { createPlayer } from "./lib/player.svelte";
   import { api } from "./lib/api";
 
   const nav = createNav();
+  const player = createPlayer();
   let loggedIn = $state(false);
   let booting = $state(true);
   let error = $state("");
+  let playerReady = $state(false);
+
+  $effect(() => {
+    if (loggedIn && !playerReady) {
+      playerReady = true;
+      player.init();
+    }
+  });
 
   $effect(() => {
     api
@@ -62,7 +72,7 @@
       {:else if nav.route.name === "playlist"}<Playlist id={nav.route.id} />
       {:else if nav.route.name === "artist"}<Artist id={nav.route.id} />{/if}
     </main>
-    {#if nav.queueOpen}<aside class="queue"><QueueRail /></aside>{/if}
-    <PlayerBar />
+    {#if nav.queueOpen}<aside class="queue"><QueueRail {player} /></aside>{/if}
+    <PlayerBar {player} />
   </div>
 {/if}
