@@ -2,6 +2,8 @@ pub mod auth;
 pub mod catalog;
 pub mod client;
 pub mod error;
+pub mod home;
+pub mod library;
 pub mod models;
 pub mod pkce;
 pub mod search;
