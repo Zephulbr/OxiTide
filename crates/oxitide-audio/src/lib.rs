@@ -1,3 +1,4 @@
+pub mod demux;
 pub mod error;
 pub mod fetch;
 pub mod mpd;
