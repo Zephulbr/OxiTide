@@ -22,6 +22,7 @@ pub struct PlaybackState {
     pub volume: f32,
     pub shuffle: bool,
     pub repeat: crate::queue::RepeatMode,
+    pub preferred_quality: Quality,
     pub queue: Vec<QueueItem>,
 }
 
@@ -73,6 +74,7 @@ struct Inner {
     fetcher: Arc<dyn Fetcher>,
     output: Arc<dyn OutputFactory>,
     quality: Mutex<Quality>,
+    device_id: Mutex<Option<String>>,
     listeners: Mutex<Vec<Listener>>,
     /// Serializes the generation bump + spawn of a new track with the advance
     /// decision of a completing playback thread, so a command and an auto-advance
@@ -106,6 +108,7 @@ impl Engine {
                 fetcher,
                 output,
                 quality: Mutex::new(quality),
+                device_id: Mutex::new(None),
                 listeners: Mutex::new(Vec::new()),
                 playback_lock: Mutex::new(()),
                 generation: Arc::new(AtomicU64::new(0)),
@@ -124,6 +127,16 @@ impl Engine {
         *self.inner.quality.lock().unwrap() = quality;
     }
 
+    /// Select the output device for future tracks. `None` means the system
+    /// default. Already-playing tracks keep their device.
+    pub fn set_output_device(&self, device: Option<String>) {
+        *self.inner.device_id.lock().unwrap() = device;
+    }
+
+    fn output_device(&self) -> Option<String> {
+        self.inner.device_id.lock().unwrap().clone()
+    }
+
     pub fn state(&self) -> PlaybackState {
         let q = self.inner.queue.lock().unwrap();
         PlaybackState {
@@ -135,6 +148,7 @@ impl Engine {
             volume: q.volume(),
             shuffle: q.shuffle(),
             repeat: q.repeat(),
+            preferred_quality: *self.inner.quality.lock().unwrap(),
             queue: q.items().to_vec(),
         }
     }
@@ -154,6 +168,24 @@ impl Engine {
         self.inner.generation.fetch_add(1, Ordering::SeqCst);
         let mut queue = self.inner.queue.lock().unwrap();
         mutate(&mut queue)
+    }
+
+    /// Like `mutate_playing_queue`, but only bumps the generation (invalidating a
+    /// running playback thread) when `mutate` actually moved the current index or
+    /// stopped playback. A no-op `Prev` at the first track must leave playback
+    /// untouched so `state().playing` keeps matching the audio. Returns the
+    /// resulting current item and whether the index moved.
+    fn mutate_queue_if_changed(&self, mutate: impl FnOnce(&mut Queue)) -> (Option<QueueItem>, bool) {
+        let _guard = self.inner.playback_lock.lock().unwrap();
+        let mut queue = self.inner.queue.lock().unwrap();
+        let before = queue.current_index();
+        let was_playing = queue.is_playing();
+        mutate(&mut queue);
+        let changed = queue.current_index() != before;
+        if changed || (was_playing && !queue.is_playing()) {
+            self.inner.generation.fetch_add(1, Ordering::SeqCst);
+        }
+        (queue.current().cloned(), changed)
     }
 
     pub fn handle(&self, cmd: EngineCmd) -> Result<()> {
@@ -188,24 +220,26 @@ impl Engine {
                 self.emit(EngineEvent::State(self.state()));
             }
             EngineCmd::Next => {
-                let item = self.mutate_playing_queue(|q| {
+                let (item, changed) = self.mutate_queue_if_changed(|q| {
                     q.next();
-                    q.current().cloned()
                 });
                 self.emit(EngineEvent::NowPlaying(item.clone()));
-                if let Some(item) = item {
-                    self.start_playback(item);
+                if changed {
+                    if let Some(item) = item {
+                        self.start_playback(item);
+                    }
                 }
                 self.emit(EngineEvent::State(self.state()));
             }
             EngineCmd::Prev => {
-                let item = self.mutate_playing_queue(|q| {
+                let (item, changed) = self.mutate_queue_if_changed(|q| {
                     q.prev();
-                    q.current().cloned()
                 });
                 self.emit(EngineEvent::NowPlaying(item.clone()));
-                if let Some(item) = item {
-                    self.start_playback(item);
+                if changed {
+                    if let Some(item) = item {
+                        self.start_playback(item);
+                    }
                 }
                 self.emit(EngineEvent::State(self.state()));
             }
@@ -257,6 +291,7 @@ impl Engine {
         let source = crate::demux::StreamBufferSource::new(buffer);
         let mut sink = OutputSink {
             output,
+            device_id: self.output_device(),
             generation: None,
             paused: self.inner.paused.clone(),
             volume: self.inner.volume.clone(),
@@ -368,6 +403,7 @@ impl Engine {
         let mut output = self.inner.output.create();
         let mut sink = OutputSink {
             output: output.as_mut(),
+            device_id: self.output_device(),
             generation: Some((self.inner.generation.clone(), generation)),
             paused: self.inner.paused.clone(),
             volume: self.inner.volume.clone(),
@@ -385,6 +421,7 @@ impl Engine {
 
 struct OutputSink<'a> {
     output: &'a mut dyn AudioOutput,
+    device_id: Option<String>,
     generation: Option<(Arc<AtomicU64>, u64)>,
     paused: Arc<AtomicBool>,
     volume: Arc<AtomicU32>,
@@ -399,7 +436,7 @@ impl PcmSink for OutputSink<'_> {
         self.rate = spec.rate();
         self.channels = spec.channels().count().max(1) as u16;
         self.output.open(
-            None,
+            self.device_id.as_deref(),
             AudioFormat { sample_rate: spec.rate(), channels: self.channels },
         )
     }
@@ -713,5 +750,129 @@ mod tests {
         // A still-running ticker would emit ~2 more in this window.
         std::thread::sleep(std::time::Duration::from_millis(1200));
         assert_eq!(positions(), before, "position ticker kept emitting after a playback error");
+    }
+
+    /// Regression: `Next` at the end of the queue with repeat off must not
+    /// restart the last track. Audio plays iff `state().playing`.
+    #[test]
+    fn next_at_end_with_repeat_off_does_not_restart() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while engine.state().playing && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(!engine.state().playing, "single track did not finish");
+
+        let before = output.lock().unwrap().samples().len();
+        assert!(before >= 176_400);
+        engine.handle(EngineCmd::Next).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        assert_eq!(
+            output.lock().unwrap().samples().len(),
+            before,
+            "Next at the end restarted playback"
+        );
+        assert!(!engine.state().playing, "Next at the end left the queue playing");
+    }
+
+    /// Regression: `Prev` at the first track is a no-op and must leave the
+    /// running playback (and its generation) untouched.
+    #[test]
+    fn prev_at_first_track_does_not_restart() {
+        let (plan, files) = fixture_plan();
+        let gate = Arc::new(Gate::new());
+        let (factory, output) = null_factory();
+        let engine = Engine::new(
+            Arc::new(FakeResolver { plan }),
+            Arc::new(GatedFetcher { files, gate: gate.clone(), id: 1 }),
+            factory,
+            Quality::Lossless,
+        );
+        engine
+            .handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 })
+            .unwrap();
+        // Playback is parked in the fetcher, so nothing has been written yet.
+        let before_gen = engine.inner.generation.load(Ordering::SeqCst);
+        let before_samples = output.lock().unwrap().samples().len();
+
+        engine.handle(EngineCmd::Prev).unwrap();
+
+        assert_eq!(
+            engine.inner.generation.load(Ordering::SeqCst),
+            before_gen,
+            "no-op Prev bumped the generation"
+        );
+        assert!(engine.state().playing, "no-op Prev stopped playback");
+        assert_eq!(engine.state().current.map(|i| i.track_id), Some(1));
+        assert_eq!(output.lock().unwrap().samples().len(), before_samples);
+        gate.release(1);
+    }
+
+    struct GatedFetcher {
+        files: HashMap<String, Vec<u8>>,
+        gate: Arc<Gate>,
+        id: u64,
+    }
+
+    impl Fetcher for GatedFetcher {
+        fn get(&self, url: &str) -> Result<Vec<u8>> {
+            self.gate.wait(self.id);
+            self.files
+                .get(url)
+                .cloned()
+                .ok_or_else(|| Error::Fetch(format!("no fixture for {url}")))
+        }
+    }
+
+    /// An output that records the device id passed to `open`.
+    struct RecordingOutput {
+        opened: Arc<Mutex<Vec<Option<String>>>>,
+    }
+
+    impl AudioOutput for RecordingOutput {
+        fn open(&mut self, device_id: Option<&str>, _format: AudioFormat) -> Result<()> {
+            self.opened.lock().unwrap().push(device_id.map(|s| s.to_string()));
+            Ok(())
+        }
+        fn start(&mut self) -> Result<()> {
+            Ok(())
+        }
+        fn write(&mut self, _samples: &[f32]) -> Result<()> {
+            Ok(())
+        }
+        fn flush(&mut self) -> Result<()> {
+            Ok(())
+        }
+        fn stop(&mut self) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    /// Regression: the selected output device must reach `AudioOutput::open`.
+    #[test]
+    fn set_output_device_is_passed_to_open() {
+        let (plan, files) = fixture_plan();
+        let opened = Arc::new(Mutex::new(Vec::new()));
+        let opened_ref = opened.clone();
+        let factory: Arc<dyn OutputFactory> = Arc::new(move || -> Box<dyn AudioOutput> {
+            Box::new(RecordingOutput { opened: opened_ref.clone() })
+        });
+        let engine = Engine::new(
+            Arc::new(FakeResolver { plan }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            factory,
+            Quality::Lossless,
+        );
+        engine.set_output_device(Some("device-x".into()));
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while opened.lock().unwrap().is_empty() && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert_eq!(opened.lock().unwrap().as_slice(), &[Some("device-x".to_string())]);
     }
 }

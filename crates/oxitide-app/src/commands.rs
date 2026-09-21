@@ -328,7 +328,9 @@ pub fn get_output_devices() -> Vec<OutputDeviceDto> {
 #[tauri::command]
 pub fn set_output_device(state: State<'_, AppState>, device_id: String) -> Result<(), String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
-    *player.output_device.lock().unwrap() = Some(device_id);
+    let device = if device_id.is_empty() { None } else { Some(device_id) };
+    player.engine.set_output_device(device.clone());
+    *player.output_device.lock().unwrap() = device;
     Ok(())
 }
 

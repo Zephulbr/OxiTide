@@ -12,7 +12,8 @@ use crate::decode::AudioFormat;
 use crate::error::{Error, Result};
 use crate::output::{platform, AudioOutput};
 
-const RING_FRAMES: usize = 44100 * 2; // ~0.5s stereo at 44.1k; resized on open
+/// Floor for the ring so tiny formats still leave room for the device period.
+const MIN_RING_FRAMES: usize = 4096;
 
 pub struct WasapiOutput {
     device_id: Option<String>,
@@ -58,8 +59,10 @@ impl AudioOutput for WasapiOutput {
         self.device_id = device_id.map(|s| s.to_string());
         self.format = Some(format);
 
-        let frames = (format.sample_rate as usize * format.channels as usize).max(1024) * 2;
-        let (producer, mut consumer) = RingBuffer::<f32>::new(frames.max(RING_FRAMES));
+        // ~200ms of samples. A small ring keeps pause/volume changes responsive
+        // instead of waiting for seconds of buffered audio to drain.
+        let frames = (format.sample_rate as usize * format.channels as usize) / 5;
+        let (producer, mut consumer) = RingBuffer::<f32>::new(frames.max(MIN_RING_FRAMES));
 
         let device_id = self.device_id.clone();
         let channels = format.channels;
