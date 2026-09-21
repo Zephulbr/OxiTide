@@ -9,14 +9,15 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 oxitide-tidal = { path = "../oxitide-tidal" }
+oxitide-audio = { path = "../oxitide-audio" }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
-tokio.workspace = true
 wiremock = "0.6"

@@ -1,0 +1,24 @@
+[package]
+name = "oxitide-audio"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+oxitide-tidal = { path = "../oxitide-tidal" }
+tokio.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+quick-xml.workspace = true
+symphonia.workspace = true
+rtrb.workspace = true
+base64.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+wasapi = "0.24"
+
+[dev-dependencies]
+wiremock = "0.6"

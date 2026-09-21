@@ -494,9 +494,30 @@ impl Representation {
             .as_ref()
             .ok_or_else(|| Error::Manifest("representation has no SegmentTemplate".into()))?;
         if !t.timeline.is_empty() {
+            let ts = if t.timescale == 0 { 1 } else { t.timescale };
+            let total_secs = mpd_duration.and_then(parse_iso8601_duration);
             let mut n: u64 = 0;
+            let mut time: u64 = 0;
             for e in &t.timeline {
-                n += (e.r.max(-1) + 1) as u64;
+                if let Some(start) = e.t {
+                    time = start;
+                }
+                let reps = if e.r < 0 {
+                    // DASH `r="-1"` means "repeat until the end of the Period".
+                    // Fill from mediaPresentationDuration when known; always at
+                    // least one segment so a timeline never counts to zero.
+                    match total_secs {
+                        Some(total) if e.d > 0 => {
+                            let end_ts = (total * ts as f64) as u64;
+                            (end_ts.saturating_sub(time) / e.d).max(1)
+                        }
+                        _ => 1,
+                    }
+                } else {
+                    e.r as u64 + 1
+                };
+                n += reps;
+                time += e.d.saturating_mul(reps);
             }
             return Ok(n);
         }
@@ -525,13 +546,26 @@ impl Representation {
         let repr_id = self.id.clone().unwrap_or_default();
         let bw = self.bandwidth.unwrap_or(0);
         if !t.timeline.is_empty() {
+            let ts = if t.timescale == 0 { 1 } else { t.timescale };
+            let total_secs = mpd_duration.and_then(parse_iso8601_duration);
             let mut urls = Vec::new();
             let mut time = t.timeline[0].t.unwrap_or(0);
             for e in &t.timeline {
                 if let Some(start) = e.t {
                     time = start;
                 }
-                for _ in 0..(e.r.max(-1) + 1) {
+                let reps = if e.r < 0 {
+                    match total_secs {
+                        Some(total) if e.d > 0 => {
+                            let end_ts = (total * ts as f64) as u64;
+                            (end_ts.saturating_sub(time) / e.d).max(1)
+                        }
+                        _ => 1,
+                    }
+                } else {
+                    e.r as u64 + 1
+                };
+                for _ in 0..reps {
                     urls.push(resolve_template(&base, &t.media, &repr_id, bw, 0, time));
                     time += e.d;
                 }
@@ -1313,7 +1347,7 @@ mod tests {
     fn decodes_fragmented_mp4_flac() {
         let sink = decode_fixture("tone.mp4", "mp4");
         let spec = sink.spec.unwrap();
-        assert_eq!(spec.rate, 44100);
+        assert_eq!(spec.rate(), 44100);
         assert_eq!(sink.samples.len(), 176_400); // 2s * 44100 * 2ch
         assert!(sink.samples.iter().all(|s| s.is_finite()));
     }
@@ -1669,12 +1703,17 @@ impl AudioOutput for WasapiOutput {
     fn write(&mut self, samples: &[f32]) -> Result<()> {
         let producer = self.producer.as_mut().ok_or_else(|| Error::Output("output not open".into()))?;
         for &sample in samples {
-            // If the ring is full, wait briefly rather than dropping audio.
+            // If the ring is full, wait briefly rather than dropping audio — but
+            // give up if the device has stalled, so playback cannot hang forever.
             let mut pending = sample;
+            let deadline = std::time::Instant::now() + Duration::from_secs(2);
             loop {
                 match producer.push(pending) {
                     Ok(()) => break,
                     Err(rtrb::PushError::Full(sample)) => {
+                        if std::time::Instant::now() > deadline {
+                            return Err(Error::Output("audio device stalled".into()));
+                        }
                         pending = sample;
                         std::thread::sleep(Duration::from_millis(2));
                     }
@@ -2288,6 +2327,7 @@ struct Inner {
     generation: Arc<AtomicU64>,
     paused: Arc<AtomicBool>,
     volume: Arc<AtomicU32>, // f32 bits
+    position_ms: Arc<AtomicU64>,
 }
 
 #[derive(Clone)]
@@ -2313,6 +2353,7 @@ impl Engine {
                 generation: Arc::new(AtomicU64::new(0)),
                 paused: Arc::new(AtomicBool::new(false)),
                 volume: Arc::new(AtomicU32::new(1.0f32.to_bits())),
+                position_ms: Arc::new(AtomicU64::new(0)),
             }),
         }
     }
@@ -2331,7 +2372,7 @@ impl Engine {
             playing: q.is_playing(),
             buffering: false,
             current: q.current().cloned(),
-            position_ms: 0,
+            position_ms: self.inner.position_ms.load(Ordering::SeqCst),
             duration_ms: q.current().map(|i| i.duration_secs as u64 * 1000).unwrap_or(0),
             volume: q.volume(),
             shuffle: q.shuffle(),
@@ -2445,6 +2486,10 @@ impl Engine {
             generation: None,
             paused: self.inner.paused.clone(),
             volume: self.inner.volume.clone(),
+            position_ms: self.inner.position_ms.clone(),
+            frames: 0,
+            rate: 0,
+            channels: 2,
         };
         let result = crate::decode::run(source, "mp4", &mut sink);
         let _ = output.stop();
@@ -2457,6 +2502,7 @@ impl Engine {
     /// aborts silently.
     fn start_playback(&self, item: QueueItem) {
         let generation = self.inner.generation.fetch_add(1, Ordering::SeqCst) + 1;
+        self.inner.position_ms.store(0, Ordering::SeqCst);
         let engine = self.clone();
         let spawned = std::thread::Builder::new()
             .name("oxitide-playback".into())
@@ -2485,7 +2531,29 @@ impl Engine {
             });
         if let Err(e) = spawned {
             self.emit(EngineEvent::Error { code: "playback".into(), message: e.to_string() });
+            return;
         }
+
+        // Emit throttled position updates while this track is current.
+        let ticker = self.clone();
+        std::thread::Builder::new()
+            .name("oxitide-position".into())
+            .spawn(move || {
+                while ticker.inner.generation.load(Ordering::SeqCst) == generation {
+                    let position_ms = ticker.inner.position_ms.load(Ordering::SeqCst);
+                    let duration_ms = ticker
+                        .inner
+                        .queue
+                        .lock()
+                        .unwrap()
+                        .current()
+                        .map(|i| i.duration_secs as u64 * 1000)
+                        .unwrap_or(0);
+                    ticker.emit(EngineEvent::Position { position_ms, duration_ms });
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                }
+            })
+            .ok();
     }
 
     fn run_track(&self, item: &QueueItem, generation: u64) -> Result<()> {
@@ -2502,6 +2570,10 @@ impl Engine {
             generation: Some((self.inner.generation.clone(), generation)),
             paused: self.inner.paused.clone(),
             volume: self.inner.volume.clone(),
+            position_ms: self.inner.position_ms.clone(),
+            frames: 0,
+            rate: 0,
+            channels: 2,
         };
         let result = crate::decode::run(source, "mp4", &mut sink);
         let _ = output.stop();
@@ -2515,13 +2587,19 @@ struct OutputSink<'a> {
     generation: Option<(Arc<AtomicU64>, u64)>,
     paused: Arc<AtomicBool>,
     volume: Arc<AtomicU32>,
+    position_ms: Arc<AtomicU64>,
+    frames: u64,
+    rate: u32,
+    channels: u16,
 }
 
 impl PcmSink for OutputSink<'_> {
     fn on_spec(&mut self, spec: &symphonia::core::audio::AudioSpec) -> Result<()> {
+        self.rate = spec.rate();
+        self.channels = spec.channels().count().max(1) as u16;
         self.output.open(
             None,
-            AudioFormat { sample_rate: spec.rate, channels: channel_count(&spec.channels) },
+            AudioFormat { sample_rate: spec.rate(), channels: self.channels },
         )
     }
     fn on_samples(&mut self, samples: &[f32]) -> Result<()> {
@@ -2537,20 +2615,17 @@ impl PcmSink for OutputSink<'_> {
         }
         let volume = f32::from_bits(self.volume.load(Ordering::SeqCst));
         if (volume - 1.0).abs() < f32::EPSILON {
-            self.output.write(samples)
+            self.output.write(samples)?;
         } else {
             let scaled: Vec<f32> = samples.iter().map(|s| s * volume).collect();
-            self.output.write(&scaled)
+            self.output.write(&scaled)?;
         }
-    }
-}
-
-fn channel_count(channels: &symphonia::core::audio::Channels) -> u16 {
-    use symphonia::core::audio::Channels;
-    match channels {
-        Channels::Positioned(p) => p.count() as u16,
-        Channels::Discrete(n) => *n as u16,
-        _ => 2, // TIDAL audio is stereo
+        if self.rate > 0 {
+            self.frames += (samples.len() / self.channels as usize) as u64;
+            self.position_ms
+                .store(self.frames.saturating_mul(1000) / self.rate as u64, Ordering::SeqCst);
+        }
+        Ok(())
     }
 }
 
@@ -2622,9 +2697,10 @@ mod tests {
         engine.subscribe(Arc::new(move |e| seen_ref.lock().unwrap().push(e)));
         engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
         let events = seen.lock().unwrap();
-        assert!(events.len() >= 2);
         assert!(matches!(events[0], EngineEvent::NowPlaying(Some(_))));
-        assert!(matches!(events[1], EngineEvent::State(_)));
+        // The playback thread may emit concurrently; assert a State within the
+        // first few events rather than at a fixed index.
+        assert!(events.iter().take(4).any(|e| matches!(e, EngineEvent::State(_))));
     }
 
     #[test]
@@ -2668,14 +2744,10 @@ mod tests {
 Run: `cargo test -p oxitide-audio engine::`
 Expected: FAIL — compile errors until the module is implemented and `pub mod engine;` is added.
 
-- [ ] **Step 3: Fix API mismatches**
-
-`channel_count` uses `Position::count()`. If that method is absent in symphonia 0.6, use `p.bits().count_ones() as u16` (the `Position` bitmask has one bit per channel). Do not import the `Audio` trait into `engine.rs` unless the compiler asks for it (the verified decode spike did not need it). Verify with `cargo build -p oxitide-audio` before running tests.
-
-- [ ] **Step 4: Run the test to verify it passes**
+- [ ] **Step 3: Run the test to verify it passes**
 
 Run: `cargo test -p oxitide-audio engine::`
-Expected: PASS — 3 tests.
+Expected: PASS — 4 tests.
 
 - [ ] **Step 5: Run the full crate test suite**
 
@@ -2790,7 +2862,7 @@ impl QualityDto {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EngineEventDto {
     State(oxitide_audio::engine::PlaybackState),
-    NowPlaying(Option<oxitide_audio::queue::QueueItem>),
+    NowPlaying { item: Option<oxitide_audio::queue::QueueItem> },
     Position { position_ms: u64, duration_ms: u64 },
     Error { code: String, message: String },
 }
@@ -2798,7 +2870,7 @@ pub enum EngineEventDto {
 pub fn to_dto(event: EngineEvent) -> EngineEventDto {
     match event {
         EngineEvent::State(s) => EngineEventDto::State(s),
-        EngineEvent::NowPlaying(i) => EngineEventDto::NowPlaying(i),
+        EngineEvent::NowPlaying(i) => EngineEventDto::NowPlaying { item: i },
         EngineEvent::Position { position_ms, duration_ms } => EngineEventDto::Position { position_ms, duration_ms },
         EngineEvent::Error { code, message } => EngineEventDto::Error { code, message },
     }
@@ -2835,6 +2907,16 @@ mod tests {
         let value = serde_json::to_value(&dto).unwrap();
         assert_eq!(value["type"], "error");
         assert_eq!(value["code"], "auth");
+    }
+
+    #[test]
+    fn now_playing_none_serializes() {
+        // Internally tagged enums cannot carry a bare `null` newtype payload,
+        // which is why `NowPlaying` is a struct variant.
+        let dto = to_dto(EngineEvent::NowPlaying(None));
+        let value = serde_json::to_value(&dto).unwrap();
+        assert_eq!(value["type"], "now_playing");
+        assert!(value["item"].is_null());
     }
 }
 ```
@@ -3474,7 +3556,7 @@ Expected: all green. Fix any warnings before proceeding.
 - [ ] Player bar shows the track title and artist.
 - [ ] Play/pause toggles playback; the icon updates.
 - [ ] Next/prev move through the album's tracks.
-- [ ] The seek slider moves; the elapsed time updates.
+- [ ] The progress bar and elapsed time advance during playback (seeking itself is not implemented yet).
 - [ ] The volume slider changes loudness.
 - [ ] Clicking Queue shows the queue with the current track.
 - [ ] Queue reorder (drag), remove, and clear work.

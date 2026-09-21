@@ -2,7 +2,8 @@
   import { api, type SearchResults } from "../lib/api";
   import TrackTable from "../lib/components/TrackTable.svelte";
   import type { Nav } from "../lib/nav.svelte";
-  let { nav }: { nav: Nav } = $props();
+  import type { Player } from "../lib/player.svelte";
+  let { nav, player }: { nav: Nav; player: Player } = $props();
   let query = $state("");
   let results = $state<SearchResults | null>(null);
   let loading = $state(false);
@@ -31,7 +32,7 @@
   <p style="color:#ff6b6b">{error}</p>
 {:else if results}
   <h3>Tracks</h3>
-  <TrackTable tracks={results.tracks.items} />
+  <TrackTable tracks={results.tracks.items} {player} />
   <h3>Albums</h3>
   <ul>
     {#each results.albums.items as a (a.id)}
