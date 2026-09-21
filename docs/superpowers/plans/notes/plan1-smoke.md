@@ -13,9 +13,9 @@
 
 - [x] `npm --prefix ui run app:dev` launches a window showing the app (not an Edge "can't reach this page" error).
 - [x] Login screen: "Open login page" opens the TIDAL PKCE URL in the browser.
-- [ ] Complete login; app shows Home.
-- [ ] Home renders at least one section (or shows an empty state without crashing).
+- [x] Complete login; app shows Home.
+- [x] Home renders at least one section (or shows an empty state without crashing).
 - [x] Search "Beck" returns tracks and albums; clicking an album opens the album view with a populated track table.
-- [ ] Library lists your playlists; clicking one opens the playlist view.
+- [x] Library lists your playlists; clicking one opens the playlist view.
 - [x] Clicking Queue toggles the right rail.
 - [x] Logout clears the status; restarting the app requires login again (token cleared).
