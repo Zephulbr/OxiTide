@@ -1,0 +1,28 @@
+# Rust / Cargo
+/target
+**/target
+Cargo.lock
+
+# Tauri
+/crates/oxitide-app/gen
+**/gen/schemas
+
+# Node / Svelte / Vite
+node_modules/
+/ui/dist
+/ui/.vite
+/ui/build
+
+# Visual companion (brainstorm mockups, session state)
+.superpowers/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/
+
+# Local env / secrets
+.env
+.env.*
