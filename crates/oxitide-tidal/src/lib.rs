@@ -7,6 +7,7 @@ pub mod library;
 pub mod models;
 pub mod pkce;
 pub mod search;
+pub mod stream;
 pub mod token_store;
 
 pub use client::TidalClient;

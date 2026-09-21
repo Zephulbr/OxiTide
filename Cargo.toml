@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/oxitide-tidal", "crates/oxitide-app"]
+members = ["crates/oxitide-tidal", "crates/oxitide-audio", "crates/oxitide-app"]
 
 [workspace.package]
 version = "0.1.0"
@@ -9,9 +9,13 @@ license = "AGPL-3.0-or-later"
 
 [workspace.dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 tracing = "0.1"
 url = "2"
+quick-xml = "0.42"
+symphonia = { version = "0.6", features = ["flac", "isomp4", "pcm"] }
+rtrb = "0.4"
+base64 = "0.22"

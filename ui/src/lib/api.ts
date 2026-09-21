@@ -28,6 +28,36 @@ export interface SearchResults {
 }
 export interface SessionInfoDto { country_code: string; user_id: number }
 
+export interface QueueItem {
+  track_id: number; title: string; artist: string; album: string;
+  duration_secs: number; cover?: string | null;
+}
+export type RepeatMode = "off" | "all" | "one";
+export interface PlaybackState {
+  playing: boolean; buffering: boolean; current?: QueueItem | null;
+  position_ms: number; duration_ms: number; volume: number;
+  shuffle: boolean; repeat: RepeatMode;
+  preferred_quality: "low" | "high" | "lossless" | "max";
+  queue: QueueItem[];
+}
+export interface OutputDevice { id: string; name: string; is_default: boolean }
+export type EngineEvent =
+  | ({ type: "state" } & PlaybackState)
+  | { type: "now_playing"; [k: string]: unknown }
+  | { type: "position"; position_ms: number; duration_ms: number }
+  | { type: "error"; code: string; message: string };
+
+export function trackToQueueItem(t: Track): QueueItem {
+  return {
+    track_id: t.id,
+    title: t.title,
+    artist: t.artists.map((a) => a.name).join(", "),
+    album: t.album?.title ?? "",
+    duration_secs: t.duration,
+    cover: t.album?.cover ?? null,
+  };
+}
+
 export const api = {
   authBegin: () => invoke<{ url: string }>("auth_begin"),
   authComplete: (redirectUrl: string) => invoke<SessionInfoDto>("auth_complete", { redirectUrl }),
@@ -45,4 +75,19 @@ export const api = {
   getFavoriteAlbums: () => invoke<Album[]>("get_favorite_albums"),
   getFavoriteArtists: () => invoke<Artist[]>("get_favorite_artists"),
   getUserPlaylists: () => invoke<Playlist[]>("get_user_playlists"),
+  playTracks: (items: QueueItem[], start: number) => invoke<void>("play_tracks", { items, start }),
+  playPause: () => invoke<void>("play_pause"),
+  next: () => invoke<void>("next"),
+  prev: () => invoke<void>("prev"),
+  seek: (positionMs: number) => invoke<void>("seek", { positionMs }),
+  setVolume: (volume: number) => invoke<void>("set_volume", { volume }),
+  setShuffle: (enabled: boolean) => invoke<void>("set_shuffle", { enabled }),
+  setRepeat: (mode: RepeatMode) => invoke<void>("set_repeat", { mode }),
+  queueReorder: (from: number, to: number) => invoke<void>("queue_reorder", { from, to }),
+  queueRemove: (index: number) => invoke<void>("queue_remove", { index }),
+  queueClear: () => invoke<void>("queue_clear"),
+  getPlaybackState: () => invoke<PlaybackState>("get_playback_state"),
+  getOutputDevices: () => invoke<OutputDevice[]>("get_output_devices"),
+  setOutputDevice: (deviceId: string) => invoke<void>("set_output_device", { deviceId }),
+  setPreferredQuality: (quality: "low" | "high" | "lossless" | "max") => invoke<void>("set_preferred_quality", { quality }),
 };

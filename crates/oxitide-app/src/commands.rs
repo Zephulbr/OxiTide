@@ -1,14 +1,19 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
+use oxitide_audio::engine::{Engine, EngineCmd, PlaybackState};
+use oxitide_audio::fetch::HttpFetcher;
+use oxitide_audio::queue::{QueueItem, RepeatMode};
 use oxitide_tidal::auth::{self, SessionInfo};
 use oxitide_tidal::client::TidalClient;
 use oxitide_tidal::pkce::{Pkce, PKCE_CLIENT_ID, TOKEN_URL};
+use oxitide_tidal::stream::Quality;
 use oxitide_tidal::token_store::{KeyringStore, TokenSet, TokenStore};
 use oxitide_tidal::Error;
 use serde::Serialize;
 use tauri::State;
 
-use crate::state::AppState;
+use crate::player::{devices, OutputDeviceDto, QualityDto, RealOutputs};
+use crate::state::{AppState, Player};
 
 pub const API_BASE: &str = "https://api.tidal.com/v1/";
 
@@ -33,6 +38,7 @@ pub fn auth_begin(state: State<'_, AppState>) -> Result<LoginPrompt, String> {
 
 #[tauri::command]
 pub async fn auth_complete(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     redirect_url: String,
 ) -> Result<SessionInfoDto, String> {
@@ -54,7 +60,8 @@ pub async fn auth_complete(
         tokens,
         store,
     );
-    state.set_client(client);
+    state.set_client(client.clone());
+    state.set_player(build_player(&app, client)?);
     Ok(SessionInfoDto { country_code: session.country_code, user_id: session.user_id })
 }
 
@@ -65,6 +72,9 @@ pub fn auth_status(state: State<'_, AppState>) -> bool {
 
 #[tauri::command]
 pub fn auth_logout(state: State<'_, AppState>) -> Result<(), String> {
+    if let Some(player) = state.player() {
+        let _ = player.engine.handle(oxitide_audio::engine::EngineCmd::Clear);
+    }
     let store = KeyringStore;
     store.clear().map_err(|e| e.to_string())?;
     state.logout();
@@ -115,7 +125,10 @@ async fn restore_tokens(
 }
 
 #[tauri::command]
-pub async fn auth_restore(state: State<'_, AppState>) -> Result<Option<SessionInfoDto>, String> {
+pub async fn auth_restore(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<SessionInfoDto>, String> {
     let http = reqwest::Client::new();
     let store: Arc<dyn TokenStore> = Arc::new(KeyringStore);
     let restored = restore_tokens(&http, API_BASE, TOKEN_URL, store.as_ref()).await?;
@@ -124,7 +137,8 @@ pub async fn auth_restore(state: State<'_, AppState>) -> Result<Option<SessionIn
         Some((session, tokens)) => {
             let client =
                 TidalClient::new(http, API_BASE, TOKEN_URL, session.clone(), tokens, store);
-            state.set_client(client);
+            state.set_client(client.clone());
+            state.set_player(build_player(&app, client)?);
             Ok(Some(SessionInfoDto {
                 country_code: session.country_code,
                 user_id: session.user_id,
@@ -140,6 +154,26 @@ fn require_client(state: &State<'_, AppState>) -> Result<TidalClient, String> {
         .map_err(|_| "state poisoned".to_string())?
         .clone()
         .ok_or_else(|| "not logged in".to_string())
+}
+
+/// Build the playback engine for a freshly authenticated client and forward its
+/// events to the UI on the `playback_event` channel.
+fn build_player(app: &tauri::AppHandle, client: TidalClient) -> Result<Player, String> {
+    let resolver = crate::player::TidalResolver::new(client).map_err(|e| e.to_string())?;
+    let engine = Engine::new(
+        Arc::new(resolver),
+        Arc::new(HttpFetcher::default()),
+        Arc::new(RealOutputs),
+        Quality::Lossless,
+    );
+    let handle = app.clone();
+    engine.subscribe(Arc::new(move |event| {
+        let _ = tauri::Emitter::emit(&handle, "playback_event", crate::player::to_dto(event));
+    }));
+    Ok(Player {
+        engine,
+        output_device: Mutex::new(None),
+    })
 }
 
 use oxitide_tidal::home::HomeSection;
@@ -201,6 +235,113 @@ pub async fn get_favorite_artists(state: State<'_, AppState>) -> Result<Vec<Arti
 #[tauri::command]
 pub async fn get_user_playlists(state: State<'_, AppState>) -> Result<Vec<Playlist>, String> {
     require_client(&state)?.all_user_playlists().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn play_tracks(
+    state: State<'_, AppState>,
+    items: Vec<QueueItem>,
+    start: usize,
+) -> Result<(), String> {
+    let player = state.player().ok_or_else(|| "not logged in".to_string())?;
+    player
+        .engine
+        .handle(EngineCmd::PlayTracks { items, start })
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn play_pause(state: State<'_, AppState>) -> Result<(), String> {
+    let player = state.player().ok_or_else(|| "not logged in".to_string())?;
+    player.engine.handle(EngineCmd::PlayPause).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn next(state: State<'_, AppState>) -> Result<(), String> {
+    let player = state.player().ok_or_else(|| "not logged in".to_string())?;
+    player.engine.handle(EngineCmd::Next).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn prev(state: State<'_, AppState>) -> Result<(), String> {
+    let player = state.player().ok_or_else(|| "not logged in".to_string())?;
+    player.engine.handle(EngineCmd::Prev).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn seek(state: State<'_, AppState>, position_ms: u64) -> Result<(), String> {
+    let player = state.player().ok_or_else(|| "not logged in".to_string())?;
+    player.engine.handle(EngineCmd::Seek(position_ms)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_volume(state: State<'_, AppState>, volume: f32) -> Result<(), String> {
+    let player = state.player().ok_or_else(|| "not logged in".to_string())?;
+    player.engine.handle(EngineCmd::SetVolume(volume)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_shuffle(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    let player = state.player().ok_or_else(|| "not logged in".to_string())?;
+    player.engine.handle(EngineCmd::SetShuffle(enabled)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_repeat(state: State<'_, AppState>, mode: RepeatMode) -> Result<(), String> {
+    let player = state.player().ok_or_else(|| "not logged in".to_string())?;
+    player.engine.handle(EngineCmd::SetRepeat(mode)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn queue_reorder(
+    state: State<'_, AppState>,
+    from: usize,
+    to: usize,
+) -> Result<(), String> {
+    let player = state.player().ok_or_else(|| "not logged in".to_string())?;
+    player.engine.handle(EngineCmd::Reorder { from, to }).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn queue_remove(state: State<'_, AppState>, index: usize) -> Result<(), String> {
+    let player = state.player().ok_or_else(|| "not logged in".to_string())?;
+    player.engine.handle(EngineCmd::Remove(index)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn queue_clear(state: State<'_, AppState>) -> Result<(), String> {
+    let player = state.player().ok_or_else(|| "not logged in".to_string())?;
+    player.engine.handle(EngineCmd::Clear).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_playback_state(state: State<'_, AppState>) -> Result<PlaybackState, String> {
+    let player = state.player().ok_or_else(|| "not logged in".to_string())?;
+    Ok(player.engine.state())
+}
+
+#[tauri::command]
+pub fn get_output_devices() -> Vec<OutputDeviceDto> {
+    devices()
+}
+
+#[tauri::command]
+pub fn set_output_device(state: State<'_, AppState>, device_id: String) -> Result<(), String> {
+    let player = state.player().ok_or_else(|| "not logged in".to_string())?;
+    let device = if device_id.is_empty() { None } else { Some(device_id) };
+    player.engine.set_output_device(device.clone());
+    *player.output_device.lock().unwrap() = device;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_preferred_quality(
+    state: State<'_, AppState>,
+    quality: QualityDto,
+) -> Result<(), String> {
+    let player = state.player().ok_or_else(|| "not logged in".to_string())?;
+    player.engine.set_quality(quality.to_quality());
+    Ok(())
 }
 
 #[cfg(test)]

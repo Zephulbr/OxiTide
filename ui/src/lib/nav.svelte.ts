@@ -4,7 +4,8 @@ export type Route =
   | { name: "library" }
   | { name: "album"; id: number }
   | { name: "playlist"; id: string }
-  | { name: "artist"; id: number };
+  | { name: "artist"; id: number }
+  | { name: "settings" };
 
 export interface Nav {
   readonly route: Route;

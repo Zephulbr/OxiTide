@@ -2,7 +2,8 @@
   import { api, type Album, type Playlist, type Track } from "../lib/api";
   import TrackTable from "../lib/components/TrackTable.svelte";
   import type { Nav } from "../lib/nav.svelte";
-  let { nav }: { nav: Nav } = $props();
+  import type { Player } from "../lib/player.svelte";
+  let { nav, player }: { nav: Nav; player: Player } = $props();
   let tracks = $state<Track[]>([]);
   let albums = $state<Album[]>([]);
   let playlists = $state<Playlist[]>([]);
@@ -48,5 +49,5 @@
     {#if albums.length === 0}<li class="muted">No albums</li>{/if}
   </ul>
   <h3>Favorite tracks</h3>
-  <TrackTable {tracks} />
+  <TrackTable {tracks} {player} />
 {/if}

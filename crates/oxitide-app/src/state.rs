@@ -1,12 +1,19 @@
-use std::sync::{Mutex, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
+use oxitide_audio::engine::Engine;
 use oxitide_tidal::client::TidalClient;
 use oxitide_tidal::pkce::Pkce;
+
+pub struct Player {
+    pub engine: Engine,
+    pub output_device: Mutex<Option<String>>,
+}
 
 #[derive(Default)]
 pub struct AppState {
     pub pending_pkce: Mutex<Option<Pkce>>,
     pub client: RwLock<Option<TidalClient>>,
+    pub player: RwLock<Option<Arc<Player>>>,
 }
 
 impl AppState {
@@ -26,8 +33,17 @@ impl AppState {
         *self.client.write().unwrap() = Some(client);
     }
 
+    pub fn set_player(&self, player: Player) {
+        *self.player.write().unwrap() = Some(Arc::new(player));
+    }
+
+    pub fn player(&self) -> Option<Arc<Player>> {
+        self.player.read().unwrap().clone()
+    }
+
     pub fn logout(&self) {
         *self.client.write().unwrap() = None;
+        *self.player.write().unwrap() = None;
     }
 }
 
