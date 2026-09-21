@@ -315,10 +315,19 @@ impl Engine {
                             }
                         }
                     }
-                    Err(e) => engine.emit(EngineEvent::Error {
-                        code: "playback".into(),
-                        message: e.to_string(),
-                    }),
+                    Err(e) => {
+                        {
+                            let mut q = engine.inner.queue.lock().unwrap();
+                            q.stop();
+                        }
+                        // Stop this track's position ticker and unblock auto-advance.
+                        engine.inner.generation.fetch_add(1, Ordering::SeqCst);
+                        engine.emit(EngineEvent::Error {
+                            code: "playback".into(),
+                            message: e.to_string(),
+                        });
+                        engine.emit(EngineEvent::State(engine.state()));
+                    }
                 }
             });
         if let Err(e) = spawned {
@@ -435,6 +444,14 @@ mod tests {
     impl StreamResolver for FakeResolver {
         fn resolve(&self, _track_id: u64, _quality: Quality) -> Result<StreamPlan> {
             Ok(self.plan.clone())
+        }
+    }
+
+    struct FailingResolver;
+
+    impl StreamResolver for FailingResolver {
+        fn resolve(&self, _track_id: u64, _quality: Quality) -> Result<StreamPlan> {
+            Err(Error::Manifest("boom".into()))
         }
     }
 
@@ -653,5 +670,48 @@ mod tests {
         }
         assert_eq!(*order.lock().unwrap(), vec![1, 2, 3]);
         assert_eq!(engine.state().current.map(|i| i.track_id), Some(3));
+    }
+
+    /// Regression: a failed `run_track` must stop the queue and the position
+    /// ticker, not just emit an error.
+    #[test]
+    fn playback_error_stops_and_reports() {
+        let (factory, _output) = null_factory();
+        let engine = Engine::new(
+            Arc::new(FailingResolver),
+            Arc::new(crate::fetch::MapFetcher::default()),
+            factory,
+            Quality::Lossless,
+        );
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let seen_ref = seen.clone();
+        engine.subscribe(Arc::new(move |e| seen_ref.lock().unwrap().push(e)));
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while !seen.lock().unwrap().iter().any(|e| matches!(e, EngineEvent::Error { .. }))
+            && std::time::Instant::now() < deadline
+        {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(
+            seen.lock().unwrap().iter().any(|e| matches!(e, EngineEvent::Error { .. })),
+            "no error event emitted"
+        );
+        assert!(!engine.state().playing, "queue still reports playing after an error");
+
+        let positions = || {
+            seen.lock()
+                .unwrap()
+                .iter()
+                .filter(|e| matches!(e, EngineEvent::Position { .. }))
+                .count()
+        };
+        // Let any in-flight ticker emission land, then snapshot.
+        std::thread::sleep(std::time::Duration::from_millis(600));
+        let before = positions();
+        // A still-running ticker would emit ~2 more in this window.
+        std::thread::sleep(std::time::Duration::from_millis(1200));
+        assert_eq!(positions(), before, "position ticker kept emitting after a playback error");
     }
 }

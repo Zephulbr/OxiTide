@@ -189,6 +189,11 @@ impl Queue {
         self.playing = false;
     }
 
+    /// Stop playback without clearing the queue (e.g. after a playback error).
+    pub fn stop(&mut self) {
+        self.playing = false;
+    }
+
     pub fn set_volume(&mut self, v: f32) {
         self.volume = v.clamp(0.0, 1.0);
     }
@@ -300,6 +305,14 @@ mod tests {
         assert!(q.items().is_empty());
         assert_eq!(q.current_index(), None);
         assert!(!q.is_playing());
+    }
+
+    #[test]
+    fn stop_keeps_items_but_clears_playing() {
+        let mut q = queue(2);
+        q.stop();
+        assert!(!q.is_playing());
+        assert_eq!(q.items().len(), 2);
     }
 
     #[test]
