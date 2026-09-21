@@ -69,3 +69,93 @@ pub fn auth_logout(state: State<'_, AppState>) -> Result<(), String> {
     state.logout();
     Ok(())
 }
+
+fn require_client(state: &State<'_, AppState>) -> Result<TidalClient, String> {
+    state
+        .client
+        .read()
+        .map_err(|_| "state poisoned".to_string())?
+        .clone()
+        .ok_or_else(|| "not logged in".to_string())
+}
+
+use oxitide_tidal::home::HomeSection;
+use oxitide_tidal::models::{Album, Artist, Playlist, SearchResults, Track};
+
+#[tauri::command]
+pub async fn get_home(state: State<'_, AppState>) -> Result<Vec<HomeSection>, String> {
+    require_client(&state)?.home_page().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_album(state: State<'_, AppState>, id: u64) -> Result<Album, String> {
+    require_client(&state)?.album(id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_album_tracks(state: State<'_, AppState>, id: u64) -> Result<Vec<Track>, String> {
+    require_client(&state)?.album_tracks(id, 100, 0).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_playlist(state: State<'_, AppState>, id: String) -> Result<Playlist, String> {
+    require_client(&state)?.playlist(&id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_playlist_tracks(state: State<'_, AppState>, id: String) -> Result<Vec<Track>, String> {
+    require_client(&state)?.playlist_tracks(&id, 100, 0).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_artist(state: State<'_, AppState>, id: u64) -> Result<Artist, String> {
+    require_client(&state)?.artist(id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn search(state: State<'_, AppState>, query: String) -> Result<SearchResults, String> {
+    require_client(&state)?
+        .search(&query, &["tracks", "albums", "artists", "playlists"], 20, 0)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_favorite_tracks(state: State<'_, AppState>) -> Result<Vec<Track>, String> {
+    require_client(&state)?.favorite_tracks(100, 0).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_favorite_albums(state: State<'_, AppState>) -> Result<Vec<Album>, String> {
+    require_client(&state)?.favorite_albums(100, 0).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_favorite_artists(state: State<'_, AppState>) -> Result<Vec<Artist>, String> {
+    require_client(&state)?.favorite_artists(100, 0).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_user_playlists(state: State<'_, AppState>) -> Result<Vec<Playlist>, String> {
+    require_client(&state)?.user_playlists(100, 0).await.map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn login_prompt_serializes_url() {
+        let dto = LoginPrompt { url: "https://example.test/login".to_string() };
+        let value = serde_json::to_value(&dto).unwrap();
+        assert_eq!(value["url"], "https://example.test/login");
+    }
+
+    #[test]
+    fn session_info_dto_serializes_fields() {
+        let dto = SessionInfoDto { country_code: "GR".to_string(), user_id: 42 };
+        let value = serde_json::to_value(&dto).unwrap();
+        assert_eq!(value["country_code"], "GR");
+        assert_eq!(value["user_id"], 42);
+    }
+}

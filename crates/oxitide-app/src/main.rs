@@ -17,6 +17,17 @@ fn main() {
             commands::auth_complete,
             commands::auth_status,
             commands::auth_logout,
+            commands::get_home,
+            commands::get_album,
+            commands::get_album_tracks,
+            commands::get_playlist,
+            commands::get_playlist_tracks,
+            commands::get_artist,
+            commands::search,
+            commands::get_favorite_tracks,
+            commands::get_favorite_albums,
+            commands::get_favorite_artists,
+            commands::get_user_playlists,
         ])
         .run(tauri::generate_context!())
         .expect("error while running OxiTide");
