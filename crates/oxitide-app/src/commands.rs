@@ -72,6 +72,9 @@ pub fn auth_status(state: State<'_, AppState>) -> bool {
 
 #[tauri::command]
 pub fn auth_logout(state: State<'_, AppState>) -> Result<(), String> {
+    if let Some(player) = state.player() {
+        let _ = player.engine.handle(oxitide_audio::engine::EngineCmd::Clear);
+    }
     let store = KeyringStore;
     store.clear().map_err(|e| e.to_string())?;
     state.logout();
