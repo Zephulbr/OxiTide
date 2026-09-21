@@ -9,5 +9,6 @@
   <button onclick={() => nav.goto({ name: "search" })}>Search</button>
   <button onclick={() => nav.goto({ name: "library" })}>Library</button>
   <button onclick={() => nav.toggleQueue()}>Queue</button>
+  <button onclick={() => nav.goto({ name: "settings" })}>Settings</button>
   <button onclick={onLogout}>Log out</button>
 </nav>

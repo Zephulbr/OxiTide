@@ -9,6 +9,7 @@
   import Artist from "./views/Artist.svelte";
   import Search from "./views/Search.svelte";
   import Library from "./views/Library.svelte";
+  import Settings from "./views/Settings.svelte";
   import { createNav } from "./lib/nav.svelte";
   import { createPlayer } from "./lib/player.svelte";
   import { api } from "./lib/api";
@@ -66,11 +67,12 @@
     <Sidebar {nav} onLogout={onLogout} />
     <main class="main">
       {#if nav.route.name === "home"}<Home {nav} />
-      {:else if nav.route.name === "search"}<Search {nav} />
-      {:else if nav.route.name === "library"}<Library {nav} />
-      {:else if nav.route.name === "album"}<Album id={nav.route.id} />
-      {:else if nav.route.name === "playlist"}<Playlist id={nav.route.id} />
-      {:else if nav.route.name === "artist"}<Artist id={nav.route.id} />{/if}
+      {:else if nav.route.name === "search"}<Search {nav} {player} />
+      {:else if nav.route.name === "library"}<Library {nav} {player} />
+      {:else if nav.route.name === "album"}<Album id={nav.route.id} {player} />
+      {:else if nav.route.name === "playlist"}<Playlist id={nav.route.id} {player} />
+      {:else if nav.route.name === "artist"}<Artist id={nav.route.id} />
+      {:else if nav.route.name === "settings"}<Settings />{/if}
     </main>
     {#if nav.queueOpen}<aside class="queue"><QueueRail {player} /></aside>{/if}
     <PlayerBar {player} />

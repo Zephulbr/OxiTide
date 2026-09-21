@@ -1,7 +1,8 @@
 <script lang="ts">
   import { api, type Playlist as PlaylistT, type Track } from "../lib/api";
   import TrackTable from "../lib/components/TrackTable.svelte";
-  let { id }: { id: string } = $props();
+  import type { Player } from "../lib/player.svelte";
+  let { id, player }: { id: string; player: Player } = $props();
   let playlist = $state<PlaylistT | null>(null);
   let tracks = $state<Track[]>([]);
   let loading = $state(true);
@@ -33,5 +34,5 @@
     <h2>{playlist.title}</h2>
     <p class="muted">{playlist.numberOfTracks} tracks</p>
   {/if}
-  <TrackTable {tracks} />
+  <TrackTable {tracks} {player} />
 {/if}
