@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "OxiTide",
+  "version": "0.1.0",
+  "identifier": "org.codeberg.zephulbr.oxitide",
+  "build": {
+    "frontendDist": "../../ui/dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "npm --prefix ../../ui run dev",
+    "beforeBuildCommand": "npm --prefix ../../ui run build"
+  },
+  "app": {
+    "windows": [{ "title": "OxiTide", "width": 1200, "height": 800 }],
+    "security": { "csp": null }
+  },
+  "bundle": { "active": true, "targets": ["msi", "nsis"] }
+}
