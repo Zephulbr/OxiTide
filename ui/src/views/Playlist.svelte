@@ -13,6 +13,6 @@
 
 {#if playlist}
   <h2>{playlist.title}</h2>
-  <p class="muted">{playlist.number_of_tracks} tracks</p>
+  <p class="muted">{playlist.numberOfTracks} tracks</p>
 {/if}
 <TrackTable {tracks} />

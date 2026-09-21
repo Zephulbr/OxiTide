@@ -13,6 +13,6 @@
 
 {#if album}
   <h2>{album.title}</h2>
-  <p class="muted">{album.artists.map((a) => a.name).join(", ")} · {album.number_of_tracks} tracks</p>
+  <p class="muted">{album.artists.map((a) => a.name).join(", ")} · {album.numberOfTracks} tracks</p>
 {/if}
 <TrackTable {tracks} />

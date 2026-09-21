@@ -5,18 +5,19 @@ export interface AlbumRef { id: number; title: string; cover?: string | null }
 export interface Track {
   id: number; title: string; duration: number;
   artists: ArtistRef[]; album?: AlbumRef | null;
-  audio_quality?: string | null; track_number: number; volume_number: number;
+  audioQuality?: string | null; trackNumber: number; volumeNumber: number;
   explicit: boolean;
+  mediaMetadata?: { tags: string[] } | null;
 }
 export interface Album {
   id: number; title: string; artists: ArtistRef[]; cover?: string | null;
-  number_of_tracks: number; duration: number; release_date?: string | null;
-  audio_quality?: string | null;
+  numberOfTracks: number; duration: number; releaseDate?: string | null;
+  audioQuality?: string | null;
 }
 export interface Artist { id: number; name: string; picture?: string | null }
 export interface Playlist {
   uuid: string; title: string; description?: string | null;
-  number_of_tracks: number; duration: number; image?: string | null;
+  numberOfTracks: number; duration: number; image?: string | null;
 }
 export interface HomeItem { id: string; title: string; subtitle?: string | null; item_type: string }
 export interface HomeSection { title: string; items: HomeItem[] }
