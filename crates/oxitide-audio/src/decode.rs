@@ -9,12 +9,6 @@ use symphonia::core::meta::MetadataOptions;
 
 use crate::error::{Error, Result};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct AudioFormat {
-    pub sample_rate: u32,
-    pub channels: u16,
-}
-
 /// The sample representation a sink wants to receive.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PcmFormat {

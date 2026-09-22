@@ -1,9 +1,9 @@
 use std::sync::{Arc, Mutex};
 
-use crate::decode::{AudioFormat, PcmBuffer, PcmFormat, PcmSink, StreamInfo};
+use crate::decode::{PcmBuffer, PcmFormat, PcmSink, StreamInfo};
 use crate::error::{Error, Result};
 use crate::fetch::{self, Fetcher, StreamBuffer};
-use crate::output::AudioOutput;
+use crate::output::{AudioOutput, AudioOutputSpec, ExclusiveFallback, OutputMode, OutputStatus};
 use crate::queue::{Queue, QueueItem};
 use crate::source::StreamPlan;
 use oxitide_tidal::stream::Quality;
@@ -75,6 +75,9 @@ struct Inner {
     output: Arc<dyn OutputFactory>,
     quality: Mutex<Quality>,
     device_id: Mutex<Option<String>>,
+    output_mode: Mutex<OutputMode>,
+    exclusive_fallback: Mutex<ExclusiveFallback>,
+    output_status: Arc<Mutex<OutputStatus>>,
     listeners: Mutex<Vec<Listener>>,
     /// Serializes the generation bump + spawn of a new track with the advance
     /// decision of a completing playback thread, so a command and an auto-advance
@@ -109,6 +112,9 @@ impl Engine {
                 output,
                 quality: Mutex::new(quality),
                 device_id: Mutex::new(None),
+                output_mode: Mutex::new(OutputMode::Shared),
+                exclusive_fallback: Mutex::new(ExclusiveFallback::Shared),
+                output_status: Arc::new(Mutex::new(OutputStatus::default())),
                 listeners: Mutex::new(Vec::new()),
                 playback_lock: Mutex::new(()),
                 generation: Arc::new(AtomicU64::new(0)),
@@ -131,6 +137,22 @@ impl Engine {
     /// default. Already-playing tracks keep their device.
     pub fn set_output_device(&self, device: Option<String>) {
         *self.inner.device_id.lock().unwrap() = device;
+    }
+
+    /// The mode/bit-perfect state the output last reported.
+    pub fn audio_status(&self) -> OutputStatus {
+        self.inner.output_status.lock().unwrap().clone()
+    }
+
+    /// Select shared or exclusive output. Applies to the next track opened;
+    /// Task 6 makes this apply to a playing track.
+    pub fn set_output_mode(&self, mode: OutputMode) {
+        *self.inner.output_mode.lock().unwrap() = mode;
+    }
+
+    /// Select what to do when exclusive output is unavailable.
+    pub fn set_exclusive_fallback(&self, fallback: ExclusiveFallback) {
+        *self.inner.exclusive_fallback.lock().unwrap() = fallback;
     }
 
     fn output_device(&self) -> Option<String> {
@@ -292,6 +314,9 @@ impl Engine {
         let mut sink = OutputSink {
             output,
             device_id: self.output_device(),
+            mode: *self.inner.output_mode.lock().unwrap(),
+            fallback: *self.inner.exclusive_fallback.lock().unwrap(),
+            status: self.inner.output_status.clone(),
             generation: None,
             paused: self.inner.paused.clone(),
             volume: self.inner.volume.clone(),
@@ -299,6 +324,7 @@ impl Engine {
             frames: 0,
             rate: 0,
             channels: 2,
+            last_volume: 1.0,
         };
         let result = crate::decode::run(source, "mp4", &mut sink);
         let _ = output.stop();
@@ -404,6 +430,9 @@ impl Engine {
         let mut sink = OutputSink {
             output: output.as_mut(),
             device_id: self.output_device(),
+            mode: *self.inner.output_mode.lock().unwrap(),
+            fallback: *self.inner.exclusive_fallback.lock().unwrap(),
+            status: self.inner.output_status.clone(),
             generation: Some((self.inner.generation.clone(), generation)),
             paused: self.inner.paused.clone(),
             volume: self.inner.volume.clone(),
@@ -411,6 +440,7 @@ impl Engine {
             frames: 0,
             rate: 0,
             channels: 2,
+            last_volume: 1.0,
         };
         let result = crate::decode::run(source, "mp4", &mut sink);
         let _ = output.stop();
@@ -422,6 +452,10 @@ impl Engine {
 struct OutputSink<'a> {
     output: &'a mut dyn AudioOutput,
     device_id: Option<String>,
+    mode: OutputMode,
+    fallback: ExclusiveFallback,
+    status: Arc<Mutex<OutputStatus>>,
+    last_volume: f32,
     generation: Option<(Arc<AtomicU64>, u64)>,
     paused: Arc<AtomicBool>,
     volume: Arc<AtomicU32>,
@@ -439,10 +473,18 @@ impl PcmSink for OutputSink<'_> {
     fn on_stream_info(&mut self, info: &StreamInfo) -> Result<()> {
         self.rate = info.sample_rate;
         self.channels = info.channels;
-        self.output.open(
-            self.device_id.as_deref(),
-            AudioFormat { sample_rate: info.sample_rate, channels: info.channels },
-        )
+        let spec = AudioOutputSpec {
+            device_id: self.device_id.clone(),
+            info: *info,
+            mode: self.mode,
+            exclusive_fallback: self.fallback,
+        };
+        self.output.open(&spec)?;
+        self.output.start()?;
+        self.last_volume = f32::from_bits(self.volume.load(Ordering::SeqCst));
+        self.output.set_volume(self.last_volume)?;
+        *self.status.lock().unwrap() = self.output.status();
+        Ok(())
     }
 
     fn on_samples(&mut self, buf: &PcmBuffer) -> Result<()> {
@@ -456,19 +498,14 @@ impl PcmSink for OutputSink<'_> {
             std::thread::sleep(std::time::Duration::from_millis(20));
             return Ok(());
         }
-        // This sink always prefers F32; an I32 buffer would be a bug.
-        let PcmBuffer::F32(samples) = buf else {
-            return Err(Error::Output("output sink received non-f32 samples".into()));
-        };
         let volume = f32::from_bits(self.volume.load(Ordering::SeqCst));
-        if (volume - 1.0).abs() < f32::EPSILON {
-            self.output.write(samples)?;
-        } else {
-            let scaled: Vec<f32> = samples.iter().map(|s| s * volume).collect();
-            self.output.write(&scaled)?;
+        if (volume - self.last_volume).abs() >= f32::EPSILON {
+            self.output.set_volume(volume)?;
+            self.last_volume = volume;
         }
+        self.output.write(buf)?;
         if self.rate > 0 {
-            self.frames += (samples.len() / self.channels as usize) as u64;
+            self.frames += buf.frames(self.channels);
             self.position_ms
                 .store(self.frames.saturating_mul(1000) / self.rate as u64, Ordering::SeqCst);
         }
@@ -836,20 +873,23 @@ mod tests {
         }
     }
 
-    /// An output that records the device id passed to `open`.
+    /// An output that records the spec passed to `open`.
     struct RecordingOutput {
-        opened: Arc<Mutex<Vec<Option<String>>>>,
+        specs: Arc<Mutex<Vec<AudioOutputSpec>>>,
     }
 
     impl AudioOutput for RecordingOutput {
-        fn open(&mut self, device_id: Option<&str>, _format: AudioFormat) -> Result<()> {
-            self.opened.lock().unwrap().push(device_id.map(|s| s.to_string()));
+        fn open(&mut self, spec: &AudioOutputSpec) -> Result<()> {
+            self.specs.lock().unwrap().push(spec.clone());
             Ok(())
         }
         fn start(&mut self) -> Result<()> {
             Ok(())
         }
-        fn write(&mut self, _samples: &[f32]) -> Result<()> {
+        fn write(&mut self, _buf: &PcmBuffer) -> Result<()> {
+            Ok(())
+        }
+        fn set_volume(&mut self, _volume: f32) -> Result<()> {
             Ok(())
         }
         fn flush(&mut self) -> Result<()> {
@@ -858,16 +898,19 @@ mod tests {
         fn stop(&mut self) -> Result<()> {
             Ok(())
         }
+        fn status(&self) -> OutputStatus {
+            OutputStatus::default()
+        }
     }
 
     /// Regression: the selected output device must reach `AudioOutput::open`.
     #[test]
     fn set_output_device_is_passed_to_open() {
         let (plan, files) = fixture_plan();
-        let opened = Arc::new(Mutex::new(Vec::new()));
-        let opened_ref = opened.clone();
+        let specs = Arc::new(Mutex::new(Vec::new()));
+        let specs_ref = specs.clone();
         let factory: Arc<dyn OutputFactory> = Arc::new(move || -> Box<dyn AudioOutput> {
-            Box::new(RecordingOutput { opened: opened_ref.clone() })
+            Box::new(RecordingOutput { specs: specs_ref.clone() })
         });
         let engine = Engine::new(
             Arc::new(FakeResolver { plan }),
@@ -879,9 +922,9 @@ mod tests {
         engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
 
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-        while opened.lock().unwrap().is_empty() && std::time::Instant::now() < deadline {
+        while specs.lock().unwrap().is_empty() && std::time::Instant::now() < deadline {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
-        assert_eq!(opened.lock().unwrap().as_slice(), &[Some("device-x".to_string())]);
+        assert_eq!(specs.lock().unwrap()[0].device_id.as_deref(), Some("device-x"));
     }
 }
