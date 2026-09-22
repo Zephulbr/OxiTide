@@ -81,8 +81,8 @@ struct Inner {
     paused: AtomicBool,
     volume: AtomicU32, // f32 bits
     position_ms: AtomicU64,
-    /// Pending seek target in milliseconds; consumed by the worker.
-    seek_target: Mutex<Option<u64>>,
+    /// Pending seek target `(track_id, position_ms)`; consumed by the worker.
+    seek_target: Mutex<Option<(u64, u64)>>,
     /// True while the worker is running a session (used by `PlayPause` to know
     /// whether a resume needs a fresh generation).
     worker_busy: AtomicBool,
@@ -211,13 +211,17 @@ impl Engine {
     /// Restart the current track at its position so an output setting change
     /// applies immediately without losing the listener's place.
     fn restart_current_at_position(&self) {
-        let playing = {
+        let current = {
             let q = self.inner.queue.lock().unwrap();
-            q.current().is_some() && q.is_playing()
+            if q.is_playing() {
+                q.current().cloned()
+            } else {
+                None
+            }
         };
-        if playing {
+        if let Some(item) = current {
             let position = self.inner.position_ms.load(Ordering::SeqCst);
-            *self.inner.seek_target.lock().unwrap() = Some(position);
+            *self.inner.seek_target.lock().unwrap() = Some((item.track_id, position));
             self.inner.generation.fetch_add(1, Ordering::SeqCst);
             self.inner.notify_worker();
         }
@@ -314,12 +318,12 @@ impl Engine {
                 self.emit(EngineEvent::State(self.state()));
             }
             EngineCmd::Seek(ms) => {
-                let can_seek = {
+                let current = {
                     let q = self.inner.queue.lock().unwrap();
-                    q.current().is_some()
+                    q.current().cloned()
                 };
-                if can_seek {
-                    *self.inner.seek_target.lock().unwrap() = Some(ms);
+                if let Some(item) = current {
+                    *self.inner.seek_target.lock().unwrap() = Some((item.track_id, ms));
                     // Show the target immediately; the worker restarts there,
                     // staying paused if the queue is paused.
                     self.inner.position_ms.store(ms, Ordering::SeqCst);
@@ -777,7 +781,12 @@ fn worker_main(inner: Arc<Inner>, mut output: Box<dyn AudioOutput>) {
         let gen_now = inner.generation.load(Ordering::SeqCst);
         let ready = {
             let q = inner.queue.lock().unwrap();
-            let seeking = inner.seek_target.lock().unwrap().is_some();
+            let seeking = inner
+                .seek_target
+                .lock()
+                .unwrap()
+                .as_ref()
+                .is_some_and(|(id, _)| q.current().is_some_and(|i| i.track_id == *id));
             gen_now != handled_gen && q.current().is_some() && (q.is_playing() || seeking)
         };
         if !ready {
@@ -796,11 +805,13 @@ fn worker_main(inner: Arc<Inner>, mut output: Box<dyn AudioOutput>) {
         let (item, seek_ms, was_playing) = {
             let _guard = inner.playback_lock.lock().unwrap();
             let q = inner.queue.lock().unwrap();
-            (
-                q.current().cloned(),
-                inner.seek_target.lock().unwrap().take(),
-                q.is_playing(),
-            )
+            let current = q.current().cloned();
+            let target = inner.seek_target.lock().unwrap().take();
+            let seek_ms = match (&current, target) {
+                (Some(item), Some((id, ms))) if item.track_id == id => Some(ms),
+                _ => None,
+            };
+            (current, seek_ms, q.is_playing())
         };
         let Some(item) = item else {
             continue;
@@ -844,7 +855,7 @@ fn worker_main(inner: Arc<Inner>, mut output: Box<dyn AudioOutput>) {
                 // Remember where the device failed so the next play press
                 // resumes there.
                 *inner.seek_target.lock().unwrap() =
-                    Some(inner.position_ms.load(Ordering::SeqCst));
+                    Some((item.track_id, inner.position_ms.load(Ordering::SeqCst)));
                 inner.generation.fetch_add(1, Ordering::SeqCst);
                 let _ = output.stop();
                 open_spec = None;
@@ -1541,6 +1552,76 @@ mod tests {
         wait_for(|| !engine.state().playing);
         assert_eq!(samples.lock().unwrap().len(), 176_400);
         assert!(opens.load(Ordering::SeqCst) >= 2, "recovery must reopen the output");
+    }
+
+    /// Writes until `remaining` samples are consumed, then fails every write.
+    struct FailAfterOutput {
+        remaining: Arc<Mutex<usize>>,
+        samples: Arc<Mutex<Vec<f32>>>,
+    }
+
+    impl AudioOutput for FailAfterOutput {
+        fn open(&mut self, _spec: &AudioOutputSpec) -> Result<()> {
+            Ok(())
+        }
+        fn start(&mut self) -> Result<()> {
+            Ok(())
+        }
+        fn write(&mut self, buf: &PcmBuffer) -> Result<()> {
+            let mut remaining = self.remaining.lock().unwrap();
+            if *remaining == 0 {
+                return Err(Error::Output("output device unavailable".into()));
+            }
+            if let PcmBuffer::F32(v) = buf {
+                let take = (*remaining).min(v.len());
+                self.samples.lock().unwrap().extend_from_slice(&v[..take]);
+                *remaining -= take;
+            }
+            Ok(())
+        }
+        fn set_volume(&mut self, _volume: f32) -> Result<()> {
+            Ok(())
+        }
+        fn flush(&mut self) -> Result<()> {
+            Ok(())
+        }
+        fn stop(&mut self) -> Result<()> {
+            Ok(())
+        }
+        fn status(&self) -> OutputStatus {
+            OutputStatus::default()
+        }
+    }
+
+    /// Regression: a device-loss resume target must never apply to a different
+    /// track (e.g. a new album started after the failure).
+    #[test]
+    fn device_loss_target_does_not_leak_into_the_next_play_context() {
+        let (plan, files) = fixture_plan();
+        let remaining = Arc::new(Mutex::new(44_100)); // ~0.5s of stereo samples
+        let samples = Arc::new(Mutex::new(Vec::new()));
+        let engine = Engine::new(
+            Arc::new(FakeResolver { plan }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(FailAfterOutput { remaining: remaining.clone(), samples: samples.clone() }),
+            Quality::Lossless,
+        );
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| engine.state().bit_perfect_notice.is_some());
+        assert!(!engine.state().playing);
+        let first = samples.lock().unwrap().len();
+        assert!(first > 0, "the failing output wrote nothing before failing");
+
+        // Device is back; a new play context must start at 0, not resume the
+        // failed track's position.
+        *remaining.lock().unwrap() = usize::MAX;
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(2)], start: 0 }).unwrap();
+        wait_for(|| !engine.state().playing && samples.lock().unwrap().len() > first);
+        assert_eq!(
+            samples.lock().unwrap().len(),
+            first + 176_400,
+            "a stale seek target dropped audio from the new track"
+        );
     }
 
     /// Wraps `NullOutput` and sleeps in `stop`, widening the window between a
