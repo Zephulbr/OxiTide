@@ -675,8 +675,18 @@ fn worker_main(inner: Arc<Inner>, mut output: Box<dyn AudioOutput>) {
         let mode = *inner.output_mode.lock().unwrap();
         let fallback = *inner.exclusive_fallback.lock().unwrap();
 
-        match run_session(&inner, output.as_mut(), &mut open_spec, &item, mode, fallback, handled_gen)
-        {
+        let outcome = run_session(
+            &inner,
+            output.as_mut(),
+            &mut open_spec,
+            &item,
+            mode,
+            fallback,
+            handled_gen,
+        );
+        // The session is over; a resume from here must start a new one.
+        inner.worker_busy.store(false, Ordering::SeqCst);
+        match outcome {
             SessionOutcome::Superseded => {}
             SessionOutcome::QueueEnded => {
                 let _ = output.stop();
@@ -1201,5 +1211,63 @@ mod tests {
         assert_eq!(state.current.map(|i| i.track_id), Some(1));
         assert_eq!(state.queue.len(), 1);
         assert!(state.bit_perfect_notice.is_some());
+    }
+
+    /// Wraps `NullOutput` and sleeps in `stop`, widening the window between a
+    /// track ending and the worker going idle.
+    struct SlowStopOutput {
+        inner: NullOutput,
+        stop_delay: Duration,
+    }
+
+    impl AudioOutput for SlowStopOutput {
+        fn open(&mut self, spec: &AudioOutputSpec) -> Result<()> {
+            self.inner.open(spec)
+        }
+        fn start(&mut self) -> Result<()> {
+            self.inner.start()
+        }
+        fn write(&mut self, buf: &PcmBuffer) -> Result<()> {
+            self.inner.write(buf)
+        }
+        fn set_volume(&mut self, volume: f32) -> Result<()> {
+            self.inner.set_volume(volume)
+        }
+        fn flush(&mut self) -> Result<()> {
+            self.inner.flush()
+        }
+        fn stop(&mut self) -> Result<()> {
+            std::thread::sleep(self.stop_delay);
+            self.inner.stop()
+        }
+        fn status(&self) -> OutputStatus {
+            self.inner.status()
+        }
+    }
+
+    /// Regression: pressing play in the instant after the queue ends must
+    /// restart playback instead of leaving a silent "playing" state.
+    #[test]
+    fn play_pause_immediately_after_queue_end_restarts_playback() {
+        let (plan, files) = fixture_plan();
+        let output = NullOutput::new();
+        let engine = Engine::new(
+            Arc::new(FakeResolver { plan }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(SlowStopOutput {
+                inner: output.clone(),
+                stop_delay: Duration::from_millis(300),
+            }),
+            Quality::Lossless,
+        );
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| !engine.state().playing);
+        // The worker is still inside the slow stop; press play immediately.
+        engine.handle(EngineCmd::PlayPause).unwrap();
+        wait_for(|| output.samples().len() > 176_400);
+        assert!(
+            output.samples().len() > 176_400,
+            "resume after queue end did not restart playback"
+        );
     }
 }
