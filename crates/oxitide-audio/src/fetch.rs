@@ -269,7 +269,7 @@ pub fn download(buffer: Arc<StreamBuffer>, fetcher: Arc<dyn Fetcher>, plan: Stre
     if let Some(init) = &plan.init_url {
         urls.push(init.clone());
     }
-    urls.extend(plan.media_urls.iter().cloned());
+    urls.extend(plan.segments.iter().map(|s| s.url.clone()));
     for url in urls {
         if buffer.is_cancelled() {
             return;
@@ -292,6 +292,7 @@ pub fn download(buffer: Arc<StreamBuffer>, fetcher: Arc<dyn Fetcher>, plan: Stre
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::source::Segment;
 
     #[test]
     fn download_pushes_all_parts_in_order() {
@@ -301,7 +302,17 @@ mod tests {
                 .with("a", b"AAA".to_vec())
                 .with("b", b"BB".to_vec()),
         );
-        let plan = StreamPlan { init_url: Some("init".into()), media_urls: vec!["a".into(), "b".into()], codec: None, sample_rate: None, bit_depth: None };
+        let plan = StreamPlan {
+            init_url: Some("init".into()),
+            segments: vec![
+                Segment { url: "a".into(), start_ticks: 0, duration_ticks: 0 },
+                Segment { url: "b".into(), start_ticks: 0, duration_ticks: 0 },
+            ],
+            timescale: 0,
+            codec: None,
+            sample_rate: None,
+            bit_depth: None,
+        };
         let buf = StreamBuffer::new();
         download(buf.clone(), fetcher, plan);
         let mut out = [0u8; 9];
@@ -312,7 +323,14 @@ mod tests {
     #[test]
     fn fetch_failure_is_reported_to_readers() {
         let fetcher = Arc::new(MapFetcher::default());
-        let plan = StreamPlan { init_url: None, media_urls: vec!["missing".into()], codec: None, sample_rate: None, bit_depth: None };
+        let plan = StreamPlan {
+            init_url: None,
+            segments: vec![Segment { url: "missing".into(), start_ticks: 0, duration_ticks: 0 }],
+            timescale: 0,
+            codec: None,
+            sample_rate: None,
+            bit_depth: None,
+        };
         let buf = StreamBuffer::new();
         download(buf.clone(), fetcher, plan);
         assert!(matches!(buf.wait_len(0), Err(Error::Fetch(_))));
@@ -347,7 +365,14 @@ mod tests {
     #[test]
     fn download_retries_transient_fetch_failures() {
         let fetcher = Arc::new(FlakyFetcher::new(2));
-        let plan = StreamPlan { init_url: None, media_urls: vec!["a".into()], codec: None, sample_rate: None, bit_depth: None };
+        let plan = StreamPlan {
+            init_url: None,
+            segments: vec![Segment { url: "a".into(), start_ticks: 0, duration_ticks: 0 }],
+            timescale: 0,
+            codec: None,
+            sample_rate: None,
+            bit_depth: None,
+        };
         let buf = StreamBuffer::new();
         download(buf.clone(), fetcher.clone(), plan);
         let mut out = [0u8; 2];
@@ -359,7 +384,14 @@ mod tests {
     #[test]
     fn download_fails_after_bounded_attempts() {
         let fetcher = Arc::new(FlakyFetcher::new(usize::MAX));
-        let plan = StreamPlan { init_url: None, media_urls: vec!["a".into()], codec: None, sample_rate: None, bit_depth: None };
+        let plan = StreamPlan {
+            init_url: None,
+            segments: vec![Segment { url: "a".into(), start_ticks: 0, duration_ticks: 0 }],
+            timescale: 0,
+            codec: None,
+            sample_rate: None,
+            bit_depth: None,
+        };
         let buf = StreamBuffer::new();
         download(buf.clone(), fetcher.clone(), plan);
         assert!(matches!(buf.wait_len(0), Err(Error::Fetch(_))));
@@ -422,7 +454,10 @@ mod tests {
         let fetcher = Arc::new(ChunkFetcher { chunk: vec![7u8; CHUNK], calls: Mutex::new(0) });
         let plan = StreamPlan {
             init_url: None,
-            media_urls: (0..SEGMENTS).map(|i| format!("s{i}")).collect(),
+            segments: (0..SEGMENTS)
+                .map(|i| Segment { url: format!("s{i}"), start_ticks: 0, duration_ticks: 0 })
+                .collect(),
+            timescale: 0,
             codec: None,
             sample_rate: None,
             bit_depth: None,

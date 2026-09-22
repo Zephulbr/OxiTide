@@ -8,6 +8,7 @@ use crate::error::{Error, Result};
 use crate::fetch::{self, Fetcher, StreamBuffer};
 use crate::output::{AudioOutput, AudioOutputSpec, ExclusiveFallback, OutputMode, OutputStatus};
 use crate::queue::{Queue, QueueItem, RepeatMode};
+use crate::seek::{self, Discarder};
 use crate::source::StreamPlan;
 use oxitide_tidal::stream::Quality;
 
@@ -81,7 +82,6 @@ struct Inner {
     volume: AtomicU32, // f32 bits
     position_ms: AtomicU64,
     /// Pending seek target in milliseconds; consumed by the worker.
-    #[allow(dead_code)]
     seek_target: Mutex<Option<u64>>,
     /// True while the worker is running a session (used by `PlayPause` to know
     /// whether a resume needs a fresh generation).
@@ -176,12 +176,14 @@ impl Engine {
 
     pub fn set_quality(&self, quality: Quality) {
         *self.inner.quality.lock().unwrap() = quality;
+        self.restart_current_at_position();
     }
 
-    /// Select the output device for future sessions. `None` means the system
-    /// default. Takes effect on the next track (Task 8 makes it immediate).
+    /// Select the output device. `None` means the system default. Applies
+    /// immediately (restarts the current track at its position).
     pub fn set_output_device(&self, device: Option<String>) {
         *self.inner.device_id.lock().unwrap() = device;
+        self.restart_current_at_position();
     }
 
     fn output_device(&self) -> Option<String> {
@@ -193,15 +195,32 @@ impl Engine {
         self.inner.output_status.lock().unwrap().clone()
     }
 
-    /// Select shared or exclusive output. Applies to the next track opened;
-    /// Task 8 makes this apply immediately.
+    /// Select shared or exclusive output. Applies immediately (restarts the
+    /// current track at its position).
     pub fn set_output_mode(&self, mode: OutputMode) {
         *self.inner.output_mode.lock().unwrap() = mode;
+        self.restart_current_at_position();
     }
 
     /// Select what to do when exclusive output is unavailable.
     pub fn set_exclusive_fallback(&self, fallback: ExclusiveFallback) {
         *self.inner.exclusive_fallback.lock().unwrap() = fallback;
+        self.restart_current_at_position();
+    }
+
+    /// Restart the current track at its position so an output setting change
+    /// applies immediately without losing the listener's place.
+    fn restart_current_at_position(&self) {
+        let playing = {
+            let q = self.inner.queue.lock().unwrap();
+            q.current().is_some() && q.is_playing()
+        };
+        if playing {
+            let position = self.inner.position_ms.load(Ordering::SeqCst);
+            *self.inner.seek_target.lock().unwrap() = Some(position);
+            self.inner.generation.fetch_add(1, Ordering::SeqCst);
+            self.inner.notify_worker();
+        }
     }
 
     pub fn state(&self) -> PlaybackState {
@@ -294,7 +313,18 @@ impl Engine {
                 }
                 self.emit(EngineEvent::State(self.state()));
             }
-            EngineCmd::Seek(_) => { /* real seek lands in Task 8 */ }
+            EngineCmd::Seek(ms) => {
+                let playing = {
+                    let q = self.inner.queue.lock().unwrap();
+                    q.current().is_some() && q.is_playing()
+                };
+                if playing {
+                    *self.inner.seek_target.lock().unwrap() = Some(ms);
+                    self.inner.generation.fetch_add(1, Ordering::SeqCst);
+                    self.inner.notify_worker();
+                }
+                self.emit(EngineEvent::State(self.state()));
+            }
             EngineCmd::SetVolume(v) => {
                 let clamped = {
                     let mut q = self.inner.queue.lock().unwrap();
@@ -337,11 +367,11 @@ impl Engine {
         let mode = *self.inner.output_mode.lock().unwrap();
         let fallback = *self.inner.exclusive_fallback.lock().unwrap();
         let generation = self.inner.generation.load(Ordering::SeqCst);
-        let mut stream = start_track(&self.inner, item, mode, generation);
-        let info = wait_for_info(&self.inner, &mut stream, generation)?;
+        let mut stream = start_track(&self.inner, item, mode, generation, None);
+        let start = wait_for_info(&self.inner, &mut stream, generation)?;
         let spec = AudioOutputSpec {
             device_id: self.output_device(),
-            info,
+            info: start.info,
             mode,
             exclusive_fallback: fallback,
         };
@@ -364,9 +394,14 @@ impl Engine {
     }
 }
 
+struct StreamStart {
+    info: StreamInfo,
+    start_frames: u64,
+}
+
 /// One decoded chunk handed from a track's producer to the worker.
 enum StreamEvent {
-    Info(StreamInfo),
+    Info(StreamStart),
     Samples(PcmBuffer),
 }
 
@@ -390,6 +425,7 @@ fn start_track(
     item: &QueueItem,
     mode: OutputMode,
     generation: u64,
+    seek_ms: Option<u64>,
 ) -> TrackStream {
     let (tx, rx) = std::sync::mpsc::sync_channel::<Result<StreamEvent>>(PREFETCH_BUFFERS);
     let buffer = StreamBuffer::new();
@@ -398,7 +434,7 @@ fn start_track(
     let item = item.clone();
     let spawned = std::thread::Builder::new()
         .name("oxitide-decode".into())
-        .spawn(move || decode_track(inner, item, mode, generation, tx, buffer));
+        .spawn(move || decode_track(inner, item, mode, generation, seek_ms, tx, buffer));
     if let Err(e) = spawned {
         // Dropping `tx` disconnects the channel; the worker treats it as an
         // ended track and advances.
@@ -414,7 +450,7 @@ fn start_prefetch(inner: &Arc<Inner>, mode: OutputMode, gen: u64) -> Option<Trac
         let q = inner.queue.lock().unwrap();
         q.peek_next_index().and_then(|i| q.items().get(i).cloned())
     };
-    next.map(|item| start_track(inner, &item, mode, gen))
+    next.map(|item| start_track(inner, &item, mode, gen, None))
 }
 
 fn decode_track(
@@ -422,15 +458,25 @@ fn decode_track(
     item: QueueItem,
     mode: OutputMode,
     generation: u64,
+    seek_ms: Option<u64>,
     tx: SyncSender<Result<StreamEvent>>,
     buffer: Arc<StreamBuffer>,
 ) {
     let outcome: Result<()> = (|| {
         let quality = *inner.quality.lock().unwrap();
         let plan = inner.resolver.resolve(item.track_id, quality)?;
+        // Seek by segment index: media URLs are an ordered list, so restarting
+        // at the segment covering the target needs no HTTP Range.
+        let download_plan = match seek_ms {
+            Some(ms) if plan.sample_rate.is_some() => {
+                let target = seek::target_segment(&plan, ms, plan.sample_rate.unwrap());
+                plan.from_segment(target.segment_index)
+            }
+            _ => plan.clone(),
+        };
         let fetch_buffer = buffer.clone();
         let fetcher = inner.fetcher.clone();
-        let downloader = std::thread::spawn(move || fetch::download(fetch_buffer, fetcher, plan));
+        let downloader = std::thread::spawn(move || fetch::download(fetch_buffer, fetcher, download_plan));
         let source = crate::demux::StreamBufferSource::new(buffer);
         let mut sink = ChannelSink {
             inner,
@@ -438,6 +484,11 @@ fn decode_track(
             tx: tx.clone(),
             mode,
             out_format: PcmFormat::F32,
+            channels: 2,
+            plan,
+            seek_ms,
+            discarder: Discarder::default(),
+            start_frames: 0,
         };
         let result = crate::decode::run(source, "mp4", &mut sink);
         let _ = downloader.join();
@@ -454,6 +505,12 @@ struct ChannelSink {
     tx: SyncSender<Result<StreamEvent>>,
     mode: OutputMode,
     out_format: PcmFormat,
+    channels: u16,
+    /// The original (untruncated) plan, for seek discard math.
+    plan: StreamPlan,
+    seek_ms: Option<u64>,
+    discarder: Discarder,
+    start_frames: u64,
 }
 
 impl ChannelSink {
@@ -472,18 +529,43 @@ impl PcmSink for ChannelSink {
             OutputMode::Exclusive if info.is_bit_perfect_candidate() => info.format,
             _ => PcmFormat::F32,
         };
-        self.send(Ok(StreamEvent::Info(*info)))
+        self.channels = info.channels;
+        if let Some(ms) = self.seek_ms {
+            let target = seek::target_segment(&self.plan, ms, info.sample_rate);
+            self.discarder = Discarder::new(target.discard_frames);
+            self.start_frames = target.position_frames;
+        }
+        self.send(Ok(StreamEvent::Info(StreamStart {
+            info: *info,
+            start_frames: self.start_frames,
+        })))
     }
 
     fn on_samples(&mut self, buf: &PcmBuffer) -> Result<()> {
         if self.inner.generation.load(Ordering::SeqCst) != self.generation {
             return Err(Error::Output("playback superseded".into()));
         }
-        self.send(Ok(StreamEvent::Samples(buf.clone())))
+        let buf = match buf {
+            PcmBuffer::F32(v) => {
+                let (offset, len) = self.discarder.apply(v.len(), self.channels);
+                if len == 0 {
+                    return Ok(());
+                }
+                PcmBuffer::F32(v[offset..offset + len].to_vec())
+            }
+            PcmBuffer::I32(v) => {
+                let (offset, len) = self.discarder.apply(v.len(), self.channels);
+                if len == 0 {
+                    return Ok(());
+                }
+                PcmBuffer::I32(v[offset..offset + len].to_vec())
+            }
+        };
+        self.send(Ok(StreamEvent::Samples(buf)))
     }
 }
 
-fn wait_for_info(inner: &Arc<Inner>, stream: &mut TrackStream, gen: u64) -> Result<StreamInfo> {
+fn wait_for_info(inner: &Arc<Inner>, stream: &mut TrackStream, gen: u64) -> Result<StreamStart> {
     loop {
         // A supersede while a track is still resolving/fetching (e.g. Next
         // pressed during a slow network resolve) must exit promptly.
@@ -491,7 +573,7 @@ fn wait_for_info(inner: &Arc<Inner>, stream: &mut TrackStream, gen: u64) -> Resu
             return Err(Error::Output("playback superseded".into()));
         }
         match stream.rx.recv_timeout(Duration::from_millis(200)) {
-            Ok(Ok(StreamEvent::Info(info))) => return Ok(info),
+            Ok(Ok(StreamEvent::Info(start))) => return Ok(start),
             Ok(Ok(StreamEvent::Samples(_))) => continue,
             Ok(Err(e)) => return Err(e),
             Err(RecvTimeoutError::Timeout) => {
@@ -532,6 +614,7 @@ enum SessionOutcome {
 
 /// Play `first_item` and keep advancing through the queue until it ends, the
 /// generation changes, or a device/stream error occurs.
+#[allow(clippy::too_many_arguments)]
 fn run_session(
     inner: &Arc<Inner>,
     output: &mut dyn AudioOutput,
@@ -540,22 +623,37 @@ fn run_session(
     mode: OutputMode,
     fallback: ExclusiveFallback,
     gen: u64,
+    seek_ms: Option<u64>,
 ) -> SessionOutcome {
-    let mut stream = start_track(inner, first_item, mode, gen);
+    // A seek must not play the audio still buffered in the device ring, so
+    // force a reopen on the first iteration.
+    if seek_ms.is_some() {
+        let _ = output.stop();
+        *open_spec = None;
+    }
+    let mut stream = start_track(inner, first_item, mode, gen, seek_ms);
     let mut prefetch = start_prefetch(inner, mode, gen);
-    let mut frames: u64 = 0;
+    let mut frames: u64;
     let mut last_emit = Instant::now() - Duration::from_secs(1);
     loop {
         if inner.generation.load(Ordering::SeqCst) != gen {
             return SessionOutcome::Superseded;
         }
-        let info = match wait_for_info(inner, &mut stream, gen) {
-            Ok(info) => info,
+        let start = match wait_for_info(inner, &mut stream, gen) {
+            Ok(start) => start,
             Err(_) if inner.generation.load(Ordering::SeqCst) != gen => {
                 return SessionOutcome::Superseded;
             }
             Err(e) => return SessionOutcome::StreamError(e),
         };
+        let info = start.info;
+        // The stream's absolute starting frame (non-zero only for a seek).
+        frames = start.start_frames;
+        if info.sample_rate > 0 {
+            inner
+                .position_ms
+                .store(frames.saturating_mul(1000) / info.sample_rate as u64, Ordering::SeqCst);
+        }
         let want = AudioOutputSpec {
             device_id: inner.device_id.lock().unwrap().clone(),
             info,
@@ -613,7 +711,15 @@ fn run_session(
                     emit_position_if_due(inner, frames, rate, &mut last_emit);
                 }
                 Ok(Ok(StreamEvent::Info(_))) => {}
-                Ok(Err(e)) => return SessionOutcome::StreamError(e),
+                Ok(Err(e)) => {
+                    // The producer reports "playback superseded" once the
+                    // generation moves; a supersede must not surface as a
+                    // stream error that stops the queue.
+                    if inner.generation.load(Ordering::SeqCst) != gen {
+                        return SessionOutcome::Superseded;
+                    }
+                    return SessionOutcome::StreamError(e);
+                }
                 Err(RecvTimeoutError::Timeout) => {
                     emit_position_if_due(inner, frames, rate, &mut last_emit);
                 }
@@ -642,11 +748,9 @@ fn run_session(
                 // (matching StreamInfo) or must reopen (format change).
                 stream = match prefetch.take() {
                     Some(prefetched) if prefetched.item.track_id == item.track_id => prefetched,
-                    _ => start_track(inner, &item, mode, gen),
+                    _ => start_track(inner, &item, mode, gen, None),
                 };
                 prefetch = start_prefetch(inner, mode, gen);
-                inner.position_ms.store(0, Ordering::SeqCst);
-                frames = 0;
             }
             None => {
                 // The queue is over, so the worker is about to go idle. Bump
@@ -685,16 +789,18 @@ fn worker_main(inner: Arc<Inner>, mut output: Box<dyn AudioOutput>) {
         handled_gen = gen_now;
         inner.worker_busy.store(true, Ordering::SeqCst);
 
-        let item = {
+        let (item, seek_ms) = {
             let _guard = inner.playback_lock.lock().unwrap();
             let q = inner.queue.lock().unwrap();
-            q.current().cloned()
+            (q.current().cloned(), inner.seek_target.lock().unwrap().take())
         };
         let Some(item) = item else {
             continue;
         };
-        inner.paused.store(false, Ordering::SeqCst);
-        inner.position_ms.store(0, Ordering::SeqCst);
+        if seek_ms.is_none() {
+            inner.paused.store(false, Ordering::SeqCst);
+        }
+        inner.position_ms.store(seek_ms.unwrap_or(0), Ordering::SeqCst);
         let mode = *inner.output_mode.lock().unwrap();
         let fallback = *inner.exclusive_fallback.lock().unwrap();
 
@@ -706,6 +812,7 @@ fn worker_main(inner: Arc<Inner>, mut output: Box<dyn AudioOutput>) {
             mode,
             fallback,
             handled_gen,
+            seek_ms,
         );
         // The session is over; a resume from here must start a new one.
         inner.worker_busy.store(false, Ordering::SeqCst);
@@ -750,6 +857,7 @@ fn worker_main(inner: Arc<Inner>, mut output: Box<dyn AudioOutput>) {
 mod tests {
     use super::*;
     use crate::output::NullOutput;
+    use crate::source::Segment;
     use std::collections::HashMap;
 
     struct FakeResolver {
@@ -774,7 +882,8 @@ mod tests {
         let bytes = std::fs::read("tests/fixtures/tone.mp4").unwrap();
         let plan = StreamPlan {
             init_url: None,
-            media_urls: vec!["mem://tone".into()],
+            segments: vec![Segment { url: "mem://tone".into(), start_ticks: 0, duration_ticks: 0 }],
+            timescale: 0,
             codec: Some("flac".into()),
             sample_rate: Some(44100),
             bit_depth: Some(16),
@@ -858,6 +967,21 @@ mod tests {
         engine.handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 }).unwrap();
         wait_for(|| output.samples().len() >= 176_400);
         assert!(output.samples().len() >= 176_400);
+    }
+
+    #[test]
+    fn seek_restarts_at_the_requested_offset() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| engine.state().position_ms > 100);
+
+        engine.handle(EngineCmd::Seek(1000)).unwrap();
+        wait_for(|| engine.state().position_ms >= 1000);
+        let state = engine.state();
+        assert!(state.position_ms >= 1000, "seek did not land at 1000ms: {}", state.position_ms);
+        assert!(state.playing);
+        assert!(output.opens() >= 2, "seek must reopen the output to drop buffered audio");
     }
 
     /// Regression: `PlayPause` on an empty queue must not latch `paused` true
@@ -1323,7 +1447,8 @@ mod tests {
     fn plan_for(url: &str, sample_rate: u32, bit_depth: u32) -> StreamPlan {
         StreamPlan {
             init_url: None,
-            media_urls: vec![url.into()],
+            segments: vec![Segment { url: url.into(), start_ticks: 0, duration_ticks: 0 }],
+            timescale: 0,
             codec: Some("flac".into()),
             sample_rate: Some(sample_rate),
             bit_depth: Some(bit_depth),

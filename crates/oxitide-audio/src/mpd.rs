@@ -54,6 +54,13 @@ impl Mpd {
     }
 }
 
+/// Timing of one media segment in SegmentTemplate ticks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SegmentTiming {
+    pub start_ticks: u64,
+    pub duration_ticks: u64,
+}
+
 impl Representation {
     pub fn base_url(&self, mpd_base: &[String]) -> String {
         let mut base = String::new();
@@ -108,6 +115,39 @@ impl Representation {
         ))
     }
 
+    /// Start/duration ticks for every media segment, in the same order as
+    /// `media_urls`.
+    pub fn segment_timings(&self, mpd_duration: Option<&str>) -> Result<Vec<SegmentTiming>> {
+        let t = self
+            .template
+            .as_ref()
+            .ok_or_else(|| Error::Manifest("no SegmentTemplate".into()))?;
+        if !t.timeline.is_empty() {
+            let ts = if t.timescale == 0 { 1 } else { t.timescale };
+            let total_secs = mpd_duration.and_then(parse_iso8601_duration);
+            let mut timings = Vec::new();
+            let mut time = t.timeline[0].t.unwrap_or(0);
+            for e in &t.timeline {
+                if let Some(start) = e.t {
+                    time = start;
+                }
+                let reps = repeat_count(e, time, ts, total_secs);
+                for _ in 0..reps {
+                    timings.push(SegmentTiming { start_ticks: time, duration_ticks: e.d });
+                    time += e.d;
+                }
+            }
+            return Ok(timings);
+        }
+        let n = self.segment_count(mpd_duration)?;
+        let duration_ticks = t
+            .duration
+            .ok_or_else(|| Error::Manifest("no segment duration".into()))?;
+        Ok((0..n)
+            .map(|i| SegmentTiming { start_ticks: duration_ticks * i, duration_ticks })
+            .collect())
+    }
+
     pub fn media_urls(
         &self,
         mpd_duration: Option<&str>,
@@ -120,26 +160,18 @@ impl Representation {
         let base = self.base_url(mpd_base);
         let repr_id = self.id.clone().unwrap_or_default();
         let bw = self.bandwidth.unwrap_or(0);
-        if !t.timeline.is_empty() {
-            let ts = if t.timescale == 0 { 1 } else { t.timescale };
-            let total_secs = mpd_duration.and_then(parse_iso8601_duration);
-            let mut urls = Vec::new();
-            let mut time = t.timeline[0].t.unwrap_or(0);
-            for e in &t.timeline {
-                if let Some(start) = e.t {
-                    time = start;
-                }
-                let reps = repeat_count(e, time, ts, total_secs);
-                for _ in 0..reps {
-                    urls.push(resolve_template(&base, &t.media, &repr_id, bw, 0, time));
-                    time += e.d;
-                }
-            }
-            return Ok(urls);
-        }
-        let n = self.segment_count(mpd_duration)?;
-        Ok((0..n)
-            .map(|i| resolve_template(&base, &t.media, &repr_id, bw, t.start_number + i, 0))
+        let timings = self.segment_timings(mpd_duration)?;
+        Ok(timings
+            .iter()
+            .enumerate()
+            .map(|(i, timing)| {
+                let (number, time) = if t.timeline.is_empty() {
+                    (t.start_number + i as u64, 0)
+                } else {
+                    (0, timing.start_ticks)
+                };
+                resolve_template(&base, &t.media, &repr_id, bw, number, time)
+            })
             .collect())
     }
 }
@@ -390,6 +422,35 @@ mod tests {
         assert_eq!(
             r.media_urls(None, &[]).unwrap(),
             vec!["0.mp4", "176400.mp4", "352800.mp4"]
+        );
+    }
+
+    #[test]
+    fn segment_timings_match_number_template_durations() {
+        let mpd = parse(NUMBER_MPD).unwrap();
+        let r = mpd.audio_representation().unwrap();
+        let timings = r.segment_timings(mpd.media_presentation_duration.as_deref()).unwrap();
+        assert_eq!(
+            timings,
+            vec![
+                SegmentTiming { start_ticks: 0, duration_ticks: 4 },
+                SegmentTiming { start_ticks: 4, duration_ticks: 4 },
+            ]
+        );
+    }
+
+    #[test]
+    fn segment_timings_match_timeline_offsets() {
+        let mpd = parse(TIMELINE_MPD).unwrap();
+        let r = mpd.audio_representation().unwrap();
+        let timings = r.segment_timings(None).unwrap();
+        assert_eq!(
+            timings,
+            vec![
+                SegmentTiming { start_ticks: 0, duration_ticks: 176_400 },
+                SegmentTiming { start_ticks: 176_400, duration_ticks: 176_400 },
+                SegmentTiming { start_ticks: 352_800, duration_ticks: 176_400 },
+            ]
         );
     }
 

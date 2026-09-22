@@ -6,13 +6,51 @@ use crate::mpd;
 pub const DASH_MIME: &str = "application/dash+xml";
 pub const BTS_MIME: &str = "application/vnd.tidal.bts";
 
+/// One media segment of a stream plan.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Segment {
+    pub url: String,
+    pub start_ticks: u64,
+    pub duration_ticks: u64,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct StreamPlan {
     pub init_url: Option<String>,
-    pub media_urls: Vec<String>,
+    pub segments: Vec<Segment>,
+    /// Ticks per second for `Segment.start_ticks`/`duration_ticks`; 0 for a
+    /// single-file source with no timing information.
+    pub timescale: u64,
     pub codec: Option<String>,
     pub sample_rate: Option<u32>,
     pub bit_depth: Option<u32>,
+}
+
+impl StreamPlan {
+    /// Media URLs in order.
+    pub fn media_urls(&self) -> Vec<&str> {
+        self.segments.iter().map(|s| s.url.as_str()).collect()
+    }
+
+    /// A single-file source with no segment timing (BTS manifests, tests).
+    pub fn single(url: String) -> Self {
+        Self {
+            init_url: None,
+            segments: vec![Segment { url, start_ticks: 0, duration_ticks: 0 }],
+            timescale: 0,
+            codec: None,
+            sample_rate: None,
+            bit_depth: None,
+        }
+    }
+
+    /// The same plan starting at media segment `index`; the init segment is
+    /// kept. Used to restart playback at a seek target.
+    pub fn from_segment(&self, index: usize) -> StreamPlan {
+        let mut plan = self.clone();
+        plan.segments = self.segments.iter().skip(index).cloned().collect();
+        plan
+    }
 }
 
 #[derive(serde::Deserialize)]
@@ -34,10 +72,27 @@ pub fn plan_from_info(info: &PlaybackInfo) -> Result<StreamPlan> {
                 .ok_or_else(|| Error::Manifest("no audio representation".into()))?;
             let duration = doc.media_presentation_duration.as_deref();
             let media_urls = repr.media_urls(duration, &doc.base_urls)?;
+            let timings = repr.segment_timings(duration)?;
             let init_url = repr.init_url(&doc.base_urls);
+            debug_assert_eq!(media_urls.len(), timings.len());
+            let timescale = repr
+                .template
+                .as_ref()
+                .map(|t| if t.timescale == 0 { 1 } else { t.timescale })
+                .unwrap_or(0);
+            let segments = media_urls
+                .into_iter()
+                .zip(timings)
+                .map(|(url, timing)| Segment {
+                    url,
+                    start_ticks: timing.start_ticks,
+                    duration_ticks: timing.duration_ticks,
+                })
+                .collect();
             Ok(StreamPlan {
                 init_url,
-                media_urls,
+                segments,
+                timescale,
                 codec: repr.codecs.clone(),
                 sample_rate: repr.sample_rate,
                 bit_depth: repr.bit_depth,
@@ -51,7 +106,12 @@ pub fn plan_from_info(info: &PlaybackInfo) -> Result<StreamPlan> {
             }
             Ok(StreamPlan {
                 init_url: None,
-                media_urls: parsed.urls,
+                segments: parsed
+                    .urls
+                    .into_iter()
+                    .map(|url| Segment { url, start_ticks: 0, duration_ticks: 0 })
+                    .collect(),
+                timescale: 0,
                 codec: parsed.codecs,
                 sample_rate: None,
                 bit_depth: None,
@@ -79,7 +139,7 @@ mod tests {
           </Representation></AdaptationSet></Period></MPD>"#;
         let plan = plan_from_info(&info(DASH_MIME, mpd.as_bytes())).unwrap();
         assert_eq!(plan.init_url.as_deref(), Some("https://cdn/x/init.mp4"));
-        assert_eq!(plan.media_urls, vec!["https://cdn/x/seg-1.mp4", "https://cdn/x/seg-2.mp4"]);
+        assert_eq!(plan.media_urls(), vec!["https://cdn/x/seg-1.mp4", "https://cdn/x/seg-2.mp4"]);
         assert_eq!(plan.sample_rate, Some(48000));
         assert_eq!(plan.bit_depth, Some(24));
     }
@@ -89,7 +149,7 @@ mod tests {
         let json = r#"{"mimeType":"audio/flac","codecs":"flac","urls":["https://cdn/a.flac"]}"#;
         let plan = plan_from_info(&info(BTS_MIME, json.as_bytes())).unwrap();
         assert_eq!(plan.init_url, None);
-        assert_eq!(plan.media_urls, vec!["https://cdn/a.flac"]);
+        assert_eq!(plan.media_urls(), vec!["https://cdn/a.flac"]);
         assert_eq!(plan.codec.as_deref(), Some("flac"));
     }
 
@@ -101,5 +161,20 @@ mod tests {
     #[test]
     fn bts_without_urls_is_a_typed_error() {
         assert!(matches!(plan_from_info(&info(BTS_MIME, b"{}")), Err(Error::Manifest(_))));
+    }
+
+    #[test]
+    fn from_segment_keeps_init_and_truncates() {
+        let mpd = r#"<MPD mediaPresentationDuration="PT8S"><Period><AdaptationSet>
+          <BaseURL>https://cdn/x/</BaseURL>
+          <Representation id="audio" codecs="flac" audioSamplingRate="48000" bitDepth="24">
+            <SegmentTemplate initialization="init.mp4" media="seg-$Number$.mp4" startNumber="1" duration="4" timescale="1"/>
+          </Representation></AdaptationSet></Period></MPD>"#;
+        let plan = plan_from_info(&info(DASH_MIME, mpd.as_bytes())).unwrap();
+        let tail = plan.from_segment(1);
+        assert_eq!(tail.init_url.as_deref(), Some("https://cdn/x/init.mp4"));
+        assert_eq!(tail.media_urls(), vec!["https://cdn/x/seg-2.mp4"]);
+        assert_eq!(tail.timescale, plan.timescale);
+        assert_eq!(tail.segments[0].start_ticks, 4);
     }
 }

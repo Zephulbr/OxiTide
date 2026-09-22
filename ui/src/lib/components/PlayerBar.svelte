@@ -3,7 +3,11 @@
   import type { Player } from "../player.svelte";
   let { player }: { player: Player } = $props();
 
-  const position = $derived(player.state.position_ms);
+  let dragging = $state(false);
+  let dragValue = $state(0);
+
+  const shown = $derived(player.pendingSeek ?? player.state.position_ms);
+  const position = $derived(dragging ? dragValue : shown);
   const duration = $derived(player.state.duration_ms);
   const quality = $derived(player.state.preferred_quality);
 </script>
@@ -25,8 +29,15 @@
     <button onclick={() => player.next()} aria-label="Next">⏭</button>
     <input
       type="range" min="0" max={Math.max(duration, 1)} value={position}
-      disabled
-      aria-label="Playback position (seeking not yet available)"
+      oninput={(e) => {
+        dragging = true;
+        dragValue = Number((e.target as HTMLInputElement).value);
+      }}
+      onchange={(e) => {
+        dragging = false;
+        player.seek(Number((e.target as HTMLInputElement).value));
+      }}
+      aria-label="Playback position"
     />
     <span class="muted">{formatDuration(position / 1000)} / {formatDuration(duration / 1000)}</span>
     <input

@@ -49,3 +49,13 @@ GUI). Run `npm --prefix ui run app:dev`, play an album whose tracks share a form
 - [ ] Tracks run into each other with no device click or re-open at the boundary.
 - [ ] No audible gap, duplicate, or missing audio between tracks.
 - [ ] The position counter resets at each boundary.
+
+## Plan 3 seek check
+
+PENDING a human run with a real account and audio device (Task 8 does not launch the
+GUI). Run `npm --prefix ui run app:dev`, drag the seek bar to the middle of a track and
+release, and confirm:
+
+- [ ] Audio restarts at the dragged point.
+- [ ] The time label does not jump back.
+- [ ] Seeking near the end clamps without an error.
