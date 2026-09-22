@@ -13,7 +13,7 @@ use oxitide_tidal::Error;
 use serde::Serialize;
 use tauri::State;
 
-use crate::player::{devices, OutputDeviceDto, QualityDto, RealOutputs};
+use crate::player::{devices, OutputDeviceDto, QualityDto};
 use crate::state::{AppState, Player};
 
 pub const API_BASE: &str = "https://api.tidal.com/v1/";
@@ -82,6 +82,7 @@ pub fn auth_status(state: State<'_, AppState>) -> bool {
 pub fn auth_logout(state: State<'_, AppState>) -> Result<(), String> {
     if let Some(player) = state.player() {
         let _ = player.engine.handle(oxitide_audio::engine::EngineCmd::Clear);
+        player.engine.shutdown();
     }
     let store = KeyringStore;
     store.clear().map_err(|e| e.to_string())?;
@@ -171,7 +172,7 @@ fn build_player(app: &tauri::AppHandle, client: TidalClient) -> Result<Player, S
     let engine = Engine::new(
         Arc::new(resolver),
         Arc::new(HttpFetcher::default()),
-        Arc::new(RealOutputs),
+        crate::player::real_output(),
         Quality::Lossless,
     );
     let handle = app.clone();
