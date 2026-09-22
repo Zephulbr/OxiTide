@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+mod config;
 mod player;
 mod state;
 
@@ -43,6 +44,7 @@ fn main() {
             commands::queue_remove,
             commands::queue_clear,
             commands::get_playback_state,
+            commands::get_config,
             commands::get_output_devices,
             commands::set_output_device,
             commands::set_preferred_quality,

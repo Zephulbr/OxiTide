@@ -4,9 +4,10 @@ use oxitide_audio::engine::Engine;
 use oxitide_tidal::client::TidalClient;
 use oxitide_tidal::pkce::Pkce;
 
+use crate::config::Config;
+
 pub struct Player {
     pub engine: Engine,
-    pub output_device: Mutex<Option<String>>,
 }
 
 #[derive(Default)]
@@ -14,6 +15,7 @@ pub struct AppState {
     pub pending_pkce: Mutex<Option<Pkce>>,
     pub client: RwLock<Option<TidalClient>>,
     pub player: RwLock<Option<Arc<Player>>>,
+    pub config: Mutex<Config>,
 }
 
 impl AppState {
@@ -39,6 +41,14 @@ impl AppState {
 
     pub fn player(&self) -> Option<Arc<Player>> {
         self.player.read().unwrap().clone()
+    }
+
+    pub fn config(&self) -> Config {
+        self.config.lock().unwrap().clone()
+    }
+
+    pub fn set_config(&self, config: Config) {
+        *self.config.lock().unwrap() = config;
     }
 
     pub fn logout(&self) {

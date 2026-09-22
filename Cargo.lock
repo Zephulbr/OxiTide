@@ -793,6 +793,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "directories"
+version = "6.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "16f5094c54661b38d03bd7e50df373292118db60b585c08a411c6d840017fe7d"
+dependencies = [
+ "dirs-sys",
+]
+
+[[package]]
 name = "dirs"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2593,6 +2602,7 @@ dependencies = [
 name = "oxitide-app"
 version = "0.1.0"
 dependencies = [
+ "directories",
  "oxitide-audio",
  "oxitide-tidal",
  "reqwest 0.12.28",
@@ -2602,6 +2612,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-opener",
  "tokio",
+ "toml 1.1.6+spec-1.1.0",
  "tracing",
  "tracing-subscriber",
  "wiremock",

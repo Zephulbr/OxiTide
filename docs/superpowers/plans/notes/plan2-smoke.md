@@ -60,6 +60,15 @@ release, and confirm:
 - [ ] The time label does not jump back.
 - [ ] Seeking near the end clamps without an error.
 
+## Plan 3 config check
+
+PENDING a human run with a real account and audio device (Task 10 does not launch the
+GUI). Run `npm --prefix ui run app:dev`, then confirm:
+
+- [ ] Toggle bit-perfect on, pick a non-default output device and Max quality, then restart the app; all three must come back selected.
+- [ ] Quit, corrupt `%APPDATA%\OxiTide\config.toml` (write `not = [valid`), start again: the app must start with defaults and a `config.toml.bak` must exist.
+- [ ] Disable/rename the saved device, restart: the Settings select must show System default and the config file must have been updated.
+
 ## Plan 3 hot-plug check
 
 PENDING a human run with a real DAC/account (Task 9 does not launch the GUI). Run

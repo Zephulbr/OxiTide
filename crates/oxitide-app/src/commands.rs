@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use oxitide_audio::engine::{Engine, EngineCmd, PlaybackState};
 use oxitide_audio::fetch::HttpFetcher;
@@ -7,12 +7,12 @@ use oxitide_audio::queue::{QueueItem, RepeatMode};
 use oxitide_tidal::auth::{self, SessionInfo};
 use oxitide_tidal::client::TidalClient;
 use oxitide_tidal::pkce::{Pkce, PKCE_CLIENT_ID, TOKEN_URL};
-use oxitide_tidal::stream::Quality;
 use oxitide_tidal::token_store::{KeyringStore, TokenSet, TokenStore};
 use oxitide_tidal::Error;
 use serde::Serialize;
 use tauri::State;
 
+use crate::config::Config;
 use crate::player::{devices, OutputDeviceDto, QualityDto};
 use crate::state::{AppState, Player};
 
@@ -69,7 +69,9 @@ pub async fn auth_complete(
         store,
     );
     state.set_client(client.clone());
-    state.set_player(build_player(&app, client)?);
+    let config = Config::load();
+    state.set_config(config.clone());
+    state.set_player(build_player(&app, client, &config)?);
     Ok(SessionInfoDto { country_code: session.country_code, user_id: session.user_id })
 }
 
@@ -147,7 +149,9 @@ pub async fn auth_restore(
             let client =
                 TidalClient::new(http, API_BASE, TOKEN_URL, session.clone(), tokens, store);
             state.set_client(client.clone());
-            state.set_player(build_player(&app, client)?);
+            let config = Config::load();
+            state.set_config(config.clone());
+            state.set_player(build_player(&app, client, &config)?);
             Ok(Some(SessionInfoDto {
                 country_code: session.country_code,
                 user_id: session.user_id,
@@ -167,22 +171,34 @@ fn require_client(state: &State<'_, AppState>) -> Result<TidalClient, String> {
 
 /// Build the playback engine for a freshly authenticated client and forward its
 /// events to the UI on the `playback_event` channel.
-fn build_player(app: &tauri::AppHandle, client: TidalClient) -> Result<Player, String> {
+fn build_player(
+    app: &tauri::AppHandle,
+    client: TidalClient,
+    config: &Config,
+) -> Result<Player, String> {
     let resolver = crate::player::TidalResolver::new(client).map_err(|e| e.to_string())?;
     let engine = Engine::new(
         Arc::new(resolver),
         Arc::new(HttpFetcher::default()),
         crate::player::real_output(),
-        Quality::Lossless,
+        config.streaming.quality.to_quality(),
     );
+    engine.set_output_device(if config.audio.output_device.is_empty() {
+        None
+    } else {
+        Some(config.audio.output_device.clone())
+    });
+    engine.set_output_mode(if config.audio.exclusive {
+        OutputMode::Exclusive
+    } else {
+        OutputMode::Shared
+    });
+    engine.set_exclusive_fallback(config.audio.exclusive_fallback);
     let handle = app.clone();
     engine.subscribe(Arc::new(move |event| {
         let _ = tauri::Emitter::emit(&handle, "playback_event", crate::player::to_dto(event));
     }));
-    Ok(Player {
-        engine,
-        output_device: Mutex::new(None),
-    })
+    Ok(Player { engine })
 }
 
 use oxitide_tidal::home::HomeSection;
@@ -337,9 +353,12 @@ pub fn get_output_devices() -> Vec<OutputDeviceDto> {
 #[tauri::command]
 pub fn set_output_device(state: State<'_, AppState>, device_id: String) -> Result<(), String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
-    let device = if device_id.is_empty() { None } else { Some(device_id) };
-    player.engine.set_output_device(device.clone());
-    *player.output_device.lock().unwrap() = device;
+    let device = if device_id.is_empty() { None } else { Some(device_id.clone()) };
+    player.engine.set_output_device(device);
+    let mut config = state.config();
+    config.audio.output_device = device_id;
+    config.save()?;
+    state.set_config(config);
     Ok(())
 }
 
@@ -350,6 +369,10 @@ pub fn set_preferred_quality(
 ) -> Result<(), String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
     player.engine.set_quality(quality.to_quality());
+    let mut config = state.config();
+    config.streaming.quality = quality;
+    config.save()?;
+    state.set_config(config);
     Ok(())
 }
 
@@ -361,6 +384,10 @@ pub fn set_exclusive(state: State<'_, AppState>, enabled: bool) -> Result<(), St
     } else {
         OutputMode::Shared
     });
+    let mut config = state.config();
+    config.audio.exclusive = enabled;
+    config.save()?;
+    state.set_config(config);
     Ok(())
 }
 
@@ -371,7 +398,16 @@ pub fn set_exclusive_fallback(
 ) -> Result<(), String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
     player.engine.set_exclusive_fallback(mode);
+    let mut config = state.config();
+    config.audio.exclusive_fallback = mode;
+    config.save()?;
+    state.set_config(config);
     Ok(())
+}
+
+#[tauri::command]
+pub fn get_config(state: State<'_, AppState>) -> Result<Config, String> {
+    Ok(state.config())
 }
 
 #[tauri::command]

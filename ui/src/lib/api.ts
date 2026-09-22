@@ -49,6 +49,14 @@ export interface AudioStatus {
   bit_perfect: boolean;
   notice?: string | null;
 }
+export interface Config {
+  audio: {
+    output_device: string;
+    exclusive: boolean;
+    exclusive_fallback: "shared" | "warn_only";
+  };
+  streaming: { quality: "low" | "high" | "lossless" | "max" };
+}
 export type EngineEvent =
   | ({ type: "state" } & PlaybackState)
   | { type: "now_playing"; [k: string]: unknown }
@@ -101,4 +109,5 @@ export const api = {
   setExclusive: (enabled: boolean) => invoke<void>("set_exclusive", { enabled }),
   setExclusiveFallback: (mode: "shared" | "warn_only") => invoke<void>("set_exclusive_fallback", { mode }),
   getAudioStatus: () => invoke<AudioStatus>("get_audio_status"),
+  getConfig: () => invoke<Config>("get_config"),
 };
