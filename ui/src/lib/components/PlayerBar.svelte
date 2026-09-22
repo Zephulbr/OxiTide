@@ -14,6 +14,9 @@
       <strong>{player.state.current.title}</strong>
       <span class="muted">{player.state.current.artist}</span>
       <span class="badge" title="Streaming quality">{quality}</span>
+      {#if player.state.bit_perfect}
+        <span class="badge" title="Exclusive output at the source's native format">Bit-perfect</span>
+      {/if}
     </div>
     <button onclick={() => player.prev()} aria-label="Previous">⏮</button>
     <button onclick={() => player.playPause()} aria-label="Play/Pause">
@@ -32,6 +35,9 @@
       aria-label="Volume"
     />
     {#if player.state.buffering}<span class="muted">buffering…</span>{/if}
+    {#if player.state.bit_perfect_notice}
+      <span style="color:#e0a030">{player.state.bit_perfect_notice}</span>
+    {/if}
   {:else}
     <span class="muted">Nothing playing</span>
   {/if}

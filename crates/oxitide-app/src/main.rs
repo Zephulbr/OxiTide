@@ -46,6 +46,9 @@ fn main() {
             commands::get_output_devices,
             commands::set_output_device,
             commands::set_preferred_quality,
+            commands::set_exclusive,
+            commands::set_exclusive_fallback,
+            commands::get_audio_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running OxiTide");

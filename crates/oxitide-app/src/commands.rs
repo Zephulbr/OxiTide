@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use oxitide_audio::engine::{Engine, EngineCmd, PlaybackState};
 use oxitide_audio::fetch::HttpFetcher;
+use oxitide_audio::output::{ExclusiveFallback, OutputMode};
 use oxitide_audio::queue::{QueueItem, RepeatMode};
 use oxitide_tidal::auth::{self, SessionInfo};
 use oxitide_tidal::client::TidalClient;
@@ -26,6 +27,13 @@ pub struct LoginPrompt {
 pub struct SessionInfoDto {
     pub country_code: String,
     pub user_id: u64,
+}
+
+#[derive(Serialize)]
+pub struct AudioStatusDto {
+    pub output_mode: OutputMode,
+    pub bit_perfect: bool,
+    pub notice: Option<String>,
 }
 
 #[tauri::command]
@@ -342,6 +350,38 @@ pub fn set_preferred_quality(
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
     player.engine.set_quality(quality.to_quality());
     Ok(())
+}
+
+#[tauri::command]
+pub fn set_exclusive(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    let player = state.player().ok_or_else(|| "not logged in".to_string())?;
+    player.engine.set_output_mode(if enabled {
+        OutputMode::Exclusive
+    } else {
+        OutputMode::Shared
+    });
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_exclusive_fallback(
+    state: State<'_, AppState>,
+    mode: ExclusiveFallback,
+) -> Result<(), String> {
+    let player = state.player().ok_or_else(|| "not logged in".to_string())?;
+    player.engine.set_exclusive_fallback(mode);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_audio_status(state: State<'_, AppState>) -> Result<AudioStatusDto, String> {
+    let player = state.player().ok_or_else(|| "not logged in".to_string())?;
+    let status = player.engine.audio_status();
+    Ok(AudioStatusDto {
+        output_mode: status.mode,
+        bit_perfect: status.bit_perfect,
+        notice: status.notice,
+    })
 }
 
 #[cfg(test)]

@@ -29,3 +29,13 @@ Automated gates run on `feat/plan3-bitperfect-gapless` at commit 6ff0370 (all gr
 - `npm --prefix ui run check`: 0 errors, 0 warnings.
 
 The manual checklist items above remain unchecked: they are pending a human run with a real account, browser login, and audio device.
+
+## Plan 3 exclusive check
+
+PENDING a human run with a real DAC/account (Task 4 does not launch the GUI). Run
+`npm --prefix ui run app:dev`, enable the bit-perfect toggle in Settings, and confirm:
+
+- [ ] The DAC/device shows the source sample rate (Windows Sound settings → device properties → Advanced, or a DAC display).
+- [ ] The PlayerBar shows the "Bit-perfect" badge.
+- [ ] Changing the volume still changes loudness.
+- [ ] Open/close is clean (unplugging is covered in Task 9).

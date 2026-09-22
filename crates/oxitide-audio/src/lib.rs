@@ -8,6 +8,8 @@ pub mod output;
 pub mod queue;
 pub mod source;
 #[cfg(windows)]
+pub mod endpoint_volume;
+#[cfg(windows)]
 pub mod wasapi_output;
 
 pub use error::{Error, Result};

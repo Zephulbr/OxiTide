@@ -23,6 +23,9 @@ pub struct PlaybackState {
     pub shuffle: bool,
     pub repeat: crate::queue::RepeatMode,
     pub preferred_quality: Quality,
+    pub output_mode: OutputMode,
+    pub bit_perfect: bool,
+    pub bit_perfect_notice: Option<String>,
     pub queue: Vec<QueueItem>,
 }
 
@@ -160,6 +163,7 @@ impl Engine {
     }
 
     pub fn state(&self) -> PlaybackState {
+        let status = self.inner.output_status.lock().unwrap().clone();
         let q = self.inner.queue.lock().unwrap();
         PlaybackState {
             playing: q.is_playing(),
@@ -171,6 +175,9 @@ impl Engine {
             shuffle: q.shuffle(),
             repeat: q.repeat(),
             preferred_quality: *self.inner.quality.lock().unwrap(),
+            output_mode: status.mode,
+            bit_perfect: status.bit_perfect,
+            bit_perfect_notice: status.notice,
             queue: q.items().to_vec(),
         }
     }
@@ -325,6 +332,7 @@ impl Engine {
             rate: 0,
             channels: 2,
             last_volume: 1.0,
+            exclusive_format: PcmFormat::F32,
         };
         let result = crate::decode::run(source, "mp4", &mut sink);
         let _ = output.stop();
@@ -441,6 +449,7 @@ impl Engine {
             rate: 0,
             channels: 2,
             last_volume: 1.0,
+            exclusive_format: PcmFormat::F32,
         };
         let result = crate::decode::run(source, "mp4", &mut sink);
         let _ = output.stop();
@@ -456,6 +465,7 @@ struct OutputSink<'a> {
     fallback: ExclusiveFallback,
     status: Arc<Mutex<OutputStatus>>,
     last_volume: f32,
+    exclusive_format: PcmFormat,
     generation: Option<(Arc<AtomicU64>, u64)>,
     paused: Arc<AtomicBool>,
     volume: Arc<AtomicU32>,
@@ -467,12 +477,23 @@ struct OutputSink<'a> {
 
 impl PcmSink for OutputSink<'_> {
     fn preferred_format(&self) -> PcmFormat {
-        PcmFormat::F32
+        match self.mode {
+            OutputMode::Shared => PcmFormat::F32,
+            OutputMode::Exclusive => self.exclusive_format,
+        }
     }
 
     fn on_stream_info(&mut self, info: &StreamInfo) -> Result<()> {
         self.rate = info.sample_rate;
         self.channels = info.channels;
+        // An integer source can stay integer through an exclusive output; a
+        // float source cannot, so request shared-style float buffers and let
+        // the exclusive open fail into the configured fallback.
+        self.exclusive_format = if info.is_bit_perfect_candidate() {
+            info.format
+        } else {
+            PcmFormat::F32
+        };
         let spec = AudioOutputSpec {
             device_id: self.device_id.clone(),
             info: *info,
@@ -926,5 +947,94 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         assert_eq!(specs.lock().unwrap()[0].device_id.as_deref(), Some("device-x"));
+    }
+
+    /// An output that always reports the given status, so tests can pin how a
+    /// notice reaches `PlaybackState`.
+    struct FixedStatusOutput {
+        status: OutputStatus,
+    }
+
+    impl AudioOutput for FixedStatusOutput {
+        fn open(&mut self, _spec: &AudioOutputSpec) -> Result<()> {
+            Ok(())
+        }
+        fn start(&mut self) -> Result<()> {
+            Ok(())
+        }
+        fn write(&mut self, _buf: &PcmBuffer) -> Result<()> {
+            Ok(())
+        }
+        fn set_volume(&mut self, _volume: f32) -> Result<()> {
+            Ok(())
+        }
+        fn flush(&mut self) -> Result<()> {
+            Ok(())
+        }
+        fn stop(&mut self) -> Result<()> {
+            Ok(())
+        }
+        fn status(&self) -> OutputStatus {
+            self.status.clone()
+        }
+    }
+
+    fn fixed_status_factory(status: OutputStatus) -> Arc<dyn OutputFactory> {
+        Arc::new(move || -> Box<dyn AudioOutput> {
+            Box::new(FixedStatusOutput { status: status.clone() })
+        })
+    }
+
+    #[test]
+    fn null_output_reports_exclusive_status() {
+        let (plan, files) = fixture_plan();
+        let (factory, _output) = null_factory();
+        let engine = Engine::new(
+            Arc::new(FakeResolver { plan }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            factory,
+            Quality::Lossless,
+        );
+        engine.set_output_mode(OutputMode::Exclusive);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while engine.audio_status().mode != OutputMode::Exclusive
+            && std::time::Instant::now() < deadline
+        {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert_eq!(engine.audio_status().mode, OutputMode::Exclusive);
+        assert!(engine.audio_status().bit_perfect);
+    }
+
+    #[test]
+    fn output_status_notice_flows_to_playback_state() {
+        let (plan, files) = fixture_plan();
+        let status = OutputStatus {
+            mode: OutputMode::Exclusive,
+            bit_perfect: false,
+            notice: Some("volume applied in software; bit-perfect compromised".into()),
+        };
+        let engine = Engine::new(
+            Arc::new(FakeResolver { plan }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            fixed_status_factory(status),
+            Quality::Lossless,
+        );
+        engine.set_output_mode(OutputMode::Exclusive);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while engine.state().bit_perfect_notice.is_none() && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let state = engine.state();
+        assert_eq!(state.output_mode, OutputMode::Exclusive);
+        assert!(!state.bit_perfect);
+        assert_eq!(
+            state.bit_perfect_notice.as_deref(),
+            Some("volume applied in software; bit-perfect compromised")
+        );
     }
 }

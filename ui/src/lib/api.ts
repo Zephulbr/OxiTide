@@ -38,9 +38,17 @@ export interface PlaybackState {
   position_ms: number; duration_ms: number; volume: number;
   shuffle: boolean; repeat: RepeatMode;
   preferred_quality: "low" | "high" | "lossless" | "max";
+  output_mode: "shared" | "exclusive";
+  bit_perfect: boolean;
+  bit_perfect_notice?: string | null;
   queue: QueueItem[];
 }
 export interface OutputDevice { id: string; name: string; is_default: boolean }
+export interface AudioStatus {
+  output_mode: "shared" | "exclusive";
+  bit_perfect: boolean;
+  notice?: string | null;
+}
 export type EngineEvent =
   | ({ type: "state" } & PlaybackState)
   | { type: "now_playing"; [k: string]: unknown }
@@ -90,4 +98,7 @@ export const api = {
   getOutputDevices: () => invoke<OutputDevice[]>("get_output_devices"),
   setOutputDevice: (deviceId: string) => invoke<void>("set_output_device", { deviceId }),
   setPreferredQuality: (quality: "low" | "high" | "lossless" | "max") => invoke<void>("set_preferred_quality", { quality }),
+  setExclusive: (enabled: boolean) => invoke<void>("set_exclusive", { enabled }),
+  setExclusiveFallback: (mode: "shared" | "warn_only") => invoke<void>("set_exclusive_fallback", { mode }),
+  getAudioStatus: () => invoke<AudioStatus>("get_audio_status"),
 };
