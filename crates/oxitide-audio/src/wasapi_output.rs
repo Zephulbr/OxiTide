@@ -178,6 +178,13 @@ impl AudioOutput for WasapiOutput {
             let target = self.resolved_device_id.as_deref().or(self.device_id.as_deref());
             if endpoint_volume::set_master_volume(target, volume).is_ok() {
                 self.software_volume = false;
+                let mut status = self.status.lock().unwrap();
+                if status.notice.as_deref()
+                    == Some("volume applied in software; bit-perfect compromised")
+                {
+                    status.notice = None;
+                    status.bit_perfect = status.mode == OutputMode::Exclusive;
+                }
                 return Ok(());
             }
             self.software_volume = true;
@@ -340,6 +347,7 @@ fn setup_device(
     spec: &AudioOutputSpec,
     lost: &Arc<AtomicBool>,
 ) -> Result<(DeviceSession, DeviceReady)> {
+    platform::ensure_com()?;
     let enumerator = DeviceEnumerator::new().map_err(to_error)?;
     let (device, fell_back) = resolve_device(&enumerator, spec.device_id.as_deref())?;
     let resolved_id = device.get_id().ok();

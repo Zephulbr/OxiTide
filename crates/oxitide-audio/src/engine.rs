@@ -81,6 +81,8 @@ struct Inner {
     paused: AtomicBool,
     volume: AtomicU32, // f32 bits
     position_ms: AtomicU64,
+    /// Track id the current `position_ms` belongs to (0 = none).
+    position_track: AtomicU64,
     /// Pending seek; consumed by the worker.
     seek_target: Mutex<Option<PendingSeek>>,
     /// True while the worker is running a session (used by `PlayPause` to know
@@ -150,6 +152,7 @@ impl Engine {
             paused: AtomicBool::new(false),
             volume: AtomicU32::new(1.0f32.to_bits()),
             position_ms: AtomicU64::new(0),
+            position_track: AtomicU64::new(0),
             seek_target: Mutex::new(None),
             worker_busy: AtomicBool::new(false),
             wake_lock: Mutex::new(()),
@@ -220,7 +223,13 @@ impl Engine {
             }
         };
         if let Some(item) = current {
-            let position = self.inner.position_ms.load(Ordering::SeqCst);
+            let same_track =
+                self.inner.position_track.load(Ordering::SeqCst) == item.track_id;
+            let position = if same_track {
+                self.inner.position_ms.load(Ordering::SeqCst)
+            } else {
+                0
+            };
             *self.inner.seek_target.lock().unwrap() = Some(PendingSeek {
                 track_id: item.track_id,
                 position_ms: position,
@@ -335,6 +344,7 @@ impl Engine {
                     // Show the target immediately; the worker restarts there,
                     // staying paused if the queue is paused.
                     self.inner.position_ms.store(ms, Ordering::SeqCst);
+                    self.inner.position_track.store(item.track_id, Ordering::SeqCst);
                     self.inner.generation.fetch_add(1, Ordering::SeqCst);
                     self.inner.notify_worker();
                 }
@@ -659,7 +669,7 @@ fn run_session(
     let mut stream = start_track(inner, first_item, mode, gen, seek_ms);
     let mut prefetch = start_prefetch(inner, mode, gen);
     let mut frames: u64;
-    let mut last_emit = Instant::now() - Duration::from_secs(1);
+    let mut last_emit;
     loop {
         if inner.generation.load(Ordering::SeqCst) != gen {
             return SessionOutcome::Superseded;
@@ -674,6 +684,8 @@ fn run_session(
         let info = start.info;
         // The stream's absolute starting frame (non-zero only for a seek).
         frames = start.start_frames;
+        last_emit = Instant::now() - Duration::from_secs(1);
+        inner.position_track.store(stream.item.track_id, Ordering::SeqCst);
         if info.sample_rate > 0 {
             inner
                 .position_ms
@@ -713,15 +725,11 @@ fn run_session(
         }
         let channels = info.channels;
         let rate = info.sample_rate;
+        let track_id = stream.item.track_id;
         let mut last_volume = f32::from_bits(inner.volume.load(Ordering::SeqCst));
         loop {
             if inner.generation.load(Ordering::SeqCst) != gen {
                 return SessionOutcome::Superseded;
-            }
-            if inner.paused.load(Ordering::SeqCst) {
-                std::thread::sleep(Duration::from_millis(20));
-                emit_position_if_due(inner, frames, rate, &mut last_emit);
-                continue;
             }
             let volume = f32::from_bits(inner.volume.load(Ordering::SeqCst));
             if (volume - last_volume).abs() >= f32::EPSILON {
@@ -733,6 +741,11 @@ fn run_session(
                 }
                 last_volume = volume;
                 *inner.output_status.lock().unwrap() = output.status();
+            }
+            if inner.paused.load(Ordering::SeqCst) {
+                std::thread::sleep(Duration::from_millis(20));
+                emit_position_if_due(inner, frames, rate, &mut last_emit);
+                continue;
             }
             match stream.rx.recv_timeout(Duration::from_millis(50)) {
                 Ok(Ok(StreamEvent::Samples(buf))) => {
@@ -747,6 +760,7 @@ fn run_session(
                         inner
                             .position_ms
                             .store(frames.saturating_mul(1000) / rate as u64, Ordering::SeqCst);
+                        inner.position_track.store(track_id, Ordering::SeqCst);
                     }
                     emit_position_if_due(inner, frames, rate, &mut last_emit);
                 }
@@ -861,6 +875,7 @@ fn worker_main(inner: Arc<Inner>, mut output: Box<dyn AudioOutput>) {
         }
         // A seek during playback or pause keeps the current paused flag.
         inner.position_ms.store(seek_ms.unwrap_or(0), Ordering::SeqCst);
+        inner.position_track.store(item.track_id, Ordering::SeqCst);
         let mode = *inner.output_mode.lock().unwrap();
         let fallback = *inner.exclusive_fallback.lock().unwrap();
 
@@ -1975,6 +1990,104 @@ mod tests {
             resolved.iter().filter(|&&t| t == 2).count(),
             1,
             "prefetched track 2 resolved more than once: {resolved:?}"
+        );
+    }
+
+    /// Sleeps in `write` so playback takes real time, making mid-track state
+    /// observable.
+    struct ThrottledOutput {
+        inner: NullOutput,
+        delay: Duration,
+    }
+
+    impl AudioOutput for ThrottledOutput {
+        fn open(&mut self, spec: &AudioOutputSpec) -> Result<()> {
+            self.inner.open(spec)
+        }
+        fn start(&mut self) -> Result<()> {
+            self.inner.start()
+        }
+        fn write(&mut self, buf: &PcmBuffer) -> Result<()> {
+            std::thread::sleep(self.delay);
+            self.inner.write(buf)
+        }
+        fn set_volume(&mut self, volume: f32) -> Result<()> {
+            self.inner.set_volume(volume)
+        }
+        fn flush(&mut self) -> Result<()> {
+            self.inner.flush()
+        }
+        fn stop(&mut self) -> Result<()> {
+            self.inner.stop()
+        }
+        fn status(&self) -> OutputStatus {
+            self.inner.status()
+        }
+    }
+
+    /// The approved refinement: a settings change while playing restarts the
+    /// current track at its position, not from the start.
+    #[test]
+    fn settings_change_restarts_at_the_current_position() {
+        let (plan, files) = fixture_plan();
+        let output = NullOutput::new();
+        let engine = Engine::new(
+            Arc::new(FakeResolver { plan }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(ThrottledOutput { inner: output.clone(), delay: Duration::from_millis(30) }),
+            Quality::Lossless,
+        );
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| engine.state().position_ms >= 300 && engine.state().playing);
+        let before = engine.state().position_ms;
+        assert!(before < 1900, "track finished before the setting change: {before}");
+
+        engine.set_output_mode(OutputMode::Exclusive);
+        wait_for(|| output.opens() >= 2);
+        assert!(
+            engine.state().position_ms + 200 >= before,
+            "position reset on restart: {before} -> {}",
+            engine.state().position_ms
+        );
+        assert!(engine.state().playing);
+    }
+
+    /// Regression: a settings change in the window between auto-advance and the
+    /// next track's stream must not apply the previous track's position to the
+    /// next track.
+    #[test]
+    fn settings_change_at_the_queue_boundary_does_not_skip_the_next_track() {
+        let (plan, files) = fixture_plan();
+        let gate = Arc::new(Gate::new());
+        let order = Arc::new(Mutex::new(Vec::new()));
+        let output = NullOutput::new();
+        let engine = Engine::new(
+            Arc::new(GatedResolver { plan, gate: gate.clone(), order: order.clone() }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(output.clone()),
+            Quality::Lossless,
+        );
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 }).unwrap();
+        wait_for_order(&order, 1);
+        gate.release(1);
+        // Track 2's prefetch blocks inside resolve, so the worker is parked at
+        // the boundary with current = track 2 and position_ms = track 1's end.
+        wait_for(|| {
+            output.samples().len() >= 176_400
+                && engine.state().current.map(|i| i.track_id) == Some(2)
+        });
+
+        engine.set_output_mode(OutputMode::Exclusive);
+        gate.release(2);
+
+        // Post-change playback is bit-perfect exclusive, so the restarted track
+        // lands in `i32_samples`; count both variants for the track total.
+        let written = || output.samples().len() + output.i32_samples().len();
+        wait_for(|| !engine.state().playing && written() >= 176_400 * 2);
+        assert_eq!(
+            written(),
+            176_400 * 2,
+            "a boundary settings change must not discard the next track"
         );
     }
 }
