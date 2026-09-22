@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use crate::decode::{AudioFormat, PcmSink};
+use crate::decode::{AudioFormat, PcmBuffer, PcmFormat, PcmSink, StreamInfo};
 use crate::error::{Error, Result};
 use crate::fetch::{self, Fetcher, StreamBuffer};
 use crate::output::AudioOutput;
@@ -432,15 +432,20 @@ struct OutputSink<'a> {
 }
 
 impl PcmSink for OutputSink<'_> {
-    fn on_spec(&mut self, spec: &symphonia::core::audio::AudioSpec) -> Result<()> {
-        self.rate = spec.rate();
-        self.channels = spec.channels().count().max(1) as u16;
+    fn preferred_format(&self) -> PcmFormat {
+        PcmFormat::F32
+    }
+
+    fn on_stream_info(&mut self, info: &StreamInfo) -> Result<()> {
+        self.rate = info.sample_rate;
+        self.channels = info.channels;
         self.output.open(
             self.device_id.as_deref(),
-            AudioFormat { sample_rate: spec.rate(), channels: self.channels },
+            AudioFormat { sample_rate: info.sample_rate, channels: info.channels },
         )
     }
-    fn on_samples(&mut self, samples: &[f32]) -> Result<()> {
+
+    fn on_samples(&mut self, buf: &PcmBuffer) -> Result<()> {
         if let Some((generation, mine)) = &self.generation {
             if generation.load(Ordering::SeqCst) != *mine {
                 return Err(Error::Output("playback superseded".into()));
@@ -451,6 +456,10 @@ impl PcmSink for OutputSink<'_> {
             std::thread::sleep(std::time::Duration::from_millis(20));
             return Ok(());
         }
+        // This sink always prefers F32; an I32 buffer would be a bug.
+        let PcmBuffer::F32(samples) = buf else {
+            return Err(Error::Output("output sink received non-f32 samples".into()));
+        };
         let volume = f32::from_bits(self.volume.load(Ordering::SeqCst));
         if (volume - 1.0).abs() < f32::EPSILON {
             self.output.write(samples)?;
