@@ -793,17 +793,27 @@ fn worker_main(inner: Arc<Inner>, mut output: Box<dyn AudioOutput>) {
         handled_gen = gen_now;
         inner.worker_busy.store(true, Ordering::SeqCst);
 
-        let (item, seek_ms) = {
+        let (item, seek_ms, was_playing) = {
             let _guard = inner.playback_lock.lock().unwrap();
             let q = inner.queue.lock().unwrap();
-            (q.current().cloned(), inner.seek_target.lock().unwrap().take())
+            (
+                q.current().cloned(),
+                inner.seek_target.lock().unwrap().take(),
+                q.is_playing(),
+            )
         };
         let Some(item) = item else {
             continue;
         };
         if seek_ms.is_none() {
+            // A fresh track always starts unpaused.
             inner.paused.store(false, Ordering::SeqCst);
+        } else if !was_playing {
+            // A seek while the queue is stopped stays paused until the user
+            // presses play, so no audio starts behind a "stopped" UI.
+            inner.paused.store(true, Ordering::SeqCst);
         }
+        // A seek during playback or pause keeps the current paused flag.
         inner.position_ms.store(seek_ms.unwrap_or(0), Ordering::SeqCst);
         let mode = *inner.output_mode.lock().unwrap();
         let fallback = *inner.exclusive_fallback.lock().unwrap();
@@ -1007,17 +1017,60 @@ mod tests {
         wait_for(|| engine.state().position_ms >= 1500);
         assert!(!engine.state().playing, "seek while paused must not resume playback");
 
-        let before_resume = output.samples().len();
+        // Let the superseded session's in-flight buffer land, then require the
+        // sample count to be stable: a paused seek must not write audio.
+        let mut settled = output.samples().len();
+        loop {
+            std::thread::sleep(Duration::from_millis(150));
+            let now = output.samples().len();
+            if now == settled {
+                break;
+            }
+            settled = now;
+        }
         std::thread::sleep(Duration::from_millis(150));
         assert_eq!(
             output.samples().len(),
-            before_resume,
+            settled,
             "paused seek must not write audio"
         );
 
         engine.handle(EngineCmd::PlayPause).unwrap();
-        wait_for(|| output.samples().len() > before_resume);
+        wait_for(|| output.samples().len() > settled);
         assert!(engine.state().position_ms >= 1500);
+    }
+
+    /// Regression: seeking after the queue ended must not start audio while
+    /// the UI still reports stopped.
+    #[test]
+    fn seek_after_queue_end_stays_paused_until_resumed() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| !engine.state().playing && output.samples().len() >= 176_400);
+
+        engine.handle(EngineCmd::Seek(1000)).unwrap();
+        wait_for(|| engine.state().position_ms >= 1000);
+        assert!(!engine.state().playing, "seek after queue end must not report playing");
+
+        let mut settled = output.samples().len();
+        loop {
+            std::thread::sleep(Duration::from_millis(150));
+            let now = output.samples().len();
+            if now == settled {
+                break;
+            }
+            settled = now;
+        }
+        std::thread::sleep(Duration::from_millis(150));
+        assert_eq!(
+            output.samples().len(),
+            settled,
+            "stopped seek must not write audio"
+        );
+
+        engine.handle(EngineCmd::PlayPause).unwrap();
+        wait_for(|| output.samples().len() > settled);
     }
 
     /// Regression: `PlayPause` on an empty queue must not latch `paused` true
