@@ -314,12 +314,15 @@ impl Engine {
                 self.emit(EngineEvent::State(self.state()));
             }
             EngineCmd::Seek(ms) => {
-                let playing = {
+                let can_seek = {
                     let q = self.inner.queue.lock().unwrap();
-                    q.current().is_some() && q.is_playing()
+                    q.current().is_some()
                 };
-                if playing {
+                if can_seek {
                     *self.inner.seek_target.lock().unwrap() = Some(ms);
+                    // Show the target immediately; the worker restarts there,
+                    // staying paused if the queue is paused.
+                    self.inner.position_ms.store(ms, Ordering::SeqCst);
                     self.inner.generation.fetch_add(1, Ordering::SeqCst);
                     self.inner.notify_worker();
                 }
@@ -774,7 +777,8 @@ fn worker_main(inner: Arc<Inner>, mut output: Box<dyn AudioOutput>) {
         let gen_now = inner.generation.load(Ordering::SeqCst);
         let ready = {
             let q = inner.queue.lock().unwrap();
-            gen_now != handled_gen && q.current().is_some() && q.is_playing()
+            let seeking = inner.seek_target.lock().unwrap().is_some();
+            gen_now != handled_gen && q.current().is_some() && (q.is_playing() || seeking)
         };
         if !ready {
             if open_spec.is_some() {
@@ -977,11 +981,43 @@ mod tests {
         wait_for(|| engine.state().position_ms > 100);
 
         engine.handle(EngineCmd::Seek(1000)).unwrap();
+        // The handler seeds `position_ms`, so wait for the worker to actually
+        // restart (reopen) before checking the post-seek state.
+        wait_for(|| output.opens() >= 2);
         wait_for(|| engine.state().position_ms >= 1000);
         let state = engine.state();
         assert!(state.position_ms >= 1000, "seek did not land at 1000ms: {}", state.position_ms);
         assert!(state.playing);
         assert!(output.opens() >= 2, "seek must reopen the output to drop buffered audio");
+    }
+
+    /// Regression: a seek issued while paused must apply (position + slider)
+    /// and playback must resume from the target, not from the old position.
+    #[test]
+    fn seek_while_paused_applies_and_resumes_from_the_target() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| engine.state().position_ms > 100);
+
+        engine.handle(EngineCmd::PlayPause).unwrap();
+        wait_for(|| !engine.state().playing);
+
+        engine.handle(EngineCmd::Seek(1500)).unwrap();
+        wait_for(|| engine.state().position_ms >= 1500);
+        assert!(!engine.state().playing, "seek while paused must not resume playback");
+
+        let before_resume = output.samples().len();
+        std::thread::sleep(Duration::from_millis(150));
+        assert_eq!(
+            output.samples().len(),
+            before_resume,
+            "paused seek must not write audio"
+        );
+
+        engine.handle(EngineCmd::PlayPause).unwrap();
+        wait_for(|| output.samples().len() > before_resume);
+        assert!(engine.state().position_ms >= 1500);
     }
 
     /// Regression: `PlayPause` on an empty queue must not latch `paused` true
