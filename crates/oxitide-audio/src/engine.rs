@@ -633,7 +633,7 @@ struct PendingSeek {
 enum SessionOutcome {
     Superseded,
     QueueEnded,
-    OutputError(String),
+    OutputError { message: String, track_id: u64 },
     StreamError(Error),
 }
 
@@ -690,14 +690,23 @@ fn run_session(
                 let _ = output.stop();
             }
             if let Err(e) = output.open(&want) {
-                return SessionOutcome::OutputError(e.to_string());
+                return SessionOutcome::OutputError {
+                    message: e.to_string(),
+                    track_id: stream.item.track_id,
+                };
             }
             if let Err(e) = output.start() {
-                return SessionOutcome::OutputError(e.to_string());
+                return SessionOutcome::OutputError {
+                    message: e.to_string(),
+                    track_id: stream.item.track_id,
+                };
             }
             let volume = f32::from_bits(inner.volume.load(Ordering::SeqCst));
             if let Err(e) = output.set_volume(volume) {
-                return SessionOutcome::OutputError(e.to_string());
+                return SessionOutcome::OutputError {
+                    message: e.to_string(),
+                    track_id: stream.item.track_id,
+                };
             }
             *inner.output_status.lock().unwrap() = output.status();
             *open_spec = Some(want);
@@ -717,7 +726,10 @@ fn run_session(
             let volume = f32::from_bits(inner.volume.load(Ordering::SeqCst));
             if (volume - last_volume).abs() >= f32::EPSILON {
                 if let Err(e) = output.set_volume(volume) {
-                    return SessionOutcome::OutputError(e.to_string());
+                    return SessionOutcome::OutputError {
+                        message: e.to_string(),
+                        track_id: stream.item.track_id,
+                    };
                 }
                 last_volume = volume;
                 *inner.output_status.lock().unwrap() = output.status();
@@ -725,7 +737,10 @@ fn run_session(
             match stream.rx.recv_timeout(Duration::from_millis(50)) {
                 Ok(Ok(StreamEvent::Samples(buf))) => {
                     if let Err(e) = output.write(&buf) {
-                        return SessionOutcome::OutputError(e.to_string());
+                        return SessionOutcome::OutputError {
+                            message: e.to_string(),
+                            track_id: stream.item.track_id,
+                        };
                     }
                     frames += buf.frames(channels);
                     if rate > 0 {
@@ -867,7 +882,7 @@ fn worker_main(inner: Arc<Inner>, mut output: Box<dyn AudioOutput>) {
                 let _ = output.stop();
                 open_spec = None;
             }
-            SessionOutcome::OutputError(message) => {
+            SessionOutcome::OutputError { message, track_id } => {
                 {
                     let mut q = inner.queue.lock().unwrap();
                     q.stop();
@@ -876,7 +891,7 @@ fn worker_main(inner: Arc<Inner>, mut output: Box<dyn AudioOutput>) {
                 // resumes there; `auto_start: false` keeps the worker idle
                 // until the user acts.
                 *inner.seek_target.lock().unwrap() = Some(PendingSeek {
-                    track_id: item.track_id,
+                    track_id,
                     position_ms: inner.position_ms.load(Ordering::SeqCst),
                     auto_start: false,
                 });
@@ -1677,6 +1692,128 @@ mod tests {
             "device loss must not auto-retry opening the output"
         );
         assert!(!engine.state().playing, "device loss must stay paused");
+    }
+
+    /// Opens once, then fails every open and every write while `failing` is
+    /// set. Simulates a device that disappears after the first successful open.
+    struct DisappearingOutput {
+        failing: Arc<AtomicBool>,
+        opens: Arc<std::sync::atomic::AtomicUsize>,
+        samples: Arc<Mutex<Vec<f32>>>,
+    }
+
+    impl AudioOutput for DisappearingOutput {
+        fn open(&mut self, _spec: &AudioOutputSpec) -> Result<()> {
+            let n = self.opens.fetch_add(1, Ordering::SeqCst);
+            if n == 0 || !self.failing.load(Ordering::SeqCst) {
+                Ok(())
+            } else {
+                Err(Error::Output("output device unavailable".into()))
+            }
+        }
+        fn start(&mut self) -> Result<()> {
+            Ok(())
+        }
+        fn write(&mut self, buf: &PcmBuffer) -> Result<()> {
+            if self.failing.load(Ordering::SeqCst) {
+                return Err(Error::Output("output device unavailable".into()));
+            }
+            if let PcmBuffer::F32(v) = buf {
+                self.samples.lock().unwrap().extend_from_slice(v);
+            }
+            Ok(())
+        }
+        fn set_volume(&mut self, _volume: f32) -> Result<()> {
+            Ok(())
+        }
+        fn flush(&mut self) -> Result<()> {
+            Ok(())
+        }
+        fn stop(&mut self) -> Result<()> {
+            Ok(())
+        }
+        fn status(&self) -> OutputStatus {
+            let mut status = OutputStatus::default();
+            if self.failing.load(Ordering::SeqCst) {
+                status.notice = Some("output device disconnected".into());
+            }
+            status
+        }
+    }
+
+    /// Regression: while the device is gone the worker must not retry opening
+    /// the output; it waits for a play press, then recovers.
+    #[test]
+    fn device_loss_does_not_retry_opens_while_gone() {
+        let (plan, files) = fixture_plan();
+        let failing = Arc::new(AtomicBool::new(true));
+        let opens = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let samples = Arc::new(Mutex::new(Vec::new()));
+        let engine = Engine::new(
+            Arc::new(FakeResolver { plan }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(DisappearingOutput {
+                failing: failing.clone(),
+                opens: opens.clone(),
+                samples: samples.clone(),
+            }),
+            Quality::Lossless,
+        );
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| engine.state().bit_perfect_notice.is_some());
+
+        let opens_at_notice = opens.load(Ordering::SeqCst);
+        std::thread::sleep(Duration::from_millis(400));
+        assert_eq!(
+            opens.load(Ordering::SeqCst),
+            opens_at_notice,
+            "device loss must not retry opening the output"
+        );
+        assert!(!engine.state().playing);
+
+        failing.store(false, Ordering::SeqCst);
+        engine.handle(EngineCmd::PlayPause).unwrap();
+        wait_for(|| samples.lock().unwrap().len() > 0);
+        assert!(engine.state().playing, "recovery did not resume playback");
+    }
+
+    /// Regression: a device failure on a later track of a chained session must
+    /// recover at that track's position, not the first track's.
+    #[test]
+    fn device_loss_on_a_later_track_recovers_at_that_tracks_position() {
+        let (plan, files) = fixture_plan();
+        // Track 1 (176,400 samples) plus 250 ms of track 2 (22,050 samples).
+        let remaining = Arc::new(Mutex::new(176_400 + 22_050));
+        let samples = Arc::new(Mutex::new(Vec::new()));
+        let engine = Engine::new(
+            Arc::new(FakeResolver { plan }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(FailAfterOutput { remaining: remaining.clone(), samples: samples.clone() }),
+            Quality::Lossless,
+        );
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 }).unwrap();
+        wait_for(|| engine.state().bit_perfect_notice.is_some());
+        assert_eq!(engine.state().current.map(|i| i.track_id), Some(2));
+        assert!(!engine.state().playing);
+        let first = samples.lock().unwrap().len();
+        assert_eq!(first, 176_400 + 22_050, "the failure did not land mid-track-2");
+        let failure_ms = engine.state().position_ms;
+        assert!(failure_ms > 0, "the failure position was not recorded");
+
+        *remaining.lock().unwrap() = usize::MAX;
+        engine.handle(EngineCmd::PlayPause).unwrap();
+        wait_for(|| !engine.state().playing && samples.lock().unwrap().len() > first);
+        // The output double overshoots the recorded failure by the tail of the
+        // partially written buffer, and the seek target is quantized to
+        // milliseconds, so the exact resume point derives from the recorded
+        // position: recovery must discard exactly that seek target instead of
+        // restarting the track from 0.
+        let discard = (failure_ms * 44_100 / 1000) as usize * 2;
+        assert_eq!(
+            samples.lock().unwrap().len(),
+            first + 176_400 - discard,
+            "recovery must resume the playing track at its failure position"
+        );
     }
 
     /// Wraps `NullOutput` and sleeps in `stop`, widening the window between a
