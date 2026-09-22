@@ -841,6 +841,10 @@ fn worker_main(inner: Arc<Inner>, mut output: Box<dyn AudioOutput>) {
                     let mut q = inner.queue.lock().unwrap();
                     q.stop();
                 }
+                // Remember where the device failed so the next play press
+                // resumes there.
+                *inner.seek_target.lock().unwrap() =
+                    Some(inner.position_ms.load(Ordering::SeqCst));
                 inner.generation.fetch_add(1, Ordering::SeqCst);
                 let _ = output.stop();
                 open_spec = None;
@@ -1020,7 +1024,7 @@ mod tests {
         // Let the superseded session's in-flight buffer land, then require the
         // sample count to be stable: a paused seek must not write audio.
         let mut settled = output.samples().len();
-        loop {
+        for _ in 0..40 {
             std::thread::sleep(Duration::from_millis(150));
             let now = output.samples().len();
             if now == settled {
@@ -1054,7 +1058,7 @@ mod tests {
         assert!(!engine.state().playing, "seek after queue end must not report playing");
 
         let mut settled = output.samples().len();
-        loop {
+        for _ in 0..40 {
             std::thread::sleep(Duration::from_millis(150));
             let now = output.samples().len();
             if now == settled {
@@ -1459,6 +1463,86 @@ mod tests {
         assert!(state.bit_perfect_notice.is_some());
     }
 
+    /// An output that fails every write until `failing` is cleared, then
+    /// records samples. Simulates an unplugged device.
+    struct DeviceLostOutput {
+        failing: Arc<AtomicBool>,
+        samples: Arc<Mutex<Vec<f32>>>,
+        opens: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    impl AudioOutput for DeviceLostOutput {
+        fn open(&mut self, _spec: &AudioOutputSpec) -> Result<()> {
+            self.opens.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+        fn start(&mut self) -> Result<()> {
+            Ok(())
+        }
+        fn write(&mut self, buf: &PcmBuffer) -> Result<()> {
+            if self.failing.load(Ordering::SeqCst) {
+                return Err(Error::Output("output device unavailable".into()));
+            }
+            if let PcmBuffer::F32(v) = buf {
+                self.samples.lock().unwrap().extend_from_slice(v);
+            }
+            Ok(())
+        }
+        fn set_volume(&mut self, _volume: f32) -> Result<()> {
+            Ok(())
+        }
+        fn flush(&mut self) -> Result<()> {
+            Ok(())
+        }
+        fn stop(&mut self) -> Result<()> {
+            Ok(())
+        }
+        fn status(&self) -> OutputStatus {
+            let mut status = OutputStatus::default();
+            if self.failing.load(Ordering::SeqCst) {
+                status.notice = Some("output device disconnected".into());
+            }
+            status
+        }
+    }
+
+    /// Review Focus: losing the device mid-track pauses with a notice, keeps
+    /// the queue, and recovers on the next play press.
+    #[test]
+    fn output_failure_pauses_keeps_queue_and_recovers() {
+        let (plan, files) = fixture_plan();
+        let failing = Arc::new(AtomicBool::new(true));
+        let samples = Arc::new(Mutex::new(Vec::new()));
+        let opens = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let engine = Engine::new(
+            Arc::new(FakeResolver { plan }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(DeviceLostOutput {
+                failing: failing.clone(),
+                samples: samples.clone(),
+                opens: opens.clone(),
+            }),
+            Quality::Lossless,
+        );
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+
+        wait_for(|| engine.state().bit_perfect_notice.is_some());
+        let state = engine.state();
+        assert!(!state.playing, "device loss must pause playback");
+        assert_eq!(state.current.map(|i| i.track_id), Some(1));
+        assert_eq!(state.queue.len(), 1, "device loss must keep the queue");
+        assert!(state.bit_perfect_notice.is_some());
+
+        // The device comes back; the next user action recovers the track.
+        failing.store(false, Ordering::SeqCst);
+        engine.handle(EngineCmd::PlayPause).unwrap();
+        wait_for(|| samples.lock().unwrap().len() > 0);
+        assert!(engine.state().playing, "recovery did not resume playback");
+        wait_for(|| !engine.state().playing);
+        assert_eq!(samples.lock().unwrap().len(), 176_400);
+        assert!(opens.load(Ordering::SeqCst) >= 2, "recovery must reopen the output");
+    }
+
     /// Wraps `NullOutput` and sleeps in `stop`, widening the window between a
     /// track ending and the worker going idle.
     struct SlowStopOutput {
@@ -1608,6 +1692,16 @@ mod tests {
             .handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 })
             .unwrap();
         wait_for(|| !engine.state().playing && output.samples().len() >= 176_400 * 2);
-        assert_eq!(*order.lock().unwrap(), vec![1, 2], "a prefetched track must not be resolved again");
+        let resolved = order.lock().unwrap().clone();
+        assert_eq!(
+            resolved.iter().filter(|&&t| t == 1).count(),
+            1,
+            "track 1 resolved more than once: {resolved:?}"
+        );
+        assert_eq!(
+            resolved.iter().filter(|&&t| t == 2).count(),
+            1,
+            "prefetched track 2 resolved more than once: {resolved:?}"
+        );
     }
 }

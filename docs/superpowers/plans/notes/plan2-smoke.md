@@ -59,3 +59,12 @@ release, and confirm:
 - [ ] Audio restarts at the dragged point.
 - [ ] The time label does not jump back.
 - [ ] Seeking near the end clamps without an error.
+
+## Plan 3 hot-plug check
+
+PENDING a human run with a real DAC/account (Task 9 does not launch the GUI). Run
+`npm --prefix ui run app:dev` with a USB DAC and bit-perfect mode enabled, then confirm:
+
+- [ ] Unplugging the DAC mid-track pauses playback, shows the amber "output device disconnected" notice in the PlayerBar, and keeps the queue.
+- [ ] Replugging the DAC and pressing play resumes at approximately the failure point; the notice clears on the next successful open.
+- [ ] A stored device that no longer exists (renamed/disabled in Windows sound settings before starting) falls back to the system default with the "selected output device unavailable; using system default" notice instead of failing.
