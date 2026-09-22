@@ -18,3 +18,14 @@
 - [ ] Settings lists output devices and changing quality persists.
 - [ ] A track at Max (Hi-Res) plays (24-bit/192 kHz source is decoded).
 - [ ] Logging out stops playback and clears the queue.
+
+## Results (2026-09-22)
+
+Automated gates run on `feat/plan3-bitperfect-gapless` at commit 6ff0370 (all green):
+
+- `cargo test --workspace`: 97 passed, 0 failed, 1 ignored (the ignored test is `wasapi_output::tests::opens_default_device_and_plays_a_second_of_silence`, which requires an audio device; breakdown: oxitide-app 11, oxitide-audio 45 + 1 ignored, pipeline integration 1, oxitide-tidal 40).
+- `cargo clippy --workspace -- -D warnings`: clean, exit 0, no warnings.
+- `npm --prefix ui test`: 5 passed, 0 failed (2 files).
+- `npm --prefix ui run check`: 0 errors, 0 warnings.
+
+The manual checklist items above remain unchecked: they are pending a human run with a real account, browser login, and audio device.
