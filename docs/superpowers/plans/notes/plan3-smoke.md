@@ -3,8 +3,8 @@
 > Requires a human, a logged-in TIDAL account, a browser login, and an audio
 > device (ideally a USB DAC). Run with `npm --prefix ui run app:dev`.
 
-## Automated checks
-- cargo test --workspace: 136 passed, 0 failed, 1 ignored (oxitide-app 15, oxitide-audio 80 + 1 ignored [requires an audio device], oxitide-audio pipeline 1, oxitide-tidal 40, doc-tests 0); run twice, identical results
+## Automated checks (tree at cefc0117b2e5dd6361d8f3d265e4cd7b5247ac06)
+- cargo test --workspace: 138 passed, 0 failed, 1 ignored (oxitide-app 15, oxitide-audio 82 + 1 ignored [requires an audio device], oxitide-audio pipeline 1, oxitide-tidal 40, doc-tests 0); run three times, identical results (one run concurrently with vitest)
 - cargo clippy --workspace -- -D warnings: clean, 0 warnings (exit 0)
 - npm --prefix ui test: 7 passed, 0 failed across 2 files (format 2, player 5); run twice, identical results
 - npm --prefix ui run check: 0 errors, 0 warnings (exit 0)
