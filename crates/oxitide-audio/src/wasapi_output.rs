@@ -266,6 +266,22 @@ fn resolve_device(
     Ok((device, wanted.is_some()))
 }
 
+/// True when a default-device change means the device this session opened is
+/// no longer the one we are playing to. Only the render/console default
+/// matters: wasapi reports changes for every flow and role.
+fn default_change_invalidates(
+    opened_default: bool,
+    direction: Direction,
+    role: wasapi::Role,
+    our_id: Option<&str>,
+    new_id: Option<&str>,
+) -> bool {
+    opened_default
+        && direction == Direction::Render
+        && role == wasapi::Role::Console
+        && new_id != our_id
+}
+
 /// Try every negotiated exclusive format in order.
 fn try_exclusive(
     device: &wasapi::Device,
@@ -379,8 +395,14 @@ fn setup_device(
             let lost = lost.clone();
             let our_id = resolved_id.clone();
             let opened_default = spec.device_id.is_none();
-            callbacks.set_default_device_callback(move |_direction, _role, id| {
-                if opened_default && id.as_deref() != our_id.as_deref() {
+            callbacks.set_default_device_callback(move |direction, role, id| {
+                if default_change_invalidates(
+                    opened_default,
+                    direction,
+                    role,
+                    our_id.as_deref(),
+                    id.as_deref(),
+                ) {
                     lost.store(true, Ordering::SeqCst);
                 }
             });
@@ -447,6 +469,45 @@ fn to_error(e: wasapi::WasapiError) -> Error {
 mod tests {
     use super::*;
     use crate::decode::{PcmFormat, StreamInfo};
+
+    #[test]
+    fn default_change_only_invalidates_render_console_defaults() {
+        assert!(default_change_invalidates(
+            true,
+            Direction::Render,
+            wasapi::Role::Console,
+            Some("old"),
+            Some("new")
+        ));
+        assert!(!default_change_invalidates(
+            true,
+            Direction::Render,
+            wasapi::Role::Console,
+            Some("same"),
+            Some("same")
+        ));
+        assert!(!default_change_invalidates(
+            true,
+            Direction::Capture,
+            wasapi::Role::Console,
+            Some("old"),
+            Some("new")
+        ));
+        assert!(!default_change_invalidates(
+            true,
+            Direction::Render,
+            wasapi::Role::Communications,
+            Some("old"),
+            Some("new")
+        ));
+        assert!(!default_change_invalidates(
+            false,
+            Direction::Render,
+            wasapi::Role::Console,
+            Some("old"),
+            Some("new")
+        ));
+    }
 
     #[test]
     #[ignore = "requires an audio device"]
