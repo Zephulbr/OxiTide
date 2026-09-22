@@ -1,4 +1,4 @@
-use oxitide_audio::engine::{EngineEvent, OutputFactory, StreamResolver};
+use oxitide_audio::engine::{EngineEvent, StreamResolver};
 use oxitide_audio::output::{self, AudioOutput, OutputDevice};
 use oxitide_audio::source;
 use oxitide_tidal::client::TidalClient;
@@ -36,20 +36,16 @@ impl StreamResolver for TidalResolver {
     }
 }
 
-/// The real output factory: one `WasapiOutput` per track. Falling back to a
-/// silent `NullOutput` on non-Windows keeps the crate building elsewhere.
-pub struct RealOutputs;
-
-impl OutputFactory for RealOutputs {
-    fn create(&self) -> Box<dyn AudioOutput> {
-        #[cfg(windows)]
-        {
-            Box::new(oxitide_audio::wasapi_output::WasapiOutput::new())
-        }
-        #[cfg(not(windows))]
-        {
-            Box::new(oxitide_audio::output::NullOutput::new())
-        }
+/// The real output: a WASAPI device on Windows, silent `NullOutput` elsewhere
+/// (keeps the crate building on non-Windows dev machines).
+pub fn real_output() -> Box<dyn AudioOutput> {
+    #[cfg(windows)]
+    {
+        Box::new(oxitide_audio::wasapi_output::WasapiOutput::new())
+    }
+    #[cfg(not(windows))]
+    {
+        Box::new(oxitide_audio::output::NullOutput::new())
     }
 }
 

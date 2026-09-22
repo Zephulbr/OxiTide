@@ -11,6 +11,9 @@ export interface PlayerState {
   shuffle: boolean;
   repeat: RepeatMode;
   preferred_quality: "low" | "high" | "lossless" | "max";
+  output_mode: "shared" | "exclusive";
+  bit_perfect: boolean;
+  bit_perfect_notice: string | null;
   queue: QueueItem[];
   error: string;
 }
@@ -20,6 +23,7 @@ export function emptyState(): PlayerState {
     playing: false, buffering: false, current: null, position_ms: 0,
     duration_ms: 0, volume: 1, shuffle: false, repeat: "off",
     preferred_quality: "lossless", queue: [], error: "",
+    output_mode: "shared", bit_perfect: false, bit_perfect_notice: null,
   };
 }
 
@@ -40,12 +44,24 @@ export function reduce(state: PlayerState, event: EngineEvent): PlayerState {
   }
 }
 
+/** Keeps the slider pinned to the requested position until the engine catches up. */
+export function reconcileSeek(pending: number | null, event: EngineEvent): number | null {
+  if (pending === null) return null;
+  if (event.type === "position" || event.type === "state") {
+    return Math.abs(event.position_ms - pending) <= 500 ? null : pending;
+  }
+  if (event.type === "error" || event.type === "now_playing") return null;
+  return pending;
+}
+
 export function createPlayer() {
   let state = $state<PlayerState>(emptyState());
+  let pendingSeek = $state<number | null>(null);
 
   async function init() {
     await listen<EngineEvent>("playback_event", (event) => {
       state = reduce(state, event.payload);
+      pendingSeek = reconcileSeek(pendingSeek, event.payload);
     });
     try {
       const snapshot = await api.getPlaybackState();
@@ -55,13 +71,19 @@ export function createPlayer() {
     }
   }
 
+  function seek(ms: number) {
+    pendingSeek = ms;
+    return api.seek(ms);
+  }
+
   return {
     get state() { return state; },
+    get pendingSeek() { return pendingSeek; },
     init,
     playPause: () => api.playPause(),
     next: () => api.next(),
     prev: () => api.prev(),
-    seek: (ms: number) => api.seek(ms),
+    seek,
     setVolume: (v: number) => api.setVolume(v),
     setShuffle: (enabled: boolean) => api.setShuffle(enabled),
     setRepeat: (mode: RepeatMode) => api.setRepeat(mode),

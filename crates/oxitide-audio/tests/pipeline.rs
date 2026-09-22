@@ -32,7 +32,7 @@ async fn resolve_plan_fetch_demux_decode_pipeline() {
 
     let plan = source::plan_from_info(&info).unwrap();
     assert_eq!(plan.codec.as_deref(), Some("flac"));
-    assert_eq!(plan.media_urls, vec![format!("{}/tone.mp4", server.uri())]);
+    assert_eq!(plan.media_urls(), vec![format!("{}/tone.mp4", server.uri())]);
 
     // `HttpFetcher` wraps a blocking client with its own runtime; create and
     // drop it inside the blocking task so no runtime is dropped on the async

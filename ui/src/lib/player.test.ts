@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { reduce, emptyState, type PlayerState } from "./player.svelte";
+import { reduce, emptyState, reconcileSeek, type PlayerState } from "./player.svelte";
 
 describe("player reducer", () => {
   it("applies a state event", () => {
     const next = reduce(emptyState(), {
       type: "state", playing: true, buffering: false, current: null,
       position_ms: 0, duration_ms: 0, volume: 0.5, shuffle: false,
-      repeat: "off", preferred_quality: "lossless", queue: [],
+      repeat: "off", preferred_quality: "lossless",
+      output_mode: "shared", bit_perfect: false, bit_perfect_notice: null,
+      queue: [],
     });
     expect(next.playing).toBe(true);
     expect(next.volume).toBe(0.5);
@@ -24,5 +26,21 @@ describe("player reducer", () => {
   it("captures errors", () => {
     const next = reduce(emptyState(), { type: "error", code: "auth", message: "nope" });
     expect(next.error).toBe("nope");
+  });
+});
+
+describe("seek reconciliation", () => {
+  it("releases the pending position when the engine catches up", () => {
+    expect(
+      reconcileSeek(1000, { type: "position", position_ms: 100, duration_ms: 2000 }),
+    ).toBe(1000);
+    expect(
+      reconcileSeek(1000, { type: "position", position_ms: 1100, duration_ms: 2000 }),
+    ).toBeNull();
+  });
+
+  it("clears the pending position on errors and track changes", () => {
+    expect(reconcileSeek(1000, { type: "error", code: "x", message: "y" })).toBeNull();
+    expect(reconcileSeek(1000, { type: "now_playing", item: null })).toBeNull();
   });
 });

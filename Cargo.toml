@@ -19,3 +19,5 @@ quick-xml = "0.42"
 symphonia = { version = "0.6", features = ["flac", "isomp4", "pcm"] }
 rtrb = "0.4"
 base64 = "0.22"
+toml = "1"
+directories = "6"

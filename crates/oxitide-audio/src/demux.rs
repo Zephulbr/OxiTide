@@ -23,6 +23,8 @@ impl Read for StreamBufferSource {
             .read_at(self.pos as usize, out)
             .map_err(|e| io::Error::other(e.to_string()))?;
         self.pos += n as u64;
+        // Free decoded bytes so a long stream stays bounded.
+        self.buffer.consume_to(self.pos as usize);
         Ok(n)
     }
 }

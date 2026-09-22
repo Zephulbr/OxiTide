@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
@@ -17,6 +18,9 @@ pub struct HttpFetcher {
 const MAX_ATTEMPTS: u32 = 3;
 /// Cap on any single retry wait (e.g. a large `Retry-After`).
 const MAX_RETRY_WAIT: Duration = Duration::from_secs(5);
+/// Cap on unconsumed buffered bytes; the downloader waits for the decoder to
+/// catch up before fetching another segment.
+pub const MAX_BUFFERED_BYTES: usize = 2 * 1024 * 1024;
 
 impl HttpFetcher {
     pub fn new() -> Result<Self> {
@@ -112,6 +116,8 @@ impl Fetcher for MapFetcher {
 
 struct State {
     data: Vec<u8>,
+    /// Absolute offset of `data[0]`; grows as consumed bytes are released.
+    start: usize,
     done: bool,
     error: Option<String>,
 }
@@ -119,15 +125,26 @@ struct State {
 pub struct StreamBuffer {
     state: Mutex<State>,
     cond: Condvar,
+    cancelled: AtomicBool,
 }
 
 impl StreamBuffer {
     pub fn new() -> Arc<Self> {
-        Arc::new(Self { state: Mutex::new(State { data: Vec::new(), done: false, error: None }), cond: Condvar::new() })
+        Arc::new(Self {
+            state: Mutex::new(State { data: Vec::new(), start: 0, done: false, error: None }),
+            cond: Condvar::new(),
+            cancelled: AtomicBool::new(false),
+        })
     }
 
     pub fn push(&self, bytes: &[u8]) {
+        if self.cancelled.load(Ordering::SeqCst) {
+            return;
+        }
         let mut s = self.state.lock().unwrap();
+        if s.error.is_some() {
+            return;
+        }
         s.data.extend_from_slice(bytes);
         self.cond.notify_all();
     }
@@ -140,35 +157,88 @@ impl StreamBuffer {
 
     pub fn fail(&self, message: String) {
         let mut s = self.state.lock().unwrap();
-        s.error = Some(message);
+        if s.error.is_none() {
+            s.error = Some(message);
+        }
         s.done = true;
         self.cond.notify_all();
     }
 
-    /// Block until `pos` is buffered or the stream ends. Returns the currently
-    /// buffered length, or a typed error if the download failed.
+    /// Cancel the stream: blocked readers/downloaders wake and exit. Used when
+    /// a track is superseded (next/prev/seek/clear).
+    pub fn cancel(&self) {
+        self.cancelled.store(true, Ordering::SeqCst);
+        let mut s = self.state.lock().unwrap();
+        if s.error.is_none() {
+            s.error = Some("cancelled".into());
+        }
+        s.done = true;
+        self.cond.notify_all();
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::SeqCst)
+    }
+
+    pub fn is_done(&self) -> bool {
+        self.state.lock().unwrap().done
+    }
+
+    /// Number of unconsumed bytes currently held in memory.
+    pub fn buffered_bytes(&self) -> usize {
+        self.state.lock().unwrap().data.len()
+    }
+
+    /// Release everything before absolute offset `pos`. The demuxer calls this
+    /// after every read so a long stream never grows without bound.
+    pub fn consume_to(&self, pos: usize) {
+        let mut s = self.state.lock().unwrap();
+        if pos <= s.start {
+            return;
+        }
+        let drop = (pos - s.start).min(s.data.len());
+        s.data.drain(..drop);
+        s.start += drop;
+        self.cond.notify_all();
+    }
+
+    /// Block until fewer than `cap` unconsumed bytes are buffered, or the
+    /// stream is done/cancelled. Downloader backpressure.
+    pub fn wait_room(&self, cap: usize) {
+        let mut s = self.state.lock().unwrap();
+        while s.data.len() >= cap && !s.done {
+            s = self.cond.wait(s).unwrap();
+        }
+    }
+
+    /// Block until `pos` is buffered or the stream ends. Returns the absolute
+    /// end offset of the buffered range, or a typed error if the download
+    /// failed or was cancelled.
     pub fn wait_len(&self, pos: usize) -> Result<usize> {
         let mut s = self.state.lock().unwrap();
         loop {
             if let Some(err) = &s.error {
                 return Err(Error::Fetch(err.clone()));
             }
-            if pos < s.data.len() || s.done {
-                return Ok(s.data.len());
+            let end = s.start + s.data.len();
+            if pos < end || s.done {
+                return Ok(end);
             }
             s = self.cond.wait(s).unwrap();
         }
     }
 
     pub fn read_at(&self, pos: usize, out: &mut [u8]) -> Result<usize> {
-        let len = self.wait_len(pos)?;
-        if pos >= len {
+        let end = self.wait_len(pos)?;
+        if pos >= end {
             return Ok(0);
         }
         let s = self.state.lock().unwrap();
-        let end = (pos + out.len()).min(len);
-        let n = end - pos;
-        out[..n].copy_from_slice(&s.data[pos..end]);
+        if pos < s.start {
+            return Err(Error::Fetch("requested bytes were already released".into()));
+        }
+        let n = out.len().min(s.start + s.data.len() - pos);
+        out[..n].copy_from_slice(&s.data[pos - s.start..pos - s.start + n]);
         Ok(n)
     }
 }
@@ -191,15 +261,23 @@ fn get_with_retry(fetcher: &dyn Fetcher, url: &str) -> Result<Vec<u8>> {
     Err(last.expect("at least one attempt"))
 }
 
-/// Download every part of `plan` in order into `buffer`. Runs on the calling
-/// thread; intended to be spawned via `std::thread::spawn`.
+/// Download every part of `plan` in order into `buffer`, waiting for the
+/// consumer when the buffer is full. Runs on the calling thread; intended to
+/// be spawned via `std::thread::spawn`.
 pub fn download(buffer: Arc<StreamBuffer>, fetcher: Arc<dyn Fetcher>, plan: StreamPlan) {
     let mut urls = Vec::new();
     if let Some(init) = &plan.init_url {
         urls.push(init.clone());
     }
-    urls.extend(plan.media_urls.iter().cloned());
+    urls.extend(plan.segments.iter().map(|s| s.url.clone()));
     for url in urls {
+        if buffer.is_cancelled() {
+            return;
+        }
+        buffer.wait_room(MAX_BUFFERED_BYTES);
+        if buffer.is_cancelled() {
+            return;
+        }
         match get_with_retry(fetcher.as_ref(), &url) {
             Ok(bytes) => buffer.push(&bytes),
             Err(e) => {
@@ -214,6 +292,7 @@ pub fn download(buffer: Arc<StreamBuffer>, fetcher: Arc<dyn Fetcher>, plan: Stre
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::source::Segment;
 
     #[test]
     fn download_pushes_all_parts_in_order() {
@@ -223,7 +302,17 @@ mod tests {
                 .with("a", b"AAA".to_vec())
                 .with("b", b"BB".to_vec()),
         );
-        let plan = StreamPlan { init_url: Some("init".into()), media_urls: vec!["a".into(), "b".into()], codec: None, sample_rate: None, bit_depth: None };
+        let plan = StreamPlan {
+            init_url: Some("init".into()),
+            segments: vec![
+                Segment { url: "a".into(), start_ticks: 0, duration_ticks: 0 },
+                Segment { url: "b".into(), start_ticks: 0, duration_ticks: 0 },
+            ],
+            timescale: 0,
+            codec: None,
+            sample_rate: None,
+            bit_depth: None,
+        };
         let buf = StreamBuffer::new();
         download(buf.clone(), fetcher, plan);
         let mut out = [0u8; 9];
@@ -234,7 +323,14 @@ mod tests {
     #[test]
     fn fetch_failure_is_reported_to_readers() {
         let fetcher = Arc::new(MapFetcher::default());
-        let plan = StreamPlan { init_url: None, media_urls: vec!["missing".into()], codec: None, sample_rate: None, bit_depth: None };
+        let plan = StreamPlan {
+            init_url: None,
+            segments: vec![Segment { url: "missing".into(), start_ticks: 0, duration_ticks: 0 }],
+            timescale: 0,
+            codec: None,
+            sample_rate: None,
+            bit_depth: None,
+        };
         let buf = StreamBuffer::new();
         download(buf.clone(), fetcher, plan);
         assert!(matches!(buf.wait_len(0), Err(Error::Fetch(_))));
@@ -269,7 +365,14 @@ mod tests {
     #[test]
     fn download_retries_transient_fetch_failures() {
         let fetcher = Arc::new(FlakyFetcher::new(2));
-        let plan = StreamPlan { init_url: None, media_urls: vec!["a".into()], codec: None, sample_rate: None, bit_depth: None };
+        let plan = StreamPlan {
+            init_url: None,
+            segments: vec![Segment { url: "a".into(), start_ticks: 0, duration_ticks: 0 }],
+            timescale: 0,
+            codec: None,
+            sample_rate: None,
+            bit_depth: None,
+        };
         let buf = StreamBuffer::new();
         download(buf.clone(), fetcher.clone(), plan);
         let mut out = [0u8; 2];
@@ -281,10 +384,117 @@ mod tests {
     #[test]
     fn download_fails_after_bounded_attempts() {
         let fetcher = Arc::new(FlakyFetcher::new(usize::MAX));
-        let plan = StreamPlan { init_url: None, media_urls: vec!["a".into()], codec: None, sample_rate: None, bit_depth: None };
+        let plan = StreamPlan {
+            init_url: None,
+            segments: vec![Segment { url: "a".into(), start_ticks: 0, duration_ticks: 0 }],
+            timescale: 0,
+            codec: None,
+            sample_rate: None,
+            bit_depth: None,
+        };
         let buf = StreamBuffer::new();
         download(buf.clone(), fetcher.clone(), plan);
         assert!(matches!(buf.wait_len(0), Err(Error::Fetch(_))));
         assert_eq!(fetcher.calls(), MAX_ATTEMPTS as usize);
+    }
+
+    #[test]
+    fn consume_releases_bytes_and_keeps_absolute_offsets() {
+        let buf = StreamBuffer::new();
+        buf.push(b"AAAA");
+        buf.push(b"BBBB");
+        assert_eq!(buf.buffered_bytes(), 8);
+        buf.consume_to(4);
+        assert_eq!(buf.buffered_bytes(), 4);
+        let mut out = [0u8; 4];
+        let n = buf.read_at(4, &mut out).unwrap();
+        assert_eq!(&out[..n], b"BBBB");
+        buf.consume_to(8);
+        assert_eq!(buf.buffered_bytes(), 0);
+        buf.finish();
+        assert_eq!(buf.read_at(8, &mut out).unwrap(), 0);
+    }
+
+    #[test]
+    fn cancel_wakes_waiting_readers() {
+        let buf = StreamBuffer::new();
+        let waiter = {
+            let buf = buf.clone();
+            std::thread::spawn(move || buf.wait_len(0))
+        };
+        std::thread::sleep(Duration::from_millis(50));
+        buf.cancel();
+        assert!(matches!(waiter.join().unwrap(), Err(Error::Fetch(_))));
+        assert!(buf.is_cancelled());
+    }
+
+    struct ChunkFetcher {
+        chunk: Vec<u8>,
+        calls: Mutex<usize>,
+    }
+
+    impl ChunkFetcher {
+        fn calls(&self) -> usize {
+            *self.calls.lock().unwrap()
+        }
+    }
+
+    impl Fetcher for ChunkFetcher {
+        fn get(&self, _url: &str) -> Result<Vec<u8>> {
+            *self.calls.lock().unwrap() += 1;
+            Ok(self.chunk.clone())
+        }
+    }
+
+    /// Review Focus: a long stream must not grow the buffer without bound.
+    #[test]
+    fn download_is_backpressured_and_bounded() {
+        const CHUNK: usize = 64 * 1024;
+        const SEGMENTS: usize = 64; // 4 MiB total, twice the cap
+        let fetcher = Arc::new(ChunkFetcher { chunk: vec![7u8; CHUNK], calls: Mutex::new(0) });
+        let plan = StreamPlan {
+            init_url: None,
+            segments: (0..SEGMENTS)
+                .map(|i| Segment { url: format!("s{i}"), start_ticks: 0, duration_ticks: 0 })
+                .collect(),
+            timescale: 0,
+            codec: None,
+            sample_rate: None,
+            bit_depth: None,
+        };
+        let buf = StreamBuffer::new();
+        let handle = {
+            let buf = buf.clone();
+            let fetcher = fetcher.clone();
+            std::thread::spawn(move || download(buf, fetcher, plan))
+        };
+
+        // With no consumer, the downloader must stop fetching once the cap is
+        // reached (plus the in-flight segment).
+        std::thread::sleep(Duration::from_millis(200));
+        assert!(
+            buf.buffered_bytes() <= MAX_BUFFERED_BYTES + CHUNK,
+            "buffered {} bytes",
+            buf.buffered_bytes()
+        );
+        assert!(
+            fetcher.calls() < SEGMENTS,
+            "downloader never hit backpressure ({} calls)",
+            fetcher.calls()
+        );
+
+        // Draining releases consumed bytes and lets the downloader finish.
+        let mut pos = 0usize;
+        let mut out = [0u8; CHUNK];
+        loop {
+            let n = buf.read_at(pos, &mut out).unwrap();
+            if n == 0 && buf.is_done() {
+                break;
+            }
+            pos += n;
+            buf.consume_to(pos);
+        }
+        handle.join().unwrap();
+        assert_eq!(pos, CHUNK * SEGMENTS);
     }
 }
