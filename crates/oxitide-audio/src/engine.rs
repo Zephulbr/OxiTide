@@ -372,6 +372,7 @@ enum StreamEvent {
 
 /// A running resolve/fetch/decode pipeline for one track.
 struct TrackStream {
+    item: QueueItem,
     rx: Receiver<Result<StreamEvent>>,
     buffer: Arc<StreamBuffer>,
 }
@@ -392,7 +393,7 @@ fn start_track(
 ) -> TrackStream {
     let (tx, rx) = std::sync::mpsc::sync_channel::<Result<StreamEvent>>(PREFETCH_BUFFERS);
     let buffer = StreamBuffer::new();
-    let stream = TrackStream { rx, buffer: buffer.clone() };
+    let stream = TrackStream { item: item.clone(), rx, buffer: buffer.clone() };
     let inner = inner.clone();
     let item = item.clone();
     let spawned = std::thread::Builder::new()
@@ -404,6 +405,16 @@ fn start_track(
         tracing::error!("failed to spawn decode thread: {e}");
     }
     stream
+}
+
+/// Start decoding the queue item that `on_track_ended` would select next, so
+/// the worker can chain into it without a gap.
+fn start_prefetch(inner: &Arc<Inner>, mode: OutputMode, gen: u64) -> Option<TrackStream> {
+    let next = {
+        let q = inner.queue.lock().unwrap();
+        q.peek_next_index().and_then(|i| q.items().get(i).cloned())
+    };
+    next.map(|item| start_track(inner, &item, mode, gen))
 }
 
 fn decode_track(
@@ -531,6 +542,7 @@ fn run_session(
     gen: u64,
 ) -> SessionOutcome {
     let mut stream = start_track(inner, first_item, mode, gen);
+    let mut prefetch = start_prefetch(inner, mode, gen);
     let mut frames: u64 = 0;
     let mut last_emit = Instant::now() - Duration::from_secs(1);
     loop {
@@ -551,7 +563,9 @@ fn run_session(
             exclusive_fallback: fallback,
         };
         if open_spec.as_ref() != Some(&want) {
-            let _ = output.stop();
+            if open_spec.is_some() {
+                let _ = output.stop();
+            }
             if let Err(e) = output.open(&want) {
                 return SessionOutcome::OutputError(e.to_string());
             }
@@ -623,15 +637,24 @@ fn run_session(
         };
         match next {
             Some(item) => {
-                // Task 7 keeps the output open when the next track's format
-                // matches; for now every track reopens.
-                let _ = output.stop();
-                *open_spec = None;
+                // Use the prefetched stream when it is the right track; the
+                // top of the loop decides whether the output can be reused
+                // (matching StreamInfo) or must reopen (format change).
+                stream = match prefetch.take() {
+                    Some(prefetched) if prefetched.item.track_id == item.track_id => prefetched,
+                    _ => start_track(inner, &item, mode, gen),
+                };
+                prefetch = start_prefetch(inner, mode, gen);
                 inner.position_ms.store(0, Ordering::SeqCst);
                 frames = 0;
-                stream = start_track(inner, &item, mode, gen);
             }
-            None => return SessionOutcome::QueueEnded,
+            None => {
+                // The queue is over, so the worker is about to go idle. Bump
+                // the generation here so a `PlayPause` that raced the worker
+                // clearing `worker_busy` still starts a fresh session.
+                inner.generation.fetch_add(1, Ordering::SeqCst);
+                return SessionOutcome::QueueEnded;
+            }
         }
     }
 }
@@ -917,7 +940,10 @@ mod tests {
     }
 
     /// Regression: a `Next` issued while a track is playing must not cause a
-    /// double advance (duplicate or skipped track).
+    /// double advance (duplicate or skipped track). With lookahead, a
+    /// superseding `Next` abandons the in-flight prefetch and the new session
+    /// may resolve the new current track again, so playback order is checked
+    /// from `NowPlaying` events rather than resolver calls.
     #[test]
     fn next_while_playing_does_not_duplicate_or_skip() {
         let (plan, files) = fixture_plan();
@@ -930,6 +956,13 @@ mod tests {
             Box::new(output),
             Quality::Lossless,
         );
+        let played = Arc::new(Mutex::new(Vec::new()));
+        let played_ref = played.clone();
+        engine.subscribe(Arc::new(move |e| {
+            if let EngineEvent::NowPlaying(Some(item)) = e {
+                played_ref.lock().unwrap().push(item.track_id);
+            }
+        }));
 
         engine
             .handle(EngineCmd::PlayTracks { items: vec![item(1), item(2), item(3)], start: 0 })
@@ -944,7 +977,7 @@ mod tests {
         gate.release(3);
 
         wait_for(|| !engine.state().playing);
-        assert_eq!(*order.lock().unwrap(), vec![1, 2, 3]);
+        assert_eq!(*played.lock().unwrap(), vec![1, 2, 3]);
         assert_eq!(engine.state().current.map(|i| i.track_id), Some(3));
     }
 
@@ -1269,5 +1302,98 @@ mod tests {
             output.samples().len() > 176_400,
             "resume after queue end did not restart playback"
         );
+    }
+
+    /// A resolver over per-track plans that records resolve order.
+    struct PerTrackResolver {
+        plans: HashMap<u64, StreamPlan>,
+        order: Arc<Mutex<Vec<u64>>>,
+    }
+
+    impl StreamResolver for PerTrackResolver {
+        fn resolve(&self, track_id: u64, _quality: Quality) -> Result<StreamPlan> {
+            self.order.lock().unwrap().push(track_id);
+            self.plans
+                .get(&track_id)
+                .cloned()
+                .ok_or_else(|| Error::Manifest(format!("no plan for {track_id}")))
+        }
+    }
+
+    fn plan_for(url: &str, sample_rate: u32, bit_depth: u32) -> StreamPlan {
+        StreamPlan {
+            init_url: None,
+            media_urls: vec![url.into()],
+            codec: Some("flac".into()),
+            sample_rate: Some(sample_rate),
+            bit_depth: Some(bit_depth),
+        }
+    }
+
+    #[test]
+    fn matching_formats_chain_without_reopening() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        engine
+            .handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 })
+            .unwrap();
+
+        wait_for(|| !engine.state().playing && output.samples().len() >= 176_400 * 2);
+        assert_eq!(output.samples().len(), 176_400 * 2);
+        // One open for both tracks; a reopen between tracks would make this 2.
+        assert_eq!(output.opens(), 1, "gapless playback must not reopen between matching tracks");
+        assert_eq!(output.stops(), 1, "gapless playback must not stop between matching tracks");
+    }
+
+    #[test]
+    fn format_change_reopens_at_the_boundary() {
+        let tone16 = std::fs::read("tests/fixtures/tone.mp4").unwrap();
+        let tone48 = std::fs::read("tests/fixtures/tone48.mp4").unwrap();
+        let mut plans = HashMap::new();
+        plans.insert(1, plan_for("mem://t16", 44100, 16));
+        plans.insert(2, plan_for("mem://t48", 48000, 16));
+        let mut files = HashMap::new();
+        files.insert("mem://t16".to_string(), tone16);
+        files.insert("mem://t48".to_string(), tone48);
+        let order = Arc::new(Mutex::new(Vec::new()));
+        let output = NullOutput::new();
+        let engine = Engine::new(
+            Arc::new(PerTrackResolver { plans, order }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(output.clone()),
+            Quality::Lossless,
+        );
+
+        engine
+            .handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 })
+            .unwrap();
+
+        wait_for(|| !engine.state().playing && output.samples().len() >= 176_400 + 192_000);
+        // 2s @ 44.1k stereo + 2s @ 48k stereo.
+        assert_eq!(output.samples().len(), 176_400 + 192_000);
+        assert_eq!(output.opens(), 2, "a format change must reopen the output");
+        assert_eq!(output.stops(), 2, "a format change must stop and reopen");
+        assert_eq!(output.last_spec().map(|s| s.info.sample_rate), Some(48000));
+    }
+
+    #[test]
+    fn prefetched_next_track_is_not_resolved_twice() {
+        let (plan, files) = fixture_plan();
+        let order = Arc::new(Mutex::new(Vec::new()));
+        let mut plans = HashMap::new();
+        plans.insert(1, plan.clone());
+        plans.insert(2, plan);
+        let output = NullOutput::new();
+        let engine = Engine::new(
+            Arc::new(PerTrackResolver { plans, order: order.clone() }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(output.clone()),
+            Quality::Lossless,
+        );
+        engine
+            .handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 })
+            .unwrap();
+        wait_for(|| !engine.state().playing && output.samples().len() >= 176_400 * 2);
+        assert_eq!(*order.lock().unwrap(), vec![1, 2], "a prefetched track must not be resolved again");
     }
 }

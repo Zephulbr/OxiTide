@@ -39,3 +39,13 @@ PENDING a human run with a real DAC/account (Task 4 does not launch the GUI). Ru
 - [ ] The PlayerBar shows the "Bit-perfect" badge.
 - [ ] Changing the volume still changes loudness.
 - [ ] Open/close is clean (unplugging is covered in Task 9).
+
+## Plan 3 gapless check
+
+PENDING a human run with a real account and audio device (Task 7 does not launch the
+GUI). Run `npm --prefix ui run app:dev`, play an album whose tracks share a format
+(most albums), and confirm:
+
+- [ ] Tracks run into each other with no device click or re-open at the boundary.
+- [ ] No audible gap, duplicate, or missing audio between tracks.
+- [ ] The position counter resets at each boundary.

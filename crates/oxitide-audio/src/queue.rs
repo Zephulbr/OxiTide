@@ -119,29 +119,38 @@ impl Queue {
         true
     }
 
-    pub fn on_track_ended(&mut self) -> Option<usize> {
+    /// What `on_track_ended` would select, without mutating. Used to prefetch
+    /// the next track while the current one plays.
+    pub fn peek_next_index(&self) -> Option<usize> {
+        let cur = self.current?;
         if self.items.is_empty() {
-            self.playing = false;
             return None;
         }
-        let cur = self.current?;
         if self.repeat == RepeatMode::One {
-            self.playing = true;
             return Some(cur);
         }
         if cur + 1 < self.items.len() {
-            self.current = Some(cur + 1);
-            self.playing = true;
             return Some(cur + 1);
         }
         if self.repeat == RepeatMode::All {
-            self.current = Some(0);
-            self.playing = true;
             return Some(0);
         }
-        // End of queue with repeat off: stop, keep the last item as current.
-        self.playing = false;
         None
+    }
+
+    pub fn on_track_ended(&mut self) -> Option<usize> {
+        match self.peek_next_index() {
+            Some(index) => {
+                self.current = Some(index);
+                self.playing = true;
+                Some(index)
+            }
+            // End of queue with repeat off: stop, keep the last item current.
+            None => {
+                self.playing = false;
+                None
+            }
+        }
     }
 
     pub fn reorder(&mut self, from: usize, to: usize) -> bool {
@@ -262,6 +271,33 @@ mod tests {
         q.next(); // current = last item
         assert_eq!(q.on_track_ended(), None);
         assert!(!q.is_playing());
+        assert_eq!(q.current_index(), Some(1));
+    }
+
+    #[test]
+    fn peek_next_index_matches_on_track_ended() {
+        for repeat in [RepeatMode::Off, RepeatMode::All, RepeatMode::One] {
+            for start in 0..3 {
+                let mut q = Queue::default();
+                q.play_context((1..=3).map(item).collect(), start);
+                q.set_repeat(repeat);
+                let mut expected = q.clone();
+                assert_eq!(
+                    q.peek_next_index(),
+                    expected.on_track_ended(),
+                    "repeat {repeat:?}, start {start}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn peek_next_index_is_none_when_stopped_at_end() {
+        let mut q = queue(2);
+        q.next(); // last item
+        assert_eq!(q.peek_next_index(), None);
+        // Peeks never mutate.
+        assert!(q.is_playing());
         assert_eq!(q.current_index(), Some(1));
     }
 
