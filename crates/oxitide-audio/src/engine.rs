@@ -2406,4 +2406,57 @@ mod tests {
             "the refetched bytes were not re-cached"
         );
     }
+
+    /// P4-3: the next queue item is downloaded into the cache while the current
+    /// one plays (via the existing lookahead prefetch, now cache-teed), and a
+    /// replay of the queue fetches nothing.
+    #[test]
+    fn next_track_is_prefetched_into_the_cache() {
+        let tone = std::fs::read("tests/fixtures/tone.mp4").unwrap();
+        let mut files = HashMap::new();
+        files.insert("mem://t1".to_string(), tone.clone());
+        files.insert("mem://t2".to_string(), tone);
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let mut plans = HashMap::new();
+        plans.insert(1, cached_plan("mem://t1", 0x1111));
+        plans.insert(2, cached_plan("mem://t2", 0x2222));
+        let order = Arc::new(Mutex::new(Vec::new()));
+        let output = NullOutput::new();
+        let cache = test_cache();
+        let engine = Engine::new(
+            Arc::new(PerTrackResolver { plans, order }),
+            {
+                let calls = calls.clone();
+                let files = files.clone();
+                move || -> Arc<dyn Fetcher> { Arc::new(CountingFetcher { files, calls }) }
+            },
+            Box::new(ThrottledOutput { inner: output.clone(), delay: Duration::from_millis(20) }),
+            Quality::Lossless,
+            cache.clone(),
+            true,
+        );
+        let key1 = CacheKey { track_id: 1, quality: Quality::Lossless, manifest_hash: 0x1111 };
+        let key2 = CacheKey { track_id: 2, quality: Quality::Lossless, manifest_hash: 0x2222 };
+
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 }).unwrap();
+        wait_for(|| cache.lookup(&key2).is_some());
+        assert!(cache.lookup(&key2).is_some(), "the prefetch never filled track 2's entry");
+        assert!(
+            output.samples().len() < 176_400,
+            "track 1 finished before the prefetch was observable"
+        );
+        wait_for(|| !engine.state().playing && output.samples().len() >= 176_400 * 2);
+        assert!(cache.lookup(&key1).is_some(), "track 1 was not cached when it finished");
+        let after_first_play = calls.load(Ordering::SeqCst);
+        assert_eq!(after_first_play, 2, "each track should be fetched exactly once");
+
+        // Replaying the queue is a pure cache read.
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 }).unwrap();
+        wait_for(|| !engine.state().playing && output.samples().len() >= 176_400 * 4);
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            after_first_play,
+            "a replay of a cached queue still fetched"
+        );
+    }
 }

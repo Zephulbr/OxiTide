@@ -39,6 +39,8 @@ pub struct DiskCache {
     dir: PathBuf,
     max_bytes: AtomicU64,
     protected: Mutex<HashSet<PathBuf>>,
+    /// Keys with a writer in flight; a second writer for the same key is refused.
+    in_flight: Mutex<HashSet<CacheKey>>,
     usable: bool,
 }
 
@@ -54,6 +56,7 @@ impl DiskCache {
             dir,
             max_bytes: AtomicU64::new(max_bytes),
             protected: Mutex::new(HashSet::new()),
+            in_flight: Mutex::new(HashSet::new()),
             usable,
         })
     }
@@ -93,50 +96,43 @@ impl DiskCache {
         Some(path)
     }
 
-    /// Creates a `.part` temp file; `None` (and a log) when the cache is unusable.
+    /// Creates a `.part` temp file; `None` (and a log) when the cache is
+    /// unusable or another writer is already in flight for the same key.
     pub fn begin_write(self: &Arc<Self>, key: &CacheKey) -> Option<CacheWriter> {
         if !self.usable {
+            return None;
+        }
+        if !self.in_flight.lock().unwrap().insert(*key) {
+            tracing::debug!("cache entry {} is already being written", key.file_name());
             return None;
         }
         let part = self.part_for(key);
         let _ = fs::remove_file(&part);
         match OpenOptions::new().write(true).create_new(true).open(&part) {
-            Ok(file) => {
-                Some(CacheWriter { cache: self.clone(), key: *key, part, file, bytes: 0 })
-            }
+            Ok(file) => Some(CacheWriter {
+                cache: self.clone(),
+                key: *key,
+                part,
+                file: Some(file),
+                bytes: 0,
+                finished: false,
+            }),
             Err(e) => {
                 tracing::warn!("cache write for {} failed: {e}", key.file_name());
+                self.in_flight.lock().unwrap().remove(key);
                 None
             }
         }
     }
 
     /// Atomic publish: fsync temp, rename to the final name, touch mtime, evict.
-    pub fn commit(&self, writer: CacheWriter) {
-        let CacheWriter { key, part, file, .. } = writer;
-        if let Err(e) = file.sync_all() {
-            tracing::warn!("cache fsync for {} failed: {e}", key.file_name());
-        }
-        drop(file);
-        let final_path = self.path_for(&key);
-        if final_path.exists() {
-            let _ = fs::remove_file(&final_path);
-        }
-        if let Err(e) = fs::rename(&part, &final_path) {
-            tracing::warn!("cache commit for {} failed: {e}", key.file_name());
-            let _ = fs::remove_file(&part);
-            return;
-        }
-        if let Ok(file) = OpenOptions::new().write(true).open(&final_path) {
-            let _ = file.set_modified(SystemTime::now());
-        }
-        self.evict_to_fit();
+    pub fn commit(&self, mut writer: CacheWriter) {
+        writer.finish_commit();
     }
 
     /// Deletes a temp file after a cancelled/failed download.
-    pub fn abort(&self, writer: CacheWriter) {
-        let CacheWriter { part, .. } = writer;
-        let _ = fs::remove_file(&part);
+    pub fn abort(&self, mut writer: CacheWriter) {
+        writer.finish_abort();
     }
 
     pub fn remove(&self, key: &CacheKey) {
@@ -252,8 +248,9 @@ pub struct CacheWriter {
     cache: Arc<DiskCache>,
     key: CacheKey,
     part: PathBuf,
-    file: File,
+    file: Option<File>,
     bytes: u64,
+    finished: bool,
 }
 
 impl CacheWriter {
@@ -263,21 +260,68 @@ impl CacheWriter {
     }
 
     pub fn write_all(&mut self, data: &[u8]) -> io::Result<()> {
-        self.file.write_all(data)?;
+        let file = self
+            .file
+            .as_mut()
+            .ok_or_else(|| io::Error::other("cache writer already finished"))?;
+        file.write_all(data)?;
         self.bytes += data.len() as u64;
         Ok(())
     }
 
     /// Publish the temp file under its final name.
-    pub fn commit(self) {
-        let cache = self.cache.clone();
-        cache.commit(self);
+    pub fn commit(mut self) {
+        self.finish_commit();
     }
 
     /// Drop a cancelled/failed download.
-    pub fn abort(self) {
-        let cache = self.cache.clone();
-        cache.abort(self);
+    pub fn abort(mut self) {
+        self.finish_abort();
+    }
+
+    fn finish_commit(&mut self) {
+        if self.finished {
+            return;
+        }
+        self.finished = true;
+        self.cache.in_flight.lock().unwrap().remove(&self.key);
+        if let Some(file) = self.file.take() {
+            if let Err(e) = file.sync_all() {
+                tracing::warn!("cache fsync for {} failed: {e}", self.key.file_name());
+            }
+            drop(file);
+        }
+        let final_path = self.cache.path_for(&self.key);
+        if final_path.exists() {
+            let _ = fs::remove_file(&final_path);
+        }
+        if let Err(e) = fs::rename(&self.part, &final_path) {
+            tracing::warn!("cache commit for {} failed: {e}", self.key.file_name());
+            let _ = fs::remove_file(&self.part);
+            return;
+        }
+        if let Ok(file) = OpenOptions::new().write(true).open(&final_path) {
+            let _ = file.set_modified(SystemTime::now());
+        }
+        self.cache.evict_to_fit();
+    }
+
+    fn finish_abort(&mut self) {
+        if self.finished {
+            return;
+        }
+        self.finished = true;
+        self.cache.in_flight.lock().unwrap().remove(&self.key);
+        self.file.take();
+        let _ = fs::remove_file(&self.part);
+    }
+}
+
+impl Drop for CacheWriter {
+    fn drop(&mut self) {
+        // A writer that was neither committed nor explicitly aborted (e.g. a
+        // dropped download) must not leave its temp file or in-flight key.
+        self.finish_abort();
     }
 }
 
@@ -346,6 +390,34 @@ mod tests {
     }
 
     #[test]
+    fn begin_write_is_single_flight_per_key() {
+        let dir = temp_dir();
+        let cache = DiskCache::new(dir.clone(), 1 << 20);
+        let key = key(1);
+        let first = cache.begin_write(&key).unwrap();
+        assert!(cache.begin_write(&key).is_none(), "a second writer was allowed");
+        first.abort();
+        assert!(cache.begin_write(&key).is_some(), "the key stayed in flight after abort");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn dropping_a_writer_aborts_it() {
+        let dir = temp_dir();
+        let cache = DiskCache::new(dir.clone(), 1 << 20);
+        let key = key(1);
+        {
+            let _writer = cache.begin_write(&key).unwrap();
+        }
+        assert!(
+            !dir.join(format!("{}.part", key.file_name())).exists(),
+            "the part survived the drop"
+        );
+        assert!(cache.begin_write(&key).is_some(), "the key stayed in flight after drop");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn lookup_touches_mtime() {
         let dir = temp_dir();
         let cache = DiskCache::new(dir.clone(), 1 << 20);
@@ -399,9 +471,8 @@ mod tests {
     fn cleanup_removes_stale_parts() {
         let dir = temp_dir();
         let cache = DiskCache::new(dir.clone(), 1 << 20);
-        let stale = cache.begin_write(&key(1)).unwrap();
         let stale_path = dir.join(format!("{}.part", key(1).file_name()));
-        drop(stale);
+        fs::write(&stale_path, b"stale").unwrap();
         let fresh = cache.begin_write(&key(2)).unwrap();
         set_mtime(&stale_path, SystemTime::now() - Duration::from_secs(2 * 3600));
         cache.cleanup();
