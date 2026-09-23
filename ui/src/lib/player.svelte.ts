@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
-import { api, type EngineEvent, type PlaybackState, type QueueItem, type RepeatMode } from "./api";
+import { api, type EngineEvent, type PlaybackState, type Quality, type QueueItem, type RepeatMode, type StreamMeta } from "./api";
 
 export interface PlayerState {
   playing: boolean;
@@ -10,11 +10,12 @@ export interface PlayerState {
   volume: number;
   shuffle: boolean;
   repeat: RepeatMode;
-  preferred_quality: "low" | "high" | "lossless" | "max";
+  preferred_quality: Quality;
   output_mode: "shared" | "exclusive";
   bit_perfect: boolean;
   bit_perfect_notice: string | null;
   queue: QueueItem[];
+  stream: StreamMeta | null;
   error: string;
 }
 
@@ -22,7 +23,7 @@ export function emptyState(): PlayerState {
   return {
     playing: false, buffering: false, current: null, position_ms: 0,
     duration_ms: 0, volume: 1, shuffle: false, repeat: "off",
-    preferred_quality: "lossless", queue: [], error: "",
+    preferred_quality: "lossless", queue: [], stream: null, error: "",
     output_mode: "shared", bit_perfect: false, bit_perfect_notice: null,
   };
 }
