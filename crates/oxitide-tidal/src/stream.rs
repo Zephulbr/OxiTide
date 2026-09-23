@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::client::TidalClient;
 use crate::error::Result;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Quality {
     Low,
@@ -22,13 +22,37 @@ impl Quality {
             Quality::Max => "HI_RES_LOSSLESS",
         }
     }
+
+    /// Lowercase name used in cache file names and user-facing errors.
+    pub fn label(self) -> &'static str {
+        match self {
+            Quality::Low => "low",
+            Quality::High => "high",
+            Quality::Lossless => "lossless",
+            Quality::Max => "max",
+        }
+    }
+
+    /// Parse the `audioQuality` value returned by `playbackinfo`.
+    pub fn from_tidal_param(value: &str) -> Option<Quality> {
+        match value.to_ascii_uppercase().as_str() {
+            "LOW" => Some(Quality::Low),
+            "HIGH" => Some(Quality::High),
+            "LOSSLESS" => Some(Quality::Lossless),
+            "HI_RES_LOSSLESS" | "HI_RES" | "MASTER" => Some(Quality::Max),
+            _ => None,
+        }
+    }
 }
 
 /// The decoded `playbackinfo` response. `manifest` is raw bytes: XML for DASH,
 /// JSON for BTS.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlaybackInfo {
+    /// The quality that was requested.
     pub quality: Quality,
+    /// The quality the API says it served, when reported.
+    pub actual_quality: Option<Quality>,
     pub manifest_mime: String,
     pub manifest: Vec<u8>,
 }
@@ -39,6 +63,8 @@ struct RawPlaybackInfo {
     manifest_mime_type: String,
     #[serde(default)]
     manifest: String,
+    #[serde(default, rename = "audioQuality")]
+    audio_quality: Option<String>,
 }
 
 impl TidalClient {
@@ -58,6 +84,7 @@ impl TidalClient {
             .map_err(|e| crate::error::Error::Auth(format!("bad manifest base64: {e}")))?;
         Ok(PlaybackInfo {
             quality,
+            actual_quality: raw.audio_quality.as_deref().and_then(Quality::from_tidal_param),
             manifest_mime: raw.manifest_mime_type,
             manifest,
         })
@@ -89,6 +116,66 @@ mod tests {
     fn quality_maps_to_tidal_params() {
         assert_eq!(Quality::Low.tidal_param(), "LOW");
         assert_eq!(Quality::Max.tidal_param(), "HI_RES_LOSSLESS");
+    }
+
+    #[test]
+    fn quality_label_is_lowercase() {
+        assert_eq!(Quality::Low.label(), "low");
+        assert_eq!(Quality::High.label(), "high");
+        assert_eq!(Quality::Lossless.label(), "lossless");
+        assert_eq!(Quality::Max.label(), "max");
+    }
+
+    #[test]
+    fn quality_orders_from_low_to_max() {
+        assert!(Quality::Low < Quality::High);
+        assert!(Quality::High < Quality::Lossless);
+        assert!(Quality::Lossless < Quality::Max);
+    }
+
+    #[test]
+    fn from_tidal_param_parses_known_values() {
+        assert_eq!(Quality::from_tidal_param("LOW"), Some(Quality::Low));
+        assert_eq!(Quality::from_tidal_param("HIGH"), Some(Quality::High));
+        assert_eq!(Quality::from_tidal_param("LOSSLESS"), Some(Quality::Lossless));
+        assert_eq!(Quality::from_tidal_param("HI_RES_LOSSLESS"), Some(Quality::Max));
+        assert_eq!(Quality::from_tidal_param("hi_res"), Some(Quality::Max));
+        assert_eq!(Quality::from_tidal_param("MASTER"), Some(Quality::Max));
+        assert_eq!(Quality::from_tidal_param("something_else"), None);
+    }
+
+    #[tokio::test]
+    async fn playback_info_parses_audio_quality() {
+        let server = MockServer::start().await;
+        let mpd = "<MPD></MPD>";
+        let encoded = base64::engine::general_purpose::STANDARD.encode(mpd);
+        Mock::given(method("GET"))
+            .and(path("/tracks/7/playbackinfo"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "manifestMimeType": "application/dash+xml",
+                "manifest": encoded,
+                "audioQuality": "LOSSLESS"
+            })))
+            .mount(&server)
+            .await;
+        let info = client(&server).playback_info(7, Quality::Max).await.unwrap();
+        assert_eq!(info.actual_quality, Some(Quality::Lossless));
+    }
+
+    #[tokio::test]
+    async fn playback_info_without_audio_quality_is_none() {
+        let server = MockServer::start().await;
+        let encoded = base64::engine::general_purpose::STANDARD.encode("<MPD></MPD>");
+        Mock::given(method("GET"))
+            .and(path("/tracks/8/playbackinfo"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "manifestMimeType": "application/dash+xml",
+                "manifest": encoded
+            })))
+            .mount(&server)
+            .await;
+        let info = client(&server).playback_info(8, Quality::Lossless).await.unwrap();
+        assert_eq!(info.actual_quality, None);
     }
 
     #[tokio::test]
