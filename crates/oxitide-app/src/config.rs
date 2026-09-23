@@ -151,6 +151,11 @@ pub fn default_cache_dir() -> Option<PathBuf> {
     directories::ProjectDirs::from("", "", "OxiTide").map(|dirs| dirs.config_dir().join("cache"))
 }
 
+/// `%APPDATA%\OxiTide\logs`.
+pub fn logs_dir() -> Option<PathBuf> {
+    directories::ProjectDirs::from("", "", "OxiTide").map(|dirs| dirs.config_dir().join("logs"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -243,6 +248,12 @@ mod tests {
         assert!(config.streaming.allow_fallback);
         assert_eq!(config.cache.max_size_mb, 2048);
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn logs_dir_ends_with_logs() {
+        let dir = logs_dir().expect("no project directories available");
+        assert!(dir.ends_with("logs"), "unexpected logs dir: {}", dir.display());
     }
 
     #[test]

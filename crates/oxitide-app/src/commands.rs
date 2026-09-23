@@ -524,6 +524,23 @@ pub fn set_cache_clear_on_exit(state: State<'_, AppState>, enabled: bool) -> Res
     Ok(())
 }
 
+#[tauri::command]
+pub fn get_logs_dir() -> String {
+    crate::config::logs_dir()
+        .map(|dir| dir.display().to_string())
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+pub fn open_logs_folder(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let dir = crate::config::logs_dir().ok_or_else(|| "no logs directory available".to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    app.opener()
+        .open_path(dir.display().to_string(), None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

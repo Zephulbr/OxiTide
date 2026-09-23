@@ -140,4 +140,6 @@ export const api = {
     invoke<void>("set_cache_clear_on_exit", { enabled }),
   getCacheStatus: () => invoke<CacheStatus>("get_cache_status"),
   clearCache: () => invoke<void>("clear_cache"),
+  getLogsDir: () => invoke<string>("get_logs_dir"),
+  openLogsFolder: () => invoke<void>("open_logs_folder"),
 };

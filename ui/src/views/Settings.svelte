@@ -9,6 +9,7 @@
   let devices = $state<OutputDevice[]>([]);
   let config = $state<Config | null>(null);
   let cacheStatus = $state<CacheStatus | null>(null);
+  let logsDir = $state("");
   let error = $state("");
 
   function apply(failure: unknown) {
@@ -25,10 +26,11 @@
   }
 
   $effect(() => {
-    Promise.all([api.getConfig(), api.getOutputDevices(), api.getCacheStatus()])
-      .then(([loaded, list, status]) => {
+    Promise.all([api.getConfig(), api.getOutputDevices(), api.getCacheStatus(), api.getLogsDir()])
+      .then(([loaded, list, status, logs]) => {
         devices = list;
         cacheStatus = status;
+        logsDir = logs;
         // The stored device may be gone; fall back to the system default and
         // persist that so the next start does not retry it.
         let next = loaded;
@@ -213,6 +215,9 @@
     </p>
     <p class="muted">Directory: {cacheStatus.dir} (edit cache.dir in config.toml)</p>
   {/if}
+  <h3>Logs</h3>
+  <p class="muted">Directory: {logsDir || "unavailable"}</p>
+  <p><button onclick={() => api.openLogsFolder().catch(apply)}>Open logs folder</button></p>
 {/if}
 {#if player.state.bit_perfect_notice}
   <p style="color:#e0a030">{player.state.bit_perfect_notice}</p>

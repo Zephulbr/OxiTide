@@ -5,14 +5,60 @@ mod config;
 mod player;
 mod state;
 
+use std::sync::OnceLock;
+
 use tauri::Manager;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 
 use state::AppState;
 
+/// Keeps the non-blocking file writer's worker thread alive for the process.
+static LOG_GUARD: OnceLock<tracing_appender::non_blocking::WorkerGuard> = OnceLock::new();
+
+/// The daily-rotated file writer, or `None` when the logs directory cannot be
+/// created (the app then logs to stderr only).
+fn file_writer() -> Option<tracing_appender::non_blocking::NonBlocking> {
+    let dir = config::logs_dir()?;
+    if std::fs::create_dir_all(&dir).is_err() {
+        eprintln!("file logging disabled: cannot create {}", dir.display());
+        return None;
+    }
+    let appender = match tracing_appender::rolling::Builder::new()
+        .rotation(tracing_appender::rolling::Rotation::DAILY)
+        .filename_prefix("oxitide")
+        .filename_suffix("log")
+        .max_log_files(5)
+        .build(&dir)
+    {
+        Ok(appender) => appender,
+        Err(e) => {
+            eprintln!("file logging disabled: {e}");
+            return None;
+        }
+    };
+    let (writer, guard) = tracing_appender::non_blocking(appender);
+    let _ = LOG_GUARD.set(guard);
+    Some(writer)
+}
+
+/// stderr plus a daily-rotated file log; `RUST_LOG` overrides the `info` default.
+fn init_logging() {
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+    let registry = tracing_subscriber::registry()
+        .with(filter)
+        .with(tracing_subscriber::fmt::layer());
+    match file_writer() {
+        Some(writer) => registry
+            .with(tracing_subscriber::fmt::layer().with_ansi(false).with_writer(writer))
+            .init(),
+        None => registry.init(),
+    }
+}
+
 fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
+    init_logging();
 
     let config = config::Config::load();
     let state = AppState::default();
@@ -65,6 +111,8 @@ fn main() {
             commands::set_quality_display,
             commands::set_cache_max_size_mb,
             commands::set_cache_clear_on_exit,
+            commands::get_logs_dir,
+            commands::open_logs_folder,
         ])
         .build(tauri::generate_context!())
         .expect("error while building OxiTide")
