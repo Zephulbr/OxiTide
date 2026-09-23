@@ -3836,10 +3836,15 @@ Expected: compile errors — `pending_bytes`, missing DTO field.
 In `crates/oxitide-audio/src/cache.rs`, replace `entries` with a suffix-parameterized scan and add the public getter:
 
 ```rust
-    /// Sum of every in-flight `.part` file. In-progress downloads are not
-    /// counted against the cap.
+    /// Sum of every in-flight `.part` file (a writer currently owns it).
+    /// In-progress downloads are not counted against the cap.
     pub fn pending_bytes(&self) -> u64 {
-        self.part_entries().iter().map(|entry| entry.size).sum()
+        let in_flight = self.in_flight.lock().unwrap().clone();
+        self.part_entries()
+            .iter()
+            .filter(|entry| in_flight.iter().any(|key| self.part_for(key) == entry.path))
+            .map(|entry| entry.size)
+            .sum()
     }
 ```
 
