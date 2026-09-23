@@ -177,6 +177,10 @@
       <p style="color:#e0a030">
         Cache is disabled: the directory is not writable. Streaming is unaffected.
       </p>
+    {:else if cacheStatus.configured_dir && cacheStatus.dir !== cacheStatus.configured_dir}
+      <p style="color:#e0a030">
+        The configured cache directory is unusable; using {cacheStatus.dir}.
+      </p>
     {/if}
     <p class="muted">{formatMb(cacheStatus.used_bytes)} of {formatMb(cacheStatus.max_bytes)} used</p>
     <p>

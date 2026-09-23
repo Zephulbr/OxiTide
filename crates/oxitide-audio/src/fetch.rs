@@ -387,7 +387,8 @@ mod tests {
         download(buf.clone(), fetcher, small_plan(), Some(writer));
         assert_eq!(buf.total_pushed(), 9);
         let path = cache.lookup(&key).expect("committed entry");
-        assert_eq!(std::fs::metadata(path).unwrap().len(), 9);
+        assert_eq!(std::fs::metadata(&path).unwrap().len(), 9);
+        assert_eq!(std::fs::read(&path).unwrap(), b"INITAAABB");
         assert_eq!(cache.size_bytes(), 9);
         let _ = std::fs::remove_dir_all(dir);
     }

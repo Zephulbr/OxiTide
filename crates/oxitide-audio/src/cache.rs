@@ -48,7 +48,7 @@ impl DiskCache {
     /// Infallible: an unusable directory (cannot create/write) disables the
     /// cache instead of failing startup.
     pub fn new(dir: PathBuf, max_bytes: u64) -> Arc<Self> {
-        let usable = fs::create_dir_all(&dir).is_ok();
+        let usable = fs::create_dir_all(&dir).is_ok() && probe_writable(&dir);
         if !usable {
             tracing::warn!("cache directory {} is unusable; caching disabled", dir.display());
         }
@@ -244,6 +244,20 @@ impl DiskCache {
     }
 }
 
+/// True when a file can be created in `dir` (and cleaned up): an existing
+/// read-only directory must not report itself usable.
+fn probe_writable(dir: &Path) -> bool {
+    let probe = dir.join(format!(".oxitide-probe-{}", std::process::id()));
+    match OpenOptions::new().write(true).create_new(true).open(&probe) {
+        Ok(file) => {
+            drop(file);
+            let _ = fs::remove_file(&probe);
+            true
+        }
+        Err(_) => false,
+    }
+}
+
 pub struct CacheWriter {
     cache: Arc<DiskCache>,
     key: CacheKey,
@@ -284,7 +298,6 @@ impl CacheWriter {
             return;
         }
         self.finished = true;
-        self.cache.in_flight.lock().unwrap().remove(&self.key);
         if let Some(file) = self.file.take() {
             if let Err(e) = file.sync_all() {
                 tracing::warn!("cache fsync for {} failed: {e}", self.key.file_name());
@@ -295,7 +308,11 @@ impl CacheWriter {
         if final_path.exists() {
             let _ = fs::remove_file(&final_path);
         }
-        if let Err(e) = fs::rename(&self.part, &final_path) {
+        let renamed = fs::rename(&self.part, &final_path);
+        // Hold the single-flight key until the publish has finished, so a
+        // concurrent writer cannot delete the temp file mid-rename.
+        self.cache.in_flight.lock().unwrap().remove(&self.key);
+        if let Err(e) = renamed {
             tracing::warn!("cache commit for {} failed: {e}", self.key.file_name());
             let _ = fs::remove_file(&self.part);
             return;
@@ -386,6 +403,17 @@ mod tests {
         assert!(cache.lookup(&key).is_none());
         assert_eq!(cache.size_bytes(), 0);
         assert!(!dir.join(format!("{}.part", key.file_name())).exists());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn commit_releases_the_in_flight_key() {
+        let dir = temp_dir();
+        let cache = DiskCache::new(dir.clone(), 1 << 20);
+        let key = key(1);
+        write_entry(&cache, &key, b"data");
+        let second = cache.begin_write(&key).expect("the key was not released after commit");
+        second.abort();
         let _ = fs::remove_dir_all(dir);
     }
 

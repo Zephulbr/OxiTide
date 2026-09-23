@@ -286,6 +286,7 @@ mod tests {
         let info = sink.info.unwrap();
         assert_eq!(info.sample_rate, 44100);
         assert_eq!(info.channels, 2);
+        assert_eq!(info.format, PcmFormat::F32);
         assert!(
             !info.is_bit_perfect_candidate(),
             "AAC must not be treated as a bit-perfect candidate"

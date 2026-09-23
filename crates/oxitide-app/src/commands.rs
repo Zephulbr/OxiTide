@@ -43,6 +43,9 @@ pub struct CacheStatusDto {
     pub used_bytes: u64,
     pub max_bytes: u64,
     pub usable: bool,
+    /// The raw configured `cache.dir` ("" = default), so the UI can tell when
+    /// the configured directory was rejected and a fallback is in use.
+    pub configured_dir: String,
 }
 
 fn require_cache(state: &State<'_, AppState>) -> Result<Arc<DiskCache>, String> {
@@ -469,6 +472,7 @@ pub fn get_cache_status(state: State<'_, AppState>) -> Result<CacheStatusDto, St
         used_bytes: cache.size_bytes(),
         max_bytes: cache.max_bytes(),
         usable: cache.usable(),
+        configured_dir: state.config().cache.dir.clone(),
     })
 }
 
