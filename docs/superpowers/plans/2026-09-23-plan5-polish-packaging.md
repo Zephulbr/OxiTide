@@ -2424,6 +2424,7 @@ describe("track pager", () => {
 
     await pager.loadMore();
     expect(pager.error).toBe("");
+    expect(load).toHaveBeenLastCalledWith(1, 1);
     expect(pager.items.map((t) => t.id)).toEqual([1, 3]);
   });
 
@@ -2454,6 +2455,58 @@ describe("track pager", () => {
     expect(pager.items.map((t) => t.id)).toEqual([1, 2]);
     expect(pager.done).toBe(true);
     expect(load).toHaveBeenCalledTimes(3);
+  });
+
+  /// Review Focus: `ensureAll` must await an in-flight page, not spin on the
+  /// `loading` short-circuit and starve the event loop.
+  it("ensureAll waits for an in-flight page instead of spinning", async () => {
+    let resolveFirst: (page: TrackPage) => void = () => {};
+    const first = new Promise<TrackPage>((resolve) => {
+      resolveFirst = resolve;
+    });
+    let calls = 0;
+    const load = vi.fn(async (offset: number, limit: number) => {
+      calls += 1;
+      if (calls === 1) return first;
+      return page(offset < 4 ? [track(offset + 1), track(offset + 2)] : [], offset, limit, 4);
+    });
+    const pager = createTrackPager("inflight", load, 2);
+
+    const pending = pager.loadMore();
+    const all = pager.ensureAll();
+    // Resolve on a macrotask: a microtask-spinning `ensureAll` starves this
+    // timer and the test times out, which is exactly the freeze being pinned.
+    setTimeout(() => resolveFirst(page([track(1), track(2)], 0, 2, 4)), 0);
+
+    await pending;
+    await all;
+    expect(pager.items.map((t) => t.id)).toEqual([1, 2, 3, 4]);
+    expect(pager.done).toBe(true);
+  });
+
+  /// Review Focus: `refresh` must discard an in-flight page rather than let it
+  /// republish into the cache the refresh cleared.
+  it("refresh discards an in-flight page instead of mixing it in", async () => {
+    let resolveFirst: (page: TrackPage) => void = () => {};
+    const first = new Promise<TrackPage>((resolve) => {
+      resolveFirst = resolve;
+    });
+    let calls = 0;
+    const load = vi.fn(async (offset: number, limit: number) => {
+      calls += 1;
+      if (calls === 1) return first;
+      return page([track(9)], offset, limit, 1);
+    });
+    const pager = createTrackPager("refresh-inflight", load, 1);
+
+    const pending = pager.loadMore();
+    const refreshing = pager.refresh();
+    resolveFirst(page([track(1)], 0, 1, 1));
+
+    await pending;
+    await refreshing;
+    expect(pager.items.map((t) => t.id)).toEqual([9]);
+    expect(pager.done).toBe(true);
   });
 });
 ```
@@ -2506,30 +2559,43 @@ export function createTrackPager(
   let loading = $state(false);
   let error = $state("");
   let nextOffset = cached?.nextOffset ?? 0;
+  // The in-flight page request, shared by concurrent `loadMore` callers so
+  // `ensureAll` awaits real progress instead of spinning on a resolved promise.
+  let inflight: Promise<void> | null = null;
 
   function publish() {
     cache.set(key, { items: [...items], total, nextOffset, done });
   }
 
-  async function loadMore() {
-    if (loading || done) return;
-    loading = true;
-    error = "";
-    const offset = nextOffset;
-    try {
-      const page = await load(offset, pageSize);
-      const seen = new Set(items.map((t) => t.id));
-      items = [...items, ...page.items.filter((t) => !seen.has(t.id))];
-      total = page.total;
-      // Advance by the raw page length so a page of duplicates cannot stall.
-      nextOffset = offset + page.items.length;
-      done = page.items.length < pageSize || nextOffset >= total;
-      publish();
-    } catch (e) {
-      error = String(e);
-    } finally {
-      loading = false;
-    }
+  function loadMore(): Promise<void> {
+    if (inflight) return inflight;
+    if (done) return Promise.resolve();
+    inflight = (async () => {
+      loading = true;
+      error = "";
+      const offset = nextOffset;
+      try {
+        const page = await load(offset, pageSize);
+        const seen = new Set(items.map((t) => t.id));
+        const fresh = page.items.filter((t) => {
+          if (seen.has(t.id)) return false;
+          seen.add(t.id);
+          return true;
+        });
+        items = [...items, ...fresh];
+        total = page.total;
+        // Advance by the raw page length so a page of duplicates cannot stall.
+        nextOffset = offset + page.items.length;
+        done = page.items.length < pageSize || nextOffset >= total;
+        publish();
+      } catch (e) {
+        error = String(e);
+      } finally {
+        loading = false;
+        inflight = null;
+      }
+    })();
+    return inflight;
   }
 
   async function ensureAll() {
@@ -2539,6 +2605,9 @@ export function createTrackPager(
   }
 
   async function refresh() {
+    // Let an in-flight page finish first so it cannot republish into the
+    // cache after the reset.
+    if (inflight) await inflight;
     cache.delete(key);
     items = [];
     total = 0;
@@ -2564,7 +2633,7 @@ export function createTrackPager(
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `npm --prefix ui test -- src/lib/pager.test.ts`
-Expected: all 8 pager tests PASS.
+Expected: all 10 pager tests PASS.
 
 - [ ] **Step 5: Run the UI gates and commit**
 
