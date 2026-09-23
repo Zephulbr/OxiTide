@@ -1,8 +1,9 @@
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
+use crate::cache::CacheWriter;
 use crate::error::{Error, Result};
 use crate::source::StreamPlan;
 
@@ -126,6 +127,7 @@ pub struct StreamBuffer {
     state: Mutex<State>,
     cond: Condvar,
     cancelled: AtomicBool,
+    total_pushed: AtomicU64,
 }
 
 impl StreamBuffer {
@@ -134,6 +136,7 @@ impl StreamBuffer {
             state: Mutex::new(State { data: Vec::new(), start: 0, done: false, error: None }),
             cond: Condvar::new(),
             cancelled: AtomicBool::new(false),
+            total_pushed: AtomicU64::new(0),
         })
     }
 
@@ -146,7 +149,13 @@ impl StreamBuffer {
             return;
         }
         s.data.extend_from_slice(bytes);
+        self.total_pushed.fetch_add(bytes.len() as u64, Ordering::SeqCst);
         self.cond.notify_all();
+    }
+
+    /// Total bytes pushed into the buffer (not the currently buffered count).
+    pub fn total_pushed(&self) -> u64 {
+        self.total_pushed.load(Ordering::SeqCst)
     }
 
     pub fn finish(&self) {
@@ -262,9 +271,17 @@ fn get_with_retry(fetcher: &dyn Fetcher, url: &str) -> Result<Vec<u8>> {
 }
 
 /// Download every part of `plan` in order into `buffer`, waiting for the
-/// consumer when the buffer is full. Runs on the calling thread; intended to
+/// consumer when the buffer is full. When `cache_writer` is set, every fetched
+/// part is also written to the temp file, which is committed after the last
+/// part and aborted on cancel/failure. Runs on the calling thread; intended to
 /// be spawned via `std::thread::spawn`.
-pub fn download(buffer: Arc<StreamBuffer>, fetcher: Arc<dyn Fetcher>, plan: StreamPlan) {
+pub fn download(
+    buffer: Arc<StreamBuffer>,
+    fetcher: Arc<dyn Fetcher>,
+    plan: StreamPlan,
+    cache_writer: Option<CacheWriter>,
+) {
+    let mut writer = cache_writer;
     let mut urls = Vec::new();
     if let Some(init) = &plan.init_url {
         urls.push(init.clone());
@@ -272,19 +289,45 @@ pub fn download(buffer: Arc<StreamBuffer>, fetcher: Arc<dyn Fetcher>, plan: Stre
     urls.extend(plan.segments.iter().map(|s| s.url.clone()));
     for url in urls {
         if buffer.is_cancelled() {
+            if let Some(writer) = writer.take() {
+                writer.abort();
+            }
             return;
         }
         buffer.wait_room(MAX_BUFFERED_BYTES);
         if buffer.is_cancelled() {
+            if let Some(writer) = writer.take() {
+                writer.abort();
+            }
             return;
         }
         match get_with_retry(fetcher.as_ref(), &url) {
-            Ok(bytes) => buffer.push(&bytes),
+            Ok(bytes) => {
+                let mut write_failed = false;
+                if let Some(writer) = writer.as_mut() {
+                    if let Err(e) = writer.write_all(&bytes) {
+                        tracing::warn!("cache write failed: {e}");
+                        write_failed = true;
+                    }
+                }
+                if write_failed {
+                    if let Some(writer) = writer.take() {
+                        writer.abort();
+                    }
+                }
+                buffer.push(&bytes);
+            }
             Err(e) => {
                 buffer.fail(e.to_string());
+                if let Some(writer) = writer.take() {
+                    writer.abort();
+                }
                 return;
             }
         }
+    }
+    if let Some(writer) = writer.take() {
+        writer.commit();
     }
     buffer.finish();
 }
@@ -292,7 +335,76 @@ pub fn download(buffer: Arc<StreamBuffer>, fetcher: Arc<dyn Fetcher>, plan: Stre
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cache::{CacheKey, DiskCache};
     use crate::source::Segment;
+    use oxitide_tidal::stream::Quality;
+    use std::path::PathBuf;
+    use std::sync::atomic::AtomicU32;
+
+    static COUNTER: AtomicU32 = AtomicU32::new(0);
+
+    fn temp_dir() -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "oxitide-fetch-cache-test-{}-{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::SeqCst)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn cache_key() -> CacheKey {
+        CacheKey { track_id: 1, quality: Quality::Lossless, manifest_hash: 7 }
+    }
+
+    fn small_plan() -> StreamPlan {
+        StreamPlan {
+            init_url: Some("init".into()),
+            segments: vec![
+                Segment { url: "a".into(), start_ticks: 0, duration_ticks: 0 },
+                Segment { url: "b".into(), start_ticks: 0, duration_ticks: 0 },
+            ],
+            timescale: 0,
+            codec: None,
+            sample_rate: None,
+            bit_depth: None,
+            bitrate_kbps: None,
+            quality: None,
+            manifest_hash: Some(7),
+        }
+    }
+
+    #[test]
+    fn download_tees_parts_into_the_cache_writer() {
+        let dir = temp_dir();
+        let cache = DiskCache::new(dir.clone(), 1 << 20);
+        let key = cache_key();
+        let writer = cache.begin_write(&key).unwrap();
+        let fetcher = Arc::new(
+            MapFetcher::default().with("init", b"INIT".to_vec()).with("a", b"AAA".to_vec()).with("b", b"BB".to_vec()),
+        );
+        let buf = StreamBuffer::new();
+        download(buf.clone(), fetcher, small_plan(), Some(writer));
+        assert_eq!(buf.total_pushed(), 9);
+        let path = cache.lookup(&key).expect("committed entry");
+        assert_eq!(std::fs::metadata(path).unwrap().len(), 9);
+        assert_eq!(cache.size_bytes(), 9);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn download_aborts_the_writer_on_failure() {
+        let dir = temp_dir();
+        let cache = DiskCache::new(dir.clone(), 1 << 20);
+        let key = cache_key();
+        let writer = cache.begin_write(&key).unwrap();
+        let fetcher = Arc::new(MapFetcher::default());
+        let buf = StreamBuffer::new();
+        download(buf.clone(), fetcher, small_plan(), Some(writer));
+        assert!(cache.lookup(&key).is_none());
+        assert_eq!(cache.size_bytes(), 0);
+        let _ = std::fs::remove_dir_all(dir);
+    }
 
     #[test]
     fn download_pushes_all_parts_in_order() {
@@ -317,7 +429,7 @@ mod tests {
             manifest_hash: None,
         };
         let buf = StreamBuffer::new();
-        download(buf.clone(), fetcher, plan);
+        download(buf.clone(), fetcher, plan, None);
         let mut out = [0u8; 9];
         let n = buf.read_at(0, &mut out).unwrap();
         assert_eq!(&out[..n], b"INITAAABB");
@@ -338,7 +450,7 @@ mod tests {
             manifest_hash: None,
         };
         let buf = StreamBuffer::new();
-        download(buf.clone(), fetcher, plan);
+        download(buf.clone(), fetcher, plan, None);
         assert!(matches!(buf.wait_len(0), Err(Error::Fetch(_))));
     }
 
@@ -383,7 +495,7 @@ mod tests {
             manifest_hash: None,
         };
         let buf = StreamBuffer::new();
-        download(buf.clone(), fetcher.clone(), plan);
+        download(buf.clone(), fetcher.clone(), plan, None);
         let mut out = [0u8; 2];
         let n = buf.read_at(0, &mut out).unwrap();
         assert_eq!(&out[..n], b"OK");
@@ -405,7 +517,7 @@ mod tests {
             manifest_hash: None,
         };
         let buf = StreamBuffer::new();
-        download(buf.clone(), fetcher.clone(), plan);
+        download(buf.clone(), fetcher.clone(), plan, None);
         assert!(matches!(buf.wait_len(0), Err(Error::Fetch(_))));
         assert_eq!(fetcher.calls(), MAX_ATTEMPTS as usize);
     }
@@ -481,7 +593,7 @@ mod tests {
         let handle = {
             let buf = buf.clone();
             let fetcher = fetcher.clone();
-            std::thread::spawn(move || download(buf, fetcher, plan))
+            std::thread::spawn(move || download(buf, fetcher, plan, None))
         };
 
         // With no consumer, the downloader must stop fetching once the cap is

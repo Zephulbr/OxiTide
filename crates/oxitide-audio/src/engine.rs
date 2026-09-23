@@ -3,6 +3,7 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
+use crate::cache::{CacheKey, DiskCache};
 use crate::decode::{PcmBuffer, PcmFormat, PcmSink, StreamInfo};
 use crate::error::{Error, Result};
 use crate::fetch::{self, Fetcher, StreamBuffer};
@@ -68,6 +69,7 @@ struct Inner {
     queue: Mutex<Queue>,
     resolver: Arc<dyn StreamResolver>,
     fetcher: OnceLock<Arc<dyn Fetcher>>,
+    cache: Arc<DiskCache>,
     quality: Mutex<Quality>,
     device_id: Mutex<Option<String>>,
     output_mode: Mutex<OutputMode>,
@@ -144,11 +146,16 @@ impl Engine {
         make_fetcher: impl FnOnce() -> Arc<dyn Fetcher> + Send + 'static,
         output: Box<dyn AudioOutput>,
         quality: Quality,
+        cache: Arc<DiskCache>,
+        allow_fallback: bool,
     ) -> Self {
+        // Task 6 wires the fallback policy; nothing reads this flag yet.
+        let _ = allow_fallback;
         let inner = Arc::new(Inner {
             queue: Mutex::new(Queue::default()),
             resolver,
             fetcher: OnceLock::new(),
+            cache,
             quality: Mutex::new(quality),
             device_id: Mutex::new(None),
             output_mode: Mutex::new(OutputMode::Shared),
@@ -503,54 +510,136 @@ fn decode_track(
     tx: SyncSender<Result<StreamEvent>>,
     buffer: Arc<StreamBuffer>,
 ) {
-    let outcome: Result<()> = (|| {
-        let quality = *inner.quality.lock().unwrap();
-        let plan = inner.resolver.resolve(item.track_id, quality)?;
-        tracing::debug!(
-            "resolved track {}: codec={:?} rate={:?} bits={:?} timescale={} segments={} init={} first_media={:?}",
-            item.track_id,
-            plan.codec,
-            plan.sample_rate,
-            plan.bit_depth,
-            plan.timescale,
-            plan.segments.len(),
-            plan.init_url.is_some(),
-            plan.segments
-                .first()
-                .map(|s| s.url.split('?').next().unwrap_or("")),
-        );
-        // Seek by segment index: media URLs are an ordered list, so restarting
-        // at the segment covering the target needs no HTTP Range.
-        let download_plan = match seek_ms {
-            Some(ms) if plan.sample_rate.is_some() => {
-                let target = seek::target_segment(&plan, ms, plan.sample_rate.unwrap());
-                plan.from_segment(target.segment_index)
+    let quality = *inner.quality.lock().unwrap();
+    let plan = match inner.resolver.resolve(item.track_id, quality) {
+        Ok(plan) => plan,
+        Err(e) => {
+            let _ = tx.send(Err(e));
+            return;
+        }
+    };
+    tracing::debug!(
+        "resolved track {}: codec={:?} rate={:?} bits={:?} timescale={} segments={} init={} first_media={:?}",
+        item.track_id,
+        plan.codec,
+        plan.sample_rate,
+        plan.bit_depth,
+        plan.timescale,
+        plan.segments.len(),
+        plan.init_url.is_some(),
+        plan.segments
+            .first()
+            .map(|s| s.url.split('?').next().unwrap_or("")),
+    );
+    let cache_key = plan.manifest_hash.map(|manifest_hash| CacheKey {
+        track_id: item.track_id,
+        quality,
+        manifest_hash,
+    });
+    if let Some(key) = cache_key {
+        if let Some(path) = inner.cache.lookup(&key) {
+            inner.cache.protect(&key);
+            let result =
+                decode_from_file(&inner, &item, mode, generation, seek_ms, &tx, &path, &plan);
+            inner.cache.unprotect(&key);
+            match result {
+                Ok(()) => return,
+                Err(e) => {
+                    if inner.generation.load(Ordering::SeqCst) != generation {
+                        let _ = tx.send(Err(e));
+                        return;
+                    }
+                    tracing::warn!(
+                        "cache entry {} failed to decode ({e}); refetching",
+                        key.file_name()
+                    );
+                    inner.cache.remove(&key);
+                }
             }
-            _ => plan.clone(),
-        };
-        let fetch_buffer = buffer.clone();
-        let fetcher = inner.fetcher.get().expect("fetcher initialized by the worker").clone();
-        let downloader = std::thread::spawn(move || fetch::download(fetch_buffer, fetcher, download_plan));
-        let source = crate::demux::StreamBufferSource::new(buffer);
-        let mut sink = ChannelSink {
-            inner,
-            generation,
-            tx: tx.clone(),
-            mode,
-            out_format: PcmFormat::F32,
-            channels: 2,
-            plan,
-            seek_ms,
-            discarder: Discarder::default(),
-            start_frames: 0,
-        };
-        let result = crate::decode::run(source, "mp4", &mut sink);
-        let _ = downloader.join();
-        result
-    })();
-    if let Err(e) = outcome {
+        }
+    }
+    decode_from_network(inner, item, mode, generation, seek_ms, tx, buffer, plan, cache_key);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn decode_from_network(
+    inner: Arc<Inner>,
+    item: QueueItem,
+    mode: OutputMode,
+    generation: u64,
+    seek_ms: Option<u64>,
+    tx: SyncSender<Result<StreamEvent>>,
+    buffer: Arc<StreamBuffer>,
+    plan: StreamPlan,
+    cache_key: Option<CacheKey>,
+) {
+    // Seek by segment index: media URLs are an ordered list, so restarting
+    // at the segment covering the target needs no HTTP Range.
+    let download_plan = match seek_ms {
+        Some(ms) if plan.sample_rate.is_some() => {
+            let target = seek::target_segment(&plan, ms, plan.sample_rate.unwrap());
+            plan.from_segment(target.segment_index)
+        }
+        _ => plan.clone(),
+    };
+    // Only full-track plans are cached; a seek-truncated plan is a partial
+    // track and would poison replays.
+    let writer = match (seek_ms, cache_key) {
+        (None, Some(key)) => inner.cache.begin_write(&key),
+        _ => None,
+    };
+    let fetch_buffer = buffer.clone();
+    let fetcher = inner.fetcher.get().expect("fetcher initialized by the worker").clone();
+    let downloader =
+        std::thread::spawn(move || fetch::download(fetch_buffer, fetcher, download_plan, writer));
+    let source = crate::demux::StreamBufferSource::new(buffer);
+    let result = decode_source(inner, &item, mode, generation, seek_ms, &tx, source, plan);
+    let _ = downloader.join();
+    if let Err(e) = result {
         let _ = tx.send(Err(e));
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn decode_from_file(
+    inner: &Arc<Inner>,
+    item: &QueueItem,
+    mode: OutputMode,
+    generation: u64,
+    seek_ms: Option<u64>,
+    tx: &SyncSender<Result<StreamEvent>>,
+    path: &std::path::Path,
+    plan: &StreamPlan,
+) -> Result<()> {
+    let source = crate::demux::FileSource::open(path)?;
+    decode_source(inner.clone(), item, mode, generation, seek_ms, tx, source, plan.clone())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn decode_source(
+    inner: Arc<Inner>,
+    item: &QueueItem,
+    mode: OutputMode,
+    generation: u64,
+    seek_ms: Option<u64>,
+    tx: &SyncSender<Result<StreamEvent>>,
+    source: impl symphonia::core::io::MediaSource + 'static,
+    plan: StreamPlan,
+) -> Result<()> {
+    let mut sink = ChannelSink {
+        inner,
+        generation,
+        tx: tx.clone(),
+        mode,
+        out_format: PcmFormat::F32,
+        channels: 2,
+        plan,
+        seek_ms,
+        discarder: Discarder::default(),
+        start_frames: 0,
+    };
+    let _ = item;
+    crate::decode::run(source, "mp4", &mut sink)
 }
 
 struct ChannelSink {
@@ -980,6 +1069,7 @@ fn worker_main(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cache::{CacheKey, DiskCache};
     use crate::output::NullOutput;
     use crate::source::Segment;
     use std::collections::HashMap;
@@ -1031,13 +1121,52 @@ mod tests {
         }
     }
 
+    fn test_cache() -> Arc<DiskCache> {
+        static CACHE_COUNTER: AtomicU32 = AtomicU32::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "oxitide-engine-cache-{}-{}",
+            std::process::id(),
+            CACHE_COUNTER.fetch_add(1, Ordering::SeqCst)
+        ));
+        DiskCache::new(dir, 64 * 1024 * 1024)
+    }
+
     fn build_engine(
         resolver: Arc<dyn StreamResolver>,
         fetcher: Arc<dyn Fetcher>,
         output: Box<dyn AudioOutput>,
         quality: Quality,
     ) -> Engine {
-        Engine::new(resolver, move || fetcher, output, quality)
+        Engine::new(resolver, move || fetcher, output, quality, test_cache(), true)
+    }
+
+    fn cached_plan(url: &str, manifest_hash: u64) -> StreamPlan {
+        StreamPlan {
+            init_url: None,
+            segments: vec![Segment { url: url.into(), start_ticks: 0, duration_ticks: 0 }],
+            timescale: 0,
+            codec: Some("flac".into()),
+            sample_rate: Some(44100),
+            bit_depth: Some(16),
+            bitrate_kbps: None,
+            quality: None,
+            manifest_hash: Some(manifest_hash),
+        }
+    }
+
+    struct CountingFetcher {
+        files: HashMap<String, Vec<u8>>,
+        calls: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    impl Fetcher for CountingFetcher {
+        fn get(&self, url: &str) -> Result<Vec<u8>> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            self.files
+                .get(url)
+                .cloned()
+                .ok_or_else(|| Error::Fetch(format!("no fixture for {url}")))
+        }
     }
 
     fn engine_with(
@@ -1078,6 +1207,8 @@ mod tests {
             },
             Box::new(output),
             Quality::Lossless,
+            test_cache(),
+            true,
         );
     }
 
@@ -2185,6 +2316,94 @@ mod tests {
             written(),
             176_400 * 2,
             "a boundary settings change must not discard the next track"
+        );
+    }
+
+    #[test]
+    fn cache_miss_writes_the_entry_then_a_replay_makes_zero_fetcher_calls() {
+        let (_, files) = fixture_plan();
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let output = NullOutput::new();
+        let cache = test_cache();
+        let engine = Engine::new(
+            Arc::new(FakeResolver { plan: cached_plan("mem://tone", 0xabcd) }),
+            {
+                let calls = calls.clone();
+                let files = files.clone();
+                move || -> Arc<dyn Fetcher> { Arc::new(CountingFetcher { files, calls }) }
+            },
+            Box::new(output.clone()),
+            Quality::Lossless,
+            cache.clone(),
+            true,
+        );
+        let key = CacheKey { track_id: 1, quality: Quality::Lossless, manifest_hash: 0xabcd };
+
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| !engine.state().playing && output.samples().len() >= 176_400);
+        assert!(cache.lookup(&key).is_some(), "a cache miss did not write the entry");
+        let first = calls.load(Ordering::SeqCst);
+        assert_eq!(first, 1, "the first play should fetch exactly once");
+
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| !engine.state().playing && output.samples().len() >= 176_400 * 2);
+        assert_eq!(calls.load(Ordering::SeqCst), first, "a cache hit still fetched");
+    }
+
+    #[test]
+    fn seek_plans_are_not_cached() {
+        let (_, files) = fixture_plan();
+        let output = NullOutput::new();
+        let cache = test_cache();
+        let engine = Engine::new(
+            Arc::new(FakeResolver { plan: cached_plan("mem://tone", 0xabcd) }),
+            move || Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(output),
+            Quality::Lossless,
+            cache.clone(),
+            true,
+        );
+        let (tx, _rx) = std::sync::mpsc::sync_channel(512);
+        let generation = engine.inner.generation.load(Ordering::SeqCst);
+        let buffer = StreamBuffer::new();
+        decode_track(engine.inner.clone(), item(1), OutputMode::Shared, generation, Some(500), tx, buffer);
+        assert_eq!(cache.size_bytes(), 0, "a seek plan must not be cached");
+    }
+
+    #[test]
+    fn corrupt_cache_entry_is_removed_and_refetched() {
+        let (_, files) = fixture_plan();
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let output = NullOutput::new();
+        let cache = test_cache();
+        let key = CacheKey { track_id: 1, quality: Quality::Lossless, manifest_hash: 0xabcd };
+        {
+            let mut writer = cache.begin_write(&key).unwrap();
+            writer.write_all(b"this is not an mp4").unwrap();
+            writer.commit();
+        }
+        let engine = Engine::new(
+            Arc::new(FakeResolver { plan: cached_plan("mem://tone", 0xabcd) }),
+            {
+                let calls = calls.clone();
+                let files = files.clone();
+                move || -> Arc<dyn Fetcher> { Arc::new(CountingFetcher { files, calls }) }
+            },
+            Box::new(output.clone()),
+            Quality::Lossless,
+            cache.clone(),
+            true,
+        );
+
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| !engine.state().playing && output.samples().len() >= 176_400);
+        assert_eq!(output.samples().len(), 176_400);
+        assert_eq!(calls.load(Ordering::SeqCst), 1, "the network retry must run exactly once");
+        let replaced = cache.lookup(&key).expect("the corrupt entry was not replaced");
+        assert_eq!(
+            std::fs::metadata(replaced).unwrap().len(),
+            files["mem://tone"].len() as u64,
+            "the refetched bytes were not re-cached"
         );
     }
 }

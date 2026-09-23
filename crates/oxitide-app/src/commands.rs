@@ -71,7 +71,10 @@ pub async fn auth_complete(
     state.set_client(client.clone());
     let config = Config::load();
     state.set_config(config.clone());
-    state.set_player(build_player(&app, client, &config)?);
+    let cache_dir = crate::config::default_cache_dir()
+        .unwrap_or_else(|| std::env::temp_dir().join("oxitide-cache"));
+    let cache = oxitide_audio::cache::DiskCache::new(cache_dir, 2 * 1024 * 1024 * 1024);
+    state.set_player(build_player(&app, client, &config, cache)?);
     Ok(SessionInfoDto { country_code: session.country_code, user_id: session.user_id })
 }
 
@@ -151,7 +154,10 @@ pub async fn auth_restore(
             state.set_client(client.clone());
             let config = Config::load();
             state.set_config(config.clone());
-            state.set_player(build_player(&app, client, &config)?);
+            let cache_dir = crate::config::default_cache_dir()
+                .unwrap_or_else(|| std::env::temp_dir().join("oxitide-cache"));
+            let cache = oxitide_audio::cache::DiskCache::new(cache_dir, 2 * 1024 * 1024 * 1024);
+            state.set_player(build_player(&app, client, &config, cache)?);
             Ok(Some(SessionInfoDto {
                 country_code: session.country_code,
                 user_id: session.user_id,
@@ -175,6 +181,7 @@ fn build_player(
     app: &tauri::AppHandle,
     client: TidalClient,
     config: &Config,
+    cache: std::sync::Arc<oxitide_audio::cache::DiskCache>,
 ) -> Result<Player, String> {
     let resolver = crate::player::TidalResolver::new(client).map_err(|e| e.to_string())?;
     let engine = Engine::new(
@@ -182,6 +189,8 @@ fn build_player(
         || Arc::new(HttpFetcher::default()),
         crate::player::real_output(),
         config.streaming.quality.to_quality(),
+        cache,
+        true, // Task 9 replaces this with config.streaming.allow_fallback
     );
     engine.set_output_device(if config.audio.output_device.is_empty() {
         None

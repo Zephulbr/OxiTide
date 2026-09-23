@@ -84,6 +84,45 @@ impl MediaSource for BytesSource {
     }
 }
 
+/// A seekable file source for cache hits.
+pub struct FileSource {
+    file: std::fs::File,
+    len: u64,
+    pos: u64,
+}
+
+impl FileSource {
+    pub fn open(path: &std::path::Path) -> io::Result<Self> {
+        let file = std::fs::File::open(path)?;
+        let len = file.metadata()?.len();
+        Ok(Self { file, len, pos: 0 })
+    }
+}
+
+impl Read for FileSource {
+    fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
+        let n = self.file.read(out)?;
+        self.pos += n as u64;
+        Ok(n)
+    }
+}
+
+impl Seek for FileSource {
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        self.pos = self.file.seek(pos)?;
+        Ok(self.pos)
+    }
+}
+
+impl MediaSource for FileSource {
+    fn is_seekable(&self) -> bool {
+        true
+    }
+    fn byte_len(&self) -> Option<u64> {
+        Some(self.len)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -115,5 +154,23 @@ mod tests {
         buf.finish();
         let mut src = StreamBufferSource::new(buf);
         assert!(src.seek(SeekFrom::End(0)).is_err());
+    }
+
+    #[test]
+    fn file_source_reads_seeks_and_reports_len() {
+        let dir = std::env::temp_dir().join(format!("oxitide-demux-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("blob.bin");
+        std::fs::write(&path, b"0123456789").unwrap();
+        let mut src = FileSource::open(&path).unwrap();
+        assert_eq!(src.byte_len(), Some(10));
+        assert!(src.is_seekable());
+        let mut out = [0u8; 4];
+        assert_eq!(src.read(&mut out).unwrap(), 4);
+        assert_eq!(&out, b"0123");
+        src.seek(SeekFrom::Start(8)).unwrap();
+        assert_eq!(src.read(&mut out).unwrap(), 2);
+        assert_eq!(&out[..2], b"89");
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

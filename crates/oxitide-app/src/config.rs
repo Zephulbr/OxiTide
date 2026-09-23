@@ -98,6 +98,11 @@ pub fn config_path() -> Option<PathBuf> {
         .map(|dirs| dirs.config_dir().join("config.toml"))
 }
 
+/// `%APPDATA%\OxiTide\cache`.
+pub fn default_cache_dir() -> Option<PathBuf> {
+    directories::ProjectDirs::from("", "", "OxiTide").map(|dirs| dirs.config_dir().join("cache"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
