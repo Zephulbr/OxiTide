@@ -1,3 +1,4 @@
+pub mod cache;
 pub mod decode;
 pub mod demux;
 pub mod engine;
