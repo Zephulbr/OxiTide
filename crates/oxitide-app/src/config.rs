@@ -11,6 +11,8 @@ use crate::player::QualityDto;
 pub struct Config {
     pub audio: AudioConfig,
     pub streaming: StreamingConfig,
+    pub ui: UiConfig,
+    pub cache: CacheConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -38,11 +40,49 @@ impl Default for AudioConfig {
 #[serde(default)]
 pub struct StreamingConfig {
     pub quality: QualityDto,
+    /// Play the best available quality and report it instead of erroring.
+    pub allow_fallback: bool,
 }
 
 impl Default for StreamingConfig {
     fn default() -> Self {
-        Self { quality: QualityDto::Lossless }
+        Self { quality: QualityDto::Lossless, allow_fallback: true }
+    }
+}
+
+/// How the player bar renders the stream quality.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum QualityDisplay {
+    #[default]
+    Compact,
+    Detailed,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct UiConfig {
+    pub quality_display: QualityDisplay,
+}
+
+impl Default for UiConfig {
+    fn default() -> Self {
+        Self { quality_display: QualityDisplay::Compact }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CacheConfig {
+    /// Empty string means `%APPDATA%\OxiTide\cache`.
+    pub dir: String,
+    pub max_size_mb: u64,
+    pub clear_on_exit: bool,
+}
+
+impl Default for CacheConfig {
+    fn default() -> Self {
+        Self { dir: String::new(), max_size_mb: 2048, clear_on_exit: false }
     }
 }
 
@@ -139,7 +179,13 @@ mod tests {
                 exclusive_fallback: ExclusiveFallback::WarnOnly,
                 volume: 0.42,
             },
-            streaming: StreamingConfig { quality: QualityDto::Max },
+            streaming: StreamingConfig { quality: QualityDto::Max, allow_fallback: false },
+            ui: UiConfig { quality_display: QualityDisplay::Detailed },
+            cache: CacheConfig {
+                dir: "D:\\cache".into(),
+                max_size_mb: 512,
+                clear_on_exit: true,
+            },
         };
         config.save_to(&path).unwrap();
         assert_eq!(Config::load_from(&path), config);
@@ -171,6 +217,31 @@ mod tests {
         assert_eq!(config.audio.exclusive_fallback, ExclusiveFallback::Shared);
         assert_eq!(config.audio.volume, 1.0);
         assert_eq!(config.streaming.quality, QualityDto::Lossless);
+        assert!(config.streaming.allow_fallback);
+        assert_eq!(config.ui.quality_display, QualityDisplay::Compact);
+        assert_eq!(config.cache.dir, "");
+        assert_eq!(config.cache.max_size_mb, 2048);
+        assert!(!config.cache.clear_on_exit);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn new_sections_round_trip_as_documented_toml() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        let mut config = Config::default();
+        config.streaming.allow_fallback = false;
+        config.ui.quality_display = QualityDisplay::Detailed;
+        config.cache.max_size_mb = 1024;
+        config.cache.clear_on_exit = true;
+        config.save_to(&path).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("[streaming]"));
+        assert!(text.contains("allow_fallback = false"));
+        assert!(text.contains("quality_display = \"detailed\""));
+        assert!(text.contains("[cache]"));
+        assert!(text.contains("max_size_mb = 1024"));
+        assert_eq!(Config::load_from(&path), config);
         let _ = fs::remove_dir_all(dir);
     }
 }

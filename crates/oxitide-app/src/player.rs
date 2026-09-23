@@ -1,9 +1,30 @@
+use std::sync::Arc;
+
+use oxitide_audio::cache::DiskCache;
 use oxitide_audio::engine::{EngineEvent, StreamResolver};
 use oxitide_audio::output::{self, AudioOutput, OutputDevice};
 use oxitide_audio::source;
 use oxitide_tidal::client::TidalClient;
 use oxitide_tidal::stream::Quality;
 use serde::{Deserialize, Serialize};
+
+use crate::config::{default_cache_dir, Config};
+
+/// Build the disk cache from config: the configured directory when usable,
+/// else the default, else a temp directory. `DiskCache::new` is infallible.
+pub fn build_cache(config: &Config) -> Arc<DiskCache> {
+    let max_bytes = config.cache.max_size_mb.saturating_mul(1024 * 1024);
+    let configured = config.cache.dir.trim();
+    if !configured.is_empty() {
+        let cache = DiskCache::new(std::path::PathBuf::from(configured), max_bytes);
+        if cache.usable() {
+            return cache;
+        }
+        tracing::warn!("configured cache dir is unusable; falling back to the default");
+    }
+    let dir = default_cache_dir().unwrap_or_else(|| std::env::temp_dir().join("oxitide-cache"));
+    DiskCache::new(dir, max_bytes)
+}
 
 /// Resolves a track's stream plan using a `TidalClient`. Runs the async client
 /// on a dedicated Tokio runtime owned by this resolver, so it can be called from

@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex, RwLock};
 
+use oxitide_audio::cache::DiskCache;
 use oxitide_audio::engine::Engine;
 use oxitide_tidal::client::TidalClient;
 use oxitide_tidal::pkce::Pkce;
@@ -16,6 +17,7 @@ pub struct AppState {
     pub client: RwLock<Option<TidalClient>>,
     pub player: RwLock<Option<Arc<Player>>>,
     pub config: Mutex<Config>,
+    pub cache: Mutex<Option<Arc<DiskCache>>>,
 }
 
 impl AppState {
@@ -49,6 +51,14 @@ impl AppState {
 
     pub fn set_config(&self, config: Config) {
         *self.config.lock().unwrap() = config;
+    }
+
+    pub fn set_cache(&self, cache: Arc<DiskCache>) {
+        *self.cache.lock().unwrap() = Some(cache);
+    }
+
+    pub fn cache(&self) -> Option<Arc<DiskCache>> {
+        self.cache.lock().unwrap().clone()
     }
 
     pub fn logout(&self) {
