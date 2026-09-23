@@ -26,6 +26,7 @@ export interface SearchResults {
   tracks: SearchGroup<Track>; albums: SearchGroup<Album>;
   artists: SearchGroup<Artist>; playlists: SearchGroup<Playlist>;
 }
+export interface TrackPage { items: Track[]; total: number; offset: number; limit: number }
 export interface SessionInfoDto { country_code: string; user_id: number }
 
 export interface QueueItem {
@@ -62,6 +63,7 @@ export interface AudioStatus {
 export interface CacheStatus {
   dir: string;
   used_bytes: number;
+  pending_bytes: number;
   max_bytes: number;
   usable: boolean;
   configured_dir: string;
@@ -74,7 +76,14 @@ export interface Config {
     volume: number;
   };
   streaming: { quality: Quality; allow_fallback: boolean };
-  ui: { quality_display: "compact" | "detailed" };
+  ui: {
+    quality_display: "compact" | "detailed";
+    window_width: number;
+    window_height: number;
+    window_x?: number | null;
+    window_y?: number | null;
+    window_maximized: boolean;
+  };
   cache: { dir: string; max_size_mb: number; clear_on_exit: boolean };
 }
 export type EngineEvent =
@@ -111,8 +120,13 @@ export const api = {
   getFavoriteAlbums: () => invoke<Album[]>("get_favorite_albums"),
   getFavoriteArtists: () => invoke<Artist[]>("get_favorite_artists"),
   getUserPlaylists: () => invoke<Playlist[]>("get_user_playlists"),
+  getFavoriteTracksPage: (offset: number, limit: number) =>
+    invoke<TrackPage>("get_favorite_tracks_page", { offset, limit }),
+  getPlaylistTracksPage: (id: string, offset: number, limit: number) =>
+    invoke<TrackPage>("get_playlist_tracks_page", { id, offset, limit }),
   playTracks: (items: QueueItem[], start: number) => invoke<void>("play_tracks", { items, start }),
   playPause: () => invoke<void>("play_pause"),
+  retry: () => invoke<void>("retry"),
   next: () => invoke<void>("next"),
   prev: () => invoke<void>("prev"),
   seek: (positionMs: number) => invoke<void>("seek", { positionMs }),
@@ -139,4 +153,6 @@ export const api = {
     invoke<void>("set_cache_clear_on_exit", { enabled }),
   getCacheStatus: () => invoke<CacheStatus>("get_cache_status"),
   clearCache: () => invoke<void>("clear_cache"),
+  getLogsDir: () => invoke<string>("get_logs_dir"),
+  openLogsFolder: () => invoke<void>("open_logs_folder"),
 };

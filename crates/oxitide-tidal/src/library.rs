@@ -19,11 +19,12 @@ impl TidalClient {
         format!("users/{}/favorites", self.session().user_id)
     }
 
-    pub async fn favorite_tracks(&self, limit: u32, offset: u32) -> Result<Vec<Track>> {
+    /// One page of favorite tracks plus the server-reported total.
+    pub async fn favorite_tracks_page(&self, limit: u32, offset: u32) -> Result<(Vec<Track>, u32)> {
         let p: ItemPage<Favorited<Track>> = self
             .get(&format!("{}/tracks", self.user_base()), &page(limit, offset))
             .await?;
-        Ok(p.items.into_iter().map(|f| f.item).collect())
+        Ok((p.items.into_iter().map(|f| f.item).collect(), p.total_number_of_items))
     }
 
     pub async fn favorite_albums(&self, limit: u32, offset: u32) -> Result<Vec<Album>> {
@@ -107,7 +108,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn favorite_tracks_pages_by_offset() {
+    async fn favorite_tracks_page_returns_items_and_total() {
         let server = MockServer::start().await;
         Mock::given(method("GET")).and(path("/users/42/favorites/tracks"))
             .and(query_param("offset", "200")).and(query_param("limit", "100"))
@@ -116,8 +117,9 @@ mod tests {
                 "totalNumberOfItems": 201, "limit": 100, "offset": 200
             })))
             .mount(&server).await;
-        let tracks = client(&server).favorite_tracks(100, 200).await.unwrap();
+        let (tracks, total) = client(&server).favorite_tracks_page(100, 200).await.unwrap();
         assert_eq!(tracks[0].id, 7);
+        assert_eq!(total, 201);
     }
 
     #[tokio::test]

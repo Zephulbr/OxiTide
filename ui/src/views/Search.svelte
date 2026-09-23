@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api, type SearchResults } from "../lib/api";
+  import ErrorState from "../lib/components/ErrorState.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
   import type { Nav } from "../lib/nav.svelte";
   import type { Player } from "../lib/player.svelte";
@@ -9,7 +10,7 @@
   let loading = $state(false);
   let error = $state("");
 
-  async function run() {
+  async function load() {
     if (query.trim().length === 0) return;
     loading = true;
     error = "";
@@ -25,11 +26,11 @@
 </script>
 
 <h2>Search</h2>
-<input bind:value={query} onkeydown={(e) => e.key === "Enter" && run()} placeholder="Search TIDAL" />
+<input bind:value={query} onkeydown={(e) => e.key === "Enter" && load()} placeholder="Search TIDAL" />
 {#if loading}
   <p class="muted">Searching…</p>
 {:else if error}
-  <p style="color:#ff6b6b">{error}</p>
+  <ErrorState message={error} onRetry={load} />
 {:else if results}
   <h3>Tracks</h3>
   <TrackTable tracks={results.tracks.items} {player} />

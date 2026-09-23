@@ -125,13 +125,23 @@ impl TidalClient {
             let rt = tokens.refresh_token.clone().ok_or(Error::Unauthorized)?;
             (rt.clone(), rt)
         };
-        let new_tokens = auth::refresh(
+        let new_tokens = match auth::refresh(
             &self.http,
             &self.token_url,
             &refresh_token,
             Some(previous_refresh.as_str()),
         )
-        .await?;
+        .await
+        {
+            Ok(tokens) => tokens,
+            // The access token was rejected and the refresh failed for a
+            // non-transport reason: the session is gone (TIDAL answers
+            // `400 invalid_grant` for a revoked refresh token). Surface it as
+            // `Unauthorized` so the UI offers a re-login instead of a raw API
+            // error with a Retry that can never succeed.
+            Err(e @ (Error::Http(_) | Error::Io(_))) => return Err(e),
+            Err(_) => return Err(Error::Unauthorized),
+        };
         *self.tokens.write().unwrap() = new_tokens.clone();
         self.store.save(&new_tokens)?;
         Ok(())
@@ -255,6 +265,28 @@ mod tests {
             session(), no_refresh, store);
         let err = client.get::<Thing>("tracks/1", &[]).await.unwrap_err();
         assert!(matches!(err, Error::Unauthorized));
+    }
+
+    /// A revoked refresh token makes TIDAL answer `400 invalid_grant`; the
+    /// client must surface that as `Unauthorized` so the UI can offer a
+    /// re-login instead of a retryable API error.
+    #[tokio::test]
+    async fn refresh_rejected_with_invalid_grant_is_unauthorized() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/tracks/1"))
+            .and(wiremock::matchers::header("authorization", "Bearer old"))
+            .respond_with(ResponseTemplate::new(401)).mount(&server).await;
+        Mock::given(method("POST")).and(path("/token"))
+            .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
+                "error": "invalid_grant",
+                "error_description": "refresh token is invalid"
+            })))
+            .mount(&server).await;
+        let store = Arc::new(MemoryStore::default());
+        let client = TidalClient::new(reqwest::Client::new(), server.uri(), format!("{}/token", server.uri()),
+            session(), tokens(), store);
+        let err = client.get::<Thing>("tracks/1", &[]).await.unwrap_err();
+        assert!(matches!(err, Error::Unauthorized), "expected Unauthorized, got {err:?}");
     }
 
     #[tokio::test]

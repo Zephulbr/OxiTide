@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api, type CacheStatus, type Config, type OutputDevice } from "../lib/api";
+  import ErrorState from "../lib/components/ErrorState.svelte";
   import type { QualityDisplay } from "../lib/quality";
   import type { Player } from "../lib/player.svelte";
   let {
@@ -9,6 +10,7 @@
   let devices = $state<OutputDevice[]>([]);
   let config = $state<Config | null>(null);
   let cacheStatus = $state<CacheStatus | null>(null);
+  let logsDir = $state("");
   let error = $state("");
 
   function apply(failure: unknown) {
@@ -24,21 +26,33 @@
     config = { ...config, audio: { ...config.audio, ...patch } };
   }
 
+  async function load() {
+    error = "";
+    try {
+      const [loaded, list, status, logs] = await Promise.all([
+        api.getConfig(),
+        api.getOutputDevices(),
+        api.getCacheStatus(),
+        api.getLogsDir(),
+      ]);
+      devices = list;
+      cacheStatus = status;
+      logsDir = logs;
+      // The stored device may be gone; fall back to the system default and
+      // persist that so the next start does not retry it.
+      let next = loaded;
+      if (next.audio.output_device && !list.some((d) => d.id === next.audio.output_device)) {
+        next = { ...next, audio: { ...next.audio, output_device: "" } };
+        api.setOutputDevice("").catch(apply);
+      }
+      config = next;
+    } catch (e) {
+      apply(e);
+    }
+  }
+
   $effect(() => {
-    Promise.all([api.getConfig(), api.getOutputDevices(), api.getCacheStatus()])
-      .then(([loaded, list, status]) => {
-        devices = list;
-        cacheStatus = status;
-        // The stored device may be gone; fall back to the system default and
-        // persist that so the next start does not retry it.
-        let next = loaded;
-        if (next.audio.output_device && !list.some((d) => d.id === next.audio.output_device)) {
-          next = { ...next, audio: { ...next.audio, output_device: "" } };
-          api.setOutputDevice("").catch(apply);
-        }
-        config = next;
-      })
-      .catch(apply);
+    load();
   });
 
   function setDevice(deviceId: string) {
@@ -98,8 +112,14 @@
 </script>
 
 <h2>Settings</h2>
-{#if error}<p style="color:#ff6b6b">{error}</p>{/if}
-{#if config}
+{#if !config}
+  {#if error}
+    <ErrorState message={error} onRetry={load} />
+  {:else}
+    <p class="muted">Loading…</p>
+  {/if}
+{:else}
+  {#if error}<p style="color:#ff6b6b">{error}</p>{/if}
   <h3>Audio output</h3>
   <select
     value={config.audio.output_device}
@@ -140,8 +160,7 @@
     onchange={(e) =>
       setQuality((e.target as HTMLSelectElement).value as Config["streaming"]["quality"])}
   >
-    <option value="low">Low</option>
-    <option value="high">High</option>
+    <option value="high">High (AAC 320 kbps)</option>
     <option value="lossless">Lossless</option>
     <option value="max">Max (Hi-Res)</option>
   </select>
@@ -182,7 +201,11 @@
         The configured cache directory is unusable; using {cacheStatus.dir}.
       </p>
     {/if}
-    <p class="muted">{formatMb(cacheStatus.used_bytes)} of {formatMb(cacheStatus.max_bytes)} used</p>
+    <p class="muted">
+      {formatMb(cacheStatus.used_bytes)} used{#if cacheStatus.pending_bytes > 0}
+        (+{formatMb(cacheStatus.pending_bytes)} downloading){/if}
+      of {formatMb(cacheStatus.max_bytes)}
+    </p>
     <p>
       <label>
         Max size (MB):
@@ -204,9 +227,15 @@
         Clear cache on exit
       </label>
     </p>
-    <p><button onclick={clearCache}>Clear cache</button></p>
+    <p>
+      <button onclick={refreshCacheStatus}>Refresh</button>
+      <button onclick={clearCache}>Clear cache</button>
+    </p>
     <p class="muted">Directory: {cacheStatus.dir} (edit cache.dir in config.toml)</p>
   {/if}
+  <h3>Logs</h3>
+  <p class="muted">Directory: {logsDir || "unavailable"}</p>
+  <p><button onclick={() => api.openLogsFolder().catch(apply)}>Open logs folder</button></p>
 {/if}
 {#if player.state.bit_perfect_notice}
   <p style="color:#e0a030">{player.state.bit_perfect_notice}</p>

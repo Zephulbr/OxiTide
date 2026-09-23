@@ -1,7 +1,7 @@
 <script lang="ts">
   import { api } from "../lib/api";
   import { openUrl } from "@tauri-apps/plugin-opener";
-  let { onLogin }: { onLogin: () => void } = $props();
+  let { onLogin, message = "" }: { onLogin: () => void; message?: string } = $props();
   let url = $state("");
   let redirect = $state("");
   let error = $state("");
@@ -36,7 +36,7 @@
 </script>
 
 <div style="max-width:640px;margin:10vh auto">
-  <h1>Sign in to TIDAL</h1>
+  <h1>{message || "Sign in to TIDAL"}</h1>
   <button onclick={begin} disabled={busy}>Open login page</button>
   {#if url}<p class="muted">After logging in you'll land on an "Oops" page. Paste its full URL below.</p>{/if}
   <input placeholder="Paste the redirect URL" bind:value={redirect} style="width:100%" />

@@ -63,11 +63,25 @@ pub enum QualityDisplay {
 #[serde(default)]
 pub struct UiConfig {
     pub quality_display: QualityDisplay,
+    pub window_width: u32,
+    pub window_height: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub window_x: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub window_y: Option<i32>,
+    pub window_maximized: bool,
 }
 
 impl Default for UiConfig {
     fn default() -> Self {
-        Self { quality_display: QualityDisplay::Compact }
+        Self {
+            quality_display: QualityDisplay::Compact,
+            window_width: 1200,
+            window_height: 800,
+            window_x: None,
+            window_y: None,
+            window_maximized: false,
+        }
     }
 }
 
@@ -102,7 +116,15 @@ impl Config {
             return Self::default();
         };
         match toml::from_str::<Config>(&text) {
-            Ok(config) => config,
+            Ok(mut config) => {
+                // 'low' is 96 kbps HE-AAC, which the built-in decoder cannot
+                // play; retire it so old configs keep working at 320 kbps AAC.
+                if config.streaming.quality == QualityDto::Low {
+                    tracing::warn!("streaming quality 'low' (HE-AAC) is unsupported; using 'high'");
+                    config.streaming.quality = QualityDto::High;
+                }
+                config
+            }
             Err(e) => {
                 tracing::warn!("malformed config at {}: {e}", path.display());
                 let backup = path.with_extension("toml.bak");
@@ -143,6 +165,12 @@ pub fn default_cache_dir() -> Option<PathBuf> {
     directories::ProjectDirs::from("", "", "OxiTide").map(|dirs| dirs.config_dir().join("cache"))
 }
 
+/// `%APPDATA%\OxiTide\logs` (the app root, not the config directory:
+/// `ProjectDirs::config_dir()` appends `\config`).
+pub fn logs_dir() -> Option<PathBuf> {
+    directories::BaseDirs::new().map(|dirs| dirs.config_dir().join("OxiTide").join("logs"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -180,7 +208,14 @@ mod tests {
                 volume: 0.42,
             },
             streaming: StreamingConfig { quality: QualityDto::Max, allow_fallback: false },
-            ui: UiConfig { quality_display: QualityDisplay::Detailed },
+            ui: UiConfig {
+                quality_display: QualityDisplay::Detailed,
+                window_width: 1280,
+                window_height: 720,
+                window_x: Some(40),
+                window_y: Some(60),
+                window_maximized: true,
+            },
             cache: CacheConfig {
                 dir: "D:\\cache".into(),
                 max_size_mb: 512,
@@ -219,10 +254,60 @@ mod tests {
         assert_eq!(config.streaming.quality, QualityDto::Lossless);
         assert!(config.streaming.allow_fallback);
         assert_eq!(config.ui.quality_display, QualityDisplay::Compact);
+        assert_eq!(config.ui.window_width, 1200);
+        assert_eq!(config.ui.window_height, 800);
+        assert_eq!(config.ui.window_x, None);
+        assert_eq!(config.ui.window_y, None);
+        assert!(!config.ui.window_maximized);
         assert_eq!(config.cache.dir, "");
         assert_eq!(config.cache.max_size_mb, 2048);
         assert!(!config.cache.clear_on_exit);
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn low_quality_is_coerced_to_high() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        fs::write(&path, "[streaming]\nquality = \"low\"\n").unwrap();
+        let config = Config::load_from(&path);
+        assert_eq!(config.streaming.quality, QualityDto::High);
+        assert!(config.streaming.allow_fallback);
+        assert_eq!(config.cache.max_size_mb, 2048);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// Review Focus: `toml` serialization errors on `None` fields, so the
+    /// window position must be omitted (not written as a null) before the
+    /// first exit, and every other save must keep working.
+    #[test]
+    fn default_config_omits_window_position_before_the_first_save() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        Config::default().save_to(&path).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("window_x"), "window_x written before the first save:\n{text}");
+        assert!(!text.contains("window_y"), "window_y written before the first save:\n{text}");
+        assert!(text.contains("window_width = 1200"));
+        assert!(text.contains("window_maximized = false"));
+        let loaded = Config::load_from(&path);
+        assert_eq!(loaded.ui.window_x, None);
+        assert_eq!(loaded.ui.window_maximized, false);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// Review Focus: the logs directory must be `%APPDATA%\OxiTide\logs`, not
+    /// the config directory (`ProjectDirs::config_dir()` appends `\config`).
+    #[test]
+    fn logs_dir_is_under_the_oxitide_app_dir() {
+        let dir = logs_dir().expect("no project directories available");
+        assert!(dir.ends_with("logs"), "unexpected logs dir: {}", dir.display());
+        assert_eq!(
+            dir.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str()),
+            Some("OxiTide"),
+            "logs must live directly under the app dir: {}",
+            dir.display()
+        );
     }
 
     #[test]

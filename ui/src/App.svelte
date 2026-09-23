@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { listen } from "@tauri-apps/api/event";
   import Sidebar from "./lib/components/Sidebar.svelte";
   import PlayerBar from "./lib/components/PlayerBar.svelte";
   import QueueRail from "./lib/components/QueueRail.svelte";
@@ -12,8 +13,16 @@
   import Settings from "./views/Settings.svelte";
   import { createNav } from "./lib/nav.svelte";
   import { createPlayer } from "./lib/player.svelte";
-  import { api } from "./lib/api";
+  import { clearPagerCache } from "./lib/pager.svelte";
+  import { api, type QueueItem } from "./lib/api";
   import type { QualityDisplay } from "./lib/quality";
+
+  interface ExpiredSession {
+    queue: QueueItem[];
+    index: number;
+    position: number;
+    playing: boolean;
+  }
 
   const nav = createNav();
   const player = createPlayer();
@@ -22,6 +31,27 @@
   let booting = $state(true);
   let error = $state("");
   let playerReady = $state(false);
+  let expired = $state<ExpiredSession | null>(null);
+
+  $effect(() => {
+    const unlisten = listen("session_expired", () => {
+      if (expired) return;
+      const snapshot = player.state;
+      const current = snapshot.current;
+      expired = {
+        queue: snapshot.queue,
+        index: current
+          ? Math.max(0, snapshot.queue.findIndex((item) => item.track_id === current.track_id))
+          : 0,
+        position: snapshot.position_ms,
+        playing: snapshot.playing,
+      };
+      loggedIn = false;
+    });
+    return () => {
+      unlisten.then((off) => off());
+    };
+  });
 
   $effect(() => {
     if (loggedIn && !playerReady) {
@@ -53,8 +83,18 @@
       });
   });
 
-  function onLogin() {
+  async function onLogin() {
+    clearPagerCache();
     error = "";
+    const restore = expired;
+    expired = null;
+    if (restore) {
+      try {
+        await player.restore(restore.queue, restore.index, restore.position, restore.playing);
+      } catch (e) {
+        error = String(e);
+      }
+    }
     loggedIn = true;
   }
 
@@ -64,6 +104,7 @@
     } catch (e) {
       error = String(e);
     }
+    clearPagerCache();
     loggedIn = false;
   }
 </script>
@@ -72,11 +113,15 @@
   <p class="muted" style="padding:24px">Loading…</p>
 {:else if !loggedIn}
   {#if error}<p style="color:#ff6b6b;padding:0 24px">{error}</p>{/if}
-  <Login onLogin={onLogin} />
+  <Login
+    onLogin={onLogin}
+    message={expired ? "Session expired — sign in to continue" : ""}
+  />
 {:else}
   <div class="app">
     <Sidebar {nav} onLogout={onLogout} />
     <main class="main">
+      {#if error}<p style="color:#ff6b6b">{error}</p>{/if}
       {#if nav.route.name === "home"}<Home {nav} />
       {:else if nav.route.name === "search"}<Search {nav} {player} />
       {:else if nav.route.name === "library"}<Library {nav} {player} />

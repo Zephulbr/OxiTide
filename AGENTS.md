@@ -8,7 +8,7 @@ Prereqs: Rust stable (`rust-toolchain.toml` pins it, with clippy/rustfmt), Node 
 
 - Dev run: `npm --prefix ui run app:dev` (starts Vite on port 1420, then the Tauri window).
   - `cargo run -p oxitide-app` is a trap: the debug build loads `devUrl` (http://localhost:1420) and fails with "localhost refused to connect" unless Vite is already running.
-- Package installer: `npm --prefix ui run app:build` (MSI/NSIS).
+- Package installer: `npm --prefix ui run app:build` (NSIS per-user + MSI; artifacts under `target/release/bundle/`). Unsigned; WebView2 downloads at install time.
 - Rust: `cargo test --workspace`; `cargo clippy --workspace -- -D warnings`. Single test: `cargo test -p oxitide-tidal <test_name>`.
 - UI: `npm --prefix ui run check` (svelte-check); `npm --prefix ui test` (vitest). Single test: `npm --prefix ui test -- src/lib/format.test.ts`.
 
