@@ -1,4 +1,4 @@
-use symphonia::core::audio::sample::SampleFormat;
+use symphonia::core::audio::GenericAudioBufferRef;
 use symphonia::core::codecs::audio::AudioDecoderOptions;
 use symphonia::core::codecs::CodecParameters;
 use symphonia::core::errors::Error as SymError;
@@ -132,7 +132,7 @@ pub fn run(source: impl MediaSource + 'static, ext: &str, sink: &mut dyn PcmSink
         .probe(&hint, mss, FormatOptions::default(), MetadataOptions::default())
         .map_err(|e| Error::Decode(e.to_string()))?;
 
-    let (track_id, mut decoder, bits_hint, sample_format) = {
+    let (track_id, mut decoder, bits_hint) = {
         let track = reader
             .default_track(TrackType::Audio)
             .ok_or_else(|| Error::Decode("no audio track".into()))?;
@@ -143,7 +143,7 @@ pub fn run(source: impl MediaSource + 'static, ext: &str, sink: &mut dyn PcmSink
         let decoder = symphonia::default::get_codecs()
             .make_audio_decoder(params, &AudioDecoderOptions::default())
             .map_err(|e| Error::Decode(e.to_string()))?;
-        (track.id, decoder, params.bits_per_sample, params.sample_format)
+        (track.id, decoder, params.bits_per_sample)
     };
 
     let mut info_sent = false;
@@ -165,7 +165,7 @@ pub fn run(source: impl MediaSource + 'static, ext: &str, sink: &mut dyn PcmSink
                         sample_rate: spec.rate(),
                         channels: spec.channels().count().max(1) as u16,
                         bits_per_sample: normalize_bits(bits_hint),
-                        format: source_format(sample_format, bits_hint),
+                        format: source_format(&decoded, bits_hint),
                     };
                     sink.on_stream_info(&info)?;
                     out_format = sink.preferred_format();
@@ -203,11 +203,13 @@ fn normalize_bits(bits: Option<u32>) -> u16 {
     }
 }
 
-/// The representation of the *source* samples. FLAC always reports a bit depth
-/// and no sample format, so `None` with a bit depth is an integer source.
-fn source_format(sample_format: Option<SampleFormat>, bits: Option<u32>) -> PcmFormat {
-    match sample_format {
-        Some(SampleFormat::F32) | Some(SampleFormat::F64) => PcmFormat::F32,
+/// The representation of the *decoded* samples. The decoded buffer is
+/// authoritative: AAC-in-MP4 reports no bit depth and no sample format, yet its
+/// decoder produces f32. Integer decoders always produce an integer buffer, and
+/// FLAC always reports the bit depth needed to size the container.
+fn source_format(decoded: &GenericAudioBufferRef<'_>, bits: Option<u32>) -> PcmFormat {
+    match decoded {
+        GenericAudioBufferRef::F32(_) | GenericAudioBufferRef::F64(_) => PcmFormat::F32,
         _ => PcmFormat::I32 { bits: normalize_bits(bits) },
     }
 }
@@ -275,6 +277,26 @@ mod tests {
         assert_eq!(info.channels, 2);
         assert_eq!(info.bits_per_sample, 16);
         assert_eq!(sink.samples.len(), 176_400); // 2s * 44100 * 2ch
+        assert!(sink.samples.iter().all(|s| s.is_finite()));
+    }
+
+    #[test]
+    fn decodes_fragmented_mp4_aac() {
+        let sink = decode_fixture_f32("tone_aac.mp4", "mp4");
+        let info = sink.info.unwrap();
+        assert_eq!(info.sample_rate, 44100);
+        assert_eq!(info.channels, 2);
+        assert!(
+            !info.is_bit_perfect_candidate(),
+            "AAC must not be treated as a bit-perfect candidate"
+        );
+        // AAC-LC adds up to one frame of encoder delay/padding (1024 samples
+        // per channel) around the 2 s tone.
+        assert!(
+            sink.samples.len() >= 176_400 && sink.samples.len() <= 176_400 + 2 * 2 * 1024,
+            "unexpected AAC sample count: {}",
+            sink.samples.len()
+        );
         assert!(sink.samples.iter().all(|s| s.is_finite()));
     }
 

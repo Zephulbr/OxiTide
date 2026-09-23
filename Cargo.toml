@@ -16,7 +16,7 @@ thiserror = "2"
 tracing = "0.1"
 url = "2"
 quick-xml = "0.42"
-symphonia = { version = "0.6", features = ["flac", "isomp4", "pcm"] }
+symphonia = { version = "0.6", features = ["flac", "isomp4", "pcm", "aac"] }
 rtrb = "0.4"
 base64 = "0.22"
 toml = "1"
