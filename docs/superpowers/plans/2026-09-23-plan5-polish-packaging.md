@@ -2746,6 +2746,7 @@ Replace `ui/src/views/Library.svelte` with:
 
 ```svelte
 <script lang="ts">
+  import { untrack } from "svelte";
   import { api, trackToQueueItem, type Album, type Playlist } from "../lib/api";
   import ErrorState from "../lib/components/ErrorState.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
@@ -2780,6 +2781,12 @@ Replace `ui/src/views/Library.svelte` with:
     load();
   });
 
+  // Eager first page: the sentinel alone would leave the section empty when it
+  // starts below the fold. `untrack` keeps this a one-shot mount action.
+  $effect(() => {
+    untrack(() => favorites.loadMore());
+  });
+
   $effect(() => {
     if (!sentinel || favorites.done) return;
     const observer = new IntersectionObserver((entries) => {
@@ -2791,11 +2798,13 @@ Replace `ui/src/views/Library.svelte` with:
 
   async function playFrom(index: number) {
     await favorites.ensureAll();
+    if (favorites.error) return;
     api.playTracks(favorites.items.map(trackToQueueItem), index);
   }
 
   async function playAll() {
     await favorites.ensureAll();
+    if (favorites.error) return;
     api.playTracks(favorites.items.map(trackToQueueItem), 0);
   }
 </script>
@@ -2871,6 +2880,7 @@ Replace `ui/src/views/Playlist.svelte` with:
 
 ```svelte
 <script lang="ts">
+  import { untrack } from "svelte";
   import { api, trackToQueueItem, type Playlist as PlaylistT } from "../lib/api";
   import ErrorState from "../lib/components/ErrorState.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
@@ -2907,6 +2917,12 @@ Replace `ui/src/views/Playlist.svelte` with:
     load();
   });
 
+  // Eager first page: the sentinel alone would leave the list empty when it
+  // starts below the fold. `untrack` keeps this a one-shot mount action.
+  $effect(() => {
+    untrack(() => pager.loadMore());
+  });
+
   $effect(() => {
     if (!sentinel || pager.done) return;
     const observer = new IntersectionObserver((entries) => {
@@ -2918,11 +2934,13 @@ Replace `ui/src/views/Playlist.svelte` with:
 
   async function playFrom(index: number) {
     await pager.ensureAll();
+    if (pager.error) return;
     api.playTracks(pager.items.map(trackToQueueItem), index);
   }
 
   async function playAll() {
     await pager.ensureAll();
+    if (pager.error) return;
     api.playTracks(pager.items.map(trackToQueueItem), 0);
   }
 </script>
