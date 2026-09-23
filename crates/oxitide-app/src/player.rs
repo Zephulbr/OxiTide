@@ -32,10 +32,11 @@ impl StreamResolver for TidalResolver {
         let info = self
             .runtime
             .block_on(self.client.playback_info(track_id, quality))?;
-        let manifest: String = String::from_utf8_lossy(&info.manifest).chars().take(4096).collect();
+        // The manifest body carries signed CDN URLs, so only its size is logged.
         tracing::debug!(
-            "playbackinfo track {track_id} ({quality:?}): mime={} manifest={manifest}",
-            info.manifest_mime
+            "playbackinfo track {track_id} ({quality:?}): mime={} manifest_len={}",
+            info.manifest_mime,
+            info.manifest.len()
         );
         source::plan_from_info(&info)
     }

@@ -515,7 +515,9 @@ fn decode_track(
             plan.timescale,
             plan.segments.len(),
             plan.init_url.is_some(),
-            plan.segments.first().map(|s| s.url.as_str()),
+            plan.segments
+                .first()
+                .map(|s| s.url.split('?').next().unwrap_or("")),
         );
         // Seek by segment index: media URLs are an ordered list, so restarting
         // at the segment covering the target needs no HTTP Range.
