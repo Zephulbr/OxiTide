@@ -889,7 +889,7 @@ In `crates/oxitide-tidal/src/catalog.rs`, replace the `playlist_tracks_parses_pa
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `cargo test -p oxitide-tidal favorite_tracks_page playlist_tracks_page`
+Run: `cargo test -p oxitide-tidal page_returns_items_and_total`
 Expected: compile errors — no method `favorite_tracks_page` / `playlist_tracks_page`.
 
 - [ ] **Step 3: Implement the page methods**
