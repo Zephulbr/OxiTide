@@ -210,6 +210,13 @@ impl Queue {
         self.playing = false;
     }
 
+    /// Resume playback without touching the queue (e.g. after a retry).
+    pub fn resume(&mut self) {
+        if self.current.is_some() {
+            self.playing = true;
+        }
+    }
+
     pub fn set_volume(&mut self, v: f32) {
         self.volume = v.clamp(0.0, 1.0);
     }
@@ -382,6 +389,22 @@ mod tests {
         q.stop();
         assert!(!q.is_playing());
         assert_eq!(q.items().len(), 2);
+    }
+
+    #[test]
+    fn resume_keeps_items_and_sets_playing() {
+        let mut q = queue(2);
+        q.stop();
+        q.resume();
+        assert!(q.is_playing());
+        assert_eq!(q.items().len(), 2);
+    }
+
+    #[test]
+    fn resume_without_a_current_track_is_a_noop() {
+        let mut q = Queue::default();
+        q.resume();
+        assert!(!q.is_playing());
     }
 
     #[test]

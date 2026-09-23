@@ -71,6 +71,8 @@ pub enum EngineCmd {
     Remove(usize),
     Enqueue { items: Vec<QueueItem> },
     Clear,
+    /// Restart the current track at its last position (after an error).
+    Retry,
 }
 
 type Listener = Arc<dyn Fn(EngineEvent) + Send + Sync>;
@@ -283,6 +285,35 @@ impl Engine {
         }
     }
 
+    /// Restart the current track at its last position. Recovers a stream
+    /// error, a device-loss pause, or a queue stopped at the end of a track.
+    /// A no-op without a current item.
+    pub fn retry(&self) -> Result<()> {
+        let item = {
+            let q = self.inner.queue.lock().unwrap();
+            q.current().cloned()
+        };
+        if let Some(item) = item {
+            self.inner.queue.lock().unwrap().resume();
+            self.inner.paused.store(false, Ordering::SeqCst);
+            // Only trust `position_ms` when it belongs to the current track.
+            let position = if self.inner.position_track.load(Ordering::SeqCst) == item.track_id {
+                self.inner.position_ms.load(Ordering::SeqCst)
+            } else {
+                0
+            };
+            *self.inner.seek_target.lock().unwrap() = Some(PendingSeek {
+                track_id: item.track_id,
+                position_ms: position,
+                auto_start: true,
+            });
+            self.inner.generation.fetch_add(1, Ordering::SeqCst);
+            self.inner.notify_worker();
+            self.emit(EngineEvent::State(self.state()));
+        }
+        Ok(())
+    }
+
     pub fn state(&self) -> PlaybackState {
         build_state(&self.inner)
     }
@@ -432,6 +463,9 @@ impl Engine {
                 self.inner.notify_worker();
                 self.emit(EngineEvent::NowPlaying(None));
                 self.emit(EngineEvent::State(self.state()));
+            }
+            EngineCmd::Retry => {
+                self.retry()?;
             }
         }
         Ok(())
@@ -1154,7 +1188,11 @@ fn worker_main(
                 inner.generation.fetch_add(1, Ordering::SeqCst);
                 let _ = output.stop();
                 open_spec = None;
-                emit(&inner, EngineEvent::Error { code: "playback".into(), message: e.to_string() });
+                let code = match &e {
+                    Error::Tidal(oxitide_tidal::Error::Unauthorized) => "auth",
+                    _ => "playback",
+                };
+                emit(&inner, EngineEvent::Error { code: code.into(), message: e.to_string() });
                 emit(&inner, EngineEvent::State(build_state(&inner)));
             }
         }
@@ -1168,6 +1206,7 @@ mod tests {
     use crate::output::NullOutput;
     use crate::source::Segment;
     use std::collections::HashMap;
+    use std::sync::atomic::AtomicUsize;
 
     struct FakeResolver {
         plan: StreamPlan,
@@ -1184,6 +1223,31 @@ mod tests {
     impl StreamResolver for FailingResolver {
         fn resolve(&self, _track_id: u64, _quality: Quality) -> Result<StreamPlan> {
             Err(Error::Manifest("boom".into()))
+        }
+    }
+
+    /// Fails the first resolve, then succeeds; simulates a transient network
+    /// failure that a Retry recovers from.
+    struct FlakyResolver {
+        plan: StreamPlan,
+        calls: AtomicUsize,
+    }
+
+    impl StreamResolver for FlakyResolver {
+        fn resolve(&self, _track_id: u64, _quality: Quality) -> Result<StreamPlan> {
+            if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+                Err(Error::Fetch("network down".into()))
+            } else {
+                Ok(self.plan.clone())
+            }
+        }
+    }
+
+    struct AuthFailingResolver;
+
+    impl StreamResolver for AuthFailingResolver {
+        fn resolve(&self, _track_id: u64, _quality: Quality) -> Result<StreamPlan> {
+            Err(Error::Tidal(oxitide_tidal::Error::Unauthorized))
         }
     }
 
@@ -1800,6 +1864,96 @@ mod tests {
             "no error event emitted"
         );
         assert!(!engine.state().playing, "queue still reports playing after an error");
+    }
+
+    #[test]
+    fn retry_after_a_stream_error_restarts_the_current_track() {
+        let (plan, files) = fixture_plan();
+        let output = NullOutput::new();
+        let engine = build_engine(
+            Arc::new(FlakyResolver { plan, calls: AtomicUsize::new(0) }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(output.clone()),
+            Quality::Lossless,
+        );
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let seen_ref = seen.clone();
+        engine.subscribe(Arc::new(move |e| seen_ref.lock().unwrap().push(e)));
+
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| seen.lock().unwrap().iter().any(|e| matches!(e, EngineEvent::Error { .. })));
+        assert!(!engine.state().playing, "a stream error must stop the queue");
+
+        engine.retry().unwrap();
+
+        wait_for(|| output.samples().len() > 0);
+        assert!(engine.state().playing, "retry did not resume playback");
+        assert_eq!(engine.state().current.map(|i| i.track_id), Some(1));
+    }
+
+    #[test]
+    fn retry_resumes_at_the_recorded_position() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| output.samples().len() > 0);
+
+        engine.handle(EngineCmd::Seek(1000)).unwrap();
+        wait_for(|| engine.state().position_ms >= 1000);
+        // Simulate the stop a stream error performs, keeping the position.
+        engine.inner.queue.lock().unwrap().stop();
+        let before = output.samples().len();
+
+        engine.retry().unwrap();
+
+        wait_for(|| output.samples().len() > before);
+        assert!(engine.state().playing, "retry did not resume playback");
+        assert!(
+            engine.state().position_ms >= 1000,
+            "retry restarted from the beginning: {}",
+            engine.state().position_ms
+        );
+    }
+
+    #[test]
+    fn retry_without_a_current_item_is_a_noop() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        let before = engine.inner.generation.load(Ordering::SeqCst);
+
+        engine.handle(EngineCmd::Retry).unwrap();
+
+        assert_eq!(engine.inner.generation.load(Ordering::SeqCst), before);
+        assert!(output.samples().is_empty());
+        assert!(!engine.state().playing);
+    }
+
+    #[test]
+    fn unauthorized_stream_error_is_coded_auth() {
+        let output = NullOutput::new();
+        let engine = build_engine(
+            Arc::new(AuthFailingResolver),
+            Arc::new(crate::fetch::MapFetcher::default()),
+            Box::new(output),
+            Quality::Lossless,
+        );
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let seen_ref = seen.clone();
+        engine.subscribe(Arc::new(move |e| seen_ref.lock().unwrap().push(e)));
+
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+
+        wait_for(|| seen.lock().unwrap().iter().any(|e| matches!(e, EngineEvent::Error { .. })));
+        let code = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .find_map(|e| match e {
+                EngineEvent::Error { code, .. } => Some(code.clone()),
+                _ => None,
+            })
+            .expect("no error event");
+        assert_eq!(code, "auth");
     }
 
     /// Regression: `Next` at the end of the queue with repeat off must not
