@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api, type CacheStatus, type Config, type OutputDevice } from "../lib/api";
+  import ErrorState from "../lib/components/ErrorState.svelte";
   import type { QualityDisplay } from "../lib/quality";
   import type { Player } from "../lib/player.svelte";
   let {
@@ -25,22 +26,33 @@
     config = { ...config, audio: { ...config.audio, ...patch } };
   }
 
+  async function load() {
+    error = "";
+    try {
+      const [loaded, list, status, logs] = await Promise.all([
+        api.getConfig(),
+        api.getOutputDevices(),
+        api.getCacheStatus(),
+        api.getLogsDir(),
+      ]);
+      devices = list;
+      cacheStatus = status;
+      logsDir = logs;
+      // The stored device may be gone; fall back to the system default and
+      // persist that so the next start does not retry it.
+      let next = loaded;
+      if (next.audio.output_device && !list.some((d) => d.id === next.audio.output_device)) {
+        next = { ...next, audio: { ...next.audio, output_device: "" } };
+        api.setOutputDevice("").catch(apply);
+      }
+      config = next;
+    } catch (e) {
+      apply(e);
+    }
+  }
+
   $effect(() => {
-    Promise.all([api.getConfig(), api.getOutputDevices(), api.getCacheStatus(), api.getLogsDir()])
-      .then(([loaded, list, status, logs]) => {
-        devices = list;
-        cacheStatus = status;
-        logsDir = logs;
-        // The stored device may be gone; fall back to the system default and
-        // persist that so the next start does not retry it.
-        let next = loaded;
-        if (next.audio.output_device && !list.some((d) => d.id === next.audio.output_device)) {
-          next = { ...next, audio: { ...next.audio, output_device: "" } };
-          api.setOutputDevice("").catch(apply);
-        }
-        config = next;
-      })
-      .catch(apply);
+    load();
   });
 
   function setDevice(deviceId: string) {
@@ -100,8 +112,14 @@
 </script>
 
 <h2>Settings</h2>
-{#if error}<p style="color:#ff6b6b">{error}</p>{/if}
-{#if config}
+{#if !config}
+  {#if error}
+    <ErrorState message={error} onRetry={load} />
+  {:else}
+    <p class="muted">Loading…</p>
+  {/if}
+{:else}
+  {#if error}<p style="color:#ff6b6b">{error}</p>{/if}
   <h3>Audio output</h3>
   <select
     value={config.audio.output_device}

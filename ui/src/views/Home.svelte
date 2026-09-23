@@ -1,25 +1,26 @@
 <script lang="ts">
   import { api, type HomeSection } from "../lib/api";
+  import ErrorState from "../lib/components/ErrorState.svelte";
   import type { Nav } from "../lib/nav.svelte";
   let { nav }: { nav: Nav } = $props();
   let sections = $state<HomeSection[]>([]);
   let loading = $state(true);
   let error = $state("");
 
-  $effect(() => {
+  async function load() {
     loading = true;
     error = "";
-    api
-      .getHome()
-      .then((s) => {
-        sections = s;
-      })
-      .catch((e) => {
-        error = String(e);
-      })
-      .finally(() => {
-        loading = false;
-      });
+    try {
+      sections = await api.getHome();
+    } catch (e) {
+      error = String(e);
+    } finally {
+      loading = false;
+    }
+  }
+
+  $effect(() => {
+    load();
   });
 </script>
 
@@ -27,7 +28,7 @@
 {#if loading}
   <p class="muted">Loading…</p>
 {:else if error}
-  <p style="color:#ff6b6b">{error}</p>
+  <ErrorState message={error} onRetry={load} />
 {:else if sections.length === 0}
   <p class="muted">Nothing to show yet.</p>
 {:else}

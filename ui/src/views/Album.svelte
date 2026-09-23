@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api, type Album as AlbumT, type Track } from "../lib/api";
+  import ErrorState from "../lib/components/ErrorState.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
   import type { Player } from "../lib/player.svelte";
   let { id, player }: { id: number; player: Player } = $props();
@@ -8,27 +9,27 @@
   let loading = $state(true);
   let error = $state("");
 
-  $effect(() => {
+  async function load() {
     loading = true;
     error = "";
-    Promise.all([api.getAlbum(id), api.getAlbumTracks(id)])
-      .then(([a, t]) => {
-        album = a;
-        tracks = t;
-      })
-      .catch((e) => {
-        error = String(e);
-      })
-      .finally(() => {
-        loading = false;
-      });
+    try {
+      [album, tracks] = await Promise.all([api.getAlbum(id), api.getAlbumTracks(id)]);
+    } catch (e) {
+      error = String(e);
+    } finally {
+      loading = false;
+    }
+  }
+
+  $effect(() => {
+    load();
   });
 </script>
 
 {#if loading}
   <p class="muted">Loading…</p>
 {:else if error}
-  <p style="color:#ff6b6b">{error}</p>
+  <ErrorState message={error} onRetry={load} />
 {:else}
   {#if album}
     <h2>{album.title}</h2>
