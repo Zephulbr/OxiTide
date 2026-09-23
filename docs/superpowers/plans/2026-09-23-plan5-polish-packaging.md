@@ -250,10 +250,18 @@ git commit -m "chore(release): package OxiTide 0.2.0"
 Add to the `#[cfg(test)] mod tests` in `crates/oxitide-app/src/config.rs`:
 
 ```rust
+    /// Review Focus: the logs directory must be `%APPDATA%\OxiTide\logs`, not
+    /// the config directory (`ProjectDirs::config_dir()` appends `\config`).
     #[test]
-    fn logs_dir_ends_with_logs() {
+    fn logs_dir_is_under_the_oxitide_app_dir() {
         let dir = logs_dir().expect("no project directories available");
         assert!(dir.ends_with("logs"), "unexpected logs dir: {}", dir.display());
+        assert_eq!(
+            dir.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str()),
+            Some("OxiTide"),
+            "logs must live directly under the app dir: {}",
+            dir.display()
+        );
     }
 ```
 
@@ -267,9 +275,10 @@ Expected: compile error — `logs_dir` not found.
 In `crates/oxitide-app/src/config.rs`, after `default_cache_dir`:
 
 ```rust
-/// `%APPDATA%\OxiTide\logs`.
+/// `%APPDATA%\OxiTide\logs` (the app root, not the config directory:
+/// `ProjectDirs::config_dir()` appends `\config`).
 pub fn logs_dir() -> Option<PathBuf> {
-    directories::ProjectDirs::from("", "", "OxiTide").map(|dirs| dirs.config_dir().join("logs"))
+    directories::BaseDirs::new().map(|dirs| dirs.config_dir().join("OxiTide").join("logs"))
 }
 ```
 
@@ -302,7 +311,7 @@ Add above `fn main()`:
 static LOG_GUARD: OnceLock<tracing_appender::non_blocking::WorkerGuard> = OnceLock::new();
 
 /// The daily-rotated file writer, or `None` when the logs directory cannot be
-/// created (the app then logs to stderr only).
+/// created (the app then logs to the console only).
 fn file_writer() -> Option<tracing_appender::non_blocking::NonBlocking> {
     let dir = config::logs_dir()?;
     if std::fs::create_dir_all(&dir).is_err() {
@@ -327,7 +336,9 @@ fn file_writer() -> Option<tracing_appender::non_blocking::NonBlocking> {
     Some(writer)
 }
 
-/// stderr plus a daily-rotated file log; `RUST_LOG` overrides the `info` default.
+/// The console layer plus a daily-rotated file log; `RUST_LOG` overrides the
+/// `info` default. The console layer keeps its previous destination (`fmt`
+/// defaults to stdout).
 fn init_logging() {
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
