@@ -26,6 +26,7 @@ async fn resolve_plan_fetch_demux_decode_pipeline() {
     .to_string();
     let info = PlaybackInfo {
         quality: Quality::Lossless,
+        actual_quality: None,
         manifest_mime: BTS_MIME.into(),
         manifest: manifest.into_bytes(),
     };

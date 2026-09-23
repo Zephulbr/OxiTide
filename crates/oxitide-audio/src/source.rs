@@ -130,7 +130,12 @@ mod tests {
     use oxitide_tidal::stream::Quality;
 
     fn info(mime: &str, body: &[u8]) -> PlaybackInfo {
-        PlaybackInfo { quality: Quality::Max, manifest_mime: mime.into(), manifest: body.to_vec() }
+        PlaybackInfo {
+            quality: Quality::Max,
+            actual_quality: None,
+            manifest_mime: mime.into(),
+            manifest: body.to_vec(),
+        }
     }
 
     #[test]
