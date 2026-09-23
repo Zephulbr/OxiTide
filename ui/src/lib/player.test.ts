@@ -9,9 +9,22 @@ describe("player reducer", () => {
       repeat: "off", preferred_quality: "lossless",
       output_mode: "shared", bit_perfect: false, bit_perfect_notice: null,
       queue: [],
+      stream: null,
     });
     expect(next.playing).toBe(true);
     expect(next.volume).toBe(0.5);
+  });
+
+  it("mirrors the stream metadata", () => {
+    const next = reduce(emptyState(), {
+      type: "state", playing: true, buffering: false, current: null,
+      position_ms: 0, duration_ms: 0, volume: 1, shuffle: false,
+      repeat: "off", preferred_quality: "lossless",
+      output_mode: "shared", bit_perfect: false, bit_perfect_notice: null,
+      queue: [],
+      stream: { quality: "lossless", codec: "flac", sample_rate: 44100, bit_depth: 16, channels: 2, bitrate_kbps: 1000 },
+    });
+    expect(next.stream?.sample_rate).toBe(44100);
   });
 
   it("applies a position event without clobbering the queue", () => {

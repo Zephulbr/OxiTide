@@ -16,6 +16,7 @@ quick-xml.workspace = true
 symphonia.workspace = true
 rtrb.workspace = true
 base64.workspace = true
+rand.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 wasapi = "0.24"

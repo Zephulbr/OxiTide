@@ -5,6 +5,8 @@ mod config;
 mod player;
 mod state;
 
+use tauri::Manager;
+
 use state::AppState;
 
 fn main() {
@@ -12,9 +14,14 @@ fn main() {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
+    let config = config::Config::load();
+    let state = AppState::default();
+    state.set_cache(player::build_cache(&config));
+    state.set_config(config);
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .manage(AppState::default())
+        .manage(state)
         .invoke_handler(tauri::generate_handler![
             commands::auth_begin,
             commands::auth_complete,
@@ -52,7 +59,24 @@ fn main() {
             commands::set_exclusive,
             commands::set_exclusive_fallback,
             commands::get_audio_status,
+            commands::get_cache_status,
+            commands::clear_cache,
+            commands::set_allow_fallback,
+            commands::set_quality_display,
+            commands::set_cache_max_size_mb,
+            commands::set_cache_clear_on_exit,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running OxiTide");
+        .build(tauri::generate_context!())
+        .expect("error while building OxiTide")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::Exit = event {
+                let state = app_handle.state::<AppState>();
+                let config = state.config();
+                if config.cache.clear_on_exit {
+                    if let Some(cache) = state.cache() {
+                        cache.clear();
+                    }
+                }
+            }
+        });
 }

@@ -13,9 +13,11 @@
   import { createNav } from "./lib/nav.svelte";
   import { createPlayer } from "./lib/player.svelte";
   import { api } from "./lib/api";
+  import type { QualityDisplay } from "./lib/quality";
 
   const nav = createNav();
   const player = createPlayer();
+  let qualityDisplay = $state<QualityDisplay>("compact");
   let loggedIn = $state(false);
   let booting = $state(true);
   let error = $state("");
@@ -25,6 +27,15 @@
     if (loggedIn && !playerReady) {
       playerReady = true;
       player.init();
+    }
+  });
+
+  $effect(() => {
+    if (loggedIn) {
+      api
+        .getConfig()
+        .then((config) => (qualityDisplay = config.ui.quality_display))
+        .catch(() => {});
     }
   });
 
@@ -72,9 +83,9 @@
       {:else if nav.route.name === "album"}<Album id={nav.route.id} {player} />
       {:else if nav.route.name === "playlist"}<Playlist id={nav.route.id} {player} />
       {:else if nav.route.name === "artist"}<Artist id={nav.route.id} />
-      {:else if nav.route.name === "settings"}<Settings {player} />{/if}
+      {:else if nav.route.name === "settings"}<Settings {player} onQualityDisplay={(mode) => (qualityDisplay = mode)} />{/if}
     </main>
     {#if nav.queueOpen}<aside class="queue"><QueueRail {player} /></aside>{/if}
-    <PlayerBar {player} />
+    <PlayerBar {player} {qualityDisplay} />
   </div>
 {/if}

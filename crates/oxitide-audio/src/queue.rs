@@ -1,3 +1,5 @@
+use rand::seq::SliceRandom;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -212,8 +214,24 @@ impl Queue {
         self.volume = v.clamp(0.0, 1.0);
     }
 
+    /// Enabling shuffles the items after the current index once; disabling
+    /// leaves the shuffled order in place. The current item never moves.
     pub fn set_shuffle(&mut self, on: bool) {
+        if on {
+            self.shuffle_tail_with(&mut rand::rng());
+        }
         self.shuffle = on;
+    }
+
+    /// One Fisher–Yates shuffle of the tail. Seeded by tests via `StdRng`.
+    fn shuffle_tail_with<R: Rng + ?Sized>(&mut self, rng: &mut R) {
+        match self.current {
+            Some(current) if current + 1 < self.items.len() => {
+                self.items[current + 1..].shuffle(rng);
+            }
+            Some(_) => {}
+            None => self.items.shuffle(rng),
+        }
     }
 
     pub fn set_repeat(&mut self, mode: RepeatMode) {
@@ -373,5 +391,61 @@ mod tests {
         assert_eq!(q.volume(), 1.0);
         q.set_volume(-1.0);
         assert_eq!(q.volume(), 0.0);
+    }
+
+    #[test]
+    fn set_shuffle_moves_only_the_tail() {
+        use rand::SeedableRng;
+        let mut q = queue(8);
+        q.next(); // current = index 1
+        let head: Vec<u64> = q.items()[..=1].iter().map(|i| i.track_id).collect();
+        let tail_before: Vec<u64> = q.items()[2..].iter().map(|i| i.track_id).collect();
+        q.shuffle_tail_with(&mut rand::rngs::StdRng::seed_from_u64(7));
+        let head_after: Vec<u64> = q.items()[..=1].iter().map(|i| i.track_id).collect();
+        let tail_after: Vec<u64> = q.items()[2..].iter().map(|i| i.track_id).collect();
+        assert_eq!(head_after, head, "shuffle moved the current item or the head");
+        let mut sorted_before = tail_before.clone();
+        sorted_before.sort();
+        let mut sorted_after = tail_after.clone();
+        sorted_after.sort();
+        assert_eq!(sorted_after, sorted_before, "shuffle changed the tail's items");
+        assert_ne!(
+            tail_after, tail_before,
+            "seed 7 produced the identity order; pick another seed"
+        );
+    }
+
+    #[test]
+    fn set_shuffle_flag_and_tail() {
+        let mut q = queue(8);
+        q.next();
+        let head: Vec<u64> = q.items()[..=1].iter().map(|i| i.track_id).collect();
+        q.set_shuffle(true);
+        assert!(q.shuffle());
+        assert_eq!(q.items()[..=1].iter().map(|i| i.track_id).collect::<Vec<_>>(), head);
+        assert_eq!(q.current().unwrap().track_id, 2);
+    }
+
+    #[test]
+    fn disabling_shuffle_keeps_the_order() {
+        use rand::SeedableRng;
+        let mut q = queue(6);
+        q.shuffle_tail_with(&mut rand::rngs::StdRng::seed_from_u64(3));
+        let shuffled: Vec<u64> = q.items().iter().map(|i| i.track_id).collect();
+        q.set_shuffle(false);
+        assert!(!q.shuffle());
+        assert_eq!(q.items().iter().map(|i| i.track_id).collect::<Vec<_>>(), shuffled);
+    }
+
+    #[test]
+    fn shuffle_without_a_current_track_shuffles_everything() {
+        use rand::SeedableRng;
+        let mut q = Queue::default();
+        q.push((1..=8).map(item).collect());
+        q.shuffle_tail_with(&mut rand::rngs::StdRng::seed_from_u64(5));
+        let mut ids: Vec<u64> = q.items().iter().map(|i| i.track_id).collect();
+        ids.sort();
+        assert_eq!(ids, (1..=8).collect::<Vec<_>>());
+        assert_eq!(q.current_index(), None);
     }
 }

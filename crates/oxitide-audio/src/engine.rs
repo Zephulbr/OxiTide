@@ -3,6 +3,7 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
+use crate::cache::{CacheKey, DiskCache};
 use crate::decode::{PcmBuffer, PcmFormat, PcmSink, StreamInfo};
 use crate::error::{Error, Result};
 use crate::fetch::{self, Fetcher, StreamBuffer};
@@ -14,6 +15,20 @@ use oxitide_tidal::stream::Quality;
 
 pub trait StreamResolver: Send + Sync + 'static {
     fn resolve(&self, track_id: u64, quality: Quality) -> Result<StreamPlan>;
+}
+
+/// The stream that was actually served and decoded for the current track.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct StreamMeta {
+    /// The served/actual quality (`None` when undecidable).
+    pub quality: Option<Quality>,
+    /// Codec name from the manifest.
+    pub codec: Option<String>,
+    pub sample_rate: u32,
+    pub bit_depth: u16,
+    pub channels: u16,
+    /// Manifest bandwidth, else computed from the fetched bytes.
+    pub bitrate_kbps: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
@@ -31,6 +46,7 @@ pub struct PlaybackState {
     pub bit_perfect: bool,
     pub bit_perfect_notice: Option<String>,
     pub queue: Vec<QueueItem>,
+    pub stream: Option<StreamMeta>,
 }
 
 #[derive(Debug, Clone)]
@@ -68,7 +84,12 @@ struct Inner {
     queue: Mutex<Queue>,
     resolver: Arc<dyn StreamResolver>,
     fetcher: OnceLock<Arc<dyn Fetcher>>,
+    cache: Arc<DiskCache>,
     quality: Mutex<Quality>,
+    /// Whether a lower-than-requested served quality plays or errors.
+    allow_fallback: AtomicBool,
+    /// The stream actually served and decoded for the current track.
+    stream_meta: Mutex<Option<StreamMeta>>,
     device_id: Mutex<Option<String>>,
     output_mode: Mutex<OutputMode>,
     exclusive_fallback: Mutex<ExclusiveFallback>,
@@ -122,6 +143,7 @@ fn build_state(inner: &Inner) -> PlaybackState {
         bit_perfect: status.bit_perfect,
         bit_perfect_notice: status.notice,
         queue: q.items().to_vec(),
+        stream: inner.stream_meta.lock().unwrap().clone(),
     }
 }
 
@@ -144,12 +166,17 @@ impl Engine {
         make_fetcher: impl FnOnce() -> Arc<dyn Fetcher> + Send + 'static,
         output: Box<dyn AudioOutput>,
         quality: Quality,
+        cache: Arc<DiskCache>,
+        allow_fallback: bool,
     ) -> Self {
         let inner = Arc::new(Inner {
             queue: Mutex::new(Queue::default()),
             resolver,
             fetcher: OnceLock::new(),
+            cache,
             quality: Mutex::new(quality),
+            allow_fallback: AtomicBool::new(allow_fallback),
+            stream_meta: Mutex::new(None),
             device_id: Mutex::new(None),
             output_mode: Mutex::new(OutputMode::Shared),
             exclusive_fallback: Mutex::new(ExclusiveFallback::Shared),
@@ -190,6 +217,12 @@ impl Engine {
     pub fn set_quality(&self, quality: Quality) {
         *self.inner.quality.lock().unwrap() = quality;
         self.restart_current_at_position();
+    }
+
+    /// Whether a lower-than-requested served quality plays or errors. Applies
+    /// from the next track.
+    pub fn set_allow_fallback(&self, allow: bool) {
+        self.inner.allow_fallback.store(allow, Ordering::SeqCst);
     }
 
     /// Select the output device. `None` means the system default. Applies
@@ -286,6 +319,7 @@ impl Engine {
     pub fn handle(&self, cmd: EngineCmd) -> Result<()> {
         match cmd {
             EngineCmd::PlayTracks { items, start } => {
+                *self.inner.stream_meta.lock().unwrap() = None;
                 let item = self.mutate_playing_queue(|q| {
                     q.play_context(items, start);
                     q.current().cloned()
@@ -392,6 +426,7 @@ impl Engine {
                 }
             }
             EngineCmd::Clear => {
+                *self.inner.stream_meta.lock().unwrap() = None;
                 self.mutate_playing_queue(|q| q.clear());
                 self.inner.paused.store(false, Ordering::SeqCst);
                 self.inner.notify_worker();
@@ -410,6 +445,7 @@ impl Engine {
         let generation = self.inner.generation.load(Ordering::SeqCst);
         let mut stream = start_track(&self.inner, item, mode, generation, None);
         let start = wait_for_info(&self.inner, &mut stream, generation)?;
+        *self.inner.stream_meta.lock().unwrap() = Some(start.meta.clone());
         let spec = AudioOutputSpec {
             device_id: self.output_device(),
             info: start.info,
@@ -438,6 +474,7 @@ impl Engine {
 struct StreamStart {
     info: StreamInfo,
     start_frames: u64,
+    meta: StreamMeta,
 }
 
 /// One decoded chunk handed from a track's producer to the worker.
@@ -503,54 +540,162 @@ fn decode_track(
     tx: SyncSender<Result<StreamEvent>>,
     buffer: Arc<StreamBuffer>,
 ) {
-    let outcome: Result<()> = (|| {
-        let quality = *inner.quality.lock().unwrap();
-        let plan = inner.resolver.resolve(item.track_id, quality)?;
-        tracing::debug!(
-            "resolved track {}: codec={:?} rate={:?} bits={:?} timescale={} segments={} init={} first_media={:?}",
-            item.track_id,
-            plan.codec,
-            plan.sample_rate,
-            plan.bit_depth,
-            plan.timescale,
-            plan.segments.len(),
-            plan.init_url.is_some(),
-            plan.segments
-                .first()
-                .map(|s| s.url.split('?').next().unwrap_or("")),
-        );
-        // Seek by segment index: media URLs are an ordered list, so restarting
-        // at the segment covering the target needs no HTTP Range.
-        let download_plan = match seek_ms {
-            Some(ms) if plan.sample_rate.is_some() => {
-                let target = seek::target_segment(&plan, ms, plan.sample_rate.unwrap());
-                plan.from_segment(target.segment_index)
+    let quality = *inner.quality.lock().unwrap();
+    let plan = match inner.resolver.resolve(item.track_id, quality) {
+        Ok(plan) => plan,
+        Err(e) => {
+            let _ = tx.send(Err(e));
+            return;
+        }
+    };
+    tracing::debug!(
+        "resolved track {}: codec={:?} rate={:?} bits={:?} timescale={} segments={} init={} first_media={:?}",
+        item.track_id,
+        plan.codec,
+        plan.sample_rate,
+        plan.bit_depth,
+        plan.timescale,
+        plan.segments.len(),
+        plan.init_url.is_some(),
+        plan.segments
+            .first()
+            .map(|s| s.url.split('?').next().unwrap_or("")),
+    );
+    let served = plan.quality;
+    if let Some(served) = served {
+        if !inner.allow_fallback.load(Ordering::SeqCst) && served < quality {
+            let _ = tx.send(Err(Error::Unavailable(served.label().to_string())));
+            return;
+        }
+    }
+    let cache_key = plan.manifest_hash.map(|manifest_hash| CacheKey {
+        track_id: item.track_id,
+        quality,
+        manifest_hash,
+    });
+    if let Some(key) = cache_key {
+        if let Some(path) = inner.cache.lookup(&key) {
+            inner.cache.protect(&key);
+            let result =
+                decode_from_file(&inner, &item, mode, generation, seek_ms, &tx, &path, &plan);
+            inner.cache.unprotect(&key);
+            match result {
+                Ok(()) => return,
+                Err(e) => {
+                    if inner.generation.load(Ordering::SeqCst) != generation {
+                        let _ = tx.send(Err(e));
+                        return;
+                    }
+                    tracing::warn!(
+                        "cache entry {} failed to decode ({e}); refetching",
+                        key.file_name()
+                    );
+                    inner.cache.remove(&key);
+                }
             }
-            _ => plan.clone(),
-        };
-        let fetch_buffer = buffer.clone();
-        let fetcher = inner.fetcher.get().expect("fetcher initialized by the worker").clone();
-        let downloader = std::thread::spawn(move || fetch::download(fetch_buffer, fetcher, download_plan));
-        let source = crate::demux::StreamBufferSource::new(buffer);
-        let mut sink = ChannelSink {
-            inner,
-            generation,
-            tx: tx.clone(),
-            mode,
-            out_format: PcmFormat::F32,
-            channels: 2,
-            plan,
-            seek_ms,
-            discarder: Discarder::default(),
-            start_frames: 0,
-        };
-        let result = crate::decode::run(source, "mp4", &mut sink);
-        let _ = downloader.join();
-        result
-    })();
-    if let Err(e) = outcome {
+        }
+    }
+    decode_from_network(inner, item, mode, generation, seek_ms, tx, buffer, plan, cache_key);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn decode_from_network(
+    inner: Arc<Inner>,
+    item: QueueItem,
+    mode: OutputMode,
+    generation: u64,
+    seek_ms: Option<u64>,
+    tx: SyncSender<Result<StreamEvent>>,
+    buffer: Arc<StreamBuffer>,
+    plan: StreamPlan,
+    cache_key: Option<CacheKey>,
+) {
+    // Seek by segment index: media URLs are an ordered list, so restarting
+    // at the segment covering the target needs no HTTP Range.
+    let download_plan = match seek_ms {
+        Some(ms) if plan.sample_rate.is_some() => {
+            let target = seek::target_segment(&plan, ms, plan.sample_rate.unwrap());
+            plan.from_segment(target.segment_index)
+        }
+        _ => plan.clone(),
+    };
+    // Only full-track plans are cached; a seek-truncated plan is a partial
+    // track and would poison replays.
+    let writer = match (seek_ms, cache_key) {
+        (None, Some(key)) => inner.cache.begin_write(&key),
+        _ => None,
+    };
+    let fetch_buffer = buffer.clone();
+    let fetcher = inner.fetcher.get().expect("fetcher initialized by the worker").clone();
+    let downloader =
+        std::thread::spawn(move || fetch::download(fetch_buffer, fetcher, download_plan, writer));
+    let source = crate::demux::StreamBufferSource::new(buffer.clone());
+    let total_bytes = {
+        let buffer = buffer.clone();
+        Arc::new(move || buffer.total_pushed()) as Arc<dyn Fn() -> u64 + Send + Sync>
+    };
+    let result =
+        decode_source(inner, &item, mode, generation, seek_ms, &tx, source, plan, total_bytes);
+    let _ = downloader.join();
+    if let Err(e) = result {
         let _ = tx.send(Err(e));
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn decode_from_file(
+    inner: &Arc<Inner>,
+    item: &QueueItem,
+    mode: OutputMode,
+    generation: u64,
+    seek_ms: Option<u64>,
+    tx: &SyncSender<Result<StreamEvent>>,
+    path: &std::path::Path,
+    plan: &StreamPlan,
+) -> Result<()> {
+    let len = std::fs::metadata(path).map(|meta| meta.len()).unwrap_or(0);
+    let source = crate::demux::FileSource::open(path)?;
+    let total_bytes = Arc::new(move || len) as Arc<dyn Fn() -> u64 + Send + Sync>;
+    decode_source(
+        inner.clone(),
+        item,
+        mode,
+        generation,
+        seek_ms,
+        tx,
+        source,
+        plan.clone(),
+        total_bytes,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn decode_source(
+    inner: Arc<Inner>,
+    item: &QueueItem,
+    mode: OutputMode,
+    generation: u64,
+    seek_ms: Option<u64>,
+    tx: &SyncSender<Result<StreamEvent>>,
+    source: impl symphonia::core::io::MediaSource + 'static,
+    plan: StreamPlan,
+    total_bytes: Arc<dyn Fn() -> u64 + Send + Sync>,
+) -> Result<()> {
+    let mut sink = ChannelSink {
+        inner,
+        generation,
+        tx: tx.clone(),
+        mode,
+        out_format: PcmFormat::F32,
+        channels: 2,
+        plan,
+        seek_ms,
+        discarder: Discarder::default(),
+        start_frames: 0,
+        duration_secs: item.duration_secs,
+        total_bytes,
+    };
+    crate::decode::run(source, "mp4", &mut sink)
 }
 
 struct ChannelSink {
@@ -565,11 +710,29 @@ struct ChannelSink {
     seek_ms: Option<u64>,
     discarder: Discarder,
     start_frames: u64,
+    /// The queue item's duration, for the bitrate fallback.
+    duration_secs: u32,
+    /// Total source bytes fetched so far (buffer for network, file length for a
+    /// cache hit).
+    total_bytes: Arc<dyn Fn() -> u64 + Send + Sync>,
 }
 
 impl ChannelSink {
     fn send(&self, event: Result<StreamEvent>) -> Result<()> {
         self.tx.send(event).map_err(|_| Error::Output("playback stream closed".into()))
+    }
+
+    /// Fallback bitrate for a single-file source: fetched bytes over the item's
+    /// duration. Multi-segment manifests carry their own bandwidth.
+    fn computed_bitrate_kbps(&self) -> Option<u32> {
+        if self.plan.timescale != 0 || self.plan.segments.len() != 1 || self.duration_secs == 0 {
+            return None;
+        }
+        let bytes = (self.total_bytes)();
+        if bytes == 0 {
+            return None;
+        }
+        Some((bytes.saturating_mul(8) / self.duration_secs as u64 / 1000) as u32)
     }
 }
 
@@ -589,9 +752,18 @@ impl PcmSink for ChannelSink {
             self.discarder = Discarder::new(target.discard_frames);
             self.start_frames = target.position_frames;
         }
+        let meta = StreamMeta {
+            quality: self.plan.quality,
+            codec: self.plan.codec.clone(),
+            sample_rate: info.sample_rate,
+            bit_depth: info.bits_per_sample,
+            channels: info.channels,
+            bitrate_kbps: self.plan.bitrate_kbps.or_else(|| self.computed_bitrate_kbps()),
+        };
         self.send(Ok(StreamEvent::Info(StreamStart {
             info: *info,
             start_frames: self.start_frames,
+            meta,
         })))
     }
 
@@ -708,6 +880,7 @@ fn run_session(
         if inner.generation.load(Ordering::SeqCst) != gen {
             return SessionOutcome::Superseded;
         }
+        *inner.stream_meta.lock().unwrap() = None;
         let start = match wait_for_info(inner, &mut stream, gen) {
             Ok(start) => start,
             Err(_) if inner.generation.load(Ordering::SeqCst) != gen => {
@@ -715,9 +888,11 @@ fn run_session(
             }
             Err(e) => return SessionOutcome::StreamError(e),
         };
-        let info = start.info;
+        let StreamStart { info, start_frames, meta } = start;
+        *inner.stream_meta.lock().unwrap() = Some(meta);
+        emit(inner, EngineEvent::State(build_state(inner)));
         // The stream's absolute starting frame (non-zero only for a seek).
-        frames = start.start_frames;
+        frames = start_frames;
         last_emit = Instant::now() - Duration::from_secs(1);
         inner.position_track.store(stream.item.track_id, Ordering::SeqCst);
         if info.sample_rate > 0 {
@@ -943,6 +1118,7 @@ fn worker_main(
                     let mut q = inner.queue.lock().unwrap();
                     q.stop();
                 }
+                *inner.stream_meta.lock().unwrap() = None;
                 // Remember where the device failed so the next play press
                 // resumes there; `auto_start: false` keeps the worker idle
                 // until the user acts.
@@ -967,6 +1143,7 @@ fn worker_main(
                     let mut q = inner.queue.lock().unwrap();
                     q.stop();
                 }
+                *inner.stream_meta.lock().unwrap() = None;
                 inner.generation.fetch_add(1, Ordering::SeqCst);
                 let _ = output.stop();
                 open_spec = None;
@@ -980,6 +1157,7 @@ fn worker_main(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cache::{CacheKey, DiskCache};
     use crate::output::NullOutput;
     use crate::source::Segment;
     use std::collections::HashMap;
@@ -1011,6 +1189,9 @@ mod tests {
             codec: Some("flac".into()),
             sample_rate: Some(44100),
             bit_depth: Some(16),
+            bitrate_kbps: None,
+            quality: None,
+            manifest_hash: None,
         };
         let mut files = HashMap::new();
         files.insert("mem://tone".to_string(), bytes);
@@ -1028,13 +1209,52 @@ mod tests {
         }
     }
 
+    fn test_cache() -> Arc<DiskCache> {
+        static CACHE_COUNTER: AtomicU32 = AtomicU32::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "oxitide-engine-cache-{}-{}",
+            std::process::id(),
+            CACHE_COUNTER.fetch_add(1, Ordering::SeqCst)
+        ));
+        DiskCache::new(dir, 64 * 1024 * 1024)
+    }
+
     fn build_engine(
         resolver: Arc<dyn StreamResolver>,
         fetcher: Arc<dyn Fetcher>,
         output: Box<dyn AudioOutput>,
         quality: Quality,
     ) -> Engine {
-        Engine::new(resolver, move || fetcher, output, quality)
+        Engine::new(resolver, move || fetcher, output, quality, test_cache(), true)
+    }
+
+    fn cached_plan(url: &str, manifest_hash: u64) -> StreamPlan {
+        StreamPlan {
+            init_url: None,
+            segments: vec![Segment { url: url.into(), start_ticks: 0, duration_ticks: 0 }],
+            timescale: 0,
+            codec: Some("flac".into()),
+            sample_rate: Some(44100),
+            bit_depth: Some(16),
+            bitrate_kbps: None,
+            quality: None,
+            manifest_hash: Some(manifest_hash),
+        }
+    }
+
+    struct CountingFetcher {
+        files: HashMap<String, Vec<u8>>,
+        calls: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    impl Fetcher for CountingFetcher {
+        fn get(&self, url: &str) -> Result<Vec<u8>> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            self.files
+                .get(url)
+                .cloned()
+                .ok_or_else(|| Error::Fetch(format!("no fixture for {url}")))
+        }
     }
 
     fn engine_with(
@@ -1049,6 +1269,121 @@ mod tests {
             Quality::Lossless,
         );
         (engine, output)
+    }
+
+    fn engine_with_policy(
+        plan: StreamPlan,
+        files: HashMap<String, Vec<u8>>,
+        allow_fallback: bool,
+    ) -> (Engine, NullOutput) {
+        let output = NullOutput::new();
+        let fetcher: Arc<dyn Fetcher> = Arc::new(crate::fetch::MapFetcher { files });
+        let engine = Engine::new(
+            Arc::new(FakeResolver { plan }),
+            move || fetcher,
+            Box::new(output.clone()),
+            Quality::Lossless,
+            test_cache(),
+            allow_fallback,
+        );
+        (engine, output)
+    }
+
+    #[test]
+    fn fallback_disabled_errors_on_a_lower_served_quality() {
+        let (mut plan, files) = fixture_plan();
+        plan.quality = Some(Quality::Low);
+        let (engine, output) = engine_with_policy(plan, files, false);
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let seen_ref = seen.clone();
+        engine.subscribe(Arc::new(move |e| seen_ref.lock().unwrap().push(e)));
+
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+
+        wait_for(|| {
+            seen.lock().unwrap().iter().any(|e| matches!(e, EngineEvent::Error { .. }))
+        });
+        let message = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .find_map(|e| match e {
+                EngineEvent::Error { message, .. } => Some(message.clone()),
+                _ => None,
+            })
+            .expect("no error event");
+        assert!(
+            message.contains("track unavailable at low"),
+            "unexpected error message: {message}"
+        );
+        assert!(!engine.state().playing);
+        assert_eq!(engine.state().queue.len(), 1, "the queue must be kept");
+        assert!(output.samples().is_empty(), "a rejected stream must not write audio");
+    }
+
+    #[test]
+    fn fallback_enabled_plays_and_reports_the_served_quality() {
+        let (mut plan, files) = fixture_plan();
+        plan.quality = Some(Quality::Low);
+        let (engine, output) = engine_with_policy(plan, files, true);
+
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| !engine.state().playing && output.samples().len() >= 176_400);
+
+        let meta = engine.state().stream.expect("no stream metadata");
+        assert_eq!(meta.quality, Some(Quality::Low));
+        assert_eq!(meta.sample_rate, 44100);
+        assert_eq!(meta.bit_depth, 16);
+        assert_eq!(meta.channels, 2);
+        assert_eq!(meta.codec.as_deref(), Some("flac"));
+    }
+
+    #[test]
+    fn unknown_served_quality_plays() {
+        let (mut plan, files) = fixture_plan();
+        plan.quality = None;
+        let (engine, output) = engine_with_policy(plan, files, false);
+
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| !engine.state().playing && output.samples().len() >= 176_400);
+        assert_eq!(output.samples().len(), 176_400);
+        assert_eq!(engine.state().stream.and_then(|m| m.quality), None);
+    }
+
+    #[test]
+    fn single_file_bitrate_is_computed_from_bytes_and_duration() {
+        let (plan, files) = fixture_plan();
+        let bytes = files["mem://tone"].len() as u64;
+        let (engine, output) = engine_with_policy(plan, files, true);
+
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| !engine.state().playing && output.samples().len() >= 176_400);
+
+        let meta = engine.state().stream.expect("no stream metadata");
+        assert_eq!(meta.bitrate_kbps, Some((bytes * 8 / 2 / 1000) as u32));
+    }
+
+    #[test]
+    fn manifest_bitrate_wins_over_the_computed_one() {
+        let (mut plan, files) = fixture_plan();
+        plan.bitrate_kbps = Some(828);
+        let (engine, output) = engine_with_policy(plan, files, true);
+
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| !engine.state().playing && output.samples().len() >= 176_400);
+        assert_eq!(engine.state().stream.and_then(|m| m.bitrate_kbps), Some(828));
+    }
+
+    #[test]
+    fn set_allow_fallback_applies_from_the_next_track() {
+        let (mut plan, files) = fixture_plan();
+        plan.quality = Some(Quality::Low);
+        let (engine, output) = engine_with_policy(plan, files, false);
+        engine.set_allow_fallback(true);
+
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| !engine.state().playing && output.samples().len() >= 176_400);
+        assert_eq!(output.samples().len(), 176_400);
     }
 
     fn wait_for(mut ready: impl FnMut() -> bool) {
@@ -1075,6 +1410,8 @@ mod tests {
             },
             Box::new(output),
             Quality::Lossless,
+            test_cache(),
+            true,
         );
     }
 
@@ -2004,6 +2341,9 @@ mod tests {
             codec: Some("flac".into()),
             sample_rate: Some(sample_rate),
             bit_depth: Some(bit_depth),
+            bitrate_kbps: None,
+            quality: None,
+            manifest_hash: None,
         }
     }
 
@@ -2179,6 +2519,147 @@ mod tests {
             written(),
             176_400 * 2,
             "a boundary settings change must not discard the next track"
+        );
+    }
+
+    #[test]
+    fn cache_miss_writes_the_entry_then_a_replay_makes_zero_fetcher_calls() {
+        let (_, files) = fixture_plan();
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let output = NullOutput::new();
+        let cache = test_cache();
+        let engine = Engine::new(
+            Arc::new(FakeResolver { plan: cached_plan("mem://tone", 0xabcd) }),
+            {
+                let calls = calls.clone();
+                let files = files.clone();
+                move || -> Arc<dyn Fetcher> { Arc::new(CountingFetcher { files, calls }) }
+            },
+            Box::new(output.clone()),
+            Quality::Lossless,
+            cache.clone(),
+            true,
+        );
+        let key = CacheKey { track_id: 1, quality: Quality::Lossless, manifest_hash: 0xabcd };
+
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| !engine.state().playing && output.samples().len() >= 176_400);
+        assert!(cache.lookup(&key).is_some(), "a cache miss did not write the entry");
+        let first = calls.load(Ordering::SeqCst);
+        assert_eq!(first, 1, "the first play should fetch exactly once");
+
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| !engine.state().playing && output.samples().len() >= 176_400 * 2);
+        assert_eq!(calls.load(Ordering::SeqCst), first, "a cache hit still fetched");
+    }
+
+    #[test]
+    fn seek_plans_are_not_cached() {
+        let (_, files) = fixture_plan();
+        let output = NullOutput::new();
+        let cache = test_cache();
+        let engine = Engine::new(
+            Arc::new(FakeResolver { plan: cached_plan("mem://tone", 0xabcd) }),
+            move || Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(output),
+            Quality::Lossless,
+            cache.clone(),
+            true,
+        );
+        let (tx, _rx) = std::sync::mpsc::sync_channel(512);
+        let generation = engine.inner.generation.load(Ordering::SeqCst);
+        let buffer = StreamBuffer::new();
+        decode_track(engine.inner.clone(), item(1), OutputMode::Shared, generation, Some(500), tx, buffer);
+        assert_eq!(cache.size_bytes(), 0, "a seek plan must not be cached");
+    }
+
+    #[test]
+    fn corrupt_cache_entry_is_removed_and_refetched() {
+        let (_, files) = fixture_plan();
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let output = NullOutput::new();
+        let cache = test_cache();
+        let key = CacheKey { track_id: 1, quality: Quality::Lossless, manifest_hash: 0xabcd };
+        {
+            let mut writer = cache.begin_write(&key).unwrap();
+            writer.write_all(b"this is not an mp4").unwrap();
+            writer.commit();
+        }
+        let engine = Engine::new(
+            Arc::new(FakeResolver { plan: cached_plan("mem://tone", 0xabcd) }),
+            {
+                let calls = calls.clone();
+                let files = files.clone();
+                move || -> Arc<dyn Fetcher> { Arc::new(CountingFetcher { files, calls }) }
+            },
+            Box::new(output.clone()),
+            Quality::Lossless,
+            cache.clone(),
+            true,
+        );
+
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| !engine.state().playing && output.samples().len() >= 176_400);
+        assert_eq!(output.samples().len(), 176_400);
+        assert_eq!(calls.load(Ordering::SeqCst), 1, "the network retry must run exactly once");
+        let replaced = cache.lookup(&key).expect("the corrupt entry was not replaced");
+        assert_eq!(
+            std::fs::metadata(replaced).unwrap().len(),
+            files["mem://tone"].len() as u64,
+            "the refetched bytes were not re-cached"
+        );
+    }
+
+    /// P4-3: the next queue item is downloaded into the cache while the current
+    /// one plays (via the existing lookahead prefetch, now cache-teed), and a
+    /// replay of the queue fetches nothing.
+    #[test]
+    fn next_track_is_prefetched_into_the_cache() {
+        let tone = std::fs::read("tests/fixtures/tone.mp4").unwrap();
+        let mut files = HashMap::new();
+        files.insert("mem://t1".to_string(), tone.clone());
+        files.insert("mem://t2".to_string(), tone);
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let mut plans = HashMap::new();
+        plans.insert(1, cached_plan("mem://t1", 0x1111));
+        plans.insert(2, cached_plan("mem://t2", 0x2222));
+        let order = Arc::new(Mutex::new(Vec::new()));
+        let output = NullOutput::new();
+        let cache = test_cache();
+        let engine = Engine::new(
+            Arc::new(PerTrackResolver { plans, order }),
+            {
+                let calls = calls.clone();
+                let files = files.clone();
+                move || -> Arc<dyn Fetcher> { Arc::new(CountingFetcher { files, calls }) }
+            },
+            Box::new(ThrottledOutput { inner: output.clone(), delay: Duration::from_millis(20) }),
+            Quality::Lossless,
+            cache.clone(),
+            true,
+        );
+        let key1 = CacheKey { track_id: 1, quality: Quality::Lossless, manifest_hash: 0x1111 };
+        let key2 = CacheKey { track_id: 2, quality: Quality::Lossless, manifest_hash: 0x2222 };
+
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 }).unwrap();
+        wait_for(|| cache.lookup(&key2).is_some());
+        assert!(cache.lookup(&key2).is_some(), "the prefetch never filled track 2's entry");
+        assert!(
+            output.samples().len() < 176_400,
+            "track 1 finished before the prefetch was observable"
+        );
+        wait_for(|| !engine.state().playing && output.samples().len() >= 176_400 * 2);
+        assert!(cache.lookup(&key1).is_some(), "track 1 was not cached when it finished");
+        let after_first_play = calls.load(Ordering::SeqCst);
+        assert_eq!(after_first_play, 2, "each track should be fetched exactly once");
+
+        // Replaying the queue is a pure cache read.
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 }).unwrap();
+        wait_for(|| !engine.state().playing && output.samples().len() >= 176_400 * 4);
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            after_first_play,
+            "a replay of a cached queue still fetched"
         );
     }
 }

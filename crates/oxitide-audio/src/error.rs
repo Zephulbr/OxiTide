@@ -14,6 +14,8 @@ pub enum Error {
     Decode(String),
     #[error("output error: {0}")]
     Output(String),
+    #[error("track unavailable at {0}; enable fallback or lower the streaming quality")]
+    Unavailable(String),
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 }
@@ -32,5 +34,13 @@ mod tests {
     #[test]
     fn tap_error_includes_message() {
         assert_eq!(Error::Decode("boom".into()).to_string(), "decode error: boom");
+    }
+
+    #[test]
+    fn unavailable_error_has_stable_message() {
+        assert_eq!(
+            Error::Unavailable("lossless".into()).to_string(),
+            "track unavailable at lossless; enable fallback or lower the streaming quality"
+        );
     }
 }

@@ -1,7 +1,9 @@
 <script lang="ts">
   import { formatDuration } from "../format";
+  import { formatQuality, type QualityDisplay } from "../quality";
+  import type { RepeatMode } from "../api";
   import type { Player } from "../player.svelte";
-  let { player }: { player: Player } = $props();
+  let { player, qualityDisplay }: { player: Player; qualityDisplay: QualityDisplay } = $props();
 
   let dragging = $state(false);
   let dragValue = $state(0);
@@ -9,7 +11,15 @@
   const shown = $derived(player.pendingSeek ?? player.state.position_ms);
   const position = $derived(dragging ? dragValue : shown);
   const duration = $derived(player.state.duration_ms);
-  const quality = $derived(player.state.preferred_quality);
+  const quality = $derived(
+    formatQuality(player.state.stream, qualityDisplay, player.state.preferred_quality),
+  );
+
+  function nextRepeat(mode: RepeatMode): RepeatMode {
+    if (mode === "off") return "all";
+    if (mode === "all") return "one";
+    return "off";
+  }
 </script>
 
 <div class="player">
@@ -17,7 +27,7 @@
     <div class="now">
       <strong>{player.state.current.title}</strong>
       <span class="muted">{player.state.current.artist}</span>
-      <span class="badge" title="Streaming quality">{quality}</span>
+      <span class="badge" title={player.state.stream ? "Actual stream quality" : "Preferred quality"}>{quality}</span>
       {#if player.state.bit_perfect}
         <span class="badge" title="Exclusive output at the source's native format">Bit-perfect</span>
       {/if}
@@ -27,6 +37,18 @@
       {player.state.playing ? "⏸" : "▶"}
     </button>
     <button onclick={() => player.next()} aria-label="Next">⏭</button>
+    <button
+      class:active={player.state.shuffle}
+      onclick={() => player.setShuffle(!player.state.shuffle)}
+      aria-label="Shuffle"
+      title="Shuffle the rest of the queue"
+    >🔀</button>
+    <button
+      class:active={player.state.repeat !== "off"}
+      onclick={() => player.setRepeat(nextRepeat(player.state.repeat))}
+      aria-label="Repeat"
+      title={player.state.repeat === "one" ? "Repeat one" : player.state.repeat === "all" ? "Repeat all" : "Repeat off"}
+    >{player.state.repeat === "one" ? "🔂" : "🔁"}</button>
     <input
       type="range" min="0" max={Math.max(duration, 1)} value={position}
       oninput={(e) => {
@@ -55,3 +77,7 @@
   {/if}
   {#if player.state.error}<span style="color:#ff6b6b">{player.state.error}</span>{/if}
 </div>
+
+<style>
+  .active { color: var(--accent); }
+</style>

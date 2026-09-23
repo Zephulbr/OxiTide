@@ -1,13 +1,22 @@
 <script lang="ts">
-  import { api, type Config, type OutputDevice } from "../lib/api";
+  import { api, type CacheStatus, type Config, type OutputDevice } from "../lib/api";
+  import type { QualityDisplay } from "../lib/quality";
   import type { Player } from "../lib/player.svelte";
-  let { player }: { player: Player } = $props();
+  let {
+    player,
+    onQualityDisplay,
+  }: { player: Player; onQualityDisplay: (mode: QualityDisplay) => void } = $props();
   let devices = $state<OutputDevice[]>([]);
   let config = $state<Config | null>(null);
+  let cacheStatus = $state<CacheStatus | null>(null);
   let error = $state("");
 
   function apply(failure: unknown) {
     error = String(failure);
+  }
+
+  function refreshCacheStatus() {
+    api.getCacheStatus().then((status) => (cacheStatus = status)).catch(apply);
   }
 
   function saveAudio(patch: Partial<Config["audio"]>) {
@@ -16,9 +25,10 @@
   }
 
   $effect(() => {
-    Promise.all([api.getConfig(), api.getOutputDevices()])
-      .then(([loaded, list]) => {
+    Promise.all([api.getConfig(), api.getOutputDevices(), api.getCacheStatus()])
+      .then(([loaded, list, status]) => {
         devices = list;
+        cacheStatus = status;
         // The stored device may be gone; fall back to the system default and
         // persist that so the next start does not retry it.
         let next = loaded;
@@ -50,6 +60,40 @@
     if (!config) return;
     config = { ...config, streaming: { ...config.streaming, quality } };
     api.setPreferredQuality(quality).catch(apply);
+  }
+
+  function setAllowFallback(enabled: boolean) {
+    if (!config) return;
+    config = { ...config, streaming: { ...config.streaming, allow_fallback: enabled } };
+    api.setAllowFallback(enabled).catch(apply);
+  }
+
+  function setDisplay(mode: QualityDisplay) {
+    if (!config) return;
+    config = { ...config, ui: { ...config.ui, quality_display: mode } };
+    onQualityDisplay(mode);
+    api.setQualityDisplay(mode).catch(apply);
+  }
+
+  function setCacheMaxMb(mb: number) {
+    if (!config) return;
+    const clamped = Math.max(0, Math.floor(mb));
+    config = { ...config, cache: { ...config.cache, max_size_mb: clamped } };
+    api.setCacheMaxSizeMb(clamped).then(refreshCacheStatus).catch(apply);
+  }
+
+  function setClearOnExit(enabled: boolean) {
+    if (!config) return;
+    config = { ...config, cache: { ...config.cache, clear_on_exit: enabled } };
+    api.setCacheClearOnExit(enabled).catch(apply);
+  }
+
+  function clearCache() {
+    api.clearCache().then(refreshCacheStatus).catch(apply);
+  }
+
+  function formatMb(bytes: number): string {
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   }
 </script>
 
@@ -101,6 +145,68 @@
     <option value="lossless">Lossless</option>
     <option value="max">Max (Hi-Res)</option>
   </select>
+
+  <p>
+    <label>
+      <input
+        type="checkbox"
+        checked={config.streaming.allow_fallback}
+        onchange={(e) => setAllowFallback((e.target as HTMLInputElement).checked)}
+      />
+      Play the best available quality and report it
+    </label>
+  </p>
+
+  <h3>Display</h3>
+  <p>
+    <label>
+      Quality display:
+      <select
+        value={config.ui.quality_display}
+        onchange={(e) => setDisplay((e.target as HTMLSelectElement).value as QualityDisplay)}
+      >
+        <option value="compact">Compact (MAX / LOSSLESS / AAC)</option>
+        <option value="detailed">Detailed (bit depth / rate / bitrate)</option>
+      </select>
+    </label>
+  </p>
+
+  <h3>Cache</h3>
+  {#if cacheStatus}
+    {#if !cacheStatus.usable}
+      <p style="color:#e0a030">
+        Cache is disabled: the directory is not writable. Streaming is unaffected.
+      </p>
+    {:else if cacheStatus.configured_dir && cacheStatus.dir !== cacheStatus.configured_dir}
+      <p style="color:#e0a030">
+        The configured cache directory is unusable; using {cacheStatus.dir}.
+      </p>
+    {/if}
+    <p class="muted">{formatMb(cacheStatus.used_bytes)} of {formatMb(cacheStatus.max_bytes)} used</p>
+    <p>
+      <label>
+        Max size (MB):
+        <input
+          type="number"
+          min="0"
+          value={config.cache.max_size_mb}
+          onchange={(e) => setCacheMaxMb(Number((e.target as HTMLInputElement).value))}
+        />
+      </label>
+    </p>
+    <p>
+      <label>
+        <input
+          type="checkbox"
+          checked={config.cache.clear_on_exit}
+          onchange={(e) => setClearOnExit((e.target as HTMLInputElement).checked)}
+        />
+        Clear cache on exit
+      </label>
+    </p>
+    <p><button onclick={clearCache}>Clear cache</button></p>
+    <p class="muted">Directory: {cacheStatus.dir} (edit cache.dir in config.toml)</p>
+  {/if}
 {/if}
 {#if player.state.bit_perfect_notice}
   <p style="color:#e0a030">{player.state.bit_perfect_notice}</p>

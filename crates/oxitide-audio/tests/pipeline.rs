@@ -26,6 +26,7 @@ async fn resolve_plan_fetch_demux_decode_pipeline() {
     .to_string();
     let info = PlaybackInfo {
         quality: Quality::Lossless,
+        actual_quality: None,
         manifest_mime: BTS_MIME.into(),
         manifest: manifest.into_bytes(),
     };
@@ -41,7 +42,7 @@ async fn resolve_plan_fetch_demux_decode_pipeline() {
     let download_buffer = buffer.clone();
     tokio::task::spawn_blocking(move || {
         let fetcher: Arc<dyn fetch::Fetcher> = Arc::new(fetch::HttpFetcher::new().unwrap());
-        fetch::download(download_buffer, fetcher, plan);
+        fetch::download(download_buffer, fetcher, plan, None);
     })
     .await
     .unwrap();

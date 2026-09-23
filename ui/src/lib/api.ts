@@ -33,21 +33,38 @@ export interface QueueItem {
   duration_secs: number; cover?: string | null;
 }
 export type RepeatMode = "off" | "all" | "one";
+export type Quality = "low" | "high" | "lossless" | "max";
+export interface StreamMeta {
+  quality?: Quality | null;
+  codec?: string | null;
+  sample_rate: number;
+  bit_depth: number;
+  channels: number;
+  bitrate_kbps?: number | null;
+}
 export interface PlaybackState {
   playing: boolean; buffering: boolean; current?: QueueItem | null;
   position_ms: number; duration_ms: number; volume: number;
   shuffle: boolean; repeat: RepeatMode;
-  preferred_quality: "low" | "high" | "lossless" | "max";
+  preferred_quality: Quality;
   output_mode: "shared" | "exclusive";
   bit_perfect: boolean;
   bit_perfect_notice?: string | null;
   queue: QueueItem[];
+  stream?: StreamMeta | null;
 }
 export interface OutputDevice { id: string; name: string; is_default: boolean }
 export interface AudioStatus {
   output_mode: "shared" | "exclusive";
   bit_perfect: boolean;
   notice?: string | null;
+}
+export interface CacheStatus {
+  dir: string;
+  used_bytes: number;
+  max_bytes: number;
+  usable: boolean;
+  configured_dir: string;
 }
 export interface Config {
   audio: {
@@ -56,7 +73,9 @@ export interface Config {
     exclusive_fallback: "shared" | "warn_only";
     volume: number;
   };
-  streaming: { quality: "low" | "high" | "lossless" | "max" };
+  streaming: { quality: Quality; allow_fallback: boolean };
+  ui: { quality_display: "compact" | "detailed" };
+  cache: { dir: string; max_size_mb: number; clear_on_exit: boolean };
 }
 export type EngineEvent =
   | ({ type: "state" } & PlaybackState)
@@ -107,9 +126,17 @@ export const api = {
   getPlaybackState: () => invoke<PlaybackState>("get_playback_state"),
   getOutputDevices: () => invoke<OutputDevice[]>("get_output_devices"),
   setOutputDevice: (deviceId: string) => invoke<void>("set_output_device", { deviceId }),
-  setPreferredQuality: (quality: "low" | "high" | "lossless" | "max") => invoke<void>("set_preferred_quality", { quality }),
+  setPreferredQuality: (quality: Quality) => invoke<void>("set_preferred_quality", { quality }),
   setExclusive: (enabled: boolean) => invoke<void>("set_exclusive", { enabled }),
   setExclusiveFallback: (mode: "shared" | "warn_only") => invoke<void>("set_exclusive_fallback", { mode }),
   getAudioStatus: () => invoke<AudioStatus>("get_audio_status"),
   getConfig: () => invoke<Config>("get_config"),
+  setAllowFallback: (enabled: boolean) => invoke<void>("set_allow_fallback", { enabled }),
+  setQualityDisplay: (mode: "compact" | "detailed") =>
+    invoke<void>("set_quality_display", { mode }),
+  setCacheMaxSizeMb: (mb: number) => invoke<void>("set_cache_max_size_mb", { mb }),
+  setCacheClearOnExit: (enabled: boolean) =>
+    invoke<void>("set_cache_clear_on_exit", { enabled }),
+  getCacheStatus: () => invoke<CacheStatus>("get_cache_status"),
+  clearCache: () => invoke<void>("clear_cache"),
 };

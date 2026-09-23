@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use oxitide_audio::cache::DiskCache;
 use oxitide_audio::engine::{Engine, EngineCmd, PlaybackState};
 use oxitide_audio::fetch::HttpFetcher;
 use oxitide_audio::output::{ExclusiveFallback, OutputMode};
@@ -12,7 +13,7 @@ use oxitide_tidal::Error;
 use serde::Serialize;
 use tauri::State;
 
-use crate::config::Config;
+use crate::config::{Config, QualityDisplay};
 use crate::player::{devices, OutputDeviceDto, QualityDto};
 use crate::state::{AppState, Player};
 
@@ -34,6 +35,21 @@ pub struct AudioStatusDto {
     pub output_mode: OutputMode,
     pub bit_perfect: bool,
     pub notice: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct CacheStatusDto {
+    pub dir: String,
+    pub used_bytes: u64,
+    pub max_bytes: u64,
+    pub usable: bool,
+    /// The raw configured `cache.dir` ("" = default), so the UI can tell when
+    /// the configured directory was rejected and a fallback is in use.
+    pub configured_dir: String,
+}
+
+fn require_cache(state: &State<'_, AppState>) -> Result<Arc<DiskCache>, String> {
+    state.cache().ok_or_else(|| "cache unavailable".to_string())
 }
 
 #[tauri::command]
@@ -71,7 +87,10 @@ pub async fn auth_complete(
     state.set_client(client.clone());
     let config = Config::load();
     state.set_config(config.clone());
-    state.set_player(build_player(&app, client, &config)?);
+    let cache = state
+        .cache()
+        .unwrap_or_else(|| crate::player::build_cache(&config));
+    state.set_player(build_player(&app, client, &config, cache)?);
     Ok(SessionInfoDto { country_code: session.country_code, user_id: session.user_id })
 }
 
@@ -151,7 +170,10 @@ pub async fn auth_restore(
             state.set_client(client.clone());
             let config = Config::load();
             state.set_config(config.clone());
-            state.set_player(build_player(&app, client, &config)?);
+            let cache = state
+                .cache()
+                .unwrap_or_else(|| crate::player::build_cache(&config));
+            state.set_player(build_player(&app, client, &config, cache)?);
             Ok(Some(SessionInfoDto {
                 country_code: session.country_code,
                 user_id: session.user_id,
@@ -175,6 +197,7 @@ fn build_player(
     app: &tauri::AppHandle,
     client: TidalClient,
     config: &Config,
+    cache: Arc<DiskCache>,
 ) -> Result<Player, String> {
     let resolver = crate::player::TidalResolver::new(client).map_err(|e| e.to_string())?;
     let engine = Engine::new(
@@ -182,6 +205,8 @@ fn build_player(
         || Arc::new(HttpFetcher::default()),
         crate::player::real_output(),
         config.streaming.quality.to_quality(),
+        cache,
+        config.streaming.allow_fallback,
     );
     engine.set_output_device(if config.audio.output_device.is_empty() {
         None
@@ -437,6 +462,63 @@ pub fn get_audio_status(state: State<'_, AppState>) -> Result<AudioStatusDto, St
         bit_perfect: status.bit_perfect,
         notice: status.notice,
     })
+}
+
+#[tauri::command]
+pub fn get_cache_status(state: State<'_, AppState>) -> Result<CacheStatusDto, String> {
+    let cache = require_cache(&state)?;
+    Ok(CacheStatusDto {
+        dir: cache.dir().display().to_string(),
+        used_bytes: cache.size_bytes(),
+        max_bytes: cache.max_bytes(),
+        usable: cache.usable(),
+        configured_dir: state.config().cache.dir.clone(),
+    })
+}
+
+#[tauri::command]
+pub fn clear_cache(state: State<'_, AppState>) -> Result<(), String> {
+    require_cache(&state)?.clear();
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_allow_fallback(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    let player = state.player().ok_or_else(|| "not logged in".to_string())?;
+    player.engine.set_allow_fallback(enabled);
+    let mut config = state.config();
+    config.streaming.allow_fallback = enabled;
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_quality_display(state: State<'_, AppState>, mode: QualityDisplay) -> Result<(), String> {
+    let mut config = state.config();
+    config.ui.quality_display = mode;
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_cache_max_size_mb(state: State<'_, AppState>, mb: u64) -> Result<(), String> {
+    require_cache(&state)?.set_max_bytes(mb.saturating_mul(1024 * 1024));
+    let mut config = state.config();
+    config.cache.max_size_mb = mb;
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_cache_clear_on_exit(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    let mut config = state.config();
+    config.cache.clear_on_exit = enabled;
+    config.save()?;
+    state.set_config(config);
+    Ok(())
 }
 
 #[cfg(test)]

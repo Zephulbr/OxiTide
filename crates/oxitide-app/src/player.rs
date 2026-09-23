@@ -1,9 +1,34 @@
+use std::sync::Arc;
+
+use oxitide_audio::cache::DiskCache;
 use oxitide_audio::engine::{EngineEvent, StreamResolver};
 use oxitide_audio::output::{self, AudioOutput, OutputDevice};
 use oxitide_audio::source;
 use oxitide_tidal::client::TidalClient;
 use oxitide_tidal::stream::Quality;
 use serde::{Deserialize, Serialize};
+
+use crate::config::{default_cache_dir, Config};
+
+/// Build the disk cache from config: the configured directory when usable,
+/// else the default, else a temp directory. `DiskCache::new` is infallible.
+/// Startup cleanup sweeps stale `.part` files and applies the configured cap.
+pub fn build_cache(config: &Config) -> Arc<DiskCache> {
+    let max_bytes = config.cache.max_size_mb.saturating_mul(1024 * 1024);
+    let configured = config.cache.dir.trim();
+    if !configured.is_empty() {
+        let cache = DiskCache::new(std::path::PathBuf::from(configured), max_bytes);
+        if cache.usable() {
+            cache.cleanup();
+            return cache;
+        }
+        tracing::warn!("configured cache dir is unusable; falling back to the default");
+    }
+    let dir = default_cache_dir().unwrap_or_else(|| std::env::temp_dir().join("oxitide-cache"));
+    let cache = DiskCache::new(dir, max_bytes);
+    cache.cleanup();
+    cache
+}
 
 /// Resolves a track's stream plan using a `TidalClient`. Runs the async client
 /// on a dedicated Tokio runtime owned by this resolver, so it can be called from
@@ -116,6 +141,29 @@ pub fn devices() -> Vec<OutputDeviceDto> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{Duration, SystemTime};
+
+    #[test]
+    fn build_cache_cleans_stale_parts_and_applies_the_cap() {
+        let dir =
+            std::env::temp_dir().join(format!("oxitide-build-cache-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let part = dir.join("1-lossless-0000000000000001.fmp4.part");
+        std::fs::write(&part, b"stale").unwrap();
+        let file = std::fs::OpenOptions::new().write(true).open(&part).unwrap();
+        file.set_modified(SystemTime::now() - Duration::from_secs(2 * 3600)).unwrap();
+        drop(file);
+
+        let mut config = Config::default();
+        config.cache.dir = dir.display().to_string();
+        config.cache.max_size_mb = 1;
+
+        let cache = build_cache(&config);
+        assert_eq!(cache.dir(), dir.as_path());
+        assert_eq!(cache.max_bytes(), 1024 * 1024);
+        assert!(!part.exists(), "stale .part survived build_cache");
+        let _ = std::fs::remove_dir_all(dir);
+    }
 
     #[test]
     fn quality_dto_round_trips() {
