@@ -28,11 +28,14 @@ export function clearPagerCache() {
 }
 
 /// A scroll pager for a track list. `key` is `"favorites"` or
-/// `"playlist:{uuid}"`; `load` fetches one page at `offset`.
+/// `"playlist:{uuid}"`; `load` fetches one page at `offset`. `dedupe` drops
+/// ids already loaded (favorites can't repeat); playlists pass `false` so a
+/// track that appears twice in the playlist stays twice in the queue.
 export function createTrackPager(
   key: string,
   load: (offset: number, limit: number) => Promise<TrackPage>,
   pageSize = 100,
+  dedupe = true,
 ): Pager {
   const cached = cache.get(key);
   let items = $state<Track[]>(cached ? [...cached.items] : []);
@@ -58,15 +61,26 @@ export function createTrackPager(
       const offset = nextOffset;
       try {
         const page = await load(offset, pageSize);
-        const seen = new Set(items.map((t) => t.id));
-        // Dedupe only against already-loaded pages (offset overlap); legitimate
-        // duplicate tracks within one page must survive.
-        const fresh = page.items.filter((t) => !seen.has(t.id));
-        items = [...items, ...fresh];
-        total = page.total;
+        const received = page.items.length;
+        if (dedupe) {
+          const seen = new Set(items.map((t) => t.id));
+          // Dedupe only against already-loaded pages (offset overlap);
+          // legitimate duplicate tracks within one page must survive.
+          const fresh = page.items.filter((t) => !seen.has(t.id));
+          items = [...items, ...fresh];
+        } else {
+          items = [...items, ...page.items];
+        }
+        const reportedTotal = page.total;
         // Advance by the raw page length so a page of duplicates cannot stall.
-        nextOffset = offset + page.items.length;
-        done = page.items.length < pageSize || nextOffset >= total;
+        nextOffset = offset + received;
+        // Trust the reported total: TIDAL returns short pages mid-list, so a
+        // short page only ends the walk when no total is reported (mirrors
+        // `TidalClient::get_all_pages`); an empty page always ends it.
+        done =
+          received === 0 ||
+          (reportedTotal > 0 ? nextOffset >= reportedTotal : received < pageSize);
+        total = reportedTotal;
         publish();
       } catch (e) {
         error = String(e);
