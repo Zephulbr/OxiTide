@@ -3558,3 +3558,427 @@ If Step 4 produced fixes, commit those first (one commit per fix).
 
 **Review Focus → owning tests:** all five items are pinned (Tasks 2, 4, 3, 6, 2+6).
 
+---
+
+# Phase 2 — Smoke fixes (2026-09-23)
+
+Findings from the human smoke run of the shipped tree:
+
+- **Settings cache size reads 0.00 MB.** The reading was correct at the time: the cache held no committed `.fmp4` (the clear-on-exit check had emptied it) and `size_bytes()` counts committed entries only. Two real gaps: in-flight `.part` bytes are invisible, and Settings fetches status once on mount with no manual refresh.
+- **Low AAC does not play.** TIDAL Low is 96 kbps HE-AAC; `symphonia-codec-aac` is AAC-LC only and rejects `asc.sbr_present`/non-LC object types with `"aac: aac too complex"`, so the stream errors at init and looks stuck. Owner decision: retire Low (almost never used); the AAC option becomes High (320 kbps AAC-LC). Keep `Quality::Low` in the API enum for badge/fallback truth.
+- **Cache entries appearing/disappearing.** Expected lifecycle: `.part` while downloading → `.fmp4` on commit, abort on skip/supersede, LRU eviction at the cap. At Max (~200 MB/track) the 2 GiB default cap holds only a few albums, so eviction churn is normal. No code change; documented.
+- **Albums and playlists.** Caching is per track (key = track id + requested quality + manifest hash) regardless of the source container. No code change; documented.
+
+## Task 12: Retire Low (HE-AAC) and error clearly on HE-AAC streams
+
+**Files:**
+- Modify: `ui/src/views/Settings.svelte`
+- Modify: `crates/oxitide-app/src/config.rs`
+- Modify: `crates/oxitide-audio/src/error.rs`
+- Modify: `crates/oxitide-audio/src/source.rs`
+- Modify: `crates/oxitide-audio/src/engine.rs`
+
+**Interfaces:**
+- Consumes: Task 1 (`Quality::from_tidal_param`), Task 2 (`StreamPlan.codec`).
+- Produces: `source::is_he_aac(codec: &str) -> bool`; `Error::Unsupported(String)`; config coercion Low→High on load.
+
+- [ ] **Step 1: Write the failing tests**
+
+In `crates/oxitide-app/src/config.rs` tests:
+
+```rust
+    #[test]
+    fn low_quality_is_coerced_to_high() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        fs::write(&path, "[streaming]\nquality = \"low\"\n").unwrap();
+        let config = Config::load_from(&path);
+        assert_eq!(config.streaming.quality, QualityDto::High);
+        let _ = fs::remove_dir_all(dir);
+    }
+```
+
+In `crates/oxitide-audio/src/error.rs` tests:
+
+```rust
+    #[test]
+    fn unsupported_error_has_stable_message() {
+        assert_eq!(
+            Error::Unsupported("he-aac".into()).to_string(),
+            "unsupported audio: he-aac"
+        );
+    }
+```
+
+In `crates/oxitide-audio/src/source.rs` tests:
+
+```rust
+    #[test]
+    fn he_aac_codec_strings_are_detected() {
+        assert!(is_he_aac("mp4a.40.5"));
+        assert!(is_he_aac("mp4a.40.05"));
+        assert!(is_he_aac("mp4a.40.29"));
+        assert!(is_he_aac("mp4a.40.029"));
+        assert!(is_he_aac("MP4A.40.5"));
+        assert!(!is_he_aac("mp4a.40.2"));
+        assert!(!is_he_aac("mp4a.40.02"));
+        assert!(!is_he_aac("flac"));
+    }
+```
+
+In `crates/oxitide-audio/src/engine.rs` tests:
+
+```rust
+    #[test]
+    fn he_aac_streams_error_clearly_without_fetching() {
+        let (mut plan, files) = fixture_plan();
+        plan.codec = Some("mp4a.40.5".into());
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let output = NullOutput::new();
+        let engine = Engine::new(
+            Arc::new(FakeResolver { plan }),
+            {
+                let calls = calls.clone();
+                let files = files.clone();
+                move || -> Arc<dyn Fetcher> { Arc::new(CountingFetcher { files, calls }) }
+            },
+            Box::new(output.clone()),
+            Quality::High,
+            test_cache(),
+            true,
+        );
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let seen_ref = seen.clone();
+        engine.subscribe(Arc::new(move |e| seen_ref.lock().unwrap().push(e)));
+
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+
+        wait_for(|| seen.lock().unwrap().iter().any(|e| matches!(e, EngineEvent::Error { .. })));
+        let message = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .find_map(|e| match e {
+                EngineEvent::Error { message, .. } => Some(message.clone()),
+                _ => None,
+            })
+            .expect("no error event");
+        assert!(message.contains("HE-AAC"), "unexpected message: {message}");
+        assert_eq!(calls.load(Ordering::SeqCst), 0, "an unsupported stream must not be fetched");
+        assert!(output.samples().is_empty());
+        assert_eq!(engine.state().queue.len(), 1, "the queue must be kept");
+    }
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `cargo test -p oxitide-app -- config`, `cargo test -p oxitide-audio -- error source engine`
+Expected: compile errors (`Unsupported`, `is_he_aac`) and the coercion test failing on `Low`.
+
+- [ ] **Step 3: Implement the config coercion**
+
+In `crates/oxitide-app/src/config.rs`, change the `Ok` arm of `load_from`:
+
+```rust
+        match toml::from_str::<Config>(&text) {
+            Ok(mut config) => {
+                // 'low' is 96 kbps HE-AAC, which the built-in decoder cannot
+                // play; retire it so old configs keep working at 320 kbps AAC.
+                if config.streaming.quality == QualityDto::Low {
+                    tracing::warn!("streaming quality 'low' (HE-AAC) is unsupported; using 'high'");
+                    config.streaming.quality = QualityDto::High;
+                }
+                config
+            }
+            Err(e) => {
+                tracing::warn!("malformed config at {}: {e}", path.display());
+                let backup = path.with_extension("toml.bak");
+                let _ = fs::rename(path, &backup);
+                Self::default()
+            }
+        }
+```
+
+- [ ] **Step 4: Implement the error variant and detection**
+
+In `crates/oxitide-audio/src/error.rs`, add to `Error`:
+
+```rust
+    #[error("unsupported audio: {0}")]
+    Unsupported(String),
+```
+
+In `crates/oxitide-audio/src/source.rs`, add after `derive_quality`:
+
+```rust
+/// True for HE-AAC codec strings (AAC + SBR/PS). The built-in symphonia
+/// decoder implements AAC-LC only and rejects these streams at init.
+pub fn is_he_aac(codec: &str) -> bool {
+    let codec = codec.to_ascii_lowercase();
+    codec.contains("mp4a.40.5")
+        || codec.contains("mp4a.40.05")
+        || codec.contains("mp4a.40.29")
+        || codec.contains("mp4a.40.029")
+}
+```
+
+- [ ] **Step 5: Guard the engine**
+
+In `crates/oxitide-audio/src/engine.rs`, update the import:
+
+```rust
+use crate::source::{is_he_aac, StreamPlan};
+```
+
+In `decode_track`, immediately after the fallback-policy block and before the cache key:
+
+```rust
+    if plan.codec.as_deref().is_some_and(is_he_aac) {
+        let _ = tx.send(Err(Error::Unsupported(
+            "HE-AAC audio (TIDAL Low) is not supported by the built-in decoder; use High or higher"
+                .into(),
+        )));
+        return;
+    }
+```
+
+- [ ] **Step 6: Update the UI option**
+
+In `ui/src/views/Settings.svelte`, replace the streaming-quality options:
+
+```svelte
+    <option value="high">High (AAC 320 kbps)</option>
+    <option value="lossless">Lossless</option>
+    <option value="max">Max (Hi-Res)</option>
+```
+
+(The `low` option is removed. The `Config` type still allows `"low"` for badge/API truth; the loader coerces it.)
+
+- [ ] **Step 7: Run the tests and gates**
+
+Run:
+```powershell
+cargo test --workspace
+cargo clippy --workspace -- -D warnings
+npm --prefix ui test
+npm --prefix ui run check
+```
+Expected: all green.
+
+- [ ] **Step 8: Commit**
+
+```powershell
+git add crates/oxitide-app/src/config.rs crates/oxitide-audio/src/error.rs crates/oxitide-audio/src/source.rs crates/oxitide-audio/src/engine.rs ui/src/views/Settings.svelte
+git commit -m "fix(audio): retire Low (HE-AAC) and error clearly on unsupported AAC"
+```
+
+## Task 13: Cache status pending bytes and a refresh button
+
+**Files:**
+- Modify: `crates/oxitide-audio/src/cache.rs`
+- Modify: `crates/oxitide-app/src/commands.rs`
+- Modify: `ui/src/lib/api.ts`
+- Modify: `ui/src/views/Settings.svelte`
+
+**Interfaces:**
+- Consumes: Task 3 (`DiskCache`), Task 9 (`CacheStatusDto`).
+- Produces: `DiskCache::pending_bytes() -> u64`; `CacheStatusDto.pending_bytes: u64`; `CacheStatus.pending_bytes: number`.
+
+- [ ] **Step 1: Write the failing tests**
+
+In `crates/oxitide-audio/src/cache.rs` tests:
+
+```rust
+    #[test]
+    fn pending_bytes_tracks_in_flight_parts() {
+        let dir = temp_dir();
+        let cache = DiskCache::new(dir.clone(), 1 << 20);
+        let key = key(1);
+        let mut writer = cache.begin_write(&key).unwrap();
+        writer.write_all(b"12345").unwrap();
+        assert_eq!(cache.pending_bytes(), 5);
+        assert_eq!(cache.size_bytes(), 0, "a .part must not count as a committed entry");
+        writer.commit();
+        assert_eq!(cache.pending_bytes(), 0);
+        assert_eq!(cache.size_bytes(), 5);
+        let _ = fs::remove_dir_all(dir);
+    }
+```
+
+Extend `unusable_dir_disables_the_cache` with `assert_eq!(cache.pending_bytes(), 0);`.
+
+In `crates/oxitide-app/src/commands.rs` tests:
+
+```rust
+    #[test]
+    fn cache_status_dto_serializes_pending_bytes() {
+        let dto = CacheStatusDto {
+            dir: "C:\\cache".into(),
+            used_bytes: 10,
+            pending_bytes: 5,
+            max_bytes: 100,
+            usable: true,
+            configured_dir: String::new(),
+        };
+        let value = serde_json::to_value(&dto).unwrap();
+        assert_eq!(value["used_bytes"], 10);
+        assert_eq!(value["pending_bytes"], 5);
+    }
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `cargo test -p oxitide-audio -- cache`, `cargo test -p oxitide-app -- commands`
+Expected: compile errors — `pending_bytes`, missing DTO field.
+
+- [ ] **Step 3: Implement `pending_bytes`**
+
+In `crates/oxitide-audio/src/cache.rs`, replace `entries` with a suffix-parameterized scan and add the public getter:
+
+```rust
+    /// Sum of every in-flight `.part` file. In-progress downloads are not
+    /// counted against the cap.
+    pub fn pending_bytes(&self) -> u64 {
+        self.part_entries().iter().map(|entry| entry.size).sum()
+    }
+```
+
+```rust
+    fn entries(&self) -> Vec<Entry> {
+        self.entries_with_suffix(".fmp4")
+    }
+
+    fn part_entries(&self) -> Vec<Entry> {
+        self.entries_with_suffix(".part")
+    }
+
+    fn entries_with_suffix(&self, suffix: &str) -> Vec<Entry> {
+        if !self.usable {
+            return Vec::new();
+        }
+        let Ok(read) = fs::read_dir(&self.dir) else { return Vec::new() };
+        read.flatten()
+            .filter_map(|entry| {
+                let name = entry.file_name();
+                if !name.to_string_lossy().ends_with(suffix) {
+                    return None;
+                }
+                let metadata = entry.metadata().ok()?;
+                Some(Entry {
+                    path: entry.path(),
+                    size: metadata.len(),
+                    modified: metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH),
+                })
+            })
+            .collect()
+    }
+```
+
+- [ ] **Step 4: Add the DTO field**
+
+In `crates/oxitide-app/src/commands.rs`:
+
+```rust
+#[derive(Serialize)]
+pub struct CacheStatusDto {
+    pub dir: String,
+    pub used_bytes: u64,
+    /// In-flight `.part` bytes; not counted against the cap.
+    pub pending_bytes: u64,
+    pub max_bytes: u64,
+    pub usable: bool,
+    /// The raw configured `cache.dir` ("" = default), so the UI can tell when
+    /// the configured directory was rejected and a fallback is in use.
+    pub configured_dir: String,
+}
+```
+
+and in `get_cache_status`:
+
+```rust
+        used_bytes: cache.size_bytes(),
+        pending_bytes: cache.pending_bytes(),
+```
+
+- [ ] **Step 5: Update the UI mirror and display**
+
+In `ui/src/lib/api.ts`, add to `CacheStatus`:
+
+```ts
+  pending_bytes: number;
+```
+
+In `ui/src/views/Settings.svelte`, replace the usage line and the button row:
+
+```svelte
+    <p class="muted">
+      {formatMb(cacheStatus.used_bytes)} used{#if cacheStatus.pending_bytes > 0}
+        (+{formatMb(cacheStatus.pending_bytes)} downloading){/if}
+      of {formatMb(cacheStatus.max_bytes)}
+    </p>
+```
+
+```svelte
+    <p>
+      <button onclick={refreshCacheStatus}>Refresh</button>
+      <button onclick={clearCache}>Clear cache</button>
+    </p>
+```
+
+- [ ] **Step 6: Run the tests and gates**
+
+Run:
+```powershell
+cargo test --workspace
+cargo clippy --workspace -- -D warnings
+npm --prefix ui test
+npm --prefix ui run check
+```
+Expected: all green.
+
+- [ ] **Step 7: Commit**
+
+```powershell
+git add crates/oxitide-audio/src/cache.rs crates/oxitide-app/src/commands.rs ui/src/lib/api.ts ui/src/views/Settings.svelte
+git commit -m "fix(app): show in-flight cache bytes and add a refresh action"
+```
+
+## Task 14: Verification and records
+
+**Files:**
+- Modify: `docs/superpowers/plans/notes/plan4-smoke.md`
+- Modify: `docs/superpowers/specs/2026-09-23-oxitide-plan4-streaming-cache-design.md`
+
+**Interfaces:**
+- Consumes: the shipped Task 12/13 tree and the human's re-run results.
+
+- [ ] **Step 1: Run the automated gates and record exact results**
+
+```powershell
+cargo test --workspace
+cargo clippy --workspace -- -D warnings
+npm --prefix ui test
+npm --prefix ui run check
+```
+
+- [ ] **Step 2: Record the smoke-fix outcomes**
+
+In `docs/superpowers/plans/notes/plan4-smoke.md`:
+- update the automated-check counts and the tree hash,
+- mark item 15 (`Settings → Cache shows used/cap…`) per the human's re-run, noting the new `used (+pending) of cap` display and the Refresh button,
+- reword item 19 to `A High (AAC 320 kbps) track plays; Low is retired (HE-AAC is unsupported by the built-in decoder)`,
+- add a `## Smoke findings (2026-09-23)` section explaining: the cache-status reading was correct (committed entries only; clear-on-exit had emptied it), the `.part`/`.fmp4`/eviction lifecycle, that albums and playlists cache identically (per-track keys), and the Low retirement.
+
+In `docs/superpowers/specs/2026-09-23-oxitide-plan4-streaming-cache-design.md`, append to the decisions log:
+
+```markdown
+| P4-D10 | Retire Low (96 kbps HE-AAC); the AAC option is High (320 kbps AAC-LC) only. | symphonia's AAC decoder is LC-only and rejects SBR streams at init; Low is almost never used. `Quality::Low` stays in the API enum for badge/fallback truth; persisted `quality = "low"` coerces to `high` on load. |
+```
+
+- [ ] **Step 3: Commit**
+
+```powershell
+git add docs/superpowers/plans/notes/plan4-smoke.md docs/superpowers/specs/2026-09-23-oxitide-plan4-streaming-cache-design.md
+git commit -m "docs: record plan 4 smoke fixes"
+```
+
