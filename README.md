@@ -25,8 +25,9 @@ npm --prefix ui run check
 npm --prefix ui test
 ```
 
-> The installer is unsigned (SmartScreen warns) and installs per user without
-> admin rights. It downloads the WebView2 bootstrapper when WebView2 is missing.
+> The NSIS installer is unsigned (SmartScreen warns) and installs per user
+> without admin rights; the MSI installs per machine and needs admin. The
+> installer downloads the WebView2 bootstrapper when WebView2 is missing.
 
 > Running the app requires the Tauri CLI. A bare `cargo run -p oxitide-app`
 > (debug build) points the webview at `devUrl` (http://localhost:1420) and will

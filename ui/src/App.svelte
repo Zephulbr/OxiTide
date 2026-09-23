@@ -13,6 +13,7 @@
   import Settings from "./views/Settings.svelte";
   import { createNav } from "./lib/nav.svelte";
   import { createPlayer } from "./lib/player.svelte";
+  import { clearPagerCache } from "./lib/pager.svelte";
   import { api, type QueueItem } from "./lib/api";
   import type { QualityDisplay } from "./lib/quality";
 
@@ -83,6 +84,7 @@
   });
 
   async function onLogin() {
+    clearPagerCache();
     error = "";
     const restore = expired;
     expired = null;
@@ -102,6 +104,7 @@
     } catch (e) {
       error = String(e);
     }
+    clearPagerCache();
     loggedIn = false;
   }
 </script>

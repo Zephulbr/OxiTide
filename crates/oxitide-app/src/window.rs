@@ -72,6 +72,11 @@ pub fn apply(window: &WebviewWindow, config: &Config) -> tauri::Result<()> {
 
 /// Read the window's current geometry into `config` (physical pixels).
 pub fn capture(window: &WebviewWindow, config: &mut Config) {
+    // A minimized window reports ~(-32000, -32000) and a bogus size; keep the
+    // last known values instead of poisoning the saved geometry.
+    if window.is_minimized().unwrap_or(false) {
+        return;
+    }
     if let Ok(position) = window.outer_position() {
         config.ui.window_x = Some(position.x);
         config.ui.window_y = Some(position.y);

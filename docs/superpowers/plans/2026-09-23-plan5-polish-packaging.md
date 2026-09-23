@@ -2347,6 +2347,17 @@ describe("track pager", () => {
     expect(pager.done).toBe(true);
   });
 
+  it("keeps legitimate duplicate tracks within one page", async () => {
+    const load = vi.fn(async (offset: number, limit: number) =>
+      page([track(3), track(3)], offset, limit, 2),
+    );
+    const pager = createTrackPager("in-page-dupes", load, 2);
+
+    await pager.loadMore();
+    expect(pager.items.map((t) => t.id)).toEqual([3, 3]);
+    expect(pager.done).toBe(true);
+  });
+
   it("marks done when the offset reaches the total", async () => {
     const load = vi.fn(async (offset: number, limit: number) =>
       page([track(1), track(2)], offset, limit, 2),
@@ -2577,11 +2588,9 @@ export function createTrackPager(
       try {
         const page = await load(offset, pageSize);
         const seen = new Set(items.map((t) => t.id));
-        const fresh = page.items.filter((t) => {
-          if (seen.has(t.id)) return false;
-          seen.add(t.id);
-          return true;
-        });
+        // Dedupe only against already-loaded pages (offset overlap); legitimate
+        // duplicate tracks within one page must survive.
+        const fresh = page.items.filter((t) => !seen.has(t.id));
         items = [...items, ...fresh];
         total = page.total;
         // Advance by the raw page length so a page of duplicates cannot stall.

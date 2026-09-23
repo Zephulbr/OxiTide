@@ -22,6 +22,11 @@ interface CacheEntry {
 /// instead of refetching. `refresh()` clears the key's entry.
 const cache = new Map<string, CacheEntry>();
 
+/// Drop every cached page; called when the signed-in account changes.
+export function clearPagerCache() {
+  cache.clear();
+}
+
 /// A scroll pager for a track list. `key` is `"favorites"` or
 /// `"playlist:{uuid}"`; `load` fetches one page at `offset`.
 export function createTrackPager(
@@ -54,11 +59,9 @@ export function createTrackPager(
       try {
         const page = await load(offset, pageSize);
         const seen = new Set(items.map((t) => t.id));
-        const fresh = page.items.filter((t) => {
-          if (seen.has(t.id)) return false;
-          seen.add(t.id);
-          return true;
-        });
+        // Dedupe only against already-loaded pages (offset overlap); legitimate
+        // duplicate tracks within one page must survive.
+        const fresh = page.items.filter((t) => !seen.has(t.id));
         items = [...items, ...fresh];
         total = page.total;
         // Advance by the raw page length so a page of duplicates cannot stall.

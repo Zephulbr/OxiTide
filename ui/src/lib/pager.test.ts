@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Track, TrackPage } from "./api";
-import { createTrackPager } from "./pager.svelte";
+import { clearPagerCache, createTrackPager } from "./pager.svelte";
 
 function track(id: number): Track {
   return {
@@ -171,6 +171,36 @@ describe("track pager", () => {
     await pending;
     await all;
     expect(pager.items.map((t) => t.id)).toEqual([1, 2, 3, 4]);
+    expect(pager.done).toBe(true);
+  });
+
+  it("clearPagerCache drops every cached page", async () => {
+    const loadA = vi.fn(async (offset: number, limit: number) =>
+      page([track(1)], offset, limit, 1),
+    );
+    const a = createTrackPager("clear-all", loadA, 1);
+    await a.loadMore();
+
+    clearPagerCache();
+
+    const loadB = vi.fn(async (offset: number, limit: number) =>
+      page([track(9)], offset, limit, 1),
+    );
+    const b = createTrackPager("clear-all", loadB, 1);
+    expect(b.items).toEqual([]);
+    await b.loadMore();
+    expect(loadB).toHaveBeenCalledWith(0, 1);
+    expect(b.items.map((t) => t.id)).toEqual([9]);
+  });
+
+  it("keeps legitimate duplicate tracks within one page", async () => {
+    const load = vi.fn(async (offset: number, limit: number) =>
+      page([track(3), track(3)], offset, limit, 2),
+    );
+    const pager = createTrackPager("in-page-dupes", load, 2);
+
+    await pager.loadMore();
+    expect(pager.items.map((t) => t.id)).toEqual([3, 3]);
     expect(pager.done).toBe(true);
   });
 
