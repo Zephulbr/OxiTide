@@ -19,7 +19,7 @@ function page(items: Track[], offset: number, limit: number, total: number): Tra
 }
 
 describe("track pager", () => {
-  it("appends pages, dedupes by id, and stops on a short page", async () => {
+  it("appends pages, dedupes by id, and stops when the offset reaches the total", async () => {
     const load = vi.fn(async (offset: number, limit: number) =>
       offset === 0
         ? page([track(1), track(2), track(3)], 0, limit, 5)
@@ -248,16 +248,31 @@ describe("track pager", () => {
   });
 
   it("stops on an empty page when the total overstates the list", async () => {
+    // The empty page carries no total (0): it must end the walk without
+    // erasing the last known total.
     const load = vi.fn(async (offset: number, limit: number) =>
-      offset === 0 ? page([track(1), track(2)], offset, limit, 10) : page([], offset, limit, 10),
+      offset === 0 ? page([track(1), track(2)], offset, limit, 10) : page([], offset, limit, 0),
     );
     const pager = createTrackPager("stale-total", load, 2);
 
     await pager.ensureAll();
 
     expect(pager.items.map((t) => t.id)).toEqual([1, 2]);
+    expect(pager.total).toBe(10);
     expect(pager.done).toBe(true);
     expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses the short-page rule when the server reports no total", async () => {
+    const load = vi.fn(async (offset: number, limit: number) =>
+      page([track(1), track(2)], offset, limit, 0),
+    );
+    const pager = createTrackPager("no-total", load, 3);
+
+    await pager.loadMore();
+
+    expect(pager.items.map((t) => t.id)).toEqual([1, 2]);
+    expect(pager.done).toBe(true);
   });
 
   /// Playlists may legitimately repeat a track; with dedupe off the queue must

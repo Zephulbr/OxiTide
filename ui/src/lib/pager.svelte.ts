@@ -80,7 +80,8 @@ export function createTrackPager(
         done =
           received === 0 ||
           (reportedTotal > 0 ? nextOffset >= reportedTotal : received < pageSize);
-        total = reportedTotal;
+        // A page that omits the total (serde default 0) must not erase a known one.
+        if (reportedTotal > 0) total = reportedTotal;
         publish();
       } catch (e) {
         error = String(e);

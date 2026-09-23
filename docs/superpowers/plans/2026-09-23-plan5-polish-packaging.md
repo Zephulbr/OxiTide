@@ -2329,7 +2329,7 @@ function page(items: Track[], offset: number, limit: number, total: number): Tra
 }
 
 describe("track pager", () => {
-  it("appends pages, dedupes by id, and stops on a short page", async () => {
+  it("appends pages, dedupes by id, and stops when the offset reaches the total", async () => {
     const load = vi.fn(async (offset: number, limit: number) =>
       offset === 0
         ? page([track(1), track(2), track(3)], 0, limit, 5)
@@ -2539,16 +2539,31 @@ describe("track pager", () => {
   });
 
   it("stops on an empty page when the total overstates the list", async () => {
+    // The empty page carries no total (0): it must end the walk without
+    // erasing the last known total.
     const load = vi.fn(async (offset: number, limit: number) =>
-      offset === 0 ? page([track(1), track(2)], offset, limit, 10) : page([], offset, limit, 10),
+      offset === 0 ? page([track(1), track(2)], offset, limit, 10) : page([], offset, limit, 0),
     );
     const pager = createTrackPager("stale-total", load, 2);
 
     await pager.ensureAll();
 
     expect(pager.items.map((t) => t.id)).toEqual([1, 2]);
+    expect(pager.total).toBe(10);
     expect(pager.done).toBe(true);
     expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses the short-page rule when the server reports no total", async () => {
+    const load = vi.fn(async (offset: number, limit: number) =>
+      page([track(1), track(2)], offset, limit, 0),
+    );
+    const pager = createTrackPager("no-total", load, 3);
+
+    await pager.loadMore();
+
+    expect(pager.items.map((t) => t.id)).toEqual([1, 2]);
+    expect(pager.done).toBe(true);
   });
 
   /// Smoke finding (2026-09-24): playlists may legitimately repeat a track;
@@ -2656,7 +2671,8 @@ export function createTrackPager(
         done =
           received === 0 ||
           (reportedTotal > 0 ? nextOffset >= reportedTotal : received < pageSize);
-        total = reportedTotal;
+        // A page that omits the total (serde default 0) must not erase a known one.
+        if (reportedTotal > 0) total = reportedTotal;
         publish();
       } catch (e) {
         error = String(e);
@@ -2703,7 +2719,7 @@ export function createTrackPager(
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `npm --prefix ui test -- src/lib/pager.test.ts`
-Expected: all 15 pager tests PASS.
+Expected: all 16 pager tests PASS.
 
 - [ ] **Step 5: Run the UI gates and commit**
 
