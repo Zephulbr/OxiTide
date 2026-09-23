@@ -10,7 +10,7 @@ use crate::fetch::{self, Fetcher, StreamBuffer};
 use crate::output::{AudioOutput, AudioOutputSpec, ExclusiveFallback, OutputMode, OutputStatus};
 use crate::queue::{Queue, QueueItem, RepeatMode};
 use crate::seek::{self, Discarder};
-use crate::source::StreamPlan;
+use crate::source::{is_he_aac, StreamPlan};
 use oxitide_tidal::stream::Quality;
 
 pub trait StreamResolver: Send + Sync + 'static {
@@ -567,6 +567,13 @@ fn decode_track(
             let _ = tx.send(Err(Error::Unavailable(served.label().to_string())));
             return;
         }
+    }
+    if plan.codec.as_deref().is_some_and(is_he_aac) {
+        let _ = tx.send(Err(Error::Unsupported(
+            "HE-AAC audio (TIDAL Low) is not supported by the built-in decoder; use High or higher"
+                .into(),
+        )));
+        return;
     }
     let cache_key = plan.manifest_hash.map(|manifest_hash| CacheKey {
         track_id: item.track_id,
@@ -1336,6 +1343,46 @@ mod tests {
         assert_eq!(meta.bit_depth, 16);
         assert_eq!(meta.channels, 2);
         assert_eq!(meta.codec.as_deref(), Some("flac"));
+    }
+
+    #[test]
+    fn he_aac_streams_error_clearly_without_fetching() {
+        let (mut plan, files) = fixture_plan();
+        plan.codec = Some("mp4a.40.5".into());
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let output = NullOutput::new();
+        let engine = Engine::new(
+            Arc::new(FakeResolver { plan }),
+            {
+                let calls = calls.clone();
+                let files = files.clone();
+                move || -> Arc<dyn Fetcher> { Arc::new(CountingFetcher { files, calls }) }
+            },
+            Box::new(output.clone()),
+            Quality::High,
+            test_cache(),
+            true,
+        );
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let seen_ref = seen.clone();
+        engine.subscribe(Arc::new(move |e| seen_ref.lock().unwrap().push(e)));
+
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+
+        wait_for(|| seen.lock().unwrap().iter().any(|e| matches!(e, EngineEvent::Error { .. })));
+        let message = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .find_map(|e| match e {
+                EngineEvent::Error { message, .. } => Some(message.clone()),
+                _ => None,
+            })
+            .expect("no error event");
+        assert!(message.contains("HE-AAC"), "unexpected message: {message}");
+        assert_eq!(calls.load(Ordering::SeqCst), 0, "an unsupported stream must not be fetched");
+        assert!(output.samples().is_empty());
+        assert_eq!(engine.state().queue.len(), 1, "the queue must be kept");
     }
 
     #[test]

@@ -140,8 +140,7 @@
     onchange={(e) =>
       setQuality((e.target as HTMLSelectElement).value as Config["streaming"]["quality"])}
   >
-    <option value="low">Low</option>
-    <option value="high">High</option>
+    <option value="high">High (AAC 320 kbps)</option>
     <option value="lossless">Lossless</option>
     <option value="max">Max (Hi-Res)</option>
   </select>

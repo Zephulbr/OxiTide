@@ -16,6 +16,8 @@ pub enum Error {
     Output(String),
     #[error("track unavailable at {0}; enable fallback or lower the streaming quality")]
     Unavailable(String),
+    #[error("unsupported audio: {0}")]
+    Unsupported(String),
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 }
@@ -34,6 +36,14 @@ mod tests {
     #[test]
     fn tap_error_includes_message() {
         assert_eq!(Error::Decode("boom".into()).to_string(), "decode error: boom");
+    }
+
+    #[test]
+    fn unsupported_error_has_stable_message() {
+        assert_eq!(
+            Error::Unsupported("he-aac".into()).to_string(),
+            "unsupported audio: he-aac"
+        );
     }
 
     #[test]

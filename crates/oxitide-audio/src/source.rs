@@ -129,6 +129,16 @@ fn derive_quality(
     }
 }
 
+/// True for HE-AAC codec strings (AAC + SBR/PS). The built-in symphonia
+/// decoder implements AAC-LC only and rejects these streams at init.
+pub fn is_he_aac(codec: &str) -> bool {
+    let codec = codec.to_ascii_lowercase();
+    codec.contains("mp4a.40.5")
+        || codec.contains("mp4a.40.05")
+        || codec.contains("mp4a.40.29")
+        || codec.contains("mp4a.40.029")
+}
+
 pub fn plan_from_info(info: &PlaybackInfo) -> Result<StreamPlan> {
     match info.manifest_mime.as_str() {
         DASH_MIME => {
@@ -406,5 +416,17 @@ mod tests {
     fn fnv1a64_is_deterministic() {
         assert_eq!(fnv1a64(b"abc"), fnv1a64(b"abc"));
         assert_ne!(fnv1a64(b"abc"), fnv1a64(b"abd"));
+    }
+
+    #[test]
+    fn he_aac_codec_strings_are_detected() {
+        assert!(is_he_aac("mp4a.40.5"));
+        assert!(is_he_aac("mp4a.40.05"));
+        assert!(is_he_aac("mp4a.40.29"));
+        assert!(is_he_aac("mp4a.40.029"));
+        assert!(is_he_aac("MP4A.40.5"));
+        assert!(!is_he_aac("mp4a.40.2"));
+        assert!(!is_he_aac("mp4a.40.02"));
+        assert!(!is_he_aac("flac"));
     }
 }

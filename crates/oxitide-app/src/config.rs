@@ -102,7 +102,15 @@ impl Config {
             return Self::default();
         };
         match toml::from_str::<Config>(&text) {
-            Ok(config) => config,
+            Ok(mut config) => {
+                // 'low' is 96 kbps HE-AAC, which the built-in decoder cannot
+                // play; retire it so old configs keep working at 320 kbps AAC.
+                if config.streaming.quality == QualityDto::Low {
+                    tracing::warn!("streaming quality 'low' (HE-AAC) is unsupported; using 'high'");
+                    config.streaming.quality = QualityDto::High;
+                }
+                config
+            }
             Err(e) => {
                 tracing::warn!("malformed config at {}: {e}", path.display());
                 let backup = path.with_extension("toml.bak");
@@ -222,6 +230,16 @@ mod tests {
         assert_eq!(config.cache.dir, "");
         assert_eq!(config.cache.max_size_mb, 2048);
         assert!(!config.cache.clear_on_exit);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn low_quality_is_coerced_to_high() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        fs::write(&path, "[streaming]\nquality = \"low\"\n").unwrap();
+        let config = Config::load_from(&path);
+        assert_eq!(config.streaming.quality, QualityDto::High);
         let _ = fs::remove_dir_all(dir);
     }
 
