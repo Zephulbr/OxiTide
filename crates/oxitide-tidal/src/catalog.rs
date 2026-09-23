@@ -35,10 +35,16 @@ impl TidalClient {
         self.get(&format!("playlists/{id}"), &[]).await
     }
 
-    pub async fn playlist_tracks(&self, id: &str, limit: u32, offset: u32) -> Result<Vec<Track>> {
+    /// One page of playlist tracks plus the server-reported total.
+    pub async fn playlist_tracks_page(
+        &self,
+        id: &str,
+        limit: u32,
+        offset: u32,
+    ) -> Result<(Vec<Track>, u32)> {
         let page: ItemPage<Track> =
             self.get(&format!("playlists/{id}/tracks"), &page_params(limit, offset)).await?;
-        Ok(page.items)
+        Ok((page.items, page.total_number_of_items))
     }
 
     /// Fetch every track of a playlist, walking all pages.
@@ -127,15 +133,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn playlist_tracks_parses_page() {
+    async fn playlist_tracks_page_returns_items_and_total() {
         let server = MockServer::start().await;
         Mock::given(method("GET")).and(path("/playlists/p-uuid/tracks"))
+            .and(query_param("limit", "100")).and(query_param("offset", "0"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "items": [{"id": 2, "title": "P1", "artists": [{"id": 9, "name": "X"}]}],
                 "totalNumberOfItems": 1, "limit": 100, "offset": 0
             })))
             .mount(&server).await;
-        let tracks = client(&server).playlist_tracks("p-uuid", 100, 0).await.unwrap();
+        let (tracks, total) = client(&server).playlist_tracks_page("p-uuid", 100, 0).await.unwrap();
         assert_eq!(tracks[0].artists[0].name, "X");
+        assert_eq!(total, 1);
     }
 }
