@@ -167,9 +167,9 @@ pub async fn auth_restore(
             state.set_client(client.clone());
             let config = Config::load();
             state.set_config(config.clone());
-            let cache_dir = crate::config::default_cache_dir()
-                .unwrap_or_else(|| std::env::temp_dir().join("oxitide-cache"));
-            let cache = oxitide_audio::cache::DiskCache::new(cache_dir, 2 * 1024 * 1024 * 1024);
+            let cache = state
+                .cache()
+                .unwrap_or_else(|| crate::player::build_cache(&config));
             state.set_player(build_player(&app, client, &config, cache)?);
             Ok(Some(SessionInfoDto {
                 country_code: session.country_code,
