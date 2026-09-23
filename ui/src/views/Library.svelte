@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import { api, trackToQueueItem, type Album, type Playlist } from "../lib/api";
   import ErrorState from "../lib/components/ErrorState.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
@@ -33,6 +34,12 @@
     load();
   });
 
+  // Eager first page: the sentinel alone would leave the section empty when it
+  // starts below the fold. `untrack` keeps this a one-shot mount action.
+  $effect(() => {
+    untrack(() => favorites.loadMore());
+  });
+
   $effect(() => {
     if (!sentinel || favorites.done) return;
     const observer = new IntersectionObserver((entries) => {
@@ -44,11 +51,13 @@
 
   async function playFrom(index: number) {
     await favorites.ensureAll();
+    if (favorites.error) return;
     api.playTracks(favorites.items.map(trackToQueueItem), index);
   }
 
   async function playAll() {
     await favorites.ensureAll();
+    if (favorites.error) return;
     api.playTracks(favorites.items.map(trackToQueueItem), 0);
   }
 </script>
