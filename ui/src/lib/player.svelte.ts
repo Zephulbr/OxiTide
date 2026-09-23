@@ -84,12 +84,30 @@ export function createPlayer() {
     state = { ...state, error: "" };
   }
 
+  /// Rebuild the queue after a re-login: start the context, seek to the last
+  /// position, and pause again when the session was paused. `play_context`
+  /// always starts playback, hence the extra `playPause` for paused sessions.
+  async function restore(
+    queue: QueueItem[],
+    index: number,
+    positionMs: number,
+    wasPlaying: boolean,
+  ) {
+    if (queue.length === 0) return;
+    await api.playTracks(queue, index);
+    await seek(positionMs);
+    if (!wasPlaying) await api.playPause();
+    const snapshot = await api.getPlaybackState();
+    state = reduce(state, { type: "state", ...snapshot });
+  }
+
   return {
     get state() { return state; },
     get pendingSeek() { return pendingSeek; },
     init,
     playPause: () => api.playPause(),
     retry,
+    restore,
     next: () => api.next(),
     prev: () => api.prev(),
     seek,
