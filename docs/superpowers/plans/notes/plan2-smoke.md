@@ -1,9 +1,8 @@
 # Plan 2 Smoke Checklist
 
-> Note: The items below require a human with a logged-in TIDAL account, a browser
-> login, and an audio device. They are PENDING a human run and are intentionally
-> left unchecked. Automated checks (cargo test/clippy, UI test/check) were run
-> separately and passed — see the Task 16 report for exact counts.
+> Note: These items require a human with a logged-in TIDAL account, a browser
+> login, and an audio device. The run was completed on 2026-09-23; exact
+> automated counts are recorded in the results sections below.
 >
 > Run with `npm --prefix ui run app:dev`.
 
@@ -28,7 +27,7 @@ Automated gates run on `feat/plan3-bitperfect-gapless` at commit 6ff0370 (all gr
 - `npm --prefix ui test`: 5 passed, 0 failed (2 files).
 - `npm --prefix ui run check`: 0 errors, 0 warnings.
 
-The manual checklist items above remain unchecked: they are pending a human run with a real account, browser login, and audio device.
+The manual checklist items above were still unchecked at this point; the human run followed on 2026-09-23 (see below).
 
 ## Results (2026-09-23)
 
@@ -49,7 +48,7 @@ bar, HTML5 drag-and-drop is enabled on Windows, and album rows gained an
 
 ## Plan 3 exclusive check
 
-PENDING a human run with a real DAC/account (Task 4 does not launch the GUI). Run
+Completed 2026-09-23 with a real DAC/account (Task 4 does not launch the GUI). Run
 `npm --prefix ui run app:dev`, enable the bit-perfect toggle in Settings, and confirm:
 
 - [x] The DAC/device shows the source sample rate (Windows Sound settings → device properties → Advanced, or a DAC display).
@@ -59,7 +58,7 @@ PENDING a human run with a real DAC/account (Task 4 does not launch the GUI). Ru
 
 ## Plan 3 gapless check
 
-PENDING a human run with a real account and audio device (Task 7 does not launch the
+Completed 2026-09-23 with a real account and audio device (Task 7 does not launch the
 GUI). Run `npm --prefix ui run app:dev`, play an album whose tracks share a format
 (most albums), and confirm:
 
@@ -69,7 +68,7 @@ GUI). Run `npm --prefix ui run app:dev`, play an album whose tracks share a form
 
 ## Plan 3 seek check
 
-PENDING a human run with a real account and audio device (Task 8 does not launch the
+Completed 2026-09-23 with a real account and audio device (Task 8 does not launch the
 GUI). Run `npm --prefix ui run app:dev`, drag the seek bar to the middle of a track and
 release, and confirm:
 
@@ -79,7 +78,7 @@ release, and confirm:
 
 ## Plan 3 config check
 
-PENDING a human run with a real account and audio device (Task 10 does not launch the
+Completed 2026-09-23 with a real account and audio device (Task 10 does not launch the
 GUI). Run `npm --prefix ui run app:dev`, then confirm:
 
 - [x] Toggle bit-perfect on, pick a non-default output device and Max quality, then restart the app; all three must come back selected. 
@@ -88,7 +87,7 @@ GUI). Run `npm --prefix ui run app:dev`, then confirm:
 
 ## Plan 3 hot-plug check
 
-PENDING a human run with a real DAC/account (Task 9 does not launch the GUI). Run
+Completed 2026-09-23 with a real DAC/account (Task 9 does not launch the GUI). Run
 `npm --prefix ui run app:dev` with a USB DAC and bit-perfect mode enabled, then confirm:
 
 - [x] Unplugging the DAC mid-track pauses playback, shows the amber "output device disconnected" notice in the PlayerBar, and keeps the queue.
