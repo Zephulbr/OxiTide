@@ -114,6 +114,7 @@ describe("track pager", () => {
 
     await pager.loadMore();
     expect(pager.error).toBe("");
+    expect(load).toHaveBeenLastCalledWith(1, 1);
     expect(pager.items.map((t) => t.id)).toEqual([1, 3]);
   });
 
@@ -144,5 +145,55 @@ describe("track pager", () => {
     expect(pager.items.map((t) => t.id)).toEqual([1, 2]);
     expect(pager.done).toBe(true);
     expect(load).toHaveBeenCalledTimes(3);
+  });
+
+  /// Review Focus: `ensureAll` must await an in-flight page, not spin on the
+  /// `loading` short-circuit and starve the event loop.
+  it("ensureAll waits for an in-flight page instead of spinning", async () => {
+    let resolveFirst: (page: TrackPage) => void = () => {};
+    const first = new Promise<TrackPage>((resolve) => {
+      resolveFirst = resolve;
+    });
+    let calls = 0;
+    const load = vi.fn(async (offset: number, limit: number) => {
+      calls += 1;
+      if (calls === 1) return first;
+      return page(offset < 4 ? [track(offset + 1), track(offset + 2)] : [], offset, limit, 4);
+    });
+    const pager = createTrackPager("inflight", load, 2);
+
+    const pending = pager.loadMore();
+    const all = pager.ensureAll();
+    resolveFirst(page([track(1), track(2)], 0, 2, 4));
+
+    await pending;
+    await all;
+    expect(pager.items.map((t) => t.id)).toEqual([1, 2, 3, 4]);
+    expect(pager.done).toBe(true);
+  });
+
+  /// Review Focus: `refresh` must discard an in-flight page rather than let it
+  /// republish into the cache the refresh cleared.
+  it("refresh discards an in-flight page instead of mixing it in", async () => {
+    let resolveFirst: (page: TrackPage) => void = () => {};
+    const first = new Promise<TrackPage>((resolve) => {
+      resolveFirst = resolve;
+    });
+    let calls = 0;
+    const load = vi.fn(async (offset: number, limit: number) => {
+      calls += 1;
+      if (calls === 1) return first;
+      return page([track(9)], offset, limit, 1);
+    });
+    const pager = createTrackPager("refresh-inflight", load, 1);
+
+    const pending = pager.loadMore();
+    const refreshing = pager.refresh();
+    resolveFirst(page([track(1)], 0, 1, 1));
+
+    await pending;
+    await refreshing;
+    expect(pager.items.map((t) => t.id)).toEqual([9]);
+    expect(pager.done).toBe(true);
   });
 });

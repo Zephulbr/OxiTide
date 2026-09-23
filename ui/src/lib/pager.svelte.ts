@@ -36,30 +36,43 @@ export function createTrackPager(
   let loading = $state(false);
   let error = $state("");
   let nextOffset = cached?.nextOffset ?? 0;
+  // The in-flight page request, shared by concurrent `loadMore` callers so
+  // `ensureAll` awaits real progress instead of spinning on a resolved promise.
+  let inflight: Promise<void> | null = null;
 
   function publish() {
     cache.set(key, { items: [...items], total, nextOffset, done });
   }
 
-  async function loadMore() {
-    if (loading || done) return;
-    loading = true;
-    error = "";
-    const offset = nextOffset;
-    try {
-      const page = await load(offset, pageSize);
-      const seen = new Set(items.map((t) => t.id));
-      items = [...items, ...page.items.filter((t) => !seen.has(t.id))];
-      total = page.total;
-      // Advance by the raw page length so a page of duplicates cannot stall.
-      nextOffset = offset + page.items.length;
-      done = page.items.length < pageSize || nextOffset >= total;
-      publish();
-    } catch (e) {
-      error = String(e);
-    } finally {
-      loading = false;
-    }
+  function loadMore(): Promise<void> {
+    if (inflight) return inflight;
+    if (done) return Promise.resolve();
+    inflight = (async () => {
+      loading = true;
+      error = "";
+      const offset = nextOffset;
+      try {
+        const page = await load(offset, pageSize);
+        const seen = new Set(items.map((t) => t.id));
+        const fresh = page.items.filter((t) => {
+          if (seen.has(t.id)) return false;
+          seen.add(t.id);
+          return true;
+        });
+        items = [...items, ...fresh];
+        total = page.total;
+        // Advance by the raw page length so a page of duplicates cannot stall.
+        nextOffset = offset + page.items.length;
+        done = page.items.length < pageSize || nextOffset >= total;
+        publish();
+      } catch (e) {
+        error = String(e);
+      } finally {
+        loading = false;
+        inflight = null;
+      }
+    })();
+    return inflight;
   }
 
   async function ensureAll() {
@@ -69,6 +82,9 @@ export function createTrackPager(
   }
 
   async function refresh() {
+    // Let an in-flight page finish first so it cannot republish into the
+    // cache after the reset.
+    if (inflight) await inflight;
     cache.delete(key);
     items = [];
     total = 0;
