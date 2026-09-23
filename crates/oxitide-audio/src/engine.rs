@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use crate::decode::{PcmBuffer, PcmFormat, PcmSink, StreamInfo};
@@ -53,6 +53,7 @@ pub enum EngineCmd {
     SetRepeat(RepeatMode),
     Reorder { from: usize, to: usize },
     Remove(usize),
+    Enqueue { items: Vec<QueueItem> },
     Clear,
 }
 
@@ -66,7 +67,7 @@ const PREFETCH_BUFFERS: usize = 96;
 struct Inner {
     queue: Mutex<Queue>,
     resolver: Arc<dyn StreamResolver>,
-    fetcher: Arc<dyn Fetcher>,
+    fetcher: OnceLock<Arc<dyn Fetcher>>,
     quality: Mutex<Quality>,
     device_id: Mutex<Option<String>>,
     output_mode: Mutex<OutputMode>,
@@ -125,22 +126,29 @@ fn build_state(inner: &Inner) -> PlaybackState {
 }
 
 fn emit(inner: &Arc<Inner>, event: EngineEvent) {
+    if let EngineEvent::Error { code, message } = &event {
+        tracing::error!("playback error ({code}): {message}");
+    }
     for listener in inner.listeners.lock().unwrap().iter() {
         listener(event.clone());
     }
 }
 
 impl Engine {
+    /// `make_fetcher` runs on the playback worker thread, so a blocking fetcher
+    /// (e.g. `HttpFetcher`'s `reqwest::blocking::Client`) is never built on the
+    /// caller's thread — constructing one inside an async runtime context
+    /// panics in debug builds.
     pub fn new(
         resolver: Arc<dyn StreamResolver>,
-        fetcher: Arc<dyn Fetcher>,
+        make_fetcher: impl FnOnce() -> Arc<dyn Fetcher> + Send + 'static,
         output: Box<dyn AudioOutput>,
         quality: Quality,
     ) -> Self {
         let inner = Arc::new(Inner {
             queue: Mutex::new(Queue::default()),
             resolver,
-            fetcher,
+            fetcher: OnceLock::new(),
             quality: Mutex::new(quality),
             device_id: Mutex::new(None),
             output_mode: Mutex::new(OutputMode::Shared),
@@ -160,10 +168,12 @@ impl Engine {
             shutdown: AtomicBool::new(false),
         });
         let worker_inner = inner.clone();
+        let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel::<()>(1);
         std::thread::Builder::new()
             .name("oxitide-worker".into())
-            .spawn(move || worker_main(worker_inner, output))
+            .spawn(move || worker_main(worker_inner, make_fetcher, ready_tx, output))
             .expect("spawn playback worker");
+        ready_rx.recv().expect("playback worker failed to initialize");
         Self { inner }
     }
 
@@ -375,6 +385,12 @@ impl Engine {
                 self.inner.queue.lock().unwrap().remove(index);
                 self.emit(EngineEvent::State(self.state()));
             }
+            EngineCmd::Enqueue { items } => {
+                if !items.is_empty() {
+                    self.inner.queue.lock().unwrap().push(items);
+                    self.emit(EngineEvent::State(self.state()));
+                }
+            }
             EngineCmd::Clear => {
                 self.mutate_playing_queue(|q| q.clear());
                 self.inner.paused.store(false, Ordering::SeqCst);
@@ -490,6 +506,17 @@ fn decode_track(
     let outcome: Result<()> = (|| {
         let quality = *inner.quality.lock().unwrap();
         let plan = inner.resolver.resolve(item.track_id, quality)?;
+        tracing::debug!(
+            "resolved track {}: codec={:?} rate={:?} bits={:?} timescale={} segments={} init={} first_media={:?}",
+            item.track_id,
+            plan.codec,
+            plan.sample_rate,
+            plan.bit_depth,
+            plan.timescale,
+            plan.segments.len(),
+            plan.init_url.is_some(),
+            plan.segments.first().map(|s| s.url.as_str()),
+        );
         // Seek by segment index: media URLs are an ordered list, so restarting
         // at the segment covering the target needs no HTTP Range.
         let download_plan = match seek_ms {
@@ -500,7 +527,7 @@ fn decode_track(
             _ => plan.clone(),
         };
         let fetch_buffer = buffer.clone();
-        let fetcher = inner.fetcher.clone();
+        let fetcher = inner.fetcher.get().expect("fetcher initialized by the worker").clone();
         let downloader = std::thread::spawn(move || fetch::download(fetch_buffer, fetcher, download_plan));
         let source = crate::demux::StreamBufferSource::new(buffer);
         let mut sink = ChannelSink {
@@ -660,11 +687,16 @@ fn run_session(
     gen: u64,
     seek_ms: Option<u64>,
 ) -> SessionOutcome {
-    // A seek must not play the audio still buffered in the device ring, so
-    // force a reopen on the first iteration.
+    // A seek must not play the audio still buffered in the device ring. Flush
+    // the open device instead of releasing it: reopening re-negotiates the
+    // endpoint and makes exclusive-mode DACs re-lock (audible click/hiss).
     if seek_ms.is_some() {
-        let _ = output.stop();
-        *open_spec = None;
+        if let Err(e) = output.flush() {
+            return SessionOutcome::OutputError {
+                message: e.to_string(),
+                track_id: first_item.track_id,
+            };
+        }
     }
     let mut stream = start_track(inner, first_item, mode, gen, seek_ms);
     let mut prefetch = start_prefetch(inner, mode, gen);
@@ -817,7 +849,14 @@ fn run_session(
     }
 }
 
-fn worker_main(inner: Arc<Inner>, mut output: Box<dyn AudioOutput>) {
+fn worker_main(
+    inner: Arc<Inner>,
+    make_fetcher: impl FnOnce() -> Arc<dyn Fetcher>,
+    ready: SyncSender<()>,
+    mut output: Box<dyn AudioOutput>,
+) {
+    let _ = inner.fetcher.set(make_fetcher());
+    let _ = ready.send(());
     let mut open_spec: Option<AudioOutputSpec> = None;
     let mut handled_gen: u64 = 0;
     loop {
@@ -987,12 +1026,21 @@ mod tests {
         }
     }
 
+    fn build_engine(
+        resolver: Arc<dyn StreamResolver>,
+        fetcher: Arc<dyn Fetcher>,
+        output: Box<dyn AudioOutput>,
+        quality: Quality,
+    ) -> Engine {
+        Engine::new(resolver, move || fetcher, output, quality)
+    }
+
     fn engine_with(
         plan: StreamPlan,
         files: HashMap<String, Vec<u8>>,
     ) -> (Engine, NullOutput) {
         let output = NullOutput::new();
-        let engine = Engine::new(
+        let engine = build_engine(
             Arc::new(FakeResolver { plan }),
             Arc::new(crate::fetch::MapFetcher { files }),
             Box::new(output.clone()),
@@ -1006,6 +1054,26 @@ mod tests {
         while !ready() && std::time::Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(10));
         }
+    }
+
+    /// Regression: `HttpFetcher` builds a `reqwest::blocking::Client`, which
+    /// panics in debug builds when constructed inside an async runtime context.
+    /// The engine must build it on its own worker thread.
+    #[tokio::test]
+    async fn fetcher_is_built_off_the_async_runtime() {
+        let output = NullOutput::new();
+        let _engine = Engine::new(
+            Arc::new(FailingResolver),
+            || {
+                assert!(
+                    tokio::runtime::Handle::try_current().is_err(),
+                    "fetcher was built on an async runtime thread"
+                );
+                Arc::new(crate::fetch::MapFetcher::default())
+            },
+            Box::new(output),
+            Quality::Lossless,
+        );
     }
 
     #[test]
@@ -1044,6 +1112,23 @@ mod tests {
     }
 
     #[test]
+    fn enqueue_appends_without_restarting_playback() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| !output.samples().is_empty());
+        let opens = output.opens();
+
+        engine.handle(EngineCmd::Enqueue { items: vec![item(2), item(3)] }).unwrap();
+
+        let state = engine.state();
+        assert_eq!(state.queue.len(), 3);
+        assert_eq!(state.current.map(|i| i.track_id), Some(1));
+        assert!(state.playing);
+        assert_eq!(output.opens(), opens, "enqueue must not restart the session");
+    }
+
+    #[test]
     fn worker_writes_samples_and_advances() {
         let (plan, files) = fixture_plan();
         let (engine, output) = engine_with(plan, files);
@@ -1061,13 +1146,17 @@ mod tests {
 
         engine.handle(EngineCmd::Seek(1000)).unwrap();
         // The handler seeds `position_ms`, so wait for the worker to actually
-        // restart (reopen) before checking the post-seek state.
-        wait_for(|| output.opens() >= 2);
+        // restart (flush) before checking the post-seek state.
+        wait_for(|| output.flushes() >= 1);
         wait_for(|| engine.state().position_ms >= 1000);
         let state = engine.state();
         assert!(state.position_ms >= 1000, "seek did not land at 1000ms: {}", state.position_ms);
         assert!(state.playing);
-        assert!(output.opens() >= 2, "seek must reopen the output to drop buffered audio");
+        assert_eq!(
+            output.opens(),
+            1,
+            "a same-format seek must flush the open device, not reopen it"
+        );
     }
 
     /// Regression: a seek issued while paused must apply (position + slider)
@@ -1232,7 +1321,7 @@ mod tests {
         let gate = Arc::new(Gate::new());
         let order = Arc::new(Mutex::new(Vec::new()));
         let output = NullOutput::new();
-        let engine = Engine::new(
+        let engine = build_engine(
             Arc::new(GatedResolver { plan, gate: gate.clone(), order: order.clone() }),
             Arc::new(crate::fetch::MapFetcher { files }),
             Box::new(output),
@@ -1267,7 +1356,7 @@ mod tests {
     #[test]
     fn playback_error_stops_and_reports() {
         let output = NullOutput::new();
-        let engine = Engine::new(
+        let engine = build_engine(
             Arc::new(FailingResolver),
             Arc::new(crate::fetch::MapFetcher::default()),
             Box::new(output),
@@ -1329,7 +1418,7 @@ mod tests {
         let (plan, files) = fixture_plan();
         let gate = Arc::new(Gate::new());
         let output = NullOutput::new();
-        let engine = Engine::new(
+        let engine = build_engine(
             Arc::new(FakeResolver { plan }),
             Arc::new(GatedFetcher { files, gate: gate.clone(), id: 1 }),
             Box::new(output.clone()),
@@ -1392,7 +1481,7 @@ mod tests {
         let (plan, files) = fixture_plan();
         let specs = Arc::new(Mutex::new(Vec::new()));
         let specs_ref = specs.clone();
-        let engine = Engine::new(
+        let engine = build_engine(
             Arc::new(FakeResolver { plan }),
             Arc::new(crate::fetch::MapFetcher { files }),
             Box::new(RecordingOutput { specs: specs_ref }),
@@ -1438,7 +1527,7 @@ mod tests {
     fn null_output_reports_exclusive_status() {
         let (plan, files) = fixture_plan();
         let output = NullOutput::new();
-        let engine = Engine::new(
+        let engine = build_engine(
             Arc::new(FakeResolver { plan }),
             Arc::new(crate::fetch::MapFetcher { files }),
             Box::new(output),
@@ -1460,7 +1549,7 @@ mod tests {
             bit_perfect: false,
             notice: Some("volume applied in software; bit-perfect compromised".into()),
         };
-        let engine = Engine::new(
+        let engine = build_engine(
             Arc::new(FakeResolver { plan }),
             Arc::new(crate::fetch::MapFetcher { files }),
             Box::new(FixedStatusOutput { status }),
@@ -1511,7 +1600,7 @@ mod tests {
     #[test]
     fn output_open_failure_pauses_with_notice() {
         let (plan, files) = fixture_plan();
-        let engine = Engine::new(
+        let engine = build_engine(
             Arc::new(FakeResolver { plan }),
             Arc::new(crate::fetch::MapFetcher { files }),
             Box::new(FailingOpenOutput),
@@ -1579,7 +1668,7 @@ mod tests {
         let failing = Arc::new(AtomicBool::new(true));
         let samples = Arc::new(Mutex::new(Vec::new()));
         let opens = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let engine = Engine::new(
+        let engine = build_engine(
             Arc::new(FakeResolver { plan }),
             Arc::new(crate::fetch::MapFetcher { files }),
             Box::new(DeviceLostOutput {
@@ -1654,7 +1743,7 @@ mod tests {
         let (plan, files) = fixture_plan();
         let remaining = Arc::new(Mutex::new(44_100)); // ~0.5s of stereo samples
         let samples = Arc::new(Mutex::new(Vec::new()));
-        let engine = Engine::new(
+        let engine = build_engine(
             Arc::new(FakeResolver { plan }),
             Arc::new(crate::fetch::MapFetcher { files }),
             Box::new(FailAfterOutput { remaining: remaining.clone(), samples: samples.clone() }),
@@ -1686,7 +1775,7 @@ mod tests {
         let failing = Arc::new(AtomicBool::new(true));
         let samples = Arc::new(Mutex::new(Vec::new()));
         let opens = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let engine = Engine::new(
+        let engine = build_engine(
             Arc::new(FakeResolver { plan }),
             Arc::new(crate::fetch::MapFetcher { files }),
             Box::new(DeviceLostOutput {
@@ -1764,7 +1853,7 @@ mod tests {
         let failing = Arc::new(AtomicBool::new(true));
         let opens = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let samples = Arc::new(Mutex::new(Vec::new()));
-        let engine = Engine::new(
+        let engine = build_engine(
             Arc::new(FakeResolver { plan }),
             Arc::new(crate::fetch::MapFetcher { files }),
             Box::new(DisappearingOutput {
@@ -1800,7 +1889,7 @@ mod tests {
         // Track 1 (176,400 samples) plus 250 ms of track 2 (22,050 samples).
         let remaining = Arc::new(Mutex::new(176_400 + 22_050));
         let samples = Arc::new(Mutex::new(Vec::new()));
-        let engine = Engine::new(
+        let engine = build_engine(
             Arc::new(FakeResolver { plan }),
             Arc::new(crate::fetch::MapFetcher { files }),
             Box::new(FailAfterOutput { remaining: remaining.clone(), samples: samples.clone() }),
@@ -1869,7 +1958,7 @@ mod tests {
     fn play_pause_immediately_after_queue_end_restarts_playback() {
         let (plan, files) = fixture_plan();
         let output = NullOutput::new();
-        let engine = Engine::new(
+        let engine = build_engine(
             Arc::new(FakeResolver { plan }),
             Arc::new(crate::fetch::MapFetcher { files }),
             Box::new(SlowStopOutput {
@@ -1943,7 +2032,7 @@ mod tests {
         files.insert("mem://t48".to_string(), tone48);
         let order = Arc::new(Mutex::new(Vec::new()));
         let output = NullOutput::new();
-        let engine = Engine::new(
+        let engine = build_engine(
             Arc::new(PerTrackResolver { plans, order }),
             Arc::new(crate::fetch::MapFetcher { files }),
             Box::new(output.clone()),
@@ -1970,7 +2059,7 @@ mod tests {
         plans.insert(1, plan.clone());
         plans.insert(2, plan);
         let output = NullOutput::new();
-        let engine = Engine::new(
+        let engine = build_engine(
             Arc::new(PerTrackResolver { plans, order: order.clone() }),
             Arc::new(crate::fetch::MapFetcher { files }),
             Box::new(output.clone()),
@@ -2031,7 +2120,7 @@ mod tests {
     fn settings_change_restarts_at_the_current_position() {
         let (plan, files) = fixture_plan();
         let output = NullOutput::new();
-        let engine = Engine::new(
+        let engine = build_engine(
             Arc::new(FakeResolver { plan }),
             Arc::new(crate::fetch::MapFetcher { files }),
             Box::new(ThrottledOutput { inner: output.clone(), delay: Duration::from_millis(30) }),
@@ -2061,7 +2150,7 @@ mod tests {
         let gate = Arc::new(Gate::new());
         let order = Arc::new(Mutex::new(Vec::new()));
         let output = NullOutput::new();
-        let engine = Engine::new(
+        let engine = build_engine(
             Arc::new(GatedResolver { plan, gate: gate.clone(), order: order.clone() }),
             Arc::new(crate::fetch::MapFetcher { files }),
             Box::new(output.clone()),

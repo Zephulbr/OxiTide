@@ -165,11 +165,8 @@ impl Representation {
             .iter()
             .enumerate()
             .map(|(i, timing)| {
-                let (number, time) = if t.timeline.is_empty() {
-                    (t.start_number + i as u64, 0)
-                } else {
-                    (0, timing.start_ticks)
-                };
+                let number = t.start_number + i as u64;
+                let time = if t.timeline.is_empty() { 0 } else { timing.start_ticks };
                 resolve_template(&base, &t.media, &repr_id, bw, number, time)
             })
             .collect())
@@ -422,6 +419,63 @@ mod tests {
         assert_eq!(
             r.media_urls(None, &[]).unwrap(),
             vec!["0.mp4", "176400.mp4", "352800.mp4"]
+        );
+    }
+
+    /// Real TIDAL manifests pair `$Number$` with a `SegmentTimeline`. The
+    /// number must keep counting from `startNumber`; `0.mp4` is the
+    /// initialization segment, not a media segment.
+    const NUMBER_WITH_TIMELINE_MPD: &str = r#"<MPD mediaPresentationDuration="PT12S"><Period><AdaptationSet>
+      <Representation id="FLAC,44100,16" codecs="flac" audioSamplingRate="44100">
+        <SegmentTemplate timescale="44100" initialization="https://cdn.example/track/0.mp4?token=T" media="https://cdn.example/track/$Number$.mp4?token=T" startNumber="1">
+          <SegmentTimeline><S d="176128" r="2"/><S d="157448"/></SegmentTimeline>
+        </SegmentTemplate>
+      </Representation>
+    </AdaptationSet></Period></MPD>"#;
+
+    #[test]
+    fn number_template_with_timeline_counts_from_start_number() {
+        let mpd = parse(NUMBER_WITH_TIMELINE_MPD).unwrap();
+        let r = mpd.audio_representation().unwrap();
+        assert_eq!(r.segment_count(None).unwrap(), 4);
+        assert_eq!(
+            r.media_urls(None, &[]).unwrap(),
+            vec![
+                "https://cdn.example/track/1.mp4?token=T",
+                "https://cdn.example/track/2.mp4?token=T",
+                "https://cdn.example/track/3.mp4?token=T",
+                "https://cdn.example/track/4.mp4?token=T",
+            ]
+        );
+        assert_eq!(
+            r.init_url(&[]).as_deref(),
+            Some("https://cdn.example/track/0.mp4?token=T")
+        );
+        assert_eq!(
+            r.segment_timings(None).unwrap(),
+            vec![
+                SegmentTiming { start_ticks: 0, duration_ticks: 176_128 },
+                SegmentTiming { start_ticks: 176_128, duration_ticks: 176_128 },
+                SegmentTiming { start_ticks: 352_256, duration_ticks: 176_128 },
+                SegmentTiming { start_ticks: 528_384, duration_ticks: 157_448 },
+            ]
+        );
+    }
+
+    #[test]
+    fn number_and_time_expand_together_with_a_timeline() {
+        let mpd = r#"<MPD><Period><AdaptationSet>
+          <Representation id="a" codecs="flac">
+            <SegmentTemplate timescale="44100" media="seg-$Number$-$Time$.mp4">
+              <SegmentTimeline><S d="176400" r="1"/></SegmentTimeline>
+            </SegmentTemplate>
+          </Representation>
+        </AdaptationSet></Period></MPD>"#;
+        let mpd = parse(mpd).unwrap();
+        let r = mpd.audio_representation().unwrap();
+        assert_eq!(
+            r.media_urls(None, &[]).unwrap(),
+            vec!["seg-1-0.mp4", "seg-2-176400.mp4"]
         );
     }
 

@@ -43,6 +43,7 @@
     <input
       type="range" min="0" max="1" step="0.01" value={player.state.volume}
       oninput={(e) => player.setVolume(Number((e.target as HTMLInputElement).value))}
+      onchange={(e) => player.setVolume(Number((e.target as HTMLInputElement).value), true)}
       aria-label="Volume"
     />
     {#if player.state.buffering}<span class="muted">buffering…</span>{/if}

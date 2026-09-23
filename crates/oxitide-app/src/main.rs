@@ -42,6 +42,7 @@ fn main() {
             commands::set_repeat,
             commands::queue_reorder,
             commands::queue_remove,
+            commands::queue_add,
             commands::queue_clear,
             commands::get_playback_state,
             commands::get_config,

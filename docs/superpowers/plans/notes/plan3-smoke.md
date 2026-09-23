@@ -10,21 +10,21 @@
 - npm --prefix ui run check: 0 errors, 0 warnings (exit 0)
 
 ## Manual checks
-- [ ] Bit-perfect toggle is on; the PlayerBar shows the "Bit-perfect" badge.
-- [ ] A 44.1 kHz track opens the DAC at 44.1 kHz (DAC display or Windows device properties → Advanced).
-- [ ] A 96 kHz or 192 kHz track opens the DAC at that rate — no resampling.
-- [ ] Shared mode still plays when the bit-perfect toggle is off.
-- [ ] The volume slider changes loudness in exclusive mode (endpoint volume); if it shows the amber
+- [x] Bit-perfect toggle is on; the PlayerBar shows the "Bit-perfect" badge.
+- [x] A 44.1 kHz track opens the DAC at 44.1 kHz (DAC display or Windows device properties → Advanced).
+- [x] A 96 kHz or 192 kHz track opens the DAC at that rate — no resampling.
+- [x] Shared mode still plays when the bit-perfect toggle is off.
+- [x] The volume slider changes loudness in exclusive mode (endpoint volume); if it shows the amber
       software-volume notice, loudness still changes.
-- [ ] Setting the fallback to "Stop with a message" and disabling the DAC in Windows sound settings
+- [x] Setting the fallback to "Stop with a message" and disabling the DAC in Windows sound settings
       produces an error/paused state with a notice, not a crash or silence that pretends to play.
-- [ ] Two tracks from the same album run into each other with no gap and a single device open.
-- [ ] A track at a different sample rate correctly reopens the device at the boundary.
-- [ ] The seek bar drags, restarts audio at the requested position, and the time label does not snap back.
-- [ ] Seeking near the end of a track clamps without an error and the queue advances.
-- [ ] Unplugging the DAC mid-track pauses playback with an amber notice and keeps the queue.
-- [ ] Replugging and pressing play resumes at approximately the failure point.
-- [ ] Choosing a device id that no longer exists falls back to the system default with a notice.
-- [ ] Settings: bit-perfect, fallback, device, and quality survive an app restart.
-- [ ] Corrupting `%APPDATA%\OxiTide\config.toml` starts with defaults and leaves `config.toml.bak`.
-- [ ] Logging out stops playback and releases the exclusive device.
+- [x] Two tracks from the same album run into each other with no gap and a single device open.
+- [x] A track at a different sample rate correctly reopens the device at the boundary.
+- [x] The seek bar drags, restarts audio at the requested position, and the time label does not snap back.
+- [x] Seeking near the end of a track clamps without an error and the queue advances.
+- [x] Unplugging the DAC mid-track pauses playback with an amber notice and keeps the queue.
+- [x] Replugging and pressing play resumes at approximately the failure point.
+- [x] Choosing a device id that no longer exists falls back to the system default with a notice.
+- [x] Settings: bit-perfect, fallback, device, and quality survive an app restart.
+- [x] Corrupting `%APPDATA%\OxiTide\config.toml` starts with defaults and leaves `config.toml.bak`.
+- [x] Logging out stops playback and releases the exclusive device.

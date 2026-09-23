@@ -179,7 +179,7 @@ fn build_player(
     let resolver = crate::player::TidalResolver::new(client).map_err(|e| e.to_string())?;
     let engine = Engine::new(
         Arc::new(resolver),
-        Arc::new(HttpFetcher::default()),
+        || Arc::new(HttpFetcher::default()),
         crate::player::real_output(),
         config.streaming.quality.to_quality(),
     );
@@ -194,6 +194,7 @@ fn build_player(
         OutputMode::Shared
     });
     engine.set_exclusive_fallback(config.audio.exclusive_fallback);
+    engine.handle(EngineCmd::SetVolume(config.audio.volume)).map_err(|e| e.to_string())?;
     let handle = app.clone();
     engine.subscribe(Arc::new(move |event| {
         let _ = tauri::Emitter::emit(&handle, "playback_event", crate::player::to_dto(event));
@@ -300,9 +301,20 @@ pub fn seek(state: State<'_, AppState>, position_ms: u64) -> Result<(), String> 
 }
 
 #[tauri::command]
-pub fn set_volume(state: State<'_, AppState>, volume: f32) -> Result<(), String> {
+pub fn set_volume(
+    state: State<'_, AppState>,
+    volume: f32,
+    persist: bool,
+) -> Result<(), String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
-    player.engine.handle(EngineCmd::SetVolume(volume)).map_err(|e| e.to_string())
+    player.engine.handle(EngineCmd::SetVolume(volume)).map_err(|e| e.to_string())?;
+    if persist {
+        let mut config = state.config();
+        config.audio.volume = volume.clamp(0.0, 1.0);
+        config.save()?;
+        state.set_config(config);
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -337,6 +349,12 @@ pub fn queue_remove(state: State<'_, AppState>, index: usize) -> Result<(), Stri
 pub fn queue_clear(state: State<'_, AppState>) -> Result<(), String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
     player.engine.handle(EngineCmd::Clear).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn queue_add(state: State<'_, AppState>, items: Vec<QueueItem>) -> Result<(), String> {
+    let player = state.player().ok_or_else(|| "not logged in".to_string())?;
+    player.engine.handle(EngineCmd::Enqueue { items }).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

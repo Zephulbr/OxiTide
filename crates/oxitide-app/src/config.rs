@@ -20,6 +20,7 @@ pub struct AudioConfig {
     pub output_device: String,
     pub exclusive: bool,
     pub exclusive_fallback: ExclusiveFallback,
+    pub volume: f32,
 }
 
 impl Default for AudioConfig {
@@ -28,6 +29,7 @@ impl Default for AudioConfig {
             output_device: String::new(),
             exclusive: false,
             exclusive_fallback: ExclusiveFallback::Shared,
+            volume: 1.0,
         }
     }
 }
@@ -130,6 +132,7 @@ mod tests {
                 output_device: "dev-1".into(),
                 exclusive: true,
                 exclusive_fallback: ExclusiveFallback::WarnOnly,
+                volume: 0.42,
             },
             streaming: StreamingConfig { quality: QualityDto::Max },
         };
@@ -161,6 +164,7 @@ mod tests {
         assert!(config.audio.exclusive);
         assert_eq!(config.audio.output_device, "");
         assert_eq!(config.audio.exclusive_fallback, ExclusiveFallback::Shared);
+        assert_eq!(config.audio.volume, 1.0);
         assert_eq!(config.streaming.quality, QualityDto::Lossless);
         let _ = fs::remove_dir_all(dir);
     }
