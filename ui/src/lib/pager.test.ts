@@ -164,7 +164,9 @@ describe("track pager", () => {
 
     const pending = pager.loadMore();
     const all = pager.ensureAll();
-    resolveFirst(page([track(1), track(2)], 0, 2, 4));
+    // Resolve on a macrotask: a microtask-spinning `ensureAll` starves this
+    // timer and the test times out, which is exactly the freeze being pinned.
+    setTimeout(() => resolveFirst(page([track(1), track(2)], 0, 2, 4)), 0);
 
     await pending;
     await all;
