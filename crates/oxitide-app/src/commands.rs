@@ -41,6 +41,8 @@ pub struct AudioStatusDto {
 pub struct CacheStatusDto {
     pub dir: String,
     pub used_bytes: u64,
+    /// In-flight `.part` bytes; not counted against the cap.
+    pub pending_bytes: u64,
     pub max_bytes: u64,
     pub usable: bool,
     /// The raw configured `cache.dir` ("" = default), so the UI can tell when
@@ -470,6 +472,7 @@ pub fn get_cache_status(state: State<'_, AppState>) -> Result<CacheStatusDto, St
     Ok(CacheStatusDto {
         dir: cache.dir().display().to_string(),
         used_bytes: cache.size_bytes(),
+        pending_bytes: cache.pending_bytes(),
         max_bytes: cache.max_bytes(),
         usable: cache.usable(),
         configured_dir: state.config().cache.dir.clone(),
@@ -542,6 +545,21 @@ mod tests {
         let dto = LoginPrompt { url: "https://example.test/login".to_string() };
         let value = serde_json::to_value(&dto).unwrap();
         assert_eq!(value["url"], "https://example.test/login");
+    }
+
+    #[test]
+    fn cache_status_dto_serializes_pending_bytes() {
+        let dto = CacheStatusDto {
+            dir: "C:\\cache".into(),
+            used_bytes: 10,
+            pending_bytes: 5,
+            max_bytes: 100,
+            usable: true,
+            configured_dir: String::new(),
+        };
+        let value = serde_json::to_value(&dto).unwrap();
+        assert_eq!(value["used_bytes"], 10);
+        assert_eq!(value["pending_bytes"], 5);
     }
 
     #[test]

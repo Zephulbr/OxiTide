@@ -62,6 +62,7 @@ export interface AudioStatus {
 export interface CacheStatus {
   dir: string;
   used_bytes: number;
+  pending_bytes: number;
   max_bytes: number;
   usable: boolean;
   configured_dir: string;

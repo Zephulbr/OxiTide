@@ -181,7 +181,11 @@
         The configured cache directory is unusable; using {cacheStatus.dir}.
       </p>
     {/if}
-    <p class="muted">{formatMb(cacheStatus.used_bytes)} of {formatMb(cacheStatus.max_bytes)} used</p>
+    <p class="muted">
+      {formatMb(cacheStatus.used_bytes)} used{#if cacheStatus.pending_bytes > 0}
+        (+{formatMb(cacheStatus.pending_bytes)} downloading){/if}
+      of {formatMb(cacheStatus.max_bytes)}
+    </p>
     <p>
       <label>
         Max size (MB):
@@ -203,7 +207,10 @@
         Clear cache on exit
       </label>
     </p>
-    <p><button onclick={clearCache}>Clear cache</button></p>
+    <p>
+      <button onclick={refreshCacheStatus}>Refresh</button>
+      <button onclick={clearCache}>Clear cache</button>
+    </p>
     <p class="muted">Directory: {cacheStatus.dir} (edit cache.dir in config.toml)</p>
   {/if}
 {/if}

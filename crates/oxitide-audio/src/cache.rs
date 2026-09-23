@@ -144,6 +144,12 @@ impl DiskCache {
         self.entries().iter().map(|entry| entry.size).sum()
     }
 
+    /// Sum of every in-flight `.part` file. In-progress downloads are not
+    /// counted against the cap.
+    pub fn pending_bytes(&self) -> u64 {
+        self.part_entries().iter().map(|entry| entry.size).sum()
+    }
+
     pub fn clear(&self) {
         if !self.usable {
             return;
@@ -198,6 +204,14 @@ impl DiskCache {
     }
 
     fn entries(&self) -> Vec<Entry> {
+        self.entries_with_suffix(".fmp4")
+    }
+
+    fn part_entries(&self) -> Vec<Entry> {
+        self.entries_with_suffix(".part")
+    }
+
+    fn entries_with_suffix(&self, suffix: &str) -> Vec<Entry> {
         if !self.usable {
             return Vec::new();
         }
@@ -205,10 +219,12 @@ impl DiskCache {
         read.flatten()
             .filter_map(|entry| {
                 let name = entry.file_name();
-                if !name.to_string_lossy().ends_with(".fmp4") {
+                if !name.to_string_lossy().ends_with(suffix) {
                     return None;
                 }
-                let metadata = entry.metadata().ok()?;
+                // Windows directory entries report a stale size while the file
+                // is still open for writing, so query the path instead.
+                let metadata = fs::metadata(entry.path()).ok()?;
                 Some(Entry {
                     path: entry.path(),
                     size: metadata.len(),
@@ -407,6 +423,21 @@ mod tests {
     }
 
     #[test]
+    fn pending_bytes_tracks_in_flight_parts() {
+        let dir = temp_dir();
+        let cache = DiskCache::new(dir.clone(), 1 << 20);
+        let key = key(1);
+        let mut writer = cache.begin_write(&key).unwrap();
+        writer.write_all(b"12345").unwrap();
+        assert_eq!(cache.pending_bytes(), 5);
+        assert_eq!(cache.size_bytes(), 0, "a .part must not count as a committed entry");
+        writer.commit();
+        assert_eq!(cache.pending_bytes(), 0);
+        assert_eq!(cache.size_bytes(), 5);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn commit_releases_the_in_flight_key() {
         let dir = temp_dir();
         let cache = DiskCache::new(dir.clone(), 1 << 20);
@@ -520,6 +551,7 @@ mod tests {
         assert!(cache.lookup(&key(1)).is_none());
         assert!(cache.begin_write(&key(1)).is_none());
         assert_eq!(cache.size_bytes(), 0);
+        assert_eq!(cache.pending_bytes(), 0);
         cache.clear();
         cache.cleanup();
         cache.set_max_bytes(0);
