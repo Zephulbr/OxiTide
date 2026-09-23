@@ -86,6 +86,7 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .manage(state)
         .setup(|app| {
+            app.state::<AppState>().set_handle(app.handle().clone());
             if let Some(window) = app.get_webview_window("main") {
                 let config = app.state::<AppState>().config();
                 if let Err(e) = window::apply(&window, &config) {
@@ -114,6 +115,9 @@ fn main() {
             commands::get_favorite_albums,
             commands::get_favorite_artists,
             commands::get_user_playlists,
+            commands::get_favorite_tracks_page,
+            commands::get_playlist_tracks_page,
+            commands::retry,
             commands::play_tracks,
             commands::play_pause,
             commands::next,

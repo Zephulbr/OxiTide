@@ -26,6 +26,7 @@ export interface SearchResults {
   tracks: SearchGroup<Track>; albums: SearchGroup<Album>;
   artists: SearchGroup<Artist>; playlists: SearchGroup<Playlist>;
 }
+export interface TrackPage { items: Track[]; total: number; offset: number; limit: number }
 export interface SessionInfoDto { country_code: string; user_id: number }
 
 export interface QueueItem {
@@ -119,8 +120,13 @@ export const api = {
   getFavoriteAlbums: () => invoke<Album[]>("get_favorite_albums"),
   getFavoriteArtists: () => invoke<Artist[]>("get_favorite_artists"),
   getUserPlaylists: () => invoke<Playlist[]>("get_user_playlists"),
+  getFavoriteTracksPage: (offset: number, limit: number) =>
+    invoke<TrackPage>("get_favorite_tracks_page", { offset, limit }),
+  getPlaylistTracksPage: (id: string, offset: number, limit: number) =>
+    invoke<TrackPage>("get_playlist_tracks_page", { id, offset, limit }),
   playTracks: (items: QueueItem[], start: number) => invoke<void>("play_tracks", { items, start }),
   playPause: () => invoke<void>("play_pause"),
+  retry: () => invoke<void>("retry"),
   next: () => invoke<void>("next"),
   prev: () => invoke<void>("prev"),
   seek: (positionMs: number) => invoke<void>("seek", { positionMs }),

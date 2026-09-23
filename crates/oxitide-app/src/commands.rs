@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use oxitide_audio::cache::DiskCache;
-use oxitide_audio::engine::{Engine, EngineCmd, PlaybackState};
+use oxitide_audio::engine::{Engine, EngineCmd, EngineEvent, PlaybackState};
 use oxitide_audio::fetch::HttpFetcher;
 use oxitide_audio::output::{ExclusiveFallback, OutputMode};
 use oxitide_audio::queue::{QueueItem, RepeatMode};
@@ -11,7 +11,7 @@ use oxitide_tidal::pkce::{Pkce, PKCE_CLIENT_ID, TOKEN_URL};
 use oxitide_tidal::token_store::{KeyringStore, TokenSet, TokenStore};
 use oxitide_tidal::Error;
 use serde::Serialize;
-use tauri::State;
+use tauri::{Manager, State};
 
 use crate::config::{Config, QualityDisplay};
 use crate::player::{devices, OutputDeviceDto, QualityDto};
@@ -48,6 +48,14 @@ pub struct CacheStatusDto {
     /// The raw configured `cache.dir` ("" = default), so the UI can tell when
     /// the configured directory was rejected and a fallback is in use.
     pub configured_dir: String,
+}
+
+#[derive(Serialize)]
+pub struct TrackPageDto {
+    pub items: Vec<Track>,
+    pub total: u32,
+    pub offset: u32,
+    pub limit: u32,
 }
 
 fn require_cache(state: &State<'_, AppState>) -> Result<Arc<DiskCache>, String> {
@@ -92,7 +100,7 @@ pub async fn auth_complete(
     let cache = state
         .cache()
         .unwrap_or_else(|| crate::player::build_cache(&config));
-    state.set_player(build_player(&app, client, &config, cache)?);
+    state.set_player(replace_player(&app, &state, client, &config, cache)?);
     Ok(SessionInfoDto { country_code: session.country_code, user_id: session.user_id })
 }
 
@@ -175,7 +183,7 @@ pub async fn auth_restore(
             let cache = state
                 .cache()
                 .unwrap_or_else(|| crate::player::build_cache(&config));
-            state.set_player(build_player(&app, client, &config, cache)?);
+            state.set_player(replace_player(&app, &state, client, &config, cache)?);
             Ok(Some(SessionInfoDto {
                 country_code: session.country_code,
                 user_id: session.user_id,
@@ -191,6 +199,22 @@ fn require_client(state: &State<'_, AppState>) -> Result<TidalClient, String> {
         .map_err(|_| "state poisoned".to_string())?
         .clone()
         .ok_or_else(|| "not logged in".to_string())
+}
+
+/// Replace the running player: release the old engine's worker and output
+/// first, and clear the expired-session flag now that a new login exists.
+fn replace_player(
+    app: &tauri::AppHandle,
+    state: &AppState,
+    client: TidalClient,
+    config: &Config,
+    cache: Arc<DiskCache>,
+) -> Result<Player, String> {
+    if let Some(old) = state.player() {
+        old.engine.shutdown();
+    }
+    state.clear_session_expired();
+    build_player(app, client, config, cache)
 }
 
 /// Build the playback engine for a freshly authenticated client and forward its
@@ -224,6 +248,11 @@ fn build_player(
     engine.handle(EngineCmd::SetVolume(config.audio.volume)).map_err(|e| e.to_string())?;
     let handle = app.clone();
     engine.subscribe(Arc::new(move |event| {
+        if let EngineEvent::Error { code, .. } = &event {
+            if code == "auth" {
+                handle.state::<AppState>().notify_session_expired();
+            }
+        }
         let _ = tauri::Emitter::emit(&handle, "playback_event", crate::player::to_dto(event));
     }));
     Ok(Player { engine })
@@ -234,32 +263,32 @@ use oxitide_tidal::models::{Album, Artist, Playlist, SearchResults, Track};
 
 #[tauri::command]
 pub async fn get_home(state: State<'_, AppState>) -> Result<Vec<HomeSection>, String> {
-    require_client(&state)?.home_page().await.map_err(|e| e.to_string())
+    require_client(&state)?.home_page().await.map_err(|e| state.fail_tidal(e))
 }
 
 #[tauri::command]
 pub async fn get_album(state: State<'_, AppState>, id: u64) -> Result<Album, String> {
-    require_client(&state)?.album(id).await.map_err(|e| e.to_string())
+    require_client(&state)?.album(id).await.map_err(|e| state.fail_tidal(e))
 }
 
 #[tauri::command]
 pub async fn get_album_tracks(state: State<'_, AppState>, id: u64) -> Result<Vec<Track>, String> {
-    require_client(&state)?.album_tracks_all(id).await.map_err(|e| e.to_string())
+    require_client(&state)?.album_tracks_all(id).await.map_err(|e| state.fail_tidal(e))
 }
 
 #[tauri::command]
 pub async fn get_playlist(state: State<'_, AppState>, id: String) -> Result<Playlist, String> {
-    require_client(&state)?.playlist(&id).await.map_err(|e| e.to_string())
+    require_client(&state)?.playlist(&id).await.map_err(|e| state.fail_tidal(e))
 }
 
 #[tauri::command]
 pub async fn get_playlist_tracks(state: State<'_, AppState>, id: String) -> Result<Vec<Track>, String> {
-    require_client(&state)?.playlist_tracks_all(&id).await.map_err(|e| e.to_string())
+    require_client(&state)?.playlist_tracks_all(&id).await.map_err(|e| state.fail_tidal(e))
 }
 
 #[tauri::command]
 pub async fn get_artist(state: State<'_, AppState>, id: u64) -> Result<Artist, String> {
-    require_client(&state)?.artist(id).await.map_err(|e| e.to_string())
+    require_client(&state)?.artist(id).await.map_err(|e| state.fail_tidal(e))
 }
 
 #[tauri::command]
@@ -267,27 +296,54 @@ pub async fn search(state: State<'_, AppState>, query: String) -> Result<SearchR
     require_client(&state)?
         .search(&query, &["tracks", "albums", "artists", "playlists"], 20, 0)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| state.fail_tidal(e))
 }
 
 #[tauri::command]
 pub async fn get_favorite_tracks(state: State<'_, AppState>) -> Result<Vec<Track>, String> {
-    require_client(&state)?.all_favorite_tracks().await.map_err(|e| e.to_string())
+    require_client(&state)?.all_favorite_tracks().await.map_err(|e| state.fail_tidal(e))
 }
 
 #[tauri::command]
 pub async fn get_favorite_albums(state: State<'_, AppState>) -> Result<Vec<Album>, String> {
-    require_client(&state)?.all_favorite_albums().await.map_err(|e| e.to_string())
+    require_client(&state)?.all_favorite_albums().await.map_err(|e| state.fail_tidal(e))
 }
 
 #[tauri::command]
 pub async fn get_favorite_artists(state: State<'_, AppState>) -> Result<Vec<Artist>, String> {
-    require_client(&state)?.all_favorite_artists().await.map_err(|e| e.to_string())
+    require_client(&state)?.all_favorite_artists().await.map_err(|e| state.fail_tidal(e))
 }
 
 #[tauri::command]
 pub async fn get_user_playlists(state: State<'_, AppState>) -> Result<Vec<Playlist>, String> {
-    require_client(&state)?.all_user_playlists().await.map_err(|e| e.to_string())
+    require_client(&state)?.all_user_playlists().await.map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
+pub async fn get_favorite_tracks_page(
+    state: State<'_, AppState>,
+    offset: u32,
+    limit: u32,
+) -> Result<TrackPageDto, String> {
+    let (items, total) = require_client(&state)?
+        .favorite_tracks_page(limit, offset)
+        .await
+        .map_err(|e| state.fail_tidal(e))?;
+    Ok(TrackPageDto { items, total, offset, limit })
+}
+
+#[tauri::command]
+pub async fn get_playlist_tracks_page(
+    state: State<'_, AppState>,
+    id: String,
+    offset: u32,
+    limit: u32,
+) -> Result<TrackPageDto, String> {
+    let (items, total) = require_client(&state)?
+        .playlist_tracks_page(&id, limit, offset)
+        .await
+        .map_err(|e| state.fail_tidal(e))?;
+    Ok(TrackPageDto { items, total, offset, limit })
 }
 
 #[tauri::command]
@@ -376,6 +432,12 @@ pub fn queue_remove(state: State<'_, AppState>, index: usize) -> Result<(), Stri
 pub fn queue_clear(state: State<'_, AppState>) -> Result<(), String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
     player.engine.handle(EngineCmd::Clear).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn retry(state: State<'_, AppState>) -> Result<(), String> {
+    let player = state.player().ok_or_else(|| "not logged in".to_string())?;
+    player.engine.retry().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -577,6 +639,16 @@ mod tests {
         let value = serde_json::to_value(&dto).unwrap();
         assert_eq!(value["used_bytes"], 10);
         assert_eq!(value["pending_bytes"], 5);
+    }
+
+    #[test]
+    fn track_page_dto_serializes_fields() {
+        let dto = TrackPageDto { items: Vec::new(), total: 7, offset: 100, limit: 50 };
+        let value = serde_json::to_value(&dto).unwrap();
+        assert_eq!(value["total"], 7);
+        assert_eq!(value["offset"], 100);
+        assert_eq!(value["limit"], 50);
+        assert!(value["items"].is_array());
     }
 
     #[test]
