@@ -23,6 +23,27 @@
 
 ## Notes
 
-The manual items above require the human owner: a real TIDAL account (browser
-login), a real audio device, and the built installer. The automated portion ran
-on 2026-09-24 against tree dd6622e; no manual box is checked.
+The manual run on 2026-09-24 passed everything except the two paging items:
+paging stopped before the reported total (favorites 95/2366, playlist 682/702),
+fixed on `fix/plan5-pager-short-pages` — see the findings below. Re-run those
+two items after the fix and tick them.
+
+## Smoke findings (2026-09-24)
+
+- **Paging stopped before the reported total.** `loadMore` ended the walk on any
+  short page (`page.items.length < pageSize`), but TIDAL returns short pages
+  mid-list (the favorites first page carried 95 of a requested 100; the
+  702-track playlist's page at offset 600 carried 82). The walk therefore
+  stopped at 95/2366 favorites and 682/702 playlist tracks. Fixed by mirroring
+  `TidalClient::get_all_pages`: trust `totalNumberOfItems` when it is reported,
+  apply the short-page rule only when no total is reported, and always end on an
+  empty page. `ensureAll` / Play all / Queue now walk the full list.
+- **Playlists deduped repeated tracks.** The pager dropped ids already loaded,
+  so a playlist that repeats a track lost the repeats from the table and the
+  queue. `createTrackPager` now takes a `dedupe` flag; Library keeps the default
+  (favorites cannot repeat) and Playlist passes `false`, so the queue matches
+  the playlist exactly.
+- Tests: `ui/src/lib/pager.test.ts` gained three cases (short page mid-list,
+  empty page with an over-reported total, duplicates across pages with dedupe
+  off); 31 UI tests pass, svelte-check 0/0, Rust gates unchanged and green.
+- Re-verification pending: the two unchecked paging items above.
