@@ -75,7 +75,10 @@
   {:else}
     <span class="muted">Nothing playing</span>
   {/if}
-  {#if player.state.error}<span style="color:#ff6b6b">{player.state.error}</span>{/if}
+  {#if player.state.error}
+    <span style="color:#ff6b6b">{player.state.error}</span>
+    <button onclick={() => player.retry()} aria-label="Retry playback">Retry</button>
+  {/if}
 </div>
 
 <style>

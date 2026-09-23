@@ -77,11 +77,19 @@ export function createPlayer() {
     return api.seek(ms);
   }
 
+  async function retry() {
+    await api.retry();
+    // The engine emits a State event, which does not clear the mirrored
+    // error; clear it here once the retry command was accepted.
+    state = { ...state, error: "" };
+  }
+
   return {
     get state() { return state; },
     get pendingSeek() { return pendingSeek; },
     init,
     playPause: () => api.playPause(),
+    retry,
     next: () => api.next(),
     prev: () => api.prev(),
     seek,
