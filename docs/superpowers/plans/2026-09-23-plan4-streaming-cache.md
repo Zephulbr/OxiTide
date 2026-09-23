@@ -3735,7 +3735,7 @@ In `decode_track`, immediately after the fallback-policy block and before the ca
 ```rust
     if plan.codec.as_deref().is_some_and(is_he_aac) {
         let _ = tx.send(Err(Error::Unsupported(
-            "HE-AAC audio (TIDAL Low) is not supported by the built-in decoder; use High or higher"
+            "this track is only offered in HE-AAC (TIDAL Low), which the built-in decoder cannot play"
                 .into(),
         )));
         return;

@@ -240,6 +240,8 @@ mod tests {
         fs::write(&path, "[streaming]\nquality = \"low\"\n").unwrap();
         let config = Config::load_from(&path);
         assert_eq!(config.streaming.quality, QualityDto::High);
+        assert!(config.streaming.allow_fallback);
+        assert_eq!(config.cache.max_size_mb, 2048);
         let _ = fs::remove_dir_all(dir);
     }
 

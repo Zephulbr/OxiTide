@@ -144,10 +144,15 @@ impl DiskCache {
         self.entries().iter().map(|entry| entry.size).sum()
     }
 
-    /// Sum of every in-flight `.part` file. In-progress downloads are not
-    /// counted against the cap.
+    /// Sum of every in-flight `.part` file (a writer currently owns it).
+    /// In-progress downloads are not counted against the cap.
     pub fn pending_bytes(&self) -> u64 {
-        self.part_entries().iter().map(|entry| entry.size).sum()
+        let in_flight = self.in_flight.lock().unwrap().clone();
+        self.part_entries()
+            .iter()
+            .filter(|entry| in_flight.iter().any(|key| self.part_for(key) == entry.path))
+            .map(|entry| entry.size)
+            .sum()
     }
 
     pub fn clear(&self) {
@@ -434,6 +439,18 @@ mod tests {
         writer.commit();
         assert_eq!(cache.pending_bytes(), 0);
         assert_eq!(cache.size_bytes(), 5);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn pending_bytes_ignores_orphan_parts() {
+        let dir = temp_dir();
+        let cache = DiskCache::new(dir.clone(), 1 << 20);
+        let orphan = cache.part_for(&key(1));
+        fs::write(&orphan, b"orphan").unwrap();
+        assert_eq!(cache.pending_bytes(), 0, "a part without a writer must not count");
+        assert_eq!(cache.size_bytes(), 0);
+        fs::remove_file(&orphan).unwrap();
         let _ = fs::remove_dir_all(dir);
     }
 

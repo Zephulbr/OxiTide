@@ -570,7 +570,7 @@ fn decode_track(
     }
     if plan.codec.as_deref().is_some_and(is_he_aac) {
         let _ = tx.send(Err(Error::Unsupported(
-            "HE-AAC audio (TIDAL Low) is not supported by the built-in decoder; use High or higher"
+            "this track is only offered in HE-AAC (TIDAL Low), which the built-in decoder cannot play"
                 .into(),
         )));
         return;
@@ -1383,6 +1383,45 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 0, "an unsupported stream must not be fetched");
         assert!(output.samples().is_empty());
         assert_eq!(engine.state().queue.len(), 1, "the queue must be kept");
+    }
+
+    #[test]
+    fn he_aac_guard_precedes_the_cache_lookup() {
+        let (mut plan, files) = fixture_plan();
+        plan.codec = Some("mp4a.40.5".into());
+        plan.manifest_hash = Some(0xabcd);
+        let tone = files["mem://tone"].clone();
+        let cache = test_cache();
+        let key = CacheKey { track_id: 1, quality: Quality::High, manifest_hash: 0xabcd };
+        {
+            let mut writer = cache.begin_write(&key).unwrap();
+            writer.write_all(&tone).unwrap();
+            writer.commit();
+        }
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let output = NullOutput::new();
+        let engine = Engine::new(
+            Arc::new(FakeResolver { plan }),
+            {
+                let calls = calls.clone();
+                let files = files.clone();
+                move || -> Arc<dyn Fetcher> { Arc::new(CountingFetcher { files, calls }) }
+            },
+            Box::new(output.clone()),
+            Quality::High,
+            cache.clone(),
+            true,
+        );
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let seen_ref = seen.clone();
+        engine.subscribe(Arc::new(move |e| seen_ref.lock().unwrap().push(e)));
+
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+
+        wait_for(|| seen.lock().unwrap().iter().any(|e| matches!(e, EngineEvent::Error { .. })));
+        assert!(output.samples().is_empty(), "the cached entry must not be decoded");
+        assert!(cache.lookup(&key).is_some(), "the guard must not touch the cache");
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
     }
 
     #[test]
