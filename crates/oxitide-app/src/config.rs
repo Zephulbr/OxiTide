@@ -151,9 +151,10 @@ pub fn default_cache_dir() -> Option<PathBuf> {
     directories::ProjectDirs::from("", "", "OxiTide").map(|dirs| dirs.config_dir().join("cache"))
 }
 
-/// `%APPDATA%\OxiTide\logs`.
+/// `%APPDATA%\OxiTide\logs` (the app root, not the config directory:
+/// `ProjectDirs::config_dir()` appends `\config`).
 pub fn logs_dir() -> Option<PathBuf> {
-    directories::ProjectDirs::from("", "", "OxiTide").map(|dirs| dirs.config_dir().join("logs"))
+    directories::BaseDirs::new().map(|dirs| dirs.config_dir().join("OxiTide").join("logs"))
 }
 
 #[cfg(test)]
@@ -250,10 +251,18 @@ mod tests {
         let _ = fs::remove_dir_all(dir);
     }
 
+    /// Review Focus: the logs directory must be `%APPDATA%\OxiTide\logs`, not
+    /// the config directory (`ProjectDirs::config_dir()` appends `\config`).
     #[test]
-    fn logs_dir_ends_with_logs() {
+    fn logs_dir_is_under_the_oxitide_app_dir() {
         let dir = logs_dir().expect("no project directories available");
         assert!(dir.ends_with("logs"), "unexpected logs dir: {}", dir.display());
+        assert_eq!(
+            dir.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str()),
+            Some("OxiTide"),
+            "logs must live directly under the app dir: {}",
+            dir.display()
+        );
     }
 
     #[test]

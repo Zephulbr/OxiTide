@@ -17,7 +17,7 @@ use state::AppState;
 static LOG_GUARD: OnceLock<tracing_appender::non_blocking::WorkerGuard> = OnceLock::new();
 
 /// The daily-rotated file writer, or `None` when the logs directory cannot be
-/// created (the app then logs to stderr only).
+/// created (the app then logs to the console only).
 fn file_writer() -> Option<tracing_appender::non_blocking::NonBlocking> {
     let dir = config::logs_dir()?;
     if std::fs::create_dir_all(&dir).is_err() {
@@ -42,7 +42,9 @@ fn file_writer() -> Option<tracing_appender::non_blocking::NonBlocking> {
     Some(writer)
 }
 
-/// stderr plus a daily-rotated file log; `RUST_LOG` overrides the `info` default.
+/// The console layer plus a daily-rotated file log; `RUST_LOG` overrides the
+/// `info` default. The console layer keeps its previous destination (`fmt`
+/// defaults to stdout).
 fn init_logging() {
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
