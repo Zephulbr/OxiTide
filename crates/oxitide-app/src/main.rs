@@ -4,6 +4,7 @@ mod commands;
 mod config;
 mod player;
 mod state;
+mod window;
 
 use std::sync::OnceLock;
 
@@ -59,6 +60,20 @@ fn init_logging() {
     }
 }
 
+/// Best-effort geometry save; called while the main window is closing.
+fn save_window_state(app: &tauri::AppHandle) {
+    let state = app.state::<AppState>();
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    let mut config = state.config();
+    window::capture(&window, &mut config);
+    if let Err(e) = config.save() {
+        tracing::warn!("failed to save window geometry: {e}");
+    }
+    state.set_config(config);
+}
+
 fn main() {
     init_logging();
 
@@ -70,6 +85,18 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(state)
+        .setup(|app| {
+            if let Some(window) = app.get_webview_window("main") {
+                let config = app.state::<AppState>().config();
+                if let Err(e) = window::apply(&window, &config) {
+                    tracing::warn!("failed to apply window geometry: {e}");
+                }
+                if let Err(e) = window.show() {
+                    tracing::warn!("failed to show the main window: {e}");
+                }
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::auth_begin,
             commands::auth_complete,
@@ -118,8 +145,15 @@ fn main() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building OxiTide")
-        .run(|app_handle, event| {
-            if let tauri::RunEvent::Exit = event {
+        .run(|app_handle, event| match event {
+            tauri::RunEvent::WindowEvent {
+                label,
+                event: tauri::WindowEvent::CloseRequested { .. },
+                ..
+            } if label == "main" => {
+                save_window_state(app_handle);
+            }
+            tauri::RunEvent::Exit => {
                 let state = app_handle.state::<AppState>();
                 let config = state.config();
                 if config.cache.clear_on_exit {
@@ -128,5 +162,6 @@ fn main() {
                     }
                 }
             }
+            _ => {}
         });
 }

@@ -75,7 +75,14 @@ export interface Config {
     volume: number;
   };
   streaming: { quality: Quality; allow_fallback: boolean };
-  ui: { quality_display: "compact" | "detailed" };
+  ui: {
+    quality_display: "compact" | "detailed";
+    window_width: number;
+    window_height: number;
+    window_x?: number | null;
+    window_y?: number | null;
+    window_maximized: boolean;
+  };
   cache: { dir: string; max_size_mb: number; clear_on_exit: boolean };
 }
 export type EngineEvent =
