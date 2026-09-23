@@ -30,6 +30,6 @@ internet on a machine without WebView2 (Windows 10/11 normally ships it).
 - [ ] The MSI target still builds (`target/release/bundle/msi/...`) even though NSIS is primary.
 
 ## Records
-- Build commit:
-- Build date:
+- Build commit: dd6622e
+- Build date: 2026-09-24
 - Notes:
