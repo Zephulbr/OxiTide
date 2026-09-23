@@ -44,6 +44,7 @@ Uncovered input classes / failure modes most likely to bite a real user; each is
 | D5 | `App.svelte` owns `qualityDisplay` (loaded from config, passed to `PlayerBar`; `Settings` reports changes up). | Keeps the badge reactive when Settings changes the mode, without inventing a new store. |
 | D6 | `DiskCache::begin_write(self: &Arc<Self>, ...)`; `CacheWriter::commit()/abort()` delegate to `DiskCache::commit/abort`. | The writer must hold the cache to publish itself. The spec's `DiskCache::commit(writer)` API is preserved as the underlying implementation. |
 | D7 | Task 4 temporarily wires `build_player` with `default_cache_dir()` and `allow_fallback = true`. | Keeps the workspace compiling between tasks; Task 9 replaces both with the real `Config` values. |
+| D8 | P4-3 is implemented by making the **existing next-track lookahead prefetch** cache-aware (Task 4) plus a **single-flight writer rule** in `DiskCache` (Task 5), instead of adding a second bytes-only prefetch. | The engine already downloads/decodes the next item while the current plays; a second writer for the same key would race it and double-fetch. Serializing the two makes a byte prefetch a no-op. Cost if wrong: no cache fill while paused, and a track skipped before its download completes is not cached. |
 
 ---
 
@@ -1654,99 +1655,226 @@ git commit -m "feat(audio): play from and tee into the disk cache"
 
 ---
 
-### Task 5: Next-track prefetch
+### Task 5: Next-track prefetch and single-flight cache writers
 
 **Milestone:** P4-3.
 
 **Files:**
-- Modify: `crates/oxitide-audio/src/fetch.rs`
-- Modify: `crates/oxitide-audio/src/engine.rs`
+- Modify: `crates/oxitide-audio/src/cache.rs`
+- Modify: `crates/oxitide-audio/src/engine.rs` (tests only)
 
 **Interfaces:**
 - Consumes: Tasks 3, 4.
-- Produces: `fetch::download_into_cache(fetcher: Arc<dyn Fetcher>, plan: &StreamPlan, writer: CacheWriter, shutdown: &AtomicBool)`; `Inner.prefetching: AtomicBool`; `fn prefetch_next(inner: &Arc<Inner>)`.
+- Produces: `DiskCache` refuses a second writer for a key already being written; `CacheWriter` aborts itself if dropped without `commit()`/`abort()`.
 
-- [ ] **Step 1: Write the failing fetch tests**
+**Ruling (plan amendment, recorded in the ledger):** the engine already runs a next-track PCM lookahead prefetch (`start_prefetch`) that downloads and decodes the next queue item while the current one plays. With Task 4's cache tee, that path already fills the next track's cache entry (committed when its download completes). A second, bytes-only prefetch for the same track would race the first writer on the same cache key and duplicate its network traffic; serializing the two makes the byte prefetch a no-op. P4-3 is therefore implemented as: the existing next-track prefetch is cache-aware, guarded by a single-flight writer rule so concurrent playback/prefetch writers can never corrupt an entry. `download_into_cache`/`prefetch_next` are not added. Cost if wrong: the cache is not filled while the current track is paused, and a track skipped before its download completes is not cached.
 
-Add to `crates/oxitide-audio/src/fetch.rs` tests:
+- [ ] **Step 1: Write the failing cache tests**
+
+Add to `crates/oxitide-audio/src/cache.rs` tests:
 
 ```rust
     #[test]
-    fn download_into_cache_writes_all_parts() {
+    fn begin_write_is_single_flight_per_key() {
         let dir = temp_dir();
         let cache = DiskCache::new(dir.clone(), 1 << 20);
-        let key = cache_key();
-        let writer = cache.begin_write(&key).unwrap();
-        let fetcher = Arc::new(
-            MapFetcher::default().with("init", b"INIT".to_vec()).with("a", b"AAA".to_vec()).with("b", b"BB".to_vec()),
-        );
-        let shutdown = AtomicBool::new(false);
-        download_into_cache(fetcher, &small_plan(), writer, &shutdown);
-        let path = cache.lookup(&key).expect("committed entry");
-        assert_eq!(std::fs::metadata(path).unwrap().len(), 8);
-        let _ = std::fs::remove_dir_all(dir);
+        let key = key(1);
+        let first = cache.begin_write(&key).unwrap();
+        assert!(cache.begin_write(&key).is_none(), "a second writer was allowed");
+        first.abort();
+        assert!(cache.begin_write(&key).is_some(), "the key stayed in flight after abort");
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
-    fn download_into_cache_aborts_when_shutdown() {
+    fn dropping_a_writer_aborts_it() {
         let dir = temp_dir();
         let cache = DiskCache::new(dir.clone(), 1 << 20);
-        let key = cache_key();
-        let writer = cache.begin_write(&key).unwrap();
-        let fetcher = Arc::new(MapFetcher::default().with("init", b"INIT".to_vec()));
-        let shutdown = AtomicBool::new(true);
-        download_into_cache(fetcher, &small_plan(), writer, &shutdown);
-        assert!(cache.lookup(&key).is_none());
-        assert_eq!(cache.size_bytes(), 0);
-        let _ = std::fs::remove_dir_all(dir);
+        let key = key(1);
+        {
+            let _writer = cache.begin_write(&key).unwrap();
+        }
+        assert!(
+            !dir.join(format!("{}.part", key.file_name())).exists(),
+            "the part survived the drop"
+        );
+        assert!(cache.begin_write(&key).is_some(), "the key stayed in flight after drop");
+        let _ = fs::remove_dir_all(dir);
+    }
+```
+
+Update `cleanup_removes_stale_parts` in the same module (dropping a writer now aborts it, so the stale part must be created directly):
+
+```rust
+    #[test]
+    fn cleanup_removes_stale_parts() {
+        let dir = temp_dir();
+        let cache = DiskCache::new(dir.clone(), 1 << 20);
+        let stale_path = dir.join(format!("{}.part", key(1).file_name()));
+        fs::write(&stale_path, b"stale").unwrap();
+        let fresh = cache.begin_write(&key(2)).unwrap();
+        set_mtime(&stale_path, SystemTime::now() - Duration::from_secs(2 * 3600));
+        cache.cleanup();
+        assert!(!stale_path.exists(), "stale part survived cleanup");
+        assert!(dir.join(format!("{}.part", key(2).file_name())).exists());
+        fresh.abort();
+        let _ = fs::remove_dir_all(dir);
     }
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `cargo test -p oxitide-audio fetch`
-Expected: compile error — `download_into_cache` not defined.
+Run: `cargo test -p oxitide-audio cache`
+Expected: FAIL — a second writer is currently allowed.
 
-- [ ] **Step 3: Implement `download_into_cache`**
+- [ ] **Step 3: Implement single-flight writers**
 
-Add to `crates/oxitide-audio/src/fetch.rs` after `download`:
+In `crates/oxitide-audio/src/cache.rs`:
+
+Add the in-flight set to `DiskCache`:
 
 ```rust
-/// Download every part of `plan` straight into a cache writer: no buffer, no
-/// decode, no output. Best-effort; used by next-track prefetch.
-pub fn download_into_cache(
-    fetcher: Arc<dyn Fetcher>,
-    plan: &StreamPlan,
-    writer: CacheWriter,
-    shutdown: &AtomicBool,
-) {
-    let mut writer = writer;
-    let mut urls = Vec::new();
-    if let Some(init) = &plan.init_url {
-        urls.push(init.clone());
+pub struct DiskCache {
+    dir: PathBuf,
+    max_bytes: AtomicU64,
+    protected: Mutex<HashSet<PathBuf>>,
+    /// Keys with a writer in flight; a second writer for the same key is refused.
+    in_flight: Mutex<HashSet<CacheKey>>,
+    usable: bool,
+}
+```
+
+Initialize it in `new` (`in_flight: Mutex::new(HashSet::new())`).
+
+Replace `begin_write`:
+
+```rust
+    /// Creates a `.part` temp file; `None` (and a log) when the cache is
+    /// unusable or another writer is already in flight for the same key.
+    pub fn begin_write(self: &Arc<Self>, key: &CacheKey) -> Option<CacheWriter> {
+        if !self.usable {
+            return None;
+        }
+        if !self.in_flight.lock().unwrap().insert(*key) {
+            tracing::debug!("cache entry {} is already being written", key.file_name());
+            return None;
+        }
+        let part = self.part_for(key);
+        let _ = fs::remove_file(&part);
+        match OpenOptions::new().write(true).create_new(true).open(&part) {
+            Ok(file) => Some(CacheWriter {
+                cache: self.clone(),
+                key: *key,
+                part,
+                file: Some(file),
+                bytes: 0,
+                finished: false,
+            }),
+            Err(e) => {
+                tracing::warn!("cache write for {} failed: {e}", key.file_name());
+                self.in_flight.lock().unwrap().remove(key);
+                None
+            }
+        }
     }
-    urls.extend(plan.segments.iter().map(|s| s.url.clone()));
-    for url in urls {
-        if shutdown.load(Ordering::SeqCst) {
-            writer.abort();
+```
+
+Replace `commit` and `abort`:
+
+```rust
+    /// Atomic publish: fsync temp, rename to the final name, touch mtime, evict.
+    pub fn commit(&self, mut writer: CacheWriter) {
+        writer.finish_commit();
+    }
+
+    /// Deletes a temp file after a cancelled/failed download.
+    pub fn abort(&self, mut writer: CacheWriter) {
+        writer.finish_abort();
+    }
+```
+
+Replace the `CacheWriter` struct and impl:
+
+```rust
+pub struct CacheWriter {
+    cache: Arc<DiskCache>,
+    key: CacheKey,
+    part: PathBuf,
+    file: Option<File>,
+    bytes: u64,
+    finished: bool,
+}
+
+impl CacheWriter {
+    /// Bytes written so far.
+    pub fn bytes(&self) -> u64 {
+        self.bytes
+    }
+
+    pub fn write_all(&mut self, data: &[u8]) -> io::Result<()> {
+        let file = self
+            .file
+            .as_mut()
+            .ok_or_else(|| io::Error::other("cache writer already finished"))?;
+        file.write_all(data)?;
+        self.bytes += data.len() as u64;
+        Ok(())
+    }
+
+    /// Publish the temp file under its final name.
+    pub fn commit(mut self) {
+        self.finish_commit();
+    }
+
+    /// Drop a cancelled/failed download.
+    pub fn abort(mut self) {
+        self.finish_abort();
+    }
+
+    fn finish_commit(&mut self) {
+        if self.finished {
             return;
         }
-        match get_with_retry(fetcher.as_ref(), &url) {
-            Ok(bytes) => {
-                if let Err(e) = writer.write_all(&bytes) {
-                    tracing::warn!("prefetch cache write failed: {e}");
-                    writer.abort();
-                    return;
-                }
+        self.finished = true;
+        self.cache.in_flight.lock().unwrap().remove(&self.key);
+        if let Some(file) = self.file.take() {
+            if let Err(e) = file.sync_all() {
+                tracing::warn!("cache fsync for {} failed: {e}", self.key.file_name());
             }
-            Err(e) => {
-                tracing::warn!("prefetch fetch failed: {e}");
-                writer.abort();
-                return;
-            }
+            drop(file);
         }
+        let final_path = self.cache.path_for(&self.key);
+        if final_path.exists() {
+            let _ = fs::remove_file(&final_path);
+        }
+        if let Err(e) = fs::rename(&self.part, &final_path) {
+            tracing::warn!("cache commit for {} failed: {e}", self.key.file_name());
+            let _ = fs::remove_file(&self.part);
+            return;
+        }
+        if let Ok(file) = OpenOptions::new().write(true).open(&final_path) {
+            let _ = file.set_modified(SystemTime::now());
+        }
+        self.cache.evict_to_fit();
     }
-    writer.commit();
+
+    fn finish_abort(&mut self) {
+        if self.finished {
+            return;
+        }
+        self.finished = true;
+        self.cache.in_flight.lock().unwrap().remove(&self.key);
+        self.file.take();
+        let _ = fs::remove_file(&self.part);
+    }
+}
+
+impl Drop for CacheWriter {
+    fn drop(&mut self) {
+        // A writer that was neither committed nor explicitly aborted (e.g. a
+        // dropped download) must not leave its temp file or in-flight key.
+        self.finish_abort();
+    }
 }
 ```
 
@@ -1755,8 +1883,11 @@ pub fn download_into_cache(
 Add to `crates/oxitide-audio/src/engine.rs` tests:
 
 ```rust
+    /// P4-3: the next queue item is downloaded into the cache while the current
+    /// one plays (via the existing lookahead prefetch, now cache-teed), and a
+    /// replay of the queue fetches nothing.
     #[test]
-    fn prefetch_fills_the_next_track_entry_without_decoding() {
+    fn next_track_is_prefetched_into_the_cache() {
         let tone = std::fs::read("tests/fixtures/tone.mp4").unwrap();
         let mut files = HashMap::new();
         files.insert("mem://t1".to_string(), tone.clone());
@@ -1780,113 +1911,48 @@ Add to `crates/oxitide-audio/src/engine.rs` tests:
             cache.clone(),
             true,
         );
+        let key1 = CacheKey { track_id: 1, quality: Quality::Lossless, manifest_hash: 0x1111 };
         let key2 = CacheKey { track_id: 2, quality: Quality::Lossless, manifest_hash: 0x2222 };
 
         engine.handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 }).unwrap();
         wait_for(|| cache.lookup(&key2).is_some());
-        assert!(cache.lookup(&key2).is_some(), "prefetch never filled track 2's entry");
+        assert!(cache.lookup(&key2).is_some(), "the prefetch never filled track 2's entry");
         assert!(
             output.samples().len() < 176_400,
             "track 1 finished before the prefetch was observable"
         );
         wait_for(|| !engine.state().playing && output.samples().len() >= 176_400 * 2);
+        assert!(cache.lookup(&key1).is_some(), "track 1 was not cached when it finished");
+        let after_first_play = calls.load(Ordering::SeqCst);
+        assert_eq!(after_first_play, 2, "each track should be fetched exactly once");
+
+        // Replaying the queue is a pure cache read.
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 }).unwrap();
+        wait_for(|| !engine.state().playing && output.samples().len() >= 176_400 * 4);
         assert_eq!(
             calls.load(Ordering::SeqCst),
-            2,
-            "track 2 should be fetched once by the prefetch and then play from the cache"
+            after_first_play,
+            "a replay of a cached queue still fetched"
         );
     }
 ```
 
-- [ ] **Step 5: Implement engine prefetch**
+- [ ] **Step 5: No engine code change**
 
-Add `prefetching: AtomicBool` to `Inner` (initialize `AtomicBool::new(false)`).
-
-Add to `crates/oxitide-audio/src/engine.rs` (near `start_prefetch`):
-
-```rust
-/// Download the queue's next track into the cache while the current one plays.
-/// Best-effort: at most one in-flight prefetch, all errors logged and swallowed.
-fn prefetch_next(inner: &Arc<Inner>) {
-    if !inner.cache.usable() {
-        return;
-    }
-    if inner.prefetching.swap(true, Ordering::SeqCst) {
-        return;
-    }
-    let next = {
-        let q = inner.queue.lock().unwrap();
-        q.peek_next_index().and_then(|i| q.items().get(i).cloned())
-    };
-    let Some(item) = next else {
-        inner.prefetching.store(false, Ordering::SeqCst);
-        return;
-    };
-    let quality = *inner.quality.lock().unwrap();
-    let allow_fallback = inner.allow_fallback.load(Ordering::SeqCst);
-    let inner = inner.clone();
-    let spawned = std::thread::Builder::new()
-        .name("oxitide-prefetch".into())
-        .spawn(move || {
-            if let Err(e) = prefetch_track(&inner, &item, quality, allow_fallback) {
-                tracing::warn!("prefetch for track {} failed: {e}", item.track_id);
-            }
-            inner.prefetching.store(false, Ordering::SeqCst);
-        });
-    if let Err(e) = spawned {
-        tracing::warn!("failed to spawn prefetch thread: {e}");
-        inner.prefetching.store(false, Ordering::SeqCst);
-    }
-}
-
-fn prefetch_track(
-    inner: &Arc<Inner>,
-    item: &QueueItem,
-    quality: Quality,
-    allow_fallback: bool,
-) -> Result<()> {
-    let plan = inner.resolver.resolve(item.track_id, quality)?;
-    if let Some(served) = plan.quality {
-        if !allow_fallback && served < quality {
-            // Playback would reject this stream anyway; do not waste bandwidth.
-            return Ok(());
-        }
-    }
-    let Some(manifest_hash) = plan.manifest_hash else { return Ok(()) };
-    let key = CacheKey { track_id: item.track_id, quality, manifest_hash };
-    if inner.cache.lookup(&key).is_some() {
-        return Ok(());
-    }
-    let Some(writer) = inner.cache.begin_write(&key) else { return Ok(()) };
-    let fetcher = inner.fetcher.get().expect("fetcher initialized by the worker").clone();
-    fetch::download_into_cache(fetcher, &plan, writer, &inner.shutdown);
-    Ok(())
-}
-```
-
-Call it once the track's stream is up — in `run_session`, right after `wait_for_info` returns and the output has been opened:
-
-```rust
-        let info = start.info;
-        // ... existing position/output-open code ...
-        prefetch_next(inner);
-        let channels = info.channels;
-```
-
-(Place the call after `*open_spec = Some(want);` so the current stream is fully established.)
+Task 4 already routes the next-track lookahead prefetch (`start_prefetch` → `decode_track`) through the cache tee. This step confirms the Step 4 test passes against that path; if it fails, fix the cache integration, not the test.
 
 - [ ] **Step 6: Run the tests to verify they pass**
 
-Run: `cargo test -p oxitide-audio fetch engine`
-Expected: all fetch and engine tests PASS.
+Run: `cargo test -p oxitide-audio cache engine`
+Expected: all cache and engine tests PASS.
 
 - [ ] **Step 7: Run the gates and commit**
 
 ```powershell
 cargo test --workspace
 cargo clippy --workspace -- -D warnings
-git add crates/oxitide-audio/src/fetch.rs crates/oxitide-audio/src/engine.rs
-git commit -m "feat(audio): prefetch the next track into the cache"
+git add crates/oxitide-audio/src/cache.rs crates/oxitide-audio/src/engine.rs
+git commit -m "feat(audio): make the next-track prefetch cache-aware and single-flight"
 ```
 
 ---
