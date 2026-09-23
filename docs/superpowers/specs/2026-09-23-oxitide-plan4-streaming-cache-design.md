@@ -383,6 +383,7 @@ Existing commands and events are unchanged.
 | P4-D7 | `ui.quality_display` with compact default. | Compact is the daily-driver default; detailed is opt-in. |
 | P4-D8 | Cache dir read-only in the UI (config-file override), no dialog plugin. | Avoids a new Tauri plugin/capability for a rarely changed path. |
 | P4-D9 | Cache lives under `%APPDATA%\OxiTide\cache` by default. | Consistent with the config location; `cache.dir` can override. |
+| P4-D10 | Retire Low (96 kbps HE-AAC); the AAC option is High (320 kbps AAC-LC) only. | symphonia's AAC decoder is LC-only and rejects SBR streams at init; Low is almost never used. `Quality::Low` stays in the API enum for badge/fallback truth; persisted `quality = "low"` coerces to `high` on load. |
 
 ## 14. Out of Scope (tracked for later phases)
 
