@@ -10,7 +10,9 @@
     "beforeBuildCommand": { "script": "npm run build", "cwd": "../../ui" }
   },
   "app": {
-    "windows": [{ "title": "OxiTide", "width": 1200, "height": 800 }],
+    "windows": [
+      { "title": "OxiTide", "width": 1200, "height": 800, "dragDropEnabled": false }
+    ],
     "security": { "csp": null }
   },
   "bundle": {

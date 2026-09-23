@@ -198,6 +198,11 @@ impl Queue {
         self.playing = false;
     }
 
+    /// Append items without touching the current track or the playing state.
+    pub fn push(&mut self, items: Vec<QueueItem>) {
+        self.items.extend(items);
+    }
+
     /// Stop playback without clearing the queue (e.g. after a playback error).
     pub fn stop(&mut self) {
         self.playing = false;
@@ -341,6 +346,16 @@ mod tests {
         assert!(q.items().is_empty());
         assert_eq!(q.current_index(), None);
         assert!(!q.is_playing());
+    }
+
+    #[test]
+    fn push_appends_without_touching_current() {
+        let mut q = queue(2);
+        q.next(); // current = track 2
+        q.push(vec![item(3), item(4)]);
+        assert_eq!(q.items().len(), 4);
+        assert_eq!(q.current_index(), Some(1));
+        assert!(q.is_playing());
     }
 
     #[test]

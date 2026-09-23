@@ -15,7 +15,14 @@
   <tbody>
     {#each tracks as t, i (`${t.id}-${i}`)}
       <tr style="border-bottom:1px solid var(--line)">
-        <td><button onclick={() => play(i)} aria-label="Play">▶</button></td>
+        <td>
+          <button onclick={() => play(i)} aria-label="Play">▶</button>
+          <button
+            onclick={() => api.queueAdd([trackToQueueItem(t)])}
+            aria-label="Add to queue"
+            title="Add to queue"
+          >＋</button>
+        </td>
         <td class="muted">{i + 1}</td>
         <td>{t.title}<span class="muted"> · {t.artists.map((a) => a.name).join(", ")}</span></td>
         <td style="text-align:right" class="muted">{formatDuration(t.duration)}</td>

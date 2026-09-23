@@ -106,6 +106,7 @@ pub struct NullOutput {
     i32_samples: Arc<Mutex<Vec<i32>>>,
     opens: Arc<AtomicUsize>,
     stops: Arc<AtomicUsize>,
+    flushes: Arc<AtomicUsize>,
     last_spec: Arc<Mutex<Option<AudioOutputSpec>>>,
     volumes: Arc<Mutex<Vec<f32>>>,
     status: Arc<Mutex<OutputStatus>>,
@@ -119,6 +120,7 @@ impl Default for NullOutput {
             i32_samples: Arc::new(Mutex::new(Vec::new())),
             opens: Arc::new(AtomicUsize::new(0)),
             stops: Arc::new(AtomicUsize::new(0)),
+            flushes: Arc::new(AtomicUsize::new(0)),
             last_spec: Arc::new(Mutex::new(None)),
             volumes: Arc::new(Mutex::new(Vec::new())),
             status: Arc::new(Mutex::new(OutputStatus::default())),
@@ -141,6 +143,9 @@ impl NullOutput {
     }
     pub fn stops(&self) -> usize {
         self.stops.load(Ordering::SeqCst)
+    }
+    pub fn flushes(&self) -> usize {
+        self.flushes.load(Ordering::SeqCst)
     }
     pub fn last_spec(&self) -> Option<AudioOutputSpec> {
         self.last_spec.lock().unwrap().clone()
@@ -191,6 +196,7 @@ impl AudioOutput for NullOutput {
         Ok(())
     }
     fn flush(&mut self) -> Result<()> {
+        self.flushes.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
     fn stop(&mut self) -> Result<()> {
@@ -218,10 +224,14 @@ pub(crate) mod platform {
     use wasapi::{DeviceEnumerator, Direction};
 
     pub fn ensure_com() -> Result<()> {
-        if wasapi::initialize_mta().is_ok() {
+        let hr = wasapi::initialize_mta();
+        // `RPC_E_CHANGED_MODE` means COM is already initialized on this thread
+        // with another apartment model (Tauri's main thread is STA). The device
+        // enumerator works in either apartment, so this is not a failure.
+        if hr.is_ok() || hr == windows::Win32::Foundation::RPC_E_CHANGED_MODE {
             Ok(())
         } else {
-            Err(Error::Output("failed to initialize COM (MTA)".into()))
+            Err(Error::Output(format!("failed to initialize COM (MTA): {hr:?}")))
         }
     }
 
@@ -282,6 +292,7 @@ mod tests {
 
         assert_eq!(out.opens(), 1);
         assert_eq!(out.stops(), 1);
+        assert_eq!(out.flushes(), 1);
         assert_eq!(out.last_spec(), Some(spec(OutputMode::Shared)));
         assert_eq!(out.volumes(), vec![0.5]);
         assert_eq!(out.samples(), vec![0.5, -0.5]);

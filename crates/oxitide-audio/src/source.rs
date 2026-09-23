@@ -88,7 +88,10 @@ pub fn plan_from_info(info: &PlaybackInfo) -> Result<StreamPlan> {
                     start_ticks: timing.start_ticks,
                     duration_ticks: timing.duration_ticks,
                 })
-                .collect();
+                .collect::<Vec<_>>();
+            if segments.is_empty() {
+                return Err(Error::Manifest("dash manifest has no media segments".into()));
+            }
             Ok(StreamPlan {
                 init_url,
                 segments,
@@ -145,6 +148,34 @@ mod tests {
     }
 
     #[test]
+    fn tidal_dash_manifest_with_numbered_timeline_builds_all_segments() {
+        let mpd = r#"<?xml version='1.0' encoding='UTF-8'?><MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="static" mediaPresentationDuration="PT8M2.83S"><Period id="0"><AdaptationSet id="0" contentType="audio" mimeType="audio/mp4" group="main" segmentAlignment="true"><Representation id="FLAC,44100,16" codecs="flac" bandwidth="828801" audioSamplingRate="44100"><SegmentTemplate timescale="44100" initialization="https://cdn.example/mediatracks/TRACK/0.mp4?token=T" media="https://cdn.example/mediatracks/TRACK/$Number$.mp4?token=T" startNumber="1"><SegmentTimeline><S d="176128" r="119"/><S d="157448"/></SegmentTimeline></SegmentTemplate></Representation></AdaptationSet></Period></MPD>"#;
+        let plan = plan_from_info(&info(DASH_MIME, mpd.as_bytes())).unwrap();
+        assert_eq!(
+            plan.init_url.as_deref(),
+            Some("https://cdn.example/mediatracks/TRACK/0.mp4?token=T")
+        );
+        assert_eq!(plan.media_urls().len(), 121);
+        assert_eq!(plan.media_urls()[0], "https://cdn.example/mediatracks/TRACK/1.mp4?token=T");
+        assert_eq!(plan.media_urls()[120], "https://cdn.example/mediatracks/TRACK/121.mp4?token=T");
+        assert_eq!(plan.codec.as_deref(), Some("flac"));
+        assert_eq!(plan.sample_rate, Some(44100));
+        assert_eq!(plan.timescale, 44100);
+    }
+
+    #[test]
+    fn dash_manifest_without_media_segments_is_a_typed_error() {
+        let mpd = r#"<MPD mediaPresentationDuration="PT0S"><Period><AdaptationSet>
+          <Representation id="audio" codecs="flac">
+            <SegmentTemplate initialization="init.mp4" media="seg-$Number$.mp4" startNumber="1" duration="4" timescale="1"/>
+          </Representation></AdaptationSet></Period></MPD>"#;
+        assert!(matches!(
+            plan_from_info(&info(DASH_MIME, mpd.as_bytes())),
+            Err(Error::Manifest(_))
+        ));
+    }
+
+    #[test]
     fn bts_plan_uses_direct_urls() {
         let json = r#"{"mimeType":"audio/flac","codecs":"flac","urls":["https://cdn/a.flac"]}"#;
         let plan = plan_from_info(&info(BTS_MIME, json.as_bytes())).unwrap();
@@ -152,7 +183,6 @@ mod tests {
         assert_eq!(plan.media_urls(), vec!["https://cdn/a.flac"]);
         assert_eq!(plan.codec.as_deref(), Some("flac"));
     }
-
     #[test]
     fn unknown_mime_is_a_typed_error() {
         assert!(matches!(plan_from_info(&info("application/nope", b"{}")), Err(Error::Manifest(_))));

@@ -32,6 +32,12 @@ impl StreamResolver for TidalResolver {
         let info = self
             .runtime
             .block_on(self.client.playback_info(track_id, quality))?;
+        // The manifest body carries signed CDN URLs, so only its size is logged.
+        tracing::debug!(
+            "playbackinfo track {track_id} ({quality:?}): mime={} manifest_len={}",
+            info.manifest_mime,
+            info.manifest.len()
+        );
         source::plan_from_info(&info)
     }
 }
@@ -95,11 +101,16 @@ pub struct OutputDeviceDto {
 }
 
 pub fn devices() -> Vec<OutputDeviceDto> {
-    output::enumerate_output_devices()
-        .unwrap_or_default()
-        .into_iter()
-        .map(|OutputDevice { id, name, is_default }| OutputDeviceDto { id, name, is_default })
-        .collect()
+    match output::enumerate_output_devices() {
+        Ok(devices) => devices
+            .into_iter()
+            .map(|OutputDevice { id, name, is_default }| OutputDeviceDto { id, name, is_default })
+            .collect(),
+        Err(e) => {
+            tracing::warn!("failed to enumerate output devices: {e}");
+            Vec::new()
+        }
+    }
 }
 
 #[cfg(test)]

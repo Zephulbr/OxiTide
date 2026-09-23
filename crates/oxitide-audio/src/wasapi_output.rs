@@ -1,7 +1,7 @@
 #![cfg(windows)]
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
@@ -19,12 +19,51 @@ use crate::output::{
 /// Floor for the ring so tiny formats still leave room for the device period.
 const MIN_RING_SAMPLES: usize = 4096;
 
+/// Handshake with the pump thread for a mid-session flush (seek): the caller
+/// bumps `requested` and waits until `completed` catches up. Keeps the device
+/// open, so exclusive-mode DACs do not re-lock (audible click/hiss).
+#[derive(Default)]
+struct FlushSignal {
+    requested: AtomicU64,
+    completed: Mutex<u64>,
+    cond: Condvar,
+}
+
+impl FlushSignal {
+    fn request(&self) -> u64 {
+        self.requested.fetch_add(1, Ordering::SeqCst) + 1
+    }
+
+    fn pending(&self) -> bool {
+        *self.completed.lock().unwrap() < self.requested.load(Ordering::SeqCst)
+    }
+
+    fn complete(&self) {
+        let mut completed = self.completed.lock().unwrap();
+        *completed = self.requested.load(Ordering::SeqCst);
+        self.cond.notify_all();
+    }
+
+    /// Wait until `seq` has been completed. False on timeout.
+    fn wait(&self, seq: u64) -> bool {
+        let completed = self.completed.lock().unwrap();
+        let (completed, timeout) = self
+            .cond
+            .wait_timeout_while(completed, Duration::from_secs(1), |done| *done < seq)
+            .unwrap();
+        let timed_out = timeout.timed_out();
+        drop(completed);
+        !timed_out
+    }
+}
+
 pub struct WasapiOutput {
     device_id: Option<String>,
     resolved_device_id: Option<String>,
     producer: Option<Producer<u32>>,
     worker: Option<JoinHandle<()>>,
     stop: Arc<AtomicBool>,
+    flush: Option<Arc<FlushSignal>>,
     volume: f32,
     /// True when samples are scaled in software (shared mode, or an exclusive
     /// device whose endpoint volume is unavailable).
@@ -41,6 +80,7 @@ impl WasapiOutput {
             producer: None,
             worker: None,
             stop: Arc::new(AtomicBool::new(false)),
+            flush: None,
             volume: 1.0,
             software_volume: true,
             device_lost: Arc::new(AtomicBool::new(false)),
@@ -54,6 +94,7 @@ impl WasapiOutput {
             let _ = handle.join();
         }
         self.producer = None;
+        self.flush = None;
     }
 }
 
@@ -82,13 +123,15 @@ impl AudioOutput for WasapiOutput {
         let stop_thread = stop.clone();
         let spec_thread = spec.clone();
         let lost = self.device_lost.clone();
+        let flush = Arc::new(FlushSignal::default());
+        let flush_thread = flush.clone();
 
         let handle = std::thread::Builder::new()
             .name("oxitide-wasapi".into())
             .spawn(move || match setup_device(&spec_thread, &lost) {
                 Ok((mut session, ready)) => {
                     let _ = ready_tx.send(Ok(ready));
-                    if let Err(e) = session.pump(&mut consumer, &stop_thread) {
+                    if let Err(e) = session.pump(&mut consumer, &stop_thread, &flush_thread) {
                         tracing::error!("wasapi output stopped: {e}");
                     }
                 }
@@ -104,6 +147,7 @@ impl AudioOutput for WasapiOutput {
                 self.producer = Some(producer);
                 self.worker = Some(handle);
                 self.stop = stop;
+                self.flush = Some(flush);
                 self.resolved_device_id = ready.device_id;
                 *self.status.lock().unwrap() = ready.status;
             }
@@ -198,6 +242,13 @@ impl AudioOutput for WasapiOutput {
     }
 
     fn flush(&mut self) -> Result<()> {
+        let Some(signal) = self.flush.clone() else {
+            return Ok(());
+        };
+        let seq = signal.request();
+        if !signal.wait(seq) {
+            return Err(Error::Output("audio device did not flush in time".into()));
+        }
         Ok(())
     }
 
@@ -237,11 +288,23 @@ struct DeviceSession {
 }
 
 impl DeviceSession {
-    fn pump(&mut self, consumer: &mut rtrb::Consumer<u32>, stop: &AtomicBool) -> Result<()> {
+    fn pump(
+        &mut self,
+        consumer: &mut rtrb::Consumer<u32>,
+        stop: &AtomicBool,
+        flush: &FlushSignal,
+    ) -> Result<()> {
         // Prime the buffer before starting.
         write_frames(&self.client, &self.render, consumer, self.channels)?;
         self.client.start_stream().map_err(to_error)?;
         while !stop.load(Ordering::SeqCst) {
+            if flush.pending() {
+                let result = self.flush_stream(consumer);
+                // Always ack so a failed flush cannot hang the engine.
+                flush.complete();
+                result?;
+                continue;
+            }
             match &self.event {
                 Some(event) => {
                     if event.wait_for_event(200).is_err() {
@@ -255,6 +318,18 @@ impl DeviceSession {
         }
         let _ = self.client.stop_stream();
         Ok(())
+    }
+
+    /// Discard everything buffered (ring and device) and restart the stream on
+    /// the already-negotiated client. Used by seeks so the endpoint is not
+    /// released and exclusive-mode DACs do not re-lock.
+    fn flush_stream(&mut self, consumer: &mut rtrb::Consumer<u32>) -> Result<()> {
+        self.client.stop_stream().map_err(to_error)?;
+        while consumer.pop().is_ok() {}
+        // Shared mode only; in exclusive mode Stop already discards the buffer.
+        let _ = self.client.reset_stream();
+        write_frames(&self.client, &self.render, consumer, self.channels)?;
+        self.client.start_stream().map_err(to_error)
     }
 }
 

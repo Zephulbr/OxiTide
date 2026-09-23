@@ -26,6 +26,7 @@
         ondrop={() => { if (dragFrom !== null && dragFrom !== i) player.reorder(dragFrom, i); dragFrom = null; }}
         style="padding:4px;border-bottom:1px solid var(--line);{player.state.current?.track_id === item.track_id ? 'background:var(--panel);' : ''}"
       >
+        <span class="muted" style="cursor:grab;padding-right:6px" title="Drag to reorder" aria-hidden="true">⠿</span>
         <button onclick={() => jump(i)} style="all:unset;cursor:pointer">
           {item.title} <span class="muted">{item.artist}</span>
         </button>

@@ -31,12 +31,12 @@ export function reduce(state: PlayerState, event: EngineEvent): PlayerState {
   switch (event.type) {
     case "state": {
       const { type, ...rest } = event;
-      return { ...state, ...rest, error: "" };
+      return { ...state, ...rest };
     }
     case "position":
       return { ...state, position_ms: event.position_ms, duration_ms: event.duration_ms };
     case "now_playing":
-      return state;
+      return { ...state, error: "" };
     case "error":
       return { ...state, error: event.message };
     default:
@@ -84,7 +84,7 @@ export function createPlayer() {
     next: () => api.next(),
     prev: () => api.prev(),
     seek,
-    setVolume: (v: number) => api.setVolume(v),
+    setVolume: (v: number, persist = false) => api.setVolume(v, persist),
     setShuffle: (enabled: boolean) => api.setShuffle(enabled),
     setRepeat: (mode: RepeatMode) => api.setRepeat(mode),
     reorder: (from: number, to: number) => api.queueReorder(from, to),

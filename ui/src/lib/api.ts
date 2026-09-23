@@ -54,6 +54,7 @@ export interface Config {
     output_device: string;
     exclusive: boolean;
     exclusive_fallback: "shared" | "warn_only";
+    volume: number;
   };
   streaming: { quality: "low" | "high" | "lossless" | "max" };
 }
@@ -96,11 +97,12 @@ export const api = {
   next: () => invoke<void>("next"),
   prev: () => invoke<void>("prev"),
   seek: (positionMs: number) => invoke<void>("seek", { positionMs }),
-  setVolume: (volume: number) => invoke<void>("set_volume", { volume }),
+  setVolume: (volume: number, persist = false) => invoke<void>("set_volume", { volume, persist }),
   setShuffle: (enabled: boolean) => invoke<void>("set_shuffle", { enabled }),
   setRepeat: (mode: RepeatMode) => invoke<void>("set_repeat", { mode }),
   queueReorder: (from: number, to: number) => invoke<void>("queue_reorder", { from, to }),
   queueRemove: (index: number) => invoke<void>("queue_remove", { index }),
+  queueAdd: (items: QueueItem[]) => invoke<void>("queue_add", { items }),
   queueClear: () => invoke<void>("queue_clear"),
   getPlaybackState: () => invoke<PlaybackState>("get_playback_state"),
   getOutputDevices: () => invoke<OutputDevice[]>("get_output_devices"),
