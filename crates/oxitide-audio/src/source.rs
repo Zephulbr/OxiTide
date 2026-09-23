@@ -1,4 +1,4 @@
-use oxitide_tidal::stream::PlaybackInfo;
+use oxitide_tidal::stream::{PlaybackInfo, Quality};
 
 use crate::error::{Error, Result};
 use crate::mpd;
@@ -24,6 +24,14 @@ pub struct StreamPlan {
     pub codec: Option<String>,
     pub sample_rate: Option<u32>,
     pub bit_depth: Option<u32>,
+    /// Manifest bandwidth in kbps, when the manifest declares one.
+    pub bitrate_kbps: Option<u32>,
+    /// The quality the API says it served, or a value derived from the manifest.
+    pub quality: Option<Quality>,
+    /// FNV-1a 64 over the query-stripped URLs and format fields. `None` for
+    /// plans built directly (tests, `StreamPlan::single`) — such plans bypass
+    /// the cache.
+    pub manifest_hash: Option<u64>,
 }
 
 impl StreamPlan {
@@ -41,6 +49,9 @@ impl StreamPlan {
             codec: None,
             sample_rate: None,
             bit_depth: None,
+            bitrate_kbps: None,
+            quality: None,
+            manifest_hash: None,
         }
     }
 
@@ -59,6 +70,63 @@ struct BtsManifest {
     codecs: Option<String>,
     #[serde(default)]
     urls: Vec<String>,
+}
+
+/// FNV-1a 64 over `bytes`.
+pub fn fnv1a64(bytes: &[u8]) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for &byte in bytes {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
+}
+
+/// Signed CDN tokens live in the query string and rotate between
+/// `playbackinfo` calls; hash only the stable part of a URL.
+fn strip_query(url: &str) -> &str {
+    url.split(['?', '#']).next().unwrap_or(url)
+}
+
+fn manifest_hash(
+    init_url: Option<&str>,
+    segments: &[Segment],
+    codec: Option<&str>,
+    sample_rate: Option<u32>,
+    bit_depth: Option<u32>,
+    timescale: u64,
+) -> u64 {
+    let mut canonical = String::new();
+    if let Some(init) = init_url {
+        canonical.push_str(strip_query(init));
+    }
+    canonical.push('\n');
+    for segment in segments {
+        canonical.push_str(strip_query(&segment.url));
+        canonical.push('\n');
+    }
+    canonical.push_str(&format!(
+        "{codec:?}|{sample_rate:?}|{bit_depth:?}|{timescale}"
+    ));
+    fnv1a64(canonical.as_bytes())
+}
+
+/// Best-effort quality for a manifest that does not declare `audioQuality`.
+fn derive_quality(
+    codec: Option<&str>,
+    bit_depth: Option<u32>,
+    sample_rate: Option<u32>,
+    bandwidth: Option<u64>,
+) -> Option<Quality> {
+    let codec = codec?.to_ascii_lowercase();
+    if codec.contains("flac") || codec.contains("alac") {
+        let hi_res = bit_depth.unwrap_or(0) >= 24 || sample_rate.unwrap_or(0) > 48_000;
+        Some(if hi_res { Quality::Max } else { Quality::Lossless })
+    } else if codec.contains("mp4a") || codec.contains("aac") {
+        Some(if bandwidth.is_some_and(|b| b < 192_000) { Quality::Low } else { Quality::High })
+    } else {
+        None
+    }
 }
 
 pub fn plan_from_info(info: &PlaybackInfo) -> Result<StreamPlan> {
@@ -92,6 +160,18 @@ pub fn plan_from_info(info: &PlaybackInfo) -> Result<StreamPlan> {
             if segments.is_empty() {
                 return Err(Error::Manifest("dash manifest has no media segments".into()));
             }
+            let bitrate_kbps = repr.bandwidth.map(|b| (b / 1000) as u32);
+            let quality = info.actual_quality.or_else(|| {
+                derive_quality(repr.codecs.as_deref(), repr.bit_depth, repr.sample_rate, repr.bandwidth)
+            });
+            let hash = manifest_hash(
+                init_url.as_deref(),
+                &segments,
+                repr.codecs.as_deref(),
+                repr.sample_rate,
+                repr.bit_depth,
+                timescale,
+            );
             Ok(StreamPlan {
                 init_url,
                 segments,
@@ -99,6 +179,9 @@ pub fn plan_from_info(info: &PlaybackInfo) -> Result<StreamPlan> {
                 codec: repr.codecs.clone(),
                 sample_rate: repr.sample_rate,
                 bit_depth: repr.bit_depth,
+                bitrate_kbps,
+                quality,
+                manifest_hash: Some(hash),
             })
         }
         BTS_MIME => {
@@ -107,17 +190,25 @@ pub fn plan_from_info(info: &PlaybackInfo) -> Result<StreamPlan> {
             if parsed.urls.is_empty() {
                 return Err(Error::Manifest("bts manifest has no urls".into()));
             }
+            let segments: Vec<Segment> = parsed
+                .urls
+                .into_iter()
+                .map(|url| Segment { url, start_ticks: 0, duration_ticks: 0 })
+                .collect();
+            let quality = info
+                .actual_quality
+                .or_else(|| derive_quality(parsed.codecs.as_deref(), None, None, None));
+            let hash = manifest_hash(None, &segments, parsed.codecs.as_deref(), None, None, 0);
             Ok(StreamPlan {
                 init_url: None,
-                segments: parsed
-                    .urls
-                    .into_iter()
-                    .map(|url| Segment { url, start_ticks: 0, duration_ticks: 0 })
-                    .collect(),
+                segments,
                 timescale: 0,
                 codec: parsed.codecs,
                 sample_rate: None,
                 bit_depth: None,
+                bitrate_kbps: None,
+                quality,
+                manifest_hash: Some(hash),
             })
         }
         other => Err(Error::Manifest(format!("unsupported manifest mime type: {other}"))),
@@ -136,6 +227,33 @@ mod tests {
             manifest_mime: mime.into(),
             manifest: body.to_vec(),
         }
+    }
+
+    fn info_with_quality(mime: &str, body: &[u8], actual: Option<Quality>) -> PlaybackInfo {
+        PlaybackInfo {
+            quality: Quality::Max,
+            actual_quality: actual,
+            manifest_mime: mime.into(),
+            manifest: body.to_vec(),
+        }
+    }
+
+    fn flac_mpd(codec: &str, rate: u32, bits: u32) -> String {
+        format!(
+            r#"<MPD mediaPresentationDuration="PT8S"><Period><AdaptationSet>
+              <Representation id="audio" codecs="{codec}" audioSamplingRate="{rate}" bitDepth="{bits}">
+                <SegmentTemplate initialization="init.mp4" media="seg-$Number$.mp4" startNumber="1" duration="4" timescale="1"/>
+              </Representation></AdaptationSet></Period></MPD>"#
+        )
+    }
+
+    fn mpd_with_token(token: &str) -> String {
+        format!(
+            r#"<MPD mediaPresentationDuration="PT8S"><Period><AdaptationSet>
+              <Representation id="audio" codecs="flac" audioSamplingRate="48000" bitDepth="24">
+                <SegmentTemplate initialization="init.mp4?token={token}" media="seg-$Number$.mp4?token={token}" startNumber="1" duration="4" timescale="1"/>
+              </Representation></AdaptationSet></Period></MPD>"#
+        )
     }
 
     #[test]
@@ -211,5 +329,82 @@ mod tests {
         assert_eq!(tail.media_urls(), vec!["https://cdn/x/seg-2.mp4"]);
         assert_eq!(tail.timescale, plan.timescale);
         assert_eq!(tail.segments[0].start_ticks, 4);
+    }
+
+    #[test]
+    fn explicit_audio_quality_wins_over_derivation() {
+        let mpd = flac_mpd("flac", 44100, 16);
+        let plan =
+            plan_from_info(&info_with_quality(DASH_MIME, mpd.as_bytes(), Some(Quality::High))).unwrap();
+        assert_eq!(plan.quality, Some(Quality::High));
+    }
+
+    #[test]
+    fn quality_is_derived_when_audio_quality_is_absent() {
+        let hi_res = flac_mpd("flac", 48000, 24);
+        let lossless = flac_mpd("flac", 44100, 16);
+        let aac_low = flac_mpd("mp4a.40.2", 44100, 16).replace("bitDepth=\"16\"", "bandwidth=\"128000\"");
+        let aac_high = flac_mpd("mp4a.40.2", 44100, 16).replace("bitDepth=\"16\"", "bandwidth=\"320000\"");
+
+        assert_eq!(
+            plan_from_info(&info(DASH_MIME, hi_res.as_bytes())).unwrap().quality,
+            Some(Quality::Max)
+        );
+        assert_eq!(
+            plan_from_info(&info(DASH_MIME, lossless.as_bytes())).unwrap().quality,
+            Some(Quality::Lossless)
+        );
+        assert_eq!(
+            plan_from_info(&info(DASH_MIME, aac_low.as_bytes())).unwrap().quality,
+            Some(Quality::Low)
+        );
+        assert_eq!(
+            plan_from_info(&info(DASH_MIME, aac_high.as_bytes())).unwrap().quality,
+            Some(Quality::High)
+        );
+    }
+
+    #[test]
+    fn unknown_codec_derives_no_quality() {
+        let mpd = flac_mpd("opus", 44100, 16);
+        let plan = plan_from_info(&info(DASH_MIME, mpd.as_bytes())).unwrap();
+        assert_eq!(plan.quality, None);
+    }
+
+    #[test]
+    fn bitrate_comes_from_dash_bandwidth() {
+        let mpd = flac_mpd("flac", 44100, 16).replace("bitDepth=\"16\"", "bitDepth=\"16\" bandwidth=\"828801\"");
+        let plan = plan_from_info(&info(DASH_MIME, mpd.as_bytes())).unwrap();
+        assert_eq!(plan.bitrate_kbps, Some(828));
+    }
+
+    #[test]
+    fn bts_plan_has_no_bitrate() {
+        let json = r#"{"mimeType":"audio/flac","codecs":"flac","urls":["https://cdn/a.flac?token=A"]}"#;
+        let plan = plan_from_info(&info(BTS_MIME, json.as_bytes())).unwrap();
+        assert_eq!(plan.bitrate_kbps, None);
+        assert_eq!(plan.quality, Some(Quality::Lossless));
+    }
+
+    #[test]
+    fn manifest_hash_ignores_signed_tokens() {
+        let a = plan_from_info(&info(DASH_MIME, mpd_with_token("A").as_bytes())).unwrap();
+        let b = plan_from_info(&info(DASH_MIME, mpd_with_token("B").as_bytes())).unwrap();
+        assert!(a.manifest_hash.is_some());
+        assert_eq!(a.manifest_hash, b.manifest_hash, "token rotation changed the cache key");
+    }
+
+    #[test]
+    fn manifest_hash_detects_a_different_stream() {
+        let a = plan_from_info(&info(DASH_MIME, mpd_with_token("A").as_bytes())).unwrap();
+        let other = mpd_with_token("A").replace("bitDepth=\"24\"", "bitDepth=\"16\"");
+        let b = plan_from_info(&info(DASH_MIME, other.as_bytes())).unwrap();
+        assert_ne!(a.manifest_hash, b.manifest_hash);
+    }
+
+    #[test]
+    fn fnv1a64_is_deterministic() {
+        assert_eq!(fnv1a64(b"abc"), fnv1a64(b"abc"));
+        assert_ne!(fnv1a64(b"abc"), fnv1a64(b"abd"));
     }
 }

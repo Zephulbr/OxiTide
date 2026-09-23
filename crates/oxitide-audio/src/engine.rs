@@ -1011,6 +1011,9 @@ mod tests {
             codec: Some("flac".into()),
             sample_rate: Some(44100),
             bit_depth: Some(16),
+            bitrate_kbps: None,
+            quality: None,
+            manifest_hash: None,
         };
         let mut files = HashMap::new();
         files.insert("mem://tone".to_string(), bytes);
@@ -2004,6 +2007,9 @@ mod tests {
             codec: Some("flac".into()),
             sample_rate: Some(sample_rate),
             bit_depth: Some(bit_depth),
+            bitrate_kbps: None,
+            quality: None,
+            manifest_hash: None,
         }
     }
 

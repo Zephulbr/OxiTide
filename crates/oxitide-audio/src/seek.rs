@@ -83,6 +83,9 @@ mod tests {
             codec: Some("flac".into()),
             sample_rate: Some(44100),
             bit_depth: Some(16),
+            bitrate_kbps: None,
+            quality: None,
+            manifest_hash: None,
         }
     }
 

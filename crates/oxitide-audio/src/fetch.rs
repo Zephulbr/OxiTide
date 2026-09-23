@@ -312,6 +312,9 @@ mod tests {
             codec: None,
             sample_rate: None,
             bit_depth: None,
+            bitrate_kbps: None,
+            quality: None,
+            manifest_hash: None,
         };
         let buf = StreamBuffer::new();
         download(buf.clone(), fetcher, plan);
@@ -330,6 +333,9 @@ mod tests {
             codec: None,
             sample_rate: None,
             bit_depth: None,
+            bitrate_kbps: None,
+            quality: None,
+            manifest_hash: None,
         };
         let buf = StreamBuffer::new();
         download(buf.clone(), fetcher, plan);
@@ -372,6 +378,9 @@ mod tests {
             codec: None,
             sample_rate: None,
             bit_depth: None,
+            bitrate_kbps: None,
+            quality: None,
+            manifest_hash: None,
         };
         let buf = StreamBuffer::new();
         download(buf.clone(), fetcher.clone(), plan);
@@ -391,6 +400,9 @@ mod tests {
             codec: None,
             sample_rate: None,
             bit_depth: None,
+            bitrate_kbps: None,
+            quality: None,
+            manifest_hash: None,
         };
         let buf = StreamBuffer::new();
         download(buf.clone(), fetcher.clone(), plan);
@@ -461,6 +473,9 @@ mod tests {
             codec: None,
             sample_rate: None,
             bit_depth: None,
+            bitrate_kbps: None,
+            quality: None,
+            manifest_hash: None,
         };
         let buf = StreamBuffer::new();
         let handle = {
