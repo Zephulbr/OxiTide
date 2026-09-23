@@ -2625,6 +2625,7 @@ dependencies = [
  "base64 0.22.1",
  "oxitide-tidal",
  "quick-xml",
+ "rand 0.10.3",
  "reqwest 0.12.28",
  "rtrb",
  "serde",
