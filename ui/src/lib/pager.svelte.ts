@@ -6,6 +6,9 @@ export interface Pager {
   readonly loading: boolean;
   readonly error: string;
   readonly done: boolean;
+  /// Items the server counts in `total` but never returns (unavailable
+  /// tracks); non-zero only once the walk is done.
+  readonly unavailable: number;
   loadMore(): Promise<void>;
   ensureAll(): Promise<void>;
   refresh(): Promise<void>;
@@ -118,6 +121,9 @@ export function createTrackPager(
     get loading() { return loading; },
     get error() { return error; },
     get done() { return done; },
+    get unavailable() {
+      return done && total > items.length ? total - items.length : 0;
+    },
     loadMore,
     ensureAll,
     refresh,

@@ -31,6 +31,7 @@ describe("track pager", () => {
     expect(pager.items.map((t) => t.id)).toEqual([1, 2, 3]);
     expect(pager.total).toBe(5);
     expect(pager.done).toBe(false);
+    expect(pager.unavailable).toBe(0);
 
     await pager.loadMore();
     expect(pager.items.map((t) => t.id)).toEqual([1, 2, 3, 4]);
@@ -45,6 +46,7 @@ describe("track pager", () => {
 
     await pager.loadMore();
     expect(pager.done).toBe(true);
+    expect(pager.unavailable).toBe(0);
     await pager.loadMore();
     expect(load).toHaveBeenCalledTimes(1);
   });
@@ -245,6 +247,7 @@ describe("track pager", () => {
 
     expect(pager.items.map((t) => t.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     expect(pager.done).toBe(true);
+    expect(pager.unavailable).toBe(0);
   });
 
   it("stops on an empty page when the total overstates the list", async () => {
@@ -259,6 +262,7 @@ describe("track pager", () => {
 
     expect(pager.items.map((t) => t.id)).toEqual([1, 2]);
     expect(pager.total).toBe(10);
+    expect(pager.unavailable).toBe(8);
     expect(pager.done).toBe(true);
     expect(load).toHaveBeenCalledTimes(2);
   });

@@ -85,7 +85,15 @@
   <h3>Favorite tracks</h3>
   <p>
     <button onclick={() => favorites.refresh()}>Refresh</button>
-    <span class="muted">{favorites.items.length} of {favorites.total}</span>
+    <span class="muted">
+      {#if favorites.unavailable > 0}
+        {favorites.items.length} tracks ({favorites.unavailable} unavailable)
+      {:else if favorites.done}
+        {favorites.items.length} tracks
+      {:else}
+        {favorites.items.length} of {favorites.total}
+      {/if}
+    </span>
   </p>
   <TrackTable tracks={favorites.items} {player} onPlay={playFrom} onPlayAll={playAll} />
   {#if favorites.error}

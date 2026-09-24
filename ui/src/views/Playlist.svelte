@@ -80,7 +80,15 @@
   {/if}
   <p>
     <button onclick={() => pager.refresh()}>Refresh</button>
-    <span class="muted">{pager.items.length} of {pager.total}</span>
+    <span class="muted">
+      {#if pager.unavailable > 0}
+        {pager.items.length} tracks ({pager.unavailable} unavailable)
+      {:else if pager.done}
+        {pager.items.length} tracks
+      {:else}
+        {pager.items.length} of {pager.total}
+      {/if}
+    </span>
   </p>
   <TrackTable tracks={pager.items} {player} onPlay={playFrom} onPlayAll={playAll} />
   {#if pager.error}
