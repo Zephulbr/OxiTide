@@ -14,9 +14,14 @@
 
   // `$derived` so navigating to another playlist rebuilds the pager; the new
   // key hydrates from the session cache when that playlist was seen before.
+  // `dedupe = false`: a playlist may legitimately repeat a track, and the
+  // queue must match the playlist exactly.
   const pager = $derived(
-    createTrackPager(`playlist:${id}`, (offset, limit) =>
-      api.getPlaylistTracksPage(id, offset, limit),
+    createTrackPager(
+      `playlist:${id}`,
+      (offset, limit) => api.getPlaylistTracksPage(id, offset, limit),
+      100,
+      false,
     ),
   );
 

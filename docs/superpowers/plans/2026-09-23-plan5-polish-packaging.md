@@ -2300,7 +2300,7 @@ git commit -m "feat(ui): restore the queue after a session expiry"
 **Interfaces:**
 - Consumes: Task 6 (`TrackPage`).
 - Produces (used by Tasks 11, 12):
-  - `createTrackPager(key: string, load: (offset: number, limit: number) => Promise<TrackPage>, pageSize = 100) -> Pager`.
+  - `createTrackPager(key: string, load: (offset: number, limit: number) => Promise<TrackPage>, pageSize = 100, dedupe = true) -> Pager`.
   - `Pager { items: Track[], total: number, loading: boolean, error: string, done: boolean, loadMore(), ensureAll(), refresh() }`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -2329,7 +2329,7 @@ function page(items: Track[], offset: number, limit: number, total: number): Tra
 }
 
 describe("track pager", () => {
-  it("appends pages, dedupes by id, and stops on a short page", async () => {
+  it("appends pages, dedupes by id, and stops when the offset reaches the total", async () => {
     const load = vi.fn(async (offset: number, limit: number) =>
       offset === 0
         ? page([track(1), track(2), track(3)], 0, limit, 5)
@@ -2519,6 +2519,68 @@ describe("track pager", () => {
     expect(pager.items.map((t) => t.id)).toEqual([9]);
     expect(pager.done).toBe(true);
   });
+
+  /// Smoke finding (2026-09-24): TIDAL returns short pages mid-list, so a
+  /// short page must not end the walk while the reported total says more
+  /// items remain (mirrors `TidalClient::get_all_pages`).
+  it("continues past a short page while the total says more remain", async () => {
+    const load = vi.fn(async (offset: number, limit: number) => {
+      if (offset === 0) return page([track(1), track(2)], offset, limit, 10);
+      if (offset === 2) return page([track(3), track(4), track(5)], offset, limit, 10);
+      if (offset === 5) return page([track(6), track(7), track(8)], offset, limit, 10);
+      return page([track(9), track(10)], offset, limit, 10);
+    });
+    const pager = createTrackPager("short-page", load, 3);
+
+    await pager.ensureAll();
+
+    expect(pager.items.map((t) => t.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(pager.done).toBe(true);
+  });
+
+  it("stops on an empty page when the total overstates the list", async () => {
+    // The empty page carries no total (0): it must end the walk without
+    // erasing the last known total.
+    const load = vi.fn(async (offset: number, limit: number) =>
+      offset === 0 ? page([track(1), track(2)], offset, limit, 10) : page([], offset, limit, 0),
+    );
+    const pager = createTrackPager("stale-total", load, 2);
+
+    await pager.ensureAll();
+
+    expect(pager.items.map((t) => t.id)).toEqual([1, 2]);
+    expect(pager.total).toBe(10);
+    expect(pager.done).toBe(true);
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses the short-page rule when the server reports no total", async () => {
+    const load = vi.fn(async (offset: number, limit: number) =>
+      page([track(1), track(2)], offset, limit, 0),
+    );
+    const pager = createTrackPager("no-total", load, 3);
+
+    await pager.loadMore();
+
+    expect(pager.items.map((t) => t.id)).toEqual([1, 2]);
+    expect(pager.done).toBe(true);
+  });
+
+  /// Smoke finding (2026-09-24): playlists may legitimately repeat a track;
+  /// with dedupe off the queue must match the playlist exactly.
+  it("keeps duplicate tracks across pages when dedupe is disabled", async () => {
+    const load = vi.fn(async (offset: number, limit: number) =>
+      offset === 0
+        ? page([track(1), track(2)], offset, limit, 4)
+        : page([track(1), track(3)], offset, limit, 4),
+    );
+    const pager = createTrackPager("no-dedupe", load, 2, false);
+
+    await pager.ensureAll();
+
+    expect(pager.items.map((t) => t.id)).toEqual([1, 2, 1, 3]);
+    expect(pager.done).toBe(true);
+  });
 });
 ```
 
@@ -2557,11 +2619,14 @@ interface CacheEntry {
 const cache = new Map<string, CacheEntry>();
 
 /// A scroll pager for a track list. `key` is `"favorites"` or
-/// `"playlist:{uuid}"`; `load` fetches one page at `offset`.
+/// `"playlist:{uuid}"`; `load` fetches one page at `offset`. `dedupe` drops
+/// ids already loaded (favorites can't repeat); playlists pass `false` so a
+/// track that appears twice in the playlist stays twice in the queue.
 export function createTrackPager(
   key: string,
   load: (offset: number, limit: number) => Promise<TrackPage>,
   pageSize = 100,
+  dedupe = true,
 ): Pager {
   const cached = cache.get(key);
   let items = $state<Track[]>(cached ? [...cached.items] : []);
@@ -2587,15 +2652,27 @@ export function createTrackPager(
       const offset = nextOffset;
       try {
         const page = await load(offset, pageSize);
-        const seen = new Set(items.map((t) => t.id));
-        // Dedupe only against already-loaded pages (offset overlap); legitimate
-        // duplicate tracks within one page must survive.
-        const fresh = page.items.filter((t) => !seen.has(t.id));
-        items = [...items, ...fresh];
-        total = page.total;
+        const received = page.items.length;
+        if (dedupe) {
+          const seen = new Set(items.map((t) => t.id));
+          // Dedupe only against already-loaded pages (offset overlap);
+          // legitimate duplicate tracks within one page must survive.
+          const fresh = page.items.filter((t) => !seen.has(t.id));
+          items = [...items, ...fresh];
+        } else {
+          items = [...items, ...page.items];
+        }
+        const reportedTotal = page.total;
         // Advance by the raw page length so a page of duplicates cannot stall.
-        nextOffset = offset + page.items.length;
-        done = page.items.length < pageSize || nextOffset >= total;
+        nextOffset = offset + received;
+        // Trust the reported total: TIDAL returns short pages mid-list, so a
+        // short page only ends the walk when no total is reported (mirrors
+        // `TidalClient::get_all_pages`); an empty page always ends it.
+        done =
+          received === 0 ||
+          (reportedTotal > 0 ? nextOffset >= reportedTotal : received < pageSize);
+        // A page that omits the total (serde default 0) must not erase a known one.
+        if (reportedTotal > 0) total = reportedTotal;
         publish();
       } catch (e) {
         error = String(e);
@@ -2642,7 +2719,7 @@ export function createTrackPager(
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `npm --prefix ui test -- src/lib/pager.test.ts`
-Expected: all 10 pager tests PASS.
+Expected: all 16 pager tests PASS.
 
 - [ ] **Step 5: Run the UI gates and commit**
 
@@ -2904,9 +2981,14 @@ Replace `ui/src/views/Playlist.svelte` with:
 
   // `$derived` so navigating to another playlist rebuilds the pager; the new
   // key hydrates from the session cache when that playlist was seen before.
+  // `dedupe = false`: a playlist may legitimately repeat a track, and the
+  // queue must match the playlist exactly.
   const pager = $derived(
-    createTrackPager(`playlist:${id}`, (offset, limit) =>
-      api.getPlaylistTracksPage(id, offset, limit),
+    createTrackPager(
+      `playlist:${id}`,
+      (offset, limit) => api.getPlaylistTracksPage(id, offset, limit),
+      100,
+      false,
     ),
   );
 

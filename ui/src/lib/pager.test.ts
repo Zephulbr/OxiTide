@@ -19,7 +19,7 @@ function page(items: Track[], offset: number, limit: number, total: number): Tra
 }
 
 describe("track pager", () => {
-  it("appends pages, dedupes by id, and stops on a short page", async () => {
+  it("appends pages, dedupes by id, and stops when the offset reaches the total", async () => {
     const load = vi.fn(async (offset: number, limit: number) =>
       offset === 0
         ? page([track(1), track(2), track(3)], 0, limit, 5)
@@ -226,6 +226,68 @@ describe("track pager", () => {
     await pending;
     await refreshing;
     expect(pager.items.map((t) => t.id)).toEqual([9]);
+    expect(pager.done).toBe(true);
+  });
+
+  /// Root cause of the short-page stop: TIDAL returns short pages mid-list, so
+  /// a short page must not end the walk while the reported total says more
+  /// items remain (mirrors `TidalClient::get_all_pages`).
+  it("continues past a short page while the total says more remain", async () => {
+    const load = vi.fn(async (offset: number, limit: number) => {
+      if (offset === 0) return page([track(1), track(2)], offset, limit, 10);
+      if (offset === 2) return page([track(3), track(4), track(5)], offset, limit, 10);
+      if (offset === 5) return page([track(6), track(7), track(8)], offset, limit, 10);
+      return page([track(9), track(10)], offset, limit, 10);
+    });
+    const pager = createTrackPager("short-page", load, 3);
+
+    await pager.ensureAll();
+
+    expect(pager.items.map((t) => t.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(pager.done).toBe(true);
+  });
+
+  it("stops on an empty page when the total overstates the list", async () => {
+    // The empty page carries no total (0): it must end the walk without
+    // erasing the last known total.
+    const load = vi.fn(async (offset: number, limit: number) =>
+      offset === 0 ? page([track(1), track(2)], offset, limit, 10) : page([], offset, limit, 0),
+    );
+    const pager = createTrackPager("stale-total", load, 2);
+
+    await pager.ensureAll();
+
+    expect(pager.items.map((t) => t.id)).toEqual([1, 2]);
+    expect(pager.total).toBe(10);
+    expect(pager.done).toBe(true);
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses the short-page rule when the server reports no total", async () => {
+    const load = vi.fn(async (offset: number, limit: number) =>
+      page([track(1), track(2)], offset, limit, 0),
+    );
+    const pager = createTrackPager("no-total", load, 3);
+
+    await pager.loadMore();
+
+    expect(pager.items.map((t) => t.id)).toEqual([1, 2]);
+    expect(pager.done).toBe(true);
+  });
+
+  /// Playlists may legitimately repeat a track; with dedupe off the queue must
+  /// match the playlist exactly.
+  it("keeps duplicate tracks across pages when dedupe is disabled", async () => {
+    const load = vi.fn(async (offset: number, limit: number) =>
+      offset === 0
+        ? page([track(1), track(2)], offset, limit, 4)
+        : page([track(1), track(3)], offset, limit, 4),
+    );
+    const pager = createTrackPager("no-dedupe", load, 2, false);
+
+    await pager.ensureAll();
+
+    expect(pager.items.map((t) => t.id)).toEqual([1, 2, 1, 3]);
     expect(pager.done).toBe(true);
   });
 });
