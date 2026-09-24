@@ -6,9 +6,29 @@ export interface Pager {
   readonly loading: boolean;
   readonly error: string;
   readonly done: boolean;
+  /// Items the server counts in `total` but never returns (unavailable
+  /// tracks); non-zero only once the walk is done.
+  readonly unavailable: number;
   loadMore(): Promise<void>;
   ensureAll(): Promise<void>;
   refresh(): Promise<void>;
+}
+
+export interface PagerOptions {
+  /// Rows per first/lazy page. Default 100.
+  pageSize?: number;
+  /// Drop ids already loaded (favorites can't repeat); playlists pass `false`
+  /// so a track that appears twice in the playlist stays twice in the queue.
+  dedupe?: boolean;
+  /// After the first page, fetch the remainder in a parallel burst. Default true.
+  prefetch?: boolean;
+  /// Rows per burst window. Default 1000; playlists pass 100 (the size the
+  /// playlist endpoint is known to honor).
+  prefetchWindow?: number;
+  /// Above this reported total the pager stays lazy (scroll-paged). Default 10_000.
+  prefetchMaxTotal?: number;
+  /// Burst windows in flight. Default 4.
+  concurrency?: number;
 }
 
 interface CacheEntry {
@@ -27,29 +47,97 @@ export function clearPagerCache() {
   cache.clear();
 }
 
-/// A scroll pager for a track list. `key` is `"favorites"` or
-/// `"playlist:{uuid}"`; `load` fetches one page at `offset`. `dedupe` drops
-/// ids already loaded (favorites can't repeat); playlists pass `false` so a
-/// track that appears twice in the playlist stays twice in the queue.
+/// A pager for a track list. `key` is `"favorites"` or `"playlist:{uuid}"`;
+/// `load` fetches one window at `offset`. The first page is small for a fast
+/// paint; the remainder loads in parallel fixed windows (see `PagerOptions`).
+///
+/// Offsets index the full list (unavailable rows are omitted from `items` but
+/// still counted by `total`), so every request advances by its requested
+/// window size: disjoint windows cannot overlap or skip rows.
 export function createTrackPager(
   key: string,
   load: (offset: number, limit: number) => Promise<TrackPage>,
-  pageSize = 100,
-  dedupe = true,
+  options: PagerOptions = {},
 ): Pager {
+  const pageSize = options.pageSize ?? 100;
+  const dedupe = options.dedupe ?? true;
+  const prefetch = options.prefetch ?? true;
+  const prefetchWindow = options.prefetchWindow ?? 1000;
+  const prefetchMaxTotal = options.prefetchMaxTotal ?? 10_000;
+  const concurrency = options.concurrency ?? 4;
+
   const cached = cache.get(key);
   let items = $state<Track[]>(cached ? [...cached.items] : []);
   let total = $state(cached?.total ?? 0);
   let done = $state(cached?.done ?? false);
   let loading = $state(false);
   let error = $state("");
+  /// The first row not yet scanned (window end); also the next request offset.
   let nextOffset = cached?.nextOffset ?? 0;
-  // The in-flight page request, shared by concurrent `loadMore` callers so
+  // The in-flight request task, shared by concurrent `loadMore` callers so
   // `ensureAll` awaits real progress instead of spinning on a resolved promise.
   let inflight: Promise<void> | null = null;
 
   function publish() {
     cache.set(key, { items: [...items], total, nextOffset, done });
+  }
+
+  /// Append a fetched window and advance past it.
+  function applyWindow(page: TrackPage, offset: number, limit: number) {
+    if (dedupe) {
+      const seen = new Set(items.map((t) => t.id));
+      items = [...items, ...page.items.filter((t) => !seen.has(t.id))];
+    } else {
+      items = [...items, ...page.items];
+    }
+    if (page.total > 0) total = page.total;
+    const received = page.items.length;
+    nextOffset = offset + limit;
+    done =
+      received === 0 ||
+      (total > 0 ? nextOffset >= total : received < limit);
+  }
+
+  async function loadSequentialPage() {
+    const offset = nextOffset;
+    const page = await load(offset, pageSize);
+    applyWindow(page, offset, pageSize);
+    publish();
+  }
+
+  /// Disjoint fixed windows fetched concurrently and applied in offset order.
+  async function runBurst() {
+    const windows: number[] = [];
+    for (let offset = nextOffset; offset < total; offset += prefetchWindow) {
+      windows.push(offset);
+    }
+    for (let i = 0; i < windows.length; i += concurrency) {
+      const group = windows.slice(i, i + concurrency);
+      const pages = await Promise.all(
+        group.map((offset) => load(offset, prefetchWindow)),
+      );
+      group.forEach((offset, index) => applyWindow(pages[index], offset, prefetchWindow));
+      if (done || pages.some((page) => page.items.length === 0)) {
+        done = true;
+        break;
+      }
+    }
+    if (nextOffset >= total) done = true;
+    publish();
+  }
+
+  async function makeProgress() {
+    let loadedFirstPage = false;
+    if (items.length === 0 && nextOffset === 0) {
+      await loadSequentialPage();
+      loadedFirstPage = true;
+    }
+    if (done) return;
+    if (prefetch && total > 0 && total <= prefetchMaxTotal) {
+      await runBurst();
+    } else if (!loadedFirstPage) {
+      await loadSequentialPage();
+    }
   }
 
   function loadMore(): Promise<void> {
@@ -58,33 +146,12 @@ export function createTrackPager(
     inflight = (async () => {
       loading = true;
       error = "";
-      const offset = nextOffset;
       try {
-        const page = await load(offset, pageSize);
-        const received = page.items.length;
-        if (dedupe) {
-          const seen = new Set(items.map((t) => t.id));
-          // Dedupe only against already-loaded pages (offset overlap);
-          // legitimate duplicate tracks within one page must survive.
-          const fresh = page.items.filter((t) => !seen.has(t.id));
-          items = [...items, ...fresh];
-        } else {
-          items = [...items, ...page.items];
-        }
-        const reportedTotal = page.total;
-        // Advance by the raw page length so a page of duplicates cannot stall.
-        nextOffset = offset + received;
-        // Trust the reported total: TIDAL returns short pages mid-list, so a
-        // short page only ends the walk when no total is reported (mirrors
-        // `TidalClient::get_all_pages`); an empty page always ends it.
-        done =
-          received === 0 ||
-          (reportedTotal > 0 ? nextOffset >= reportedTotal : received < pageSize);
-        // A page that omits the total (serde default 0) must not erase a known one.
-        if (reportedTotal > 0) total = reportedTotal;
-        publish();
+        await makeProgress();
       } catch (e) {
         error = String(e);
+        // Keep whatever windows completed before the failure.
+        publish();
       } finally {
         loading = false;
         inflight = null;
@@ -118,6 +185,9 @@ export function createTrackPager(
     get loading() { return loading; },
     get error() { return error; },
     get done() { return done; },
+    get unavailable() {
+      return done && total > items.length ? total - items.length : 0;
+    },
     loadMore,
     ensureAll,
     refresh,

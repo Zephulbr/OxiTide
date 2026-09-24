@@ -8,14 +8,40 @@
     player,
     onPlay,
     onPlayAll,
+    onEndReached,
+    maxHeight = "min(60vh, 560px)",
   }: {
     tracks: Track[];
     player: Player;
     onPlay?: (index: number) => void | Promise<void>;
     onPlayAll?: () => void | Promise<void>;
+    /// Called when the list is scrolled near its end; used for lazy paging.
+    onEndReached?: () => void;
+    maxHeight?: string;
   } = $props();
 
+  /// Row height in px; keep in sync with the `.row` style below.
+  const ROW_HEIGHT = 36;
+  const OVERSCAN = 8;
+  const END_THRESHOLD = 400;
+
+  let scrollTop = $state(0);
+  let viewport = $state(0);
   let loadingAll = $state(false);
+
+  const visible = $derived(Math.max(1, Math.ceil(viewport / ROW_HEIGHT) + OVERSCAN * 2));
+  // Clamp to the list so a refreshed/shrunk list cannot leave the window
+  // pointing past the end (which would render a blank table).
+  const first = $derived(
+    Math.min(
+      Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN),
+      Math.max(0, tracks.length - visible),
+    ),
+  );
+  const last = $derived(Math.min(tracks.length, first + visible));
+  const slice = $derived(tracks.slice(first, last));
+  const padTop = $derived(first * ROW_HEIGHT);
+  const padBottom = $derived(Math.max(0, (tracks.length - last) * ROW_HEIGHT));
 
   async function play(index: number) {
     if (onPlay) {
@@ -42,28 +68,87 @@
     }
     play(0);
   }
+
+  function onScroll(event: Event) {
+    const element = event.currentTarget as HTMLElement;
+    scrollTop = element.scrollTop;
+    if (element.scrollHeight - element.scrollTop - element.clientHeight < END_THRESHOLD) {
+      onEndReached?.();
+    }
+  }
 </script>
 
-<table style="width:100%; border-collapse:collapse">
-  <thead><tr><th style="text-align:left"><button onclick={playAll} disabled={loadingAll}>{loadingAll ? "Loading all…" : "Play all"}</button></th><th style="text-align:left">#</th><th style="text-align:left">Title</th><th style="text-align:right">Time</th></tr></thead>
-  <tbody>
-    {#each tracks as t, i (`${t.id}-${i}`)}
-      <tr style="border-bottom:1px solid var(--line)">
-        <td>
-          <button onclick={() => play(i)} disabled={loadingAll} aria-label="Play">▶</button>
-          <button
-            onclick={() => api.queueAdd([trackToQueueItem(t)])}
-            aria-label="Add to queue"
-            title="Add to queue"
-          >＋</button>
-        </td>
-        <td class="muted">{i + 1}</td>
-        <td>{t.title}<span class="muted"> · {t.artists.map((a) => a.name).join(", ")}</span></td>
-        <td style="text-align:right" class="muted">{formatDuration(t.duration)}</td>
+<div
+  class="table-scroll"
+  style="max-height:{maxHeight}"
+  bind:clientHeight={viewport}
+  onscroll={onScroll}
+>
+  <table>
+    <thead>
+      <tr>
+        <th style="text-align:left"><button onclick={playAll} disabled={loadingAll}>{loadingAll ? "Loading all…" : "Play all"}</button></th>
+        <th style="text-align:left">#</th>
+        <th style="text-align:left">Title</th>
+        <th style="text-align:right">Time</th>
       </tr>
-    {/each}
-    {#if tracks.length === 0}
-      <tr><td colspan="4" class="muted">No tracks</td></tr>
-    {/if}
-  </tbody>
-</table>
+    </thead>
+    <tbody>
+      {#if padTop > 0}
+        <tr aria-hidden="true"><td colspan="4" style="height:{padTop}px;padding:0;border:0"></td></tr>
+      {/if}
+      {#each slice as t, i (`${t.id}-${first + i}`)}
+        {@const index = first + i}
+        <tr class="row">
+          <td>
+            <button onclick={() => play(index)} disabled={loadingAll} aria-label="Play">▶</button>
+            <button
+              onclick={() => api.queueAdd([trackToQueueItem(t)])}
+              aria-label="Add to queue"
+              title="Add to queue"
+            >＋</button>
+          </td>
+          <td class="muted">{index + 1}</td>
+          <td class="title-cell"><div class="title-text">{t.title}<span class="muted"> · {t.artists.map((a) => a.name).join(", ")}</span></div></td>
+          <td style="text-align:right" class="muted">{formatDuration(t.duration)}</td>
+        </tr>
+      {/each}
+      {#if padBottom > 0}
+        <tr aria-hidden="true"><td colspan="4" style="height:{padBottom}px;padding:0;border:0"></td></tr>
+      {/if}
+      {#if tracks.length === 0}
+        <tr><td colspan="4" class="muted">No tracks</td></tr>
+      {/if}
+    </tbody>
+  </table>
+</div>
+
+<style>
+  .table-scroll {
+    overflow: auto;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+  }
+  .row {
+    height: 36px;
+    border-bottom: 1px solid var(--line);
+  }
+  .title-cell {
+    max-width: 0;
+    width: 100%;
+  }
+  .title-text {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+</style>

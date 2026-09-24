@@ -12,7 +12,6 @@
   let playlists = $state<Playlist[]>([]);
   let loading = $state(true);
   let error = $state("");
-  let sentinel = $state<HTMLElement | null>(null);
 
   const favorites = createTrackPager("favorites", (offset, limit) =>
     api.getFavoriteTracksPage(offset, limit),
@@ -34,19 +33,10 @@
     load();
   });
 
-  // Eager first page: the sentinel alone would leave the section empty when it
-  // starts below the fold. `untrack` keeps this a one-shot mount action.
+  // The first page paints fast, then the pager prefetches the remainder in the
+  // background. `untrack` keeps this a one-shot mount action.
   $effect(() => {
     untrack(() => favorites.loadMore());
-  });
-
-  $effect(() => {
-    if (!sentinel || favorites.done) return;
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) favorites.loadMore();
-    });
-    observer.observe(sentinel);
-    return () => observer.disconnect();
   });
 
   async function playFrom(index: number) {
@@ -85,14 +75,23 @@
   <h3>Favorite tracks</h3>
   <p>
     <button onclick={() => favorites.refresh()}>Refresh</button>
-    <span class="muted">{favorites.items.length} of {favorites.total}</span>
+    <span class="muted">
+      {#if favorites.unavailable > 0}
+        {favorites.items.length} tracks ({favorites.unavailable} unavailable)
+      {:else}
+        {favorites.items.length} tracks
+      {/if}
+    </span>
   </p>
-  <TrackTable tracks={favorites.items} {player} onPlay={playFrom} onPlayAll={playAll} />
+  <TrackTable
+    tracks={favorites.items}
+    {player}
+    onPlay={playFrom}
+    onPlayAll={playAll}
+    onEndReached={() => void favorites.loadMore()}
+  />
   {#if favorites.error}
     <ErrorState message={favorites.error} onRetry={() => favorites.loadMore()} />
   {/if}
   {#if favorites.loading}<p class="muted">Loading…</p>{/if}
-  {#if !favorites.done && !favorites.error}
-    <div bind:this={sentinel} style="height:1px"></div>
-  {/if}
 {/if}
