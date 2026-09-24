@@ -7,7 +7,8 @@
   import { createTrackPager } from "../lib/pager.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { Nav } from "../lib/nav.svelte";
-  import type { Notice } from "../lib/notice.svelte";
+  import { errorMessage } from "../lib/errors";
+  import type { Toasts } from "../lib/toasts.svelte";
   import type { PlaylistActions } from "../lib/playlists.svelte";
   import type { Player } from "../lib/player.svelte";
   let {
@@ -16,14 +17,14 @@
     player,
     favorites,
     playlistActions,
-    notice,
+    toasts,
   }: {
     nav: Nav;
     id: string;
     player: Player;
     favorites: Favorites;
     playlistActions: PlaylistActions;
-    notice: Notice;
+    toasts: Toasts;
   } = $props();
 
   let playlist = $state<PlaylistT | null>(null);
@@ -82,9 +83,9 @@
         playlist.description = renameDescription.trim() || null;
       }
       renaming = false;
-      notice.show("Playlist renamed");
+      toasts.show("Playlist renamed", { severity: "success" });
     } catch (e) {
-      notice.show(String(e));
+      toasts.show(errorMessage(e), { severity: "error" });
     }
   }
 
@@ -92,10 +93,10 @@
     confirmingDelete = false;
     try {
       await api.deletePlaylist(id);
-      notice.show("Playlist deleted");
+      toasts.show("Playlist deleted", { severity: "success" });
       nav.goto({ name: "library" });
     } catch (e) {
-      notice.show(String(e));
+      toasts.show(errorMessage(e), { severity: "error" });
     }
   }
 
@@ -105,9 +106,9 @@
     try {
       await api.removePlaylistItems(id, [index]);
       await pager.refresh();
-      notice.show("Removed from playlist");
+      toasts.show("Removed from playlist", { severity: "success" });
     } catch (e) {
-      notice.show(String(e));
+      toasts.show(errorMessage(e), { severity: "error" });
     } finally {
       busy = false;
     }
@@ -120,7 +121,7 @@
       await api.movePlaylistItems(id, [index], index + delta);
       await pager.refresh();
     } catch (e) {
-      notice.show(String(e));
+      toasts.show(errorMessage(e), { severity: "error" });
     } finally {
       busy = false;
     }

@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Playlist, Track } from "./api";
 import { api } from "./api";
-import { createNotice } from "./notice.svelte";
 import { createPlaylistActions } from "./playlists.svelte";
+import type { ToastSeverity, Toasts } from "./toasts.svelte";
 
 vi.mock("./api", () => ({
   api: {
@@ -28,6 +28,27 @@ function playlist(uuid: string, title = "Mix"): Playlist {
   return { uuid, title, description: null, numberOfTracks: 0, duration: 0, image: null };
 }
 
+interface FakeToasts extends Toasts {
+  readonly calls: { message: string; severity: ToastSeverity }[];
+}
+
+function fakeToasts(): FakeToasts {
+  const calls: { message: string; severity: ToastSeverity }[] = [];
+  return {
+    get toasts() {
+      return [];
+    },
+    show(message, options) {
+      calls.push({ message, severity: options?.severity ?? "info" });
+      return calls.length;
+    },
+    dismiss() {},
+    get calls() {
+      return calls;
+    },
+  };
+}
+
 describe("playlist actions store", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -37,7 +58,7 @@ describe("playlist actions store", () => {
 
   it("computes skips from the added ids and opens the duplicates step", async () => {
     vi.mocked(api.addPlaylistTracks).mockResolvedValue([1]);
-    const actions = createPlaylistActions(createNotice());
+    const actions = createPlaylistActions(fakeToasts());
     actions.openPicker([track(1), track(2), track(3)]);
 
     await actions.addTo(playlist("p"));
@@ -48,23 +69,22 @@ describe("playlist actions store", () => {
     expect(actions.open).toBe(true);
   });
 
-  it("closes and notices when nothing was skipped", async () => {
+  it("closes and shows a success toast when nothing was skipped", async () => {
     vi.mocked(api.addPlaylistTracks).mockResolvedValue([1, 2]);
-    const notice = createNotice();
-    const actions = createPlaylistActions(notice);
+    const toasts = fakeToasts();
+    const actions = createPlaylistActions(toasts);
     actions.openPicker([track(1), track(2)]);
 
     await actions.addTo(playlist("p", "Chill"));
 
     expect(actions.open).toBe(false);
-    expect(notice.message).toContain("2 added");
-    expect(notice.message).toContain("Chill");
+    expect(toasts.calls).toEqual([{ message: "2 added to Chill", severity: "success" }]);
   });
 
   it("keeps one by default and sends no second write", async () => {
     vi.mocked(api.addPlaylistTracks).mockResolvedValue([1]);
-    const notice = createNotice();
-    const actions = createPlaylistActions(notice);
+    const toasts = fakeToasts();
+    const actions = createPlaylistActions(toasts);
     actions.openPicker([track(1), track(2)]);
     await actions.addTo(playlist("p"));
 
@@ -72,12 +92,12 @@ describe("playlist actions store", () => {
 
     expect(api.addPlaylistTracks).toHaveBeenCalledTimes(1);
     expect(actions.open).toBe(false);
-    expect(notice.message).toContain("kept one of");
+    expect(toasts.calls).toEqual([{ message: "0 added, 1 kept one of", severity: "info" }]);
   });
 
   it("sends only the add-both choices with allow_duplicates", async () => {
     vi.mocked(api.addPlaylistTracks).mockResolvedValueOnce([1]).mockResolvedValueOnce([3]);
-    const actions = createPlaylistActions(createNotice());
+    const actions = createPlaylistActions(fakeToasts());
     actions.openPicker([track(1), track(2), track(3)]);
     await actions.addTo(playlist("p"));
 
@@ -89,7 +109,7 @@ describe("playlist actions store", () => {
 
   it("apply-to-all sets every duplicate to add both", async () => {
     vi.mocked(api.addPlaylistTracks).mockResolvedValueOnce([1]).mockResolvedValueOnce([2, 3]);
-    const actions = createPlaylistActions(createNotice());
+    const actions = createPlaylistActions(fakeToasts());
     actions.openPicker([track(1), track(2), track(3)]);
     await actions.addTo(playlist("p"));
 
@@ -101,7 +121,7 @@ describe("playlist actions store", () => {
 
   it("dedupes pending ids before adding", async () => {
     vi.mocked(api.addPlaylistTracks).mockResolvedValue([7]);
-    const actions = createPlaylistActions(createNotice());
+    const actions = createPlaylistActions(fakeToasts());
     actions.openPicker([track(7), track(7)]);
 
     await actions.addTo(playlist("p"));
@@ -111,7 +131,7 @@ describe("playlist actions store", () => {
 
   it("dedupes the skipped list while preserving order", async () => {
     vi.mocked(api.addPlaylistTracks).mockResolvedValue([]);
-    const actions = createPlaylistActions(createNotice());
+    const actions = createPlaylistActions(fakeToasts());
     actions.openPicker([track(7), track(7)]);
 
     await actions.addTo(playlist("p"));
@@ -122,8 +142,8 @@ describe("playlist actions store", () => {
 
   it("dedupes add-both ids in phase two", async () => {
     vi.mocked(api.addPlaylistTracks).mockResolvedValueOnce([]).mockResolvedValueOnce([7]);
-    const notice = createNotice();
-    const actions = createPlaylistActions(notice);
+    const toasts = fakeToasts();
+    const actions = createPlaylistActions(toasts);
     actions.openPicker([track(7), track(7)]);
     await actions.addTo(playlist("p"));
 
@@ -132,25 +152,25 @@ describe("playlist actions store", () => {
 
     expect(api.addPlaylistTracks).toHaveBeenLastCalledWith("p", [7], true);
     expect(api.addPlaylistTracks).toHaveBeenCalledTimes(2);
-    expect(notice.message).toContain("1 added");
-    expect(notice.message).toContain("0 kept one of");
+    expect(toasts.calls).toEqual([{ message: "1 added, 0 kept one of", severity: "info" }]);
   });
 
   it("surfaces a failed add and keeps the picker open with its pending tracks", async () => {
     vi.mocked(api.addPlaylistTracks).mockRejectedValue(new Error("boom"));
-    const notice = createNotice();
-    const actions = createPlaylistActions(notice);
+    const toasts = fakeToasts();
+    const actions = createPlaylistActions(toasts);
     actions.openPicker([track(1)]);
 
     await actions.addTo(playlist("p"));
 
-    expect(notice.message).toContain("boom");
+    expect(toasts.calls).toEqual([{ message: "Error: boom", severity: "error" }]);
     expect(actions.open).toBe(true);
     expect(actions.pendingTrackIds).toEqual([1]);
   });
 
   it("creates then adds and bumps the revision", async () => {
-    const actions = createPlaylistActions(createNotice());
+    const toasts = fakeToasts();
+    const actions = createPlaylistActions(toasts);
     actions.openPicker([track(1), track(2)]);
 
     const created = await actions.createAndAdd("New", "desc");
@@ -160,18 +180,19 @@ describe("playlist actions store", () => {
     expect(created?.uuid).toBe("new");
     expect(actions.revision).toBe(1);
     expect(actions.open).toBe(false);
+    expect(toasts.calls).toEqual([{ message: "Created Mix with 2 tracks", severity: "success" }]);
   });
 
   it("returns the created playlist even when the follow-up add fails", async () => {
     vi.mocked(api.addPlaylistTracks).mockRejectedValue(new Error("nope"));
-    const notice = createNotice();
-    const actions = createPlaylistActions(notice);
+    const toasts = fakeToasts();
+    const actions = createPlaylistActions(toasts);
     actions.openPicker([track(1)]);
 
     const created = await actions.createAndAdd("New", "");
 
     expect(created?.uuid).toBe("new");
-    expect(notice.message).toContain("nope");
+    expect(toasts.calls).toEqual([{ message: "Error: nope", severity: "error" }]);
   });
 
   it("tracks the picker origin and busy state", async () => {
@@ -182,7 +203,7 @@ describe("playlist actions store", () => {
           release = resolve;
         }),
     );
-    const actions = createPlaylistActions(createNotice());
+    const actions = createPlaylistActions(fakeToasts());
     actions.openPicker([track(1)]);
     expect(actions.fromPicker).toBe(true);
 
@@ -199,7 +220,7 @@ describe("playlist actions store", () => {
   });
 
   it("reset closes the picker and clears the pending tracks", () => {
-    const actions = createPlaylistActions(createNotice());
+    const actions = createPlaylistActions(fakeToasts());
     actions.openPicker([track(1), track(2)]);
 
     actions.reset();

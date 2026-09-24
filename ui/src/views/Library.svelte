@@ -7,7 +7,8 @@
   import { createTrackPager } from "../lib/pager.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { Nav } from "../lib/nav.svelte";
-  import type { Notice } from "../lib/notice.svelte";
+  import { errorMessage } from "../lib/errors";
+  import type { Toasts } from "../lib/toasts.svelte";
   import type { PlaylistActions } from "../lib/playlists.svelte";
   import type { Player } from "../lib/player.svelte";
   let {
@@ -15,13 +16,13 @@
     player,
     favorites,
     playlistActions,
-    notice,
+    toasts,
   }: {
     nav: Nav;
     player: Player;
     favorites: Favorites;
     playlistActions: PlaylistActions;
-    notice: Notice;
+    toasts: Toasts;
   } = $props();
 
   let albums = $state<Album[]>([]);
@@ -55,7 +56,7 @@
     try {
       playlists = await api.getUserPlaylists();
     } catch (e) {
-      notice.show(String(e));
+      toasts.show(errorMessage(e), { severity: "error" });
     }
   }
 
@@ -98,9 +99,9 @@
       await api.renamePlaylist(p.uuid, title, p.description ?? "");
       playlists = playlists.map((item) => (item.uuid === p.uuid ? { ...item, title } : item));
       editingUuid = null;
-      notice.show("Playlist renamed");
+      toasts.show("Playlist renamed", { severity: "success" });
     } catch (e) {
-      notice.show(String(e));
+      toasts.show(errorMessage(e), { severity: "error" });
     }
   }
 
@@ -110,9 +111,9 @@
     try {
       await api.deletePlaylist(target.uuid);
       playlists = playlists.filter((item) => item.uuid !== target.uuid);
-      notice.show(`Deleted ${target.title}`);
+      toasts.show(`Deleted ${target.title}`, { severity: "success" });
     } catch (e) {
-      notice.show(String(e));
+      toasts.show(errorMessage(e), { severity: "error" });
     } finally {
       deleting = null;
     }

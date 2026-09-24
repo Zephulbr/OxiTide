@@ -18,7 +18,6 @@
   import { createToasts } from "./lib/toasts.svelte";
   import { createPlayer } from "./lib/player.svelte";
   import { createFavorites } from "./lib/favorites.svelte";
-  import { createNotice } from "./lib/notice.svelte";
   import { createPlaylistActions } from "./lib/playlists.svelte";
   import { clearPagerCache } from "./lib/pager.svelte";
   import { api, type QueueItem } from "./lib/api";
@@ -35,8 +34,7 @@
   const player = createPlayer();
   const toasts = createToasts();
   const favorites = createFavorites(toasts);
-  const notice = createNotice();
-  const playlistActions = createPlaylistActions(notice);
+  const playlistActions = createPlaylistActions(toasts);
   let qualityDisplay = $state<QualityDisplay>("compact");
   let loggedIn = $state(false);
   let booting = $state(true);
@@ -140,18 +138,12 @@
   <div class="app">
     <Sidebar {nav} onLogout={onLogout} />
     <main class="main">
-      {#if notice.message}
-        <div class="notice">
-          <span>{notice.message}</span>
-          <button onclick={() => notice.dismiss()} aria-label="Dismiss">✕</button>
-        </div>
-      {/if}
       {#if error}<p style="color:#ff6b6b">{error}</p>{/if}
       {#if nav.route.name === "home"}<Home {nav} />
       {:else if nav.route.name === "search"}<Search {nav} {player} {favorites} {playlistActions} />
-      {:else if nav.route.name === "library"}<Library {nav} {player} {favorites} {playlistActions} {notice} />
+      {:else if nav.route.name === "library"}<Library {nav} {player} {favorites} {playlistActions} {toasts} />
       {:else if nav.route.name === "album"}<Album id={nav.route.id} {player} {favorites} {playlistActions} />
-      {:else if nav.route.name === "playlist"}<Playlist {nav} id={nav.route.id} {player} {favorites} {playlistActions} {notice} />
+      {:else if nav.route.name === "playlist"}<Playlist {nav} id={nav.route.id} {player} {favorites} {playlistActions} {toasts} />
       {:else if nav.route.name === "artist"}<Artist id={nav.route.id} {favorites} />
       {:else if nav.route.name === "settings"}<Settings {player} onQualityDisplay={(mode) => (qualityDisplay = mode)} />{/if}
     </main>
@@ -162,20 +154,3 @@
 {/if}
 
 <ToastHost {toasts} />
-
-<style>
-  .notice {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    margin: 0 0 12px;
-    padding: 8px 12px;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    background: var(--panel);
-    color: #ff6b6b;
-  }
-  .notice button {
-    margin-left: auto;
-  }
-</style>
