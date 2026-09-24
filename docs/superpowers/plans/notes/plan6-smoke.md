@@ -8,6 +8,7 @@
 - cargo clippy --workspace -- -D warnings: clean, 0 warnings (exit 0)
 - npm --prefix ui test: 53 passed, 0 failed across 6 files (format 2, quality 5, player 6, player.restore 3, pager 28, favorites 9)
 - npm --prefix ui run check: 0 errors, 0 warnings (exit 0)
+- Re-verified 2026-09-24 after the final favorites fix on `main`: cargo test 227 passed / 0 failed / 1 ignored; clippy clean (exit 0); vitest 56 passed across 6 files (favorites 12, pager 28); svelte-check 0 errors / 0 warnings. The counts above were recorded at 3973a38, one commit before the fix; the store's removal signal is now `pendingRemovalsToDrop(loaded)` (not `lastUnfavoritedTrackId`) as described in the plan/spec.
 
 ## Manual checks
 - [x] Hearts are filled for a track, an album, and an artist already in the library (check Album view, Artist view, Search results, PlayerBar).
