@@ -357,6 +357,77 @@ pub async fn get_favorite_ids(state: State<'_, AppState>) -> Result<FavoriteIds,
 }
 
 #[tauri::command]
+pub async fn create_playlist(
+    state: State<'_, AppState>,
+    name: String,
+    description: String,
+) -> Result<Playlist, String> {
+    require_client(&state)?
+        .create_playlist(&name, &description)
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
+pub async fn rename_playlist(
+    state: State<'_, AppState>,
+    id: String,
+    title: String,
+    description: String,
+) -> Result<(), String> {
+    require_client(&state)?
+        .rename_playlist(&id, &title, &description)
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
+pub async fn delete_playlist(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    require_client(&state)?
+        .delete_playlist(&id)
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
+pub async fn add_playlist_tracks(
+    state: State<'_, AppState>,
+    id: String,
+    track_ids: Vec<u64>,
+    allow_duplicates: bool,
+) -> Result<Vec<u64>, String> {
+    require_client(&state)?
+        .add_playlist_tracks(&id, &track_ids, allow_duplicates)
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
+pub async fn remove_playlist_items(
+    state: State<'_, AppState>,
+    id: String,
+    indices: Vec<u32>,
+) -> Result<(), String> {
+    require_client(&state)?
+        .remove_playlist_items(&id, &indices)
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
+pub async fn move_playlist_items(
+    state: State<'_, AppState>,
+    id: String,
+    indices: Vec<u32>,
+    to_index: u32,
+) -> Result<(), String> {
+    require_client(&state)?
+        .move_playlist_items(&id, &indices, to_index)
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
 pub async fn get_user_playlists(state: State<'_, AppState>) -> Result<Vec<Playlist>, String> {
     require_client(&state)?.all_user_playlists().await.map_err(|e| state.fail_tidal(e))
 }
@@ -795,5 +866,20 @@ mod tests {
         assert_eq!(value["tracks"], serde_json::json!([1, 2]));
         assert_eq!(value["albums"], serde_json::json!([3]));
         assert_eq!(value["artists"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn playlist_dto_uses_camel_case_for_track_count() {
+        let dto = oxitide_tidal::models::Playlist {
+            uuid: "u".into(),
+            title: "T".into(),
+            description: None,
+            number_of_tracks: 3,
+            duration: 0,
+            image: None,
+        };
+        let value = serde_json::to_value(&dto).unwrap();
+        assert_eq!(value["numberOfTracks"], serde_json::json!(3));
+        assert_eq!(value["uuid"], serde_json::json!("u"));
     }
 }
