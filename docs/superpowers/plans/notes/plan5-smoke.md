@@ -18,8 +18,13 @@
 - [x] Window geometry survives a restart; a maximized window reopens maximized.
 - [x] A saved position on a disconnected monitor is ignored: the window opens at the default position with its saved size (edit config.toml to an off-screen position to simulate).
 - [x] %APPDATA%\OxiTide\logs\oxitide.<date>.log exists and grows; Settings → Logs shows the directory and Open logs folder opens Explorer there.
-- [ ] Library with a large favorites list paints after the first page, appends while scrolling, and "Play all" shows "Loading all…" then queues the full list. #loading behavior is correct but it stops before it loads all the items. for example in a playlist of 702 tracks it loads 682/702 tracks and in the favorites list it loads 95/2366 tracks. When Queueing a playlist the behavior is the same.
-- [ ] Playlist paging behaves the same; revisiting Library/Playlist within a session does not refetch (session cache).
+- [ ] Library with a large favorites list: the first page paints quickly, the
+      list completes on its own (no scrolling required), the label reads
+      "2141 tracks (225 unavailable)", and "Play all" queues the full list.
+- [ ] Playlist paging behaves the same (the 704-track playlist loads without
+      scrolling and reads "704 tracks"); revisiting Library/Playlist within a
+      session does not refetch (session cache); scrolling a long list is smooth
+      (virtualized rows).
 
 ## Notes
 
@@ -51,9 +56,29 @@ two items after the fix and tick them.
   target ("2141 of 2366"). The pager now exposes
   `unavailable = total - items.length` once the walk is done, and Library and
   Playlist show "2141 tracks (225 unavailable)".
-- Tests: `ui/src/lib/pager.test.ts` gained three cases (short page mid-list,
-  empty page with an over-reported total, duplicates across pages with dedupe
-  off) and pins the new `unavailable` count; 32 UI tests pass, svelte-check
-  0/0, Rust gates unchanged and green.
-- Re-verification pending: the two unchecked paging items above (favorites
-  should now read "2141 tracks (225 unavailable)" and queue 2141).
+- **The v1 endpoint honors large page sizes; there is no cheap available
+  count.** A temporary probe (removed) showed `limit=5000` returns the whole
+  available list in one request (2141 items, total 2366), while 500 and 1000
+  return ~90% of the requested window — proof that `offset` indexes the full
+  list and unavailable rows are omitted, not that the limit is capped. The v2
+  `userCollectionTracks` count reports the same inflated 2366, and the
+  `my-collection/tracks` and `favorites/tracks` v2 paths 404, so no cheaper
+  server-side available count exists.
+- **Loading model.** The pager keeps the small first page (~100 rows) for a
+  fast paint, then prefetches the remainder as disjoint 1000-row windows, four
+  in flight, applied in offset order; above a 10 000-row reported total it
+  stays lazy and scroll-paged. Favorites reach the exact
+  "2141 tracks (225 unavailable)" label within roughly a second and the whole
+  list is in memory, so scrolling is instant. Refresh reloads the same way.
+- **The track table is virtualized.** `TrackTable` renders only the visible
+  window of rows (36 px rows, sticky header, 8-row overscan), so a fully loaded
+  list does not put thousands of rows in the DOM; scrolling the list also drives
+  lazy paging (`onEndReached`) where the pager is in lazy mode.
+- **Cross-session list persistence is deferred** (owner decision on
+  2026-09-24): the session cache plus the prefetch keeps data fresh enough for
+  now; an on-disk, per-account list cache is tracked as its own future task.
+- Tests: `ui/src/lib/pager.test.ts` grew to 22 cases (short-page fix, in-flight
+  sharing, `unavailable`, burst window math/order/concurrency/resumption, lazy
+  fallback); 38 UI tests pass, svelte-check 0/0, Rust gates green. The two
+  paging checklist items above were rewritten for the new behavior and are
+  pending the owner's re-verification.
