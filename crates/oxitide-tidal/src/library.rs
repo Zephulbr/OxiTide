@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::client::{TidalClient, DEFAULT_PAGE_SIZE};
 use crate::error::Result;
-use crate::models::{Album, Artist, ItemPage, Playlist, Track};
+use crate::models::{Album, Artist, ItemPage, Track};
 
 /// Favorites endpoints wrap each entry as `{ "created": ..., "item": {...} }`.
 #[derive(Debug, Deserialize)]
@@ -52,16 +52,6 @@ impl TidalClient {
         Ok(p.items.into_iter().map(|f| f.item).collect())
     }
 
-    pub async fn user_playlists(&self, limit: u32, offset: u32) -> Result<Vec<Playlist>> {
-        let p: ItemPage<Playlist> = self
-            .get(
-                &format!("users/{}/playlists", self.session().user_id),
-                &page(limit, offset),
-            )
-            .await?;
-        Ok(p.items)
-    }
-
     /// Walk every page of the user's favorite tracks.
     pub async fn all_favorite_tracks(&self) -> Result<Vec<Track>> {
         let favs: Vec<Favorited<Track>> = self
@@ -84,16 +74,6 @@ impl TidalClient {
             .get_all_pages(&format!("{}/artists", self.user_base()), &[], DEFAULT_PAGE_SIZE)
             .await?;
         Ok(favs.into_iter().map(|f| f.item).collect())
-    }
-
-    /// Walk every page of the user's playlists.
-    pub async fn all_user_playlists(&self) -> Result<Vec<Playlist>> {
-        self.get_all_pages(
-            &format!("users/{}/playlists", self.session().user_id),
-            &[],
-            DEFAULT_PAGE_SIZE,
-        )
-        .await
     }
 
     async fn set_favorite(&self, kind: &str, id_key: &str, id: u64, favorite: bool) -> Result<()> {
@@ -192,17 +172,6 @@ mod tests {
         let tracks = client(&server).all_favorite_tracks().await.unwrap();
         assert_eq!(tracks.len(), 2);
         assert_eq!(tracks[1].id, 2);
-    }
-
-    #[tokio::test]
-    async fn user_playlists_handles_empty() {
-        let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/users/42/playlists"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "items": [], "totalNumberOfItems": 0, "limit": 50, "offset": 0
-            })))
-            .mount(&server).await;
-        assert!(client(&server).user_playlists(50, 0).await.unwrap().is_empty());
     }
 
     #[tokio::test]

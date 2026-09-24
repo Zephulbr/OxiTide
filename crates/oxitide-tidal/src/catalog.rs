@@ -1,6 +1,6 @@
 use crate::client::{TidalClient, DEFAULT_PAGE_SIZE};
 use crate::error::Result;
-use crate::models::{Album, Artist, ItemPage, Playlist, Track};
+use crate::models::{Album, Artist, ItemPage, Track};
 
 fn page_params(limit: u32, offset: u32) -> Vec<(&'static str, String)> {
     vec![("limit", limit.to_string()), ("offset", offset.to_string())]
@@ -29,28 +29,6 @@ impl TidalClient {
 
     pub async fn artist(&self, id: u64) -> Result<Artist> {
         self.get(&format!("artists/{id}"), &[]).await
-    }
-
-    pub async fn playlist(&self, id: &str) -> Result<Playlist> {
-        self.get(&format!("playlists/{id}"), &[]).await
-    }
-
-    /// One page of playlist tracks plus the server-reported total.
-    pub async fn playlist_tracks_page(
-        &self,
-        id: &str,
-        limit: u32,
-        offset: u32,
-    ) -> Result<(Vec<Track>, u32)> {
-        let page: ItemPage<Track> =
-            self.get(&format!("playlists/{id}/tracks"), &page_params(limit, offset)).await?;
-        Ok((page.items, page.total_number_of_items))
-    }
-
-    /// Fetch every track of a playlist, walking all pages.
-    pub async fn playlist_tracks_all(&self, id: &str) -> Result<Vec<Track>> {
-        self.get_all_pages(&format!("playlists/{id}/tracks"), &[], DEFAULT_PAGE_SIZE)
-            .await
     }
 }
 
@@ -130,20 +108,5 @@ mod tests {
         Mock::given(method("GET")).and(path("/tracks/999"))
             .respond_with(ResponseTemplate::new(404)).mount(&server).await;
         assert!(matches!(client(&server).track(999).await.unwrap_err(), Error::NotFound(_)));
-    }
-
-    #[tokio::test]
-    async fn playlist_tracks_page_returns_items_and_total() {
-        let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/playlists/p-uuid/tracks"))
-            .and(query_param("limit", "100")).and(query_param("offset", "0"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "items": [{"id": 2, "title": "P1", "artists": [{"id": 9, "name": "X"}]}],
-                "totalNumberOfItems": 1, "limit": 100, "offset": 0
-            })))
-            .mount(&server).await;
-        let (tracks, total) = client(&server).playlist_tracks_page("p-uuid", 100, 0).await.unwrap();
-        assert_eq!(tracks[0].artists[0].name, "X");
-        assert_eq!(total, 1);
     }
 }
