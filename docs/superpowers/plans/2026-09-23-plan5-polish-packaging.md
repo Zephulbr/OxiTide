@@ -2305,9 +2305,11 @@ git commit -m "feat(ui): restore the queue after a session expiry"
 
 > **Post-smoke revision (2026-09-24):** the shipped pager follows the smoke
 > findings in `notes/plan5-smoke.md`: the first page stays small (~100 rows),
-> the remainder is prefetched as disjoint 1000-row windows (four in flight,
-> applied in offset order) up to a 10 000-row reported total, and `TrackTable`
-> is virtualized. The snippets below are the original plan text.
+> the remainder is prefetched as disjoint windows (four in flight, applied in
+> offset order, advancing by the requested window size) — 1000-row windows for
+> favorites, 100-row windows for playlists — up to a 10 000-row reported total,
+> and `TrackTable` is virtualized. The snippets below are the original plan
+> text.
 
 - [ ] **Step 1: Write the failing tests**
 

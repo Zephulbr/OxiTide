@@ -65,11 +65,15 @@ two items after the fix and tick them.
   `my-collection/tracks` and `favorites/tracks` v2 paths 404, so no cheaper
   server-side available count exists.
 - **Loading model.** The pager keeps the small first page (~100 rows) for a
-  fast paint, then prefetches the remainder as disjoint 1000-row windows, four
-  in flight, applied in offset order; above a 10 000-row reported total it
-  stays lazy and scroll-paged. Favorites reach the exact
-  "2141 tracks (225 unavailable)" label within roughly a second and the whole
-  list is in memory, so scrolling is instant. Refresh reloads the same way.
+  fast paint, then prefetches the remainder as disjoint windows, four in
+  flight, applied in offset order: 1000-row windows for favorites (the probe
+  proved that endpoint honors them) and 100-row windows for playlists (the
+  largest size observed to be honored there). Every request advances by its
+  requested window size, so windows cannot overlap or skip. Above a 10 000-row
+  reported total the pager stays lazy and scroll-paged. Expected behavior to
+  re-verify: favorites reach the exact "2141 tracks (225 unavailable)" label
+  within roughly a second, the whole list is in memory so scrolling is
+  instant, and Refresh reloads the same way.
 - **The track table is virtualized.** `TrackTable` renders only the visible
   window of rows (36 px rows, sticky header, 8-row overscan), so a fully loaded
   list does not put thousands of rows in the DOM; scrolling the list also drives
