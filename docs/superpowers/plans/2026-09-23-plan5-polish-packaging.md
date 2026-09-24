@@ -2341,6 +2341,7 @@ describe("track pager", () => {
     expect(pager.items.map((t) => t.id)).toEqual([1, 2, 3]);
     expect(pager.total).toBe(5);
     expect(pager.done).toBe(false);
+    expect(pager.unavailable).toBe(0);
 
     await pager.loadMore();
     expect(pager.items.map((t) => t.id)).toEqual([1, 2, 3, 4]);
@@ -2366,6 +2367,7 @@ describe("track pager", () => {
 
     await pager.loadMore();
     expect(pager.done).toBe(true);
+    expect(pager.unavailable).toBe(0);
     await pager.loadMore();
     expect(load).toHaveBeenCalledTimes(1);
   });
@@ -2536,6 +2538,7 @@ describe("track pager", () => {
 
     expect(pager.items.map((t) => t.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     expect(pager.done).toBe(true);
+    expect(pager.unavailable).toBe(0);
   });
 
   it("stops on an empty page when the total overstates the list", async () => {
@@ -2550,6 +2553,7 @@ describe("track pager", () => {
 
     expect(pager.items.map((t) => t.id)).toEqual([1, 2]);
     expect(pager.total).toBe(10);
+    expect(pager.unavailable).toBe(8);
     expect(pager.done).toBe(true);
     expect(load).toHaveBeenCalledTimes(2);
   });
@@ -2602,6 +2606,9 @@ export interface Pager {
   readonly loading: boolean;
   readonly error: string;
   readonly done: boolean;
+  /// Items the server counts in `total` but never returns (unavailable
+  /// tracks); non-zero only once the walk is done.
+  readonly unavailable: number;
   loadMore(): Promise<void>;
   ensureAll(): Promise<void>;
   refresh(): Promise<void>;
@@ -2709,6 +2716,9 @@ export function createTrackPager(
     get loading() { return loading; },
     get error() { return error; },
     get done() { return done; },
+    get unavailable() {
+      return done && total > items.length ? total - items.length : 0;
+    },
     loadMore,
     ensureAll,
     refresh,
@@ -2918,7 +2928,15 @@ Replace `ui/src/views/Library.svelte` with:
   <h3>Favorite tracks</h3>
   <p>
     <button onclick={() => favorites.refresh()}>Refresh</button>
-    <span class="muted">{favorites.items.length} of {favorites.total}</span>
+    <span class="muted">
+      {#if favorites.unavailable > 0}
+        {favorites.items.length} tracks ({favorites.unavailable} unavailable)
+      {:else if favorites.done}
+        {favorites.items.length} tracks
+      {:else}
+        {favorites.items.length} of {favorites.total}
+      {/if}
+    </span>
   </p>
   <TrackTable tracks={favorites.items} {player} onPlay={playFrom} onPlayAll={playAll} />
   {#if favorites.error}
@@ -3047,7 +3065,15 @@ Replace `ui/src/views/Playlist.svelte` with:
   {/if}
   <p>
     <button onclick={() => pager.refresh()}>Refresh</button>
-    <span class="muted">{pager.items.length} of {pager.total}</span>
+    <span class="muted">
+      {#if pager.unavailable > 0}
+        {pager.items.length} tracks ({pager.unavailable} unavailable)
+      {:else if pager.done}
+        {pager.items.length} tracks
+      {:else}
+        {pager.items.length} of {pager.total}
+      {/if}
+    </span>
   </p>
   <TrackTable tracks={pager.items} {player} onPlay={playFrom} onPlayAll={playAll} />
   {#if pager.error}

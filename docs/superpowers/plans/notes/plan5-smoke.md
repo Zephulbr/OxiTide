@@ -43,7 +43,17 @@ two items after the fix and tick them.
   queue. `createTrackPager` now takes a `dedupe` flag; Library keeps the default
   (favorites cannot repeat) and Playlist passes `false`, so the queue matches
   the playlist exactly.
+- **The favorites count includes unavailable tracks.** TIDAL's
+  `totalNumberOfItems` counts tracks that are not available for playback (the
+  API client libraries document this), while the endpoint only serves the
+  available rows. The official TIDAL app shows 2141 for this library, matching
+  what OxiTide loads, but the label presented the server total as a loading
+  target ("2141 of 2366"). The pager now exposes
+  `unavailable = total - items.length` once the walk is done, and Library and
+  Playlist show "2141 tracks (225 unavailable)".
 - Tests: `ui/src/lib/pager.test.ts` gained three cases (short page mid-list,
   empty page with an over-reported total, duplicates across pages with dedupe
-  off); 31 UI tests pass, svelte-check 0/0, Rust gates unchanged and green.
-- Re-verification pending: the two unchecked paging items above.
+  off) and pins the new `unavailable` count; 32 UI tests pass, svelte-check
+  0/0, Rust gates unchanged and green.
+- Re-verification pending: the two unchecked paging items above (favorites
+  should now read "2141 tracks (225 unavailable)" and queue 2141).
