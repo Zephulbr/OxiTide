@@ -18,6 +18,20 @@ function page(items: Track[], offset: number, limit: number, total: number): Tra
   return { items, offset, limit, total };
 }
 
+function range(from: number, to: number): number[] {
+  const out: number[] = [];
+  for (let i = from; i <= to; i++) out.push(i);
+  return out;
+}
+
+function ids(tracks: Track[]): number[] {
+  return tracks.map((t) => t.id);
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 describe("track pager", () => {
   it("appends pages, dedupes by id, and stops when the offset reaches the total", async () => {
     const load = vi.fn(async (offset: number, limit: number) =>
@@ -25,16 +39,30 @@ describe("track pager", () => {
         ? page([track(1), track(2), track(3)], 0, limit, 5)
         : page([track(3), track(4)], offset, limit, 5),
     );
-    const pager = createTrackPager("append", load, 3);
+    const pager = createTrackPager("append", load, { pageSize: 3, prefetch: false });
 
     await pager.loadMore();
-    expect(pager.items.map((t) => t.id)).toEqual([1, 2, 3]);
+    expect(ids(pager.items)).toEqual([1, 2, 3]);
     expect(pager.total).toBe(5);
     expect(pager.done).toBe(false);
     expect(pager.unavailable).toBe(0);
 
     await pager.loadMore();
-    expect(pager.items.map((t) => t.id)).toEqual([1, 2, 3, 4]);
+    expect(ids(pager.items)).toEqual([1, 2, 3, 4]);
+    expect(pager.done).toBe(true);
+  });
+
+  it("keeps legitimate duplicate tracks within one page", async () => {
+    const load = vi.fn(async (offset: number, limit: number) =>
+      page([track(3), track(3)], offset, limit, 2),
+    );
+    const pager = createTrackPager("in-page-dupes", load, {
+      pageSize: 2,
+      prefetch: false,
+    });
+
+    await pager.loadMore();
+    expect(ids(pager.items)).toEqual([3, 3]);
     expect(pager.done).toBe(true);
   });
 
@@ -42,7 +70,10 @@ describe("track pager", () => {
     const load = vi.fn(async (offset: number, limit: number) =>
       page([track(1), track(2)], offset, limit, 2),
     );
-    const pager = createTrackPager("offset-done", load, 2);
+    const pager = createTrackPager("offset-done", load, {
+      pageSize: 2,
+      prefetch: false,
+    });
 
     await pager.loadMore();
     expect(pager.done).toBe(true);
@@ -55,10 +86,10 @@ describe("track pager", () => {
     const load = vi.fn(async (offset: number, limit: number) =>
       page(offset < 4 ? [track(offset + 1), track(offset + 2)] : [], offset, limit, 4),
     );
-    const pager = createTrackPager("ensure-all", load, 2);
+    const pager = createTrackPager("ensure-all", load, { pageSize: 2, prefetch: false });
 
     await pager.ensureAll();
-    expect(pager.items.map((t) => t.id)).toEqual([1, 2, 3, 4]);
+    expect(ids(pager.items)).toEqual([1, 2, 3, 4]);
     expect(pager.done).toBe(true);
     expect(load.mock.calls.map(([offset]) => offset)).toEqual([0, 2]);
   });
@@ -67,18 +98,18 @@ describe("track pager", () => {
     const loadA = vi.fn(async (offset: number, limit: number) =>
       page([track(1), track(2)], offset, limit, 4),
     );
-    const a = createTrackPager("hydrate", loadA, 2);
+    const a = createTrackPager("hydrate", loadA, { pageSize: 2, prefetch: false });
     await a.loadMore();
 
     const loadB = vi.fn(async (offset: number, limit: number) =>
       page([track(3), track(4)], offset, limit, 4),
     );
-    const b = createTrackPager("hydrate", loadB, 2);
-    expect(b.items.map((t) => t.id)).toEqual([1, 2]);
+    const b = createTrackPager("hydrate", loadB, { pageSize: 2, prefetch: false });
+    expect(ids(b.items)).toEqual([1, 2]);
 
     await b.loadMore();
     expect(loadB).toHaveBeenCalledWith(2, 2);
-    expect(b.items.map((t) => t.id)).toEqual([1, 2, 3, 4]);
+    expect(ids(b.items)).toEqual([1, 2, 3, 4]);
     expect(b.done).toBe(true);
   });
 
@@ -86,17 +117,17 @@ describe("track pager", () => {
     const load = vi.fn(async (offset: number, limit: number) =>
       page(offset === 0 ? [track(1)] : [track(2)], offset, limit, 2),
     );
-    const pager = createTrackPager("refresh", load, 1);
+    const pager = createTrackPager("refresh", load, { pageSize: 1, prefetch: false });
     await pager.loadMore();
     await pager.loadMore();
-    expect(pager.items.map((t) => t.id)).toEqual([1, 2]);
+    expect(ids(pager.items)).toEqual([1, 2]);
 
     load.mockClear();
     await pager.refresh();
 
     expect(load).toHaveBeenCalledTimes(1);
     expect(load).toHaveBeenCalledWith(0, 1);
-    expect(pager.items.map((t) => t.id)).toEqual([1]);
+    expect(ids(pager.items)).toEqual([1]);
     expect(pager.done).toBe(false);
   });
 
@@ -107,17 +138,17 @@ describe("track pager", () => {
       if (calls === 2) throw new Error("boom");
       return page([track(calls)], offset, limit, 3);
     });
-    const pager = createTrackPager("error-retry", load, 1);
+    const pager = createTrackPager("error-retry", load, { pageSize: 1, prefetch: false });
 
     await pager.loadMore();
     await pager.loadMore();
     expect(pager.error).toContain("boom");
-    expect(pager.items.map((t) => t.id)).toEqual([1]);
+    expect(ids(pager.items)).toEqual([1]);
 
     await pager.loadMore();
     expect(pager.error).toBe("");
     expect(load).toHaveBeenLastCalledWith(1, 1);
-    expect(pager.items.map((t) => t.id)).toEqual([1, 3]);
+    expect(ids(pager.items)).toEqual([1, 3]);
   });
 
   /// Review Focus: an error inside ensureAll must stop the loop, not spin.
@@ -125,7 +156,7 @@ describe("track pager", () => {
     const load = vi.fn(async () => {
       throw new Error("offline");
     });
-    const pager = createTrackPager("error-stop", load, 2);
+    const pager = createTrackPager("error-stop", load, { pageSize: 2, prefetch: false });
 
     await pager.ensureAll();
 
@@ -140,11 +171,14 @@ describe("track pager", () => {
       if (offset < 4) return page([track(1), track(2)], offset, limit, 10);
       return page([], offset, limit, 10);
     });
-    const pager = createTrackPager("duplicate-page", load, 2);
+    const pager = createTrackPager("duplicate-page", load, {
+      pageSize: 2,
+      prefetch: false,
+    });
 
     await pager.ensureAll();
 
-    expect(pager.items.map((t) => t.id)).toEqual([1, 2]);
+    expect(ids(pager.items)).toEqual([1, 2]);
     expect(pager.done).toBe(true);
     expect(load).toHaveBeenCalledTimes(3);
   });
@@ -162,7 +196,7 @@ describe("track pager", () => {
       if (calls === 1) return first;
       return page(offset < 4 ? [track(offset + 1), track(offset + 2)] : [], offset, limit, 4);
     });
-    const pager = createTrackPager("inflight", load, 2);
+    const pager = createTrackPager("inflight", load, { pageSize: 2, prefetch: false });
 
     const pending = pager.loadMore();
     const all = pager.ensureAll();
@@ -172,7 +206,7 @@ describe("track pager", () => {
 
     await pending;
     await all;
-    expect(pager.items.map((t) => t.id)).toEqual([1, 2, 3, 4]);
+    expect(ids(pager.items)).toEqual([1, 2, 3, 4]);
     expect(pager.done).toBe(true);
   });
 
@@ -180,7 +214,7 @@ describe("track pager", () => {
     const loadA = vi.fn(async (offset: number, limit: number) =>
       page([track(1)], offset, limit, 1),
     );
-    const a = createTrackPager("clear-all", loadA, 1);
+    const a = createTrackPager("clear-all", loadA, { pageSize: 1, prefetch: false });
     await a.loadMore();
 
     clearPagerCache();
@@ -188,21 +222,78 @@ describe("track pager", () => {
     const loadB = vi.fn(async (offset: number, limit: number) =>
       page([track(9)], offset, limit, 1),
     );
-    const b = createTrackPager("clear-all", loadB, 1);
+    const b = createTrackPager("clear-all", loadB, { pageSize: 1, prefetch: false });
     expect(b.items).toEqual([]);
     await b.loadMore();
     expect(loadB).toHaveBeenCalledWith(0, 1);
-    expect(b.items.map((t) => t.id)).toEqual([9]);
+    expect(ids(b.items)).toEqual([9]);
   });
 
-  it("keeps legitimate duplicate tracks within one page", async () => {
+  /// Playlists may legitimately repeat a track; with dedupe off the queue must
+  /// match the playlist exactly.
+  it("keeps duplicate tracks across pages when dedupe is disabled", async () => {
     const load = vi.fn(async (offset: number, limit: number) =>
-      page([track(3), track(3)], offset, limit, 2),
+      offset === 0
+        ? page([track(1), track(2)], offset, limit, 4)
+        : page([track(1), track(3)], offset, limit, 4),
     );
-    const pager = createTrackPager("in-page-dupes", load, 2);
+    const pager = createTrackPager("no-dedupe", load, {
+      pageSize: 2,
+      prefetch: false,
+      dedupe: false,
+    });
+
+    await pager.ensureAll();
+
+    expect(ids(pager.items)).toEqual([1, 2, 1, 3]);
+    expect(pager.done).toBe(true);
+  });
+
+  /// Root cause of the short-page stop: TIDAL returns short pages mid-list, so
+  /// a short page must not end the walk while the reported total says more
+  /// items remain (mirrors `TidalClient::get_all_pages`).
+  it("continues past a short page while the total says more remain", async () => {
+    const load = vi.fn(async (offset: number, limit: number) => {
+      if (offset === 0) return page([track(1), track(2)], offset, limit, 10);
+      if (offset === 2) return page([track(3), track(4), track(5)], offset, limit, 10);
+      if (offset === 5) return page([track(6), track(7), track(8)], offset, limit, 10);
+      return page([track(9), track(10)], offset, limit, 10);
+    });
+    const pager = createTrackPager("short-page", load, { pageSize: 3, prefetch: false });
+
+    await pager.ensureAll();
+
+    expect(ids(pager.items)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(pager.done).toBe(true);
+    expect(pager.unavailable).toBe(0);
+  });
+
+  it("stops on an empty page when the total overstates the list", async () => {
+    // The empty page carries no total (0): it must end the walk without
+    // erasing the last known total.
+    const load = vi.fn(async (offset: number, limit: number) =>
+      offset === 0 ? page([track(1), track(2)], offset, limit, 10) : page([], offset, limit, 0),
+    );
+    const pager = createTrackPager("stale-total", load, { pageSize: 2, prefetch: false });
+
+    await pager.ensureAll();
+
+    expect(ids(pager.items)).toEqual([1, 2]);
+    expect(pager.total).toBe(10);
+    expect(pager.unavailable).toBe(8);
+    expect(pager.done).toBe(true);
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses the short-page rule when the server reports no total", async () => {
+    const load = vi.fn(async (offset: number, limit: number) =>
+      page([track(1), track(2)], offset, limit, 0),
+    );
+    const pager = createTrackPager("no-total", load, { pageSize: 3, prefetch: false });
 
     await pager.loadMore();
-    expect(pager.items.map((t) => t.id)).toEqual([3, 3]);
+
+    expect(ids(pager.items)).toEqual([1, 2]);
     expect(pager.done).toBe(true);
   });
 
@@ -219,7 +310,10 @@ describe("track pager", () => {
       if (calls === 1) return first;
       return page([track(9)], offset, limit, 1);
     });
-    const pager = createTrackPager("refresh-inflight", load, 1);
+    const pager = createTrackPager("refresh-inflight", load, {
+      pageSize: 1,
+      prefetch: false,
+    });
 
     const pending = pager.loadMore();
     const refreshing = pager.refresh();
@@ -227,71 +321,171 @@ describe("track pager", () => {
 
     await pending;
     await refreshing;
-    expect(pager.items.map((t) => t.id)).toEqual([9]);
+    expect(ids(pager.items)).toEqual([9]);
     expect(pager.done).toBe(true);
   });
 
-  /// Root cause of the short-page stop: TIDAL returns short pages mid-list, so
-  /// a short page must not end the walk while the reported total says more
-  /// items remain (mirrors `TidalClient::get_all_pages`).
-  it("continues past a short page while the total says more remain", async () => {
+  it("bursts the remaining rows in fixed windows after a small first page", async () => {
+    const total = 2366;
     const load = vi.fn(async (offset: number, limit: number) => {
-      if (offset === 0) return page([track(1), track(2)], offset, limit, 10);
-      if (offset === 2) return page([track(3), track(4), track(5)], offset, limit, 10);
-      if (offset === 5) return page([track(6), track(7), track(8)], offset, limit, 10);
-      return page([track(9), track(10)], offset, limit, 10);
+      const idsForWindow =
+        offset === 0
+          ? range(1, 95)
+          : offset === 100
+            ? range(96, 1000)
+            : offset === 1100
+              ? range(1001, 1905)
+              : range(1906, 2141);
+      return page(idsForWindow.map(track), offset, limit, total);
     });
-    const pager = createTrackPager("short-page", load, 3);
-
-    await pager.ensureAll();
-
-    expect(pager.items.map((t) => t.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-    expect(pager.done).toBe(true);
-    expect(pager.unavailable).toBe(0);
-  });
-
-  it("stops on an empty page when the total overstates the list", async () => {
-    // The empty page carries no total (0): it must end the walk without
-    // erasing the last known total.
-    const load = vi.fn(async (offset: number, limit: number) =>
-      offset === 0 ? page([track(1), track(2)], offset, limit, 10) : page([], offset, limit, 0),
-    );
-    const pager = createTrackPager("stale-total", load, 2);
-
-    await pager.ensureAll();
-
-    expect(pager.items.map((t) => t.id)).toEqual([1, 2]);
-    expect(pager.total).toBe(10);
-    expect(pager.unavailable).toBe(8);
-    expect(pager.done).toBe(true);
-    expect(load).toHaveBeenCalledTimes(2);
-  });
-
-  it("uses the short-page rule when the server reports no total", async () => {
-    const load = vi.fn(async (offset: number, limit: number) =>
-      page([track(1), track(2)], offset, limit, 0),
-    );
-    const pager = createTrackPager("no-total", load, 3);
+    const pager = createTrackPager("burst", load, {
+      prefetchWindow: 1000,
+      concurrency: 4,
+    });
 
     await pager.loadMore();
 
-    expect(pager.items.map((t) => t.id)).toEqual([1, 2]);
+    expect(load.mock.calls.map(([offset]) => offset)).toEqual([0, 100, 1100, 2100]);
+    expect(load.mock.calls.map(([, limit]) => limit)).toEqual([100, 1000, 1000, 1000]);
+    expect(ids(pager.items)).toEqual(range(1, 2141));
+    expect(pager.total).toBe(2366);
+    expect(pager.unavailable).toBe(225);
     expect(pager.done).toBe(true);
   });
 
-  /// Playlists may legitimately repeat a track; with dedupe off the queue must
-  /// match the playlist exactly.
-  it("keeps duplicate tracks across pages when dedupe is disabled", async () => {
+  it("applies burst windows in offset order even when they resolve out of order", async () => {
+    const total = 2366;
+    const load = vi.fn(async (offset: number, limit: number) => {
+      if (offset === 100) await delay(20);
+      if (offset === 1100) await delay(1);
+      const idsForWindow =
+        offset === 0
+          ? range(1, 95)
+          : offset === 100
+            ? range(96, 1000)
+            : offset === 1100
+              ? range(1001, 1905)
+              : range(1906, 2141);
+      return page(idsForWindow.map(track), offset, limit, total);
+    });
+    const pager = createTrackPager("burst-order", load, {
+      prefetchWindow: 1000,
+      concurrency: 4,
+    });
+
+    await pager.loadMore();
+
+    expect(ids(pager.items)).toEqual(range(1, 2141));
+  });
+
+  it("limits burst concurrency", async () => {
+    const total = 100 + 3 * 1000;
+    let active = 0;
+    let maxActive = 0;
+    const gates: Array<() => void> = [];
+    const load = vi.fn(async (offset: number, limit: number) => {
+      if (offset === 0) return page([track(1)], offset, limit, total);
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise<void>((resolve) => gates.push(resolve));
+      active -= 1;
+      return page([track(offset + 1)], offset, limit, total);
+    });
+    const pager = createTrackPager("burst-concurrency", load, {
+      prefetchWindow: 1000,
+      concurrency: 2,
+    });
+
+    const pending = pager.loadMore();
+    await vi.waitFor(() => expect(gates.length).toBe(2));
+    expect(maxActive).toBe(2);
+    expect(load.mock.calls.map(([offset]) => offset)).toEqual([0, 100, 1100]);
+
+    gates[0]();
+    gates[1]();
+    await vi.waitFor(() => expect(gates.length).toBe(3));
+    expect(maxActive).toBe(2);
+    gates[2]();
+
+    await pending;
+    expect(pager.done).toBe(true);
+  });
+
+  it("stays lazy above the prefetch cap", async () => {
     const load = vi.fn(async (offset: number, limit: number) =>
-      offset === 0
-        ? page([track(1), track(2)], offset, limit, 4)
-        : page([track(1), track(3)], offset, limit, 4),
+      page([track(1)], offset, limit, 20_000),
     );
-    const pager = createTrackPager("no-dedupe", load, 2, false);
+    const pager = createTrackPager("lazy-cap", load, { prefetchMaxTotal: 10_000 });
 
-    await pager.ensureAll();
+    await pager.loadMore();
 
-    expect(pager.items.map((t) => t.id)).toEqual([1, 2, 1, 3]);
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(load).toHaveBeenCalledWith(0, 100);
+    expect(pager.done).toBe(false);
+    expect(pager.unavailable).toBe(0);
+  });
+
+  it("resumes the burst after a failed window", async () => {
+    const total = 3000;
+    let failOnce = true;
+    const load = vi.fn(async (offset: number, limit: number) => {
+      if (offset === 100 && failOnce) {
+        failOnce = false;
+        throw new Error("boom");
+      }
+      const idsForWindow =
+        offset === 0
+          ? range(1, 95)
+          : offset === 100
+            ? range(96, 995)
+            : offset === 1100
+              ? range(996, 1895)
+              : range(1896, 2195);
+      return page(idsForWindow.map(track), offset, limit, total);
+    });
+    const pager = createTrackPager("burst-retry", load, {
+      prefetchWindow: 1000,
+      concurrency: 4,
+    });
+
+    await pager.loadMore();
+    expect(pager.error).toContain("boom");
+    expect(pager.items.length).toBe(95);
+    expect(pager.done).toBe(false);
+
+    await pager.loadMore();
+    expect(pager.error).toBe("");
+    expect(pager.done).toBe(true);
+    const loaded = ids(pager.items);
+    expect(new Set(loaded).size).toBe(loaded.length);
+    expect(loaded.length).toBe(95 + 900 + 900 + 300);
+  });
+
+  it("refresh reloads the whole list", async () => {
+    const total = 2366;
+    const load = vi.fn(async (offset: number, limit: number) => {
+      const idsForWindow =
+        offset === 0
+          ? range(1, 95)
+          : offset === 100
+            ? range(96, 1000)
+            : offset === 1100
+              ? range(1001, 1905)
+              : range(1906, 2141);
+      return page(idsForWindow.map(track), offset, limit, total);
+    });
+    const pager = createTrackPager("refresh-burst", load, {
+      prefetchWindow: 1000,
+      concurrency: 4,
+    });
+    await pager.loadMore();
+    expect(pager.items.length).toBe(2141);
+
+    load.mockClear();
+    await pager.refresh();
+
+    expect(load.mock.calls.map(([offset]) => offset)).toEqual([0, 100, 1100, 2100]);
+    expect(pager.items.length).toBe(2141);
     expect(pager.done).toBe(true);
   });
 });

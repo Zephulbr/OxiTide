@@ -10,18 +10,16 @@
   let playlist = $state<PlaylistT | null>(null);
   let loading = $state(true);
   let error = $state("");
-  let sentinel = $state<HTMLElement | null>(null);
 
   // `$derived` so navigating to another playlist rebuilds the pager; the new
   // key hydrates from the session cache when that playlist was seen before.
-  // `dedupe = false`: a playlist may legitimately repeat a track, and the
-  // queue must match the playlist exactly.
+  // `dedupe: false`: a playlist may legitimately repeat a track, and the queue
+  // must match the playlist exactly.
   const pager = $derived(
     createTrackPager(
       `playlist:${id}`,
       (offset, limit) => api.getPlaylistTracksPage(id, offset, limit),
-      100,
-      false,
+      { dedupe: false },
     ),
   );
 
@@ -41,19 +39,12 @@
     load();
   });
 
-  // Eager first page: the sentinel alone would leave the list empty when it
-  // starts below the fold. `untrack` keeps this a one-shot mount action.
+  // The first page paints fast, then the pager prefetches the remainder in the
+  // background. The effect tracks `pager` so navigating to another playlist
+  // re-runs it; `untrack` keeps the call itself off the dependency graph.
   $effect(() => {
-    untrack(() => pager.loadMore());
-  });
-
-  $effect(() => {
-    if (!sentinel || pager.done) return;
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) pager.loadMore();
-    });
-    observer.observe(sentinel);
-    return () => observer.disconnect();
+    const current = pager;
+    untrack(() => current.loadMore());
   });
 
   async function playFrom(index: number) {
@@ -83,19 +74,20 @@
     <span class="muted">
       {#if pager.unavailable > 0}
         {pager.items.length} tracks ({pager.unavailable} unavailable)
-      {:else if pager.done}
-        {pager.items.length} tracks
       {:else}
-        {pager.items.length} of {pager.total}
+        {pager.items.length} tracks
       {/if}
     </span>
   </p>
-  <TrackTable tracks={pager.items} {player} onPlay={playFrom} onPlayAll={playAll} />
+  <TrackTable
+    tracks={pager.items}
+    {player}
+    onPlay={playFrom}
+    onPlayAll={playAll}
+    onEndReached={() => void pager.loadMore()}
+  />
   {#if pager.error}
     <ErrorState message={pager.error} onRetry={() => pager.loadMore()} />
   {/if}
   {#if pager.loading}<p class="muted">Loading…</p>{/if}
-  {#if !pager.done && !pager.error}
-    <div bind:this={sentinel} style="height:1px"></div>
-  {/if}
 {/if}
