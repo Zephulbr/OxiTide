@@ -255,8 +255,8 @@ describe("track pager", () => {
   it("continues past a short page while the total says more remain", async () => {
     const load = vi.fn(async (offset: number, limit: number) => {
       if (offset === 0) return page([track(1), track(2)], offset, limit, 10);
-      if (offset === 2) return page([track(3), track(4), track(5)], offset, limit, 10);
-      if (offset === 5) return page([track(6), track(7), track(8)], offset, limit, 10);
+      if (offset === 3) return page([track(3), track(4), track(5)], offset, limit, 10);
+      if (offset === 6) return page([track(6), track(7), track(8)], offset, limit, 10);
       return page([track(9), track(10)], offset, limit, 10);
     });
     const pager = createTrackPager("short-page", load, { pageSize: 3, prefetch: false });
@@ -264,8 +264,27 @@ describe("track pager", () => {
     await pager.ensureAll();
 
     expect(ids(pager.items)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(load.mock.calls.map(([offset]) => offset)).toEqual([0, 3, 6, 9]);
     expect(pager.done).toBe(true);
     expect(pager.unavailable).toBe(0);
+  });
+
+  it("uses the configured burst window", async () => {
+    const total = 400;
+    const load = vi.fn(async (offset: number, limit: number) =>
+      page(range(offset + 1, Math.min(offset + limit, total)).map(track), offset, limit, total),
+    );
+    const pager = createTrackPager("window-100", load, {
+      prefetchWindow: 100,
+      concurrency: 4,
+    });
+
+    await pager.loadMore();
+
+    expect(load.mock.calls.map(([offset]) => offset)).toEqual([0, 100, 200, 300]);
+    expect(load.mock.calls.map(([, limit]) => limit)).toEqual([100, 100, 100, 100]);
+    expect(ids(pager.items)).toEqual(range(1, 400));
+    expect(pager.done).toBe(true);
   });
 
   it("stops on an empty page when the total overstates the list", async () => {

@@ -29,8 +29,15 @@
   let viewport = $state(0);
   let loadingAll = $state(false);
 
-  const first = $derived(Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN));
   const visible = $derived(Math.max(1, Math.ceil(viewport / ROW_HEIGHT) + OVERSCAN * 2));
+  // Clamp to the list so a refreshed/shrunk list cannot leave the window
+  // pointing past the end (which would render a blank table).
+  const first = $derived(
+    Math.min(
+      Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN),
+      Math.max(0, tracks.length - visible),
+    ),
+  );
   const last = $derived(Math.min(tracks.length, first + visible));
   const slice = $derived(tracks.slice(first, last));
   const padTop = $derived(first * ROW_HEIGHT);

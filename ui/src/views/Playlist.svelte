@@ -14,12 +14,13 @@
   // `$derived` so navigating to another playlist rebuilds the pager; the new
   // key hydrates from the session cache when that playlist was seen before.
   // `dedupe: false`: a playlist may legitimately repeat a track, and the queue
-  // must match the playlist exactly.
+  // must match the playlist exactly. `prefetchWindow: 100` is the window size
+  // the playlist endpoint is known to honor.
   const pager = $derived(
     createTrackPager(
       `playlist:${id}`,
       (offset, limit) => api.getPlaylistTracksPage(id, offset, limit),
-      { dedupe: false },
+      { dedupe: false, prefetchWindow: 100 },
     ),
   );
 
@@ -67,7 +68,6 @@
 {:else}
   {#if playlist}
     <h2>{playlist.title}</h2>
-    <p class="muted">{playlist.numberOfTracks} tracks</p>
   {/if}
   <p>
     <button onclick={() => pager.refresh()}>Refresh</button>

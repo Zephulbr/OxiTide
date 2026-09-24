@@ -15,14 +15,15 @@ export interface Pager {
 }
 
 export interface PagerOptions {
-  /// Rows per first (and lazy) page. Default 100.
+  /// Rows per first/lazy page. Default 100.
   pageSize?: number;
   /// Drop ids already loaded (favorites can't repeat); playlists pass `false`
   /// so a track that appears twice in the playlist stays twice in the queue.
   dedupe?: boolean;
   /// After the first page, fetch the remainder in a parallel burst. Default true.
   prefetch?: boolean;
-  /// Rows per burst window. Default 1000.
+  /// Rows per burst window. Default 1000; playlists pass 100 (the size the
+  /// playlist endpoint is known to honor).
   prefetchWindow?: number;
   /// Above this reported total the pager stays lazy (scroll-paged). Default 10_000.
   prefetchMaxTotal?: number;
@@ -34,7 +35,6 @@ interface CacheEntry {
   items: Track[];
   total: number;
   nextOffset: number;
-  coveredRows: number;
   done: boolean;
 }
 
@@ -48,8 +48,12 @@ export function clearPagerCache() {
 }
 
 /// A pager for a track list. `key` is `"favorites"` or `"playlist:{uuid}"`;
-/// `load` fetches one page at `offset`. The first page is small for a fast
+/// `load` fetches one window at `offset`. The first page is small for a fast
 /// paint; the remainder loads in parallel fixed windows (see `PagerOptions`).
+///
+/// Offsets index the full list (unavailable rows are omitted from `items` but
+/// still counted by `total`), so every request advances by its requested
+/// window size: disjoint windows cannot overlap or skip rows.
 export function createTrackPager(
   key: string,
   load: (offset: number, limit: number) => Promise<TrackPage>,
@@ -68,21 +72,18 @@ export function createTrackPager(
   let done = $state(cached?.done ?? false);
   let loading = $state(false);
   let error = $state("");
-  // `nextOffset` is the received-based stride used by lazy sequential pages;
-  // `coveredRows` is the window end the burst has scanned. They differ because
-  // the server omits unavailable rows from `items`.
+  /// The first row not yet scanned (window end); also the next request offset.
   let nextOffset = cached?.nextOffset ?? 0;
-  let coveredRows = cached?.coveredRows ?? 0;
   // The in-flight request task, shared by concurrent `loadMore` callers so
   // `ensureAll` awaits real progress instead of spinning on a resolved promise.
   let inflight: Promise<void> | null = null;
 
   function publish() {
-    cache.set(key, { items: [...items], total, nextOffset, coveredRows, done });
+    cache.set(key, { items: [...items], total, nextOffset, done });
   }
 
-  /// Append a fetched page; dedupe only against already-loaded ids.
-  function append(page: TrackPage) {
+  /// Append a fetched window and advance past it.
+  function applyWindow(page: TrackPage, offset: number, limit: number) {
     if (dedupe) {
       const seen = new Set(items.map((t) => t.id));
       items = [...items, ...page.items.filter((t) => !seen.has(t.id))];
@@ -90,29 +91,24 @@ export function createTrackPager(
       items = [...items, ...page.items];
     }
     if (page.total > 0) total = page.total;
+    const received = page.items.length;
+    nextOffset = offset + limit;
+    done =
+      received === 0 ||
+      (total > 0 ? nextOffset >= total : received < limit);
   }
 
-  /// One lazy/scroll page: the stride advances by what the server sent, so a
-  /// silent server cap can only cause overlap (never skipped rows).
   async function loadSequentialPage() {
     const offset = nextOffset;
     const page = await load(offset, pageSize);
-    append(page);
-    const received = page.items.length;
-    nextOffset = offset + received;
-    coveredRows = Math.max(coveredRows, offset + pageSize);
-    done =
-      received === 0 ||
-      (total > 0 ? nextOffset >= total : received < pageSize);
+    applyWindow(page, offset, pageSize);
     publish();
   }
 
-  /// First small page for a fast paint, then disjoint fixed windows fetched
-  /// concurrently and applied in offset order. Offsets index the full list and
-  /// the server honors the requested window, so windows cannot overlap or skip.
+  /// Disjoint fixed windows fetched concurrently and applied in offset order.
   async function runBurst() {
     const windows: number[] = [];
-    for (let offset = coveredRows; offset < total; offset += prefetchWindow) {
+    for (let offset = nextOffset; offset < total; offset += prefetchWindow) {
       windows.push(offset);
     }
     for (let i = 0; i < windows.length; i += concurrency) {
@@ -120,17 +116,13 @@ export function createTrackPager(
       const pages = await Promise.all(
         group.map((offset) => load(offset, prefetchWindow)),
       );
-      group.forEach((offset, index) => {
-        append(pages[index]);
-        coveredRows = Math.max(coveredRows, offset + prefetchWindow);
-      });
-      if (coveredRows >= total || pages.some((page) => page.items.length === 0)) {
+      group.forEach((offset, index) => applyWindow(pages[index], offset, prefetchWindow));
+      if (done || pages.some((page) => page.items.length === 0)) {
         done = true;
         break;
       }
     }
-    if (coveredRows >= total) done = true;
-    if (done && total > 0) nextOffset = total;
+    if (nextOffset >= total) done = true;
     publish();
   }
 
@@ -158,6 +150,8 @@ export function createTrackPager(
         await makeProgress();
       } catch (e) {
         error = String(e);
+        // Keep whatever windows completed before the failure.
+        publish();
       } finally {
         loading = false;
         inflight = null;
@@ -180,7 +174,6 @@ export function createTrackPager(
     items = [];
     total = 0;
     nextOffset = 0;
-    coveredRows = 0;
     done = false;
     error = "";
     await loadMore();
