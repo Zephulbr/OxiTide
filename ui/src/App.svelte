@@ -144,10 +144,10 @@
       {/if}
       {#if error}<p style="color:#ff6b6b">{error}</p>{/if}
       {#if nav.route.name === "home"}<Home {nav} />
-      {:else if nav.route.name === "search"}<Search {nav} {player} />
-      {:else if nav.route.name === "library"}<Library {nav} {player} />
-      {:else if nav.route.name === "album"}<Album id={nav.route.id} {player} />
-      {:else if nav.route.name === "playlist"}<Playlist id={nav.route.id} {player} />
+      {:else if nav.route.name === "search"}<Search {nav} {player} {favorites} />
+      {:else if nav.route.name === "library"}<Library {nav} {player} {favorites} />
+      {:else if nav.route.name === "album"}<Album id={nav.route.id} {player} {favorites} />
+      {:else if nav.route.name === "playlist"}<Playlist id={nav.route.id} {player} {favorites} />
       {:else if nav.route.name === "artist"}<Artist id={nav.route.id} />
       {:else if nav.route.name === "settings"}<Settings {player} onQualityDisplay={(mode) => (qualityDisplay = mode)} />{/if}
     </main>

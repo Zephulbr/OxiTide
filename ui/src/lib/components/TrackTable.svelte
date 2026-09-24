@@ -2,10 +2,12 @@
   import type { Track } from "../api";
   import { api, trackToQueueItem } from "../api";
   import { formatDuration } from "../format";
+  import type { Favorites } from "../favorites.svelte";
   import type { Player } from "../player.svelte";
   let {
     tracks,
     player,
+    favorites,
     onPlay,
     onPlayAll,
     onEndReached,
@@ -13,6 +15,7 @@
   }: {
     tracks: Track[];
     player: Player;
+    favorites: Favorites;
     onPlay?: (index: number) => void | Promise<void>;
     onPlayAll?: () => void | Promise<void>;
     /// Called when the list is scrolled near its end; used for lazy paging.
@@ -107,6 +110,12 @@
               aria-label="Add to queue"
               title="Add to queue"
             >＋</button>
+            <button
+              class:on={favorites.hasTrack(t.id)}
+              onclick={() => favorites.toggleTrack(t.id)}
+              aria-label={favorites.hasTrack(t.id) ? "Unfavorite" : "Favorite"}
+              title={favorites.hasTrack(t.id) ? "Unfavorite" : "Favorite"}
+            >{favorites.hasTrack(t.id) ? "♥" : "♡"}</button>
           </td>
           <td class="muted">{index + 1}</td>
           <td class="title-cell"><div class="title-text">{t.title}<span class="muted"> · {t.artists.map((a) => a.name).join(", ")}</span></div></td>
@@ -150,5 +159,8 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .on {
+    color: var(--accent);
   }
 </style>

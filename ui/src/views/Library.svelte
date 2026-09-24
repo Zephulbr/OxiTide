@@ -4,16 +4,17 @@
   import ErrorState from "../lib/components/ErrorState.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
   import { createTrackPager } from "../lib/pager.svelte";
+  import type { Favorites } from "../lib/favorites.svelte";
   import type { Nav } from "../lib/nav.svelte";
   import type { Player } from "../lib/player.svelte";
-  let { nav, player }: { nav: Nav; player: Player } = $props();
+  let { nav, player, favorites }: { nav: Nav; player: Player; favorites: Favorites } = $props();
 
   let albums = $state<Album[]>([]);
   let playlists = $state<Playlist[]>([]);
   let loading = $state(true);
   let error = $state("");
 
-  const favorites = createTrackPager("favorites", (offset, limit) =>
+  const favoritesPager = createTrackPager("favorites", (offset, limit) =>
     api.getFavoriteTracksPage(offset, limit),
   );
 
@@ -36,19 +37,19 @@
   // The first page paints fast, then the pager prefetches the remainder in the
   // background. `untrack` keeps this a one-shot mount action.
   $effect(() => {
-    untrack(() => favorites.loadMore());
+    untrack(() => favoritesPager.loadMore());
   });
 
   async function playFrom(index: number) {
-    await favorites.ensureAll();
-    if (favorites.error) return;
-    api.playTracks(favorites.items.map(trackToQueueItem), index);
+    await favoritesPager.ensureAll();
+    if (favoritesPager.error) return;
+    api.playTracks(favoritesPager.items.map(trackToQueueItem), index);
   }
 
   async function playAll() {
-    await favorites.ensureAll();
-    if (favorites.error) return;
-    api.playTracks(favorites.items.map(trackToQueueItem), 0);
+    await favoritesPager.ensureAll();
+    if (favoritesPager.error) return;
+    api.playTracks(favoritesPager.items.map(trackToQueueItem), 0);
   }
 </script>
 
@@ -74,24 +75,25 @@
   </ul>
   <h3>Favorite tracks</h3>
   <p>
-    <button onclick={() => favorites.refresh()}>Refresh</button>
+    <button onclick={() => favoritesPager.refresh()}>Refresh</button>
     <span class="muted">
-      {#if favorites.unavailable > 0}
-        {favorites.items.length} tracks ({favorites.unavailable} unavailable)
+      {#if favoritesPager.unavailable > 0}
+        {favoritesPager.items.length} tracks ({favoritesPager.unavailable} unavailable)
       {:else}
-        {favorites.items.length} tracks
+        {favoritesPager.items.length} tracks
       {/if}
     </span>
   </p>
   <TrackTable
-    tracks={favorites.items}
+    tracks={favoritesPager.items}
     {player}
+    {favorites}
     onPlay={playFrom}
     onPlayAll={playAll}
-    onEndReached={() => void favorites.loadMore()}
+    onEndReached={() => void favoritesPager.loadMore()}
   />
-  {#if favorites.error}
-    <ErrorState message={favorites.error} onRetry={() => favorites.loadMore()} />
+  {#if favoritesPager.error}
+    <ErrorState message={favoritesPager.error} onRetry={() => favoritesPager.loadMore()} />
   {/if}
-  {#if favorites.loading}<p class="muted">Loading…</p>{/if}
+  {#if favoritesPager.loading}<p class="muted">Loading…</p>{/if}
 {/if}
