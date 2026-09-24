@@ -40,6 +40,15 @@
     untrack(() => favoritesPager.loadMore());
   });
 
+  // An unfavorite from anywhere (this table, the player bar, another view)
+  // removes the row from the loaded list without refetching.
+  $effect(() => {
+    favorites.trackRevision;
+    const id = favorites.lastUnfavoritedTrackId;
+    if (id === null) return;
+    if (favoritesPager.items.some((t) => t.id === id)) favoritesPager.removeItem(id);
+  });
+
   async function playFrom(index: number) {
     await favoritesPager.ensureAll();
     if (favoritesPager.error) return;
