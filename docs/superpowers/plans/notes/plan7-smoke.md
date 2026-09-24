@@ -4,11 +4,13 @@
 > TIDAL app for cross-checking. Run with `npm --prefix ui run app:dev` (or the
 > installed app).
 
-## Automated checks (tree at 1f86ed9)
-- cargo test --workspace: 244 passed, 0 failed, 1 ignored (oxitide-app 33, oxitide-audio 139 + 1 ignored [requires an audio device], oxitide-audio pipeline 1, oxitide-tidal 71, doc-tests 0)
+## Automated checks (tree at 7d0b233)
+- cargo test --workspace: 247 passed, 0 failed, 1 ignored (oxitide-app 33, oxitide-audio 139 + 1 ignored [requires an audio device], oxitide-audio pipeline 1, oxitide-tidal 74, doc-tests 0)
 - cargo clippy --workspace -- -D warnings: clean, 0 warnings (exit 0)
-- npm --prefix ui test: 71 passed, 0 failed across 8 files (format 2, quality 5, notice 3, playlists 12, favorites 12, player.restore 3, player 6, pager 28)
+- npm --prefix ui test: 72 passed, 0 failed across 8 files (format 2, quality 5, player.restore 3, player 6, notice 3, playlists 13, favorites 12, pager 28)
 - npm --prefix ui run check: 0 errors, 0 warnings (exit 0)
+
+Counts re-run after the final-review fix wave; the first recording (244/71 at 1f86ed9) predates three Rust and one UI regression tests added by that wave.
 
 ## Manual checks
 - [ ] Create a playlist from Library → it appears in Library and in the official TIDAL app.
