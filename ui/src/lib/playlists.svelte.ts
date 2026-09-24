@@ -91,7 +91,12 @@ export function createPlaylistActions(notice: Notice): PlaylistActions {
         close();
       } else {
         const skippedSet = new Set(skipped);
-        duplicates = tracks.filter((t) => skippedSet.has(t.id));
+        const seen = new Set<number>();
+        duplicates = tracks.filter((t) => {
+          if (!skippedSet.has(t.id) || seen.has(t.id)) return false;
+          seen.add(t.id);
+          return true;
+        });
         for (const t of duplicates) choices.set(t.id, false);
         step = "duplicates";
       }

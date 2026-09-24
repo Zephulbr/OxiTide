@@ -173,6 +173,9 @@ impl TidalClient {
 
     /// Remove playlist rows by zero-based index.
     pub async fn remove_playlist_items(&self, id: &str, indices: &[u32]) -> Result<()> {
+        if indices.is_empty() {
+            return Ok(());
+        }
         let list = indices
             .iter()
             .map(|index| index.to_string())
@@ -183,6 +186,9 @@ impl TidalClient {
 
     /// Move playlist rows (zero-based indices) to `to_index`.
     pub async fn move_playlist_items(&self, id: &str, indices: &[u32], to_index: u32) -> Result<()> {
+        if indices.is_empty() {
+            return Ok(());
+        }
         let list = indices
             .iter()
             .map(|index| index.to_string())
@@ -418,6 +424,7 @@ mod tests {
         let requested: Vec<u64> = std::iter::once(1u64).chain(ids.iter().copied()).collect();
         Mock::given(method("POST"))
             .and(path("/playlists/p-uuid/items"))
+            .and(query_param("limit", "100"))
             .and(body_string_contains(&format!("trackIds={first_chunk}")))
             .and(body_string_contains("toIndex=5"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
@@ -426,6 +433,7 @@ mod tests {
             .mount(&server).await;
         Mock::given(method("POST"))
             .and(path("/playlists/p-uuid/items"))
+            .and(query_param("limit", "1"))
             .and(body_string_contains("trackIds=101"))
             .and(body_string_contains("toIndex=105"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
@@ -471,6 +479,26 @@ mod tests {
             .mount(&server).await;
         client(&server)
             .move_playlist_items("p-uuid", &[4], 1)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn remove_playlist_items_skips_empty_indices() {
+        let server = MockServer::start().await;
+        // No mock is mounted: any request would 404 and fail the unwrap.
+        client(&server)
+            .remove_playlist_items("p-uuid", &[])
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn move_playlist_items_skips_empty_indices() {
+        let server = MockServer::start().await;
+        // No mock is mounted: any request would 404 and fail the unwrap.
+        client(&server)
+            .move_playlist_items("p-uuid", &[], 3)
             .await
             .unwrap();
     }

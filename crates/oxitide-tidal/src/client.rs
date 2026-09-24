@@ -595,6 +595,7 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "access_token": "new", "refresh_token": "rt2", "token_type": "Bearer", "expires_in": 3600
             })))
+            .expect(1)
             .mount(&server)
             .await;
         let store = Arc::new(MemoryStore::default());
@@ -646,5 +647,38 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(thing.value, 4);
+    }
+
+    #[tokio::test]
+    async fn put_json_retries_once_on_429() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let server = MockServer::start().await;
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let responder = {
+            let attempts = attempts.clone();
+            move |_req: &wiremock::Request| {
+                if attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                    ResponseTemplate::new(429).insert_header("retry-after", "0")
+                } else {
+                    ResponseTemplate::new(200).set_body_json(serde_json::json!({"value": 6}))
+                }
+            }
+        };
+        Mock::given(method("PUT"))
+            .and(path("/v2/things"))
+            .respond_with(responder)
+            .expect(2)
+            .mount(&server)
+            .await;
+        let client = TidalClient::new(
+            reqwest::Client::new(),
+            server.uri(),
+            format!("{}/token", server.uri()),
+            session(),
+            tokens(),
+            Arc::new(MemoryStore::default()),
+        );
+        let thing: Thing = client.put_json("things", &[]).await.unwrap();
+        assert_eq!(thing.value, 6);
     }
 }

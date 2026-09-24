@@ -109,6 +109,17 @@ describe("playlist actions store", () => {
     expect(api.addPlaylistTracks).toHaveBeenCalledWith("p", [7], false);
   });
 
+  it("dedupes the skipped list while preserving order", async () => {
+    vi.mocked(api.addPlaylistTracks).mockResolvedValue([]);
+    const actions = createPlaylistActions(createNotice());
+    actions.openPicker([track(7), track(7)]);
+
+    await actions.addTo(playlist("p"));
+
+    expect(actions.duplicates.map((t) => t.id)).toEqual([7]);
+    expect(actions.step).toBe("duplicates");
+  });
+
   it("dedupes add-both ids in phase two", async () => {
     vi.mocked(api.addPlaylistTracks).mockResolvedValueOnce([]).mockResolvedValueOnce([7]);
     const notice = createNotice();
