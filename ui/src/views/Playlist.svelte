@@ -4,8 +4,9 @@
   import ErrorState from "../lib/components/ErrorState.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
   import { createTrackPager } from "../lib/pager.svelte";
+  import type { Favorites } from "../lib/favorites.svelte";
   import type { Player } from "../lib/player.svelte";
-  let { id, player }: { id: string; player: Player } = $props();
+  let { id, player, favorites }: { id: string; player: Player; favorites: Favorites } = $props();
 
   let playlist = $state<PlaylistT | null>(null);
   let loading = $state(true);
@@ -82,6 +83,7 @@
   <TrackTable
     tracks={pager.items}
     {player}
+    {favorites}
     onPlay={playFrom}
     onPlayAll={playAll}
     onEndReached={() => void pager.loadMore()}

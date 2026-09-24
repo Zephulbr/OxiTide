@@ -28,6 +28,7 @@ export interface SearchResults {
 }
 export interface TrackPage { items: Track[]; total: number; offset: number; limit: number }
 export interface SessionInfoDto { country_code: string; user_id: number }
+export interface FavoriteIds { tracks: number[]; albums: number[]; artists: number[] }
 
 export interface QueueItem {
   track_id: number; title: string; artist: string; album: string;
@@ -124,6 +125,13 @@ export const api = {
     invoke<TrackPage>("get_favorite_tracks_page", { offset, limit }),
   getPlaylistTracksPage: (id: string, offset: number, limit: number) =>
     invoke<TrackPage>("get_playlist_tracks_page", { id, offset, limit }),
+  getFavoriteIds: () => invoke<FavoriteIds>("get_favorite_ids"),
+  setFavoriteTrack: (trackId: number, favorite: boolean) =>
+    invoke<void>("set_favorite_track", { trackId, favorite }),
+  setFavoriteAlbum: (albumId: number, favorite: boolean) =>
+    invoke<void>("set_favorite_album", { albumId, favorite }),
+  setFavoriteArtist: (artistId: number, favorite: boolean) =>
+    invoke<void>("set_favorite_artist", { artistId, favorite }),
   playTracks: (items: QueueItem[], start: number) => invoke<void>("play_tracks", { items, start }),
   playPause: () => invoke<void>("play_pause"),
   retry: () => invoke<void>("retry"),

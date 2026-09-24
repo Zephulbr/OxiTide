@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Track, TrackPage } from "./api";
-import { clearPagerCache, createTrackPager } from "./pager.svelte";
+import {
+  clearPagerCache,
+  createTrackPager,
+  invalidatePager,
+  removePagerItem,
+} from "./pager.svelte";
 
 function track(id: number): Track {
   return {
@@ -505,6 +510,94 @@ describe("track pager", () => {
 
     expect(load.mock.calls.map(([offset]) => offset)).toEqual([0, 100, 1100, 2100]);
     expect(pager.items.length).toBe(2141);
+    expect(pager.done).toBe(true);
+  });
+
+  it("removeItem drops the row, decrements total and nextOffset, and updates the cache", async () => {
+    const load = vi.fn(async (offset: number, limit: number) =>
+      page([track(1), track(2), track(3)], offset, limit, 3),
+    );
+    const pager = createTrackPager("remove-item", load, { pageSize: 3, prefetch: false });
+    await pager.loadMore();
+    expect(pager.done).toBe(true);
+
+    pager.removeItem(2);
+
+    expect(ids(pager.items)).toEqual([1, 3]);
+    expect(pager.total).toBe(2);
+    expect(pager.unavailable).toBe(0);
+
+    const fresh = createTrackPager("remove-item", load, { pageSize: 3, prefetch: false });
+    expect(ids(fresh.items)).toEqual([1, 3]);
+    expect(fresh.total).toBe(2);
+  });
+
+  it("removeItem ignores ids that are not loaded", async () => {
+    const load = vi.fn(async (offset: number, limit: number) =>
+      page([track(1)], offset, limit, 1),
+    );
+    const pager = createTrackPager("remove-missing", load, { pageSize: 1, prefetch: false });
+    await pager.loadMore();
+
+    pager.removeItem(99);
+
+    expect(ids(pager.items)).toEqual([1]);
+    expect(pager.total).toBe(1);
+  });
+
+  it("removePagerItem corrects a cache entry with no mounted pager", async () => {
+    const load = vi.fn(async (offset: number, limit: number) =>
+      page([track(1), track(2)], offset, limit, 2),
+    );
+    const a = createTrackPager("remove-cached", load, { pageSize: 2, prefetch: false });
+    await a.loadMore();
+
+    removePagerItem("remove-cached", 1);
+
+    const b = createTrackPager("remove-cached", load, { pageSize: 2, prefetch: false });
+    expect(ids(b.items)).toEqual([2]);
+    expect(b.total).toBe(1);
+  });
+
+  it("invalidatePager forces the next mount to refetch", async () => {
+    const load = vi.fn(async (offset: number, limit: number) =>
+      page([track(1)], offset, limit, 1),
+    );
+    const a = createTrackPager("invalidate", load, { pageSize: 1, prefetch: false });
+    await a.loadMore();
+
+    invalidatePager("invalidate");
+
+    const b = createTrackPager("invalidate", load, { pageSize: 1, prefetch: false });
+    expect(b.items).toEqual([]);
+  });
+
+  it("refreshes after a removal deferred behind an in-flight page", async () => {
+    let resolveSecond: (page: TrackPage) => void = () => {};
+    const second = new Promise<TrackPage>((resolve) => {
+      resolveSecond = resolve;
+    });
+    let calls = 0;
+    const load = vi.fn(async (offset: number, limit: number) => {
+      calls += 1;
+      if (calls === 1) return page([track(1), track(2)], offset, limit, 3);
+      if (calls === 2) return second;
+      // The post-delete server state: row 1 is gone.
+      return page([track(2), track(3)], offset, limit, 2);
+    });
+    const pager = createTrackPager("remove-inflight", load, { pageSize: 2, prefetch: false });
+    await pager.loadMore();
+    expect(pager.done).toBe(false);
+
+    const pending = pager.loadMore();
+    pager.removeItem(1);
+    // The in-flight window may already reflect the delete; its total must not
+    // be decremented a second time.
+    resolveSecond(page([track(3)], 2, 2, 2));
+    await pending;
+
+    expect(ids(pager.items)).toEqual([2, 3]);
+    expect(pager.total).toBe(2);
     expect(pager.done).toBe(true);
   });
 });
