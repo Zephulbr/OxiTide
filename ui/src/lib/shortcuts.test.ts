@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isTypingTarget, matchShortcut, SHORTCUTS } from "./shortcuts";
+import { isShortcutHandled, isTypingTarget, matchShortcut, SHORTCUTS } from "./shortcuts";
 
 function keyEvent(key: string, overrides: Partial<KeyboardEvent> = {}): KeyboardEvent {
   return {
@@ -85,6 +85,39 @@ describe("SHORTCUTS", () => {
     for (const hint of SHORTCUTS) {
       expect(hint.keys.length).toBeGreaterThan(0);
       expect(hint.description.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("isShortcutHandled", () => {
+  it("leaves transport keys to the browser when nothing is loaded", () => {
+    const idle = { hasCurrent: false, hasQueue: false };
+
+    expect(isShortcutHandled("play-pause", idle)).toBe(false);
+    expect(isShortcutHandled("seek-back", idle)).toBe(false);
+    expect(isShortcutHandled("seek-forward", idle)).toBe(false);
+    expect(isShortcutHandled("prev-track", idle)).toBe(false);
+    expect(isShortcutHandled("next-track", idle)).toBe(false);
+  });
+
+  it("handles transport keys once a track or queue exists", () => {
+    expect(isShortcutHandled("play-pause", { hasCurrent: true, hasQueue: false })).toBe(true);
+    expect(isShortcutHandled("seek-forward", { hasCurrent: true, hasQueue: false })).toBe(true);
+    expect(isShortcutHandled("prev-track", { hasCurrent: false, hasQueue: true })).toBe(true);
+    expect(isShortcutHandled("next-track", { hasCurrent: false, hasQueue: true })).toBe(true);
+  });
+
+  it("always handles volume, search, history, and escape", () => {
+    const idle = { hasCurrent: false, hasQueue: false };
+    for (const action of [
+      "volume-up",
+      "volume-down",
+      "focus-search",
+      "history-back",
+      "history-forward",
+      "escape",
+    ] as const) {
+      expect(isShortcutHandled(action, idle)).toBe(true);
     }
   });
 });

@@ -43,6 +43,26 @@ function isButtonLike(target: EventTarget | null): boolean {
   return el?.tagName === "BUTTON";
 }
 
+/// Whether the app will actually act on a matched shortcut. Transport keys
+/// with nothing loaded are no-ops, so the key must keep its native behavior
+/// (scrolling) instead of being swallowed by preventDefault.
+export function isShortcutHandled(
+  action: ShortcutAction,
+  opts: { hasCurrent: boolean; hasQueue: boolean },
+): boolean {
+  switch (action) {
+    case "play-pause":
+    case "seek-back":
+    case "seek-forward":
+      return opts.hasCurrent;
+    case "prev-track":
+    case "next-track":
+      return opts.hasQueue;
+    default:
+      return true;
+  }
+}
+
 /// Map a keydown to an app action. Esc and Ctrl+F work while typing; every
 /// other binding is ignored then. Esc is skipped entirely when a dialog is
 /// open because the dialog owns it.

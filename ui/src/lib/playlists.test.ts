@@ -192,7 +192,33 @@ describe("playlist actions store", () => {
     const created = await actions.createAndAdd("New", "");
 
     expect(created?.uuid).toBe("new");
-    expect(toasts.calls).toEqual([{ message: "Error: nope", severity: "error" }]);
+    expect(toasts.calls).toEqual([
+      {
+        message: "Created Mix, but adding 1 track failed: Error: nope",
+        severity: "error",
+      },
+    ]);
+  });
+
+  it("reports a phase-two failure without claiming the whole add failed", async () => {
+    vi.mocked(api.addPlaylistTracks).mockResolvedValueOnce([1]).mockRejectedValueOnce(
+      new Error("nope"),
+    );
+    const toasts = fakeToasts();
+    const actions = createPlaylistActions(toasts);
+    actions.openPicker([track(1), track(2)]);
+    await actions.addTo(playlist("p", "Chill"));
+
+    actions.setChoice(2, true);
+    await actions.confirmDuplicates();
+
+    expect(toasts.calls).toEqual([
+      {
+        message: "Some tracks were already added, but the duplicate update failed: Error: nope",
+        severity: "error",
+      },
+    ]);
+    expect(actions.open).toBe(true);
   });
 
   it("tracks the picker origin and busy state", async () => {

@@ -123,7 +123,9 @@ export function createPlaylistActions(toasts: Toasts): PlaylistActions {
       );
       close();
     } catch (e) {
-      toasts.show(errorMessage(e), { severity: "error" });
+      toasts.show(`Some tracks were already added, but the duplicate update failed: ${errorMessage(e)}`, {
+        severity: "error",
+      });
     } finally {
       busy = false;
     }
@@ -143,7 +145,11 @@ export function createPlaylistActions(toasts: Toasts): PlaylistActions {
             severity: "success",
           });
         } catch (e) {
-          toasts.show(errorMessage(e), { severity: "error" });
+          const noun = ids.length === 1 ? "track" : "tracks";
+          toasts.show(
+            `Created ${created.title}, but adding ${ids.length} ${noun} failed: ${errorMessage(e)}`,
+            { severity: "error" },
+          );
         }
       } else {
         toasts.show(`Created ${created.title}`, { severity: "success" });

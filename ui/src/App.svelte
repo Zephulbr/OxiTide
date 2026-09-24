@@ -18,7 +18,7 @@
   import { createNav } from "./lib/nav.svelte";
   import { errorMessage } from "./lib/errors";
   import { menu } from "./lib/menu.svelte";
-  import { matchShortcut, type ShortcutAction } from "./lib/shortcuts";
+  import { isShortcutHandled, matchShortcut, type ShortcutAction } from "./lib/shortcuts";
   import { createToasts } from "./lib/toasts.svelte";
   import { createPlayer } from "./lib/player.svelte";
   import { createFavorites } from "./lib/favorites.svelte";
@@ -186,8 +186,21 @@
     if (!loggedIn) return;
     const overlayOpen = document.querySelector('[role="dialog"]') !== null;
     const action = matchShortcut(event, { overlayOpen });
-    if (!action) return;
+    if (!action) {
+      // A held Space is ignored as a toggle, but it must not scroll the page
+      // once a track is loaded.
+      if (event.key === " " && event.repeat && player.state.current) event.preventDefault();
+      return;
+    }
     if (action === "escape" && !menu.open && !nav.queueOpen) return;
+    if (
+      !isShortcutHandled(action, {
+        hasCurrent: player.state.current !== null,
+        hasQueue: player.state.queue.length > 0,
+      })
+    ) {
+      return;
+    }
     event.preventDefault();
     runShortcut(action);
   }
