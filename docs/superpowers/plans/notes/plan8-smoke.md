@@ -3,11 +3,13 @@
 > Requires a human, a logged-in TIDAL account, a browser login, and a mouse with
 > side buttons. Run with `npm --prefix ui run app:dev` (or the installed app).
 
-## Automated checks (tree at b610a62)
+## Automated checks (tree at ad3783f)
 - cargo test --workspace: 247 passed, 0 failed, 1 ignored (oxitide-app 33, oxitide-audio 139 + 1 ignored [requires an audio device], oxitide-audio pipeline 1, oxitide-tidal 74, doc-tests 0)
 - cargo clippy --workspace -- -D warnings: clean, 0 warnings (exit 0)
-- npm --prefix ui test: 113 passed, 0 failed across 13 files (format 2, quality 5, errors 4, toasts 7, menu 5, menus 9, shortcuts 8, nav 11, player 6, player.restore 3, playlists 13, favorites 12, pager 28)
+- npm --prefix ui test: 117 passed, 0 failed across 13 files (format 2, quality 5, errors 4, toasts 7, menu 5, menus 9, shortcuts 11, nav 11, player 6, player.restore 3, playlists 14, favorites 12, pager 28)
 - npm --prefix ui run check: 0 errors, 0 warnings (exit 0)
+
+Counts recorded after the final whole-branch review fix (`ad3783f`): no-op shortcuts no longer swallow native scrolling and partial playlist failures report both facts. The pre-fix tree (`b610a62`) ran 113 UI tests.
 
 ## Manual checks
 - [ ] Toast stack: add tracks to a playlist from Search → success toast appears top-right → another action stacks a second toast → both auto-dismiss after ~6 s.
