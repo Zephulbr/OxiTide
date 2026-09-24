@@ -11,6 +11,7 @@
     onPlay,
     onPlayAll,
     onEndReached,
+    onAddToPlaylist,
     maxHeight = "min(60vh, 560px)",
   }: {
     tracks: Track[];
@@ -20,6 +21,9 @@
     onPlayAll?: () => void | Promise<void>;
     /// Called when the list is scrolled near its end; used for lazy paging.
     onEndReached?: () => void;
+    /// Renders the "add to playlist" row action. Uses ⊕ to stay distinct
+    /// from the "＋" queue action.
+    onAddToPlaylist?: (track: Track) => void;
     maxHeight?: string;
   } = $props();
 
@@ -110,6 +114,13 @@
               aria-label="Add to queue"
               title="Add to queue"
             >＋</button>
+            {#if onAddToPlaylist}
+              <button
+                onclick={() => onAddToPlaylist(t)}
+                aria-label="Add to playlist"
+                title="Add to playlist"
+              >⊕</button>
+            {/if}
             <button
               class:on={favorites.hasTrack(t.id)}
               onclick={() => favorites.toggleTrack(t.id)}
