@@ -121,6 +121,17 @@ export const api = {
   getFavoriteAlbums: () => invoke<Album[]>("get_favorite_albums"),
   getFavoriteArtists: () => invoke<Artist[]>("get_favorite_artists"),
   getUserPlaylists: () => invoke<Playlist[]>("get_user_playlists"),
+  createPlaylist: (name: string, description: string) =>
+    invoke<Playlist>("create_playlist", { name, description }),
+  renamePlaylist: (id: string, title: string, description: string) =>
+    invoke<void>("rename_playlist", { id, title, description }),
+  deletePlaylist: (id: string) => invoke<void>("delete_playlist", { id }),
+  addPlaylistTracks: (id: string, trackIds: number[], allowDuplicates: boolean) =>
+    invoke<number[]>("add_playlist_tracks", { id, trackIds, allowDuplicates }),
+  removePlaylistItems: (id: string, indices: number[]) =>
+    invoke<void>("remove_playlist_items", { id, indices }),
+  movePlaylistItems: (id: string, indices: number[], toIndex: number) =>
+    invoke<void>("move_playlist_items", { id, indices, toIndex }),
   getFavoriteTracksPage: (offset: number, limit: number) =>
     invoke<TrackPage>("get_favorite_tracks_page", { offset, limit }),
   getPlaylistTracksPage: (id: string, offset: number, limit: number) =>
