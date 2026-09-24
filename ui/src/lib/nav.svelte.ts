@@ -1,3 +1,5 @@
+import type { HomeItem } from "./api";
+
 export type Route =
   | { name: "home" }
   | { name: "search" }
@@ -22,6 +24,22 @@ function sameRoute(a: Route, b: Route): boolean {
   if (a.name !== b.name) return false;
   if ("id" in a && "id" in b) return a.id === b.id;
   return true;
+}
+
+const NUMERIC_ID = /^\d+$/;
+
+/// Map a home-feed item to a route only when the type and id shape agree.
+/// Tracks, mixes, and unknown types have no route and stay inert.
+export function routeForHomeItem(item: HomeItem): Route | null {
+  if (item.id.length === 0) return null;
+  const type = item.item_type.toUpperCase();
+  if ((type.includes("PLAYLIST") || type.includes("EDITORIAL")) && !NUMERIC_ID.test(item.id)) {
+    return { name: "playlist", id: item.id };
+  }
+  if (type.includes("ALBUM") && NUMERIC_ID.test(item.id)) {
+    return { name: "album", id: Number(item.id) };
+  }
+  return null;
 }
 
 /// In-session route history. `goto` on the current route is a no-op; any new
