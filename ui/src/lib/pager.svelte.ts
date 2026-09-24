@@ -12,6 +12,8 @@ export interface Pager {
   loadMore(): Promise<void>;
   ensureAll(): Promise<void>;
   refresh(): Promise<void>;
+  /// Drop one row locally (an unfavorited track); no-op when absent.
+  removeItem(id: number): void;
 }
 
 export interface PagerOptions {
@@ -47,6 +49,23 @@ export function clearPagerCache() {
   cache.clear();
 }
 
+/// Drop one row from a cached list when no pager instance is mounted.
+/// `nextOffset` is the first unscanned row, so removing a scanned row shifts
+/// it down by one.
+export function removePagerItem(key: string, id: number) {
+  const entry = cache.get(key);
+  if (!entry) return;
+  if (!entry.items.some((t) => t.id === id)) return;
+  entry.items = entry.items.filter((t) => t.id !== id);
+  if (entry.total > 0) entry.total -= 1;
+  entry.nextOffset = Math.max(0, entry.nextOffset - 1);
+}
+
+/// Forget a cached list so the next mount refetches it.
+export function invalidatePager(key: string) {
+  cache.delete(key);
+}
+
 /// A pager for a track list. `key` is `"favorites"` or `"playlist:{uuid}"`;
 /// `load` fetches one window at `offset`. The first page is small for a fast
 /// paint; the remainder loads in parallel fixed windows (see `PagerOptions`).
@@ -77,6 +96,9 @@ export function createTrackPager(
   // The in-flight request task, shared by concurrent `loadMore` callers so
   // `ensureAll` awaits real progress instead of spinning on a resolved promise.
   let inflight: Promise<void> | null = null;
+  /// Removals requested while a page fetch is in flight are applied after it
+  /// settles, so a window fetched before the removal cannot re-add the row.
+  const removals = new Set<number>();
 
   function publish() {
     cache.set(key, { items: [...items], total, nextOffset, done });
@@ -96,6 +118,22 @@ export function createTrackPager(
     done =
       received === 0 ||
       (total > 0 ? nextOffset >= total : received < limit);
+  }
+
+  function applyRemoval(id: number) {
+    if (!items.some((t) => t.id === id)) return;
+    items = items.filter((t) => t.id !== id);
+    if (total > 0) total -= 1;
+    nextOffset = Math.max(0, nextOffset - 1);
+    publish();
+  }
+
+  function removeItem(id: number) {
+    if (inflight) {
+      removals.add(id);
+      return;
+    }
+    applyRemoval(id);
   }
 
   async function loadSequentialPage() {
@@ -155,6 +193,10 @@ export function createTrackPager(
       } finally {
         loading = false;
         inflight = null;
+        if (removals.size > 0) {
+          for (const id of removals) applyRemoval(id);
+          removals.clear();
+        }
       }
     })();
     return inflight;
@@ -191,5 +233,6 @@ export function createTrackPager(
     loadMore,
     ensureAll,
     refresh,
+    removeItem,
   };
 }
