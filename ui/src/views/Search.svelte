@@ -1,6 +1,8 @@
 <script lang="ts">
   import { api, type SearchResults } from "../lib/api";
+  import EmptyState from "../lib/components/EmptyState.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
+  import Loading from "../lib/components/Loading.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { Nav } from "../lib/nav.svelte";
@@ -16,6 +18,15 @@
   let results = $state<SearchResults | null>(null);
   let loading = $state(false);
   let error = $state("");
+  let searchedQuery = $state("");
+
+  const noResults = $derived(
+    results !== null &&
+      results.tracks.items.length === 0 &&
+      results.albums.items.length === 0 &&
+      results.artists.items.length === 0 &&
+      results.playlists.items.length === 0,
+  );
 
   async function load() {
     if (query.trim().length === 0) return;
@@ -23,6 +34,7 @@
     error = "";
     try {
       results = await api.search(query);
+      searchedQuery = query;
     } catch (e) {
       error = String(e);
       results = null;
@@ -40,9 +52,11 @@
   placeholder="Search TIDAL"
 />
 {#if loading}
-  <p class="muted">Searching…</p>
+  <Loading label="Searching…" />
 {:else if error}
   <ErrorState message={error} onRetry={load} />
+{:else if noResults}
+  <EmptyState message={`No results for “${searchedQuery}”`} />
 {:else if results}
   <h3>Tracks</h3>
   <TrackTable

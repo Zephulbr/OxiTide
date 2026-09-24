@@ -1,6 +1,8 @@
 <script lang="ts">
   import { api, type HomeSection } from "../lib/api";
+  import EmptyState from "../lib/components/EmptyState.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
+  import Loading from "../lib/components/Loading.svelte";
   import type { Nav } from "../lib/nav.svelte";
   let { nav }: { nav: Nav } = $props();
   let sections = $state<HomeSection[]>([]);
@@ -26,11 +28,11 @@
 
 <h2>Home</h2>
 {#if loading}
-  <p class="muted">Loading…</p>
+  <Loading />
 {:else if error}
   <ErrorState message={error} onRetry={load} />
 {:else if sections.length === 0}
-  <p class="muted">Nothing to show yet.</p>
+  <EmptyState message="Nothing to show yet." />
 {:else}
   {#each sections as section, si (`${section.title}-${si}`)}
     <h3>{section.title}</h3>

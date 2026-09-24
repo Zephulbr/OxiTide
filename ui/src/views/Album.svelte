@@ -1,6 +1,8 @@
 <script lang="ts">
   import { api, type Album as AlbumT, type Track } from "../lib/api";
+  import EmptyState from "../lib/components/EmptyState.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
+  import Loading from "../lib/components/Loading.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { PlaylistActions } from "../lib/playlists.svelte";
@@ -34,32 +36,32 @@
 </script>
 
 {#if loading}
-  <p class="muted">Loading…</p>
+  <Loading />
 {:else if error}
   <ErrorState message={error} onRetry={load} />
-{:else}
-  {#if album}
-    {@const albumId = album.id}
-    <h2>
-      {album.title}
-      <button
-        class:on={favorites.hasAlbum(albumId)}
-        onclick={() => favorites.toggleAlbum(albumId)}
-        aria-label={favorites.hasAlbum(albumId) ? "Unfavorite album" : "Favorite album"}
-        title={favorites.hasAlbum(albumId) ? "Unfavorite album" : "Favorite album"}
-      >{favorites.hasAlbum(albumId) ? "♥" : "♡"}</button>
-      <button
-        onclick={() => playlistActions.openPicker(tracks)}
-        aria-label="Add album to playlist"
-        title="Add album to playlist"
-      >Add to playlist</button>
-    </h2>
-    <p class="muted">{album.artists.map((a) => a.name).join(", ")} · {album.numberOfTracks} tracks</p>
-  {/if}
+{:else if album}
+  {@const albumId = album.id}
+  <h2>
+    {album.title}
+    <button
+      class:on={favorites.hasAlbum(albumId)}
+      onclick={() => favorites.toggleAlbum(albumId)}
+      aria-label={favorites.hasAlbum(albumId) ? "Unfavorite album" : "Favorite album"}
+      title={favorites.hasAlbum(albumId) ? "Unfavorite album" : "Favorite album"}
+    >{favorites.hasAlbum(albumId) ? "♥" : "♡"}</button>
+    <button
+      onclick={() => playlistActions.openPicker(tracks)}
+      aria-label="Add album to playlist"
+      title="Add album to playlist"
+    >Add to playlist</button>
+  </h2>
+  <p class="muted">{album.artists.map((a) => a.name).join(", ")} · {album.numberOfTracks} tracks</p>
   <TrackTable
     {tracks}
     {player}
     {favorites}
     onAddToPlaylist={(t) => playlistActions.openPicker([t])}
   />
+{:else}
+  <EmptyState message="Album not found." />
 {/if}

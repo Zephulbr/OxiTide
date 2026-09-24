@@ -3,6 +3,7 @@
   import { api, trackToQueueItem, type Playlist as PlaylistT } from "../lib/api";
   import ConfirmDialog from "../lib/components/ConfirmDialog.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
+  import Loading from "../lib/components/Loading.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
   import { createTrackPager } from "../lib/pager.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
@@ -141,7 +142,7 @@
 </script>
 
 {#if loading}
-  <p class="muted">Loading…</p>
+  <Loading />
 {:else if error}
   <ErrorState message={error} onRetry={load} />
 {:else}
@@ -169,6 +170,7 @@
         {pager.items.length} tracks
       {/if}
     </span>
+    {#if pager.loading}<Loading />{/if}
   </p>
   <TrackTable
     tracks={pager.items}
@@ -183,7 +185,6 @@
   {#if pager.error}
     <ErrorState message={pager.error} onRetry={() => pager.loadMore()} />
   {/if}
-  {#if pager.loading}<p class="muted">Loading…</p>{/if}
   {#if confirmingDelete}
     <ConfirmDialog
       title="Delete playlist"

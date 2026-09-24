@@ -16,6 +16,7 @@
   import ToastHost from "./lib/components/ToastHost.svelte";
   import ContextMenu from "./lib/components/ContextMenu.svelte";
   import { createNav } from "./lib/nav.svelte";
+  import { errorMessage } from "./lib/errors";
   import { menu } from "./lib/menu.svelte";
   import { matchShortcut, type ShortcutAction } from "./lib/shortcuts";
   import { createToasts } from "./lib/toasts.svelte";
@@ -120,7 +121,7 @@
     try {
       await api.authLogout();
     } catch (e) {
-      error = String(e);
+      toasts.show(errorMessage(e), { severity: "error" });
     }
     clearPagerCache();
     favorites.reset();
@@ -222,7 +223,7 @@
       {:else if nav.route.name === "album"}<Album id={nav.route.id} {player} {favorites} {playlistActions} />
       {:else if nav.route.name === "playlist"}<Playlist {nav} id={nav.route.id} {player} {favorites} {playlistActions} {toasts} />
       {:else if nav.route.name === "artist"}<Artist id={nav.route.id} {favorites} />
-      {:else if nav.route.name === "settings"}<Settings {player} onQualityDisplay={(mode) => (qualityDisplay = mode)} />{/if}
+      {:else if nav.route.name === "settings"}<Settings {player} {toasts} onQualityDisplay={(mode) => (qualityDisplay = mode)} />{/if}
     </main>
     {#if nav.queueOpen}<aside class="queue"><QueueRail {player} /></aside>{/if}
     <PlayerBar {player} {qualityDisplay} {favorites} />

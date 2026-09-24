@@ -1,13 +1,18 @@
 <script lang="ts">
   import { api, type CacheStatus, type Config, type OutputDevice } from "../lib/api";
   import ErrorState from "../lib/components/ErrorState.svelte";
+  import Loading from "../lib/components/Loading.svelte";
+  import { errorMessage } from "../lib/errors";
   import type { QualityDisplay } from "../lib/quality";
+  import type { Toasts } from "../lib/toasts.svelte";
   import type { Player } from "../lib/player.svelte";
   import { SHORTCUTS } from "../lib/shortcuts";
   let {
     player,
+    toasts,
     onQualityDisplay,
-  }: { player: Player; onQualityDisplay: (mode: QualityDisplay) => void } = $props();
+  }: { player: Player; toasts: Toasts; onQualityDisplay: (mode: QualityDisplay) => void } =
+    $props();
   let devices = $state<OutputDevice[]>([]);
   let config = $state<Config | null>(null);
   let cacheStatus = $state<CacheStatus | null>(null);
@@ -15,7 +20,7 @@
   let error = $state("");
 
   function apply(failure: unknown) {
-    error = String(failure);
+    toasts.show(errorMessage(failure), { severity: "error" });
   }
 
   function refreshCacheStatus() {
@@ -48,7 +53,7 @@
       }
       config = next;
     } catch (e) {
-      apply(e);
+      error = String(e);
     }
   }
 
@@ -117,10 +122,9 @@
   {#if error}
     <ErrorState message={error} onRetry={load} />
   {:else}
-    <p class="muted">Loading…</p>
+    <Loading />
   {/if}
 {:else}
-  {#if error}<p style="color:#ff6b6b">{error}</p>{/if}
   <h3>Audio output</h3>
   <select
     value={config.audio.output_device}
