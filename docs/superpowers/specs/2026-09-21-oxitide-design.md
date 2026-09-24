@@ -151,6 +151,10 @@ Each phase gets its own spec → plan → implementation cycle.
 
 **Phase 1 spec:** `docs/superpowers/specs/2026-09-21-oxitide-phase1-design.md`
 
+**Post-MVP order:** superseded by
+`docs/superpowers/specs/2026-09-24-oxitide-post-mvp-roadmap.md` (owner-confirmed
+2026-09-24; its tracks replace the Phase 2–4 ordering above).
+
 ## 10. Phase 0 Probe Plan — COMPLETE
 
 All work was throwaway, isolated in `%TEMP%\opencode\oxitide-spike` (nothing committed to
