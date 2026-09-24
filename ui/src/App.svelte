@@ -160,7 +160,7 @@
       {:else if nav.route.name === "search"}<Search {nav} {player} {favorites} {playlistActions} />
       {:else if nav.route.name === "library"}<Library {nav} {player} {favorites} />
       {:else if nav.route.name === "album"}<Album id={nav.route.id} {player} {favorites} {playlistActions} />
-      {:else if nav.route.name === "playlist"}<Playlist id={nav.route.id} {player} {favorites} />
+      {:else if nav.route.name === "playlist"}<Playlist {nav} id={nav.route.id} {player} {favorites} {playlistActions} {notice} />
       {:else if nav.route.name === "artist"}<Artist id={nav.route.id} {favorites} />
       {:else if nav.route.name === "settings"}<Settings {player} onQualityDisplay={(mode) => (qualityDisplay = mode)} />{/if}
     </main>
