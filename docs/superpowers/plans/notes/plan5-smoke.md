@@ -18,20 +18,30 @@
 - [x] Window geometry survives a restart; a maximized window reopens maximized.
 - [x] A saved position on a disconnected monitor is ignored: the window opens at the default position with its saved size (edit config.toml to an off-screen position to simulate).
 - [x] %APPDATA%\OxiTide\logs\oxitide.<date>.log exists and grows; Settings → Logs shows the directory and Open logs folder opens Explorer there.
-- [ ] Library with a large favorites list: the first page paints quickly, the
+- [x] Library with a large favorites list: the first page paints quickly, the
       list completes on its own (no scrolling required), the label reads
       "2141 tracks (225 unavailable)", and "Play all" queues the full list.
-- [ ] Playlist paging behaves the same (the 704-track playlist loads without
+      Verified 2026-09-24 on `fix/plan5-pager-short-pages`.
+- [x] Playlist paging behaves the same (the 704-track playlist loads without
       scrolling and reads "704 tracks"); revisiting Library/Playlist within a
       session does not refetch (session cache); scrolling a long list is smooth
-      (virtualized rows).
+      (virtualized rows). Verified 2026-09-24 on the same branch.
 
 ## Notes
 
-The manual run on 2026-09-24 passed everything except the two paging items:
-paging stopped before the reported total (favorites 95/2366, playlist 682/702),
-fixed on `fix/plan5-pager-short-pages` — see the findings below. Re-run those
-two items after the fix and tick them.
+The manual run on 2026-09-24 initially passed everything except the two paging
+items (favorites 95/2366, playlist 682/702). Both were fixed on
+`fix/plan5-pager-short-pages` and re-verified by the owner: favorites load to
+"2141 tracks (225 unavailable)" and the playlist to "704 tracks", with no
+scrolling required. All Plan 5 smoke items are closed.
+
+## Follow-ups (not in Plan 5)
+
+- **Loading indicator next to the track count.** While the pager is still
+  loading, show a small spinner beside the `N tracks` label (or the track
+  number column) so it is clear that more rows are incoming. Deferred to the
+  post-MVP UX pack; the first page paints fast and the remainder lands in about
+  a second, so this is polish rather than a fix.
 
 ## Smoke findings (2026-09-24)
 
@@ -84,5 +94,5 @@ two items after the fix and tick them.
 - Tests: `ui/src/lib/pager.test.ts` grew to 23 cases (short-page fix, in-flight
   sharing, `unavailable`, burst window math/order/concurrency/resumption, lazy
   fallback); 39 UI tests pass, svelte-check 0/0, Rust gates green. The two
-  paging checklist items above were rewritten for the new behavior and are
-  pending the owner's re-verification.
+  paging checklist items were rewritten for the new behavior and re-verified by
+  the owner on 2026-09-24.
