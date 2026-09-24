@@ -158,7 +158,7 @@
       {#if error}<p style="color:#ff6b6b">{error}</p>{/if}
       {#if nav.route.name === "home"}<Home {nav} />
       {:else if nav.route.name === "search"}<Search {nav} {player} {favorites} {playlistActions} />
-      {:else if nav.route.name === "library"}<Library {nav} {player} {favorites} />
+      {:else if nav.route.name === "library"}<Library {nav} {player} {favorites} {playlistActions} {notice} />
       {:else if nav.route.name === "album"}<Album id={nav.route.id} {player} {favorites} {playlistActions} />
       {:else if nav.route.name === "playlist"}<Playlist {nav} id={nav.route.id} {player} {favorites} {playlistActions} {notice} />
       {:else if nav.route.name === "artist"}<Artist id={nav.route.id} {favorites} />

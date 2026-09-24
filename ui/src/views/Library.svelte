@@ -1,18 +1,39 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import { api, trackToQueueItem, type Album, type Playlist } from "../lib/api";
+  import ConfirmDialog from "../lib/components/ConfirmDialog.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
   import { createTrackPager } from "../lib/pager.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { Nav } from "../lib/nav.svelte";
+  import type { Notice } from "../lib/notice.svelte";
+  import type { PlaylistActions } from "../lib/playlists.svelte";
   import type { Player } from "../lib/player.svelte";
-  let { nav, player, favorites }: { nav: Nav; player: Player; favorites: Favorites } = $props();
+  let {
+    nav,
+    player,
+    favorites,
+    playlistActions,
+    notice,
+  }: {
+    nav: Nav;
+    player: Player;
+    favorites: Favorites;
+    playlistActions: PlaylistActions;
+    notice: Notice;
+  } = $props();
 
   let albums = $state<Album[]>([]);
   let playlists = $state<Playlist[]>([]);
   let loading = $state(true);
   let error = $state("");
+  let editingUuid = $state<string | null>(null);
+  let editTitle = $state("");
+  let deleting = $state<Playlist | null>(null);
+  // Captured at mount so the revision effect only refreshes after a create
+  // that happens while this view is alive.
+  let revisionSeen = untrack(() => playlistActions.revision);
 
   const favoritesPager = createTrackPager("favorites", (offset, limit) =>
     api.getFavoriteTracksPage(offset, limit),
@@ -27,6 +48,14 @@
       error = String(e);
     } finally {
       loading = false;
+    }
+  }
+
+  async function loadPlaylists() {
+    try {
+      playlists = await api.getUserPlaylists();
+    } catch (e) {
+      notice.show(String(e));
     }
   }
 
@@ -49,6 +78,46 @@
     for (const id of favorites.pendingRemovalsToDrop(loaded)) favoritesPager.removeItem(id);
   });
 
+  // A playlist created from the picker while this view is mounted.
+  $effect(() => {
+    const revision = playlistActions.revision;
+    if (revision === revisionSeen) return;
+    revisionSeen = revision;
+    untrack(() => void loadPlaylists());
+  });
+
+  function startRename(p: Playlist) {
+    editingUuid = p.uuid;
+    editTitle = p.title;
+  }
+
+  async function saveRename(p: Playlist) {
+    const title = editTitle.trim();
+    if (!title) return;
+    try {
+      await api.renamePlaylist(p.uuid, title, p.description ?? "");
+      playlists = playlists.map((item) => (item.uuid === p.uuid ? { ...item, title } : item));
+      editingUuid = null;
+      notice.show("Playlist renamed");
+    } catch (e) {
+      notice.show(String(e));
+    }
+  }
+
+  async function confirmDelete() {
+    const target = deleting;
+    if (!target) return;
+    try {
+      await api.deletePlaylist(target.uuid);
+      playlists = playlists.filter((item) => item.uuid !== target.uuid);
+      notice.show(`Deleted ${target.title}`);
+    } catch (e) {
+      notice.show(String(e));
+    } finally {
+      deleting = null;
+    }
+  }
+
   async function playFrom(index: number) {
     await favoritesPager.ensureAll();
     if (favoritesPager.error) return;
@@ -68,10 +137,23 @@
 {:else if error}
   <ErrorState message={error} onRetry={load} />
 {:else}
-  <h3>Playlists</h3>
+  <h3>
+    Playlists
+    <button onclick={() => playlistActions.openCreate()}>New playlist</button>
+  </h3>
   <ul>
     {#each playlists as p (p.uuid)}
-      <li><button onclick={() => nav.goto({ name: "playlist", id: p.uuid })}>{p.title}</button></li>
+      <li>
+        {#if editingUuid === p.uuid}
+          <input bind:value={editTitle} aria-label="Playlist name" />
+          <button onclick={() => void saveRename(p)}>Save</button>
+          <button onclick={() => (editingUuid = null)}>Cancel</button>
+        {:else}
+          <button onclick={() => nav.goto({ name: "playlist", id: p.uuid })}>{p.title}</button>
+          <button onclick={() => startRename(p)}>Rename</button>
+          <button onclick={() => (deleting = p)}>Delete</button>
+        {/if}
+      </li>
     {/each}
     {#if playlists.length === 0}<li class="muted">No playlists</li>{/if}
   </ul>
@@ -100,9 +182,18 @@
     onPlay={playFrom}
     onPlayAll={playAll}
     onEndReached={() => void favoritesPager.loadMore()}
+    onAddToPlaylist={(t) => playlistActions.openPicker([t])}
   />
   {#if favoritesPager.error}
     <ErrorState message={favoritesPager.error} onRetry={() => favoritesPager.loadMore()} />
   {/if}
   {#if favoritesPager.loading}<p class="muted">Loading…</p>{/if}
+  {#if deleting}
+    <ConfirmDialog
+      title="Delete playlist"
+      message={`Delete "${deleting.title}"? This cannot be undone.`}
+      onconfirm={confirmDelete}
+      oncancel={() => (deleting = null)}
+    />
+  {/if}
 {/if}
