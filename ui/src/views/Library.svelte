@@ -41,12 +41,12 @@
   });
 
   // An unfavorite from anywhere (this table, the player bar, another view)
-  // removes the row from the loaded list without refetching.
+  // removes the row from the loaded list without refetching — unless it has
+  // since been re-favorited, in which case it stays.
   $effect(() => {
     favorites.trackRevision;
-    const id = favorites.lastUnfavoritedTrackId;
-    if (id === null) return;
-    if (favoritesPager.items.some((t) => t.id === id)) favoritesPager.removeItem(id);
+    const loaded = new Set(favoritesPager.items.map((t) => t.id));
+    for (const id of favorites.pendingRemovalsToDrop(loaded)) favoritesPager.removeItem(id);
   });
 
   async function playFrom(index: number) {

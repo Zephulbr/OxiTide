@@ -96,9 +96,10 @@ export function createTrackPager(
   // The in-flight request task, shared by concurrent `loadMore` callers so
   // `ensureAll` awaits real progress instead of spinning on a resolved promise.
   let inflight: Promise<void> | null = null;
-  /// Removals requested while a page fetch is in flight are applied after it
-  /// settles, so a window fetched before the removal cannot re-add the row.
-  const removals = new Set<number>();
+  /// A removal requested while a page fetch is in flight cannot be applied
+  /// locally (the window's offsets and total may already reflect it), so the
+  /// list is refetched once the fetch settles.
+  let needsResync = false;
 
   function publish() {
     cache.set(key, { items: [...items], total, nextOffset, done });
@@ -130,7 +131,7 @@ export function createTrackPager(
 
   function removeItem(id: number) {
     if (inflight) {
-      removals.add(id);
+      needsResync = true;
       return;
     }
     applyRemoval(id);
@@ -193,9 +194,9 @@ export function createTrackPager(
       } finally {
         loading = false;
         inflight = null;
-        if (removals.size > 0) {
-          for (const id of removals) applyRemoval(id);
-          removals.clear();
+        if (needsResync) {
+          needsResync = false;
+          await refresh();
         }
       }
     })();

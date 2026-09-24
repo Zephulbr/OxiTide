@@ -13,7 +13,8 @@
 - [ ] Hearts are filled for a track, an album, and an artist already in the library (check Album view, Artist view, Search results, PlayerBar).
 - [ ] Favorite a track from Album view → open Library → the track is in the list and the count matches.
 - [ ] Unfavorite a track from the Library list → the row disappears immediately and the count drops by one.
-- [ ] Unfavorite from Album view → open Library → the row is gone and the count is right.
+- [ ] Unfavorite a track in Library, re-favorite it from the PlayerBar, then press Refresh → the track stays and the count is right.
+- [ ] Unfavorite a track from Album view → open Library → the row is gone and the count is right.
 - [ ] Favorite/unfavorite an album and an artist from their pages → Library reflects it on the next visit.
 - [ ] Network off → click a heart → it reverts and the notice strip shows the error; dismiss works.
 - [ ] Session expiry (delete the keyring entry, then click Library) → re-login → hearts hydrate again.

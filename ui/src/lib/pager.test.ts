@@ -572,7 +572,7 @@ describe("track pager", () => {
     expect(b.items).toEqual([]);
   });
 
-  it("defers a removal until an in-flight page settles", async () => {
+  it("refreshes after a removal deferred behind an in-flight page", async () => {
     let resolveSecond: (page: TrackPage) => void = () => {};
     const second = new Promise<TrackPage>((resolve) => {
       resolveSecond = resolve;
@@ -580,21 +580,24 @@ describe("track pager", () => {
     let calls = 0;
     const load = vi.fn(async (offset: number, limit: number) => {
       calls += 1;
-      if (calls === 1) return page([track(1)], offset, limit, 3);
-      return second;
+      if (calls === 1) return page([track(1), track(2)], offset, limit, 3);
+      if (calls === 2) return second;
+      // The post-delete server state: row 1 is gone.
+      return page([track(2), track(3)], offset, limit, 2);
     });
-    const pager = createTrackPager("remove-inflight", load, { pageSize: 1, prefetch: false });
+    const pager = createTrackPager("remove-inflight", load, { pageSize: 2, prefetch: false });
     await pager.loadMore();
     expect(pager.done).toBe(false);
 
     const pending = pager.loadMore();
     pager.removeItem(1);
-    expect(ids(pager.items)).toEqual([1]);
-
-    resolveSecond(page([track(2)], 1, 1, 3));
+    // The in-flight window may already reflect the delete; its total must not
+    // be decremented a second time.
+    resolveSecond(page([track(3)], 2, 2, 2));
     await pending;
 
-    expect(ids(pager.items)).toEqual([2]);
+    expect(ids(pager.items)).toEqual([2, 3]);
     expect(pager.total).toBe(2);
+    expect(pager.done).toBe(true);
   });
 });

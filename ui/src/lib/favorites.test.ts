@@ -142,7 +142,7 @@ describe("favorites store", () => {
     expect(await favorites.toggleTrack(1)).toBe(false);
 
     expect(favorites.trackRevision).toBe(1);
-    expect(favorites.lastUnfavoritedTrackId).toBe(1);
+    expect(favorites.pendingRemovalsToDrop(new Set([1, 2]))).toEqual([1]);
     const fresh = createTrackPager("favorites", load, { pageSize: 2, prefetch: false });
     expect(fresh.items.map((t) => t.id)).toEqual([2]);
     expect(fresh.total).toBe(1);
@@ -182,6 +182,51 @@ describe("favorites store", () => {
     expect(favorites.hasAlbum(2)).toBe(false);
     expect(favorites.hasArtist(3)).toBe(false);
     expect(favorites.trackRevision).toBe(0);
-    expect(favorites.lastUnfavoritedTrackId).toBeNull();
+    expect(favorites.pendingRemovalsToDrop(new Set([1, 2, 3]))).toEqual([]);
+  });
+
+  it("does not report a re-favorited track for removal", async () => {
+    vi.mocked(api.getFavoriteIds).mockResolvedValue({ tracks: [1, 2], albums: [], artists: [] });
+    const favorites = createFavorites();
+    await favorites.hydrate();
+
+    expect(await favorites.toggleTrack(1)).toBe(false);
+    expect(favorites.pendingRemovalsToDrop(new Set([1, 2]))).toEqual([1]);
+
+    expect(await favorites.toggleTrack(1)).toBe(true);
+    expect(favorites.pendingRemovalsToDrop(new Set([1, 2]))).toEqual([]);
+  });
+
+  it("does not resurrect a track unfavorited while a hydrate is in flight", async () => {
+    vi.mocked(api.getFavoriteIds).mockRejectedValueOnce(new Error("offline"));
+    const favorites = createFavorites();
+    await favorites.hydrate();
+    expect(await favorites.toggleTrack(7)).toBe(true);
+
+    let resolveIds: ((ids: FavoriteIds) => void) | null = null;
+    vi.mocked(api.getFavoriteIds).mockImplementation(
+      () =>
+        new Promise<FavoriteIds>((resolve) => {
+          resolveIds = resolve;
+        }),
+    );
+    const hydrating = favorites.hydrate();
+    expect(await favorites.toggleTrack(7)).toBe(false);
+    resolveIds!({ tracks: [7], albums: [], artists: [] });
+    await hydrating;
+
+    expect(favorites.hasTrack(7)).toBe(false);
+  });
+
+  it("hydrates to empty sets without error", async () => {
+    const favorites = createFavorites();
+
+    await favorites.hydrate();
+
+    expect(favorites.hydrated).toBe(true);
+    expect(favorites.error).toBeNull();
+    expect(favorites.hasTrack(1)).toBe(false);
+    expect(favorites.hasAlbum(1)).toBe(false);
+    expect(favorites.hasArtist(1)).toBe(false);
   });
 });
