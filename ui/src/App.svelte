@@ -13,7 +13,9 @@
   import Library from "./views/Library.svelte";
   import Settings from "./views/Settings.svelte";
   import PlaylistPicker from "./lib/components/PlaylistPicker.svelte";
+  import ToastHost from "./lib/components/ToastHost.svelte";
   import { createNav } from "./lib/nav.svelte";
+  import { createToasts } from "./lib/toasts.svelte";
   import { createPlayer } from "./lib/player.svelte";
   import { createFavorites } from "./lib/favorites.svelte";
   import { createNotice } from "./lib/notice.svelte";
@@ -31,7 +33,8 @@
 
   const nav = createNav();
   const player = createPlayer();
-  const favorites = createFavorites();
+  const toasts = createToasts();
+  const favorites = createFavorites(toasts);
   const notice = createNotice();
   const playlistActions = createPlaylistActions(notice);
   let qualityDisplay = $state<QualityDisplay>("compact");
@@ -72,12 +75,6 @@
 
   $effect(() => {
     if (loggedIn) untrack(() => favorites.hydrate());
-  });
-
-  $effect(() => {
-    if (!favorites.error) return;
-    const timer = setTimeout(() => favorites.dismissError(), 6000);
-    return () => clearTimeout(timer);
   });
 
   $effect(() => {
@@ -143,12 +140,6 @@
   <div class="app">
     <Sidebar {nav} onLogout={onLogout} />
     <main class="main">
-      {#if favorites.error}
-        <div class="notice">
-          <span>{favorites.error}</span>
-          <button onclick={() => favorites.dismissError()} aria-label="Dismiss">✕</button>
-        </div>
-      {/if}
       {#if notice.message}
         <div class="notice">
           <span>{notice.message}</span>
@@ -169,6 +160,8 @@
     <PlaylistPicker actions={playlistActions} onnavigate={(id) => nav.goto({ name: "playlist", id })} />
   </div>
 {/if}
+
+<ToastHost {toasts} />
 
 <style>
   .notice {
