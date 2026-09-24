@@ -38,17 +38,17 @@ export function createMenu(): Menu {
 export const menu: Menu = createMenu();
 
 /// Svelte action: `contextmenu` -> preventDefault + show at the pointer.
-export function menuFor(items: () => MenuItem[]) {
-  return (node: HTMLElement) => {
-    function onContextMenu(event: MouseEvent) {
-      event.preventDefault();
-      menu.show(event.clientX, event.clientY, items());
-    }
-    node.addEventListener("contextmenu", onContextMenu);
-    return {
-      destroy() {
-        node.removeEventListener("contextmenu", onContextMenu);
-      },
-    };
+/// Svelte calls actions with `(node, param)`, so the item closure is the
+/// action's parameter, not a curried factory argument.
+export function menuFor(node: HTMLElement, items: () => MenuItem[]) {
+  function onContextMenu(event: MouseEvent) {
+    event.preventDefault();
+    menu.show(event.clientX, event.clientY, items());
+  }
+  node.addEventListener("contextmenu", onContextMenu);
+  return {
+    destroy() {
+      node.removeEventListener("contextmenu", onContextMenu);
+    },
   };
 }

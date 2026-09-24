@@ -1,5 +1,7 @@
 <script lang="ts">
   import { api } from "../api";
+  import { menuFor } from "../menu.svelte";
+  import { queueMenuItems } from "../menus";
   import type { Player } from "../player.svelte";
   let { player }: { player: Player } = $props();
   let dragFrom = $state<number | null>(null);
@@ -21,6 +23,8 @@
     {#each player.state.queue as item, i (item.track_id + "-" + i)}
       <li
         draggable="true"
+        use:menuFor={() =>
+          queueMenuItems({ index: i, playNow: () => jump(i), remove: () => player.remove(i) })}
         ondragstart={() => (dragFrom = i)}
         ondragover={(e) => e.preventDefault()}
         ondrop={() => { if (dragFrom !== null && dragFrom !== i) player.reorder(dragFrom, i); dragFrom = null; }}

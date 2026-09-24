@@ -8,6 +8,8 @@
   import type { Favorites } from "../lib/favorites.svelte";
   import type { Nav } from "../lib/nav.svelte";
   import { errorMessage } from "../lib/errors";
+  import { menuFor } from "../lib/menu.svelte";
+  import { libraryPlaylistMenuItems } from "../lib/menus";
   import type { Toasts } from "../lib/toasts.svelte";
   import type { PlaylistActions } from "../lib/playlists.svelte";
   import type { Player } from "../lib/player.svelte";
@@ -144,7 +146,15 @@
   </h3>
   <ul>
     {#each playlists as p (p.uuid)}
-      <li>
+      <li
+        use:menuFor={() =>
+          libraryPlaylistMenuItems({
+            playlist: p,
+            open: () => nav.goto({ name: "playlist", id: p.uuid }),
+            rename: () => startRename(p),
+            remove: () => (deleting = p),
+          })}
+      >
         {#if editingUuid === p.uuid}
           <input bind:value={editTitle} aria-label="Playlist name" />
           <button onclick={() => void saveRename(p)}>Save</button>

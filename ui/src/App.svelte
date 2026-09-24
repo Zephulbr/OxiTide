@@ -14,7 +14,9 @@
   import Settings from "./views/Settings.svelte";
   import PlaylistPicker from "./lib/components/PlaylistPicker.svelte";
   import ToastHost from "./lib/components/ToastHost.svelte";
+  import ContextMenu from "./lib/components/ContextMenu.svelte";
   import { createNav } from "./lib/nav.svelte";
+  import { menu } from "./lib/menu.svelte";
   import { createToasts } from "./lib/toasts.svelte";
   import { createPlayer } from "./lib/player.svelte";
   import { createFavorites } from "./lib/favorites.svelte";
@@ -154,3 +156,4 @@
 {/if}
 
 <ToastHost {toasts} />
+<ContextMenu {menu} />
