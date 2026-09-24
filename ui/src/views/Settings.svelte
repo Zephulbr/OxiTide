@@ -3,6 +3,7 @@
   import ErrorState from "../lib/components/ErrorState.svelte";
   import type { QualityDisplay } from "../lib/quality";
   import type { Player } from "../lib/player.svelte";
+  import { SHORTCUTS } from "../lib/shortcuts";
   let {
     player,
     onQualityDisplay,
@@ -237,6 +238,12 @@
   <p class="muted">Directory: {logsDir || "unavailable"}</p>
   <p><button onclick={() => api.openLogsFolder().catch(apply)}>Open logs folder</button></p>
 {/if}
+<h3>Keyboard shortcuts</h3>
+<ul>
+  {#each SHORTCUTS as shortcut (shortcut.keys)}
+    <li><kbd>{shortcut.keys}</kbd> <span class="muted">{shortcut.description}</span></li>
+  {/each}
+</ul>
 {#if player.state.bit_perfect_notice}
   <p style="color:#e0a030">{player.state.bit_perfect_notice}</p>
 {/if}

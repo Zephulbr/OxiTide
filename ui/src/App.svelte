@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { tick, untrack } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import Sidebar from "./lib/components/Sidebar.svelte";
   import PlayerBar from "./lib/components/PlayerBar.svelte";
@@ -17,6 +17,7 @@
   import ContextMenu from "./lib/components/ContextMenu.svelte";
   import { createNav } from "./lib/nav.svelte";
   import { menu } from "./lib/menu.svelte";
+  import { matchShortcut, type ShortcutAction } from "./lib/shortcuts";
   import { createToasts } from "./lib/toasts.svelte";
   import { createPlayer } from "./lib/player.svelte";
   import { createFavorites } from "./lib/favorites.svelte";
@@ -126,6 +127,80 @@
     playlistActions.reset();
     loggedIn = false;
   }
+
+  /// Side buttons can fire both mousedown and auxclick for one press; ignore
+  /// repeats inside this window so navigation happens exactly once.
+  let sideButtonAt = 0;
+
+  async function focusSearch() {
+    if (nav.route.name !== "search") nav.goto({ name: "search" });
+    await tick();
+    document.getElementById("search-input")?.focus();
+  }
+
+  function runShortcut(action: ShortcutAction) {
+    const state = player.state;
+    switch (action) {
+      case "play-pause":
+        if (state.current) player.playPause();
+        break;
+      case "seek-back":
+        if (state.current) player.seek(Math.max(0, state.position_ms - 5000));
+        break;
+      case "seek-forward": {
+        if (!state.current) break;
+        const limit = state.duration_ms > 0 ? state.duration_ms : state.position_ms + 5000;
+        player.seek(Math.min(limit, state.position_ms + 5000));
+        break;
+      }
+      case "prev-track":
+        if (state.queue.length > 0) player.prev();
+        break;
+      case "next-track":
+        if (state.queue.length > 0) player.next();
+        break;
+      case "volume-up":
+        player.setVolume(Math.min(1, state.volume + 0.05));
+        break;
+      case "volume-down":
+        player.setVolume(Math.max(0, state.volume - 0.05));
+        break;
+      case "focus-search":
+        void focusSearch();
+        break;
+      case "history-back":
+        nav.back();
+        break;
+      case "history-forward":
+        nav.forward();
+        break;
+      case "escape":
+        if (menu.open) menu.close();
+        else if (nav.queueOpen) nav.toggleQueue();
+        break;
+    }
+  }
+
+  function onKeydown(event: KeyboardEvent) {
+    if (!loggedIn) return;
+    const overlayOpen = document.querySelector('[role="dialog"]') !== null;
+    const action = matchShortcut(event, { overlayOpen });
+    if (!action) return;
+    if (action === "escape" && !menu.open && !nav.queueOpen) return;
+    event.preventDefault();
+    runShortcut(action);
+  }
+
+  function onSideButton(event: MouseEvent) {
+    if (!loggedIn) return;
+    if (event.button !== 3 && event.button !== 4) return;
+    event.preventDefault();
+    const now = Date.now();
+    if (now - sideButtonAt < 50) return;
+    sideButtonAt = now;
+    if (event.button === 3) nav.back();
+    else nav.forward();
+  }
 </script>
 
 {#if booting}
@@ -155,5 +230,6 @@
   </div>
 {/if}
 
+<svelte:window onkeydown={onKeydown} onmousedown={onSideButton} onauxclick={onSideButton} />
 <ToastHost {toasts} />
 <ContextMenu {menu} />

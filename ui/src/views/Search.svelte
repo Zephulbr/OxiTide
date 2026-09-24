@@ -33,7 +33,12 @@
 </script>
 
 <h2>Search</h2>
-<input bind:value={query} onkeydown={(e) => e.key === "Enter" && load()} placeholder="Search TIDAL" />
+<input
+  id="search-input"
+  bind:value={query}
+  onkeydown={(e) => e.key === "Enter" && load()}
+  placeholder="Search TIDAL"
+/>
 {#if loading}
   <p class="muted">Searching…</p>
 {:else if error}
