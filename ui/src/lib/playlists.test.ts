@@ -109,6 +109,22 @@ describe("playlist actions store", () => {
     expect(api.addPlaylistTracks).toHaveBeenCalledWith("p", [7], false);
   });
 
+  it("dedupes add-both ids in phase two", async () => {
+    vi.mocked(api.addPlaylistTracks).mockResolvedValueOnce([]).mockResolvedValueOnce([7]);
+    const notice = createNotice();
+    const actions = createPlaylistActions(notice);
+    actions.openPicker([track(7), track(7)]);
+    await actions.addTo(playlist("p"));
+
+    actions.setChoice(7, true);
+    await actions.confirmDuplicates();
+
+    expect(api.addPlaylistTracks).toHaveBeenLastCalledWith("p", [7], true);
+    expect(api.addPlaylistTracks).toHaveBeenCalledTimes(2);
+    expect(notice.message).toContain("1 added");
+    expect(notice.message).toContain("0 kept one of");
+  });
+
   it("surfaces a failed add and keeps the picker open with its pending tracks", async () => {
     vi.mocked(api.addPlaylistTracks).mockRejectedValue(new Error("boom"));
     const notice = createNotice();

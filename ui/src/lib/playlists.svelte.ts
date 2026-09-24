@@ -104,11 +104,16 @@ export function createPlaylistActions(notice: Notice): PlaylistActions {
 
   async function confirmDuplicates() {
     if (busy || !target) return;
-    const addBoth = duplicates.filter((t) => choices.get(t.id) === true).map((t) => t.id);
+    const addBoth = dedupe(
+      duplicates.filter((t) => choices.get(t.id) === true).map((t) => t.id),
+    );
+    const uniqueDuplicates = dedupe(duplicates.map((t) => t.id));
     busy = true;
     try {
       if (addBoth.length > 0) await api.addPlaylistTracks(target.uuid, addBoth, true);
-      notice.show(`${addBoth.length} added, ${duplicates.length - addBoth.length} kept one of`);
+      notice.show(
+        `${addBoth.length} added, ${uniqueDuplicates.length - addBoth.length} kept one of`,
+      );
       close();
     } catch (e) {
       notice.show(String(e));
