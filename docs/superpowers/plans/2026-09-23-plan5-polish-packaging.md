@@ -2301,7 +2301,7 @@ git commit -m "feat(ui): restore the queue after a session expiry"
 - Consumes: Task 6 (`TrackPage`).
 - Produces (used by Tasks 11, 12):
   - `createTrackPager(key: string, load: (offset: number, limit: number) => Promise<TrackPage>, pageSize = 100, dedupe = true) -> Pager`.
-  - `Pager { items: Track[], total: number, loading: boolean, error: string, done: boolean, loadMore(), ensureAll(), refresh() }`.
+  - `Pager { items: Track[], total: number, loading: boolean, error: string, done: boolean, unavailable: number, loadMore(), ensureAll(), refresh() }`.
 
 - [ ] **Step 1: Write the failing tests**
 
