@@ -61,6 +61,46 @@ impl TidalClient {
         Self::decode(resp).await
     }
 
+    /// Send a form-encoded POST, refreshing once on 401 and honoring a
+    /// `Retry-After` hint once on 429.
+    pub async fn post_form(&self, path: &str, form: &[(&str, String)]) -> Result<()> {
+        let token = self.access_token();
+        let mut resp = self.send_mutation(reqwest::Method::POST, path, form, &token).await?;
+        if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+            self.try_refresh(&token).await?;
+            resp = self
+                .send_mutation(reqwest::Method::POST, path, form, &self.access_token())
+                .await?;
+        }
+        if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            tokio::time::sleep(Self::retry_after(&resp)).await;
+            resp = self
+                .send_mutation(reqwest::Method::POST, path, form, &self.access_token())
+                .await?;
+        }
+        Self::decode_empty(resp).await
+    }
+
+    /// Send a DELETE, refreshing once on 401 and honoring a `Retry-After` hint
+    /// once on 429.
+    pub async fn delete(&self, path: &str) -> Result<()> {
+        let token = self.access_token();
+        let mut resp = self.send_mutation(reqwest::Method::DELETE, path, &[], &token).await?;
+        if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+            self.try_refresh(&token).await?;
+            resp = self
+                .send_mutation(reqwest::Method::DELETE, path, &[], &self.access_token())
+                .await?;
+        }
+        if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            tokio::time::sleep(Self::retry_after(&resp)).await;
+            resp = self
+                .send_mutation(reqwest::Method::DELETE, path, &[], &self.access_token())
+                .await?;
+        }
+        Self::decode_empty(resp).await
+    }
+
     /// Walk every page of a TIDAL list endpoint, following `totalNumberOfItems`
     /// and `offset`, returning the concatenated `items`.
     pub async fn get_all_pages<T: DeserializeOwned>(
@@ -111,6 +151,37 @@ impl TidalClient {
         Ok(self.http.get(url).bearer_auth(token).query(&query).send().await?)
     }
 
+    async fn send_mutation(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        form: &[(&str, String)],
+        token: &str,
+    ) -> Result<reqwest::Response> {
+        let query: Vec<(&str, String)> = vec![("countryCode", self.session.country_code.clone())];
+        let url = format!(
+            "{}/{}",
+            self.base_url.trim_end_matches('/'),
+            path.trim_start_matches('/')
+        );
+        let mut request = self.http.request(method, url).bearer_auth(token).query(&query);
+        if !form.is_empty() {
+            request = request.form(form);
+        }
+        Ok(request.send().await?)
+    }
+
+    /// `Retry-After` in whole seconds, capped at 5s; a missing or HTTP-date
+    /// value falls back to 1s.
+    fn retry_after(resp: &reqwest::Response) -> std::time::Duration {
+        resp.headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.trim().parse::<u64>().ok())
+            .map(|secs| std::time::Duration::from_secs(secs.min(5)))
+            .unwrap_or(std::time::Duration::from_secs(1))
+    }
+
     /// Refresh the access token once per expiry, even when many requests hit a
     /// 401 concurrently. `stale_access_token` is the token that just failed; if
     /// another task already refreshed while we waited for the lock, the current
@@ -148,14 +219,23 @@ impl TidalClient {
     }
 
     async fn decode<T: DeserializeOwned>(resp: reqwest::Response) -> Result<T> {
+        Ok(Self::decode_status(resp).await?.json().await?)
+    }
+
+    /// Map a non-success status to an error, returning the response otherwise.
+    async fn decode_status(resp: reqwest::Response) -> Result<reqwest::Response> {
         match resp.status() {
-            s if s.is_success() => Ok(resp.json().await?),
+            s if s.is_success() => Ok(resp),
             reqwest::StatusCode::UNAUTHORIZED => Err(Error::Unauthorized),
             reqwest::StatusCode::FORBIDDEN => Err(Error::Forbidden),
             reqwest::StatusCode::NOT_FOUND => Err(Error::NotFound(resp.url().path().to_string())),
             reqwest::StatusCode::TOO_MANY_REQUESTS => Err(Error::RateLimited),
             s => Err(Error::Api { status: s.as_u16(), message: resp.text().await.unwrap_or_default() }),
         }
+    }
+
+    async fn decode_empty(resp: reqwest::Response) -> Result<()> {
+        Self::decode_status(resp).await.map(|_| ())
     }
 }
 
@@ -164,7 +244,7 @@ mod tests {
     use super::*;
     use crate::token_store::MemoryStore;
     use serde::Deserialize;
-    use wiremock::matchers::{method, path};
+    use wiremock::matchers::{body_string_contains, header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[derive(Deserialize, PartialEq, Debug)]
@@ -300,5 +380,100 @@ mod tests {
             session(), tokens(), Arc::new(MemoryStore::default()));
         assert!(matches!(client.get::<Thing>("a", &[]).await.unwrap_err(), Error::RateLimited));
         assert!(matches!(client.get::<Thing>("b", &[]).await.unwrap_err(), Error::NotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn post_form_sends_form_and_succeeds() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST")).and(path("/users/1/favorites/tracks"))
+            .and(header("authorization", "Bearer old"))
+            .and(body_string_contains("trackId=7"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server).await;
+        let client = TidalClient::new(reqwest::Client::new(), server.uri(), format!("{}/token", server.uri()),
+            session(), tokens(), Arc::new(MemoryStore::default()));
+        client
+            .post_form("users/1/favorites/tracks", &[("trackId", "7".to_string())])
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn delete_maps_no_content_to_ok() {
+        let server = MockServer::start().await;
+        Mock::given(method("DELETE")).and(path("/users/1/favorites/tracks/7"))
+            .and(header("authorization", "Bearer old"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&server).await;
+        let client = TidalClient::new(reqwest::Client::new(), server.uri(), format!("{}/token", server.uri()),
+            session(), tokens(), Arc::new(MemoryStore::default()));
+        client.delete("users/1/favorites/tracks/7").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn post_form_refreshes_once_on_401() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST")).and(path("/users/1/favorites/tracks"))
+            .and(header("authorization", "Bearer old"))
+            .respond_with(ResponseTemplate::new(401)).mount(&server).await;
+        Mock::given(method("POST")).and(path("/users/1/favorites/tracks"))
+            .and(header("authorization", "Bearer new"))
+            .respond_with(ResponseTemplate::new(200)).mount(&server).await;
+        Mock::given(method("POST")).and(path("/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": "new", "refresh_token": "rt2", "token_type": "Bearer", "expires_in": 3600
+            })))
+            .mount(&server).await;
+        let store = Arc::new(MemoryStore::default());
+        let client = TidalClient::new(reqwest::Client::new(), server.uri(), format!("{}/token", server.uri()),
+            session(), tokens(), store.clone());
+        client
+            .post_form("users/1/favorites/tracks", &[("trackId", "7".to_string())])
+            .await
+            .unwrap();
+        assert_eq!(store.load().unwrap().unwrap().access_token, "new");
+    }
+
+    #[tokio::test]
+    async fn post_form_retries_once_on_429_with_retry_after() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let server = MockServer::start().await;
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let responder = {
+            let attempts = attempts.clone();
+            move |_req: &wiremock::Request| {
+                if attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                    ResponseTemplate::new(429).insert_header("retry-after", "0")
+                } else {
+                    ResponseTemplate::new(200)
+                }
+            }
+        };
+        Mock::given(method("POST")).and(path("/users/1/favorites/tracks"))
+            .respond_with(responder)
+            .expect(2)
+            .mount(&server).await;
+        let client = TidalClient::new(reqwest::Client::new(), server.uri(), format!("{}/token", server.uri()),
+            session(), tokens(), Arc::new(MemoryStore::default()));
+        client
+            .post_form("users/1/favorites/tracks", &[("trackId", "7".to_string())])
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn post_form_gives_up_after_a_second_429() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST")).and(path("/users/1/favorites/tracks"))
+            .respond_with(ResponseTemplate::new(429).insert_header("retry-after", "0"))
+            .expect(2)
+            .mount(&server).await;
+        let client = TidalClient::new(reqwest::Client::new(), server.uri(), format!("{}/token", server.uri()),
+            session(), tokens(), Arc::new(MemoryStore::default()));
+        let err = client
+            .post_form("users/1/favorites/tracks", &[("trackId", "7".to_string())])
+            .await
+            .unwrap_err();
+        assert!(matches!(err, Error::RateLimited), "expected RateLimited, got {err:?}");
     }
 }
