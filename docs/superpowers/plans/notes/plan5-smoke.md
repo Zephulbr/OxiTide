@@ -81,8 +81,8 @@ two items after the fix and tick them.
 - **Cross-session list persistence is deferred** (owner decision on
   2026-09-24): the session cache plus the prefetch keeps data fresh enough for
   now; an on-disk, per-account list cache is tracked as its own future task.
-- Tests: `ui/src/lib/pager.test.ts` grew to 22 cases (short-page fix, in-flight
+- Tests: `ui/src/lib/pager.test.ts` grew to 23 cases (short-page fix, in-flight
   sharing, `unavailable`, burst window math/order/concurrency/resumption, lazy
-  fallback); 38 UI tests pass, svelte-check 0/0, Rust gates green. The two
+  fallback); 39 UI tests pass, svelte-check 0/0, Rust gates green. The two
   paging checklist items above were rewritten for the new behavior and are
   pending the owner's re-verification.
