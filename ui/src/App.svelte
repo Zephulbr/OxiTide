@@ -148,11 +148,11 @@
       {:else if nav.route.name === "library"}<Library {nav} {player} {favorites} />
       {:else if nav.route.name === "album"}<Album id={nav.route.id} {player} {favorites} />
       {:else if nav.route.name === "playlist"}<Playlist id={nav.route.id} {player} {favorites} />
-      {:else if nav.route.name === "artist"}<Artist id={nav.route.id} />
+      {:else if nav.route.name === "artist"}<Artist id={nav.route.id} {favorites} />
       {:else if nav.route.name === "settings"}<Settings {player} onQualityDisplay={(mode) => (qualityDisplay = mode)} />{/if}
     </main>
     {#if nav.queueOpen}<aside class="queue"><QueueRail {player} /></aside>{/if}
-    <PlayerBar {player} {qualityDisplay} />
+    <PlayerBar {player} {qualityDisplay} {favorites} />
   </div>
 {/if}
 

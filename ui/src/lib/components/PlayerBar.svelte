@@ -2,8 +2,9 @@
   import { formatDuration } from "../format";
   import { formatQuality, type QualityDisplay } from "../quality";
   import type { RepeatMode } from "../api";
+  import type { Favorites } from "../favorites.svelte";
   import type { Player } from "../player.svelte";
-  let { player, qualityDisplay }: { player: Player; qualityDisplay: QualityDisplay } = $props();
+  let { player, qualityDisplay, favorites }: { player: Player; qualityDisplay: QualityDisplay; favorites: Favorites } = $props();
 
   let dragging = $state(false);
   let dragValue = $state(0);
@@ -24,6 +25,7 @@
 
 <div class="player">
   {#if player.state.current}
+    {@const trackId = player.state.current.track_id}
     <div class="now">
       <strong>{player.state.current.title}</strong>
       <span class="muted">{player.state.current.artist}</span>
@@ -32,6 +34,12 @@
         <span class="badge" title="Exclusive output at the source's native format">Bit-perfect</span>
       {/if}
     </div>
+    <button
+      class:on={favorites.hasTrack(trackId)}
+      onclick={() => favorites.toggleTrack(trackId)}
+      aria-label={favorites.hasTrack(trackId) ? "Unfavorite" : "Favorite"}
+      title={favorites.hasTrack(trackId) ? "Unfavorite" : "Favorite"}
+    >{favorites.hasTrack(trackId) ? "♥" : "♡"}</button>
     <button onclick={() => player.prev()} aria-label="Previous">⏮</button>
     <button onclick={() => player.playPause()} aria-label="Play/Pause">
       {player.state.playing ? "⏸" : "▶"}
@@ -83,4 +91,5 @@
 
 <style>
   .active { color: var(--accent); }
+  .on { color: var(--accent); }
 </style>

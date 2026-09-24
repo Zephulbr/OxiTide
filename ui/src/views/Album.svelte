@@ -33,7 +33,16 @@
   <ErrorState message={error} onRetry={load} />
 {:else}
   {#if album}
-    <h2>{album.title}</h2>
+    {@const albumId = album.id}
+    <h2>
+      {album.title}
+      <button
+        class:on={favorites.hasAlbum(albumId)}
+        onclick={() => favorites.toggleAlbum(albumId)}
+        aria-label={favorites.hasAlbum(albumId) ? "Unfavorite album" : "Favorite album"}
+        title={favorites.hasAlbum(albumId) ? "Unfavorite album" : "Favorite album"}
+      >{favorites.hasAlbum(albumId) ? "♥" : "♡"}</button>
+    </h2>
     <p class="muted">{album.artists.map((a) => a.name).join(", ")} · {album.numberOfTracks} tracks</p>
   {/if}
   <TrackTable {tracks} {player} {favorites} />

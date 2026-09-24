@@ -1,7 +1,8 @@
 <script lang="ts">
   import { api, type Artist as ArtistT } from "../lib/api";
   import ErrorState from "../lib/components/ErrorState.svelte";
-  let { id }: { id: number } = $props();
+  import type { Favorites } from "../lib/favorites.svelte";
+  let { id, favorites }: { id: number; favorites: Favorites } = $props();
   let artist = $state<ArtistT | null>(null);
   let loading = $state(true);
   let error = $state("");
@@ -28,6 +29,15 @@
 {:else if error}
   <ErrorState message={error} onRetry={load} />
 {:else if artist}
-  <h2>{artist.name}</h2>
+  {@const artistId = artist.id}
+  <h2>
+    {artist.name}
+    <button
+      class:on={favorites.hasArtist(artistId)}
+      onclick={() => favorites.toggleArtist(artistId)}
+      aria-label={favorites.hasArtist(artistId) ? "Unfavorite artist" : "Favorite artist"}
+      title={favorites.hasArtist(artistId) ? "Unfavorite artist" : "Favorite artist"}
+    >{favorites.hasArtist(artistId) ? "♥" : "♡"}</button>
+  </h2>
   <p class="muted">Artist</p>
 {/if}
