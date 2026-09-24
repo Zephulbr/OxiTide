@@ -11,6 +11,8 @@
     onPlay,
     onPlayAll,
     onEndReached,
+    onAddToPlaylist,
+    playlistActions,
     maxHeight = "min(60vh, 560px)",
   }: {
     tracks: Track[];
@@ -20,6 +22,17 @@
     onPlayAll?: () => void | Promise<void>;
     /// Called when the list is scrolled near its end; used for lazy paging.
     onEndReached?: () => void;
+    /// Renders the "add to playlist" row action. Uses ⊕ to stay distinct
+    /// from the "＋" queue action.
+    onAddToPlaylist?: (track: Track) => void;
+    /// Playlist-view row editing (move up/down, remove). `disabled` is set by
+    /// the parent until the pager has the complete list.
+    playlistActions?: {
+      onRemove(index: number): void;
+      onMove(index: number, delta: -1 | 1): void;
+      busy: boolean;
+      disabled: boolean;
+    };
     maxHeight?: string;
   } = $props();
 
@@ -110,12 +123,39 @@
               aria-label="Add to queue"
               title="Add to queue"
             >＋</button>
+            {#if onAddToPlaylist}
+              <button
+                onclick={() => onAddToPlaylist(t)}
+                aria-label="Add to playlist"
+                title="Add to playlist"
+              >⊕</button>
+            {/if}
             <button
               class:on={favorites.hasTrack(t.id)}
               onclick={() => favorites.toggleTrack(t.id)}
               aria-label={favorites.hasTrack(t.id) ? "Unfavorite" : "Favorite"}
               title={favorites.hasTrack(t.id) ? "Unfavorite" : "Favorite"}
             >{favorites.hasTrack(t.id) ? "♥" : "♡"}</button>
+            {#if playlistActions}
+              <button
+                onclick={() => playlistActions.onMove(index, -1)}
+                disabled={playlistActions.busy || playlistActions.disabled || index === 0}
+                aria-label="Move up"
+                title="Move up"
+              >↑</button>
+              <button
+                onclick={() => playlistActions.onMove(index, 1)}
+                disabled={playlistActions.busy || playlistActions.disabled || index === tracks.length - 1}
+                aria-label="Move down"
+                title="Move down"
+              >↓</button>
+              <button
+                onclick={() => playlistActions.onRemove(index)}
+                disabled={playlistActions.busy || playlistActions.disabled}
+                aria-label="Remove from playlist"
+                title="Remove from playlist"
+              >✕</button>
+            {/if}
           </td>
           <td class="muted">{index + 1}</td>
           <td class="title-cell"><div class="title-text">{t.title}<span class="muted"> · {t.artists.map((a) => a.name).join(", ")}</span></div></td>

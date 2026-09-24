@@ -12,9 +12,12 @@
   import Search from "./views/Search.svelte";
   import Library from "./views/Library.svelte";
   import Settings from "./views/Settings.svelte";
+  import PlaylistPicker from "./lib/components/PlaylistPicker.svelte";
   import { createNav } from "./lib/nav.svelte";
   import { createPlayer } from "./lib/player.svelte";
   import { createFavorites } from "./lib/favorites.svelte";
+  import { createNotice } from "./lib/notice.svelte";
+  import { createPlaylistActions } from "./lib/playlists.svelte";
   import { clearPagerCache } from "./lib/pager.svelte";
   import { api, type QueueItem } from "./lib/api";
   import type { QualityDisplay } from "./lib/quality";
@@ -29,6 +32,8 @@
   const nav = createNav();
   const player = createPlayer();
   const favorites = createFavorites();
+  const notice = createNotice();
+  const playlistActions = createPlaylistActions(notice);
   let qualityDisplay = $state<QualityDisplay>("compact");
   let loggedIn = $state(false);
   let booting = $state(true);
@@ -51,6 +56,7 @@
       };
       loggedIn = false;
       favorites.reset();
+      playlistActions.reset();
     });
     return () => {
       unlisten.then((off) => off());
@@ -120,6 +126,7 @@
     }
     clearPagerCache();
     favorites.reset();
+    playlistActions.reset();
     loggedIn = false;
   }
 </script>
@@ -142,17 +149,24 @@
           <button onclick={() => favorites.dismissError()} aria-label="Dismiss">✕</button>
         </div>
       {/if}
+      {#if notice.message}
+        <div class="notice">
+          <span>{notice.message}</span>
+          <button onclick={() => notice.dismiss()} aria-label="Dismiss">✕</button>
+        </div>
+      {/if}
       {#if error}<p style="color:#ff6b6b">{error}</p>{/if}
       {#if nav.route.name === "home"}<Home {nav} />
-      {:else if nav.route.name === "search"}<Search {nav} {player} {favorites} />
-      {:else if nav.route.name === "library"}<Library {nav} {player} {favorites} />
-      {:else if nav.route.name === "album"}<Album id={nav.route.id} {player} {favorites} />
-      {:else if nav.route.name === "playlist"}<Playlist id={nav.route.id} {player} {favorites} />
+      {:else if nav.route.name === "search"}<Search {nav} {player} {favorites} {playlistActions} />
+      {:else if nav.route.name === "library"}<Library {nav} {player} {favorites} {playlistActions} {notice} />
+      {:else if nav.route.name === "album"}<Album id={nav.route.id} {player} {favorites} {playlistActions} />
+      {:else if nav.route.name === "playlist"}<Playlist {nav} id={nav.route.id} {player} {favorites} {playlistActions} {notice} />
       {:else if nav.route.name === "artist"}<Artist id={nav.route.id} {favorites} />
       {:else if nav.route.name === "settings"}<Settings {player} onQualityDisplay={(mode) => (qualityDisplay = mode)} />{/if}
     </main>
     {#if nav.queueOpen}<aside class="queue"><QueueRail {player} /></aside>{/if}
     <PlayerBar {player} {qualityDisplay} {favorites} />
+    <PlaylistPicker actions={playlistActions} onnavigate={(id) => nav.goto({ name: "playlist", id })} />
   </div>
 {/if}
 

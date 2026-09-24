@@ -4,8 +4,14 @@
   import TrackTable from "../lib/components/TrackTable.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { Nav } from "../lib/nav.svelte";
+  import type { PlaylistActions } from "../lib/playlists.svelte";
   import type { Player } from "../lib/player.svelte";
-  let { nav, player, favorites }: { nav: Nav; player: Player; favorites: Favorites } = $props();
+  let {
+    nav,
+    player,
+    favorites,
+    playlistActions,
+  }: { nav: Nav; player: Player; favorites: Favorites; playlistActions: PlaylistActions } = $props();
   let query = $state("");
   let results = $state<SearchResults | null>(null);
   let loading = $state(false);
@@ -34,7 +40,12 @@
   <ErrorState message={error} onRetry={load} />
 {:else if results}
   <h3>Tracks</h3>
-  <TrackTable tracks={results.tracks.items} {player} {favorites} />
+  <TrackTable
+    tracks={results.tracks.items}
+    {player}
+    {favorites}
+    onAddToPlaylist={(t) => playlistActions.openPicker([t])}
+  />
   <h3>Albums</h3>
   <ul>
     {#each results.albums.items as a (a.id)}

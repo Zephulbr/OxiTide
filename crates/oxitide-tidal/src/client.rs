@@ -15,6 +15,7 @@ pub const DEFAULT_PAGE_SIZE: u32 = 100;
 pub struct TidalClient {
     http: reqwest::Client,
     base_url: String,
+    v2_base_url: String,
     token_url: String,
     session: SessionInfo,
     tokens: Arc<RwLock<TokenSet>>,
@@ -31,9 +32,16 @@ impl TidalClient {
         tokens: TokenSet,
         store: Arc<dyn TokenStore>,
     ) -> Self {
+        let base_url = base_url.into();
+        let trimmed = base_url.trim_end_matches('/');
+        let v2_base_url = match trimmed.strip_suffix("/v1") {
+            Some(prefix) => format!("{prefix}/v2"),
+            None => format!("{trimmed}/v2"),
+        };
         Self {
             http,
-            base_url: base_url.into(),
+            base_url,
+            v2_base_url,
             token_url: token_url.into(),
             session,
             tokens: Arc::new(RwLock::new(tokens)),
@@ -64,41 +72,43 @@ impl TidalClient {
     /// Send a form-encoded POST, refreshing once on 401 and honoring a
     /// `Retry-After` hint once on 429.
     pub async fn post_form(&self, path: &str, form: &[(&str, String)]) -> Result<()> {
-        let token = self.access_token();
-        let mut resp = self.send_mutation(reqwest::Method::POST, path, form, &token).await?;
-        if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
-            self.try_refresh(&token).await?;
-            resp = self
-                .send_mutation(reqwest::Method::POST, path, form, &self.access_token())
-                .await?;
-        }
-        if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
-            tokio::time::sleep(Self::retry_after(&resp)).await;
-            resp = self
-                .send_mutation(reqwest::Method::POST, path, form, &self.access_token())
-                .await?;
-        }
-        Self::decode_empty(resp).await
+        self.mutate(reqwest::Method::POST, &self.base_url, path, &[], form)
+            .await
+            .map(|_| ())
     }
 
     /// Send a DELETE, refreshing once on 401 and honoring a `Retry-After` hint
     /// once on 429.
     pub async fn delete(&self, path: &str) -> Result<()> {
-        let token = self.access_token();
-        let mut resp = self.send_mutation(reqwest::Method::DELETE, path, &[], &token).await?;
-        if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
-            self.try_refresh(&token).await?;
-            resp = self
-                .send_mutation(reqwest::Method::DELETE, path, &[], &self.access_token())
-                .await?;
-        }
-        if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
-            tokio::time::sleep(Self::retry_after(&resp)).await;
-            resp = self
-                .send_mutation(reqwest::Method::DELETE, path, &[], &self.access_token())
-                .await?;
-        }
-        Self::decode_empty(resp).await
+        self.mutate(reqwest::Method::DELETE, &self.base_url, path, &[], &[])
+            .await
+            .map(|_| ())
+    }
+
+    /// Send a PUT with query params on the v2 API and decode the JSON response.
+    pub async fn put_json<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        params: &[(&str, String)],
+    ) -> Result<T> {
+        let resp = self
+            .mutate(reqwest::Method::PUT, &self.v2_base_url, path, params, &[])
+            .await?;
+        Ok(resp.json().await?)
+    }
+
+    /// Send a form-encoded POST and decode the JSON response, sharing the write
+    /// verbs' refresh-on-401 and 429 retry behavior.
+    pub async fn post_form_json<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        params: &[(&str, String)],
+        form: &[(&str, String)],
+    ) -> Result<T> {
+        let resp = self
+            .mutate(reqwest::Method::POST, &self.base_url, path, params, form)
+            .await?;
+        Ok(resp.json().await?)
     }
 
     /// Walk every page of a TIDAL list endpoint, following `totalNumberOfItems`
@@ -151,20 +161,80 @@ impl TidalClient {
         Ok(self.http.get(url).bearer_auth(token).query(&query).send().await?)
     }
 
-    async fn send_mutation(
+    /// Shared write path: v1 bases get the `countryCode` query, 401 refreshes
+    /// once, 429 retries once after `Retry-After`, and non-success statuses map
+    /// to errors.
+    async fn mutate(
         &self,
         method: reqwest::Method,
+        base: &str,
         path: &str,
+        params: &[(&str, String)],
+        form: &[(&str, String)],
+    ) -> Result<reqwest::Response> {
+        let country_code = base == self.base_url.as_str();
+        let token = self.access_token();
+        let mut resp = self
+            .send_mutation(&method, base, path, params, form, &token, country_code)
+            .await?;
+        if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+            self.try_refresh(&token).await?;
+            resp = self
+                .send_mutation(
+                    &method,
+                    base,
+                    path,
+                    params,
+                    form,
+                    &self.access_token(),
+                    country_code,
+                )
+                .await?;
+        }
+        if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            tokio::time::sleep(Self::retry_after(&resp)).await;
+            resp = self
+                .send_mutation(
+                    &method,
+                    base,
+                    path,
+                    params,
+                    form,
+                    &self.access_token(),
+                    country_code,
+                )
+                .await?;
+        }
+        Self::decode_status(resp).await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn send_mutation(
+        &self,
+        method: &reqwest::Method,
+        base: &str,
+        path: &str,
+        params: &[(&str, String)],
         form: &[(&str, String)],
         token: &str,
+        country_code: bool,
     ) -> Result<reqwest::Response> {
-        let query: Vec<(&str, String)> = vec![("countryCode", self.session.country_code.clone())];
+        let mut query: Vec<(&str, String)> = if country_code {
+            vec![("countryCode", self.session.country_code.clone())]
+        } else {
+            Vec::new()
+        };
+        query.extend(params.iter().cloned());
         let url = format!(
             "{}/{}",
-            self.base_url.trim_end_matches('/'),
+            base.trim_end_matches('/'),
             path.trim_start_matches('/')
         );
-        let mut request = self.http.request(method, url).bearer_auth(token).query(&query);
+        let mut request = self
+            .http
+            .request(method.clone(), url)
+            .bearer_auth(token)
+            .query(&query);
         if !form.is_empty() {
             request = request.form(form);
         }
@@ -233,10 +303,6 @@ impl TidalClient {
             s => Err(Error::Api { status: s.as_u16(), message: resp.text().await.unwrap_or_default() }),
         }
     }
-
-    async fn decode_empty(resp: reqwest::Response) -> Result<()> {
-        Self::decode_status(resp).await.map(|_| ())
-    }
 }
 
 #[cfg(test)]
@@ -244,7 +310,7 @@ mod tests {
     use super::*;
     use crate::token_store::MemoryStore;
     use serde::Deserialize;
-    use wiremock::matchers::{body_string_contains, header, method, path};
+    use wiremock::matchers::{body_string_contains, header, method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[derive(Deserialize, PartialEq, Debug)]
@@ -475,5 +541,144 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, Error::RateLimited), "expected RateLimited, got {err:?}");
+    }
+
+    #[tokio::test]
+    async fn put_json_targets_v2_without_country_code() {
+        let server = MockServer::start().await;
+        let responder = |req: &wiremock::Request| {
+            let has_country = req.url.query_pairs().any(|(key, _)| key == "countryCode");
+            if has_country {
+                ResponseTemplate::new(500)
+            } else {
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"value": 3}))
+            }
+        };
+        Mock::given(method("PUT"))
+            .and(path("/v2/things"))
+            .and(query_param("name", "mix"))
+            .respond_with(responder)
+            .mount(&server)
+            .await;
+        let client = TidalClient::new(
+            reqwest::Client::new(),
+            server.uri(),
+            format!("{}/token", server.uri()),
+            session(),
+            tokens(),
+            Arc::new(MemoryStore::default()),
+        );
+        let thing: Thing = client
+            .put_json("things", &[("name", "mix".to_string())])
+            .await
+            .unwrap();
+        assert_eq!(thing.value, 3);
+    }
+
+    #[tokio::test]
+    async fn put_json_refreshes_once_on_401() {
+        let server = MockServer::start().await;
+        Mock::given(method("PUT"))
+            .and(path("/v2/things"))
+            .and(header("authorization", "Bearer old"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
+        Mock::given(method("PUT"))
+            .and(path("/v2/things"))
+            .and(header("authorization", "Bearer new"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"value": 9})))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": "new", "refresh_token": "rt2", "token_type": "Bearer", "expires_in": 3600
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let store = Arc::new(MemoryStore::default());
+        let client = TidalClient::new(
+            reqwest::Client::new(),
+            server.uri(),
+            format!("{}/token", server.uri()),
+            session(),
+            tokens(),
+            store.clone(),
+        );
+        let thing: Thing = client.put_json("things", &[]).await.unwrap();
+        assert_eq!(thing.value, 9);
+        assert_eq!(store.load().unwrap().unwrap().access_token, "new");
+    }
+
+    #[tokio::test]
+    async fn post_form_json_retries_once_on_429() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let server = MockServer::start().await;
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let responder = {
+            let attempts = attempts.clone();
+            move |_req: &wiremock::Request| {
+                if attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                    ResponseTemplate::new(429).insert_header("retry-after", "0")
+                } else {
+                    ResponseTemplate::new(200).set_body_json(serde_json::json!({"value": 4}))
+                }
+            }
+        };
+        Mock::given(method("POST"))
+            .and(path("/playlists/p/items"))
+            .and(body_string_contains("a=b"))
+            .respond_with(responder)
+            .expect(2)
+            .mount(&server)
+            .await;
+        let client = TidalClient::new(
+            reqwest::Client::new(),
+            server.uri(),
+            format!("{}/token", server.uri()),
+            session(),
+            tokens(),
+            Arc::new(MemoryStore::default()),
+        );
+        let thing: Thing = client
+            .post_form_json("playlists/p/items", &[], &[("a", "b".to_string())])
+            .await
+            .unwrap();
+        assert_eq!(thing.value, 4);
+    }
+
+    #[tokio::test]
+    async fn put_json_retries_once_on_429() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let server = MockServer::start().await;
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let responder = {
+            let attempts = attempts.clone();
+            move |_req: &wiremock::Request| {
+                if attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                    ResponseTemplate::new(429).insert_header("retry-after", "0")
+                } else {
+                    ResponseTemplate::new(200).set_body_json(serde_json::json!({"value": 6}))
+                }
+            }
+        };
+        Mock::given(method("PUT"))
+            .and(path("/v2/things"))
+            .respond_with(responder)
+            .expect(2)
+            .mount(&server)
+            .await;
+        let client = TidalClient::new(
+            reqwest::Client::new(),
+            server.uri(),
+            format!("{}/token", server.uri()),
+            session(),
+            tokens(),
+            Arc::new(MemoryStore::default()),
+        );
+        let thing: Thing = client.put_json("things", &[]).await.unwrap();
+        assert_eq!(thing.value, 6);
     }
 }
