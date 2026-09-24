@@ -7,6 +7,7 @@ use oxitide_audio::output::{ExclusiveFallback, OutputMode};
 use oxitide_audio::queue::{QueueItem, RepeatMode};
 use oxitide_tidal::auth::{self, SessionInfo};
 use oxitide_tidal::client::TidalClient;
+use oxitide_tidal::library::FavoriteIds;
 use oxitide_tidal::pkce::{Pkce, PKCE_CLIENT_ID, TOKEN_URL};
 use oxitide_tidal::token_store::{KeyringStore, TokenSet, TokenStore};
 use oxitide_tidal::Error;
@@ -312,6 +313,47 @@ pub async fn get_favorite_albums(state: State<'_, AppState>) -> Result<Vec<Album
 #[tauri::command]
 pub async fn get_favorite_artists(state: State<'_, AppState>) -> Result<Vec<Artist>, String> {
     require_client(&state)?.all_favorite_artists().await.map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
+pub async fn set_favorite_track(
+    state: State<'_, AppState>,
+    track_id: u64,
+    favorite: bool,
+) -> Result<(), String> {
+    require_client(&state)?
+        .set_favorite_track(track_id, favorite)
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
+pub async fn set_favorite_album(
+    state: State<'_, AppState>,
+    album_id: u64,
+    favorite: bool,
+) -> Result<(), String> {
+    require_client(&state)?
+        .set_favorite_album(album_id, favorite)
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
+pub async fn set_favorite_artist(
+    state: State<'_, AppState>,
+    artist_id: u64,
+    favorite: bool,
+) -> Result<(), String> {
+    require_client(&state)?
+        .set_favorite_artist(artist_id, favorite)
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
+pub async fn get_favorite_ids(state: State<'_, AppState>) -> Result<FavoriteIds, String> {
+    require_client(&state)?.favorite_ids().await.map_err(|e| state.fail_tidal(e))
 }
 
 #[tauri::command]
@@ -740,5 +782,18 @@ mod tests {
             .await
             .unwrap();
         assert!(restored.is_none());
+    }
+
+    #[test]
+    fn favorite_ids_dto_serializes_arrays() {
+        let dto = oxitide_tidal::library::FavoriteIds {
+            tracks: vec![1, 2],
+            albums: vec![3],
+            artists: vec![],
+        };
+        let value = serde_json::to_value(&dto).unwrap();
+        assert_eq!(value["tracks"], serde_json::json!([1, 2]));
+        assert_eq!(value["albums"], serde_json::json!([3]));
+        assert_eq!(value["artists"], serde_json::json!([]));
     }
 }
