@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import Sidebar from "./lib/components/Sidebar.svelte";
   import PlayerBar from "./lib/components/PlayerBar.svelte";
@@ -13,6 +14,7 @@
   import Settings from "./views/Settings.svelte";
   import { createNav } from "./lib/nav.svelte";
   import { createPlayer } from "./lib/player.svelte";
+  import { createFavorites } from "./lib/favorites.svelte";
   import { clearPagerCache } from "./lib/pager.svelte";
   import { api, type QueueItem } from "./lib/api";
   import type { QualityDisplay } from "./lib/quality";
@@ -26,6 +28,7 @@
 
   const nav = createNav();
   const player = createPlayer();
+  const favorites = createFavorites();
   let qualityDisplay = $state<QualityDisplay>("compact");
   let loggedIn = $state(false);
   let booting = $state(true);
@@ -47,6 +50,7 @@
         playing: snapshot.playing,
       };
       loggedIn = false;
+      favorites.reset();
     });
     return () => {
       unlisten.then((off) => off());
@@ -58,6 +62,16 @@
       playerReady = true;
       player.init();
     }
+  });
+
+  $effect(() => {
+    if (loggedIn) untrack(() => favorites.hydrate());
+  });
+
+  $effect(() => {
+    if (!favorites.error) return;
+    const timer = setTimeout(() => favorites.dismissError(), 6000);
+    return () => clearTimeout(timer);
   });
 
   $effect(() => {
@@ -105,6 +119,7 @@
       error = String(e);
     }
     clearPagerCache();
+    favorites.reset();
     loggedIn = false;
   }
 </script>
@@ -121,6 +136,12 @@
   <div class="app">
     <Sidebar {nav} onLogout={onLogout} />
     <main class="main">
+      {#if favorites.error}
+        <div class="notice">
+          <span>{favorites.error}</span>
+          <button onclick={() => favorites.dismissError()} aria-label="Dismiss">✕</button>
+        </div>
+      {/if}
       {#if error}<p style="color:#ff6b6b">{error}</p>{/if}
       {#if nav.route.name === "home"}<Home {nav} />
       {:else if nav.route.name === "search"}<Search {nav} {player} />
@@ -134,3 +155,20 @@
     <PlayerBar {player} {qualityDisplay} />
   </div>
 {/if}
+
+<style>
+  .notice {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin: 0 0 12px;
+    padding: 8px 12px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--panel);
+    color: #ff6b6b;
+  }
+  .notice button {
+    margin-left: auto;
+  }
+</style>
