@@ -5,6 +5,10 @@
 
 <nav class="sidebar">
   <h1 style="font-size:16px">OxiTide</h1>
+  <div class="history">
+    <button disabled={!nav.canBack} onclick={() => nav.back()} title="Back (Alt+←)" aria-label="Back">‹</button>
+    <button disabled={!nav.canForward} onclick={() => nav.forward()} title="Forward (Alt+→)" aria-label="Forward">›</button>
+  </div>
   <button onclick={() => nav.goto({ name: "home" })}>Home</button>
   <button onclick={() => nav.goto({ name: "search" })}>Search</button>
   <button onclick={() => nav.goto({ name: "library" })}>Library</button>
@@ -12,3 +16,11 @@
   <button onclick={() => nav.goto({ name: "settings" })}>Settings</button>
   <button onclick={onLogout}>Log out</button>
 </nav>
+
+<style>
+  .history {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 8px;
+  }
+</style>
