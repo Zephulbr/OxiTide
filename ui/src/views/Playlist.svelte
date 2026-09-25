@@ -170,8 +170,10 @@
   {#if playlist}
     <h2>
       {playlist.title}
-      <button onclick={startRename}>Rename</button>
-      <button onclick={() => (confirmingDelete = true)}>Delete</button>
+      {#if playlist.owned}
+        <button onclick={startRename}>Rename</button>
+        <button onclick={() => (confirmingDelete = true)}>Delete</button>
+      {/if}
     </h2>
   {/if}
   {#if renaming}
@@ -200,7 +202,9 @@
     onPlayAll={playAll}
     onEndReached={() => void pager.loadMore()}
     onAddToPlaylist={(t) => playlistActions.openPicker([t])}
-    playlistActions={{ onRemove: removeAt, onMove: moveAt, busy, disabled: !pager.done, onDrop: moveTrack }}
+    playlistActions={playlist?.owned
+      ? { onRemove: removeAt, onMove: moveAt, busy, disabled: !pager.done, onDrop: moveTrack }
+      : undefined}
   />
   {#if pager.error}
     <ErrorState message={pager.error} onRetry={() => pager.loadMore()} />

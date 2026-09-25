@@ -69,13 +69,17 @@ export function queueMenuItems(ctx: {
 
 export function libraryPlaylistMenuItems(ctx: {
   playlist: Playlist;
+  editable: boolean;
   open(): void;
   rename(): void;
   remove(): void;
 }): MenuItem[] {
-  return [
-    { id: "open", label: "Open", run: () => ctx.open() },
-    { id: "rename", label: "Rename", run: () => ctx.rename() },
-    { id: "delete", label: "Delete", danger: true, run: () => ctx.remove() },
-  ];
+  const items: MenuItem[] = [{ id: "open", label: "Open", run: () => ctx.open() }];
+  if (ctx.editable) {
+    items.push(
+      { id: "rename", label: "Rename", run: () => ctx.rename() },
+      { id: "delete", label: "Delete", danger: true, run: () => ctx.remove() },
+    );
+  }
+  return items;
 }

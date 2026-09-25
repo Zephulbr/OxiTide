@@ -168,6 +168,7 @@
             use:menuFor={() =>
               libraryPlaylistMenuItems({
                 playlist: p,
+                editable: p.owned,
                 open: () => nav.goto({ name: "playlist", id: p.uuid }),
                 rename: () => startRename(p),
                 remove: () => (deleting = p),
@@ -179,8 +180,10 @@
               <button onclick={() => (editingUuid = null)}>Cancel</button>
             {:else}
               <button onclick={() => nav.goto({ name: "playlist", id: p.uuid })}>{p.title}</button>
-              <button onclick={() => startRename(p)}>Rename</button>
-              <button onclick={() => (deleting = p)}>Delete</button>
+              {#if p.owned}
+                <button onclick={() => startRename(p)}>Rename</button>
+                <button onclick={() => (deleting = p)}>Delete</button>
+              {/if}
             {/if}
           </div>
         {/if}

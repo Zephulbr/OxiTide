@@ -165,12 +165,18 @@ describe("queueMenuItems", () => {
 });
 
 describe("libraryPlaylistMenuItems", () => {
-  it("lists open, rename, and a danger delete and invokes them once", () => {
+  it("lists open, rename, and a danger delete for an editable playlist", () => {
     const open = vi.fn();
     const rename = vi.fn();
     const remove = vi.fn();
 
-    const items = libraryPlaylistMenuItems({ playlist: playlist(), open, rename, remove });
+    const items = libraryPlaylistMenuItems({
+      playlist: playlist(),
+      editable: true,
+      open,
+      rename,
+      remove,
+    });
 
     expect(items.map((i) => i.id)).toEqual(["open", "rename", "delete"]);
     expect(items.find((i) => i.id === "delete")?.danger).toBe(true);
@@ -178,5 +184,25 @@ describe("libraryPlaylistMenuItems", () => {
     expect(open).toHaveBeenCalledTimes(1);
     expect(rename).toHaveBeenCalledTimes(1);
     expect(remove).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps only Open for a playlist we do not own", () => {
+    const open = vi.fn();
+    const rename = vi.fn();
+    const remove = vi.fn();
+
+    const items = libraryPlaylistMenuItems({
+      playlist: playlist(),
+      editable: false,
+      open,
+      rename,
+      remove,
+    });
+
+    expect(items.map((i) => i.id)).toEqual(["open"]);
+    for (const item of items) item.run();
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(rename).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
   });
 });
