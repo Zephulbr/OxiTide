@@ -17,7 +17,7 @@ Counts recorded after the review fix pass (`c3fe7c7`), which pinned the persiste
 - [ ] Add tracks to an existing playlist (single and whole album) → no 412; order matches the official app.
 - [ ] Remove and move rows in your own playlist → both succeed.
 - [ ] Rename and delete your own playlist → both succeed.
-- [ ] Rename or delete a playlist you do not own → the toast reads "You can only edit your own playlists" and you stay signed in.
+- [ ] Rename or delete a playlist you do not own → superseded by the 2026-09-25 list-interactions smoke: the controls are now hidden; open one to confirm no edit UI appears.
 - [ ] While a playlist is open, edit it in the official app, then remove/move a row here → the write either retries transparently or shows the stale-playlist copy, never raw JSON.
 - [ ] Add more than 100 tracks (or a >100-track album) to a playlist → all land; the chunk boundary does not 412.
 
