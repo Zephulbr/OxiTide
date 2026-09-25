@@ -28,6 +28,19 @@
       api.playTracks(items, index);
     }
   }
+
+  function onRowClick(event: MouseEvent, index: number) {
+    const target = event.target;
+    if (target instanceof Element && target.closest("button, .handle")) return;
+    jump(index);
+  }
+
+  function onRowKeydown(event: KeyboardEvent, index: number) {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    event.stopPropagation();
+    jump(index);
+  }
 </script>
 
 <div style="padding:12px">
@@ -35,7 +48,7 @@
     <strong>Queue</strong>
     <button onclick={() => (confirmingClear = true)}>Clear</button>
   </div>
-  <div role="list" style="margin:8px 0">
+  <div style="margin:8px 0">
     <VirtualList
       total={player.state.queue.length}
       rowHeight={QUEUE_ROW_HEIGHT}
@@ -46,17 +59,20 @@
         {@const item = player.state.queue[index]}
         {#if item}
           <div
-            role="listitem"
+            role="button"
+            tabindex="0"
             draggable="true"
             data-drag-index={index}
             use:menuFor={() =>
               queueMenuItems({ index, playNow: () => jump(index), remove: () => player.remove(index) })}
-            style="height:{QUEUE_ROW_HEIGHT}px;box-sizing:border-box;display:flex;align-items:center;padding:4px;border-bottom:1px solid var(--line);{player.state.current?.track_id === item.track_id ? 'background:var(--panel);' : ''}"
+            onclick={(event) => onRowClick(event, index)}
+            onkeydown={(event) => onRowKeydown(event, index)}
+            style="height:{QUEUE_ROW_HEIGHT}px;box-sizing:border-box;display:flex;align-items:center;padding:4px;border-bottom:1px solid var(--line);cursor:pointer;{player.state.current?.track_id === item.track_id ? 'background:var(--panel);' : ''}"
           >
-            <span class="muted" style="cursor:grab;padding-right:6px" title="Drag to reorder" aria-hidden="true">⠿</span>
-            <button onclick={() => jump(index)} style="all:unset;cursor:pointer;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+            <span class="muted handle" style="cursor:grab;padding-right:6px" title="Drag to reorder" aria-hidden="true">⠿</span>
+            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
               {item.title} <span class="muted">{item.artist}</span>
-            </button>
+            </span>
             <button onclick={() => player.remove(index)} aria-label="Remove">✕</button>
           </div>
         {/if}
