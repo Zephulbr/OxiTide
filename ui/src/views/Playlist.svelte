@@ -194,7 +194,7 @@
     onPlayAll={playAll}
     onEndReached={() => void pager.loadMore()}
     onAddToPlaylist={(t) => playlistActions.openPicker([t])}
-    playlistActions={{ onRemove: removeAt, onMove: moveAt, busy, disabled: !pager.done }}
+    playlistActions={{ onRemove: removeAt, onMove: moveAt, busy, disabled: !pager.done, onDrop: moveTrack }}
   />
   {#if pager.error}
     <ErrorState message={pager.error} onRetry={() => pager.loadMore()} />

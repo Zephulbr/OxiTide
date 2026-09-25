@@ -7,6 +7,7 @@
   import { windowRange } from "../virtual";
   import type { Favorites } from "../favorites.svelte";
   import type { TrackView } from "../trackView.svelte";
+  import { trackDrag, type DragParams } from "../drag";
   import Loading from "./Loading.svelte";
   let {
     view,
@@ -35,6 +36,7 @@
       onMove(index: number, delta: -1 | 1): void;
       busy: boolean;
       disabled: boolean;
+      onDrop?(from: number, to: number): void;
     };
     maxHeight?: string;
   } = $props();
@@ -51,6 +53,29 @@
   const rows = $derived(view.items);
   const range = $derived(windowRange(rows.length, scrollTop, viewport, ROW_HEIGHT, OVERSCAN));
   const slice = $derived(rows.slice(range.first, range.last));
+
+  let dragFrom = $state<number | null>(null);
+  let dropAt = $state<number | null>(null);
+  let theadHeight = $state(0);
+
+  const canDrag = $derived(
+    playlistActions !== undefined &&
+      !playlistActions.busy &&
+      !playlistActions.disabled &&
+      !view.engaged,
+  );
+
+  const drag = $derived<DragParams>({
+    enabled: () => canDrag,
+    count: () => rows.length,
+    rowHeight: () => ROW_HEIGHT,
+    offset: () => theadHeight,
+    onChange: (from, at) => {
+      dragFrom = from;
+      dropAt = at;
+    },
+    onDrop: (from, to) => playlistActions?.onDrop?.(from, to),
+  });
 
   function indicator(key: "title" | "duration"): string {
     if (view.sort !== key) return "";
@@ -116,9 +141,10 @@
   style="max-height:{maxHeight}"
   bind:clientHeight={viewport}
   onscroll={onScroll}
+  use:trackDrag={drag}
 >
   <table>
-    <thead>
+    <thead bind:clientHeight={theadHeight}>
       <tr>
         <th style="text-align:left"><button onclick={playAll} disabled={loadingAll}>{loadingAll ? "Loading all…" : "Play all"}</button></th>
         <th style="text-align:left">
@@ -144,6 +170,9 @@
         {@const index = range.first + i}
         <tr
           class="row"
+          class:dragging={dragFrom === index}
+          draggable={canDrag}
+          data-drag-index={canDrag ? index : undefined}
           use:menuFor={() =>
             trackMenuItems({
               track: t,
@@ -157,6 +186,9 @@
             })}
         >
           <td>
+            {#if canDrag}
+              <span class="handle" title="Drag to reorder" aria-hidden="true">⠿</span>
+            {/if}
             <button onclick={() => play(index)} disabled={loadingAll} aria-label="Play">▶</button>
             <button
               onclick={() => api.queueAdd([trackToQueueItem(t)])}
@@ -212,6 +244,9 @@
       {/if}
     </tbody>
   </table>
+  {#if dropAt !== null}
+    <div class="drop-line" style="top:{theadHeight + dropAt * ROW_HEIGHT}px"></div>
+  {/if}
 </div>
 
 <style>
@@ -226,6 +261,23 @@
   }
   .table-scroll {
     overflow: auto;
+    position: relative;
+  }
+  .handle {
+    cursor: grab;
+    color: var(--muted);
+    padding-right: 4px;
+  }
+  .row.dragging {
+    opacity: 0.5;
+  }
+  .drop-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--accent);
+    pointer-events: none;
   }
   table {
     width: 100%;
