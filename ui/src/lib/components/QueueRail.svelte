@@ -1,12 +1,26 @@
 <script lang="ts">
   import { api } from "../api";
   import ConfirmDialog from "./ConfirmDialog.svelte";
+  import VirtualList from "./VirtualList.svelte";
   import { menuFor } from "../menu.svelte";
   import { queueMenuItems } from "../menus";
+  import type { DragParams } from "../drag";
   import type { Player } from "../player.svelte";
   let { player }: { player: Player } = $props();
-  let dragFrom = $state<number | null>(null);
   let confirmingClear = $state(false);
+
+  /// Fixed row height; keep in sync with the row style below.
+  const QUEUE_ROW_HEIGHT = 40;
+
+  const queueDrag: DragParams = {
+    enabled: () => true,
+    count: () => player.state.queue.length,
+    rowHeight: () => QUEUE_ROW_HEIGHT,
+    onChange: () => {},
+    onDrop: (from, to) => {
+      if (from !== to) player.reorder(from, to);
+    },
+  };
 
   function jump(index: number) {
     const items = player.state.queue;
@@ -21,26 +35,35 @@
     <strong>Queue</strong>
     <button onclick={() => (confirmingClear = true)}>Clear</button>
   </div>
-  <ul style="list-style:none;margin:8px 0;padding:0">
-    {#each player.state.queue as item, i (item.track_id + "-" + i)}
-      <li
-        draggable="true"
-        use:menuFor={() =>
-          queueMenuItems({ index: i, playNow: () => jump(i), remove: () => player.remove(i) })}
-        ondragstart={() => (dragFrom = i)}
-        ondragover={(e) => e.preventDefault()}
-        ondrop={() => { if (dragFrom !== null && dragFrom !== i) player.reorder(dragFrom, i); dragFrom = null; }}
-        style="padding:4px;border-bottom:1px solid var(--line);{player.state.current?.track_id === item.track_id ? 'background:var(--panel);' : ''}"
-      >
-        <span class="muted" style="cursor:grab;padding-right:6px" title="Drag to reorder" aria-hidden="true">⠿</span>
-        <button onclick={() => jump(i)} style="all:unset;cursor:pointer">
-          {item.title} <span class="muted">{item.artist}</span>
-        </button>
-        <button onclick={() => player.remove(i)} aria-label="Remove">✕</button>
-      </li>
-    {/each}
-    {#if player.state.queue.length === 0}<li class="muted">Queue is empty</li>{/if}
-  </ul>
+  <div role="list" style="margin:8px 0">
+    <VirtualList
+      total={player.state.queue.length}
+      rowHeight={QUEUE_ROW_HEIGHT}
+      maxHeight="calc(100vh - 220px)"
+      drag={queueDrag}
+    >
+      {#snippet children(index)}
+        {@const item = player.state.queue[index]}
+        {#if item}
+          <div
+            role="listitem"
+            draggable="true"
+            data-drag-index={index}
+            use:menuFor={() =>
+              queueMenuItems({ index, playNow: () => jump(index), remove: () => player.remove(index) })}
+            style="height:{QUEUE_ROW_HEIGHT}px;box-sizing:border-box;display:flex;align-items:center;padding:4px;border-bottom:1px solid var(--line);{player.state.current?.track_id === item.track_id ? 'background:var(--panel);' : ''}"
+          >
+            <span class="muted" style="cursor:grab;padding-right:6px" title="Drag to reorder" aria-hidden="true">⠿</span>
+            <button onclick={() => jump(index)} style="all:unset;cursor:pointer;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+              {item.title} <span class="muted">{item.artist}</span>
+            </button>
+            <button onclick={() => player.remove(index)} aria-label="Remove">✕</button>
+          </div>
+        {/if}
+      {/snippet}
+    </VirtualList>
+  </div>
+  {#if player.state.queue.length === 0}<p class="muted">Queue is empty</p>{/if}
   {#if confirmingClear}
     <ConfirmDialog
       title="Clear queue"
