@@ -1,0 +1,19 @@
+/* Mode deltas. Components never read these names; the stylesheets only
+   override semantic tokens and flags (spec §4.2, Instrument doc §2–§4). */
+
+[data-mode="instrument"] {
+  --surface-1: #211b15;
+  --surface-2: #262019;
+  --surface-3: #2b241c;
+  --edge-lit: linear-gradient(135deg, var(--line), var(--line));
+  --accent: var(--accent-brand);
+  --on-accent: var(--on-accent-brand);
+  --glass-blur: 0px;
+  --flag-backdrop-art: 0;
+  --flag-glass-blur: 0;
+  --flag-grain: 0;
+  --flag-disc-spin: 0;
+  --flag-wave-seek: 0;
+  --flag-dynamic-color: 0;
+  --flag-ambient-motion: 0;
+}

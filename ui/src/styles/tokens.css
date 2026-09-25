@@ -1,0 +1,92 @@
+/* OxiTide design tokens — Track 2b foundation (spec §4–§5, §8–§9).
+   Three layers: base (static) → dynamic seed (--dyn-*, Plan 11 drives
+   them) → semantic (the only layer components read). */
+
+@property --dyn-primary { syntax: "<color>"; inherits: true; initial-value: #2ee2c4; }
+@property --dyn-on-primary { syntax: "<color>"; inherits: true; initial-value: #0b2420; }
+@property --dyn-secondary { syntax: "<color>"; inherits: true; initial-value: #17120e; }
+@property --dyn-tertiary { syntax: "<color>"; inherits: true; initial-value: #2ee2c4; }
+
+:root {
+  /* Base — Warm Graphite (spec §5.1) */
+  --bg: #17120e;
+  --text: #f2ece6;
+  --text-muted: #a99f94;
+  --accent-brand: #2ee2c4;
+  --on-accent-brand: #0b2420;
+  --danger: #ff8a7a;
+  --success: #5fd68a;
+  --warning: #e0a030;
+
+  /* Semantic (components consume only these) */
+  --accent: var(--dyn-primary);
+  --on-accent: var(--dyn-on-primary);
+  --surface-1: rgba(255, 240, 225, 0.05);
+  --surface-2: rgba(255, 240, 225, 0.07);
+  --surface-3: rgba(255, 240, 225, 0.09);
+  --line: rgba(255, 240, 225, 0.10);
+  --edge-lit: linear-gradient(135deg, rgba(255, 240, 225, 0.28), rgba(255, 240, 225, 0.06) 45%, rgba(0, 0, 0, 0.35));
+
+  /* Radii (spec §8) */
+  --radius-control: 8px;
+  --radius-card: 12px;
+  --radius-sheet: 16px;
+
+  /* Motion (spec §9) */
+  --dur-micro: 120ms;
+  --dur-state: 180ms;
+  --dur-view: 240ms;
+  --dur-mood: 1200ms;
+  --ease-in: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --ease-out: cubic-bezier(0.5, 0, 0.75, 0);
+
+  /* Type (spec §6) */
+  --font-display: "Fraunces", Georgia, serif;
+  --font-ui: "Manrope", system-ui, sans-serif;
+
+  /* Density (comfortable default; spec §7.4) */
+  --row-height: 38px;
+  --thumb-size: 30px;
+  --font-body-size: 14px;
+
+  /* Layout (spec §7.1) */
+  --sidebar-width: 232px;
+  --queue-width: 320px;
+  --player-height: 72px;
+
+  /* Feature flags (spec §4.3) — all off until Plan 11 lights them
+     per mode. Components read the JS mirrors in appearance.svelte.ts;
+     CSS reads these for pure-presentation gates. */
+  --flag-backdrop-art: 0;
+  --flag-glass-blur: 0;
+  --flag-grain: 0;
+  --flag-disc-spin: 0;
+  --flag-wave-seek: 0;
+  --flag-dynamic-color: 0;
+  --flag-ambient-motion: 0;
+
+  /* Glass recipe knobs (mode stylesheets override) */
+  --glass-blur: 0px;
+
+  /* Legacy aliases — deleted at the end of Task 14. */
+  --panel: var(--surface-1);
+  --panel-2: var(--surface-2);
+  --muted: var(--text-muted);
+}
+
+[data-density="compact"] {
+  --row-height: 28px;
+  --thumb-size: 22px;
+  --font-body-size: 13px;
+}
+
+/* prefers-reduced-motion is a hard floor (spec §12): ambient off,
+   crossfades instant, slides become 120ms fades. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-micro: 0ms;
+    --dur-state: 120ms;
+    --dur-view: 120ms;
+    --dur-mood: 0ms;
+  }
+}
