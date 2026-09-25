@@ -1,7 +1,7 @@
 use serde::Deserialize;
 
 use crate::client::{TidalClient, DEFAULT_PAGE_SIZE};
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::models::{ItemPage, Playlist, Track};
 
 fn page_params(limit: u32, offset: u32) -> Vec<(&'static str, String)> {
@@ -38,6 +38,11 @@ impl IdOrString {
             IdOrString::Text(text) => text.parse().ok(),
         }
     }
+}
+
+/// TIDAL's stale-precondition response for playlist writes.
+fn is_stale_etag(error: &Error) -> bool {
+    matches!(error, Error::Api { status: 412, .. })
 }
 
 impl TidalClient {
@@ -84,6 +89,16 @@ impl TidalClient {
         .await
     }
 
+    /// The playlist plus the `etag` TIDAL requires in `If-None-Match` for writes.
+    async fn playlist_and_etag(&self, id: &str) -> Result<(Playlist, Option<String>)> {
+        self.get_with_etag(&format!("playlists/{id}"), &[]).await
+    }
+
+    /// Just the current playlist `etag`; used between chunks and on a 412 retry.
+    async fn playlist_etag(&self, id: &str) -> Result<Option<String>> {
+        Ok(self.playlist_and_etag(id).await?.1)
+    }
+
     /// Create a playlist in the user's root folder (v2 endpoint).
     pub async fn create_playlist(&self, name: &str, description: &str) -> Result<Playlist> {
         let envelope: V2Envelope<Playlist> = self
@@ -101,19 +116,32 @@ impl TidalClient {
 
     /// Rename a playlist and/or change its description.
     pub async fn rename_playlist(&self, id: &str, title: &str, description: &str) -> Result<()> {
-        self.post_form(
-            &format!("playlists/{id}"),
-            &[
-                ("title", title.to_string()),
-                ("description", description.to_string()),
-            ],
-        )
-        .await
+        let form = [
+            ("title", title.to_string()),
+            ("description", description.to_string()),
+        ];
+        let path = format!("playlists/{id}");
+        let mut etag = self.playlist_etag(id).await?;
+        match self.post_form_with_etag(&path, &form, etag.as_deref()).await {
+            Err(e) if is_stale_etag(&e) => {
+                etag = self.playlist_etag(id).await?;
+                self.post_form_with_etag(&path, &form, etag.as_deref()).await
+            }
+            result => result,
+        }
     }
 
     /// Delete a playlist.
     pub async fn delete_playlist(&self, id: &str) -> Result<()> {
-        self.delete(&format!("playlists/{id}")).await
+        let path = format!("playlists/{id}");
+        let mut etag = self.playlist_etag(id).await?;
+        match self.delete_with_etag(&path, etag.as_deref()).await {
+            Err(e) if is_stale_etag(&e) => {
+                etag = self.playlist_etag(id).await?;
+                self.delete_with_etag(&path, etag.as_deref()).await
+            }
+            result => result,
+        }
     }
 
     /// Add tracks to a playlist in request order, returning the ids the server
@@ -135,9 +163,10 @@ impl TidalClient {
         if requested.is_empty() {
             return Ok(Vec::new());
         }
-        let playlist = self.playlist(id).await?;
+        let (playlist, mut etag) = self.playlist_and_etag(id).await?;
+        let chunks: Vec<&[u64]> = requested.chunks(ADD_CHUNK).collect();
         let mut added: Vec<u64> = Vec::new();
-        for chunk in requested.chunks(ADD_CHUNK) {
+        for (index, chunk) in chunks.iter().enumerate() {
             let form = [
                 ("onArtifactNotFound", "SKIP".to_string()),
                 (
@@ -158,14 +187,27 @@ impl TidalClient {
                 ),
             ];
             let params = [("limit", chunk.len().to_string())];
-            let response: AddedItems = self
-                .post_form_json(&format!("playlists/{id}/items"), &params, &form)
-                .await?;
+            let path = format!("playlists/{id}/items");
+            let response: AddedItems = match self
+                .post_form_json_with_etag(&path, &params, &form, etag.as_deref())
+                .await
+            {
+                Err(e) if is_stale_etag(&e) => {
+                    etag = self.playlist_etag(id).await?;
+                    self.post_form_json_with_etag(&path, &params, &form, etag.as_deref())
+                        .await?
+                }
+                result => result?,
+            };
             match response.added_item_ids {
                 Some(values) => {
                     added.extend(values.iter().filter_map(IdOrString::as_id));
                 }
                 None => added.extend(chunk.iter().copied()),
+            }
+            // Each write rotates the playlist etag; refresh before the next chunk.
+            if index + 1 < chunks.len() {
+                etag = self.playlist_etag(id).await?;
             }
         }
         Ok(added)
@@ -181,7 +223,15 @@ impl TidalClient {
             .map(|index| index.to_string())
             .collect::<Vec<_>>()
             .join(",");
-        self.delete(&format!("playlists/{id}/items/{list}")).await
+        let path = format!("playlists/{id}/items/{list}");
+        let mut etag = self.playlist_etag(id).await?;
+        match self.delete_with_etag(&path, etag.as_deref()).await {
+            Err(e) if is_stale_etag(&e) => {
+                etag = self.playlist_etag(id).await?;
+                self.delete_with_etag(&path, etag.as_deref()).await
+            }
+            result => result,
+        }
     }
 
     /// Move playlist rows (zero-based indices) to `to_index`.
@@ -194,11 +244,16 @@ impl TidalClient {
             .map(|index| index.to_string())
             .collect::<Vec<_>>()
             .join(",");
-        self.post_form(
-            &format!("playlists/{id}/items/{list}"),
-            &[("toIndex", to_index.to_string())],
-        )
-        .await
+        let path = format!("playlists/{id}/items/{list}");
+        let form = [("toIndex", to_index.to_string())];
+        let mut etag = self.playlist_etag(id).await?;
+        match self.post_form_with_etag(&path, &form, etag.as_deref()).await {
+            Err(e) if is_stale_etag(&e) => {
+                etag = self.playlist_etag(id).await?;
+                self.post_form_with_etag(&path, &form, etag.as_deref()).await
+            }
+            result => result,
+        }
     }
 }
 
@@ -208,7 +263,7 @@ mod tests {
     use crate::auth::SessionInfo;
     use crate::token_store::{MemoryStore, TokenSet};
     use std::sync::Arc;
-    use wiremock::matchers::{body_string_contains, method, path, query_param};
+    use wiremock::matchers::{body_string_contains, header, method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn client(server: &MockServer) -> TidalClient {
@@ -291,8 +346,10 @@ mod tests {
     #[tokio::test]
     async fn rename_playlist_posts_title_and_description() {
         let server = MockServer::start().await;
+        playlist_page(&server, 0).await;
         Mock::given(method("POST"))
             .and(path("/playlists/p-uuid"))
+            .and(header("if-none-match", "\"e1\""))
             .and(body_string_contains("title=New+name"))
             .and(body_string_contains("description=Notes"))
             .respond_with(ResponseTemplate::new(200))
@@ -306,6 +363,7 @@ mod tests {
     #[tokio::test]
     async fn rename_playlist_maps_forbidden() {
         let server = MockServer::start().await;
+        playlist_page(&server, 0).await;
         Mock::given(method("POST"))
             .and(path("/playlists/p-uuid"))
             .respond_with(ResponseTemplate::new(403))
@@ -318,10 +376,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn delete_playlist_sends_delete() {
+    async fn delete_playlist_sends_delete_with_etag() {
         let server = MockServer::start().await;
+        playlist_page(&server, 0).await;
         Mock::given(method("DELETE"))
             .and(path("/playlists/p-uuid"))
+            .and(header("if-none-match", "\"e1\""))
             .respond_with(ResponseTemplate::new(204))
             .mount(&server).await;
         client(&server).delete_playlist("p-uuid").await.unwrap();
@@ -330,9 +390,13 @@ mod tests {
     async fn playlist_page(server: &MockServer, total: u32) {
         Mock::given(method("GET"))
             .and(path("/playlists/p-uuid"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "uuid": "p-uuid", "title": "P", "numberOfTracks": total
-            })))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("etag", "\"e1\"")
+                    .set_body_json(serde_json::json!({
+                        "uuid": "p-uuid", "title": "P", "numberOfTracks": total
+                    })),
+            )
             .mount(server)
             .await;
     }
@@ -343,6 +407,7 @@ mod tests {
         playlist_page(&server, 5).await;
         Mock::given(method("POST"))
             .and(path("/playlists/p-uuid/items"))
+            .and(header("if-none-match", "\"e1\""))
             .and(query_param("limit", "1"))
             .and(body_string_contains("trackIds=7"))
             .and(body_string_contains("toIndex=5"))
@@ -413,7 +478,24 @@ mod tests {
     #[tokio::test]
     async fn add_playlist_tracks_dedupes_and_chunks() {
         let server = MockServer::start().await;
-        playlist_page(&server, 5).await;
+        let gets = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let responder = {
+            let gets = gets.clone();
+            move |_req: &wiremock::Request| {
+                let n = gets.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                ResponseTemplate::new(200)
+                    .insert_header("etag", if n == 0 { "\"e1\"" } else { "\"e2\"" })
+                    .set_body_json(serde_json::json!({
+                        "uuid": "p-uuid", "title": "P", "numberOfTracks": 5
+                    }))
+            }
+        };
+        Mock::given(method("GET"))
+            .and(path("/playlists/p-uuid"))
+            .respond_with(responder)
+            .expect(2)
+            .mount(&server)
+            .await;
         let ids: Vec<u64> = (1..=101).collect();
         let first_chunk = ids[..100]
             .iter()
@@ -424,6 +506,7 @@ mod tests {
         let requested: Vec<u64> = std::iter::once(1u64).chain(ids.iter().copied()).collect();
         Mock::given(method("POST"))
             .and(path("/playlists/p-uuid/items"))
+            .and(header("if-none-match", "\"e1\""))
             .and(query_param("limit", "100"))
             .and(body_string_contains(&format!("trackIds={first_chunk}")))
             .and(body_string_contains("toIndex=5"))
@@ -433,6 +516,7 @@ mod tests {
             .mount(&server).await;
         Mock::given(method("POST"))
             .and(path("/playlists/p-uuid/items"))
+            .and(header("if-none-match", "\"e2\""))
             .and(query_param("limit", "1"))
             .and(body_string_contains("trackIds=101"))
             .and(body_string_contains("toIndex=105"))
@@ -450,6 +534,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn add_playlist_tracks_retries_once_on_stale_etag() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let server = MockServer::start().await;
+        let gets = Arc::new(AtomicUsize::new(0));
+        let responder = {
+            let gets = gets.clone();
+            move |_req: &wiremock::Request| {
+                let n = gets.fetch_add(1, Ordering::SeqCst);
+                ResponseTemplate::new(200)
+                    .insert_header("etag", if n == 0 { "\"e1\"" } else { "\"e2\"" })
+                    .set_body_json(serde_json::json!({
+                        "uuid": "p-uuid", "title": "P", "numberOfTracks": 0
+                    }))
+            }
+        };
+        Mock::given(method("GET"))
+            .and(path("/playlists/p-uuid"))
+            .respond_with(responder)
+            .expect(2)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/playlists/p-uuid/items"))
+            .and(header("if-none-match", "\"e1\""))
+            .respond_with(ResponseTemplate::new(412).set_body_json(serde_json::json!({
+                "status": 412, "subStatus": 7002,
+                "userMessage": "You must send the correct Etag value in the If-None-Match header to modify a playlist"
+            })))
+            .mount(&server).await;
+        Mock::given(method("POST"))
+            .and(path("/playlists/p-uuid/items"))
+            .and(header("if-none-match", "\"e2\""))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "addedItemIds": [7]
+            })))
+            .mount(&server).await;
+        let added = client(&server)
+            .add_playlist_tracks("p-uuid", &[7], false)
+            .await
+            .unwrap();
+        assert_eq!(added, vec![7]);
+    }
+
+    #[tokio::test]
     async fn add_playlist_tracks_empty_list_makes_no_request() {
         let server = MockServer::start().await;
         let added = client(&server).add_playlist_tracks("p-uuid", &[], false).await.unwrap();
@@ -459,8 +587,10 @@ mod tests {
     #[tokio::test]
     async fn remove_playlist_items_sends_indices_path() {
         let server = MockServer::start().await;
+        playlist_page(&server, 0).await;
         Mock::given(method("DELETE"))
             .and(path("/playlists/p-uuid/items/2,5"))
+            .and(header("if-none-match", "\"e1\""))
             .respond_with(ResponseTemplate::new(204))
             .mount(&server).await;
         client(&server)
@@ -472,8 +602,10 @@ mod tests {
     #[tokio::test]
     async fn move_playlist_items_sends_to_index() {
         let server = MockServer::start().await;
+        playlist_page(&server, 0).await;
         Mock::given(method("POST"))
             .and(path("/playlists/p-uuid/items/4"))
+            .and(header("if-none-match", "\"e1\""))
             .and(body_string_contains("toIndex=1"))
             .respond_with(ResponseTemplate::new(200))
             .mount(&server).await;
