@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Track } from "../api";
   import { api, trackToQueueItem } from "../api";
+  import { copyText } from "../clipboard";
   import { formatDuration } from "../format";
   import { menuFor } from "../menu.svelte";
   import { trackMenuItems } from "../menus";
@@ -190,6 +191,7 @@
               play: () => play(index),
               addToQueue: () => api.queueAdd([trackToQueueItem(t)]),
               addToPlaylist: () => onAddToPlaylist?.(t),
+              copyTitle: () => void copyText(t.title),
               playlist: playlistActions && { ...playlistActions, canMove: !view.engaged },
             })}
         >

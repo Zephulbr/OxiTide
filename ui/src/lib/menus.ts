@@ -10,6 +10,7 @@ export interface TrackMenuContext {
   play(): void | Promise<void>;
   addToQueue(): void;
   addToPlaylist(): void;
+  copyTitle(): void;
   playlist?: {
     onRemove(index: number): void;
     onMove(index: number, delta: -1 | 1): void;
@@ -32,6 +33,7 @@ export function trackMenuItems(ctx: TrackMenuContext): MenuItem[] {
       label: ctx.favorites.hasTrack(ctx.track.id) ? "Unfavorite" : "Favorite",
       run: () => void ctx.favorites.toggleTrack(ctx.track.id),
     },
+    { id: "copy-title", label: "Copy title", run: () => ctx.copyTitle() },
   ];
   const playlist = ctx.playlist;
   if (playlist && !playlist.busy && !playlist.disabled) {
@@ -59,10 +61,12 @@ export function trackMenuItems(ctx: TrackMenuContext): MenuItem[] {
 export function queueMenuItems(ctx: {
   index: number;
   playNow(): void;
+  copyTitle(): void;
   remove(): void;
 }): MenuItem[] {
   return [
     { id: "play-now", label: "Play now", run: () => ctx.playNow() },
+    { id: "copy-title", label: "Copy title", run: () => ctx.copyTitle() },
     { id: "remove", label: "Remove", run: () => ctx.remove() },
   ];
 }

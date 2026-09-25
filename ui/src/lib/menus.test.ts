@@ -58,17 +58,19 @@ function baseCtx(overrides: Partial<TrackMenuContext> = {}): TrackMenuContext {
     play: vi.fn(),
     addToQueue: vi.fn(),
     addToPlaylist: vi.fn(),
+    copyTitle: vi.fn(),
     ...overrides,
   };
 }
 
 describe("trackMenuItems", () => {
-  it("lists the four base actions", () => {
+  it("lists the five base actions", () => {
     expect(trackMenuItems(baseCtx()).map((i) => i.id)).toEqual([
       "play",
       "add-queue",
       "add-playlist",
       "favorite",
+      "copy-title",
     ]);
   });
 
@@ -84,6 +86,7 @@ describe("trackMenuItems", () => {
     expect(vi.mocked(ctx.play)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(ctx.addToQueue)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(ctx.addToPlaylist)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(ctx.copyTitle)).toHaveBeenCalledTimes(1);
   });
 
   it("appends playlist editing when the context is editable", () => {
@@ -96,6 +99,7 @@ describe("trackMenuItems", () => {
       "add-queue",
       "add-playlist",
       "favorite",
+      "copy-title",
       "move-up",
       "move-down",
       "remove",
@@ -130,6 +134,7 @@ describe("trackMenuItems", () => {
       "add-queue",
       "add-playlist",
       "favorite",
+      "copy-title",
       "remove",
     ]);
   });
@@ -151,15 +156,17 @@ describe("trackMenuItems", () => {
 });
 
 describe("queueMenuItems", () => {
-  it("lists play now and remove and invokes them once", () => {
+  it("lists play now, copy title, and remove and invokes them once", () => {
     const playNow = vi.fn();
+    const copyTitle = vi.fn();
     const remove = vi.fn();
 
-    const items = queueMenuItems({ index: 0, playNow, remove });
+    const items = queueMenuItems({ index: 0, playNow, copyTitle, remove });
 
-    expect(items.map((i) => i.id)).toEqual(["play-now", "remove"]);
+    expect(items.map((i) => i.id)).toEqual(["play-now", "copy-title", "remove"]);
     for (const item of items) item.run();
     expect(playNow).toHaveBeenCalledTimes(1);
+    expect(copyTitle).toHaveBeenCalledTimes(1);
     expect(remove).toHaveBeenCalledTimes(1);
   });
 });

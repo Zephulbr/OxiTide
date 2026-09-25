@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api } from "../api";
+  import { copyText } from "../clipboard";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import VirtualList from "./VirtualList.svelte";
   import { menuFor } from "../menu.svelte";
@@ -64,7 +65,12 @@
             draggable="true"
             data-drag-index={index}
             use:menuFor={() =>
-              queueMenuItems({ index, playNow: () => jump(index), remove: () => player.remove(index) })}
+              queueMenuItems({
+                index,
+                playNow: () => jump(index),
+                copyTitle: () => void copyText(item.title),
+                remove: () => player.remove(index),
+              })}
             onclick={(event) => onRowClick(event, index)}
             onkeydown={(event) => onRowKeydown(event, index)}
             style="height:{QUEUE_ROW_HEIGHT}px;box-sizing:border-box;display:flex;align-items:center;padding:4px;border-bottom:1px solid var(--line);cursor:pointer;{player.state.current?.track_id === item.track_id ? 'background:var(--panel);' : ''}"
