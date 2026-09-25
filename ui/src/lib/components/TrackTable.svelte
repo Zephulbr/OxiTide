@@ -4,11 +4,13 @@
   import { formatDuration } from "../format";
   import { menuFor } from "../menu.svelte";
   import { trackMenuItems } from "../menus";
+  import { windowRange } from "../virtual";
   import type { Favorites } from "../favorites.svelte";
-  import type { Player } from "../player.svelte";
+  import type { TrackView } from "../trackView.svelte";
+  import { trackDrag, type DragParams } from "../drag";
+  import Loading from "./Loading.svelte";
   let {
-    tracks,
-    player,
+    view,
     favorites,
     onPlay,
     onPlayAll,
@@ -17,8 +19,7 @@
     playlistActions,
     maxHeight = "min(60vh, 560px)",
   }: {
-    tracks: Track[];
-    player: Player;
+    view: TrackView;
     favorites: Favorites;
     onPlay?: (index: number) => void | Promise<void>;
     onPlayAll?: () => void | Promise<void>;
@@ -28,12 +29,14 @@
     /// from the "＋" queue action.
     onAddToPlaylist?: (track: Track) => void;
     /// Playlist-view row editing (move up/down, remove). `disabled` is set by
-    /// the parent until the pager has the complete list.
+    /// the parent until the pager has the complete list; `onDrop` (Task 8)
+    /// receives absolute source-order indices from drag-and-drop.
     playlistActions?: {
       onRemove(index: number): void;
       onMove(index: number, delta: -1 | 1): void;
       busy: boolean;
       disabled: boolean;
+      onDrop?(from: number, to: number): void;
     };
     maxHeight?: string;
   } = $props();
@@ -47,19 +50,37 @@
   let viewport = $state(0);
   let loadingAll = $state(false);
 
-  const visible = $derived(Math.max(1, Math.ceil(viewport / ROW_HEIGHT) + OVERSCAN * 2));
-  // Clamp to the list so a refreshed/shrunk list cannot leave the window
-  // pointing past the end (which would render a blank table).
-  const first = $derived(
-    Math.min(
-      Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN),
-      Math.max(0, tracks.length - visible),
-    ),
+  const rows = $derived(view.items);
+  const range = $derived(windowRange(rows.length, scrollTop, viewport, ROW_HEIGHT, OVERSCAN));
+  const slice = $derived(rows.slice(range.first, range.last));
+
+  let dragFrom = $state<number | null>(null);
+  let dropAt = $state<number | null>(null);
+  let theadHeight = $state(0);
+
+  const canDrag = $derived(
+    playlistActions !== undefined &&
+      !playlistActions.busy &&
+      !playlistActions.disabled &&
+      !view.engaged,
   );
-  const last = $derived(Math.min(tracks.length, first + visible));
-  const slice = $derived(tracks.slice(first, last));
-  const padTop = $derived(first * ROW_HEIGHT);
-  const padBottom = $derived(Math.max(0, (tracks.length - last) * ROW_HEIGHT));
+
+  const drag = $derived<DragParams>({
+    enabled: () => canDrag,
+    count: () => rows.length,
+    rowHeight: () => ROW_HEIGHT,
+    offset: () => theadHeight,
+    onChange: (from, at) => {
+      dragFrom = from;
+      dropAt = at;
+    },
+    onDrop: (from, to) => playlistActions?.onDrop?.(from, to),
+  });
+
+  function indicator(key: "title" | "duration"): string {
+    if (view.sort !== key) return "";
+    return view.direction === "asc" ? "▲" : "▼";
+  }
 
   async function play(index: number) {
     if (onPlay) {
@@ -71,7 +92,7 @@
       }
       return;
     }
-    api.playTracks(tracks.map(trackToQueueItem), index);
+    api.playTracks(rows.map(trackToQueueItem), index);
   }
 
   async function playAll() {
@@ -96,42 +117,78 @@
   }
 </script>
 
+<div class="table-tools">
+  <input
+    class="filter"
+    placeholder="Filter tracks"
+    value={view.filter}
+    oninput={(event) => view.setFilter(event.currentTarget.value)}
+  />
+  {#if view.filter.trim() !== ""}
+    <button onclick={() => view.setFilter("")} aria-label="Clear filter">✕</button>
+  {/if}
+  {#if view.preparing}
+    <Loading label="Loading all tracks…" />
+  {/if}
+  {#if view.error}
+    <span class="muted">{view.error}</span>
+    <button onclick={() => view.retry()}>Retry</button>
+  {/if}
+</div>
+
 <div
   class="table-scroll"
   style="max-height:{maxHeight}"
   bind:clientHeight={viewport}
   onscroll={onScroll}
+  use:trackDrag={drag}
 >
   <table>
-    <thead>
+    <thead bind:clientHeight={theadHeight}>
       <tr>
         <th style="text-align:left"><button onclick={playAll} disabled={loadingAll}>{loadingAll ? "Loading all…" : "Play all"}</button></th>
-        <th style="text-align:left">#</th>
-        <th style="text-align:left">Title</th>
-        <th style="text-align:right">Time</th>
+        <th style="text-align:left">
+          <button class="sort" title="Original order" onclick={() => view.clearSort()}>#</button>
+        </th>
+        <th style="text-align:left">
+          <button class="sort" disabled={view.preparing} onclick={() => view.toggleSort("title")}>
+            Title {indicator("title")}
+          </button>
+        </th>
+        <th style="text-align:right">
+          <button class="sort" disabled={view.preparing} onclick={() => view.toggleSort("duration")}>
+            Time {indicator("duration")}
+          </button>
+        </th>
       </tr>
     </thead>
     <tbody>
-      {#if padTop > 0}
-        <tr aria-hidden="true"><td colspan="4" style="height:{padTop}px;padding:0;border:0"></td></tr>
+      {#if range.padTop > 0}
+        <tr aria-hidden="true"><td colspan="4" style="height:{range.padTop}px;padding:0;border:0"></td></tr>
       {/if}
-      {#each slice as t, i (`${t.id}-${first + i}`)}
-        {@const index = first + i}
+      {#each slice as t, i (`${t.id}-${range.first + i}`)}
+        {@const index = range.first + i}
         <tr
           class="row"
+          class:dragging={dragFrom === index}
+          draggable={canDrag}
+          data-drag-index={canDrag ? index : undefined}
           use:menuFor={() =>
             trackMenuItems({
               track: t,
               index,
-              trackCount: tracks.length,
+              trackCount: rows.length,
               favorites,
               play: () => play(index),
               addToQueue: () => api.queueAdd([trackToQueueItem(t)]),
               addToPlaylist: () => onAddToPlaylist?.(t),
-              playlist: playlistActions,
+              playlist: playlistActions && { ...playlistActions, canMove: !view.engaged },
             })}
         >
           <td>
+            {#if canDrag}
+              <span class="handle" title="Drag to reorder" aria-hidden="true">⠿</span>
+            {/if}
             <button onclick={() => play(index)} disabled={loadingAll} aria-label="Play">▶</button>
             <button
               onclick={() => api.queueAdd([trackToQueueItem(t)])}
@@ -152,18 +209,20 @@
               title={favorites.hasTrack(t.id) ? "Unfavorite" : "Favorite"}
             >{favorites.hasTrack(t.id) ? "♥" : "♡"}</button>
             {#if playlistActions}
-              <button
-                onclick={() => playlistActions.onMove(index, -1)}
-                disabled={playlistActions.busy || playlistActions.disabled || index === 0}
-                aria-label="Move up"
-                title="Move up"
-              >↑</button>
-              <button
-                onclick={() => playlistActions.onMove(index, 1)}
-                disabled={playlistActions.busy || playlistActions.disabled || index === tracks.length - 1}
-                aria-label="Move down"
-                title="Move down"
-              >↓</button>
+              {#if !view.engaged}
+                <button
+                  onclick={() => playlistActions.onMove(index, -1)}
+                  disabled={playlistActions.busy || playlistActions.disabled || index === 0}
+                  aria-label="Move up"
+                  title="Move up"
+                >↑</button>
+                <button
+                  onclick={() => playlistActions.onMove(index, 1)}
+                  disabled={playlistActions.busy || playlistActions.disabled || index === rows.length - 1}
+                  aria-label="Move down"
+                  title="Move down"
+                >↓</button>
+              {/if}
               <button
                 onclick={() => playlistActions.onRemove(index)}
                 disabled={playlistActions.busy || playlistActions.disabled}
@@ -177,19 +236,48 @@
           <td style="text-align:right" class="muted">{formatDuration(t.duration)}</td>
         </tr>
       {/each}
-      {#if padBottom > 0}
-        <tr aria-hidden="true"><td colspan="4" style="height:{padBottom}px;padding:0;border:0"></td></tr>
+      {#if range.padBottom > 0}
+        <tr aria-hidden="true"><td colspan="4" style="height:{range.padBottom}px;padding:0;border:0"></td></tr>
       {/if}
-      {#if tracks.length === 0}
-        <tr><td colspan="4" class="muted">No tracks</td></tr>
+      {#if rows.length === 0}
+        <tr><td colspan="4" class="muted">{view.filter.trim() ? `No tracks match “${view.filter.trim()}”` : "No tracks"}</td></tr>
       {/if}
     </tbody>
   </table>
+  {#if dropAt !== null}
+    <div class="drop-line" style="top:{theadHeight + dropAt * ROW_HEIGHT}px"></div>
+  {/if}
 </div>
 
 <style>
+  .table-tools {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .table-tools .filter {
+    flex: 0 1 260px;
+  }
   .table-scroll {
     overflow: auto;
+    position: relative;
+  }
+  .handle {
+    cursor: grab;
+    color: var(--muted);
+    padding-right: 4px;
+  }
+  .row.dragging {
+    opacity: 0.5;
+  }
+  .drop-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--accent);
+    pointer-events: none;
   }
   table {
     width: 100%;
@@ -201,6 +289,13 @@
     z-index: 1;
     background: var(--panel);
     border-bottom: 1px solid var(--line);
+  }
+  .sort {
+    background: transparent;
+    border: 0;
+    color: inherit;
+    padding: 0;
+    cursor: pointer;
   }
   .row {
     height: 36px;

@@ -31,7 +31,7 @@ function favorites(has: boolean): Favorites {
   } as unknown as Favorites;
 }
 
-function playlistCtx(overrides: { busy?: boolean; disabled?: boolean } = {}) {
+function playlistCtx(overrides: { busy?: boolean; disabled?: boolean; canMove?: boolean } = {}) {
   return {
     onRemove: vi.fn(),
     onMove: vi.fn(),
@@ -110,6 +110,20 @@ describe("trackMenuItems", () => {
 
     expect(busy.map((i) => i.id)).not.toContain("remove");
     expect(disabled.map((i) => i.id)).not.toContain("remove");
+  });
+
+  it("keeps remove and favorite but omits the moves while canMove is false", () => {
+    const items = trackMenuItems(
+      baseCtx({ index: 1, trackCount: 3, playlist: playlistCtx({ canMove: false }) }),
+    );
+
+    expect(items.map((i) => i.id)).toEqual([
+      "play",
+      "add-queue",
+      "add-playlist",
+      "favorite",
+      "remove",
+    ]);
   });
 
   it("calls onMove and onRemove with the row index", () => {

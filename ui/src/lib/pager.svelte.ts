@@ -14,6 +14,10 @@ export interface Pager {
   refresh(): Promise<void>;
   /// Drop one row locally (an unfavorited track); no-op when absent.
   removeItem(id: number): void;
+  /// Reorder one loaded row (drag/arrow move). `to` is the final index within
+  /// the loaded rows; equal or out-of-range indices are a no-op. Totals and
+  /// offsets are unchanged, so this is safe while a page fetch is in flight.
+  moveItem(from: number, to: number): void;
 }
 
 export interface PagerOptions {
@@ -137,6 +141,17 @@ export function createTrackPager(
     applyRemoval(id);
   }
 
+  function moveItem(from: number, to: number) {
+    if (from === to) return;
+    if (from < 0 || from >= items.length) return;
+    if (to < 0 || to >= items.length) return;
+    const next = [...items];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    items = next;
+    publish();
+  }
+
   async function loadSequentialPage() {
     const offset = nextOffset;
     const page = await load(offset, pageSize);
@@ -204,6 +219,9 @@ export function createTrackPager(
   }
 
   async function ensureAll() {
+    // A prior failure leaves `error` set; clear it so a later call (the
+    // header Retry) drives the failed page instead of returning at once.
+    if (error !== "") error = "";
     while (!done && error === "") {
       await loadMore();
     }
@@ -235,5 +253,6 @@ export function createTrackPager(
     ensureAll,
     refresh,
     removeItem,
+    moveItem,
   };
 }

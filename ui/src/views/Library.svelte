@@ -5,7 +5,9 @@
   import ErrorState from "../lib/components/ErrorState.svelte";
   import Loading from "../lib/components/Loading.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
+  import VirtualList from "../lib/components/VirtualList.svelte";
   import { createTrackPager } from "../lib/pager.svelte";
+  import { createTrackView, visibleIndexOf } from "../lib/trackView.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { Nav } from "../lib/nav.svelte";
   import { errorMessage } from "../lib/errors";
@@ -42,6 +44,13 @@
   const favoritesPager = createTrackPager("favorites", (offset, limit) =>
     api.getFavoriteTracksPage(offset, limit),
   );
+
+  async function ensureAllFavorites() {
+    await favoritesPager.ensureAll();
+    if (favoritesPager.error) throw favoritesPager.error;
+  }
+
+  const view = createTrackView(() => favoritesPager.items, ensureAllFavorites);
 
   async function load() {
     loading = true;
@@ -123,15 +132,18 @@
   }
 
   async function playFrom(index: number) {
+    const clicked = view.items[index];
     await favoritesPager.ensureAll();
     if (favoritesPager.error) return;
-    api.playTracks(favoritesPager.items.map(trackToQueueItem), index);
+    const start = visibleIndexOf(view.items, clicked, index);
+    if (start < 0) return;
+    api.playTracks(view.items.map(trackToQueueItem), start);
   }
 
   async function playAll() {
     await favoritesPager.ensureAll();
     if (favoritesPager.error) return;
-    api.playTracks(favoritesPager.items.map(trackToQueueItem), 0);
+    api.playTracks(view.items.map(trackToQueueItem), 0);
   }
 </script>
 
@@ -145,37 +157,54 @@
     Playlists
     <button onclick={() => playlistActions.openCreate()}>New playlist</button>
   </h3>
-  <ul>
-    {#each playlists as p (p.uuid)}
-      <li
-        use:menuFor={() =>
-          libraryPlaylistMenuItems({
-            playlist: p,
-            open: () => nav.goto({ name: "playlist", id: p.uuid }),
-            rename: () => startRename(p),
-            remove: () => (deleting = p),
-          })}
-      >
-        {#if editingUuid === p.uuid}
-          <input bind:value={editTitle} aria-label="Playlist name" />
-          <button onclick={() => void saveRename(p)}>Save</button>
-          <button onclick={() => (editingUuid = null)}>Cancel</button>
-        {:else}
-          <button onclick={() => nav.goto({ name: "playlist", id: p.uuid })}>{p.title}</button>
-          <button onclick={() => startRename(p)}>Rename</button>
-          <button onclick={() => (deleting = p)}>Delete</button>
+  <div role="list">
+    <VirtualList total={playlists.length} rowHeight={44} maxHeight="min(40vh, 360px)">
+      {#snippet children(index)}
+        {@const p = playlists[index]}
+        {#if p}
+          <div
+            role="listitem"
+            style="height:44px;box-sizing:border-box;display:flex;align-items:center;gap:6px"
+            use:menuFor={() =>
+              libraryPlaylistMenuItems({
+                playlist: p,
+                open: () => nav.goto({ name: "playlist", id: p.uuid }),
+                rename: () => startRename(p),
+                remove: () => (deleting = p),
+              })}
+          >
+            {#if editingUuid === p.uuid}
+              <input bind:value={editTitle} aria-label="Playlist name" />
+              <button onclick={() => void saveRename(p)}>Save</button>
+              <button onclick={() => (editingUuid = null)}>Cancel</button>
+            {:else}
+              <button onclick={() => nav.goto({ name: "playlist", id: p.uuid })}>{p.title}</button>
+              <button onclick={() => startRename(p)}>Rename</button>
+              <button onclick={() => (deleting = p)}>Delete</button>
+            {/if}
+          </div>
         {/if}
-      </li>
-    {/each}
-    {#if playlists.length === 0}<li class="muted">No playlists</li>{/if}
-  </ul>
+      {/snippet}
+    </VirtualList>
+  </div>
+  {#if playlists.length === 0}<p class="muted">No playlists</p>{/if}
   <h3>Albums</h3>
-  <ul>
-    {#each albums as a (a.id)}
-      <li><button onclick={() => nav.goto({ name: "album", id: a.id })}>{a.title}</button></li>
-    {/each}
-    {#if albums.length === 0}<li class="muted">No albums</li>{/if}
-  </ul>
+  <div role="list">
+    <VirtualList total={albums.length} rowHeight={36} maxHeight="min(40vh, 360px)">
+      {#snippet children(index)}
+        {@const a = albums[index]}
+        {#if a}
+          <div
+            role="listitem"
+            style="height:36px;box-sizing:border-box;display:flex;align-items:center"
+          >
+            <button onclick={() => nav.goto({ name: "album", id: a.id })}>{a.title}</button>
+          </div>
+        {/if}
+      {/snippet}
+    </VirtualList>
+  </div>
+  {#if albums.length === 0}<p class="muted">No albums</p>{/if}
   <h3>Favorite tracks</h3>
   <p>
     <button onclick={() => favoritesPager.refresh()}>Refresh</button>
@@ -189,8 +218,7 @@
     {#if favoritesPager.loading}<Loading />{/if}
   </p>
   <TrackTable
-    tracks={favoritesPager.items}
-    {player}
+    {view}
     {favorites}
     onPlay={playFrom}
     onPlayAll={playAll}

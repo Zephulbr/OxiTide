@@ -4,6 +4,7 @@
   import ErrorState from "../lib/components/ErrorState.svelte";
   import Loading from "../lib/components/Loading.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
+  import { createTrackView } from "../lib/trackView.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { PlaylistActions } from "../lib/playlists.svelte";
   import type { Player } from "../lib/player.svelte";
@@ -17,6 +18,8 @@
   let tracks = $state<Track[]>([]);
   let loading = $state(true);
   let error = $state("");
+
+  const view = createTrackView(() => tracks);
 
   async function load() {
     loading = true;
@@ -57,8 +60,7 @@
   </h2>
   <p class="muted">{album.artists.map((a) => a.name).join(", ")} · {album.numberOfTracks} tracks</p>
   <TrackTable
-    {tracks}
-    {player}
+    {view}
     {favorites}
     onAddToPlaylist={(t) => playlistActions.openPicker([t])}
   />

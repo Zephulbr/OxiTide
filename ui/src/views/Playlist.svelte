@@ -6,6 +6,7 @@
   import Loading from "../lib/components/Loading.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
   import { createTrackPager } from "../lib/pager.svelte";
+  import { createTrackView, visibleIndexOf } from "../lib/trackView.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { Nav } from "../lib/nav.svelte";
   import { errorMessage } from "../lib/errors";
@@ -46,6 +47,16 @@
       { dedupe: false, prefetchWindow: 100 },
     ),
   );
+
+  // Rebuild the view when the pager is swapped for another playlist; reading
+  // `pager` here makes that reactive (the closures alone would not).
+  const view = $derived.by(() => {
+    const p = pager;
+    return createTrackView(() => p.items, async () => {
+      await p.ensureAll();
+      if (p.error) throw p.error;
+    });
+  });
 
   async function load() {
     loading = true;
@@ -103,9 +114,11 @@
 
   async function removeAt(index: number) {
     if (busy) return;
+    const sourceIndex = view.sourceIndex(index);
+    if (sourceIndex < 0) return;
     busy = true;
     try {
-      await api.removePlaylistItems(id, [index]);
+      await api.removePlaylistItems(id, [sourceIndex]);
       await pager.refresh();
       toasts.show("Removed from playlist", { severity: "success" });
     } catch (e) {
@@ -115,29 +128,37 @@
     }
   }
 
-  async function moveAt(index: number, delta: -1 | 1) {
-    if (busy) return;
+  async function moveTrack(from: number, to: number) {
+    if (busy || from === to) return;
     busy = true;
+    pager.moveItem(from, to);
     try {
-      await api.movePlaylistItems(id, [index], index + delta);
-      await pager.refresh();
+      await api.movePlaylistItems(id, [from], to);
     } catch (e) {
       toasts.show(errorMessage(e), { severity: "error" });
+      await pager.refresh();
     } finally {
       busy = false;
     }
   }
 
+  function moveAt(index: number, delta: -1 | 1) {
+    return moveTrack(index, index + delta);
+  }
+
   async function playFrom(index: number) {
+    const clicked = view.items[index];
     await pager.ensureAll();
     if (pager.error) return;
-    api.playTracks(pager.items.map(trackToQueueItem), index);
+    const start = visibleIndexOf(view.items, clicked, index);
+    if (start < 0) return;
+    api.playTracks(view.items.map(trackToQueueItem), start);
   }
 
   async function playAll() {
     await pager.ensureAll();
     if (pager.error) return;
-    api.playTracks(pager.items.map(trackToQueueItem), 0);
+    api.playTracks(view.items.map(trackToQueueItem), 0);
   }
 </script>
 
@@ -173,14 +194,13 @@
     {#if pager.loading}<Loading />{/if}
   </p>
   <TrackTable
-    tracks={pager.items}
-    {player}
+    {view}
     {favorites}
     onPlay={playFrom}
     onPlayAll={playAll}
     onEndReached={() => void pager.loadMore()}
     onAddToPlaylist={(t) => playlistActions.openPicker([t])}
-    playlistActions={{ onRemove: removeAt, onMove: moveAt, busy, disabled: !pager.done }}
+    playlistActions={{ onRemove: removeAt, onMove: moveAt, busy, disabled: !pager.done, onDrop: moveTrack }}
   />
   {#if pager.error}
     <ErrorState message={pager.error} onRetry={() => pager.loadMore()} />
