@@ -133,6 +133,27 @@ describe("search store", () => {
     expect(firstTitle(search)).toBe("back");
   });
 
+  it("retries the failed query rather than an older success", async () => {
+    const fetch = vi
+      .fn<(query: string) => Promise<SearchResults>>()
+      .mockResolvedValueOnce(results(["aa"]))
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce(results(["bb"]));
+    const search = createSearch(fetch);
+
+    search.setQuery("aa");
+    await vi.advanceTimersByTimeAsync(300);
+    search.setQuery("bb");
+    await vi.advanceTimersByTimeAsync(300);
+    expect(search.error).toBe("Error: offline");
+
+    search.retry();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(fetch).toHaveBeenLastCalledWith("bb");
+    expect(firstTitle(search)).toBe("bb");
+  });
+
   it("resets the query, results, and pending timer", async () => {
     const fetch = vi.fn(async (query: string) => results([query]));
     const search = createSearch(fetch);

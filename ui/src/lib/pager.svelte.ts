@@ -219,6 +219,9 @@ export function createTrackPager(
   }
 
   async function ensureAll() {
+    // A prior failure leaves `error` set; clear it so a later call (the
+    // header Retry) drives the failed page instead of returning at once.
+    if (error !== "") error = "";
     while (!done && error === "") {
       await loadMore();
     }

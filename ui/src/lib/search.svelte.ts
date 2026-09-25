@@ -64,6 +64,7 @@ export function createSearch(
       if (token !== sequence) return;
       results = null;
       error = String(e);
+      settledQuery = trimmed;
     } finally {
       if (token === sequence) loading = false;
     }

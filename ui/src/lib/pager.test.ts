@@ -650,3 +650,26 @@ describe("pager moveItem", () => {
     expect(ids(pager.items)).toEqual([1, 2]);
   });
 });
+
+describe("pager ensureAll recovery", () => {
+  it("retries the failed page on a later ensureAll", async () => {
+    let calls = 0;
+    const load = vi.fn(async (offset: number, limit: number) => {
+      calls += 1;
+      if (calls === 1) throw new Error("boom");
+      return page([track(1), track(2)], offset, limit, 2);
+    });
+    const pager = createTrackPager("ensure-recover", load, { pageSize: 2, prefetch: false });
+
+    await pager.ensureAll();
+    expect(pager.error).toContain("boom");
+    expect(ids(pager.items)).toEqual([]);
+
+    await pager.ensureAll();
+
+    expect(pager.error).toBe("");
+    expect(ids(pager.items)).toEqual([1, 2]);
+    expect(pager.done).toBe(true);
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+});

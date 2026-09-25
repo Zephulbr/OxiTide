@@ -27,6 +27,12 @@ accepted.
       no moves are offered in the row menu (Remove/Favorite remain).
 - [ ] Navigate away and back: sort/filter state is reset; rows hydrate from the
       session cache without a full refetch flash.
+- [ ] Engage a filter/sort on playlist A, then use ⊕ → "New playlist…" to land
+      on playlist B: B opens unfiltered and unsorted (no state carried over).
+- [ ] While "Loading all tracks…" is showing, click a row's ▶: the clicked
+      track starts once loading completes — never a different row's track.
+- [ ] Force an engage failure (disconnect), then press the header Retry: the
+      load resumes and the sort/filter applies over the complete list.
 - [ ] Repeat on Library → Favorite tracks and on an Album (instant, no loading
       row); Search results table gets the same controls.
 
@@ -39,6 +45,8 @@ accepted.
 - [ ] Clear the box: results clear.
 - [ ] A no-match query shows `No results for “…”`; a failed request shows the
       inline error with Retry.
+- [ ] Search "aa" (results shown), then "bb" with the network down (error);
+      Retry once back online: it retries "bb", not "aa".
 - [ ] `Ctrl+F` still focuses the input; Space/arrows in the input edit text and
       do not control playback.
 

@@ -53,6 +53,17 @@ function applyView(
     .map((entry) => entry.track);
 }
 
+/// Resolve the queue start index for a row captured before an async load;
+/// -1 when the captured track is no longer in the visible list.
+export function visibleIndexOf(
+  items: Track[],
+  captured: Track | undefined,
+  fallback: number,
+): number {
+  if (!captured) return fallback;
+  return items.indexOf(captured);
+}
+
 /// Sort/filter state over a track source. Engaging a non-original order (or a
 /// filter) first awaits `ensureAll` so the operation covers the complete list;
 /// until it resolves the view reports `preparing` and serves source order.

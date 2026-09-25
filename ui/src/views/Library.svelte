@@ -7,7 +7,7 @@
   import TrackTable from "../lib/components/TrackTable.svelte";
   import VirtualList from "../lib/components/VirtualList.svelte";
   import { createTrackPager } from "../lib/pager.svelte";
-  import { createTrackView } from "../lib/trackView.svelte";
+  import { createTrackView, visibleIndexOf } from "../lib/trackView.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { Nav } from "../lib/nav.svelte";
   import { errorMessage } from "../lib/errors";
@@ -47,7 +47,7 @@
 
   async function ensureAllFavorites() {
     await favoritesPager.ensureAll();
-    if (favoritesPager.error) throw new Error(favoritesPager.error);
+    if (favoritesPager.error) throw favoritesPager.error;
   }
 
   const view = createTrackView(() => favoritesPager.items, ensureAllFavorites);
@@ -132,9 +132,12 @@
   }
 
   async function playFrom(index: number) {
+    const clicked = view.items[index];
     await favoritesPager.ensureAll();
     if (favoritesPager.error) return;
-    api.playTracks(view.items.map(trackToQueueItem), index);
+    const start = visibleIndexOf(view.items, clicked, index);
+    if (start < 0) return;
+    api.playTracks(view.items.map(trackToQueueItem), start);
   }
 
   async function playAll() {

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Track } from "./api";
-import { createTrackView } from "./trackView.svelte";
+import { createTrackPager } from "./pager.svelte";
+import { createTrackView, visibleIndexOf } from "./trackView.svelte";
 
 function track(id: number, title: string, duration = 100, artist = "A"): Track {
   return {
@@ -172,6 +173,33 @@ describe("track view loading lifecycle", () => {
     expect(ids(view.items)).toEqual([2, 3, 1]);
   });
 
+  it("recovers from a real pager failure when retried", async () => {
+    let calls = 0;
+    const pager = createTrackPager(
+      "view-retry",
+      async (offset, limit) => {
+        calls += 1;
+        if (calls === 1) throw new Error("offline");
+        return { items: [track(1, "A")], offset, limit, total: 1 };
+      },
+      { pageSize: 1, prefetch: false },
+    );
+    const ensureAll = async () => {
+      await pager.ensureAll();
+      if (pager.error) throw pager.error;
+    };
+    const view = createTrackView(() => pager.items, ensureAll);
+
+    view.setFilter("a");
+    await vi.waitFor(() => expect(view.error).toBe("Error: offline"));
+    expect(view.items).toEqual([]);
+
+    view.retry();
+
+    await vi.waitFor(() => expect(view.error).toBe(""));
+    expect(ids(view.items)).toEqual([1]);
+  });
+
   it("clears preparing and error when the view disengages", async () => {
     const ensureAll = vi.fn(() => new Promise<void>(() => {}));
     const view = createTrackView(() => SOURCE, ensureAll);
@@ -211,5 +239,24 @@ describe("track view sourceIndex", () => {
     const view = createTrackView(() => SOURCE);
 
     expect(view.sourceIndex(9)).toBe(-1);
+  });
+});
+
+describe("visibleIndexOf", () => {
+  it("finds the captured track after the visible order changes", () => {
+    const a = track(1, "A");
+    const b = track(2, "B");
+
+    expect(visibleIndexOf([b, a], a, 0)).toBe(1);
+  });
+
+  it("returns -1 when the captured track is filtered out", () => {
+    const a = track(1, "A");
+
+    expect(visibleIndexOf([], a, 0)).toBe(-1);
+  });
+
+  it("falls back to the captured index when there is no track", () => {
+    expect(visibleIndexOf([], undefined, 3)).toBe(3);
   });
 });

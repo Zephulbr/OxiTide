@@ -6,7 +6,7 @@
   import Loading from "../lib/components/Loading.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
   import { createTrackPager } from "../lib/pager.svelte";
-  import { createTrackView } from "../lib/trackView.svelte";
+  import { createTrackView, visibleIndexOf } from "../lib/trackView.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { Nav } from "../lib/nav.svelte";
   import { errorMessage } from "../lib/errors";
@@ -48,12 +48,15 @@
     ),
   );
 
-  async function ensureAllTracks() {
-    await pager.ensureAll();
-    if (pager.error) throw new Error(pager.error);
-  }
-
-  const view = $derived(createTrackView(() => pager.items, ensureAllTracks));
+  // Rebuild the view when the pager is swapped for another playlist; reading
+  // `pager` here makes that reactive (the closures alone would not).
+  const view = $derived.by(() => {
+    const p = pager;
+    return createTrackView(() => p.items, async () => {
+      await p.ensureAll();
+      if (p.error) throw p.error;
+    });
+  });
 
   async function load() {
     loading = true;
@@ -144,9 +147,12 @@
   }
 
   async function playFrom(index: number) {
+    const clicked = view.items[index];
     await pager.ensureAll();
     if (pager.error) return;
-    api.playTracks(view.items.map(trackToQueueItem), index);
+    const start = visibleIndexOf(view.items, clicked, index);
+    if (start < 0) return;
+    api.playTracks(view.items.map(trackToQueueItem), start);
   }
 
   async function playAll() {
