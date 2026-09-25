@@ -1767,7 +1767,7 @@ describe("dropTarget", () => {
   });
 
   it("accounts for scroll and container position", () => {
-    expect(dropTarget(100 + 720, 100, 720, 36, 100)).toBe(20);
+    expect(dropTarget(100 + 720, 100, 720, 36, 100)).toBe(40);
   });
 
   it("accounts for a sticky header offset", () => {
