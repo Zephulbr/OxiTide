@@ -601,3 +601,52 @@ describe("track pager", () => {
     expect(pager.done).toBe(true);
   });
 });
+
+describe("pager moveItem", () => {
+  it("moves a row down to its final index", async () => {
+    const load = vi.fn(async (offset: number, limit: number) =>
+      page([track(1), track(2), track(3), track(4)], offset, limit, 4),
+    );
+    const pager = createTrackPager("move-down", load, { pageSize: 4, prefetch: false });
+    await pager.loadMore();
+
+    pager.moveItem(0, 2);
+
+    expect(ids(pager.items)).toEqual([2, 3, 1, 4]);
+    expect(pager.total).toBe(4);
+    expect(pager.done).toBe(true);
+  });
+
+  it("moves a row up and publishes the cache", async () => {
+    const load = vi.fn(async (offset: number, limit: number) =>
+      page([track(1), track(2), track(3)], offset, limit, 3),
+    );
+    const pager = createTrackPager("move-up", load, { pageSize: 3, prefetch: false });
+    await pager.loadMore();
+
+    pager.moveItem(2, 0);
+
+    expect(ids(pager.items)).toEqual([3, 1, 2]);
+
+    const rehydrated = createTrackPager("move-up", vi.fn(), {
+      pageSize: 3,
+      prefetch: false,
+    });
+    expect(ids(rehydrated.items)).toEqual([3, 1, 2]);
+  });
+
+  it("ignores equal or out-of-range indices", async () => {
+    const load = vi.fn(async (offset: number, limit: number) =>
+      page([track(1), track(2)], offset, limit, 2),
+    );
+    const pager = createTrackPager("move-noop", load, { pageSize: 2, prefetch: false });
+    await pager.loadMore();
+
+    pager.moveItem(1, 1);
+    pager.moveItem(-1, 0);
+    pager.moveItem(0, 2);
+    pager.moveItem(2, 0);
+
+    expect(ids(pager.items)).toEqual([1, 2]);
+  });
+});
