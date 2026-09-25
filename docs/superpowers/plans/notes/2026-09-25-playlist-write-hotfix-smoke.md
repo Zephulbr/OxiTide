@@ -4,11 +4,13 @@
 > TIDAL app for cross-checking. Run with `npm --prefix ui run app:dev` (or the
 > installed app).
 
-## Automated checks (tree at db1995c)
-- cargo test --workspace: 252 passed, 0 failed, 1 ignored (oxitide-app 33, oxitide-audio 139 + 1 ignored [requires an audio device], oxitide-audio pipeline 1, oxitide-tidal 79, doc-tests 0)
+## Automated checks (tree at c3fe7c7)
+- cargo test --workspace: 254 passed, 0 failed, 1 ignored (oxitide-app 33, oxitide-audio 139 + 1 ignored [requires an audio device], oxitide-audio pipeline 1, oxitide-tidal 81, doc-tests 0)
 - cargo clippy --workspace -- -D warnings: clean, 0 warnings (exit 0)
 - npm --prefix ui test: 167 passed, 0 failed across 17 files
 - npm --prefix ui run check: 0 errors, 0 warnings (exit 0)
+
+Counts recorded after the review fix pass (`c3fe7c7`), which pinned the persistent-412 and permission-401 outcomes with two integration tests (tidal 79 → 81).
 
 ## Manual checks
 - [ ] Create a playlist with a track from the picker → it is created and the track lands (no 412 toast).
