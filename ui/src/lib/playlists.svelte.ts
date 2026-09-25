@@ -1,6 +1,7 @@
 import { SvelteMap } from "svelte/reactivity";
 import { api, type Playlist, type Track } from "./api";
-import type { Notice } from "./notice.svelte";
+import { errorMessage } from "./errors";
+import type { Toasts } from "./toasts.svelte";
 
 export interface PlaylistActions {
   readonly open: boolean;
@@ -35,8 +36,8 @@ function dedupe(ids: number[]): number[] {
 
 /// The add-to-playlist picker and playlist creation flow. Track edits
 /// (remove/move) are direct API calls in the views; creation, the two-phase
-/// duplicate flow, and reset-on-logout live here.
-export function createPlaylistActions(notice: Notice): PlaylistActions {
+/// duplicate flow, and reset-on-logout live here. Outcomes surface as toasts.
+export function createPlaylistActions(toasts: Toasts): PlaylistActions {
   let open = $state(false);
   let step = $state<Step>("list");
   let fromPicker = $state(false);
@@ -87,7 +88,7 @@ export function createPlaylistActions(notice: Notice): PlaylistActions {
       const added = new Set(await api.addPlaylistTracks(playlist.uuid, requested, false));
       const skipped = requested.filter((id) => !added.has(id));
       if (skipped.length === 0) {
-        notice.show(`${requested.length} added to ${playlist.title}`);
+        toasts.show(`${requested.length} added to ${playlist.title}`, { severity: "success" });
         close();
       } else {
         const skippedSet = new Set(skipped);
@@ -101,7 +102,7 @@ export function createPlaylistActions(notice: Notice): PlaylistActions {
         step = "duplicates";
       }
     } catch (e) {
-      notice.show(String(e));
+      toasts.show(errorMessage(e), { severity: "error" });
     } finally {
       busy = false;
     }
@@ -116,12 +117,15 @@ export function createPlaylistActions(notice: Notice): PlaylistActions {
     busy = true;
     try {
       if (addBoth.length > 0) await api.addPlaylistTracks(target.uuid, addBoth, true);
-      notice.show(
+      toasts.show(
         `${addBoth.length} added, ${uniqueDuplicates.length - addBoth.length} kept one of`,
+        { severity: "info" },
       );
       close();
     } catch (e) {
-      notice.show(String(e));
+      toasts.show(`Some tracks were already added, but the duplicate update failed: ${errorMessage(e)}`, {
+        severity: "error",
+      });
     } finally {
       busy = false;
     }
@@ -137,17 +141,23 @@ export function createPlaylistActions(notice: Notice): PlaylistActions {
       if (ids.length > 0) {
         try {
           await api.addPlaylistTracks(created.uuid, ids, false);
-          notice.show(`Created ${created.title} with ${ids.length} tracks`);
+          toasts.show(`Created ${created.title} with ${ids.length} tracks`, {
+            severity: "success",
+          });
         } catch (e) {
-          notice.show(String(e));
+          const noun = ids.length === 1 ? "track" : "tracks";
+          toasts.show(
+            `Created ${created.title}, but adding ${ids.length} ${noun} failed: ${errorMessage(e)}`,
+            { severity: "error" },
+          );
         }
       } else {
-        notice.show(`Created ${created.title}`);
+        toasts.show(`Created ${created.title}`, { severity: "success" });
       }
       close();
       return created;
     } catch (e) {
-      notice.show(String(e));
+      toasts.show(errorMessage(e), { severity: "error" });
       return null;
     } finally {
       busy = false;

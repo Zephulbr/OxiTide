@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { tick, untrack } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import Sidebar from "./lib/components/Sidebar.svelte";
   import PlayerBar from "./lib/components/PlayerBar.svelte";
@@ -13,10 +13,15 @@
   import Library from "./views/Library.svelte";
   import Settings from "./views/Settings.svelte";
   import PlaylistPicker from "./lib/components/PlaylistPicker.svelte";
+  import ToastHost from "./lib/components/ToastHost.svelte";
+  import ContextMenu from "./lib/components/ContextMenu.svelte";
   import { createNav } from "./lib/nav.svelte";
+  import { errorMessage } from "./lib/errors";
+  import { menu } from "./lib/menu.svelte";
+  import { isShortcutHandled, matchShortcut, type ShortcutAction } from "./lib/shortcuts";
+  import { createToasts } from "./lib/toasts.svelte";
   import { createPlayer } from "./lib/player.svelte";
   import { createFavorites } from "./lib/favorites.svelte";
-  import { createNotice } from "./lib/notice.svelte";
   import { createPlaylistActions } from "./lib/playlists.svelte";
   import { clearPagerCache } from "./lib/pager.svelte";
   import { api, type QueueItem } from "./lib/api";
@@ -31,9 +36,9 @@
 
   const nav = createNav();
   const player = createPlayer();
-  const favorites = createFavorites();
-  const notice = createNotice();
-  const playlistActions = createPlaylistActions(notice);
+  const toasts = createToasts();
+  const favorites = createFavorites(toasts);
+  const playlistActions = createPlaylistActions(toasts);
   let qualityDisplay = $state<QualityDisplay>("compact");
   let loggedIn = $state(false);
   let booting = $state(true);
@@ -72,12 +77,6 @@
 
   $effect(() => {
     if (loggedIn) untrack(() => favorites.hydrate());
-  });
-
-  $effect(() => {
-    if (!favorites.error) return;
-    const timer = setTimeout(() => favorites.dismissError(), 6000);
-    return () => clearTimeout(timer);
   });
 
   $effect(() => {
@@ -122,12 +121,99 @@
     try {
       await api.authLogout();
     } catch (e) {
-      error = String(e);
+      toasts.show(errorMessage(e), { severity: "error" });
     }
     clearPagerCache();
     favorites.reset();
     playlistActions.reset();
     loggedIn = false;
+  }
+
+  /// Side buttons can fire both mousedown and auxclick for one press; ignore
+  /// repeats inside this window so navigation happens exactly once.
+  let sideButtonAt = 0;
+
+  async function focusSearch() {
+    if (nav.route.name !== "search") nav.goto({ name: "search" });
+    await tick();
+    document.getElementById("search-input")?.focus();
+  }
+
+  function runShortcut(action: ShortcutAction) {
+    const state = player.state;
+    switch (action) {
+      case "play-pause":
+        if (state.current) player.playPause();
+        break;
+      case "seek-back":
+        if (state.current) player.seek(Math.max(0, state.position_ms - 5000));
+        break;
+      case "seek-forward": {
+        if (!state.current) break;
+        const limit = state.duration_ms > 0 ? state.duration_ms : state.position_ms + 5000;
+        player.seek(Math.min(limit, state.position_ms + 5000));
+        break;
+      }
+      case "prev-track":
+        if (state.queue.length > 0) player.prev();
+        break;
+      case "next-track":
+        if (state.queue.length > 0) player.next();
+        break;
+      case "volume-up":
+        player.setVolume(Math.min(1, state.volume + 0.05));
+        break;
+      case "volume-down":
+        player.setVolume(Math.max(0, state.volume - 0.05));
+        break;
+      case "focus-search":
+        void focusSearch();
+        break;
+      case "history-back":
+        nav.back();
+        break;
+      case "history-forward":
+        nav.forward();
+        break;
+      case "escape":
+        if (menu.open) menu.close();
+        else if (nav.queueOpen) nav.toggleQueue();
+        break;
+    }
+  }
+
+  function onKeydown(event: KeyboardEvent) {
+    if (!loggedIn) return;
+    const overlayOpen = document.querySelector('[role="dialog"]') !== null;
+    const action = matchShortcut(event, { overlayOpen });
+    if (!action) {
+      // A held Space is ignored as a toggle, but it must not scroll the page
+      // once a track is loaded.
+      if (event.key === " " && event.repeat && player.state.current) event.preventDefault();
+      return;
+    }
+    if (action === "escape" && !menu.open && !nav.queueOpen) return;
+    if (
+      !isShortcutHandled(action, {
+        hasCurrent: player.state.current !== null,
+        hasQueue: player.state.queue.length > 0,
+      })
+    ) {
+      return;
+    }
+    event.preventDefault();
+    runShortcut(action);
+  }
+
+  function onSideButton(event: MouseEvent) {
+    if (!loggedIn) return;
+    if (event.button !== 3 && event.button !== 4) return;
+    event.preventDefault();
+    const now = Date.now();
+    if (now - sideButtonAt < 50) return;
+    sideButtonAt = now;
+    if (event.button === 3) nav.back();
+    else nav.forward();
   }
 </script>
 
@@ -143,26 +229,14 @@
   <div class="app">
     <Sidebar {nav} onLogout={onLogout} />
     <main class="main">
-      {#if favorites.error}
-        <div class="notice">
-          <span>{favorites.error}</span>
-          <button onclick={() => favorites.dismissError()} aria-label="Dismiss">✕</button>
-        </div>
-      {/if}
-      {#if notice.message}
-        <div class="notice">
-          <span>{notice.message}</span>
-          <button onclick={() => notice.dismiss()} aria-label="Dismiss">✕</button>
-        </div>
-      {/if}
       {#if error}<p style="color:#ff6b6b">{error}</p>{/if}
       {#if nav.route.name === "home"}<Home {nav} />
       {:else if nav.route.name === "search"}<Search {nav} {player} {favorites} {playlistActions} />
-      {:else if nav.route.name === "library"}<Library {nav} {player} {favorites} {playlistActions} {notice} />
+      {:else if nav.route.name === "library"}<Library {nav} {player} {favorites} {playlistActions} {toasts} />
       {:else if nav.route.name === "album"}<Album id={nav.route.id} {player} {favorites} {playlistActions} />
-      {:else if nav.route.name === "playlist"}<Playlist {nav} id={nav.route.id} {player} {favorites} {playlistActions} {notice} />
+      {:else if nav.route.name === "playlist"}<Playlist {nav} id={nav.route.id} {player} {favorites} {playlistActions} {toasts} />
       {:else if nav.route.name === "artist"}<Artist id={nav.route.id} {favorites} />
-      {:else if nav.route.name === "settings"}<Settings {player} onQualityDisplay={(mode) => (qualityDisplay = mode)} />{/if}
+      {:else if nav.route.name === "settings"}<Settings {player} {toasts} onQualityDisplay={(mode) => (qualityDisplay = mode)} />{/if}
     </main>
     {#if nav.queueOpen}<aside class="queue"><QueueRail {player} /></aside>{/if}
     <PlayerBar {player} {qualityDisplay} {favorites} />
@@ -170,19 +244,6 @@
   </div>
 {/if}
 
-<style>
-  .notice {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    margin: 0 0 12px;
-    padding: 8px 12px;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    background: var(--panel);
-    color: #ff6b6b;
-  }
-  .notice button {
-    margin-left: auto;
-  }
-</style>
+<svelte:window onkeydown={onKeydown} onmousedown={onSideButton} onauxclick={onSideButton} />
+<ToastHost {toasts} />
+<ContextMenu {menu} />

@@ -3,6 +3,7 @@ import type { FavoriteIds, Track, TrackPage } from "./api";
 import { api } from "./api";
 import { createFavorites } from "./favorites.svelte";
 import { clearPagerCache, createTrackPager } from "./pager.svelte";
+import type { ToastSeverity, Toasts } from "./toasts.svelte";
 
 vi.mock("./api", () => ({
   api: {
@@ -25,6 +26,27 @@ function track(id: number): Track {
   };
 }
 
+interface FakeToasts extends Toasts {
+  readonly calls: { message: string; severity: ToastSeverity }[];
+}
+
+function fakeToasts(): FakeToasts {
+  const calls: { message: string; severity: ToastSeverity }[] = [];
+  return {
+    get toasts() {
+      return [];
+    },
+    show(message, options) {
+      calls.push({ message, severity: options?.severity ?? "info" });
+      return calls.length;
+    },
+    dismiss() {},
+    get calls() {
+      return calls;
+    },
+  };
+}
+
 describe("favorites store", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -37,7 +59,7 @@ describe("favorites store", () => {
 
   it("hydrates the three sets from one call", async () => {
     vi.mocked(api.getFavoriteIds).mockResolvedValue({ tracks: [1, 2], albums: [3], artists: [4] });
-    const favorites = createFavorites();
+    const favorites = createFavorites(fakeToasts());
 
     await favorites.hydrate();
 
@@ -50,7 +72,7 @@ describe("favorites store", () => {
   });
 
   it("dedupes concurrent hydrates", async () => {
-    const favorites = createFavorites();
+    const favorites = createFavorites(fakeToasts());
 
     await Promise.all([favorites.hydrate(), favorites.hydrate()]);
 
@@ -59,11 +81,12 @@ describe("favorites store", () => {
 
   it("leaves the store hollow after a failed hydrate and retries on the next call", async () => {
     vi.mocked(api.getFavoriteIds).mockRejectedValueOnce(new Error("offline"));
-    const favorites = createFavorites();
+    const toasts = fakeToasts();
+    const favorites = createFavorites(toasts);
 
     await favorites.hydrate();
     expect(favorites.hydrated).toBe(false);
-    expect(favorites.error).toContain("offline");
+    expect(toasts.calls).toEqual([{ message: "Error: offline", severity: "error" }]);
 
     vi.mocked(api.getFavoriteIds).mockResolvedValueOnce({ tracks: [1], albums: [], artists: [] });
     await favorites.hydrate();
@@ -73,7 +96,7 @@ describe("favorites store", () => {
   });
 
   it("toggles optimistically and calls the matching command", async () => {
-    const favorites = createFavorites();
+    const favorites = createFavorites(fakeToasts());
 
     expect(await favorites.toggleTrack(5)).toBe(true);
     expect(api.setFavoriteTrack).toHaveBeenCalledWith(5, true);
@@ -89,13 +112,19 @@ describe("favorites store", () => {
     expect(api.setFavoriteArtist).toHaveBeenCalledWith(7, true);
   });
 
-  it("reverts a failed toggle and surfaces the error", async () => {
-    vi.mocked(api.setFavoriteTrack).mockRejectedValueOnce(new Error("rate limited"));
-    const favorites = createFavorites();
+  it("reverts a failed toggle and reports a mapped error toast", async () => {
+    vi.mocked(api.setFavoriteTrack).mockRejectedValueOnce("rate limited");
+    const toasts = fakeToasts();
+    const favorites = createFavorites(toasts);
 
     expect(await favorites.toggleTrack(5)).toBeNull();
     expect(favorites.hasTrack(5)).toBe(false);
-    expect(favorites.error).toContain("rate limited");
+    expect(toasts.calls).toEqual([
+      {
+        message: "TIDAL is rate-limiting requests — try again in a moment",
+        severity: "error",
+      },
+    ]);
 
     vi.mocked(api.getFavoriteIds).mockResolvedValue({ tracks: [5], albums: [], artists: [] });
     await favorites.hydrate();
@@ -113,7 +142,7 @@ describe("favorites store", () => {
           release = resolve;
         }),
     );
-    const favorites = createFavorites();
+    const favorites = createFavorites(fakeToasts());
 
     const first = favorites.toggleTrack(5);
     expect(await favorites.toggleTrack(5)).toBe(true);
@@ -137,7 +166,7 @@ describe("favorites store", () => {
     const pager = createTrackPager("favorites", load, { pageSize: 2, prefetch: false });
     await pager.loadMore();
 
-    const favorites = createFavorites();
+    const favorites = createFavorites(fakeToasts());
     await favorites.hydrate();
     expect(await favorites.toggleTrack(1)).toBe(false);
 
@@ -156,7 +185,7 @@ describe("favorites store", () => {
           resolveIds = resolve;
         }),
     );
-    const favorites = createFavorites();
+    const favorites = createFavorites(fakeToasts());
 
     const hydrating = favorites.hydrate();
     favorites.reset();
@@ -169,7 +198,7 @@ describe("favorites store", () => {
 
   it("clears everything on reset", async () => {
     vi.mocked(api.getFavoriteIds).mockResolvedValue({ tracks: [1], albums: [2], artists: [3] });
-    const favorites = createFavorites();
+    const favorites = createFavorites(fakeToasts());
     await favorites.hydrate();
     vi.mocked(api.setFavoriteTrack).mockRejectedValueOnce(new Error("boom"));
     await favorites.toggleTrack(9);
@@ -177,7 +206,6 @@ describe("favorites store", () => {
     favorites.reset();
 
     expect(favorites.hydrated).toBe(false);
-    expect(favorites.error).toBeNull();
     expect(favorites.hasTrack(1)).toBe(false);
     expect(favorites.hasAlbum(2)).toBe(false);
     expect(favorites.hasArtist(3)).toBe(false);
@@ -187,7 +215,7 @@ describe("favorites store", () => {
 
   it("does not report a re-favorited track for removal", async () => {
     vi.mocked(api.getFavoriteIds).mockResolvedValue({ tracks: [1, 2], albums: [], artists: [] });
-    const favorites = createFavorites();
+    const favorites = createFavorites(fakeToasts());
     await favorites.hydrate();
 
     expect(await favorites.toggleTrack(1)).toBe(false);
@@ -199,7 +227,7 @@ describe("favorites store", () => {
 
   it("does not resurrect a track unfavorited while a hydrate is in flight", async () => {
     vi.mocked(api.getFavoriteIds).mockRejectedValueOnce(new Error("offline"));
-    const favorites = createFavorites();
+    const favorites = createFavorites(fakeToasts());
     await favorites.hydrate();
     expect(await favorites.toggleTrack(7)).toBe(true);
 
@@ -219,12 +247,11 @@ describe("favorites store", () => {
   });
 
   it("hydrates to empty sets without error", async () => {
-    const favorites = createFavorites();
+    const favorites = createFavorites(fakeToasts());
 
     await favorites.hydrate();
 
     expect(favorites.hydrated).toBe(true);
-    expect(favorites.error).toBeNull();
     expect(favorites.hasTrack(1)).toBe(false);
     expect(favorites.hasAlbum(1)).toBe(false);
     expect(favorites.hasArtist(1)).toBe(false);

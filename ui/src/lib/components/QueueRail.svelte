@@ -1,8 +1,12 @@
 <script lang="ts">
   import { api } from "../api";
+  import ConfirmDialog from "./ConfirmDialog.svelte";
+  import { menuFor } from "../menu.svelte";
+  import { queueMenuItems } from "../menus";
   import type { Player } from "../player.svelte";
   let { player }: { player: Player } = $props();
   let dragFrom = $state<number | null>(null);
+  let confirmingClear = $state(false);
 
   function jump(index: number) {
     const items = player.state.queue;
@@ -15,12 +19,14 @@
 <div style="padding:12px">
   <div style="display:flex;justify-content:space-between;align-items:center">
     <strong>Queue</strong>
-    <button onclick={() => player.clear()}>Clear</button>
+    <button onclick={() => (confirmingClear = true)}>Clear</button>
   </div>
   <ul style="list-style:none;margin:8px 0;padding:0">
     {#each player.state.queue as item, i (item.track_id + "-" + i)}
       <li
         draggable="true"
+        use:menuFor={() =>
+          queueMenuItems({ index: i, playNow: () => jump(i), remove: () => player.remove(i) })}
         ondragstart={() => (dragFrom = i)}
         ondragover={(e) => e.preventDefault()}
         ondrop={() => { if (dragFrom !== null && dragFrom !== i) player.reorder(dragFrom, i); dragFrom = null; }}
@@ -35,4 +41,15 @@
     {/each}
     {#if player.state.queue.length === 0}<li class="muted">Queue is empty</li>{/if}
   </ul>
+  {#if confirmingClear}
+    <ConfirmDialog
+      title="Clear queue"
+      message="Remove all tracks from the queue?"
+      onconfirm={() => {
+        confirmingClear = false;
+        player.clear();
+      }}
+      oncancel={() => (confirmingClear = false)}
+    />
+  {/if}
 </div>

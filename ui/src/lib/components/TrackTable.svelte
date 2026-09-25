@@ -2,6 +2,8 @@
   import type { Track } from "../api";
   import { api, trackToQueueItem } from "../api";
   import { formatDuration } from "../format";
+  import { menuFor } from "../menu.svelte";
+  import { trackMenuItems } from "../menus";
   import type { Favorites } from "../favorites.svelte";
   import type { Player } from "../player.svelte";
   let {
@@ -115,7 +117,20 @@
       {/if}
       {#each slice as t, i (`${t.id}-${first + i}`)}
         {@const index = first + i}
-        <tr class="row">
+        <tr
+          class="row"
+          use:menuFor={() =>
+            trackMenuItems({
+              track: t,
+              index,
+              trackCount: tracks.length,
+              favorites,
+              play: () => play(index),
+              addToQueue: () => api.queueAdd([trackToQueueItem(t)]),
+              addToPlaylist: () => onAddToPlaylist?.(t),
+              playlist: playlistActions,
+            })}
+        >
           <td>
             <button onclick={() => play(index)} disabled={loadingAll} aria-label="Play">▶</button>
             <button

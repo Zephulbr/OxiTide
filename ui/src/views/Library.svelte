@@ -3,11 +3,15 @@
   import { api, trackToQueueItem, type Album, type Playlist } from "../lib/api";
   import ConfirmDialog from "../lib/components/ConfirmDialog.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
+  import Loading from "../lib/components/Loading.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
   import { createTrackPager } from "../lib/pager.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { Nav } from "../lib/nav.svelte";
-  import type { Notice } from "../lib/notice.svelte";
+  import { errorMessage } from "../lib/errors";
+  import { menuFor } from "../lib/menu.svelte";
+  import { libraryPlaylistMenuItems } from "../lib/menus";
+  import type { Toasts } from "../lib/toasts.svelte";
   import type { PlaylistActions } from "../lib/playlists.svelte";
   import type { Player } from "../lib/player.svelte";
   let {
@@ -15,13 +19,13 @@
     player,
     favorites,
     playlistActions,
-    notice,
+    toasts,
   }: {
     nav: Nav;
     player: Player;
     favorites: Favorites;
     playlistActions: PlaylistActions;
-    notice: Notice;
+    toasts: Toasts;
   } = $props();
 
   let albums = $state<Album[]>([]);
@@ -55,7 +59,7 @@
     try {
       playlists = await api.getUserPlaylists();
     } catch (e) {
-      notice.show(String(e));
+      toasts.show(errorMessage(e), { severity: "error" });
     }
   }
 
@@ -98,9 +102,9 @@
       await api.renamePlaylist(p.uuid, title, p.description ?? "");
       playlists = playlists.map((item) => (item.uuid === p.uuid ? { ...item, title } : item));
       editingUuid = null;
-      notice.show("Playlist renamed");
+      toasts.show("Playlist renamed", { severity: "success" });
     } catch (e) {
-      notice.show(String(e));
+      toasts.show(errorMessage(e), { severity: "error" });
     }
   }
 
@@ -110,9 +114,9 @@
     try {
       await api.deletePlaylist(target.uuid);
       playlists = playlists.filter((item) => item.uuid !== target.uuid);
-      notice.show(`Deleted ${target.title}`);
+      toasts.show(`Deleted ${target.title}`, { severity: "success" });
     } catch (e) {
-      notice.show(String(e));
+      toasts.show(errorMessage(e), { severity: "error" });
     } finally {
       deleting = null;
     }
@@ -133,7 +137,7 @@
 
 <h2>Library</h2>
 {#if loading}
-  <p class="muted">Loading…</p>
+  <Loading />
 {:else if error}
   <ErrorState message={error} onRetry={load} />
 {:else}
@@ -143,7 +147,15 @@
   </h3>
   <ul>
     {#each playlists as p (p.uuid)}
-      <li>
+      <li
+        use:menuFor={() =>
+          libraryPlaylistMenuItems({
+            playlist: p,
+            open: () => nav.goto({ name: "playlist", id: p.uuid }),
+            rename: () => startRename(p),
+            remove: () => (deleting = p),
+          })}
+      >
         {#if editingUuid === p.uuid}
           <input bind:value={editTitle} aria-label="Playlist name" />
           <button onclick={() => void saveRename(p)}>Save</button>
@@ -174,6 +186,7 @@
         {favoritesPager.items.length} tracks
       {/if}
     </span>
+    {#if favoritesPager.loading}<Loading />{/if}
   </p>
   <TrackTable
     tracks={favoritesPager.items}
@@ -187,7 +200,6 @@
   {#if favoritesPager.error}
     <ErrorState message={favoritesPager.error} onRetry={() => favoritesPager.loadMore()} />
   {/if}
-  {#if favoritesPager.loading}<p class="muted">Loading…</p>{/if}
   {#if deleting}
     <ConfirmDialog
       title="Delete playlist"

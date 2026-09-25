@@ -59,6 +59,10 @@
     description = "";
     formError = "";
   }
+
+  function autofocus(node: HTMLInputElement) {
+    node.focus();
+  }
 </script>
 
 {#if actions.open}
@@ -83,13 +87,20 @@
         <button disabled={actions.busy} onclick={() => actions.startCreate()}>New playlist…</button>
       {/if}
     {:else if actions.step === "create"}
-      <p><label>Name <input bind:value={name} /></label></p>
-      <p><label>Description <input bind:value={description} /></label></p>
-      {#if formError}<p class="error">{formError}</p>{/if}
-      <p class="actions">
-        <button onclick={close}>Cancel</button>
-        <button disabled={actions.busy} onclick={create}>Create</button>
-      </p>
+      <form
+        onsubmit={(event) => {
+          event.preventDefault();
+          void create();
+        }}
+      >
+        <p><label>Name <input bind:value={name} use:autofocus /></label></p>
+        <p><label>Description <input bind:value={description} /></label></p>
+        {#if formError}<p class="error">{formError}</p>{/if}
+        <p class="actions">
+          <button type="button" onclick={close}>Cancel</button>
+          <button type="submit" disabled={actions.busy}>Create</button>
+        </p>
+      </form>
     {:else}
       <p class="muted">Some tracks are already in this playlist. Keep one, or add another copy.</p>
       <div class="dupes">

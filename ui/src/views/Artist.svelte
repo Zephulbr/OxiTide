@@ -1,6 +1,8 @@
 <script lang="ts">
   import { api, type Artist as ArtistT } from "../lib/api";
+  import EmptyState from "../lib/components/EmptyState.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
+  import Loading from "../lib/components/Loading.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
   let { id, favorites }: { id: number; favorites: Favorites } = $props();
   let artist = $state<ArtistT | null>(null);
@@ -25,7 +27,7 @@
 </script>
 
 {#if loading}
-  <p class="muted">Loading…</p>
+  <Loading />
 {:else if error}
   <ErrorState message={error} onRetry={load} />
 {:else if artist}
@@ -40,4 +42,6 @@
     >{favorites.hasArtist(artistId) ? "♥" : "♡"}</button>
   </h2>
   <p class="muted">Artist</p>
+{:else}
+  <EmptyState message="Artist not found." />
 {/if}

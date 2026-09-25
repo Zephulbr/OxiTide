@@ -1,10 +1,11 @@
 import { SvelteSet } from "svelte/reactivity";
 import { api } from "./api";
+import { errorMessage } from "./errors";
 import { invalidatePager, removePagerItem } from "./pager.svelte";
+import type { Toasts } from "./toasts.svelte";
 
 export interface Favorites {
   readonly hydrated: boolean;
-  readonly error: string | null;
   readonly trackRevision: number;
   hydrate(): Promise<void>;
   hasTrack(id: number): boolean;
@@ -16,15 +17,15 @@ export interface Favorites {
   toggleTrack(id: number): Promise<boolean | null>;
   toggleAlbum(id: number): Promise<boolean | null>;
   toggleArtist(id: number): Promise<boolean | null>;
-  dismissError(): void;
   reset(): void;
 }
 
 type Kind = "track" | "album" | "artist";
 
 /// Favorite state for the signed-in account. Hydrated once per session from
-/// `get_favorite_ids`; toggles are optimistic and revert on failure.
-export function createFavorites(): Favorites {
+/// `get_favorite_ids`; toggles are optimistic and revert on failure. Failures
+/// surface as persistent error toasts.
+export function createFavorites(toasts: Toasts): Favorites {
   const tracks = new SvelteSet<number>();
   const albums = new SvelteSet<number>();
   const artists = new SvelteSet<number>();
@@ -35,7 +36,6 @@ export function createFavorites(): Favorites {
   /// Track ids unfavorited this session that a mounted list may still hold.
   const pendingRemovals = new Set<number>();
   let hydrated = $state(false);
-  let error = $state<string | null>(null);
   let trackRevision = $state(0);
   let hydratePromise: Promise<void> | null = null;
   let generation = 0;
@@ -72,7 +72,7 @@ export function createFavorites(): Favorites {
         hydrated = true;
       } catch (e) {
         if (gen !== generation) return;
-        error = String(e);
+        toasts.show(errorMessage(e), { severity: "error" });
       } finally {
         if (gen === generation) hydratePromise = null;
       }
@@ -92,7 +92,6 @@ export function createFavorites(): Favorites {
     try {
       await callToggle(kind, id, next);
       touched.add(key);
-      error = null;
       if (kind === "track") {
         if (next) {
           invalidatePager("favorites");
@@ -106,7 +105,7 @@ export function createFavorites(): Favorites {
     } catch (e) {
       if (was) set.add(id);
       else set.delete(id);
-      error = String(e);
+      toasts.show(errorMessage(e), { severity: "error" });
       return null;
     } finally {
       pending.delete(key);
@@ -115,7 +114,6 @@ export function createFavorites(): Favorites {
 
   return {
     get hydrated() { return hydrated; },
-    get error() { return error; },
     get trackRevision() { return trackRevision; },
     hydrate,
     hasTrack: (id) => tracks.has(id),
@@ -131,9 +129,6 @@ export function createFavorites(): Favorites {
     toggleTrack: (id) => toggle("track", id),
     toggleAlbum: (id) => toggle("album", id),
     toggleArtist: (id) => toggle("artist", id),
-    dismissError: () => {
-      error = null;
-    },
     reset: () => {
       generation += 1;
       hydratePromise = null;
@@ -144,7 +139,6 @@ export function createFavorites(): Favorites {
       touched.clear();
       pendingRemovals.clear();
       hydrated = false;
-      error = null;
       trackRevision = 0;
     },
   };
