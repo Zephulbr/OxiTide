@@ -17,6 +17,14 @@ describe("errorMessage", () => {
     expect(errorMessage("api error 500: boom")).toBe("api error 500: boom");
   });
 
+  it("maps the stale playlist 412", () => {
+    expect(
+      errorMessage(
+        'api error 412: {"status":412,"subStatus":7002,"userMessage":"You must send the correct Etag value in the If-None-Match header to modify a playlist"}',
+      ),
+    ).toBe("The playlist changed on TIDAL — refresh and try again");
+  });
+
   it("falls back to String for non-string errors", () => {
     expect(errorMessage(new Error("offline"))).toBe("Error: offline");
     expect(errorMessage(undefined)).toBe("undefined");

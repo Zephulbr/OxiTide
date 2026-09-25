@@ -6,5 +6,8 @@ export function errorMessage(e: unknown): string {
   if (raw === "rate limited") {
     return "TIDAL is rate-limiting requests — try again in a moment";
   }
+  if (raw.startsWith("api error 412")) {
+    return "The playlist changed on TIDAL — refresh and try again";
+  }
   return raw;
 }
