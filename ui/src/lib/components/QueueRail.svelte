@@ -2,6 +2,7 @@
   import { api } from "../api";
   import { copyText } from "../clipboard";
   import ConfirmDialog from "./ConfirmDialog.svelte";
+  import Icon from "./Icon.svelte";
   import VirtualList from "./VirtualList.svelte";
   import { menuFor } from "../menu.svelte";
   import { queueMenuItems } from "../menus";
@@ -76,11 +77,11 @@
             onkeydown={(event) => onRowKeydown(event, index)}
             style="height:{QUEUE_ROW_HEIGHT}px;box-sizing:border-box;display:flex;align-items:center;padding:4px;border-bottom:1px solid var(--line);cursor:pointer;{player.state.current?.track_id === item.track_id ? 'background:var(--panel);' : ''}"
           >
-            <span class="muted handle" style="cursor:grab;padding-right:6px" title="Drag to reorder" aria-hidden="true">⠿</span>
+            <span class="muted handle" style="cursor:grab;padding-right:6px" title="Drag to reorder" aria-hidden="true"><Icon name="grip-vertical" size={14} /></span>
             <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
               {item.title} <span class="muted">{item.artist}</span>
             </span>
-            <button onclick={() => player.remove(index)} aria-label="Remove">✕</button>
+            <button onclick={() => player.remove(index)} aria-label="Remove"><Icon name="x" size={14} /></button>
           </div>
         {/if}
       {/snippet}

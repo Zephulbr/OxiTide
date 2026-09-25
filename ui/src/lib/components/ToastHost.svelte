@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from "./Icon.svelte";
   import type { Toasts } from "../toasts.svelte";
   let { toasts }: { toasts: Toasts } = $props();
 </script>
@@ -20,7 +21,7 @@
               toasts.dismiss(toast.id);
             }}>{toast.action.label}</button>
         {/if}
-        <button class="dismiss" onclick={() => toasts.dismiss(toast.id)} aria-label="Dismiss">✕</button>
+        <button class="dismiss" onclick={() => toasts.dismiss(toast.id)} aria-label="Dismiss"><Icon name="x" size={14} /></button>
       </div>
     {/each}
   </div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from "./Icon.svelte";
   import type { Nav } from "../nav.svelte";
   let { nav, onLogout }: { nav: Nav; onLogout: () => void } = $props();
 </script>
@@ -6,8 +7,8 @@
 <nav class="sidebar">
   <h1 style="font-size:16px">OxiTide</h1>
   <div class="history">
-    <button disabled={!nav.canBack} onclick={() => nav.back()} title="Back (Alt+←)" aria-label="Back">‹</button>
-    <button disabled={!nav.canForward} onclick={() => nav.forward()} title="Forward (Alt+→)" aria-label="Forward">›</button>
+    <button disabled={!nav.canBack} onclick={() => nav.back()} title="Back (Alt+←)" aria-label="Back"><Icon name="chevron-left" /></button>
+    <button disabled={!nav.canForward} onclick={() => nav.forward()} title="Forward (Alt+→)" aria-label="Forward"><Icon name="chevron-right" /></button>
   </div>
   <button onclick={() => nav.goto({ name: "home" })}>Home</button>
   <button onclick={() => nav.goto({ name: "search" })}>Search</button>

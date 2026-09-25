@@ -10,6 +10,7 @@
   import type { TrackView } from "../trackView.svelte";
   import { trackDrag, type DragParams } from "../drag";
   import Loading from "./Loading.svelte";
+  import Icon from "./Icon.svelte";
   let {
     view,
     favorites,
@@ -26,8 +27,8 @@
     onPlayAll?: () => void | Promise<void>;
     /// Called when the list is scrolled near its end; used for lazy paging.
     onEndReached?: () => void;
-    /// Renders the "add to playlist" row action. Uses ⊕ to stay distinct
-    /// from the "＋" queue action.
+    /// Renders the "add to playlist" row action (list-plus icon, distinct
+    /// from the plus-icon queue action).
     onAddToPlaylist?: (track: Track) => void;
     /// Playlist-view row editing (move up/down, remove). `disabled` is set by
     /// the parent until the pager has the complete list; `onDrop` (Task 8)
@@ -133,7 +134,7 @@
     oninput={(event) => view.setFilter(event.currentTarget.value)}
   />
   {#if view.filter.trim() !== ""}
-    <button onclick={() => view.setFilter("")} aria-label="Clear filter">✕</button>
+    <button onclick={() => view.setFilter("")} aria-label="Clear filter"><Icon name="x" size={14} /></button>
   {/if}
   {#if view.preparing}
     <Loading label="Loading all tracks…" />
@@ -197,27 +198,27 @@
         >
           <td>
             {#if canDrag}
-              <span class="handle" title="Drag to reorder" aria-hidden="true">⠿</span>
+              <span class="handle" title="Drag to reorder" aria-hidden="true"><Icon name="grip-vertical" size={14} /></span>
             {/if}
-            <button onclick={() => play(index)} disabled={loadingAll} aria-label="Play">▶</button>
+            <button onclick={() => play(index)} disabled={loadingAll} aria-label="Play"><Icon name="play" size={14} /></button>
             <button
               onclick={() => api.queueAdd([trackToQueueItem(t)])}
               aria-label="Add to queue"
               title="Add to queue"
-            >＋</button>
+            ><Icon name="plus" size={14} /></button>
             {#if onAddToPlaylist}
               <button
                 onclick={() => onAddToPlaylist(t)}
                 aria-label="Add to playlist"
                 title="Add to playlist"
-              >⊕</button>
+              ><Icon name="list-plus" size={14} /></button>
             {/if}
             <button
               class:on={favorites.hasTrack(t.id)}
               onclick={() => favorites.toggleTrack(t.id)}
               aria-label={favorites.hasTrack(t.id) ? "Unfavorite" : "Favorite"}
               title={favorites.hasTrack(t.id) ? "Unfavorite" : "Favorite"}
-            >{favorites.hasTrack(t.id) ? "♥" : "♡"}</button>
+            ><Icon name="heart" size={14} /></button>
             {#if playlistActions}
               {#if !view.engaged}
                 <button
@@ -225,20 +226,20 @@
                   disabled={playlistActions.busy || playlistActions.disabled || index === 0}
                   aria-label="Move up"
                   title="Move up"
-                >↑</button>
+                ><Icon name="chevron-up" size={14} /></button>
                 <button
                   onclick={() => playlistActions.onMove(index, 1)}
                   disabled={playlistActions.busy || playlistActions.disabled || index === rows.length - 1}
                   aria-label="Move down"
                   title="Move down"
-                >↓</button>
+                ><Icon name="chevron-down" size={14} /></button>
               {/if}
               <button
                 onclick={() => playlistActions.onRemove(index)}
                 disabled={playlistActions.busy || playlistActions.disabled}
                 aria-label="Remove from playlist"
                 title="Remove from playlist"
-              >✕</button>
+              ><Icon name="x" size={14} /></button>
             {/if}
           </td>
           <td class="muted">{index + 1}</td>
@@ -323,5 +324,13 @@
   }
   .on {
     color: var(--accent);
+  }
+  .on :global(svg) {
+    fill: currentColor;
+  }
+  td button {
+    display: inline-grid;
+    place-items: center;
+    vertical-align: middle;
   }
 </style>

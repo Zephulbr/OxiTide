@@ -1,5 +1,6 @@
 <script lang="ts">
   import { formatDuration } from "../format";
+  import Icon from "./Icon.svelte";
   import { formatQuality, type QualityDisplay } from "../quality";
   import type { RepeatMode } from "../api";
   import type { Favorites } from "../favorites.svelte";
@@ -39,24 +40,24 @@
       onclick={() => favorites.toggleTrack(trackId)}
       aria-label={favorites.hasTrack(trackId) ? "Unfavorite" : "Favorite"}
       title={favorites.hasTrack(trackId) ? "Unfavorite" : "Favorite"}
-    >{favorites.hasTrack(trackId) ? "♥" : "♡"}</button>
-    <button onclick={() => player.prev()} aria-label="Previous">⏮</button>
+    ><Icon name="heart" /></button>
+    <button onclick={() => player.prev()} aria-label="Previous"><Icon name="skip-back" /></button>
     <button onclick={() => player.playPause()} aria-label="Play/Pause">
-      {player.state.playing ? "⏸" : "▶"}
+      <Icon name={player.state.playing ? "pause" : "play"} />
     </button>
-    <button onclick={() => player.next()} aria-label="Next">⏭</button>
+    <button onclick={() => player.next()} aria-label="Next"><Icon name="skip-forward" /></button>
     <button
       class:active={player.state.shuffle}
       onclick={() => player.setShuffle(!player.state.shuffle)}
       aria-label="Shuffle"
       title="Shuffle the rest of the queue"
-    >🔀</button>
+    ><Icon name="shuffle" /></button>
     <button
       class:active={player.state.repeat !== "off"}
       onclick={() => player.setRepeat(nextRepeat(player.state.repeat))}
       aria-label="Repeat"
       title={player.state.repeat === "one" ? "Repeat one" : player.state.repeat === "all" ? "Repeat all" : "Repeat off"}
-    >{player.state.repeat === "one" ? "🔂" : "🔁"}</button>
+    ><Icon name={player.state.repeat === "one" ? "repeat-1" : "repeat"} /></button>
     <input
       type="range" min="0" max={Math.max(duration, 1)} value={position}
       oninput={(e) => {
@@ -92,4 +93,9 @@
 <style>
   .active { color: var(--accent); }
   .on { color: var(--accent); }
+  .on :global(svg) { fill: currentColor; }
+  .player button {
+    display: inline-grid;
+    place-items: center;
+  }
 </style>

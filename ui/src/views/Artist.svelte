@@ -2,6 +2,7 @@
   import { api, type Artist as ArtistT } from "../lib/api";
   import EmptyState from "../lib/components/EmptyState.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
+  import Icon from "../lib/components/Icon.svelte";
   import Loading from "../lib/components/Loading.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
   let { id, favorites }: { id: number; favorites: Favorites } = $props();
@@ -39,9 +40,14 @@
       onclick={() => favorites.toggleArtist(artistId)}
       aria-label={favorites.hasArtist(artistId) ? "Unfavorite artist" : "Favorite artist"}
       title={favorites.hasArtist(artistId) ? "Unfavorite artist" : "Favorite artist"}
-    >{favorites.hasArtist(artistId) ? "♥" : "♡"}</button>
+    ><Icon name="heart" /></button>
   </h2>
   <p class="muted">Artist</p>
 {:else}
   <EmptyState message="Artist not found." />
 {/if}
+
+<style>
+  .on { color: var(--accent); }
+  .on :global(svg) { fill: currentColor; }
+</style>

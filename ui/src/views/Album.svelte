@@ -2,6 +2,7 @@
   import { api, type Album as AlbumT, type Track } from "../lib/api";
   import EmptyState from "../lib/components/EmptyState.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
+  import Icon from "../lib/components/Icon.svelte";
   import Loading from "../lib/components/Loading.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
   import { createTrackView } from "../lib/trackView.svelte";
@@ -51,7 +52,7 @@
       onclick={() => favorites.toggleAlbum(albumId)}
       aria-label={favorites.hasAlbum(albumId) ? "Unfavorite album" : "Favorite album"}
       title={favorites.hasAlbum(albumId) ? "Unfavorite album" : "Favorite album"}
-    >{favorites.hasAlbum(albumId) ? "♥" : "♡"}</button>
+    ><Icon name="heart" /></button>
     <button
       onclick={() => playlistActions.openPicker(tracks)}
       aria-label="Add album to playlist"
@@ -67,3 +68,8 @@
 {:else}
   <EmptyState message="Album not found." />
 {/if}
+
+<style>
+  .on { color: var(--accent); }
+  .on :global(svg) { fill: currentColor; }
+</style>
