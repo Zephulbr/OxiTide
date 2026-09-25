@@ -1,1 +1,32 @@
-/* Vendored font faces — Task 3 fills this in. */
+/* Vendored variable fonts (spec §6): Fraunces display face (roman + italic),
+   Manrope and Inter UI faces. Latin subsets; 155KB total (ceiling 250KB).
+   Source: @fontsource-variable packages via jsDelivr. */
+
+@font-face {
+  font-family: "Fraunces";
+  src: url("../assets/fonts/fraunces-latin-wght-normal.woff2") format("woff2");
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Fraunces";
+  src: url("../assets/fonts/fraunces-latin-wght-italic.woff2") format("woff2");
+  font-weight: 300 700;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Manrope";
+  src: url("../assets/fonts/manrope-latin-wght-normal.woff2") format("woff2");
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("../assets/fonts/inter-latin-wght-normal.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
