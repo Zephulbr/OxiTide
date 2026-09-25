@@ -59,20 +59,52 @@ impl TidalClient {
     }
 
     pub async fn get<T: DeserializeOwned>(&self, path: &str, params: &[(&str, String)]) -> Result<T> {
+        let (value, _) = self.get_with_etag(path, params).await?;
+        Ok(value)
+    }
+
+    /// GET that also returns the response `etag` header (playlist writes must
+    /// send it verbatim in `If-None-Match`), sharing `get`'s single-flight
+    /// refresh-on-401. A 401 that survives a *successful* refresh is an
+    /// authorization failure, not an expired session.
+    pub async fn get_with_etag<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        params: &[(&str, String)],
+    ) -> Result<(T, Option<String>)> {
         let token = self.access_token();
-        let resp = self.send_get(path, params, &token).await?;
+        let mut resp = self.send_get(path, params, &token).await?;
+        let mut refreshed = false;
         if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
             self.try_refresh(&token).await?;
-            let retry = self.send_get(path, params, &self.access_token()).await?;
-            return Self::decode(retry).await;
+            refreshed = true;
+            resp = self.send_get(path, params, &self.access_token()).await?;
         }
-        Self::decode(resp).await
+        if refreshed && resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+            return Err(Error::Forbidden);
+        }
+        let etag = resp
+            .headers()
+            .get(reqwest::header::ETAG)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string);
+        Ok((Self::decode(resp).await?, etag))
     }
 
     /// Send a form-encoded POST, refreshing once on 401 and honoring a
     /// `Retry-After` hint once on 429.
     pub async fn post_form(&self, path: &str, form: &[(&str, String)]) -> Result<()> {
-        self.mutate(reqwest::Method::POST, &self.base_url, path, &[], form)
+        self.post_form_with_etag(path, form, None).await
+    }
+
+    /// Form POST with an optional `If-None-Match` value (playlist writes).
+    pub async fn post_form_with_etag(
+        &self,
+        path: &str,
+        form: &[(&str, String)],
+        etag: Option<&str>,
+    ) -> Result<()> {
+        self.mutate(reqwest::Method::POST, &self.base_url, path, &[], form, etag)
             .await
             .map(|_| ())
     }
@@ -80,7 +112,12 @@ impl TidalClient {
     /// Send a DELETE, refreshing once on 401 and honoring a `Retry-After` hint
     /// once on 429.
     pub async fn delete(&self, path: &str) -> Result<()> {
-        self.mutate(reqwest::Method::DELETE, &self.base_url, path, &[], &[])
+        self.delete_with_etag(path, None).await
+    }
+
+    /// DELETE with an optional `If-None-Match` value (playlist writes).
+    pub async fn delete_with_etag(&self, path: &str, etag: Option<&str>) -> Result<()> {
+        self.mutate(reqwest::Method::DELETE, &self.base_url, path, &[], &[], etag)
             .await
             .map(|_| ())
     }
@@ -92,7 +129,7 @@ impl TidalClient {
         params: &[(&str, String)],
     ) -> Result<T> {
         let resp = self
-            .mutate(reqwest::Method::PUT, &self.v2_base_url, path, params, &[])
+            .mutate(reqwest::Method::PUT, &self.v2_base_url, path, params, &[], None)
             .await?;
         Ok(resp.json().await?)
     }
@@ -106,7 +143,21 @@ impl TidalClient {
         form: &[(&str, String)],
     ) -> Result<T> {
         let resp = self
-            .mutate(reqwest::Method::POST, &self.base_url, path, params, form)
+            .mutate(reqwest::Method::POST, &self.base_url, path, params, form, None)
+            .await?;
+        Ok(resp.json().await?)
+    }
+
+    /// Form POST returning JSON with an optional `If-None-Match` value.
+    pub async fn post_form_json_with_etag<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        params: &[(&str, String)],
+        form: &[(&str, String)],
+        etag: Option<&str>,
+    ) -> Result<T> {
+        let resp = self
+            .mutate(reqwest::Method::POST, &self.base_url, path, params, form, etag)
             .await?;
         Ok(resp.json().await?)
     }
@@ -171,14 +222,17 @@ impl TidalClient {
         path: &str,
         params: &[(&str, String)],
         form: &[(&str, String)],
+        etag: Option<&str>,
     ) -> Result<reqwest::Response> {
         let country_code = base == self.base_url.as_str();
         let token = self.access_token();
+        let mut refreshed = false;
         let mut resp = self
-            .send_mutation(&method, base, path, params, form, &token, country_code)
+            .send_mutation(&method, base, path, params, form, &token, country_code, etag)
             .await?;
         if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
             self.try_refresh(&token).await?;
+            refreshed = true;
             resp = self
                 .send_mutation(
                     &method,
@@ -188,8 +242,14 @@ impl TidalClient {
                     form,
                     &self.access_token(),
                     country_code,
+                    etag,
                 )
                 .await?;
+        }
+        // A 401 that survives a successful refresh is a permission failure;
+        // only a failed refresh means the session is gone.
+        if refreshed && resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+            return Err(Error::Forbidden);
         }
         if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
             tokio::time::sleep(Self::retry_after(&resp)).await;
@@ -202,6 +262,7 @@ impl TidalClient {
                     form,
                     &self.access_token(),
                     country_code,
+                    etag,
                 )
                 .await?;
         }
@@ -218,6 +279,7 @@ impl TidalClient {
         form: &[(&str, String)],
         token: &str,
         country_code: bool,
+        etag: Option<&str>,
     ) -> Result<reqwest::Response> {
         let mut query: Vec<(&str, String)> = if country_code {
             vec![("countryCode", self.session.country_code.clone())]
@@ -237,6 +299,9 @@ impl TidalClient {
             .query(&query);
         if !form.is_empty() {
             request = request.form(form);
+        }
+        if let Some(value) = etag {
+            request = request.header(reqwest::header::IF_NONE_MATCH, value);
         }
         Ok(request.send().await?)
     }
@@ -680,5 +745,104 @@ mod tests {
         );
         let thing: Thing = client.put_json("things", &[]).await.unwrap();
         assert_eq!(thing.value, 6);
+    }
+
+    #[tokio::test]
+    async fn get_with_etag_returns_the_header_verbatim() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/playlists/p"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("etag", "\"e1\"")
+                    .set_body_json(serde_json::json!({"value": 1})),
+            )
+            .mount(&server)
+            .await;
+        let client = TidalClient::new(
+            reqwest::Client::new(),
+            server.uri(),
+            format!("{}/token", server.uri()),
+            session(),
+            tokens(),
+            Arc::new(MemoryStore::default()),
+        );
+        let (thing, etag) = client.get_with_etag::<Thing>("playlists/p", &[]).await.unwrap();
+        assert_eq!(thing.value, 1);
+        assert_eq!(etag.as_deref(), Some("\"e1\""));
+    }
+
+    #[tokio::test]
+    async fn post_form_with_etag_sends_if_none_match() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/playlists/p/items"))
+            .and(header("if-none-match", "\"e1\""))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+        let client = TidalClient::new(
+            reqwest::Client::new(),
+            server.uri(),
+            format!("{}/token", server.uri()),
+            session(),
+            tokens(),
+            Arc::new(MemoryStore::default()),
+        );
+        client
+            .post_form_with_etag("playlists/p/items", &[], Some("\"e1\""))
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn get_401_after_a_successful_refresh_is_forbidden() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/tracks/1"))
+            .and(header("authorization", "Bearer old"))
+            .respond_with(ResponseTemplate::new(401)).mount(&server).await;
+        Mock::given(method("GET")).and(path("/tracks/1"))
+            .and(header("authorization", "Bearer new"))
+            .respond_with(ResponseTemplate::new(401)).mount(&server).await;
+        Mock::given(method("POST")).and(path("/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": "new", "refresh_token": "rt2", "token_type": "Bearer", "expires_in": 3600
+            })))
+            .mount(&server).await;
+        let client = TidalClient::new(
+            reqwest::Client::new(),
+            server.uri(),
+            format!("{}/token", server.uri()),
+            session(),
+            tokens(),
+            Arc::new(MemoryStore::default()),
+        );
+        let err = client.get::<Thing>("tracks/1", &[]).await.unwrap_err();
+        assert!(matches!(err, Error::Forbidden), "expected Forbidden, got {err:?}");
+    }
+
+    #[tokio::test]
+    async fn post_form_401_after_a_successful_refresh_is_forbidden() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST")).and(path("/playlists/p"))
+            .and(header("authorization", "Bearer old"))
+            .respond_with(ResponseTemplate::new(401)).mount(&server).await;
+        Mock::given(method("POST")).and(path("/playlists/p"))
+            .and(header("authorization", "Bearer new"))
+            .respond_with(ResponseTemplate::new(401)).mount(&server).await;
+        Mock::given(method("POST")).and(path("/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": "new", "refresh_token": "rt2", "token_type": "Bearer", "expires_in": 3600
+            })))
+            .mount(&server).await;
+        let client = TidalClient::new(
+            reqwest::Client::new(),
+            server.uri(),
+            format!("{}/token", server.uri()),
+            session(),
+            tokens(),
+            Arc::new(MemoryStore::default()),
+        );
+        let err = client.post_form("playlists/p", &[]).await.unwrap_err();
+        assert!(matches!(err, Error::Forbidden), "expected Forbidden, got {err:?}");
     }
 }
