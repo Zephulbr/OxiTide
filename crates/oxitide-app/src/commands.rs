@@ -877,6 +877,8 @@ mod tests {
             number_of_tracks: 3,
             duration: 0,
             image: None,
+            creator: None,
+            owned: true,
         };
         let value = serde_json::to_value(&dto).unwrap();
         assert_eq!(value["numberOfTracks"], serde_json::json!(3));

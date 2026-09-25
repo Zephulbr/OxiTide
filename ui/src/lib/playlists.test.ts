@@ -25,7 +25,7 @@ function track(id: number): Track {
 }
 
 function playlist(uuid: string, title = "Mix"): Playlist {
-  return { uuid, title, description: null, numberOfTracks: 0, duration: 0, image: null };
+  return { uuid, title, description: null, numberOfTracks: 0, duration: 0, image: null, owned: true };
 }
 
 interface FakeToasts extends Toasts {

@@ -78,6 +78,11 @@ pub struct Artist {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PlaylistCreator {
+    pub id: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Playlist {
     pub uuid: String,
     pub title: String,
@@ -89,6 +94,22 @@ pub struct Playlist {
     pub duration: u32,
     #[serde(default)]
     pub image: Option<String>,
+    #[serde(default, skip_serializing)]
+    pub creator: Option<PlaylistCreator>,
+    #[serde(skip_deserializing, default)]
+    pub owned: bool,
+}
+
+impl Playlist {
+    /// Mark editability from the creator id. `assume_owned` decides the
+    /// missing-creator case: list endpoints return only the user's playlists,
+    /// single fetches can be anybody's.
+    pub fn mark_owned(&mut self, user_id: u64, assume_owned: bool) {
+        self.owned = match &self.creator {
+            Some(creator) => creator.id == user_id,
+            None => assume_owned,
+        };
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -168,5 +189,41 @@ mod tests {
         let p: ItemPage<Track> = serde_json::from_str(raw).unwrap();
         assert!(p.items.is_empty());
         assert_eq!(p.total_number_of_items, 0);
+    }
+
+    #[test]
+    fn playlist_creator_parses_and_marks_ownership() {
+        let raw = r#"{"uuid": "u", "title": "Mine", "creator": {"id": 42}}"#;
+        let mut playlist: Playlist = serde_json::from_str(raw).unwrap();
+
+        playlist.mark_owned(42, false);
+        assert!(playlist.owned);
+
+        playlist.mark_owned(7, false);
+        assert!(!playlist.owned);
+    }
+
+    #[test]
+    fn playlist_without_creator_uses_the_assumed_ownership() {
+        let raw = r#"{"uuid": "u", "title": "Mine"}"#;
+        let mut playlist: Playlist = serde_json::from_str(raw).unwrap();
+
+        playlist.mark_owned(42, true);
+        assert!(playlist.owned);
+
+        playlist.mark_owned(42, false);
+        assert!(!playlist.owned);
+    }
+
+    #[test]
+    fn playlist_serializes_owned_but_not_creator() {
+        let raw = r#"{"uuid": "u", "title": "T", "creator": {"id": 1}}"#;
+        let mut playlist: Playlist = serde_json::from_str(raw).unwrap();
+        playlist.mark_owned(1, false);
+
+        let value = serde_json::to_value(&playlist).unwrap();
+
+        assert_eq!(value["owned"], serde_json::json!(true));
+        assert!(value.get("creator").is_none());
     }
 }

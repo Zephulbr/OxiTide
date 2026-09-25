@@ -47,7 +47,9 @@ fn is_stale_etag(error: &Error) -> bool {
 
 impl TidalClient {
     pub async fn playlist(&self, id: &str) -> Result<Playlist> {
-        self.get(&format!("playlists/{id}"), &[]).await
+        let mut playlist: Playlist = self.get(&format!("playlists/{id}"), &[]).await?;
+        playlist.mark_owned(self.session().user_id, false);
+        Ok(playlist)
     }
 
     /// One page of playlist tracks plus the server-reported total.
@@ -76,17 +78,26 @@ impl TidalClient {
                 &page_params(limit, offset),
             )
             .await?;
-        Ok(page.items)
+        let mut items = page.items;
+        for playlist in &mut items {
+            playlist.mark_owned(self.session().user_id, true);
+        }
+        Ok(items)
     }
 
     /// Walk every page of the user's playlists.
     pub async fn all_user_playlists(&self) -> Result<Vec<Playlist>> {
-        self.get_all_pages(
-            &format!("users/{}/playlists", self.session().user_id),
-            &[],
-            DEFAULT_PAGE_SIZE,
-        )
-        .await
+        let mut items: Vec<Playlist> = self
+            .get_all_pages(
+                &format!("users/{}/playlists", self.session().user_id),
+                &[],
+                DEFAULT_PAGE_SIZE,
+            )
+            .await?;
+        for playlist in &mut items {
+            playlist.mark_owned(self.session().user_id, true);
+        }
+        Ok(items)
     }
 
     /// The playlist plus the `etag` TIDAL requires in `If-None-Match` for writes.
@@ -111,7 +122,9 @@ impl TidalClient {
                 ],
             )
             .await?;
-        Ok(envelope.data)
+        let mut playlist = envelope.data;
+        playlist.mark_owned(self.session().user_id, true);
+        Ok(playlist)
     }
 
     /// Rename a playlist and/or change its description.
@@ -329,6 +342,7 @@ mod tests {
         assert_eq!(playlist.uuid, "new-uuid");
         assert_eq!(playlist.title, "Mix");
         assert_eq!(playlist.number_of_tracks, 0);
+        assert!(playlist.owned);
     }
 
     #[tokio::test]
@@ -703,5 +717,48 @@ mod tests {
             .move_playlist_items("p-uuid", &[], 3)
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn playlist_marks_owned_when_the_creator_is_the_session_user() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/playlists/p-uuid"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "uuid": "p-uuid", "title": "P", "creator": {"id": 42}
+            })))
+            .mount(&server).await;
+        assert!(client(&server).playlist("p-uuid").await.unwrap().owned);
+    }
+
+    #[tokio::test]
+    async fn playlist_marks_not_owned_for_another_or_missing_creator() {
+        let other = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/playlists/p-uuid"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "uuid": "p-uuid", "title": "P", "creator": {"id": 7}
+            })))
+            .mount(&other).await;
+        assert!(!client(&other).playlist("p-uuid").await.unwrap().owned);
+
+        let missing = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/playlists/p-uuid"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "uuid": "p-uuid", "title": "P"
+            })))
+            .mount(&missing).await;
+        assert!(!client(&missing).playlist("p-uuid").await.unwrap().owned);
+    }
+
+    #[tokio::test]
+    async fn user_playlists_marks_items_owned_even_without_a_creator() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/users/42/playlists"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [{"uuid": "a", "title": "A"}, {"uuid": "b", "title": "B"}],
+                "totalNumberOfItems": 2, "limit": 50, "offset": 0
+            })))
+            .mount(&server).await;
+        let items = client(&server).user_playlists(50, 0).await.unwrap();
+        assert!(items.iter().all(|playlist| playlist.owned));
     }
 }

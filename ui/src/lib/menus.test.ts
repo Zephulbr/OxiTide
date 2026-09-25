@@ -21,7 +21,15 @@ function track(id: number): Track {
 }
 
 function playlist(): Playlist {
-  return { uuid: "p", title: "Mix", description: null, numberOfTracks: 0, duration: 0, image: null };
+  return {
+    uuid: "p",
+    title: "Mix",
+    description: null,
+    numberOfTracks: 0,
+    duration: 0,
+    image: null,
+    owned: true,
+  };
 }
 
 function favorites(has: boolean): Favorites {

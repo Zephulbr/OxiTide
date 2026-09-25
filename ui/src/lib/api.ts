@@ -18,6 +18,7 @@ export interface Artist { id: number; name: string; picture?: string | null }
 export interface Playlist {
   uuid: string; title: string; description?: string | null;
   numberOfTracks: number; duration: number; image?: string | null;
+  owned: boolean;
 }
 export interface HomeItem { id: string; title: string; subtitle?: string | null; item_type: string }
 export interface HomeSection { title: string; items: HomeItem[] }

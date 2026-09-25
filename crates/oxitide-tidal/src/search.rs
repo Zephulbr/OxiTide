@@ -16,7 +16,11 @@ impl TidalClient {
             ("limit", limit.to_string()),
             ("offset", offset.to_string()),
         ];
-        self.get("search", &params).await
+        let mut results: SearchResults = self.get("search", &params).await?;
+        for playlist in &mut results.playlists.items {
+            playlist.mark_owned(self.session().user_id, false);
+        }
+        Ok(results)
     }
 }
 
@@ -70,5 +74,25 @@ mod tests {
             .mount(&server).await;
         let r = client(&server).search("zzzz", &["tracks"], 20, 0).await.unwrap();
         assert!(r.track_items().is_empty() && r.album_items().is_empty());
+    }
+
+    #[tokio::test]
+    async fn search_marks_playlist_ownership() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/search"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "tracks": {"items": []}, "albums": {"items": []},
+                "artists": {"items": []},
+                "playlists": {"items": [
+                    {"uuid": "mine", "title": "Mine", "creator": {"id": 1}},
+                    {"uuid": "theirs", "title": "Theirs", "creator": {"id": 2}},
+                    {"uuid": "unknown", "title": "Unknown"}
+                ]}
+            })))
+            .mount(&server).await;
+        let results = client(&server).search("mix", &["playlists"], 20, 0).await.unwrap();
+        assert!(results.playlist_items()[0].owned);
+        assert!(!results.playlist_items()[1].owned);
+        assert!(!results.playlist_items()[2].owned);
     }
 }
