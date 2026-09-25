@@ -2375,7 +2375,7 @@ git commit -m "feat(ui): virtualize the library playlist and album lists"
 
 - [ ] **Step 1: Run the full Rust and UI gates**
 
-Run each and capture the summary lines:
+Run each and capture the summary lines (they go in the checklist's Gate Results section in Step 2):
 
 ```bash
 cargo test --workspace
@@ -2396,6 +2396,13 @@ Create `docs/superpowers/plans/notes/plan9-smoke.md`:
 Run against a real account in `npm --prefix ui run app:dev`. Record pass/fail
 and notes per item; a failed item blocks the plan until fixed or explicitly
 accepted.
+
+## Gate Results
+
+- cargo test --workspace: <fill in>
+- cargo clippy --workspace -- -D warnings: <fill in>
+- npm --prefix ui test: <fill in>
+- npm --prefix ui run check: <fill in>
 
 ## Sort and filter
 
