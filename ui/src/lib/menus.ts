@@ -15,6 +15,8 @@ export interface TrackMenuContext {
     onMove(index: number, delta: -1 | 1): void;
     busy: boolean;
     disabled: boolean;
+    /// false omits move-up/move-down but keeps Remove (sorted/filtered views).
+    canMove?: boolean;
   };
 }
 
@@ -33,21 +35,23 @@ export function trackMenuItems(ctx: TrackMenuContext): MenuItem[] {
   ];
   const playlist = ctx.playlist;
   if (playlist && !playlist.busy && !playlist.disabled) {
-    items.push(
-      {
-        id: "move-up",
-        label: "Move up",
-        disabled: ctx.index === 0,
-        run: () => playlist.onMove(ctx.index, -1),
-      },
-      {
-        id: "move-down",
-        label: "Move down",
-        disabled: ctx.index === ctx.trackCount - 1,
-        run: () => playlist.onMove(ctx.index, 1),
-      },
-      { id: "remove", label: "Remove", run: () => playlist.onRemove(ctx.index) },
-    );
+    if (playlist.canMove !== false) {
+      items.push(
+        {
+          id: "move-up",
+          label: "Move up",
+          disabled: ctx.index === 0,
+          run: () => playlist.onMove(ctx.index, -1),
+        },
+        {
+          id: "move-down",
+          label: "Move down",
+          disabled: ctx.index === ctx.trackCount - 1,
+          run: () => playlist.onMove(ctx.index, 1),
+        },
+      );
+    }
+    items.push({ id: "remove", label: "Remove", run: () => playlist.onRemove(ctx.index) });
   }
   return items;
 }

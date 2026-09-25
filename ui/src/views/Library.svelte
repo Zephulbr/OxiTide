@@ -6,6 +6,7 @@
   import Loading from "../lib/components/Loading.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
   import { createTrackPager } from "../lib/pager.svelte";
+  import { createTrackView } from "../lib/trackView.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { Nav } from "../lib/nav.svelte";
   import { errorMessage } from "../lib/errors";
@@ -42,6 +43,13 @@
   const favoritesPager = createTrackPager("favorites", (offset, limit) =>
     api.getFavoriteTracksPage(offset, limit),
   );
+
+  async function ensureAllFavorites() {
+    await favoritesPager.ensureAll();
+    if (favoritesPager.error) throw new Error(favoritesPager.error);
+  }
+
+  const view = createTrackView(() => favoritesPager.items, ensureAllFavorites);
 
   async function load() {
     loading = true;
@@ -125,13 +133,13 @@
   async function playFrom(index: number) {
     await favoritesPager.ensureAll();
     if (favoritesPager.error) return;
-    api.playTracks(favoritesPager.items.map(trackToQueueItem), index);
+    api.playTracks(view.items.map(trackToQueueItem), index);
   }
 
   async function playAll() {
     await favoritesPager.ensureAll();
     if (favoritesPager.error) return;
-    api.playTracks(favoritesPager.items.map(trackToQueueItem), 0);
+    api.playTracks(view.items.map(trackToQueueItem), 0);
   }
 </script>
 
@@ -189,8 +197,7 @@
     {#if favoritesPager.loading}<Loading />{/if}
   </p>
   <TrackTable
-    tracks={favoritesPager.items}
-    {player}
+    {view}
     {favorites}
     onPlay={playFrom}
     onPlayAll={playAll}

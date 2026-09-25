@@ -4,6 +4,7 @@
   import ErrorState from "../lib/components/ErrorState.svelte";
   import Loading from "../lib/components/Loading.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
+  import { createTrackView } from "../lib/trackView.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { Nav } from "../lib/nav.svelte";
   import type { PlaylistActions } from "../lib/playlists.svelte";
@@ -19,6 +20,8 @@
   let loading = $state(false);
   let error = $state("");
   let searchedQuery = $state("");
+
+  const resultsView = createTrackView(() => results?.tracks.items ?? []);
 
   const noResults = $derived(
     results !== null &&
@@ -59,12 +62,11 @@
   <EmptyState message={`No results for “${searchedQuery}”`} />
 {:else if results}
   <h3>Tracks</h3>
-  <TrackTable
-    tracks={results.tracks.items}
-    {player}
-    {favorites}
-    onAddToPlaylist={(t) => playlistActions.openPicker([t])}
-  />
+    <TrackTable
+      view={resultsView}
+      {favorites}
+      onAddToPlaylist={(t) => playlistActions.openPicker([t])}
+    />
   <h3>Albums</h3>
   <ul>
     {#each results.albums.items as a (a.id)}
