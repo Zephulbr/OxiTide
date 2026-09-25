@@ -32,8 +32,10 @@ Counts re-run after the final-review fix wave; the first recording (244/71 at 1f
 ## Known caveats
 - Writes are index-based; a concurrent edit from the official app between load
   and write can shift indices — the refetch after the write shows the result.
-- No `If-None-Match`/ETag guard yet (P7-D8).
-- Only your own playlists are editable; TIDAL rejects others with 403.
+- ETag guard (P7-D8) added 2026-09-25: writes fetch the playlist `etag` and send
+  it in `If-None-Match`, retrying once on 412 with a refreshed value.
+- Only your own playlists are editable; TIDAL answers 401 for others' playlists,
+  which the client now maps to the same forbidden copy without signing you out.
 - Pre-existing duplicates are never auto-deduped.
 - If TIDAL omits `addedItemIds`, the client assumes every requested track was
   added and the duplicate dialog is skipped.
