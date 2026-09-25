@@ -95,6 +95,13 @@
     api.playTracks(rows.map(trackToQueueItem), index);
   }
 
+  function onRowDoubleClick(event: MouseEvent, index: number) {
+    if (loadingAll) return;
+    const target = event.target;
+    if (target instanceof Element && target.closest("button, a, input, select, textarea")) return;
+    void play(index);
+  }
+
   async function playAll() {
     if (onPlayAll) {
       loadingAll = true;
@@ -173,6 +180,7 @@
           class:dragging={dragFrom === index}
           draggable={canDrag}
           data-drag-index={canDrag ? index : undefined}
+          ondblclick={(event) => onRowDoubleClick(event, index)}
           use:menuFor={() =>
             trackMenuItems({
               track: t,
@@ -300,6 +308,7 @@
   .row {
     height: 36px;
     border-bottom: 1px solid var(--line);
+    user-select: none;
   }
   .title-cell {
     max-width: 0;
