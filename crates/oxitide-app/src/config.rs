@@ -59,10 +59,57 @@ pub enum QualityDisplay {
     Detailed,
 }
 
+/// Visual mode. Plan 10 ships Instrument only; Plan 11 adds `Atmosphere`
+/// and flips the default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum UiMode {
+    #[default]
+    Instrument,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Typeface {
+    #[default]
+    Manrope,
+    Inter,
+    System,
+    Custom,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Density {
+    #[default]
+    Comfortable,
+    Compact,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CoverShape {
+    #[default]
+    Disc,
+    Sleeve,
+}
+
+/// Spec §7.1: the queue rail docks at 260–420px.
+pub fn clamp_queue_width(px: u32) -> u32 {
+    px.clamp(260, 420)
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct UiConfig {
     pub quality_display: QualityDisplay,
+    pub mode: UiMode,
+    pub typeface: Typeface,
+    /// Font family name used when `typeface == Custom`.
+    pub custom_typeface: String,
+    pub density: Density,
+    pub cover_shape: CoverShape,
+    pub queue_width: u32,
     pub window_width: u32,
     pub window_height: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -76,6 +123,12 @@ impl Default for UiConfig {
     fn default() -> Self {
         Self {
             quality_display: QualityDisplay::Compact,
+            mode: UiMode::Instrument,
+            typeface: Typeface::Manrope,
+            custom_typeface: String::new(),
+            density: Density::Comfortable,
+            cover_shape: CoverShape::Disc,
+            queue_width: 320,
             window_width: 1200,
             window_height: 800,
             window_x: None,
@@ -210,6 +263,12 @@ mod tests {
             streaming: StreamingConfig { quality: QualityDto::Max, allow_fallback: false },
             ui: UiConfig {
                 quality_display: QualityDisplay::Detailed,
+                mode: UiMode::Instrument,
+                typeface: Typeface::Manrope,
+                custom_typeface: String::new(),
+                density: Density::Comfortable,
+                cover_shape: CoverShape::Disc,
+                queue_width: 320,
                 window_width: 1280,
                 window_height: 720,
                 window_x: Some(40),
@@ -328,5 +387,54 @@ mod tests {
         assert!(text.contains("max_size_mb = 1024"));
         assert_eq!(Config::load_from(&path), config);
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn appearance_keys_round_trip() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        let mut config = Config::default();
+        config.ui.typeface = Typeface::Inter;
+        config.ui.custom_typeface = "Commit Mono".into();
+        config.ui.density = Density::Compact;
+        config.ui.cover_shape = CoverShape::Sleeve;
+        config.ui.queue_width = 400;
+        config.save_to(&path).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("typeface = \"inter\""), "{text}");
+        assert!(text.contains("density = \"compact\""), "{text}");
+        assert!(text.contains("cover_shape = \"sleeve\""), "{text}");
+        assert!(text.contains("queue_width = 400"), "{text}");
+        assert_eq!(Config::load_from(&path), config);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// Review Focus: a config written before Plan 10 lacks every appearance
+    /// key; serde defaults must fill them.
+    #[test]
+    fn appearance_defaults_fill_a_pre_plan10_file() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        fs::write(&path, "[ui]\nquality_display = \"detailed\"\n").unwrap();
+        let config = Config::load_from(&path);
+        assert_eq!(config.ui.quality_display, QualityDisplay::Detailed);
+        assert_eq!(config.ui.mode, UiMode::Instrument);
+        assert_eq!(config.ui.typeface, Typeface::Manrope);
+        assert_eq!(config.ui.custom_typeface, "");
+        assert_eq!(config.ui.density, Density::Comfortable);
+        assert_eq!(config.ui.cover_shape, CoverShape::Disc);
+        assert_eq!(config.ui.queue_width, 320);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// Review Focus: queue width is clamped to the spec range on both sides.
+    #[test]
+    fn queue_width_clamps_to_260_420() {
+        assert_eq!(clamp_queue_width(0), 260);
+        assert_eq!(clamp_queue_width(259), 260);
+        assert_eq!(clamp_queue_width(260), 260);
+        assert_eq!(clamp_queue_width(320), 320);
+        assert_eq!(clamp_queue_width(420), 420);
+        assert_eq!(clamp_queue_width(9999), 420);
     }
 }

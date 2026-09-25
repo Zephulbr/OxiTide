@@ -14,7 +14,7 @@ use oxitide_tidal::Error;
 use serde::Serialize;
 use tauri::{Manager, State};
 
-use crate::config::{Config, QualityDisplay};
+use crate::config::{clamp_queue_width, Config, CoverShape, Density, QualityDisplay, Typeface, UiMode};
 use crate::player::{devices, OutputDeviceDto, QualityDto};
 use crate::state::{AppState, Player};
 
@@ -675,6 +675,60 @@ pub fn set_allow_fallback(state: State<'_, AppState>, enabled: bool) -> Result<(
 pub fn set_quality_display(state: State<'_, AppState>, mode: QualityDisplay) -> Result<(), String> {
     let mut config = state.config();
     config.ui.quality_display = mode;
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_ui_mode(state: State<'_, AppState>, mode: UiMode) -> Result<(), String> {
+    let mut config = state.config();
+    config.ui.mode = mode;
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_typeface(state: State<'_, AppState>, typeface: Typeface) -> Result<(), String> {
+    let mut config = state.config();
+    config.ui.typeface = typeface;
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_custom_typeface(state: State<'_, AppState>, name: String) -> Result<(), String> {
+    let mut config = state.config();
+    config.ui.custom_typeface = name;
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_density(state: State<'_, AppState>, density: Density) -> Result<(), String> {
+    let mut config = state.config();
+    config.ui.density = density;
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_cover_shape(state: State<'_, AppState>, shape: CoverShape) -> Result<(), String> {
+    let mut config = state.config();
+    config.ui.cover_shape = shape;
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_queue_width(state: State<'_, AppState>, px: u32) -> Result<(), String> {
+    let mut config = state.config();
+    config.ui.queue_width = clamp_queue_width(px);
     config.save()?;
     state.set_config(config);
     Ok(())
