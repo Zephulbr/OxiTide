@@ -21,6 +21,7 @@
 - [ ] Single-click ▶ still plays; text in track rows cannot be selected (no blue flash on double-click).
 - [ ] Queue: single-click anywhere on a row (except ✕ and the drag handle) starts that track; Enter/Space on a focused row starts it; Space does not toggle play/pause when a queue row is focused.
 - [ ] Queue: ✕ still removes the row; dragging still reorders; right-click still opens Play now / Copy title / Remove.
+- [ ] Queue keyboard: Tab to a row and press Enter/Space → the track starts; Tab to ✕ and press Enter/Space → the row is removed and playback does not restart.
 
 ## Known caveats
 - Ownership is creator-based: TIDAL collaborator playlists (editable but created by someone else) are treated as unowned and hide their edit controls.

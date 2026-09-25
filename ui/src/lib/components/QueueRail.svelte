@@ -37,6 +37,7 @@
   }
 
   function onRowKeydown(event: KeyboardEvent, index: number) {
+    if (event.target !== event.currentTarget) return;
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
     event.stopPropagation();
