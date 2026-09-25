@@ -578,6 +578,76 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn add_playlist_tracks_persistent_412_surfaces() {
+        let server = MockServer::start().await;
+        let gets = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let responder = {
+            let gets = gets.clone();
+            move |_req: &wiremock::Request| {
+                let n = gets.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                ResponseTemplate::new(200)
+                    .insert_header("etag", if n == 0 { "\"e1\"" } else { "\"e2\"" })
+                    .set_body_json(serde_json::json!({
+                        "uuid": "p-uuid", "title": "P", "numberOfTracks": 0
+                    }))
+            }
+        };
+        Mock::given(method("GET"))
+            .and(path("/playlists/p-uuid"))
+            .respond_with(responder)
+            .expect(2)
+            .mount(&server)
+            .await;
+        let conflict = || {
+            ResponseTemplate::new(412).set_body_json(serde_json::json!({
+                "status": 412, "subStatus": 7002,
+                "userMessage": "You must send the correct Etag value in the If-None-Match header to modify a playlist"
+            }))
+        };
+        Mock::given(method("POST"))
+            .and(path("/playlists/p-uuid/items"))
+            .and(header("if-none-match", "\"e1\""))
+            .respond_with(conflict())
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/playlists/p-uuid/items"))
+            .and(header("if-none-match", "\"e2\""))
+            .respond_with(conflict())
+            .expect(1)
+            .mount(&server)
+            .await;
+        let err = client(&server)
+            .add_playlist_tracks("p-uuid", &[7], false)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, crate::error::Error::Api { status: 412, .. }), "got {err:?}");
+    }
+
+    #[tokio::test]
+    async fn rename_playlist_401_after_a_refresh_is_forbidden() {
+        let server = MockServer::start().await;
+        playlist_page(&server, 0).await;
+        Mock::given(method("POST")).and(path("/playlists/p-uuid"))
+            .and(header("authorization", "Bearer AT"))
+            .respond_with(ResponseTemplate::new(401)).mount(&server).await;
+        Mock::given(method("POST")).and(path("/playlists/p-uuid"))
+            .and(header("authorization", "Bearer NEW"))
+            .respond_with(ResponseTemplate::new(401)).mount(&server).await;
+        Mock::given(method("POST")).and(path("/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": "NEW", "refresh_token": "RT2", "token_type": "Bearer", "expires_in": 3600
+            })))
+            .mount(&server).await;
+        let err = client(&server)
+            .rename_playlist("p-uuid", "New name", "")
+            .await
+            .unwrap_err();
+        assert!(matches!(err, crate::error::Error::Forbidden), "expected Forbidden, got {err:?}");
+    }
+
+    #[tokio::test]
     async fn add_playlist_tracks_empty_list_makes_no_request() {
         let server = MockServer::start().await;
         let added = client(&server).add_playlist_tracks("p-uuid", &[], false).await.unwrap();
