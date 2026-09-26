@@ -20,7 +20,7 @@ export interface Playlist {
   numberOfTracks: number; duration: number; image?: string | null;
   owned: boolean;
 }
-export interface HomeItem { id: string; title: string; subtitle?: string | null; item_type: string }
+export interface HomeItem { id: string; title: string; subtitle?: string | null; item_type: string; artwork?: string | null }
 export interface HomeSection { title: string; items: HomeItem[] }
 export interface SearchGroup<T> { items: T[] }
 export interface SearchResults {

@@ -13,6 +13,9 @@ pub struct HomeItem {
     pub subtitle: Option<String>,
     #[serde(default = "default_kind")]
     pub item_type: String,
+    /// Artwork uuid, resolved best-effort from the type-varying raw fields.
+    #[serde(default)]
+    pub artwork: Option<String>,
 }
 
 fn default_kind() -> String {
@@ -65,6 +68,14 @@ struct RawItem {
     pub description: Option<String>,
     #[serde(rename = "type", default)]
     pub item_type: String,
+    #[serde(default)]
+    pub cover: Option<String>,
+    #[serde(default)]
+    pub image: Option<String>,
+    #[serde(default, rename = "squareImage")]
+    pub square_image: Option<String>,
+    #[serde(default)]
+    pub picture: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -104,6 +115,7 @@ impl TidalClient {
                         } else {
                             i.item_type
                         },
+                        artwork: i.cover.or(i.square_image).or(i.image).or(i.picture),
                     })
                     .collect();
                 sections.push(HomeSection { title: module.title, items });
@@ -199,5 +211,28 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({ "rows": [] })))
             .mount(&server).await;
         assert!(client(&server).home_page().await.unwrap().is_empty());
+    }
+
+    /// Review Focus: home items carry artwork under different fields per
+    /// type; the mapping must pick the first available in precedence order.
+    #[tokio::test]
+    async fn home_item_artwork_uses_first_available_field() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/pages/home"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "rows": [{"modules": [{"type": "MIXED", "title": "Mix", "pagedList": {"items": [
+                    {"id": 1, "title": "Album", "cover": "c-1"},
+                    {"uuid": "p-2", "title": "Playlist", "squareImage": "sq-2", "image": "im-2"},
+                    {"id": 3, "title": "Artist", "picture": "pic-3"},
+                    {"id": 4, "title": "Nothing"}
+                ]}}]}]
+            })))
+            .mount(&server).await;
+        let sections = client(&server).home_page().await.unwrap();
+        let items = &sections[0].items;
+        assert_eq!(items[0].artwork.as_deref(), Some("c-1"));
+        assert_eq!(items[1].artwork.as_deref(), Some("sq-2"));
+        assert_eq!(items[2].artwork.as_deref(), Some("pic-3"));
+        assert_eq!(items[3].artwork, None);
     }
 }
