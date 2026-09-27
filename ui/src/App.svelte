@@ -270,7 +270,7 @@
 {#if booting}
   <p class="muted" style="padding:24px">Loading…</p>
 {:else if !loggedIn}
-  {#if error}<p style="color:#ff6b6b;padding:0 24px">{error}</p>{/if}
+  {#if error}<p style="color:var(--danger);padding:0 24px">{error}</p>{/if}
   <Login
     onLogin={onLogin}
     message={expired ? "Session expired — sign in to continue" : ""}
@@ -279,7 +279,7 @@
   <div class="app" data-sidebar={sidebarRail ? "rail" : "full"}>
     <Sidebar {nav} rail={sidebarRail} onToggleRail={() => { railTouched = true; sidebarRail = !sidebarRail; }} onLogout={onLogout} />
     <main class="main">
-      {#if error}<p style="color:#ff6b6b">{error}</p>{/if}
+      {#if error}<p style="color:var(--danger)">{error}</p>{/if}
       {#if nav.nowPlayingOpen}<NowPlaying {player} {nav} {qualityDisplay} />
       {:else if nav.route.name === "home"}<Home {nav} />
       {:else if nav.route.name === "search"}<Search {nav} {player} {favorites} {playlistActions} />

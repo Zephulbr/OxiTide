@@ -295,7 +295,7 @@
   }
   .handle {
     cursor: grab;
-    color: var(--muted);
+    color: var(--text-muted);
     padding-right: 4px;
   }
   .row.dragging {
@@ -317,7 +317,7 @@
     position: sticky;
     top: 0;
     z-index: 1;
-    background: var(--panel);
+    background: var(--surface-1);
     border-bottom: 1px solid var(--line);
   }
   .sort {
@@ -354,7 +354,7 @@
     border-radius: 6px;
     opacity: 0;
     transition: opacity var(--dur-micro);
-    color: #fff;
+    color: var(--text);
   }
   .row:hover .thumb-play {
     opacity: 1;

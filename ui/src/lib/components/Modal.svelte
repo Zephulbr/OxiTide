@@ -54,14 +54,22 @@
     max-height: 80vh;
     overflow: auto;
     padding: 16px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: var(--panel);
+    border: 1px solid transparent;
+    border-radius: var(--radius-sheet);
+    background:
+      linear-gradient(var(--surface-3), var(--surface-3)) padding-box,
+      var(--edge-lit) border-box;
+    backdrop-filter: blur(var(--glass-blur));
   }
   header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     margin-bottom: 12px;
+  }
+  header strong {
+    font-family: var(--font-display);
+    font-size: 20px;
+    font-weight: 640;
   }
 </style>

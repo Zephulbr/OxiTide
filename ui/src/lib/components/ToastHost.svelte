@@ -2,6 +2,12 @@
   import Icon from "./Icon.svelte";
   import type { Toasts } from "../toasts.svelte";
   let { toasts }: { toasts: Toasts } = $props();
+
+  function severityIcon(severity: string): "check" | "alert-triangle" | "info" {
+    if (severity === "success") return "check";
+    if (severity === "error") return "alert-triangle";
+    return "info";
+  }
 </script>
 
 {#if toasts.toasts.length > 0}
@@ -13,6 +19,9 @@
         class:success={toast.severity === "success"}
         role={toast.severity === "error" ? "alert" : undefined}
       >
+        <span class="glyph" class:error={toast.severity === "error"} class:success={toast.severity === "success"}>
+          <Icon name={severityIcon(toast.severity)} size={16} />
+        </span>
         <span class="message">{toast.message}</span>
         {#if toast.action}
           <button
@@ -41,20 +50,28 @@
   .toast {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    background: var(--panel);
-    box-shadow: 0 4px 12px rgb(0 0 0 / 0.35);
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-control);
+    background:
+      linear-gradient(var(--surface-3), var(--surface-3)) padding-box,
+      var(--edge-lit) border-box;
+    backdrop-filter: blur(var(--glass-blur));
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.4);
+    animation: toast-in var(--dur-view) cubic-bezier(0.2, 0.9, 0.3, 1.2);
   }
-  .toast.error {
-    border-color: #ff6b6b;
-    color: #ff6b6b;
-    align-items: flex-start;
+  /* Severity lives on the glyph only — no stripes (spec §8/§14). */
+  .glyph {
+    display: inline-grid;
+    place-items: center;
+    color: var(--text-muted);
   }
-  .toast.success {
-    border-color: var(--accent);
+  .glyph.error {
+    color: var(--danger);
+  }
+  .glyph.success {
+    color: var(--success);
   }
   .message {
     flex: 1;
@@ -62,5 +79,15 @@
   }
   .dismiss {
     margin-left: auto;
+  }
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(-8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 </style>

@@ -170,7 +170,7 @@
     color: var(--accent);
   }
   .error {
-    color: #ff6b6b;
+    color: var(--danger);
   }
   .actions {
     display: flex;

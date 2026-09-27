@@ -3,7 +3,7 @@
 </script>
 
 <span class="loading" role="status">
-  <span class="spinner" aria-hidden="true"></span>
+  <span class="disc" aria-hidden="true"></span>
   {label}
 </span>
 
@@ -12,15 +12,26 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    color: var(--muted);
+    color: var(--text-muted);
   }
-  .spinner {
-    width: 12px;
-    height: 12px;
-    border: 2px solid var(--line);
-    border-top-color: var(--accent);
+  /* Disc spinner (spec §8/§10.2): a small record with an accent tick. */
+  .disc {
+    width: 14px;
+    height: 14px;
     border-radius: 50%;
-    animation: spin 0.8s linear infinite;
+    border: 2px solid var(--line);
+    position: relative;
+    animation: spin 1.2s linear infinite;
+  }
+  .disc::after {
+    content: "";
+    position: absolute;
+    left: calc(50% - 1px);
+    top: 1px;
+    width: 2px;
+    height: 5px;
+    background: var(--accent);
+    border-radius: 1px;
   }
   @keyframes spin {
     to {

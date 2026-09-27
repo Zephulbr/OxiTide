@@ -83,7 +83,7 @@
     </div>
 
     <button class="thumb" onclick={() => nav.toggleNowPlaying()} aria-label="Open now playing" title="Open now playing">
-      <Cover uuid={current.cover} size={80} radius={6} alt="{current.title} artwork" />
+      <Cover uuid={current.cover} size={80} radius={6} alt={`${current.title} artwork`} />
     </button>
 
     <div class="now">

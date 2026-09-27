@@ -117,9 +117,12 @@
     flex-direction: column;
     min-width: 170px;
     padding: 4px;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    background: var(--panel);
+    border: 1px solid transparent;
+    border-radius: var(--radius-control);
+    background:
+      linear-gradient(var(--surface-3), var(--surface-3)) padding-box,
+      var(--edge-lit) border-box;
+    backdrop-filter: blur(var(--glass-blur));
     box-shadow: 0 6px 18px rgb(0 0 0 / 0.4);
     outline: none;
   }
@@ -133,13 +136,13 @@
     cursor: pointer;
   }
   .menu button.active:not(:disabled) {
-    background: var(--panel-2);
+    background: var(--surface-2);
   }
   .menu button.danger {
-    color: #ff6b6b;
+    color: var(--danger);
   }
   .menu button:disabled {
-    color: var(--muted);
+    color: var(--text-muted);
     cursor: default;
   }
 </style>

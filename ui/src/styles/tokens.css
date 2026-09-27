@@ -67,11 +67,6 @@
 
   /* Glass recipe knobs (mode stylesheets override) */
   --glass-blur: 0px;
-
-  /* Legacy aliases — deleted at the end of Task 14. */
-  --panel: var(--surface-1);
-  --panel-2: var(--surface-2);
-  --muted: var(--text-muted);
 }
 
 [data-density="compact"] {

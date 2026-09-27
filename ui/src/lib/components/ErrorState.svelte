@@ -3,7 +3,7 @@
 </script>
 
 <div class="error-state">
-  <p style="color:#ff6b6b">{message}</p>
+  <p style="color:var(--danger)">{message}</p>
   {#if onRetry}
     <button onclick={onRetry}>Retry</button>
   {/if}

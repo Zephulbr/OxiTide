@@ -294,11 +294,11 @@
   <h3>Cache</h3>
   {#if cacheStatus}
     {#if !cacheStatus.usable}
-      <p style="color:#e0a030">
+      <p style="color:var(--warning)">
         Cache is disabled: the directory is not writable. Streaming is unaffected.
       </p>
     {:else if cacheStatus.configured_dir && cacheStatus.dir !== cacheStatus.configured_dir}
-      <p style="color:#e0a030">
+      <p style="color:var(--warning)">
         The configured cache directory is unusable; using {cacheStatus.dir}.
       </p>
     {/if}
@@ -345,7 +345,7 @@
   {/each}
 </ul>
 {#if player.state.bit_perfect_notice}
-  <p style="color:#e0a030">{player.state.bit_perfect_notice}</p>
+  <p style="color:var(--warning)">{player.state.bit_perfect_notice}</p>
 {/if}
 
 <style>

@@ -41,5 +41,5 @@
   {#if url}<p class="muted">After logging in you'll land on an "Oops" page. Paste its full URL below.</p>{/if}
   <input placeholder="Paste the redirect URL" bind:value={redirect} style="width:100%" />
   <button onclick={complete} disabled={busy || !redirect}>Complete login</button>
-  {#if error}<p style="color:#ff6b6b">{error}</p>{/if}
+  {#if error}<p style="color:var(--danger)">{error}</p>{/if}
 </div>
