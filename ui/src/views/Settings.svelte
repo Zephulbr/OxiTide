@@ -2,6 +2,7 @@
   import { api, type CacheStatus, type Config, type OutputDevice } from "../lib/api";
   import ErrorState from "../lib/components/ErrorState.svelte";
   import Loading from "../lib/components/Loading.svelte";
+  import { appearance, fontStack, type Typeface } from "../lib/appearance.svelte";
   import { errorMessage } from "../lib/errors";
   import type { QualityDisplay } from "../lib/quality";
   import type { Toasts } from "../lib/toasts.svelte";
@@ -18,6 +19,48 @@
   let cacheStatus = $state<CacheStatus | null>(null);
   let logsDir = $state("");
   let error = $state("");
+  let customDraft = $state(appearance.customTypeface);
+  let customNote = $state("");
+  let fontChoices = $state<string[]>([]);
+
+  // Keep the editable draft in sync when the stored value loads/changes.
+  $effect(() => {
+    customDraft = appearance.customTypeface;
+  });
+
+  const queryLocalFonts = (
+    window as unknown as { queryLocalFonts?: () => Promise<{ family: string }[]> }
+  ).queryLocalFonts;
+
+  async function browseFonts() {
+    if (!queryLocalFonts) return;
+    try {
+      const fonts = await queryLocalFonts();
+      fontChoices = [...new Set(fonts.map((f) => f.family))].sort();
+    } catch {
+      fontChoices = [];
+    }
+  }
+
+  function validateFont(name: string) {
+    const clean = name.trim().replace(/["\\]/g, "");
+    customNote = clean && !document.fonts.check(`12px "${clean}"`) ? "not found — using fallback" : "";
+  }
+
+  async function applyCustomFont() {
+    try {
+      await appearance.setCustomTypeface(customDraft);
+      await appearance.setTypeface("custom");
+      validateFont(customDraft);
+    } catch (e) {
+      apply(e);
+    }
+  }
+
+  function setTypeface(value: Typeface) {
+    appearance.setTypeface(value).catch(apply);
+    if (value === "custom") validateFont(customDraft);
+  }
 
   function apply(failure: unknown) {
     toasts.show(errorMessage(failure), { severity: "error" });
@@ -125,6 +168,59 @@
     <Loading />
   {/if}
 {:else}
+  <h3>Appearance</h3>
+  <div class="field">
+    <span class="field-label">Mode:</span>
+    <div class="segmented" role="group" aria-label="Mode">
+      <button class:active={appearance.mode === "instrument"} onclick={() => appearance.setMode("instrument").catch(apply)}>Instrument</button>
+    </div>
+  </div>
+  <p class="muted">Atmosphere arrives with the next slice.</p>
+
+  <p>
+    <label>
+      Typeface:
+      <select value={appearance.typeface} onchange={(e) => setTypeface((e.target as HTMLSelectElement).value as Typeface)}>
+        <option value="manrope">Manrope (default)</option>
+        <option value="inter">Inter</option>
+        <option value="system">System</option>
+        <option value="custom">Custom…</option>
+      </select>
+    </label>
+  </p>
+  {#if appearance.typeface === "custom"}
+    <div class="custom-font">
+      <input list="font-choices" placeholder="Font family name" bind:value={customDraft} oninput={() => validateFont(customDraft)} />
+      <datalist id="font-choices">
+        {#each fontChoices as family (family)}<option value={family}></option>{/each}
+      </datalist>
+      {#if queryLocalFonts}
+        <button onclick={browseFonts}>Browse installed fonts…</button>
+      {/if}
+      <button onclick={applyCustomFont}>Apply</button>
+      <p style:font-family={fontStack("custom", customDraft)} class="font-preview">
+        The quick brown fox — 0123456789
+      </p>
+      {#if customNote}<p class="muted">{customNote}</p>{/if}
+    </div>
+  {/if}
+
+  <div class="field">
+    <span class="field-label">Density:</span>
+    <div class="segmented" role="group" aria-label="Density">
+      <button class:active={appearance.density === "comfortable"} onclick={() => appearance.setDensity("comfortable").catch(apply)}>Comfortable</button>
+      <button class:active={appearance.density === "compact"} onclick={() => appearance.setDensity("compact").catch(apply)}>Compact</button>
+    </div>
+  </div>
+
+  <div class="field">
+    <span class="field-label">Cover shape:</span>
+    <div class="segmented" role="group" aria-label="Cover shape">
+      <button class:active={appearance.coverShape === "disc"} onclick={() => appearance.setCoverShape("disc").catch(apply)}>Disc</button>
+      <button class:active={appearance.coverShape === "sleeve"} onclick={() => appearance.setCoverShape("sleeve").catch(apply)}>Sleeve</button>
+    </div>
+  </div>
+
   <h3>Audio output</h3>
   <select
     value={config.audio.output_device}
@@ -251,3 +347,44 @@
 {#if player.state.bit_perfect_notice}
   <p style="color:#e0a030">{player.state.bit_perfect_notice}</p>
 {/if}
+
+<style>
+  .segmented {
+    display: inline-flex;
+    gap: 2px;
+    padding: 2px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    background: var(--surface-1);
+  }
+  .field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0;
+  }
+  .field-label {
+    color: var(--text-muted);
+  }
+  .segmented button {
+    padding: 4px 10px;
+    border-radius: calc(var(--radius-control) - 3px);
+    color: var(--text-muted);
+  }
+  .segmented button.active {
+    background: var(--surface-3);
+    color: var(--text);
+  }
+  .custom-font {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin: 4px 0 12px;
+  }
+  .font-preview {
+    flex-basis: 100%;
+    font-size: 18px;
+    margin: 4px 0 0;
+  }
+</style>
