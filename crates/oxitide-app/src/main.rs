@@ -5,12 +5,14 @@ mod commands;
 mod config;
 mod palette;
 mod player;
+mod scheme;
 mod state;
 mod window;
 
 use std::sync::OnceLock;
 
 use tauri::Manager;
+use tauri_plugin_deep_link::DeepLinkExt;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
@@ -90,9 +92,30 @@ fn main() {
     state.set_config(config);
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_focus();
+            }
+        }))
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
         .manage(state)
         .setup(|app| {
+            scheme::remember(scheme::snapshot());
+            #[cfg(any(windows, target_os = "linux"))]
+            if let Err(e) = app.deep_link().register_all() {
+                tracing::warn!("deep link registration failed: {e}");
+            }
+            app.deep_link().on_open_url(|event| {
+                for url in event.urls() {
+                    tracing::info!("deep link received: {url}");
+                }
+            });
+            if let Ok(Some(urls)) = app.deep_link().get_current() {
+                for url in urls {
+                    tracing::info!("deep link (startup): {url}");
+                }
+            }
             app.state::<AppState>().set_handle(app.handle().clone());
             if let Some(window) = app.get_webview_window("main") {
                 let config = app.state::<AppState>().config();
@@ -183,6 +206,7 @@ fn main() {
                 save_window_state(app_handle);
             }
             tauri::RunEvent::Exit => {
+                scheme::restore_remembered();
                 let state = app_handle.state::<AppState>();
                 let config = state.config();
                 if config.cache.clear_on_exit {

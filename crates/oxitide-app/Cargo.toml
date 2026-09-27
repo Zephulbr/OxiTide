@@ -12,6 +12,8 @@ oxitide-tidal = { path = "../oxitide-tidal" }
 oxitide-audio = { path = "../oxitide-audio" }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
+tauri-plugin-deep-link = "2"
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
