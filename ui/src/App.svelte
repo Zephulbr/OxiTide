@@ -16,7 +16,7 @@
   import ToastHost from "./lib/components/ToastHost.svelte";
   import ContextMenu from "./lib/components/ContextMenu.svelte";
   import { createNav } from "./lib/nav.svelte";
-  import { appearance } from "./lib/appearance.svelte";
+  import { appearance, clampQueueWidth } from "./lib/appearance.svelte";
   import { errorMessage } from "./lib/errors";
   import { menu } from "./lib/menu.svelte";
   import { isShortcutHandled, matchShortcut, type ShortcutAction } from "./lib/shortcuts";
@@ -48,6 +48,37 @@
   let expired = $state<ExpiredSession | null>(null);
   let sidebarRail = $state(false);
   let railTouched = $state(false);
+  let queueOverlay = $state(false);
+
+  $effect(() => {
+    const media = window.matchMedia("(max-width: 760px)");
+    const sync = () => (queueOverlay = media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  });
+
+  function startQueueDrag(event: PointerEvent) {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = appearance.queueWidth;
+    const target = event.currentTarget as HTMLElement;
+    target.setPointerCapture(event.pointerId);
+    let width = startWidth;
+    const onMove = (e: PointerEvent) => {
+      // The handle sits on the rail's left edge: dragging left widens.
+      // Preview live without touching the config (writes happen once, on release).
+      width = clampQueueWidth(startWidth + (startX - e.clientX));
+      document.documentElement.style.setProperty("--queue-width", `${width}px`);
+    };
+    const onUp = () => {
+      target.removeEventListener("pointermove", onMove);
+      target.removeEventListener("pointerup", onUp);
+      appearance.setQueueWidth(width).catch(() => {});
+    };
+    target.addEventListener("pointermove", onMove);
+    target.addEventListener("pointerup", onUp);
+  }
 
   $effect(() => {
     const media = window.matchMedia("(max-width: 1080px)");
@@ -255,7 +286,17 @@
       {:else if nav.route.name === "artist"}<Artist id={nav.route.id} {favorites} />
       {:else if nav.route.name === "settings"}<Settings {player} {toasts} onQualityDisplay={(mode) => (qualityDisplay = mode)} />{/if}
     </main>
-    {#if nav.queueOpen}<aside class="queue"><QueueRail {player} /></aside>{/if}
+    {#if nav.queueOpen}
+      {#if queueOverlay}
+        <div class="queue-backdrop" onclick={() => nav.toggleQueue()} aria-hidden="true"></div>
+        <aside class="queue floating"><QueueRail {player} /></aside>
+      {:else}
+        <aside class="queue">
+          <div class="queue-resize" onpointerdown={startQueueDrag} role="separator" aria-orientation="vertical" aria-label="Resize queue"></div>
+          <QueueRail {player} />
+        </aside>
+      {/if}
+    {/if}
     <PlayerBar {player} {qualityDisplay} {favorites} />
     <PlaylistPicker actions={playlistActions} onnavigate={(id) => nav.goto({ name: "playlist", id })} />
   </div>
