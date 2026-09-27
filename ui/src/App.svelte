@@ -4,6 +4,7 @@
   import Sidebar from "./lib/components/Sidebar.svelte";
   import PlayerBar from "./lib/components/PlayerBar.svelte";
   import QueueRail from "./lib/components/QueueRail.svelte";
+  import Backdrop from "./lib/components/Backdrop.svelte";
   import Login from "./views/Login.svelte";
   import Home from "./views/Home.svelte";
   import Album from "./views/Album.svelte";
@@ -278,6 +279,7 @@
     message={expired ? "Session expired — sign in to continue" : ""}
   />
 {:else}
+  <Backdrop {player} />
   <div class="app" data-sidebar={sidebarRail ? "rail" : "full"}>
     <Sidebar {nav} rail={sidebarRail} onToggleRail={() => { railTouched = true; sidebarRail = !sidebarRail; }} onLogout={onLogout} />
     <main class="main">
@@ -305,6 +307,7 @@
     <PlayerBar {player} {qualityDisplay} {favorites} {nav} />
     <PlaylistPicker actions={playlistActions} onnavigate={(id) => nav.goto({ name: "playlist", id })} />
   </div>
+  <div class="grain" aria-hidden="true"></div>
 {/if}
 
 <svelte:window onkeydown={onKeydown} onmousedown={onSideButton} onauxclick={onSideButton} />
