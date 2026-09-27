@@ -84,12 +84,56 @@ fn require_cache(state: &State<'_, AppState>) -> Result<Arc<DiskCache>, String> 
     state.cache().ok_or_else(|| "cache unavailable".to_string())
 }
 
-/// A redirect may omit `state`; when present it must match the pending value.
-pub fn verify_login_state(expected: &str, redirect: &auth::RedirectOutcome) -> Result<(), String> {
+/// Verify the echoed `state` against the pending value. A present-but-wrong
+/// value is always rejected; a missing value is rejected only when
+/// `require_present` (the automatic deep-link path, where TIDAL always echoes
+/// `state`). The manual paste redirect tolerates a missing `state`.
+pub fn verify_login_state(
+    expected: &str,
+    redirect: &auth::RedirectOutcome,
+    require_present: bool,
+) -> Result<(), String> {
     match redirect.state.as_deref() {
-        None => Ok(()),
         Some(got) if got == expected => Ok(()),
         Some(_) => Err("login state mismatch".to_string()),
+        None if require_present => Err("login state missing".to_string()),
+        None => Ok(()),
+    }
+}
+
+/// Parse a redirect for the mode its pending login used. Deep links must be
+/// `tidal://login/auth`; the paste fallback accepts the HTTPS Oops URL.
+fn parse_and_check(
+    login: &PendingLogin,
+    redirect_url: &str,
+) -> Result<auth::RedirectOutcome, String> {
+    let require_state = login.redirect_uri == PKCE_REDIRECT_DEEP_LINK;
+    let outcome = if require_state {
+        auth::validate_redirect(redirect_url).map_err(|e| e.to_string())?
+    } else {
+        auth::RedirectOutcome {
+            code: auth::extract_code(redirect_url).map_err(|e| e.to_string())?,
+            state: auth::extract_state(redirect_url),
+        }
+    };
+    verify_login_state(&login.state, &outcome, require_state)?;
+    Ok(outcome)
+}
+
+/// Take the pending login and validate the redirect. A rejected redirect puts
+/// the pending login back, so a stray/forged link cannot destroy an in-flight
+/// login (spec §7).
+fn take_and_validate(
+    state: &AppState,
+    redirect_url: &str,
+) -> Result<(PendingLogin, auth::RedirectOutcome), String> {
+    let login = state.take_pending().ok_or_else(|| "no login in progress".to_string())?;
+    match parse_and_check(&login, redirect_url) {
+        Ok(outcome) => Ok((login, outcome)),
+        Err(error) => {
+            state.set_pending(login);
+            Err(error)
+        }
     }
 }
 
@@ -101,9 +145,7 @@ pub async fn finish_login(
     state: &AppState,
     redirect_url: String,
 ) -> Result<SessionInfoDto, String> {
-    let login = state.take_pending().ok_or_else(|| "no login in progress".to_string())?;
-    let redirect = auth::validate_redirect(&redirect_url).map_err(|e| e.to_string())?;
-    verify_login_state(&login.state, &redirect)?;
+    let (login, _redirect) = take_and_validate(state, &redirect_url)?;
     let http = reqwest::Client::new();
     let tokens =
         auth::exchange_code(&http, TOKEN_URL, &login.pkce, &login.redirect_uri, &redirect_url)
@@ -860,15 +902,74 @@ mod tests {
         auth::RedirectOutcome { code: "c".into(), state: state.map(str::to_string) }
     }
 
+    fn pending(redirect_uri: &str, state: &str) -> PendingLogin {
+        PendingLogin {
+            pkce: Pkce::from_parts("v".into(), "k".into()),
+            state: state.into(),
+            redirect_uri: redirect_uri.into(),
+        }
+    }
+
     #[test]
-    fn verify_login_state_accepts_match_or_absent_state() {
-        assert!(verify_login_state("s", &outcome(Some("s"))).is_ok());
-        assert!(verify_login_state("s", &outcome(None)).is_ok());
+    fn verify_login_state_accepts_a_match() {
+        assert!(verify_login_state("s", &outcome(Some("s")), true).is_ok());
+        assert!(verify_login_state("s", &outcome(Some("s")), false).is_ok());
     }
 
     #[test]
     fn verify_login_state_rejects_mismatch() {
-        assert!(verify_login_state("s", &outcome(Some("other"))).is_err());
+        assert!(verify_login_state("s", &outcome(Some("other")), true).is_err());
+        assert!(verify_login_state("s", &outcome(Some("other")), false).is_err());
+    }
+
+    #[test]
+    fn verify_login_state_requires_presence_only_when_asked() {
+        assert!(verify_login_state("s", &outcome(None), true).is_err());
+        assert!(verify_login_state("s", &outcome(None), false).is_ok());
+    }
+
+    #[test]
+    fn paste_redirect_is_accepted_by_the_shared_completion() {
+        let login = pending(PKCE_REDIRECT_PASTE, "s");
+        let out = parse_and_check(&login, "https://tidal.com/android/login/auth?code=XYZ&state=s")
+            .unwrap();
+        assert_eq!(out.code, "XYZ");
+    }
+
+    #[test]
+    fn deep_link_redirect_requires_the_tidal_scheme() {
+        let login = pending(PKCE_REDIRECT_DEEP_LINK, "s");
+        assert!(parse_and_check(&login, "https://tidal.com/android/login/auth?code=XYZ&state=s")
+            .is_err());
+        let out = parse_and_check(&login, "tidal://login/auth?code=XYZ&state=s").unwrap();
+        assert_eq!(out.code, "XYZ");
+    }
+
+    #[test]
+    fn missing_state_is_required_for_deep_links_but_not_for_paste() {
+        assert!(parse_and_check(&pending(PKCE_REDIRECT_DEEP_LINK, "s"), "tidal://login/auth?code=XYZ")
+            .is_err());
+        assert!(parse_and_check(
+            &pending(PKCE_REDIRECT_PASTE, "s"),
+            "https://tidal.com/android/login/auth?code=XYZ"
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn a_rejected_redirect_does_not_clear_the_pending_login() {
+        let state = AppState::default();
+        state.set_pending(pending(PKCE_REDIRECT_DEEP_LINK, "s"));
+        assert!(take_and_validate(&state, "https://evil.example/cb?code=x").is_err());
+        assert!(state.take_pending().is_some(), "pending login must survive a rejected redirect");
+    }
+
+    #[test]
+    fn a_valid_redirect_consumes_the_pending_login() {
+        let state = AppState::default();
+        state.set_pending(pending(PKCE_REDIRECT_DEEP_LINK, "s"));
+        assert!(take_and_validate(&state, "tidal://login/auth?code=x&state=s").is_ok());
+        assert!(state.take_pending().is_none());
     }
 
     fn sample_tokens(access: &str, refresh: Option<&str>) -> TokenSet {

@@ -36,6 +36,22 @@ describe("createAuthGate", () => {
     await vi.waitFor(() => expect(onLogin).toHaveBeenCalledTimes(1));
   });
 
+  it("reads the cold-start buffer only after the listeners are attached", async () => {
+    const handlers = new Map<string, Handler>();
+    const release: Array<() => void> = [];
+    const listen = vi.fn((event: string, cb: Handler) => {
+      handlers.set(event, cb);
+      return new Promise<() => void>((resolve) => release.push(() => resolve(() => {})));
+    });
+    const takeResult = vi.fn(() => Promise.resolve({ country_code: "US", user_id: 1 }));
+    const onLogin = vi.fn();
+    createAuthGate({ listen, takeResult, onLogin, onError: vi.fn() });
+    await Promise.resolve();
+    expect(takeResult).not.toHaveBeenCalled();
+    release.forEach((r) => r());
+    await vi.waitFor(() => expect(onLogin).toHaveBeenCalledTimes(1));
+  });
+
   it("surfaces a cold-start error", async () => {
     const { onError } = harness(() => Promise.reject("no login in progress"));
     await vi.waitFor(() => expect(onError).toHaveBeenCalledWith("no login in progress"));

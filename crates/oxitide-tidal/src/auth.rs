@@ -135,6 +135,16 @@ pub fn extract_code(redirect_url: &str) -> Result<String> {
         .ok_or_else(|| Error::Auth("redirect url has no code".into()))
 }
 
+/// The `state` query parameter, when present (used for the paste-back redirect,
+/// which is not validated as a `tidal://` URL).
+pub fn extract_state(redirect_url: &str) -> Option<String> {
+    url::Url::parse(redirect_url)
+        .ok()?
+        .query_pairs()
+        .find(|(k, _)| k == "state")
+        .map(|(_, v)| v.into_owned())
+}
+
 /// A validated login redirect: the authorization code plus the optional
 /// `state` TIDAL echoes back.
 #[derive(Debug, PartialEq)]
@@ -184,6 +194,15 @@ mod tests {
     fn extract_code_errors_without_code() {
         let e = extract_code("https://tidal.com/android/login/auth?state=na").unwrap_err();
         assert!(matches!(e, Error::Auth(_)));
+    }
+
+    #[test]
+    fn extract_state_reads_query_param() {
+        assert_eq!(
+            extract_state("https://tidal.com/android/login/auth?code=ABC&state=na").as_deref(),
+            Some("na")
+        );
+        assert_eq!(extract_state("https://tidal.com/android/login/auth?code=ABC"), None);
     }
 
     #[test]
