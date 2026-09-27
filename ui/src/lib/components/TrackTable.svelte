@@ -6,11 +6,13 @@
   import { menuFor } from "../menu.svelte";
   import { trackMenuItems } from "../menus";
   import { windowRange } from "../virtual";
+  import { appearance } from "../appearance.svelte";
   import type { Favorites } from "../favorites.svelte";
   import type { TrackView } from "../trackView.svelte";
   import { trackDrag, type DragParams } from "../drag";
   import Loading from "./Loading.svelte";
   import Icon from "./Icon.svelte";
+  import Cover from "./Cover.svelte";
   let {
     view,
     favorites,
@@ -20,6 +22,8 @@
     onAddToPlaylist,
     playlistActions,
     maxHeight = "min(60vh, 560px)",
+    showCovers = true,
+    playingTrackId = null,
   }: {
     view: TrackView;
     favorites: Favorites;
@@ -41,10 +45,14 @@
       onDrop?(from: number, to: number): void;
     };
     maxHeight?: string;
+    /// Cover thumbnails are redundant in single-album view (spec §7.3).
+    showCovers?: boolean;
+    /// Highlights the playing row (accent tint + title, ringed thumb).
+    playingTrackId?: number | null;
   } = $props();
 
-  /// Row height in px; keep in sync with the `.row` style below.
-  const ROW_HEIGHT = 36;
+  /// Row height follows the density setting (spec §7.4): 38 / 28 px.
+  const rowHeight = $derived(appearance.density === "compact" ? 28 : 38);
   const OVERSCAN = 8;
   const END_THRESHOLD = 400;
 
@@ -53,8 +61,9 @@
   let loadingAll = $state(false);
 
   const rows = $derived(view.items);
-  const range = $derived(windowRange(rows.length, scrollTop, viewport, ROW_HEIGHT, OVERSCAN));
+  const range = $derived(windowRange(rows.length, scrollTop, viewport, rowHeight, OVERSCAN));
   const slice = $derived(rows.slice(range.first, range.last));
+  const columns = $derived(showCovers ? 5 : 4);
 
   let dragFrom = $state<number | null>(null);
   let dropAt = $state<number | null>(null);
@@ -70,7 +79,7 @@
   const drag = $derived<DragParams>({
     enabled: () => canDrag,
     count: () => rows.length,
-    rowHeight: () => ROW_HEIGHT,
+    rowHeight: () => rowHeight,
     offset: () => theadHeight,
     onChange: (from, at) => {
       dragFrom = from;
@@ -155,6 +164,7 @@
   <table>
     <thead bind:clientHeight={theadHeight}>
       <tr>
+        {#if showCovers}<th class="thumb-head"></th>{/if}
         <th style="text-align:left"><button onclick={playAll} disabled={loadingAll}>{loadingAll ? "Loading all…" : "Play all"}</button></th>
         <th style="text-align:left">
           <button class="sort" title="Original order" onclick={() => view.clearSort()}>#</button>
@@ -173,13 +183,14 @@
     </thead>
     <tbody>
       {#if range.padTop > 0}
-        <tr aria-hidden="true"><td colspan="4" style="height:{range.padTop}px;padding:0;border:0"></td></tr>
+        <tr aria-hidden="true"><td colspan={columns} style="height:{range.padTop}px;padding:0;border:0"></td></tr>
       {/if}
       {#each slice as t, i (`${t.id}-${range.first + i}`)}
         {@const index = range.first + i}
         <tr
           class="row"
           class:dragging={dragFrom === index}
+          class:playing={playingTrackId !== null && t.id === playingTrackId}
           draggable={canDrag}
           data-drag-index={canDrag ? index : undefined}
           ondblclick={(event) => onRowDoubleClick(event, index)}
@@ -242,21 +253,29 @@
               ><Icon name="x" size={14} /></button>
             {/if}
           </td>
+          {#if showCovers}
+            <td class="thumb-cell">
+              <span class="thumb">
+                <Cover uuid={t.album?.cover} size={80} radius={6} alt="" />
+                <span class="thumb-play" aria-hidden="true"><Icon name="play" size={14} /></span>
+              </span>
+            </td>
+          {/if}
           <td class="muted">{index + 1}</td>
           <td class="title-cell"><div class="title-text">{t.title}<span class="muted"> · {t.artists.map((a) => a.name).join(", ")}</span></div></td>
           <td style="text-align:right" class="muted">{formatDuration(t.duration)}</td>
         </tr>
       {/each}
       {#if range.padBottom > 0}
-        <tr aria-hidden="true"><td colspan="4" style="height:{range.padBottom}px;padding:0;border:0"></td></tr>
+        <tr aria-hidden="true"><td colspan={columns} style="height:{range.padBottom}px;padding:0;border:0"></td></tr>
       {/if}
       {#if rows.length === 0}
-        <tr><td colspan="4" class="muted">{view.filter.trim() ? `No tracks match “${view.filter.trim()}”` : "No tracks"}</td></tr>
+        <tr><td colspan={columns} class="muted">{view.filter.trim() ? `No tracks match “${view.filter.trim()}”` : "No tracks"}</td></tr>
       {/if}
     </tbody>
   </table>
   {#if dropAt !== null}
-    <div class="drop-line" style="top:{theadHeight + dropAt * ROW_HEIGHT}px"></div>
+    <div class="drop-line" style="top:{theadHeight + dropAt * rowHeight}px"></div>
   {/if}
 </div>
 
@@ -309,9 +328,45 @@
     cursor: pointer;
   }
   .row {
-    height: 36px;
+    height: var(--row-height);
     border-bottom: 1px solid var(--line);
     user-select: none;
+  }
+  .thumb-head {
+    width: var(--thumb-size);
+    padding: 0;
+  }
+  .thumb-cell {
+    width: var(--thumb-size);
+    padding: 4px 8px 4px 0;
+  }
+  .thumb {
+    position: relative;
+    display: block;
+    width: var(--thumb-size);
+  }
+  .thumb-play {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: rgba(0, 0, 0, 0.45);
+    border-radius: 6px;
+    opacity: 0;
+    transition: opacity var(--dur-micro);
+    color: #fff;
+  }
+  .row:hover .thumb-play {
+    opacity: 1;
+  }
+  .row.playing {
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+  .row.playing .title-text {
+    color: var(--accent);
+  }
+  .row.playing .thumb :global(img) {
+    box-shadow: 0 0 0 1.5px var(--accent);
   }
   .title-cell {
     max-width: 0;

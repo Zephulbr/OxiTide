@@ -202,6 +202,7 @@
     onPlayAll={playAll}
     onEndReached={() => void pager.loadMore()}
     onAddToPlaylist={(t) => playlistActions.openPicker([t])}
+    playingTrackId={player.state.current?.track_id ?? null}
     playlistActions={playlist?.owned
       ? { onRemove: removeAt, onMove: moveAt, busy, disabled: !pager.done, onDrop: moveTrack }
       : undefined}

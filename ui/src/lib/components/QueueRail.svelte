@@ -3,6 +3,8 @@
   import { copyText } from "../clipboard";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import Icon from "./Icon.svelte";
+  import Cover from "./Cover.svelte";
+  import { appearance } from "../appearance.svelte";
   import VirtualList from "./VirtualList.svelte";
   import { menuFor } from "../menu.svelte";
   import { queueMenuItems } from "../menus";
@@ -11,13 +13,13 @@
   let { player }: { player: Player } = $props();
   let confirmingClear = $state(false);
 
-  /// Fixed row height; keep in sync with the row style below.
-  const QUEUE_ROW_HEIGHT = 40;
+  /// Row height follows the density setting; keep in sync with the row style.
+  const queueRowHeight = $derived(appearance.density === "compact" ? 28 : 38);
 
   const queueDrag: DragParams = {
     enabled: () => true,
     count: () => player.state.queue.length,
-    rowHeight: () => QUEUE_ROW_HEIGHT,
+    rowHeight: () => queueRowHeight,
     onChange: () => {},
     onDrop: (from, to) => {
       if (from !== to) player.reorder(from, to);
@@ -54,12 +56,13 @@
   <div style="margin:8px 0">
     <VirtualList
       total={player.state.queue.length}
-      rowHeight={QUEUE_ROW_HEIGHT}
+      rowHeight={queueRowHeight}
       maxHeight="calc(100vh - 220px)"
       drag={queueDrag}
     >
       {#snippet children(index)}
         {@const item = player.state.queue[index]}
+        {@const playing = player.state.current?.track_id === item?.track_id}
         {#if item}
           <div
             role="button"
@@ -75,10 +78,11 @@
               })}
             onclick={(event) => onRowClick(event, index)}
             onkeydown={(event) => onRowKeydown(event, index)}
-            style="height:{QUEUE_ROW_HEIGHT}px;box-sizing:border-box;display:flex;align-items:center;padding:4px;border-bottom:1px solid var(--line);cursor:pointer;{player.state.current?.track_id === item.track_id ? 'background:var(--panel);' : ''}"
+            style="height:{queueRowHeight}px;box-sizing:border-box;display:flex;align-items:center;gap:8px;padding:4px;border-bottom:1px solid var(--line);cursor:pointer;{playing ? 'background:color-mix(in srgb, var(--accent) 12%, transparent);' : ''}"
           >
-            <span class="muted handle" style="cursor:grab;padding-right:6px" title="Drag to reorder" aria-hidden="true"><Icon name="grip-vertical" size={14} /></span>
-            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+            <span class="muted handle" style="cursor:grab" title="Drag to reorder" aria-hidden="true"><Icon name="grip-vertical" size={14} /></span>
+            <span class="thumb-wrap"><Cover uuid={item.cover} size={80} radius={6} alt="" /></span>
+            <span class="row-title" class:playing>
               {item.title} <span class="muted">{item.artist}</span>
             </span>
             <button onclick={() => player.remove(index)} aria-label="Remove"><Icon name="x" size={14} /></button>
@@ -100,3 +104,20 @@
     />
   {/if}
 </div>
+
+<style>
+  .thumb-wrap {
+    flex: 0 0 auto;
+    width: var(--thumb-size);
+  }
+  .row-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .row-title.playing {
+    color: var(--accent);
+  }
+</style>

@@ -54,6 +54,7 @@
     view={resultsView}
     {favorites}
     onAddToPlaylist={(t) => playlistActions.openPicker([t])}
+    playingTrackId={player.state.current?.track_id ?? null}
   />
   <h3>Albums</h3>
   <ul>

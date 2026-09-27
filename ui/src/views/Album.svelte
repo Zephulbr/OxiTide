@@ -63,6 +63,8 @@
   <TrackTable
     {view}
     {favorites}
+    showCovers={false}
+    playingTrackId={player.state.current?.track_id ?? null}
     onAddToPlaylist={(t) => playlistActions.openPicker([t])}
   />
 {:else}
