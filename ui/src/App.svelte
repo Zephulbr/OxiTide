@@ -23,6 +23,7 @@
   import { isShortcutHandled, matchShortcut, type ShortcutAction } from "./lib/shortcuts";
   import { createToasts } from "./lib/toasts.svelte";
   import { createPlayer } from "./lib/player.svelte";
+  import { createDynamicColor } from "./lib/dynamicColor.svelte";
   import { createFavorites } from "./lib/favorites.svelte";
   import { createPlaylistActions } from "./lib/playlists.svelte";
   import { clearPagerCache } from "./lib/pager.svelte";
@@ -38,6 +39,7 @@
 
   const nav = createNav();
   const player = createPlayer();
+  createDynamicColor(player);
   const toasts = createToasts();
   const favorites = createFavorites(toasts);
   const playlistActions = createPlaylistActions(toasts);

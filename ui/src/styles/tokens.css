@@ -67,6 +67,15 @@
 
   /* Glass recipe knobs (mode stylesheets override) */
   --glass-blur: 0px;
+
+  /* Dynamic-color crossfade (spec §5.2): @property-registered tokens
+     interpolate natively; a new value interrupts the in-flight transition
+     and starts from the current interpolated color. */
+  transition:
+    --dyn-primary var(--dur-mood) linear,
+    --dyn-on-primary var(--dur-mood) linear,
+    --dyn-secondary var(--dur-mood) linear,
+    --dyn-tertiary var(--dur-mood) linear;
 }
 
 [data-density="compact"] {
