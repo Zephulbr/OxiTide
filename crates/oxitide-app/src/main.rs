@@ -2,6 +2,8 @@
 
 mod commands;
 mod config;
+#[allow(dead_code)] // consumed by artwork.rs in a later task
+mod palette;
 mod player;
 mod state;
 mod window;
