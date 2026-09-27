@@ -8,7 +8,7 @@ use oxitide_audio::queue::{QueueItem, RepeatMode};
 use oxitide_tidal::auth::{self, SessionInfo};
 use oxitide_tidal::client::TidalClient;
 use oxitide_tidal::library::FavoriteIds;
-use oxitide_tidal::pkce::{Pkce, PKCE_CLIENT_ID, TOKEN_URL};
+use oxitide_tidal::pkce::{Pkce, PKCE_CLIENT_ID, PKCE_REDIRECT_PASTE, TOKEN_URL};
 use oxitide_tidal::token_store::{KeyringStore, TokenSet, TokenStore};
 use oxitide_tidal::Error;
 use serde::Serialize;
@@ -69,7 +69,7 @@ fn require_cache(state: &State<'_, AppState>) -> Result<Arc<DiskCache>, String> 
 #[tauri::command]
 pub fn auth_begin(state: State<'_, AppState>) -> Result<LoginPrompt, String> {
     let pkce = Pkce::generate();
-    let url = pkce.login_url(PKCE_CLIENT_ID);
+    let url = pkce.login_url(PKCE_CLIENT_ID, "", PKCE_REDIRECT_PASTE);
     state.set_pending(pkce);
     Ok(LoginPrompt { url })
 }
@@ -82,7 +82,7 @@ pub async fn auth_complete(
 ) -> Result<SessionInfoDto, String> {
     let pkce = state.take_pending().ok_or_else(|| "no login in progress".to_string())?;
     let http = reqwest::Client::new();
-    let tokens = auth::exchange_code(&http, TOKEN_URL, &pkce, &redirect_url)
+    let tokens = auth::exchange_code(&http, TOKEN_URL, &pkce, PKCE_REDIRECT_PASTE, &redirect_url)
         .await
         .map_err(|e| e.to_string())?;
     let session = auth::fetch_session(&http, API_BASE, &tokens.access_token)
