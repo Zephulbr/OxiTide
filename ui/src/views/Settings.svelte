@@ -2,7 +2,12 @@
   import { api, type CacheStatus, type Config, type OutputDevice } from "../lib/api";
   import ErrorState from "../lib/components/ErrorState.svelte";
   import Loading from "../lib/components/Loading.svelte";
-  import { appearance, fontStack, type Typeface } from "../lib/appearance.svelte";
+  import {
+    appearance,
+    fontStack,
+    type DynamicColorSetting,
+    type TypefaceSetting,
+  } from "../lib/appearance.svelte";
   import { errorMessage } from "../lib/errors";
   import type { QualityDisplay } from "../lib/quality";
   import type { Toasts } from "../lib/toasts.svelte";
@@ -57,9 +62,15 @@
     }
   }
 
-  function setTypeface(value: Typeface) {
+  function setTypeface(value: TypefaceSetting) {
     appearance.setTypeface(value).catch(apply);
     if (value === "custom") validateFont(customDraft);
+  }
+
+  function setDynamicColor(setting: DynamicColorSetting) {
+    if (!config) return;
+    config = { ...config, ui: { ...config.ui, dynamic_color: setting } };
+    appearance.setDynamicColor(setting).catch(apply);
   }
 
   function apply(failure: unknown) {
@@ -172,17 +183,31 @@
   <div class="field">
     <span class="field-label">Mode:</span>
     <div class="segmented" role="group" aria-label="Mode">
+      <button class:active={appearance.mode === "atmosphere"} onclick={() => appearance.setMode("atmosphere").catch(apply)}>Atmosphere</button>
       <button class:active={appearance.mode === "instrument"} onclick={() => appearance.setMode("instrument").catch(apply)}>Instrument</button>
     </div>
   </div>
-  <p class="muted">Atmosphere arrives with the next slice.</p>
+  {#if appearance.mode === "instrument"}
+    <p class="muted">Instrument minimizes animation and visual effects.</p>
+  {/if}
+
+  <div class="field">
+    <span class="field-label">Dynamic color:</span>
+    <div class="segmented" role="group" aria-label="Dynamic color">
+      <button class:active={config.ui.dynamic_color === "auto"} onclick={() => setDynamicColor("auto")}>Default</button>
+      <button class:active={config.ui.dynamic_color === "full"} onclick={() => setDynamicColor("full")}>Full</button>
+      <button class:active={config.ui.dynamic_color === "accent"} onclick={() => setDynamicColor("accent")}>Accent-only</button>
+      <button class:active={config.ui.dynamic_color === "off"} onclick={() => setDynamicColor("off")}>Off</button>
+    </div>
+  </div>
 
   <p>
     <label>
       Typeface:
-      <select value={appearance.typeface} onchange={(e) => setTypeface((e.target as HTMLSelectElement).value as Typeface)}>
+      <select value={appearance.typeface} onchange={(e) => setTypeface((e.target as HTMLSelectElement).value as TypefaceSetting)}>
+        <option value="auto">Default (per mode)</option>
         <option value="manrope">Manrope</option>
-        <option value="inter">Inter (default)</option>
+        <option value="inter">Inter</option>
         <option value="system">System</option>
         <option value="custom">Custom…</option>
       </select>
