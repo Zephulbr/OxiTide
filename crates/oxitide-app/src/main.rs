@@ -11,7 +11,8 @@ mod window;
 
 use std::sync::OnceLock;
 
-use tauri::Manager;
+use oxitide_tidal::auth;
+use tauri::{Emitter, Manager};
 use tauri_plugin_deep_link::DeepLinkExt;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -78,9 +79,34 @@ fn save_window_state(app: &tauri::AppHandle) {
     state.set_config(config);
 }
 
+/// Complete a login from a `tidal://login/auth?code=…` URL. Ignores any other
+/// deep link. Runs off the event thread; the result reaches the UI through both
+/// the `auth://*` event and the buffered `auth_take_result`.
+fn handle_deep_link(app: &tauri::AppHandle, raw: &str) {
+    if auth::validate_redirect(raw).is_err() {
+        tracing::debug!("ignoring non-login deep link: {raw}");
+        return;
+    }
+    let app = app.clone();
+    let url = raw.to_string();
+    tauri::async_runtime::spawn(async move {
+        let state = app.state::<AppState>();
+        match commands::finish_login(&app, &state, url).await {
+            Ok(session) => {
+                state.set_last_login(commands::LoginOutcome::Success(session.clone()));
+                let _ = app.emit("auth://success", session);
+            }
+            Err(error) => {
+                tracing::warn!("deep-link login failed: {error}");
+                state.set_last_login(commands::LoginOutcome::Error(error.clone()));
+                let _ = app.emit("auth://error", error);
+            }
+        }
+    });
+}
+
 fn main() {
     init_logging();
-
     let config = config::Config::load();
     let state = AppState::default();
     state.set_cache(player::build_cache(&config));
@@ -106,14 +132,18 @@ fn main() {
             if let Err(e) = app.deep_link().register_all() {
                 tracing::warn!("deep link registration failed: {e}");
             }
-            app.deep_link().on_open_url(|event| {
-                for url in event.urls() {
-                    tracing::info!("deep link received: {url}");
+            let handle = app.handle().clone();
+            app.deep_link().on_open_url({
+                let handle = handle.clone();
+                move |event| {
+                    for url in event.urls() {
+                        handle_deep_link(&handle, url.as_str());
+                    }
                 }
             });
             if let Ok(Some(urls)) = app.deep_link().get_current() {
                 for url in urls {
-                    tracing::info!("deep link (startup): {url}");
+                    handle_deep_link(&handle, url.as_str());
                 }
             }
             app.state::<AppState>().set_handle(app.handle().clone());
@@ -131,6 +161,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::auth_begin,
             commands::auth_complete,
+            commands::auth_take_result,
             commands::auth_restore,
             commands::auth_status,
             commands::auth_logout,

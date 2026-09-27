@@ -8,10 +8,12 @@ use oxitide_audio::queue::{QueueItem, RepeatMode};
 use oxitide_tidal::auth::{self, SessionInfo};
 use oxitide_tidal::client::TidalClient;
 use oxitide_tidal::library::FavoriteIds;
-use oxitide_tidal::pkce::{Pkce, PKCE_CLIENT_ID, PKCE_REDIRECT_PASTE, TOKEN_URL};
+use oxitide_tidal::pkce::{
+    random_state, Pkce, PKCE_CLIENT_ID, PKCE_REDIRECT_DEEP_LINK, PKCE_REDIRECT_PASTE, TOKEN_URL,
+};
 use oxitide_tidal::token_store::{KeyringStore, TokenSet, TokenStore};
 use oxitide_tidal::Error;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{Manager, State};
 
 use crate::artwork::PaletteDto;
@@ -19,7 +21,7 @@ use crate::config::{
     clamp_queue_width, Config, CoverShape, Density, DynamicColor, QualityDisplay, Typeface, UiMode,
 };
 use crate::player::{devices, OutputDeviceDto, QualityDto};
-use crate::state::{AppState, Player};
+use crate::state::{AppState, PendingLogin, Player};
 
 pub const API_BASE: &str = "https://api.tidal.com/v1/";
 
@@ -28,10 +30,26 @@ pub struct LoginPrompt {
     pub url: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct SessionInfoDto {
     pub country_code: String,
     pub user_id: u64,
+}
+
+/// Outcome of a completed deep-link login, buffered so a cold-start result is
+/// never missed by the UI.
+#[derive(Clone)]
+pub enum LoginOutcome {
+    Success(SessionInfoDto),
+    Error(String),
+}
+
+/// Which redirect an in-progress login uses: `Deep` (primary) or `Paste`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AuthMode {
+    Deep,
+    Paste,
 }
 
 #[derive(Serialize)]
@@ -66,11 +84,65 @@ fn require_cache(state: &State<'_, AppState>) -> Result<Arc<DiskCache>, String> 
     state.cache().ok_or_else(|| "cache unavailable".to_string())
 }
 
+/// A redirect may omit `state`; when present it must match the pending value.
+pub fn verify_login_state(expected: &str, redirect: &auth::RedirectOutcome) -> Result<(), String> {
+    match redirect.state.as_deref() {
+        None => Ok(()),
+        Some(got) if got == expected => Ok(()),
+        Some(_) => Err("login state mismatch".to_string()),
+    }
+}
+
+/// The shared completion path: validate the redirect, exchange the code for
+/// tokens, persist them, build the client/player, and return the session.
+/// Used by both the paste-back command and the deep-link handler.
+pub async fn finish_login(
+    app: &tauri::AppHandle,
+    state: &AppState,
+    redirect_url: String,
+) -> Result<SessionInfoDto, String> {
+    let login = state.take_pending().ok_or_else(|| "no login in progress".to_string())?;
+    let redirect = auth::validate_redirect(&redirect_url).map_err(|e| e.to_string())?;
+    verify_login_state(&login.state, &redirect)?;
+    let http = reqwest::Client::new();
+    let tokens =
+        auth::exchange_code(&http, TOKEN_URL, &login.pkce, &login.redirect_uri, &redirect_url)
+            .await
+            .map_err(|e| e.to_string())?;
+    let session = auth::fetch_session(&http, API_BASE, &tokens.access_token)
+        .await
+        .map_err(|e| e.to_string())?;
+    let store: Arc<dyn TokenStore> = Arc::new(KeyringStore);
+    store.save(&tokens).map_err(|e| e.to_string())?;
+    let client = TidalClient::new(http, API_BASE, TOKEN_URL, session.clone(), tokens, store);
+    state.set_client(client.clone());
+    let config = Config::load();
+    state.set_config(config.clone());
+    let cache = state
+        .cache()
+        .unwrap_or_else(|| crate::player::build_cache(&config));
+    state.set_player(replace_player(app, state, client, &config, cache)?);
+    Ok(SessionInfoDto { country_code: session.country_code, user_id: session.user_id })
+}
+
 #[tauri::command]
-pub fn auth_begin(state: State<'_, AppState>) -> Result<LoginPrompt, String> {
+pub fn auth_begin(
+    state: State<'_, AppState>,
+    mode: Option<AuthMode>,
+) -> Result<LoginPrompt, String> {
+    let redirect_uri = match mode.unwrap_or(AuthMode::Deep) {
+        AuthMode::Deep => PKCE_REDIRECT_DEEP_LINK,
+        AuthMode::Paste => PKCE_REDIRECT_PASTE,
+    };
     let pkce = Pkce::generate();
-    let url = pkce.login_url(PKCE_CLIENT_ID, "", PKCE_REDIRECT_PASTE);
-    state.set_pending(pkce);
+    let login_state = random_state();
+    let url = pkce.login_url(PKCE_CLIENT_ID, &login_state, redirect_uri);
+    state.set_pending(PendingLogin {
+        pkce,
+        state: login_state,
+        redirect_uri: redirect_uri.to_string(),
+    });
+    state.clear_last_login();
     Ok(LoginPrompt { url })
 }
 
@@ -80,32 +152,16 @@ pub async fn auth_complete(
     state: State<'_, AppState>,
     redirect_url: String,
 ) -> Result<SessionInfoDto, String> {
-    let pkce = state.take_pending().ok_or_else(|| "no login in progress".to_string())?;
-    let http = reqwest::Client::new();
-    let tokens = auth::exchange_code(&http, TOKEN_URL, &pkce, PKCE_REDIRECT_PASTE, &redirect_url)
-        .await
-        .map_err(|e| e.to_string())?;
-    let session = auth::fetch_session(&http, API_BASE, &tokens.access_token)
-        .await
-        .map_err(|e| e.to_string())?;
-    let store: Arc<dyn TokenStore> = Arc::new(KeyringStore);
-    store.save(&tokens).map_err(|e| e.to_string())?;
-    let client = TidalClient::new(
-        http,
-        API_BASE,
-        TOKEN_URL,
-        session.clone(),
-        tokens,
-        store,
-    );
-    state.set_client(client.clone());
-    let config = Config::load();
-    state.set_config(config.clone());
-    let cache = state
-        .cache()
-        .unwrap_or_else(|| crate::player::build_cache(&config));
-    state.set_player(replace_player(&app, &state, client, &config, cache)?);
-    Ok(SessionInfoDto { country_code: session.country_code, user_id: session.user_id })
+    finish_login(&app, &state, redirect_url).await
+}
+
+#[tauri::command]
+pub fn auth_take_result(state: State<'_, AppState>) -> Result<Option<SessionInfoDto>, String> {
+    match state.take_last_login() {
+        None => Ok(None),
+        Some(LoginOutcome::Success(session)) => Ok(Some(session)),
+        Some(LoginOutcome::Error(error)) => Err(error),
+    }
 }
 
 #[tauri::command]
@@ -799,6 +855,21 @@ mod tests {
     use oxitide_tidal::token_store::MemoryStore;
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn outcome(state: Option<&str>) -> auth::RedirectOutcome {
+        auth::RedirectOutcome { code: "c".into(), state: state.map(str::to_string) }
+    }
+
+    #[test]
+    fn verify_login_state_accepts_match_or_absent_state() {
+        assert!(verify_login_state("s", &outcome(Some("s"))).is_ok());
+        assert!(verify_login_state("s", &outcome(None)).is_ok());
+    }
+
+    #[test]
+    fn verify_login_state_rejects_mismatch() {
+        assert!(verify_login_state("s", &outcome(Some("other"))).is_err());
+    }
 
     fn sample_tokens(access: &str, refresh: Option<&str>) -> TokenSet {
         TokenSet {

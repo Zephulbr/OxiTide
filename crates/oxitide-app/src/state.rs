@@ -9,15 +9,24 @@ use oxitide_tidal::Error;
 use tauri::{AppHandle, Emitter};
 
 use crate::artwork::ArtworkService;
+use crate::commands::LoginOutcome;
 use crate::config::Config;
 
 pub struct Player {
     pub engine: Engine,
 }
 
+/// A login that has started and is waiting for the browser redirect.
+pub struct PendingLogin {
+    pub pkce: Pkce,
+    pub state: String,
+    pub redirect_uri: String,
+}
+
 #[derive(Default)]
 pub struct AppState {
-    pub pending_pkce: Mutex<Option<Pkce>>,
+    pub pending_login: Mutex<Option<PendingLogin>>,
+    pub last_login: Mutex<Option<LoginOutcome>>,
     pub client: RwLock<Option<TidalClient>>,
     pub player: RwLock<Option<Arc<Player>>>,
     pub config: Mutex<Config>,
@@ -28,12 +37,24 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn set_pending(&self, pkce: Pkce) {
-        *self.pending_pkce.lock().unwrap() = Some(pkce);
+    pub fn set_pending(&self, pending: PendingLogin) {
+        *self.pending_login.lock().unwrap() = Some(pending);
     }
 
-    pub fn take_pending(&self) -> Option<Pkce> {
-        self.pending_pkce.lock().unwrap().take()
+    pub fn take_pending(&self) -> Option<PendingLogin> {
+        self.pending_login.lock().unwrap().take()
+    }
+
+    pub fn set_last_login(&self, outcome: LoginOutcome) {
+        *self.last_login.lock().unwrap() = Some(outcome);
+    }
+
+    pub fn clear_last_login(&self) {
+        *self.last_login.lock().unwrap() = None;
+    }
+
+    pub fn take_last_login(&self) -> Option<LoginOutcome> {
+        self.last_login.lock().unwrap().take()
     }
 
     pub fn is_logged_in(&self) -> bool {
@@ -123,11 +144,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn pending_pkce_is_taken_once() {
+    fn pending_login_is_taken_once() {
         let state = AppState::default();
-        state.set_pending(Pkce::from_parts("v".into(), "k".into()));
+        state.set_pending(PendingLogin {
+            pkce: Pkce::from_parts("v".into(), "k".into()),
+            state: "s".into(),
+            redirect_uri: "tidal://login/auth".into(),
+        });
         assert!(state.take_pending().is_some());
         assert!(state.take_pending().is_none());
+    }
+
+    #[test]
+    fn last_login_is_taken_once() {
+        let state = AppState::default();
+        state.set_last_login(LoginOutcome::Error("x".into()));
+        assert!(state.take_last_login().is_some());
+        assert!(state.take_last_login().is_none());
     }
 
     #[test]
