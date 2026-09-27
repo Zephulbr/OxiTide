@@ -1,8 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod artwork;
 mod commands;
 mod config;
-#[allow(dead_code)] // consumed by artwork.rs in a later task
 mod palette;
 mod player;
 mod state;
@@ -82,6 +82,11 @@ fn main() {
     let config = config::Config::load();
     let state = AppState::default();
     state.set_cache(player::build_cache(&config));
+    state.set_artwork(artwork::ArtworkService::new(
+        reqwest::Client::new(),
+        "https://resources.tidal.com/images".into(),
+        config::default_cache_dir().unwrap_or_default().join("palettes.json"),
+    ));
     state.set_config(config);
 
     tauri::Builder::default()
@@ -165,6 +170,7 @@ fn main() {
             commands::set_cache_clear_on_exit,
             commands::get_logs_dir,
             commands::open_logs_folder,
+            commands::analyze_cover,
         ])
         .build(tauri::generate_context!())
         .expect("error while building OxiTide")

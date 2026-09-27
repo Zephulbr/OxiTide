@@ -8,6 +8,7 @@ use oxitide_tidal::pkce::Pkce;
 use oxitide_tidal::Error;
 use tauri::{AppHandle, Emitter};
 
+use crate::artwork::ArtworkService;
 use crate::config::Config;
 
 pub struct Player {
@@ -21,6 +22,7 @@ pub struct AppState {
     pub player: RwLock<Option<Arc<Player>>>,
     pub config: Mutex<Config>,
     pub cache: Mutex<Option<Arc<DiskCache>>>,
+    pub artwork: Mutex<Option<Arc<ArtworkService>>>,
     session_expired: AtomicBool,
     handle: Mutex<Option<AppHandle>>,
 }
@@ -64,6 +66,14 @@ impl AppState {
 
     pub fn cache(&self) -> Option<Arc<DiskCache>> {
         self.cache.lock().unwrap().clone()
+    }
+
+    pub fn set_artwork(&self, artwork: ArtworkService) {
+        *self.artwork.lock().unwrap() = Some(Arc::new(artwork));
+    }
+
+    pub fn artwork(&self) -> Option<Arc<ArtworkService>> {
+        self.artwork.lock().unwrap().clone()
     }
 
     /// Remember the app handle so `notify_session_expired` can reach the UI.

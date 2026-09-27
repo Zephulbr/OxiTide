@@ -1,0 +1,223 @@
+//! Cover fetch + palette cache for `analyze_cover` (spec §13: extraction
+//! happens off the UI critical path, from already-decoded artwork bytes).
+//! Every failure degrades to the brand fallback (spec §5.2) — never errors.
+
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Mutex;
+
+use serde::{Deserialize, Serialize};
+
+use crate::palette::{extract_palette, fallback_palette, Palette};
+
+const ANALYSIS_SIZE: u32 = 160;
+const EXTRACT_SIDE: u32 = 48;
+
+#[derive(Default, Serialize, Deserialize)]
+struct DiskCache {
+    palettes: HashMap<String, PaletteDto>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PaletteDto {
+    pub primary: String,
+    pub on_primary: String,
+    pub secondary: String,
+    pub tertiary: String,
+    pub ceiling_l: f32,
+}
+
+impl From<Palette> for PaletteDto {
+    fn from(p: Palette) -> Self {
+        Self {
+            primary: p.primary,
+            on_primary: p.on_primary,
+            secondary: p.secondary,
+            tertiary: p.tertiary,
+            ceiling_l: p.ceiling_l,
+        }
+    }
+}
+impl From<PaletteDto> for Palette {
+    fn from(d: PaletteDto) -> Self {
+        Self {
+            primary: d.primary,
+            on_primary: d.on_primary,
+            secondary: d.secondary,
+            tertiary: d.tertiary,
+            ceiling_l: d.ceiling_l,
+        }
+    }
+}
+
+pub struct ArtworkService {
+    http: reqwest::Client,
+    base_url: String,
+    memory: Mutex<HashMap<String, PaletteDto>>,
+    disk_path: PathBuf,
+}
+
+impl ArtworkService {
+    pub fn new(http: reqwest::Client, base_url: String, disk_path: PathBuf) -> Self {
+        if let Some(parent) = disk_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let memory = std::fs::read_to_string(&disk_path)
+            .ok()
+            .and_then(|text| serde_json::from_str::<DiskCache>(&text).ok())
+            .map(|cache| cache.palettes)
+            .unwrap_or_default();
+        Self {
+            http,
+            base_url: base_url.trim_end_matches('/').to_string(),
+            memory: Mutex::new(memory),
+            disk_path,
+        }
+    }
+
+    fn url(base: &str, uuid: &str) -> String {
+        format!("{base}/{}/{ANALYSIS_SIZE}x{ANALYSIS_SIZE}.jpg", uuid.replace('-', "/"))
+    }
+
+    /// Never fails: empty uuid, HTTP error, or undecodable bytes all yield
+    /// the brand fallback (spec §5.2 degradation paths).
+    pub async fn palette(&self, uuid: &str) -> Palette {
+        if uuid.is_empty() {
+            return fallback_palette();
+        }
+        if let Some(hit) = self.memory.lock().unwrap().get(uuid) {
+            return hit.clone().into();
+        }
+        let palette = match self.fetch(uuid).await {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!("cover analysis failed for {uuid}: {e}");
+                fallback_palette()
+            }
+        };
+        self.memory.lock().unwrap().insert(uuid.to_string(), palette.clone().into());
+        self.save_disk();
+        palette
+    }
+
+    async fn fetch(&self, uuid: &str) -> Result<Palette, String> {
+        let bytes = self
+            .http
+            .get(Self::url(&self.base_url, uuid))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?
+            .error_for_status()
+            .map_err(|e| e.to_string())?
+            .bytes()
+            .await
+            .map_err(|e| e.to_string())?;
+        let image = image::load_from_memory(&bytes).map_err(|e| e.to_string())?;
+        let small = image::imageops::resize(
+            &image.to_rgb8(),
+            EXTRACT_SIDE,
+            EXTRACT_SIDE,
+            image::imageops::FilterType::Triangle,
+        );
+        let pixels: Vec<(u8, u8, u8)> = small.pixels().map(|p| (p[0], p[1], p[2])).collect();
+        Ok(extract_palette(&pixels, EXTRACT_SIDE as usize, EXTRACT_SIDE as usize))
+    }
+
+    fn save_disk(&self) {
+        let cache = DiskCache { palettes: self.memory.lock().unwrap().clone() };
+        let Ok(text) = serde_json::to_string_pretty(&cache) else { return };
+        let tmp = self.disk_path.with_extension("json.tmp");
+        if std::fs::write(&tmp, text).is_ok() {
+            let _ = std::fs::rename(&tmp, &self.disk_path);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn png_bytes(color: [u8; 3]) -> Vec<u8> {
+        let img = image::RgbImage::from_pixel(8, 8, image::Rgb(color));
+        let mut buf = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgb8(img)
+            .write_to(&mut buf, image::ImageFormat::Png)
+            .unwrap();
+        buf.into_inner()
+    }
+
+    fn service(server: &MockServer, dir: &std::path::Path) -> ArtworkService {
+        ArtworkService::new(reqwest::Client::new(), server.uri(), dir.join("palettes.json"))
+    }
+
+    fn temp_dir() -> std::path::PathBuf {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static COUNTER: AtomicU32 = AtomicU32::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "oxitide-artwork-test-{}-{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::SeqCst)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[tokio::test]
+    async fn fetches_and_extracts_a_real_cover() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/ab/cd/160x160.jpg"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(png_bytes([200, 30, 40])))
+            .expect(1)
+            .mount(&server).await;
+        let dir = temp_dir();
+        let palette = service(&server, &dir).palette("ab-cd").await;
+        assert_ne!(palette.primary, fallback_palette().primary);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Review Focus: offline / 404 / garbage must degrade to the fallback.
+    #[tokio::test]
+    async fn failures_yield_the_fallback() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server).await;
+        let dir = temp_dir();
+        let service = service(&server, &dir);
+        assert_eq!(service.palette("missing-uuid").await.primary, fallback_palette().primary);
+        assert_eq!(service.palette("").await.primary, fallback_palette().primary);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn the_memory_cache_serves_repeats_without_http() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/ab/cd/160x160.jpg"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(png_bytes([200, 30, 40])))
+            .expect(1) // second call must not hit the server
+            .mount(&server).await;
+        let dir = temp_dir();
+        let service = service(&server, &dir);
+        let first = service.palette("ab-cd").await;
+        let second = service.palette("ab-cd").await;
+        assert_eq!(first, second);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn the_disk_cache_survives_a_restart() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/ab/cd/160x160.jpg"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(png_bytes([200, 30, 40])))
+            .expect(1)
+            .mount(&server).await;
+        let dir = temp_dir();
+        let first = service(&server, &dir).palette("ab-cd").await;
+        drop(server); // server gone; a fresh service must read the disk cache
+        let second = service(&MockServer::start().await, &dir).palette("ab-cd").await;
+        assert_eq!(first, second);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+}

@@ -30,6 +30,13 @@ export interface SearchResults {
 export interface TrackPage { items: Track[]; total: number; offset: number; limit: number }
 export interface SessionInfoDto { country_code: string; user_id: number }
 export interface FavoriteIds { tracks: number[]; albums: number[]; artists: number[] }
+export interface CoverPalette {
+  primary: string;
+  on_primary: string;
+  secondary: string;
+  tertiary: string;
+  ceiling_l: number;
+}
 
 export interface QueueItem {
   track_id: number; title: string; artist: string; album: string;
@@ -191,4 +198,5 @@ export const api = {
   clearCache: () => invoke<void>("clear_cache"),
   getLogsDir: () => invoke<string>("get_logs_dir"),
   openLogsFolder: () => invoke<void>("open_logs_folder"),
+  analyzeCover: (uuid: string) => invoke<CoverPalette>("analyze_cover", { uuid }),
 };

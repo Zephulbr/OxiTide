@@ -1,6 +1,8 @@
 //! Cover-art palette extraction (spec §5.2 three roles, §5.3 contrast chain).
 //! Pure functions over a small sRGB bitmap; IO and caching live in artwork.rs.
 
+use serde::{Deserialize, Serialize};
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Oklch {
     pub l: f32,
@@ -8,7 +10,7 @@ pub struct Oklch {
     pub h: f32,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Palette {
     pub primary: String,
     pub on_primary: String,

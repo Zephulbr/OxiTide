@@ -14,6 +14,7 @@ use oxitide_tidal::Error;
 use serde::Serialize;
 use tauri::{Manager, State};
 
+use crate::artwork::PaletteDto;
 use crate::config::{
     clamp_queue_width, Config, CoverShape, Density, DynamicColor, QualityDisplay, Typeface, UiMode,
 };
@@ -762,6 +763,17 @@ pub fn set_cache_clear_on_exit(state: State<'_, AppState>, enabled: bool) -> Res
     config.save()?;
     state.set_config(config);
     Ok(())
+}
+
+/// Never fails the UI: a missing service, empty uuid, network error, or
+/// undecodable bytes all resolve to the brand fallback (spec §5.2).
+#[tauri::command]
+pub async fn analyze_cover(state: State<'_, AppState>, uuid: String) -> Result<PaletteDto, String> {
+    let palette = match state.artwork() {
+        Some(service) => service.palette(&uuid).await,
+        None => crate::palette::fallback_palette(),
+    };
+    Ok(palette.into())
 }
 
 #[tauri::command]
