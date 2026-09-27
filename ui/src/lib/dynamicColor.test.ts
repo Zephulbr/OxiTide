@@ -60,4 +60,26 @@ describe("createPaletteApplier", () => {
     await applier.onTrack("uuid", "off");
     expect(applied).toEqual([{}, {}]);
   });
+
+  /// A position tick re-runs the effect with the same cover/mode; it must not
+  /// re-fetch or re-apply.
+  it("dedupes identical consecutive (cover, mode) calls", async () => {
+    const applied: Record<string, string>[] = [];
+    let fetches = 0;
+    const pending = deferred<CoverPalette>();
+    const fetcher = () => {
+      fetches += 1;
+      return pending.promise;
+    };
+    const applier = createPaletteApplier((t) => applied.push(t), fetcher);
+
+    void applier.onTrack("uuid", "full");
+    void applier.onTrack("uuid", "full");
+    pending.resolve(palette);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(fetches).toBe(1);
+    expect(applied).toEqual([paletteTokens(palette, "full")]);
+  });
 });

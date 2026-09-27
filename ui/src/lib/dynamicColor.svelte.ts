@@ -21,8 +21,12 @@ export function createPaletteApplier(
   fetcher: (uuid: string) => Promise<CoverPalette>,
 ) {
   let request = 0;
+  let lastKey: string | undefined;
   return {
     async onTrack(cover: string | null, mode: "full" | "accent" | "off") {
+      const key = `${mode}|${cover ?? ""}`;
+      if (key === lastKey) return;
+      lastKey = key;
       const id = ++request;
       if (mode === "off" || !cover) {
         apply({});
@@ -50,9 +54,8 @@ function applyToDocument(tokens: DynamicColorApply) {
 
 export function createDynamicColor(player: Player) {
   const applier = createPaletteApplier(applyToDocument, api.analyzeCover);
+  const cover = $derived(player.state.current?.cover ?? null);
   $effect(() => {
-    const cover = player.state.current?.cover ?? null;
-    const mode = appearance.dynamicColor;
-    void applier.onTrack(cover, mode);
+    void applier.onTrack(cover, appearance.dynamicColor);
   });
 }
