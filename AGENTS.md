@@ -17,7 +17,9 @@ Prereqs: Rust stable (`rust-toolchain.toml` pins it, with clippy/rustfmt), Node 
 - `crates/oxitide-tidal` — pure async TIDAL API client (PKCE auth, token refresh, catalog/search/library/home). No Tauri/UI deps. All HTTP goes through `TidalClient::get` / `get_all_pages` in `client.rs`, which does single-flight refresh-on-401; new endpoints should reuse it.
 - `crates/oxitide-app` — Tauri shell. New `#[tauri::command]` fns in `src/commands.rs` must also be listed in `generate_handler![...]` in `src/main.rs`, or the UI's `invoke` fails.
 - `ui/` — Svelte 5 runes only (`$state`, `$props`, `$effect`); no Svelte 4 stores or `export let`. Routing is a hand-rolled `Route` union in `ui/src/lib/nav.svelte.ts`, switched in `App.svelte`.
-- Playback is not implemented: there is no `oxitide-audio` crate and `PlayerBar`/`QueueRail` are placeholders. Plan: `docs/superpowers/specs/2026-09-21-oxitide-plan2-playback-design.md`.
+- Playback is implemented: `crates/oxitide-audio` holds the engine (queue, decode, cache, WASAPI output); `crates/oxitide-app/src/player.rs` wires it and maps DTOs. Plans 1–9 (playback, favorites, playlists, UX foundations, data interaction) have shipped.
+- Styling (Plan 10): design tokens live in `ui/src/styles/` — `tokens.css` (base + semantic token layers, motion, flags), `modes.css` (per-`data-mode` overrides), `fonts.css` (vendored Fraunces/Manrope/Inter). Components consume **semantic tokens only** (`--surface-*`, `--text`, `--accent`, …); never base or `--dyn-*` values directly. Appearance settings flow through `ui/src/lib/appearance.svelte.ts` (singleton `appearance`) → `data-mode`/`data-density` + CSS vars, persisted in the TOML config. Icons are inlined Lucide paths in `lib/components/Icon.svelte` — no unicode glyphs. Covers render through `lib/components/Cover.svelte` + `lib/artwork.ts` (`coverUrl` builds `resources.tidal.com` URLs from the dashed UUID).
+- Modes are `atmosphere` (Plan 11) / `instrument` via `data-mode` on the root; components must not branch on mode — read flag booleans from `appearance` instead.
 
 ## IPC contract
 
