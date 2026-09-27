@@ -181,8 +181,8 @@
     <label>
       Typeface:
       <select value={appearance.typeface} onchange={(e) => setTypeface((e.target as HTMLSelectElement).value as Typeface)}>
-        <option value="manrope">Manrope (default)</option>
-        <option value="inter">Inter</option>
+        <option value="manrope">Manrope</option>
+        <option value="inter">Inter (default)</option>
         <option value="system">System</option>
         <option value="custom">Custom…</option>
       </select>

@@ -71,8 +71,9 @@ pub enum UiMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Typeface {
-    #[default]
     Manrope,
+    /// Instrument mode's default UI face (Instrument spec §5).
+    #[default]
     Inter,
     System,
     Custom,
@@ -124,7 +125,7 @@ impl Default for UiConfig {
         Self {
             quality_display: QualityDisplay::Compact,
             mode: UiMode::Instrument,
-            typeface: Typeface::Manrope,
+            typeface: Typeface::Inter,
             custom_typeface: String::new(),
             density: Density::Comfortable,
             cover_shape: CoverShape::Disc,
@@ -419,7 +420,7 @@ mod tests {
         let config = Config::load_from(&path);
         assert_eq!(config.ui.quality_display, QualityDisplay::Detailed);
         assert_eq!(config.ui.mode, UiMode::Instrument);
-        assert_eq!(config.ui.typeface, Typeface::Manrope);
+        assert_eq!(config.ui.typeface, Typeface::Inter);
         assert_eq!(config.ui.custom_typeface, "");
         assert_eq!(config.ui.density, Density::Comfortable);
         assert_eq!(config.ui.cover_shape, CoverShape::Disc);

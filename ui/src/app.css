@@ -27,8 +27,8 @@ body {
   background: var(--surface-1);
   border-left: 1px solid var(--line);
   width: var(--queue-width);
-  overflow: hidden;
 }
+/* No overflow clipping here: the resize handle straddles the left edge. */
 .queue { position: relative; }
 .queue-resize {
   position: absolute;

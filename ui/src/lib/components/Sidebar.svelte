@@ -26,25 +26,25 @@
     <button disabled={!nav.canForward} onclick={() => nav.forward()} title="Forward (Alt+→)" aria-label="Forward"><Icon name="chevron-right" /></button>
   </div>
 
-  <button class="nav-item" class:active={nav.route.name === "home"} onclick={() => nav.goto({ name: "home" })} title="Home">
+  <button class="nav-item" class:active={nav.route.name === "home"} onclick={() => nav.goto({ name: "home" })} title="Home" aria-label="Home">
     <Icon name="home" />{#if !rail}<span>Home</span>{/if}
   </button>
-  <button class="nav-item" class:active={nav.route.name === "search"} onclick={() => nav.goto({ name: "search" })} title="Search">
+  <button class="nav-item" class:active={nav.route.name === "search"} onclick={() => nav.goto({ name: "search" })} title="Search" aria-label="Search">
     <Icon name="search" />{#if !rail}<span>Search</span>{/if}
   </button>
-  <button class="nav-item" class:active={nav.route.name === "library"} onclick={() => nav.goto({ name: "library" })} title="Library">
+  <button class="nav-item" class:active={nav.route.name === "library"} onclick={() => nav.goto({ name: "library" })} title="Library" aria-label="Library">
     <Icon name="library" />{#if !rail}<span>Library</span>{/if}
   </button>
-  <button class="nav-item" class:active={nav.queueOpen} onclick={() => nav.toggleQueue()} title="Queue">
+  <button class="nav-item" class:active={nav.queueOpen} onclick={() => nav.toggleQueue()} title="Queue" aria-label="Queue">
     <Icon name="list-music" />{#if !rail}<span>Queue</span>{/if}
   </button>
-  <button class="nav-item" class:active={nav.route.name === "settings"} onclick={() => nav.goto({ name: "settings" })} title="Settings">
+  <button class="nav-item" class:active={nav.route.name === "settings"} onclick={() => nav.goto({ name: "settings" })} title="Settings" aria-label="Settings">
     <Icon name="settings" />{#if !rail}<span>Settings</span>{/if}
   </button>
 
   <div class="spacer"></div>
 
-  <button class="nav-item" onclick={onLogout} title="Log out">
+  <button class="nav-item" onclick={onLogout} title="Log out" aria-label="Log out">
     <Icon name="log-out" />{#if !rail}<span>Log out</span>{/if}
   </button>
 </nav>

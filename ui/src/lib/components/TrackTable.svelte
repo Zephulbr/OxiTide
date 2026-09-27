@@ -338,7 +338,9 @@
   }
   .thumb-cell {
     width: var(--thumb-size);
-    padding: 4px 8px 4px 0;
+    /* Vertical padding stays small so thumb + padding never exceeds
+       --row-height (compact 22+6=28, comfortable 30+6=36<=38). */
+    padding: 3px 8px 3px 0;
   }
   .thumb {
     position: relative;

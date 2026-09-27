@@ -47,7 +47,7 @@ export interface Appearance {
 
 export function createAppearance(): Appearance {
   let mode = $state<UiMode>("instrument");
-  let typeface = $state<Typeface>("manrope");
+  let typeface = $state<Typeface>("inter");
   let customTypeface = $state("");
   let density = $state<Density>("comfortable");
   let coverShape = $state<CoverShape>("disc");
