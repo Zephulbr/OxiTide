@@ -161,6 +161,14 @@ Cost: one luminance reduction over an already-decoded tiny bitmap — trivial, b
 as extraction-step work for the plan. Exact percentile and region sampling are finalized
 at plan time (§15).
 
+**Bound of the guarantee (Plan 11 implementation finding):** the chain's 4.5:1 text floor
+is achievable while the per-cover composite ceiling stays at or below ~0.18. Above that — a
+very bright cover under the ≥55% scrim — no colour inside Primary's L ∈ [0.70, 0.85]
+envelope can reach 4.5:1; even pure white text tops out near ~4.4:1. Such extreme covers
+degrade to the plain light Primary fallback (Primary is still clamped as far as the envelope
+allows). The text floor is therefore documented as holding **within the ceiling bound**, not
+unconditionally.
+
 ### 5.4 Setting
 
 **Dynamic color: Full / Accent-only / Off** (notched slider). Accent-only = Primary
@@ -299,9 +307,11 @@ breath were prototyped and vetoed by the owner as too much.
 
 ## 11. Accessibility
 
-- Contrast floors: text ≥4.5:1 everywhere, enforced by one dependent chain (§5.3):
-  structural scrim/tint minimums *plus* per-cover composite-ceiling clamping. Accent
-  clamps evaluate against the actual composite, never an idealized constant.
+- Contrast floors: text ≥4.5:1 for covers whose composite ceiling is ≤ ~0.18 (§5.3 bound),
+  enforced by one dependent chain (§5.3): structural scrim/tint minimums *plus* per-cover
+  composite-ceiling clamping. Accent clamps evaluate against the actual composite, never an
+  idealized constant. Extreme bright covers (> ~0.18 ceiling) degrade to the plain light
+  Primary fallback and cannot meet the floor by construction.
 - Focus-visible ring (2px accent, 2px offset) keyboard-only; never on click.
 - Reduced-motion handling per §9; cover spin additionally gated by §7.2.
 - Hit targets ≥24px in Comfortable density (Compact exempts list rows, which keep full-row hit areas).
