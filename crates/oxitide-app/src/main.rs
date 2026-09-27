@@ -157,6 +157,7 @@ fn main() {
             commands::set_custom_typeface,
             commands::set_density,
             commands::set_cover_shape,
+            commands::set_dynamic_color,
             commands::set_queue_width,
             commands::set_cache_max_size_mb,
             commands::set_cache_clear_on_exit,

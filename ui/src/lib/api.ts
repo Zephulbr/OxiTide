@@ -80,11 +80,12 @@ export interface Config {
   streaming: { quality: Quality; allow_fallback: boolean };
   ui: {
     quality_display: "compact" | "detailed";
-    mode: "instrument";
-    typeface: "manrope" | "inter" | "system" | "custom";
+    mode: "instrument" | "atmosphere";
+    typeface: "auto" | "manrope" | "inter" | "system" | "custom";
     custom_typeface: string;
     density: "comfortable" | "compact";
     cover_shape: "disc" | "sleeve";
+    dynamic_color: "auto" | "full" | "accent" | "off";
     queue_width: number;
     window_width: number;
     window_height: number;
@@ -174,12 +175,14 @@ export const api = {
   setAllowFallback: (enabled: boolean) => invoke<void>("set_allow_fallback", { enabled }),
   setQualityDisplay: (mode: "compact" | "detailed") =>
     invoke<void>("set_quality_display", { mode }),
-  setUiMode: (mode: "instrument") => invoke<void>("set_ui_mode", { mode }),
-  setTypeface: (typeface: "manrope" | "inter" | "system" | "custom") =>
+  setUiMode: (mode: "instrument" | "atmosphere") => invoke<void>("set_ui_mode", { mode }),
+  setTypeface: (typeface: "auto" | "manrope" | "inter" | "system" | "custom") =>
     invoke<void>("set_typeface", { typeface }),
   setCustomTypeface: (name: string) => invoke<void>("set_custom_typeface", { name }),
   setDensity: (density: "comfortable" | "compact") => invoke<void>("set_density", { density }),
   setCoverShape: (shape: "disc" | "sleeve") => invoke<void>("set_cover_shape", { shape }),
+  setDynamicColor: (mode: "auto" | "full" | "accent" | "off") =>
+    invoke<void>("set_dynamic_color", { mode }),
   setQueueWidth: (px: number) => invoke<void>("set_queue_width", { px }),
   setCacheMaxSizeMb: (mb: number) => invoke<void>("set_cache_max_size_mb", { mb }),
   setCacheClearOnExit: (enabled: boolean) =>

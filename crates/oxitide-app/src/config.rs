@@ -59,24 +59,37 @@ pub enum QualityDisplay {
     Detailed,
 }
 
-/// Visual mode. Plan 10 ships Instrument only; Plan 11 adds `Atmosphere`
-/// and flips the default.
+/// Visual mode. Plan 10 ships Instrument; Plan 11 adds `Atmosphere` and flips
+/// the default.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum UiMode {
-    #[default]
     Instrument,
+    #[default]
+    Atmosphere,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Typeface {
-    Manrope,
-    /// Instrument mode's default UI face (Instrument spec §5).
+    /// Mode default: Manrope in Atmosphere, Inter in Instrument.
     #[default]
+    Auto,
+    Manrope,
     Inter,
     System,
     Custom,
+}
+
+/// Dynamic cover color (spec §5.4). `Auto` = Full in Atmosphere, Off in Instrument.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DynamicColor {
+    #[default]
+    Auto,
+    Full,
+    Accent,
+    Off,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -110,6 +123,7 @@ pub struct UiConfig {
     pub custom_typeface: String,
     pub density: Density,
     pub cover_shape: CoverShape,
+    pub dynamic_color: DynamicColor,
     pub queue_width: u32,
     pub window_width: u32,
     pub window_height: u32,
@@ -124,11 +138,12 @@ impl Default for UiConfig {
     fn default() -> Self {
         Self {
             quality_display: QualityDisplay::Compact,
-            mode: UiMode::Instrument,
-            typeface: Typeface::Inter,
+            mode: UiMode::Atmosphere,
+            typeface: Typeface::Auto,
             custom_typeface: String::new(),
             density: Density::Comfortable,
             cover_shape: CoverShape::Disc,
+            dynamic_color: DynamicColor::Auto,
             queue_width: 320,
             window_width: 1200,
             window_height: 800,
@@ -269,6 +284,7 @@ mod tests {
                 custom_typeface: String::new(),
                 density: Density::Comfortable,
                 cover_shape: CoverShape::Disc,
+                dynamic_color: DynamicColor::Auto,
                 queue_width: 320,
                 window_width: 1280,
                 window_height: 720,
@@ -419,8 +435,9 @@ mod tests {
         fs::write(&path, "[ui]\nquality_display = \"detailed\"\n").unwrap();
         let config = Config::load_from(&path);
         assert_eq!(config.ui.quality_display, QualityDisplay::Detailed);
-        assert_eq!(config.ui.mode, UiMode::Instrument);
-        assert_eq!(config.ui.typeface, Typeface::Inter);
+        assert_eq!(config.ui.mode, UiMode::Atmosphere);
+        assert_eq!(config.ui.typeface, Typeface::Auto);
+        assert_eq!(config.ui.dynamic_color, DynamicColor::Auto);
         assert_eq!(config.ui.custom_typeface, "");
         assert_eq!(config.ui.density, Density::Comfortable);
         assert_eq!(config.ui.cover_shape, CoverShape::Disc);
@@ -437,5 +454,38 @@ mod tests {
         assert_eq!(clamp_queue_width(320), 320);
         assert_eq!(clamp_queue_width(420), 420);
         assert_eq!(clamp_queue_width(9999), 420);
+    }
+
+    #[test]
+    fn atmosphere_defaults_for_fresh_configs() {
+        let config = Config::default();
+        assert_eq!(config.ui.mode, UiMode::Atmosphere);
+        assert_eq!(config.ui.typeface, Typeface::Auto);
+        assert_eq!(config.ui.dynamic_color, DynamicColor::Auto);
+    }
+
+    /// Review Focus: Plan 10 wrote explicit values; they stay honored.
+    #[test]
+    fn plan10_configs_load_untouched() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        fs::write(&path, "[ui]\nmode = \"instrument\"\ntypeface = \"manrope\"\n").unwrap();
+        let config = Config::load_from(&path);
+        assert_eq!(config.ui.mode, UiMode::Instrument);
+        assert_eq!(config.ui.typeface, Typeface::Manrope);
+        assert_eq!(config.ui.dynamic_color, DynamicColor::Auto);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn dynamic_color_round_trips() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        let mut config = Config::default();
+        config.ui.dynamic_color = DynamicColor::Accent;
+        config.save_to(&path).unwrap();
+        assert!(fs::read_to_string(&path).unwrap().contains("dynamic_color = \"accent\""));
+        assert_eq!(Config::load_from(&path), config);
+        let _ = fs::remove_dir_all(dir);
     }
 }

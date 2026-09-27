@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clampQueueWidth, fontStack } from "./appearance.svelte";
+import { clampQueueWidth, fontStack, resolveDynamicColor, resolveTypeface } from "./appearance.svelte";
 
 describe("clampQueueWidth", () => {
   it("clamps to the 260–420 dock range", () => {
@@ -29,5 +29,28 @@ describe("fontStack", () => {
       '"Evil; } * { display:none", system-ui, sans-serif',
     );
     expect(fontStack("custom", "a\\b")).toBe('"ab", system-ui, sans-serif');
+  });
+});
+
+describe("resolveTypeface", () => {
+  it("auto follows the mode default", () => {
+    expect(resolveTypeface("auto", "atmosphere")).toBe("manrope");
+    expect(resolveTypeface("auto", "instrument")).toBe("inter");
+  });
+  it("explicit picks always win", () => {
+    expect(resolveTypeface("system", "atmosphere")).toBe("system");
+    expect(resolveTypeface("custom", "instrument")).toBe("custom");
+  });
+});
+
+describe("resolveDynamicColor", () => {
+  it("auto is full in atmosphere and off in instrument", () => {
+    expect(resolveDynamicColor("auto", "atmosphere")).toBe("full");
+    expect(resolveDynamicColor("auto", "instrument")).toBe("off");
+  });
+  it("explicit picks always win, including off in atmosphere", () => {
+    expect(resolveDynamicColor("accent", "atmosphere")).toBe("accent");
+    expect(resolveDynamicColor("off", "atmosphere")).toBe("off");
+    expect(resolveDynamicColor("full", "instrument")).toBe("full");
   });
 });

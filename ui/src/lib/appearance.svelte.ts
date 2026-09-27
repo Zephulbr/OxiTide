@@ -1,7 +1,10 @@
 import { api } from "./api";
 
-export type UiMode = "instrument";
+export type UiMode = "instrument" | "atmosphere";
 export type Typeface = "manrope" | "inter" | "system" | "custom";
+export type TypefaceSetting = "auto" | Typeface;
+export type DynamicColorSetting = "auto" | "full" | "accent" | "off";
+export type DynamicColorMode = "full" | "accent" | "off";
 export type Density = "comfortable" | "compact";
 export type CoverShape = "disc" | "sleeve";
 
@@ -10,6 +13,18 @@ export const QUEUE_WIDTH_MAX = 420;
 
 export function clampQueueWidth(px: number): number {
   return Math.min(QUEUE_WIDTH_MAX, Math.max(QUEUE_WIDTH_MIN, Math.round(px)));
+}
+
+/// Mode defaults: Manrope in Atmosphere, Inter in Instrument (spec §4/§6).
+export function resolveTypeface(t: TypefaceSetting, mode: UiMode): Typeface {
+  if (t !== "auto") return t;
+  return mode === "atmosphere" ? "manrope" : "inter";
+}
+
+/// `Auto` is Full in Atmosphere and Off in Instrument (spec §5.4).
+export function resolveDynamicColor(s: DynamicColorSetting, mode: UiMode): DynamicColorMode {
+  if (s !== "auto") return s;
+  return mode === "atmosphere" ? "full" : "off";
 }
 
 /// The fallback chain always ends in system-ui (spec §6).
@@ -30,27 +45,36 @@ export function fontStack(typeface: Typeface, custom: string): string {
 
 export interface Appearance {
   readonly mode: UiMode;
-  readonly typeface: Typeface;
+  readonly typeface: TypefaceSetting;
   readonly customTypeface: string;
   readonly density: Density;
   readonly coverShape: CoverShape;
   readonly queueWidth: number;
   readonly reducedMotion: boolean;
+  readonly dynamicColor: DynamicColorMode;
+  readonly backdropArt: boolean;
+  readonly glassPanels: boolean;
+  readonly grain: boolean;
+  readonly discSpin: boolean;
+  readonly waveSeek: boolean;
+  readonly ambientMotion: boolean;
   init(): Promise<void>;
   setMode(mode: UiMode): Promise<void>;
-  setTypeface(typeface: Typeface): Promise<void>;
+  setTypeface(typeface: TypefaceSetting): Promise<void>;
   setCustomTypeface(name: string): Promise<void>;
   setDensity(density: Density): Promise<void>;
   setCoverShape(shape: CoverShape): Promise<void>;
+  setDynamicColor(setting: DynamicColorSetting): Promise<void>;
   setQueueWidth(px: number): Promise<void>;
 }
 
 export function createAppearance(): Appearance {
-  let mode = $state<UiMode>("instrument");
-  let typeface = $state<Typeface>("inter");
+  let mode = $state<UiMode>("atmosphere");
+  let typefaceSetting = $state<TypefaceSetting>("auto");
   let customTypeface = $state("");
   let density = $state<Density>("comfortable");
   let coverShape = $state<CoverShape>("disc");
+  let dynamicColorSetting = $state<DynamicColorSetting>("auto");
   let queueWidth = $state(320);
   let reducedMotion = $state(false);
 
@@ -58,7 +82,7 @@ export function createAppearance(): Appearance {
     const root = document.documentElement;
     root.dataset.mode = mode;
     root.dataset.density = density;
-    root.style.setProperty("--font-ui", fontStack(typeface, customTypeface));
+    root.style.setProperty("--font-ui", fontStack(resolveTypeface(typefaceSetting, mode), customTypeface));
     root.style.setProperty("--queue-width", `${queueWidth}px`);
   }
 
@@ -69,10 +93,11 @@ export function createAppearance(): Appearance {
     try {
       const config = await api.getConfig();
       mode = config.ui.mode;
-      typeface = config.ui.typeface;
+      typefaceSetting = config.ui.typeface;
       customTypeface = config.ui.custom_typeface;
       density = config.ui.density;
       coverShape = config.ui.cover_shape;
+      dynamicColorSetting = config.ui.dynamic_color;
       queueWidth = config.ui.queue_width;
     } catch {
       // Defaults are fine; a config failure must not block boot.
@@ -88,18 +113,26 @@ export function createAppearance(): Appearance {
 
   return {
     get mode() { return mode; },
-    get typeface() { return typeface; },
+    get typeface() { return typefaceSetting; },
     get customTypeface() { return customTypeface; },
     get density() { return density; },
     get coverShape() { return coverShape; },
     get queueWidth() { return queueWidth; },
     get reducedMotion() { return reducedMotion; },
+    get dynamicColor() { return resolveDynamicColor(dynamicColorSetting, mode); },
+    get backdropArt() { return mode === "atmosphere"; },
+    get glassPanels() { return mode === "atmosphere"; },
+    get grain() { return mode === "atmosphere"; },
+    get discSpin() { return mode === "atmosphere" && !reducedMotion; },
+    get waveSeek() { return mode === "atmosphere"; },
+    get ambientMotion() { return mode === "atmosphere" && !reducedMotion; },
     init,
     setMode: (m) => { mode = m; return persist(() => api.setUiMode(m)); },
-    setTypeface: (t) => { typeface = t; return persist(() => api.setTypeface(t)); },
+    setTypeface: (t) => { typefaceSetting = t; return persist(() => api.setTypeface(t)); },
     setCustomTypeface: (n) => { customTypeface = n; return persist(() => api.setCustomTypeface(n)); },
     setDensity: (d) => { density = d; return persist(() => api.setDensity(d)); },
     setCoverShape: (s) => { coverShape = s; return persist(() => api.setCoverShape(s)); },
+    setDynamicColor: (s) => { dynamicColorSetting = s; return persist(() => api.setDynamicColor(s)); },
     setQueueWidth: (px) => { queueWidth = clampQueueWidth(px); return persist(() => api.setQueueWidth(queueWidth)); },
   };
 }

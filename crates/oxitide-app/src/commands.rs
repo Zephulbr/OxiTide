@@ -14,7 +14,9 @@ use oxitide_tidal::Error;
 use serde::Serialize;
 use tauri::{Manager, State};
 
-use crate::config::{clamp_queue_width, Config, CoverShape, Density, QualityDisplay, Typeface, UiMode};
+use crate::config::{
+    clamp_queue_width, Config, CoverShape, Density, DynamicColor, QualityDisplay, Typeface, UiMode,
+};
 use crate::player::{devices, OutputDeviceDto, QualityDto};
 use crate::state::{AppState, Player};
 
@@ -720,6 +722,15 @@ pub fn set_density(state: State<'_, AppState>, density: Density) -> Result<(), S
 pub fn set_cover_shape(state: State<'_, AppState>, shape: CoverShape) -> Result<(), String> {
     let mut config = state.config();
     config.ui.cover_shape = shape;
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_dynamic_color(state: State<'_, AppState>, mode: DynamicColor) -> Result<(), String> {
+    let mut config = state.config();
+    config.ui.dynamic_color = mode;
     config.save()?;
     state.set_config(config);
     Ok(())
