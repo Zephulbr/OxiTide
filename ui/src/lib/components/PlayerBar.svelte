@@ -5,6 +5,8 @@
   import type { Favorites } from "../favorites.svelte";
   import type { Player } from "../player.svelte";
   import type { Nav } from "../nav.svelte";
+  import { appearance } from "../appearance.svelte";
+  import { wavePath } from "../wave";
   import Cover from "./Cover.svelte";
   import Icon from "./Icon.svelte";
 
@@ -79,10 +81,22 @@
       onpointerdown={seekPointer}
       onkeydown={seekKeydown}
     >
-      <div class="seek-line">
-        <div class="seek-fill" style:width="{progress}%"></div>
-        <div class="seek-thumb" style:left="{progress}%"></div>
-      </div>
+      {#if appearance.waveSeek}
+        {@const pct = (position / Math.max(duration, 1)) * 100}
+        {@const d = wavePath(current.track_id, 800, 14)}
+        <div class="seek-wave">
+          <svg viewBox="0 0 800 14" preserveAspectRatio="none" aria-hidden="true">
+            <path d={d} fill="none" stroke="var(--line)" stroke-width="1.5" vector-effect="non-scaling-stroke" />
+            <clipPath id="seek-played"><rect x="0" y="0" width="{pct}%" height="100%" /></clipPath>
+            <path d={d} fill="none" stroke="var(--accent)" stroke-width="1.5" vector-effect="non-scaling-stroke" clip-path="url(#seek-played)" />
+          </svg>
+        </div>
+      {:else}
+        <div class="seek-line">
+          <div class="seek-fill" style:width="{progress}%"></div>
+          <div class="seek-thumb" style:left="{progress}%"></div>
+        </div>
+      {/if}
     </div>
 
     <button class="thumb" onclick={() => nav.toggleNowPlaying()} aria-label="Open now playing" title="Open now playing">
@@ -201,6 +215,27 @@
   .seek:hover .seek-thumb,
   .seek:focus-visible .seek-thumb {
     transform: translate(-50%, -50%) scale(1);
+  }
+  /* Stylized wave (Atmosphere): squashed + faint at rest, grows on hover. */
+  .seek-wave {
+    width: 100%;
+    height: 10px;
+    opacity: 0.35;
+    transform: scaleY(0.4);
+    transform-origin: top;
+    transition:
+      opacity var(--dur-micro) var(--ease-in),
+      transform var(--dur-micro) var(--ease-in);
+  }
+  .seek-wave svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  .seek:hover .seek-wave,
+  .seek:focus-visible .seek-wave {
+    opacity: 1;
+    transform: scaleY(1);
   }
 
   .thumb {
