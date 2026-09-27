@@ -11,7 +11,7 @@
   },
   "app": {
     "windows": [
-      { "title": "OxiTide", "width": 1200, "height": 800, "dragDropEnabled": false, "visible": false }
+      { "title": "OxiTide", "width": 1200, "height": 800, "minWidth": 720, "minHeight": 520, "dragDropEnabled": false, "visible": false }
     ],
     "security": { "csp": null }
   },

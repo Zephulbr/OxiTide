@@ -46,6 +46,18 @@
   let error = $state("");
   let playerReady = $state(false);
   let expired = $state<ExpiredSession | null>(null);
+  let sidebarRail = $state(false);
+  let railTouched = $state(false);
+
+  $effect(() => {
+    const media = window.matchMedia("(max-width: 1080px)");
+    const sync = () => {
+      if (!railTouched) sidebarRail = media.matches;
+    };
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  });
 
   $effect(() => {
     const unlisten = listen("session_expired", () => {
@@ -231,8 +243,8 @@
     message={expired ? "Session expired — sign in to continue" : ""}
   />
 {:else}
-  <div class="app">
-    <Sidebar {nav} onLogout={onLogout} />
+  <div class="app" data-sidebar={sidebarRail ? "rail" : "full"}>
+    <Sidebar {nav} rail={sidebarRail} onToggleRail={() => { railTouched = true; sidebarRail = !sidebarRail; }} onLogout={onLogout} />
     <main class="main">
       {#if error}<p style="color:#ff6b6b">{error}</p>{/if}
       {#if nav.route.name === "home"}<Home {nav} />
