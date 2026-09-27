@@ -16,6 +16,7 @@
   import ToastHost from "./lib/components/ToastHost.svelte";
   import ContextMenu from "./lib/components/ContextMenu.svelte";
   import { createNav } from "./lib/nav.svelte";
+  import { appearance } from "./lib/appearance.svelte";
   import { errorMessage } from "./lib/errors";
   import { menu } from "./lib/menu.svelte";
   import { isShortcutHandled, matchShortcut, type ShortcutAction } from "./lib/shortcuts";
@@ -86,6 +87,10 @@
         .then((config) => (qualityDisplay = config.ui.quality_display))
         .catch(() => {});
     }
+  });
+
+  $effect(() => {
+    void appearance.init();
   });
 
   $effect(() => {
