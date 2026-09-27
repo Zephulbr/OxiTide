@@ -34,7 +34,9 @@
   <div class="art">
     {#if track}
       {#if appearance.coverShape === "disc" && appearance.discSpin}
-        <DiscArt uuid={track.cover} playing={player.state.playing} />
+        <button class="art-disc" onclick={() => nav.closeNowPlaying()} aria-label="Close now playing">
+          <DiscArt uuid={track.cover} playing={player.state.playing} />
+        </button>
       {:else}
         <button class="art-sleeve lit" onclick={() => nav.closeNowPlaying()} aria-label="Close now playing">
           <Cover uuid={track.cover} size={640} radius={12} alt={`${track.title} artwork`} />
@@ -95,7 +97,10 @@
     display: grid;
     place-items: center;
   }
-  .art-sleeve {
+  /* Both shapes are one close affordance (spec §7.2): clicking the artwork
+     returns, disc or sleeve. The disc button stays transparent (no lit edge). */
+  .art-sleeve,
+  .art-disc {
     display: block;
     width: min(100%, 55vh);
     margin: 0 auto;
