@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { appearance } from "../lib/appearance.svelte";
   import Cover from "../lib/components/Cover.svelte";
+  import DiscArt from "../lib/components/DiscArt.svelte";
   import Icon from "../lib/components/Icon.svelte";
   import { formatDuration } from "../lib/format";
   import { formatQuality, type QualityDisplay } from "../lib/quality";
@@ -31,9 +33,13 @@
 <div class="now-playing">
   <div class="art">
     {#if track}
-      <button class="art-sleeve lit" onclick={() => nav.closeNowPlaying()} aria-label="Close now playing">
-        <Cover uuid={track.cover} size={640} radius={12} alt={`${track.title} artwork`} />
-      </button>
+      {#if appearance.coverShape === "disc" && appearance.discSpin}
+        <DiscArt uuid={track.cover} playing={player.state.playing} />
+      {:else}
+        <button class="art-sleeve lit" onclick={() => nav.closeNowPlaying()} aria-label="Close now playing">
+          <Cover uuid={track.cover} size={640} radius={12} alt={`${track.title} artwork`} />
+        </button>
+      {/if}
     {:else}
       <div class="art-empty lit"><Icon name="music" size={64} /></div>
     {/if}
