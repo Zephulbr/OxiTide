@@ -74,6 +74,17 @@ describe("nav history", () => {
     expect(nav.queueOpen).toBe(true);
     expect(nav.canBack).toBe(false);
   });
+
+  it("toggles now playing independently of the route", () => {
+    const nav = createNav();
+    expect(nav.nowPlayingOpen).toBe(false);
+    nav.toggleNowPlaying();
+    expect(nav.nowPlayingOpen).toBe(true);
+    nav.goto({ name: "settings" });
+    expect(nav.nowPlayingOpen).toBe(true);
+    nav.closeNowPlaying();
+    expect(nav.nowPlayingOpen).toBe(false);
+  });
 });
 
 function homeItem(item_type: string, id: string): HomeItem {

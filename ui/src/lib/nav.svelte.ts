@@ -12,12 +12,15 @@ export type Route =
 export interface Nav {
   readonly route: Route;
   readonly queueOpen: boolean;
+  readonly nowPlayingOpen: boolean;
   readonly canBack: boolean;
   readonly canForward: boolean;
   goto(next: Route): void;
   back(): void;
   forward(): void;
   toggleQueue(): void;
+  toggleNowPlaying(): void;
+  closeNowPlaying(): void;
 }
 
 function sameRoute(a: Route, b: Route): boolean {
@@ -48,6 +51,7 @@ export function createNav(): Nav {
   let history = $state<Route[]>([{ name: "home" }]);
   let index = $state(0);
   let queueOpen = $state(false);
+  let nowPlayingOpen = $state(false);
 
   function goto(next: Route) {
     if (sameRoute(history[index], next)) return;
@@ -70,6 +74,9 @@ export function createNav(): Nav {
     get queueOpen() {
       return queueOpen;
     },
+    get nowPlayingOpen() {
+      return nowPlayingOpen;
+    },
     get canBack() {
       return index > 0;
     },
@@ -81,6 +88,12 @@ export function createNav(): Nav {
     forward,
     toggleQueue() {
       queueOpen = !queueOpen;
+    },
+    toggleNowPlaying() {
+      nowPlayingOpen = !nowPlayingOpen;
+    },
+    closeNowPlaying() {
+      nowPlayingOpen = false;
     },
   };
 }

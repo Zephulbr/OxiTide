@@ -12,6 +12,7 @@
   import Search from "./views/Search.svelte";
   import Library from "./views/Library.svelte";
   import Settings from "./views/Settings.svelte";
+  import NowPlaying from "./views/NowPlaying.svelte";
   import PlaylistPicker from "./lib/components/PlaylistPicker.svelte";
   import ToastHost from "./lib/components/ToastHost.svelte";
   import ContextMenu from "./lib/components/ContextMenu.svelte";
@@ -225,6 +226,7 @@
         break;
       case "escape":
         if (menu.open) menu.close();
+        else if (nav.nowPlayingOpen) nav.closeNowPlaying();
         else if (nav.queueOpen) nav.toggleQueue();
         break;
     }
@@ -240,7 +242,7 @@
       if (event.key === " " && event.repeat && player.state.current) event.preventDefault();
       return;
     }
-    if (action === "escape" && !menu.open && !nav.queueOpen) return;
+    if (action === "escape" && !menu.open && !nav.nowPlayingOpen && !nav.queueOpen) return;
     if (
       !isShortcutHandled(action, {
         hasCurrent: player.state.current !== null,
@@ -278,7 +280,8 @@
     <Sidebar {nav} rail={sidebarRail} onToggleRail={() => { railTouched = true; sidebarRail = !sidebarRail; }} onLogout={onLogout} />
     <main class="main">
       {#if error}<p style="color:#ff6b6b">{error}</p>{/if}
-      {#if nav.route.name === "home"}<Home {nav} />
+      {#if nav.nowPlayingOpen}<NowPlaying {player} {nav} {qualityDisplay} />
+      {:else if nav.route.name === "home"}<Home {nav} />
       {:else if nav.route.name === "search"}<Search {nav} {player} {favorites} {playlistActions} />
       {:else if nav.route.name === "library"}<Library {nav} {player} {favorites} {playlistActions} {toasts} />
       {:else if nav.route.name === "album"}<Album id={nav.route.id} {player} {favorites} {playlistActions} />
