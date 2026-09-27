@@ -9,7 +9,7 @@ Atmosphere in Settings once (also set Typeface to Default).
 - [ ] **Skip-storm:** spam Next 6+ times — colors and backdrop drift continuously, never flash a stale cover, and settle on the final track.
 - [ ] Accent follows the cover: play button, active nav, seek fill, playing-row tint, focus rings.
 - [ ] **Monochrome cover** (e.g. a grayscale album): brand teal accent, app keeps its identity.
-- [ ] **Bright cover:** title/playing-row accent stays readable (≥4.5:1) over the bright blur.
+- [ ] **Bright cover:** accent is clamped toward a plain light tone; extreme bright covers cannot reach 4.5:1 under the 55% scrim (known spec gap — see final review).
 - [ ] Dynamic color Accent-only: accent follows the cover, backdrop/scrollbar stay brand; Off: fully static brand.
 - [ ] Disc spins only while playing, eases to a stop on pause; Sleeve setting shows the static sleeve.
 - [ ] Wave seek: played portion fills accent, wave changes per track.

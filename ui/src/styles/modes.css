@@ -20,8 +20,6 @@
   --surface-2: #262019;
   --surface-3: #2b241c;
   --edge-lit: linear-gradient(135deg, var(--line), var(--line));
-  --accent: var(--accent-brand);
-  --on-accent: var(--on-accent-brand);
   --glass-blur: 0px;
   --flag-backdrop-art: 0;
   --flag-glass-blur: 0;

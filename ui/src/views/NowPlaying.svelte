@@ -33,7 +33,7 @@
 <div class="now-playing">
   <div class="art">
     {#if track}
-      {#if appearance.coverShape === "disc" && appearance.discSpin}
+      {#if appearance.coverShape === "disc"}
         <button class="art-disc" onclick={() => nav.closeNowPlaying()} aria-label="Close now playing">
           <DiscArt uuid={track.cover} playing={player.state.playing} />
         </button>

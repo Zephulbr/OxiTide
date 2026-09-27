@@ -9,13 +9,42 @@
   let layers = $state<[string, string]>(["", ""]);
   let active = $state<0 | 1>(0);
 
+  // Per-load token: latest-wins. A new track bumps the counter, so an
+  // in-flight preload that resolves late is discarded rather than made
+  // visible over the newer cover.
+  let loadToken = 0;
+
   $effect(() => {
     const cover = player.state.current?.cover ?? null;
     const url = cover ? coverUrl(cover, 640) : "";
     if (url === layers[active]) return;
     const next = active === 0 ? 1 : 0;
-    layers[next] = url;
-    active = next;
+    const token = (loadToken += 1);
+
+    const apply = () => {
+      if (token !== loadToken) return;
+      layers[next] = url;
+      active = next;
+    };
+
+    // No art → the static warm gradient room, applied immediately.
+    if (!url) {
+      apply();
+      return;
+    }
+
+    // Preload the incoming image so `active` only flips once it is
+    // decoded/loaded; otherwise a skip-storm fades the old layer to the
+    // static gradient and pops the new image in un-faded (spec §5.2).
+    const img = new Image();
+    img.onload = apply;
+    img.onerror = apply; // a failed decode falls back instead of getting stuck
+    img.src = url;
+
+    return () => {
+      img.onload = null;
+      img.onerror = null;
+    };
   });
 </script>
 
