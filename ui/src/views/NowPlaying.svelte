@@ -45,7 +45,7 @@
       <h2 class="title">{track.title}</h2>
       <p class="byline">{track.artist}{track.album ? ` — ${track.album}` : ""}</p>
       <div class="badges">
-        {#if quality}<span class="badge">{quality}</span>{/if}
+        {#if quality}<span class="badge" class:max={quality === "MAX"}>{quality}</span>{/if}
         {#if player.state.bit_perfect}<span class="badge">Bit-perfect</span>{/if}
         {#if qualityDetail}<span class="badge muted">{qualityDetail}</span>{/if}
       </div>
@@ -139,6 +139,10 @@
     padding: 2px 8px;
     border: 1px solid var(--line);
     border-radius: 6px;
+  }
+  .badge.max {
+    border-color: var(--dyn-tertiary);
+    color: var(--dyn-tertiary);
   }
   hr {
     border: none;

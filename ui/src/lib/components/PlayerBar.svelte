@@ -25,6 +25,9 @@
   const quality = $derived(
     formatQuality(player.state.stream, qualityDisplay, player.state.preferred_quality),
   );
+  const maxQuality = $derived(
+    formatQuality(player.state.stream, "compact", player.state.preferred_quality) === "MAX",
+  );
 
   function seekPointer(event: PointerEvent) {
     const el = event.currentTarget as HTMLElement;
@@ -122,7 +125,7 @@
     <span class="muted tnum time">{formatDuration(position / 1000)} / {formatDuration(duration / 1000)}</span>
 
     <div class="badges">
-      <span class="badge" title={player.state.stream ? "Actual stream quality" : "Preferred quality"}>{quality}</span>
+      <span class="badge" class:max={maxQuality} title={player.state.stream ? "Actual stream quality" : "Preferred quality"}>{quality}</span>
       {#if player.state.bit_perfect}<span class="badge">Bit-perfect</span>{/if}
     </div>
 
@@ -269,6 +272,10 @@
     border-radius: 6px;
     color: var(--text-muted);
     white-space: nowrap;
+  }
+  .badge.max {
+    border-color: var(--dyn-tertiary);
+    color: var(--dyn-tertiary);
   }
   .volume {
     display: flex;

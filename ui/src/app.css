@@ -31,6 +31,7 @@ body {
 
 .sidebar {
   background: var(--surface-1);
+  backdrop-filter: blur(var(--glass-blur));
   border-right: 1px solid var(--line);
   padding: 12px;
   overflow-y: auto;
@@ -38,6 +39,7 @@ body {
 .main { padding: 16px 20px; overflow: auto; }
 .queue {
   background: var(--surface-1);
+  backdrop-filter: blur(var(--glass-blur));
   border-left: 1px solid var(--line);
   width: var(--queue-width);
 }
@@ -56,6 +58,7 @@ body {
 .player {
   grid-column: 1 / -1;
   background: var(--surface-2);
+  backdrop-filter: blur(var(--glass-blur));
   border-top: 1px solid var(--line);
 }
 
@@ -72,6 +75,7 @@ body {
   right: 0;
   bottom: var(--player-height);
   z-index: 20;
+  backdrop-filter: blur(var(--glass-blur));
   box-shadow: -12px 0 32px rgba(0, 0, 0, 0.45);
 }
 
