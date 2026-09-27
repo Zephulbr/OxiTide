@@ -2,6 +2,7 @@
   import { untrack } from "svelte";
   import { api, trackToQueueItem, type Playlist as PlaylistT } from "../lib/api";
   import ConfirmDialog from "../lib/components/ConfirmDialog.svelte";
+  import Cover from "../lib/components/Cover.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
   import Loading from "../lib/components/Loading.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
@@ -168,13 +169,18 @@
   <ErrorState message={error} onRetry={load} />
 {:else}
   {#if playlist}
-    <h2>
-      {playlist.title}
-      {#if playlist.owned}
-        <button onclick={startRename}>Rename</button>
-        <button onclick={() => (confirmingDelete = true)}>Delete</button>
-      {/if}
-    </h2>
+    <header class="view-header">
+      <span class="header-art"><Cover uuid={playlist.image} size={320} radius={12} alt={`${playlist.title} cover`} /></span>
+      <div class="header-meta">
+        <h2>{playlist.title}</h2>
+        {#if playlist.owned}
+          <div class="header-actions">
+            <button onclick={startRename}>Rename</button>
+            <button onclick={() => (confirmingDelete = true)}>Delete</button>
+          </div>
+        {/if}
+      </div>
+    </header>
   {/if}
   {#if renaming}
     <p>
@@ -219,3 +225,25 @@
     />
   {/if}
 {/if}
+
+<style>
+  .view-header {
+    display: flex;
+    align-items: flex-end;
+    gap: 20px;
+    margin-bottom: 20px;
+  }
+  .header-art {
+    flex: 0 0 auto;
+    width: 160px;
+  }
+  .header-meta {
+    min-width: 0;
+  }
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+  }
+</style>

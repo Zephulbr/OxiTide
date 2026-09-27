@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, type Album as AlbumT, type Track } from "../lib/api";
   import EmptyState from "../lib/components/EmptyState.svelte";
+  import Cover from "../lib/components/Cover.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
   import Icon from "../lib/components/Icon.svelte";
   import Loading from "../lib/components/Loading.svelte";
@@ -45,21 +46,26 @@
   <ErrorState message={error} onRetry={load} />
 {:else if album}
   {@const albumId = album.id}
-  <h2>
-    {album.title}
-    <button
-      class:on={favorites.hasAlbum(albumId)}
-      onclick={() => favorites.toggleAlbum(albumId)}
-      aria-label={favorites.hasAlbum(albumId) ? "Unfavorite album" : "Favorite album"}
-      title={favorites.hasAlbum(albumId) ? "Unfavorite album" : "Favorite album"}
-    ><Icon name="heart" /></button>
-    <button
-      onclick={() => playlistActions.openPicker(tracks)}
-      aria-label="Add album to playlist"
-      title="Add album to playlist"
-    >Add to playlist</button>
-  </h2>
-  <p class="muted">{album.artists.map((a) => a.name).join(", ")} · {album.numberOfTracks} tracks</p>
+  <header class="view-header">
+    <span class="header-art"><Cover uuid={album.cover} size={320} radius={12} alt={`${album.title} cover`} /></span>
+    <div class="header-meta">
+      <h2>{album.title}</h2>
+      <p class="muted">{album.artists.map((a) => a.name).join(", ")} · {album.numberOfTracks} tracks</p>
+      <div class="header-actions">
+        <button
+          class:on={favorites.hasAlbum(albumId)}
+          onclick={() => favorites.toggleAlbum(albumId)}
+          aria-label={favorites.hasAlbum(albumId) ? "Unfavorite album" : "Favorite album"}
+          title={favorites.hasAlbum(albumId) ? "Unfavorite album" : "Favorite album"}
+        ><Icon name="heart" /></button>
+        <button
+          onclick={() => playlistActions.openPicker(tracks)}
+          aria-label="Add album to playlist"
+          title="Add album to playlist"
+        >Add to playlist</button>
+      </div>
+    </div>
+  </header>
   <TrackTable
     {view}
     {favorites}
@@ -74,4 +80,23 @@
 <style>
   .on { color: var(--accent); }
   .on :global(svg) { fill: currentColor; }
+  .view-header {
+    display: flex;
+    align-items: flex-end;
+    gap: 20px;
+    margin-bottom: 20px;
+  }
+  .header-art {
+    flex: 0 0 auto;
+    width: 160px;
+  }
+  .header-meta {
+    min-width: 0;
+  }
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+  }
 </style>

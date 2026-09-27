@@ -32,7 +32,7 @@
   <div class="art">
     {#if track}
       <button class="art-sleeve lit" onclick={() => nav.closeNowPlaying()} aria-label="Close now playing">
-        <Cover uuid={track.cover} size={640} radius={12} alt="{track.title} artwork" />
+        <Cover uuid={track.cover} size={640} radius={12} alt={`${track.title} artwork`} />
       </button>
     {:else}
       <div class="art-empty lit"><Icon name="music" size={64} /></div>

@@ -2,6 +2,7 @@
   import { untrack } from "svelte";
   import { api, trackToQueueItem, type Album, type Playlist } from "../lib/api";
   import ConfirmDialog from "../lib/components/ConfirmDialog.svelte";
+  import Cover from "../lib/components/Cover.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
   import Loading from "../lib/components/Loading.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
@@ -164,7 +165,7 @@
         {#if p}
           <div
             role="listitem"
-            style="height:44px;box-sizing:border-box;display:flex;align-items:center;gap:6px"
+            style="height:44px;box-sizing:border-box;display:flex;align-items:center;gap:8px"
             use:menuFor={() =>
               libraryPlaylistMenuItems({
                 playlist: p,
@@ -174,6 +175,7 @@
                 remove: () => (deleting = p),
               })}
           >
+            <span class="lib-thumb"><Cover uuid={p.image} size={80} radius={6} alt="" /></span>
             {#if editingUuid === p.uuid}
               <input bind:value={editTitle} aria-label="Playlist name" />
               <button onclick={() => void saveRename(p)}>Save</button>
@@ -199,8 +201,9 @@
         {#if a}
           <div
             role="listitem"
-            style="height:36px;box-sizing:border-box;display:flex;align-items:center"
+            style="height:36px;box-sizing:border-box;display:flex;align-items:center;gap:8px"
           >
+            <span class="lib-thumb"><Cover uuid={a.cover} size={80} radius={6} alt="" /></span>
             <button onclick={() => nav.goto({ name: "album", id: a.id })}>{a.title}</button>
           </div>
         {/if}
@@ -241,3 +244,10 @@
     />
   {/if}
 {/if}
+
+<style>
+  .lib-thumb {
+    flex: 0 0 auto;
+    width: var(--thumb-size);
+  }
+</style>

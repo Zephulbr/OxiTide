@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api } from "../lib/api";
+  import Cover from "../lib/components/Cover.svelte";
   import EmptyState from "../lib/components/EmptyState.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
   import Loading from "../lib/components/Loading.svelte";
@@ -57,21 +58,30 @@
     playingTrackId={player.state.current?.track_id ?? null}
   />
   <h3>Albums</h3>
-  <ul>
+  <ul class="results">
     {#each search.results.albums.items as a (a.id)}
-      <li><button onclick={() => nav.goto({ name: "album", id: a.id })}>{a.title}</button></li>
+      <li>
+        <span class="res-thumb"><Cover uuid={a.cover} size={80} radius={6} alt="" /></span>
+        <button onclick={() => nav.goto({ name: "album", id: a.id })}>{a.title}</button>
+      </li>
     {/each}
   </ul>
   <h3>Artists</h3>
-  <ul>
+  <ul class="results">
     {#each search.results.artists.items as a (a.id)}
-      <li><button onclick={() => nav.goto({ name: "artist", id: a.id })}>{a.name}</button></li>
+      <li>
+        <span class="res-thumb round"><Cover uuid={a.picture} size={80} radius={50} alt="" /></span>
+        <button onclick={() => nav.goto({ name: "artist", id: a.id })}>{a.name}</button>
+      </li>
     {/each}
   </ul>
   <h3>Playlists</h3>
-  <ul>
+  <ul class="results">
     {#each search.results.playlists.items as p (p.uuid)}
-      <li><button onclick={() => nav.goto({ name: "playlist", id: p.uuid })}>{p.title}</button></li>
+      <li>
+        <span class="res-thumb"><Cover uuid={p.image} size={80} radius={6} alt="" /></span>
+        <button onclick={() => nav.goto({ name: "playlist", id: p.uuid })}>{p.title}</button>
+      </li>
     {/each}
   </ul>
 {/if}
@@ -81,5 +91,20 @@
     display: flex;
     align-items: center;
     gap: 8px;
+  }
+  .results {
+    list-style: none;
+    margin: 0 0 16px;
+    padding: 0;
+  }
+  .results li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 0;
+  }
+  .res-thumb {
+    flex: 0 0 auto;
+    width: var(--thumb-size);
   }
 </style>

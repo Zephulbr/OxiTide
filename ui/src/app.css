@@ -65,6 +65,18 @@ body {
 .muted { color: var(--text-muted); }
 .tnum { font-variant-numeric: tabular-nums; }
 
+/* View titles use the Fraunces display face (spec §6); section headings stay
+   in the UI face at the 18/600 step. */
+h1, h2 {
+  font-family: var(--font-display);
+  font-weight: 640;
+  letter-spacing: -0.02em;
+}
+h3 {
+  font-size: 18px;
+  font-weight: 600;
+}
+
 /* Lit edge: panels read as objects under a top-left key light (spec §10.1). */
 .lit {
   border: 1px solid transparent;
