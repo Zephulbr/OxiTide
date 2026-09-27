@@ -24,6 +24,7 @@
   import { isShortcutHandled, matchShortcut, type ShortcutAction } from "./lib/shortcuts";
   import { createToasts } from "./lib/toasts.svelte";
   import { createPlayer } from "./lib/player.svelte";
+  import { createAuthGate } from "./lib/authGate";
   import { createDynamicColor } from "./lib/dynamicColor.svelte";
   import { createFavorites } from "./lib/favorites.svelte";
   import { createPlaylistActions } from "./lib/playlists.svelte";
@@ -48,6 +49,7 @@
   let loggedIn = $state(false);
   let booting = $state(true);
   let error = $state("");
+  let authError = $state("");
   let playerReady = $state(false);
   let expired = $state<ExpiredSession | null>(null);
   let sidebarRail = $state(false);
@@ -154,7 +156,18 @@
       });
   });
 
+  $effect(() => {
+    const gate = createAuthGate({
+      listen,
+      takeResult: api.authTakeResult,
+      onLogin,
+      onError: (message) => (authError = message),
+    });
+    return () => gate.dispose();
+  });
+
   async function onLogin() {
+    authError = "";
     clearPagerCache();
     error = "";
     const restore = expired;
@@ -277,6 +290,7 @@
   <Login
     onLogin={onLogin}
     message={expired ? "Session expired — sign in to continue" : ""}
+    {authError}
   />
 {:else}
   <Backdrop {player} />

@@ -108,6 +108,9 @@ export type EngineEvent =
   | { type: "position"; position_ms: number; duration_ms: number }
   | { type: "error"; code: string; message: string };
 
+export const AUTH_SUCCESS_EVENT = "auth://success";
+export const AUTH_ERROR_EVENT = "auth://error";
+
 export function trackToQueueItem(t: Track): QueueItem {
   return {
     track_id: t.id,
@@ -120,8 +123,10 @@ export function trackToQueueItem(t: Track): QueueItem {
 }
 
 export const api = {
-  authBegin: () => invoke<{ url: string }>("auth_begin"),
+  authBegin: (mode: "deep" | "paste" = "deep") =>
+    invoke<{ url: string }>("auth_begin", { mode }),
   authComplete: (redirectUrl: string) => invoke<SessionInfoDto>("auth_complete", { redirectUrl }),
+  authTakeResult: () => invoke<SessionInfoDto | null>("auth_take_result"),
   authStatus: () => invoke<boolean>("auth_status"),
   authRestore: () => invoke<SessionInfoDto | null>("auth_restore"),
   authLogout: () => invoke<void>("auth_logout"),
