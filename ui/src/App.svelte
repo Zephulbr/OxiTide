@@ -300,7 +300,7 @@
         </aside>
       {/if}
     {/if}
-    <PlayerBar {player} {qualityDisplay} {favorites} />
+    <PlayerBar {player} {qualityDisplay} {favorites} {nav} />
     <PlaylistPicker actions={playlistActions} onnavigate={(id) => nav.goto({ name: "playlist", id })} />
   </div>
 {/if}
