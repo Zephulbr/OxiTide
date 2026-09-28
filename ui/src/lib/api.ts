@@ -104,6 +104,7 @@ export interface Config {
     cover_shape: "disc" | "sleeve";
     dynamic_color: "auto" | "full" | "accent" | "off";
     queue_width: number;
+    start_in_mini: boolean;
     window_width: number;
     window_height: number;
     window_x?: number | null;
@@ -221,6 +222,8 @@ export const api = {
   setDynamicColor: (mode: "auto" | "full" | "accent" | "off") =>
     invoke<void>("set_dynamic_color", { mode }),
   setQueueWidth: (px: number) => invoke<void>("set_queue_width", { px }),
+  setMiniMode: (active: boolean) => invoke<void>("set_mini_mode", { active }),
+  setStartInMini: (enabled: boolean) => invoke<void>("set_start_in_mini", { enabled }),
   setCacheMaxSizeMb: (mb: number) => invoke<void>("set_cache_max_size_mb", { mb }),
   setCacheClearOnExit: (enabled: boolean) =>
     invoke<void>("set_cache_clear_on_exit", { enabled }),
