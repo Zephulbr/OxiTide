@@ -1,7 +1,7 @@
 //! Window geometry persistence: capture size/position/maximized state into
 //! `config.toml` and restore it with an on-screen check.
 
-use tauri::{PhysicalPosition, PhysicalSize, Size, WebviewWindow};
+use tauri::{LogicalSize, PhysicalPosition, PhysicalSize, Size, WebviewWindow};
 
 use crate::config::Config;
 
@@ -43,6 +43,24 @@ pub fn geometry_to_save(pre_mini: Option<FullGeometry>, live: FullGeometry) -> F
     pre_mini.unwrap_or(live)
 }
 
+/// The stash after a mini-mode request (MP-D2): `run` performs the window op
+/// and the stash changes only when it succeeds, so a failed op leaves the
+/// stash authoritative (enter: empty so a retry resizes; exit: intact for a
+/// retry and for close-time capture, MP-D7). A repeated enter is a no-op
+/// (§5.3). `captured` is the geometry to stash on enter; `None` on exit.
+pub fn mini_stash_after<E>(
+    active: bool,
+    current: Option<FullGeometry>,
+    captured: Option<FullGeometry>,
+    run: impl FnOnce() -> Result<(), E>,
+) -> Result<Option<FullGeometry>, E> {
+    if active && current.is_some() {
+        return Ok(current);
+    }
+    run()?;
+    Ok(if active { captured } else { None })
+}
+
 /// Read the live window geometry for the pre-mini stash.
 pub fn read_geometry(window: &WebviewWindow) -> tauri::Result<FullGeometry> {
     let size = window.inner_size()?;
@@ -74,21 +92,21 @@ pub fn enter_mini(window: &WebviewWindow, stash: FullGeometry) -> tauri::Result<
     if stash.maximized {
         window.unmaximize()?;
     }
-    window.set_min_size(Some(Size::Physical(PhysicalSize::new(
-        MINI_MIN_WIDTH,
-        MINI_MIN_HEIGHT,
+    window.set_min_size(Some(Size::Logical(LogicalSize::new(
+        MINI_MIN_WIDTH as f64,
+        MINI_MIN_HEIGHT as f64,
     ))))?;
     window.set_resizable(true)?;
-    window.set_size(PhysicalSize::new(MINI_WIDTH, MINI_HEIGHT))?;
+    window.set_size(LogicalSize::new(MINI_WIDTH as f64, MINI_HEIGHT as f64))?;
     Ok(())
 }
 
 /// Leave the mini window: restore the full minimum, then the stash when there
 /// is one (a defensive `None` leaves size/position untouched).
 pub fn exit_mini(window: &WebviewWindow, stash: Option<FullGeometry>) -> tauri::Result<()> {
-    window.set_min_size(Some(Size::Physical(PhysicalSize::new(
-        FULL_MIN_WIDTH,
-        FULL_MIN_HEIGHT,
+    window.set_min_size(Some(Size::Logical(LogicalSize::new(
+        FULL_MIN_WIDTH as f64,
+        FULL_MIN_HEIGHT as f64,
     ))))?;
     window.set_resizable(true)?;
     if let Some(geometry) = stash {
@@ -233,5 +251,57 @@ mod tests {
         };
         assert_eq!(geometry_to_save(Some(stash), live), stash);
         assert_eq!(geometry_to_save(None, live), live);
+    }
+
+    #[test]
+    fn mini_stash_after_commits_only_when_the_op_succeeds() {
+        let captured = FullGeometry {
+            width: 1200,
+            height: 800,
+            x: Some(10),
+            y: Some(20),
+            maximized: false,
+        };
+
+        // Enter success commits the captured geometry.
+        assert_eq!(
+            mini_stash_after(true, None, Some(captured), || Ok::<(), &str>(())).unwrap(),
+            Some(captured)
+        );
+        // Enter failure commits nothing.
+        assert!(mini_stash_after(true, None, Some(captured), || Err::<(), &str>("nope")).is_err());
+        // Exit success clears the stash.
+        assert_eq!(
+            mini_stash_after(false, Some(captured), None, || Ok::<(), &str>(())).unwrap(),
+            None
+        );
+        // Exit failure returns Err, so the caller never clears the stash.
+        assert!(mini_stash_after(false, Some(captured), None, || Err::<(), &str>("nope")).is_err());
+    }
+
+    #[test]
+    fn mini_stash_after_skips_a_repeated_enter() {
+        let current = FullGeometry {
+            width: 1,
+            height: 2,
+            x: None,
+            y: None,
+            maximized: true,
+        };
+        let captured = FullGeometry {
+            width: 3,
+            height: 4,
+            x: None,
+            y: None,
+            maximized: false,
+        };
+        let called = std::cell::Cell::new(false);
+        let next = mini_stash_after(true, Some(current), Some(captured), || {
+            called.set(true);
+            Ok::<(), &str>(())
+        })
+        .unwrap();
+        assert_eq!(next, Some(current));
+        assert!(!called.get());
     }
 }

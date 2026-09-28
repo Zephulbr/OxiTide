@@ -944,18 +944,33 @@ pub fn set_mini_mode(
     window: tauri::WebviewWindow,
     active: bool,
 ) -> Result<(), String> {
-    if active {
-        // Idempotent (spec §5.3): a repeated enter keeps the original stash.
-        if state.pre_mini().is_some() {
-            return Ok(());
-        }
-        let geometry = crate::window::read_geometry(&window).map_err(|e| e.to_string())?;
-        state.set_pre_mini(geometry);
-        crate::window::enter_mini(&window, geometry).map_err(|e| e.to_string())
-    } else {
-        let stash = state.take_pre_mini();
-        crate::window::exit_mini(&window, stash).map_err(|e| e.to_string())
+    let current = state.pre_mini();
+    // Idempotent (spec §5.3): a repeated enter keeps the original stash.
+    if active && current.is_some() {
+        return Ok(());
     }
+    // The stash changes only after the window op succeeds (window::mini_stash_after):
+    // a failed op leaves it authoritative, so a retry re-attempts the resize and
+    // close-while-mini still persists the full geometry (MP-D7).
+    let next = if active {
+        let geometry = crate::window::read_geometry(&window).map_err(|e| e.to_string())?;
+        crate::window::mini_stash_after(true, current, Some(geometry), || {
+            crate::window::enter_mini(&window, geometry)
+        })
+        .map_err(|e| e.to_string())?
+    } else {
+        crate::window::mini_stash_after(false, current, None, || {
+            crate::window::exit_mini(&window, current)
+        })
+        .map_err(|e| e.to_string())?
+    };
+    match next {
+        Some(geometry) => state.set_pre_mini(geometry),
+        None => {
+            state.take_pre_mini();
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
