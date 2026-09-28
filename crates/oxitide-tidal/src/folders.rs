@@ -151,7 +151,18 @@ impl TidalClient {
     }
 
     fn collection_entry(&self, item: RawCollectionItem) -> Option<CollectionEntry> {
-        match item.kind.to_uppercase().as_str() {
+        // The live v2 folders endpoint puts the discriminator in
+        // `data.itemType`; older/other shapes carry it as the item's `type`.
+        let kind = if item.kind.is_empty() {
+            item.data
+                .get("itemType")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("")
+                .to_string()
+        } else {
+            item.kind
+        };
+        match kind.to_uppercase().as_str() {
             "FOLDER" => {
                 let id = value_to_string(item.data.get("id")?)?;
                 let total = item
@@ -222,7 +233,7 @@ mod tests {
             if has_cursor {
                 ResponseTemplate::new(200).set_body_json(serde_json::json!({
                     "items": [
-                        {"type": "PLAYLIST", "data": {"uuid": "p-2", "title": "Second",
+                        {"data": {"uuid": "p-2", "title": "Second", "itemType": "PLAYLIST",
                             "numberOfTracks": 3, "creator": {"id": 42}}}
                     ],
                     "totalNumberOfItems": 2
@@ -230,9 +241,9 @@ mod tests {
             } else {
                 ResponseTemplate::new(200).set_body_json(serde_json::json!({
                     "items": [
-                        {"type": "FOLDER", "name": "MISC",
-                            "data": {"id": "f-1", "totalNumberOfItems": 10}},
-                        {"type": "PLAYLIST", "data": {"uuid": "p-1", "title": "Road trip",
+                        {"name": "MISC",
+                            "data": {"id": "f-1", "itemType": "FOLDER", "totalNumberOfItems": 10}},
+                        {"data": {"uuid": "p-1", "title": "Road trip", "itemType": "PLAYLIST",
                             "numberOfTracks": 12, "squareImage": "sq-1", "creator": {"id": 42}}}
                     ],
                     "cursor": "c2",
@@ -270,6 +281,27 @@ mod tests {
             }
             other => panic!("expected playlist, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn collection_items_accepts_an_item_level_type_discriminator() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v2/my-collection/playlists/folders"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [
+                    {"type": "PLAYLIST", "data": {"uuid": "p-9", "title": "Legacy"}},
+                    {"type": "FOLDER", "name": "Old", "data": {"id": "f-9"}}
+                ],
+                "totalNumberOfItems": 2
+            })))
+            .mount(&server)
+            .await;
+
+        let entries = client(&server).collection_items("root", None).await.unwrap();
+        assert_eq!(entries.len(), 2);
+        assert!(matches!(entries[0], crate::folders::CollectionEntry::Playlist(_)));
+        assert!(matches!(entries[1], crate::folders::CollectionEntry::Folder(_)));
     }
 
     #[tokio::test]
