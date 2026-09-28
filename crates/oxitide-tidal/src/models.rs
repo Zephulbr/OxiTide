@@ -188,7 +188,7 @@ pub struct Video {
     pub duration: u32,
     #[serde(default)]
     pub artists: Vec<ArtistRef>,
-    #[serde(default)]
+    #[serde(default, rename = "imageId", alias = "image")]
     pub image: Option<String>,
 }
 
@@ -209,6 +209,17 @@ pub struct Mix {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn video_parses_image_id_with_a_legacy_image_fallback() {
+        let raw = r#"{"id": 1, "title": "Clip", "imageId": "d5f0-2346"}"#;
+        let video: Video = serde_json::from_str(raw).unwrap();
+        assert_eq!(video.image.as_deref(), Some("d5f0-2346"));
+
+        let legacy = r#"{"id": 2, "title": "Clip", "image": "old-uuid"}"#;
+        let video: Video = serde_json::from_str(legacy).unwrap();
+        assert_eq!(video.image.as_deref(), Some("old-uuid"));
+    }
 
     #[test]
     fn full_track_json_parses() {

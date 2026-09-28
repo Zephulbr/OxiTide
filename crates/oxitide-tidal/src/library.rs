@@ -334,7 +334,7 @@ mod tests {
         Mock::given(method("GET")).and(path("/users/42/favorites/videos"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "items": [{"item": {"id": 3, "title": "Clip", "duration": 120,
-                    "artists": [{"id": 1, "name": "A"}], "image": "img-3"}}],
+                    "artists": [{"id": 1, "name": "A"}], "imageId": "img-3"}}],
                 "totalNumberOfItems": 1, "limit": 100, "offset": 0
             })))
             .mount(&server).await;
