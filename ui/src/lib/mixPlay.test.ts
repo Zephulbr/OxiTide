@@ -51,4 +51,16 @@ describe("playMix", () => {
     expect(api.playTracks).not.toHaveBeenCalled();
     expect(calls[0]?.message).toContain("no playable tracks");
   });
+
+  it("surfaces a fetch failure as an error toast instead of rejecting", async () => {
+    vi.mocked(api.getMix).mockRejectedValue(new Error("boom"));
+    const { toasts, calls } = fakeToasts();
+
+    await playMix("m1", toasts);
+
+    expect(api.playTracks).not.toHaveBeenCalled();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.severity).toBe("error");
+    expect(calls[0]?.message).toContain("boom");
+  });
 });

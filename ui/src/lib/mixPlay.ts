@@ -1,11 +1,16 @@
 import { api, trackToQueueItem } from "./api";
+import { errorMessage } from "./errors";
 import type { Toasts } from "./toasts.svelte";
 
 export async function playMix(id: string, toasts: Toasts): Promise<void> {
-  const detail = await api.getMix(id);
-  if (detail.tracks.length === 0) {
-    toasts.show("This mix has no playable tracks.", { severity: "info" });
-    return;
+  try {
+    const detail = await api.getMix(id);
+    if (detail.tracks.length === 0) {
+      toasts.show("This mix has no playable tracks.", { severity: "info" });
+      return;
+    }
+    await api.playTracks(detail.tracks.map(trackToQueueItem), 0);
+  } catch (e) {
+    toasts.show(errorMessage(e), { severity: "error" });
   }
-  await api.playTracks(detail.tracks.map(trackToQueueItem), 0);
 }

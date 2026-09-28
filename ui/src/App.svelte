@@ -11,6 +11,7 @@
   import Playlist from "./views/Playlist.svelte";
   import Artist from "./views/Artist.svelte";
   import Search from "./views/Search.svelte";
+  import Explore from "./views/Explore.svelte";
   import Library from "./views/Library.svelte";
   import Settings from "./views/Settings.svelte";
   import NowPlaying from "./views/NowPlaying.svelte";
@@ -202,7 +203,7 @@
   let sideButtonAt = 0;
 
   async function focusSearch() {
-    if (nav.route.name !== "search") nav.goto({ name: "search" });
+    if (nav.route.name !== "explore") nav.goto({ name: "explore" });
     await tick();
     document.getElementById("search-input")?.focus();
   }
@@ -303,6 +304,7 @@
       {#if error}<p style="color:var(--danger)">{error}</p>{/if}
       {#if nav.nowPlayingOpen}<NowPlaying {player} {nav} {qualityDisplay} />
       {:else if nav.route.name === "home"}<Home {nav} {toasts} />
+      {:else if nav.route.name === "explore"}<Explore {nav} {player} {favorites} {playlistActions} {toasts} />
       {:else if nav.route.name === "search"}<Search {nav} {player} {favorites} {playlistActions} />
       {:else if nav.route.name === "library"}<Library {nav} {player} {favorites} {playlistActions} {toasts} />
       {:else if nav.route.name === "album"}<Album id={nav.route.id} {player} {favorites} {playlistActions} />
