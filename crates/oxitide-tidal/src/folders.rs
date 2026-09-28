@@ -44,16 +44,23 @@ struct RawCollectionItem {
 
 impl TidalClient {
     /// Every folder and playlist inside `folder_id` (`"root"` for the top
-    /// level), following the v2 cursor to the end.
-    pub async fn collection_items(&self, folder_id: &str) -> Result<Vec<CollectionEntry>> {
+    /// level), following the v2 cursor to the end. `order` is omitted when
+    /// `None`, leaving the server's default ordering.
+    pub async fn collection_items(
+        &self,
+        folder_id: &str,
+        order: Option<&str>,
+    ) -> Result<Vec<CollectionEntry>> {
         let mut entries = Vec::new();
         let mut cursor: Option<String> = None;
         for _ in 0..MAX_FOLDER_PAGES {
             let mut params = vec![
                 ("folderId", folder_id.to_string()),
                 ("limit", FOLDER_PAGE_LIMIT.to_string()),
-                ("order", "NAME".to_string()),
             ];
+            if let Some(value) = order {
+                params.push(("order", value.to_string()));
+            }
             if let Some(value) = &cursor {
                 params.push(("cursor", value.clone()));
             }
@@ -190,6 +197,7 @@ mod tests {
     use crate::auth::SessionInfo;
     use crate::client::TidalClient;
     use crate::token_store::{MemoryStore, TokenSet};
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -239,7 +247,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let entries = client(&server).collection_items("root").await.unwrap();
+        let entries = client(&server).collection_items("root", None).await.unwrap();
         assert_eq!(entries.len(), 3);
         match &entries[0] {
             crate::folders::CollectionEntry::Folder(folder) => {
@@ -287,8 +295,51 @@ mod tests {
             .mount(&server)
             .await;
 
-        let entries = client(&server).collection_items("root").await.unwrap();
+        let entries = client(&server).collection_items("root", None).await.unwrap();
         assert_eq!(entries.len(), 20);
+    }
+
+    #[tokio::test]
+    async fn collection_items_sends_order_only_when_provided() {
+        let server = MockServer::start().await;
+        let saw_name_order = Arc::new(AtomicBool::new(false));
+        let saw_omitted_order = Arc::new(AtomicBool::new(false));
+        let responder = {
+            let saw_name_order = saw_name_order.clone();
+            let saw_omitted_order = saw_omitted_order.clone();
+            move |req: &wiremock::Request| {
+                match req
+                    .url
+                    .query_pairs()
+                    .find(|(key, _)| key == "order")
+                    .map(|(_, value)| value.to_string())
+                    .as_deref()
+                {
+                    Some("NAME") => saw_name_order.store(true, Ordering::SeqCst),
+                    None => saw_omitted_order.store(true, Ordering::SeqCst),
+                    Some(_) => {}
+                }
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "items": [], "totalNumberOfItems": 0
+                }))
+            }
+        };
+        Mock::given(method("GET"))
+            .and(path("/v2/my-collection/playlists/folders"))
+            .respond_with(responder)
+            .expect(2)
+            .mount(&server)
+            .await;
+
+        let client = client(&server);
+        client.collection_items("root", Some("NAME")).await.unwrap();
+        client.collection_items("root", None).await.unwrap();
+
+        assert!(saw_name_order.load(Ordering::SeqCst), "order=NAME must be sent when requested");
+        assert!(
+            saw_omitted_order.load(Ordering::SeqCst),
+            "the order param must be omitted when not requested"
+        );
     }
 
     #[tokio::test]
@@ -301,7 +352,7 @@ mod tests {
             })))
             .mount(&server)
             .await;
-        assert!(client(&server).collection_items("root").await.unwrap().is_empty());
+        assert!(client(&server).collection_items("root", None).await.unwrap().is_empty());
     }
 
     #[tokio::test]

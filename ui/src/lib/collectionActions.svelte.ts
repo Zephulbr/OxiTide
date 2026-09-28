@@ -63,7 +63,7 @@ export function createCollectionActions(
 
   async function collectFolders(parentId: string, depth: number): Promise<FolderOption[]> {
     if (depth > MAX_FOLDER_DEPTH) return [];
-    const entries = await api.getCollectionItems(parentId);
+    const entries = await api.getCollectionItems(parentId, "NAME");
     const folders = entries
       .filter(
         (item): item is { kind: "folder" } & CollectionFolder => item.kind === "folder",

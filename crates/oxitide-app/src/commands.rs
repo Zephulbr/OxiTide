@@ -402,9 +402,13 @@ pub async fn get_favorite_videos(state: State<'_, AppState>) -> Result<Vec<Video
 pub async fn get_collection_items(
     state: State<'_, AppState>,
     folder_id: Option<String>,
+    order: Option<String>,
 ) -> Result<Vec<CollectionEntry>, String> {
     let folder = folder_id.unwrap_or_else(|| "root".to_string());
-    require_client(&state)?.collection_items(&folder).await.map_err(|e| state.fail_tidal(e))
+    require_client(&state)?
+        .collection_items(&folder, order.as_deref())
+        .await
+        .map_err(|e| state.fail_tidal(e))
 }
 
 #[tauri::command]

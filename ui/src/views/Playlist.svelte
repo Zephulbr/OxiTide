@@ -10,6 +10,7 @@
   import { createTrackPager } from "../lib/pager.svelte";
   import { invalidatePlaylistCovers } from "../lib/playlistArt.svelte";
   import { createTrackView, visibleIndexOf } from "../lib/trackView.svelte";
+  import type { CollectionTree } from "../lib/collection.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { Nav } from "../lib/nav.svelte";
   import { errorMessage } from "../lib/errors";
@@ -23,6 +24,7 @@
     favorites,
     playlistActions,
     toasts,
+    collection,
   }: {
     nav: Nav;
     id: string;
@@ -30,6 +32,7 @@
     favorites: Favorites;
     playlistActions: PlaylistActions;
     toasts: Toasts;
+    collection: CollectionTree;
   } = $props();
 
   let playlist = $state<PlaylistT | null>(null);
@@ -109,6 +112,7 @@
     try {
       await api.deletePlaylist(id);
       invalidatePlaylistCovers(id);
+      await collection.refresh();
       toasts.show("Playlist deleted", { severity: "success" });
       nav.goto({ name: "playlists" });
     } catch (e) {

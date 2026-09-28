@@ -342,7 +342,7 @@
       {:else if nav.route.name === "playlists"}<Playlists {nav} {playlistActions} {toasts} {collection} actions={collectionActions} />
       {:else if nav.route.name === "folder"}<Playlists {nav} {playlistActions} {toasts} {collection} actions={collectionActions} folderId={nav.route.id} folderLabel={nav.route.label ?? ""} />
       {:else if nav.route.name === "album"}<Album id={nav.route.id} {player} {favorites} {playlistActions} />
-      {:else if nav.route.name === "playlist"}<Playlist {nav} id={nav.route.id} {player} {favorites} {playlistActions} {toasts} />
+      {:else if nav.route.name === "playlist"}<Playlist {nav} id={nav.route.id} {player} {favorites} {playlistActions} {toasts} {collection} />
       {:else if nav.route.name === "artist"}<Artist id={nav.route.id} {favorites} />
       {:else if nav.route.name === "settings"}<Settings {player} {toasts} onQualityDisplay={(mode) => (qualityDisplay = mode)} />{/if}
     </main>

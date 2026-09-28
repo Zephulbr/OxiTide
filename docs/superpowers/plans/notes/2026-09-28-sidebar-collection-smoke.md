@@ -40,3 +40,10 @@ Requires a real account, `npm --prefix ui run app:dev`, and a browser login.
       unfavorite drops the row).
 - [ ] Albums and Profiles open album/artist pages.
 - [ ] Videos lists saved videos with the unsupported-playback note and no play action.
+
+## Tree refresh
+
+- [ ] Create a playlist from a track's "Add to playlist" picker → it appears in the sidebar tree without a reload.
+- [ ] Create a playlist from the sidebar `+` → it appears in the tree and on the Playlists page.
+- [ ] Delete a playlist from its detail page → it disappears from the tree and the breadcrumb/list.
+- [ ] Toggle the Playlists sort between name and the default: record the observed default order (date-added vs name) so we know whether the server honors the omitted `order`.

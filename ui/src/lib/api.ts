@@ -150,8 +150,8 @@ export const api = {
   getFavoriteMixes: () => invoke<Mix[]>("get_favorite_mixes"),
   getMix: (id: string) => invoke<MixDetail>("get_mix", { id }),
   getFavoriteVideos: () => invoke<Video[]>("get_favorite_videos"),
-  getCollectionItems: (folderId = "root") =>
-    invoke<CollectionEntry[]>("get_collection_items", { folderId }),
+  getCollectionItems: (folderId = "root", order?: string) =>
+    invoke<CollectionEntry[]>("get_collection_items", { folderId, order: order ?? null }),
   createFolder: (name: string, parentId = "root") =>
     invoke<CollectionFolder>("create_folder", { name, parentId }),
   renameFolder: (id: string, name: string) => invoke<void>("rename_folder", { id, name }),

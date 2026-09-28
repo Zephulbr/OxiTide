@@ -31,7 +31,7 @@ export function createCollectionTree(toasts: Toasts): CollectionTree {
     loading = true;
     error = "";
     try {
-      root = await api.getCollectionItems("root");
+      root = await api.getCollectionItems("root", "NAME");
     } catch (e) {
       error = errorMessage(e);
     } finally {
@@ -43,7 +43,7 @@ export function createCollectionTree(toasts: Toasts): CollectionTree {
     if (loadingFolders.has(folderId)) return;
     loadingFolders.add(folderId);
     try {
-      childrenMap.set(folderId, await api.getCollectionItems(folderId));
+      childrenMap.set(folderId, await api.getCollectionItems(folderId, "NAME"));
     } catch (e) {
       toasts.show(errorMessage(e), { severity: "error" });
     } finally {

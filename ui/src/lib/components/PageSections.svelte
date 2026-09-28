@@ -18,7 +18,8 @@
   <h3>{section.title}</h3>
   <div class="card-grid">
     {#each section.items as item, i (item.id || `${item.title}-${i}`)}
-      {#if item.item_type.toUpperCase().includes("MIX") && onPlayMix}
+      {@const kind = item.item_type.toUpperCase()}
+      {#if (kind === "MIX" || kind === "MIX_LIST") && item.id.length > 0 && onPlayMix}
         <button class="card" onclick={() => onPlayMix(item.id)}>
           <span class="card-art"><Cover uuid={item.artwork} size={320} radius={12} alt="" /></span>
           <span class="card-title">{item.title}</span>

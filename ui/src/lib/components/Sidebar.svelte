@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import type { Route } from "../nav.svelte";
   import type { Nav } from "../nav.svelte";
   import type { CollectionActions } from "../collectionActions.svelte";
@@ -27,6 +28,15 @@
 
   let collectionOpen = $state(true);
   let showMore = $state(false);
+
+  let revisionSeen = untrack(() => playlistActions.revision);
+
+  $effect(() => {
+    const revision = playlistActions.revision;
+    if (revision === revisionSeen) return;
+    revisionSeen = revision;
+    untrack(() => void collection.refresh());
+  });
 
   const collectionItems: { route: Route; label: string; icon: "list-music" | "disc-3" | "music" }[] = [
     { route: { name: "playlists" }, label: "Playlists", icon: "list-music" },
@@ -71,20 +81,20 @@
     </div>
   {/if}
 
-  <button class="nav-item" class:active={nav.route.name === "home"} onclick={() => nav.goto({ name: "home" })} title="Home" aria-label="Home">
+  <button class="nav-item" class:active={nav.route.name === "home"} aria-current={nav.route.name === "home" ? "page" : undefined} onclick={() => nav.goto({ name: "home" })} title="Home" aria-label="Home">
     <Icon name="home" />{#if !rail}<span>Home</span>{/if}
   </button>
-  <button class="nav-item" class:active={nav.route.name === "explore"} onclick={() => nav.goto({ name: "explore" })} title="Explore" aria-label="Explore">
+  <button class="nav-item" class:active={nav.route.name === "explore"} aria-current={nav.route.name === "explore" ? "page" : undefined} onclick={() => nav.goto({ name: "explore" })} title="Explore" aria-label="Explore">
     <Icon name="globe" />{#if !rail}<span>Explore</span>{/if}
   </button>
-  <button class="nav-item" class:active={nav.route.name === "feed"} onclick={() => nav.goto({ name: "feed" })} title="Feed" aria-label="Feed">
+  <button class="nav-item" class:active={nav.route.name === "feed"} aria-current={nav.route.name === "feed" ? "page" : undefined} onclick={() => nav.goto({ name: "feed" })} title="Feed" aria-label="Feed">
     <Icon name="bell" />{#if !rail}<span>Feed</span>{/if}
   </button>
 
   <div class="divider" role="separator"></div>
 
   {#if rail}
-    <button class="nav-item" class:active={isActive("playlists")} onclick={() => nav.goto({ name: "playlists" })} title="My Collection" aria-label="My Collection">
+    <button class="nav-item" class:active={isActive("playlists")} aria-current={isActive("playlists") ? "page" : undefined} onclick={() => nav.goto({ name: "playlists" })} title="My Collection" aria-label="My Collection">
       <Icon name="library" />
     </button>
   {:else}
@@ -96,7 +106,7 @@
 
   {#if collectionOpen || rail}
     {#each collectionItems as item (item.label)}
-      <button class="nav-item" class:active={isActive(item.route.name)} onclick={() => nav.goto(item.route)} title={item.label} aria-label={item.label}>
+      <button class="nav-item" class:active={isActive(item.route.name)} aria-current={isActive(item.route.name) ? "page" : undefined} onclick={() => nav.goto(item.route)} title={item.label} aria-label={item.label}>
         <Icon name={item.icon} />{#if !rail}<span>{item.label}</span>{/if}
       </button>
     {/each}
@@ -112,7 +122,7 @@
     {/if}
     {#if showMore}
       {#each moreItems as item (item.label)}
-        <button class="nav-item" class:active={isActive(item.route.name)} onclick={() => nav.goto(item.route)} title={item.label} aria-label={item.label}>
+        <button class="nav-item" class:active={isActive(item.route.name)} aria-current={isActive(item.route.name) ? "page" : undefined} onclick={() => nav.goto(item.route)} title={item.label} aria-label={item.label}>
           <Icon name={item.icon} />{#if !rail}<span>{item.label}</span>{/if}
         </button>
       {/each}
@@ -137,7 +147,7 @@
 
   <div class="spacer"></div>
 
-  <button class="nav-item" class:active={nav.route.name === "settings"} onclick={() => nav.goto({ name: "settings" })} title="Settings" aria-label="Settings">
+  <button class="nav-item" class:active={nav.route.name === "settings"} aria-current={nav.route.name === "settings" ? "page" : undefined} onclick={() => nav.goto({ name: "settings" })} title="Settings" aria-label="Settings">
     <Icon name="settings" />{#if !rail}<span>Settings</span>{/if}
   </button>
   <button class="nav-item" onclick={onLogout} title="Log out" aria-label="Log out">

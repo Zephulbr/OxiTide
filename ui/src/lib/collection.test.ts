@@ -48,7 +48,7 @@ describe("collection tree store", () => {
     await tree.ensureRoot();
 
     expect(api.getCollectionItems).toHaveBeenCalledTimes(1);
-    expect(api.getCollectionItems).toHaveBeenCalledWith("root");
+    expect(api.getCollectionItems).toHaveBeenCalledWith("root", "NAME");
     expect(tree.root).toHaveLength(1);
   });
 

@@ -51,7 +51,10 @@
     loading = true;
     error = "";
     try {
-      entries = await api.getCollectionItems(folderId ?? "root");
+      entries = await api.getCollectionItems(
+        folderId ?? "root",
+        sortMode === "name" ? "NAME" : undefined,
+      );
     } catch (e) {
       error = errorMessage(e);
     } finally {
@@ -61,6 +64,7 @@
 
   $effect(() => {
     folderId;
+    sortMode;
     void load();
   });
 

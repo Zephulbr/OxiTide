@@ -38,6 +38,7 @@
     <button
       class="row"
       class:active={nav.route.name === "folder" && nav.route.id === entry.id}
+      aria-current={nav.route.name === "folder" && nav.route.id === entry.id ? "page" : undefined}
       onclick={() => (rail ? nav.goto({ name: "playlists" }) : void collection.toggleFolder(entry.id))}
       use:menuFor={() =>
         collectionFolderMenuItems({
@@ -75,6 +76,7 @@
     <button
       class="row"
       class:active={nav.route.name === "playlist" && nav.route.id === entry.uuid}
+      aria-current={nav.route.name === "playlist" && nav.route.id === entry.uuid ? "page" : undefined}
       onclick={() => openPlaylist(entry.uuid)}
       use:menuFor={() =>
         collectionPlaylistMenuItems({
