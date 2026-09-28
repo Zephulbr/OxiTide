@@ -102,4 +102,23 @@ describe("mini store", () => {
 
     expect(mini.active).toBe(false);
   });
+
+  it("init does not clobber a mode command that already ran", async () => {
+    vi.mocked(api.setMiniMode).mockResolvedValue(undefined);
+    let resolveConfig!: (value: unknown) => void;
+    vi.mocked(api.getConfig).mockReturnValue(
+      new Promise((resolve) => {
+        resolveConfig = resolve;
+      }) as never,
+    );
+    const mini = createMini(fakeToasts().toasts);
+
+    const pending = mini.init();
+    await mini.enter();
+    resolveConfig({ ui: { start_in_mini: false } });
+    await pending;
+
+    expect(api.setMiniMode).toHaveBeenCalledWith(true);
+    expect(mini.active).toBe(true);
+  });
 });

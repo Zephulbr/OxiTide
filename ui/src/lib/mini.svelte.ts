@@ -18,10 +18,14 @@ export interface Mini {
 export function createMini(toasts: Toasts): Mini {
   let active = $state(false);
   let queueOpen = $state(false);
+  // A successful mode command wins over a slower boot-time config read, so the
+  // mirror can never be clobbered after the window already changed.
+  let touched = false;
 
   async function setMode(next: boolean): Promise<void> {
     try {
       await api.setMiniMode(next);
+      touched = true;
       active = next;
       queueOpen = false;
     } catch (e) {
@@ -32,9 +36,9 @@ export function createMini(toasts: Toasts): Mini {
   async function init(): Promise<void> {
     try {
       const config = await api.getConfig();
-      active = config.ui.start_in_mini;
+      if (!touched) active = config.ui.start_in_mini;
     } catch {
-      active = false;
+      if (!touched) active = false;
     }
   }
 
