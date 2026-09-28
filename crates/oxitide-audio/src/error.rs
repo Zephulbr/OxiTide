@@ -22,6 +22,20 @@ pub enum Error {
     Io(#[from] std::io::Error),
 }
 
+impl Error {
+    /// Whether this failure means the track itself cannot be played and
+    /// playback should skip to the next queue item. Transient fetch/decode
+    /// failures, auth expiry, and quality-policy errors are not skippable.
+    pub fn is_track_unavailable(&self) -> bool {
+        matches!(
+            self,
+            Error::Tidal(oxitide_tidal::Error::Forbidden)
+                | Error::Tidal(oxitide_tidal::Error::NotFound(_))
+                | Error::Unsupported(_)
+        )
+    }
+}
+
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[cfg(test)]
@@ -52,5 +66,28 @@ mod tests {
             Error::Unavailable("lossless".into()).to_string(),
             "track unavailable at lossless; enable fallback or lower the streaming quality"
         );
+    }
+
+    #[test]
+    fn forbidden_and_not_found_are_track_unavailable() {
+        assert!(Error::Tidal(oxitide_tidal::Error::Forbidden).is_track_unavailable());
+        assert!(Error::Tidal(oxitide_tidal::Error::NotFound("gone".into())).is_track_unavailable());
+    }
+
+    #[test]
+    fn unsupported_codec_is_track_unavailable() {
+        assert!(Error::Unsupported("he-aac".into()).is_track_unavailable());
+    }
+
+    #[test]
+    fn transient_and_policy_errors_are_not_track_unavailable() {
+        assert!(
+            !Error::Tidal(oxitide_tidal::Error::Unauthorized).is_track_unavailable(),
+            "auth must stop, not skip"
+        );
+        assert!(!Error::Fetch("network down".into()).is_track_unavailable());
+        assert!(!Error::Decode("boom".into()).is_track_unavailable());
+        assert!(!Error::Manifest("bad".into()).is_track_unavailable());
+        assert!(!Error::Unavailable("low".into()).is_track_unavailable());
     }
 }

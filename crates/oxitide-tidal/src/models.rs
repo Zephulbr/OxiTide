@@ -79,7 +79,30 @@ pub struct Artist {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PlaylistCreator {
-    pub id: u64,
+    #[serde(default, deserialize_with = "optional_creator_id")]
+    pub id: Option<u64>,
+}
+
+/// Creator ids arrive as numbers or numeric strings, and curated/editorial
+/// playlists can omit the id entirely. An unknown or unparseable id never
+/// matches a user id, so it marks the playlist unowned instead of failing the
+/// whole response decode.
+fn optional_creator_id<'de, D>(deserializer: D) -> std::result::Result<Option<u64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Raw {
+        Number(u64),
+        Text(String),
+    }
+
+    match Option::<Raw>::deserialize(deserializer)? {
+        Some(Raw::Number(id)) => Ok(Some(id)),
+        Some(Raw::Text(text)) => Ok(text.parse().ok()),
+        None => Ok(None),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -94,6 +117,10 @@ pub struct Playlist {
     pub duration: u32,
     #[serde(default)]
     pub image: Option<String>,
+    /// Square playlist artwork. `image` is the wide variant for playlists (its
+    /// square sizes 403 on the CDN), so square surfaces want this field.
+    #[serde(default, rename = "squareImage")]
+    pub square_image: Option<String>,
     #[serde(default, skip_serializing)]
     pub creator: Option<PlaylistCreator>,
     #[serde(skip_deserializing, default)]
@@ -102,11 +129,11 @@ pub struct Playlist {
 
 impl Playlist {
     /// Mark editability from the creator id. `assume_owned` decides the
-    /// missing-creator case: list endpoints return only the user's playlists,
-    /// single fetches can be anybody's.
+    /// missing-or-unknown-creator case: list endpoints return only the user's
+    /// playlists, single fetches (and search) can be anybody's.
     pub fn mark_owned(&mut self, user_id: u64, assume_owned: bool) {
         self.owned = match &self.creator {
-            Some(creator) => creator.id == user_id,
+            Some(creator) => creator.id == Some(user_id),
             None => assume_owned,
         };
     }
@@ -204,6 +231,26 @@ mod tests {
     }
 
     #[test]
+    fn playlist_creator_without_an_id_is_unknown_and_not_owned() {
+        let raw = r#"{"uuid": "u", "title": "Editorial", "creator": {"name": "TIDAL"}}"#;
+        let mut playlist: Playlist = serde_json::from_str(raw).unwrap();
+
+        assert_eq!(playlist.creator.as_ref().unwrap().id, None);
+
+        playlist.mark_owned(42, false);
+        assert!(!playlist.owned);
+    }
+
+    #[test]
+    fn playlist_creator_accepts_a_numeric_string_id() {
+        let raw = r#"{"uuid": "u", "title": "Mine", "creator": {"id": "42"}}"#;
+        let mut playlist: Playlist = serde_json::from_str(raw).unwrap();
+
+        playlist.mark_owned(42, false);
+        assert!(playlist.owned);
+    }
+
+    #[test]
     fn playlist_without_creator_uses_the_assumed_ownership() {
         let raw = r#"{"uuid": "u", "title": "Mine"}"#;
         let mut playlist: Playlist = serde_json::from_str(raw).unwrap();
@@ -213,6 +260,20 @@ mod tests {
 
         playlist.mark_owned(42, false);
         assert!(!playlist.owned);
+    }
+
+    #[test]
+    fn playlist_parses_and_serializes_square_image() {
+        let raw = r#"{"uuid": "u", "title": "T", "image": "wide-uuid", "squareImage": "square-uuid"}"#;
+        let playlist: Playlist = serde_json::from_str(raw).unwrap();
+        assert_eq!(playlist.square_image.as_deref(), Some("square-uuid"));
+
+        let value = serde_json::to_value(&playlist).unwrap();
+        assert_eq!(value["squareImage"], serde_json::json!("square-uuid"));
+
+        let raw_missing = r#"{"uuid": "u", "title": "T"}"#;
+        let playlist: Playlist = serde_json::from_str(raw_missing).unwrap();
+        assert!(playlist.square_image.is_none());
     }
 
     #[test]

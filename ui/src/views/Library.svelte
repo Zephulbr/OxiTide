@@ -4,7 +4,9 @@
   import ConfirmDialog from "../lib/components/ConfirmDialog.svelte";
   import Cover from "../lib/components/Cover.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
+  import Icon from "../lib/components/Icon.svelte";
   import Loading from "../lib/components/Loading.svelte";
+  import PlaylistCover from "../lib/components/PlaylistCover.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
   import VirtualList from "../lib/components/VirtualList.svelte";
   import { createTrackPager } from "../lib/pager.svelte";
@@ -146,6 +148,12 @@
     if (favoritesPager.error) return;
     api.playTracks(view.items.map(trackToQueueItem), 0);
   }
+
+  async function shuffleAll() {
+    await favoritesPager.ensureAll();
+    if (favoritesPager.error) return;
+    api.playTracks(view.items.map(trackToQueueItem), 0, true);
+  }
 </script>
 
 <h2>Library</h2>
@@ -154,6 +162,7 @@
 {:else if error}
   <ErrorState message={error} onRetry={load} />
 {:else}
+  <div class="view-fill">
   <h3>
     Playlists
     <button onclick={() => playlistActions.openCreate()}>New playlist</button>
@@ -165,7 +174,7 @@
         {#if p}
           <div
             role="listitem"
-            style="height:44px;box-sizing:border-box;display:flex;align-items:center;gap:8px"
+            style="height:44px;box-sizing:border-box;display:flex;align-items:center;gap:8px;padding-right:4px"
             use:menuFor={() =>
               libraryPlaylistMenuItems({
                 playlist: p,
@@ -175,7 +184,16 @@
                 remove: () => (deleting = p),
               })}
           >
-            <span class="lib-thumb"><Cover uuid={p.image} size={80} radius={6} alt="" /></span>
+            <span class="lib-thumb">
+              <PlaylistCover
+                owned={p.owned}
+                playlist={p.uuid}
+                image={p.squareImage}
+                size={80}
+                radius={6}
+                alt=""
+              />
+            </span>
             {#if editingUuid === p.uuid}
               <input bind:value={editTitle} aria-label="Playlist name" />
               <button onclick={() => void saveRename(p)}>Save</button>
@@ -183,8 +201,12 @@
             {:else}
               <button onclick={() => nav.goto({ name: "playlist", id: p.uuid })}>{p.title}</button>
               {#if p.owned}
-                <button onclick={() => startRename(p)}>Rename</button>
-                <button onclick={() => (deleting = p)}>Delete</button>
+                <button
+                  class="row-edit"
+                  onclick={() => startRename(p)}
+                  aria-label="Edit playlist"
+                  title="Edit playlist"
+                ><Icon name="pencil" size={14} /></button>
               {/if}
             {/if}
           </div>
@@ -211,7 +233,23 @@
     </VirtualList>
   </div>
   {#if albums.length === 0}<p class="muted">No albums</p>{/if}
-  <h3>Favorite tracks</h3>
+  <div class="list-head">
+    <h3>Favorite tracks</h3>
+    <button
+      class="list-action"
+      onclick={shuffleAll}
+      disabled={view.items.length === 0}
+      aria-label="Shuffle"
+      title="Shuffle"
+    ><Icon name="shuffle" size={16} /></button>
+    <button
+      class="list-action"
+      onclick={playAll}
+      disabled={view.items.length === 0}
+      aria-label="Play all"
+      title="Play all"
+    ><Icon name="play" size={16} /></button>
+  </div>
   <p>
     <button onclick={() => favoritesPager.refresh()}>Refresh</button>
     <span class="muted">
@@ -226,8 +264,8 @@
   <TrackTable
     {view}
     {favorites}
+    fill
     onPlay={playFrom}
-    onPlayAll={playAll}
     onEndReached={() => void favoritesPager.loadMore()}
     onAddToPlaylist={(t) => playlistActions.openPicker([t])}
     playingTrackId={player.state.current?.track_id ?? null}
@@ -235,6 +273,7 @@
   {#if favoritesPager.error}
     <ErrorState message={favoritesPager.error} onRetry={() => favoritesPager.loadMore()} />
   {/if}
+  </div>
   {#if deleting}
     <ConfirmDialog
       title="Delete playlist"
@@ -249,5 +288,39 @@
   .lib-thumb {
     flex: 0 0 auto;
     width: var(--thumb-size);
+  }
+  .row-edit {
+    margin-left: auto;
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-control);
+    color: var(--text-muted);
+  }
+  .row-edit:hover {
+    color: var(--text);
+    background: var(--surface-2);
+  }
+  .list-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .list-head h3 {
+    flex: 1;
+    min-width: 0;
+  }
+  .list-action {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 1px solid var(--line);
+    color: var(--text-muted);
+  }
+  .list-action:hover {
+    color: var(--text);
   }
 </style>

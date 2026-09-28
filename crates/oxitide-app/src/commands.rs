@@ -565,12 +565,15 @@ pub fn play_tracks(
     state: State<'_, AppState>,
     items: Vec<QueueItem>,
     start: usize,
+    shuffle: Option<bool>,
 ) -> Result<(), String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
-    player
-        .engine
-        .handle(EngineCmd::PlayTracks { items, start })
-        .map_err(|e| e.to_string())
+    let cmd = if shuffle.unwrap_or(false) {
+        EngineCmd::PlayShuffled { items }
+    } else {
+        EngineCmd::PlayTracks { items, start }
+    };
+    player.engine.handle(cmd).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1126,11 +1129,13 @@ mod tests {
             number_of_tracks: 3,
             duration: 0,
             image: None,
+            square_image: Some("sq".into()),
             creator: None,
             owned: true,
         };
         let value = serde_json::to_value(&dto).unwrap();
         assert_eq!(value["numberOfTracks"], serde_json::json!(3));
         assert_eq!(value["uuid"], serde_json::json!("u"));
+        assert_eq!(value["squareImage"], serde_json::json!("sq"));
     }
 }

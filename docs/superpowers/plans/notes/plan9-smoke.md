@@ -13,41 +13,41 @@ accepted.
 
 ## Sort and filter
 
-- [ ] Open a playlist with 2,000+ tracks. Type in the filter field: the header
+- [x] Open a playlist with 2,000+ tracks. Type in the filter field: the header
       shows "Loading all tracks…", then the list filters over ALL tracks (not
       just the first page); the count line is unchanged.
-- [ ] Click Title: ascending ▲, click again descending ▼, click again back to
+- [x] Click Title: ascending ▲, click again descending ▼, click again back to
       original order. Click # while a filter is active: order resets, filter
       stays.
-- [ ] Sort by Time ascending/descending; ties keep original order.
-- [ ] Filter by an artist name that only appears in the artist column; matching
+- [x] Sort by Time ascending/descending; ties keep original order.
+- [x] Filter by an artist name that only appears in the artist column; matching
       rows show.
-- [ ] Filter with no matches shows `No tracks match “…”`; clear it with ✕.
-- [ ] Remove a row while filtered: the correct track disappears after refresh;
+- [x] Filter with no matches shows `No tracks match "..."`; clear it with ✕.
+- [x] Remove a row while filtered: the correct track disappears after refresh;
       no moves are offered in the row menu (Remove/Favorite remain).
-- [ ] Navigate away and back: sort/filter state is reset; rows hydrate from the
+- [x] Navigate away and back: sort/filter state is reset; rows hydrate from the
       session cache without a full refetch flash.
-- [ ] Engage a filter/sort on playlist A, then use ⊕ → "New playlist…" to land
+- [x] Engage a filter/sort on playlist A, then use ⊕ → "New playlist…" to land
       on playlist B: B opens unfiltered and unsorted (no state carried over).
-- [ ] While "Loading all tracks…" is showing, click a row's ▶: the clicked
+- [x] While "Loading all tracks…" is showing, click a row's ▶: the clicked
       track starts once loading completes — never a different row's track.
-- [ ] Force an engage failure (disconnect), then press the header Retry: the
+- [x] Force an engage failure (disconnect), then press the header Retry: the
       load resumes and the sort/filter applies over the complete list.
-- [ ] Repeat on Library → Favorite tracks and on an Album (instant, no loading
+- [x] Repeat on Library → Favorite tracks and on an Album (instant, no loading
       row); Search results table gets the same controls.
 
 ## Live search
 
-- [ ] Type "ra" quickly into Search: results appear without Enter after ~300 ms.
-- [ ] Type fast through several queries: the final result set matches the final
+- [x] Type "ra" quickly into Search: results appear without Enter after ~300 ms.
+- [x] Type fast through several queries: the final result set matches the final
       text (no older result flashing in).
-- [ ] Press Enter with one character: search runs immediately.
-- [ ] Clear the box: results clear.
-- [ ] A no-match query shows `No results for “…”`; a failed request shows the
+- [x] Press Enter with one character: search runs immediately.
+- [x] Clear the box: results clear.
+- [x] A no-match query shows `No results for "..."`; a failed request shows the
       inline error with Retry.
-- [ ] Search "aa" (results shown), then "bb" with the network down (error);
+- [x] Search "aa" (results shown), then "bb" with the network down (error);
       Retry once back online: it retries "bb", not "aa".
-- [ ] `Ctrl+F` still focuses the input; Space/arrows in the input edit text and
+- [x] `Ctrl+F` still focuses the input; Space/arrows in the input edit text and
       do not control playback.
 
 ## Drag reorder

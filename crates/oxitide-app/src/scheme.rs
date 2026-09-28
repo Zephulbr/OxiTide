@@ -7,7 +7,7 @@
 //! first back up, and after a crash (the key already points at OxiTide) it
 //! reuses the prior run's backup rather than discarding the official handler.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 #[cfg(windows)]
@@ -95,7 +95,7 @@ fn detect_owner(exe_name: &str) -> KeyOwner {
 }
 
 #[cfg(windows)]
-fn export_key(path: &PathBuf) -> bool {
+fn export_key(path: &Path) -> bool {
     let file = path.to_string_lossy().to_string();
     std::process::Command::new("reg")
         .args(["export", KEY, &file, "/y"])

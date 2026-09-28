@@ -77,6 +77,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn search_decodes_an_editorial_playlist_without_a_creator_id() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/search"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "tracks": {"items": []}, "albums": {"items": []}, "artists": {"items": []},
+                "playlists": {"items": [
+                    {"uuid": "editorial", "title": "Blur Mix", "creator": {"name": "TIDAL"}}
+                ]}
+            })))
+            .mount(&server).await;
+        let results = client(&server).search("blur", &["playlists"], 20, 0).await.unwrap();
+        assert_eq!(results.playlist_items()[0].uuid, "editorial");
+        assert!(!results.playlist_items()[0].owned);
+    }
+
+    #[tokio::test]
     async fn search_marks_playlist_ownership() {
         let server = MockServer::start().await;
         Mock::given(method("GET")).and(path("/search"))

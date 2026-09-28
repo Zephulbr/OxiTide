@@ -11,6 +11,32 @@ use crate::token_store::{TokenSet, TokenStore};
 /// Default page size used when transparently walking paginated endpoints.
 pub const DEFAULT_PAGE_SIZE: u32 = 100;
 
+/// Decode a JSON response body, keeping serde's field/line detail on failure.
+/// reqwest's own decode error only says "error decoding response body", which
+/// makes a response/DTO mismatch impossible to diagnose. Never logs the body:
+/// token endpoints pass through here.
+pub(crate) async fn decode_json<T: DeserializeOwned>(resp: reqwest::Response) -> Result<T> {
+    let status = resp.status();
+    let url = resp.url().clone();
+    let content_type = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+    let body = resp.bytes().await?;
+    serde_json::from_slice(&body).map_err(|e| {
+        tracing::warn!(
+            %status,
+            %url,
+            %content_type,
+            bytes = body.len(),
+            "TIDAL response did not match its expected shape: {e}"
+        );
+        Error::Json(e)
+    })
+}
+
 #[derive(Clone)]
 pub struct TidalClient {
     http: reqwest::Client,
@@ -131,7 +157,7 @@ impl TidalClient {
         let resp = self
             .mutate(reqwest::Method::PUT, &self.v2_base_url, path, params, &[], None)
             .await?;
-        Ok(resp.json().await?)
+        decode_json(resp).await
     }
 
     /// Send a form-encoded POST and decode the JSON response, sharing the write
@@ -145,7 +171,7 @@ impl TidalClient {
         let resp = self
             .mutate(reqwest::Method::POST, &self.base_url, path, params, form, None)
             .await?;
-        Ok(resp.json().await?)
+        decode_json(resp).await
     }
 
     /// Form POST returning JSON with an optional `If-None-Match` value.
@@ -159,7 +185,7 @@ impl TidalClient {
         let resp = self
             .mutate(reqwest::Method::POST, &self.base_url, path, params, form, etag)
             .await?;
-        Ok(resp.json().await?)
+        decode_json(resp).await
     }
 
     /// Walk every page of a TIDAL list endpoint, following `totalNumberOfItems`
@@ -354,7 +380,7 @@ impl TidalClient {
     }
 
     async fn decode<T: DeserializeOwned>(resp: reqwest::Response) -> Result<T> {
-        Ok(Self::decode_status(resp).await?.json().await?)
+        decode_json(Self::decode_status(resp).await?).await
     }
 
     /// Map a non-success status to an error, returning the response otherwise.
@@ -403,6 +429,35 @@ mod tests {
             session(), tokens(), store);
         let t: Thing = client.get("tracks/1", &[]).await.unwrap();
         assert_eq!(t.value, 7);
+    }
+
+    #[tokio::test]
+    async fn get_maps_a_json_shape_mismatch_to_json_error_with_detail() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/tracks/1"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"value": "seven"}"#))
+            .mount(&server).await;
+        let client = TidalClient::new(reqwest::Client::new(), server.uri(), format!("{}/token", server.uri()),
+            session(), tokens(), Arc::new(MemoryStore::default()));
+        let err = client.get::<Thing>("tracks/1", &[]).await.unwrap_err();
+        match &err {
+            Error::Json(e) => {
+                assert!(e.to_string().contains("expected u32"), "lost the serde detail: {e}");
+            }
+            other => panic!("expected Error::Json, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn get_maps_a_non_json_body_to_json_error() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/tracks/1"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("<html>not json</html>"))
+            .mount(&server).await;
+        let client = TidalClient::new(reqwest::Client::new(), server.uri(), format!("{}/token", server.uri()),
+            session(), tokens(), Arc::new(MemoryStore::default()));
+        let err = client.get::<Thing>("tracks/1", &[]).await.unwrap_err();
+        assert!(matches!(err, Error::Json(_)), "expected Error::Json, got {err:?}");
     }
 
     #[tokio::test]

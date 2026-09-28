@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { coverUrl } from "./artwork";
+import { collageCovers, coverUrl } from "./artwork";
 
 describe("coverUrl", () => {
   it("maps a dashed uuid onto the image CDN path", () => {
@@ -17,5 +17,36 @@ describe("coverUrl", () => {
   /// Review Focus: an empty uuid must not produce a broken-image request.
   it("returns empty for an empty uuid", () => {
     expect(coverUrl("", 320)).toBe("");
+  });
+});
+
+describe("collageCovers", () => {
+  it("keeps first-seen order and drops duplicate albums", () => {
+    expect(collageCovers(["a", "a", "b", "a", "c", "d", "e"])).toEqual(["a", "b", "c", "d"]);
+  });
+
+  it("skips null and empty covers", () => {
+    expect(collageCovers([null, "", undefined, "a", "b", "c", "d"])).toEqual(["a", "b", "c", "d"]);
+  });
+
+  it("returns empty when no track has a cover", () => {
+    expect(collageCovers([null, "", undefined])).toEqual([]);
+    expect(collageCovers([])).toEqual([]);
+  });
+
+  it("leaves a single distinct album as one tile", () => {
+    expect(collageCovers(["a", "a", "a"])).toEqual(["a"]);
+  });
+
+  it("repeat-fills four tiles from two distinct albums", () => {
+    expect(collageCovers(["a", "b"])).toEqual(["a", "b", "a", "b"]);
+  });
+
+  it("repeat-fills four tiles from three distinct albums", () => {
+    expect(collageCovers(["a", "b", "c"])).toEqual(["a", "b", "c", "a"]);
+  });
+
+  it("respects a smaller tile count", () => {
+    expect(collageCovers(["a", "b", "c", "d", "e"], 2)).toEqual(["a", "b"]);
   });
 });

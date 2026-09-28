@@ -11,20 +11,22 @@
 - npm --prefix ui run check: 0 errors, 0 warnings (exit 0)
 
 ## Manual checks
-- [ ] Open an editorial/unowned playlist from Home or Search → no Rename/Delete in the header, no Move/Remove row buttons, rows are not draggable, and the row context menu has no Move/Remove items.
-- [ ] Open a playlist you own → Rename/Delete, row editing, drag reorder, and menu items are all present and work.
-- [ ] Library playlists show Rename/Delete for your own playlists and the row menu lists Open/Rename/Delete.
-- [ ] Copy title on a track row → paste elsewhere shows the track title.
-- [ ] Copy title on a queue row → paste elsewhere shows the track title.
-- [ ] Double-click a track row in Search, Album, Playlist, and Library favorites → playback starts at that row.
-- [ ] Double-click on ♥, ＋, ⊕, ▶, or ✕ → no row playback is triggered by the double-click.
-- [ ] Single-click ▶ still plays; text in track rows cannot be selected (no blue flash on double-click).
-- [ ] Queue: single-click anywhere on a row (except ✕ and the drag handle) starts that track; Enter/Space on a focused row starts it; Space does not toggle play/pause when a queue row is focused.
-- [ ] Queue: ✕ still removes the row; dragging still reorders; right-click still opens Play now / Copy title / Remove.
-- [ ] Queue keyboard: Tab to a row and press Enter/Space → the track starts; Tab to ✕ and press Enter/Space → the row is removed and playback does not restart.
+- [x] Open an editorial/unowned playlist from Home or Search → no Rename/Delete in the header, no Move/Remove row buttons, rows are not draggable, and the row context menu has no Move/Remove items.
+- [x] Open a playlist you own → Rename/Delete, row editing, drag reorder, and menu items are all present and work.
+- [x] Library playlists show Rename/Delete for your own playlists and the row menu lists Open/Rename/Delete.
+- [x] Copy title on a track row → paste elsewhere shows the track title.
+- [x] Copy title on a queue row → paste elsewhere shows the track title.
+- [x] Double-click a track row in Search, Album, Playlist, and Library favorites → playback starts at that row.
+- [x] Double-click on ♥, ＋, ⊕, ▶, or ✕ → no row playback is triggered by the double-click.
+- [x] Single-click ▶ still plays; text in track rows cannot be selected (no blue flash on double-click).
+- [x] Queue: single-click anywhere on a row (except ✕ and the drag handle) starts that track; Enter/Space on a focused row starts it; Space does not toggle play/pause when a queue row is focused.
+- [x] Queue: ✕ still removes the row; dragging still reorders; right-click still opens Play now / Copy title / Remove.
+- [x] Queue keyboard: Tab to a row and press Enter/Space → the track starts; Tab to ✕ and press Enter/Space → the row is removed and playback does not restart.
 
 ## Known caveats
 - Ownership is creator-based: TIDAL collaborator playlists (editable but created by someone else) are treated as unowned and hide their edit controls.
 - If TIDAL omits `creator` on a playlist fetch, the playlist is treated as unowned; on list endpoints the item stays owned.
+- Editorial/curated playlists in search return a `creator` object without an `id` (`{"name": "TIDAL"}`); the id is optional and such playlists are treated as unowned. Numeric string ids are accepted too.
+- 2026-09-25 follow-up: requiring `creator.id` broke the whole search response (`json error: missing field 'id'`); fixed with `optional_creator_id` in `models.rs` plus a search-level regression test. Decode failures now surface serde's field/line detail (and log status/url/content-type) instead of the generic reqwest "error decoding response body".
 - Copy title copies the raw title only (no artist).
 - If the clipboard does not receive text in some WebView2 state, the fallback path may need the official clipboard plugin as a follow-up.

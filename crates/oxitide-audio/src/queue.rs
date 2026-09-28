@@ -81,6 +81,27 @@ impl Queue {
         }
     }
 
+    /// Start a fully shuffled context: the whole list (including its first
+    /// item) is shuffled once, the shuffle flag turns on, and playback starts
+    /// at the top of the shuffled order.
+    pub fn play_context_shuffled(&mut self, items: Vec<QueueItem>) {
+        self.play_context_shuffled_with(items, &mut rand::rng());
+    }
+
+    /// One Fisher–Yates shuffle of the whole list. Seeded by tests via `StdRng`.
+    fn play_context_shuffled_with<R: Rng + ?Sized>(&mut self, items: Vec<QueueItem>, rng: &mut R) {
+        self.items = items;
+        self.items.shuffle(rng);
+        self.shuffle = true;
+        if self.items.is_empty() {
+            self.current = None;
+            self.playing = false;
+        } else {
+            self.current = Some(0);
+            self.playing = true;
+        }
+    }
+
     pub fn toggle_play_pause(&mut self) {
         if self.current.is_some() {
             self.playing = !self.playing;
@@ -152,6 +173,28 @@ impl Queue {
                 self.playing = false;
                 None
             }
+        }
+    }
+
+    /// Advance past the current track after it proved unplayable. Unlike
+    /// `on_track_ended`, repeat-one never re-selects the failed track; it
+    /// falls through to the next index (or stops at the end with repeat off).
+    pub fn skip_current(&mut self) -> Option<usize> {
+        let cur = self.current?;
+        if self.items.is_empty() {
+            return None;
+        }
+        if cur + 1 < self.items.len() {
+            self.current = Some(cur + 1);
+            self.playing = true;
+            Some(cur + 1)
+        } else if self.repeat == RepeatMode::All {
+            self.current = Some(0);
+            self.playing = true;
+            Some(0)
+        } else {
+            self.playing = false;
+            None
         }
     }
 
@@ -269,6 +312,35 @@ mod tests {
     }
 
     #[test]
+    fn play_context_shuffled_starts_a_permutation_from_the_top() {
+        use rand::SeedableRng;
+        let mut q = Queue::default();
+        q.play_context_shuffled_with(
+            (1..=8).map(item).collect(),
+            &mut rand::rngs::StdRng::seed_from_u64(11),
+        );
+        assert!(q.shuffle());
+        assert!(q.is_playing());
+        assert_eq!(q.current_index(), Some(0));
+        let order: Vec<u64> = q.items().iter().map(|i| i.track_id).collect();
+        let mut sorted = order.clone();
+        sorted.sort_unstable();
+        assert_eq!(sorted, (1..=8).collect::<Vec<_>>(), "not a permutation");
+        assert_ne!(order, (1..=8).collect::<Vec<_>>(), "order was not shuffled");
+    }
+
+    #[test]
+    fn play_context_shuffled_handles_empty() {
+        use rand::SeedableRng;
+        let mut q = Queue::default();
+        q.play_context_shuffled_with(Vec::new(), &mut rand::rngs::StdRng::seed_from_u64(1));
+        assert!(q.shuffle());
+        assert_eq!(q.current_index(), None);
+        assert!(!q.is_playing());
+        assert!(q.items().is_empty());
+    }
+
+    #[test]
     fn next_at_end_stops_when_repeat_off() {
         let mut q = queue(2);
         assert!(q.next());
@@ -328,6 +400,40 @@ mod tests {
         assert_eq!(q.peek_next_index(), None);
         // Peeks never mutate.
         assert!(q.is_playing());
+        assert_eq!(q.current_index(), Some(1));
+    }
+
+    #[test]
+    fn skip_current_advances_to_the_next_track() {
+        let mut q = queue(3);
+        assert_eq!(q.skip_current(), Some(1));
+        assert_eq!(q.current_index(), Some(1));
+        assert!(q.is_playing());
+    }
+
+    #[test]
+    fn skip_current_ignores_repeat_one() {
+        let mut q = queue(3);
+        q.set_repeat(RepeatMode::One);
+        assert_eq!(q.skip_current(), Some(1));
+        assert_eq!(q.current_index(), Some(1));
+    }
+
+    #[test]
+    fn skip_current_wraps_when_repeat_all() {
+        let mut q = queue(2);
+        q.next(); // current = last item
+        q.set_repeat(RepeatMode::All);
+        assert_eq!(q.skip_current(), Some(0));
+        assert_eq!(q.current_index(), Some(0));
+    }
+
+    #[test]
+    fn skip_current_stops_at_end_when_repeat_off() {
+        let mut q = queue(2);
+        q.next(); // current = last item
+        assert_eq!(q.skip_current(), None);
+        assert!(!q.is_playing());
         assert_eq!(q.current_index(), Some(1));
     }
 

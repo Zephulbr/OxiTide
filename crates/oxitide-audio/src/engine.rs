@@ -60,6 +60,8 @@ pub enum EngineEvent {
 #[derive(Debug, Clone)]
 pub enum EngineCmd {
     PlayTracks { items: Vec<QueueItem>, start: usize },
+    /// Replace the queue with a fully shuffled context (header Shuffle).
+    PlayShuffled { items: Vec<QueueItem> },
     PlayPause,
     Next,
     Prev,
@@ -347,17 +349,26 @@ impl Engine {
         (queue.current().cloned(), changed)
     }
 
+    /// Replace the playback context via `mutate` and announce the new queue
+    /// and current track to listeners.
+    fn start_context(&self, mutate: impl FnOnce(&mut Queue)) {
+        *self.inner.stream_meta.lock().unwrap() = None;
+        let item = self.mutate_playing_queue(|q| {
+            mutate(q);
+            q.current().cloned()
+        });
+        self.inner.notify_worker();
+        self.emit(EngineEvent::NowPlaying(item.clone()));
+        self.emit(EngineEvent::State(self.state()));
+    }
+
     pub fn handle(&self, cmd: EngineCmd) -> Result<()> {
         match cmd {
             EngineCmd::PlayTracks { items, start } => {
-                *self.inner.stream_meta.lock().unwrap() = None;
-                let item = self.mutate_playing_queue(|q| {
-                    q.play_context(items, start);
-                    q.current().cloned()
-                });
-                self.inner.notify_worker();
-                self.emit(EngineEvent::NowPlaying(item.clone()));
-                self.emit(EngineEvent::State(self.state()));
+                self.start_context(|q| q.play_context(items, start));
+            }
+            EngineCmd::PlayShuffled { items } => {
+                self.start_context(|q| q.play_context_shuffled(items));
             }
             EngineCmd::PlayPause => {
                 // Only toggle when a track is current. On an empty queue
@@ -885,8 +896,17 @@ struct PendingSeek {
 enum SessionOutcome {
     Superseded,
     QueueEnded,
-    OutputError { message: String, track_id: u64 },
+    OutputError {
+        message: String,
+        track_id: u64,
+    },
     StreamError(Error),
+    /// Every track reachable from the current one was unplayable and the
+    /// engine stopped; `skipped` counts the tracks passed over.
+    UnavailableChain {
+        skipped: usize,
+        last: Error,
+    },
 }
 
 /// Play `first_item` and keep advancing through the queue until it ends, the
@@ -915,6 +935,9 @@ fn run_session(
     }
     let mut stream = start_track(inner, first_item, mode, gen, seek_ms);
     let mut prefetch = start_prefetch(inner, mode, gen);
+    // Unplayable tracks passed over since the last track that started; bounds
+    // the skip chain so repeat-all/repeat-one cannot loop forever.
+    let mut skipped: usize = 0;
     let mut frames: u64;
     let mut last_emit;
     loop {
@@ -927,8 +950,50 @@ fn run_session(
             Err(_) if inner.generation.load(Ordering::SeqCst) != gen => {
                 return SessionOutcome::Superseded;
             }
+            // An unavailable track (region-locked/removed, or a codec the
+            // decoder cannot play) is skipped like the official client rather
+            // than stopping the queue on it.
+            Err(e) if e.is_track_unavailable() => {
+                skipped += 1;
+                let next = {
+                    let _guard = inner.playback_lock.lock().unwrap();
+                    if inner.generation.load(Ordering::SeqCst) != gen {
+                        return SessionOutcome::Superseded;
+                    }
+                    let next = {
+                        let mut q = inner.queue.lock().unwrap();
+                        if skipped >= q.items().len() {
+                            // Tried every track in the queue; give up.
+                            None
+                        } else {
+                            q.skip_current().and_then(|i| q.items().get(i).cloned())
+                        }
+                    };
+                    if next.is_some() {
+                        emit(inner, EngineEvent::NowPlaying(next.clone()));
+                        emit(inner, EngineEvent::State(build_state(inner)));
+                    }
+                    next
+                };
+                match next {
+                    Some(item) => {
+                        stream = match prefetch.take() {
+                            Some(prefetched) if prefetched.item.track_id == item.track_id => {
+                                prefetched
+                            }
+                            _ => start_track(inner, &item, mode, gen, None),
+                        };
+                        prefetch = start_prefetch(inner, mode, gen);
+                        continue;
+                    }
+                    None => {
+                        return SessionOutcome::UnavailableChain { skipped, last: e };
+                    }
+                }
+            }
             Err(e) => return SessionOutcome::StreamError(e),
         };
+        skipped = 0;
         let StreamStart { info, start_frames, meta } = start;
         *inner.stream_meta.lock().unwrap() = Some(meta);
         emit(inner, EngineEvent::State(build_state(inner)));
@@ -994,10 +1059,20 @@ fn run_session(
             }
             if inner.paused.load(Ordering::SeqCst) {
                 std::thread::sleep(Duration::from_millis(20));
+                if inner.generation.load(Ordering::SeqCst) != gen {
+                    return SessionOutcome::Superseded;
+                }
                 emit_position_if_due(inner, frames, rate, &mut last_emit);
                 continue;
             }
-            match stream.rx.recv_timeout(Duration::from_millis(50)) {
+            let received = stream.rx.recv_timeout(Duration::from_millis(50));
+            // A seek or track change bumps the generation. Once it moves, this
+            // session is superseded and must not publish a stale position or
+            // write buffered audio from the pre-seek offset.
+            if inner.generation.load(Ordering::SeqCst) != gen {
+                return SessionOutcome::Superseded;
+            }
+            match received {
                 Ok(Ok(StreamEvent::Samples(buf))) => {
                     if let Err(e) = output.write(&buf) {
                         return SessionOutcome::OutputError {
@@ -1017,11 +1092,7 @@ fn run_session(
                 Ok(Ok(StreamEvent::Info(_))) => {}
                 Ok(Err(e)) => {
                     // The producer reports "playback superseded" once the
-                    // generation moves; a supersede must not surface as a
-                    // stream error that stops the queue.
-                    if inner.generation.load(Ordering::SeqCst) != gen {
-                        return SessionOutcome::Superseded;
-                    }
+                    // generation moves; that case was caught just above.
                     return SessionOutcome::StreamError(e);
                 }
                 Err(RecvTimeoutError::Timeout) => {
@@ -1179,6 +1250,26 @@ fn worker_main(
                 emit(&inner, EngineEvent::Error { code: "output".into(), message });
                 emit(&inner, EngineEvent::State(build_state(&inner)));
             }
+            SessionOutcome::UnavailableChain { skipped, last } => {
+                {
+                    let mut q = inner.queue.lock().unwrap();
+                    q.stop();
+                }
+                *inner.stream_meta.lock().unwrap() = None;
+                inner.generation.fetch_add(1, Ordering::SeqCst);
+                let _ = output.stop();
+                open_spec = None;
+                let noun = if skipped == 1 { "track" } else { "tracks" };
+                let message = format!("skipped {skipped} unavailable {noun} ({last})");
+                emit(
+                    &inner,
+                    EngineEvent::Error {
+                        code: "playback".into(),
+                        message,
+                    },
+                );
+                emit(&inner, EngineEvent::State(build_state(&inner)));
+            }
             SessionOutcome::StreamError(e) => {
                 {
                     let mut q = inner.queue.lock().unwrap();
@@ -1248,6 +1339,23 @@ mod tests {
     impl StreamResolver for AuthFailingResolver {
         fn resolve(&self, _track_id: u64, _quality: Quality) -> Result<StreamPlan> {
             Err(Error::Tidal(oxitide_tidal::Error::Unauthorized))
+        }
+    }
+
+    /// Serves `plan` for every track except the listed ids, which resolve to a
+    /// TIDAL 403 like a region-locked or removed track.
+    struct UnavailableResolver {
+        plan: StreamPlan,
+        unavailable: Vec<u64>,
+    }
+
+    impl StreamResolver for UnavailableResolver {
+        fn resolve(&self, track_id: u64, _quality: Quality) -> Result<StreamPlan> {
+            if self.unavailable.contains(&track_id) {
+                Err(Error::Tidal(oxitide_tidal::Error::Forbidden))
+            } else {
+                Ok(self.plan.clone())
+            }
         }
     }
 
@@ -1954,6 +2062,180 @@ mod tests {
             })
             .expect("no error event");
         assert_eq!(code, "auth");
+    }
+
+    fn engine_with_unavailable(
+        plan: StreamPlan,
+        files: HashMap<String, Vec<u8>>,
+        unavailable: Vec<u64>,
+    ) -> (Engine, NullOutput) {
+        let output = NullOutput::new();
+        let engine = build_engine(
+            Arc::new(UnavailableResolver { plan, unavailable }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(output.clone()),
+            Quality::Lossless,
+        );
+        (engine, output)
+    }
+
+    /// A region-locked / removed track (resolve 403) must be skipped so the
+    /// rest of the queue keeps playing, without an error reaching the UI.
+    #[test]
+    fn unavailable_track_is_skipped_and_playback_continues() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with_unavailable(plan, files, vec![2]);
+        let errors = Arc::new(Mutex::new(Vec::new()));
+        let errors_ref = errors.clone();
+        let played = Arc::new(Mutex::new(Vec::new()));
+        let played_ref = played.clone();
+        engine.subscribe(Arc::new(move |e| match e {
+            EngineEvent::Error { message, .. } => errors_ref.lock().unwrap().push(message),
+            EngineEvent::NowPlaying(Some(item)) => played_ref.lock().unwrap().push(item.track_id),
+            _ => {}
+        }));
+
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1), item(2), item(3)],
+                start: 0,
+            })
+            .unwrap();
+
+        wait_for(|| !engine.state().playing);
+        assert_eq!(
+            output.samples().len(),
+            2 * 176_400,
+            "only the two playable tracks may decode"
+        );
+        assert!(
+            errors.lock().unwrap().is_empty(),
+            "a skipped track must not surface an error"
+        );
+        assert_eq!(engine.state().current.map(|i| i.track_id), Some(3));
+        let played = played.lock().unwrap();
+        assert!(
+            played.contains(&1) && played.contains(&3),
+            "playback did not reach the later track: {played:?}"
+        );
+    }
+
+    /// When nothing in the queue can play, stop once and report a single
+    /// summary instead of stopping on the first unavailable track.
+    #[test]
+    fn all_unavailable_tracks_stop_with_a_summary() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with_unavailable(plan, files, vec![1, 2, 3]);
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let seen_ref = seen.clone();
+        engine.subscribe(Arc::new(move |e| seen_ref.lock().unwrap().push(e)));
+
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1), item(2), item(3)],
+                start: 0,
+            })
+            .unwrap();
+
+        wait_for(|| {
+            seen.lock()
+                .unwrap()
+                .iter()
+                .any(|e| matches!(e, EngineEvent::Error { .. }))
+        });
+        let message = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .find_map(|e| match e {
+                EngineEvent::Error { message, .. } => Some(message.clone()),
+                _ => None,
+            })
+            .expect("no error event");
+        assert!(
+            message.contains("skipped 3 unavailable tracks"),
+            "unexpected message: {message}"
+        );
+        assert!(
+            message.contains("forbidden"),
+            "the reason must be preserved: {message}"
+        );
+        assert!(
+            !engine.state().playing,
+            "the queue must stop when nothing can play"
+        );
+        assert_eq!(engine.state().queue.len(), 3, "the queue must be kept");
+        assert!(
+            output.samples().is_empty(),
+            "nothing playable must write no audio"
+        );
+    }
+
+    /// Repeat-all must not turn an all-unavailable queue into an infinite skip
+    /// loop; each track is tried once and then playback stops.
+    #[test]
+    fn all_unavailable_tracks_stop_even_under_repeat_all() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with_unavailable(plan, files, vec![1, 2]);
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let seen_ref = seen.clone();
+        engine.subscribe(Arc::new(move |e| seen_ref.lock().unwrap().push(e)));
+
+        engine
+            .handle(EngineCmd::SetRepeat(RepeatMode::All))
+            .unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1), item(2)],
+                start: 0,
+            })
+            .unwrap();
+
+        wait_for(|| {
+            seen.lock()
+                .unwrap()
+                .iter()
+                .any(|e| matches!(e, EngineEvent::Error { .. }))
+        });
+        let message = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .find_map(|e| match e {
+                EngineEvent::Error { message, .. } => Some(message.clone()),
+                _ => None,
+            })
+            .expect("no error event");
+        assert!(
+            message.contains("skipped 2 unavailable tracks"),
+            "unexpected message: {message}"
+        );
+        assert!(!engine.state().playing);
+        assert!(output.samples().is_empty());
+    }
+
+    /// `PlayShuffled` must load every item, turn the shuffle flag on, and
+    /// start at the top of the shuffled order.
+    #[test]
+    fn play_shuffled_starts_the_queue_shuffled() {
+        let (plan, files) = fixture_plan();
+        let (engine, _output) = engine_with(plan, files);
+        engine
+            .handle(EngineCmd::PlayShuffled {
+                items: vec![item(1), item(2), item(3)],
+            })
+            .unwrap();
+        let state = engine.state();
+        assert!(state.shuffle, "the shuffle flag must turn on");
+        assert!(state.playing);
+        assert_eq!(
+            state.current.map(|i| i.track_id),
+            state.queue.first().map(|i| i.track_id),
+            "playback must start at the top of the shuffled order"
+        );
+        let mut ids: Vec<u64> = state.queue.iter().map(|i| i.track_id).collect();
+        ids.sort_unstable();
+        assert_eq!(ids, vec![1, 2, 3], "the queue must keep every item");
     }
 
     /// Regression: `Next` at the end of the queue with repeat off must not

@@ -13,13 +13,13 @@
 Counts recorded after the review fix pass (`c3fe7c7`), which pinned the persistent-412 and permission-401 outcomes with two integration tests (tidal 79 → 81).
 
 ## Manual checks
-- [ ] Create a playlist with a track from the picker → it is created and the track lands (no 412 toast).
-- [ ] Add tracks to an existing playlist (single and whole album) → no 412; order matches the official app.
-- [ ] Remove and move rows in your own playlist → both succeed.
-- [ ] Rename and delete your own playlist → both succeed.
-- [ ] Rename or delete a playlist you do not own → superseded by the 2026-09-25 list-interactions smoke: the controls are now hidden; open one to confirm no edit UI appears.
-- [ ] While a playlist is open, edit it in the official app, then remove/move a row here → the write either retries transparently or shows the stale-playlist copy, never raw JSON.
-- [ ] Add more than 100 tracks (or a >100-track album) to a playlist → all land; the chunk boundary does not 412.
+- [x] Create a playlist with a track from the picker → it is created and the track lands (no 412 toast).
+- [x] Add tracks to an existing playlist (single and whole album) → no 412; order matches the official app.
+- [x] Remove and move rows in your own playlist → both succeed.
+- [x] Rename and delete your own playlist → both succeed.
+- [x] Rename or delete a playlist you do not own → superseded by the 2026-09-25 list-interactions smoke: the controls are now hidden; open one to confirm no edit UI appears.
+- [x] While a playlist is open, edit it in the official app, then remove/move a row here → the write either retries transparently or shows the stale-playlist copy, never raw JSON.
+- [x] Add more than 100 tracks (or a >100-track album) to a playlist → all land; the chunk boundary does not 412.
 
 ## Known caveats
 - If TIDAL returns no `etag` on the playlist GET, writes fall back to the old header-less behavior and any 412 shows the friendly conflict copy.

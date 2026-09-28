@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatQuality } from "./quality";
+import { formatQuality, trackQualityLabel } from "./quality";
 import type { StreamMeta } from "./api";
 
 function meta(over: Partial<StreamMeta> = {}): StreamMeta {
@@ -44,5 +44,22 @@ describe("formatQuality detailed", () => {
 
   it("falls back to the preferred quality without stream metadata", () => {
     expect(formatQuality(null, "detailed", "lossless")).toBe("LOSSLESS");
+  });
+});
+
+describe("trackQualityLabel", () => {
+  it("maps TIDAL catalog qualities to compact labels", () => {
+    expect(trackQualityLabel("HI_RES_LOSSLESS")).toBe("MAX");
+    expect(trackQualityLabel("HI_RES")).toBe("MAX");
+    expect(trackQualityLabel("LOSSLESS")).toBe("LOSSLESS");
+    expect(trackQualityLabel("HIGH")).toBe("AAC");
+    expect(trackQualityLabel("LOW")).toBe("AAC");
+  });
+
+  it("returns null for missing or unknown qualities", () => {
+    expect(trackQualityLabel(null)).toBeNull();
+    expect(trackQualityLabel(undefined)).toBeNull();
+    expect(trackQualityLabel("")).toBeNull();
+    expect(trackQualityLabel("DOLBY_ATMOS")).toBeNull();
   });
 });

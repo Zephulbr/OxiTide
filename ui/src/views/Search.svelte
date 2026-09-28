@@ -1,9 +1,11 @@
 <script lang="ts">
-  import { api } from "../lib/api";
+  import { api, trackToQueueItem } from "../lib/api";
   import Cover from "../lib/components/Cover.svelte";
   import EmptyState from "../lib/components/EmptyState.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
+  import Icon from "../lib/components/Icon.svelte";
   import Loading from "../lib/components/Loading.svelte";
+  import PlaylistCover from "../lib/components/PlaylistCover.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
   import { createSearch } from "../lib/search.svelte";
   import { createTrackView } from "../lib/trackView.svelte";
@@ -28,6 +30,16 @@
       search.results.artists.items.length === 0 &&
       search.results.playlists.items.length === 0,
   );
+
+  function playAll() {
+    if (resultsView.items.length === 0) return;
+    void api.playTracks(resultsView.items.map(trackToQueueItem), 0);
+  }
+
+  function shuffleAll() {
+    if (resultsView.items.length === 0) return;
+    void api.playTracks(resultsView.items.map(trackToQueueItem), 0, true);
+  }
 </script>
 
 <h2>Search</h2>
@@ -50,7 +62,23 @@
 {:else if noResults}
   <EmptyState message={`No results for “${search.settledQuery}”`} />
 {:else if search.results}
-  <h3>Tracks</h3>
+  <div class="list-head">
+    <h3>Tracks</h3>
+    <button
+      class="list-action"
+      onclick={shuffleAll}
+      disabled={resultsView.items.length === 0}
+      aria-label="Shuffle"
+      title="Shuffle"
+    ><Icon name="shuffle" size={16} /></button>
+    <button
+      class="list-action"
+      onclick={playAll}
+      disabled={resultsView.items.length === 0}
+      aria-label="Play all"
+      title="Play all"
+    ><Icon name="play" size={16} /></button>
+  </div>
   <TrackTable
     view={resultsView}
     {favorites}
@@ -79,7 +107,16 @@
   <ul class="results">
     {#each search.results.playlists.items as p (p.uuid)}
       <li>
-        <span class="res-thumb"><Cover uuid={p.image} size={80} radius={6} alt="" /></span>
+        <span class="res-thumb">
+          <PlaylistCover
+            owned={p.owned}
+            playlist={p.uuid}
+            image={p.squareImage}
+            size={80}
+            radius={6}
+            alt=""
+          />
+        </span>
         <button onclick={() => nav.goto({ name: "playlist", id: p.uuid })}>{p.title}</button>
       </li>
     {/each}
@@ -91,6 +128,27 @@
     display: flex;
     align-items: center;
     gap: 8px;
+  }
+  .list-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .list-head h3 {
+    flex: 1;
+    min-width: 0;
+  }
+  .list-action {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 1px solid var(--line);
+    color: var(--text-muted);
+  }
+  .list-action:hover {
+    color: var(--text);
   }
   .results {
     list-style: none;

@@ -37,6 +37,9 @@ body {
   overflow-y: auto;
 }
 .main { padding: 16px 20px; overflow: auto; }
+/* Track-list views: the wrapper owns the main area's height so the track
+   table (TrackTable's `fill` prop) grows into the leftover space. */
+.view-fill { display: flex; flex-direction: column; height: 100%; }
 .queue {
   background: var(--surface-1);
   backdrop-filter: blur(var(--glass-blur));

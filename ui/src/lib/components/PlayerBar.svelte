@@ -45,7 +45,7 @@
       dragging = false;
       el.removeEventListener("pointermove", onMove);
       el.removeEventListener("pointerup", onUp);
-      player.seek(clampRatio(e.clientX) * duration);
+      player.seek(Math.round(clampRatio(e.clientX) * duration));
     };
     el.addEventListener("pointermove", onMove);
     el.addEventListener("pointerup", onUp);

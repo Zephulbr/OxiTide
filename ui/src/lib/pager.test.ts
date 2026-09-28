@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Track, TrackPage } from "./api";
 import {
+  cachedPagerItems,
   clearPagerCache,
   createTrackPager,
   invalidatePager,
@@ -570,6 +571,19 @@ describe("track pager", () => {
 
     const b = createTrackPager("invalidate", load, { pageSize: 1, prefetch: false });
     expect(b.items).toEqual([]);
+  });
+
+  it("cachedPagerItems peeks at a key's loaded rows", async () => {
+    const load = vi.fn(async (offset: number, limit: number) =>
+      page([track(1), track(2)], offset, limit, 2),
+    );
+    expect(cachedPagerItems("peek")).toBeNull();
+
+    const pager = createTrackPager("peek", load, { pageSize: 2, prefetch: false });
+    await pager.loadMore();
+
+    expect(ids(cachedPagerItems("peek") ?? [])).toEqual([1, 2]);
+    expect(cachedPagerItems("missing")).toBeNull();
   });
 
   it("refreshes after a removal deferred behind an in-flight page", async () => {

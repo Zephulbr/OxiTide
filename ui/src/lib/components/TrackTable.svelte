@@ -5,6 +5,7 @@
   import { formatDuration } from "../format";
   import { menuFor } from "../menu.svelte";
   import { trackMenuItems } from "../menus";
+  import { trackQualityLabel } from "../quality";
   import { windowRange } from "../virtual";
   import { appearance } from "../appearance.svelte";
   import type { Favorites } from "../favorites.svelte";
@@ -17,26 +18,25 @@
     view,
     favorites,
     onPlay,
-    onPlayAll,
     onEndReached,
     onAddToPlaylist,
     playlistActions,
     maxHeight = "min(60vh, 560px)",
-    showCovers = true,
+    fill = false,
+    showAlbum = true,
     playingTrackId = null,
   }: {
     view: TrackView;
     favorites: Favorites;
     onPlay?: (index: number) => void | Promise<void>;
-    onPlayAll?: () => void | Promise<void>;
     /// Called when the list is scrolled near its end; used for lazy paging.
     onEndReached?: () => void;
     /// Renders the "add to playlist" row action (list-plus icon, distinct
     /// from the plus-icon queue action).
     onAddToPlaylist?: (track: Track) => void;
-    /// Playlist-view row editing (move up/down, remove). `disabled` is set by
-    /// the parent until the pager has the complete list; `onDrop` (Task 8)
-    /// receives absolute source-order indices from drag-and-drop.
+    /// Playlist-view row editing via drag-and-drop and the context menu.
+    /// `disabled` is set by the parent until the pager has the complete list;
+    /// `onDrop` receives absolute source-order indices from drag-and-drop.
     playlistActions?: {
       onRemove(index: number): void;
       onMove(index: number, delta: -1 | 1): void;
@@ -45,8 +45,11 @@
       onDrop?(from: number, to: number): void;
     };
     maxHeight?: string;
-    /// Cover thumbnails are redundant in single-album view (spec §7.3).
-    showCovers?: boolean;
+    /// Grow to fill the parent's leftover height (parent is a .view-fill flex
+    /// column) instead of capping at maxHeight.
+    fill?: boolean;
+    /// The album-name column is redundant in single-album view (spec §7.3).
+    showAlbum?: boolean;
     /// Highlights the playing row (accent tint + title, ringed thumb).
     playingTrackId?: number | null;
   } = $props();
@@ -57,13 +60,14 @@
   const END_THRESHOLD = 400;
 
   let scrollTop = $state(0);
+  const scrolled = $derived(scrollTop > 0);
   let viewport = $state(0);
   let loadingAll = $state(false);
 
   const rows = $derived(view.items);
   const range = $derived(windowRange(rows.length, scrollTop, viewport, rowHeight, OVERSCAN));
   const slice = $derived(rows.slice(range.first, range.last));
-  const columns = $derived(showCovers ? 5 : 4);
+  const columns = $derived(showAlbum ? 9 : 8);
 
   let dragFrom = $state<number | null>(null);
   let dropAt = $state<number | null>(null);
@@ -113,19 +117,6 @@
     void play(index);
   }
 
-  async function playAll() {
-    if (onPlayAll) {
-      loadingAll = true;
-      try {
-        await onPlayAll();
-      } finally {
-        loadingAll = false;
-      }
-      return;
-    }
-    play(0);
-  }
-
   function onScroll(event: Event) {
     const element = event.currentTarget as HTMLElement;
     scrollTop = element.scrollTop;
@@ -156,16 +147,22 @@
 
 <div
   class="table-scroll"
-  style="max-height:{maxHeight}"
+  class:fill
+  class:scrolled
+  style:max-height={fill ? "none" : maxHeight}
   bind:clientHeight={viewport}
   onscroll={onScroll}
   use:trackDrag={drag}
 >
+  <div
+    class="head-frost"
+    aria-hidden="true"
+    style="height:{theadHeight}px;margin-bottom:-{theadHeight}px"
+  ></div>
   <table>
     <thead bind:clientHeight={theadHeight}>
       <tr>
-        {#if showCovers}<th class="thumb-head"></th>{/if}
-        <th style="text-align:left"><button onclick={playAll} disabled={loadingAll}>{loadingAll ? "Loading all…" : "Play all"}</button></th>
+        <th class="thumb-head"></th>
         <th style="text-align:left">
           <button class="sort" title="Original order" onclick={() => view.clearSort()}>#</button>
         </th>
@@ -174,11 +171,16 @@
             Title {indicator("title")}
           </button>
         </th>
-        <th style="text-align:right">
+        <th style="text-align:left">Artist</th>
+        {#if showAlbum}<th style="text-align:left">Album</th>{/if}
+        <th style="text-align:left">
           <button class="sort" disabled={view.preparing} onclick={() => view.toggleSort("duration")}>
             Time {indicator("duration")}
           </button>
         </th>
+        <th style="text-align:left">Quality</th>
+        <th class="spacer-head"></th>
+        <th class="actions-head"></th>
       </tr>
     </thead>
     <tbody>
@@ -187,6 +189,7 @@
       {/if}
       {#each slice as t, i (`${t.id}-${range.first + i}`)}
         {@const index = range.first + i}
+        {@const quality = trackQualityLabel(t.audioQuality)}
         <tr
           class="row"
           class:dragging={dragFrom === index}
@@ -207,16 +210,24 @@
               playlist: playlistActions && { ...playlistActions, canMove: !view.engaged },
             })}
         >
-          <td>
-            {#if canDrag}
-              <span class="handle" title="Drag to reorder" aria-hidden="true"><Icon name="grip-vertical" size={14} /></span>
-            {/if}
-            <button onclick={() => play(index)} disabled={loadingAll} aria-label="Play"><Icon name="play" size={14} /></button>
-            <button
-              onclick={() => api.queueAdd([trackToQueueItem(t)])}
-              aria-label="Add to queue"
-              title="Add to queue"
-            ><Icon name="plus" size={14} /></button>
+          <td class="thumb-cell">
+            <button class="thumb" onclick={() => play(index)} disabled={loadingAll} aria-label="Play" title="Play">
+              <Cover uuid={t.album?.cover} size={80} radius={0} alt="" />
+              <span class="thumb-play" aria-hidden="true"><Icon name="play" size={14} /></span>
+            </button>
+          </td>
+          <td class="muted tnum">{index + 1}</td>
+          <td class="title-cell"><div class="title-text">{t.title}</div></td>
+          <td class="text-cell muted"><div class="cell-text">{t.artists.map((a) => a.name).join(", ")}</div></td>
+          {#if showAlbum}
+            <td class="text-cell muted"><div class="cell-text">{t.album?.title ?? ""}</div></td>
+          {/if}
+          <td class="muted tnum nowrap-cell">{formatDuration(t.duration)}</td>
+          <td class="nowrap-cell">
+            {#if quality}<span class="badge" class:max={quality === "MAX"}>{quality}</span>{/if}
+          </td>
+          <td class="spacer-cell"></td>
+          <td class="actions-cell">
             {#if onAddToPlaylist}
               <button
                 onclick={() => onAddToPlaylist(t)}
@@ -230,40 +241,7 @@
               aria-label={favorites.hasTrack(t.id) ? "Unfavorite" : "Favorite"}
               title={favorites.hasTrack(t.id) ? "Unfavorite" : "Favorite"}
             ><Icon name="heart" size={14} /></button>
-            {#if playlistActions}
-              {#if !view.engaged}
-                <button
-                  onclick={() => playlistActions.onMove(index, -1)}
-                  disabled={playlistActions.busy || playlistActions.disabled || index === 0}
-                  aria-label="Move up"
-                  title="Move up"
-                ><Icon name="chevron-up" size={14} /></button>
-                <button
-                  onclick={() => playlistActions.onMove(index, 1)}
-                  disabled={playlistActions.busy || playlistActions.disabled || index === rows.length - 1}
-                  aria-label="Move down"
-                  title="Move down"
-                ><Icon name="chevron-down" size={14} /></button>
-              {/if}
-              <button
-                onclick={() => playlistActions.onRemove(index)}
-                disabled={playlistActions.busy || playlistActions.disabled}
-                aria-label="Remove from playlist"
-                title="Remove from playlist"
-              ><Icon name="x" size={14} /></button>
-            {/if}
           </td>
-          {#if showCovers}
-            <td class="thumb-cell">
-              <span class="thumb">
-                <Cover uuid={t.album?.cover} size={80} radius={6} alt="" />
-                <span class="thumb-play" aria-hidden="true"><Icon name="play" size={14} /></span>
-              </span>
-            </td>
-          {/if}
-          <td class="muted">{index + 1}</td>
-          <td class="title-cell"><div class="title-text">{t.title}<span class="muted"> · {t.artists.map((a) => a.name).join(", ")}</span></div></td>
-          <td style="text-align:right" class="muted">{formatDuration(t.duration)}</td>
         </tr>
       {/each}
       {#if range.padBottom > 0}
@@ -293,10 +271,11 @@
     overflow: auto;
     position: relative;
   }
-  .handle {
-    cursor: grab;
-    color: var(--text-muted);
-    padding-right: 4px;
+  /* fill mode: own the .view-fill parent's leftover height and scroll
+     internally; keep a floor so a tall header can't collapse it to zero. */
+  .table-scroll.fill {
+    flex: 1 1 auto;
+    min-height: 140px;
   }
   .row.dragging {
     opacity: 0.5;
@@ -313,12 +292,49 @@
     width: 100%;
     border-collapse: collapse;
   }
+  /* One frost layer for the sticky header. No per-cell backdrop-filter and no
+     mask: both are unreliable in Chromium inside a scroller (masked blur can
+     render as solid dark blocks). At rest the header is untinted so it matches
+     the surface above it exactly; the frost fades in only once rows scroll
+     beneath — atmosphere's blur carries it, instrument's veil is opaque. */
+  .head-frost {
+    position: sticky;
+    top: 0;
+    z-index: 0;
+    pointer-events: none;
+    backdrop-filter: blur(var(--glass-blur));
+    transition: box-shadow var(--dur-state) var(--ease-in);
+  }
+  .table-scroll.scrolled .head-frost {
+    box-shadow: 0 14px 18px -14px rgba(0, 0, 0, 0.55);
+  }
+  .head-frost::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -12px;
+    height: 12px;
+    background: linear-gradient(to bottom, var(--glass-veil), transparent);
+    opacity: 0;
+    transition: opacity var(--dur-state) var(--ease-in);
+  }
+  .table-scroll.scrolled .head-frost::after {
+    opacity: 1;
+  }
   thead th {
     position: sticky;
     top: 0;
     z-index: 1;
-    background: var(--surface-1);
-    border-bottom: 1px solid var(--line);
+    background: transparent;
+    transition: background-color var(--dur-state) var(--ease-in);
+    padding: 4px 12px 4px 0;
+  }
+  .table-scroll.scrolled thead th {
+    background: var(--glass-veil);
+  }
+  thead th.thumb-head {
+    padding: 0;
   }
   .sort {
     background: transparent;
@@ -332,20 +348,20 @@
     border-bottom: 1px solid var(--line);
     user-select: none;
   }
-  .thumb-head {
-    width: var(--thumb-size);
-    padding: 0;
+  td {
+    padding: 0 12px 0 0;
   }
+  /* The cover fills the row top to bottom; -1px keeps it inside the row's
+     content box so the virtualization row math (var(--row-height)) holds. */
   .thumb-cell {
-    width: var(--thumb-size);
-    /* Vertical padding stays small so thumb + padding never exceeds
-       --row-height (compact 22+6=28, comfortable 30+6=36<=38). */
-    padding: 3px 8px 3px 0;
+    padding: 0 12px 0 0;
   }
   .thumb {
     position: relative;
     display: block;
-    width: var(--thumb-size);
+    padding: 0;
+    width: calc(var(--row-height) - 1px);
+    height: calc(var(--row-height) - 1px);
   }
   .thumb-play {
     position: absolute;
@@ -353,7 +369,6 @@
     display: grid;
     place-items: center;
     background: rgba(0, 0, 0, 0.45);
-    border-radius: 6px;
     opacity: 0;
     transition: opacity var(--dur-micro);
     color: var(--text);
@@ -370,14 +385,50 @@
   .row.playing .thumb :global(img) {
     box-shadow: 0 0 0 1.5px var(--accent);
   }
+  /* Text columns cap at a max width and ellipsis; the spacer column below
+     absorbs the leftover width so the actions sit at the far right. */
   .title-cell {
-    max-width: 0;
-    width: 100%;
+    max-width: 44ch;
   }
-  .title-text {
+  .text-cell {
+    max-width: 32ch;
+  }
+  .title-text,
+  .cell-text {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .nowrap-cell {
+    white-space: nowrap;
+  }
+  .spacer-cell {
+    width: 100%;
+    padding: 0;
+  }
+  .actions-cell {
+    padding: 0;
+    white-space: nowrap;
+    text-align: right;
+  }
+  .actions-cell button + button {
+    margin-left: 6px;
+  }
+  /* Same tag look as the PlayerBar/NowPlaying quality badge. */
+  .badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+  .badge.max {
+    border-color: var(--dyn-tertiary);
+    color: var(--dyn-tertiary);
   }
   .on {
     color: var(--accent);
@@ -389,5 +440,8 @@
     display: inline-grid;
     place-items: center;
     vertical-align: middle;
+  }
+  td button.thumb {
+    display: block;
   }
 </style>

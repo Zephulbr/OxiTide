@@ -2,11 +2,13 @@
   import { untrack } from "svelte";
   import { api, trackToQueueItem, type Playlist as PlaylistT } from "../lib/api";
   import ConfirmDialog from "../lib/components/ConfirmDialog.svelte";
-  import Cover from "../lib/components/Cover.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
+  import Icon from "../lib/components/Icon.svelte";
   import Loading from "../lib/components/Loading.svelte";
+  import PlaylistCover from "../lib/components/PlaylistCover.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
   import { createTrackPager } from "../lib/pager.svelte";
+  import { invalidatePlaylistCovers } from "../lib/playlistArt.svelte";
   import { createTrackView, visibleIndexOf } from "../lib/trackView.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { Nav } from "../lib/nav.svelte";
@@ -106,6 +108,7 @@
     confirmingDelete = false;
     try {
       await api.deletePlaylist(id);
+      invalidatePlaylistCovers(id);
       toasts.show("Playlist deleted", { severity: "success" });
       nav.goto({ name: "library" });
     } catch (e) {
@@ -120,6 +123,7 @@
     busy = true;
     try {
       await api.removePlaylistItems(id, [sourceIndex]);
+      invalidatePlaylistCovers(id);
       await pager.refresh();
       toasts.show("Removed from playlist", { severity: "success" });
     } catch (e) {
@@ -135,6 +139,7 @@
     pager.moveItem(from, to);
     try {
       await api.movePlaylistItems(id, [from], to);
+      invalidatePlaylistCovers(id);
     } catch (e) {
       toasts.show(errorMessage(e), { severity: "error" });
       await pager.refresh();
@@ -161,6 +166,12 @@
     if (pager.error) return;
     api.playTracks(view.items.map(trackToQueueItem), 0);
   }
+
+  async function shuffleAll() {
+    await pager.ensureAll();
+    if (pager.error) return;
+    api.playTracks(view.items.map(trackToQueueItem), 0, true);
+  }
 </script>
 
 {#if loading}
@@ -168,54 +179,79 @@
 {:else if error}
   <ErrorState message={error} onRetry={load} />
 {:else}
-  {#if playlist}
-    <header class="view-header">
-      <span class="header-art"><Cover uuid={playlist.image} size={320} radius={12} alt={`${playlist.title} cover`} /></span>
-      <div class="header-meta">
-        <h2>{playlist.title}</h2>
-        {#if playlist.owned}
-          <div class="header-actions">
-            <button onclick={startRename}>Rename</button>
-            <button onclick={() => (confirmingDelete = true)}>Delete</button>
-          </div>
-        {/if}
+  <div class="view-fill">
+    {#if playlist}
+      <header class="view-header">
+        <span class="header-art">
+          <PlaylistCover
+            owned={playlist.owned}
+            playlist={id}
+            image={playlist.squareImage}
+            tracks={pager.items}
+            size={320}
+            radius={12}
+            alt={`${playlist.title} cover`}
+          />
+        </span>
+        <div class="header-meta">
+          <h2>{playlist.title}</h2>
+          {#if playlist.owned}
+            <div class="header-actions">
+              <button onclick={startRename}>Rename</button>
+              <button onclick={() => (confirmingDelete = true)}>Delete</button>
+            </div>
+          {/if}
+        </div>
+      </header>
+      <div class="header-buttons">
+        <button class="btn-play" onclick={playAll} disabled={view.items.length === 0}>
+          <Icon name="play" size={18} /> Play
+        </button>
+        <button class="btn-shuffle" onclick={shuffleAll} disabled={view.items.length === 0}>
+          <Icon name="shuffle" size={18} /> Shuffle
+        </button>
       </div>
-    </header>
-  {/if}
-  {#if renaming}
+    {/if}
+    {#if renaming}
+      <p>
+        <input bind:value={renameTitle} aria-label="Playlist name" />
+        <input bind:value={renameDescription} aria-label="Playlist description" />
+        <button onclick={saveRename}>Save</button>
+        <button onclick={() => (renaming = false)}>Cancel</button>
+      </p>
+    {/if}
     <p>
-      <input bind:value={renameTitle} aria-label="Playlist name" />
-      <input bind:value={renameDescription} aria-label="Playlist description" />
-      <button onclick={saveRename}>Save</button>
-      <button onclick={() => (renaming = false)}>Cancel</button>
+      <button
+        onclick={() => {
+          invalidatePlaylistCovers(id);
+          void pager.refresh();
+        }}
+      >Refresh</button>
+      <span class="muted">
+        {#if pager.unavailable > 0}
+          {pager.items.length} tracks ({pager.unavailable} unavailable)
+        {:else}
+          {pager.items.length} tracks
+        {/if}
+      </span>
+      {#if pager.loading}<Loading />{/if}
     </p>
-  {/if}
-  <p>
-    <button onclick={() => pager.refresh()}>Refresh</button>
-    <span class="muted">
-      {#if pager.unavailable > 0}
-        {pager.items.length} tracks ({pager.unavailable} unavailable)
-      {:else}
-        {pager.items.length} tracks
-      {/if}
-    </span>
-    {#if pager.loading}<Loading />{/if}
-  </p>
-  <TrackTable
-    {view}
-    {favorites}
-    onPlay={playFrom}
-    onPlayAll={playAll}
-    onEndReached={() => void pager.loadMore()}
-    onAddToPlaylist={(t) => playlistActions.openPicker([t])}
-    playingTrackId={player.state.current?.track_id ?? null}
-    playlistActions={playlist?.owned
-      ? { onRemove: removeAt, onMove: moveAt, busy, disabled: !pager.done, onDrop: moveTrack }
-      : undefined}
-  />
-  {#if pager.error}
-    <ErrorState message={pager.error} onRetry={() => pager.loadMore()} />
-  {/if}
+    <TrackTable
+      {view}
+      {favorites}
+      fill
+      onPlay={playFrom}
+      onEndReached={() => void pager.loadMore()}
+      onAddToPlaylist={(t) => playlistActions.openPicker([t])}
+      playingTrackId={player.state.current?.track_id ?? null}
+      playlistActions={playlist?.owned
+        ? { onRemove: removeAt, onMove: moveAt, busy, disabled: !pager.done, onDrop: moveTrack }
+        : undefined}
+    />
+    {#if pager.error}
+      <ErrorState message={pager.error} onRetry={() => pager.loadMore()} />
+    {/if}
+  </div>
   {#if confirmingDelete}
     <ConfirmDialog
       title="Delete playlist"
@@ -231,11 +267,42 @@
     display: flex;
     align-items: flex-end;
     gap: 20px;
-    margin-bottom: 20px;
+    margin-bottom: 14px;
   }
   .header-art {
     flex: 0 0 auto;
     width: 160px;
+  }
+  /* Big labeled actions under the artwork (screenshot layout, app tokens). */
+  .header-buttons {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+  .header-buttons button {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 44px;
+    padding: 0 22px;
+    border-radius: var(--radius-control);
+    font-weight: 600;
+  }
+  .btn-play {
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+  .btn-play :global(svg) {
+    fill: currentColor;
+  }
+  .btn-shuffle {
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    color: var(--text-muted);
+  }
+  .btn-shuffle:hover {
+    color: var(--text);
   }
   .header-meta {
     min-width: 0;

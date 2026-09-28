@@ -45,3 +45,20 @@ export function formatQuality(
   const kbps = meta.bitrate_kbps ? `${meta.bitrate_kbps} kbps` : "—";
   return `${bits} / ${rate} / ${kbps}`;
 }
+
+/// TIDAL catalog `audioQuality` values mapped to the compact badge labels.
+const TRACK_QUALITY_LABELS = {
+  HI_RES_LOSSLESS: "MAX",
+  HI_RES: "MAX",
+  LOSSLESS: "LOSSLESS",
+  HIGH: "AAC",
+  LOW: "AAC",
+} as const;
+
+/** Badge label for a catalog track's `audioQuality`; null when absent or unrecognized. */
+export function trackQualityLabel(
+  audioQuality: string | null | undefined,
+): "MAX" | "LOSSLESS" | "AAC" | null {
+  if (!audioQuality) return null;
+  return TRACK_QUALITY_LABELS[audioQuality as keyof typeof TRACK_QUALITY_LABELS] ?? null;
+}

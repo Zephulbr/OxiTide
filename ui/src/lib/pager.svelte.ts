@@ -70,6 +70,12 @@ export function invalidatePager(key: string) {
   cache.delete(key);
 }
 
+/// Peek at a key's loaded rows without mounting a pager; null when the key
+/// has no cache entry yet.
+export function cachedPagerItems(key: string): Track[] | null {
+  return cache.get(key)?.items ?? null;
+}
+
 /// A pager for a track list. `key` is `"favorites"` or `"playlist:{uuid}"`;
 /// `load` fetches one window at `offset`. The first page is small for a fast
 /// paint; the remainder loads in parallel fixed windows (see `PagerOptions`).

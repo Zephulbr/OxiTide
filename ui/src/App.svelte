@@ -29,6 +29,7 @@
   import { createFavorites } from "./lib/favorites.svelte";
   import { createPlaylistActions } from "./lib/playlists.svelte";
   import { clearPagerCache } from "./lib/pager.svelte";
+  import { clearPlaylistCovers } from "./lib/playlistArt.svelte";
   import { api, type QueueItem } from "./lib/api";
   import type { QualityDisplay } from "./lib/quality";
 
@@ -169,6 +170,7 @@
   async function onLogin() {
     authError = "";
     clearPagerCache();
+    clearPlaylistCovers();
     error = "";
     const restore = expired;
     expired = null;
@@ -189,6 +191,7 @@
       toasts.show(errorMessage(e), { severity: "error" });
     }
     clearPagerCache();
+    clearPlaylistCovers();
     favorites.reset();
     playlistActions.reset();
     loggedIn = false;

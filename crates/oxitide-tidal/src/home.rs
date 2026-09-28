@@ -76,6 +76,14 @@ struct RawItem {
     pub square_image: Option<String>,
     #[serde(default)]
     pub picture: Option<String>,
+    #[serde(default)]
+    pub album: Option<RawAlbum>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawAlbum {
+    #[serde(default)]
+    pub cover: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -115,7 +123,12 @@ impl TidalClient {
                         } else {
                             i.item_type
                         },
-                        artwork: i.cover.or(i.square_image).or(i.image).or(i.picture),
+                        artwork: i
+                            .cover
+                            .or(i.square_image)
+                            .or(i.image)
+                            .or(i.picture)
+                            .or_else(|| i.album.and_then(|album| album.cover)),
                     })
                     .collect();
                 sections.push(HomeSection { title: module.title, items });
@@ -234,5 +247,26 @@ mod tests {
         assert_eq!(items[1].artwork.as_deref(), Some("sq-2"));
         assert_eq!(items[2].artwork.as_deref(), Some("pic-3"));
         assert_eq!(items[3].artwork, None);
+    }
+
+    /// Real `TRACK_LIST` items carry no top-level art fields; a track's cover
+    /// lives under its nested `album.cover`. A top-level field still wins.
+    #[tokio::test]
+    async fn home_item_artwork_reads_nested_album_cover_for_tracks() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/pages/home"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "rows": [{"modules": [{"type": "TRACK_LIST", "title": "New Tracks", "pagedList": {"items": [
+                    {"id": 564082204, "title": "Patient Zero", "album": {"id": 564082191, "cover": "39e3dad3-33fb-47f2-87f8-8b6f8c55734c"}},
+                    {"id": 562261670, "title": "Fireflies", "album": {"id": 562261665, "cover": null}},
+                    {"id": 5, "title": "Top Level Wins", "cover": "c-5", "album": {"id": 6, "cover": "a-5"}}
+                ]}}]}]
+            })))
+            .mount(&server).await;
+        let sections = client(&server).home_page().await.unwrap();
+        let items = &sections[0].items;
+        assert_eq!(items[0].artwork.as_deref(), Some("39e3dad3-33fb-47f2-87f8-8b6f8c55734c"));
+        assert_eq!(items[1].artwork, None);
+        assert_eq!(items[2].artwork.as_deref(), Some("c-5"));
     }
 }

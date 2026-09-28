@@ -18,6 +18,7 @@ export interface Artist { id: number; name: string; picture?: string | null }
 export interface Playlist {
   uuid: string; title: string; description?: string | null;
   numberOfTracks: number; duration: number; image?: string | null;
+  squareImage?: string | null;
   owned: boolean;
 }
 export interface HomeItem { id: string; title: string; subtitle?: string | null; item_type: string; artwork?: string | null }
@@ -163,7 +164,8 @@ export const api = {
     invoke<void>("set_favorite_album", { albumId, favorite }),
   setFavoriteArtist: (artistId: number, favorite: boolean) =>
     invoke<void>("set_favorite_artist", { artistId, favorite }),
-  playTracks: (items: QueueItem[], start: number) => invoke<void>("play_tracks", { items, start }),
+  playTracks: (items: QueueItem[], start: number, shuffle = false) =>
+    invoke<void>("play_tracks", { items, start, shuffle }),
   playPause: () => invoke<void>("play_pause"),
   retry: () => invoke<void>("retry"),
   next: () => invoke<void>("next"),

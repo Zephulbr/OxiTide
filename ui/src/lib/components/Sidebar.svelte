@@ -21,10 +21,12 @@
     ><Icon name={rail ? "panel-left-open" : "panel-left-close"} size={16} /></button>
   </div>
 
-  <div class="history">
-    <button disabled={!nav.canBack} onclick={() => nav.back()} title="Back (Alt+←)" aria-label="Back"><Icon name="chevron-left" /></button>
-    <button disabled={!nav.canForward} onclick={() => nav.forward()} title="Forward (Alt+→)" aria-label="Forward"><Icon name="chevron-right" /></button>
-  </div>
+  {#if !rail}
+    <div class="history">
+      <button disabled={!nav.canBack} onclick={() => nav.back()} title="Back (Alt+←)" aria-label="Back"><Icon name="chevron-left" /></button>
+      <button disabled={!nav.canForward} onclick={() => nav.forward()} title="Forward (Alt+→)" aria-label="Forward"><Icon name="chevron-right" /></button>
+    </div>
+  {/if}
 
   <button class="nav-item" class:active={nav.route.name === "home"} onclick={() => nav.goto({ name: "home" })} title="Home" aria-label="Home">
     <Icon name="home" />{#if !rail}<span>Home</span>{/if}
@@ -67,6 +69,7 @@
     font-weight: 640;
     margin: 0;
     letter-spacing: -0.02em;
+    transition: opacity var(--dur-micro) var(--ease-in);
   }
   .history {
     display: flex;
@@ -99,6 +102,24 @@
     padding: 9px 0;
   }
   .rail .top {
+    position: relative;
     justify-content: center;
+  }
+  .rail .collapse {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    color: var(--text-muted);
+  }
+  .rail .collapse:hover,
+  .rail .collapse:focus-visible {
+    opacity: 1;
+    color: var(--text);
+  }
+  .rail .top:has(.collapse:hover, .collapse:focus-visible) .wordmark {
+    opacity: 0;
   }
 </style>

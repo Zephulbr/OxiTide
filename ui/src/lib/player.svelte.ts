@@ -48,7 +48,7 @@ export function reduce(state: PlayerState, event: EngineEvent): PlayerState {
 /** Keeps the slider pinned to the requested position until the engine catches up. */
 export function reconcileSeek(pending: number | null, event: EngineEvent): number | null {
   if (pending === null) return null;
-  if (event.type === "position" || event.type === "state") {
+  if (event.type === "position") {
     return Math.abs(event.position_ms - pending) <= 500 ? null : pending;
   }
   if (event.type === "error" || event.type === "now_playing") return null;
@@ -73,8 +73,9 @@ export function createPlayer() {
   }
 
   function seek(ms: number) {
-    pendingSeek = ms;
-    return api.seek(ms);
+    const target = Math.max(0, Math.round(ms));
+    pendingSeek = target;
+    return api.seek(target);
   }
 
   async function retry() {

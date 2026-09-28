@@ -10,6 +10,7 @@ reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+tracing.workspace = true
 url.workspace = true
 keyring = { version = "3", features = ["windows-native"] }
 base64 = "0.22"

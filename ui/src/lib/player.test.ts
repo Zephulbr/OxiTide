@@ -56,4 +56,16 @@ describe("seek reconciliation", () => {
     expect(reconcileSeek(1000, { type: "error", code: "x", message: "y" })).toBeNull();
     expect(reconcileSeek(1000, { type: "now_playing", item: null })).toBeNull();
   });
+
+  it("keeps the pin through the optimistic state event a seek emits", () => {
+    expect(
+      reconcileSeek(1000, {
+        type: "state", playing: true, buffering: false, current: null,
+        position_ms: 1000, duration_ms: 2000, volume: 1, shuffle: false,
+        repeat: "off", preferred_quality: "lossless",
+        output_mode: "shared", bit_perfect: false, bit_perfect_notice: null,
+        queue: [], stream: null,
+      }),
+    ).toBe(1000);
+  });
 });

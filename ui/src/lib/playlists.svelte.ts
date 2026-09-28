@@ -1,6 +1,7 @@
 import { SvelteMap } from "svelte/reactivity";
 import { api, type Playlist, type Track } from "./api";
 import { errorMessage } from "./errors";
+import { invalidatePlaylistCovers } from "./playlistArt.svelte";
 import type { Toasts } from "./toasts.svelte";
 
 export interface PlaylistActions {
@@ -86,6 +87,7 @@ export function createPlaylistActions(toasts: Toasts): PlaylistActions {
     const requested = dedupe(tracks.map((t) => t.id));
     try {
       const added = new Set(await api.addPlaylistTracks(playlist.uuid, requested, false));
+      invalidatePlaylistCovers(playlist.uuid);
       const skipped = requested.filter((id) => !added.has(id));
       if (skipped.length === 0) {
         toasts.show(`${requested.length} added to ${playlist.title}`, { severity: "success" });
@@ -117,6 +119,7 @@ export function createPlaylistActions(toasts: Toasts): PlaylistActions {
     busy = true;
     try {
       if (addBoth.length > 0) await api.addPlaylistTracks(target.uuid, addBoth, true);
+      invalidatePlaylistCovers(target.uuid);
       toasts.show(
         `${addBoth.length} added, ${uniqueDuplicates.length - addBoth.length} kept one of`,
         { severity: "info" },
@@ -141,6 +144,7 @@ export function createPlaylistActions(toasts: Toasts): PlaylistActions {
       if (ids.length > 0) {
         try {
           await api.addPlaylistTracks(created.uuid, ids, false);
+          invalidatePlaylistCovers(created.uuid);
           toasts.show(`Created ${created.title} with ${ids.length} tracks`, {
             severity: "success",
           });
