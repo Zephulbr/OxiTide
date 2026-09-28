@@ -30,6 +30,13 @@ pub struct PageSection {
     pub items: Vec<PageItem>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MixDetail {
+    pub id: String,
+    pub title: String,
+    pub tracks: Vec<crate::models::Track>,
+}
+
 #[derive(Debug, Deserialize)]
 struct RawRow {
     #[serde(default)]
@@ -124,6 +131,18 @@ impl TidalClient {
         self.page_sections_at("pages/my_collection_my_mixes", &[]).await
     }
 
+    /// Resolve a mix id into its playable track list. Videos are dropped because
+    /// the engine is audio-only; `pages/mix` returns tracks and videos together.
+    pub async fn mix_page(&self, mix_id: &str) -> Result<MixDetail> {
+        let params = vec![
+            ("mixId", mix_id.to_string()),
+            ("deviceType", "BROWSER".to_string()),
+            ("platform", "WEB".to_string()),
+        ];
+        let raw: serde_json::Value = self.get("pages/mix", &params).await?;
+        Ok(mix_detail_from_json(mix_id, &raw))
+    }
+
     /// The user's feed. TIDAL's endpoint path is unconfirmed; candidates are
     /// probed in order and a missing feed degrades to an empty list.
     pub async fn feed_page(&self) -> Result<Vec<PageSection>> {
@@ -190,6 +209,61 @@ fn value_to_id(v: &serde_json::Value) -> String {
         serde_json::Value::Number(n) => n.to_string(),
         _ => String::new(),
     }
+}
+
+fn mix_detail_from_json(mix_id: &str, raw: &serde_json::Value) -> MixDetail {
+    let title = raw
+        .pointer("/rows/0/modules/0/mix/title")
+        .or_else(|| raw.pointer("/rows/0/modules/0/title"))
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let mut tracks = Vec::new();
+    if let Some(rows) = raw.get("rows").and_then(serde_json::Value::as_array) {
+        for row in rows {
+            let Some(modules) = row.get("modules").and_then(serde_json::Value::as_array) else {
+                continue;
+            };
+            for module in modules {
+                let module_type = module
+                    .get("type")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("");
+                let module_is_track = module_type.to_uppercase().contains("TRACK");
+                let mut items: Vec<&serde_json::Value> = module
+                    .get("items")
+                    .and_then(serde_json::Value::as_array)
+                    .map(|values| values.iter().collect())
+                    .unwrap_or_default();
+                if let Some(paged) = module
+                    .pointer("/pagedList/items")
+                    .and_then(serde_json::Value::as_array)
+                {
+                    items.extend(paged.iter());
+                }
+                for item in items {
+                    let item_type = item
+                        .get("type")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or("");
+                    let is_track = if item_type.is_empty() {
+                        module_is_track
+                    } else {
+                        item_type.to_uppercase().contains("TRACK")
+                    };
+                    if !is_track {
+                        continue;
+                    }
+                    if let Ok(track) =
+                        serde_json::from_value::<crate::models::Track>(item.clone())
+                    {
+                        tracks.push(track);
+                    }
+                }
+            }
+        }
+    }
+    MixDetail { id: mix_id.to_string(), title, tracks }
 }
 
 #[cfg(test)]
@@ -357,5 +431,47 @@ mod tests {
         Mock::given(method("GET")).and(path("/pages/feed"))
             .respond_with(ResponseTemplate::new(500)).mount(&server).await;
         assert!(client(&server).feed_page().await.is_err());
+    }
+
+    #[tokio::test]
+    async fn mix_page_keeps_tracks_and_drops_videos() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/pages/mix"))
+            .and(query_param("mixId", "mix-7"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "rows": [
+                    {"modules": [{"type": "MIX_HEADER", "mix": {"id": "mix-7", "title": "Daily Mix"}}]},
+                    {"modules": [
+                        {"type": "TRACK_LIST", "title": "Tracks", "pagedList": {"items": [
+                            {"id": 1, "title": "Song", "duration": 200, "artists": [{"id": 5, "name": "A"}]}
+                        ]}},
+                        {"type": "VIDEO_LIST", "title": "Videos", "items": [
+                            {"id": 99, "title": "Clip", "type": "VIDEO"}
+                        ]}
+                    ]}
+                ]
+            })))
+            .mount(&server).await;
+        let detail = client(&server).mix_page("mix-7").await.unwrap();
+        assert_eq!(detail.title, "Daily Mix");
+        assert_eq!(detail.tracks.len(), 1);
+        assert_eq!(detail.tracks[0].id, 1);
+        assert_eq!(detail.tracks[0].duration, 200);
+    }
+
+    #[tokio::test]
+    async fn mix_page_with_only_videos_has_no_tracks() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/pages/mix"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "rows": [
+                    {"modules": [{"type": "MIX_HEADER", "mix": {"id": "m", "title": "Video Mix"}}]},
+                    {"modules": [{"type": "VIDEO_LIST", "items": [{"id": 4, "title": "Clip"}]}]}
+                ]
+            })))
+            .mount(&server).await;
+        let detail = client(&server).mix_page("m").await.unwrap();
+        assert!(detail.tracks.is_empty());
+        assert_eq!(detail.title, "Video Mix");
     }
 }
