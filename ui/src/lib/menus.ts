@@ -1,4 +1,4 @@
-import type { Playlist, Track } from "./api";
+import type { CollectionFolder, Playlist, Track } from "./api";
 import type { Favorites } from "./favorites.svelte";
 import type { MenuItem } from "./menu.svelte";
 
@@ -84,6 +84,46 @@ export function libraryPlaylistMenuItems(ctx: {
       { id: "rename", label: "Rename", run: () => ctx.rename() },
       { id: "delete", label: "Delete", danger: true, run: () => ctx.remove() },
     );
+  }
+  return items;
+}
+
+export function collectionFolderMenuItems(ctx: {
+  folder: CollectionFolder;
+  open(): void;
+  rename(): void;
+  remove(): void;
+}): MenuItem[] {
+  return [
+    { id: "open", label: "Open", run: () => ctx.open() },
+    { id: "rename", label: "Rename", run: () => ctx.rename() },
+    { id: "remove", label: "Remove", danger: true, run: () => ctx.remove() },
+  ];
+}
+
+export function collectionPlaylistMenuItems(ctx: {
+  playlist: Playlist;
+  open(): void;
+  rename(): void;
+  remove(): void;
+  move(): void;
+}): MenuItem[] {
+  const items: MenuItem[] = [
+    { id: "open", label: "Open", run: () => ctx.open() },
+    { id: "move", label: "Move to folder…", run: () => ctx.move() },
+  ];
+  if (ctx.playlist.owned) {
+    items.push(
+      { id: "rename", label: "Rename", run: () => ctx.rename() },
+      { id: "delete", label: "Delete", danger: true, run: () => ctx.remove() },
+    );
+  } else {
+    items.push({
+      id: "remove",
+      label: "Remove from collection",
+      danger: true,
+      run: () => ctx.remove(),
+    });
   }
   return items;
 }
