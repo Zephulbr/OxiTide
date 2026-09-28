@@ -134,6 +134,13 @@
         aria-label="Repeat"
         title={player.state.repeat === "one" ? "Repeat one" : player.state.repeat === "all" ? "Repeat all" : "Repeat off"}
       ><Icon name={player.state.repeat === "one" ? "repeat-1" : "repeat"} size={16} /></button>
+      <button
+        class:active={nav.queueOpen}
+        onclick={() => nav.toggleQueue()}
+        aria-label="Queue"
+        title="Queue"
+        aria-pressed={nav.queueOpen}
+      ><Icon name="list-music" size={16} /></button>
     </div>
 
     <span class="muted tnum time">{formatDuration(position / 1000)} / {formatDuration(duration / 1000)}</span>
