@@ -129,7 +129,6 @@
       playlistActions.reset();
       collection.reset();
       collectionActions.reset();
-      if (mini.active) void mini.exit();
     });
     return () => {
       unlisten.then((off) => off());
@@ -166,6 +165,12 @@
 
   $effect(() => {
     void mini.init();
+  });
+
+  // The login view needs room: leave mini whenever it shows without a session
+  // (logout, session expiry, and a start_in_mini cold boot all land here).
+  $effect(() => {
+    if (!booting && !loggedIn && mini.active) void mini.exit();
   });
 
   $effect(() => {
@@ -221,7 +226,6 @@
     playlistActions.reset();
     collection.reset();
     collectionActions.reset();
-    if (mini.active) void mini.exit();
     loggedIn = false;
   }
 

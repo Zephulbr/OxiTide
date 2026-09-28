@@ -30,6 +30,7 @@ commands. Spec: `docs/superpowers/specs/2026-09-28-oxitide-2b-mini-player-design
 - [ ] Launch with `start_in_mini` + a saved maximized state: starts mini, exit restores maximized.
 - [ ] Close while mini: relaunch is full-size (full geometry persisted).
 - [ ] Log out while mini: the login view has room (mini exits first).
+- [ ] Cold launch with `start_in_mini` on and no/expired session: the login view gets a full-size window.
 
 ## Modes, motion, color
 
