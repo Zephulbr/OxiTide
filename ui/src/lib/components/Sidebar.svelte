@@ -47,10 +47,9 @@
   const moreItems: {
     route: Route;
     label: string;
-    icon: "disc-3" | "play" | "heart" | "copy";
+    icon: "disc-3" | "heart" | "copy";
   }[] = [
     { route: { name: "mixes" }, label: "Mixes & Radio", icon: "disc-3" },
-    { route: { name: "videos" }, label: "Videos", icon: "play" },
     { route: { name: "profiles" }, label: "Profiles", icon: "heart" },
     { route: { name: "purchases" }, label: "Purchases", icon: "copy" },
   ];

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { collageCovers, coverUrl, videoCoverUrl } from "./artwork";
+import { collageCovers, coverUrl } from "./artwork";
 
 describe("coverUrl", () => {
   it("maps a dashed uuid onto the image CDN path", () => {
@@ -17,18 +17,6 @@ describe("coverUrl", () => {
   /// Review Focus: an empty uuid must not produce a broken-image request.
   it("returns empty for an empty uuid", () => {
     expect(coverUrl("", 320)).toBe("");
-  });
-});
-
-describe("videoCoverUrl", () => {
-  it("builds a 16:9 artwork url from a dashed uuid", () => {
-    expect(videoCoverUrl("d5f0-2346-4068", "640x360")).toBe(
-      "https://resources.tidal.com/images/d5f0/2346/4068/640x360.jpg",
-    );
-  });
-
-  it("returns empty for an empty uuid", () => {
-    expect(videoCoverUrl("", "480x270")).toBe("");
   });
 });
 

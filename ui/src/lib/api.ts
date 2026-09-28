@@ -31,10 +31,6 @@ export interface SearchResults {
 export interface TrackPage { items: Track[]; total: number; offset: number; limit: number }
 export interface SessionInfoDto { country_code: string; user_id: number }
 export interface FavoriteIds { tracks: number[]; albums: number[]; artists: number[] }
-export interface Video {
-  id: number; title: string; duration: number;
-  artists: ArtistRef[]; image?: string | null;
-}
 export interface Mix {
   id: string; title: string; subTitle?: string | null;
   mixType?: string | null; image?: string | null;
@@ -149,7 +145,6 @@ export const api = {
   getFeed: () => invoke<PageSection[]>("get_feed"),
   getFavoriteMixes: () => invoke<Mix[]>("get_favorite_mixes"),
   getMix: (id: string) => invoke<MixDetail>("get_mix", { id }),
-  getFavoriteVideos: () => invoke<Video[]>("get_favorite_videos"),
   getCollectionItems: (folderId = "root", order?: string) =>
     invoke<CollectionEntry[]>("get_collection_items", { folderId, order: order ?? null }),
   createFolder: (name: string, parentId = "root") =>

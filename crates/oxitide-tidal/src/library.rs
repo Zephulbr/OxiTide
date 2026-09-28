@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::client::{TidalClient, DEFAULT_PAGE_SIZE};
 use crate::error::Result;
-use crate::models::{Album, Artist, ItemPage, Mix, Track, Video};
+use crate::models::{Album, Artist, ItemPage, Mix, Track};
 
 /// Favorites endpoints wrap each entry as `{ "created": ..., "item": {...} }`.
 #[derive(Debug, Deserialize)]
@@ -72,14 +72,6 @@ impl TidalClient {
     pub async fn all_favorite_artists(&self) -> Result<Vec<Artist>> {
         let favs: Vec<Favorited<Artist>> = self
             .get_all_pages(&format!("{}/artists", self.user_base()), &[], DEFAULT_PAGE_SIZE)
-            .await?;
-        Ok(favs.into_iter().map(|f| f.item).collect())
-    }
-
-    /// Walk every page of the user's favorite videos.
-    pub async fn all_favorite_videos(&self) -> Result<Vec<Video>> {
-        let favs: Vec<Favorited<Video>> = self
-            .get_all_pages(&format!("{}/videos", self.user_base()), &[], DEFAULT_PAGE_SIZE)
             .await?;
         Ok(favs.into_iter().map(|f| f.item).collect())
     }
@@ -326,22 +318,6 @@ mod tests {
         assert_eq!(ids.tracks, vec![1, 2]);
         assert_eq!(ids.albums, vec![3]);
         assert_eq!(ids.artists, vec![4]);
-    }
-
-    #[tokio::test]
-    async fn all_favorite_videos_unwraps_the_item_envelope() {
-        let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/users/42/favorites/videos"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "items": [{"item": {"id": 3, "title": "Clip", "duration": 120,
-                    "artists": [{"id": 1, "name": "A"}], "imageId": "img-3"}}],
-                "totalNumberOfItems": 1, "limit": 100, "offset": 0
-            })))
-            .mount(&server).await;
-        let videos = client(&server).all_favorite_videos().await.unwrap();
-        assert_eq!(videos.len(), 1);
-        assert_eq!(videos[0].id, 3);
-        assert_eq!(videos[0].image.as_deref(), Some("img-3"));
     }
 
     #[tokio::test]

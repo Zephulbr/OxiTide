@@ -9,7 +9,6 @@ export type Route =
   | { name: "albums" }
   | { name: "tracks" }
   | { name: "mixes" }
-  | { name: "videos" }
   | { name: "profiles" }
   | { name: "purchases" }
   | { name: "album"; id: number }

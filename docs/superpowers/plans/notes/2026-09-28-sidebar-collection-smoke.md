@@ -16,7 +16,7 @@ Requires a real account, `npm --prefix ui run app:dev`, and a browser login.
 
 - [ ] Sidebar order: Home, Explore, Feed, divider, My Collection (expanded), Playlists,
       Albums, Tracks, Show more, then the playlist tree, then Settings/Log out.
-- [ ] Show more reveals Mixes & Radio, Videos, Profiles, Purchases.
+- [ ] Show more reveals Mixes & Radio, Profiles, Purchases.
 - [ ] Every sidebar entry navigates to its page; active states highlight correctly.
 - [ ] Ctrl+F jumps to Explore and focuses the search box; typing shows results; clearing
       restores the explore cards.
@@ -39,7 +39,6 @@ Requires a real account, `npm --prefix ui run app:dev`, and a browser login.
 - [ ] Tracks page matches the old Library favorites table (play, shuffle, refresh,
       unfavorite drops the row).
 - [ ] Albums and Profiles open album/artist pages.
-- [ ] Videos lists saved videos with the unsupported-playback note and no play action.
 
 ## Tree refresh
 

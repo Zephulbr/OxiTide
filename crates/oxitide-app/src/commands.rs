@@ -361,7 +361,7 @@ fn build_player(
 }
 
 use oxitide_tidal::folders::{CollectionEntry, CollectionFolder};
-use oxitide_tidal::models::{Album, Artist, Mix, Playlist, SearchResults, Track, Video};
+use oxitide_tidal::models::{Album, Artist, Mix, Playlist, SearchResults, Track};
 use oxitide_tidal::pages::{MixDetail, PageItem, PageSection};
 
 #[tauri::command]
@@ -390,11 +390,6 @@ pub async fn get_favorite_mixes(state: State<'_, AppState>) -> Result<Vec<Mix>, 
 #[tauri::command]
 pub async fn get_mix(state: State<'_, AppState>, id: String) -> Result<MixDetail, String> {
     require_client(&state)?.mix_page(&id).await.map_err(|e| state.fail_tidal(e))
-}
-
-#[tauri::command]
-pub async fn get_favorite_videos(state: State<'_, AppState>) -> Result<Vec<Video>, String> {
-    require_client(&state)?.all_favorite_videos().await.map_err(|e| state.fail_tidal(e))
 }
 
 #[tauri::command]

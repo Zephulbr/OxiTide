@@ -8,14 +8,6 @@ export function coverUrl(uuid: string, size: CoverSize): string {
   return `https://resources.tidal.com/images/${uuid.replace(/-/g, "/")}/${size}x${size}.jpg`;
 }
 
-export type VideoCoverSize = "160x90" | "480x270" | "640x360";
-
-/// TIDAL video artwork is 16:9 and lives on the same CDN keyed by `imageId`.
-export function videoCoverUrl(uuid: string, size: VideoCoverSize): string {
-  if (!uuid) return "";
-  return `https://resources.tidal.com/images/${uuid.replace(/-/g, "/")}/${size}.jpg`;
-}
-
 /// Pick the tiles for an imageless playlist's collage: album covers in track
 /// order, deduplicated, repeat-filled up to `tiles` entries. One distinct
 /// album stays a single tile; none yields an empty list (caller falls back).

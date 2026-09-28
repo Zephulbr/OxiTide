@@ -176,7 +176,6 @@ fn main() {
             commands::get_feed,
             commands::get_favorite_mixes,
             commands::get_mix,
-            commands::get_favorite_videos,
             commands::get_collection_items,
             commands::create_folder,
             commands::rename_folder,
