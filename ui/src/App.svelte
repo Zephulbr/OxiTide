@@ -12,6 +12,7 @@
   import Artist from "./views/Artist.svelte";
   import Search from "./views/Search.svelte";
   import Explore from "./views/Explore.svelte";
+  import Feed from "./views/Feed.svelte";
   import Library from "./views/Library.svelte";
   import Settings from "./views/Settings.svelte";
   import NowPlaying from "./views/NowPlaying.svelte";
@@ -305,6 +306,7 @@
       {#if nav.nowPlayingOpen}<NowPlaying {player} {nav} {qualityDisplay} />
       {:else if nav.route.name === "home"}<Home {nav} {toasts} />
       {:else if nav.route.name === "explore"}<Explore {nav} {player} {favorites} {playlistActions} {toasts} />
+      {:else if nav.route.name === "feed"}<Feed {nav} {toasts} />
       {:else if nav.route.name === "search"}<Search {nav} {player} {favorites} {playlistActions} />
       {:else if nav.route.name === "library"}<Library {nav} {player} {favorites} {playlistActions} {toasts} />
       {:else if nav.route.name === "album"}<Album id={nav.route.id} {player} {favorites} {playlistActions} />
