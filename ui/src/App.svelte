@@ -302,7 +302,7 @@
     <main class="main">
       {#if error}<p style="color:var(--danger)">{error}</p>{/if}
       {#if nav.nowPlayingOpen}<NowPlaying {player} {nav} {qualityDisplay} />
-      {:else if nav.route.name === "home"}<Home {nav} />
+      {:else if nav.route.name === "home"}<Home {nav} {toasts} />
       {:else if nav.route.name === "search"}<Search {nav} {player} {favorites} {playlistActions} />
       {:else if nav.route.name === "library"}<Library {nav} {player} {favorites} {playlistActions} {toasts} />
       {:else if nav.route.name === "album"}<Album id={nav.route.id} {player} {favorites} {playlistActions} />
