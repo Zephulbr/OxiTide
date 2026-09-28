@@ -18,6 +18,9 @@
   import CollectionTracks from "./views/CollectionTracks.svelte";
   import Profiles from "./views/Profiles.svelte";
   import Playlists from "./views/Playlists.svelte";
+  import Mixes from "./views/Mixes.svelte";
+  import Videos from "./views/Videos.svelte";
+  import Purchases from "./views/Purchases.svelte";
   import Settings from "./views/Settings.svelte";
   import NowPlaying from "./views/NowPlaying.svelte";
   import PlaylistPicker from "./lib/components/PlaylistPicker.svelte";
@@ -320,6 +323,9 @@
       {:else if nav.route.name === "albums"}<CollectionAlbums {nav} />
       {:else if nav.route.name === "tracks"}<CollectionTracks {player} {favorites} {playlistActions} />
       {:else if nav.route.name === "profiles"}<Profiles {nav} />
+      {:else if nav.route.name === "mixes"}<Mixes {toasts} />
+      {:else if nav.route.name === "videos"}<Videos />
+      {:else if nav.route.name === "purchases"}<Purchases {nav} />
       {:else if nav.route.name === "playlists"}<Playlists {nav} {playlistActions} {toasts} {collection} actions={collectionActions} />
       {:else if nav.route.name === "folder"}<Playlists {nav} {playlistActions} {toasts} {collection} actions={collectionActions} folderId={nav.route.id} folderLabel={nav.route.label ?? ""} />
       {:else if nav.route.name === "album"}<Album id={nav.route.id} {player} {favorites} {playlistActions} />
