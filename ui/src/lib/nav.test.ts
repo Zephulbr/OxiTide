@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { HomeItem } from "./api";
+import type { PageItem } from "./api";
 import { createNav, routeForHomeItem } from "./nav.svelte";
 
 describe("nav history", () => {
@@ -87,7 +87,7 @@ describe("nav history", () => {
   });
 });
 
-function homeItem(item_type: string, id: string): HomeItem {
+function homeItem(item_type: string, id: string): PageItem {
   return { id, title: "Item", item_type };
 }
 

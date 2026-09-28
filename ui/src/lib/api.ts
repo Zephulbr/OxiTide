@@ -21,8 +21,8 @@ export interface Playlist {
   squareImage?: string | null;
   owned: boolean;
 }
-export interface HomeItem { id: string; title: string; subtitle?: string | null; item_type: string; artwork?: string | null }
-export interface HomeSection { title: string; items: HomeItem[] }
+export interface PageItem { id: string; title: string; subtitle?: string | null; item_type: string; artwork?: string | null }
+export interface PageSection { title: string; items: PageItem[] }
 export interface SearchGroup<T> { items: T[] }
 export interface SearchResults {
   tracks: SearchGroup<Track>; albums: SearchGroup<Album>;
@@ -31,6 +31,19 @@ export interface SearchResults {
 export interface TrackPage { items: Track[]; total: number; offset: number; limit: number }
 export interface SessionInfoDto { country_code: string; user_id: number }
 export interface FavoriteIds { tracks: number[]; albums: number[]; artists: number[] }
+export interface Video {
+  id: number; title: string; duration: number;
+  artists: ArtistRef[]; image?: string | null;
+}
+export interface Mix {
+  id: string; title: string; subTitle?: string | null;
+  mixType?: string | null; image?: string | null;
+}
+export interface CollectionFolder { id: string; name: string; totalNumberOfItems: number }
+export type CollectionEntry =
+  | ({ kind: "folder" } & CollectionFolder)
+  | ({ kind: "playlist" } & Playlist);
+export interface MixDetail { id: string; title: string; tracks: Track[] }
 export interface CoverPalette {
   primary: string;
   on_primary: string;
@@ -131,7 +144,22 @@ export const api = {
   authStatus: () => invoke<boolean>("auth_status"),
   authRestore: () => invoke<SessionInfoDto | null>("auth_restore"),
   authLogout: () => invoke<void>("auth_logout"),
-  getHome: () => invoke<HomeSection[]>("get_home"),
+  getHome: () => invoke<PageSection[]>("get_home"),
+  getExplore: () => invoke<PageSection[]>("get_explore"),
+  getFeed: () => invoke<PageSection[]>("get_feed"),
+  getFavoriteMixes: () => invoke<Mix[]>("get_favorite_mixes"),
+  getMix: (id: string) => invoke<MixDetail>("get_mix", { id }),
+  getFavoriteVideos: () => invoke<Video[]>("get_favorite_videos"),
+  getCollectionItems: (folderId = "root") =>
+    invoke<CollectionEntry[]>("get_collection_items", { folderId }),
+  createFolder: (name: string, parentId = "root") =>
+    invoke<CollectionFolder>("create_folder", { name, parentId }),
+  renameFolder: (id: string, name: string) => invoke<void>("rename_folder", { id, name }),
+  removeCollectionEntry: (kind: "folder" | "playlist", id: string) =>
+    invoke<void>("remove_collection_entry", { kind, id }),
+  movePlaylistsToFolder: (ids: string[], folderId: string) =>
+    invoke<void>("move_playlists_to_folder", { ids, folderId }),
+  getPurchases: () => invoke<PageItem[]>("get_purchases"),
   getAlbum: (id: number) => invoke<Album>("get_album", { id }),
   getAlbumTracks: (id: number) => invoke<Track[]>("get_album_tracks", { id }),
   getPlaylist: (id: string) => invoke<Playlist>("get_playlist", { id }),

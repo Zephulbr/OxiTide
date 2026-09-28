@@ -1,4 +1,4 @@
-import type { HomeItem } from "./api";
+import type { PageItem } from "./api";
 
 export type Route =
   | { name: "home" }
@@ -33,7 +33,7 @@ const NUMERIC_ID = /^\d+$/;
 
 /// Map a home-feed item to a route only when the type and id shape agree.
 /// Tracks, mixes, and unknown types have no route and stay inert.
-export function routeForHomeItem(item: HomeItem): Route | null {
+export function routeForHomeItem(item: PageItem): Route | null {
   if (item.id.length === 0) return null;
   const type = item.item_type.toUpperCase();
   if ((type.includes("PLAYLIST") || type.includes("EDITORIAL")) && !NUMERIC_ID.test(item.id)) {

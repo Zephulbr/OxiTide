@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api, type HomeSection } from "../lib/api";
+  import { api, type PageSection } from "../lib/api";
   import Cover from "../lib/components/Cover.svelte";
   import EmptyState from "../lib/components/EmptyState.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
@@ -7,7 +7,7 @@
   import { routeForHomeItem } from "../lib/nav.svelte";
   import type { Nav } from "../lib/nav.svelte";
   let { nav }: { nav: Nav } = $props();
-  let sections = $state<HomeSection[]>([]);
+  let sections = $state<PageSection[]>([]);
   let loading = $state(true);
   let error = $state("");
 
