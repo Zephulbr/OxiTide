@@ -194,6 +194,33 @@ fn sections_from_page(raw: RawPage) -> Vec<PageSection> {
     sections
 }
 
+/// Best-effort mapping of a foreign item shape into a `PageItem`; accepts
+/// `{item: …}` wrappers (favorites/purchases) and bare objects, ids or uuids.
+pub fn page_item_from_value(value: &serde_json::Value) -> Option<PageItem> {
+    let item = value.get("item").unwrap_or(value);
+    let id = item
+        .get("id")
+        .map(value_to_id)
+        .or_else(|| item.get("uuid").and_then(|u| u.as_str()).map(str::to_string))
+        .filter(|id| !id.is_empty())?;
+    let title = item
+        .get("title")
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| item.get("name").and_then(serde_json::Value::as_str))
+        .unwrap_or_default()
+        .to_string();
+    let item_type = item
+        .get("type")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("unknown")
+        .to_string();
+    let artwork = ["cover", "squareImage", "image", "picture"]
+        .iter()
+        .find_map(|key| item.get(*key).and_then(serde_json::Value::as_str))
+        .map(str::to_string);
+    Some(PageItem { id, title, subtitle: None, item_type, artwork })
+}
+
 /// TIDAL uses a numeric `id` for tracks/albums and a `uuid` for playlists.
 fn item_id(item: &RawItem) -> String {
     let from_id = value_to_id(&item.id);

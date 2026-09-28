@@ -8,6 +8,7 @@ pub mod library;
 pub mod models;
 pub mod pkce;
 pub mod playlists;
+pub mod purchases;
 pub mod search;
 pub mod stream;
 pub mod token_store;
