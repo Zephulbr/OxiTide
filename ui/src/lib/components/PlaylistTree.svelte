@@ -25,7 +25,7 @@
   } = $props();
 
   function openFolder(id: string, label: string) {
-    nav.goto({ name: "folder", id });
+    nav.goto({ name: "folder", id, label });
   }
 
   function openPlaylist(id: string) {

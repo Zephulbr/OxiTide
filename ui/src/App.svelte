@@ -10,10 +10,8 @@
   import Album from "./views/Album.svelte";
   import Playlist from "./views/Playlist.svelte";
   import Artist from "./views/Artist.svelte";
-  import Search from "./views/Search.svelte";
   import Explore from "./views/Explore.svelte";
   import Feed from "./views/Feed.svelte";
-  import Library from "./views/Library.svelte";
   import CollectionAlbums from "./views/CollectionAlbums.svelte";
   import CollectionTracks from "./views/CollectionTracks.svelte";
   import Profiles from "./views/Profiles.svelte";
@@ -24,6 +22,7 @@
   import Settings from "./views/Settings.svelte";
   import NowPlaying from "./views/NowPlaying.svelte";
   import PlaylistPicker from "./lib/components/PlaylistPicker.svelte";
+  import CollectionDialogs from "./lib/components/CollectionDialogs.svelte";
   import ToastHost from "./lib/components/ToastHost.svelte";
   import ContextMenu from "./lib/components/ContextMenu.svelte";
   import { createNav } from "./lib/nav.svelte";
@@ -126,6 +125,8 @@
       loggedIn = false;
       favorites.reset();
       playlistActions.reset();
+      collection.reset();
+      collectionActions.reset();
     });
     return () => {
       unlisten.then((off) => off());
@@ -141,6 +142,10 @@
 
   $effect(() => {
     if (loggedIn) untrack(() => favorites.hydrate());
+  });
+
+  $effect(() => {
+    if (loggedIn) untrack(() => collection.ensureRoot());
   });
 
   $effect(() => {
@@ -207,6 +212,8 @@
     clearPlaylistCovers();
     favorites.reset();
     playlistActions.reset();
+    collection.reset();
+    collectionActions.reset();
     loggedIn = false;
   }
 
@@ -311,15 +318,21 @@
 {:else}
   <Backdrop {player} />
   <div class="app" data-sidebar={sidebarRail ? "rail" : "full"}>
-    <Sidebar {nav} rail={sidebarRail} onToggleRail={() => { railTouched = true; sidebarRail = !sidebarRail; }} onLogout={onLogout} />
+    <Sidebar
+      {nav}
+      rail={sidebarRail}
+      onToggleRail={() => { railTouched = true; sidebarRail = !sidebarRail; }}
+      onLogout={onLogout}
+      {collection}
+      {playlistActions}
+      actions={collectionActions}
+    />
     <main class="main">
       {#if error}<p style="color:var(--danger)">{error}</p>{/if}
       {#if nav.nowPlayingOpen}<NowPlaying {player} {nav} {qualityDisplay} />
       {:else if nav.route.name === "home"}<Home {nav} {toasts} />
       {:else if nav.route.name === "explore"}<Explore {nav} {player} {favorites} {playlistActions} {toasts} />
       {:else if nav.route.name === "feed"}<Feed {nav} {toasts} />
-      {:else if nav.route.name === "search"}<Search {nav} {player} {favorites} {playlistActions} />
-      {:else if nav.route.name === "library"}<Library {nav} {player} {favorites} {playlistActions} {toasts} />
       {:else if nav.route.name === "albums"}<CollectionAlbums {nav} />
       {:else if nav.route.name === "tracks"}<CollectionTracks {player} {favorites} {playlistActions} />
       {:else if nav.route.name === "profiles"}<Profiles {nav} />
@@ -346,6 +359,7 @@
     {/if}
     <PlayerBar {player} {qualityDisplay} {favorites} {nav} />
     <PlaylistPicker actions={playlistActions} onnavigate={(id) => nav.goto({ name: "playlist", id })} />
+    <CollectionDialogs actions={collectionActions} />
   </div>
   <div class="grain" aria-hidden="true"></div>
 {/if}

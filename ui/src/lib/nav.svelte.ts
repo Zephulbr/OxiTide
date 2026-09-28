@@ -4,9 +4,6 @@ export type Route =
   | { name: "home" }
   | { name: "explore" }
   | { name: "feed" }
-  // `search` and `library` are temporary; the final sidebar task removes them.
-  | { name: "search" }
-  | { name: "library" }
   | { name: "playlists" }
   | { name: "folder"; id: string; label?: string }
   | { name: "albums" }
