@@ -92,6 +92,26 @@ impl TidalClient {
         Ok(mixes_from_json(&raw))
     }
 
+    /// Walk every page of the user's favorite mixes. The v2 endpoint rejects
+    /// limits above 50, so pages are capped there and the walk stops after 20
+    /// pages as a broken-total guard.
+    pub async fn all_favorite_mixes(&self) -> Result<Vec<Mix>> {
+        const PAGE_SIZE: u32 = 50;
+        const MAX_PAGES: usize = 20;
+        let mut all = Vec::new();
+        let mut offset: u32 = 0;
+        for _ in 0..MAX_PAGES {
+            let (mixes, total) = self.favorite_mixes(PAGE_SIZE, offset).await?;
+            let received = mixes.len() as u32;
+            all.extend(mixes);
+            offset = offset.saturating_add(received);
+            if received < PAGE_SIZE || (total > 0 && offset >= total) {
+                break;
+            }
+        }
+        Ok(all)
+    }
+
     async fn set_favorite(&self, kind: &str, id_key: &str, id: u64, favorite: bool) -> Result<()> {
         if favorite {
             self.post_form(&format!("{}/{kind}", self.user_base()), &[(id_key, id.to_string())])
@@ -356,5 +376,56 @@ mod tests {
         assert_eq!(mixes.len(), 1);
         assert_eq!(mixes[0].id, "m3");
         assert_eq!(total, 1);
+    }
+
+    #[tokio::test]
+    async fn all_favorite_mixes_walks_fifty_item_pages() {
+        let server = MockServer::start().await;
+        let responder = |req: &wiremock::Request| {
+            let pairs: Vec<(String, String)> = req
+                .url
+                .query_pairs()
+                .map(|(key, value)| (key.into_owned(), value.into_owned()))
+                .collect();
+            let limit = pairs
+                .iter()
+                .find(|(key, _)| key == "limit")
+                .map(|(_, value)| value.clone())
+                .unwrap_or_default();
+            assert_eq!(limit, "50", "the v2 endpoint rejects limits above 50");
+            let offset: u32 = pairs
+                .iter()
+                .find(|(key, _)| key == "offset")
+                .map(|(_, value)| value.parse().unwrap_or(0))
+                .unwrap_or(0);
+            let count = match offset {
+                0 => 50,
+                50 => 2,
+                _ => 0,
+            };
+            let items: Vec<serde_json::Value> = (0..count)
+                .map(|i| {
+                    serde_json::json!({
+                        "id": format!("m-{}", offset + i),
+                        "title": "Mix"
+                    })
+                })
+                .collect();
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": items,
+                "totalNumberOfItems": 52
+            }))
+        };
+        Mock::given(method("GET"))
+            .and(path("/v2/favorites/mixes"))
+            .respond_with(responder)
+            .expect(2)
+            .mount(&server)
+            .await;
+
+        let mixes = client(&server).all_favorite_mixes().await.unwrap();
+        assert_eq!(mixes.len(), 52);
+        assert_eq!(mixes[0].id, "m-0");
+        assert_eq!(mixes[51].id, "m-51");
     }
 }

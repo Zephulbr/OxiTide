@@ -381,11 +381,10 @@ pub async fn get_feed(state: State<'_, AppState>) -> Result<Vec<PageSection>, St
 
 #[tauri::command]
 pub async fn get_favorite_mixes(state: State<'_, AppState>) -> Result<Vec<Mix>, String> {
-    let (mixes, _total) = require_client(&state)?
-        .favorite_mixes(100, 0)
+    require_client(&state)?
+        .all_favorite_mixes()
         .await
-        .map_err(|e| state.fail_tidal(e))?;
-    Ok(mixes)
+        .map_err(|e| state.fail_tidal(e))
 }
 
 #[tauri::command]
