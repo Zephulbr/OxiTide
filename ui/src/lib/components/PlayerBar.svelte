@@ -5,6 +5,7 @@
   import type { Favorites } from "../favorites.svelte";
   import type { Player } from "../player.svelte";
   import type { Nav } from "../nav.svelte";
+  import type { Mini } from "../mini.svelte";
   import Cover from "./Cover.svelte";
   import Icon from "./Icon.svelte";
   import SeekBar from "./SeekBar.svelte";
@@ -14,7 +15,14 @@
     qualityDisplay,
     favorites,
     nav,
-  }: { player: Player; qualityDisplay: QualityDisplay; favorites: Favorites; nav: Nav } = $props();
+    mini,
+  }: {
+    player: Player;
+    qualityDisplay: QualityDisplay;
+    favorites: Favorites;
+    nav: Nav;
+    mini: Mini;
+  } = $props();
 
   const position = $derived(player.pendingSeek ?? player.state.position_ms);
   const duration = $derived(player.state.duration_ms);
@@ -108,6 +116,14 @@
         <span class="badge" class:max={maxQuality} title={player.state.stream ? "Actual stream quality" : "Preferred quality"}>{quality}</span>
         {#if player.state.bit_perfect}<span class="badge bp">Bit-perfect</span>{/if}
       </div>
+
+      <button
+        class="ibtn"
+        onclick={() => void mini.enter()}
+        aria-label="Mini player"
+        title="Mini player"
+      ><Icon name="minimize-2" size={18} /></button>
+
       {#if player.state.bit_perfect_notice}
         <span style="color:var(--warning)">{player.state.bit_perfect_notice}</span>
       {/if}

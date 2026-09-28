@@ -20,6 +20,7 @@
   import Purchases from "./views/Purchases.svelte";
   import Settings from "./views/Settings.svelte";
   import NowPlaying from "./views/NowPlaying.svelte";
+  import Mini from "./views/Mini.svelte";
   import PlaylistPicker from "./lib/components/PlaylistPicker.svelte";
   import CollectionDialogs from "./lib/components/CollectionDialogs.svelte";
   import ToastHost from "./lib/components/ToastHost.svelte";
@@ -28,8 +29,9 @@
   import { appearance, clampQueueWidth } from "./lib/appearance.svelte";
   import { errorMessage } from "./lib/errors";
   import { menu } from "./lib/menu.svelte";
-  import { isShortcutHandled, matchShortcut, type ShortcutAction } from "./lib/shortcuts";
+  import { escapeTarget, isShortcutHandled, matchShortcut, type ShortcutAction } from "./lib/shortcuts";
   import { createToasts } from "./lib/toasts.svelte";
+  import { createMini } from "./lib/mini.svelte";
   import { createPlayer } from "./lib/player.svelte";
   import { createAuthGate } from "./lib/authGate";
   import { createDynamicColor } from "./lib/dynamicColor.svelte";
@@ -53,6 +55,7 @@
   const player = createPlayer();
   createDynamicColor(player);
   const toasts = createToasts();
+  const mini = createMini(toasts);
   const favorites = createFavorites(toasts);
   const playlistActions = createPlaylistActions(toasts);
   const collection = createCollectionTree(toasts);
@@ -126,6 +129,7 @@
       playlistActions.reset();
       collection.reset();
       collectionActions.reset();
+      if (mini.active) void mini.exit();
     });
     return () => {
       unlisten.then((off) => off());
@@ -158,6 +162,10 @@
 
   $effect(() => {
     void appearance.init();
+  });
+
+  $effect(() => {
+    void mini.init();
   });
 
   $effect(() => {
@@ -213,6 +221,7 @@
     playlistActions.reset();
     collection.reset();
     collectionActions.reset();
+    if (mini.active) void mini.exit();
     loggedIn = false;
   }
 
@@ -224,6 +233,16 @@
     if (nav.route.name !== "explore") nav.goto({ name: "explore" });
     await tick();
     document.getElementById("search-input")?.focus();
+  }
+
+  function currentEscapeTarget() {
+    return escapeTarget({
+      menuOpen: menu.open !== null,
+      miniActive: mini.active,
+      miniQueueOpen: mini.queueOpen,
+      nowPlayingOpen: nav.nowPlayingOpen,
+      queueOpen: nav.queueOpen,
+    });
   }
 
   function runShortcut(action: ShortcutAction) {
@@ -263,9 +282,23 @@
         nav.forward();
         break;
       case "escape":
-        if (menu.open) menu.close();
-        else if (nav.nowPlayingOpen) nav.closeNowPlaying();
-        else if (nav.queueOpen) nav.toggleQueue();
+        switch (currentEscapeTarget()) {
+          case "menu":
+            menu.close();
+            break;
+          case "mini-queue":
+            mini.toggleQueue();
+            break;
+          case "exit-mini":
+            void mini.exit();
+            break;
+          case "now-playing":
+            nav.closeNowPlaying();
+            break;
+          case "queue":
+            nav.toggleQueue();
+            break;
+        }
         break;
     }
   }
@@ -280,7 +313,7 @@
       if (event.key === " " && event.repeat && player.state.current) event.preventDefault();
       return;
     }
-    if (action === "escape" && !menu.open && !nav.nowPlayingOpen && !nav.queueOpen) return;
+    if (action === "escape" && currentEscapeTarget() === null) return;
     if (
       !isShortcutHandled(action, {
         hasCurrent: player.state.current !== null,
@@ -316,6 +349,9 @@
   />
 {:else}
   <Backdrop {player} />
+  {#if mini.active}
+    <Mini {player} {favorites} {mini} />
+  {:else}
   <div class="app" data-sidebar={sidebarRail ? "rail" : "full"}>
     <Sidebar
       {nav}
@@ -355,10 +391,11 @@
         </aside>
       {/if}
     {/if}
-    <PlayerBar {player} {qualityDisplay} {favorites} {nav} />
+    <PlayerBar {player} {qualityDisplay} {favorites} {nav} {mini} />
     <PlaylistPicker actions={playlistActions} onnavigate={(id) => nav.goto({ name: "playlist", id })} />
     <CollectionDialogs actions={collectionActions} />
   </div>
+  {/if}
   <div class="grain" aria-hidden="true"></div>
 {/if}
 
