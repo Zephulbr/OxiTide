@@ -70,8 +70,10 @@
 <div class="player">
   {#if player.state.current}
     {@const current = player.state.current}
+    {@const fav = favorites.hasTrack(current.track_id)}
     <div
       class="seek"
+      class:dragging
       role="slider"
       tabindex="0"
       aria-label="Playback position"
@@ -86,7 +88,7 @@
         {@const d = wavePath(current.track_id, 800, 14)}
         <div class="seek-wave">
           <svg viewBox="0 0 800 14" preserveAspectRatio="none" aria-hidden="true">
-            <path d={d} fill="none" stroke="var(--line)" stroke-width="1.5" vector-effect="non-scaling-stroke" />
+            <path class="wave-base" d={d} fill="none" stroke="var(--line)" stroke-width="1.5" vector-effect="non-scaling-stroke" />
             <clipPath id="seek-played"><rect x="0" y="0" width="{pct}%" height="100%" /></clipPath>
             <path d={d} fill="none" stroke="var(--accent)" stroke-width="1.5" vector-effect="non-scaling-stroke" clip-path="url(#seek-played)" />
           </svg>
@@ -99,89 +101,123 @@
       {/if}
     </div>
 
-    <button class="thumb" onclick={() => nav.toggleNowPlaying()} aria-label="Open now playing" title="Open now playing">
-      <Cover uuid={current.cover} size={80} radius={6} alt={`${current.title} artwork`} />
-    </button>
+    <div class="zone left">
+      <button class="thumb" onclick={() => nav.toggleNowPlaying()} aria-label="Open now playing" title="Open now playing">
+        <Cover uuid={current.cover} size={80} radius={6} alt={`${current.title} artwork`} />
+        <span class="thumb-hint" aria-hidden="true"><Icon name="chevron-up" size={16} /></span>
+      </button>
 
-    <div class="now">
-      <strong class="title">{current.title}</strong>
-      <span class="muted artist">{current.artist}</span>
+      <div class="now">
+        <strong class="title">{current.title}</strong>
+        <span class="muted artist">{current.artist}</span>
+      </div>
+
+      <button
+        class="ibtn icon-heart"
+        class:on={fav}
+        onclick={() => favorites.toggleTrack(current.track_id)}
+        aria-label={fav ? "Unfavorite" : "Favorite"}
+        title={fav ? "Unfavorite" : "Favorite"}
+      >{#key fav}<span class="heart-ico" class:pop={fav}><Icon name="heart" size={18} /></span>{/key}</button>
+
+      <span class="muted tnum time">{formatDuration(position / 1000)} / {formatDuration(duration / 1000)}</span>
+      {#if player.state.buffering}<span class="muted buffering">buffering…</span>{/if}
     </div>
 
-    <button
-      class="icon-heart"
-      class:on={favorites.hasTrack(current.track_id)}
-      onclick={() => favorites.toggleTrack(current.track_id)}
-      aria-label={favorites.hasTrack(current.track_id) ? "Unfavorite" : "Favorite"}
-      title={favorites.hasTrack(current.track_id) ? "Unfavorite" : "Favorite"}
-    ><Icon name="heart" size={16} /></button>
-
-    <div class="transport">
-      <button onclick={() => player.prev()} aria-label="Previous"><Icon name="skip-back" /></button>
-      <button class="play" onclick={() => player.playPause()} aria-label="Play/Pause">
-        <Icon name={player.state.playing ? "pause" : "play"} size={20} />
-      </button>
-      <button onclick={() => player.next()} aria-label="Next"><Icon name="skip-forward" /></button>
+    <div class="zone center">
       <button
+        class="ibtn"
         class:active={player.state.shuffle}
         onclick={() => player.setShuffle(!player.state.shuffle)}
         aria-label="Shuffle"
         title="Shuffle the rest of the queue"
-      ><Icon name="shuffle" size={16} /></button>
+      ><Icon name="shuffle" size={18} /></button>
+      <button class="ibtn" onclick={() => player.prev()} aria-label="Previous"><Icon name="skip-back" size={20} /></button>
+      <button class="play" onclick={() => player.playPause()} aria-label="Play/Pause">
+        <span class="play-ico" class:show={!player.state.playing}><Icon name="play" size={22} /></span>
+        <span class="play-ico" class:show={player.state.playing}><Icon name="pause" size={22} /></span>
+      </button>
+      <button class="ibtn" onclick={() => player.next()} aria-label="Next"><Icon name="skip-forward" size={20} /></button>
       <button
+        class="ibtn"
         class:active={player.state.repeat !== "off"}
         onclick={() => player.setRepeat(nextRepeat(player.state.repeat))}
         aria-label="Repeat"
         title={player.state.repeat === "one" ? "Repeat one" : player.state.repeat === "all" ? "Repeat all" : "Repeat off"}
-      ><Icon name={player.state.repeat === "one" ? "repeat-1" : "repeat"} size={16} /></button>
+      ><Icon name={player.state.repeat === "one" ? "repeat-1" : "repeat"} size={18} /></button>
+    </div>
+
+    <div class="zone right">
       <button
+        class="ibtn"
         class:active={nav.queueOpen}
         onclick={() => nav.toggleQueue()}
         aria-label="Queue"
         title="Queue"
         aria-pressed={nav.queueOpen}
-      ><Icon name="list-music" size={16} /></button>
+      ><Icon name="list-music" size={18} /></button>
+
+      <label class="volume">
+        <Icon name="volume-2" size={18} />
+        <input
+          type="range" min="0" max="1" step="0.01" value={player.state.volume}
+          oninput={(e) => player.setVolume(Number((e.currentTarget as HTMLInputElement).value))}
+          onchange={(e) => player.setVolume(Number((e.currentTarget as HTMLInputElement).value), true)}
+          aria-label="Volume"
+        />
+      </label>
+
+      <div class="badges">
+        <span class="badge" class:max={maxQuality} title={player.state.stream ? "Actual stream quality" : "Preferred quality"}>{quality}</span>
+        {#if player.state.bit_perfect}<span class="badge bp">Bit-perfect</span>{/if}
+      </div>
+      {#if player.state.bit_perfect_notice}
+        <span style="color:var(--warning)">{player.state.bit_perfect_notice}</span>
+      {/if}
     </div>
-
-    <span class="muted tnum time">{formatDuration(position / 1000)} / {formatDuration(duration / 1000)}</span>
-
-    <div class="badges">
-      <span class="badge" class:max={maxQuality} title={player.state.stream ? "Actual stream quality" : "Preferred quality"}>{quality}</span>
-      {#if player.state.bit_perfect}<span class="badge">Bit-perfect</span>{/if}
-    </div>
-
-    <label class="volume">
-      <Icon name="volume-2" size={16} />
-      <input
-        type="range" min="0" max="1" step="0.01" value={player.state.volume}
-        oninput={(e) => player.setVolume(Number((e.currentTarget as HTMLInputElement).value))}
-        onchange={(e) => player.setVolume(Number((e.currentTarget as HTMLInputElement).value), true)}
-        aria-label="Volume"
-      />
-    </label>
-
-    {#if player.state.buffering}<span class="muted">buffering…</span>{/if}
-    {#if player.state.bit_perfect_notice}
-      <span style="color:var(--warning)">{player.state.bit_perfect_notice}</span>
-    {/if}
   {:else}
     <span class="muted">Nothing playing</span>
   {/if}
   {#if player.state.error}
-    <span style="color:var(--danger)">{player.state.error}</span>
-    <button onclick={() => player.retry()} aria-label="Retry playback">Retry</button>
+    <div class="player-error">
+      <span style="color:var(--danger)">{player.state.error}</span>
+      <button onclick={() => player.retry()} aria-label="Retry playback">Retry</button>
+    </div>
   {/if}
 </div>
 
 <style>
+  /* Three zones: track info left, transport dead-center, queue/volume/quality
+     right. The 1fr/auto/1fr grid keeps the middle centered no matter how wide
+     the sides get. */
   .player {
     position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+    padding: 0 16px;
+    transition: border-top-color var(--dur-micro);
+  }
+  /* The bar's top border reads as a separator through the seek; fade it out
+     while the seek is interactive so only the progress shows. */
+  .player:has(.seek:hover),
+  .player:has(.seek:focus-visible),
+  .player:has(.seek.dragging) {
+    border-top-color: transparent;
+  }
+  .zone {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 0 14px;
+    min-width: 0;
   }
-  /* Hairline seek across the top edge: thin at rest, grows + thumb on hover. */
+  .zone.left { justify-self: start; }
+  .zone.center { justify-self: center; gap: 6px; }
+  .zone.right { justify-self: end; }
+
+  /* Seek across the top edge: rests at the old hover thickness, grows a touch
+     more (+ thumb for the line variant) on hover/focus/drag. */
   .seek {
     position: absolute;
     left: 0;
@@ -195,7 +231,7 @@
   .seek-line {
     position: relative;
     width: 100%;
-    height: 2px;
+    height: 4px;
     margin-top: 0;
     background: var(--line);
     transition: height var(--dur-micro) var(--ease-in);
@@ -216,43 +252,71 @@
     transition: transform var(--dur-micro) var(--ease-in);
   }
   .seek:hover .seek-line,
-  .seek:focus-visible .seek-line {
-    height: 4px;
+  .seek:focus-visible .seek-line,
+  .seek.dragging .seek-line {
+    height: 6px;
   }
   .seek:hover .seek-thumb,
-  .seek:focus-visible .seek-thumb {
+  .seek:focus-visible .seek-thumb,
+  .seek.dragging .seek-thumb {
     transform: translate(-50%, -50%) scale(1);
   }
-  /* Stylized wave (Atmosphere): squashed + faint at rest, grows on hover. */
+  /* Stylized wave (Atmosphere): full amplitude + opacity at rest; interactive
+     grows it a touch and brightens the unplayed portion. */
   .seek-wave {
     width: 100%;
     height: 10px;
-    opacity: 0.35;
-    transform: scaleY(0.4);
     transform-origin: top;
-    transition:
-      opacity var(--dur-micro) var(--ease-in),
-      transform var(--dur-micro) var(--ease-in);
+    transition: transform var(--dur-micro) var(--ease-in);
   }
   .seek-wave svg {
     display: block;
     width: 100%;
     height: 100%;
   }
+  .seek-wave .wave-base {
+    transition: stroke var(--dur-micro);
+  }
   .seek:hover .seek-wave,
-  .seek:focus-visible .seek-wave {
-    opacity: 1;
-    transform: scaleY(1);
+  .seek:focus-visible .seek-wave,
+  .seek.dragging .seek-wave {
+    transform: scaleY(1.3);
+  }
+  .seek:hover .wave-base,
+  .seek:focus-visible .wave-base,
+  .seek.dragging .wave-base {
+    stroke: var(--text-muted);
   }
 
   .thumb {
+    position: relative;
     flex: 0 0 auto;
-    width: 48px;
-    height: 48px;
+    width: 52px;
+    height: 52px;
     padding: 0;
     border-radius: 6px;
     overflow: hidden;
+    transition: transform var(--dur-micro) var(--ease-in);
   }
+  .thumb:hover {
+    transform: scale(1.04);
+  }
+  /* Expand hint: the cover opens Now Playing, so say so on hover. */
+  .thumb-hint {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: rgba(0, 0, 0, 0.45);
+    color: var(--text);
+    opacity: 0;
+    transition: opacity var(--dur-micro);
+  }
+  .thumb:hover .thumb-hint,
+  .thumb:focus-visible .thumb-hint {
+    opacity: 1;
+  }
+
   .now {
     display: flex;
     flex-direction: column;
@@ -260,12 +324,13 @@
     max-width: 260px;
   }
   .title {
+    font-size: 15px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .artist {
-    font-size: 11.5px;
+    font-size: 12px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -274,35 +339,112 @@
     display: inline-grid;
     place-items: center;
   }
+
+  /* Icon buttons: round hit area, hover halo + lift, deeper press than the
+     global 0.98 for tactility. */
+  .ibtn {
+    position: relative;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    transition:
+      color var(--dur-micro),
+      background-color var(--dur-micro),
+      transform var(--dur-micro) var(--ease-in);
+  }
+  .ibtn:hover {
+    background: var(--surface-3);
+    transform: translateY(-1px);
+  }
+  .player .ibtn:active {
+    transform: scale(0.92);
+  }
+  /* On/off affordance for the toggles: accent color + a dot that scales in. */
+  .ibtn::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--accent);
+    transform: translateX(-50%) scale(0);
+    transition: transform var(--dur-micro) var(--ease-in);
+  }
+  .ibtn.active {
+    color: var(--accent);
+  }
+  .ibtn.active::after {
+    transform: translateX(-50%) scale(1);
+  }
+
   .icon-heart.on {
     color: var(--accent);
   }
   .icon-heart.on :global(svg) {
     fill: currentColor;
   }
-  .transport {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+  /* Favoriting pops the heart; the keyed remount replays the animation. */
+  .heart-ico {
+    display: inline-grid;
+    place-items: center;
   }
+  .heart-ico.pop {
+    animation: heart-pop var(--dur-state) var(--ease-in);
+  }
+  @keyframes heart-pop {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.35); }
+    100% { transform: scale(1); }
+  }
+
   .play {
-    width: 40px;
-    height: 40px;
+    position: relative;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
     background: var(--accent);
     color: var(--on-accent);
+    transition:
+      transform var(--dur-micro) var(--ease-in),
+      box-shadow var(--dur-state) var(--ease-in);
   }
-  .transport .active {
-    color: var(--accent);
+  .play:hover {
+    transform: scale(1.06);
+    box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 45%, transparent);
   }
+  .player .play:active {
+    transform: scale(0.94);
+  }
+  /* Play/pause swap: both icons stacked, the visible one scales + fades in. */
+  .play-ico {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    opacity: 0;
+    transform: scale(0.6);
+    transition:
+      opacity var(--dur-state) var(--ease-in),
+      transform var(--dur-state) var(--ease-in);
+  }
+  .play-ico.show {
+    opacity: 1;
+    transform: scale(1);
+  }
+
   .time {
-    font-size: 11.5px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .buffering {
+    font-size: 12px;
     white-space: nowrap;
   }
   .badges {
     display: flex;
     gap: 6px;
-    margin-left: auto;
   }
   .badge {
     font-size: 10px;
@@ -319,14 +461,36 @@
     border-color: var(--dyn-tertiary);
     color: var(--dyn-tertiary);
   }
+  @media (max-width: 900px) {
+    .badge.bp { display: none; }
+  }
   .volume {
     display: flex;
     align-items: center;
     gap: 6px;
     color: var(--text-muted);
+    transition: color var(--dur-micro);
+  }
+  .volume:hover {
+    color: var(--text);
   }
   .volume input[type="range"] {
-    width: 90px;
+    width: 80px;
     accent-color: var(--accent);
+  }
+
+  /* Transient errors float over the bar instead of reflowing the zones. */
+  .player-error {
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 10px;
+    background: var(--surface-3);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
   }
 </style>

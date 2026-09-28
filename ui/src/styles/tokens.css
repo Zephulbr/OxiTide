@@ -45,14 +45,14 @@
   --font-ui: "Manrope", system-ui, sans-serif;
 
   /* Density (comfortable default; spec §7.4) */
-  --row-height: 38px;
+  --row-height: 46px;
   --thumb-size: 30px;
   --font-body-size: 14px;
 
   /* Layout (spec §7.1) */
-  --sidebar-width: 232px;
+  --sidebar-width: 248px;
   --queue-width: 320px;
-  --player-height: 72px;
+  --player-height: 80px;
 
   /* Feature flags (spec §4.3) — all off until Plan 11 lights them
      per mode. Components read the JS mirrors in appearance.svelte.ts;
@@ -80,7 +80,7 @@
 }
 
 [data-density="compact"] {
-  --row-height: 28px;
+  --row-height: 38px;
   --thumb-size: 22px;
   --font-body-size: 13px;
 }

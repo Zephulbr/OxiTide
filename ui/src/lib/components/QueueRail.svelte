@@ -5,6 +5,8 @@
   import Icon from "./Icon.svelte";
   import Cover from "./Cover.svelte";
   import { appearance } from "../appearance.svelte";
+  import { playSource } from "../playSource.svelte";
+  import { rowHeightFor } from "../rowHeight";
   import VirtualList from "./VirtualList.svelte";
   import { menuFor } from "../menu.svelte";
   import { queueMenuItems } from "../menus";
@@ -13,8 +15,8 @@
   let { player }: { player: Player } = $props();
   let confirmingClear = $state(false);
 
-  /// Row height follows the density setting; keep in sync with the row style.
-  const queueRowHeight = $derived(appearance.density === "compact" ? 28 : 38);
+  /// Row height follows the density setting; mirrors --row-height via rowHeightFor.
+  const queueRowHeight = $derived(rowHeightFor(appearance.density));
 
   const queueDrag: DragParams = {
     enabled: () => true,
@@ -98,6 +100,7 @@
       message="Remove all tracks from the queue?"
       onconfirm={() => {
         confirmingClear = false;
+        playSource.set(null);
         player.clear();
       }}
       oncancel={() => (confirmingClear = false)}

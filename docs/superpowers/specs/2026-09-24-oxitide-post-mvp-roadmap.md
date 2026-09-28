@@ -1,7 +1,8 @@
 # OxiTide — Post-MVP Roadmap (Plan 6+)
 
-- **Status:** Approved (owner-confirmed 2026-09-24)
+- **Status:** Approved (owner-confirmed 2026-09-24); execution order revised 2026-09-28
 - **Date:** 2026-09-24
+- **Revised:** 2026-09-28 — execution order reordered to Tracks 4 → 5 → 6 → 3 → 7 after Plan 10; Track labels stay stable (see PM-D5).
 - **Owner:** V
 - **Parent:** `2026-09-21-oxitide-design.md` (§9 Phasing)
 - **Supersedes:** the parent's Phase 2–4 ordering. The shipped Phase 1 MVP (v0.2.0) is
@@ -12,21 +13,28 @@
 ## 1. Purpose
 
 Fix the order and framing of post-MVP work. Each track (or sub-track) still gets its own
-dated spec → plan → implementation cycle; this document only fixes scope, order, decisions,
-and the research each track needs. Plan numbers continue the existing sequence (Plan 6
-onward), one plan per track slice.
+dated spec → plan → implementation cycle; this document only fixes scope, execution order,
+decisions, and the research each track needs. Plan numbers continue the existing sequence
+(Plan 6 onward) in execution order; a track may span one or more plans.
 
-Owner-confirmed ordering (2026-09-24):
+Owner-confirmed ordering (2026-09-24), execution order revised 2026-09-28 (PM-D5).
 
-| # | Track | Outcome |
-|---|---|---|
-| 1 | Library editing & favorites | Favorite/unfavorite tracks, albums, artists; playlist create/rename/delete; add/remove/reorder tracks |
-| 2 | UX pack + UI/layout overhaul | **2a behavior:** shortcuts, context menus, sorting/filtering, virtualization, nav history, toasts, search-as-you-type. **2b visual:** design language, layout/IA, expanded now-playing, responsive window fit |
-| 3 | Performance & stability wave | Profile and fix startup, time-to-first-sound, UI jank, memory, cache/eviction churn, large-library handling; build a measurement harness |
-| 4 | Lyrics + discovery | Synced lyrics view; discovery feeds/mixes; track radio / similar artists |
-| 5 | Scrobbling | Last.fm and ListenBrainz in parallel, independent toggles; now-playing, offline queue, retry |
-| 6 | Remaining integrations | Discord RPC; SMTC + hardware media keys |
-| 7 | Advanced audio | DSP/EQ (opt-in, mutually exclusive with bit-perfect); casting/TIDAL Connect; Dolby Atmos |
+**Track labels are stable; the execution order below is not track-number order.** Track 3 is
+executed fourth in the sequence.
+
+| Exec | Track | Outcome | Status |
+|---|---|---|---|
+| — | Track 1 | Library editing & favorites: favorite/unfavorite tracks, albums, artists; playlist create/rename/delete; add/remove/reorder tracks | Done (Plans 6–7 + write hotfix) |
+| — | Track 2a | UX behavior: shortcuts, context menus, sorting/filtering, virtualization, nav history, toasts, search-as-you-type | Done (Plans 8–9) |
+| now | Track 2b | Visual: design language, layout/IA, expanded now-playing, density, responsive window fit | In progress (Plans 10–13 + follow-up polish) — mostly implemented, kept **open** for bug fixes and additional polish |
+| 1 | Track 4 | Lyrics + discovery: synced lyrics view; discovery feeds/mixes; track radio / similar artists | Next |
+| 2 | Track 5 | Scrobbling: Last.fm and ListenBrainz in parallel, independent toggles; now-playing, offline queue, retry | Owner prerequisite: register Last.fm API key (start now) |
+| 3 | Track 6 | Remaining integrations: Discord RPC; SMTC + hardware media keys | |
+| 4 | Track 3 | Performance & stability wave: profile and fix startup, time-to-first-sound, UI jank, memory, cache/eviction churn, large-library handling; build a measurement harness | Deferred wholesale (no early harness) — PM-D1 standing gate remains |
+| 5 | Track 7 | Advanced audio: DSP/EQ (opt-in, mutually exclusive with bit-perfect); casting/TIDAL Connect; Dolby Atmos | Parked last |
+
+Track 2b has no hard "done" gate before Track 4 starts; it may still receive bug fixes and
+polish in parallel.
 
 ## 2. Carryover (before Plan 6)
 
@@ -59,8 +67,11 @@ Owner-confirmed ordering (2026-09-24):
   player/queue experience, data presentation & interaction polish, window fit.
 - The look-and-feel direction (references, light/dark, mockups) is decided during the 2b
   brainstorm; a visual pass is expected.
-- Virtualization overlaps the Track 3 budgets; the measurement harness lands in Track 3
-  even if the lists ship earlier.
+- **Status:** 2a is done (Plans 8–9). 2b is in progress (Plans 10–13 plus follow-up polish) —
+  mostly implemented but deliberately left **open** for bug fixes and additional polish, with
+  no hard completion gate before Track 4 starts.
+- Virtualization overlaps the Track 3 budgets; the measurement harness now lands with the
+  deferred Track 3 wave (see PM-D5).
 
 ### Track 3 — Performance & stability wave
 
@@ -70,6 +81,9 @@ Owner-confirmed ordering (2026-09-24):
   time-to-first-sound, 2k+ row scroll smoothness, memory ceiling, no UI stalls,
   cache/eviction churn, large-library load.
 - Standing rule (see §4 PM-D1): every later spec states its performance impact.
+- **Execution moved:** this wave now runs fourth (after Tracks 4, 5, 6) and is deferred as a
+  whole, including the harness — there is no early baseline (PM-D5). The PM-D1 standing gate
+  still applies: Tracks 4–6 must state their performance impact and must not regress it.
 
 ### Track 4 — Lyrics + discovery
 
@@ -111,6 +125,7 @@ Owner-confirmed ordering (2026-09-24):
 | PM-D2 | **No explicit downloads.** Offline stays as the existing transient LRU cache; no download-manager UI. Revisit only if the owner changes stance. | TIDAL's terms prohibit downloading outside the official player; a deliberate plain-file library crosses a different line than transient caching, and the cache already covers replays. |
 | PM-D3 | Scrobbling feeds Last.fm and ListenBrainz in parallel with independent toggles. | No reason to serialize; both may be wanted. |
 | PM-D4 | Track 2 splits into behavior (2a) and visual/IA (2b) specs. | Keeps each plan reviewable and gives the visual direction its own pass. |
+| PM-D5 | Execution order is revised to Tracks 4 → 5 → 6 → 3 → 7 after Plan 10 (labelled order unchanged). Track 3 is deferred wholesale — no early harness. | Tracks 4–6 are additive/user-facing and Track 7 is optional, so the dedicated optimization wave targets a stable feature set. PM-D1's standing gate keeps regressions honest meanwhile; Track 5's Last.fm key registration starts now (long lead). |
 
 ## 5. Open research questions
 
@@ -136,8 +151,11 @@ Owner-confirmed ordering (2026-09-24):
 
 ## 7. Notes
 
-- Plan numbering continues from Plan 5; one plan per track slice, so Track 2 is expected
-  to span two plans.
+- Plan numbering continues from Plan 5 and follows the **execution order** (PM-D5): Track 2b
+  spans Plans 10–13, then Tracks 4, 5, 6, then the deferred Track 3, then Track 7. **Track labels
+  do not change** — "Track 3" still names Performance & stability even though it runs fourth.
+  Track 2 has spanned Plans 8–9 (2a) and Plans 10–13 (2b); later tracks may similarly span
+  more than one plan.
 - The parent's Phase 4 ordering (DSP → casting → Atmos) is replaced by Track 7; Atmos
   and casting stay parked there.
 - Track 2's visual direction and Track 4's lyrics source are deliberately left open

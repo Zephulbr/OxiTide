@@ -8,6 +8,7 @@
   import PlaylistCover from "../lib/components/PlaylistCover.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
   import { createTrackPager } from "../lib/pager.svelte";
+  import { playSource } from "../lib/playSource.svelte";
   import { invalidatePlaylistCovers } from "../lib/playlistArt.svelte";
   import { createTrackView, visibleIndexOf } from "../lib/trackView.svelte";
   import type { CollectionTree } from "../lib/collection.svelte";
@@ -162,18 +163,21 @@
     if (pager.error) return;
     const start = visibleIndexOf(view.items, clicked, index);
     if (start < 0) return;
+    playSource.set(id);
     api.playTracks(view.items.map(trackToQueueItem), start);
   }
 
   async function playAll() {
     await pager.ensureAll();
     if (pager.error) return;
+    playSource.set(id);
     api.playTracks(view.items.map(trackToQueueItem), 0);
   }
 
   async function shuffleAll() {
     await pager.ensureAll();
     if (pager.error) return;
+    playSource.set(id);
     api.playTracks(view.items.map(trackToQueueItem), 0, true);
   }
 </script>

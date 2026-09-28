@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { TransitionConfig } from "svelte/transition";
   import { appearance } from "../lib/appearance.svelte";
   import Cover from "../lib/components/Cover.svelte";
   import DiscArt from "../lib/components/DiscArt.svelte";
@@ -7,6 +8,16 @@
   import { formatQuality, type QualityDisplay } from "../lib/quality";
   import type { Nav } from "../lib/nav.svelte";
   import type { Player } from "../lib/player.svelte";
+
+  /// Outro pins the closing view absolutely over the incoming route, so the
+  /// swap dissolves in place instead of reflowing .main mid-fade.
+  function npOut(node: HTMLElement): TransitionConfig {
+    node.style.position = "absolute";
+    node.style.inset = "16px 20px"; // matches .main padding in app.css
+    node.style.zIndex = "1";
+    node.style.pointerEvents = "none";
+    return { duration: 150, css: (t) => `opacity: ${t}` };
+  }
 
   let {
     player,
@@ -30,7 +41,7 @@
   });
 </script>
 
-<div class="now-playing">
+<div class="now-playing" out:npOut>
   <div class="art">
     {#if track}
       {#if appearance.coverShape === "disc"}
@@ -92,10 +103,46 @@
     gap: 32px;
     height: 100%;
     align-items: center;
+    /* Entrance: the view rises, the artwork scales up, then the meta column
+       staggers in. Mount-only; closing is the npOut fade. */
+    animation: np-in var(--dur-view) var(--ease-in) both;
+  }
+  @keyframes np-in {
+    from { opacity: 0; transform: translateY(16px); }
   }
   .art {
     display: grid;
     place-items: center;
+    animation: np-art var(--dur-view) var(--ease-in) 60ms both;
+  }
+  @keyframes np-art {
+    from { opacity: 0; transform: scale(0.92); }
+  }
+  .meta > * {
+    animation: np-rise var(--dur-view) var(--ease-in) both;
+  }
+  .meta > *:nth-child(1) { animation-delay: 90ms; }
+  .meta > *:nth-child(2) { animation-delay: 120ms; }
+  .meta > *:nth-child(3) { animation-delay: 150ms; }
+  .meta > *:nth-child(4) { animation-delay: 180ms; }
+  .meta > *:nth-child(5) { animation-delay: 210ms; }
+  .meta > *:nth-child(6) { animation-delay: 240ms; }
+  .meta > *:nth-child(7) { animation-delay: 270ms; }
+  .meta > *:nth-child(8) { animation-delay: 300ms; }
+  @keyframes np-rise {
+    from { opacity: 0; transform: translateY(10px); }
+  }
+  @keyframes np-fade {
+    from { opacity: 0; }
+  }
+  /* Reduced motion (spec §12): slides become fades, no stagger. */
+  @media (prefers-reduced-motion: reduce) {
+    .now-playing,
+    .art,
+    .meta > * {
+      animation-name: np-fade;
+      animation-delay: 0ms;
+    }
   }
   /* Both shapes are one close affordance (spec §7.2): clicking the artwork
      returns, disc or sleeve. The disc button stays transparent (no lit edge). */

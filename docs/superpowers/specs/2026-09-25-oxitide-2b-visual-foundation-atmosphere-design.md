@@ -200,7 +200,7 @@ defaults to Inter; the display face (Fraunces) is part of the shared identity an
 
 ### 7.1 Shell ("Refined Classic")
 
-- **Sidebar** 232px ↔ 64px icon rail; manual toggle + auto-rail below 1080px window width.
+- **Sidebar** 248px ↔ 64px icon rail; manual toggle + auto-rail below 1080px window width.
 - **Queue:** persistent right rail, **hideable and user-resizable 260–420px (default
   320px), width persisted**. Below 760px window width it can no longer dock — it opens
   as a glass overlay over the main pane instead of pushing content.
@@ -224,16 +224,17 @@ Replaces the main pane (sidebar + player bar persist); Esc / clicking artwork re
 ### 7.3 Track rows
 
 - **Cover thumbnails** in mixed-content lists (playlists, search, library, queue, home):
-  30px Comfortable / 22px Compact, radius 6px; hover reveals a play-glyph overlay on the
-  thumb; the playing row's thumb gets a 1.5px accent ring. **Not shown in single-album
-  view** (redundant). Rows: 38px Comfortable / 28px Compact.
-- Playing/selected row = accent-tinted background + accent title text. **No left bars,
-  no animated equalizers** (owner veto).
+  full-bleed square fills the row top to bottom; hover reveals a play-glyph overlay on
+  the thumb. **Not shown in single-album view** (redundant). Rows: 46px Comfortable /
+  38px Compact.
+- Playing/selected row = accent-tinted background (18% accent mix, 24% on hover) + accent
+  title text; no ring around the cover. **No left bars, no animated equalizers** (owner
+  veto).
 
 ### 7.4 Density & window fit
 
-- **Density setting: Comfortable (default, 14px body / 38px rows) / Compact (13px /
-  28px).** One toggle drives font-size, row-height, and padding tokens together.
+- **Density setting: Comfortable (default, 14px body / 46px rows) / Compact (13px /
+  38px).** One toggle drives font-size, row-height, and padding tokens together.
 - **Mini player** (approved in principle; may ship as a follow-up slice right after 2b
   core): ~300×430 — cover, metadata, hairline seek, transport, queue shortcut; toggled
   from player bar / View menu; window size limits relax while active. Exists because

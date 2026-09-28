@@ -9,6 +9,7 @@
   import PlaylistCover from "../lib/components/PlaylistCover.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
   import { playMix } from "../lib/mixPlay";
+  import { playSource } from "../lib/playSource.svelte";
   import { createSearch } from "../lib/search.svelte";
   import { createTrackView } from "../lib/trackView.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
@@ -64,13 +65,20 @@
       search.results.playlists.items.length === 0,
   );
 
+  function playFrom(index: number) {
+    playSource.set(null);
+    void api.playTracks(resultsView.items.map(trackToQueueItem), index);
+  }
+
   function playAll() {
     if (resultsView.items.length === 0) return;
+    playSource.set(null);
     void api.playTracks(resultsView.items.map(trackToQueueItem), 0);
   }
 
   function shuffleAll() {
     if (resultsView.items.length === 0) return;
+    playSource.set(null);
     void api.playTracks(resultsView.items.map(trackToQueueItem), 0, true);
   }
 </script>
@@ -117,6 +125,7 @@
     <TrackTable
       view={resultsView}
       {favorites}
+      onPlay={playFrom}
       onAddToPlaylist={(t) => playlistActions.openPicker([t])}
       playingTrackId={player.state.current?.track_id ?? null}
     />

@@ -34,9 +34,12 @@ body {
   backdrop-filter: blur(var(--glass-blur));
   border-right: 1px solid var(--line);
   padding: 12px;
-  overflow-y: auto;
+  /* Scrolling is owned by the sidebar's inner .scroll area so Settings and
+     Log out stay pinned; nothing should ever scroll the shell itself. */
+  overflow: hidden;
 }
-.main { padding: 16px 20px; overflow: auto; }
+/* position: relative anchors NowPlaying's absolute-positioned close fade. */
+.main { position: relative; padding: 16px 20px; overflow: auto; }
 /* Track-list views: the wrapper owns the main area's height so the track
    table (TrackTable's `fill` prop) grows into the leftover space. */
 .view-fill { display: flex; flex-direction: column; height: 100%; }

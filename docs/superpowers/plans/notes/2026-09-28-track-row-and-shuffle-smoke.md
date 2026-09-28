@@ -61,8 +61,8 @@ and notes per item.
       blends seamlessly with the surface above it — no lighter band, no top
       seam.
 - [ ] Scroll a long track list (atmosphere mode): the header stays un-tinted
-      while rows passing under it blur; its bottom edge fades softly into the
-      rows (shadow) instead of a hard line.
+      while rows passing under it blur — cover thumbnails included; its bottom
+      edge fades softly into the rows (shadow) instead of a hard line.
 - [ ] Same in instrument mode (no blur): the opaque veil fades in once rows
       scroll under and still fades at the bottom edge.
 - [ ] Library → Playlists, owned playlist row: a single pencil button sits at

@@ -63,88 +63,88 @@
 </script>
 
 <nav class="sidebar" class:rail>
-  <div class="top">
-    <h1 class="wordmark">{rail ? "O" : "OxiTide"}</h1>
-    <button
-      class="collapse"
-      onclick={onToggleRail}
-      aria-label={rail ? "Expand sidebar" : "Collapse sidebar"}
-      title={rail ? "Expand sidebar" : "Collapse sidebar"}
-    ><Icon name={rail ? "panel-left-open" : "panel-left-close"} size={16} /></button>
-  </div>
-
-  {#if !rail}
-    <div class="history">
-      <button disabled={!nav.canBack} onclick={() => nav.back()} title="Back (Alt+←)" aria-label="Back"><Icon name="chevron-left" /></button>
-      <button disabled={!nav.canForward} onclick={() => nav.forward()} title="Forward (Alt+→)" aria-label="Forward"><Icon name="chevron-right" /></button>
+  <div class="scroll">
+    <div class="top">
+      <h1 class="wordmark">{rail ? "O" : "OxiTide"}</h1>
+      <button
+        class="collapse"
+        onclick={onToggleRail}
+        aria-label={rail ? "Expand sidebar" : "Collapse sidebar"}
+        title={rail ? "Expand sidebar" : "Collapse sidebar"}
+      ><Icon name={rail ? "panel-left-open" : "panel-left-close"} size={18} /></button>
     </div>
-  {/if}
 
-  <button class="nav-item" class:active={nav.route.name === "home"} aria-current={nav.route.name === "home" ? "page" : undefined} onclick={() => nav.goto({ name: "home" })} title="Home" aria-label="Home">
-    <Icon name="home" />{#if !rail}<span>Home</span>{/if}
-  </button>
-  <button class="nav-item" class:active={nav.route.name === "explore"} aria-current={nav.route.name === "explore" ? "page" : undefined} onclick={() => nav.goto({ name: "explore" })} title="Explore" aria-label="Explore">
-    <Icon name="globe" />{#if !rail}<span>Explore</span>{/if}
-  </button>
-  <button class="nav-item" class:active={nav.route.name === "feed"} aria-current={nav.route.name === "feed" ? "page" : undefined} onclick={() => nav.goto({ name: "feed" })} title="Feed" aria-label="Feed">
-    <Icon name="bell" />{#if !rail}<span>Feed</span>{/if}
-  </button>
+    {#if !rail}
+      <div class="history">
+        <button disabled={!nav.canBack} onclick={() => nav.back()} title="Back (Alt+←)" aria-label="Back"><Icon name="chevron-left" /></button>
+        <button disabled={!nav.canForward} onclick={() => nav.forward()} title="Forward (Alt+→)" aria-label="Forward"><Icon name="chevron-right" /></button>
+      </div>
+    {/if}
 
-  <div class="divider" role="separator"></div>
-
-  {#if rail}
-    <button class="nav-item" class:active={isActive("playlists")} aria-current={isActive("playlists") ? "page" : undefined} onclick={() => nav.goto({ name: "playlists" })} title="My Collection" aria-label="My Collection">
-      <Icon name="library" />
+    <button class="nav-item" class:active={nav.route.name === "home"} aria-current={nav.route.name === "home" ? "page" : undefined} onclick={() => nav.goto({ name: "home" })} title="Home" aria-label="Home">
+      <Icon name="home" />{#if !rail}<span>Home</span>{/if}
     </button>
-  {:else}
-    <button class="section-head" onclick={() => (collectionOpen = !collectionOpen)} aria-expanded={collectionOpen}>
-      <span>My Collection</span>
-      <Icon name={collectionOpen ? "chevron-down" : "chevron-right"} size={14} />
+    <button class="nav-item" class:active={nav.route.name === "explore"} aria-current={nav.route.name === "explore" ? "page" : undefined} onclick={() => nav.goto({ name: "explore" })} title="Explore" aria-label="Explore">
+      <Icon name="globe" />{#if !rail}<span>Explore</span>{/if}
     </button>
-  {/if}
+    <button class="nav-item" class:active={nav.route.name === "feed"} aria-current={nav.route.name === "feed" ? "page" : undefined} onclick={() => nav.goto({ name: "feed" })} title="Feed" aria-label="Feed">
+      <Icon name="bell" />{#if !rail}<span>Feed</span>{/if}
+    </button>
 
-  {#if collectionOpen || rail}
-    {#each collectionItems as item (item.label)}
-      <button class="nav-item" class:active={isActive(item.route.name)} aria-current={isActive(item.route.name) ? "page" : undefined} onclick={() => nav.goto(item.route)} title={item.label} aria-label={item.label}>
-        <Icon name={item.icon} />{#if !rail}<span>{item.label}</span>{/if}
-      </button>
-    {/each}
+    <div class="divider" role="separator"></div>
+
     {#if rail}
-      <button class="nav-item" onclick={() => (showMore = !showMore)} aria-expanded={showMore} title="Show more" aria-label="Show more">
-        <Icon name={showMore ? "chevron-up" : "chevron-down"} />
+      <button class="nav-item" class:active={isActive("playlists")} aria-current={isActive("playlists") ? "page" : undefined} onclick={() => nav.goto({ name: "playlists" })} title="My Collection" aria-label="My Collection">
+        <Icon name="library" />
       </button>
     {:else}
-      <button class="section-head sub" onclick={() => (showMore = !showMore)} aria-expanded={showMore}>
-        <span>{showMore ? "Show less" : "Show more"}</span>
-        <Icon name={showMore ? "chevron-up" : "chevron-down"} size={14} />
+      <button class="section-head" onclick={() => (collectionOpen = !collectionOpen)} aria-expanded={collectionOpen}>
+        <span>My Collection</span>
+        <Icon name={collectionOpen ? "chevron-down" : "chevron-right"} size={16} />
       </button>
     {/if}
-    {#if showMore}
-      {#each moreItems as item (item.label)}
+
+    {#if collectionOpen || rail}
+      {#each collectionItems as item (item.label)}
         <button class="nav-item" class:active={isActive(item.route.name)} aria-current={isActive(item.route.name) ? "page" : undefined} onclick={() => nav.goto(item.route)} title={item.label} aria-label={item.label}>
           <Icon name={item.icon} />{#if !rail}<span>{item.label}</span>{/if}
         </button>
       {/each}
+      {#if rail}
+        <button class="nav-item" onclick={() => (showMore = !showMore)} aria-expanded={showMore} title="Show more" aria-label="Show more">
+          <Icon name={showMore ? "chevron-up" : "chevron-down"} />
+        </button>
+      {:else}
+        <button class="section-head sub" onclick={() => (showMore = !showMore)} aria-expanded={showMore}>
+          <span>{showMore ? "Show less" : "Show more"}</span>
+          <Icon name={showMore ? "chevron-up" : "chevron-down"} size={16} />
+        </button>
+      {/if}
+      {#if showMore}
+        {#each moreItems as item (item.label)}
+          <button class="nav-item" class:active={isActive(item.route.name)} aria-current={isActive(item.route.name) ? "page" : undefined} onclick={() => nav.goto(item.route)} title={item.label} aria-label={item.label}>
+            <Icon name={item.icon} />{#if !rail}<span>{item.label}</span>{/if}
+          </button>
+        {/each}
+      {/if}
     {/if}
-  {/if}
 
-  <div class="divider" role="separator"></div>
+    <div class="divider" role="separator"></div>
 
-  <div class="playlist-head">
-    {#if !rail}<span class="playlist-title">Playlists</span>{/if}
-    <button class="mini" onclick={() => playlistActions.openCreate()} title="New playlist" aria-label="New playlist">
-      <Icon name="plus" size={14} />
-    </button>
+    <div class="playlist-head">
+      {#if !rail}<span class="playlist-title">Playlists</span>{/if}
+      <button class="mini" onclick={() => playlistActions.openCreate()} title="New playlist" aria-label="New playlist">
+        <Icon name="plus" size={16} />
+      </button>
+    </div>
+    <div class="tree">
+      {#if collection.error}
+        <p class="muted tree-error">{collection.error}</p>
+      {:else}
+        <PlaylistTree entries={collection.root} {collection} {nav} {actions} {rail} />
+      {/if}
+    </div>
   </div>
-  <div class="tree">
-    {#if collection.error}
-      <p class="muted tree-error">{collection.error}</p>
-    {:else}
-      <PlaylistTree entries={collection.root} {collection} {nav} {actions} {rail} />
-    {/if}
-  </div>
-
-  <div class="spacer"></div>
 
   <button class="nav-item" class:active={nav.route.name === "settings"} aria-current={nav.route.name === "settings" ? "page" : undefined} onclick={() => nav.goto({ name: "settings" })} title="Settings" aria-label="Settings">
     <Icon name="settings" />{#if !rail}<span>Settings</span>{/if}
@@ -159,6 +159,22 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
+    font-size: calc(var(--font-body-size) + 1px);
+  }
+  /* Nav + playlist tree share one scroll area; the tree must not shrink as a
+     flex item or its rows spill out of the box (the old footer bug). Settings
+     and Log out sit outside this area, so they never scroll. */
+  .scroll {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    /* Bleed over the sidebar padding so scrolled rows span edge to edge,
+       while the inner padding keeps the 12px gutters. */
+    margin: -12px -12px 0;
+    padding: 12px 12px 0;
   }
   .top {
     display: flex;
@@ -168,7 +184,7 @@
   }
   .wordmark {
     font-family: var(--font-display);
-    font-size: 20px;
+    font-size: 22px;
     font-weight: 640;
     margin: 0;
     letter-spacing: -0.02em;
@@ -182,12 +198,16 @@
   .nav-item {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 11px;
     width: 100%;
-    padding: 7px 8px;
+    padding: 8px 9px;
     border-radius: var(--radius-control);
     color: var(--text-muted);
     text-align: left;
+  }
+  .nav-item :global(svg) {
+    width: 20px;
+    height: 20px;
   }
   .nav-item:hover {
     background: var(--surface-2);
@@ -207,9 +227,9 @@
     align-items: center;
     justify-content: space-between;
     width: 100%;
-    padding: 7px 8px;
+    padding: 8px 9px;
     color: var(--text-muted);
-    font-size: 11.5px;
+    font-size: 12.5px;
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -227,9 +247,9 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 7px 8px 3px;
+    padding: 8px 9px 3px;
     color: var(--text-muted);
-    font-size: 11.5px;
+    font-size: 12.5px;
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -237,8 +257,8 @@
   .mini {
     display: grid;
     place-items: center;
-    width: 22px;
-    height: 22px;
+    width: 24px;
+    height: 24px;
     border-radius: var(--radius-control);
     color: var(--text-muted);
   }
@@ -247,19 +267,15 @@
     color: var(--text);
   }
   .tree {
-    min-height: 0;
+    flex-shrink: 0;
   }
   .tree-error {
-    padding: 0 8px;
-    font-size: 11.5px;
-  }
-  .spacer {
-    flex: 1;
-    min-height: 12px;
+    padding: 0 9px;
+    font-size: 12.5px;
   }
   .rail .nav-item {
     justify-content: center;
-    padding: 9px 0;
+    padding: 10px 0;
   }
   .rail .top {
     position: relative;

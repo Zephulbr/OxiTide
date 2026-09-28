@@ -6,6 +6,7 @@
   import Loading from "../lib/components/Loading.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
   import { createTrackPager } from "../lib/pager.svelte";
+  import { playSource } from "../lib/playSource.svelte";
   import { createTrackView, visibleIndexOf } from "../lib/trackView.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { PlaylistActions } from "../lib/playlists.svelte";
@@ -44,18 +45,21 @@
     if (favoritesPager.error) return;
     const start = visibleIndexOf(view.items, clicked, index);
     if (start < 0) return;
+    playSource.set(null);
     api.playTracks(view.items.map(trackToQueueItem), start);
   }
 
   async function playAll() {
     await favoritesPager.ensureAll();
     if (favoritesPager.error) return;
+    playSource.set(null);
     api.playTracks(view.items.map(trackToQueueItem), 0);
   }
 
   async function shuffleAll() {
     await favoritesPager.ensureAll();
     if (favoritesPager.error) return;
+    playSource.set(null);
     api.playTracks(view.items.map(trackToQueueItem), 0, true);
   }
 </script>

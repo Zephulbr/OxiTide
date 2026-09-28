@@ -7,6 +7,7 @@
   import Loading from "../lib/components/Loading.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
   import { createTrackView } from "../lib/trackView.svelte";
+  import { playSource } from "../lib/playSource.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { PlaylistActions } from "../lib/playlists.svelte";
   import type { Player } from "../lib/player.svelte";
@@ -39,13 +40,20 @@
     load();
   });
 
+  function playFrom(index: number) {
+    playSource.set(null);
+    void api.playTracks(view.items.map(trackToQueueItem), index);
+  }
+
   function playAll() {
     if (view.items.length === 0) return;
+    playSource.set(null);
     void api.playTracks(view.items.map(trackToQueueItem), 0);
   }
 
   function shuffleAll() {
     if (view.items.length === 0) return;
+    playSource.set(null);
     void api.playTracks(view.items.map(trackToQueueItem), 0, true);
   }
 </script>
@@ -90,6 +98,7 @@
       {favorites}
       fill
       showAlbum={false}
+      onPlay={playFrom}
       playingTrackId={player.state.current?.track_id ?? null}
       onAddToPlaylist={(t) => playlistActions.openPicker([t])}
     />

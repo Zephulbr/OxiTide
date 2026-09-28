@@ -8,6 +8,7 @@
   import { trackQualityLabel } from "../quality";
   import { windowRange } from "../virtual";
   import { appearance } from "../appearance.svelte";
+  import { rowHeightFor } from "../rowHeight";
   import type { Favorites } from "../favorites.svelte";
   import type { TrackView } from "../trackView.svelte";
   import { trackDrag, type DragParams } from "../drag";
@@ -54,8 +55,9 @@
     playingTrackId?: number | null;
   } = $props();
 
-  /// Row height follows the density setting (spec §7.4): 38 / 28 px.
-  const rowHeight = $derived(appearance.density === "compact" ? 28 : 38);
+  /// Row height follows the density setting (spec §7.4): 46 / 38 px,
+  /// mirrored from --row-height via rowHeightFor (guarded by rowHeight.test.ts).
+  const rowHeight = $derived(rowHeightFor(appearance.density));
   const OVERSCAN = 8;
   const END_THRESHOLD = 400;
 
@@ -67,7 +69,7 @@
   const rows = $derived(view.items);
   const range = $derived(windowRange(rows.length, scrollTop, viewport, rowHeight, OVERSCAN));
   const slice = $derived(rows.slice(range.first, range.last));
-  const columns = $derived(showAlbum ? 9 : 8);
+  const columns = $derived(showAlbum ? 8 : 7);
 
   let dragFrom = $state<number | null>(null);
   let dropAt = $state<number | null>(null);
@@ -162,10 +164,10 @@
   <table>
     <thead bind:clientHeight={theadHeight}>
       <tr>
-        <th class="thumb-head"></th>
-        <th style="text-align:left">
+        <th style="text-align:right">
           <button class="sort" title="Original order" onclick={() => view.clearSort()}>#</button>
         </th>
+        <th class="thumb-head"></th>
         <th style="text-align:left">
           <button class="sort" disabled={view.preparing} onclick={() => view.toggleSort("title")}>
             Title {indicator("title")}
@@ -173,13 +175,12 @@
         </th>
         <th style="text-align:left">Artist</th>
         {#if showAlbum}<th style="text-align:left">Album</th>{/if}
-        <th style="text-align:left">
+        <th style="text-align:right">
           <button class="sort" disabled={view.preparing} onclick={() => view.toggleSort("duration")}>
             Time {indicator("duration")}
           </button>
         </th>
         <th style="text-align:left">Quality</th>
-        <th class="spacer-head"></th>
         <th class="actions-head"></th>
       </tr>
     </thead>
@@ -210,26 +211,32 @@
               playlist: playlistActions && { ...playlistActions, canMove: !view.engaged },
             })}
         >
+          <td class="muted tnum num-cell">{index + 1}</td>
           <td class="thumb-cell">
             <button class="thumb" onclick={() => play(index)} disabled={loadingAll} aria-label="Play" title="Play">
               <Cover uuid={t.album?.cover} size={80} radius={0} alt="" />
               <span class="thumb-play" aria-hidden="true"><Icon name="play" size={14} /></span>
             </button>
           </td>
-          <td class="muted tnum">{index + 1}</td>
           <td class="title-cell"><div class="title-text">{t.title}</div></td>
           <td class="text-cell muted"><div class="cell-text">{t.artists.map((a) => a.name).join(", ")}</div></td>
           {#if showAlbum}
             <td class="text-cell muted"><div class="cell-text">{t.album?.title ?? ""}</div></td>
           {/if}
-          <td class="muted tnum nowrap-cell">{formatDuration(t.duration)}</td>
+          <td class="muted tnum nowrap-cell time-cell">{formatDuration(t.duration)}</td>
           <td class="nowrap-cell">
             {#if quality}<span class="badge" class:max={quality === "MAX"}>{quality}</span>{/if}
           </td>
-          <td class="spacer-cell"></td>
           <td class="actions-cell">
+            <button
+              class="reveal"
+              onclick={() => api.queueAdd([trackToQueueItem(t)])}
+              aria-label="Add to queue"
+              title="Add to queue"
+            ><Icon name="plus" size={14} /></button>
             {#if onAddToPlaylist}
               <button
+                class="reveal"
                 onclick={() => onAddToPlaylist(t)}
                 aria-label="Add to playlist"
                 title="Add to playlist"
@@ -296,11 +303,13 @@
      mask: both are unreliable in Chromium inside a scroller (masked blur can
      render as solid dark blocks). At rest the header is untinted so it matches
      the surface above it exactly; the frost fades in only once rows scroll
-     beneath — atmosphere's blur carries it, instrument's veil is opaque. */
+     beneath — atmosphere's blur carries it, instrument's veil is opaque. The
+     positive z-index is load-bearing: row thumbnail buttons are positioned
+     and would otherwise paint above this layer, escaping the backdrop blur. */
   .head-frost {
     position: sticky;
     top: 0;
-    z-index: 0;
+    z-index: 1;
     pointer-events: none;
     backdrop-filter: blur(var(--glass-blur));
     transition: box-shadow var(--dur-state) var(--ease-in);
@@ -325,7 +334,7 @@
   thead th {
     position: sticky;
     top: 0;
-    z-index: 1;
+    z-index: 2;
     background: transparent;
     transition: background-color var(--dur-state) var(--ease-in);
     padding: 4px 12px 4px 0;
@@ -347,6 +356,9 @@
     height: var(--row-height);
     border-bottom: 1px solid var(--line);
     user-select: none;
+  }
+  .row:hover {
+    background: var(--surface-2);
   }
   td {
     padding: 0 12px 0 0;
@@ -377,21 +389,26 @@
     opacity: 1;
   }
   .row.playing {
-    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+  .row.playing:hover {
+    background: color-mix(in srgb, var(--accent) 24%, transparent);
   }
   .row.playing .title-text {
     color: var(--accent);
   }
-  .row.playing .thumb :global(img) {
-    box-shadow: 0 0 0 1.5px var(--accent);
-  }
-  /* Text columns cap at a max width and ellipsis; the spacer column below
-     absorbs the leftover width so the actions sit at the far right. */
+  /* Text columns share the leftover width proportionally (title widest) so
+     the row breathes at any window width; the inner divs ellipsis. The
+     remaining columns size to their (nowrap) content, actions last. */
   .title-cell {
-    max-width: 44ch;
+    width: 34%;
   }
   .text-cell {
-    max-width: 32ch;
+    width: 22%;
+  }
+  .num-cell,
+  .time-cell {
+    text-align: right;
   }
   .title-text,
   .cell-text {
@@ -402,10 +419,6 @@
   .nowrap-cell {
     white-space: nowrap;
   }
-  .spacer-cell {
-    width: 100%;
-    padding: 0;
-  }
   .actions-cell {
     padding: 0;
     white-space: nowrap;
@@ -413,6 +426,18 @@
   }
   .actions-cell button + button {
     margin-left: 6px;
+  }
+  /* Queue/playlist actions hide until the row is hovered or focused (heart
+     stays visible); pointer-events follow so hidden buttons can't be hit. */
+  .actions-cell .reveal {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dur-micro);
+  }
+  .row:hover .actions-cell .reveal,
+  .row:focus-within .actions-cell .reveal {
+    opacity: 1;
+    pointer-events: auto;
   }
   /* Same tag look as the PlayerBar/NowPlaying quality badge. */
   .badge {
