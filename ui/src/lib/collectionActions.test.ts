@@ -138,4 +138,27 @@ describe("collection actions", () => {
       { folder: folder("b"), depth: 1 },
     ]);
   });
+
+  it("orders the move picker as a pre-order walk for a branching tree", async () => {
+    vi.mocked(api.getCollectionItems).mockImplementation(async (folderId) => {
+      if (folderId === "root") {
+        return [
+          { kind: "folder", ...folder("a") },
+          { kind: "folder", ...folder("z") },
+        ];
+      }
+      if (folderId === "a") return [{ kind: "folder", ...folder("b") }];
+      return [];
+    });
+    const actions = createCollectionActions(fakeTree().tree, fakeToasts().toasts);
+
+    actions.openMove(playlist("p1"));
+    await vi.waitFor(() => expect(actions.foldersLoading).toBe(false));
+
+    expect(actions.folderOptions).toEqual([
+      { folder: folder("a"), depth: 0 },
+      { folder: folder("b"), depth: 1 },
+      { folder: folder("z"), depth: 0 },
+    ]);
+  });
 });

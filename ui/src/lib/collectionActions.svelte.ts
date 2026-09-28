@@ -69,10 +69,12 @@ export function createCollectionActions(
         (item): item is { kind: "folder" } & CollectionFolder => item.kind === "folder",
       )
       .map(({ kind: _kind, ...folder }) => folder);
-    const nested = await Promise.all(
-      folders.map((item) => collectFolders(item.id, depth + 1)),
-    );
-    return [...folders.map((folder) => ({ folder, depth })), ...nested.flat()];
+    const result: FolderOption[] = [];
+    for (const folder of folders) {
+      result.push({ folder, depth });
+      result.push(...(await collectFolders(folder.id, depth + 1)));
+    }
+    return result;
   }
 
   async function loadFolders() {
