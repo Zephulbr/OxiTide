@@ -73,6 +73,19 @@ fn save_window_state(app: &tauri::AppHandle) {
     };
     let mut config = state.config();
     window::capture(&window, &mut config);
+    let live = window::FullGeometry {
+        width: config.ui.window_width,
+        height: config.ui.window_height,
+        x: config.ui.window_x,
+        y: config.ui.window_y,
+        maximized: config.ui.window_maximized,
+    };
+    let saved = window::geometry_to_save(state.pre_mini(), live);
+    config.ui.window_width = saved.width;
+    config.ui.window_height = saved.height;
+    config.ui.window_x = saved.x;
+    config.ui.window_y = saved.y;
+    config.ui.window_maximized = saved.maximized;
     if let Err(e) = config.save() {
         tracing::warn!("failed to save window geometry: {e}");
     }
@@ -152,6 +165,21 @@ fn main() {
                 if let Err(e) = window::apply(&window, &config) {
                     tracing::warn!("failed to apply window geometry: {e}");
                 }
+                if config.ui.start_in_mini {
+                    // MP-D11: the stash keeps the saved full geometry (including
+                    // a saved maximized state) so exiting mini restores it.
+                    let stash = window::FullGeometry {
+                        width: config.ui.window_width,
+                        height: config.ui.window_height,
+                        x: config.ui.window_x,
+                        y: config.ui.window_y,
+                        maximized: config.ui.window_maximized,
+                    };
+                    app.state::<AppState>().set_pre_mini(stash);
+                    if let Err(e) = window::enter_mini(&window, stash) {
+                        tracing::warn!("failed to start in mini player: {e}");
+                    }
+                }
                 if let Err(e) = window.show() {
                     tracing::warn!("failed to show the main window: {e}");
                 }
@@ -230,6 +258,8 @@ fn main() {
             commands::set_cover_shape,
             commands::set_dynamic_color,
             commands::set_queue_width,
+            commands::set_mini_mode,
+            commands::set_start_in_mini,
             commands::set_cache_max_size_mb,
             commands::set_cache_clear_on_exit,
             commands::get_logs_dir,

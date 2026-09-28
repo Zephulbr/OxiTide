@@ -939,6 +939,35 @@ pub fn set_queue_width(state: State<'_, AppState>, px: u32) -> Result<(), String
 }
 
 #[tauri::command]
+pub fn set_mini_mode(
+    state: State<'_, AppState>,
+    window: tauri::WebviewWindow,
+    active: bool,
+) -> Result<(), String> {
+    if active {
+        // Idempotent (spec §5.3): a repeated enter keeps the original stash.
+        if state.pre_mini().is_some() {
+            return Ok(());
+        }
+        let geometry = crate::window::read_geometry(&window).map_err(|e| e.to_string())?;
+        state.set_pre_mini(geometry);
+        crate::window::enter_mini(&window, geometry).map_err(|e| e.to_string())
+    } else {
+        let stash = state.take_pre_mini();
+        crate::window::exit_mini(&window, stash).map_err(|e| e.to_string())
+    }
+}
+
+#[tauri::command]
+pub fn set_start_in_mini(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    let mut config = state.config();
+    config.ui.start_in_mini = enabled;
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
+#[tauri::command]
 pub fn set_cache_max_size_mb(state: State<'_, AppState>, mb: u64) -> Result<(), String> {
     require_cache(&state)?.set_max_bytes(mb.saturating_mul(1024 * 1024));
     let mut config = state.config();
