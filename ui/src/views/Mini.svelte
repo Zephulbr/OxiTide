@@ -1,0 +1,298 @@
+<script lang="ts">
+  import type { RepeatMode } from "../lib/api";
+  import type { Favorites } from "../lib/favorites.svelte";
+  import type { Mini } from "../lib/mini.svelte";
+  import type { Player } from "../lib/player.svelte";
+  import Cover from "../lib/components/Cover.svelte";
+  import Icon from "../lib/components/Icon.svelte";
+  import QueueRail from "../lib/components/QueueRail.svelte";
+  import SeekBar from "../lib/components/SeekBar.svelte";
+
+  let {
+    player,
+    favorites,
+    mini,
+  }: { player: Player; favorites: Favorites; mini: Mini } = $props();
+
+  function nextRepeat(mode: RepeatMode): RepeatMode {
+    if (mode === "off") return "all";
+    if (mode === "all") return "one";
+    return "off";
+  }
+</script>
+
+<div class="mini">
+  {#if player.state.current}
+    {@const current = player.state.current}
+    {@const fav = favorites.hasTrack(current.track_id)}
+    <div class="art">
+      <Cover uuid={current.cover} size={320} radius={10} alt={`${current.title} artwork`} />
+    </div>
+    <div class="meta">
+      <strong class="title">{current.title}</strong>
+      <span class="muted artist">{current.artist}</span>
+    </div>
+    <SeekBar {player} variant="inline" />
+    <div class="transport">
+      <button class="ibtn" onclick={() => player.prev()} aria-label="Previous">
+        <Icon name="skip-back" size={20} />
+      </button>
+      <button class="play" onclick={() => player.playPause()} aria-label="Play/Pause">
+        <span class="play-ico" class:show={!player.state.playing}><Icon name="play" size={20} /></span>
+        <span class="play-ico" class:show={player.state.playing}><Icon name="pause" size={20} /></span>
+      </button>
+      <button class="ibtn" onclick={() => player.next()} aria-label="Next">
+        <Icon name="skip-forward" size={20} />
+      </button>
+    </div>
+    <div class="secondary">
+      <button
+        class="ibtn icon-heart"
+        class:on={fav}
+        onclick={() => favorites.toggleTrack(current.track_id)}
+        aria-label={fav ? "Unfavorite" : "Favorite"}
+        title={fav ? "Unfavorite" : "Favorite"}
+      ><Icon name="heart" size={18} /></button>
+      <button
+        class="ibtn"
+        class:active={player.state.shuffle}
+        onclick={() => player.setShuffle(!player.state.shuffle)}
+        aria-label="Shuffle"
+        title="Shuffle the rest of the queue"
+      ><Icon name="shuffle" size={18} /></button>
+      <button
+        class="ibtn"
+        class:active={player.state.repeat !== "off"}
+        onclick={() => player.setRepeat(nextRepeat(player.state.repeat))}
+        aria-label="Repeat"
+        title={player.state.repeat === "one"
+          ? "Repeat one"
+          : player.state.repeat === "all"
+            ? "Repeat all"
+            : "Repeat off"}
+      ><Icon name={player.state.repeat === "one" ? "repeat-1" : "repeat"} size={18} /></button>
+      <label class="volume">
+        <Icon name="volume-2" size={16} />
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.01"
+          value={player.state.volume}
+          oninput={(e) => player.setVolume(Number((e.currentTarget as HTMLInputElement).value))}
+          onchange={(e) =>
+            player.setVolume(Number((e.currentTarget as HTMLInputElement).value), true)}
+          aria-label="Volume"
+        />
+      </label>
+      <button
+        class="ibtn"
+        class:active={mini.queueOpen}
+        onclick={() => mini.toggleQueue()}
+        aria-label="Queue"
+        title="Queue"
+        aria-pressed={mini.queueOpen}
+      ><Icon name="list-music" size={18} /></button>
+      <button
+        class="ibtn"
+        onclick={() => void mini.exit()}
+        aria-label="Restore full window"
+        title="Restore full window"
+      ><Icon name="maximize-2" size={18} /></button>
+    </div>
+  {:else}
+    <div class="empty">
+      <Icon name="music" size={40} />
+      <p class="muted">Nothing playing</p>
+    </div>
+  {/if}
+
+  {#if player.state.error}
+    <div class="error">
+      <span style="color:var(--danger)">{player.state.error}</span>
+      <button onclick={() => player.retry()} aria-label="Retry playback">Retry</button>
+    </div>
+  {/if}
+
+  {#if mini.queueOpen}
+    <div class="sheet-backdrop" onclick={() => mini.toggleQueue()} aria-hidden="true"></div>
+    <div class="queue-sheet">
+      <QueueRail {player} />
+    </div>
+  {/if}
+</div>
+
+<style>
+  .mini {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    height: 100%;
+    padding: 14px;
+    position: relative;
+    z-index: 1;
+    overflow: auto;
+  }
+  /* The cover is fluid: it gives up width before the controls run out of room. */
+  .art {
+    flex: 0 0 auto;
+    width: min(100%, 190px, 42vh);
+    border-radius: var(--radius-card);
+    overflow: hidden;
+  }
+  .meta {
+    width: 100%;
+    min-width: 0;
+    text-align: center;
+  }
+  .title {
+    display: block;
+    font-family: var(--font-display);
+    font-size: 16px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .artist {
+    display: block;
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .transport {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+  }
+  .secondary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    width: 100%;
+  }
+  .empty {
+    margin: auto;
+    display: grid;
+    place-items: center;
+    gap: 8px;
+    color: var(--text-muted);
+  }
+  .error {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+  }
+  button {
+    display: inline-grid;
+    place-items: center;
+  }
+  .ibtn {
+    position: relative;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    color: var(--text-muted);
+    transition:
+      color var(--dur-micro),
+      background-color var(--dur-micro),
+      transform var(--dur-micro) var(--ease-in);
+  }
+  .ibtn:hover {
+    background: var(--surface-3);
+    color: var(--text);
+  }
+  .ibtn:active {
+    transform: scale(0.92);
+  }
+  .ibtn.active {
+    color: var(--accent);
+  }
+  .icon-heart.on {
+    color: var(--accent);
+  }
+  .icon-heart.on :global(svg) {
+    fill: currentColor;
+  }
+  .play {
+    position: relative;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--on-accent);
+    transition:
+      transform var(--dur-micro) var(--ease-in),
+      box-shadow var(--dur-state) var(--ease-in);
+  }
+  .play:hover {
+    transform: scale(1.06);
+    box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+  .play-ico {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    opacity: 0;
+    transform: scale(0.6);
+    transition:
+      opacity var(--dur-state) var(--ease-in),
+      transform var(--dur-state) var(--ease-in);
+  }
+  .play-ico.show {
+    opacity: 1;
+    transform: scale(1);
+  }
+  .volume {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--text-muted);
+  }
+  .volume input[type="range"] {
+    width: 56px;
+    accent-color: var(--accent);
+  }
+  /* Queue sheet (MP-D5): slides up over the mini layout, never leaves mini. */
+  .sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    z-index: 10;
+  }
+  .queue-sheet {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 11;
+    max-height: 85vh;
+    overflow: auto;
+    background: var(--surface-1);
+    backdrop-filter: blur(var(--glass-blur));
+    border-top: 1px solid var(--line);
+    border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+    animation: sheet-in var(--dur-view) var(--ease-in) both;
+  }
+  @keyframes sheet-in {
+    from {
+      transform: translateY(100%);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .queue-sheet {
+      animation-name: sheet-fade;
+    }
+    @keyframes sheet-fade {
+      from {
+        opacity: 0;
+      }
+    }
+  }
+</style>
