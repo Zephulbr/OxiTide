@@ -75,6 +75,74 @@ impl TidalClient {
         Ok(entries)
     }
 
+    /// Create a folder inside `parent_id` (`"root"` for the top level).
+    pub async fn create_folder(&self, name: &str, parent_id: &str) -> Result<CollectionFolder> {
+        #[derive(Deserialize)]
+        struct RawFolder {
+            #[serde(default)]
+            id: String,
+            #[serde(default)]
+            name: Option<String>,
+            #[serde(default, rename = "totalNumberOfItems")]
+            total_number_of_items: u32,
+        }
+        #[derive(Deserialize)]
+        struct Envelope {
+            data: RawFolder,
+        }
+        let envelope: Envelope = self
+            .put_json(
+                "my-collection/playlists/folders/create-folder",
+                &[("name", name.to_string()), ("folderId", parent_id.to_string())],
+            )
+            .await?;
+        Ok(CollectionFolder {
+            id: envelope.data.id,
+            name: envelope.data.name.unwrap_or_else(|| name.to_string()),
+            total_number_of_items: envelope.data.total_number_of_items,
+        })
+    }
+
+    pub async fn rename_folder(&self, id: &str, name: &str) -> Result<()> {
+        self.put_v2(
+            "my-collection/playlists/folders/rename",
+            &[
+                ("trn", format!("trn:folder:{id}")),
+                ("name", name.to_string()),
+            ],
+        )
+        .await
+    }
+
+    pub async fn remove_collection_entry(&self, kind: &str, id: &str) -> Result<()> {
+        let trn = if kind == "playlist" {
+            format!("trn:playlist:{id}")
+        } else {
+            format!("trn:folder:{id}")
+        };
+        self.put_v2(
+            "my-collection/playlists/folders/remove",
+            &[("trns", trn)],
+        )
+        .await
+    }
+
+    pub async fn move_playlists(&self, ids: &[String], folder_id: &str) -> Result<()> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+        let trns = ids
+            .iter()
+            .map(|id| format!("trn:playlist:{id}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        self.put_v2(
+            "my-collection/playlists/folders/move",
+            &[("folderId", folder_id.to_string()), ("trns", trns)],
+        )
+        .await
+    }
+
     fn collection_entry(&self, item: RawCollectionItem) -> Option<CollectionEntry> {
         match item.kind.to_uppercase().as_str() {
             "FOLDER" => {
@@ -234,5 +302,79 @@ mod tests {
             .mount(&server)
             .await;
         assert!(client(&server).collection_items("root").await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn create_folder_puts_to_v2_and_parses_the_envelope() {
+        let server = MockServer::start().await;
+        Mock::given(method("PUT"))
+            .and(path("/v2/my-collection/playlists/folders/create-folder"))
+            .and(wiremock::matchers::query_param("name", "Road"))
+            .and(wiremock::matchers::query_param("folderId", "root"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": {"id": "f-9", "totalNumberOfItems": 0}
+            })))
+            .mount(&server)
+            .await;
+        let folder = client(&server).create_folder("Road", "root").await.unwrap();
+        assert_eq!(folder.id, "f-9");
+        assert_eq!(folder.name, "Road");
+    }
+
+    #[tokio::test]
+    async fn rename_folder_sends_the_folder_trn() {
+        let server = MockServer::start().await;
+        Mock::given(method("PUT"))
+            .and(path("/v2/my-collection/playlists/folders/rename"))
+            .and(wiremock::matchers::query_param("trn", "trn:folder:f-1"))
+            .and(wiremock::matchers::query_param("name", "Renamed"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&server)
+            .await;
+        client(&server).rename_folder("f-1", "Renamed").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn remove_collection_entry_prefixes_the_trn_by_kind() {
+        let server = MockServer::start().await;
+        Mock::given(method("PUT"))
+            .and(path("/v2/my-collection/playlists/folders/remove"))
+            .and(wiremock::matchers::query_param("trns", "trn:playlist:p-1"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&server)
+            .await;
+        Mock::given(method("PUT"))
+            .and(path("/v2/my-collection/playlists/folders/remove"))
+            .and(wiremock::matchers::query_param("trns", "trn:folder:f-1"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&server)
+            .await;
+        client(&server).remove_collection_entry("playlist", "p-1").await.unwrap();
+        client(&server).remove_collection_entry("folder", "f-1").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn move_playlists_joins_trns_and_targets_the_folder() {
+        let server = MockServer::start().await;
+        Mock::given(method("PUT"))
+            .and(path("/v2/my-collection/playlists/folders/move"))
+            .and(wiremock::matchers::query_param("folderId", "f-2"))
+            .and(wiremock::matchers::query_param(
+                "trns",
+                "trn:playlist:p-1,trn:playlist:p-2",
+            ))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&server)
+            .await;
+        client(&server)
+            .move_playlists(&["p-1".to_string(), "p-2".to_string()], "f-2")
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn move_playlists_with_no_ids_makes_no_request() {
+        let server = MockServer::start().await;
+        client(&server).move_playlists(&[], "f-2").await.unwrap();
     }
 }

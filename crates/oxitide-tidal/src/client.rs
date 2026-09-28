@@ -160,6 +160,14 @@ impl TidalClient {
         decode_json(resp).await
     }
 
+    /// PUT with query params on the v2 API, discarding the response body (several
+    /// v2 collection writes answer 204).
+    pub async fn put_v2(&self, path: &str, params: &[(&str, String)]) -> Result<()> {
+        self.mutate(reqwest::Method::PUT, &self.v2_base_url, path, params, &[], None)
+            .await
+            .map(|_| ())
+    }
+
     /// Send a form-encoded POST and decode the JSON response, sharing the write
     /// verbs' refresh-on-401 and 429 retry behavior.
     pub async fn post_form_json<T: DeserializeOwned>(
@@ -960,5 +968,28 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(thing.value, 8);
+    }
+
+    #[tokio::test]
+    async fn put_v2_targets_v2_and_tolerates_an_empty_body() {
+        let server = MockServer::start().await;
+        Mock::given(method("PUT"))
+            .and(path("/v2/folders/rename"))
+            .and(query_param("name", "New"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&server)
+            .await;
+        let client = TidalClient::new(
+            reqwest::Client::new(),
+            server.uri(),
+            format!("{}/token", server.uri()),
+            session(),
+            tokens(),
+            Arc::new(MemoryStore::default()),
+        );
+        client
+            .put_v2("folders/rename", &[("name", "New".to_string())])
+            .await
+            .unwrap();
     }
 }
