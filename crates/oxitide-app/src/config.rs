@@ -125,6 +125,8 @@ pub struct UiConfig {
     pub cover_shape: CoverShape,
     pub dynamic_color: DynamicColor,
     pub queue_width: u32,
+    /// Launch the window in the mini player (spec MP-D7); default off.
+    pub start_in_mini: bool,
     pub window_width: u32,
     pub window_height: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -145,6 +147,7 @@ impl Default for UiConfig {
             cover_shape: CoverShape::Disc,
             dynamic_color: DynamicColor::Auto,
             queue_width: 320,
+            start_in_mini: false,
             window_width: 1200,
             window_height: 800,
             window_x: None,
@@ -286,6 +289,7 @@ mod tests {
                 cover_shape: CoverShape::Disc,
                 dynamic_color: DynamicColor::Auto,
                 queue_width: 320,
+                start_in_mini: false,
                 window_width: 1280,
                 window_height: 720,
                 window_x: Some(40),
@@ -335,6 +339,7 @@ mod tests {
         assert_eq!(config.ui.window_x, None);
         assert_eq!(config.ui.window_y, None);
         assert!(!config.ui.window_maximized);
+        assert!(!config.ui.start_in_mini);
         assert_eq!(config.cache.dir, "");
         assert_eq!(config.cache.max_size_mb, 2048);
         assert!(!config.cache.clear_on_exit);
@@ -486,6 +491,19 @@ mod tests {
         config.save_to(&path).unwrap();
         assert!(fs::read_to_string(&path).unwrap().contains("dynamic_color = \"accent\""));
         assert_eq!(Config::load_from(&path), config);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn start_in_mini_defaults_false_and_round_trips() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        assert!(!Config::default().ui.start_in_mini);
+        let mut config = Config::default();
+        config.ui.start_in_mini = true;
+        config.save_to(&path).unwrap();
+        assert!(fs::read_to_string(&path).unwrap().contains("start_in_mini = true"));
+        assert!(Config::load_from(&path).ui.start_in_mini);
         let _ = fs::remove_dir_all(dir);
     }
 }
