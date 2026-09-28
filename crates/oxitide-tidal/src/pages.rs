@@ -123,6 +123,19 @@ impl TidalClient {
     pub async fn mixes_page(&self) -> Result<Vec<PageSection>> {
         self.page_sections_at("pages/my_collection_my_mixes", &[]).await
     }
+
+    /// The user's feed. TIDAL's endpoint path is unconfirmed; candidates are
+    /// probed in order and a missing feed degrades to an empty list.
+    pub async fn feed_page(&self) -> Result<Vec<PageSection>> {
+        for path in ["pages/feed", "pages/my_collection_feed"] {
+            match self.page_sections_at(path, &[]).await {
+                Ok(sections) => return Ok(sections),
+                Err(crate::error::Error::NotFound(_)) => continue,
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(Vec::new())
+    }
 }
 
 fn sections_from_page(raw: RawPage) -> Vec<PageSection> {
@@ -308,5 +321,41 @@ mod tests {
         let sections = client(&server).explore_page().await.unwrap();
         assert_eq!(sections[0].title, "For You");
         assert_eq!(sections[0].items[0].id, "p-1");
+    }
+
+    #[tokio::test]
+    async fn feed_page_falls_back_when_the_first_candidate_is_missing() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/pages/feed"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server).await;
+        Mock::given(method("GET")).and(path("/pages/my_collection_feed"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "rows": [{"modules": [{"type": "ALBUM_LIST", "title": "New Releases", "items": [
+                    {"id": 9, "title": "Album", "cover": "c-9"}
+                ]}]}]
+            })))
+            .mount(&server).await;
+        let sections = client(&server).feed_page().await.unwrap();
+        assert_eq!(sections[0].title, "New Releases");
+        assert_eq!(sections[0].items[0].item_type, "ALBUM_LIST");
+    }
+
+    #[tokio::test]
+    async fn feed_page_is_empty_when_every_candidate_is_missing() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/pages/feed"))
+            .respond_with(ResponseTemplate::new(404)).mount(&server).await;
+        Mock::given(method("GET")).and(path("/pages/my_collection_feed"))
+            .respond_with(ResponseTemplate::new(404)).mount(&server).await;
+        assert!(client(&server).feed_page().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn feed_page_propagates_non_404_failures() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/pages/feed"))
+            .respond_with(ResponseTemplate::new(500)).mount(&server).await;
+        assert!(client(&server).feed_page().await.is_err());
     }
 }
