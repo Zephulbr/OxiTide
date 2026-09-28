@@ -4,7 +4,7 @@
   import EmptyState from "../lib/components/EmptyState.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
   import Loading from "../lib/components/Loading.svelte";
-  import { routeForHomeItem } from "../lib/nav.svelte";
+  import { routeForPageItem } from "../lib/nav.svelte";
   import type { Nav } from "../lib/nav.svelte";
   let { nav }: { nav: Nav } = $props();
   let sections = $state<PageSection[]>([]);
@@ -40,7 +40,7 @@
     <h3>{section.title}</h3>
     <div class="card-grid">
       {#each section.items as item, i (item.id || `${item.title}-${i}`)}
-        {@const route = routeForHomeItem(item)}
+        {@const route = routeForPageItem(item)}
         {#if route}
           <button class="card" onclick={() => nav.goto(route)}>
             <span class="card-art"><Cover uuid={item.artwork} size={320} radius={12} alt="" /></span>

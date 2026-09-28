@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PageItem } from "./api";
-import { createNav, routeForHomeItem } from "./nav.svelte";
+import { createNav, routeForPageItem } from "./nav.svelte";
 
 describe("nav history", () => {
   it("starts at home with no history", () => {
@@ -42,8 +42,8 @@ describe("nav history", () => {
 
   it("truncates forward entries on a new navigation", () => {
     const nav = createNav();
-    nav.goto({ name: "search" });
-    nav.goto({ name: "library" });
+    nav.goto({ name: "explore" });
+    nav.goto({ name: "feed" });
     nav.back();
     expect(nav.canForward).toBe(true);
 
@@ -55,7 +55,7 @@ describe("nav history", () => {
 
   it("clamps back and forward at the ends", () => {
     const nav = createNav();
-    nav.goto({ name: "search" });
+    nav.goto({ name: "explore" });
 
     nav.back();
     nav.back();
@@ -63,7 +63,17 @@ describe("nav history", () => {
 
     nav.forward();
     nav.forward();
-    expect(nav.route).toEqual({ name: "search" });
+    expect(nav.route).toEqual({ name: "explore" });
+  });
+
+  it("keeps distinct folder ids in history", () => {
+    const nav = createNav();
+    nav.goto({ name: "folder", id: "a" });
+    nav.goto({ name: "folder", id: "b" });
+
+    nav.back();
+
+    expect(nav.route).toEqual({ name: "folder", id: "a" });
   });
 
   it("keeps the queue toggle out of history", () => {
@@ -87,38 +97,39 @@ describe("nav history", () => {
   });
 });
 
-function homeItem(item_type: string, id: string): PageItem {
+function pageItem(item_type: string, id: string): PageItem {
   return { id, title: "Item", item_type };
 }
 
-describe("routeForHomeItem", () => {
+describe("routeForPageItem", () => {
   it("routes playlist-ish items with a non-numeric id", () => {
-    expect(routeForHomeItem(homeItem("PLAYLIST_LIST", "8f5d0e3a-abc"))).toEqual({
+    expect(routeForPageItem(pageItem("PLAYLIST_LIST", "8f5d0e3a-abc"))).toEqual({
       name: "playlist",
       id: "8f5d0e3a-abc",
     });
-    expect(routeForHomeItem(homeItem("EDITORIAL", "story-1"))).toEqual({
+    expect(routeForPageItem(pageItem("EDITORIAL", "story-1"))).toEqual({
       name: "playlist",
       id: "story-1",
     });
   });
 
   it("routes album items with a numeric id", () => {
-    expect(routeForHomeItem(homeItem("ALBUM", "12345"))).toEqual({
+    expect(routeForPageItem(pageItem("ALBUM", "12345"))).toEqual({
       name: "album",
       id: 12345,
     });
   });
 
-  it("leaves tracks, mixes, and empty ids inert", () => {
-    expect(routeForHomeItem(homeItem("TRACK_LIST", "55"))).toBeNull();
-    expect(routeForHomeItem(homeItem("MIX", "mix-1"))).toBeNull();
-    expect(routeForHomeItem(homeItem("", "1"))).toBeNull();
-    expect(routeForHomeItem(homeItem("ALBUM", ""))).toBeNull();
+  it("leaves tracks, mixes, videos, and empty ids inert", () => {
+    expect(routeForPageItem(pageItem("TRACK_LIST", "55"))).toBeNull();
+    expect(routeForPageItem(pageItem("MIX", "mix-1"))).toBeNull();
+    expect(routeForPageItem(pageItem("VIDEO", "77"))).toBeNull();
+    expect(routeForPageItem(pageItem("", "1"))).toBeNull();
+    expect(routeForPageItem(pageItem("ALBUM", ""))).toBeNull();
   });
 
   it("rejects type and id mismatches", () => {
-    expect(routeForHomeItem(homeItem("PLAYLIST_LIST", "55"))).toBeNull();
-    expect(routeForHomeItem(homeItem("ALBUM", "not-a-number"))).toBeNull();
+    expect(routeForPageItem(pageItem("PLAYLIST_LIST", "55"))).toBeNull();
+    expect(routeForPageItem(pageItem("ALBUM", "not-a-number"))).toBeNull();
   });
 });

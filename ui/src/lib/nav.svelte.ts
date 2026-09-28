@@ -2,8 +2,19 @@ import type { PageItem } from "./api";
 
 export type Route =
   | { name: "home" }
+  | { name: "explore" }
+  | { name: "feed" }
+  // `search` and `library` are temporary; the final sidebar task removes them.
   | { name: "search" }
   | { name: "library" }
+  | { name: "playlists" }
+  | { name: "folder"; id: string }
+  | { name: "albums" }
+  | { name: "tracks" }
+  | { name: "mixes" }
+  | { name: "videos" }
+  | { name: "profiles" }
+  | { name: "purchases" }
   | { name: "album"; id: number }
   | { name: "playlist"; id: string }
   | { name: "artist"; id: number }
@@ -31,9 +42,10 @@ function sameRoute(a: Route, b: Route): boolean {
 
 const NUMERIC_ID = /^\d+$/;
 
-/// Map a home-feed item to a route only when the type and id shape agree.
-/// Tracks, mixes, and unknown types have no route and stay inert.
-export function routeForHomeItem(item: PageItem): Route | null {
+/// Map a page-feed item to a route only when the type and id shape agree.
+/// Mixes are handled by the shared renderer before this is consulted; tracks,
+/// videos, and unknown types stay inert.
+export function routeForPageItem(item: PageItem): Route | null {
   if (item.id.length === 0) return null;
   const type = item.item_type.toUpperCase();
   if ((type.includes("PLAYLIST") || type.includes("EDITORIAL")) && !NUMERIC_ID.test(item.id)) {
