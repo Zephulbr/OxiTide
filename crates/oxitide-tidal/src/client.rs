@@ -228,14 +228,45 @@ impl TidalClient {
         params: &[(&str, String)],
         token: &str,
     ) -> Result<reqwest::Response> {
-        let mut query: Vec<(&str, String)> = vec![("countryCode", self.session.country_code.clone())];
+        self.send_get_at(&self.base_url, path, params, token).await
+    }
+
+    async fn send_get_at(
+        &self,
+        base: &str,
+        path: &str,
+        params: &[(&str, String)],
+        token: &str,
+    ) -> Result<reqwest::Response> {
+        let mut query: Vec<(&str, String)> = Vec::new();
+        if base == self.base_url.as_str() {
+            query.push(("countryCode", self.session.country_code.clone()));
+        }
         query.extend(params.iter().cloned());
-        let url = format!(
-            "{}/{}",
-            self.base_url.trim_end_matches('/'),
-            path.trim_start_matches('/')
-        );
+        let url = format!("{}/{}", base.trim_end_matches('/'), path.trim_start_matches('/'));
         Ok(self.http.get(url).bearer_auth(token).query(&query).send().await?)
+    }
+
+    /// GET on the v2 API base (no `countryCode`), sharing `get`'s refresh-on-401.
+    pub async fn get_v2<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        params: &[(&str, String)],
+    ) -> Result<T> {
+        let token = self.access_token();
+        let mut resp = self.send_get_at(&self.v2_base_url, path, params, &token).await?;
+        let mut refreshed = false;
+        if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+            self.try_refresh(&token).await?;
+            refreshed = true;
+            resp = self
+                .send_get_at(&self.v2_base_url, path, params, &self.access_token())
+                .await?;
+        }
+        if refreshed && resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+            return Err(Error::Forbidden);
+        }
+        Self::decode(resp).await
     }
 
     /// Shared write path: v1 bases get the `countryCode` query, 401 refreshes
@@ -899,5 +930,35 @@ mod tests {
         );
         let err = client.post_form("playlists/p", &[]).await.unwrap_err();
         assert!(matches!(err, Error::Forbidden), "expected Forbidden, got {err:?}");
+    }
+
+    #[tokio::test]
+    async fn get_v2_targets_v2_without_country_code() {
+        let server = MockServer::start().await;
+        let responder = |req: &wiremock::Request| {
+            let has_country = req.url.query_pairs().any(|(key, _)| key == "countryCode");
+            if has_country {
+                ResponseTemplate::new(500)
+            } else {
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"value": 8}))
+            }
+        };
+        Mock::given(method("GET")).and(path("/v2/things"))
+            .and(query_param("limit", "50"))
+            .respond_with(responder)
+            .mount(&server).await;
+        let client = TidalClient::new(
+            reqwest::Client::new(),
+            server.uri(),
+            format!("{}/token", server.uri()),
+            session(),
+            tokens(),
+            Arc::new(MemoryStore::default()),
+        );
+        let thing: Thing = client
+            .get_v2("things", &[("limit", "50".to_string())])
+            .await
+            .unwrap();
+        assert_eq!(thing.value, 8);
     }
 }

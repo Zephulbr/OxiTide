@@ -180,6 +180,32 @@ impl SearchResults {
     pub fn playlist_items(&self) -> &[Playlist] { &self.playlists.items }
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Video {
+    pub id: u64,
+    pub title: String,
+    #[serde(default)]
+    pub duration: u32,
+    #[serde(default)]
+    pub artists: Vec<ArtistRef>,
+    #[serde(default)]
+    pub image: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Mix {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default, rename = "subTitle")]
+    pub sub_title: Option<String>,
+    #[serde(default, rename = "mixType")]
+    pub mix_type: Option<String>,
+    #[serde(default)]
+    pub image: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -286,5 +312,14 @@ mod tests {
 
         assert_eq!(value["owned"], serde_json::json!(true));
         assert!(value.get("creator").is_none());
+    }
+
+    #[test]
+    fn mix_parses_v2_fields() {
+        let raw = r#"{"id": "m1", "title": "Daily", "subTitle": "For you", "mixType": "DAILY_MIX"}"#;
+        let mix: Mix = serde_json::from_str(raw).unwrap();
+        assert_eq!(mix.id, "m1");
+        assert_eq!(mix.sub_title.as_deref(), Some("For you"));
+        assert_eq!(mix.mix_type.as_deref(), Some("DAILY_MIX"));
     }
 }

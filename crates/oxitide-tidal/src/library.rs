@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::client::{TidalClient, DEFAULT_PAGE_SIZE};
 use crate::error::Result;
-use crate::models::{Album, Artist, ItemPage, Track};
+use crate::models::{Album, Artist, ItemPage, Mix, Track, Video};
 
 /// Favorites endpoints wrap each entry as `{ "created": ..., "item": {...} }`.
 #[derive(Debug, Deserialize)]
@@ -76,6 +76,22 @@ impl TidalClient {
         Ok(favs.into_iter().map(|f| f.item).collect())
     }
 
+    /// Walk every page of the user's favorite videos.
+    pub async fn all_favorite_videos(&self) -> Result<Vec<Video>> {
+        let favs: Vec<Favorited<Video>> = self
+            .get_all_pages(&format!("{}/videos", self.user_base()), &[], DEFAULT_PAGE_SIZE)
+            .await?;
+        Ok(favs.into_iter().map(|f| f.item).collect())
+    }
+
+    /// Favorite mixes & radio (v2). The envelope varies by account/endpoint, so
+    /// both `{data:[…]}` and `{items:[…]}` are accepted, with entries bare or
+    /// wrapped in `{mix}`/`{data}`.
+    pub async fn favorite_mixes(&self, limit: u32, offset: u32) -> Result<(Vec<Mix>, u32)> {
+        let raw: serde_json::Value = self.get_v2("favorites/mixes", &page(limit, offset)).await?;
+        Ok(mixes_from_json(&raw))
+    }
+
     async fn set_favorite(&self, kind: &str, id_key: &str, id: u64, favorite: bool) -> Result<()> {
         if favorite {
             self.post_form(&format!("{}/{kind}", self.user_base()), &[(id_key, id.to_string())])
@@ -113,6 +129,55 @@ impl TidalClient {
             albums: albums?.into_iter().map(|f| f.item.id).collect(),
             artists: artists?.into_iter().map(|f| f.item.id).collect(),
         })
+    }
+}
+
+fn mixes_from_json(raw: &serde_json::Value) -> (Vec<Mix>, u32) {
+    let entries = raw
+        .get("data")
+        .or_else(|| raw.get("items"))
+        .and_then(serde_json::Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let total = raw
+        .get("totalNumberOfItems")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(entries.len() as u64) as u32;
+    let mixes = entries.iter().filter_map(mix_from_value).collect();
+    (mixes, total)
+}
+
+fn mix_from_value(value: &serde_json::Value) -> Option<Mix> {
+    let mix = value
+        .get("mix")
+        .or_else(|| value.get("data"))
+        .unwrap_or(value);
+    let id = value_to_string(mix.get("id")?)?;
+    let title = mix
+        .get("title")
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| mix.pointer("/titleTextInfo/text").and_then(serde_json::Value::as_str))
+        .unwrap_or_default()
+        .to_string();
+    let sub_title = mix
+        .get("subTitle")
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| mix.pointer("/subtitleTextInfo/text").and_then(serde_json::Value::as_str))
+        .map(str::to_string);
+    let mix_type = mix.get("mixType").and_then(serde_json::Value::as_str).map(str::to_string);
+    let image = mix
+        .pointer("/images/SMALL/url")
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| mix.pointer("/mixImages/0/url").and_then(serde_json::Value::as_str))
+        .map(str::to_string);
+    Some(Mix { id, title, sub_title, mix_type, image })
+}
+
+fn value_to_string(value: &serde_json::Value) -> Option<String> {
+    match value {
+        serde_json::Value::String(text) => Some(text.clone()),
+        serde_json::Value::Number(number) => Some(number.to_string()),
+        _ => None,
     }
 }
 
@@ -239,5 +304,57 @@ mod tests {
         assert_eq!(ids.tracks, vec![1, 2]);
         assert_eq!(ids.albums, vec![3]);
         assert_eq!(ids.artists, vec![4]);
+    }
+
+    #[tokio::test]
+    async fn all_favorite_videos_unwraps_the_item_envelope() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/users/42/favorites/videos"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [{"item": {"id": 3, "title": "Clip", "duration": 120,
+                    "artists": [{"id": 1, "name": "A"}], "image": "img-3"}}],
+                "totalNumberOfItems": 1, "limit": 100, "offset": 0
+            })))
+            .mount(&server).await;
+        let videos = client(&server).all_favorite_videos().await.unwrap();
+        assert_eq!(videos.len(), 1);
+        assert_eq!(videos[0].id, 3);
+        assert_eq!(videos[0].image.as_deref(), Some("img-3"));
+    }
+
+    #[tokio::test]
+    async fn favorite_mixes_accepts_the_v2_data_envelope() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/v2/favorites/mixes"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": [
+                    {"id": "m1", "title": "Daily Mix", "subTitle": "For you",
+                     "images": {"SMALL": {"url": "https://img/small.jpg"}}},
+                    {"mix": {"id": "m2", "title": "Artist Radio",
+                     "mixImages": [{"url": "https://img/a.jpg"}]}}
+                ],
+                "totalNumberOfItems": 2
+            })))
+            .mount(&server).await;
+        let (mixes, total) = client(&server).favorite_mixes(50, 0).await.unwrap();
+        assert_eq!(total, 2);
+        assert_eq!(mixes[0].id, "m1");
+        assert_eq!(mixes[0].image.as_deref(), Some("https://img/small.jpg"));
+        assert_eq!(mixes[1].id, "m2");
+        assert_eq!(mixes[1].image.as_deref(), Some("https://img/a.jpg"));
+    }
+
+    #[tokio::test]
+    async fn favorite_mixes_accepts_the_v1_items_envelope() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/v2/favorites/mixes"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [{"id": "m3", "title": "Mood", "type": "MIX"}]
+            })))
+            .mount(&server).await;
+        let (mixes, total) = client(&server).favorite_mixes(50, 0).await.unwrap();
+        assert_eq!(mixes.len(), 1);
+        assert_eq!(mixes[0].id, "m3");
+        assert_eq!(total, 1);
     }
 }
