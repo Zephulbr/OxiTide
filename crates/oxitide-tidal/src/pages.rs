@@ -4,7 +4,7 @@ use crate::client::TidalClient;
 use crate::error::Result;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct HomeItem {
+pub struct PageItem {
     #[serde(default)]
     pub id: String,
     #[serde(default)]
@@ -23,11 +23,11 @@ fn default_kind() -> String {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct HomeSection {
+pub struct PageSection {
     #[serde(default)]
     pub title: String,
     #[serde(default)]
-    pub items: Vec<HomeItem>,
+    pub items: Vec<PageItem>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -92,50 +92,74 @@ struct RawPage {
     pub rows: Vec<RawRow>,
 }
 
-impl TidalClient {
-    /// Fetch the home feed. TIDAL requires `deviceType`/`platform` on this endpoint.
-    pub async fn home_page(&self) -> Result<Vec<HomeSection>> {
-        let params = [
-            ("deviceType", "BROWSER".to_string()),
-            ("platform", "WEB".to_string()),
-        ];
-        let raw: RawPage = self.get("pages/home", &params).await?;
+fn page_params() -> Vec<(&'static str, String)> {
+    vec![("deviceType", "BROWSER".into()), ("platform", "WEB".into())]
+}
 
-        let mut sections = Vec::new();
-        for row in raw.rows {
-            for module in row.modules {
-                let mut raw_items = module.items;
-                if let Some(paged) = module.paged_list {
-                    raw_items.extend(paged.items);
-                }
-                if raw_items.is_empty() {
-                    continue;
-                }
-                let module_type = module.module_type.clone();
-                let items: Vec<HomeItem> = raw_items
-                    .into_iter()
-                    .map(|i| HomeItem {
-                        id: item_id(&i),
-                        title: i.title,
-                        subtitle: i.subtitle.or(i.description),
-                        item_type: if i.item_type.is_empty() {
-                            module_type.clone()
-                        } else {
-                            i.item_type
-                        },
-                        artwork: i
-                            .cover
-                            .or(i.square_image)
-                            .or(i.image)
-                            .or(i.picture)
-                            .or_else(|| i.album.and_then(|album| album.cover)),
-                    })
-                    .collect();
-                sections.push(HomeSection { title: module.title, items });
-            }
-        }
-        Ok(sections)
+impl TidalClient {
+    /// Parse any v1 page endpoint that uses the rows/modules format.
+    async fn page_sections_at(
+        &self,
+        path: &str,
+        extra: &[(&str, String)],
+    ) -> Result<Vec<PageSection>> {
+        let mut params = page_params();
+        params.extend(extra.iter().cloned());
+        let raw: RawPage = self.get(path, &params).await?;
+        Ok(sections_from_page(raw))
     }
+
+    /// Fetch the home feed. TIDAL requires `deviceType`/`platform` on this endpoint.
+    pub async fn home_page(&self) -> Result<Vec<PageSection>> {
+        self.page_sections_at("pages/home", &[]).await
+    }
+
+    /// Fetch the explore page (same rows/modules shape as home).
+    pub async fn explore_page(&self) -> Result<Vec<PageSection>> {
+        self.page_sections_at("pages/explore", &[]).await
+    }
+
+    /// The signed-in user's mixes & radio, as a page.
+    pub async fn mixes_page(&self) -> Result<Vec<PageSection>> {
+        self.page_sections_at("pages/my_collection_my_mixes", &[]).await
+    }
+}
+
+fn sections_from_page(raw: RawPage) -> Vec<PageSection> {
+    let mut sections = Vec::new();
+    for row in raw.rows {
+        for module in row.modules {
+            let mut raw_items = module.items;
+            if let Some(paged) = module.paged_list {
+                raw_items.extend(paged.items);
+            }
+            if raw_items.is_empty() {
+                continue;
+            }
+            let module_type = module.module_type.clone();
+            let items: Vec<PageItem> = raw_items
+                .into_iter()
+                .map(|i| PageItem {
+                    id: item_id(&i),
+                    title: i.title,
+                    subtitle: i.subtitle.or(i.description),
+                    item_type: if i.item_type.is_empty() {
+                        module_type.clone()
+                    } else {
+                        i.item_type
+                    },
+                    artwork: i
+                        .cover
+                        .or(i.square_image)
+                        .or(i.image)
+                        .or(i.picture)
+                        .or_else(|| i.album.and_then(|album| album.cover)),
+                })
+                .collect();
+            sections.push(PageSection { title: module.title, items });
+        }
+    }
+    sections
 }
 
 /// TIDAL uses a numeric `id` for tracks/albums and a `uuid` for playlists.
@@ -268,5 +292,21 @@ mod tests {
         assert_eq!(items[0].artwork.as_deref(), Some("39e3dad3-33fb-47f2-87f8-8b6f8c55734c"));
         assert_eq!(items[1].artwork, None);
         assert_eq!(items[2].artwork.as_deref(), Some("c-5"));
+    }
+
+    #[tokio::test]
+    async fn explore_page_reads_the_explore_path() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/pages/explore"))
+            .and(query_param("deviceType", "BROWSER"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "rows": [{"modules": [{"type": "PLAYLIST_LIST", "title": "For You", "items": [
+                    {"uuid": "p-1", "title": "Mix"}
+                ]}]}]
+            })))
+            .mount(&server).await;
+        let sections = client(&server).explore_page().await.unwrap();
+        assert_eq!(sections[0].title, "For You");
+        assert_eq!(sections[0].items[0].id, "p-1");
     }
 }

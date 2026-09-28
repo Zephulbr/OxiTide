@@ -360,11 +360,11 @@ fn build_player(
     Ok(Player { engine })
 }
 
-use oxitide_tidal::home::HomeSection;
+use oxitide_tidal::pages::PageSection;
 use oxitide_tidal::models::{Album, Artist, Playlist, SearchResults, Track};
 
 #[tauri::command]
-pub async fn get_home(state: State<'_, AppState>) -> Result<Vec<HomeSection>, String> {
+pub async fn get_home(state: State<'_, AppState>) -> Result<Vec<PageSection>, String> {
     require_client(&state)?.home_page().await.map_err(|e| state.fail_tidal(e))
 }
 
