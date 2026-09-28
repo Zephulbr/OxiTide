@@ -360,12 +360,105 @@ fn build_player(
     Ok(Player { engine })
 }
 
-use oxitide_tidal::pages::PageSection;
-use oxitide_tidal::models::{Album, Artist, Playlist, SearchResults, Track};
+use oxitide_tidal::folders::{CollectionEntry, CollectionFolder};
+use oxitide_tidal::models::{Album, Artist, Mix, Playlist, SearchResults, Track, Video};
+use oxitide_tidal::pages::{MixDetail, PageItem, PageSection};
 
 #[tauri::command]
 pub async fn get_home(state: State<'_, AppState>) -> Result<Vec<PageSection>, String> {
     require_client(&state)?.home_page().await.map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
+pub async fn get_explore(state: State<'_, AppState>) -> Result<Vec<PageSection>, String> {
+    require_client(&state)?.explore_page().await.map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
+pub async fn get_feed(state: State<'_, AppState>) -> Result<Vec<PageSection>, String> {
+    require_client(&state)?.feed_page().await.map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
+pub async fn get_favorite_mixes(state: State<'_, AppState>) -> Result<Vec<Mix>, String> {
+    let (mixes, _total) = require_client(&state)?
+        .favorite_mixes(100, 0)
+        .await
+        .map_err(|e| state.fail_tidal(e))?;
+    Ok(mixes)
+}
+
+#[tauri::command]
+pub async fn get_mix(state: State<'_, AppState>, id: String) -> Result<MixDetail, String> {
+    require_client(&state)?.mix_page(&id).await.map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
+pub async fn get_favorite_videos(state: State<'_, AppState>) -> Result<Vec<Video>, String> {
+    require_client(&state)?.all_favorite_videos().await.map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
+pub async fn get_collection_items(
+    state: State<'_, AppState>,
+    folder_id: Option<String>,
+) -> Result<Vec<CollectionEntry>, String> {
+    let folder = folder_id.unwrap_or_else(|| "root".to_string());
+    require_client(&state)?.collection_items(&folder).await.map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
+pub async fn create_folder(
+    state: State<'_, AppState>,
+    name: String,
+    parent_id: Option<String>,
+) -> Result<CollectionFolder, String> {
+    let parent = parent_id.unwrap_or_else(|| "root".to_string());
+    require_client(&state)?
+        .create_folder(&name, &parent)
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
+pub async fn rename_folder(state: State<'_, AppState>, id: String, name: String) -> Result<(), String> {
+    require_client(&state)?
+        .rename_folder(&id, &name)
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
+pub async fn remove_collection_entry(
+    state: State<'_, AppState>,
+    kind: String,
+    id: String,
+) -> Result<(), String> {
+    require_client(&state)?
+        .remove_collection_entry(&kind, &id)
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
+pub async fn move_playlists_to_folder(
+    state: State<'_, AppState>,
+    ids: Vec<String>,
+    folder_id: String,
+) -> Result<(), String> {
+    require_client(&state)?
+        .move_playlists(&ids, &folder_id)
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
+pub async fn get_purchases(state: State<'_, AppState>) -> Result<Vec<PageItem>, String> {
+    match require_client(&state)?.purchases(100, 0).await {
+        Ok((items, _total)) => Ok(items),
+        Err(Error::NotFound(_)) => Ok(Vec::new()),
+        Err(e) => Err(state.fail_tidal(e)),
+    }
 }
 
 #[tauri::command]
