@@ -243,20 +243,22 @@ mod tests {
         Mock::given(method("GET")).and(path("/users/42/favorites/tracks"))
             .and(query_param("offset", "0"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "items": [{"item": {"id": 1, "title": "A"}}],
-                "totalNumberOfItems": 2, "limit": 100, "offset": 0
+                "items": (1..=100)
+                    .map(|id| serde_json::json!({"item": {"id": id, "title": "T"}}))
+                    .collect::<Vec<_>>(),
+                "totalNumberOfItems": 101, "limit": 100, "offset": 0
             })))
             .mount(&server).await;
         Mock::given(method("GET")).and(path("/users/42/favorites/tracks"))
-            .and(query_param("offset", "1"))
+            .and(query_param("offset", "100"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "items": [{"item": {"id": 2, "title": "B"}}],
-                "totalNumberOfItems": 2, "limit": 100, "offset": 1
+                "items": [{"item": {"id": 101, "title": "Last"}}],
+                "totalNumberOfItems": 101, "limit": 100, "offset": 100
             })))
             .mount(&server).await;
         let tracks = client(&server).all_favorite_tracks().await.unwrap();
-        assert_eq!(tracks.len(), 2);
-        assert_eq!(tracks[1].id, 2);
+        assert_eq!(tracks.len(), 101);
+        assert_eq!(tracks[100].id, 101);
     }
 
     #[tokio::test]

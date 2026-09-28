@@ -198,6 +198,12 @@ impl TidalClient {
 
     /// Walk every page of a TIDAL list endpoint, following `totalNumberOfItems`
     /// and `offset`, returning the concatenated `items`.
+    ///
+    /// Offsets index the full scanned list: TIDAL omits unavailable rows from
+    /// `items` while still counting them in `totalNumberOfItems`, so each
+    /// request advances by its requested window size. Advancing by the received
+    /// count would re-scan the tail of the previous window and return
+    /// duplicates.
     pub async fn get_all_pages<T: DeserializeOwned>(
         &self,
         path: &str,
@@ -214,7 +220,7 @@ impl TidalClient {
             let received = page.items.len() as u32;
             let total = page.total_number_of_items;
             all.extend(page.items);
-            offset = offset.saturating_add(received);
+            offset = offset.saturating_add(page_size);
             if received == 0 {
                 break;
             }
@@ -886,6 +892,40 @@ mod tests {
             .post_form_with_etag("playlists/p/items", &[], Some("\"e1\""))
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn get_all_pages_advances_by_the_requested_window_not_the_received_count() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/things"))
+            .and(query_param("offset", "0"))
+            .and(query_param("limit", "2"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [{"value": 1}],
+                "totalNumberOfItems": 3, "limit": 2, "offset": 0
+            })))
+            .mount(&server).await;
+        Mock::given(method("GET")).and(path("/things"))
+            .and(query_param("offset", "2"))
+            .and(query_param("limit", "2"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [{"value": 2}, {"value": 3}],
+                "totalNumberOfItems": 3, "limit": 2, "offset": 2
+            })))
+            .mount(&server).await;
+        let client = TidalClient::new(
+            reqwest::Client::new(),
+            server.uri(),
+            format!("{}/token", server.uri()),
+            session(),
+            tokens(),
+            Arc::new(MemoryStore::default()),
+        );
+        let things: Vec<Thing> = client.get_all_pages("things", &[], 2).await.unwrap();
+        assert_eq!(things.len(), 3, "a page omitted an unavailable row; the walk must not re-read it");
+        assert_eq!(things[0].value, 1);
+        assert_eq!(things[1].value, 2);
+        assert_eq!(things[2].value, 3);
     }
 
     #[tokio::test]
