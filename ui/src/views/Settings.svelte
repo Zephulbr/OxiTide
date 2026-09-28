@@ -171,6 +171,12 @@
     api.setQualityDisplay(mode).catch(apply);
   }
 
+  function setStartInMini(enabled: boolean) {
+    if (!config) return;
+    config = { ...config, ui: { ...config.ui, start_in_mini: enabled } };
+    api.setStartInMini(enabled).catch(apply);
+  }
+
   function setCacheMaxMb(mb: number) {
     if (!config) return;
     const clamped = Math.max(0, Math.floor(mb));
@@ -288,6 +294,18 @@
           <button class:active={appearance.coverShape === "disc"} onclick={() => appearance.setCoverShape("disc").catch(apply)}>Disc</button>
           <button class:active={appearance.coverShape === "sleeve"} onclick={() => appearance.setCoverShape("sleeve").catch(apply)}>Sleeve</button>
         </div>
+      </div>
+
+      <div class="field">
+        <span class="field-label">Mini player:</span>
+        <label>
+          <input
+            type="checkbox"
+            checked={config.ui.start_in_mini}
+            onchange={(e) => setStartInMini((e.target as HTMLInputElement).checked)}
+          />
+          Start in mini player
+        </label>
       </div>
     </div>
   {:else if tab === "playback"}
