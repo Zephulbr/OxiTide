@@ -5,10 +5,9 @@
   import type { Favorites } from "../favorites.svelte";
   import type { Player } from "../player.svelte";
   import type { Nav } from "../nav.svelte";
-  import { appearance } from "../appearance.svelte";
-  import { wavePath } from "../wave";
   import Cover from "./Cover.svelte";
   import Icon from "./Icon.svelte";
+  import SeekBar from "./SeekBar.svelte";
 
   let {
     player,
@@ -17,48 +16,14 @@
     nav,
   }: { player: Player; qualityDisplay: QualityDisplay; favorites: Favorites; nav: Nav } = $props();
 
-  let dragging = $state(false);
-  let dragValue = $state(0);
-
-  const shown = $derived(player.pendingSeek ?? player.state.position_ms);
-  const position = $derived(dragging ? dragValue : shown);
+  const position = $derived(player.pendingSeek ?? player.state.position_ms);
   const duration = $derived(player.state.duration_ms);
-  const progress = $derived((position / Math.max(duration, 1)) * 100);
   const quality = $derived(
     formatQuality(player.state.stream, qualityDisplay, player.state.preferred_quality),
   );
   const maxQuality = $derived(
     formatQuality(player.state.stream, "compact", player.state.preferred_quality) === "MAX",
   );
-
-  function seekPointer(event: PointerEvent) {
-    const el = event.currentTarget as HTMLElement;
-    const rect = el.getBoundingClientRect();
-    const clampRatio = (clientX: number) => Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
-    dragging = true;
-    dragValue = clampRatio(event.clientX) * duration;
-    el.setPointerCapture(event.pointerId);
-    const onMove = (e: PointerEvent) => {
-      dragValue = clampRatio(e.clientX) * duration;
-    };
-    const onUp = (e: PointerEvent) => {
-      dragging = false;
-      el.removeEventListener("pointermove", onMove);
-      el.removeEventListener("pointerup", onUp);
-      player.seek(Math.round(clampRatio(e.clientX) * duration));
-    };
-    el.addEventListener("pointermove", onMove);
-    el.addEventListener("pointerup", onUp);
-  }
-
-  function seekKeydown(event: KeyboardEvent) {
-    if (event.key === "ArrowLeft") player.seek(Math.max(0, position - 5000));
-    else if (event.key === "ArrowRight") {
-      const limit = duration > 0 ? duration : position + 5000;
-      player.seek(Math.min(limit, position + 5000));
-    } else return;
-    event.preventDefault();
-  }
 
   function nextRepeat(mode: RepeatMode): RepeatMode {
     if (mode === "off") return "all";
@@ -71,35 +36,7 @@
   {#if player.state.current}
     {@const current = player.state.current}
     {@const fav = favorites.hasTrack(current.track_id)}
-    <div
-      class="seek"
-      class:dragging
-      role="slider"
-      tabindex="0"
-      aria-label="Playback position"
-      aria-valuemin={0}
-      aria-valuemax={Math.max(duration, 1)}
-      aria-valuenow={Math.round(position)}
-      onpointerdown={seekPointer}
-      onkeydown={seekKeydown}
-    >
-      {#if appearance.waveSeek}
-        {@const pct = (position / Math.max(duration, 1)) * 100}
-        {@const d = wavePath(current.track_id, 800, 14)}
-        <div class="seek-wave">
-          <svg viewBox="0 0 800 14" preserveAspectRatio="none" aria-hidden="true">
-            <path class="wave-base" d={d} fill="none" stroke="var(--line)" stroke-width="1.5" vector-effect="non-scaling-stroke" />
-            <clipPath id="seek-played"><rect x="0" y="0" width="{pct}%" height="100%" /></clipPath>
-            <path d={d} fill="none" stroke="var(--accent)" stroke-width="1.5" vector-effect="non-scaling-stroke" clip-path="url(#seek-played)" />
-          </svg>
-        </div>
-      {:else}
-        <div class="seek-line">
-          <div class="seek-fill" style:width="{progress}%"></div>
-          <div class="seek-thumb" style:left="{progress}%"></div>
-        </div>
-      {/if}
-    </div>
+    <SeekBar {player} />
 
     <div class="zone left">
       <button class="thumb" onclick={() => nav.toggleNowPlaying()} aria-label="Open now playing" title="Open now playing">
@@ -200,10 +137,11 @@
     transition: border-top-color var(--dur-micro);
   }
   /* The bar's top border reads as a separator through the seek; fade it out
-     while the seek is interactive so only the progress shows. */
-  .player:has(.seek:hover),
-  .player:has(.seek:focus-visible),
-  .player:has(.seek.dragging) {
+     while the seek is interactive so only the progress shows. `.seek` lives in
+     SeekBar, so the :has() argument is global. */
+  :global(.player:has(.seek:hover)),
+  :global(.player:has(.seek:focus-visible)),
+  :global(.player:has(.seek.dragging)) {
     border-top-color: transparent;
   }
   .zone {
@@ -215,78 +153,6 @@
   .zone.left { justify-self: start; }
   .zone.center { justify-self: center; gap: 6px; }
   .zone.right { justify-self: end; }
-
-  /* Seek across the top edge: rests at the old hover thickness, grows a touch
-     more (+ thumb for the line variant) on hover/focus/drag. */
-  .seek {
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: -1px;
-    height: 12px;
-    cursor: pointer;
-    display: flex;
-    align-items: flex-start;
-  }
-  .seek-line {
-    position: relative;
-    width: 100%;
-    height: 4px;
-    margin-top: 0;
-    background: var(--line);
-    transition: height var(--dur-micro) var(--ease-in);
-  }
-  .seek-fill {
-    position: absolute;
-    inset: 0 auto 0 0;
-    background: var(--accent);
-  }
-  .seek-thumb {
-    position: absolute;
-    top: 50%;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--accent);
-    transform: translate(-50%, -50%) scale(0);
-    transition: transform var(--dur-micro) var(--ease-in);
-  }
-  .seek:hover .seek-line,
-  .seek:focus-visible .seek-line,
-  .seek.dragging .seek-line {
-    height: 6px;
-  }
-  .seek:hover .seek-thumb,
-  .seek:focus-visible .seek-thumb,
-  .seek.dragging .seek-thumb {
-    transform: translate(-50%, -50%) scale(1);
-  }
-  /* Stylized wave (Atmosphere): full amplitude + opacity at rest; interactive
-     grows it a touch and brightens the unplayed portion. */
-  .seek-wave {
-    width: 100%;
-    height: 10px;
-    transform-origin: top;
-    transition: transform var(--dur-micro) var(--ease-in);
-  }
-  .seek-wave svg {
-    display: block;
-    width: 100%;
-    height: 100%;
-  }
-  .seek-wave .wave-base {
-    transition: stroke var(--dur-micro);
-  }
-  .seek:hover .seek-wave,
-  .seek:focus-visible .seek-wave,
-  .seek.dragging .seek-wave {
-    transform: scaleY(1.3);
-  }
-  .seek:hover .wave-base,
-  .seek:focus-visible .wave-base,
-  .seek.dragging .wave-base {
-    stroke: var(--text-muted);
-  }
 
   .thumb {
     position: relative;
