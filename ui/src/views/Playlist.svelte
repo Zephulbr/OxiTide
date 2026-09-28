@@ -110,7 +110,7 @@
       await api.deletePlaylist(id);
       invalidatePlaylistCovers(id);
       toasts.show("Playlist deleted", { severity: "success" });
-      nav.goto({ name: "library" });
+      nav.goto({ name: "playlists" });
     } catch (e) {
       toasts.show(errorMessage(e), { severity: "error" });
     }

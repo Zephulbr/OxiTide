@@ -14,6 +14,7 @@
   import Explore from "./views/Explore.svelte";
   import Feed from "./views/Feed.svelte";
   import Library from "./views/Library.svelte";
+  import Playlists from "./views/Playlists.svelte";
   import Settings from "./views/Settings.svelte";
   import NowPlaying from "./views/NowPlaying.svelte";
   import PlaylistPicker from "./lib/components/PlaylistPicker.svelte";
@@ -30,6 +31,8 @@
   import { createDynamicColor } from "./lib/dynamicColor.svelte";
   import { createFavorites } from "./lib/favorites.svelte";
   import { createPlaylistActions } from "./lib/playlists.svelte";
+  import { createCollectionTree } from "./lib/collection.svelte";
+  import { createCollectionActions } from "./lib/collectionActions.svelte";
   import { clearPagerCache } from "./lib/pager.svelte";
   import { clearPlaylistCovers } from "./lib/playlistArt.svelte";
   import { api, type QueueItem } from "./lib/api";
@@ -48,6 +51,8 @@
   const toasts = createToasts();
   const favorites = createFavorites(toasts);
   const playlistActions = createPlaylistActions(toasts);
+  const collection = createCollectionTree(toasts);
+  const collectionActions = createCollectionActions(collection, toasts);
   let qualityDisplay = $state<QualityDisplay>("compact");
   let loggedIn = $state(false);
   let booting = $state(true);
@@ -309,6 +314,8 @@
       {:else if nav.route.name === "feed"}<Feed {nav} {toasts} />
       {:else if nav.route.name === "search"}<Search {nav} {player} {favorites} {playlistActions} />
       {:else if nav.route.name === "library"}<Library {nav} {player} {favorites} {playlistActions} {toasts} />
+      {:else if nav.route.name === "playlists"}<Playlists {nav} {playlistActions} {toasts} {collection} actions={collectionActions} />
+      {:else if nav.route.name === "folder"}<Playlists {nav} {playlistActions} {toasts} {collection} actions={collectionActions} folderId={nav.route.id} folderLabel={nav.route.label ?? ""} />
       {:else if nav.route.name === "album"}<Album id={nav.route.id} {player} {favorites} {playlistActions} />
       {:else if nav.route.name === "playlist"}<Playlist {nav} id={nav.route.id} {player} {favorites} {playlistActions} {toasts} />
       {:else if nav.route.name === "artist"}<Artist id={nav.route.id} {favorites} />

@@ -8,7 +8,7 @@ export type Route =
   | { name: "search" }
   | { name: "library" }
   | { name: "playlists" }
-  | { name: "folder"; id: string }
+  | { name: "folder"; id: string; label?: string }
   | { name: "albums" }
   | { name: "tracks" }
   | { name: "mixes" }
