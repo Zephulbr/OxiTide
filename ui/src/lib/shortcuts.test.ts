@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isShortcutHandled, isTypingTarget, matchShortcut, SHORTCUTS } from "./shortcuts";
+import { escapeTarget, isShortcutHandled, isTypingTarget, matchShortcut, SHORTCUTS } from "./shortcuts";
 
 function keyEvent(key: string, overrides: Partial<KeyboardEvent> = {}): KeyboardEvent {
   return {
@@ -119,5 +119,37 @@ describe("isShortcutHandled", () => {
     ] as const) {
       expect(isShortcutHandled(action, idle)).toBe(true);
     }
+  });
+});
+
+describe("escapeTarget", () => {
+  const none = {
+    menuOpen: false,
+    miniActive: false,
+    miniQueueOpen: false,
+    nowPlayingOpen: false,
+    queueOpen: false,
+  };
+
+  it("resolves the documented order, most modal first", () => {
+    expect(escapeTarget({ ...none, queueOpen: true })).toBe("queue");
+    expect(escapeTarget({ ...none, nowPlayingOpen: true, queueOpen: true })).toBe("now-playing");
+    expect(
+      escapeTarget({ ...none, miniActive: true, nowPlayingOpen: true, queueOpen: true }),
+    ).toBe("exit-mini");
+    expect(
+      escapeTarget({ ...none, miniActive: true, miniQueueOpen: true, nowPlayingOpen: true }),
+    ).toBe("mini-queue");
+    expect(
+      escapeTarget({ ...none, menuOpen: true, miniActive: true, miniQueueOpen: true }),
+    ).toBe("menu");
+  });
+
+  it("returns null when nothing owns Esc", () => {
+    expect(escapeTarget(none)).toBeNull();
+  });
+
+  it("ignores a stale mini queue flag when mini is not active", () => {
+    expect(escapeTarget({ ...none, miniQueueOpen: true })).toBeNull();
   });
 });

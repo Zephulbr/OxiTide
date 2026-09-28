@@ -11,6 +11,27 @@ export type ShortcutAction =
   | "history-forward"
   | "escape";
 
+export type EscapeTarget = "menu" | "mini-queue" | "exit-mini" | "now-playing" | "queue" | null;
+
+export interface EscapeLayers {
+  menuOpen: boolean;
+  miniActive: boolean;
+  miniQueueOpen: boolean;
+  nowPlayingOpen: boolean;
+  queueOpen: boolean;
+}
+
+/// Which layer Esc closes (MP-D6/MP-D10), most modal first. `null` means Esc is
+/// a no-op and the key keeps its native behavior.
+export function escapeTarget(layers: EscapeLayers): EscapeTarget {
+  if (layers.menuOpen) return "menu";
+  if (layers.miniActive && layers.miniQueueOpen) return "mini-queue";
+  if (layers.miniActive) return "exit-mini";
+  if (layers.nowPlayingOpen) return "now-playing";
+  if (layers.queueOpen) return "queue";
+  return null;
+}
+
 export interface ShortcutHint {
   keys: string;
   description: string;
@@ -23,7 +44,7 @@ export const SHORTCUTS: ShortcutHint[] = [
   { keys: "↑ / ↓", description: "Volume +5% / −5%" },
   { keys: "Ctrl+F or /", description: "Focus search" },
   { keys: "Alt+← / Alt+→", description: "History back / forward" },
-  { keys: "Esc", description: "Close the menu, then the queue" },
+  { keys: "Esc", description: "Close the menu, mini queue, mini player, now playing, or queue" },
 ];
 
 /// Duck-typed so the matcher stays testable without a DOM environment.
