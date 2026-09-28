@@ -1,7 +1,7 @@
 //! Window geometry persistence: capture size/position/maximized state into
 //! `config.toml` and restore it with an on-screen check.
 
-use tauri::{PhysicalPosition, PhysicalSize, WebviewWindow};
+use tauri::{PhysicalPosition, PhysicalSize, Size, WebviewWindow};
 
 use crate::config::Config;
 
@@ -17,6 +17,85 @@ pub struct MonitorRect {
 /// Minimum visible window area for a saved position to be restored.
 const MIN_VISIBLE_WIDTH: i64 = 200;
 const MIN_VISIBLE_HEIGHT: i64 = 100;
+
+/// Mini-player and full-window size limits (spec §5.1).
+pub const MINI_WIDTH: u32 = 300;
+pub const MINI_HEIGHT: u32 = 430;
+pub const MINI_MIN_WIDTH: u32 = 260;
+pub const MINI_MIN_HEIGHT: u32 = 360;
+/// The windowed minimum from `tauri.conf.json`; re-applied on mini exit.
+pub const FULL_MIN_WIDTH: u32 = 720;
+pub const FULL_MIN_HEIGHT: u32 = 520;
+
+/// The full-window geometry stashed while the mini player is active.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FullGeometry {
+    pub width: u32,
+    pub height: u32,
+    pub x: Option<i32>,
+    pub y: Option<i32>,
+    pub maximized: bool,
+}
+
+/// The geometry to persist on close: the pre-mini stash when mini is active,
+/// otherwise the live window (the caller supplies the captured live state).
+pub fn geometry_to_save(pre_mini: Option<FullGeometry>, live: FullGeometry) -> FullGeometry {
+    pre_mini.unwrap_or(live)
+}
+
+/// Read the live window geometry for the pre-mini stash.
+pub fn read_geometry(window: &WebviewWindow) -> tauri::Result<FullGeometry> {
+    let size = window.inner_size()?;
+    let position = window.outer_position().ok();
+    Ok(FullGeometry {
+        width: size.width,
+        height: size.height,
+        x: position.map(|p| p.x),
+        y: position.map(|p| p.y),
+        maximized: window.is_maximized().unwrap_or(false),
+    })
+}
+
+/// Apply a stashed geometry: size, position when known, then maximize.
+pub fn apply_geometry(window: &WebviewWindow, geometry: FullGeometry) -> tauri::Result<()> {
+    window.set_size(PhysicalSize::new(geometry.width, geometry.height))?;
+    if let (Some(x), Some(y)) = (geometry.x, geometry.y) {
+        window.set_position(PhysicalPosition::new(x, y))?;
+    }
+    if geometry.maximized {
+        window.maximize()?;
+    }
+    Ok(())
+}
+
+/// Enter the mini window. Unmaximizing first keeps the stash authoritative
+/// (MP-D11): exit restores the maximized state from the stash.
+pub fn enter_mini(window: &WebviewWindow, stash: FullGeometry) -> tauri::Result<()> {
+    if stash.maximized {
+        window.unmaximize()?;
+    }
+    window.set_min_size(Some(Size::Physical(PhysicalSize::new(
+        MINI_MIN_WIDTH,
+        MINI_MIN_HEIGHT,
+    ))))?;
+    window.set_resizable(true)?;
+    window.set_size(PhysicalSize::new(MINI_WIDTH, MINI_HEIGHT))?;
+    Ok(())
+}
+
+/// Leave the mini window: restore the full minimum, then the stash when there
+/// is one (a defensive `None` leaves size/position untouched).
+pub fn exit_mini(window: &WebviewWindow, stash: Option<FullGeometry>) -> tauri::Result<()> {
+    window.set_min_size(Some(Size::Physical(PhysicalSize::new(
+        FULL_MIN_WIDTH,
+        FULL_MIN_HEIGHT,
+    ))))?;
+    window.set_resizable(true)?;
+    if let Some(geometry) = stash {
+        apply_geometry(window, geometry)?;
+    }
+    Ok(())
+}
 
 /// Returns `(x, y)` when at least a 200x100 corner of the window intersects a
 /// monitor's work area, else `None`.
@@ -134,5 +213,25 @@ mod tests {
     fn a_second_monitor_counts() {
         let monitors = [monitor(0, 0, 1920, 1080), monitor(1920, 0, 2560, 1440)];
         assert_eq!(visible_position(2000, 100, 1200, 800, &monitors), Some((2000, 100)));
+    }
+
+    #[test]
+    fn geometry_to_save_prefers_the_stash() {
+        let live = FullGeometry {
+            width: 1200,
+            height: 800,
+            x: Some(10),
+            y: Some(20),
+            maximized: false,
+        };
+        let stash = FullGeometry {
+            width: 1000,
+            height: 700,
+            x: Some(30),
+            y: Some(40),
+            maximized: true,
+        };
+        assert_eq!(geometry_to_save(Some(stash), live), stash);
+        assert_eq!(geometry_to_save(None, live), live);
     }
 }
