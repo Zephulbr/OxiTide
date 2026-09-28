@@ -11,6 +11,7 @@ use tauri::{AppHandle, Emitter};
 use crate::artwork::ArtworkService;
 use crate::commands::LoginOutcome;
 use crate::config::Config;
+use crate::window::FullGeometry;
 
 pub struct Player {
     pub engine: Engine,
@@ -30,6 +31,8 @@ pub struct AppState {
     pub client: RwLock<Option<TidalClient>>,
     pub player: RwLock<Option<Arc<Player>>>,
     pub config: Mutex<Config>,
+    /// The full-window geometry stashed while the mini player is active.
+    pub pre_mini: Mutex<Option<FullGeometry>>,
     pub cache: Mutex<Option<Arc<DiskCache>>>,
     pub artwork: Mutex<Option<Arc<ArtworkService>>>,
     session_expired: AtomicBool,
@@ -79,6 +82,18 @@ impl AppState {
 
     pub fn set_config(&self, config: Config) {
         *self.config.lock().unwrap() = config;
+    }
+
+    pub fn pre_mini(&self) -> Option<FullGeometry> {
+        *self.pre_mini.lock().unwrap()
+    }
+
+    pub fn set_pre_mini(&self, geometry: FullGeometry) {
+        *self.pre_mini.lock().unwrap() = Some(geometry);
+    }
+
+    pub fn take_pre_mini(&self) -> Option<FullGeometry> {
+        self.pre_mini.lock().unwrap().take()
     }
 
     pub fn set_cache(&self, cache: Arc<DiskCache>) {
@@ -196,5 +211,22 @@ mod tests {
         state.notify_session_expired();
         state.logout();
         assert!(!state.session_expired());
+    }
+
+    #[test]
+    fn pre_mini_stash_is_set_and_taken_once() {
+        let state = AppState::default();
+        assert_eq!(state.pre_mini(), None);
+        let geometry = crate::window::FullGeometry {
+            width: 1200,
+            height: 800,
+            x: Some(1),
+            y: Some(2),
+            maximized: false,
+        };
+        state.set_pre_mini(geometry);
+        assert_eq!(state.pre_mini(), Some(geometry));
+        assert_eq!(state.take_pre_mini(), Some(geometry));
+        assert_eq!(state.pre_mini(), None);
     }
 }
