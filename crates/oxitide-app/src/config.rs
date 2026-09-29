@@ -189,13 +189,24 @@ impl Default for IntegrationsConfig {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ScrobblingConfig {
     pub lastfm_enabled: bool,
     pub listenbrainz_enabled: bool,
     pub lastfm_api_key: String,
     pub lastfm_api_secret: String,
+}
+
+impl std::fmt::Debug for ScrobblingConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ScrobblingConfig")
+            .field("lastfm_enabled", &self.lastfm_enabled)
+            .field("listenbrainz_enabled", &self.listenbrainz_enabled)
+            .field("lastfm_api_key", &self.lastfm_api_key)
+            .field("lastfm_api_secret", &"<redacted>")
+            .finish()
+    }
 }
 
 impl ScrobblingConfig {
@@ -597,6 +608,17 @@ mod tests {
         assert!(!config.scrobbling.lastfm_enabled);
         assert_eq!(config.scrobbling.lastfm_api_key, "");
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn scrobbling_debug_redacts_the_secret() {
+        let config = ScrobblingConfig {
+            lastfm_api_secret: "super-secret".into(),
+            ..ScrobblingConfig::default()
+        };
+        let text = format!("{config:?}");
+        assert!(!text.contains("super-secret"), "{text}");
+        assert!(text.contains("<redacted>"), "{text}");
     }
 
     #[test]

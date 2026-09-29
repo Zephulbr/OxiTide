@@ -25,8 +25,12 @@ impl ScrobbleQueue {
             return;
         }
         self.items.push_back(entry);
-        while self.items.len() > QUEUE_CAP {
-            self.items.pop_front();
+        if self.items.len() > QUEUE_CAP {
+            let dropped = self.items.len() - QUEUE_CAP;
+            for _ in 0..dropped {
+                self.items.pop_front();
+            }
+            tracing::warn!(dropped, "scrobble queue full; dropped oldest queued scrobble(s)");
         }
     }
 

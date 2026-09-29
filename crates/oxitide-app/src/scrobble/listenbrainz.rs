@@ -6,10 +6,22 @@ use oxitide_audio::queue::QueueItem;
 pub enum ListenBrainzError {
     #[error("listenbrainz is temporarily unavailable")]
     Retryable,
+    #[error("listenbrainz rate limited the request")]
+    RateLimited { retry_after_secs: Option<u64> },
     #[error("listenbrainz authentication failed")]
     Auth,
     #[error("listenbrainz rejected the request")]
     Permanent,
+}
+
+/// Parse a `Retry-After` header as integer seconds (spec §8); absent or
+/// unparseable headers yield `None`.
+fn retry_after_secs(response: &reqwest::Response) -> Option<u64> {
+    response
+        .headers()
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.trim().parse::<u64>().ok())
 }
 
 pub struct ListenBrainzClient {
@@ -41,7 +53,12 @@ impl ListenBrainzClient {
         if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
             return Err(ListenBrainzError::Auth);
         }
-        if status == reqwest::StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
+        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            return Err(ListenBrainzError::RateLimited {
+                retry_after_secs: retry_after_secs(&response),
+            });
+        }
+        if status.is_server_error() {
             return Err(ListenBrainzError::Retryable);
         }
         if !status.is_success() {
@@ -105,7 +122,12 @@ impl ListenBrainzClient {
         if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
             return Err(ListenBrainzError::Auth);
         }
-        if status == reqwest::StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
+        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            return Err(ListenBrainzError::RateLimited {
+                retry_after_secs: retry_after_secs(&response),
+            });
+        }
+        if status.is_server_error() {
             return Err(ListenBrainzError::Retryable);
         }
         if !status.is_success() {
@@ -241,6 +263,29 @@ mod tests {
         assert_eq!(
             client(&server).submit_listen("tok", &item(), 1).await,
             Err(ListenBrainzError::Retryable)
+        );
+    }
+
+    #[tokio::test]
+    async fn a_429_honors_the_retry_after_header() {
+        let server = MockServer::start().await;
+        Mock::given(http_method("POST"))
+            .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "42"))
+            .mount(&server)
+            .await;
+        assert_eq!(
+            client(&server).submit_listen("tok", &item(), 1).await,
+            Err(ListenBrainzError::RateLimited { retry_after_secs: Some(42) })
+        );
+
+        let server = MockServer::start().await;
+        Mock::given(http_method("POST"))
+            .respond_with(ResponseTemplate::new(429))
+            .mount(&server)
+            .await;
+        assert_eq!(
+            client(&server).submit_listen("tok", &item(), 1).await,
+            Err(ListenBrainzError::RateLimited { retry_after_secs: None })
         );
     }
 }

@@ -7,12 +7,24 @@ use oxitide_audio::queue::QueueItem;
 pub enum LastFmError {
     #[error("last.fm is temporarily unavailable")]
     Retryable,
+    #[error("last.fm rate limited the request")]
+    RateLimited { retry_after_secs: Option<u64> },
     #[error("last.fm authentication failed")]
     Auth,
     #[error("last.fm authorization is not complete")]
     NotAuthorized,
     #[error("last.fm rejected the request")]
     Permanent,
+}
+
+/// Parse a `Retry-After` header as integer seconds (spec §8); absent or
+/// unparseable headers yield `None`.
+fn retry_after_secs(response: &reqwest::Response) -> Option<u64> {
+    response
+        .headers()
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.trim().parse::<u64>().ok())
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -110,10 +122,19 @@ impl LastFmClient {
 
     async fn parse(&self, response: reqwest::Response) -> Result<serde_json::Value, LastFmError> {
         let status = response.status();
-        if status == reqwest::StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
+        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            return Err(LastFmError::RateLimited { retry_after_secs: retry_after_secs(&response) });
+        }
+        if status.is_server_error() {
             return Err(LastFmError::Retryable);
         }
-        let value: serde_json::Value = response.json().await.map_err(|_| LastFmError::Retryable)?;
+        let value: serde_json::Value = match response.json().await {
+            Ok(value) => value,
+            // A non-JSON 4xx is a permanent client error, not a retryable blip;
+            // a success body that fails to parse stays retryable.
+            Err(_) if status.is_client_error() => return Err(LastFmError::Permanent),
+            Err(_) => return Err(LastFmError::Retryable),
+        };
         if let Some(code) = value.get("error").and_then(|field| field.as_u64()) {
             return Err(match code {
                 14 => LastFmError::NotAuthorized,
@@ -334,6 +355,62 @@ mod tests {
             .scrobble("sk", &[(item(), 1_700_000_000)])
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn scrobble_sends_a_fifty_item_batch() {
+        let server = MockServer::start().await;
+        Mock::given(http_method("POST"))
+            .and(path("/"))
+            .and(body_string_contains("method=track.scrobble"))
+            .and(body_string_contains("artist%5B49%5D=Band"))
+            .and(body_string_contains("timestamp%5B49%5D=1700000049"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({ "scrobbles": {} })),
+            )
+            .mount(&server)
+            .await;
+        let plays: Vec<(QueueItem, i64)> = (0..50)
+            .map(|index| {
+                let mut song = item();
+                song.track_id = index;
+                (song, 1_700_000_000 + index as i64)
+            })
+            .collect();
+        client(&server).scrobble("sk", &plays).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_429_honors_the_retry_after_header() {
+        let server = MockServer::start().await;
+        Mock::given(http_method("POST"))
+            .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "42"))
+            .mount(&server)
+            .await;
+        assert_eq!(
+            client(&server).now_playing("sk", &item()).await,
+            Err(LastFmError::RateLimited { retry_after_secs: Some(42) })
+        );
+
+        let server = MockServer::start().await;
+        Mock::given(http_method("POST"))
+            .respond_with(ResponseTemplate::new(429))
+            .mount(&server)
+            .await;
+        assert_eq!(
+            client(&server).now_playing("sk", &item()).await,
+            Err(LastFmError::RateLimited { retry_after_secs: None })
+        );
+    }
+
+    #[tokio::test]
+    async fn non_json_client_error_is_permanent() {
+        let server = MockServer::start().await;
+        Mock::given(http_method("POST"))
+            .respond_with(ResponseTemplate::new(400).set_body_string("not json"))
+            .mount(&server)
+            .await;
+        assert_eq!(client(&server).now_playing("sk", &item()).await, Err(LastFmError::Permanent));
     }
 
     #[tokio::test]

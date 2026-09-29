@@ -48,6 +48,10 @@ impl ScrobbleTracker {
         self.scrobbled = false;
         self.paused_since = None;
         if item.artist.is_empty() || item.title.is_empty() {
+            tracing::debug!(
+                track_id = item.track_id,
+                "skipping now-playing/scrobbling for missing artist or title"
+            );
             self.current = None;
             return Vec::new();
         }
@@ -56,7 +60,11 @@ impl ScrobbleTracker {
     }
 
     fn position(&mut self, position_ms: i64, duration_ms: i64) -> Vec<ScrobbleIntent> {
-        let Some(item) = self.current.clone() else { return Vec::new() };
+        // Borrow `current` for the common no-op path; only clone it when we
+        // actually emit a scrobble (spec §10: allocate on track change only).
+        let Some(duration_secs) = self.current.as_ref().map(|item| item.duration_secs) else {
+            return Vec::new();
+        };
         let delta = position_ms - self.last_pos_ms;
         if delta > 0 && delta <= SEEK_MAX_MS {
             self.listened_ms += delta;
@@ -65,10 +73,11 @@ impl ScrobbleTracker {
         if self.scrobbled {
             return Vec::new();
         }
-        let duration = if duration_ms > 0 { duration_ms } else { item.duration_secs as i64 * 1000 };
+        let duration = if duration_ms > 0 { duration_ms } else { duration_secs as i64 * 1000 };
         let threshold = (duration / 2).min(SCROBBLE_MIN_MS);
-        if item.duration_secs > MIN_TRACK_SECS && self.listened_ms >= threshold {
+        if duration_secs > MIN_TRACK_SECS && self.listened_ms >= threshold {
             self.scrobbled = true;
+            let item = self.current.clone().expect("current is present");
             return vec![ScrobbleIntent::Scrobble { item, started_at: self.started_at }];
         }
         Vec::new()
@@ -170,6 +179,38 @@ mod tests {
         // Jump to 90%; the 179s delta must not be counted.
         assert!(!scrobbled(&pos(&mut tracker, 180_000, 200_000)));
         assert!(!scrobbled(&pos(&mut tracker, 181_000, 200_000)));
+    }
+
+    #[test]
+    fn backward_seek_is_not_counted() {
+        let mut tracker = ScrobbleTracker::default();
+        start(&mut tracker, item(1, 200), 100);
+        for step in 1..=90 {
+            pos(&mut tracker, step * 1000, 200_000);
+        }
+        // Seek back 60 s; the negative delta must not add to listened time.
+        assert!(!scrobbled(&pos(&mut tracker, 30_000, 200_000)));
+        // Nine forward seconds still fall short of the 100 s threshold.
+        for step in 31..=39 {
+            assert!(!scrobbled(&pos(&mut tracker, step * 1000, 200_000)), "step {step}");
+        }
+        assert!(scrobbled(&pos(&mut tracker, 40_000, 200_000)));
+    }
+
+    #[test]
+    fn no_accumulation_while_paused() {
+        let mut tracker = ScrobbleTracker::default();
+        start(&mut tracker, item(1, 200), 100);
+        for step in 1..=5 {
+            pos(&mut tracker, step * 1000, 200_000);
+        }
+        let out = tracker.on_event(&EngineEvent::State(playback_state(false)), 1_000);
+        assert!(out.is_empty());
+        let mut out = Vec::new();
+        for _ in 0..200 {
+            out.extend(pos(&mut tracker, 5_000, 200_000));
+        }
+        assert!(!scrobbled(&out), "paused stretch must not accumulate: {out:?}");
     }
 
     #[test]

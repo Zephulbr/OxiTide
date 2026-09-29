@@ -62,9 +62,15 @@ impl Backoff {
         (5u64 << failures.saturating_sub(1)).min(300)
     }
 
-    fn fail(&mut self) {
+    /// Record a failure. When the server supplied a `Retry-After` value, seed
+    /// the delay from it (capped at 300 s); otherwise use the 5 s→300 s schedule
+    /// (spec §8).
+    fn fail_with(&mut self, retry_after_secs: Option<u64>) {
         self.failures = (self.failures + 1).min(7);
-        let seconds = Self::delay_secs(self.failures);
+        let seconds = match retry_after_secs {
+            Some(secs) => secs.min(300),
+            None => Self::delay_secs(self.failures),
+        };
         self.next_at = Some(Instant::now() + Duration::from_secs(seconds));
     }
 
@@ -294,10 +300,10 @@ impl ScrobblerService {
         });
     }
 
-    fn lastfm_retryable(&self, message: &str) {
+    fn lastfm_retryable(&self, message: &str, retry_after_secs: Option<u64>) {
         {
             let mut inner = self.inner.lock().unwrap();
-            inner.lastfm_backoff.fail();
+            inner.lastfm_backoff.fail_with(retry_after_secs);
             inner.lastfm_error = Some(message.to_string());
         }
         self.emit_status();
@@ -318,10 +324,10 @@ impl ScrobblerService {
         }
     }
 
-    fn listenbrainz_retryable(&self, message: &str) {
+    fn listenbrainz_retryable(&self, message: &str, retry_after_secs: Option<u64>) {
         {
             let mut inner = self.inner.lock().unwrap();
-            inner.listenbrainz_backoff.fail();
+            inner.listenbrainz_backoff.fail_with(retry_after_secs);
             inner.listenbrainz_error = Some(message.to_string());
         }
         self.emit_status();
@@ -377,8 +383,10 @@ impl ScrobblerService {
                 self.emit_status();
             }
             Err(LastFmError::Retryable) => {
-                self.lastfm_retryable("last.fm is temporarily unavailable")
+                self.lastfm_retryable("last.fm is temporarily unavailable", None)
             }
+            Err(LastFmError::RateLimited { retry_after_secs }) => self
+                .lastfm_retryable("last.fm rate limited the request", retry_after_secs),
             Err(LastFmError::Auth) | Err(LastFmError::NotAuthorized) => {
                 self.lastfm_auth_failed("last.fm needs reconnecting")
             }
@@ -426,7 +434,17 @@ impl ScrobblerService {
                     sent += 1;
                 }
                 Err(ListenBrainzError::Retryable) => {
-                    self.listenbrainz_retryable("listenbrainz is temporarily unavailable");
+                    self.listenbrainz_retryable(
+                        "listenbrainz is temporarily unavailable",
+                        None,
+                    );
+                    break;
+                }
+                Err(ListenBrainzError::RateLimited { retry_after_secs }) => {
+                    self.listenbrainz_retryable(
+                        "listenbrainz rate limited the request",
+                        retry_after_secs,
+                    );
                     break;
                 }
                 Err(ListenBrainzError::Auth) => {
@@ -480,6 +498,7 @@ impl ScrobblerService {
             inner.lastfm_enabled = true;
             inner.lastfm_needs_reconnect = false;
             inner.lastfm_error = None;
+            inner.lastfm_backoff.reset();
         }
         self.emit_status();
         Ok(self.status())
@@ -489,8 +508,8 @@ impl ScrobblerService {
         self.inner.lock().unwrap().lastfm_pending_token = None;
     }
 
-    pub fn lastfm_disconnect(&self) {
-        let _ = self.store.clear(LASTFM_SERVICE);
+    pub fn lastfm_disconnect(&self) -> Result<(), String> {
+        self.store.clear(LASTFM_SERVICE)?;
         {
             let mut inner = self.inner.lock().unwrap();
             inner.lastfm = None;
@@ -499,8 +518,10 @@ impl ScrobblerService {
             inner.lastfm_error = None;
             inner.lastfm_needs_reconnect = false;
             inner.lastfm_pending_token = None;
+            inner.lastfm_backoff.reset();
         }
         self.emit_status();
+        Ok(())
     }
 
     pub async fn listenbrainz_connect(
@@ -520,13 +541,14 @@ impl ScrobblerService {
             inner.listenbrainz_enabled = true;
             inner.listenbrainz_needs_reconnect = false;
             inner.listenbrainz_error = None;
+            inner.listenbrainz_backoff.reset();
         }
         self.emit_status();
         Ok(self.status())
     }
 
-    pub fn listenbrainz_disconnect(&self) {
-        let _ = self.store.clear(LISTENBRAINZ_SERVICE);
+    pub fn listenbrainz_disconnect(&self) -> Result<(), String> {
+        self.store.clear(LISTENBRAINZ_SERVICE)?;
         {
             let mut inner = self.inner.lock().unwrap();
             inner.listenbrainz = None;
@@ -534,8 +556,10 @@ impl ScrobblerService {
             inner.listenbrainz_queue.clear();
             inner.listenbrainz_error = None;
             inner.listenbrainz_needs_reconnect = false;
+            inner.listenbrainz_backoff.reset();
         }
         self.emit_status();
+        Ok(())
     }
 }
 
@@ -652,6 +676,42 @@ mod tests {
         assert_eq!(status.lastfm.queued, 1, "16 must stay queued");
         assert!(!status.lastfm.needs_reconnect);
         assert!(status.lastfm.last_error.is_some());
+    }
+
+    #[tokio::test]
+    async fn a_429_keeps_the_scrobble_queued_with_a_rate_limit_error() {
+        use wiremock::matchers::{method as http_method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(http_method("POST"))
+            .and(path("/"))
+            .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "42"))
+            .mount(&server)
+            .await;
+
+        let store = Arc::new(MemoryCredentialStore::default());
+        store
+            .save(LASTFM_SERVICE, &StoredCredential { username: "v".into(), secret: "sk".into() })
+            .unwrap();
+        let service = ScrobblerService::new(
+            reqwest::Client::new(),
+            server.uri(),
+            "http://127.0.0.1:1",
+            store,
+            "key".into(),
+            "secret".into(),
+            true,
+            false,
+        );
+        service
+            .handle_intent(ScrobbleIntent::Scrobble { item: queue_item(), started_at: 1 })
+            .await;
+        service.flush_queues().await;
+        let status = service.status();
+        assert_eq!(status.lastfm.queued, 1, "429 must stay queued");
+        assert!(!status.lastfm.needs_reconnect);
+        assert_eq!(status.lastfm.last_error.as_deref(), Some("last.fm rate limited the request"));
     }
 
     #[tokio::test]
@@ -788,9 +848,33 @@ mod tests {
             .save(LASTFM_SERVICE, &StoredCredential { username: "v".into(), secret: "sk".into() })
             .unwrap();
         let service = service(store.clone());
-        service.lastfm_disconnect();
+        service.lastfm_disconnect().unwrap();
         assert!(!service.status().lastfm.connected);
         assert!(store.load(LASTFM_SERVICE).unwrap().is_none());
+    }
+
+    struct FailingClearStore;
+
+    impl CredentialStore for FailingClearStore {
+        fn save(&self, _service: &str, _credential: &StoredCredential) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn load(&self, _service: &str) -> Result<Option<StoredCredential>, String> {
+            Ok(Some(StoredCredential { username: "v".into(), secret: "sk".into() }))
+        }
+
+        fn clear(&self, _service: &str) -> Result<(), String> {
+            Err("keyring delete failed".to_string())
+        }
+    }
+
+    #[test]
+    fn disconnect_propagates_a_keyring_clear_failure_and_stays_connected() {
+        let service = service(Arc::new(FailingClearStore));
+        assert!(service.status().lastfm.connected, "fixture starts connected");
+        assert!(service.lastfm_disconnect().is_err());
+        assert!(service.status().lastfm.connected, "state unchanged on clear failure");
     }
 
     #[tokio::test]

@@ -505,7 +505,7 @@ pub fn lastfm_cancel_auth(state: State<'_, AppState>) -> Result<(), String> {
 
 #[tauri::command]
 pub fn lastfm_disconnect(state: State<'_, AppState>) -> Result<(), String> {
-    require_scrobbler(&state)?.lastfm_disconnect();
+    require_scrobbler(&state)?.lastfm_disconnect()?;
     Ok(())
 }
 
@@ -519,7 +519,7 @@ pub async fn listenbrainz_connect(
 
 #[tauri::command]
 pub fn listenbrainz_disconnect(state: State<'_, AppState>) -> Result<(), String> {
-    require_scrobbler(&state)?.listenbrainz_disconnect();
+    require_scrobbler(&state)?.listenbrainz_disconnect()?;
     Ok(())
 }
 
@@ -1069,7 +1069,11 @@ pub fn set_exclusive_fallback(
 
 #[tauri::command]
 pub fn get_config(state: State<'_, AppState>) -> Result<Config, String> {
-    Ok(state.config())
+    // The renderer must never receive the Last.fm API secret; the UI uses
+    // neither the key nor the secret. `Config::save` keeps the real value.
+    let mut config = state.config();
+    config.scrobbling.lastfm_api_secret = String::new();
+    Ok(config)
 }
 
 #[tauri::command]
