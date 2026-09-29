@@ -372,6 +372,12 @@ fn build_player(
         }
         let _ = tauri::Emitter::emit(&handle, "playback_event", crate::player::to_dto(event));
     }));
+    let scrobble_handle = app.clone();
+    engine.subscribe(Arc::new(move |event| {
+        if let Some(scrobbler) = scrobble_handle.state::<AppState>().scrobbler() {
+            scrobbler.on_player_event(&event);
+        }
+    }));
     Ok(Player { engine })
 }
 

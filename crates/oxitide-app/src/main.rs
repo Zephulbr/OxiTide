@@ -147,6 +147,22 @@ fn main() {
             .unwrap_or_default()
             .join("lyrics.json"),
     ));
+    let scrobble_http = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
+    let (lastfm_key, lastfm_secret) = config.scrobbling.lastfm_credentials();
+    let scrobbler = scrobble::ScrobblerService::new(
+        scrobble_http,
+        "https://ws.audioscrobbler.com/2.0/",
+        "https://api.listenbrainz.org/1/",
+        std::sync::Arc::new(scrobble::credentials::KeyringCredentialStore),
+        lastfm_key,
+        lastfm_secret,
+        config.scrobbling.lastfm_enabled,
+        config.scrobbling.listenbrainz_enabled,
+    );
+    state.set_scrobbler(scrobbler.clone());
     state.set_config(config);
 
     tauri::Builder::default()
@@ -179,6 +195,17 @@ fn main() {
                 }
             }
             app.state::<AppState>().set_handle(app.handle().clone());
+            if let Some(scrobbler) = app.state::<AppState>().scrobbler() {
+                let handle = app.handle().clone();
+                scrobbler.set_status_sink(std::sync::Arc::new(move |status| {
+                    let _ = tauri::Emitter::emit(&handle, "scrobble://status", status);
+                }));
+                let handle = app.handle().clone();
+                scrobbler.set_auth_error_sink(std::sync::Arc::new(move |service| {
+                    let _ = tauri::Emitter::emit(&handle, "scrobble://auth-error", service);
+                }));
+                scrobbler.start();
+            }
             if let Some(window) = app.get_webview_window("main") {
                 let config = app.state::<AppState>().config();
                 if let Err(e) = window::apply(&window, &config) {

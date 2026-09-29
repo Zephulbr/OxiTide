@@ -12,6 +12,7 @@ use crate::artwork::ArtworkService;
 use crate::commands::LoginOutcome;
 use crate::config::Config;
 use crate::lyrics::LyricsService;
+use crate::scrobble::ScrobblerService;
 use crate::window::FullGeometry;
 
 pub struct Player {
@@ -37,6 +38,7 @@ pub struct AppState {
     pub cache: Mutex<Option<Arc<DiskCache>>>,
     pub artwork: Mutex<Option<Arc<ArtworkService>>>,
     pub lyrics: Mutex<Option<Arc<LyricsService>>>,
+    pub scrobbler: Mutex<Option<Arc<ScrobblerService>>>,
     session_expired: AtomicBool,
     handle: Mutex<Option<AppHandle>>,
 }
@@ -120,6 +122,14 @@ impl AppState {
 
     pub fn lyrics(&self) -> Option<Arc<LyricsService>> {
         self.lyrics.lock().unwrap().clone()
+    }
+
+    pub fn set_scrobbler(&self, service: Arc<ScrobblerService>) {
+        *self.scrobbler.lock().unwrap() = Some(service);
+    }
+
+    pub fn scrobbler(&self) -> Option<Arc<ScrobblerService>> {
+        self.scrobbler.lock().unwrap().clone()
     }
 
     /// Remember the app handle so `notify_session_expired` can reach the UI.
@@ -221,6 +231,24 @@ mod tests {
         state.notify_session_expired();
         state.logout();
         assert!(!state.session_expired());
+    }
+
+    #[test]
+    fn scrobbler_starts_unset_and_is_set_once() {
+        let state = AppState::default();
+        assert!(state.scrobbler().is_none());
+        let service = crate::scrobble::ScrobblerService::new(
+            reqwest::Client::new(),
+            "http://127.0.0.1:1",
+            "http://127.0.0.1:1",
+            std::sync::Arc::new(crate::scrobble::credentials::MemoryCredentialStore::default()),
+            String::new(),
+            String::new(),
+            false,
+            false,
+        );
+        state.set_scrobbler(service);
+        assert!(state.scrobbler().is_some());
     }
 
     #[test]
