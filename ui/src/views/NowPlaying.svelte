@@ -4,7 +4,9 @@
   import Cover from "../lib/components/Cover.svelte";
   import DiscArt from "../lib/components/DiscArt.svelte";
   import Icon from "../lib/components/Icon.svelte";
+  import LyricsPanel from "../lib/components/LyricsPanel.svelte";
   import { formatDuration } from "../lib/format";
+  import { lyrics } from "../lib/lyrics.svelte";
   import { formatQuality, type QualityDisplay } from "../lib/quality";
   import type { Nav } from "../lib/nav.svelte";
   import type { Player } from "../lib/player.svelte";
@@ -39,9 +41,13 @@
     if (index < 0) return [];
     return player.state.queue.slice(index + 1, index + 4);
   });
+
+  $effect(() => {
+    void lyrics.open(track);
+  });
 </script>
 
-<div class="now-playing" out:npOut>
+<div class="now-playing" class:with-lyrics={lyrics.tab === "lyrics" && lyrics.lyrics !== null} out:npOut>
   <div class="art">
     {#if track}
       {#if appearance.coverShape === "disc"}
@@ -71,24 +77,44 @@
 
       <hr />
 
-      <span class="eyebrow">Next up</span>
-      {#if nextUp.length > 0}
-        <ul class="next-up">
-          {#each nextUp as item (item.track_id)}
-            <li>
-              <span class="thumb"><Cover uuid={item.cover} size={80} radius={6} alt="" /></span>
-              <span class="next-title">{item.title}</span>
-              <span class="muted next-artist">{item.artist}</span>
-              <span class="muted tnum">{formatDuration(item.duration_secs)}</span>
-            </li>
-          {/each}
-        </ul>
+      {#if lyrics.loading}
+        <p class="muted loading">Loading lyrics…</p>
       {:else}
-        <p class="muted">Queue is empty</p>
-      {/if}
+        {#if lyrics.lyrics}
+          <div class="tabs">
+            <button class:active={lyrics.tab === "lyrics"} onclick={() => lyrics.setTab("lyrics")}>
+              Lyrics
+            </button>
+            <button class:active={lyrics.tab === "next"} onclick={() => lyrics.setTab("next")}>
+              Next up
+            </button>
+          </div>
+        {:else}
+          <span class="eyebrow">Next up</span>
+        {/if}
 
-      <!-- Track 4: synced lyrics land here (spec §7.2). -->
-      <div class="lyrics-slot"></div>
+        {#if lyrics.tab === "lyrics" && lyrics.lyrics}
+          {@const shown = lyrics.lyrics}
+          {#key shown.track_id}
+            <LyricsPanel {player} dto={shown} />
+          {/key}
+        {:else}
+          {#if nextUp.length > 0}
+            <ul class="next-up">
+              {#each nextUp as item (item.track_id)}
+                <li>
+                  <span class="thumb"><Cover uuid={item.cover} size={80} radius={6} alt="" /></span>
+                  <span class="next-title">{item.title}</span>
+                  <span class="muted next-artist">{item.artist}</span>
+                  <span class="muted tnum">{formatDuration(item.duration_secs)}</span>
+                </li>
+              {/each}
+            </ul>
+          {:else}
+            <p class="muted">Queue is empty</p>
+          {/if}
+        {/if}
+      {/if}
     {:else}
       <span class="eyebrow">Now playing</span>
       <p class="muted">Nothing playing</p>
@@ -240,7 +266,47 @@
   .next-up .tnum {
     grid-row: 1 / span 2;
   }
-  .lyrics-slot {
-    margin-top: 24px;
+  .meta {
+    display: flex;
+    flex-direction: column;
+  }
+  .now-playing.with-lyrics {
+    align-items: start;
+  }
+  .now-playing.with-lyrics .art {
+    align-self: center;
+  }
+  .now-playing.with-lyrics .meta {
+    height: 100%;
+    min-height: 0;
+  }
+  .tabs {
+    display: flex;
+    gap: 14px;
+    margin-bottom: 10px;
+  }
+  .tabs button {
+    padding: 0 0 3px;
+    border: none;
+    border-bottom: 1px solid transparent;
+    background: none;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+  .tabs button.active {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+  }
+  .tabs button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+  .loading {
+    margin: 0;
   }
 </style>
