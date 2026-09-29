@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod catalog;
 pub mod client;
+pub mod discovery;
 pub mod error;
 pub mod feed;
 pub mod folders;
