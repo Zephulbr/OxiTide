@@ -1,14 +1,17 @@
 <script lang="ts">
-  import { api, type Mix } from "../lib/api";
+  import { api, type Mix, type PageSection } from "../lib/api";
   import EmptyState from "../lib/components/EmptyState.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
   import Icon from "../lib/components/Icon.svelte";
   import Loading from "../lib/components/Loading.svelte";
+  import PageSections from "../lib/components/PageSections.svelte";
   import { playMix } from "../lib/mixPlay";
+  import type { Nav } from "../lib/nav.svelte";
   import type { Toasts } from "../lib/toasts.svelte";
 
-  let { toasts }: { toasts: Toasts } = $props();
+  let { nav, toasts }: { nav: Nav; toasts: Toasts } = $props();
 
+  let forYou = $state<PageSection[]>([]);
   let mixes = $state<Mix[]>([]);
   let loading = $state(true);
   let error = $state("");
@@ -16,13 +19,17 @@
   async function load() {
     loading = true;
     error = "";
-    try {
-      mixes = await api.getFavoriteMixes();
-    } catch (e) {
-      error = String(e);
-    } finally {
-      loading = false;
+    const [forYouResult, mixesResult] = await Promise.allSettled([
+      api.getForYou(),
+      api.getFavoriteMixes(),
+    ]);
+    forYou = forYouResult.status === "fulfilled" ? forYouResult.value : [];
+    if (mixesResult.status === "fulfilled") {
+      mixes = mixesResult.value;
+    } else {
+      error = String(mixesResult.reason);
     }
+    loading = false;
   }
 
   $effect(() => {
@@ -35,24 +42,30 @@
   <Loading />
 {:else if error}
   <ErrorState message={error} onRetry={load} />
-{:else if mixes.length === 0}
+{:else if forYou.length === 0 && mixes.length === 0}
   <EmptyState message="No mixes yet." />
 {:else}
-  <div class="grid">
-    {#each mixes as mix (mix.id)}
-      <button class="card" onclick={() => void playMix(mix.id, toasts)} title={`Play ${mix.title}`}>
-        <span class="art">
-          {#if mix.image}
-            <img src={mix.image} alt="" loading="lazy" />
-          {:else}
-            <span class="placeholder"><Icon name="disc-3" size={28} /></span>
-          {/if}
-        </span>
-        <span class="title">{mix.title}</span>
-        {#if mix.subTitle}<span class="muted sub">{mix.subTitle}</span>{/if}
-      </button>
-    {/each}
-  </div>
+  {#if forYou.length > 0}
+    <PageSections sections={forYou} {nav} onPlayMix={(id) => void playMix(id, toasts)} />
+  {/if}
+  {#if mixes.length > 0}
+    <h3>Favorite mixes</h3>
+    <div class="grid">
+      {#each mixes as mix (mix.id)}
+        <button class="card" onclick={() => void playMix(mix.id, toasts)} title={`Play ${mix.title}`}>
+          <span class="art">
+            {#if mix.image}
+              <img src={mix.image} alt="" loading="lazy" />
+            {:else}
+              <span class="placeholder"><Icon name="disc-3" size={28} /></span>
+            {/if}
+          </span>
+          <span class="title">{mix.title}</span>
+          {#if mix.subTitle}<span class="muted sub">{mix.subTitle}</span>{/if}
+        </button>
+      {/each}
+    </div>
+  {/if}
 {/if}
 
 <style>

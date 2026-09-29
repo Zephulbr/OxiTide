@@ -388,7 +388,7 @@
       {:else if nav.route.name === "albums"}<CollectionAlbums {nav} />
       {:else if nav.route.name === "tracks"}<CollectionTracks {player} {favorites} {playlistActions} />
       {:else if nav.route.name === "profiles"}<Profiles {nav} />
-      {:else if nav.route.name === "mixes"}<Mixes {toasts} />
+      {:else if nav.route.name === "mixes"}<Mixes {nav} {toasts} />
       {:else if nav.route.name === "purchases"}<Purchases {nav} />
       {:else if nav.route.name === "playlists"}<Playlists {nav} {playlistActions} {toasts} {collection} actions={collectionActions} />
       {:else if nav.route.name === "folder"}<Playlists {nav} {playlistActions} {toasts} {collection} actions={collectionActions} folderId={nav.route.id} folderLabel={nav.route.label ?? ""} />
