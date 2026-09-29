@@ -147,6 +147,9 @@ export interface Config {
     window_y?: number | null;
     window_maximized: boolean;
   };
+  integrations: {
+    smtc: boolean;
+  };
   cache: { dir: string; max_size_mb: number; clear_on_exit: boolean };
   scrobbling: {
     lastfm_enabled: boolean;
@@ -281,6 +284,7 @@ export const api = {
   setMiniMode: (active: boolean) => invoke<void>("set_mini_mode", { active }),
   setStartInMini: (enabled: boolean) => invoke<void>("set_start_in_mini", { enabled }),
   setOneko: (enabled: boolean) => invoke<void>("set_oneko", { enabled }),
+  setSmtc: (enabled: boolean) => invoke<void>("set_smtc", { enabled }),
   setCacheMaxSizeMb: (mb: number) => invoke<void>("set_cache_max_size_mb", { mb }),
   setCacheClearOnExit: (enabled: boolean) =>
     invoke<void>("set_cache_clear_on_exit", { enabled }),

@@ -39,6 +39,7 @@ pub struct AppState {
     pub artwork: Mutex<Option<Arc<ArtworkService>>>,
     pub lyrics: Mutex<Option<Arc<LyricsService>>>,
     pub scrobbler: Mutex<Option<Arc<ScrobblerService>>>,
+    pub media: Mutex<Option<crate::media_controls::MediaSession>>,
     session_expired: AtomicBool,
     handle: Mutex<Option<AppHandle>>,
 }
@@ -132,6 +133,14 @@ impl AppState {
         self.scrobbler.lock().unwrap().clone()
     }
 
+    pub fn set_media(&self, session: crate::media_controls::MediaSession) {
+        *self.media.lock().unwrap() = Some(session);
+    }
+
+    pub fn take_media(&self) -> Option<crate::media_controls::MediaSession> {
+        self.media.lock().unwrap().take()
+    }
+
     /// Remember the app handle so `notify_session_expired` can reach the UI.
     pub fn set_handle(&self, handle: AppHandle) {
         *self.handle.lock().unwrap() = Some(handle);
@@ -168,6 +177,7 @@ impl AppState {
     }
 
     pub fn logout(&self) {
+        let _ = self.take_media();
         *self.client.write().unwrap() = None;
         *self.player.write().unwrap() = None;
         self.clear_session_expired();

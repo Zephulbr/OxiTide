@@ -363,11 +363,50 @@ fn build_player(
     engine
         .handle(EngineCmd::SetVolume(config.audio.volume))
         .map_err(|e| e.to_string())?;
+    #[cfg(windows)]
+    let sender = {
+        let state = app.state::<AppState>();
+        let _ = state.take_media();
+        let mut found = None;
+        match app.get_webview_window("main").map(|window| window.hwnd()) {
+            Some(Ok(hwnd)) => {
+                match crate::media_controls::MediaSession::spawn(
+                    engine.clone(),
+                    hwnd.0 as isize,
+                    config.integrations.smtc,
+                ) {
+                    Ok(session) => {
+                        found = Some(session.sender());
+                        state.set_media(session);
+                    }
+                    Err(e) => tracing::warn!("SMTC disabled: {e}"),
+                }
+            }
+            Some(Err(e)) => tracing::warn!("SMTC disabled (no HWND): {e}"),
+            None => tracing::warn!("SMTC disabled (no main window)"),
+        }
+        found
+    };
+    #[cfg(not(windows))]
+    let sender: Option<crate::media_controls::SessionSender> = {
+        let _ = app.state::<AppState>().take_media();
+        None
+    };
+
     let handle = app.clone();
+    let last_track = std::sync::Mutex::new(None);
     engine.subscribe(Arc::new(move |event| {
         if let EngineEvent::Error { code, .. } = &event {
             if code == "auth" {
                 handle.state::<AppState>().notify_session_expired();
+            }
+        }
+        if let Some(sender) = &sender {
+            let mut last = last_track.lock().unwrap();
+            let (updates, next) = crate::media_controls::plan(&event, *last);
+            *last = next;
+            for update in updates {
+                sender.send(update);
             }
         }
         let _ = tauri::Emitter::emit(&handle, "playback_event", crate::player::to_dto(event));
@@ -1196,6 +1235,18 @@ pub fn set_oneko(state: State<'_, AppState>, enabled: bool) -> Result<(), String
     config.ui.oneko = enabled;
     config.save()?;
     state.set_config(config);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_smtc(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    let mut config = state.config();
+    config.integrations.smtc = enabled;
+    config.save()?;
+    state.set_config(config);
+    if let Some(session) = state.media.lock().unwrap().as_ref() {
+        session.set_enabled(enabled);
+    }
     Ok(())
 }
 

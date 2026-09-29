@@ -13,6 +13,7 @@ pub struct Config {
     pub streaming: StreamingConfig,
     pub ui: UiConfig,
     pub cache: CacheConfig,
+    pub integrations: IntegrationsConfig,
     pub scrobbling: ScrobblingConfig,
 }
 
@@ -177,6 +178,19 @@ impl Default for CacheConfig {
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
+pub struct IntegrationsConfig {
+    /// Windows System Media Transport Controls (media keys + now-playing).
+    pub smtc: bool,
+}
+
+impl Default for IntegrationsConfig {
+    fn default() -> Self {
+        Self { smtc: true }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ScrobblingConfig {
     pub lastfm_enabled: bool,
     pub listenbrainz_enabled: bool,
@@ -329,6 +343,7 @@ mod tests {
                 max_size_mb: 512,
                 clear_on_exit: true,
             },
+            integrations: IntegrationsConfig { smtc: false },
             scrobbling: ScrobblingConfig::default(),
         };
         config.save_to(&path).unwrap();
@@ -373,6 +388,7 @@ mod tests {
         assert_eq!(config.cache.dir, "");
         assert_eq!(config.cache.max_size_mb, 2048);
         assert!(!config.cache.clear_on_exit);
+        assert!(config.integrations.smtc);
         assert!(!config.scrobbling.lastfm_enabled);
         assert_eq!(config.scrobbling.lastfm_api_key, "");
         let _ = fs::remove_dir_all(dir);
@@ -588,5 +604,20 @@ mod tests {
         assert_eq!(ScrobblingConfig::pick(Some("env".into()), "cfg"), "env");
         assert_eq!(ScrobblingConfig::pick(Some(String::new()), "cfg"), "cfg");
         assert_eq!(ScrobblingConfig::pick(None, "cfg"), "cfg");
+    }
+
+    #[test]
+    fn smtc_defaults_true_and_round_trips() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        assert!(Config::default().integrations.smtc);
+        let mut config = Config::default();
+        config.integrations.smtc = false;
+        config.save_to(&path).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("[integrations]"), "{text}");
+        assert!(text.contains("smtc = false"), "{text}");
+        assert!(!Config::load_from(&path).integrations.smtc);
+        let _ = fs::remove_dir_all(dir);
     }
 }

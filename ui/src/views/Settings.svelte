@@ -295,6 +295,12 @@
     appearance.setOneko(enabled).catch(apply);
   }
 
+  function setSmtc(enabled: boolean) {
+    if (!config) return;
+    config = { ...config, integrations: { ...config.integrations, smtc: enabled } };
+    api.setSmtc(enabled).catch(apply);
+  }
+
   function openCredit(url: string) {
     openUrl(url).catch(apply);
   }
@@ -539,7 +545,7 @@
           <span class="pill">Planned</span>
         </div>
       {/snippet}
-      <p class="muted">Scrobbling is configurable below; the remaining integrations are planned.</p>
+      <p class="muted">Scrobbling and media controls are configurable below; Discord Rich Presence is planned.</p>
       <h3>Scrobbling</h3>
       {#if scrobble}
         <div class="scrobble">
@@ -617,7 +623,19 @@
       </p>
       <h3>Presence & controls</h3>
       {@render planned("Discord Rich Presence", "Show what you're listening to on your Discord profile.")}
-      {@render planned("Windows media controls", "Hardware media keys and the Windows media overlay (SMTC).")}
+      <div class="planned">
+        <div class="planned-main">
+          <label class="planned-head">
+            <input
+              type="checkbox"
+              checked={config.integrations.smtc}
+              onchange={(e) => setSmtc((e.target as HTMLInputElement).checked)}
+            />
+            <span>Windows media controls</span>
+          </label>
+          <span class="muted">Hardware media keys and the Windows media overlay (SMTC).</span>
+        </div>
+      </div>
     </div>
   {:else if tab === "storage"}
     <div id="settings-panel-storage" role="tabpanel" aria-labelledby="settings-tab-storage">

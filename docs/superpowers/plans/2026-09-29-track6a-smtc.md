@@ -379,9 +379,6 @@ use oxitide_audio::engine::{EngineCmd, EngineEvent};
 use oxitide_audio::queue::QueueItem;
 
 #[cfg(not(windows))]
-mod stub;
-
-#[cfg(not(windows))]
 pub use stub::MediaSession;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1188,3 +1185,67 @@ thumbnail failure is triaged against the Task 0 findings before being called a d
 ## Roadmap follow-up
 
 After this ships, set Track 6's Status in `docs/superpowers/specs/2026-09-24-oxitide-post-mvp-roadmap.md` to note "6a (SMTC/media keys) done; 6b (Discord RPC) next". Do this only when the owner confirms the smoke checklist passed.
+
+---
+
+## Shipped deviations (post-execution review)
+
+The shipped code diverged from the snippets above; recorded here so the plan matches reality. Snippets below are the as-built versions for the two bug-prone spots.
+
+- **R6:** Task 1 removed a duplicate `mod stub` declaration — the plan text was wrong.
+- **R7:** `MediaSession` gained `shutdown: Arc<AtomicBool>`; `Drop` sets it before joining so a lingering `SessionSender` clone cannot deadlock the worker (which would otherwise block forever in `recv_timeout`).
+- **R8:** `apply_track` takes `Option<&TrackMeta>` and `ClearAll`s on `None`; each `SessionUpdate` applies only the aspect it carries; `Track(Some)` also resets the timeline from `duration_ms`.
+- **R9:** `build_player` spawns the worker UNCONDITIONALLY (passing `config.integrations.smtc` as `enabled`); the seek handler routes through `to_engine_cmd(ControlCommand::Seek(ms))`.
+
+Corrected `apply_track` (clears first so a track with no cover does not retain the previous thumbnail):
+
+```rust
+fn apply_track(smtc: &mut Smtc, track: Option<&TrackMeta>) -> windows::core::Result<()> {
+    smtc.updater.ClearAll()?;
+    let Some(track) = track else {
+        return smtc.updater.Update();
+    };
+    smtc.updater.SetType(MediaPlaybackType::Music)?;
+    let properties = smtc.updater.MusicProperties()?;
+    properties.SetTitle(&HSTRING::from(track.title.as_str()))?;
+    properties.SetArtist(&HSTRING::from(track.artist.as_str()))?;
+    properties.SetAlbumTitle(&HSTRING::from(track.album.as_str()))?;
+    if let Some(url) = track.cover.as_deref().and_then(|cover| cover_url(cover, THUMBNAIL_SIZE)) {
+        if let Ok(uri) = Uri::CreateUri(&HSTRING::from(url.as_str())) {
+            if let Ok(stream) = RandomAccessStreamReference::CreateFromUri(&uri) {
+                let _ = smtc.updater.SetThumbnail(&stream);
+            }
+        }
+    }
+    smtc.updater.Update()
+}
+```
+
+Corrected `build_player` spawn (UNCONDITIONAL — do not wrap in `if config.integrations.smtc`, or a session created while the setting is on would strand when later build paths skip the spawn):
+
+```rust
+    #[cfg(windows)]
+    let sender = {
+        let state = app.state::<AppState>();
+        let _ = state.take_media();
+        let mut found = None;
+        match app.get_webview_window("main").map(|window| window.hwnd()) {
+            Some(Ok(hwnd)) => {
+                match crate::media_controls::MediaSession::spawn(
+                    engine.clone(),
+                    hwnd.0 as isize,
+                    config.integrations.smtc,
+                ) {
+                    Ok(session) => {
+                        found = Some(session.sender());
+                        state.set_media(session);
+                    }
+                    Err(e) => tracing::warn!("SMTC disabled: {e}"),
+                }
+            }
+            Some(Err(e)) => tracing::warn!("SMTC disabled (no HWND): {e}"),
+            None => tracing::warn!("SMTC disabled (no main window)"),
+        }
+        found
+    };
+```
