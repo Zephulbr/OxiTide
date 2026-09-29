@@ -2411,11 +2411,10 @@ Add these methods inside `impl ScrobblerService`:
 Run: `cargo test -p oxitide-app scrobble::tests`
 Expected: PASS (11 tests).
 
-- [ ] **Step 5: Run clippy and the full crate tests**
+- [ ] **Step 5: Run the full crate tests**
 
-Run: `cargo clippy -p oxitide-app --all-targets -- -D warnings`
-Then: `cargo test -p oxitide-app`
-Expected: clippy clean; all tests green.
+Run: `cargo test -p oxitide-app`
+Expected: all tests green. (Do not run clippy here: the scrobble module is only wired into the app in Tasks 10–11, so its items are expected dead code in non-test builds until then. The clippy gate runs in Task 11 after wiring.)
 
 - [ ] **Step 6: Commit**
 
