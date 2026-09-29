@@ -13,6 +13,7 @@ pub struct Config {
     pub streaming: StreamingConfig,
     pub ui: UiConfig,
     pub cache: CacheConfig,
+    pub scrobbling: ScrobblingConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -174,6 +175,41 @@ impl Default for CacheConfig {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ScrobblingConfig {
+    pub lastfm_enabled: bool,
+    pub listenbrainz_enabled: bool,
+    pub lastfm_api_key: String,
+    pub lastfm_api_secret: String,
+}
+
+impl Default for ScrobblingConfig {
+    fn default() -> Self {
+        Self {
+            lastfm_enabled: false,
+            listenbrainz_enabled: false,
+            lastfm_api_key: String::new(),
+            lastfm_api_secret: String::new(),
+        }
+    }
+}
+
+impl ScrobblingConfig {
+    /// Env wins over config (spec S-D3). Empty values never shadow a fallback.
+    pub fn pick(env: Option<String>, config: &str) -> String {
+        env.filter(|value| !value.is_empty())
+            .unwrap_or_else(|| config.to_string())
+    }
+
+    pub fn lastfm_credentials(&self) -> (String, String) {
+        (
+            Self::pick(std::env::var("OXITIDE_LASTFM_API_KEY").ok(), &self.lastfm_api_key),
+            Self::pick(std::env::var("OXITIDE_LASTFM_API_SECRET").ok(), &self.lastfm_api_secret),
+        )
+    }
+}
+
 impl Config {
     /// Load `%APPDATA%\OxiTide\config.toml`; a missing file yields defaults and
     /// a malformed file is backed up to `config.toml.bak` and replaced with
@@ -304,6 +340,7 @@ mod tests {
                 max_size_mb: 512,
                 clear_on_exit: true,
             },
+            scrobbling: ScrobblingConfig::default(),
         };
         config.save_to(&path).unwrap();
         assert_eq!(Config::load_from(&path), config);
@@ -347,6 +384,8 @@ mod tests {
         assert_eq!(config.cache.dir, "");
         assert_eq!(config.cache.max_size_mb, 2048);
         assert!(!config.cache.clear_on_exit);
+        assert!(!config.scrobbling.lastfm_enabled);
+        assert_eq!(config.scrobbling.lastfm_api_key, "");
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -522,5 +561,43 @@ mod tests {
         assert!(fs::read_to_string(&path).unwrap().contains("oneko = true"));
         assert!(Config::load_from(&path).ui.oneko);
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn scrobbling_defaults_and_round_trip() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        let fresh = Config::default();
+        assert!(!fresh.scrobbling.lastfm_enabled);
+        assert!(!fresh.scrobbling.listenbrainz_enabled);
+        assert_eq!(fresh.scrobbling.lastfm_api_key, "");
+        let mut config = Config::default();
+        config.scrobbling.lastfm_enabled = true;
+        config.scrobbling.lastfm_api_key = "key".into();
+        config.scrobbling.lastfm_api_secret = "secret".into();
+        config.save_to(&path).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("[scrobbling]"), "{text}");
+        assert!(text.contains("lastfm_enabled = true"));
+        assert_eq!(Config::load_from(&path), config);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn pre_scrobbling_file_fills_defaults() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        fs::write(&path, "[ui]\nquality_display = \"detailed\"\n").unwrap();
+        let config = Config::load_from(&path);
+        assert!(!config.scrobbling.lastfm_enabled);
+        assert_eq!(config.scrobbling.lastfm_api_key, "");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn credential_pick_prefers_non_empty_env() {
+        assert_eq!(ScrobblingConfig::pick(Some("env".into()), "cfg"), "env");
+        assert_eq!(ScrobblingConfig::pick(Some(String::new()), "cfg"), "cfg");
+        assert_eq!(ScrobblingConfig::pick(None, "cfg"), "cfg");
     }
 }
