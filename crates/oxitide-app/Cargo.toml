@@ -31,3 +31,14 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png"]
 
 [dev-dependencies]
 wiremock = "0.6"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+    "Media",
+    "Foundation",
+    "Storage_Streams",
+    "Win32_Foundation",
+    "Win32_System_WinRT",
+    "Win32_System_Com",
+    "Win32_UI_WindowsAndMessaging",
+] }
