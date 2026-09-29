@@ -20,6 +20,7 @@ use crate::artwork::PaletteDto;
 use crate::config::{
     clamp_queue_width, Config, CoverShape, Density, DynamicColor, QualityDisplay, Typeface, UiMode,
 };
+use crate::lyrics::{LyricsDto, LyricsRequest};
 use crate::player::{devices, OutputDeviceDto, QualityDto};
 use crate::state::{AppState, PendingLogin, Player};
 
@@ -127,7 +128,9 @@ fn take_and_validate(
     state: &AppState,
     redirect_url: &str,
 ) -> Result<(PendingLogin, auth::RedirectOutcome), String> {
-    let login = state.take_pending().ok_or_else(|| "no login in progress".to_string())?;
+    let login = state
+        .take_pending()
+        .ok_or_else(|| "no login in progress".to_string())?;
     match parse_and_check(&login, redirect_url) {
         Ok(outcome) => Ok((login, outcome)),
         Err(error) => {
@@ -147,10 +150,15 @@ pub async fn finish_login(
 ) -> Result<SessionInfoDto, String> {
     let (login, _redirect) = take_and_validate(state, &redirect_url)?;
     let http = reqwest::Client::new();
-    let tokens =
-        auth::exchange_code(&http, TOKEN_URL, &login.pkce, &login.redirect_uri, &redirect_url)
-            .await
-            .map_err(|e| e.to_string())?;
+    let tokens = auth::exchange_code(
+        &http,
+        TOKEN_URL,
+        &login.pkce,
+        &login.redirect_uri,
+        &redirect_url,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
     let session = auth::fetch_session(&http, API_BASE, &tokens.access_token)
         .await
         .map_err(|e| e.to_string())?;
@@ -164,7 +172,10 @@ pub async fn finish_login(
         .cache()
         .unwrap_or_else(|| crate::player::build_cache(&config));
     state.set_player(replace_player(app, state, client, &config, cache)?);
-    Ok(SessionInfoDto { country_code: session.country_code, user_id: session.user_id })
+    Ok(SessionInfoDto {
+        country_code: session.country_code,
+        user_id: session.user_id,
+    })
 }
 
 #[tauri::command]
@@ -214,7 +225,9 @@ pub fn auth_status(state: State<'_, AppState>) -> bool {
 #[tauri::command]
 pub fn auth_logout(state: State<'_, AppState>) -> Result<(), String> {
     if let Some(player) = state.player() {
-        let _ = player.engine.handle(oxitide_audio::engine::EngineCmd::Clear);
+        let _ = player
+            .engine
+            .handle(oxitide_audio::engine::EngineCmd::Clear);
         player.engine.shutdown();
     }
     let store = KeyringStore;
@@ -347,7 +360,9 @@ fn build_player(
         OutputMode::Shared
     });
     engine.set_exclusive_fallback(config.audio.exclusive_fallback);
-    engine.handle(EngineCmd::SetVolume(config.audio.volume)).map_err(|e| e.to_string())?;
+    engine
+        .handle(EngineCmd::SetVolume(config.audio.volume))
+        .map_err(|e| e.to_string())?;
     let handle = app.clone();
     engine.subscribe(Arc::new(move |event| {
         if let EngineEvent::Error { code, .. } = &event {
@@ -366,17 +381,49 @@ use oxitide_tidal::pages::{MixDetail, PageItem, PageSection};
 
 #[tauri::command]
 pub async fn get_home(state: State<'_, AppState>) -> Result<Vec<PageSection>, String> {
-    require_client(&state)?.home_page().await.map_err(|e| state.fail_tidal(e))
+    require_client(&state)?
+        .home_page()
+        .await
+        .map_err(|e| state.fail_tidal(e))
 }
 
 #[tauri::command]
 pub async fn get_explore(state: State<'_, AppState>) -> Result<Vec<PageSection>, String> {
-    require_client(&state)?.explore_page().await.map_err(|e| state.fail_tidal(e))
+    require_client(&state)?
+        .explore_page()
+        .await
+        .map_err(|e| state.fail_tidal(e))
 }
 
 #[tauri::command]
 pub async fn get_feed(state: State<'_, AppState>) -> Result<Vec<PageSection>, String> {
-    require_client(&state)?.feed_page().await.map_err(|e| state.fail_tidal(e))
+    require_client(&state)?
+        .feed_page()
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
+pub async fn get_lyrics(
+    state: State<'_, AppState>,
+    track_id: u64,
+    title: String,
+    artist: String,
+    album: Option<String>,
+    duration_secs: u64,
+) -> Result<Option<LyricsDto>, String> {
+    let service = state
+        .lyrics()
+        .ok_or_else(|| "lyrics unavailable".to_string())?;
+    let client = require_client(&state)?;
+    let req = LyricsRequest {
+        track_id,
+        title,
+        artist,
+        album,
+        duration_secs,
+    };
+    Ok(service.get(&client, &req).await)
 }
 
 #[tauri::command]
@@ -389,7 +436,10 @@ pub async fn get_favorite_mixes(state: State<'_, AppState>) -> Result<Vec<Mix>, 
 
 #[tauri::command]
 pub async fn get_mix(state: State<'_, AppState>, id: String) -> Result<MixDetail, String> {
-    require_client(&state)?.mix_page(&id).await.map_err(|e| state.fail_tidal(e))
+    require_client(&state)?
+        .mix_page(&id)
+        .await
+        .map_err(|e| state.fail_tidal(e))
 }
 
 #[tauri::command]
@@ -419,7 +469,11 @@ pub async fn create_folder(
 }
 
 #[tauri::command]
-pub async fn rename_folder(state: State<'_, AppState>, id: String, name: String) -> Result<(), String> {
+pub async fn rename_folder(
+    state: State<'_, AppState>,
+    id: String,
+    name: String,
+) -> Result<(), String> {
     require_client(&state)?
         .rename_folder(&id, &name)
         .await
@@ -461,27 +515,45 @@ pub async fn get_purchases(state: State<'_, AppState>) -> Result<Vec<PageItem>, 
 
 #[tauri::command]
 pub async fn get_album(state: State<'_, AppState>, id: u64) -> Result<Album, String> {
-    require_client(&state)?.album(id).await.map_err(|e| state.fail_tidal(e))
+    require_client(&state)?
+        .album(id)
+        .await
+        .map_err(|e| state.fail_tidal(e))
 }
 
 #[tauri::command]
 pub async fn get_album_tracks(state: State<'_, AppState>, id: u64) -> Result<Vec<Track>, String> {
-    require_client(&state)?.album_tracks_all(id).await.map_err(|e| state.fail_tidal(e))
+    require_client(&state)?
+        .album_tracks_all(id)
+        .await
+        .map_err(|e| state.fail_tidal(e))
 }
 
 #[tauri::command]
 pub async fn get_playlist(state: State<'_, AppState>, id: String) -> Result<Playlist, String> {
-    require_client(&state)?.playlist(&id).await.map_err(|e| state.fail_tidal(e))
+    require_client(&state)?
+        .playlist(&id)
+        .await
+        .map_err(|e| state.fail_tidal(e))
 }
 
 #[tauri::command]
-pub async fn get_playlist_tracks(state: State<'_, AppState>, id: String) -> Result<Vec<Track>, String> {
-    require_client(&state)?.playlist_tracks_all(&id).await.map_err(|e| state.fail_tidal(e))
+pub async fn get_playlist_tracks(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Vec<Track>, String> {
+    require_client(&state)?
+        .playlist_tracks_all(&id)
+        .await
+        .map_err(|e| state.fail_tidal(e))
 }
 
 #[tauri::command]
 pub async fn get_artist(state: State<'_, AppState>, id: u64) -> Result<Artist, String> {
-    require_client(&state)?.artist(id).await.map_err(|e| state.fail_tidal(e))
+    require_client(&state)?
+        .artist(id)
+        .await
+        .map_err(|e| state.fail_tidal(e))
 }
 
 #[tauri::command]
@@ -494,17 +566,26 @@ pub async fn search(state: State<'_, AppState>, query: String) -> Result<SearchR
 
 #[tauri::command]
 pub async fn get_favorite_tracks(state: State<'_, AppState>) -> Result<Vec<Track>, String> {
-    require_client(&state)?.all_favorite_tracks().await.map_err(|e| state.fail_tidal(e))
+    require_client(&state)?
+        .all_favorite_tracks()
+        .await
+        .map_err(|e| state.fail_tidal(e))
 }
 
 #[tauri::command]
 pub async fn get_favorite_albums(state: State<'_, AppState>) -> Result<Vec<Album>, String> {
-    require_client(&state)?.all_favorite_albums().await.map_err(|e| state.fail_tidal(e))
+    require_client(&state)?
+        .all_favorite_albums()
+        .await
+        .map_err(|e| state.fail_tidal(e))
 }
 
 #[tauri::command]
 pub async fn get_favorite_artists(state: State<'_, AppState>) -> Result<Vec<Artist>, String> {
-    require_client(&state)?.all_favorite_artists().await.map_err(|e| state.fail_tidal(e))
+    require_client(&state)?
+        .all_favorite_artists()
+        .await
+        .map_err(|e| state.fail_tidal(e))
 }
 
 #[tauri::command]
@@ -545,7 +626,10 @@ pub async fn set_favorite_artist(
 
 #[tauri::command]
 pub async fn get_favorite_ids(state: State<'_, AppState>) -> Result<FavoriteIds, String> {
-    require_client(&state)?.favorite_ids().await.map_err(|e| state.fail_tidal(e))
+    require_client(&state)?
+        .favorite_ids()
+        .await
+        .map_err(|e| state.fail_tidal(e))
 }
 
 #[tauri::command]
@@ -621,7 +705,10 @@ pub async fn move_playlist_items(
 
 #[tauri::command]
 pub async fn get_user_playlists(state: State<'_, AppState>) -> Result<Vec<Playlist>, String> {
-    require_client(&state)?.all_user_playlists().await.map_err(|e| state.fail_tidal(e))
+    require_client(&state)?
+        .all_user_playlists()
+        .await
+        .map_err(|e| state.fail_tidal(e))
 }
 
 #[tauri::command]
@@ -634,7 +721,12 @@ pub async fn get_favorite_tracks_page(
         .favorite_tracks_page(limit, offset)
         .await
         .map_err(|e| state.fail_tidal(e))?;
-    Ok(TrackPageDto { items, total, offset, limit })
+    Ok(TrackPageDto {
+        items,
+        total,
+        offset,
+        limit,
+    })
 }
 
 #[tauri::command]
@@ -648,7 +740,12 @@ pub async fn get_playlist_tracks_page(
         .playlist_tracks_page(&id, limit, offset)
         .await
         .map_err(|e| state.fail_tidal(e))?;
-    Ok(TrackPageDto { items, total, offset, limit })
+    Ok(TrackPageDto {
+        items,
+        total,
+        offset,
+        limit,
+    })
 }
 
 #[tauri::command]
@@ -670,35 +767,46 @@ pub fn play_tracks(
 #[tauri::command]
 pub fn play_pause(state: State<'_, AppState>) -> Result<(), String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
-    player.engine.handle(EngineCmd::PlayPause).map_err(|e| e.to_string())
+    player
+        .engine
+        .handle(EngineCmd::PlayPause)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn next(state: State<'_, AppState>) -> Result<(), String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
-    player.engine.handle(EngineCmd::Next).map_err(|e| e.to_string())
+    player
+        .engine
+        .handle(EngineCmd::Next)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn prev(state: State<'_, AppState>) -> Result<(), String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
-    player.engine.handle(EngineCmd::Prev).map_err(|e| e.to_string())
+    player
+        .engine
+        .handle(EngineCmd::Prev)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn seek(state: State<'_, AppState>, position_ms: u64) -> Result<(), String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
-    player.engine.handle(EngineCmd::Seek(position_ms)).map_err(|e| e.to_string())
+    player
+        .engine
+        .handle(EngineCmd::Seek(position_ms))
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn set_volume(
-    state: State<'_, AppState>,
-    volume: f32,
-    persist: bool,
-) -> Result<(), String> {
+pub fn set_volume(state: State<'_, AppState>, volume: f32, persist: bool) -> Result<(), String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
-    player.engine.handle(EngineCmd::SetVolume(volume)).map_err(|e| e.to_string())?;
+    player
+        .engine
+        .handle(EngineCmd::SetVolume(volume))
+        .map_err(|e| e.to_string())?;
     if persist {
         let mut config = state.config();
         config.audio.volume = volume.clamp(0.0, 1.0);
@@ -711,35 +819,46 @@ pub fn set_volume(
 #[tauri::command]
 pub fn set_shuffle(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
-    player.engine.handle(EngineCmd::SetShuffle(enabled)).map_err(|e| e.to_string())
+    player
+        .engine
+        .handle(EngineCmd::SetShuffle(enabled))
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn set_repeat(state: State<'_, AppState>, mode: RepeatMode) -> Result<(), String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
-    player.engine.handle(EngineCmd::SetRepeat(mode)).map_err(|e| e.to_string())
+    player
+        .engine
+        .handle(EngineCmd::SetRepeat(mode))
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn queue_reorder(
-    state: State<'_, AppState>,
-    from: usize,
-    to: usize,
-) -> Result<(), String> {
+pub fn queue_reorder(state: State<'_, AppState>, from: usize, to: usize) -> Result<(), String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
-    player.engine.handle(EngineCmd::Reorder { from, to }).map_err(|e| e.to_string())
+    player
+        .engine
+        .handle(EngineCmd::Reorder { from, to })
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn queue_remove(state: State<'_, AppState>, index: usize) -> Result<(), String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
-    player.engine.handle(EngineCmd::Remove(index)).map_err(|e| e.to_string())
+    player
+        .engine
+        .handle(EngineCmd::Remove(index))
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn queue_clear(state: State<'_, AppState>) -> Result<(), String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
-    player.engine.handle(EngineCmd::Clear).map_err(|e| e.to_string())
+    player
+        .engine
+        .handle(EngineCmd::Clear)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -751,7 +870,10 @@ pub fn retry(state: State<'_, AppState>) -> Result<(), String> {
 #[tauri::command]
 pub fn queue_add(state: State<'_, AppState>, items: Vec<QueueItem>) -> Result<(), String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
-    player.engine.handle(EngineCmd::Enqueue { items }).map_err(|e| e.to_string())
+    player
+        .engine
+        .handle(EngineCmd::Enqueue { items })
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -768,7 +890,11 @@ pub fn get_output_devices() -> Vec<OutputDeviceDto> {
 #[tauri::command]
 pub fn set_output_device(state: State<'_, AppState>, device_id: String) -> Result<(), String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
-    let device = if device_id.is_empty() { None } else { Some(device_id.clone()) };
+    let device = if device_id.is_empty() {
+        None
+    } else {
+        Some(device_id.clone())
+    };
     player.engine.set_output_device(device);
     let mut config = state.config();
     config.audio.output_device = device_id;
@@ -1037,7 +1163,10 @@ mod tests {
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn outcome(state: Option<&str>) -> auth::RedirectOutcome {
-        auth::RedirectOutcome { code: "c".into(), state: state.map(str::to_string) }
+        auth::RedirectOutcome {
+            code: "c".into(),
+            state: state.map(str::to_string),
+        }
     }
 
     fn pending(redirect_uri: &str, state: &str) -> PendingLogin {
@@ -1069,24 +1198,33 @@ mod tests {
     #[test]
     fn paste_redirect_is_accepted_by_the_shared_completion() {
         let login = pending(PKCE_REDIRECT_PASTE, "s");
-        let out = parse_and_check(&login, "https://tidal.com/android/login/auth?code=XYZ&state=s")
-            .unwrap();
+        let out = parse_and_check(
+            &login,
+            "https://tidal.com/android/login/auth?code=XYZ&state=s",
+        )
+        .unwrap();
         assert_eq!(out.code, "XYZ");
     }
 
     #[test]
     fn deep_link_redirect_requires_the_tidal_scheme() {
         let login = pending(PKCE_REDIRECT_DEEP_LINK, "s");
-        assert!(parse_and_check(&login, "https://tidal.com/android/login/auth?code=XYZ&state=s")
-            .is_err());
+        assert!(parse_and_check(
+            &login,
+            "https://tidal.com/android/login/auth?code=XYZ&state=s"
+        )
+        .is_err());
         let out = parse_and_check(&login, "tidal://login/auth?code=XYZ&state=s").unwrap();
         assert_eq!(out.code, "XYZ");
     }
 
     #[test]
     fn missing_state_is_required_for_deep_links_but_not_for_paste() {
-        assert!(parse_and_check(&pending(PKCE_REDIRECT_DEEP_LINK, "s"), "tidal://login/auth?code=XYZ")
-            .is_err());
+        assert!(parse_and_check(
+            &pending(PKCE_REDIRECT_DEEP_LINK, "s"),
+            "tidal://login/auth?code=XYZ"
+        )
+        .is_err());
         assert!(parse_and_check(
             &pending(PKCE_REDIRECT_PASTE, "s"),
             "https://tidal.com/android/login/auth?code=XYZ"
@@ -1099,7 +1237,10 @@ mod tests {
         let state = AppState::default();
         state.set_pending(pending(PKCE_REDIRECT_DEEP_LINK, "s"));
         assert!(take_and_validate(&state, "https://evil.example/cb?code=x").is_err());
-        assert!(state.take_pending().is_some(), "pending login must survive a rejected redirect");
+        assert!(
+            state.take_pending().is_some(),
+            "pending login must survive a rejected redirect"
+        );
     }
 
     #[test]
@@ -1121,7 +1262,9 @@ mod tests {
 
     #[test]
     fn login_prompt_serializes_url() {
-        let dto = LoginPrompt { url: "https://example.test/login".to_string() };
+        let dto = LoginPrompt {
+            url: "https://example.test/login".to_string(),
+        };
         let value = serde_json::to_value(&dto).unwrap();
         assert_eq!(value["url"], "https://example.test/login");
     }
@@ -1143,7 +1286,12 @@ mod tests {
 
     #[test]
     fn track_page_dto_serializes_fields() {
-        let dto = TrackPageDto { items: Vec::new(), total: 7, offset: 100, limit: 50 };
+        let dto = TrackPageDto {
+            items: Vec::new(),
+            total: 7,
+            offset: 100,
+            limit: 50,
+        };
         let value = serde_json::to_value(&dto).unwrap();
         assert_eq!(value["total"], 7);
         assert_eq!(value["offset"], 100);
@@ -1153,7 +1301,10 @@ mod tests {
 
     #[test]
     fn session_info_dto_serializes_fields() {
-        let dto = SessionInfoDto { country_code: "GR".to_string(), user_id: 42 };
+        let dto = SessionInfoDto {
+            country_code: "GR".to_string(),
+            user_id: 42,
+        };
         let value = serde_json::to_value(&dto).unwrap();
         assert_eq!(value["country_code"], "GR");
         assert_eq!(value["user_id"], 42);
@@ -1174,12 +1325,14 @@ mod tests {
     #[tokio::test]
     async fn restore_tokens_uses_valid_stored_token() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/sessions"))
+        Mock::given(method("GET"))
+            .and(path("/sessions"))
             .and(header("authorization", "Bearer good"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "sessionId": "s", "countryCode": "GR", "userId": 7
             })))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let store = MemoryStore::default();
         store.save(&sample_tokens("good", Some("rt"))).unwrap();
         let http = reqwest::Client::new();
@@ -1195,20 +1348,27 @@ mod tests {
     #[tokio::test]
     async fn restore_tokens_refreshes_on_unauthorized() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/sessions"))
+        Mock::given(method("GET"))
+            .and(path("/sessions"))
             .and(header("authorization", "Bearer stale"))
-            .respond_with(ResponseTemplate::new(401)).mount(&server).await;
-        Mock::given(method("GET")).and(path("/sessions"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/sessions"))
             .and(header("authorization", "Bearer fresh"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "sessionId": "s", "countryCode": "GR", "userId": 9
             })))
-            .mount(&server).await;
-        Mock::given(method("POST")).and(path("/token"))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/token"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "access_token": "fresh", "token_type": "Bearer", "expires_in": 3600
             })))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let store = MemoryStore::default();
         store.save(&sample_tokens("stale", Some("old-rt"))).unwrap();
         let http = reqwest::Client::new();
@@ -1228,10 +1388,16 @@ mod tests {
     #[tokio::test]
     async fn restore_tokens_returns_none_when_refresh_fails() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/sessions"))
-            .respond_with(ResponseTemplate::new(401)).mount(&server).await;
-        Mock::given(method("POST")).and(path("/token"))
-            .respond_with(ResponseTemplate::new(401)).mount(&server).await;
+        Mock::given(method("GET"))
+            .and(path("/sessions"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
         let store = MemoryStore::default();
         store.save(&sample_tokens("stale", Some("bad-rt"))).unwrap();
         let http = reqwest::Client::new();

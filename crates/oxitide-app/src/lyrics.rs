@@ -1,10 +1,6 @@
 //! Lyrics fetch + cache: TIDAL legacy first, lrclib fallback (Track 4a spec
 //! §5.2, §7, §8). Only confirmed misses are negative-cached; transient
 //! failures return `None` for the attempt and stay retryable.
-// Temporary until the get_lyrics command (Task 4) consumes the service: clippy
-// runs with `-D warnings` and nothing outside the tests reads these items yet.
-// Remove with the command wiring.
-#![allow(dead_code)]
 
 use std::collections::HashMap;
 use std::path::PathBuf;

@@ -11,6 +11,7 @@ use tauri::{AppHandle, Emitter};
 use crate::artwork::ArtworkService;
 use crate::commands::LoginOutcome;
 use crate::config::Config;
+use crate::lyrics::LyricsService;
 use crate::window::FullGeometry;
 
 pub struct Player {
@@ -35,6 +36,7 @@ pub struct AppState {
     pub pre_mini: Mutex<Option<FullGeometry>>,
     pub cache: Mutex<Option<Arc<DiskCache>>>,
     pub artwork: Mutex<Option<Arc<ArtworkService>>>,
+    pub lyrics: Mutex<Option<Arc<LyricsService>>>,
     session_expired: AtomicBool,
     handle: Mutex<Option<AppHandle>>,
 }
@@ -110,6 +112,14 @@ impl AppState {
 
     pub fn artwork(&self) -> Option<Arc<ArtworkService>> {
         self.artwork.lock().unwrap().clone()
+    }
+
+    pub fn set_lyrics(&self, service: LyricsService) {
+        *self.lyrics.lock().unwrap() = Some(Arc::new(service));
+    }
+
+    pub fn lyrics(&self) -> Option<Arc<LyricsService>> {
+        self.lyrics.lock().unwrap().clone()
     }
 
     /// Remember the app handle so `notify_session_expired` can reach the UI.

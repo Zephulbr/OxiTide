@@ -136,6 +136,13 @@ fn main() {
             .unwrap_or_default()
             .join("palettes.json"),
     ));
+    state.set_lyrics(lyrics::LyricsService::new(
+        reqwest::Client::new(),
+        "https://lrclib.net",
+        config::default_cache_dir()
+            .unwrap_or_default()
+            .join("lyrics.json"),
+    ));
     state.set_config(config);
 
     tauri::Builder::default()
@@ -212,6 +219,7 @@ fn main() {
             commands::get_feed,
             commands::get_favorite_mixes,
             commands::get_mix,
+            commands::get_lyrics,
             commands::get_collection_items,
             commands::create_folder,
             commands::rename_folder,
