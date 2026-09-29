@@ -888,7 +888,7 @@ mod tests {
             .and(path("/"))
             .and(body_string_contains(format!("api_sig={}", encode(&expected_sig))))
             .and(body_string_contains("method=track.scrobble"))
-            .and(body_string_contains("artist[0]=Band"))
+            .and(body_string_contains("artist%5B0%5D=Band"))
             .respond_with(
                 ResponseTemplate::new(200).set_body_json(serde_json::json!({ "scrobbles": {} })),
             )
@@ -1477,11 +1477,10 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use oxitide_audio::engine::EngineEvent;
-use oxitide_audio::queue::QueueItem;
 use serde::Serialize;
 use tokio::sync::mpsc;
 
-use credentials::{CredentialStore, KeyringCredentialStore, MemoryCredentialStore, StoredCredential};
+use credentials::{CredentialStore, StoredCredential};
 use lastfm::LastFmClient;
 use listenbrainz::ListenBrainzClient;
 use queue::{QueuedScrobble, ScrobbleQueue};
@@ -1490,6 +1489,8 @@ use tracker::{ScrobbleIntent, ScrobbleTracker};
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scrobble::credentials::MemoryCredentialStore;
+    use oxitide_audio::queue::QueueItem;
 
     fn service(store: Arc<dyn CredentialStore>) -> Arc<ScrobblerService> {
         ScrobblerService::new(
@@ -3071,6 +3072,10 @@ with:
         >your profile</button>.
       </p>
 ```
+
+Also update the Connections intro paragraph that currently reads
+`Planned integrations — nothing to configure yet.` to
+`Scrobbling is configurable below; the remaining integrations are planned.`
 
 - [ ] **Step 3: Add row styles**
 
