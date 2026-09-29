@@ -23,6 +23,10 @@ tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 toml.workspace = true
 directories.workspace = true
+keyring = { version = "3", features = ["windows-native"] }
+thiserror.workspace = true
+url.workspace = true
+md-5 = "0.10"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 
 [dev-dependencies]

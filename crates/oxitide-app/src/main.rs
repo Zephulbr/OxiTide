@@ -8,6 +8,7 @@ mod lyrics;
 mod palette;
 mod player;
 mod scheme;
+mod scrobble;
 mod state;
 mod window;
 
