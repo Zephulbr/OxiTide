@@ -193,6 +193,10 @@ export const api = {
   getFeed: () => invoke<FeedActivity[]>("get_feed"),
   getFavoriteMixes: () => invoke<Mix[]>("get_favorite_mixes"),
   getMix: (id: string) => invoke<MixDetail>("get_mix", { id }),
+  getForYou: () => invoke<PageSection[]>("get_for_you"),
+  getTrackRadio: (trackId: number) => invoke<Track[]>("get_track_radio", { trackId }),
+  getArtistRadio: (artistId: number) => invoke<Track[]>("get_artist_radio", { artistId }),
+  getSimilarArtists: (artistId: number) => invoke<Artist[]>("get_similar_artists", { artistId }),
   getLyrics: (trackId: number, title: string, artist: string, album: string, durationSecs: number) =>
     invoke<LyricsDto | null>("get_lyrics", { trackId, title, artist, album, durationSecs }),
   getScrobbleStatus: () => invoke<ScrobbleStatusDto>("get_scrobble_status"),
