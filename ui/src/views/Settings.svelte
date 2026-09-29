@@ -1,6 +1,16 @@
 <script lang="ts">
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import { api, type CacheStatus, type Config, type OutputDevice } from "../lib/api";
+  import { listen } from "@tauri-apps/api/event";
+  import {
+    api,
+    SCROBBLE_STATUS_EVENT,
+    type CacheStatus,
+    type Config,
+    type OutputDevice,
+    type ScrobbleServiceId,
+    type ScrobbleStatusDto,
+  } from "../lib/api";
+  import { canToggle, queuedLabel, serviceLabel } from "../lib/scrobble";
   import ErrorState from "../lib/components/ErrorState.svelte";
   import Icon from "../lib/components/Icon.svelte";
   import Loading from "../lib/components/Loading.svelte";
@@ -36,6 +46,101 @@
   let customDraft = $state(appearance.customTypeface);
   let customNote = $state("");
   let fontChoices = $state<string[]>([]);
+  let scrobble = $state<ScrobbleStatusDto | null>(null);
+  let lastfmAuth = $state<"idle" | "waiting">("idle");
+  let lastfmAuthNote = $state("");
+  let lbToken = $state("");
+  let lbBusy = $state(false);
+  let lbError = $state("");
+
+  async function refreshScrobble() {
+    try {
+      scrobble = await api.getScrobbleStatus();
+    } catch (e) {
+      apply(e);
+    }
+  }
+
+  $effect(() => {
+    refreshScrobble();
+  });
+
+  $effect(() => {
+    const unlisten = listen<ScrobbleStatusDto>(SCROBBLE_STATUS_EVENT, (event) => {
+      scrobble = event.payload;
+    });
+    return () => {
+      unlisten.then((off) => off());
+    };
+  });
+
+  function toggleService(service: ScrobbleServiceId, enabled: boolean) {
+    if (!scrobble) return;
+    scrobble = { ...scrobble, [service]: { ...scrobble[service], enabled } };
+    api.setScrobbleEnabled(service, enabled).catch(apply);
+  }
+
+  async function connectLastfm() {
+    lastfmAuthNote = "";
+    try {
+      const url = await api.lastfmBeginAuth();
+      lastfmAuth = "waiting";
+      await openUrl(url);
+      void pollLastfm();
+    } catch (e) {
+      lastfmAuth = "idle";
+      lastfmAuthNote = String(e);
+    }
+  }
+
+  async function pollLastfm() {
+    for (let attempt = 0; attempt < 40 && lastfmAuth === "waiting"; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      if (lastfmAuth !== "waiting") return;
+      try {
+        scrobble = await api.lastfmCompleteAuth();
+        lastfmAuth = "idle";
+        return;
+      } catch (e) {
+        const message = String(e);
+        if (!message.includes("not complete")) {
+          lastfmAuth = "idle";
+          lastfmAuthNote = message;
+          return;
+        }
+      }
+    }
+    if (lastfmAuth === "waiting") {
+      lastfmAuth = "idle";
+      lastfmAuthNote = "Authorization timed out — try again.";
+    }
+  }
+
+  function cancelLastfm() {
+    lastfmAuth = "idle";
+    api.lastfmCancelAuth().catch(apply);
+  }
+
+  function disconnectLastfm() {
+    api.lastfmDisconnect().then(refreshScrobble).catch(apply);
+  }
+
+  async function connectListenbrainz() {
+    lbError = "";
+    lbBusy = true;
+    try {
+      scrobble = await api.listenbrainzConnect(lbToken);
+      lbToken = "";
+    } catch (e) {
+      lbError = String(e);
+    } finally {
+      lbBusy = false;
+    }
+  }
+
+  function disconnectListenbrainz() {
+    api.listenbrainzDisconnect().then(refreshScrobble).catch(apply);
+  }
 
   const TAB_LABELS: Record<SettingsTab, string> = {
     appearance: "Appearance",
@@ -434,10 +539,82 @@
           <span class="pill">Planned</span>
         </div>
       {/snippet}
-      <p class="muted">Planned integrations — nothing to configure yet.</p>
+      <p class="muted">Scrobbling is configurable below; the remaining integrations are planned.</p>
       <h3>Scrobbling</h3>
-      {@render planned("Last.fm", "Scrobble plays and publish now-playing to Last.fm.")}
-      {@render planned("ListenBrainz", "Scrobble plays and publish now-playing to ListenBrainz.")}
+      {#if scrobble}
+        <div class="scrobble">
+          <div class="scrobble-main">
+            <label class="scrobble-head">
+              <input
+                type="checkbox"
+                checked={scrobble.lastfm.enabled}
+                disabled={!canToggle(scrobble.lastfm)}
+                onchange={(e) => toggleService("lastfm", (e.target as HTMLInputElement).checked)}
+              />
+              <span>Last.fm</span>
+            </label>
+            <span class="muted">{serviceLabel(scrobble.lastfm)}</span>
+            {#if queuedLabel(scrobble.lastfm.queued)}
+              <span class="muted">{queuedLabel(scrobble.lastfm.queued)}</span>
+            {/if}
+            {#if scrobble.lastfm.last_error}
+              <span class="muted">{scrobble.lastfm.last_error}</span>
+            {/if}
+            {#if lastfmAuthNote}<span class="muted">{lastfmAuthNote}</span>{/if}
+          </div>
+          {#if lastfmAuth === "waiting"}
+            <button onclick={() => void pollLastfm()}>I've authorized</button>
+            <button onclick={cancelLastfm}>Cancel</button>
+          {:else if scrobble.lastfm.connected}
+            <button onclick={disconnectLastfm}>Disconnect</button>
+          {:else}
+            <button disabled={!scrobble.lastfm.configured} onclick={() => void connectLastfm()}>
+              Connect
+            </button>
+          {/if}
+        </div>
+
+        <div class="scrobble">
+          <div class="scrobble-main">
+            <label class="scrobble-head">
+              <input
+                type="checkbox"
+                checked={scrobble.listenbrainz.enabled}
+                disabled={!canToggle(scrobble.listenbrainz)}
+                onchange={(e) =>
+                  toggleService("listenbrainz", (e.target as HTMLInputElement).checked)}
+              />
+              <span>ListenBrainz</span>
+            </label>
+            <span class="muted">{serviceLabel(scrobble.listenbrainz)}</span>
+            {#if queuedLabel(scrobble.listenbrainz.queued)}
+              <span class="muted">{queuedLabel(scrobble.listenbrainz.queued)}</span>
+            {/if}
+            {#if scrobble.listenbrainz.last_error}
+              <span class="muted">{scrobble.listenbrainz.last_error}</span>
+            {/if}
+            {#if lbError}<span class="muted">{lbError}</span>{/if}
+          </div>
+          {#if scrobble.listenbrainz.connected}
+            <button onclick={disconnectListenbrainz}>Disconnect</button>
+          {:else}
+            <input type="password" placeholder="ListenBrainz token" bind:value={lbToken} />
+            <button disabled={lbBusy || !lbToken.trim()} onclick={() => void connectListenbrainz()}>
+              Connect
+            </button>
+          {/if}
+        </div>
+      {:else}
+        <p class="muted">Loading scrobbling status…</p>
+      {/if}
+      <p class="muted">
+        Get a ListenBrainz token from
+        <button
+          class="link"
+          type="button"
+          onclick={() => openCredit("https://listenbrainz.org/profile/")}
+        >your profile</button>.
+      </p>
       <h3>Presence & controls</h3>
       {@render planned("Discord Rich Presence", "Show what you're listening to on your Discord profile.")}
       {@render planned("Windows media controls", "Hardware media keys and the Windows media overlay (SMTC).")}
@@ -577,6 +754,27 @@
     align-items: center;
     gap: 8px;
     color: var(--text-muted);
+  }
+  .scrobble {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 8px 0;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    background: var(--surface-1);
+  }
+  .scrobble-main {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .scrobble-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
   .pill {
     padding: 2px 8px;

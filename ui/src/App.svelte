@@ -42,7 +42,7 @@
   import { createCollectionActions } from "./lib/collectionActions.svelte";
   import { clearPagerCache } from "./lib/pager.svelte";
   import { clearPlaylistCovers } from "./lib/playlistArt.svelte";
-  import { api, type QueueItem } from "./lib/api";
+  import { api, SCROBBLE_AUTH_ERROR_EVENT, type QueueItem } from "./lib/api";
   import type { QualityDisplay } from "./lib/quality";
 
   interface ExpiredSession {
@@ -130,6 +130,16 @@
       playlistActions.reset();
       collection.reset();
       collectionActions.reset();
+    });
+    return () => {
+      unlisten.then((off) => off());
+    };
+  });
+
+  $effect(() => {
+    const unlisten = listen<string>(SCROBBLE_AUTH_ERROR_EVENT, (event) => {
+      const name = event.payload === "lastfm" ? "Last.fm" : "ListenBrainz";
+      toasts.show(`${name} scrobbling needs reconnecting.`, { severity: "error" });
     });
     return () => {
       unlisten.then((off) => off());
