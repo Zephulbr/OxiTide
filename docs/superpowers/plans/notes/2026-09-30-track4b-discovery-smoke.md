@@ -1,8 +1,8 @@
 # Track 4b discovery — GUI smoke checklist
 
-- **Date:** (fill in)
-- **Build:** dev run from `.worktrees/track4b-discovery`, account: (fill in country/region if known)
-- **Spec:** `docs/superpowers/specs/2026-09-30-oxitide-track4b-discovery-design.md`
+- **Date:** 2026-09-30
+- **Build:** dev run from `.worktrees/track4b-discovery`, account: not recorded
+- **Spec:** `docs/superpowers/specs/2026-09-30-oxitide-track4b-discovery-design.md` (amended: mix page, D-7)
 
 ## API probe (optional, before clicking)
 
@@ -21,8 +21,10 @@ Record each returned count. Empty results are acceptable only if the UI also deg
 ## Checklist
 
 - [ ] Mixes & Radio shows For You section(s) above "Favorite mixes"; cards show art/title/subtitle.
-- [ ] Clicking a For You mix replaces the queue and plays it, like a favorite mix.
-- [ ] Favorite mixes grid unchanged; both empty → "No mixes yet."
+- [ ] Clicking a For You mix card (and a favorite-mix card) opens the mix page; nothing starts playing.
+- [ ] Mix page: header art/title/track count; Play and Shuffle start playback; clicking a row plays from there; Add to playlist works.
+- [ ] Mix cards on Home and Explore also open the mix page (no autoplay).
+- [ ] Favorite mixes grid unchanged; both sources empty → "No mixes yet."
 - [ ] Track menu → "Track Radio" from Album, Playlist, Tracks, and Explore; queue replaced, playback starts.
 - [ ] Artist page: radio button plays artist radio (queue replaced).
 - [ ] Artist page: Similar Artists row renders with round art; clicking navigates to that artist; back works.
@@ -32,4 +34,6 @@ Record each returned count. Empty results are acceptable only if the UI also deg
 
 ## Results
 
-- (fill in per item; attach log snippets for any failure)
+- Owner ran the dev build from the worktree and reported the checklist working ("works ok"),
+  including the amended mix-page flow (cards open the page; nothing autoplays).
+- Probe counts were not recorded; no region-gap/empty-state cases were observed during this run.
