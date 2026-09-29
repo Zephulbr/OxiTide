@@ -59,6 +59,21 @@ export interface LyricsDto {
   rtl: boolean;
   lines: LyricLine[];
 }
+export type ScrobbleServiceId = "lastfm" | "listenbrainz";
+export interface ScrobbleServiceStatus {
+  id: ScrobbleServiceId;
+  enabled: boolean;
+  connected: boolean;
+  username: string | null;
+  queued: number;
+  needs_reconnect: boolean;
+  last_error: string | null;
+  configured: boolean;
+}
+export interface ScrobbleStatusDto {
+  lastfm: ScrobbleServiceStatus;
+  listenbrainz: ScrobbleServiceStatus;
+}
 export interface CoverPalette {
   primary: string;
   on_primary: string;
@@ -133,6 +148,12 @@ export interface Config {
     window_maximized: boolean;
   };
   cache: { dir: string; max_size_mb: number; clear_on_exit: boolean };
+  scrobbling: {
+    lastfm_enabled: boolean;
+    listenbrainz_enabled: boolean;
+    lastfm_api_key: string;
+    lastfm_api_secret: string;
+  };
 }
 export type EngineEvent =
   | ({ type: "state" } & PlaybackState)
@@ -142,6 +163,8 @@ export type EngineEvent =
 
 export const AUTH_SUCCESS_EVENT = "auth://success";
 export const AUTH_ERROR_EVENT = "auth://error";
+export const SCROBBLE_STATUS_EVENT = "scrobble://status";
+export const SCROBBLE_AUTH_ERROR_EVENT = "scrobble://auth-error";
 
 export function trackToQueueItem(t: Track): QueueItem {
   return {
@@ -169,6 +192,16 @@ export const api = {
   getMix: (id: string) => invoke<MixDetail>("get_mix", { id }),
   getLyrics: (trackId: number, title: string, artist: string, album: string, durationSecs: number) =>
     invoke<LyricsDto | null>("get_lyrics", { trackId, title, artist, album, durationSecs }),
+  getScrobbleStatus: () => invoke<ScrobbleStatusDto>("get_scrobble_status"),
+  lastfmBeginAuth: () => invoke<string>("lastfm_begin_auth"),
+  lastfmCompleteAuth: () => invoke<ScrobbleStatusDto>("lastfm_complete_auth"),
+  lastfmCancelAuth: () => invoke<void>("lastfm_cancel_auth"),
+  lastfmDisconnect: () => invoke<void>("lastfm_disconnect"),
+  listenbrainzConnect: (token: string) =>
+    invoke<ScrobbleStatusDto>("listenbrainz_connect", { token }),
+  listenbrainzDisconnect: () => invoke<void>("listenbrainz_disconnect"),
+  setScrobbleEnabled: (service: ScrobbleServiceId, enabled: boolean) =>
+    invoke<void>("set_scrobble_enabled", { service, enabled }),
   getCollectionItems: (folderId = "root", order?: string) =>
     invoke<CollectionEntry[]>("get_collection_items", { folderId, order: order ?? null }),
   createFolder: (name: string, parentId = "root") =>
