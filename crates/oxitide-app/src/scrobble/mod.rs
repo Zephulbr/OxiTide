@@ -63,12 +63,12 @@ impl Backoff {
     }
 
     /// Record a failure. When the server supplied a `Retry-After` value, seed
-    /// the delay from it (capped at 300 s); otherwise use the 5 s→300 s schedule
-    /// (spec §8).
+    /// the delay from it (clamped to 1–300 s so a `0` cannot retry immediately);
+    /// otherwise use the 5 s→300 s schedule (spec §8).
     fn fail_with(&mut self, retry_after_secs: Option<u64>) {
         self.failures = (self.failures + 1).min(7);
         let seconds = match retry_after_secs {
-            Some(secs) => secs.min(300),
+            Some(secs) => secs.clamp(1, 300),
             None => Self::delay_secs(self.failures),
         };
         self.next_at = Some(Instant::now() + Duration::from_secs(seconds));
@@ -244,16 +244,29 @@ impl ScrobblerService {
         match intent {
             ScrobbleIntent::NowPlaying(item) => {
                 let (lastfm, listenbrainz) = self.enabled_flags();
-                if lastfm {
+                let (lastfm_reconnect, listenbrainz_reconnect) = {
+                    let inner = self.inner.lock().unwrap();
+                    (inner.lastfm_needs_reconnect, inner.listenbrainz_needs_reconnect)
+                };
+                if lastfm && !lastfm_reconnect {
                     if let Some(session) = self.lastfm_session() {
                         if let Err(error) = self.lastfm.now_playing(&session, &item).await {
-                            tracing::debug!("last.fm now-playing failed: {error}");
+                            match error {
+                                LastFmError::Auth | LastFmError::NotAuthorized => {
+                                    self.lastfm_auth_failed("last.fm needs reconnecting")
+                                }
+                                other => tracing::debug!("last.fm now-playing failed: {other}"),
+                            }
                         }
                     }
                 }
-                if listenbrainz {
+                if listenbrainz && !listenbrainz_reconnect {
                     if let Some(token) = self.listenbrainz_token() {
-                        let _ = self.listenbrainz.playing_now(&token, &item).await;
+                        if let Err(error) = self.listenbrainz.playing_now(&token, &item).await {
+                            if error == ListenBrainzError::Auth {
+                                self.listenbrainz_auth_failed("listenbrainz needs reconnecting");
+                            }
+                        }
                     }
                 }
             }
@@ -390,6 +403,9 @@ impl ScrobblerService {
             Err(LastFmError::Auth) | Err(LastFmError::NotAuthorized) => {
                 self.lastfm_auth_failed("last.fm needs reconnecting")
             }
+            // `Permanent` now only comes from authoritative JSON error codes that
+            // apply to the whole request, so dropping the batch is correct.
+            // Item-level issues come back as HTTP 200 with per-item `ignored` flags.
             Err(LastFmError::Permanent) => {
                 tracing::warn!("last.fm rejected {} scrobble(s); dropping", batch.len());
                 {
@@ -415,7 +431,13 @@ impl ScrobblerService {
             inner.listenbrainz.as_ref().map(|c| c.secret.clone()).unwrap()
         };
         let mut sent = 0;
-        while sent < 50 {
+        // Cap each flush at 10 submissions and pace them at ~1 req/s (spec §4);
+        // a large backlog drains across successive 30 s ticks. This bounds the
+        // worker's worst-case block to ~10 s while staying polite to ListenBrainz.
+        while sent < 10 {
+            if sent > 0 {
+                tokio::time::sleep(Duration::from_millis(1050)).await;
+            }
             let entry = {
                 let inner = self.inner.lock().unwrap();
                 inner.listenbrainz_queue.front_batch(1).into_iter().next()
@@ -793,10 +815,67 @@ mod tests {
         assert!(!status.listenbrainz.needs_reconnect, "other service untouched");
     }
 
+    #[tokio::test]
+    async fn a_now_playing_auth_error_marks_needs_reconnect_and_stops_requests() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use wiremock::matchers::{method as http_method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(http_method("POST"))
+            .and(path("/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({ "error": 9 })))
+            .mount(&server)
+            .await;
+
+        let store = Arc::new(MemoryCredentialStore::default());
+        store
+            .save(LASTFM_SERVICE, &StoredCredential { username: "v".into(), secret: "sk".into() })
+            .unwrap();
+        let service = ScrobblerService::new(
+            reqwest::Client::new(),
+            server.uri(),
+            "http://127.0.0.1:1",
+            store,
+            "key".into(),
+            "secret".into(),
+            true,
+            false,
+        );
+        let calls = Arc::new(AtomicUsize::new(0));
+        let counter = calls.clone();
+        service.set_auth_error_sink(Arc::new(move |_| {
+            counter.fetch_add(1, Ordering::SeqCst);
+        }));
+
+        service.handle_intent(ScrobbleIntent::NowPlaying(queue_item())).await;
+        assert!(service.status().lastfm.needs_reconnect);
+        assert_eq!(calls.load(Ordering::SeqCst), 1, "auth toast must fire once");
+
+        service.handle_intent(ScrobbleIntent::NowPlaying(queue_item())).await;
+        assert_eq!(calls.load(Ordering::SeqCst), 1, "no second toast");
+        assert_eq!(
+            server.received_requests().await.unwrap().len(),
+            1,
+            "the reconnect flag must suppress further now-playing requests"
+        );
+    }
+
     #[test]
     fn backoff_delay_starts_at_five_seconds_and_caps_at_five_minutes() {
         let schedule: Vec<u64> = (1..=8).map(Backoff::delay_secs).collect();
         assert_eq!(schedule, vec![5, 10, 20, 40, 80, 160, 300, 300]);
+    }
+
+    #[test]
+    fn retry_after_is_clamped_to_one_and_three_hundred_seconds() {
+        let mut zero = Backoff::default();
+        zero.fail_with(Some(0));
+        assert!(!zero.ready(), "a zero Retry-After must not retry immediately");
+
+        let mut huge = Backoff::default();
+        huge.fail_with(Some(u64::MAX));
+        assert!(huge.next_at.unwrap() <= Instant::now() + Duration::from_secs(300));
     }
 
     #[tokio::test]

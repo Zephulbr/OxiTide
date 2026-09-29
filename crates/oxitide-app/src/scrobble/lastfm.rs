@@ -130,9 +130,9 @@ impl LastFmClient {
         }
         let value: serde_json::Value = match response.json().await {
             Ok(value) => value,
-            // A non-JSON 4xx is a permanent client error, not a retryable blip;
-            // a success body that fails to parse stays retryable.
-            Err(_) if status.is_client_error() => return Err(LastFmError::Permanent),
+            // A non-JSON body is an infrastructure response (gateway/CDN), not an
+            // authoritative rejection; Last.fm returns JSON error bodies for real
+            // rejections, so retry rather than dropping the batch.
             Err(_) => return Err(LastFmError::Retryable),
         };
         if let Some(code) = value.get("error").and_then(|field| field.as_u64()) {
@@ -404,13 +404,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn non_json_client_error_is_permanent() {
+    async fn non_json_client_error_is_retryable() {
         let server = MockServer::start().await;
         Mock::given(http_method("POST"))
-            .respond_with(ResponseTemplate::new(400).set_body_string("not json"))
+            .respond_with(
+                ResponseTemplate::new(403).set_body_string("<html>forbidden</html>"),
+            )
             .mount(&server)
             .await;
-        assert_eq!(client(&server).now_playing("sk", &item()).await, Err(LastFmError::Permanent));
+        assert_eq!(client(&server).now_playing("sk", &item()).await, Err(LastFmError::Retryable));
     }
 
     #[tokio::test]
