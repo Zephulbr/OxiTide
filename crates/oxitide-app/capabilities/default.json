@@ -10,6 +10,8 @@
       "allow": [
         { "url": "https://login.tidal.com/*" },
         { "url": "https://tidal.com/*" },
+        { "url": "https://www.last.fm/api/auth/*" },
+        { "url": "https://listenbrainz.org/profile/*" },
         { "url": "https://github.com/adryd325/oneko.js" },
         { "url": "https://github.com/kyrie25/spicetify-oneko" }
       ]
