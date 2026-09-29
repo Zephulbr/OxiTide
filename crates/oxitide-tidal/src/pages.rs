@@ -152,6 +152,11 @@ impl TidalClient {
         self.page_sections_at("pages/explore", &[]).await
     }
 
+    /// The discovery mix feed; same rows/modules shape as home and explore.
+    pub async fn for_you_page(&self) -> Result<Vec<PageSection>> {
+        self.page_sections_at("pages/for_you", &[]).await
+    }
+
     /// The signed-in user's mixes & radio, as a page.
     pub async fn mixes_page(&self) -> Result<Vec<PageSection>> {
         self.page_sections_at("pages/my_collection_my_mixes", &[])
@@ -497,6 +502,41 @@ mod tests {
         let sections = client(&server).explore_page().await.unwrap();
         assert_eq!(sections[0].title, "For You");
         assert_eq!(sections[0].items[0].id, "p-1");
+    }
+
+    #[tokio::test]
+    async fn for_you_page_reads_the_for_you_path() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/pages/for_you"))
+            .and(query_param("deviceType", "BROWSER"))
+            .and(query_param("platform", "WEB"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "rows": [{"modules": [{"type": "MIX_LIST", "title": "Made for you",
+                    "pagedList": {"items": [
+                        {"id": "mix-1", "title": "Daily Mix 1", "subTitle": "Daily Mix"}
+                    ]}}]}]
+            })))
+            .mount(&server)
+            .await;
+        let sections = client(&server).for_you_page().await.unwrap();
+        assert_eq!(sections.len(), 1);
+        assert_eq!(sections[0].title, "Made for you");
+        assert_eq!(sections[0].items[0].id, "mix-1");
+        assert_eq!(sections[0].items[0].subtitle.as_deref(), Some("Daily Mix"));
+    }
+
+    #[tokio::test]
+    async fn for_you_page_with_no_rows_is_empty() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/pages/for_you"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({ "rows": [] })),
+            )
+            .mount(&server)
+            .await;
+        assert!(client(&server).for_you_page().await.unwrap().is_empty());
     }
 
     /// Mix rows carry their cover as `images.MEDIUM.url` (a full CDN url, not a
