@@ -3,6 +3,7 @@
 mod artwork;
 mod commands;
 mod config;
+mod lrc;
 mod palette;
 mod player;
 mod scheme;
@@ -59,7 +60,11 @@ fn init_logging() {
         .with(tracing_subscriber::fmt::layer());
     match file_writer() {
         Some(writer) => registry
-            .with(tracing_subscriber::fmt::layer().with_ansi(false).with_writer(writer))
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .with_ansi(false)
+                    .with_writer(writer),
+            )
             .init(),
         None => registry.init(),
     }
@@ -126,7 +131,9 @@ fn main() {
     state.set_artwork(artwork::ArtworkService::new(
         reqwest::Client::new(),
         "https://resources.tidal.com/images".into(),
-        config::default_cache_dir().unwrap_or_default().join("palettes.json"),
+        config::default_cache_dir()
+            .unwrap_or_default()
+            .join("palettes.json"),
     ));
     state.set_config(config);
 
