@@ -8,6 +8,9 @@
 - **Process note:** surfaces, radio behavior, and naming were brainstormed live with the owner
   (2026-09-30). Track 4a (lyrics) is a separate shipped spec; this document is the standalone
   source of truth for sub-track 4b.
+- **Amended 2026-09-30 (owner):** mix cards no longer autoplay. Clicking any mix card (Mixes &
+  Radio, Home, Explore) opens a dedicated mix page with Play/Shuffle, matching the official
+  client. This supersedes the "plays like a favorite mix" wording in §1, §5.4, and §6; see D-7.
 
 ---
 
@@ -18,11 +21,11 @@ a For You mix section in Mixes & Radio, immediate radio playback from a track or
 a Similar Artists row on the artist page. The release-activity Feed stays exactly as it is.
 
 **Outcome:** with a real account, Mixes & Radio lists the TIDAL For You mixes above the user's
-favorite mixes and plays any of them like a favorite mix; a track's context menu gained
-**Track Radio** (official-client wording) which replaces the queue and starts playing; the
-artist page has a radio button and a Similar Artists card row whose cards navigate to that
-artist. Region gaps and endpoint failures degrade to a hidden section or a toast — never a
-broken view. No new auth scopes; no changes to Feed, Home, playback internals, or routing.
+favorite mixes, and any mix card opens a mix page with Play/Shuffle (nothing autoplays); a
+track's context menu gained **Track Radio** (official-client wording) which replaces the queue
+and starts playing; the artist page has a radio button and a Similar Artists card row whose
+cards navigate to that artist. Region gaps and endpoint failures degrade to a hidden section or
+a toast — never a broken view. No new auth scopes; no changes to Feed or playback internals.
 
 Success = all three surfaces work on Windows 10/11 with the owner's account; the discovery
 fetches are best-effort and isolated from the rest of their views; radio plays with the same
@@ -36,12 +39,14 @@ queue semantics as mixes; the gates (`cargo test`, `cargo clippy -D warnings`,
 commands + `generate_handler!` registration; `api.ts` surface and a new `radio.ts` helper with
 vitest tests; the Mixes & Radio integration; the Artist radio button + Similar Artists row; the
 `TrackTable` context-menu item with the `toasts` prop plumbing at its four call sites; an
-inlined Lucide `radio` icon; a human GUI smoke checklist.
+inlined Lucide `radio` icon; the `mix` route + `Mix.svelte` page and best-effort `MixDetail`
+artwork; a human GUI smoke checklist.
 
-**Out of scope:** Feed changes (it keeps showing release activity); new routes or dedicated
-radio/For You views; endless/DJ radio, radio history, thumbs up/down; the official JSON:API
-discovery resources (`userDiscoveryMixes` etc.) and any auth/scope changes; non-Windows-specific
-work; downloads; visual redesign; pagination/infinite scroll for discovery lists.
+**Out of scope:** Feed changes (it keeps showing release activity); a dedicated radio view or
+For You page (the mix *page* is in scope via D-7); endless/DJ radio, radio history, thumbs
+up/down; the official JSON:API discovery resources (`userDiscoveryMixes` etc.) and any
+auth/scope changes; non-Windows-specific work; downloads; visual redesign;
+pagination/infinite scroll for discovery lists.
 
 ## 3. Decisions (owner-confirmed)
 
@@ -53,6 +58,7 @@ work; downloads; visual redesign; pagination/infinite scroll for discovery lists
 | D-4 | The track context-menu entry is named **"Track Radio"**, matching the official client. | Owner wording. |
 | D-5 | **Legacy v1 endpoints only**, on the existing token; no scope or auth changes. | The research spike found the official JSON:API discovery resources are out (INTERNAL tier / `recommendations.read`); the legacy paths need nothing new. |
 | D-6 | **Thin reuse:** for_you renders through `PageSections.svelte`; radio reuses `playTracks`; `radio.ts` is the only new UI module. | Keeps the plan small and the behavior identical to mixes. |
+| D-7 | **Mix cards navigate to a mix page; nothing autoplays.** `routeForPageItem` maps mix items to a new `mix` route; `Mix.svelte` mirrors Album (Play/Shuffle/table); `MixDetail` gains best-effort `artwork`; the now-unused `mixPlay.ts` is deleted. | Owner feedback (2026-09-30): match the official client's open-then-play flow. |
 
 ## 4. Research summary (Track 4 API spike, 2026-09-29)
 
@@ -137,7 +143,8 @@ getArtistRadio: (artistId: number) => invoke<Track[]>("get_artist_radio", { arti
 getSimilarArtists: (artistId: number) => invoke<Artist[]>("get_similar_artists", { artistId }),
 ```
 
-New `ui/src/lib/radio.ts` mirrors `mixPlay.ts`:
+New `ui/src/lib/radio.ts` fetches the list then plays it (the old `mixPlay.ts` helper is
+removed by D-7, so `radio.ts` carries the empty/error-toast pattern):
 
 ```ts
 export async function playTrackRadio(trackId: number, toasts: Toasts): Promise<void>;
@@ -155,11 +162,20 @@ toast via `errorMessage(e)`. No new state.
 - Loads `api.getForYou()` and `api.getFavoriteMixes()` in parallel and independently. A
   for_you failure is swallowed and the section is omitted; a favorites failure keeps today's
   `ErrorState` behavior.
-- for_you sections render through the existing `PageSections.svelte` with
-  `onPlayMix={(id) => void playMix(id, toasts)}` and the `nav` prop, so mix cards (and any
-  other item type the feed returns) behave exactly as on Home/Explore.
-- When favorites exist, an `<h3>Favorite mixes</h3>` heading precedes today's grid. The
-  `EmptyState` "No mixes yet." shows only when both sources are empty.
+- for_you sections render through the existing `PageSections.svelte` with the `nav` prop; mix
+  cards route through `routeForPageItem`'s mix mapping and open the mix page (D-7), so other
+  item types the feed returns behave exactly as on Home/Explore.
+- When favorites exist, an `<h3>Favorite mixes</h3>` heading precedes today's grid; favorite
+  mix cards navigate to the mix page. The `EmptyState` "No mixes yet." shows only when both
+  sources are empty.
+
+**Mix page (`ui/src/views/Mix.svelte`, new; reached via `{ name: "mix"; id: string }`):**
+
+- Loads `api.getMix(id)` and renders an Album-style page: header art (best-effort
+  `MixDetail.artwork`, falling back to the first track's album cover), title, track count,
+  Add to playlist, Play and Shuffle buttons, and the shared `TrackTable` (play-from-row,
+  favorites, toasts, context menu). Nothing plays until the user clicks.
+- Empty/error states mirror Album ("Mix not found." / `ErrorState` with retry).
 
 **Artist (`ui/src/views/Artist.svelte`; App.svelte:397 passes `{nav}` and `{toasts}`):**
 
@@ -183,23 +199,26 @@ toast via `errorMessage(e)`. No new state.
 **Icon (`ui/src/lib/components/Icon.svelte`):** add an inlined Lucide `radio` path, verbatim
 from the Lucide sources, per the no-unicode-glyph rule (AGENTS.md).
 
-**Routing:** unchanged. No new `Route` variants; radio never navigates.
+**Routing:** `Route` gains `{ name: "mix"; id: string }` (D-7). Radio never navigates.
 
 ## 6. Behavior specification
 
 - **Open Mixes & Radio:** For You sections appear first (with the server-provided titles, e.g.
   a "Made for you" row), each card's artwork/title/subtitle exactly as TIDAL returns; the
-  favorites grid follows under its heading. Clicking a For You mix card plays it through the
-  existing `playMix` path (fetch detail → replace queue → play).
+  favorites grid follows under its heading. Any mix card click opens the mix page (D-7); the
+  page's Play button then replaces the queue and plays from the top (Shuffle from a shuffle).
 - **Context menu → Track Radio:** fetches the radio list for that track, replaces the queue
-  (stopping the current source identity, as `playMix` does), and starts at index 0. The playing
-  row highlight and all player/queue behavior are the engine's normal ones.
+  (clearing the current source identity, as any queue replacement does), and starts at index 0.
+  The playing row highlight and all player/queue behavior are the engine's normal ones.
 - **Artist radio button:** same behavior seeded on the artist.
 - **Similar artist card:** navigates to that artist's page; back/forward history works as with
   any artist click.
+- **Mix page (D-7):** shows the mix header and tracks; Play/Shuffle/row-click play it; the
+  back/forward history and the playing-row highlight behave as on any other page.
 - **Disabled/empty radio:** an empty or fully filtered list shows the info toast and leaves
   playback untouched.
-- **Feed/Home/Explore:** no behavior changes.
+- **Feed unchanged; Home/Explore:** mix cards now open the mix page instead of playing;
+  everything else on those views keeps its behavior.
 
 ## 7. Error handling & degradation
 
@@ -234,25 +253,29 @@ new threads, no audio-path or engine changes, no extra Tauri events. All lists a
 
 **UI (vitest):**
 
-- `radio.test.ts` mirrors `mixPlay.test.ts`: success plays the mapped tracks at index 0;
-  empty list → info toast and no `playTracks`; fetch/play failure → error toast.
+- `radio.test.ts`: success plays the mapped tracks at index 0; empty list → info toast and no
+  `playTracks`; fetch/play failure → error toast.
 - `menus.test.ts`: the context menu includes "Track Radio" in the expected position and its
   `run` invokes `startRadio`.
+- `nav.test.ts`: `MIX`/`MIX_LIST` page items map to the `mix` route; the inert cases exclude
+  mixes.
+- `pages.rs` also covers `MixDetail.artwork` (header image present / absent) for the mix page.
 
 **Checks:** `cargo test --workspace`; `cargo clippy --workspace -- -D warnings`;
 `npm --prefix ui run check`; `npm --prefix ui test`.
 
 **Human GUI smoke** (`docs/superpowers/plans/notes/2026-09-30-track4b-discovery-smoke.md`,
-created during implementation): For You mixes visible and playable; Mixes view unchanged when
-for_you is empty/unavailable; Track Radio from album/playlist/favorites/explore; artist radio;
-similar artists render and navigate; region-gap behavior recorded; Feed still shows release
-activity; playback and queue behave as before.
+created during implementation): For You mixes visible; clicking any mix card opens the mix
+page (nothing autoplays); Play/Shuffle work; Mixes view unchanged when for_you is
+empty/unavailable; Track Radio from album/playlist/favorites/explore; artist radio; similar
+artists render and navigate; region-gap behavior recorded; Feed still shows release activity;
+playback and queue behave as before.
 
 ## 10. Risks & open verifications
 
-- **Live shapes.** Radio/similar/for_you payloads were never captured; the plan's Task 0
-  captures one real response per endpoint and pins fixtures/parsers before the remaining tasks.
-  The lenient parser above is the designed hedge.
+- **Live shapes.** Radio/similar/for_you payloads were never captured; the plan's live
+  verification task (Task 8) exercises them through the shipped UI and pins any parser changes
+  with fixtures. The lenient parser above is the designed hedge.
 - **Region availability.** `pages/for_you`, radio, and similar may be missing for the owner's
   account/region; the design hides or toasts gracefully, and the smoke record documents what
   was observed rather than assuming availability.
