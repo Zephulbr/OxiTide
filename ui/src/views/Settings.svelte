@@ -76,8 +76,14 @@
 
   function toggleService(service: ScrobbleServiceId, enabled: boolean) {
     if (!scrobble) return;
+    const previous = scrobble[service].enabled;
     scrobble = { ...scrobble, [service]: { ...scrobble[service], enabled } };
-    api.setScrobbleEnabled(service, enabled).catch(apply);
+    api.setScrobbleEnabled(service, enabled).catch((e) => {
+      if (scrobble) {
+        scrobble = { ...scrobble, [service]: { ...scrobble[service], enabled: previous } };
+      }
+      apply(e);
+    });
   }
 
   async function connectLastfm() {
@@ -89,7 +95,7 @@
       void pollLastfm();
     } catch (e) {
       lastfmAuth = "idle";
-      lastfmAuthNote = String(e);
+      lastfmAuthNote = errorMessage(e);
     }
   }
 
@@ -102,7 +108,7 @@
         lastfmAuth = "idle";
         return;
       } catch (e) {
-        const message = String(e);
+        const message = errorMessage(e);
         if (!message.includes("not complete")) {
           lastfmAuth = "idle";
           lastfmAuthNote = message;
@@ -132,7 +138,7 @@
       scrobble = await api.listenbrainzConnect(lbToken);
       lbToken = "";
     } catch (e) {
-      lbError = String(e);
+      lbError = errorMessage(e);
     } finally {
       lbBusy = false;
     }
@@ -569,8 +575,11 @@
             {#if lastfmAuthNote}<span class="muted">{lastfmAuthNote}</span>{/if}
           </div>
           {#if lastfmAuth === "waiting"}
-            <button onclick={() => void pollLastfm()}>I've authorized</button>
-            <button onclick={cancelLastfm}>Cancel</button>
+            <div class="scrobble-actions">
+              <Loading label="Waiting for authorization in your browser…" />
+              <button onclick={() => void pollLastfm()}>I've authorized</button>
+              <button onclick={cancelLastfm}>Cancel</button>
+            </div>
           {:else if scrobble.lastfm.connected}
             <button onclick={disconnectLastfm}>Disconnect</button>
           {:else}
@@ -793,6 +802,12 @@
     display: flex;
     align-items: center;
     gap: 8px;
+  }
+  .scrobble-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
   }
   .pill {
     padding: 2px 8px;

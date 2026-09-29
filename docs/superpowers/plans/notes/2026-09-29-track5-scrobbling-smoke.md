@@ -22,4 +22,6 @@ and a real TIDAL login. Run `npm --prefix ui run app:dev`.
 - [ ] Disconnect clears the row back to Connect and the keyring entry is gone.
 - [ ] Both modes (Atmosphere/Instrument) and both densities render the rows;
       no unicode glyphs appear.
+- [ ] With the OS reduced-motion setting on, the Connections rows render and the
+      Last.fm "Waiting for authorization" spinner/status stays usable (motion suppressed).
 - [ ] Window resized to minimum width keeps the rows usable.
