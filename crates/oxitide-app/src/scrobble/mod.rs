@@ -445,6 +445,98 @@ impl ScrobblerService {
             self.emit_status();
         }
     }
+
+    pub async fn lastfm_begin_auth(&self) -> Result<String, String> {
+        if !self.lastfm_configured {
+            return Err("Last.fm API key not configured".to_string());
+        }
+        let token = self.lastfm.get_token().await.map_err(|e| e.to_string())?;
+        self.inner.lock().unwrap().lastfm_pending_token = Some(token.clone());
+        Ok(self.lastfm.auth_url(&token))
+    }
+
+    pub async fn lastfm_complete_auth(&self) -> Result<ScrobbleStatusDto, String> {
+        let token = self
+            .inner
+            .lock()
+            .unwrap()
+            .lastfm_pending_token
+            .clone()
+            .ok_or_else(|| "no authorization in progress".to_string())?;
+        let session = match self.lastfm.get_session(&token).await {
+            Ok(session) => session,
+            Err(LastFmError::NotAuthorized) => {
+                return Err("authorization is not complete yet".to_string())
+            }
+            Err(error) => return Err(error.to_string()),
+        };
+        let credential =
+            StoredCredential { username: session.username, secret: session.key };
+        self.store.save(LASTFM_SERVICE, &credential)?;
+        {
+            let mut inner = self.inner.lock().unwrap();
+            inner.lastfm = Some(credential);
+            inner.lastfm_pending_token = None;
+            inner.lastfm_enabled = true;
+            inner.lastfm_needs_reconnect = false;
+            inner.lastfm_error = None;
+        }
+        self.emit_status();
+        Ok(self.status())
+    }
+
+    pub fn lastfm_cancel_auth(&self) {
+        self.inner.lock().unwrap().lastfm_pending_token = None;
+    }
+
+    pub fn lastfm_disconnect(&self) {
+        let _ = self.store.clear(LASTFM_SERVICE);
+        {
+            let mut inner = self.inner.lock().unwrap();
+            inner.lastfm = None;
+            inner.lastfm_enabled = false;
+            inner.lastfm_queue.clear();
+            inner.lastfm_error = None;
+            inner.lastfm_needs_reconnect = false;
+            inner.lastfm_pending_token = None;
+        }
+        self.emit_status();
+    }
+
+    pub async fn listenbrainz_connect(
+        &self,
+        token: String,
+    ) -> Result<ScrobbleStatusDto, String> {
+        let token = token.trim().to_string();
+        if token.is_empty() {
+            return Err("token is empty".to_string());
+        }
+        let username = self.listenbrainz.validate(&token).await.map_err(|e| e.to_string())?;
+        let credential = StoredCredential { username, secret: token };
+        self.store.save(LISTENBRAINZ_SERVICE, &credential)?;
+        {
+            let mut inner = self.inner.lock().unwrap();
+            inner.listenbrainz = Some(credential);
+            inner.listenbrainz_enabled = true;
+            inner.listenbrainz_needs_reconnect = false;
+            inner.listenbrainz_error = None;
+        }
+        self.emit_status();
+        Ok(self.status())
+    }
+
+    pub fn listenbrainz_disconnect(&self) {
+        let _ = self.store.clear(LISTENBRAINZ_SERVICE);
+        {
+            let mut inner = self.inner.lock().unwrap();
+            inner.listenbrainz = None;
+            inner.listenbrainz_enabled = false;
+            inner.listenbrainz_queue.clear();
+            inner.listenbrainz_error = None;
+            inner.listenbrainz_needs_reconnect = false;
+        }
+        self.emit_status();
+    }
 }
 
 #[cfg(test)]
@@ -645,5 +737,117 @@ mod tests {
     fn backoff_delay_starts_at_five_seconds_and_caps_at_five_minutes() {
         let schedule: Vec<u64> = (1..=8).map(Backoff::delay_secs).collect();
         assert_eq!(schedule, vec![5, 10, 20, 40, 80, 160, 300, 300]);
+    }
+
+    #[tokio::test]
+    async fn lastfm_complete_auth_saves_the_session() {
+        use wiremock::matchers::{method as http_method, query_param};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(http_method("GET"))
+            .and(query_param("method", "auth.getToken"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({ "token": "tok" })),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(http_method("GET"))
+            .and(query_param("method", "auth.getSession"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                serde_json::json!({ "session": { "name": "v", "key": "sk" } }),
+            ))
+            .mount(&server)
+            .await;
+
+        let store = Arc::new(MemoryCredentialStore::default());
+        let service = ScrobblerService::new(
+            reqwest::Client::new(),
+            server.uri(),
+            "http://127.0.0.1:1",
+            store.clone(),
+            "key".into(),
+            "secret".into(),
+            false,
+            false,
+        );
+        let url = service.lastfm_begin_auth().await.unwrap();
+        assert!(url.contains("api_key=key"), "{url}");
+        assert!(url.contains("token=tok"), "{url}");
+        let status = service.lastfm_complete_auth().await.unwrap();
+        assert!(status.lastfm.connected);
+        assert!(status.lastfm.enabled, "connecting enables the service");
+        assert_eq!(status.lastfm.username.as_deref(), Some("v"));
+        assert_eq!(store.load(LASTFM_SERVICE).unwrap().unwrap().secret, "sk");
+    }
+
+    #[tokio::test]
+    async fn lastfm_disconnect_clears_the_credential() {
+        let store = Arc::new(MemoryCredentialStore::default());
+        store
+            .save(LASTFM_SERVICE, &StoredCredential { username: "v".into(), secret: "sk".into() })
+            .unwrap();
+        let service = service(store.clone());
+        service.lastfm_disconnect();
+        assert!(!service.status().lastfm.connected);
+        assert!(store.load(LASTFM_SERVICE).unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn listenbrainz_connect_validates_and_stores() {
+        use wiremock::matchers::{method as http_method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(http_method("GET"))
+            .and(path("/validate-token"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({ "valid": true, "user_name": "v" })),
+            )
+            .mount(&server)
+            .await;
+
+        let store = Arc::new(MemoryCredentialStore::default());
+        let service = ScrobblerService::new(
+            reqwest::Client::new(),
+            "http://127.0.0.1:1",
+            server.uri(),
+            store.clone(),
+            "key".into(),
+            "secret".into(),
+            false,
+            false,
+        );
+        let status = service.listenbrainz_connect("tok".into()).await.unwrap();
+        assert!(status.listenbrainz.connected);
+        assert!(status.listenbrainz.enabled);
+        assert_eq!(status.listenbrainz.username.as_deref(), Some("v"));
+        assert_eq!(store.load(LISTENBRAINZ_SERVICE).unwrap().unwrap().secret, "tok");
+    }
+
+    #[tokio::test]
+    async fn listenbrainz_connect_rejects_an_invalid_token() {
+        use wiremock::matchers::method as http_method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(http_method("GET"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
+
+        let service = ScrobblerService::new(
+            reqwest::Client::new(),
+            "http://127.0.0.1:1",
+            server.uri(),
+            Arc::new(MemoryCredentialStore::default()),
+            "key".into(),
+            "secret".into(),
+            false,
+            false,
+        );
+        assert!(service.listenbrainz_connect("bad".into()).await.is_err());
+        assert!(!service.status().listenbrainz.connected);
     }
 }
