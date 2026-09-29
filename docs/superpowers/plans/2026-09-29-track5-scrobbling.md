@@ -119,24 +119,13 @@ Expected: FAIL — `no field 'scrobbling'` / `no function 'pick'`.
 In `config.rs`, add `scrobbling: ScrobblingConfig,` to the `Config` struct (after `cache`), then add the type below the `CacheConfig` impl:
 
 ```rust
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ScrobblingConfig {
     pub lastfm_enabled: bool,
     pub listenbrainz_enabled: bool,
     pub lastfm_api_key: String,
     pub lastfm_api_secret: String,
-}
-
-impl Default for ScrobblingConfig {
-    fn default() -> Self {
-        Self {
-            lastfm_enabled: false,
-            listenbrainz_enabled: false,
-            lastfm_api_key: String::new(),
-            lastfm_api_secret: String::new(),
-        }
-    }
 }
 
 impl ScrobblingConfig {
@@ -2553,6 +2542,10 @@ git commit -m "feat(app): wire the ScrobblerService into startup and the engine"
 **Interfaces:**
 - Consumes: `AppState::scrobbler`, `scrobble::ScrobbleStatusDto`.
 - Produces: `get_scrobble_status`, `lastfm_begin_auth`, `lastfm_complete_auth`, `lastfm_cancel_auth`, `lastfm_disconnect`, `listenbrainz_connect`, `listenbrainz_disconnect`, `set_scrobble_enabled`.
+
+- [ ] **Step 0: Satisfy clippy on `ScrobblingConfig`**
+
+In `crates/oxitide-app/src/config.rs`, replace the manual `impl Default for ScrobblingConfig { .. }` (added in Task 1) with `Default` added to the struct's derive list: `#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]`, then delete the manual impl. Clippy's `derivable_impls` fires on the manual impl; the derived default is identical (false / false / "" / ""), so `scrobbling_defaults_and_round_trip` and `pre_scrobbling_file_fills_defaults` stay green.
 
 - [ ] **Step 1: Add the commands**
 
