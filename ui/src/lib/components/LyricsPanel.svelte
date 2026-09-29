@@ -36,7 +36,7 @@
 <div class="lyrics-wrap">
   <div
     class="lyrics"
-    class:rtl={dto.rtl}
+    dir={dto.rtl ? "rtl" : "ltr"}
     role="region"
     aria-label="Lyrics"
     bind:this={scroller}
@@ -104,7 +104,7 @@
     background: none;
     color: var(--text-muted);
     font: inherit;
-    font-size: 15px;
+    font-size: var(--font-body-size);
     line-height: 1.45;
     text-align: start;
     white-space: pre-wrap;

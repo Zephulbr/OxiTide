@@ -77,4 +77,23 @@ describe("lyrics store", () => {
     expect(model.lyrics).toBeNull();
     expect(model.loading).toBe(false);
   });
+
+  it("retries a track after a failed fetch", async () => {
+    vi.mocked(api.getLyrics).mockRejectedValueOnce(new Error("offline"));
+    vi.mocked(api.getLyrics).mockResolvedValueOnce(dto(4));
+    const model = createLyrics();
+    await model.open(track(4));
+    expect(model.lyrics).toBeNull();
+    await model.open(track(4));
+    expect(api.getLyrics).toHaveBeenCalledTimes(2);
+    expect(model.lyrics?.track_id).toBe(4);
+  });
+
+  it("re-queries a track that had no lyrics", async () => {
+    vi.mocked(api.getLyrics).mockResolvedValue(null);
+    const model = createLyrics();
+    await model.open(track(5));
+    await model.open(track(5));
+    expect(api.getLyrics).toHaveBeenCalledTimes(2);
+  });
 });

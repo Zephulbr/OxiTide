@@ -40,6 +40,12 @@ export function createLyrics(): LyricsStore {
       result = null;
     }
     if (currentId !== track.track_id) return; // a newer track superseded this fetch
+    if (result === null) {
+      // Transient failures and confirmed misses both read as "no lyrics";
+      // clear the guard so reopening Now Playing retries. The Rust cache
+      // answers confirmed misses from memory without HTTP.
+      currentId = null;
+    }
     lyrics = result;
     loading = false;
   }

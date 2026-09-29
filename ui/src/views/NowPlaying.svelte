@@ -266,10 +266,6 @@
   .next-up .tnum {
     grid-row: 1 / span 2;
   }
-  .meta {
-    display: flex;
-    flex-direction: column;
-  }
   .now-playing.with-lyrics {
     align-items: start;
   }
@@ -277,6 +273,8 @@
     align-self: center;
   }
   .now-playing.with-lyrics .meta {
+    display: flex;
+    flex-direction: column;
     height: 100%;
     min-height: 0;
   }

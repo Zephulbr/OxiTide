@@ -16,6 +16,10 @@ describe("activeLine", () => {
     expect(activeLine(lines, 6000)).toBe(1);
   });
 
+  it("is the last line after the lyrics end", () => {
+    expect(activeLine(lines, 20_000)).toBe(2);
+  });
+
   it("counts a line exactly at its timestamp", () => {
     expect(activeLine(lines, 5000, 0)).toBe(1);
   });
