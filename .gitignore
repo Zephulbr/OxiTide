@@ -14,6 +14,7 @@ node_modules/
 
 # Visual companion (brainstorm mockups, session state)
 .superpowers/
+.worktrees/
 
 # OS / editor
 .DS_Store
