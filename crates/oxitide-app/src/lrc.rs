@@ -4,16 +4,33 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LyricWord {
+    pub time_ms: u64,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LyricLine {
     /// Milliseconds from track start; `None` for plain (unsynced) lyrics.
     pub time_ms: Option<u64>,
     pub text: String,
+    /// Enhanced-LRC word stamps (`<mm:ss.xx>`), empty for standard LRC lines.
+    /// `default` keeps previously cached DTOs loadable.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub words: Vec<LyricWord>,
+}
+
+/// Shift a parsed stamp by the document offset, clamped at zero.
+fn shift(ms: i64, offset: i64) -> u64 {
+    ms.saturating_add(offset).max(0) as u64
 }
 
 /// Parse an LRC document. Multiple stamps on one line expand into one line per
 /// stamp; `[offset:±ms]` shifts every stamp; `[mm:ss.xx]`/`[mm:ss.xxx]` are both
 /// accepted; metadata tags and malformed lines are skipped; blank timed lines
-/// are kept as gaps.
+/// are kept as gaps. Enhanced-LRC `<mm:ss.xx>` word stamps are extracted into
+/// `words` (text before the first stamp takes the line's time; malformed tags
+/// stay literal text).
 pub fn parse_lrc(text: &str) -> Vec<LyricLine> {
     let offset = offset_ms(text);
     let mut lines = Vec::new();
@@ -22,16 +39,66 @@ pub fn parse_lrc(text: &str) -> Vec<LyricLine> {
         if stamps.is_empty() {
             continue; // metadata or a bare, untimed line
         }
-        let body = body.trim_end_matches('\r').to_string();
+        let body = body.trim_end_matches('\r');
+        let first_ms = shift(stamps[0], offset);
+        let (line_text, words) = split_words(body, first_ms, offset);
         for stamp in stamps {
-            let shifted = stamp.saturating_add(offset).max(0) as u64;
             lines.push(LyricLine {
-                time_ms: Some(shifted),
-                text: body.clone(),
+                time_ms: Some(shift(stamp, offset)),
+                text: line_text.clone(),
+                words: words.clone(),
             });
         }
     }
     lines
+}
+
+/// Split enhanced-LRC word stamps out of a line body. The returned text is the
+/// body with every valid stamp removed; `words` stays empty when the body has
+/// no valid stamps (a standard LRC line, byte-identical to before).
+fn split_words(body: &str, first_ms: u64, offset: i64) -> (String, Vec<LyricWord>) {
+    let mut words: Vec<LyricWord> = Vec::new();
+    let mut segment = String::new();
+    let mut segment_ms: Option<u64> = None;
+    let mut rest = body;
+    let mut found_stamp = false;
+
+    while let Some(open) = rest.find('<') {
+        let Some(close_rel) = rest[open + 1..].find('>') else {
+            break;
+        };
+        let close = open + 1 + close_rel;
+        if let Some(ms) = parse_stamp(&rest[open + 1..close]) {
+            found_stamp = true;
+            segment.push_str(&rest[..open]);
+            if !segment.is_empty() {
+                words.push(LyricWord {
+                    time_ms: segment_ms.unwrap_or(first_ms),
+                    text: std::mem::take(&mut segment),
+                });
+            }
+            segment_ms = Some(shift(ms, offset));
+        } else {
+            // Not a stamp (e.g. `<b>`): part of the word text.
+            segment.push_str(&rest[..close + 1]);
+        }
+        rest = &rest[close + 1..];
+    }
+    segment.push_str(rest);
+    if !segment.is_empty() {
+        words.push(LyricWord {
+            time_ms: segment_ms.unwrap_or(first_ms),
+            text: segment,
+        });
+    }
+    if !found_stamp {
+        return (body.to_string(), Vec::new());
+    }
+    let mut line_text = String::new();
+    for word in &words {
+        line_text.push_str(&word.text);
+    }
+    (line_text, words)
 }
 
 /// Split leading `[...]` tags off a line, returning the timed stamps (ms) and
@@ -102,6 +169,7 @@ pub fn split_plain(text: &str) -> Vec<LyricLine> {
         .map(|line| LyricLine {
             time_ms: None,
             text: line.trim_end_matches('\r').to_string(),
+            words: Vec::new(),
         })
         .collect();
     while lines.last().is_some_and(|line| line.text.trim().is_empty()) {
@@ -122,11 +190,13 @@ mod tests {
             vec![
                 LyricLine {
                     time_ms: Some(27_930),
-                    text: "Listen".into()
+                    text: "Listen".into(),
+                    words: Vec::new()
                 },
                 LyricLine {
                     time_ms: Some(30_880),
-                    text: "Watch".into()
+                    text: "Watch".into(),
+                    words: Vec::new()
                 },
             ]
         );
@@ -160,7 +230,8 @@ mod tests {
             lines,
             vec![LyricLine {
                 time_ms: Some(2_000),
-                text: "ok".into()
+                text: "ok".into(),
+                words: Vec::new()
             }]
         );
     }
@@ -172,7 +243,8 @@ mod tests {
             lines[1],
             LyricLine {
                 time_ms: Some(2_000),
-                text: String::new()
+                text: String::new(),
+                words: Vec::new()
             }
         );
     }
@@ -189,5 +261,113 @@ mod tests {
         let lines = split_plain("one\ntwo\n\n");
         assert_eq!(lines.len(), 2);
         assert!(lines.iter().all(|l| l.time_ms.is_none()));
+    }
+
+    #[test]
+    fn parses_enhanced_word_stamps() {
+        let lines = parse_lrc("[00:10.00]<00:10.00>Hello <00:10.50>world");
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].time_ms, Some(10_000));
+        assert_eq!(lines[0].text, "Hello world");
+        assert_eq!(
+            lines[0].words,
+            vec![
+                LyricWord {
+                    time_ms: 10_000,
+                    text: "Hello ".into()
+                },
+                LyricWord {
+                    time_ms: 10_500,
+                    text: "world".into()
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn enhanced_prefix_text_takes_the_line_stamp() {
+        let lines = parse_lrc("[00:01.00]Intro <00:01.50>word");
+        assert_eq!(lines[0].text, "Intro word");
+        assert_eq!(
+            lines[0].words,
+            vec![
+                LyricWord {
+                    time_ms: 1_000,
+                    text: "Intro ".into()
+                },
+                LyricWord {
+                    time_ms: 1_500,
+                    text: "word".into()
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn enhanced_malformed_tags_stay_literal() {
+        let lines = parse_lrc("[00:01.00]<00:01.00>a <b> c");
+        assert_eq!(lines[0].text, "a <b> c");
+        assert_eq!(
+            lines[0].words,
+            vec![LyricWord {
+                time_ms: 1_000,
+                text: "a <b> c".into()
+            }]
+        );
+    }
+
+    #[test]
+    fn enhanced_words_apply_offset() {
+        let lines = parse_lrc("[offset:500]\n[00:01.00]<00:01.00>a <00:02.00>b");
+        assert_eq!(
+            lines[0].words,
+            vec![
+                LyricWord {
+                    time_ms: 1_500,
+                    text: "a ".into()
+                },
+                LyricWord {
+                    time_ms: 2_500,
+                    text: "b".into()
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn plain_timed_lines_have_no_words() {
+        let lines = parse_lrc("[00:01.00] ok");
+        assert_eq!(lines[0].text, "ok");
+        assert!(lines[0].words.is_empty());
+    }
+
+    #[test]
+    fn enhanced_lone_angle_stays_literal() {
+        let body = "a < b <00:02.00>c";
+        let lines = parse_lrc(&format!("[00:01.00]{body}"));
+        assert_eq!(lines[0].text, body);
+        assert!(lines[0].words.is_empty());
+    }
+
+    #[test]
+    fn enhanced_consecutive_tags_drop_empty_segments() {
+        let lines = parse_lrc("[00:01.00]<00:01.00><00:02.00>b");
+        assert_eq!(lines[0].text, "b");
+        assert_eq!(
+            lines[0].words,
+            vec![LyricWord {
+                time_ms: 2_000,
+                text: "b".into()
+            }]
+        );
+    }
+
+    #[test]
+    fn enhanced_words_clone_across_duplicate_line_stamps() {
+        let lines = parse_lrc("[00:01.00][00:02.00]<00:01.00>a");
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].words, lines[1].words);
+        assert_eq!(lines[0].words[0].time_ms, 1_000);
+        assert_eq!(lines[1].time_ms, Some(2_000));
     }
 }

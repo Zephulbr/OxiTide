@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { cubicOut } from "svelte/easing";
-  import { fly, slide, type TransitionConfig } from "svelte/transition";
+  import { cubicInOut, cubicOut } from "svelte/easing";
+  import { fade, fly, slide, type TransitionConfig } from "svelte/transition";
   import type { QueueItem } from "../lib/api";
   import { appearance } from "../lib/appearance.svelte";
   import Cover from "../lib/components/Cover.svelte";
@@ -14,14 +14,22 @@
   import type { Player } from "../lib/player.svelte";
 
   /// Outro pins the closing view absolutely over the incoming route, so the
-  /// swap dissolves in place instead of reflowing .main mid-fade.
+  /// swap dissolves in place instead of reflowing .main mid-fade. The settle
+  /// (slight sink + shrink) keeps the close from reading as a hard cut.
   function npOut(node: HTMLElement): TransitionConfig {
     node.style.position = "absolute";
     // matches .main padding in app.css (bottom clears the floating player bar)
     node.style.inset = "16px 20px calc(var(--player-height) + 8px) 20px";
     node.style.zIndex = "1";
     node.style.pointerEvents = "none";
-    return { duration: 150, css: (t) => `opacity: ${t}` };
+    if (appearance.reducedMotion) {
+      return { duration: 150, css: (t) => `opacity: ${t}` };
+    }
+    return {
+      duration: 220,
+      easing: cubicOut,
+      css: (t) => `opacity: ${t}; transform: translateY(${(1 - t) * 10}px) scale(${0.99 + 0.01 * t})`,
+    };
   }
 
   let {
@@ -51,6 +59,37 @@
   /// Transition duration that collapses to 0 when reduced motion is requested.
   const dur = (ms: number) => (appearance.reducedMotion ? 0 : ms);
 
+  /// The lyrics panel mounts as the layout morph settles — laying lines out
+  /// mid-glide continuously re-wraps them and drifts the centered line.
+  /// GLIDE_MS is 460ms of the 520ms --np-glide: the ease-in-out tail is flat,
+  /// so the column is within a few px of final by then. A flip back within a
+  /// moment (cached track change) never moved the layout, so it mounts at once.
+  const GLIDE_MS = 460;
+  let lyricsSettled = $state(false);
+  let settleSeen = false;
+  let hiddenSince = 0;
+  $effect(() => {
+    const shown = showLyrics;
+    const now = performance.now();
+    if (!settleSeen) {
+      settleSeen = true;
+      lyricsSettled = shown;
+      if (!shown) hiddenSince = now;
+      return;
+    }
+    if (!shown) {
+      lyricsSettled = false;
+      hiddenSince = now;
+      return;
+    }
+    if (now - hiddenSince < 160) {
+      lyricsSettled = true;
+      return;
+    }
+    const timer = setTimeout(() => (lyricsSettled = true), dur(GLIDE_MS));
+    return () => clearTimeout(timer);
+  });
+
   $effect(() => {
     void lyrics.open(track);
   });
@@ -77,15 +116,26 @@
     {#if track}
       <div class="stage-row">
         <div class="art">
-          {#if appearance.coverShape === "disc"}
-            <button class="art-disc" onclick={() => nav.closeNowPlaying()} aria-label="Close now playing">
-              <DiscArt uuid={track.cover} playing={player.state.playing} />
-            </button>
-          {:else}
-            <button class="art-sleeve lit" onclick={() => nav.closeNowPlaying()} aria-label="Close now playing">
-              <Cover uuid={track.cover} size={640} radius={12} alt={`${track.title} artwork`} />
-            </button>
-          {/if}
+          <!-- Keyed on the track so a track change crossfades the artwork
+               instead of snapping; the grid stack lets outgoing and incoming
+               overlap in the same cell during the swap. -->
+          {#key track.track_id}
+            <div
+              class="art-stack"
+              in:fade={{ duration: dur(240), easing: cubicOut }}
+              out:fade={{ duration: dur(200) }}
+            >
+              {#if appearance.coverShape === "disc"}
+                <button class="art-disc" onclick={() => nav.closeNowPlaying()} aria-label="Close now playing">
+                  <DiscArt uuid={track.cover} playing={player.state.playing} />
+                </button>
+              {:else}
+                <button class="art-sleeve lit" onclick={() => nav.closeNowPlaying()} aria-label="Close now playing">
+                  <Cover uuid={track.cover} size={640} radius={12} alt={`${track.title} artwork`} />
+                </button>
+              {/if}
+            </div>
+          {/key}
         </div>
         {#if hasLyrics}
           <div class="spine" role="tablist" aria-orientation="vertical" aria-label="Now playing content">
@@ -135,32 +185,34 @@
         {#if shown}
           <div
             class="lyrics-slot"
-            in:fly={{ y: 16, duration: dur(260), delay: dur(180), easing: cubicOut }}
-            out:fly={{ y: 24, duration: dur(200), easing: cubicOut }}
+            in:fly={{ y: 8, duration: dur(320), delay: dur(80), easing: cubicOut }}
+            out:fly={{ y: 12, duration: dur(280), easing: cubicInOut }}
           >
-            {#key shown.track_id}
-              <LyricsPanel {player} dto={shown} />
-            {/key}
+            {#if lyricsSettled}
+              {#key shown.track_id}
+                <LyricsPanel {player} dto={shown} />
+              {/key}
+            {/if}
           </div>
         {/if}
       {:else}
         <div
           class="meta-details"
           in:fly={{ y: -16, duration: dur(260), delay: dur(40), easing: cubicOut }}
-          out:fly={{ y: -16, duration: dur(200), easing: cubicOut }}
+          out:fly={{ y: -10, duration: dur(420), easing: cubicInOut }}
         >
           {@render details(track)}
         </div>
 
         <hr
           in:fly={{ y: -16, duration: dur(240), delay: dur(60), easing: cubicOut }}
-          out:fly={{ y: -16, duration: dur(160), easing: cubicOut }}
+          out:fly={{ y: -10, duration: dur(420), easing: cubicInOut }}
         />
 
         <div
           class="meta-list"
           in:fly={{ y: -16, duration: dur(240), delay: dur(80), easing: cubicOut }}
-          out:fly={{ y: -16, duration: dur(160), easing: cubicOut }}
+          out:fly={{ y: -10, duration: dur(420), easing: cubicInOut }}
         >
           {#if lyrics.loading}
             <p class="muted loading">Loading lyrics…</p>
@@ -189,7 +241,7 @@
 
 <style>
   .now-playing {
-    --np-glide: 460ms;
+    --np-glide: 520ms;
     /* Shared with the lyrics mode so the cover never changes size. */
     --np-cover: min(60vh, calc(100vh - 360px));
     display: flex;
@@ -219,7 +271,13 @@
     animation: np-art var(--dur-view) var(--ease-in) 60ms both;
   }
   @keyframes np-art {
-    from { opacity: 0; transform: scale(0.92); }
+    from { opacity: 0; transform: scale(0.95) translateY(8px); }
+  }
+  /* Track-change crossfade: key swaps stack in the same grid cell so the
+     outgoing art fades under the incoming instead of reflowing the stage. */
+  .art-stack {
+    grid-area: 1 / 1;
+    width: 100%;
   }
   @keyframes np-fade {
     from { opacity: 0; }
@@ -236,12 +294,29 @@
     }
   }
   /* Both shapes are one close affordance (spec §7.2): clicking the artwork
-     returns, disc or sleeve. The disc button stays transparent (no lit edge). */
+     returns, disc or sleeve. The disc button stays transparent (no lit edge).
+     The hover lift signals the affordance; the disc's spin lives on the inner
+     .disc, so the lift never fights the rotation. */
   .art-sleeve,
   .art-disc {
     display: block;
     width: 100%;
     margin: 0 auto;
+    transition: transform var(--dur-state) var(--ease-in-out);
+  }
+  .art-sleeve:hover,
+  .art-disc:hover {
+    transform: scale(1.015);
+  }
+  /* :not(:disabled) is required to out-specify app.css's global press rule. */
+  .art-sleeve:not(:disabled):active,
+  .art-disc:not(:disabled):active {
+    transform: scale(0.99);
+  }
+  /* Sleeve parity with the disc's shadow, shaped to the cover's radius. */
+  .art-sleeve {
+    border-radius: var(--radius-card);
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
   }
   .art-empty {
     width: min(60%, 320px);
@@ -344,7 +419,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 20px;
+    gap: 24px;
     flex: 1 1 0%;
     min-width: 0;
     min-height: 0;
@@ -358,9 +433,11 @@
     flex: 0 1 462px;
     min-width: 260px;
     min-height: 0;
-    /* Full height in both modes with centered content, so switching tabs never
-       repositions the details/list; in lyrics mode the flexing lyrics slot
-       fills the box and the centering is a no-op. */
+    /* Full height in both modes with centered content. The lyrics slot
+       overlays absolutely (below), so it never participates in the centering:
+       the details/list hold their position while the tab swap's transitions
+       overlap. */
+    position: relative;
     align-self: stretch;
     display: flex;
     flex-direction: column;
@@ -395,6 +472,7 @@
   }
   .stage-details .title {
     margin-bottom: 4px;
+    font-size: 34px;
   }
   .stage-details .badges {
     justify-content: center;
@@ -418,6 +496,12 @@
     text-transform: uppercase;
     color: var(--text-muted);
     cursor: pointer;
+    /* The shorthand replaces app.css's global button transition, so the
+       press-scale transform is listed here to keep it animating. */
+    transition:
+      color var(--dur-state) var(--ease-in-out),
+      border-color var(--dur-state) var(--ease-in-out),
+      transform var(--dur-micro) var(--ease-in);
   }
   .spine button.active {
     color: var(--text);
@@ -452,9 +536,12 @@
     min-width: 0;
   }
   .lyrics-slot {
+    /* Out of flow so the incoming slot never displaces the centered
+       details/list while their out transitions still hold them in the DOM. */
+    position: absolute;
+    inset: 0;
     display: flex;
     flex-direction: column;
-    flex: 1;
     min-height: 0;
   }
   .loading {
