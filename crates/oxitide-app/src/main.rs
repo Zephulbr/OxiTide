@@ -137,7 +137,10 @@ fn main() {
             .join("palettes.json"),
     ));
     state.set_lyrics(lyrics::LyricsService::new(
-        reqwest::Client::new(),
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(15))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new()),
         "https://lrclib.net",
         config::default_cache_dir()
             .unwrap_or_default()

@@ -242,11 +242,17 @@ impl LyricsService {
     }
 }
 
+/// True when at least one line carries visible text; a synced body of only
+/// timestamps (or metadata) is a miss, not an empty panel.
+fn has_text(lines: &[LyricLine]) -> bool {
+    lines.iter().any(|line| !line.text.trim().is_empty())
+}
+
 fn dto_from_tidal(track_id: u64, raw: TidalLyrics) -> Option<LyricsDto> {
     let rtl = raw.right_to_left;
     if !raw.subtitles.trim().is_empty() {
         let lines = parse_lrc(&raw.subtitles);
-        if !lines.is_empty() {
+        if has_text(&lines) {
             return Some(LyricsDto {
                 track_id,
                 source: "tidal".into(),
@@ -258,7 +264,7 @@ fn dto_from_tidal(track_id: u64, raw: TidalLyrics) -> Option<LyricsDto> {
     }
     if !raw.lyrics.trim().is_empty() {
         let lines = split_plain(&raw.lyrics);
-        if !lines.is_empty() {
+        if has_text(&lines) {
             return Some(LyricsDto {
                 track_id,
                 source: "tidal".into(),
@@ -277,7 +283,7 @@ fn dto_from_lrclib(track_id: u64, record: LrclibRecord) -> Option<LyricsDto> {
     }
     if let Some(synced) = record.synced_lyrics.as_deref() {
         let lines = parse_lrc(synced);
-        if !lines.is_empty() {
+        if has_text(&lines) {
             return Some(LyricsDto {
                 track_id,
                 source: "lrclib".into(),
@@ -291,12 +297,16 @@ fn dto_from_lrclib(track_id: u64, record: LrclibRecord) -> Option<LyricsDto> {
     if plain.trim().is_empty() {
         return None;
     }
+    let lines = split_plain(plain);
+    if !has_text(&lines) {
+        return None;
+    }
     Some(LyricsDto {
         track_id,
         source: "lrclib".into(),
         synced: false,
         rtl: false,
-        lines: split_plain(plain),
+        lines,
     })
 }
 
@@ -399,6 +409,141 @@ mod tests {
         assert_eq!(first.source, "tidal");
         assert!(first.synced);
         assert_eq!(first.lines[0].time_ms, Some(1_000));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn unsynced_tidal_lyrics_map_to_plain_lines() {
+        let tidal = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/tracks/7/lyrics"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "trackId": 7, "lyrics": "one\ntwo", "subtitles": ""
+            })))
+            .mount(&tidal)
+            .await;
+        let lrclib = MockServer::start().await;
+        let dir = temp_dir();
+        let service = LyricsService::new(
+            reqwest::Client::new(),
+            lrclib.uri(),
+            dir.join("lyrics.json"),
+        );
+        let dto = service
+            .get(&tidal_client(&tidal), &request(7))
+            .await
+            .unwrap();
+        assert_eq!(dto.source, "tidal");
+        assert!(!dto.synced);
+        assert_eq!(dto.lines.len(), 2);
+        assert_eq!(dto.lines[0].time_ms, None);
+        assert_eq!(dto.lines[0].text, "one");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn timestamp_only_tidal_lyrics_fall_back_to_lrclib() {
+        let tidal = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/tracks/7/lyrics"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "trackId": 7, "lyrics": "", "subtitles": "[00:01.00]"
+            })))
+            .mount(&tidal)
+            .await;
+        let lrclib = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/get"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(synced_body("[00:02.00] real words")),
+            )
+            .mount(&lrclib)
+            .await;
+        let dir = temp_dir();
+        let service = LyricsService::new(
+            reqwest::Client::new(),
+            lrclib.uri(),
+            dir.join("lyrics.json"),
+        );
+        let dto = service
+            .get(&tidal_client(&tidal), &request(7))
+            .await
+            .unwrap();
+        assert_eq!(dto.source, "lrclib");
+        assert_eq!(dto.lines[0].text, "real words");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn timestamp_only_lrclib_synced_falls_back_to_plain() {
+        let tidal = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/tracks/7/lyrics"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&tidal)
+            .await;
+        let lrclib = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/get"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "syncedLyrics": "[00:01.00]", "plainLyrics": "plain words",
+                "instrumental": false, "duration": 271
+            })))
+            .mount(&lrclib)
+            .await;
+        let dir = temp_dir();
+        let service = LyricsService::new(
+            reqwest::Client::new(),
+            lrclib.uri(),
+            dir.join("lyrics.json"),
+        );
+        let dto = service
+            .get(&tidal_client(&tidal), &request(7))
+            .await
+            .unwrap();
+        assert!(!dto.synced);
+        assert_eq!(dto.lines[0].text, "plain words");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn negative_cache_survives_a_restart() {
+        let tidal = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/tracks/7/lyrics"))
+            .respond_with(ResponseTemplate::new(404))
+            .expect(1)
+            .mount(&tidal)
+            .await;
+        let lrclib = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/get"))
+            .respond_with(ResponseTemplate::new(404))
+            .expect(1)
+            .mount(&lrclib)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/search"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([])))
+            .expect(1)
+            .mount(&lrclib)
+            .await;
+        let dir = temp_dir();
+        let client = tidal_client(&tidal);
+        let first = LyricsService::new(
+            reqwest::Client::new(),
+            lrclib.uri(),
+            dir.join("lyrics.json"),
+        );
+        assert_eq!(first.get(&client, &request(7)).await, None);
+        let second = LyricsService::new(
+            reqwest::Client::new(),
+            lrclib.uri(),
+            dir.join("lyrics.json"),
+        );
+        assert_eq!(second.get(&client, &request(7)).await, None);
+        drop(tidal);
+        drop(lrclib);
         let _ = std::fs::remove_dir_all(dir);
     }
 

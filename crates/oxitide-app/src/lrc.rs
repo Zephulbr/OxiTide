@@ -49,8 +49,15 @@ fn split_tags(line: &str) -> (Vec<i64>, String) {
             rest = trimmed;
             break;
         };
-        if let Some(ms) = parse_stamp(&trimmed[1..end]) {
+        let tag = &trimmed[1..end];
+        if let Some(ms) = parse_stamp(tag) {
             stamps.push(ms);
+        } else if tag.contains(':') {
+            // Metadata tag ([ar:], [offset:], …): consumed and ignored.
+        } else {
+            // Bracketed body text like [Chorus]: part of the lyric line.
+            rest = trimmed;
+            break;
         }
         rest = &trimmed[end + 1..];
     }
@@ -168,6 +175,13 @@ mod tests {
                 text: String::new()
             }
         );
+    }
+
+    #[test]
+    fn keeps_bracketed_body_text() {
+        let lines = parse_lrc("[00:01.00] [Chorus]\n[00:02.00] verse");
+        assert_eq!(lines[0].text, "[Chorus]");
+        assert_eq!(lines[1].text, "verse");
     }
 
     #[test]
