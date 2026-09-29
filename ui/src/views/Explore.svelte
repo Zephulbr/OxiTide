@@ -8,7 +8,6 @@
   import PageSections from "../lib/components/PageSections.svelte";
   import PlaylistCover from "../lib/components/PlaylistCover.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
-  import { playMix } from "../lib/mixPlay";
   import { playSource } from "../lib/playSource.svelte";
   import { createSearch } from "../lib/search.svelte";
   import { searchHistory } from "../lib/searchHistory.svelte";
@@ -227,6 +226,7 @@
     <TrackTable
       view={resultsView}
       {favorites}
+      {toasts}
       onPlay={playFrom}
       onAddToPlaylist={(t) => playlistActions.openPicker([t])}
       playingTrackId={player.state.current?.track_id ?? null}
@@ -275,7 +275,7 @@
 {:else if sections.length === 0}
   <EmptyState message="Nothing to explore yet." />
 {:else}
-  <PageSections {sections} {nav} onPlayMix={(id) => void playMix(id, toasts)} />
+  <PageSections {sections} {nav} />
 {/if}
 
 <style>

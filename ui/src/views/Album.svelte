@@ -11,12 +11,14 @@
   import type { Favorites } from "../lib/favorites.svelte";
   import type { PlaylistActions } from "../lib/playlists.svelte";
   import type { Player } from "../lib/player.svelte";
+  import type { Toasts } from "../lib/toasts.svelte";
   let {
     id,
     player,
     favorites,
     playlistActions,
-  }: { id: number; player: Player; favorites: Favorites; playlistActions: PlaylistActions } = $props();
+    toasts,
+  }: { id: number; player: Player; favorites: Favorites; playlistActions: PlaylistActions; toasts: Toasts } = $props();
   let album = $state<AlbumT | null>(null);
   let tracks = $state<Track[]>([]);
   let loading = $state(true);
@@ -96,6 +98,7 @@
     <TrackTable
       {view}
       {favorites}
+      {toasts}
       fill
       showAlbum={false}
       onPlay={playFrom}

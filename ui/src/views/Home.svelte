@@ -4,11 +4,9 @@
   import ErrorState from "../lib/components/ErrorState.svelte";
   import Loading from "../lib/components/Loading.svelte";
   import PageSections from "../lib/components/PageSections.svelte";
-  import { playMix } from "../lib/mixPlay";
   import type { Nav } from "../lib/nav.svelte";
-  import type { Toasts } from "../lib/toasts.svelte";
 
-  let { nav, toasts }: { nav: Nav; toasts: Toasts } = $props();
+  let { nav }: { nav: Nav } = $props();
 
   let sections = $state<PageSection[]>([]);
   let loading = $state(true);
@@ -39,5 +37,5 @@
 {:else if sections.length === 0}
   <EmptyState message="Nothing to show yet." />
 {:else}
-  <PageSections {sections} {nav} onPlayMix={(id) => void playMix(id, toasts)} />
+  <PageSections {sections} {nav} />
 {/if}

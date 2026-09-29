@@ -6,11 +6,9 @@
   let {
     sections,
     nav,
-    onPlayMix,
   }: {
     sections: PageSection[];
     nav: Nav;
-    onPlayMix?: (id: string) => void;
   } = $props();
 </script>
 
@@ -18,28 +16,19 @@
   <h3>{section.title}</h3>
   <div class="card-grid">
     {#each section.items as item, i (item.id || `${item.title}-${i}`)}
-      {@const kind = item.item_type.toUpperCase()}
-      {#if (kind === "MIX" || kind === "MIX_LIST") && item.id.length > 0 && onPlayMix}
-        <button class="card" onclick={() => onPlayMix(item.id)}>
+      {@const route = routeForPageItem(item)}
+      {#if route}
+        <button class="card" onclick={() => nav.goto(route)}>
           <span class="card-art"><Cover uuid={item.artwork} size={320} radius={12} alt="" /></span>
           <span class="card-title">{item.title}</span>
           {#if item.subtitle}<span class="muted card-sub">{item.subtitle}</span>{/if}
         </button>
       {:else}
-        {@const route = routeForPageItem(item)}
-        {#if route}
-          <button class="card" onclick={() => nav.goto(route)}>
-            <span class="card-art"><Cover uuid={item.artwork} size={320} radius={12} alt="" /></span>
-            <span class="card-title">{item.title}</span>
-            {#if item.subtitle}<span class="muted card-sub">{item.subtitle}</span>{/if}
-          </button>
-        {:else}
-          <div class="card inert">
-            <span class="card-art"><Cover uuid={item.artwork} size={320} radius={12} alt="" /></span>
-            <span class="card-title">{item.title}</span>
-            {#if item.subtitle}<span class="muted card-sub">{item.subtitle}</span>{/if}
-          </div>
-        {/if}
+        <div class="card inert">
+          <span class="card-art"><Cover uuid={item.artwork} size={320} radius={12} alt="" /></span>
+          <span class="card-title">{item.title}</span>
+          {#if item.subtitle}<span class="muted card-sub">{item.subtitle}</span>{/if}
+        </div>
       {/if}
     {/each}
   </div>

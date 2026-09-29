@@ -1158,3 +1158,385 @@ If the owner's account/region simply lacks an endpoint (403/404), record it in t
 git add docs/superpowers/plans/notes/2026-09-30-track4b-discovery-smoke.md
 git commit -m "test: record the Track 4b discovery smoke checklist"
 ```
+
+---
+
+### Task 5b: Mix page — cards open, nothing autoplays (owner change, 2026-09-30)
+
+**Why:** the owner asked for the official client's flow: clicking a mix card opens a mix page
+(Play/Shuffle), never starts playback directly. Applies to Mixes & Radio, Home, and Explore.
+
+**Files:**
+- Modify: `crates/oxitide-tidal/src/pages.rs` (`MixDetail` + `mix_detail_from_json` + tests)
+- Modify: `ui/src/lib/api.ts` (`MixDetail.artwork`)
+- Modify: `ui/src/lib/nav.svelte.ts` + `ui/src/lib/nav.test.ts` (mix route mapping)
+- Modify: `ui/src/lib/components/PageSections.svelte` (drop `onPlayMix`)
+- Modify: `ui/src/views/Home.svelte`, `ui/src/views/Explore.svelte`, `ui/src/views/Mixes.svelte`
+- Create: `ui/src/views/Mix.svelte`
+- Modify: `ui/src/App.svelte` (mix branch; Home props)
+- Delete: `ui/src/lib/mixPlay.ts`, `ui/src/lib/mixPlay.test.ts` (now unused)
+
+**Interfaces:**
+- Produces: `Route` gains `{ name: "mix"; id: string }`; `MixDetail.artwork: Option<String>`;
+  `routeForPageItem` maps `MIX`/`MIX_LIST` → mix route. `Mix.svelte` props
+  `{ id: string; player: Player; favorites: Favorites; playlistActions: PlaylistActions; toasts: Toasts }`.
+
+- [ ] **Step 1: Rust RED — artwork tests**
+
+Append to `mod tests` in `crates/oxitide-tidal/src/pages.rs`:
+
+```rust
+    #[tokio::test]
+    async fn mix_page_reads_header_artwork() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/pages/mix"))
+            .and(query_param("mixId", "mix-7"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "rows": [{"modules": [{"type": "MIX_HEADER", "mix": {
+                    "id": "mix-7", "title": "Daily Mix",
+                    "images": {
+                        "SMALL": {"url": "https://img/s.jpg"},
+                        "MEDIUM": {"url": "https://img/m.jpg"}
+                    }
+                }}]}]
+            })))
+            .mount(&server)
+            .await;
+        let detail = client(&server).mix_page("mix-7").await.unwrap();
+        assert_eq!(detail.artwork.as_deref(), Some("https://img/m.jpg"));
+    }
+
+    #[tokio::test]
+    async fn mix_page_without_images_has_no_artwork() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/pages/mix"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "rows": [{"modules": [{"type": "MIX_HEADER", "mix": {"id": "m", "title": "T"}}]}]
+            })))
+            .mount(&server)
+            .await;
+        assert!(client(&server).mix_page("m").await.unwrap().artwork.is_none());
+    }
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `cargo test -p oxitide-tidal mix_page_reads_header_artwork`
+
+Expected: FAIL to compile — `no field 'artwork' on MixDetail`.
+
+- [ ] **Step 3: Implement**
+
+In `crates/oxitide-tidal/src/pages.rs`, add the field to `MixDetail`:
+
+```rust
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MixDetail {
+    pub id: String,
+    pub title: String,
+    /// Best-effort header artwork (absolute CDN url); `None` when absent.
+    #[serde(default)]
+    pub artwork: Option<String>,
+    pub tracks: Vec<crate::models::Track>,
+}
+```
+
+Add a helper next to `mix_detail_from_json` and use it in the returned struct:
+
+```rust
+/// Mix headers carry artwork as absolute urls under `images.*.url`; the same
+/// shape library mixes use.
+fn header_artwork(raw: &serde_json::Value) -> Option<String> {
+    let mix = raw.pointer("/rows/0/modules/0/mix")?;
+    mix.pointer("/images/MEDIUM/url")
+        .or_else(|| mix.pointer("/images/LARGE/url"))
+        .or_else(|| mix.pointer("/images/SMALL/url"))
+        .or_else(|| mix.get("squareImage"))
+        .or_else(|| mix.get("image"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+}
+```
+
+and in `mix_detail_from_json`'s return:
+
+```rust
+    MixDetail {
+        id: mix_id.to_string(),
+        title,
+        artwork: header_artwork(raw),
+        tracks,
+    }
+```
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `cargo test -p oxitide-tidal mix_page`
+
+Expected: PASS (all mix_page tests, including the two new).
+
+- [ ] **Step 5: UI RED — update the route tests**
+
+In `ui/src/lib/nav.test.ts`, replace the inert test and add the mix test:
+
+```ts
+  it("routes mix items with a non-empty id", () => {
+    expect(routeForPageItem(pageItem("MIX", "mix-1"))).toEqual({ name: "mix", id: "mix-1" });
+    expect(routeForPageItem(pageItem("MIX_LIST", "mix-2"))).toEqual({ name: "mix", id: "mix-2" });
+  });
+
+  it("leaves tracks, videos, and empty ids inert", () => {
+    expect(routeForPageItem(pageItem("TRACK_LIST", "55"))).toBeNull();
+    expect(routeForPageItem(pageItem("VIDEO", "77"))).toBeNull();
+    expect(routeForPageItem(pageItem("", "1"))).toBeNull();
+    expect(routeForPageItem(pageItem("ALBUM", ""))).toBeNull();
+  });
+```
+
+Run: `npm --prefix ui test -- src/lib/nav.test.ts`
+
+Expected: FAIL — the new mix test gets `null` (and the route name is unknown).
+
+- [ ] **Step 6: Implement the route mapping and view plumbing**
+
+In `ui/src/lib/nav.svelte.ts` extend `Route`:
+
+```ts
+  | { name: "artist"; id: number }
+  | { name: "mix"; id: string }
+  | { name: "settings" };
+```
+
+and in `routeForPageItem`, before the album case:
+
+```ts
+  if ((type === "MIX" || type === "MIX_LIST") && item.id.length > 0) {
+    return { name: "mix", id: item.id };
+  }
+```
+
+Update the doc comment (mixes are no longer handled by a shared renderer).
+
+In `ui/src/lib/components/PageSections.svelte`, remove the `onPlayMix` prop from the
+destructure and type, and delete the `MIX`/`MIX_LIST` special branch so mix items fall
+through to `routeForPageItem` like every other card.
+
+In `ui/src/views/Home.svelte`: remove the `playMix` import and the `toasts` prop/`Toasts`
+import; render `<PageSections {sections} {nav} />`.
+
+In `ui/src/views/Explore.svelte`: remove the `playMix` import; render
+`<PageSections {sections} {nav} />` (keep `{toasts}`, still used by `TrackTable`).
+
+In `ui/src/App.svelte` change the Home branch to `<Home {nav} />`.
+
+- [ ] **Step 7: Create `ui/src/views/Mix.svelte`**
+
+```svelte
+<script lang="ts">
+  import { api, trackToQueueItem, type MixDetail } from "../lib/api";
+  import Cover from "../lib/components/Cover.svelte";
+  import EmptyState from "../lib/components/EmptyState.svelte";
+  import ErrorState from "../lib/components/ErrorState.svelte";
+  import Icon from "../lib/components/Icon.svelte";
+  import Loading from "../lib/components/Loading.svelte";
+  import TrackTable from "../lib/components/TrackTable.svelte";
+  import { playSource } from "../lib/playSource.svelte";
+  import { createTrackView } from "../lib/trackView.svelte";
+  import type { Favorites } from "../lib/favorites.svelte";
+  import type { PlaylistActions } from "../lib/playlists.svelte";
+  import type { Player } from "../lib/player.svelte";
+  import type { Toasts } from "../lib/toasts.svelte";
+
+  let {
+    id,
+    player,
+    favorites,
+    playlistActions,
+    toasts,
+  }: { id: string; player: Player; favorites: Favorites; playlistActions: PlaylistActions; toasts: Toasts } = $props();
+
+  let mix = $state<MixDetail | null>(null);
+  let loading = $state(true);
+  let error = $state("");
+
+  const view = createTrackView(() => mix?.tracks ?? []);
+  const artwork = $derived(mix?.artwork ?? mix?.tracks[0]?.album?.cover ?? null);
+
+  async function load() {
+    loading = true;
+    error = "";
+    try {
+      mix = await api.getMix(id);
+    } catch (e) {
+      error = String(e);
+    } finally {
+      loading = false;
+    }
+  }
+
+  $effect(() => {
+    load();
+  });
+
+  function playAll() {
+    if (view.items.length === 0) return;
+    playSource.set(null);
+    void api.playTracks(view.items.map(trackToQueueItem), 0);
+  }
+
+  function shuffleAll() {
+    if (view.items.length === 0) return;
+    playSource.set(null);
+    void api.playTracks(view.items.map(trackToQueueItem), 0, true);
+  }
+
+  function playFrom(index: number) {
+    playSource.set(null);
+    void api.playTracks(view.items.map(trackToQueueItem), index);
+  }
+</script>
+
+{#if loading}
+  <Loading />
+{:else if error}
+  <ErrorState message={error} onRetry={load} />
+{:else if mix}
+  <div class="view-fill">
+    <header class="view-header">
+      <span class="header-art"><Cover uuid={artwork} size={320} radius={12} alt={`${mix.title} cover`} /></span>
+      <div class="header-meta">
+        <h2>{mix.title}</h2>
+        <p class="muted">Mix · {view.items.length} tracks</p>
+        <div class="header-actions">
+          <button
+            onclick={() => playlistActions.openPicker(view.items)}
+            aria-label="Add mix to playlist"
+            title="Add mix to playlist"
+          >Add to playlist</button>
+        </div>
+      </div>
+    </header>
+    <div class="header-buttons">
+      <button class="btn-play" onclick={playAll} disabled={view.items.length === 0}>
+        <Icon name="play" size={18} /> Play
+      </button>
+      <button class="btn-shuffle" onclick={shuffleAll} disabled={view.items.length === 0}>
+        <Icon name="shuffle" size={18} /> Shuffle
+      </button>
+    </div>
+    <TrackTable
+      {view}
+      {favorites}
+      {toasts}
+      fill
+      showAlbum={false}
+      onPlay={playFrom}
+      playingTrackId={player.state.current?.track_id ?? null}
+      onAddToPlaylist={(t) => playlistActions.openPicker([t])}
+    />
+  </div>
+{:else}
+  <EmptyState message="Mix not found." />
+{/if}
+
+<style>
+  .view-header {
+    display: flex;
+    align-items: flex-end;
+    gap: 20px;
+    margin-bottom: 14px;
+  }
+  .header-art {
+    flex: 0 0 auto;
+    width: 160px;
+  }
+  .header-buttons {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+  .header-buttons button {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 44px;
+    padding: 0 22px;
+    border-radius: var(--radius-control);
+    font-weight: 600;
+  }
+  .btn-play {
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+  .btn-play :global(svg) {
+    fill: currentColor;
+  }
+  .btn-shuffle {
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    color: var(--text-muted);
+  }
+  .btn-shuffle:hover {
+    color: var(--text);
+  }
+  .header-meta {
+    min-width: 0;
+  }
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+  }
+</style>
+```
+
+In `ui/src/App.svelte`, add after the album branch:
+
+```svelte
+      {:else if nav.route.name === "mix"}<Mix id={nav.route.id} {player} {favorites} {playlistActions} {toasts} />
+```
+
+with `import Mix from "./views/Mix.svelte";` alongside the other view imports.
+
+In `ui/src/lib/api.ts`, extend the interface:
+
+```ts
+export interface MixDetail { id: string; title: string; artwork?: string | null; tracks: Track[] }
+```
+
+- [ ] **Step 8: Mixes & Radio cards navigate**
+
+In `ui/src/views/Mixes.svelte`: remove the `playMix` import; render
+`<PageSections sections={forYou} {nav} />`; change the favorite-mix card button to:
+
+```svelte
+        <button class="card" onclick={() => nav.goto({ name: "mix", id: mix.id })} title={`Open ${mix.title}`}>
+```
+
+- [ ] **Step 9: Delete the unused helper**
+
+```bash
+git rm ui/src/lib/mixPlay.ts ui/src/lib/mixPlay.test.ts
+```
+
+- [ ] **Step 10: Gates**
+
+```bash
+cargo test --workspace
+cargo clippy --workspace -- -D warnings
+npm --prefix ui test
+npm --prefix ui run check
+```
+
+Expected: all pass; 0 svelte-check warnings (unused imports removed).
+
+- [ ] **Step 11: Commit**
+
+```bash
+git add -A
+git commit -m "feat(ui): open mixes on a page instead of autoplaying"
+```

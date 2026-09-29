@@ -6,6 +6,8 @@
   import { menuFor } from "../menu.svelte";
   import { trackMenuItems } from "../menus";
   import { trackQualityLabel } from "../quality";
+  import { playTrackRadio } from "../radio";
+  import type { Toasts } from "../toasts.svelte";
   import { windowRange } from "../virtual";
   import { appearance } from "../appearance.svelte";
   import { rowHeightFor } from "../rowHeight";
@@ -18,6 +20,7 @@
   let {
     view,
     favorites,
+    toasts,
     onPlay,
     onEndReached,
     onAddToPlaylist,
@@ -29,6 +32,7 @@
   }: {
     view: TrackView;
     favorites: Favorites;
+    toasts: Toasts;
     onPlay?: (index: number) => void | Promise<void>;
     /// Called when the list is scrolled near its end; used for lazy paging.
     onEndReached?: () => void;
@@ -205,6 +209,7 @@
               trackCount: rows.length,
               favorites,
               play: () => play(index),
+              startRadio: () => void playTrackRadio(t.id, toasts),
               addToQueue: () => api.queueAdd([trackToQueueItem(t)]),
               addToPlaylist: () => onAddToPlaylist?.(t),
               copyTitle: () => void copyText(t.title),

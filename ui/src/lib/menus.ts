@@ -8,6 +8,8 @@ export interface TrackMenuContext {
   trackCount: number;
   favorites: Favorites;
   play(): void | Promise<void>;
+  /// Starts a TIDAL track radio, replacing the queue.
+  startRadio(): void;
   addToQueue(): void;
   addToPlaylist(): void;
   copyTitle(): void;
@@ -26,6 +28,7 @@ export interface TrackMenuContext {
 export function trackMenuItems(ctx: TrackMenuContext): MenuItem[] {
   const items: MenuItem[] = [
     { id: "play", label: "Play", run: () => void ctx.play() },
+    { id: "radio", label: "Track Radio", run: () => ctx.startRadio() },
     { id: "add-queue", label: "Add to queue", run: () => ctx.addToQueue() },
     { id: "add-playlist", label: "Add to playlist", run: () => ctx.addToPlaylist() },
     {
