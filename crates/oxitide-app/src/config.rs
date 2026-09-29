@@ -176,7 +176,7 @@ impl Default for CacheConfig {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct IntegrationsConfig {
     /// Windows System Media Transport Controls (media keys + now-playing).
@@ -189,7 +189,7 @@ impl Default for IntegrationsConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ScrobblingConfig {
     pub lastfm_enabled: bool,
