@@ -58,9 +58,13 @@ impl Backoff {
         self.next_at.map(|at| Instant::now() >= at).unwrap_or(true)
     }
 
+    fn delay_secs(failures: u32) -> u64 {
+        (5u64 << failures.saturating_sub(1)).min(300)
+    }
+
     fn fail(&mut self) {
         self.failures = (self.failures + 1).min(7);
-        let seconds = (5u64 << self.failures).min(300);
+        let seconds = Self::delay_secs(self.failures);
         self.next_at = Some(Instant::now() + Duration::from_secs(seconds));
     }
 
@@ -635,5 +639,11 @@ mod tests {
         assert!(status.lastfm.needs_reconnect);
         assert_eq!(calls.load(Ordering::SeqCst), 1, "toast must fire once");
         assert!(!status.listenbrainz.needs_reconnect, "other service untouched");
+    }
+
+    #[test]
+    fn backoff_delay_starts_at_five_seconds_and_caps_at_five_minutes() {
+        let schedule: Vec<u64> = (1..=8).map(Backoff::delay_secs).collect();
+        assert_eq!(schedule, vec![5, 10, 20, 40, 80, 160, 300, 300]);
     }
 }
