@@ -60,6 +60,18 @@ describe("playTrackRadio", () => {
     expect(calls[0]?.severity).toBe("error");
     expect(calls[0]?.message).toContain("boom");
   });
+
+  it("shows radio-specific copy when the request is forbidden", async () => {
+    vi.mocked(api.getTrackRadio).mockRejectedValue("forbidden");
+    const { toasts, calls } = fakeToasts();
+
+    await playTrackRadio(7, toasts);
+
+    expect(api.playTracks).not.toHaveBeenCalled();
+    expect(calls[0]?.severity).toBe("error");
+    expect(calls[0]?.message).not.toContain("playlists");
+    expect(calls[0]?.message).toContain("Radio");
+  });
 });
 
 describe("playArtistRadio", () => {

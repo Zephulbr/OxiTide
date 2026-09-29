@@ -13,7 +13,11 @@ async function playRadio(fetchTracks: () => Promise<Track[]>, toasts: Toasts): P
     playSource.set(null);
     await api.playTracks(tracks.map(trackToQueueItem), 0);
   } catch (e) {
-    toasts.show(errorMessage(e), { severity: "error" });
+    const message =
+      String(e) === "forbidden"
+        ? "Radio isn't available for this track right now"
+        : errorMessage(e);
+    toasts.show(message, { severity: "error" });
   }
 }
 
