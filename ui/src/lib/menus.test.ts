@@ -56,6 +56,7 @@ function baseCtx(overrides: Partial<TrackMenuContext> = {}): TrackMenuContext {
     trackCount: 1,
     favorites: favorites(false),
     play: vi.fn(),
+    startRadio: vi.fn(),
     addToQueue: vi.fn(),
     addToPlaylist: vi.fn(),
     copyTitle: vi.fn(),
@@ -64,9 +65,10 @@ function baseCtx(overrides: Partial<TrackMenuContext> = {}): TrackMenuContext {
 }
 
 describe("trackMenuItems", () => {
-  it("lists the five base actions", () => {
+  it("lists the six base actions", () => {
     expect(trackMenuItems(baseCtx()).map((i) => i.id)).toEqual([
       "play",
+      "radio",
       "add-queue",
       "add-playlist",
       "favorite",
@@ -75,8 +77,8 @@ describe("trackMenuItems", () => {
   });
 
   it("labels favorite according to state", () => {
-    expect(trackMenuItems(baseCtx({ favorites: favorites(true) }))[3].label).toBe("Unfavorite");
-    expect(trackMenuItems(baseCtx({ favorites: favorites(false) }))[3].label).toBe("Favorite");
+    expect(trackMenuItems(baseCtx({ favorites: favorites(true) }))[4].label).toBe("Unfavorite");
+    expect(trackMenuItems(baseCtx({ favorites: favorites(false) }))[4].label).toBe("Favorite");
   });
 
   it("invokes each callback once", () => {
@@ -84,6 +86,7 @@ describe("trackMenuItems", () => {
     for (const item of trackMenuItems(ctx)) item.run();
 
     expect(vi.mocked(ctx.play)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(ctx.startRadio)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(ctx.addToQueue)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(ctx.addToPlaylist)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(ctx.copyTitle)).toHaveBeenCalledTimes(1);
@@ -96,6 +99,7 @@ describe("trackMenuItems", () => {
 
     expect(items.map((i) => i.id)).toEqual([
       "play",
+      "radio",
       "add-queue",
       "add-playlist",
       "favorite",
@@ -131,6 +135,7 @@ describe("trackMenuItems", () => {
 
     expect(items.map((i) => i.id)).toEqual([
       "play",
+      "radio",
       "add-queue",
       "add-playlist",
       "favorite",

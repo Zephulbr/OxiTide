@@ -227,6 +227,7 @@
     <TrackTable
       view={resultsView}
       {favorites}
+      {toasts}
       onPlay={playFrom}
       onAddToPlaylist={(t) => playlistActions.openPicker([t])}
       playingTrackId={player.state.current?.track_id ?? null}

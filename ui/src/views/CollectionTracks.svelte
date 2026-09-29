@@ -11,12 +11,14 @@
   import type { Favorites } from "../lib/favorites.svelte";
   import type { PlaylistActions } from "../lib/playlists.svelte";
   import type { Player } from "../lib/player.svelte";
+  import type { Toasts } from "../lib/toasts.svelte";
 
   let {
     player,
     favorites,
     playlistActions,
-  }: { player: Player; favorites: Favorites; playlistActions: PlaylistActions } = $props();
+    toasts,
+  }: { player: Player; favorites: Favorites; playlistActions: PlaylistActions; toasts: Toasts } = $props();
 
   const favoritesPager = createTrackPager("favorites", (offset, limit) =>
     api.getFavoriteTracksPage(offset, limit),
@@ -96,6 +98,7 @@
   <TrackTable
     {view}
     {favorites}
+    {toasts}
     fill
     onPlay={playFrom}
     onEndReached={() => void favoritesPager.loadMore()}

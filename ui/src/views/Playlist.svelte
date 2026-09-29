@@ -247,6 +247,7 @@
     <TrackTable
       {view}
       {favorites}
+      {toasts}
       fill
       onPlay={playFrom}
       onEndReached={() => void pager.loadMore()}

@@ -386,13 +386,13 @@
       {:else if nav.route.name === "explore"}<Explore {nav} {player} {favorites} {playlistActions} {toasts} />
       {:else if nav.route.name === "feed"}<Feed {nav} />
       {:else if nav.route.name === "albums"}<CollectionAlbums {nav} />
-      {:else if nav.route.name === "tracks"}<CollectionTracks {player} {favorites} {playlistActions} />
+      {:else if nav.route.name === "tracks"}<CollectionTracks {player} {favorites} {playlistActions} {toasts} />
       {:else if nav.route.name === "profiles"}<Profiles {nav} />
       {:else if nav.route.name === "mixes"}<Mixes {nav} {toasts} />
       {:else if nav.route.name === "purchases"}<Purchases {nav} />
       {:else if nav.route.name === "playlists"}<Playlists {nav} {playlistActions} {toasts} {collection} actions={collectionActions} />
       {:else if nav.route.name === "folder"}<Playlists {nav} {playlistActions} {toasts} {collection} actions={collectionActions} folderId={nav.route.id} folderLabel={nav.route.label ?? ""} />
-      {:else if nav.route.name === "album"}<Album id={nav.route.id} {player} {favorites} {playlistActions} />
+      {:else if nav.route.name === "album"}<Album id={nav.route.id} {player} {favorites} {playlistActions} {toasts} />
       {:else if nav.route.name === "playlist"}<Playlist {nav} id={nav.route.id} {player} {favorites} {playlistActions} {toasts} {collection} />
       {:else if nav.route.name === "artist"}<Artist id={nav.route.id} {nav} {toasts} {favorites} />
       {:else if nav.route.name === "settings"}<Settings {player} {toasts} {onLogout} onQualityDisplay={(mode) => (qualityDisplay = mode)} />{/if}
