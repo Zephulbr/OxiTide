@@ -40,6 +40,14 @@ export type CollectionEntry =
   | ({ kind: "folder" } & CollectionFolder)
   | ({ kind: "playlist" } & Playlist);
 export interface MixDetail { id: string; title: string; tracks: Track[] }
+export interface LyricLine { time_ms: number | null; text: string }
+export interface LyricsDto {
+  track_id: number;
+  source: "tidal" | "lrclib";
+  synced: boolean;
+  rtl: boolean;
+  lines: LyricLine[];
+}
 export interface CoverPalette {
   primary: string;
   on_primary: string;
@@ -146,6 +154,8 @@ export const api = {
   getFeed: () => invoke<PageSection[]>("get_feed"),
   getFavoriteMixes: () => invoke<Mix[]>("get_favorite_mixes"),
   getMix: (id: string) => invoke<MixDetail>("get_mix", { id }),
+  getLyrics: (trackId: number, title: string, artist: string, album: string, durationSecs: number) =>
+    invoke<LyricsDto | null>("get_lyrics", { trackId, title, artist, album, durationSecs }),
   getCollectionItems: (folderId = "root", order?: string) =>
     invoke<CollectionEntry[]>("get_collection_items", { folderId, order: order ?? null }),
   createFolder: (name: string, parentId = "root") =>
