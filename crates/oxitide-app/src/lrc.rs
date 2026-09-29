@@ -1,7 +1,8 @@
 //! Pure LRC parsing (Track 4a spec §5.3, §7). No I/O: every branch is
 //! unit-testable.
-// Temporary until the lyrics service (Task 3) consumes the parser: clippy runs
-// with `-D warnings` and nothing outside the tests reads these items yet.
+// Temporary until the get_lyrics command (Task 4) makes the lyrics service
+// reachable: clippy runs with `-D warnings` and nothing outside the tests reads
+// these items yet. Remove with the command wiring.
 #![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};

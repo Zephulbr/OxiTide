@@ -4,6 +4,7 @@ mod artwork;
 mod commands;
 mod config;
 mod lrc;
+mod lyrics;
 mod palette;
 mod player;
 mod scheme;
