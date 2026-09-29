@@ -1,6 +1,3 @@
-use std::collections::HashMap;
-use std::sync::Mutex;
-
 use serde::{Deserialize, Serialize};
 
 pub const KEYRING_SERVICE: &str = "oxitide";
@@ -59,11 +56,13 @@ impl CredentialStore for KeyringCredentialStore {
     }
 }
 
+#[cfg(test)]
 #[derive(Default)]
 pub struct MemoryCredentialStore {
-    inner: Mutex<HashMap<String, StoredCredential>>,
+    inner: std::sync::Mutex<std::collections::HashMap<String, StoredCredential>>,
 }
 
+#[cfg(test)]
 impl CredentialStore for MemoryCredentialStore {
     fn save(&self, service: &str, credential: &StoredCredential) -> Result<(), String> {
         self.inner

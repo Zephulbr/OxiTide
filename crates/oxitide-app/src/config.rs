@@ -175,24 +175,13 @@ impl Default for CacheConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ScrobblingConfig {
     pub lastfm_enabled: bool,
     pub listenbrainz_enabled: bool,
     pub lastfm_api_key: String,
     pub lastfm_api_secret: String,
-}
-
-impl Default for ScrobblingConfig {
-    fn default() -> Self {
-        Self {
-            lastfm_enabled: false,
-            listenbrainz_enabled: false,
-            lastfm_api_key: String::new(),
-            lastfm_api_secret: String::new(),
-        }
-    }
 }
 
 impl ScrobblingConfig {

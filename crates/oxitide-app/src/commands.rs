@@ -433,6 +433,81 @@ pub async fn get_lyrics(
     Ok(service.get(&client, &req).await)
 }
 
+fn require_scrobbler(
+    state: &State<'_, AppState>,
+) -> Result<std::sync::Arc<crate::scrobble::ScrobblerService>, String> {
+    state.scrobbler().ok_or_else(|| "scrobbler unavailable".to_string())
+}
+
+#[tauri::command]
+pub fn get_scrobble_status(
+    state: State<'_, AppState>,
+) -> Result<crate::scrobble::ScrobbleStatusDto, String> {
+    Ok(require_scrobbler(&state)?.status())
+}
+
+#[tauri::command]
+pub async fn lastfm_begin_auth(state: State<'_, AppState>) -> Result<String, String> {
+    require_scrobbler(&state)?.lastfm_begin_auth().await
+}
+
+#[tauri::command]
+pub async fn lastfm_complete_auth(
+    state: State<'_, AppState>,
+) -> Result<crate::scrobble::ScrobbleStatusDto, String> {
+    require_scrobbler(&state)?.lastfm_complete_auth().await
+}
+
+#[tauri::command]
+pub fn lastfm_cancel_auth(state: State<'_, AppState>) -> Result<(), String> {
+    require_scrobbler(&state)?.lastfm_cancel_auth();
+    Ok(())
+}
+
+#[tauri::command]
+pub fn lastfm_disconnect(state: State<'_, AppState>) -> Result<(), String> {
+    require_scrobbler(&state)?.lastfm_disconnect();
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn listenbrainz_connect(
+    state: State<'_, AppState>,
+    token: String,
+) -> Result<crate::scrobble::ScrobbleStatusDto, String> {
+    require_scrobbler(&state)?.listenbrainz_connect(token).await
+}
+
+#[tauri::command]
+pub fn listenbrainz_disconnect(state: State<'_, AppState>) -> Result<(), String> {
+    require_scrobbler(&state)?.listenbrainz_disconnect();
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_scrobble_enabled(
+    state: State<'_, AppState>,
+    service: String,
+    enabled: bool,
+) -> Result<(), String> {
+    let scrobbler = require_scrobbler(&state)?;
+    if service != crate::scrobble::LASTFM_SERVICE
+        && service != crate::scrobble::LISTENBRAINZ_SERVICE
+    {
+        return Err("unknown scrobble service".to_string());
+    }
+    scrobbler.set_enabled(&service, enabled);
+    let mut config = state.config();
+    if service == crate::scrobble::LASTFM_SERVICE {
+        config.scrobbling.lastfm_enabled = enabled;
+    } else {
+        config.scrobbling.listenbrainz_enabled = enabled;
+    }
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn get_favorite_mixes(state: State<'_, AppState>) -> Result<Vec<Mix>, String> {
     require_client(&state)?

@@ -63,10 +63,6 @@ impl LastFmClient {
         }
     }
 
-    pub fn api_key(&self) -> &str {
-        &self.api_key
-    }
-
     pub fn auth_url(&self, token: &str) -> String {
         format!("https://www.last.fm/api/auth/?api_key={}&token={}", self.api_key, token)
     }
