@@ -5,11 +5,9 @@
   import Icon from "../lib/components/Icon.svelte";
   import Loading from "../lib/components/Loading.svelte";
   import PageSections from "../lib/components/PageSections.svelte";
-  import { playMix } from "../lib/mixPlay";
   import type { Nav } from "../lib/nav.svelte";
-  import type { Toasts } from "../lib/toasts.svelte";
 
-  let { nav, toasts }: { nav: Nav; toasts: Toasts } = $props();
+  let { nav }: { nav: Nav } = $props();
 
   let forYou = $state<PageSection[]>([]);
   let mixes = $state<Mix[]>([]);
@@ -46,13 +44,13 @@
   <EmptyState message="No mixes yet." />
 {:else}
   {#if forYou.length > 0}
-    <PageSections sections={forYou} {nav} onPlayMix={(id) => void playMix(id, toasts)} />
+    <PageSections sections={forYou} {nav} />
   {/if}
   {#if mixes.length > 0}
     <h3>Favorite mixes</h3>
     <div class="grid">
       {#each mixes as mix (mix.id)}
-        <button class="card" onclick={() => void playMix(mix.id, toasts)} title={`Play ${mix.title}`}>
+        <button class="card" onclick={() => nav.goto({ name: "mix", id: mix.id })} title={`Open ${mix.title}`}>
           <span class="art">
             {#if mix.image}
               <img src={mix.image} alt="" loading="lazy" />

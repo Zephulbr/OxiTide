@@ -14,6 +14,7 @@ export type Route =
   | { name: "album"; id: number }
   | { name: "playlist"; id: string }
   | { name: "artist"; id: number }
+  | { name: "mix"; id: string }
   | { name: "settings" };
 
 export interface Nav {
@@ -39,11 +40,13 @@ function sameRoute(a: Route, b: Route): boolean {
 const NUMERIC_ID = /^\d+$/;
 
 /// Map a page-feed item to a route only when the type and id shape agree.
-/// Mixes are handled by the shared renderer before this is consulted; tracks,
-/// videos, and unknown types stay inert.
+/// Mix items open the mix page; tracks, videos, and unknown types stay inert.
 export function routeForPageItem(item: PageItem): Route | null {
   if (item.id.length === 0) return null;
   const type = item.item_type.toUpperCase();
+  if (type === "MIX" || type === "MIX_LIST") {
+    return { name: "mix", id: item.id };
+  }
   if ((type.includes("PLAYLIST") || type.includes("EDITORIAL")) && !NUMERIC_ID.test(item.id)) {
     return { name: "playlist", id: item.id };
   }

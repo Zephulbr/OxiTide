@@ -120,9 +120,13 @@ describe("routeForPageItem", () => {
     });
   });
 
-  it("leaves tracks, mixes, videos, and empty ids inert", () => {
+  it("routes mix items with a non-empty id", () => {
+    expect(routeForPageItem(pageItem("MIX", "mix-1"))).toEqual({ name: "mix", id: "mix-1" });
+    expect(routeForPageItem(pageItem("MIX_LIST", "mix-2"))).toEqual({ name: "mix", id: "mix-2" });
+  });
+
+  it("leaves tracks, videos, and empty ids inert", () => {
     expect(routeForPageItem(pageItem("TRACK_LIST", "55"))).toBeNull();
-    expect(routeForPageItem(pageItem("MIX", "mix-1"))).toBeNull();
     expect(routeForPageItem(pageItem("VIDEO", "77"))).toBeNull();
     expect(routeForPageItem(pageItem("", "1"))).toBeNull();
     expect(routeForPageItem(pageItem("ALBUM", ""))).toBeNull();

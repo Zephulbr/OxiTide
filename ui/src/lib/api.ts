@@ -50,7 +50,7 @@ export interface CollectionFolder { id: string; name: string; totalNumberOfItems
 export type CollectionEntry =
   | ({ kind: "folder" } & CollectionFolder)
   | ({ kind: "playlist" } & Playlist);
-export interface MixDetail { id: string; title: string; tracks: Track[] }
+export interface MixDetail { id: string; title: string; artwork?: string | null; tracks: Track[] }
 export interface LyricLine { time_ms: number | null; text: string }
 export interface LyricsDto {
   track_id: number;

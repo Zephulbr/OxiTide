@@ -34,6 +34,9 @@ pub struct PageSection {
 pub struct MixDetail {
     pub id: String,
     pub title: String,
+    /// Best-effort header artwork (absolute CDN url); `None` when absent.
+    #[serde(default)]
+    pub artwork: Option<String>,
     pub tracks: Vec<crate::models::Track>,
 }
 
@@ -346,8 +349,22 @@ fn mix_detail_from_json(mix_id: &str, raw: &serde_json::Value) -> MixDetail {
     MixDetail {
         id: mix_id.to_string(),
         title,
+        artwork: header_artwork(raw),
         tracks,
     }
+}
+
+/// Mix headers carry artwork as absolute urls under `images.*.url`; the same
+/// shape library mixes use.
+fn header_artwork(raw: &serde_json::Value) -> Option<String> {
+    let mix = raw.pointer("/rows/0/modules/0/mix")?;
+    mix.pointer("/images/MEDIUM/url")
+        .or_else(|| mix.pointer("/images/LARGE/url"))
+        .or_else(|| mix.pointer("/images/SMALL/url"))
+        .or_else(|| mix.get("squareImage"))
+        .or_else(|| mix.get("image"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
 }
 
 #[cfg(test)]
@@ -646,5 +663,39 @@ mod tests {
         let detail = client(&server).mix_page("m").await.unwrap();
         assert!(detail.tracks.is_empty());
         assert_eq!(detail.title, "Video Mix");
+    }
+
+    #[tokio::test]
+    async fn mix_page_reads_header_artwork() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/pages/mix"))
+            .and(query_param("mixId", "mix-7"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "rows": [{"modules": [{"type": "MIX_HEADER", "mix": {
+                    "id": "mix-7", "title": "Daily Mix",
+                    "images": {
+                        "SMALL": {"url": "https://img/s.jpg"},
+                        "MEDIUM": {"url": "https://img/m.jpg"}
+                    }
+                }}]}]
+            })))
+            .mount(&server)
+            .await;
+        let detail = client(&server).mix_page("mix-7").await.unwrap();
+        assert_eq!(detail.artwork.as_deref(), Some("https://img/m.jpg"));
+    }
+
+    #[tokio::test]
+    async fn mix_page_without_images_has_no_artwork() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/pages/mix"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "rows": [{"modules": [{"type": "MIX_HEADER", "mix": {"id": "m", "title": "T"}}]}]
+            })))
+            .mount(&server)
+            .await;
+        assert!(client(&server).mix_page("m").await.unwrap().artwork.is_none());
     }
 }
