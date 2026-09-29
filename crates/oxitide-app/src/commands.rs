@@ -564,6 +564,47 @@ pub async fn get_mix(state: State<'_, AppState>, id: String) -> Result<MixDetail
 }
 
 #[tauri::command]
+pub async fn get_for_you(state: State<'_, AppState>) -> Result<Vec<PageSection>, String> {
+    require_client(&state)?
+        .for_you_page()
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
+pub async fn get_track_radio(
+    state: State<'_, AppState>,
+    track_id: u64,
+) -> Result<Vec<Track>, String> {
+    require_client(&state)?
+        .track_radio(track_id)
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
+pub async fn get_artist_radio(
+    state: State<'_, AppState>,
+    artist_id: u64,
+) -> Result<Vec<Track>, String> {
+    require_client(&state)?
+        .artist_radio(artist_id)
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
+pub async fn get_similar_artists(
+    state: State<'_, AppState>,
+    artist_id: u64,
+) -> Result<Vec<Artist>, String> {
+    require_client(&state)?
+        .similar_artists(artist_id)
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
 pub async fn get_collection_items(
     state: State<'_, AppState>,
     folder_id: Option<String>,
