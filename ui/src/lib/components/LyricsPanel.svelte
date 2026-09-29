@@ -13,6 +13,8 @@
 
   const active = $derived(activeLine(dto.lines, player.state.position_ms));
 
+  let positioned = false;
+
   // Keep the active line ~40% from the top; users who scroll pause this.
   $effect(() => {
     const index = active;
@@ -20,10 +22,14 @@
     if (!dto.synced || !following || index < 0 || !container) return;
     const el = lineEls[index];
     if (!el) return;
+    // The first positioning for a track jumps straight to the active line so
+    // the entrance never races a scroll; later follows (and seeks) glide.
+    const behavior: ScrollBehavior = positioned && !appearance.reducedMotion ? "smooth" : "auto";
     container.scrollTo({
       top: Math.max(0, el.offsetTop - container.clientHeight * 0.4),
-      behavior: appearance.reducedMotion ? "auto" : "smooth",
+      behavior,
     });
+    positioned = true;
   });
 
   function seek(line: { time_ms: number | null }) {
@@ -99,13 +105,13 @@
     display: block;
     width: 100%;
     margin: 0;
-    padding: 6px 0;
+    padding: 10px 0;
     border: none;
     background: none;
     color: var(--text-muted);
     font: inherit;
-    font-size: var(--font-body-size);
-    line-height: 1.45;
+    font-size: calc(var(--font-body-size) + 10px);
+    line-height: 1.4;
     text-align: start;
     white-space: pre-wrap;
     transition: color var(--dur-view) var(--ease-in);

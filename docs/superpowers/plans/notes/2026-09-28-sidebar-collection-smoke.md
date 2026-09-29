@@ -4,10 +4,11 @@ Requires a real account, `npm --prefix ui run app:dev`, and a browser login.
 
 ## Endpoint probes
 
-- [ ] Feed renders content, or shows "Feed isn't available for this account."
-      Record which candidate endpoint answered (watch `%APPDATA%\OxiTide\logs\oxitide*.log`
-      for requests to `pages/feed` vs `pages/my_collection_feed`) and paste the observed
-      JSON shape here:
+- [ ] Feed renders followed-artist releases from `v2/feed/activities` (rail groups:
+      New updates / Last week / This month / Earlier) or the "No updates yet." empty
+      state. Check covers on album rows, the E/H badges, and that clicking a release
+      opens its album page. Paste the observed activity JSON shape here (album type,
+      cover, audioQuality, any `historyMix` entries — history mixes are skipped for now):
 - [ ] Purchases renders content or the empty state. Record the observed path and JSON
       shape (probe `users/{id}/purchases`; if the shape differs, note the fields):
 - [ ] Mixes & Radio lists mixes and clicking one starts playback of its tracks.

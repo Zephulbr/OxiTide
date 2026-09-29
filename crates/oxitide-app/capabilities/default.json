@@ -9,7 +9,9 @@
       "identifier": "opener:allow-open-url",
       "allow": [
         { "url": "https://login.tidal.com/*" },
-        { "url": "https://tidal.com/*" }
+        { "url": "https://tidal.com/*" },
+        { "url": "https://github.com/adryd325/oneko.js" },
+        { "url": "https://github.com/kyrie25/spicetify-oneko" }
       ]
     }
   ]

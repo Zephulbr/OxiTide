@@ -1,5 +1,19 @@
-import { describe, expect, it } from "vitest";
-import { clampQueueWidth, fontStack, resolveDynamicColor, resolveTypeface } from "./appearance.svelte";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { api } from "./api";
+import {
+  clampQueueWidth,
+  createAppearance,
+  fontStack,
+  resolveDynamicColor,
+  resolveTypeface,
+} from "./appearance.svelte";
+
+vi.mock("./api", () => ({
+  api: {
+    getConfig: vi.fn(),
+    setOneko: vi.fn(),
+  },
+}));
 
 describe("clampQueueWidth", () => {
   it("clamps to the 260–420 dock range", () => {
@@ -52,5 +66,32 @@ describe("resolveDynamicColor", () => {
     expect(resolveDynamicColor("accent", "atmosphere")).toBe("accent");
     expect(resolveDynamicColor("off", "atmosphere")).toBe("off");
     expect(resolveDynamicColor("full", "instrument")).toBe("full");
+  });
+});
+
+describe("oneko setting", () => {
+  beforeEach(() => {
+    vi.stubGlobal("window", {
+      matchMedia: () => ({ matches: false, addEventListener: () => {} }),
+    });
+    vi.stubGlobal("document", {
+      documentElement: { dataset: {}, style: { setProperty: () => {} } },
+    });
+    vi.mocked(api.getConfig).mockResolvedValue({ ui: { oneko: true } } as never);
+    vi.mocked(api.setOneko).mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  it("init reads ui.oneko and setOneko updates the singleton", async () => {
+    const appearance = createAppearance();
+    await appearance.init();
+    expect(appearance.oneko).toBe(true);
+    await appearance.setOneko(false);
+    expect(appearance.oneko).toBe(false);
+    expect(api.setOneko).toHaveBeenCalledWith(false);
   });
 });

@@ -23,6 +23,17 @@ export interface Playlist {
 }
 export interface PageItem { id: string; title: string; subtitle?: string | null; item_type: string; artwork?: string | null }
 export interface PageSection { title: string; items: PageItem[] }
+/// One release activity from an artist the user follows (v2 feed).
+export interface FeedActivity {
+  id: number;
+  title: string;
+  subtitle: string;
+  artwork?: string | null;
+  explicit: boolean;
+  hires: boolean;
+  occurredAt: string;
+  seen: boolean;
+}
 export interface SearchGroup<T> { items: T[] }
 export interface SearchResults {
   tracks: SearchGroup<Track>; albums: SearchGroup<Album>;
@@ -53,6 +64,7 @@ export interface CoverPalette {
   on_primary: string;
   secondary: string;
   tertiary: string;
+  backdrop: string;
   ceiling_l: number;
 }
 
@@ -113,6 +125,7 @@ export interface Config {
     dynamic_color: "auto" | "full" | "accent" | "off";
     queue_width: number;
     start_in_mini: boolean;
+    oneko: boolean;
     window_width: number;
     window_height: number;
     window_x?: number | null;
@@ -151,7 +164,7 @@ export const api = {
   authLogout: () => invoke<void>("auth_logout"),
   getHome: () => invoke<PageSection[]>("get_home"),
   getExplore: () => invoke<PageSection[]>("get_explore"),
-  getFeed: () => invoke<PageSection[]>("get_feed"),
+  getFeed: () => invoke<FeedActivity[]>("get_feed"),
   getFavoriteMixes: () => invoke<Mix[]>("get_favorite_mixes"),
   getMix: (id: string) => invoke<MixDetail>("get_mix", { id }),
   getLyrics: (trackId: number, title: string, artist: string, album: string, durationSecs: number) =>
@@ -234,6 +247,7 @@ export const api = {
   setQueueWidth: (px: number) => invoke<void>("set_queue_width", { px }),
   setMiniMode: (active: boolean) => invoke<void>("set_mini_mode", { active }),
   setStartInMini: (enabled: boolean) => invoke<void>("set_start_in_mini", { enabled }),
+  setOneko: (enabled: boolean) => invoke<void>("set_oneko", { enabled }),
   setCacheMaxSizeMb: (mb: number) => invoke<void>("set_cache_max_size_mb", { mb }),
   setCacheClearOnExit: (enabled: boolean) =>
     invoke<void>("set_cache_clear_on_exit", { enabled }),

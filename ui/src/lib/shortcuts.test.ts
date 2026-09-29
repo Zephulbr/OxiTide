@@ -29,6 +29,8 @@ describe("matchShortcut", () => {
     expect(matchShortcut(keyEvent("ArrowRight", { shiftKey: true }), app)).toBe("next-track");
     expect(matchShortcut(keyEvent("ArrowUp"), app)).toBe("volume-up");
     expect(matchShortcut(keyEvent("ArrowDown"), app)).toBe("volume-down");
+    expect(matchShortcut(keyEvent("m"), app)).toBe("toggle-mute");
+    expect(matchShortcut(keyEvent("M"), app)).toBe("toggle-mute");
     expect(matchShortcut(keyEvent("f", { ctrlKey: true }), app)).toBe("focus-search");
     expect(matchShortcut(keyEvent("/"), app)).toBe("focus-search");
     expect(matchShortcut(keyEvent("ArrowLeft", { altKey: true }), app)).toBe("history-back");
@@ -42,6 +44,7 @@ describe("matchShortcut", () => {
     expect(matchShortcut(keyEvent(" ", { target: input }), app)).toBeNull();
     expect(matchShortcut(keyEvent("ArrowUp", { target: input }), app)).toBeNull();
     expect(matchShortcut(keyEvent("ArrowLeft", { target: input }), app)).toBeNull();
+    expect(matchShortcut(keyEvent("m", { target: input }), app)).toBeNull();
     expect(matchShortcut(keyEvent("/", { target: input }), app)).toBeNull();
     expect(matchShortcut(keyEvent("Escape", { target: input }), app)).toBe("escape");
     expect(matchShortcut(keyEvent("f", { ctrlKey: true, target: input }), app)).toBe(
@@ -80,8 +83,8 @@ describe("isTypingTarget", () => {
 });
 
 describe("SHORTCUTS", () => {
-  it("documents the seven rows shown in Settings", () => {
-    expect(SHORTCUTS).toHaveLength(7);
+  it("documents the eight rows shown in Settings", () => {
+    expect(SHORTCUTS).toHaveLength(8);
     for (const hint of SHORTCUTS) {
       expect(hint.keys.length).toBeGreaterThan(0);
       expect(hint.description.length).toBeGreaterThan(0);
@@ -112,6 +115,7 @@ describe("isShortcutHandled", () => {
     for (const action of [
       "volume-up",
       "volume-down",
+      "toggle-mute",
       "focus-search",
       "history-back",
       "history-forward",

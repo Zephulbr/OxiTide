@@ -11,6 +11,7 @@
   import { playMix } from "../lib/mixPlay";
   import { playSource } from "../lib/playSource.svelte";
   import { createSearch } from "../lib/search.svelte";
+  import { searchHistory } from "../lib/searchHistory.svelte";
   import { createTrackView } from "../lib/trackView.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { Nav } from "../lib/nav.svelte";
@@ -33,6 +34,16 @@
   } = $props();
 
   const search = createSearch(api.search);
+  const history = searchHistory();
+
+  let searchFocused = $state(false);
+  let suggestionsDismissed = $state(false);
+  let activeSuggestion = $state(-1);
+
+  const suggestions = $derived(history.matches(search.query));
+  const showSuggestions = $derived(
+    searchFocused && !suggestionsDismissed && suggestions.length > 0,
+  );
   const resultsView = createTrackView(() => search.results?.tracks.items ?? []);
 
   let sections = $state<PageSection[]>([]);
@@ -65,6 +76,49 @@
       search.results.playlists.items.length === 0,
   );
 
+  function onSearchInput(value: string) {
+    suggestionsDismissed = false;
+    activeSuggestion = -1;
+    search.setQuery(value);
+  }
+
+  function chooseSuggestion(value: string) {
+    history.record(value);
+    search.setQuery(value);
+    search.runNow();
+    suggestionsDismissed = true;
+    activeSuggestion = -1;
+  }
+
+  function onSearchKeydown(event: KeyboardEvent) {
+    if (event.key === "ArrowDown" && suggestions.length > 0) {
+      event.preventDefault();
+      suggestionsDismissed = false;
+      activeSuggestion = activeSuggestion < suggestions.length - 1 ? activeSuggestion + 1 : 0;
+    } else if (event.key === "ArrowUp" && suggestions.length > 0) {
+      event.preventDefault();
+      suggestionsDismissed = false;
+      activeSuggestion = activeSuggestion > 0 ? activeSuggestion - 1 : suggestions.length - 1;
+    } else if (event.key === "Enter") {
+      if (showSuggestions && activeSuggestion >= 0) {
+        event.preventDefault();
+        chooseSuggestion(suggestions[activeSuggestion]);
+      } else {
+        history.record(search.query);
+        search.runNow();
+      }
+    } else if (event.key === "Escape" && showSuggestions) {
+      event.preventDefault();
+      suggestionsDismissed = true;
+      activeSuggestion = -1;
+    }
+  }
+
+  function clearHistory() {
+    history.clear();
+    activeSuggestion = -1;
+  }
+
   function playFrom(index: number) {
     playSource.set(null);
     void api.playTracks(resultsView.items.map(trackToQueueItem), index);
@@ -87,13 +141,61 @@
 <div class="search-bar">
   <input
     id="search-input"
+    name="oxitide-search"
     value={search.query}
-    oninput={(event) => search.setQuery(event.currentTarget.value)}
-    onkeydown={(event) => event.key === "Enter" && search.runNow()}
+    oninput={(event) => onSearchInput(event.currentTarget.value)}
+    onkeydown={onSearchKeydown}
+    onfocus={() => {
+      searchFocused = true;
+      suggestionsDismissed = false;
+    }}
+    onblur={() => {
+      searchFocused = false;
+      activeSuggestion = -1;
+    }}
     placeholder="Search TIDAL"
+    autocomplete="off"
+    spellcheck="false"
+    aria-expanded={showSuggestions}
+    aria-controls="search-suggestions"
   />
   {#if search.loading && search.results}
     <Loading label="Searching…" />
+  {/if}
+  {#if showSuggestions}
+    <div
+      class="suggest"
+      id="search-suggestions"
+      role="listbox"
+      aria-label="Recent searches"
+    >
+      <div class="suggest-head">
+        <span>Recent searches</span>
+        <button
+          type="button"
+          class="suggest-clear"
+          aria-label="Clear recent searches"
+          title="Clear recent searches"
+          onmousedown={(event) => event.preventDefault()}
+          onclick={clearHistory}
+        ><Icon name="x" size={14} /></button>
+      </div>
+      {#each suggestions as suggestion, i (suggestion)}
+        <button
+          type="button"
+          role="option"
+          aria-selected={i === activeSuggestion}
+          class:active={i === activeSuggestion}
+          onmouseenter={() => (activeSuggestion = i)}
+          onmouseleave={() => (activeSuggestion = -1)}
+          onmousedown={(event) => event.preventDefault()}
+          onclick={() => chooseSuggestion(suggestion)}
+        >
+          <span class="suggest-icon"><Icon name="search" size={14} /></span>
+          <span class="suggest-text">{suggestion}</span>
+        </button>
+      {/each}
+    </div>
   {/if}
 </div>
 
@@ -178,9 +280,76 @@
 
 <style>
   .search-bar {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 8px;
+  }
+  /* Recent-search dropdown: the floating-overlay recipe (darker float veil +
+     slight accent tint) shared with ContextMenu, so both stay legible over
+     bright art and read as one overlay family. */
+  .suggest {
+    --suggest-fill: color-mix(in srgb, var(--accent) 8%, var(--surface-float));
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 10;
+    min-width: 260px;
+    max-width: 420px;
+    padding: 4px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-control);
+    background:
+      linear-gradient(var(--suggest-fill), var(--suggest-fill)) padding-box,
+      var(--edge-lit) border-box;
+    backdrop-filter: blur(var(--glass-blur));
+    box-shadow: 0 6px 18px rgb(0 0 0 / 0.4);
+  }
+  .suggest-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 4px 4px 4px 10px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .suggest-clear {
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    color: var(--text-muted);
+  }
+  .suggest-clear:hover {
+    color: var(--text);
+  }
+  .suggest > button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 6px 10px;
+    border-radius: 4px;
+    text-align: left;
+  }
+  .suggest-icon {
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    color: var(--text-muted);
+  }
+  .suggest > button:hover,
+  .suggest > button.active {
+    background: var(--surface-2);
+  }
+  .suggest-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .list-head {
     display: flex;

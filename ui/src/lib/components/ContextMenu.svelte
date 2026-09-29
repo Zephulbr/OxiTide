@@ -103,6 +103,8 @@
         class:active={active === i}
         class:danger={item.danger}
         disabled={item.disabled}
+        onmouseenter={() => (active = i)}
+        onmouseleave={() => (active = -1)}
         onclick={() => run(item)}
       >{item.label}</button>
     {/each}
@@ -111,6 +113,7 @@
 
 <style>
   .menu {
+    --menu-fill: color-mix(in srgb, var(--accent) 8%, var(--surface-float));
     position: fixed;
     z-index: 50;
     display: flex;
@@ -120,7 +123,7 @@
     border: 1px solid transparent;
     border-radius: var(--radius-control);
     background:
-      linear-gradient(var(--surface-3), var(--surface-3)) padding-box,
+      linear-gradient(var(--menu-fill), var(--menu-fill)) padding-box,
       var(--edge-lit) border-box;
     backdrop-filter: blur(var(--glass-blur));
     box-shadow: 0 6px 18px rgb(0 0 0 / 0.4);

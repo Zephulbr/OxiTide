@@ -104,6 +104,7 @@ scrim math inverts (light scrims), glass tints become dark-on-light, grain opaci
 | `--text` | `#f2ece6` | Primary text |
 | `--text-muted` | `#a99f94` | Metadata, secondary text |
 | `--surface-*` | `rgba(255,240,225, .05/.07/.09)` | Glass tints, lightest→strongest |
+| `--surface-float` | `rgba(23,18,14,.82)` (Instrument: `#2b241c`) | Floating overlays over art (menus, dropdowns): opaque veil so a bright cover cannot wash them out; components add a slight `--accent` tint via `color-mix` |
 | `--line` | `rgba(255,240,225,.10)` | Hairlines |
 | `--edge-lit` | gradient, §10.1 | Lit panel borders |
 | `--accent` (brand) | `#2ee2c4` | Fallback + static contexts |

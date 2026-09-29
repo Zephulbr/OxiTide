@@ -100,7 +100,10 @@ impl TidalClient {
         let envelope: Envelope = self
             .put_json(
                 "my-collection/playlists/folders/create-folder",
-                &[("name", name.to_string()), ("folderId", parent_id.to_string())],
+                &[
+                    ("name", name.to_string()),
+                    ("folderId", parent_id.to_string()),
+                ],
             )
             .await?;
         Ok(CollectionFolder {
@@ -127,11 +130,8 @@ impl TidalClient {
         } else {
             format!("trn:folder:{id}")
         };
-        self.put_v2(
-            "my-collection/playlists/folders/remove",
-            &[("trns", trn)],
-        )
-        .await
+        self.put_v2("my-collection/playlists/folders/remove", &[("trns", trn)])
+            .await
     }
 
     pub async fn move_playlists(&self, ids: &[String], folder_id: &str) -> Result<()> {
@@ -218,9 +218,17 @@ mod tests {
             reqwest::Client::new(),
             server.uri(),
             format!("{}/token", server.uri()),
-            SessionInfo { session_id: "s".into(), country_code: "GR".into(), user_id: 42 },
-            TokenSet { access_token: "AT".into(), refresh_token: Some("RT".into()),
-                token_type: "Bearer".into(), expires_at: None },
+            SessionInfo {
+                session_id: "s".into(),
+                country_code: "GR".into(),
+                user_id: 42,
+            },
+            TokenSet {
+                access_token: "AT".into(),
+                refresh_token: Some("RT".into()),
+                token_type: "Bearer".into(),
+                expires_at: None,
+            },
             Arc::new(MemoryStore::default()),
         )
     }
@@ -258,7 +266,10 @@ mod tests {
             .mount(&server)
             .await;
 
-        let entries = client(&server).collection_items("root", None).await.unwrap();
+        let entries = client(&server)
+            .collection_items("root", None)
+            .await
+            .unwrap();
         assert_eq!(entries.len(), 3);
         match &entries[0] {
             crate::folders::CollectionEntry::Folder(folder) => {
@@ -271,7 +282,10 @@ mod tests {
         match &entries[1] {
             crate::folders::CollectionEntry::Playlist(playlist) => {
                 assert_eq!(playlist.uuid, "p-1");
-                assert!(playlist.owned, "assume_owned applies to collection playlists");
+                assert!(
+                    playlist.owned,
+                    "assume_owned applies to collection playlists"
+                );
             }
             other => panic!("expected playlist, got {other:?}"),
         }
@@ -298,10 +312,19 @@ mod tests {
             .mount(&server)
             .await;
 
-        let entries = client(&server).collection_items("root", None).await.unwrap();
+        let entries = client(&server)
+            .collection_items("root", None)
+            .await
+            .unwrap();
         assert_eq!(entries.len(), 2);
-        assert!(matches!(entries[0], crate::folders::CollectionEntry::Playlist(_)));
-        assert!(matches!(entries[1], crate::folders::CollectionEntry::Folder(_)));
+        assert!(matches!(
+            entries[0],
+            crate::folders::CollectionEntry::Playlist(_)
+        ));
+        assert!(matches!(
+            entries[1],
+            crate::folders::CollectionEntry::Folder(_)
+        ));
     }
 
     #[tokio::test]
@@ -327,7 +350,10 @@ mod tests {
             .mount(&server)
             .await;
 
-        let entries = client(&server).collection_items("root", None).await.unwrap();
+        let entries = client(&server)
+            .collection_items("root", None)
+            .await
+            .unwrap();
         assert_eq!(entries.len(), 20);
     }
 
@@ -367,7 +393,10 @@ mod tests {
         client.collection_items("root", Some("NAME")).await.unwrap();
         client.collection_items("root", None).await.unwrap();
 
-        assert!(saw_name_order.load(Ordering::SeqCst), "order=NAME must be sent when requested");
+        assert!(
+            saw_name_order.load(Ordering::SeqCst),
+            "order=NAME must be sent when requested"
+        );
         assert!(
             saw_omitted_order.load(Ordering::SeqCst),
             "the order param must be omitted when not requested"
@@ -384,7 +413,11 @@ mod tests {
             })))
             .mount(&server)
             .await;
-        assert!(client(&server).collection_items("root", None).await.unwrap().is_empty());
+        assert!(client(&server)
+            .collection_items("root", None)
+            .await
+            .unwrap()
+            .is_empty());
     }
 
     #[tokio::test]
@@ -414,7 +447,10 @@ mod tests {
             .respond_with(ResponseTemplate::new(204))
             .mount(&server)
             .await;
-        client(&server).rename_folder("f-1", "Renamed").await.unwrap();
+        client(&server)
+            .rename_folder("f-1", "Renamed")
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
@@ -432,8 +468,14 @@ mod tests {
             .respond_with(ResponseTemplate::new(204))
             .mount(&server)
             .await;
-        client(&server).remove_collection_entry("playlist", "p-1").await.unwrap();
-        client(&server).remove_collection_entry("folder", "f-1").await.unwrap();
+        client(&server)
+            .remove_collection_entry("playlist", "p-1")
+            .await
+            .unwrap();
+        client(&server)
+            .remove_collection_entry("folder", "f-1")
+            .await
+            .unwrap();
     }
 
     #[tokio::test]

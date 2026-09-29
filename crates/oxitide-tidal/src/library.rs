@@ -33,21 +33,33 @@ impl TidalClient {
     /// One page of favorite tracks plus the server-reported total.
     pub async fn favorite_tracks_page(&self, limit: u32, offset: u32) -> Result<(Vec<Track>, u32)> {
         let p: ItemPage<Favorited<Track>> = self
-            .get(&format!("{}/tracks", self.user_base()), &page(limit, offset))
+            .get(
+                &format!("{}/tracks", self.user_base()),
+                &page(limit, offset),
+            )
             .await?;
-        Ok((p.items.into_iter().map(|f| f.item).collect(), p.total_number_of_items))
+        Ok((
+            p.items.into_iter().map(|f| f.item).collect(),
+            p.total_number_of_items,
+        ))
     }
 
     pub async fn favorite_albums(&self, limit: u32, offset: u32) -> Result<Vec<Album>> {
         let p: ItemPage<Favorited<Album>> = self
-            .get(&format!("{}/albums", self.user_base()), &page(limit, offset))
+            .get(
+                &format!("{}/albums", self.user_base()),
+                &page(limit, offset),
+            )
             .await?;
         Ok(p.items.into_iter().map(|f| f.item).collect())
     }
 
     pub async fn favorite_artists(&self, limit: u32, offset: u32) -> Result<Vec<Artist>> {
         let p: ItemPage<Favorited<Artist>> = self
-            .get(&format!("{}/artists", self.user_base()), &page(limit, offset))
+            .get(
+                &format!("{}/artists", self.user_base()),
+                &page(limit, offset),
+            )
             .await?;
         Ok(p.items.into_iter().map(|f| f.item).collect())
     }
@@ -55,7 +67,11 @@ impl TidalClient {
     /// Walk every page of the user's favorite tracks.
     pub async fn all_favorite_tracks(&self) -> Result<Vec<Track>> {
         let favs: Vec<Favorited<Track>> = self
-            .get_all_pages(&format!("{}/tracks", self.user_base()), &[], DEFAULT_PAGE_SIZE)
+            .get_all_pages(
+                &format!("{}/tracks", self.user_base()),
+                &[],
+                DEFAULT_PAGE_SIZE,
+            )
             .await?;
         Ok(favs.into_iter().map(|f| f.item).collect())
     }
@@ -63,7 +79,11 @@ impl TidalClient {
     /// Walk every page of the user's favorite albums.
     pub async fn all_favorite_albums(&self) -> Result<Vec<Album>> {
         let favs: Vec<Favorited<Album>> = self
-            .get_all_pages(&format!("{}/albums", self.user_base()), &[], DEFAULT_PAGE_SIZE)
+            .get_all_pages(
+                &format!("{}/albums", self.user_base()),
+                &[],
+                DEFAULT_PAGE_SIZE,
+            )
             .await?;
         Ok(favs.into_iter().map(|f| f.item).collect())
     }
@@ -71,7 +91,11 @@ impl TidalClient {
     /// Walk every page of the user's favorite artists.
     pub async fn all_favorite_artists(&self) -> Result<Vec<Artist>> {
         let favs: Vec<Favorited<Artist>> = self
-            .get_all_pages(&format!("{}/artists", self.user_base()), &[], DEFAULT_PAGE_SIZE)
+            .get_all_pages(
+                &format!("{}/artists", self.user_base()),
+                &[],
+                DEFAULT_PAGE_SIZE,
+            )
             .await?;
         Ok(favs.into_iter().map(|f| f.item).collect())
     }
@@ -106,10 +130,14 @@ impl TidalClient {
 
     async fn set_favorite(&self, kind: &str, id_key: &str, id: u64, favorite: bool) -> Result<()> {
         if favorite {
-            self.post_form(&format!("{}/{kind}", self.user_base()), &[(id_key, id.to_string())])
-                .await
+            self.post_form(
+                &format!("{}/{kind}", self.user_base()),
+                &[(id_key, id.to_string())],
+            )
+            .await
         } else {
-            self.delete(&format!("{}/{kind}/{id}", self.user_base())).await
+            self.delete(&format!("{}/{kind}/{id}", self.user_base()))
+                .await
         }
     }
 
@@ -168,21 +196,39 @@ fn mix_from_value(value: &serde_json::Value) -> Option<Mix> {
     let title = mix
         .get("title")
         .and_then(serde_json::Value::as_str)
-        .or_else(|| mix.pointer("/titleTextInfo/text").and_then(serde_json::Value::as_str))
+        .or_else(|| {
+            mix.pointer("/titleTextInfo/text")
+                .and_then(serde_json::Value::as_str)
+        })
         .unwrap_or_default()
         .to_string();
     let sub_title = mix
         .get("subTitle")
         .and_then(serde_json::Value::as_str)
-        .or_else(|| mix.pointer("/subtitleTextInfo/text").and_then(serde_json::Value::as_str))
+        .or_else(|| {
+            mix.pointer("/subtitleTextInfo/text")
+                .and_then(serde_json::Value::as_str)
+        })
         .map(str::to_string);
-    let mix_type = mix.get("mixType").and_then(serde_json::Value::as_str).map(str::to_string);
+    let mix_type = mix
+        .get("mixType")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
     let image = mix
         .pointer("/images/SMALL/url")
         .and_then(serde_json::Value::as_str)
-        .or_else(|| mix.pointer("/mixImages/0/url").and_then(serde_json::Value::as_str))
+        .or_else(|| {
+            mix.pointer("/mixImages/0/url")
+                .and_then(serde_json::Value::as_str)
+        })
         .map(str::to_string);
-    Some(Mix { id, title, sub_title, mix_type, image })
+    Some(Mix {
+        id,
+        title,
+        sub_title,
+        mix_type,
+        image,
+    })
 }
 
 fn value_to_string(value: &serde_json::Value) -> Option<String> {
@@ -207,9 +253,17 @@ mod tests {
             reqwest::Client::new(),
             server.uri(),
             format!("{}/token", server.uri()),
-            SessionInfo { session_id: "s".into(), country_code: "GR".into(), user_id: 42 },
-            TokenSet { access_token: "AT".into(), refresh_token: Some("RT".into()),
-                token_type: "Bearer".into(), expires_at: None },
+            SessionInfo {
+                session_id: "s".into(),
+                country_code: "GR".into(),
+                user_id: 42,
+            },
+            TokenSet {
+                access_token: "AT".into(),
+                refresh_token: Some("RT".into()),
+                token_type: "Bearer".into(),
+                expires_at: None,
+            },
             Arc::new(MemoryStore::default()),
         )
     }
@@ -224,7 +278,10 @@ mod tests {
                 "totalNumberOfItems": 201, "limit": 100, "offset": 200
             })))
             .mount(&server).await;
-        let (tracks, total) = client(&server).favorite_tracks_page(100, 200).await.unwrap();
+        let (tracks, total) = client(&server)
+            .favorite_tracks_page(100, 200)
+            .await
+            .unwrap();
         assert_eq!(tracks[0].id, 7);
         assert_eq!(total, 201);
     }
@@ -232,7 +289,8 @@ mod tests {
     #[tokio::test]
     async fn all_favorite_tracks_fetches_every_page() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/users/42/favorites/tracks"))
+        Mock::given(method("GET"))
+            .and(path("/users/42/favorites/tracks"))
             .and(query_param("offset", "0"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "items": (1..=100)
@@ -240,14 +298,17 @@ mod tests {
                     .collect::<Vec<_>>(),
                 "totalNumberOfItems": 101, "limit": 100, "offset": 0
             })))
-            .mount(&server).await;
-        Mock::given(method("GET")).and(path("/users/42/favorites/tracks"))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/users/42/favorites/tracks"))
             .and(query_param("offset", "100"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "items": [{"item": {"id": 101, "title": "Last"}}],
                 "totalNumberOfItems": 101, "limit": 100, "offset": 100
             })))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let tracks = client(&server).all_favorite_tracks().await.unwrap();
         assert_eq!(tracks.len(), 101);
         assert_eq!(tracks[100].id, 101);
@@ -256,11 +317,17 @@ mod tests {
     #[tokio::test]
     async fn set_favorite_track_adds_and_removes() {
         let server = MockServer::start().await;
-        Mock::given(method("POST")).and(path("/users/42/favorites/tracks"))
+        Mock::given(method("POST"))
+            .and(path("/users/42/favorites/tracks"))
             .and(body_string_contains("trackId=7"))
-            .respond_with(ResponseTemplate::new(200)).mount(&server).await;
-        Mock::given(method("DELETE")).and(path("/users/42/favorites/tracks/7"))
-            .respond_with(ResponseTemplate::new(204)).mount(&server).await;
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+        Mock::given(method("DELETE"))
+            .and(path("/users/42/favorites/tracks/7"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&server)
+            .await;
         let client = client(&server);
         client.set_favorite_track(7, true).await.unwrap();
         client.set_favorite_track(7, false).await.unwrap();
@@ -269,11 +336,17 @@ mod tests {
     #[tokio::test]
     async fn set_favorite_album_adds_and_removes() {
         let server = MockServer::start().await;
-        Mock::given(method("POST")).and(path("/users/42/favorites/albums"))
+        Mock::given(method("POST"))
+            .and(path("/users/42/favorites/albums"))
             .and(body_string_contains("albumId=9"))
-            .respond_with(ResponseTemplate::new(200)).mount(&server).await;
-        Mock::given(method("DELETE")).and(path("/users/42/favorites/albums/9"))
-            .respond_with(ResponseTemplate::new(204)).mount(&server).await;
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+        Mock::given(method("DELETE"))
+            .and(path("/users/42/favorites/albums/9"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&server)
+            .await;
         let client = client(&server);
         client.set_favorite_album(9, true).await.unwrap();
         client.set_favorite_album(9, false).await.unwrap();
@@ -282,11 +355,17 @@ mod tests {
     #[tokio::test]
     async fn set_favorite_artist_adds_and_removes() {
         let server = MockServer::start().await;
-        Mock::given(method("POST")).and(path("/users/42/favorites/artists"))
+        Mock::given(method("POST"))
+            .and(path("/users/42/favorites/artists"))
             .and(body_string_contains("artistId=11"))
-            .respond_with(ResponseTemplate::new(200)).mount(&server).await;
-        Mock::given(method("DELETE")).and(path("/users/42/favorites/artists/11"))
-            .respond_with(ResponseTemplate::new(204)).mount(&server).await;
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+        Mock::given(method("DELETE"))
+            .and(path("/users/42/favorites/artists/11"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&server)
+            .await;
         let client = client(&server);
         client.set_favorite_artist(11, true).await.unwrap();
         client.set_favorite_artist(11, false).await.unwrap();
@@ -295,25 +374,31 @@ mod tests {
     #[tokio::test]
     async fn favorite_ids_walks_all_three_lists() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/users/42/favorites/tracks"))
+        Mock::given(method("GET"))
+            .and(path("/users/42/favorites/tracks"))
             .and(query_param("limit", "1000"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "items": [{"item": {"id": 1, "title": "A"}}, {"item": {"id": 2, "title": "B"}}],
                 "totalNumberOfItems": 2, "limit": 1000, "offset": 0
             })))
-            .mount(&server).await;
-        Mock::given(method("GET")).and(path("/users/42/favorites/albums"))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/users/42/favorites/albums"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "items": [{"item": {"id": 3, "title": "C"}}],
                 "totalNumberOfItems": 1, "limit": 1000, "offset": 0
             })))
-            .mount(&server).await;
-        Mock::given(method("GET")).and(path("/users/42/favorites/artists"))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/users/42/favorites/artists"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "items": [{"item": {"id": 4, "name": "D"}}],
                 "totalNumberOfItems": 1, "limit": 1000, "offset": 0
             })))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let ids = client(&server).favorite_ids().await.unwrap();
         assert_eq!(ids.tracks, vec![1, 2]);
         assert_eq!(ids.albums, vec![3]);
@@ -323,7 +408,8 @@ mod tests {
     #[tokio::test]
     async fn favorite_mixes_accepts_the_v2_data_envelope() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/v2/favorites/mixes"))
+        Mock::given(method("GET"))
+            .and(path("/v2/favorites/mixes"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "data": [
                     {"id": "m1", "title": "Daily Mix", "subTitle": "For you",
@@ -333,7 +419,8 @@ mod tests {
                 ],
                 "totalNumberOfItems": 2
             })))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let (mixes, total) = client(&server).favorite_mixes(50, 0).await.unwrap();
         assert_eq!(total, 2);
         assert_eq!(mixes[0].id, "m1");
@@ -345,11 +432,13 @@ mod tests {
     #[tokio::test]
     async fn favorite_mixes_accepts_the_v1_items_envelope() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/v2/favorites/mixes"))
+        Mock::given(method("GET"))
+            .and(path("/v2/favorites/mixes"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "items": [{"id": "m3", "title": "Mood", "type": "MIX"}]
             })))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let (mixes, total) = client(&server).favorite_mixes(50, 0).await.unwrap();
         assert_eq!(mixes.len(), 1);
         assert_eq!(mixes[0].id, "m3");

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reduce, emptyState, reconcileSeek, type PlayerState } from "./player.svelte";
+import { reduce, emptyState, reconcileSeek, muteTarget, volumeIcon, type PlayerState } from "./player.svelte";
 
 describe("player reducer", () => {
   it("applies a state event", () => {
@@ -39,6 +39,36 @@ describe("player reducer", () => {
   it("captures errors", () => {
     const next = reduce(emptyState(), { type: "error", code: "auth", message: "nope" });
     expect(next.error).toBe("nope");
+  });
+});
+
+describe("mute target", () => {
+  it("silences when the current volume is audible", () => {
+    expect(muteTarget(0.7, 0.7)).toBe(0);
+  });
+
+  it("restores the last audible volume when muted", () => {
+    expect(muteTarget(0, 0.7)).toBe(0.7);
+  });
+
+  it("falls back to half volume when there is no audible history", () => {
+    expect(muteTarget(0, 0)).toBe(0.5);
+  });
+});
+
+describe("volume icon", () => {
+  it("shows the crossed speaker when muted", () => {
+    expect(volumeIcon(0)).toBe("volume-x");
+  });
+
+  it("shows one wave below the split", () => {
+    expect(volumeIcon(0.01)).toBe("volume-1");
+    expect(volumeIcon(0.49)).toBe("volume-1");
+  });
+
+  it("shows two waves at and above the split", () => {
+    expect(volumeIcon(0.5)).toBe("volume-2");
+    expect(volumeIcon(1)).toBe("volume-2");
   });
 });
 

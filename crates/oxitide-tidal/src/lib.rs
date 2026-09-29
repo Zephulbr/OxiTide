@@ -2,6 +2,7 @@ pub mod auth;
 pub mod catalog;
 pub mod client;
 pub mod error;
+pub mod feed;
 pub mod folders;
 pub mod library;
 pub mod lyrics;

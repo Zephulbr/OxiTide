@@ -27,3 +27,17 @@ export function wavePath(seed: number, width: number, height: number, count = 96
     })
     .join(" ");
 }
+
+/// The area below the wave, closed along the bottom edge, normalized to the
+/// unit box so it can be used as an SVG `clipPath` with objectBoundingBox
+/// (the seek bar's glass cap). Same shape as `${wavePath(seed, 800, 14)}
+/// L800,12.6 L0,12.6 Z` scaled by 1/800 x 1/12.6.
+export function waveFillPath(seed: number, count = 96): string {
+  const samples = waveSamples(seed, count);
+  const points = samples.map((v, i) => {
+    const x = count <= 1 ? 0 : i / (count - 1);
+    const y = 13.3 / 12.6 - v;
+    return `${i === 0 ? "M" : "L"}${x.toFixed(4)},${y.toFixed(4)}`;
+  });
+  return `${points.join(" ")} L1,1 L0,1 Z`;
+}

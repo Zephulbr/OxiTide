@@ -16,8 +16,9 @@ impl TidalClient {
     }
 
     pub async fn album_tracks(&self, id: u64, limit: u32, offset: u32) -> Result<Vec<Track>> {
-        let page: ItemPage<Track> =
-            self.get(&format!("albums/{id}/tracks"), &page_params(limit, offset)).await?;
+        let page: ItemPage<Track> = self
+            .get(&format!("albums/{id}/tracks"), &page_params(limit, offset))
+            .await?;
         Ok(page.items)
     }
 
@@ -47,9 +48,17 @@ mod tests {
             reqwest::Client::new(),
             server.uri(),
             format!("{}/token", server.uri()),
-            SessionInfo { session_id: "s".into(), country_code: "GR".into(), user_id: 1 },
-            TokenSet { access_token: "AT".into(), refresh_token: Some("RT".into()),
-                token_type: "Bearer".into(), expires_at: None },
+            SessionInfo {
+                session_id: "s".into(),
+                country_code: "GR".into(),
+                user_id: 1,
+            },
+            TokenSet {
+                access_token: "AT".into(),
+                refresh_token: Some("RT".into()),
+                token_type: "Bearer".into(),
+                expires_at: None,
+            },
             Arc::new(MemoryStore::default()),
         )
     }
@@ -57,13 +66,16 @@ mod tests {
     #[tokio::test]
     async fn album_tracks_sends_limit_and_offset() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/albums/5/tracks"))
-            .and(query_param("limit", "50")).and(query_param("offset", "100"))
+        Mock::given(method("GET"))
+            .and(path("/albums/5/tracks"))
+            .and(query_param("limit", "50"))
+            .and(query_param("offset", "100"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "items": [{"id": 1, "title": "T1", "artists": []}],
                 "totalNumberOfItems": 1, "limit": 50, "offset": 100
             })))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let tracks = client(&server).album_tracks(5, 50, 100).await.unwrap();
         assert_eq!(tracks.len(), 1);
         assert_eq!(tracks[0].title, "T1");
@@ -72,7 +84,8 @@ mod tests {
     #[tokio::test]
     async fn album_tracks_all_fetches_every_page() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/albums/9/tracks"))
+        Mock::given(method("GET"))
+            .and(path("/albums/9/tracks"))
             .and(query_param("offset", "0"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "items": (1..=100)
@@ -80,14 +93,17 @@ mod tests {
                     .collect::<Vec<_>>(),
                 "totalNumberOfItems": 101, "limit": 100, "offset": 0
             })))
-            .mount(&server).await;
-        Mock::given(method("GET")).and(path("/albums/9/tracks"))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/albums/9/tracks"))
             .and(query_param("offset", "100"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "items": [{"id": 101, "title": "Last"}],
                 "totalNumberOfItems": 101, "limit": 100, "offset": 100
             })))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let tracks = client(&server).album_tracks_all(9).await.unwrap();
         assert_eq!(tracks.len(), 101);
         assert_eq!(tracks[100].title, "Last");
@@ -96,19 +112,31 @@ mod tests {
     #[tokio::test]
     async fn album_tracks_handles_empty_page() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/albums/5/tracks"))
+        Mock::given(method("GET"))
+            .and(path("/albums/5/tracks"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "items": [], "totalNumberOfItems": 0, "limit": 50, "offset": 0
             })))
-            .mount(&server).await;
-        assert!(client(&server).album_tracks(5, 50, 0).await.unwrap().is_empty());
+            .mount(&server)
+            .await;
+        assert!(client(&server)
+            .album_tracks(5, 50, 0)
+            .await
+            .unwrap()
+            .is_empty());
     }
 
     #[tokio::test]
     async fn track_404_is_not_found() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/tracks/999"))
-            .respond_with(ResponseTemplate::new(404)).mount(&server).await;
-        assert!(matches!(client(&server).track(999).await.unwrap_err(), Error::NotFound(_)));
+        Mock::given(method("GET"))
+            .and(path("/tracks/999"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        assert!(matches!(
+            client(&server).track(999).await.unwrap_err(),
+            Error::NotFound(_)
+        ));
     }
 }

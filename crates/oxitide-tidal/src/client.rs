@@ -84,7 +84,11 @@ impl TidalClient {
         self.tokens.read().unwrap().access_token.clone()
     }
 
-    pub async fn get<T: DeserializeOwned>(&self, path: &str, params: &[(&str, String)]) -> Result<T> {
+    pub async fn get<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        params: &[(&str, String)],
+    ) -> Result<T> {
         let (value, _) = self.get_with_etag(path, params).await?;
         Ok(value)
     }
@@ -143,9 +147,16 @@ impl TidalClient {
 
     /// DELETE with an optional `If-None-Match` value (playlist writes).
     pub async fn delete_with_etag(&self, path: &str, etag: Option<&str>) -> Result<()> {
-        self.mutate(reqwest::Method::DELETE, &self.base_url, path, &[], &[], etag)
-            .await
-            .map(|_| ())
+        self.mutate(
+            reqwest::Method::DELETE,
+            &self.base_url,
+            path,
+            &[],
+            &[],
+            etag,
+        )
+        .await
+        .map(|_| ())
     }
 
     /// Send a PUT with query params on the v2 API and decode the JSON response.
@@ -155,7 +166,14 @@ impl TidalClient {
         params: &[(&str, String)],
     ) -> Result<T> {
         let resp = self
-            .mutate(reqwest::Method::PUT, &self.v2_base_url, path, params, &[], None)
+            .mutate(
+                reqwest::Method::PUT,
+                &self.v2_base_url,
+                path,
+                params,
+                &[],
+                None,
+            )
             .await?;
         decode_json(resp).await
     }
@@ -163,9 +181,16 @@ impl TidalClient {
     /// PUT with query params on the v2 API, discarding the response body (several
     /// v2 collection writes answer 204).
     pub async fn put_v2(&self, path: &str, params: &[(&str, String)]) -> Result<()> {
-        self.mutate(reqwest::Method::PUT, &self.v2_base_url, path, params, &[], None)
-            .await
-            .map(|_| ())
+        self.mutate(
+            reqwest::Method::PUT,
+            &self.v2_base_url,
+            path,
+            params,
+            &[],
+            None,
+        )
+        .await
+        .map(|_| ())
     }
 
     /// Send a form-encoded POST and decode the JSON response, sharing the write
@@ -177,7 +202,14 @@ impl TidalClient {
         form: &[(&str, String)],
     ) -> Result<T> {
         let resp = self
-            .mutate(reqwest::Method::POST, &self.base_url, path, params, form, None)
+            .mutate(
+                reqwest::Method::POST,
+                &self.base_url,
+                path,
+                params,
+                form,
+                None,
+            )
             .await?;
         decode_json(resp).await
     }
@@ -191,7 +223,14 @@ impl TidalClient {
         etag: Option<&str>,
     ) -> Result<T> {
         let resp = self
-            .mutate(reqwest::Method::POST, &self.base_url, path, params, form, etag)
+            .mutate(
+                reqwest::Method::POST,
+                &self.base_url,
+                path,
+                params,
+                form,
+                etag,
+            )
             .await?;
         decode_json(resp).await
     }
@@ -257,8 +296,18 @@ impl TidalClient {
             query.push(("countryCode", self.session.country_code.clone()));
         }
         query.extend(params.iter().cloned());
-        let url = format!("{}/{}", base.trim_end_matches('/'), path.trim_start_matches('/'));
-        Ok(self.http.get(url).bearer_auth(token).query(&query).send().await?)
+        let url = format!(
+            "{}/{}",
+            base.trim_end_matches('/'),
+            path.trim_start_matches('/')
+        );
+        Ok(self
+            .http
+            .get(url)
+            .bearer_auth(token)
+            .query(&query)
+            .send()
+            .await?)
     }
 
     /// GET on the v2 API base (no `countryCode`), sharing `get`'s refresh-on-401.
@@ -268,7 +317,9 @@ impl TidalClient {
         params: &[(&str, String)],
     ) -> Result<T> {
         let token = self.access_token();
-        let mut resp = self.send_get_at(&self.v2_base_url, path, params, &token).await?;
+        let mut resp = self
+            .send_get_at(&self.v2_base_url, path, params, &token)
+            .await?;
         let mut refreshed = false;
         if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
             self.try_refresh(&token).await?;
@@ -299,7 +350,16 @@ impl TidalClient {
         let token = self.access_token();
         let mut refreshed = false;
         let mut resp = self
-            .send_mutation(&method, base, path, params, form, &token, country_code, etag)
+            .send_mutation(
+                &method,
+                base,
+                path,
+                params,
+                form,
+                &token,
+                country_code,
+                etag,
+            )
             .await?;
         if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
             self.try_refresh(&token).await?;
@@ -436,7 +496,10 @@ impl TidalClient {
             reqwest::StatusCode::FORBIDDEN => Err(Error::Forbidden),
             reqwest::StatusCode::NOT_FOUND => Err(Error::NotFound(resp.url().path().to_string())),
             reqwest::StatusCode::TOO_MANY_REQUESTS => Err(Error::RateLimited),
-            s => Err(Error::Api { status: s.as_u16(), message: resp.text().await.unwrap_or_default() }),
+            s => Err(Error::Api {
+                status: s.as_u16(),
+                message: resp.text().await.unwrap_or_default(),
+            }),
         }
     }
 }
@@ -455,23 +518,39 @@ mod tests {
     }
 
     fn session() -> SessionInfo {
-        SessionInfo { session_id: "s".into(), country_code: "GR".into(), user_id: 1 }
+        SessionInfo {
+            session_id: "s".into(),
+            country_code: "GR".into(),
+            user_id: 1,
+        }
     }
 
     fn tokens() -> TokenSet {
-        TokenSet { access_token: "old".into(), refresh_token: Some("rt".into()),
-            token_type: "Bearer".into(), expires_at: None }
+        TokenSet {
+            access_token: "old".into(),
+            refresh_token: Some("rt".into()),
+            token_type: "Bearer".into(),
+            expires_at: None,
+        }
     }
 
     #[tokio::test]
     async fn get_parses_success() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/tracks/1"))
+        Mock::given(method("GET"))
+            .and(path("/tracks/1"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"value": 7})))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let store = Arc::new(MemoryStore::default());
-        let client = TidalClient::new(reqwest::Client::new(), server.uri(), format!("{}/token", server.uri()),
-            session(), tokens(), store);
+        let client = TidalClient::new(
+            reqwest::Client::new(),
+            server.uri(),
+            format!("{}/token", server.uri()),
+            session(),
+            tokens(),
+            store,
+        );
         let t: Thing = client.get("tracks/1", &[]).await.unwrap();
         assert_eq!(t.value, 7);
     }
@@ -479,15 +558,26 @@ mod tests {
     #[tokio::test]
     async fn get_maps_a_json_shape_mismatch_to_json_error_with_detail() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/tracks/1"))
+        Mock::given(method("GET"))
+            .and(path("/tracks/1"))
             .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"value": "seven"}"#))
-            .mount(&server).await;
-        let client = TidalClient::new(reqwest::Client::new(), server.uri(), format!("{}/token", server.uri()),
-            session(), tokens(), Arc::new(MemoryStore::default()));
+            .mount(&server)
+            .await;
+        let client = TidalClient::new(
+            reqwest::Client::new(),
+            server.uri(),
+            format!("{}/token", server.uri()),
+            session(),
+            tokens(),
+            Arc::new(MemoryStore::default()),
+        );
         let err = client.get::<Thing>("tracks/1", &[]).await.unwrap_err();
         match &err {
             Error::Json(e) => {
-                assert!(e.to_string().contains("expected u32"), "lost the serde detail: {e}");
+                assert!(
+                    e.to_string().contains("expected u32"),
+                    "lost the serde detail: {e}"
+                );
             }
             other => panic!("expected Error::Json, got {other:?}"),
         }
@@ -496,27 +586,43 @@ mod tests {
     #[tokio::test]
     async fn get_maps_a_non_json_body_to_json_error() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/tracks/1"))
+        Mock::given(method("GET"))
+            .and(path("/tracks/1"))
             .respond_with(ResponseTemplate::new(200).set_body_string("<html>not json</html>"))
-            .mount(&server).await;
-        let client = TidalClient::new(reqwest::Client::new(), server.uri(), format!("{}/token", server.uri()),
-            session(), tokens(), Arc::new(MemoryStore::default()));
+            .mount(&server)
+            .await;
+        let client = TidalClient::new(
+            reqwest::Client::new(),
+            server.uri(),
+            format!("{}/token", server.uri()),
+            session(),
+            tokens(),
+            Arc::new(MemoryStore::default()),
+        );
         let err = client.get::<Thing>("tracks/1", &[]).await.unwrap_err();
-        assert!(matches!(err, Error::Json(_)), "expected Error::Json, got {err:?}");
+        assert!(
+            matches!(err, Error::Json(_)),
+            "expected Error::Json, got {err:?}"
+        );
     }
 
     #[tokio::test]
     async fn get_refreshes_once_on_401() {
         let server = MockServer::start().await;
         // First call with old token -> 401
-        Mock::given(method("GET")).and(path("/tracks/1"))
+        Mock::given(method("GET"))
+            .and(path("/tracks/1"))
             .and(wiremock::matchers::header("authorization", "Bearer old"))
-            .respond_with(ResponseTemplate::new(401)).mount(&server).await;
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
         // Retry with refreshed token -> 200
-        Mock::given(method("GET")).and(path("/tracks/1"))
+        Mock::given(method("GET"))
+            .and(path("/tracks/1"))
             .and(wiremock::matchers::header("authorization", "Bearer new"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"value": 9})))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         Mock::given(method("POST")).and(path("/token"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "access_token": "new", "refresh_token": "rt2", "token_type": "Bearer", "expires_in": 3600
@@ -525,8 +631,14 @@ mod tests {
 
         let store = Arc::new(MemoryStore::default());
         store.save(&tokens()).unwrap();
-        let client = TidalClient::new(reqwest::Client::new(), server.uri(), format!("{}/token", server.uri()),
-            session(), tokens(), store.clone());
+        let client = TidalClient::new(
+            reqwest::Client::new(),
+            server.uri(),
+            format!("{}/token", server.uri()),
+            session(),
+            tokens(),
+            store.clone(),
+        );
         let t: Thing = client.get("tracks/1", &[]).await.unwrap();
         assert_eq!(t.value, 9);
         assert_eq!(store.load().unwrap().unwrap().access_token, "new");
@@ -535,13 +647,18 @@ mod tests {
     #[tokio::test]
     async fn concurrent_401s_refresh_exactly_once() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/tracks/1"))
+        Mock::given(method("GET"))
+            .and(path("/tracks/1"))
             .and(wiremock::matchers::header("authorization", "Bearer old"))
-            .respond_with(ResponseTemplate::new(401)).mount(&server).await;
-        Mock::given(method("GET")).and(path("/tracks/1"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/tracks/1"))
             .and(wiremock::matchers::header("authorization", "Bearer new"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"value": 5})))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         // Exactly one token POST is allowed for two concurrent 401s.
         Mock::given(method("POST")).and(path("/token"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
@@ -551,8 +668,14 @@ mod tests {
             .mount(&server).await;
 
         let store = Arc::new(MemoryStore::default());
-        let client = TidalClient::new(reqwest::Client::new(), server.uri(), format!("{}/token", server.uri()),
-            session(), tokens(), store.clone());
+        let client = TidalClient::new(
+            reqwest::Client::new(),
+            server.uri(),
+            format!("{}/token", server.uri()),
+            session(),
+            tokens(),
+            store.clone(),
+        );
         let c1 = client.clone();
         let c2 = client.clone();
         let (a, b) = tokio::join!(
@@ -567,13 +690,26 @@ mod tests {
     #[tokio::test]
     async fn get_without_refresh_token_is_unauthorized() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/tracks/1"))
-            .respond_with(ResponseTemplate::new(401)).mount(&server).await;
+        Mock::given(method("GET"))
+            .and(path("/tracks/1"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
         let store = Arc::new(MemoryStore::default());
-        let no_refresh = TokenSet { access_token: "old".into(), refresh_token: None,
-            token_type: "Bearer".into(), expires_at: None };
-        let client = TidalClient::new(reqwest::Client::new(), server.uri(), format!("{}/token", server.uri()),
-            session(), no_refresh, store);
+        let no_refresh = TokenSet {
+            access_token: "old".into(),
+            refresh_token: None,
+            token_type: "Bearer".into(),
+            expires_at: None,
+        };
+        let client = TidalClient::new(
+            reqwest::Client::new(),
+            server.uri(),
+            format!("{}/token", server.uri()),
+            session(),
+            no_refresh,
+            store,
+        );
         let err = client.get::<Thing>("tracks/1", &[]).await.unwrap_err();
         assert!(matches!(err, Error::Unauthorized));
     }
@@ -584,45 +720,85 @@ mod tests {
     #[tokio::test]
     async fn refresh_rejected_with_invalid_grant_is_unauthorized() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/tracks/1"))
+        Mock::given(method("GET"))
+            .and(path("/tracks/1"))
             .and(wiremock::matchers::header("authorization", "Bearer old"))
-            .respond_with(ResponseTemplate::new(401)).mount(&server).await;
-        Mock::given(method("POST")).and(path("/token"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/token"))
             .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
                 "error": "invalid_grant",
                 "error_description": "refresh token is invalid"
             })))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let store = Arc::new(MemoryStore::default());
-        let client = TidalClient::new(reqwest::Client::new(), server.uri(), format!("{}/token", server.uri()),
-            session(), tokens(), store);
+        let client = TidalClient::new(
+            reqwest::Client::new(),
+            server.uri(),
+            format!("{}/token", server.uri()),
+            session(),
+            tokens(),
+            store,
+        );
         let err = client.get::<Thing>("tracks/1", &[]).await.unwrap_err();
-        assert!(matches!(err, Error::Unauthorized), "expected Unauthorized, got {err:?}");
+        assert!(
+            matches!(err, Error::Unauthorized),
+            "expected Unauthorized, got {err:?}"
+        );
     }
 
     #[tokio::test]
     async fn get_maps_429_and_404() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/a"))
-            .respond_with(ResponseTemplate::new(429)).mount(&server).await;
-        Mock::given(method("GET")).and(path("/b"))
-            .respond_with(ResponseTemplate::new(404)).mount(&server).await;
-        let client = TidalClient::new(reqwest::Client::new(), server.uri(), format!("{}/token", server.uri()),
-            session(), tokens(), Arc::new(MemoryStore::default()));
-        assert!(matches!(client.get::<Thing>("a", &[]).await.unwrap_err(), Error::RateLimited));
-        assert!(matches!(client.get::<Thing>("b", &[]).await.unwrap_err(), Error::NotFound(_)));
+        Mock::given(method("GET"))
+            .and(path("/a"))
+            .respond_with(ResponseTemplate::new(429))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/b"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        let client = TidalClient::new(
+            reqwest::Client::new(),
+            server.uri(),
+            format!("{}/token", server.uri()),
+            session(),
+            tokens(),
+            Arc::new(MemoryStore::default()),
+        );
+        assert!(matches!(
+            client.get::<Thing>("a", &[]).await.unwrap_err(),
+            Error::RateLimited
+        ));
+        assert!(matches!(
+            client.get::<Thing>("b", &[]).await.unwrap_err(),
+            Error::NotFound(_)
+        ));
     }
 
     #[tokio::test]
     async fn post_form_sends_form_and_succeeds() {
         let server = MockServer::start().await;
-        Mock::given(method("POST")).and(path("/users/1/favorites/tracks"))
+        Mock::given(method("POST"))
+            .and(path("/users/1/favorites/tracks"))
             .and(header("authorization", "Bearer old"))
             .and(body_string_contains("trackId=7"))
             .respond_with(ResponseTemplate::new(200))
-            .mount(&server).await;
-        let client = TidalClient::new(reqwest::Client::new(), server.uri(), format!("{}/token", server.uri()),
-            session(), tokens(), Arc::new(MemoryStore::default()));
+            .mount(&server)
+            .await;
+        let client = TidalClient::new(
+            reqwest::Client::new(),
+            server.uri(),
+            format!("{}/token", server.uri()),
+            session(),
+            tokens(),
+            Arc::new(MemoryStore::default()),
+        );
         client
             .post_form("users/1/favorites/tracks", &[("trackId", "7".to_string())])
             .await
@@ -632,32 +808,52 @@ mod tests {
     #[tokio::test]
     async fn delete_maps_no_content_to_ok() {
         let server = MockServer::start().await;
-        Mock::given(method("DELETE")).and(path("/users/1/favorites/tracks/7"))
+        Mock::given(method("DELETE"))
+            .and(path("/users/1/favorites/tracks/7"))
             .and(header("authorization", "Bearer old"))
             .respond_with(ResponseTemplate::new(204))
-            .mount(&server).await;
-        let client = TidalClient::new(reqwest::Client::new(), server.uri(), format!("{}/token", server.uri()),
-            session(), tokens(), Arc::new(MemoryStore::default()));
+            .mount(&server)
+            .await;
+        let client = TidalClient::new(
+            reqwest::Client::new(),
+            server.uri(),
+            format!("{}/token", server.uri()),
+            session(),
+            tokens(),
+            Arc::new(MemoryStore::default()),
+        );
         client.delete("users/1/favorites/tracks/7").await.unwrap();
     }
 
     #[tokio::test]
     async fn post_form_refreshes_once_on_401() {
         let server = MockServer::start().await;
-        Mock::given(method("POST")).and(path("/users/1/favorites/tracks"))
+        Mock::given(method("POST"))
+            .and(path("/users/1/favorites/tracks"))
             .and(header("authorization", "Bearer old"))
-            .respond_with(ResponseTemplate::new(401)).mount(&server).await;
-        Mock::given(method("POST")).and(path("/users/1/favorites/tracks"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/users/1/favorites/tracks"))
             .and(header("authorization", "Bearer new"))
-            .respond_with(ResponseTemplate::new(200)).mount(&server).await;
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
         Mock::given(method("POST")).and(path("/token"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "access_token": "new", "refresh_token": "rt2", "token_type": "Bearer", "expires_in": 3600
             })))
             .mount(&server).await;
         let store = Arc::new(MemoryStore::default());
-        let client = TidalClient::new(reqwest::Client::new(), server.uri(), format!("{}/token", server.uri()),
-            session(), tokens(), store.clone());
+        let client = TidalClient::new(
+            reqwest::Client::new(),
+            server.uri(),
+            format!("{}/token", server.uri()),
+            session(),
+            tokens(),
+            store.clone(),
+        );
         client
             .post_form("users/1/favorites/tracks", &[("trackId", "7".to_string())])
             .await
@@ -680,12 +876,20 @@ mod tests {
                 }
             }
         };
-        Mock::given(method("POST")).and(path("/users/1/favorites/tracks"))
+        Mock::given(method("POST"))
+            .and(path("/users/1/favorites/tracks"))
             .respond_with(responder)
             .expect(2)
-            .mount(&server).await;
-        let client = TidalClient::new(reqwest::Client::new(), server.uri(), format!("{}/token", server.uri()),
-            session(), tokens(), Arc::new(MemoryStore::default()));
+            .mount(&server)
+            .await;
+        let client = TidalClient::new(
+            reqwest::Client::new(),
+            server.uri(),
+            format!("{}/token", server.uri()),
+            session(),
+            tokens(),
+            Arc::new(MemoryStore::default()),
+        );
         client
             .post_form("users/1/favorites/tracks", &[("trackId", "7".to_string())])
             .await
@@ -695,17 +899,28 @@ mod tests {
     #[tokio::test]
     async fn post_form_gives_up_after_a_second_429() {
         let server = MockServer::start().await;
-        Mock::given(method("POST")).and(path("/users/1/favorites/tracks"))
+        Mock::given(method("POST"))
+            .and(path("/users/1/favorites/tracks"))
             .respond_with(ResponseTemplate::new(429).insert_header("retry-after", "0"))
             .expect(2)
-            .mount(&server).await;
-        let client = TidalClient::new(reqwest::Client::new(), server.uri(), format!("{}/token", server.uri()),
-            session(), tokens(), Arc::new(MemoryStore::default()));
+            .mount(&server)
+            .await;
+        let client = TidalClient::new(
+            reqwest::Client::new(),
+            server.uri(),
+            format!("{}/token", server.uri()),
+            session(),
+            tokens(),
+            Arc::new(MemoryStore::default()),
+        );
         let err = client
             .post_form("users/1/favorites/tracks", &[("trackId", "7".to_string())])
             .await
             .unwrap_err();
-        assert!(matches!(err, Error::RateLimited), "expected RateLimited, got {err:?}");
+        assert!(
+            matches!(err, Error::RateLimited),
+            "expected RateLimited, got {err:?}"
+        );
     }
 
     #[tokio::test]
@@ -850,7 +1065,8 @@ mod tests {
     #[tokio::test]
     async fn get_with_etag_returns_the_header_verbatim() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/playlists/p"))
+        Mock::given(method("GET"))
+            .and(path("/playlists/p"))
             .respond_with(
                 ResponseTemplate::new(200)
                     .insert_header("etag", "\"e1\"")
@@ -866,7 +1082,10 @@ mod tests {
             tokens(),
             Arc::new(MemoryStore::default()),
         );
-        let (thing, etag) = client.get_with_etag::<Thing>("playlists/p", &[]).await.unwrap();
+        let (thing, etag) = client
+            .get_with_etag::<Thing>("playlists/p", &[])
+            .await
+            .unwrap();
         assert_eq!(thing.value, 1);
         assert_eq!(etag.as_deref(), Some("\"e1\""));
     }
@@ -897,22 +1116,26 @@ mod tests {
     #[tokio::test]
     async fn get_all_pages_advances_by_the_requested_window_not_the_received_count() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/things"))
+        Mock::given(method("GET"))
+            .and(path("/things"))
             .and(query_param("offset", "0"))
             .and(query_param("limit", "2"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "items": [{"value": 1}],
                 "totalNumberOfItems": 3, "limit": 2, "offset": 0
             })))
-            .mount(&server).await;
-        Mock::given(method("GET")).and(path("/things"))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/things"))
             .and(query_param("offset", "2"))
             .and(query_param("limit", "2"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "items": [{"value": 2}, {"value": 3}],
                 "totalNumberOfItems": 3, "limit": 2, "offset": 2
             })))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let client = TidalClient::new(
             reqwest::Client::new(),
             server.uri(),
@@ -922,7 +1145,11 @@ mod tests {
             Arc::new(MemoryStore::default()),
         );
         let things: Vec<Thing> = client.get_all_pages("things", &[], 2).await.unwrap();
-        assert_eq!(things.len(), 3, "a page omitted an unavailable row; the walk must not re-read it");
+        assert_eq!(
+            things.len(),
+            3,
+            "a page omitted an unavailable row; the walk must not re-read it"
+        );
         assert_eq!(things[0].value, 1);
         assert_eq!(things[1].value, 2);
         assert_eq!(things[2].value, 3);
@@ -931,12 +1158,18 @@ mod tests {
     #[tokio::test]
     async fn get_401_after_a_successful_refresh_is_forbidden() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/tracks/1"))
+        Mock::given(method("GET"))
+            .and(path("/tracks/1"))
             .and(header("authorization", "Bearer old"))
-            .respond_with(ResponseTemplate::new(401)).mount(&server).await;
-        Mock::given(method("GET")).and(path("/tracks/1"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/tracks/1"))
             .and(header("authorization", "Bearer new"))
-            .respond_with(ResponseTemplate::new(401)).mount(&server).await;
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
         Mock::given(method("POST")).and(path("/token"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "access_token": "new", "refresh_token": "rt2", "token_type": "Bearer", "expires_in": 3600
@@ -951,18 +1184,27 @@ mod tests {
             Arc::new(MemoryStore::default()),
         );
         let err = client.get::<Thing>("tracks/1", &[]).await.unwrap_err();
-        assert!(matches!(err, Error::Forbidden), "expected Forbidden, got {err:?}");
+        assert!(
+            matches!(err, Error::Forbidden),
+            "expected Forbidden, got {err:?}"
+        );
     }
 
     #[tokio::test]
     async fn post_form_401_after_a_successful_refresh_is_forbidden() {
         let server = MockServer::start().await;
-        Mock::given(method("POST")).and(path("/playlists/p"))
+        Mock::given(method("POST"))
+            .and(path("/playlists/p"))
             .and(header("authorization", "Bearer old"))
-            .respond_with(ResponseTemplate::new(401)).mount(&server).await;
-        Mock::given(method("POST")).and(path("/playlists/p"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/playlists/p"))
             .and(header("authorization", "Bearer new"))
-            .respond_with(ResponseTemplate::new(401)).mount(&server).await;
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
         Mock::given(method("POST")).and(path("/token"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "access_token": "new", "refresh_token": "rt2", "token_type": "Bearer", "expires_in": 3600
@@ -977,7 +1219,10 @@ mod tests {
             Arc::new(MemoryStore::default()),
         );
         let err = client.post_form("playlists/p", &[]).await.unwrap_err();
-        assert!(matches!(err, Error::Forbidden), "expected Forbidden, got {err:?}");
+        assert!(
+            matches!(err, Error::Forbidden),
+            "expected Forbidden, got {err:?}"
+        );
     }
 
     #[tokio::test]
@@ -991,10 +1236,12 @@ mod tests {
                 ResponseTemplate::new(200).set_body_json(serde_json::json!({"value": 8}))
             }
         };
-        Mock::given(method("GET")).and(path("/v2/things"))
+        Mock::given(method("GET"))
+            .and(path("/v2/things"))
             .and(query_param("limit", "50"))
             .respond_with(responder)
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let client = TidalClient::new(
             reqwest::Client::new(),
             server.uri(),

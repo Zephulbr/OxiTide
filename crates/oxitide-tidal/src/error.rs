@@ -35,7 +35,10 @@ mod tests {
 
     #[test]
     fn api_error_includes_status_and_message() {
-        let e = Error::Api { status: 429, message: "slow down".into() };
+        let e = Error::Api {
+            status: 429,
+            message: "slow down".into(),
+        };
         assert_eq!(e.to_string(), "api error 429: slow down");
     }
 }

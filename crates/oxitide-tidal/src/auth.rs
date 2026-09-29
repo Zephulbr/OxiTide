@@ -74,7 +74,10 @@ pub async fn exchange_code(
     }
     if !status.is_success() {
         let message = resp.text().await.unwrap_or_default();
-        return Err(Error::Api { status: status.as_u16(), message });
+        return Err(Error::Api {
+            status: status.as_u16(),
+            message,
+        });
     }
     let raw: RawToken = decode_json(resp).await?;
     if raw.access_token.is_empty() {
@@ -102,7 +105,10 @@ pub async fn refresh(
     }
     if !status.is_success() {
         let message = resp.text().await.unwrap_or_default();
-        return Err(Error::Api { status: status.as_u16(), message });
+        return Err(Error::Api {
+            status: status.as_u16(),
+            message,
+        });
     }
     let raw: RawToken = decode_json(resp).await?;
     Ok(raw_to_tokens(raw, previous_refresh.or(Some(refresh_token))))
@@ -157,11 +163,9 @@ pub struct RedirectOutcome {
 /// Validate that a URL is the TIDAL login redirect for OxiTide and read its
 /// `code`/`state`. Rejects anything that is not `tidal://login/auth`.
 pub fn validate_redirect(url_str: &str) -> Result<RedirectOutcome> {
-    let parsed = url::Url::parse(url_str)
-        .map_err(|e| Error::Auth(format!("invalid redirect url: {e}")))?;
-    if parsed.scheme() != "tidal"
-        || parsed.host_str() != Some("login")
-        || parsed.path() != "/auth"
+    let parsed =
+        url::Url::parse(url_str).map_err(|e| Error::Auth(format!("invalid redirect url: {e}")))?;
+    if parsed.scheme() != "tidal" || parsed.host_str() != Some("login") || parsed.path() != "/auth"
     {
         return Err(Error::Auth("unexpected redirect target".into()));
     }
@@ -203,7 +207,10 @@ mod tests {
             extract_state("https://tidal.com/android/login/auth?code=ABC&state=na").as_deref(),
             Some("na")
         );
-        assert_eq!(extract_state("https://tidal.com/android/login/auth?code=ABC"), None);
+        assert_eq!(
+            extract_state("https://tidal.com/android/login/auth?code=ABC"),
+            None
+        );
     }
 
     #[test]
@@ -238,8 +245,15 @@ mod tests {
             .await;
         let http = reqwest::Client::new();
         let pkce = Pkce::from_parts("v".into(), "k".into());
-        let tokens = exchange_code(&http, &format!("{}/token", server.uri()), &pkce,
-            PKCE_REDIRECT_PASTE, "https://tidal.com/android/login/auth?code=XYZ").await.unwrap();
+        let tokens = exchange_code(
+            &http,
+            &format!("{}/token", server.uri()),
+            &pkce,
+            PKCE_REDIRECT_PASTE,
+            "https://tidal.com/android/login/auth?code=XYZ",
+        )
+        .await
+        .unwrap();
         assert_eq!(tokens.access_token, "AT");
         assert_eq!(tokens.refresh_token.as_deref(), Some("RT"));
         assert!(tokens.expires_at.is_some());
@@ -248,50 +262,89 @@ mod tests {
     #[tokio::test]
     async fn exchange_code_maps_401_to_unauthorized() {
         let server = MockServer::start().await;
-        Mock::given(method("POST")).and(path("/token"))
-            .respond_with(ResponseTemplate::new(401)).mount(&server).await;
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
         let http = reqwest::Client::new();
         let pkce = Pkce::from_parts("v".into(), "k".into());
-        let err = exchange_code(&http, &format!("{}/token", server.uri()), &pkce,
-            PKCE_REDIRECT_PASTE, "https://tidal.com/android/login/auth?code=XYZ").await.unwrap_err();
+        let err = exchange_code(
+            &http,
+            &format!("{}/token", server.uri()),
+            &pkce,
+            PKCE_REDIRECT_PASTE,
+            "https://tidal.com/android/login/auth?code=XYZ",
+        )
+        .await
+        .unwrap_err();
         assert!(matches!(err, Error::Unauthorized));
     }
 
     #[tokio::test]
     async fn exchange_code_maps_invalid_json_body_to_json_error() {
         let server = MockServer::start().await;
-        Mock::given(method("POST")).and(path("/token"))
+        Mock::given(method("POST"))
+            .and(path("/token"))
             .respond_with(ResponseTemplate::new(200).set_body_string("<html>login</html>"))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let http = reqwest::Client::new();
         let pkce = Pkce::from_parts("v".into(), "k".into());
-        let err = exchange_code(&http, &format!("{}/token", server.uri()), &pkce,
-            PKCE_REDIRECT_PASTE, "https://tidal.com/android/login/auth?code=XYZ").await.unwrap_err();
-        assert!(matches!(err, Error::Json(_)), "expected Error::Json, got {err:?}");
+        let err = exchange_code(
+            &http,
+            &format!("{}/token", server.uri()),
+            &pkce,
+            PKCE_REDIRECT_PASTE,
+            "https://tidal.com/android/login/auth?code=XYZ",
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, Error::Json(_)),
+            "expected Error::Json, got {err:?}"
+        );
     }
 
     #[tokio::test]
     async fn refresh_maps_invalid_json_body_to_json_error() {
         let server = MockServer::start().await;
-        Mock::given(method("POST")).and(path("/token"))
+        Mock::given(method("POST"))
+            .and(path("/token"))
             .respond_with(ResponseTemplate::new(200).set_body_string("<html>login</html>"))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let http = reqwest::Client::new();
-        let err = refresh(&http, &format!("{}/token", server.uri()), "old-rt", Some("old-rt"))
-            .await
-            .unwrap_err();
-        assert!(matches!(err, Error::Json(_)), "expected Error::Json, got {err:?}");
+        let err = refresh(
+            &http,
+            &format!("{}/token", server.uri()),
+            "old-rt",
+            Some("old-rt"),
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, Error::Json(_)),
+            "expected Error::Json, got {err:?}"
+        );
     }
 
     #[tokio::test]
     async fn fetch_session_maps_invalid_json_body_to_json_error() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/sessions"))
+        Mock::given(method("GET"))
+            .and(path("/sessions"))
             .respond_with(ResponseTemplate::new(200).set_body_string("<html>nope</html>"))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let http = reqwest::Client::new();
-        let err = fetch_session(&http, &(server.uri() + "/"), "AT").await.unwrap_err();
-        assert!(matches!(err, Error::Json(_)), "expected Error::Json, got {err:?}");
+        let err = fetch_session(&http, &(server.uri() + "/"), "AT")
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, Error::Json(_)),
+            "expected Error::Json, got {err:?}"
+        );
     }
 
     #[tokio::test]
@@ -305,9 +358,14 @@ mod tests {
             .mount(&server)
             .await;
         let http = reqwest::Client::new();
-        let tokens = refresh(&http, &format!("{}/token", server.uri()), "old-rt", Some("old-rt"))
-            .await
-            .unwrap();
+        let tokens = refresh(
+            &http,
+            &format!("{}/token", server.uri()),
+            "old-rt",
+            Some("old-rt"),
+        )
+        .await
+        .unwrap();
         assert_eq!(tokens.access_token, "AT2");
         assert_eq!(tokens.refresh_token.as_deref(), Some("old-rt"));
     }
@@ -323,22 +381,31 @@ mod tests {
             .mount(&server)
             .await;
         let http = reqwest::Client::new();
-        let tokens = refresh(&http, &format!("{}/token", server.uri()), "old-rt", Some("old-rt"))
-            .await
-            .unwrap();
+        let tokens = refresh(
+            &http,
+            &format!("{}/token", server.uri()),
+            "old-rt",
+            Some("old-rt"),
+        )
+        .await
+        .unwrap();
         assert_eq!(tokens.refresh_token.as_deref(), Some("new-rt"));
     }
 
     #[tokio::test]
     async fn fetch_session_parses_fields() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/sessions"))
+        Mock::given(method("GET"))
+            .and(path("/sessions"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "sessionId": "sid", "countryCode": "GR", "userId": 191812568
             })))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let http = reqwest::Client::new();
-        let info = fetch_session(&http, &(server.uri() + "/"), "AT").await.unwrap();
+        let info = fetch_session(&http, &(server.uri() + "/"), "AT")
+            .await
+            .unwrap();
         assert_eq!(info.session_id, "sid");
         assert_eq!(info.country_code, "GR");
         assert_eq!(info.user_id, 191812568);

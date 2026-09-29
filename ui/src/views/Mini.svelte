@@ -5,8 +5,10 @@
   import type { Player } from "../lib/player.svelte";
   import Cover from "../lib/components/Cover.svelte";
   import Icon from "../lib/components/Icon.svelte";
+  import PlayPauseGlyph from "../lib/components/PlayPauseGlyph.svelte";
   import QueueRail from "../lib/components/QueueRail.svelte";
   import SeekBar from "../lib/components/SeekBar.svelte";
+  import VolumeSlider from "../lib/components/VolumeSlider.svelte";
 
   let {
     player,
@@ -35,14 +37,13 @@
     <SeekBar {player} variant="inline" />
     <div class="transport">
       <button class="ibtn" onclick={() => player.prev()} aria-label="Previous">
-        <Icon name="skip-back" size={20} />
+        <Icon name="skip-back-solid" size={20} />
       </button>
-      <button class="play" onclick={() => player.playPause()} aria-label="Play/Pause">
-        <span class="play-ico" class:show={!player.state.playing}><Icon name="play" size={20} /></span>
-        <span class="play-ico" class:show={player.state.playing}><Icon name="pause" size={20} /></span>
+      <button class="ibtn play" onclick={() => player.playPause()} aria-label="Play/Pause">
+        <PlayPauseGlyph playing={player.state.playing} size={28} />
       </button>
       <button class="ibtn" onclick={() => player.next()} aria-label="Next">
-        <Icon name="skip-forward" size={20} />
+        <Icon name="skip-forward-solid" size={20} />
       </button>
     </div>
     <div class="secondary">
@@ -71,20 +72,6 @@
             ? "Repeat all"
             : "Repeat off"}
       ><Icon name={player.state.repeat === "one" ? "repeat-1" : "repeat"} size={18} /></button>
-      <label class="volume">
-        <Icon name="volume-2" size={16} />
-        <input
-          type="range"
-          min="0"
-          max="1"
-          step="0.01"
-          value={player.state.volume}
-          oninput={(e) => player.setVolume(Number((e.currentTarget as HTMLInputElement).value))}
-          onchange={(e) =>
-            player.setVolume(Number((e.currentTarget as HTMLInputElement).value), true)}
-          aria-label="Volume"
-        />
-      </label>
       <button
         class="ibtn"
         class:active={mini.queueOpen}
@@ -100,6 +87,7 @@
         title="Restore full window"
       ><Icon name="maximize-2" size={18} /></button>
     </div>
+    <VolumeSlider {player} iconSize={16} width="calc(5 * 30px + 4 * 4px)" />
   {:else}
     <div class="empty">
       <Icon name="music" size={40} />
@@ -165,7 +153,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 10px;
+    gap: 12px;
   }
   .secondary {
     display: flex;
@@ -220,44 +208,12 @@
     fill: currentColor;
   }
   .play {
-    position: relative;
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background: var(--accent);
-    color: var(--on-accent);
-    transition:
-      transform var(--dur-micro) var(--ease-in),
-      box-shadow var(--dur-state) var(--ease-in);
+    width: 46px;
+    height: 46px;
+    color: var(--accent);
   }
   .play:hover {
-    transform: scale(1.06);
-    box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 45%, transparent);
-  }
-  .play-ico {
-    position: absolute;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    opacity: 0;
-    transform: scale(0.6);
-    transition:
-      opacity var(--dur-state) var(--ease-in),
-      transform var(--dur-state) var(--ease-in);
-  }
-  .play-ico.show {
-    opacity: 1;
-    transform: scale(1);
-  }
-  .volume {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    color: var(--text-muted);
-  }
-  .volume input[type="range"] {
-    width: 56px;
-    accent-color: var(--accent);
+    color: var(--accent);
   }
   /* Queue sheet (MP-D5): slides up over the mini layout, never leaves mini. */
   .sheet-backdrop {

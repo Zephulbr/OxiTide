@@ -12,7 +12,6 @@
     nav,
     rail,
     onToggleRail,
-    onLogout,
     collection,
     playlistActions,
     actions,
@@ -20,7 +19,6 @@
     nav: Nav;
     rail: boolean;
     onToggleRail: () => void;
-    onLogout: () => void;
     collection: CollectionTree;
     playlistActions: PlaylistActions;
     actions: CollectionActions;
@@ -66,12 +64,14 @@
   <div class="scroll">
     <div class="top">
       <h1 class="wordmark">{rail ? "O" : "OxiTide"}</h1>
-      <button
-        class="collapse"
-        onclick={onToggleRail}
-        aria-label={rail ? "Expand sidebar" : "Collapse sidebar"}
-        title={rail ? "Expand sidebar" : "Collapse sidebar"}
-      ><Icon name={rail ? "panel-left-open" : "panel-left-close"} size={18} /></button>
+      <div class="top-actions">
+        <button
+          class="collapse"
+          onclick={onToggleRail}
+          aria-label={rail ? "Expand sidebar" : "Collapse sidebar"}
+          title={rail ? "Expand sidebar" : "Collapse sidebar"}
+        ><Icon name={rail ? "panel-left-open" : "panel-left-close"} size={18} /></button>
+      </div>
     </div>
 
     {#if !rail}
@@ -89,6 +89,9 @@
     </button>
     <button class="nav-item" class:active={nav.route.name === "feed"} aria-current={nav.route.name === "feed" ? "page" : undefined} onclick={() => nav.goto({ name: "feed" })} title="Feed" aria-label="Feed">
       <Icon name="bell" />{#if !rail}<span>Feed</span>{/if}
+    </button>
+    <button class="nav-item" class:active={nav.route.name === "settings"} aria-current={nav.route.name === "settings" ? "page" : undefined} onclick={() => nav.goto({ name: "settings" })} title="Settings" aria-label="Settings">
+      <Icon name="settings" />{#if !rail}<span>Settings</span>{/if}
     </button>
 
     <div class="divider" role="separator"></div>
@@ -145,13 +148,6 @@
       {/if}
     </div>
   </div>
-
-  <button class="nav-item" class:active={nav.route.name === "settings"} aria-current={nav.route.name === "settings" ? "page" : undefined} onclick={() => nav.goto({ name: "settings" })} title="Settings" aria-label="Settings">
-    <Icon name="settings" />{#if !rail}<span>Settings</span>{/if}
-  </button>
-  <button class="nav-item" onclick={onLogout} title="Log out" aria-label="Log out">
-    <Icon name="log-out" />{#if !rail}<span>Log out</span>{/if}
-  </button>
 </nav>
 
 <style>
@@ -162,8 +158,7 @@
     font-size: calc(var(--font-body-size) + 1px);
   }
   /* Nav + playlist tree share one scroll area; the tree must not shrink as a
-     flex item or its rows spill out of the box (the old footer bug). Settings
-     and Log out sit outside this area, so they never scroll. */
+     flex item or its rows spill out of the box (the old footer bug). */
   .scroll {
     display: flex;
     flex-direction: column;
@@ -172,15 +167,21 @@
     min-height: 0;
     overflow-y: auto;
     /* Bleed over the sidebar padding so scrolled rows span edge to edge,
-       while the inner padding keeps the 12px gutters. */
+       while the inner padding keeps the 12px gutters. The bottom clearance
+       lets the playlist tree scroll clear of the floating player bar. */
     margin: -12px -12px 0;
-    padding: 12px 12px 0;
+    padding: 12px 12px calc(var(--player-height) + 12px);
   }
   .top {
     display: flex;
     align-items: center;
     justify-content: space-between;
     margin-bottom: 8px;
+  }
+  .top-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
   }
   .wordmark {
     font-family: var(--font-display);

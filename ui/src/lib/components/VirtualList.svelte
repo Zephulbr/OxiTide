@@ -9,6 +9,7 @@
     maxHeight = "none",
     overscan = 8,
     drag,
+    bottomPadding = "0px",
     children,
   }: {
     total: number;
@@ -16,6 +17,7 @@
     maxHeight?: string;
     overscan?: number;
     drag?: DragParams;
+    bottomPadding?: string;
     children: Snippet<[number]>;
   } = $props();
 
@@ -41,7 +43,7 @@
 
 <div
   class="scroll"
-  style="max-height:{maxHeight}"
+  style="max-height:{maxHeight};padding-bottom:{bottomPadding}"
   bind:clientHeight={viewport}
   onscroll={onScroll}
   use:trackDrag={drag ?? NO_DRAG}

@@ -174,10 +174,18 @@ pub struct SearchResults {
 }
 
 impl SearchResults {
-    pub fn track_items(&self) -> &[Track] { &self.tracks.items }
-    pub fn album_items(&self) -> &[Album] { &self.albums.items }
-    pub fn artist_items(&self) -> &[Artist] { &self.artists.items }
-    pub fn playlist_items(&self) -> &[Playlist] { &self.playlists.items }
+    pub fn track_items(&self) -> &[Track] {
+        &self.tracks.items
+    }
+    pub fn album_items(&self) -> &[Album] {
+        &self.albums.items
+    }
+    pub fn artist_items(&self) -> &[Artist] {
+        &self.artists.items
+    }
+    pub fn playlist_items(&self) -> &[Playlist] {
+        &self.playlists.items
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -278,7 +286,8 @@ mod tests {
 
     #[test]
     fn playlist_parses_and_serializes_square_image() {
-        let raw = r#"{"uuid": "u", "title": "T", "image": "wide-uuid", "squareImage": "square-uuid"}"#;
+        let raw =
+            r#"{"uuid": "u", "title": "T", "image": "wide-uuid", "squareImage": "square-uuid"}"#;
         let playlist: Playlist = serde_json::from_str(raw).unwrap();
         assert_eq!(playlist.square_image.as_deref(), Some("square-uuid"));
 
@@ -304,7 +313,8 @@ mod tests {
 
     #[test]
     fn mix_parses_v2_fields() {
-        let raw = r#"{"id": "m1", "title": "Daily", "subTitle": "For you", "mixType": "DAILY_MIX"}"#;
+        let raw =
+            r#"{"id": "m1", "title": "Daily", "subTitle": "For you", "mixType": "DAILY_MIX"}"#;
         let mix: Mix = serde_json::from_str(raw).unwrap();
         assert_eq!(mix.id, "m1");
         assert_eq!(mix.sub_title.as_deref(), Some("For you"));

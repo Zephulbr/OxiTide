@@ -34,9 +34,17 @@ mod tests {
             reqwest::Client::new(),
             server.uri(),
             format!("{}/token", server.uri()),
-            SessionInfo { session_id: "s".into(), country_code: "GR".into(), user_id: 42 },
-            TokenSet { access_token: "AT".into(), refresh_token: Some("RT".into()),
-                token_type: "Bearer".into(), expires_at: None },
+            SessionInfo {
+                session_id: "s".into(),
+                country_code: "GR".into(),
+                user_id: 42,
+            },
+            TokenSet {
+                access_token: "AT".into(),
+                refresh_token: Some("RT".into()),
+                token_type: "Bearer".into(),
+                expires_at: None,
+            },
             Arc::new(MemoryStore::default()),
         )
     }
@@ -44,14 +52,16 @@ mod tests {
     #[tokio::test]
     async fn purchases_accepts_wrapped_items() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/users/42/purchases"))
+        Mock::given(method("GET"))
+            .and(path("/users/42/purchases"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "items": [
                     {"item": {"id": 7, "title": "Bought Album", "type": "ALBUM", "cover": "c-7"}}
                 ],
                 "totalNumberOfItems": 1, "limit": 100, "offset": 0
             })))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let (items, total) = client(&server).purchases(100, 0).await.unwrap();
         assert_eq!(total, 1);
         assert_eq!(items[0].id, "7");
@@ -62,12 +72,14 @@ mod tests {
     #[tokio::test]
     async fn purchases_accepts_bare_items_with_uuids() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/users/42/purchases"))
+        Mock::given(method("GET"))
+            .and(path("/users/42/purchases"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "items": [{"uuid": "p-1", "title": "Bought Playlist", "type": "PLAYLIST"}],
                 "totalNumberOfItems": 1, "limit": 100, "offset": 0
             })))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let (items, _) = client(&server).purchases(100, 0).await.unwrap();
         assert_eq!(items[0].id, "p-1");
     }

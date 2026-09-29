@@ -69,7 +69,8 @@ struct RawItem {
     pub uuid: Option<String>,
     #[serde(default)]
     pub title: String,
-    #[serde(default)]
+    /// TIDAL spells mix subtitles `subTitle` (capital T).
+    #[serde(default, alias = "subTitle")]
     pub subtitle: Option<String>,
     #[serde(default)]
     pub description: Option<String>,
@@ -83,8 +84,33 @@ struct RawItem {
     pub square_image: Option<String>,
     #[serde(default)]
     pub picture: Option<String>,
+    /// Page links (editorial rows) carry their artwork here.
+    #[serde(default, rename = "imageId")]
+    pub image_id: Option<String>,
+    /// Mix artwork: absolute CDN urls under `images.{SMALL,MEDIUM,LARGE}.url`.
+    #[serde(default)]
+    pub images: Option<RawImages>,
     #[serde(default)]
     pub album: Option<RawAlbum>,
+    /// `MIXED_TYPES_LIST` entries wrap the payload as `{type, item}`.
+    #[serde(default)]
+    pub item: Option<Box<RawItem>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawImages {
+    #[serde(default, rename = "SMALL")]
+    pub small: Option<RawImageUrl>,
+    #[serde(default, rename = "MEDIUM")]
+    pub medium: Option<RawImageUrl>,
+    #[serde(default, rename = "LARGE")]
+    pub large: Option<RawImageUrl>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawImageUrl {
+    #[serde(default)]
+    pub url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -128,7 +154,8 @@ impl TidalClient {
 
     /// The signed-in user's mixes & radio, as a page.
     pub async fn mixes_page(&self) -> Result<Vec<PageSection>> {
-        self.page_sections_at("pages/my_collection_my_mixes", &[]).await
+        self.page_sections_at("pages/my_collection_my_mixes", &[])
+            .await
     }
 
     /// Resolve a mix id into its playable track list. Videos are dropped because
@@ -141,19 +168,6 @@ impl TidalClient {
         ];
         let raw: serde_json::Value = self.get("pages/mix", &params).await?;
         Ok(mix_detail_from_json(mix_id, &raw))
-    }
-
-    /// The user's feed. TIDAL's endpoint path is unconfirmed; candidates are
-    /// probed in order and a missing feed degrades to an empty list.
-    pub async fn feed_page(&self) -> Result<Vec<PageSection>> {
-        for path in ["pages/feed", "pages/my_collection_feed"] {
-            match self.page_sections_at(path, &[]).await {
-                Ok(sections) => return Ok(sections),
-                Err(crate::error::Error::NotFound(_)) => continue,
-                Err(e) => return Err(e),
-            }
-        }
-        Ok(Vec::new())
     }
 }
 
@@ -168,30 +182,55 @@ fn sections_from_page(raw: RawPage) -> Vec<PageSection> {
             if raw_items.is_empty() {
                 continue;
             }
-            let module_type = module.module_type.clone();
             let items: Vec<PageItem> = raw_items
                 .into_iter()
-                .map(|i| PageItem {
-                    id: item_id(&i),
-                    title: i.title,
-                    subtitle: i.subtitle.or(i.description),
-                    item_type: if i.item_type.is_empty() {
-                        module_type.clone()
-                    } else {
-                        i.item_type
-                    },
-                    artwork: i
-                        .cover
-                        .or(i.square_image)
-                        .or(i.image)
-                        .or(i.picture)
-                        .or_else(|| i.album.and_then(|album| album.cover)),
-                })
+                .map(|i| page_item_from_raw(&module.module_type, i))
                 .collect();
-            sections.push(PageSection { title: module.title, items });
+            sections.push(PageSection {
+                title: module.title,
+                items,
+            });
         }
     }
     sections
+}
+
+/// Map a raw page entry into a `PageItem`. `module_type` is the fallback kind
+/// when the entry carries no `type` of its own. `MIXED_TYPES_LIST` entries wrap
+/// the payload as `{type, item}`; the wrapper type is the discriminator and is
+/// preserved when the inner object has none.
+fn page_item_from_raw(module_type: &str, mut raw: RawItem) -> PageItem {
+    if let Some(inner) = raw.item.take() {
+        let wrapper_type = std::mem::take(&mut raw.item_type);
+        raw = *inner;
+        if raw.item_type.is_empty() {
+            raw.item_type = wrapper_type;
+        }
+    }
+    let id = item_id(&raw);
+    let item_type = if raw.item_type.is_empty() {
+        module_type.to_string()
+    } else {
+        raw.item_type
+    };
+    PageItem {
+        id,
+        title: raw.title,
+        subtitle: raw.subtitle.or(raw.description),
+        item_type,
+        artwork: raw
+            .cover
+            .or(raw.square_image)
+            .or(raw.image)
+            .or(raw.picture)
+            .or_else(|| raw.album.and_then(|album| album.cover))
+            .or(raw.image_id)
+            .or_else(|| {
+                raw.images
+                    .and_then(|images| images.medium.or(images.large).or(images.small))
+                    .and_then(|image| image.url)
+            }),
+    }
 }
 
 /// Best-effort mapping of a foreign item shape into a `PageItem`; accepts
@@ -201,7 +240,11 @@ pub fn page_item_from_value(value: &serde_json::Value) -> Option<PageItem> {
     let id = item
         .get("id")
         .map(value_to_id)
-        .or_else(|| item.get("uuid").and_then(|u| u.as_str()).map(str::to_string))
+        .or_else(|| {
+            item.get("uuid")
+                .and_then(|u| u.as_str())
+                .map(str::to_string)
+        })
         .filter(|id| !id.is_empty())?;
     let title = item
         .get("title")
@@ -218,7 +261,13 @@ pub fn page_item_from_value(value: &serde_json::Value) -> Option<PageItem> {
         .iter()
         .find_map(|key| item.get(*key).and_then(serde_json::Value::as_str))
         .map(str::to_string);
-    Some(PageItem { id, title, subtitle: None, item_type, artwork })
+    Some(PageItem {
+        id,
+        title,
+        subtitle: None,
+        item_type,
+        artwork,
+    })
 }
 
 /// TIDAL uses a numeric `id` for tracks/albums and a `uuid` for playlists.
@@ -281,8 +330,7 @@ fn mix_detail_from_json(mix_id: &str, raw: &serde_json::Value) -> MixDetail {
                     if !is_track {
                         continue;
                     }
-                    if let Ok(track) =
-                        serde_json::from_value::<crate::models::Track>(item.clone())
+                    if let Ok(track) = serde_json::from_value::<crate::models::Track>(item.clone())
                     {
                         tracks.push(track);
                     }
@@ -290,7 +338,11 @@ fn mix_detail_from_json(mix_id: &str, raw: &serde_json::Value) -> MixDetail {
             }
         }
     }
-    MixDetail { id: mix_id.to_string(), title, tracks }
+    MixDetail {
+        id: mix_id.to_string(),
+        title,
+        tracks,
+    }
 }
 
 #[cfg(test)]
@@ -304,10 +356,20 @@ mod tests {
 
     fn client(server: &MockServer) -> TidalClient {
         TidalClient::new(
-            reqwest::Client::new(), server.uri(), format!("{}/token", server.uri()),
-            SessionInfo { session_id: "s".into(), country_code: "GR".into(), user_id: 1 },
-            TokenSet { access_token: "AT".into(), refresh_token: Some("RT".into()),
-                token_type: "Bearer".into(), expires_at: None },
+            reqwest::Client::new(),
+            server.uri(),
+            format!("{}/token", server.uri()),
+            SessionInfo {
+                session_id: "s".into(),
+                country_code: "GR".into(),
+                user_id: 1,
+            },
+            TokenSet {
+                access_token: "AT".into(),
+                refresh_token: Some("RT".into()),
+                token_type: "Bearer".into(),
+                expires_at: None,
+            },
             Arc::new(MemoryStore::default()),
         )
     }
@@ -339,7 +401,8 @@ mod tests {
     #[tokio::test]
     async fn home_page_numeric_id_and_module_type_fallback() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/pages/home"))
+        Mock::given(method("GET"))
+            .and(path("/pages/home"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "rows": [
                     {"modules": [
@@ -349,7 +412,8 @@ mod tests {
                     ]}
                 ]
             })))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let sections = client(&server).home_page().await.unwrap();
         assert_eq!(sections[0].items[0].id, "561714507");
         assert_eq!(sections[0].items[0].item_type, "TRACK_LIST");
@@ -358,9 +422,13 @@ mod tests {
     #[tokio::test]
     async fn home_page_with_no_rows_is_empty() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/pages/home"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({ "rows": [] })))
-            .mount(&server).await;
+        Mock::given(method("GET"))
+            .and(path("/pages/home"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({ "rows": [] })),
+            )
+            .mount(&server)
+            .await;
         assert!(client(&server).home_page().await.unwrap().is_empty());
     }
 
@@ -369,7 +437,8 @@ mod tests {
     #[tokio::test]
     async fn home_item_artwork_uses_first_available_field() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/pages/home"))
+        Mock::given(method("GET"))
+            .and(path("/pages/home"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "rows": [{"modules": [{"type": "MIXED", "title": "Mix", "pagedList": {"items": [
                     {"id": 1, "title": "Album", "cover": "c-1"},
@@ -378,7 +447,8 @@ mod tests {
                     {"id": 4, "title": "Nothing"}
                 ]}}]}]
             })))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let sections = client(&server).home_page().await.unwrap();
         let items = &sections[0].items;
         assert_eq!(items[0].artwork.as_deref(), Some("c-1"));
@@ -403,7 +473,10 @@ mod tests {
             .mount(&server).await;
         let sections = client(&server).home_page().await.unwrap();
         let items = &sections[0].items;
-        assert_eq!(items[0].artwork.as_deref(), Some("39e3dad3-33fb-47f2-87f8-8b6f8c55734c"));
+        assert_eq!(
+            items[0].artwork.as_deref(),
+            Some("39e3dad3-33fb-47f2-87f8-8b6f8c55734c")
+        );
         assert_eq!(items[1].artwork, None);
         assert_eq!(items[2].artwork.as_deref(), Some("c-5"));
     }
@@ -411,53 +484,84 @@ mod tests {
     #[tokio::test]
     async fn explore_page_reads_the_explore_path() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/pages/explore"))
+        Mock::given(method("GET"))
+            .and(path("/pages/explore"))
             .and(query_param("deviceType", "BROWSER"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "rows": [{"modules": [{"type": "PLAYLIST_LIST", "title": "For You", "items": [
                     {"uuid": "p-1", "title": "Mix"}
                 ]}]}]
             })))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let sections = client(&server).explore_page().await.unwrap();
         assert_eq!(sections[0].title, "For You");
         assert_eq!(sections[0].items[0].id, "p-1");
     }
 
+    /// Mix rows carry their cover as `images.MEDIUM.url` (a full CDN url, not a
+    /// dashed uuid) and their subtitle under `subTitle` (capital T).
     #[tokio::test]
-    async fn feed_page_falls_back_when_the_first_candidate_is_missing() {
+    async fn home_mix_items_map_images_and_sub_title() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/pages/feed"))
-            .respond_with(ResponseTemplate::new(404))
-            .mount(&server).await;
-        Mock::given(method("GET")).and(path("/pages/my_collection_feed"))
+        Mock::given(method("GET"))
+            .and(path("/pages/home"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "rows": [{"modules": [{"type": "ALBUM_LIST", "title": "New Releases", "items": [
-                    {"id": 9, "title": "Album", "cover": "c-9"}
-                ]}]}]
+                "rows": [{"modules": [{"type": "MIX_LIST", "title": "Custom mixes", "pagedList": {"items": [
+                    {"id": "mix-1", "title": "My Daily Discovery", "subTitle": "Daily Mix",
+                     "images": {
+                        "SMALL": {"url": "https://img/small.jpg"},
+                        "MEDIUM": {"url": "https://img/medium.jpg"},
+                        "LARGE": {"url": "https://img/large.jpg"}
+                     }}
+                ]}}]}]
             })))
-            .mount(&server).await;
-        let sections = client(&server).feed_page().await.unwrap();
-        assert_eq!(sections[0].title, "New Releases");
-        assert_eq!(sections[0].items[0].item_type, "ALBUM_LIST");
+            .mount(&server)
+            .await;
+        let sections = client(&server).home_page().await.unwrap();
+        let item = &sections[0].items[0];
+        assert_eq!(item.subtitle.as_deref(), Some("Daily Mix"));
+        assert_eq!(item.artwork.as_deref(), Some("https://img/medium.jpg"));
     }
 
+    /// `MIXED_TYPES_LIST` entries wrap the payload as `{type, item}`; the
+    /// wrapper type is the item's discriminator and the inner object holds the
+    /// id/title/artwork.
     #[tokio::test]
-    async fn feed_page_is_empty_when_every_candidate_is_missing() {
+    async fn home_wrapped_items_are_unwrapped() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/pages/feed"))
-            .respond_with(ResponseTemplate::new(404)).mount(&server).await;
-        Mock::given(method("GET")).and(path("/pages/my_collection_feed"))
-            .respond_with(ResponseTemplate::new(404)).mount(&server).await;
-        assert!(client(&server).feed_page().await.unwrap().is_empty());
+        Mock::given(method("GET"))
+            .and(path("/pages/home"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "rows": [{"modules": [{"type": "MIXED_TYPES_LIST", "title": "New updates", "pagedList": {"items": [
+                    {"type": "ALBUM", "item": {"id": 7, "title": "Release", "cover": "c-7"}}
+                ]}}]}]
+            })))
+            .mount(&server)
+            .await;
+        let sections = client(&server).home_page().await.unwrap();
+        let item = &sections[0].items[0];
+        assert_eq!(item.id, "7");
+        assert_eq!(item.title, "Release");
+        assert_eq!(item.artwork.as_deref(), Some("c-7"));
+        assert_eq!(item.item_type, "ALBUM");
     }
 
+    /// `PAGE_LINKS`-style rows carry their artwork in `imageId`.
     #[tokio::test]
-    async fn feed_page_propagates_non_404_failures() {
+    async fn home_page_link_items_use_image_id_artwork() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/pages/feed"))
-            .respond_with(ResponseTemplate::new(500)).mount(&server).await;
-        assert!(client(&server).feed_page().await.is_err());
+        Mock::given(method("GET"))
+            .and(path("/pages/home"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "rows": [{"modules": [{"type": "PAGE_LINKS_CLOUD", "title": "Explore", "pagedList": {"items": [
+                    {"title": "TIDAL Rising", "imageId": "img-1", "apiPath": "pages/rising"}
+                ]}}]}]
+            })))
+            .mount(&server)
+            .await;
+        let sections = client(&server).home_page().await.unwrap();
+        assert_eq!(sections[0].items[0].artwork.as_deref(), Some("img-1"));
     }
 
     #[tokio::test]
@@ -489,14 +593,16 @@ mod tests {
     #[tokio::test]
     async fn mix_page_with_only_videos_has_no_tracks() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/pages/mix"))
+        Mock::given(method("GET"))
+            .and(path("/pages/mix"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "rows": [
                     {"modules": [{"type": "MIX_HEADER", "mix": {"id": "m", "title": "Video Mix"}}]},
                     {"modules": [{"type": "VIDEO_LIST", "items": [{"id": 4, "title": "Clip"}]}]}
                 ]
             })))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let detail = client(&server).mix_page("m").await.unwrap();
         assert!(detail.tracks.is_empty());
         assert_eq!(detail.title, "Video Mix");

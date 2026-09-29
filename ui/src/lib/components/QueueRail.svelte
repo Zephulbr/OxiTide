@@ -59,7 +59,8 @@
     <VirtualList
       total={player.state.queue.length}
       rowHeight={queueRowHeight}
-      maxHeight="calc(100vh - 220px)"
+      maxHeight="calc(100vh - 80px)"
+      bottomPadding="calc(var(--player-height) + 12px)"
       drag={queueDrag}
     >
       {#snippet children(index)}

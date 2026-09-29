@@ -6,6 +6,7 @@ export type ShortcutAction =
   | "next-track"
   | "volume-up"
   | "volume-down"
+  | "toggle-mute"
   | "focus-search"
   | "history-back"
   | "history-forward"
@@ -42,6 +43,7 @@ export const SHORTCUTS: ShortcutHint[] = [
   { keys: "← / →", description: "Seek −5 s / +5 s" },
   { keys: "Shift+← / Shift+→", description: "Previous / next track" },
   { keys: "↑ / ↓", description: "Volume +5% / −5%" },
+  { keys: "M", description: "Mute / unmute" },
   { keys: "Ctrl+F or /", description: "Focus search" },
   { keys: "Alt+← / Alt+→", description: "History back / forward" },
   { keys: "Esc", description: "Close the menu, mini queue, mini player, now playing, or queue" },
@@ -110,6 +112,7 @@ export function matchShortcut(
     if (key === "ArrowRight") return "seek-forward";
     if (key === "ArrowUp") return "volume-up";
     if (key === "ArrowDown") return "volume-down";
+    if (key.toLowerCase() === "m") return "toggle-mute";
   }
   if (key === "/" && !event.altKey && !event.ctrlKey && !event.metaKey) return "focus-search";
   return null;

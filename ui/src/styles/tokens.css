@@ -6,6 +6,12 @@
 @property --dyn-on-primary { syntax: "<color>"; inherits: true; initial-value: #0b2420; }
 @property --dyn-secondary { syntax: "<color>"; inherits: true; initial-value: #17120e; }
 @property --dyn-tertiary { syntax: "<color>"; inherits: true; initial-value: #2ee2c4; }
+/* Blurred-cover wash behind the player bar's scrim + tint (seek cap). The
+   initial value is the no-art room gradient's mean. */
+@property --dyn-backdrop { syntax: "<color>"; inherits: true; initial-value: #1a1510; }
+/* Now Playing artwork size (Track 4a layout): registered so the lyrics-mode
+   switch can glide the cover size — unregistered custom properties snap. */
+@property --np-cover { syntax: "<length>"; inherits: true; initial-value: 0px; }
 
 :root {
   /* Base — Warm Graphite (spec §5.1) */
@@ -24,6 +30,9 @@
   --surface-1: rgba(255, 240, 225, 0.05);
   --surface-2: rgba(255, 240, 225, 0.07);
   --surface-3: rgba(255, 240, 225, 0.09);
+  /* Warm graphite veil for floating overlays over art (menus, dropdowns):
+     opaque enough that a bright cover can never wash them out. */
+  --surface-float: rgba(23, 18, 14, 0.82);
   --line: rgba(255, 240, 225, 0.10);
   --edge-lit: linear-gradient(135deg, rgba(255, 240, 225, 0.28), rgba(255, 240, 225, 0.06) 45%, rgba(0, 0, 0, 0.35));
 
@@ -34,11 +43,15 @@
 
   /* Motion (spec §9) */
   --dur-micro: 120ms;
+  /* Snappier than micro: the seek's hover reveal (flat line out, wave + cap
+     in) so the fill snaps in with the stroke instead of trailing. */
+  --dur-reveal: 80ms;
   --dur-state: 180ms;
   --dur-view: 240ms;
   --dur-mood: 1200ms;
   --ease-in: cubic-bezier(0.2, 0.7, 0.3, 1);
   --ease-out: cubic-bezier(0.5, 0, 0.75, 0);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 
   /* Type (spec §6) */
   --font-display: "Fraunces", Georgia, serif;
@@ -76,7 +89,8 @@
     --dyn-primary var(--dur-mood) linear,
     --dyn-on-primary var(--dur-mood) linear,
     --dyn-secondary var(--dur-mood) linear,
-    --dyn-tertiary var(--dur-mood) linear;
+    --dyn-tertiary var(--dur-mood) linear,
+    --dyn-backdrop var(--dur-mood) linear;
 }
 
 [data-density="compact"] {
@@ -90,6 +104,7 @@
 @media (prefers-reduced-motion: reduce) {
   :root {
     --dur-micro: 0ms;
+    --dur-reveal: 0ms;
     --dur-state: 120ms;
     --dur-view: 120ms;
     --dur-mood: 0ms;

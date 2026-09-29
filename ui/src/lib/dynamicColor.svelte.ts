@@ -7,9 +7,16 @@ export type DynamicColorApply = Record<string, string>;
 
 /// Token mapping per dynamic-color mode (spec §5.4): accent-only follows the
 /// cover for Primary but keeps Secondary/Tertiary at brand; off is static.
+/// The backdrop wash is not a role: the visible backdrop art follows the cover
+/// in accent-only too, so the player bar's shaped top edge must track it there
+/// as well.
 export function paletteTokens(p: CoverPalette, mode: "full" | "accent" | "off"): DynamicColorApply {
   if (mode === "off") return {};
-  const base = { "--dyn-primary": p.primary, "--dyn-on-primary": p.on_primary };
+  const base = {
+    "--dyn-primary": p.primary,
+    "--dyn-on-primary": p.on_primary,
+    "--dyn-backdrop": p.backdrop,
+  };
   if (mode === "accent") return base;
   return { ...base, "--dyn-secondary": p.secondary, "--dyn-tertiary": p.tertiary };
 }
@@ -45,7 +52,13 @@ export function createPaletteApplier(
 
 function applyToDocument(tokens: DynamicColorApply) {
   const style = document.documentElement.style;
-  for (const key of ["--dyn-primary", "--dyn-on-primary", "--dyn-secondary", "--dyn-tertiary"]) {
+  for (const key of [
+    "--dyn-primary",
+    "--dyn-on-primary",
+    "--dyn-secondary",
+    "--dyn-tertiary",
+    "--dyn-backdrop",
+  ]) {
     const value = tokens[key];
     if (value) style.setProperty(key, value);
     else style.removeProperty(key);

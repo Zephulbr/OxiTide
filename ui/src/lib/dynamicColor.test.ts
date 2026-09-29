@@ -6,6 +6,7 @@ const palette: CoverPalette = {
   on_primary: "#000000",
   secondary: "#222222",
   tertiary: "#00ff00",
+  backdrop: "#333333",
   ceiling_l: 0.1,
 };
 
@@ -13,18 +14,20 @@ describe("paletteTokens", () => {
   it("off applies nothing", () => {
     expect(paletteTokens(palette, "off")).toEqual({});
   });
-  it("accent-only applies primary and on-primary (spec §5.4)", () => {
+  it("accent-only applies the primary tokens plus the backdrop wash (spec §5.4)", () => {
     expect(paletteTokens(palette, "accent")).toEqual({
       "--dyn-primary": "#ff0000",
       "--dyn-on-primary": "#000000",
+      "--dyn-backdrop": "#333333",
     });
   });
-  it("full applies all four roles", () => {
+  it("full applies every dynamic token", () => {
     expect(paletteTokens(palette, "full")).toEqual({
       "--dyn-primary": "#ff0000",
       "--dyn-on-primary": "#000000",
       "--dyn-secondary": "#222222",
       "--dyn-tertiary": "#00ff00",
+      "--dyn-backdrop": "#333333",
     });
   });
 });

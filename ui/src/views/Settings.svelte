@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { openUrl } from "@tauri-apps/plugin-opener";
   import { api, type CacheStatus, type Config, type OutputDevice } from "../lib/api";
   import ErrorState from "../lib/components/ErrorState.svelte";
+  import Icon from "../lib/components/Icon.svelte";
   import Loading from "../lib/components/Loading.svelte";
   import {
     appearance,
@@ -17,9 +19,14 @@
   let {
     player,
     toasts,
+    onLogout,
     onQualityDisplay,
-  }: { player: Player; toasts: Toasts; onQualityDisplay: (mode: QualityDisplay) => void } =
-    $props();
+  }: {
+    player: Player;
+    toasts: Toasts;
+    onLogout: () => void;
+    onQualityDisplay: (mode: QualityDisplay) => void;
+  } = $props();
   let tab = $state<SettingsTab>("appearance");
   let devices = $state<OutputDevice[]>([]);
   let config = $state<Config | null>(null);
@@ -177,6 +184,16 @@
     api.setStartInMini(enabled).catch(apply);
   }
 
+  function setOneko(enabled: boolean) {
+    if (!config) return;
+    config = { ...config, ui: { ...config.ui, oneko: enabled } };
+    appearance.setOneko(enabled).catch(apply);
+  }
+
+  function openCredit(url: string) {
+    openUrl(url).catch(apply);
+  }
+
   function setCacheMaxMb(mb: number) {
     if (!config) return;
     const clamped = Math.max(0, Math.floor(mb));
@@ -307,6 +324,26 @@
           Start in mini player
         </label>
       </div>
+
+      <div class="field">
+        <label>
+          <input
+            type="checkbox"
+            checked={config.ui.oneko}
+            onchange={(e) => setOneko((e.target as HTMLInputElement).checked)}
+          />
+          Cat
+        </label>
+      </div>
+      {#if appearance.reducedMotion}
+        <p class="muted">Paused while your system's reduced-motion setting is on.</p>
+      {/if}
+      <p class="muted">
+        Credits:
+        <button class="link" type="button" onclick={() => openCredit("https://github.com/adryd325/oneko.js")}>oneko.js by adryd325</button>
+        &amp;
+        <button class="link" type="button" onclick={() => openCredit("https://github.com/kyrie25/spicetify-oneko")}>spicetify-oneko by kyrie25</button>
+      </p>
     </div>
   {:else if tab === "playback"}
     <div id="settings-panel-playback" role="tabpanel" aria-labelledby="settings-tab-playback">
@@ -453,15 +490,22 @@
     </div>
   {:else}
     <div id="settings-panel-system" role="tabpanel" aria-labelledby="settings-tab-system">
-      <h3>Logs</h3>
-      <p class="muted">Directory: {logsDir || "unavailable"}</p>
-      <p><button onclick={() => api.openLogsFolder().catch(apply)}>Open logs folder</button></p>
+      <h3>Account</h3>
+      <p>
+        <button class="logout" onclick={onLogout}>
+          <Icon name="log-out" size={16} />
+          Log out
+        </button>
+      </p>
       <h3>Keyboard shortcuts</h3>
       <ul>
         {#each SHORTCUTS as shortcut (shortcut.keys)}
           <li><kbd>{shortcut.keys}</kbd> <span class="muted">{shortcut.description}</span></li>
         {/each}
       </ul>
+      <h3>Logs</h3>
+      <p class="muted">Directory: {logsDir || "unavailable"}</p>
+      <p><button onclick={() => api.openLogsFolder().catch(apply)}>Open logs folder</button></p>
     </div>
   {/if}
 {/if}
@@ -553,5 +597,34 @@
     flex-basis: 100%;
     font-size: 18px;
     margin: 4px 0 0;
+  }
+  .link {
+    padding: 0;
+    color: var(--accent);
+    text-decoration: underline;
+  }
+  .logout {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 18px;
+    border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
+    border-radius: var(--radius-control);
+    background: color-mix(in srgb, var(--danger) 8%, transparent);
+    color: var(--danger);
+    font-weight: 600;
+    transition:
+      background var(--dur-state) var(--ease-in),
+      border-color var(--dur-state) var(--ease-in),
+      box-shadow var(--dur-state) var(--ease-in),
+      transform var(--dur-micro) var(--ease-in);
+  }
+  .logout:hover {
+    background: color-mix(in srgb, var(--danger) 18%, transparent);
+    border-color: var(--danger);
+    box-shadow: 0 0 9px color-mix(in srgb, var(--danger) 80%, transparent);
+  }
+  .logout:active {
+    transform: scale(0.97);
   }
 </style>

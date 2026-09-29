@@ -84,7 +84,10 @@ impl TidalClient {
             .map_err(|e| crate::error::Error::Auth(format!("bad manifest base64: {e}")))?;
         Ok(PlaybackInfo {
             quality,
-            actual_quality: raw.audio_quality.as_deref().and_then(Quality::from_tidal_param),
+            actual_quality: raw
+                .audio_quality
+                .as_deref()
+                .and_then(Quality::from_tidal_param),
             manifest_mime: raw.manifest_mime_type,
             manifest,
         })
@@ -105,9 +108,17 @@ mod tests {
             reqwest::Client::new(),
             server.uri(),
             format!("{}/token", server.uri()),
-            SessionInfo { session_id: "s".into(), country_code: "GR".into(), user_id: 1 },
-            TokenSet { access_token: "AT".into(), refresh_token: Some("RT".into()),
-                token_type: "Bearer".into(), expires_at: None },
+            SessionInfo {
+                session_id: "s".into(),
+                country_code: "GR".into(),
+                user_id: 1,
+            },
+            TokenSet {
+                access_token: "AT".into(),
+                refresh_token: Some("RT".into()),
+                token_type: "Bearer".into(),
+                expires_at: None,
+            },
             Arc::new(MemoryStore::default()),
         )
     }
@@ -137,8 +148,14 @@ mod tests {
     fn from_tidal_param_parses_known_values() {
         assert_eq!(Quality::from_tidal_param("LOW"), Some(Quality::Low));
         assert_eq!(Quality::from_tidal_param("HIGH"), Some(Quality::High));
-        assert_eq!(Quality::from_tidal_param("LOSSLESS"), Some(Quality::Lossless));
-        assert_eq!(Quality::from_tidal_param("HI_RES_LOSSLESS"), Some(Quality::Max));
+        assert_eq!(
+            Quality::from_tidal_param("LOSSLESS"),
+            Some(Quality::Lossless)
+        );
+        assert_eq!(
+            Quality::from_tidal_param("HI_RES_LOSSLESS"),
+            Some(Quality::Max)
+        );
         assert_eq!(Quality::from_tidal_param("hi_res"), Some(Quality::Max));
         assert_eq!(Quality::from_tidal_param("MASTER"), Some(Quality::Max));
         assert_eq!(Quality::from_tidal_param("something_else"), None);
@@ -158,7 +175,10 @@ mod tests {
             })))
             .mount(&server)
             .await;
-        let info = client(&server).playback_info(7, Quality::Max).await.unwrap();
+        let info = client(&server)
+            .playback_info(7, Quality::Max)
+            .await
+            .unwrap();
         assert_eq!(info.actual_quality, Some(Quality::Lossless));
     }
 
@@ -174,7 +194,10 @@ mod tests {
             })))
             .mount(&server)
             .await;
-        let info = client(&server).playback_info(8, Quality::Lossless).await.unwrap();
+        let info = client(&server)
+            .playback_info(8, Quality::Lossless)
+            .await
+            .unwrap();
         assert_eq!(info.actual_quality, None);
     }
 
@@ -193,7 +216,10 @@ mod tests {
             })))
             .mount(&server)
             .await;
-        let info = client(&server).playback_info(77646170, Quality::Max).await.unwrap();
+        let info = client(&server)
+            .playback_info(77646170, Quality::Max)
+            .await
+            .unwrap();
         assert_eq!(info.manifest_mime, "application/dash+xml");
         assert_eq!(info.manifest, mpd.as_bytes());
     }
@@ -201,8 +227,14 @@ mod tests {
     #[tokio::test]
     async fn playback_info_404_is_not_found() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/tracks/1/playbackinfo"))
-            .respond_with(ResponseTemplate::new(404)).mount(&server).await;
-        assert!(client(&server).playback_info(1, Quality::Lossless).await.is_err());
+        Mock::given(method("GET"))
+            .and(path("/tracks/1/playbackinfo"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        assert!(client(&server)
+            .playback_info(1, Quality::Lossless)
+            .await
+            .is_err());
     }
 }

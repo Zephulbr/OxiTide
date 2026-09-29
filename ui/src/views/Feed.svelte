@@ -1,16 +1,14 @@
 <script lang="ts">
-  import { api, type PageSection } from "../lib/api";
+  import { api, type FeedActivity } from "../lib/api";
   import EmptyState from "../lib/components/EmptyState.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
+  import FeedTimeline from "../lib/components/FeedTimeline.svelte";
   import Loading from "../lib/components/Loading.svelte";
-  import PageSections from "../lib/components/PageSections.svelte";
-  import { playMix } from "../lib/mixPlay";
   import type { Nav } from "../lib/nav.svelte";
-  import type { Toasts } from "../lib/toasts.svelte";
 
-  let { nav, toasts }: { nav: Nav; toasts: Toasts } = $props();
+  let { nav }: { nav: Nav } = $props();
 
-  let sections = $state<PageSection[]>([]);
+  let activities = $state<FeedActivity[]>([]);
   let loading = $state(true);
   let error = $state("");
 
@@ -18,7 +16,7 @@
     loading = true;
     error = "";
     try {
-      sections = await api.getFeed();
+      activities = await api.getFeed();
     } catch (e) {
       error = String(e);
     } finally {
@@ -31,13 +29,23 @@
   });
 </script>
 
-<h2>Feed</h2>
-{#if loading}
-  <Loading />
-{:else if error}
-  <ErrorState message={error} onRetry={load} />
-{:else if sections.length === 0}
-  <EmptyState message="Feed isn't available for this account." />
-{:else}
-  <PageSections {sections} {nav} onPlayMix={(id) => void playMix(id, toasts)} />
-{/if}
+<div class="feed-page">
+  <h2>Feed</h2>
+  {#if loading}
+    <Loading />
+  {:else if error}
+    <ErrorState message={error} onRetry={load} />
+  {:else if activities.length === 0}
+    <EmptyState message="No updates yet." />
+  {:else}
+    <FeedTimeline {activities} {nav} />
+  {/if}
+</div>
+
+<style>
+  .feed-page {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding-bottom: 32px;
+  }
+</style>

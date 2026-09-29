@@ -25,6 +25,7 @@
   import CollectionDialogs from "./lib/components/CollectionDialogs.svelte";
   import ToastHost from "./lib/components/ToastHost.svelte";
   import ContextMenu from "./lib/components/ContextMenu.svelte";
+  import Neko from "./lib/components/Neko.svelte";
   import { createNav } from "./lib/nav.svelte";
   import { appearance, clampQueueWidth } from "./lib/appearance.svelte";
   import { errorMessage } from "./lib/errors";
@@ -276,6 +277,9 @@
       case "volume-down":
         player.setVolume(Math.max(0, state.volume - 0.05));
         break;
+      case "toggle-mute":
+        player.toggleMute();
+        break;
       case "focus-search":
         void focusSearch();
         break;
@@ -356,12 +360,11 @@
   {#if mini.active}
     <Mini {player} {favorites} {mini} />
   {:else}
-  <div class="app" data-sidebar={sidebarRail ? "rail" : "full"}>
+  <div class="app" data-sidebar={sidebarRail ? "rail" : "full"} data-now-playing={nav.nowPlayingOpen}>
     <Sidebar
       {nav}
       rail={sidebarRail}
       onToggleRail={() => { railTouched = true; sidebarRail = !sidebarRail; }}
-      onLogout={onLogout}
       {collection}
       {playlistActions}
       actions={collectionActions}
@@ -371,7 +374,7 @@
       {#if nav.nowPlayingOpen}<NowPlaying {player} {nav} {qualityDisplay} />
       {:else if nav.route.name === "home"}<Home {nav} {toasts} />
       {:else if nav.route.name === "explore"}<Explore {nav} {player} {favorites} {playlistActions} {toasts} />
-      {:else if nav.route.name === "feed"}<Feed {nav} {toasts} />
+      {:else if nav.route.name === "feed"}<Feed {nav} />
       {:else if nav.route.name === "albums"}<CollectionAlbums {nav} />
       {:else if nav.route.name === "tracks"}<CollectionTracks {player} {favorites} {playlistActions} />
       {:else if nav.route.name === "profiles"}<Profiles {nav} />
@@ -382,7 +385,7 @@
       {:else if nav.route.name === "album"}<Album id={nav.route.id} {player} {favorites} {playlistActions} />
       {:else if nav.route.name === "playlist"}<Playlist {nav} id={nav.route.id} {player} {favorites} {playlistActions} {toasts} {collection} />
       {:else if nav.route.name === "artist"}<Artist id={nav.route.id} {favorites} />
-      {:else if nav.route.name === "settings"}<Settings {player} {toasts} onQualityDisplay={(mode) => (qualityDisplay = mode)} />{/if}
+      {:else if nav.route.name === "settings"}<Settings {player} {toasts} {onLogout} onQualityDisplay={(mode) => (qualityDisplay = mode)} />{/if}
     </main>
     {#if nav.queueOpen}
       {#if queueOverlay}
@@ -401,6 +404,7 @@
   </div>
   {/if}
   <div class="grain" aria-hidden="true"></div>
+  {#if appearance.oneko && !appearance.reducedMotion}<Neko />{/if}
 {/if}
 
 <svelte:window onkeydown={onKeydown} onmousedown={onSideButton} onauxclick={onSideButton} />

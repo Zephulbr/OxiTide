@@ -11,12 +11,28 @@ body {
 .app {
   display: grid;
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr) auto;
-  grid-template-rows: 1fr var(--player-height);
+  /* Single full-height row: the columns run to the window bottom and the
+     player bar floats over them (see .player), so lists scroll behind its
+     glass instead of stopping above it. */
+  grid-template-rows: 1fr;
   height: 100%;
   position: relative;
   z-index: 1;
 }
 .app[data-sidebar="rail"] { --sidebar-width: 64px; }
+
+/* Now Playing owns the whole window: the sidebar and the docked queue step
+   aside while it is open (the floating queue overlay can still appear). */
+.app[data-now-playing="true"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+.app[data-now-playing="true"] .sidebar,
+.app[data-now-playing="true"] .queue:not(.floating) {
+  display: none;
+}
+.app[data-now-playing="true"] .main {
+  grid-column: 1 / -1;
+}
 
 /* Film grain: one static feTurbulence tile at a fixed ~4.5% (spec §10.1 —
    deliberately never a user setting). */
@@ -34,15 +50,20 @@ body {
   backdrop-filter: blur(var(--glass-blur));
   border-right: 1px solid var(--line);
   padding: 12px;
-  /* Scrolling is owned by the sidebar's inner .scroll area so Settings and
-     Log out stay pinned; nothing should ever scroll the shell itself. */
+  /* Scrolling is owned by the sidebar's inner .scroll area; the shell itself
+     never scrolls. Its content runs behind the floating player bar. */
   overflow: hidden;
 }
 /* position: relative anchors NowPlaying's absolute-positioned close fade. */
-.main { position: relative; padding: 16px 20px; overflow: auto; }
+/* Bottom clearance keeps the last content reachable past the floating bar. */
+.main { position: relative; padding: 16px 20px calc(var(--player-height) + 8px); overflow: auto; }
 /* Track-list views: the wrapper owns the main area's height so the track
    table (TrackTable's `fill` prop) grows into the leftover space. */
 .view-fill { display: flex; flex-direction: column; height: 100%; }
+/* Fill views scroll internally (TrackTable), so the main scroller must not
+   inset them from the floating bar; the list carries its own bottom
+   clearance instead. */
+.main:has(.view-fill) { padding-bottom: 0; }
 .queue {
   background: var(--surface-1);
   backdrop-filter: blur(var(--glass-blur));
@@ -61,11 +82,30 @@ body {
   z-index: 5;
 }
 .queue-resize:hover { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+/* The bar floats full-bleed over the columns (it is out of the grid flow),
+   so lists scroll behind its glass. No border-top: the seek (SeekBar) is the
+   bar's top edge — the wave branch hangs above it, over the content behind,
+   and doubles as the separator. The glass lives on a pseudo-element because
+   Chromium drops a child's backdrop-filter when an ancestor carries one, and
+   the seek's glass cap (which hangs above the bar) needs its own blur).
+   z-index: 0 makes the bar a stacking context so the pseudo-child's negative
+   z-index stays behind its content; DOM order (last child) keeps the bar over
+   the columns. */
 .player {
-  grid-column: 1 / -1;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--player-height);
+  z-index: 0;
+}
+.player::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
   background: var(--surface-2);
   backdrop-filter: blur(var(--glass-blur));
-  border-top: 1px solid var(--line);
 }
 
 /* Narrow window: the queue can no longer dock (spec §7.1) — it floats. */

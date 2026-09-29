@@ -18,6 +18,13 @@ describe("coverUrl", () => {
   it("returns empty for an empty uuid", () => {
     expect(coverUrl("", 320)).toBe("");
   });
+
+  /// Mix rows from pages endpoints carry a ready-made CDN url instead of a
+  /// dashed uuid; it must not be mangled into `.../https://...`.
+  it("leaves an absolute CDN url untouched", () => {
+    const url = "https://resources.tidal.com/images/a/b/640x640.jpg";
+    expect(coverUrl(url, 320)).toBe(url);
+  });
 });
 
 describe("collageCovers", () => {

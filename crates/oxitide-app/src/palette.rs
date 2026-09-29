@@ -16,6 +16,11 @@ pub struct Palette {
     pub on_primary: String,
     pub secondary: String,
     pub tertiary: String,
+    /// Mean of the blurred cover (pre-scrim): the backdrop wash the player bar
+    /// shows. The seek cap re-composites it with the backdrop scrim and the
+    /// bar's surface tint, so the cap matches the bar per cover (including
+    /// monochrome art, where the three roles fall back).
+    pub backdrop: String,
     /// P90 luminance of the blurred + scrimmed backdrop (§5.3 composite ceiling).
     pub ceiling_l: f32,
 }
@@ -94,17 +99,40 @@ pub(crate) fn contrast_ratio(text: (u8, u8, u8), bg_luminance: f32) -> f32 {
 const BG: (u8, u8, u8) = (0x17, 0x12, 0x0e);
 /// Structural floor (§5.3 step 1): the scrim is at least 55% room.
 const SCRIM: f32 = 0.55;
+/// Mean of the no-art room gradient (`#1d1712` → `BG`): the backdrop wash when
+/// there is no artwork to blur.
+const ROOM_AVG: (u8, u8, u8) = (0x1a, 0x15, 0x10);
 
 fn composite(pixel: (u8, u8, u8)) -> (u8, u8, u8) {
     let blend = |src: u8, bg: u8| (src as f32 * (1.0 - SCRIM) + bg as f32 * SCRIM).round() as u8;
     (blend(pixel.0, BG.0), blend(pixel.1, BG.1), blend(pixel.2, BG.2))
 }
 
-/// Blur → scrim → luminance map → P90 (§5.3 step 2). The input is already
-/// downscaled (~48px), so a wide box blur approximates the CSS backdrop blur.
-fn composite_ceiling(pixels: &[(u8, u8, u8)], width: usize, height: usize) -> f32 {
+/// Wide box blur approximating the CSS backdrop blur over the already
+/// downscaled (~48px) bitmap.
+fn blur_cover(pixels: &[(u8, u8, u8)], width: usize, height: usize) -> Vec<(u8, u8, u8)> {
     let radius = (width / 8).max(1);
-    let blurred = box_blur(pixels, width, height, radius);
+    box_blur(pixels, width, height, radius)
+}
+
+/// Mean of the blurred pixels (the pre-scrim backdrop wash). A solid cover
+/// blurs to itself, so its exact value survives.
+fn blurred_average(blurred: &[(u8, u8, u8)]) -> (u8, u8, u8) {
+    if blurred.is_empty() {
+        return ROOM_AVG;
+    }
+    let n = blurred.len() as u32;
+    let (mut r, mut g, mut b) = (0u32, 0u32, 0u32);
+    for p in blurred {
+        r += p.0 as u32;
+        g += p.1 as u32;
+        b += p.2 as u32;
+    }
+    ((r / n) as u8, (g / n) as u8, (b / n) as u8)
+}
+
+/// Scrim → luminance map → P90 (§5.3 step 2).
+fn composite_ceiling(blurred: &[(u8, u8, u8)]) -> f32 {
     let mut ls: Vec<f32> = blurred.iter().map(|&p| luminance(composite(p))).collect();
     ls.sort_by(|a, b| a.partial_cmp(b).unwrap());
     ls[(ls.len() as f32 * 0.9) as usize].min(1.0)
@@ -210,6 +238,7 @@ pub fn fallback_palette() -> Palette {
         on_primary: hex(ON_ACCENT_DARK),
         secondary: hex(oklch_to_srgb(Oklch { l: 0.35, c: 0.02, h: 60.0 })),
         tertiary: hex(oklch_to_srgb(Oklch { l: 0.72, c: 0.10, h: 172.0 })),
+        backdrop: hex(ROOM_AVG),
         ceiling_l: luminance(BG),
     }
 }
@@ -218,16 +247,19 @@ pub fn extract_palette(pixels: &[(u8, u8, u8)], width: usize, height: usize) -> 
     if pixels.is_empty() || width == 0 || height == 0 {
         return fallback_palette();
     }
-    let ceiling = composite_ceiling(pixels, width, height);
+    let blurred = blur_cover(pixels, width, height);
+    let ceiling = composite_ceiling(&blurred);
+    let backdrop = hex(blurred_average(&blurred));
     let candidates = cluster(pixels, 6);
 
     // Primary: the most chromatic candidate; below the chroma floor the cover
-    // is monochrome and the whole palette falls back (spec §5.2).
+    // is monochrome and the whole palette falls back (spec §5.2). The backdrop
+    // wash still tracks the image itself, so the player bar stays matched.
     let Some(seed) = candidates.iter().map(|(c, _)| *c).reduce(|a, b| if a.c >= b.c { a } else { b }) else {
         return fallback_palette();
     };
     if seed.c < 0.04 {
-        return Palette { ceiling_l: ceiling, ..fallback_palette() };
+        return Palette { backdrop, ceiling_l: ceiling, ..fallback_palette() };
     }
 
     let mut primary = Oklch { l: clamp(seed.l, 0.70, 0.85), c: clamp(seed.c, 0.08, 0.17), h: seed.h };
@@ -270,6 +302,7 @@ pub fn extract_palette(pixels: &[(u8, u8, u8)], width: usize, height: usize) -> 
         on_primary,
         secondary: hex(oklch_to_srgb(secondary)),
         tertiary: hex(oklch_to_srgb(tertiary)),
+        backdrop,
         ceiling_l: ceiling,
     }
 }
@@ -372,5 +405,33 @@ mod tests {
         }
         let palette = extract_palette(&pixels, 48, 48);
         assert!(palette.ceiling_l > 0.2, "P90 should sit in the white quarter");
+    }
+
+    #[test]
+    fn backdrop_is_the_blurred_cover_mean() {
+        let bright = extract_palette(&solid((250, 245, 238), 48 * 48), 48, 48);
+        let dark = extract_palette(&solid((10, 12, 14), 48 * 48), 48, 48);
+        assert_eq!(bright.backdrop, "#faf5ee");
+        assert_eq!(dark.backdrop, "#0a0c0e");
+        assert!(
+            luminance(hex_to_rgb(&bright.backdrop)) > luminance(hex_to_rgb(&dark.backdrop)),
+            "a bright cover must yield a lighter backdrop wash"
+        );
+    }
+
+    /// The seek cap must match the bar even on monochrome art, where the three
+    /// roles degrade to the identity fallback (spec §5.2).
+    #[test]
+    fn monochrome_backdrop_keeps_the_cover_gray() {
+        let pixels = solid((110, 105, 100), 48 * 48);
+        let palette = extract_palette(&pixels, 48, 48);
+        assert_eq!(palette.backdrop, "#6e6964");
+        assert_ne!(palette.backdrop, fallback_palette().backdrop);
+    }
+
+    #[test]
+    fn no_art_uses_the_room_tone() {
+        assert_eq!(fallback_palette().backdrop, "#1a1510");
+        assert_eq!(extract_palette(&[], 0, 0).backdrop, "#1a1510");
     }
 }

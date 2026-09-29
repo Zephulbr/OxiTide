@@ -2,7 +2,7 @@
   import { appearance } from "../appearance.svelte";
   import type { Player } from "../player.svelte";
   import { seekByKey, seekRatio } from "../seek";
-  import { wavePath } from "../wave";
+  import { waveFillPath, wavePath } from "../wave";
 
   let {
     player,
@@ -50,7 +50,9 @@
   {@const current = player.state.current}
   <div
     class="seek {variant}"
+    class:wave={appearance.waveSeek}
     class:dragging
+    data-oneko-perch
     role="slider"
     tabindex="0"
     aria-label="Playback position"
@@ -63,6 +65,19 @@
     {#if appearance.waveSeek}
       {@const pct = (position / Math.max(duration, 1)) * 100}
       {@const d = wavePath(current.track_id, 800, 14)}
+      {#if variant === "edge"}
+        <svg width="0" height="0" aria-hidden="true">
+          <defs>
+            <clipPath id="seek-cap-clip" clipPathUnits="objectBoundingBox">
+              <path d={waveFillPath(current.track_id)} />
+            </clipPath>
+          </defs>
+        </svg>
+        <div class="seek-flat" aria-hidden="true">
+          <div class="seek-fill" style:width="{progress}%"></div>
+        </div>
+        <div class="seek-cap" aria-hidden="true"></div>
+      {/if}
       <div class="seek-wave">
         <svg viewBox="0 0 800 14" preserveAspectRatio="none" aria-hidden="true">
           <path class="wave-base" d={d} fill="none" stroke="var(--line)" stroke-width="1.5" vector-effect="non-scaling-stroke" />
@@ -85,8 +100,8 @@
     display: flex;
     align-items: center;
   }
-  /* Edge: hugs the player bar's top border; rests at 4px, grows a touch more
-     (+ thumb for the line variant) on hover/focus/drag. */
+  /* Edge: the player bar's top edge — the unplayed portion doubles as the
+     separator; rests as a straight line, grows on hover/focus/drag. */
   .seek.edge {
     position: absolute;
     left: 0;
@@ -94,6 +109,12 @@
     top: -1px;
     height: 12px;
     align-items: flex-start;
+  }
+  /* Wave branch: the wave box hangs above the bar's edge (its dips overlap the
+     frosted edge by 1px) so the content behind stays visible above the wave. */
+  .seek.edge.wave {
+    top: -9px;
+    height: 14px;
   }
   /* Inline (mini): a visible control at rest with a full 24px hit height. */
   .seek.inline {
@@ -106,6 +127,9 @@
     height: 4px;
     background: var(--line);
     transition: height var(--dur-micro) var(--ease-in);
+  }
+  .seek.edge .seek-line {
+    height: 3px;
   }
   .seek-fill {
     position: absolute;
@@ -125,7 +149,7 @@
   .seek.edge:hover .seek-line,
   .seek.edge:focus-visible .seek-line,
   .seek.edge.dragging .seek-line {
-    height: 6px;
+    height: 5px;
   }
   .seek.edge:hover .seek-thumb,
   .seek.edge:focus-visible .seek-thumb,
@@ -133,13 +157,71 @@
   .seek.inline .seek-thumb {
     transform: translate(-50%, -50%) scale(1);
   }
-  /* Stylized wave (Atmosphere): full amplitude + opacity at rest; interactive
-     grows it a touch and brightens the unplayed portion. */
+  /* Wave mode at rest: a completely straight progress line (same recipe as
+     the line variant), straddling the bar edge; it fades out as the wave
+     inflates from that same edge on hover/focus/drag. */
+  .seek-flat {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 8px;
+    height: 2px;
+    background: var(--line);
+    transition: opacity var(--dur-reveal) var(--ease-in);
+  }
+  .seek.edge:hover .seek-flat,
+  .seek.edge:focus-visible .seek-flat,
+  .seek.edge.dragging .seek-flat {
+    opacity: 0;
+  }
+  /* Wave cap (edge only): fills the area under the stroke up to the bar edge,
+     so the wave doubles as the bar's shaped top edge. It uses the bar's own
+     glass recipe (the --surface-2 tint over a blur of whatever is behind) so
+     it matches the bar by construction — including content scrolling behind
+     the floating bar, which the old opaque scrimmed-wash fill could not
+     track. In Instrument --glass-blur is 0 and --surface-2 is opaque, so the
+     cap is a plain opaque strip matching the opaque bar. The clip is the
+     wave's objectBoundingBox shape (its 12.6-unit space matches the stroke's
+     10/14 scale, so the fill edge stays on the wave centerline). The hover
+     geometry is pre-baked at 1.2x (offsets are relative to .seek, whose top
+     is -9px and whose bar edge is 9px down: 9 - 10.8 = -1.8) and the grow is
+     a plain scaleY, keeping the fill and the stroke in lockstep. The box's
+     bottom edge sits exactly on the bar edge (the transform anchor, shared
+     with the stroke at 50% 90%). Collapsed at rest: the flat line carries the
+     progress until hover. */
+  .seek-cap {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -1.8px;
+    height: 10.8px;
+    background: var(--surface-2);
+    backdrop-filter: blur(var(--glass-blur));
+    clip-path: url(#seek-cap-clip);
+    transform-origin: bottom;
+    transition: transform var(--dur-reveal) var(--ease-in);
+  }
+  .seek.edge .seek-cap {
+    transform: scaleY(0);
+  }
+  .seek.edge:hover .seek-cap,
+  .seek.edge:focus-visible .seek-cap,
+  .seek.edge.dragging .seek-cap {
+    transform: none;
+  }
+  /* Stylized wave (Atmosphere). Edge (main bar): anchored to the bar's edge
+     from above — fully collapsed at rest (the flat line carries the progress)
+     and grows upward over the content behind when interactive, brightening
+     the unplayed portion. Inline (mini) keeps the full wave at rest, growing
+     downward from its top. */
   .seek-wave {
+    position: relative;
     width: 100%;
     height: 10px;
     transform-origin: top;
-    transition: transform var(--dur-micro) var(--ease-in);
+    transition:
+      opacity var(--dur-reveal) var(--ease-in),
+      transform var(--dur-reveal) var(--ease-in);
   }
   .seek-wave svg {
     display: block;
@@ -147,12 +229,20 @@
     height: 100%;
   }
   .seek-wave .wave-base {
-    transition: stroke var(--dur-micro);
+    transition: stroke var(--dur-reveal);
+  }
+  .seek.edge .seek-wave {
+    /* 90% = the bar's top edge: the same anchor as .seek-cap's bottom edge,
+       so the growing stroke and fill never drift apart. */
+    transform-origin: 50% 90%;
+    opacity: 0.6;
+    transform: scaleY(0);
   }
   .seek.edge:hover .seek-wave,
   .seek.edge:focus-visible .seek-wave,
   .seek.edge.dragging .seek-wave {
-    transform: scaleY(1.3);
+    opacity: 1;
+    transform: scaleY(1.2);
   }
   .seek.edge:hover .wave-base,
   .seek.edge:focus-visible .wave-base,

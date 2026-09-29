@@ -55,9 +55,22 @@ export function reconcileSeek(pending: number | null, event: EngineEvent): numbe
   return pending;
 }
 
+/** Volume to apply when toggling mute: silence when audible, restore when muted. */
+export function muteTarget(volume: number, lastVolume: number): number {
+  if (volume > 0) return 0;
+  return lastVolume > 0 ? lastVolume : 0.5;
+}
+
+/** Speaker icon for a volume level: crossed when muted, one wave below half, two at/above half. */
+export function volumeIcon(volume: number): "volume-x" | "volume-1" | "volume-2" {
+  if (volume <= 0) return "volume-x";
+  return volume < 0.5 ? "volume-1" : "volume-2";
+}
+
 export function createPlayer() {
   let state = $state<PlayerState>(emptyState());
   let pendingSeek = $state<number | null>(null);
+  let lastVolume = 0.5;
 
   async function init() {
     await listen<EngineEvent>("playback_event", (event) => {
@@ -67,6 +80,7 @@ export function createPlayer() {
     try {
       const snapshot = await api.getPlaybackState();
       state = reduce(state, { type: "state", ...snapshot });
+      if (snapshot.volume > 0) lastVolume = snapshot.volume;
     } catch {
       /* not logged in yet */
     }
@@ -102,6 +116,15 @@ export function createPlayer() {
     state = reduce(state, { type: "state", ...snapshot });
   }
 
+  function setVolume(v: number, persist = false) {
+    if (v > 0) lastVolume = v;
+    return api.setVolume(v, persist);
+  }
+
+  function toggleMute() {
+    return setVolume(muteTarget(state.volume, lastVolume));
+  }
+
   return {
     get state() { return state; },
     get pendingSeek() { return pendingSeek; },
@@ -112,7 +135,8 @@ export function createPlayer() {
     next: () => api.next(),
     prev: () => api.prev(),
     seek,
-    setVolume: (v: number, persist = false) => api.setVolume(v, persist),
+    setVolume,
+    toggleMute,
     setShuffle: (enabled: boolean) => api.setShuffle(enabled),
     setRepeat: (mode: RepeatMode) => api.setRepeat(mode),
     reorder: (from: number, to: number) => api.queueReorder(from, to),

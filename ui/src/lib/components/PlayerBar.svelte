@@ -8,7 +8,9 @@
   import type { Mini } from "../mini.svelte";
   import Cover from "./Cover.svelte";
   import Icon from "./Icon.svelte";
+  import PlayPauseGlyph from "./PlayPauseGlyph.svelte";
   import SeekBar from "./SeekBar.svelte";
+  import VolumeSlider from "./VolumeSlider.svelte";
 
   let {
     player,
@@ -77,12 +79,11 @@
         aria-label="Shuffle"
         title="Shuffle the rest of the queue"
       ><Icon name="shuffle" size={18} /></button>
-      <button class="ibtn" onclick={() => player.prev()} aria-label="Previous"><Icon name="skip-back" size={20} /></button>
-      <button class="play" onclick={() => player.playPause()} aria-label="Play/Pause">
-        <span class="play-ico" class:show={!player.state.playing}><Icon name="play" size={22} /></span>
-        <span class="play-ico" class:show={player.state.playing}><Icon name="pause" size={22} /></span>
+      <button class="ibtn" onclick={() => player.prev()} aria-label="Previous"><Icon name="skip-back-solid" size={22} /></button>
+      <button class="ibtn play" onclick={() => player.playPause()} aria-label="Play/Pause">
+        <PlayPauseGlyph playing={player.state.playing} size={32} />
       </button>
-      <button class="ibtn" onclick={() => player.next()} aria-label="Next"><Icon name="skip-forward" size={20} /></button>
+      <button class="ibtn" onclick={() => player.next()} aria-label="Next"><Icon name="skip-forward-solid" size={22} /></button>
       <button
         class="ibtn"
         class:active={player.state.repeat !== "off"}
@@ -102,15 +103,7 @@
         aria-pressed={nav.queueOpen}
       ><Icon name="list-music" size={18} /></button>
 
-      <label class="volume">
-        <Icon name="volume-2" size={18} />
-        <input
-          type="range" min="0" max="1" step="0.01" value={player.state.volume}
-          oninput={(e) => player.setVolume(Number((e.currentTarget as HTMLInputElement).value))}
-          onchange={(e) => player.setVolume(Number((e.currentTarget as HTMLInputElement).value), true)}
-          aria-label="Volume"
-        />
-      </label>
+      <VolumeSlider {player} />
 
       <div class="badges">
         <span class="badge" class:max={maxQuality} title={player.state.stream ? "Actual stream quality" : "Preferred quality"}>{quality}</span>
@@ -142,23 +135,14 @@
 <style>
   /* Three zones: track info left, transport dead-center, queue/volume/quality
      right. The 1fr/auto/1fr grid keeps the middle centered no matter how wide
-     the sides get. */
+     the sides get. The box (position/height) comes from app.css so the bar
+     floats over the content. */
   .player {
-    position: relative;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     align-items: center;
     gap: 12px;
     padding: 0 16px;
-    transition: border-top-color var(--dur-micro);
-  }
-  /* The bar's top border reads as a separator through the seek; fade it out
-     while the seek is interactive so only the progress shows. `.seek` lives in
-     SeekBar, so the :has() argument is global. */
-  :global(.player:has(.seek:hover)),
-  :global(.player:has(.seek:focus-visible)),
-  :global(.player:has(.seek.dragging)) {
-    border-top-color: transparent;
   }
   .zone {
     display: flex;
@@ -167,7 +151,7 @@
     min-width: 0;
   }
   .zone.left { justify-self: start; }
-  .zone.center { justify-self: center; gap: 6px; }
+  .zone.center { justify-self: center; gap: 10px; }
   .zone.right { justify-self: end; }
 
   .thumb {
@@ -282,38 +266,9 @@
   }
 
   .play {
-    position: relative;
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    background: var(--accent);
-    color: var(--on-accent);
-    transition:
-      transform var(--dur-micro) var(--ease-in),
-      box-shadow var(--dur-state) var(--ease-in);
-  }
-  .play:hover {
-    transform: scale(1.06);
-    box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 45%, transparent);
-  }
-  .player .play:active {
-    transform: scale(0.94);
-  }
-  /* Play/pause swap: both icons stacked, the visible one scales + fades in. */
-  .play-ico {
-    position: absolute;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    opacity: 0;
-    transform: scale(0.6);
-    transition:
-      opacity var(--dur-state) var(--ease-in),
-      transform var(--dur-state) var(--ease-in);
-  }
-  .play-ico.show {
-    opacity: 1;
-    transform: scale(1);
+    width: 50px;
+    height: 50px;
+    color: var(--accent);
   }
 
   .time {
@@ -345,20 +300,6 @@
   }
   @media (max-width: 900px) {
     .badge.bp { display: none; }
-  }
-  .volume {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    color: var(--text-muted);
-    transition: color var(--dur-micro);
-  }
-  .volume:hover {
-    color: var(--text);
-  }
-  .volume input[type="range"] {
-    width: 80px;
-    accent-color: var(--accent);
   }
 
   /* Transient errors float over the bar instead of reflowing the zones. */

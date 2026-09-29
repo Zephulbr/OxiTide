@@ -375,6 +375,7 @@ fn build_player(
     Ok(Player { engine })
 }
 
+use oxitide_tidal::feed::FeedActivity;
 use oxitide_tidal::folders::{CollectionEntry, CollectionFolder};
 use oxitide_tidal::models::{Album, Artist, Mix, Playlist, SearchResults, Track};
 use oxitide_tidal::pages::{MixDetail, PageItem, PageSection};
@@ -396,9 +397,9 @@ pub async fn get_explore(state: State<'_, AppState>) -> Result<Vec<PageSection>,
 }
 
 #[tauri::command]
-pub async fn get_feed(state: State<'_, AppState>) -> Result<Vec<PageSection>, String> {
+pub async fn get_feed(state: State<'_, AppState>) -> Result<Vec<FeedActivity>, String> {
     require_client(&state)?
-        .feed_page()
+        .feed_activities()
         .await
         .map_err(|e| state.fail_tidal(e))
 }
@@ -1103,6 +1104,15 @@ pub fn set_mini_mode(
 pub fn set_start_in_mini(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
     let mut config = state.config();
     config.ui.start_in_mini = enabled;
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_oneko(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    let mut config = state.config();
+    config.ui.oneko = enabled;
     config.save()?;
     state.set_config(config);
     Ok(())

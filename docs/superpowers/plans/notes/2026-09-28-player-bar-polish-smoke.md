@@ -14,16 +14,38 @@ browser login. Run with `npm --prefix ui run app:dev`.
 - [ ] Center zone order: shuffle, prev, play, next, repeat.
 - [ ] Right zone order (left→right): queue button, volume slider, quality
       badge, bit-perfect badge (when active).
-- [ ] Frosted glass background is unchanged.
-- [ ] Seek (wave on): the wave is fully visible at rest — full amplitude and
-      opacity, no longer squashed/faint.
-- [ ] Seek hover/focus: the wave grows a touch further (~1.3x), the unplayed
-      portion brightens, and the bar's top separator line fades out so only
-      the progress shows.
+- [ ] Frosted glass background is unchanged; the bar has **no separate top
+      border** — the seek itself is the top edge.
+- [ ] Seek (wave on) at rest is **completely straight**: a 2px line (played
+      portion in accent) straddling the bar edge, no wiggle at all.
+- [ ] On hover/focus the flat line fades as the wave inflates **upward** from
+      the edge (~1.2x, full opacity) and the unplayed portion brightens to
+      `--text-muted`; un-hover collapses it back to the straight line.
+- [ ] Above the wave you always see the content behind (track list, sidebar,
+      queue) — never a bar-background band.
+- [ ] No dark gap under the wave while it is grown: the cap fills up to the
+      curve in the backdrop-wash color (growing in lockstep with the stroke),
+      including over the sidebar and queue rail bottoms.
+- [ ] The cap strip is solid backdrop wash, not raw content: hover the wave
+      over the sidebar's bottom nav and over a scrolled track row — the strip
+      hides what's behind it and reads as a continuation of the bar.
+- [ ] The cap tracks the bar per cover: a bright cover gives a light strip,
+      a black-and-white cover a gray one (not the warm fallback), and the
+      color crossfades on track change. With dynamic color off it stays the
+      static room tone.
+- [ ] No faint doubled-tint line where the cap meets the bar's glass: the
+      fill's bottom edge lands exactly on the bar edge while grown/dragging
+      (check the hairline along the top of the glass).
+- [ ] Scroll a track list so rows slide beneath the hanging wave.
+- [ ] The seek hit strip covers ~9px of the content above the bar: hovering
+      or clicking there seeks rather than hitting the row (should feel
+      intentional; main has 16px bottom padding).
 - [ ] While scrubbing, the wave stays grown even if the pointer leaves the
-      bar's top edge mid-drag.
-- [ ] Seek (wave off, Instrument): the plain line rests at 4px and grows to
-      6px + thumb on hover.
+      wave mid-drag.
+- [ ] Seek (wave off, Instrument): the plain line rests at 3px and grows to
+      5px + thumb on hover.
+- [ ] Mini player (inline seek) is unaffected: full wave at rest when enabled,
+      otherwise the 4px line with a visible thumb.
 - [ ] Long track titles still ellipsize; shrink the window and confirm the
       left zone truncates before pushing the center off-middle.
 - [ ] Narrow the window under ~900px: the bit-perfect badge hides first; the

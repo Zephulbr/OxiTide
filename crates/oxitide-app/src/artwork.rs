@@ -24,6 +24,9 @@ pub struct PaletteDto {
     pub on_primary: String,
     pub secondary: String,
     pub tertiary: String,
+    /// Added with the seek cap's backdrop wash; entries cached before it fail
+    /// to parse once and the cache self-heals.
+    pub backdrop: String,
     pub ceiling_l: f32,
 }
 
@@ -34,6 +37,7 @@ impl From<Palette> for PaletteDto {
             on_primary: p.on_primary,
             secondary: p.secondary,
             tertiary: p.tertiary,
+            backdrop: p.backdrop,
             ceiling_l: p.ceiling_l,
         }
     }
@@ -45,6 +49,7 @@ impl From<PaletteDto> for Palette {
             on_primary: d.on_primary,
             secondary: d.secondary,
             tertiary: d.tertiary,
+            backdrop: d.backdrop,
             ceiling_l: d.ceiling_l,
         }
     }

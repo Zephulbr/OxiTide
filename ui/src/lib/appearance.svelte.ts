@@ -51,6 +51,7 @@ export interface Appearance {
   readonly coverShape: CoverShape;
   readonly queueWidth: number;
   readonly reducedMotion: boolean;
+  readonly oneko: boolean;
   readonly dynamicColor: DynamicColorMode;
   readonly backdropArt: boolean;
   readonly glassPanels: boolean;
@@ -66,6 +67,7 @@ export interface Appearance {
   setCoverShape(shape: CoverShape): Promise<void>;
   setDynamicColor(setting: DynamicColorSetting): Promise<void>;
   setQueueWidth(px: number): Promise<void>;
+  setOneko(enabled: boolean): Promise<void>;
 }
 
 export function createAppearance(): Appearance {
@@ -77,6 +79,7 @@ export function createAppearance(): Appearance {
   let dynamicColorSetting = $state<DynamicColorSetting>("auto");
   let queueWidth = $state(320);
   let reducedMotion = $state(false);
+  let oneko = $state(false);
 
   function apply() {
     const root = document.documentElement;
@@ -99,6 +102,7 @@ export function createAppearance(): Appearance {
       coverShape = config.ui.cover_shape;
       dynamicColorSetting = config.ui.dynamic_color;
       queueWidth = config.ui.queue_width;
+      oneko = config.ui.oneko;
     } catch {
       // Defaults are fine; a config failure must not block boot.
     }
@@ -119,6 +123,7 @@ export function createAppearance(): Appearance {
     get coverShape() { return coverShape; },
     get queueWidth() { return queueWidth; },
     get reducedMotion() { return reducedMotion; },
+    get oneko() { return oneko; },
     get dynamicColor() { return resolveDynamicColor(dynamicColorSetting, mode); },
     get backdropArt() { return mode === "atmosphere"; },
     get glassPanels() { return mode === "atmosphere"; },
@@ -134,6 +139,7 @@ export function createAppearance(): Appearance {
     setCoverShape: (s) => { coverShape = s; return persist(() => api.setCoverShape(s)); },
     setDynamicColor: (s) => { dynamicColorSetting = s; return persist(() => api.setDynamicColor(s)); },
     setQueueWidth: (px) => { queueWidth = clampQueueWidth(px); return persist(() => api.setQueueWidth(queueWidth)); },
+    setOneko: (enabled) => { oneko = enabled; return persist(() => api.setOneko(enabled)); },
   };
 }
 

@@ -29,7 +29,11 @@ impl std::fmt::Debug for Pkce {
 impl Pkce {
     pub fn from_parts(code_verifier: String, client_unique_key: String) -> Self {
         let code_challenge = code_challenge(&code_verifier);
-        Self { code_verifier, code_challenge, client_unique_key }
+        Self {
+            code_verifier,
+            code_challenge,
+            client_unique_key,
+        }
     }
 
     pub fn generate() -> Self {
@@ -92,7 +96,10 @@ mod tests {
     #[test]
     fn s256_matches_rfc7636_appendix_b() {
         let verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
-        assert_eq!(code_challenge(verifier), "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM");
+        assert_eq!(
+            code_challenge(verifier),
+            "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+        );
     }
 
     #[test]

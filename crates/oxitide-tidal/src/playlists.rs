@@ -59,8 +59,12 @@ impl TidalClient {
         limit: u32,
         offset: u32,
     ) -> Result<(Vec<Track>, u32)> {
-        let page: ItemPage<Track> =
-            self.get(&format!("playlists/{id}/tracks"), &page_params(limit, offset)).await?;
+        let page: ItemPage<Track> = self
+            .get(
+                &format!("playlists/{id}/tracks"),
+                &page_params(limit, offset),
+            )
+            .await?;
         Ok((page.items, page.total_number_of_items))
     }
 
@@ -135,10 +139,14 @@ impl TidalClient {
         ];
         let path = format!("playlists/{id}");
         let mut etag = self.playlist_etag(id).await?;
-        match self.post_form_with_etag(&path, &form, etag.as_deref()).await {
+        match self
+            .post_form_with_etag(&path, &form, etag.as_deref())
+            .await
+        {
             Err(e) if is_stale_etag(&e) => {
                 etag = self.playlist_etag(id).await?;
-                self.post_form_with_etag(&path, &form, etag.as_deref()).await
+                self.post_form_with_etag(&path, &form, etag.as_deref())
+                    .await
             }
             result => result,
         }
@@ -248,7 +256,12 @@ impl TidalClient {
     }
 
     /// Move playlist rows (zero-based indices) to `to_index`.
-    pub async fn move_playlist_items(&self, id: &str, indices: &[u32], to_index: u32) -> Result<()> {
+    pub async fn move_playlist_items(
+        &self,
+        id: &str,
+        indices: &[u32],
+        to_index: u32,
+    ) -> Result<()> {
         if indices.is_empty() {
             return Ok(());
         }
@@ -260,10 +273,14 @@ impl TidalClient {
         let path = format!("playlists/{id}/items/{list}");
         let form = [("toIndex", to_index.to_string())];
         let mut etag = self.playlist_etag(id).await?;
-        match self.post_form_with_etag(&path, &form, etag.as_deref()).await {
+        match self
+            .post_form_with_etag(&path, &form, etag.as_deref())
+            .await
+        {
             Err(e) if is_stale_etag(&e) => {
                 etag = self.playlist_etag(id).await?;
-                self.post_form_with_etag(&path, &form, etag.as_deref()).await
+                self.post_form_with_etag(&path, &form, etag.as_deref())
+                    .await
             }
             result => result,
         }
@@ -284,9 +301,17 @@ mod tests {
             reqwest::Client::new(),
             server.uri(),
             format!("{}/token", server.uri()),
-            SessionInfo { session_id: "s".into(), country_code: "GR".into(), user_id: 42 },
-            TokenSet { access_token: "AT".into(), refresh_token: Some("RT".into()),
-                token_type: "Bearer".into(), expires_at: None },
+            SessionInfo {
+                session_id: "s".into(),
+                country_code: "GR".into(),
+                user_id: 42,
+            },
+            TokenSet {
+                access_token: "AT".into(),
+                refresh_token: Some("RT".into()),
+                token_type: "Bearer".into(),
+                expires_at: None,
+            },
             Arc::new(MemoryStore::default()),
         )
     }
@@ -294,14 +319,20 @@ mod tests {
     #[tokio::test]
     async fn playlist_tracks_page_returns_items_and_total() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/playlists/p-uuid/tracks"))
-            .and(query_param("limit", "100")).and(query_param("offset", "0"))
+        Mock::given(method("GET"))
+            .and(path("/playlists/p-uuid/tracks"))
+            .and(query_param("limit", "100"))
+            .and(query_param("offset", "0"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "items": [{"id": 2, "title": "P1", "artists": [{"id": 9, "name": "X"}]}],
                 "totalNumberOfItems": 1, "limit": 100, "offset": 0
             })))
-            .mount(&server).await;
-        let (tracks, total) = client(&server).playlist_tracks_page("p-uuid", 100, 0).await.unwrap();
+            .mount(&server)
+            .await;
+        let (tracks, total) = client(&server)
+            .playlist_tracks_page("p-uuid", 100, 0)
+            .await
+            .unwrap();
         assert_eq!(tracks[0].artists[0].name, "X");
         assert_eq!(total, 1);
     }
@@ -309,12 +340,18 @@ mod tests {
     #[tokio::test]
     async fn user_playlists_handles_empty() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/users/42/playlists"))
+        Mock::given(method("GET"))
+            .and(path("/users/42/playlists"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "items": [], "totalNumberOfItems": 0, "limit": 50, "offset": 0
             })))
-            .mount(&server).await;
-        assert!(client(&server).user_playlists(50, 0).await.unwrap().is_empty());
+            .mount(&server)
+            .await;
+        assert!(client(&server)
+            .user_playlists(50, 0)
+            .await
+            .unwrap()
+            .is_empty());
     }
 
     #[tokio::test]
@@ -334,7 +371,8 @@ mod tests {
                     "duration": 0
                 }
             })))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let playlist = client(&server)
             .create_playlist("Mix", "for the road")
             .await
@@ -353,7 +391,8 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "data": {"title": "No id"}
             })))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         assert!(client(&server).create_playlist("No id", "").await.is_err());
     }
 
@@ -367,7 +406,8 @@ mod tests {
             .and(body_string_contains("title=New+name"))
             .and(body_string_contains("description=Notes"))
             .respond_with(ResponseTemplate::new(200))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         client(&server)
             .rename_playlist("p-uuid", "New name", "Notes")
             .await
@@ -381,12 +421,16 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/playlists/p-uuid"))
             .respond_with(ResponseTemplate::new(403))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let err = client(&server)
             .rename_playlist("p-uuid", "Nope", "")
             .await
             .unwrap_err();
-        assert!(matches!(err, crate::error::Error::Forbidden), "expected Forbidden, got {err:?}");
+        assert!(
+            matches!(err, crate::error::Error::Forbidden),
+            "expected Forbidden, got {err:?}"
+        );
     }
 
     #[tokio::test]
@@ -397,7 +441,8 @@ mod tests {
             .and(path("/playlists/p-uuid"))
             .and(header("if-none-match", "\"e1\""))
             .respond_with(ResponseTemplate::new(204))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         client(&server).delete_playlist("p-uuid").await.unwrap();
     }
 
@@ -430,7 +475,8 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "addedItemIds": [7]
             })))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let added = client(&server)
             .add_playlist_tracks("p-uuid", &[7], false)
             .await
@@ -449,7 +495,8 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "addedItemIds": [7]
             })))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let added = client(&server)
             .add_playlist_tracks("p-uuid", &[7], true)
             .await
@@ -466,7 +513,8 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "addedItemIds": ["7", "8"]
             })))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let added = client(&server)
             .add_playlist_tracks("p-uuid", &[7, 8], false)
             .await
@@ -481,7 +529,8 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/playlists/p-uuid/items"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let added = client(&server)
             .add_playlist_tracks("p-uuid", &[7, 8], false)
             .await
@@ -527,7 +576,8 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "addedItemIds": ids[..100].to_vec()
             })))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         Mock::given(method("POST"))
             .and(path("/playlists/p-uuid/items"))
             .and(header("if-none-match", "\"e2\""))
@@ -537,7 +587,8 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "addedItemIds": [101]
             })))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let added = client(&server)
             .add_playlist_tracks("p-uuid", &requested, false)
             .await
@@ -583,7 +634,8 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "addedItemIds": [7]
             })))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let added = client(&server)
             .add_playlist_tracks("p-uuid", &[7], false)
             .await
@@ -636,19 +688,28 @@ mod tests {
             .add_playlist_tracks("p-uuid", &[7], false)
             .await
             .unwrap_err();
-        assert!(matches!(err, crate::error::Error::Api { status: 412, .. }), "got {err:?}");
+        assert!(
+            matches!(err, crate::error::Error::Api { status: 412, .. }),
+            "got {err:?}"
+        );
     }
 
     #[tokio::test]
     async fn rename_playlist_401_after_a_refresh_is_forbidden() {
         let server = MockServer::start().await;
         playlist_page(&server, 0).await;
-        Mock::given(method("POST")).and(path("/playlists/p-uuid"))
+        Mock::given(method("POST"))
+            .and(path("/playlists/p-uuid"))
             .and(header("authorization", "Bearer AT"))
-            .respond_with(ResponseTemplate::new(401)).mount(&server).await;
-        Mock::given(method("POST")).and(path("/playlists/p-uuid"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/playlists/p-uuid"))
             .and(header("authorization", "Bearer NEW"))
-            .respond_with(ResponseTemplate::new(401)).mount(&server).await;
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
         Mock::given(method("POST")).and(path("/token"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "access_token": "NEW", "refresh_token": "RT2", "token_type": "Bearer", "expires_in": 3600
@@ -658,13 +719,19 @@ mod tests {
             .rename_playlist("p-uuid", "New name", "")
             .await
             .unwrap_err();
-        assert!(matches!(err, crate::error::Error::Forbidden), "expected Forbidden, got {err:?}");
+        assert!(
+            matches!(err, crate::error::Error::Forbidden),
+            "expected Forbidden, got {err:?}"
+        );
     }
 
     #[tokio::test]
     async fn add_playlist_tracks_empty_list_makes_no_request() {
         let server = MockServer::start().await;
-        let added = client(&server).add_playlist_tracks("p-uuid", &[], false).await.unwrap();
+        let added = client(&server)
+            .add_playlist_tracks("p-uuid", &[], false)
+            .await
+            .unwrap();
         assert!(added.is_empty());
     }
 
@@ -676,7 +743,8 @@ mod tests {
             .and(path("/playlists/p-uuid/items/2,5"))
             .and(header("if-none-match", "\"e1\""))
             .respond_with(ResponseTemplate::new(204))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         client(&server)
             .remove_playlist_items("p-uuid", &[2, 5])
             .await
@@ -692,7 +760,8 @@ mod tests {
             .and(header("if-none-match", "\"e1\""))
             .and(body_string_contains("toIndex=1"))
             .respond_with(ResponseTemplate::new(200))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         client(&server)
             .move_playlist_items("p-uuid", &[4], 1)
             .await
@@ -722,42 +791,50 @@ mod tests {
     #[tokio::test]
     async fn playlist_marks_owned_when_the_creator_is_the_session_user() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/playlists/p-uuid"))
+        Mock::given(method("GET"))
+            .and(path("/playlists/p-uuid"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "uuid": "p-uuid", "title": "P", "creator": {"id": 42}
             })))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         assert!(client(&server).playlist("p-uuid").await.unwrap().owned);
     }
 
     #[tokio::test]
     async fn playlist_marks_not_owned_for_another_or_missing_creator() {
         let other = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/playlists/p-uuid"))
+        Mock::given(method("GET"))
+            .and(path("/playlists/p-uuid"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "uuid": "p-uuid", "title": "P", "creator": {"id": 7}
             })))
-            .mount(&other).await;
+            .mount(&other)
+            .await;
         assert!(!client(&other).playlist("p-uuid").await.unwrap().owned);
 
         let missing = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/playlists/p-uuid"))
+        Mock::given(method("GET"))
+            .and(path("/playlists/p-uuid"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "uuid": "p-uuid", "title": "P"
             })))
-            .mount(&missing).await;
+            .mount(&missing)
+            .await;
         assert!(!client(&missing).playlist("p-uuid").await.unwrap().owned);
     }
 
     #[tokio::test]
     async fn user_playlists_marks_items_owned_even_without_a_creator() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/users/42/playlists"))
+        Mock::given(method("GET"))
+            .and(path("/users/42/playlists"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "items": [{"uuid": "a", "title": "A"}, {"uuid": "b", "title": "B"}],
                 "totalNumberOfItems": 2, "limit": 50, "offset": 0
             })))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let items = client(&server).user_playlists(50, 0).await.unwrap();
         assert!(items.iter().all(|playlist| playlist.owned));
     }

@@ -283,6 +283,9 @@
   .table-scroll.fill {
     flex: 1 1 auto;
     min-height: 140px;
+    /* Rows scroll behind the floating player bar; the clearance lets the last
+       row rise clear of it. */
+    padding-bottom: calc(var(--player-height) + 8px);
   }
   .row.dragging {
     opacity: 0.5;
