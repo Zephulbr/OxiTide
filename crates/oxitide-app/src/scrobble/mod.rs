@@ -18,8 +18,8 @@ use serde::Serialize;
 use tokio::sync::mpsc;
 
 use credentials::{CredentialStore, StoredCredential};
-use lastfm::LastFmClient;
-use listenbrainz::ListenBrainzClient;
+use lastfm::{LastFmClient, LastFmError};
+use listenbrainz::{ListenBrainzClient, ListenBrainzError};
 use queue::{QueuedScrobble, ScrobbleQueue};
 use tracker::{ScrobbleIntent, ScrobbleTracker};
 
@@ -268,6 +268,179 @@ impl ScrobblerService {
             }
         }
     }
+
+    pub fn start(self: &Arc<Self>) {
+        let Some(mut rx) = self.rx.lock().unwrap().take() else {
+            return;
+        };
+        let this = self.clone();
+        tauri::async_runtime::spawn(async move {
+            loop {
+                tokio::select! {
+                    intent = rx.recv() => {
+                        match intent {
+                            Some(intent) => this.handle_intent(intent).await,
+                            None => break,
+                        }
+                    }
+                    _ = tokio::time::sleep(Duration::from_secs(30)) => {}
+                }
+                this.flush_queues().await;
+            }
+        });
+    }
+
+    fn lastfm_retryable(&self, message: &str) {
+        {
+            let mut inner = self.inner.lock().unwrap();
+            inner.lastfm_backoff.fail();
+            inner.lastfm_error = Some(message.to_string());
+        }
+        self.emit_status();
+    }
+
+    fn lastfm_auth_failed(&self, message: &str) {
+        let newly = {
+            let mut inner = self.inner.lock().unwrap();
+            let newly = !inner.lastfm_needs_reconnect;
+            inner.lastfm_needs_reconnect = true;
+            inner.lastfm_error = Some(message.to_string());
+            newly
+        };
+        if newly {
+            self.notify_auth_error(LASTFM_SERVICE);
+        } else {
+            self.emit_status();
+        }
+    }
+
+    fn listenbrainz_retryable(&self, message: &str) {
+        {
+            let mut inner = self.inner.lock().unwrap();
+            inner.listenbrainz_backoff.fail();
+            inner.listenbrainz_error = Some(message.to_string());
+        }
+        self.emit_status();
+    }
+
+    fn listenbrainz_auth_failed(&self, message: &str) {
+        let newly = {
+            let mut inner = self.inner.lock().unwrap();
+            let newly = !inner.listenbrainz_needs_reconnect;
+            inner.listenbrainz_needs_reconnect = true;
+            inner.listenbrainz_error = Some(message.to_string());
+            newly
+        };
+        if newly {
+            self.notify_auth_error(LISTENBRAINZ_SERVICE);
+        } else {
+            self.emit_status();
+        }
+    }
+
+    pub async fn flush_queues(&self) {
+        self.flush_lastfm().await;
+        self.flush_listenbrainz().await;
+    }
+
+    async fn flush_lastfm(&self) {
+        let (session, batch) = {
+            let inner = self.inner.lock().unwrap();
+            if !inner.lastfm_enabled
+                || inner.lastfm_needs_reconnect
+                || inner.lastfm.is_none()
+                || inner.lastfm_queue.is_empty()
+                || !inner.lastfm_backoff.ready()
+            {
+                return;
+            }
+            let session = inner.lastfm.as_ref().map(|c| c.secret.clone()).unwrap();
+            (session, inner.lastfm_queue.front_batch(50))
+        };
+        if batch.is_empty() {
+            return;
+        }
+        let plays: Vec<(oxitide_audio::queue::QueueItem, i64)> =
+            batch.iter().map(|entry| (entry.item.clone(), entry.started_at)).collect();
+        match self.lastfm.scrobble(&session, &plays).await {
+            Ok(()) => {
+                {
+                    let mut inner = self.inner.lock().unwrap();
+                    inner.lastfm_queue.remove_front(batch.len());
+                    inner.lastfm_backoff.reset();
+                    inner.lastfm_error = None;
+                }
+                self.emit_status();
+            }
+            Err(LastFmError::Retryable) => {
+                self.lastfm_retryable("last.fm is temporarily unavailable")
+            }
+            Err(LastFmError::Auth) | Err(LastFmError::NotAuthorized) => {
+                self.lastfm_auth_failed("last.fm needs reconnecting")
+            }
+            Err(LastFmError::Permanent) => {
+                tracing::warn!("last.fm rejected {} scrobble(s); dropping", batch.len());
+                {
+                    let mut inner = self.inner.lock().unwrap();
+                    inner.lastfm_queue.remove_front(batch.len());
+                }
+                self.emit_status();
+            }
+        }
+    }
+
+    async fn flush_listenbrainz(&self) {
+        let token = {
+            let inner = self.inner.lock().unwrap();
+            if !inner.listenbrainz_enabled
+                || inner.listenbrainz_needs_reconnect
+                || inner.listenbrainz.is_none()
+                || inner.listenbrainz_queue.is_empty()
+                || !inner.listenbrainz_backoff.ready()
+            {
+                return;
+            }
+            inner.listenbrainz.as_ref().map(|c| c.secret.clone()).unwrap()
+        };
+        let mut sent = 0;
+        while sent < 50 {
+            let entry = {
+                let inner = self.inner.lock().unwrap();
+                inner.listenbrainz_queue.front_batch(1).into_iter().next()
+            };
+            let Some(entry) = entry else { break };
+            match self
+                .listenbrainz
+                .submit_listen(&token, &entry.item, entry.started_at)
+                .await
+            {
+                Ok(()) => {
+                    let mut inner = self.inner.lock().unwrap();
+                    inner.listenbrainz_queue.remove_front(1);
+                    inner.listenbrainz_backoff.reset();
+                    inner.listenbrainz_error = None;
+                    sent += 1;
+                }
+                Err(ListenBrainzError::Retryable) => {
+                    self.listenbrainz_retryable("listenbrainz is temporarily unavailable");
+                    break;
+                }
+                Err(ListenBrainzError::Auth) => {
+                    self.listenbrainz_auth_failed("listenbrainz needs reconnecting");
+                    break;
+                }
+                Err(ListenBrainzError::Permanent) => {
+                    tracing::warn!("listenbrainz rejected a scrobble; dropping it");
+                    let mut inner = self.inner.lock().unwrap();
+                    inner.listenbrainz_queue.remove_front(1);
+                    sent += 1;
+                }
+            }
+        }
+        if sent > 0 {
+            self.emit_status();
+        }
+    }
 }
 
 #[cfg(test)]
@@ -345,5 +518,122 @@ mod tests {
             .await;
         assert_eq!(service.status().lastfm.queued, 1);
         assert_eq!(service.status().listenbrainz.queued, 0, "disabled service must not enqueue");
+    }
+
+    #[tokio::test]
+    async fn retryable_failure_keeps_the_scrobble_queued() {
+        use wiremock::matchers::{method as http_method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(http_method("POST"))
+            .and(path("/"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({ "error": 16 })),
+            )
+            .mount(&server)
+            .await;
+
+        let store = Arc::new(MemoryCredentialStore::default());
+        store
+            .save(LASTFM_SERVICE, &StoredCredential { username: "v".into(), secret: "sk".into() })
+            .unwrap();
+        let service = ScrobblerService::new(
+            reqwest::Client::new(),
+            server.uri(),
+            "http://127.0.0.1:1",
+            store,
+            "key".into(),
+            "secret".into(),
+            true,
+            false,
+        );
+        service
+            .handle_intent(ScrobbleIntent::Scrobble { item: queue_item(), started_at: 1 })
+            .await;
+        service.flush_queues().await;
+        let status = service.status();
+        assert_eq!(status.lastfm.queued, 1, "16 must stay queued");
+        assert!(!status.lastfm.needs_reconnect);
+        assert!(status.lastfm.last_error.is_some());
+    }
+
+    #[tokio::test]
+    async fn a_successful_flush_drains_the_queue() {
+        use wiremock::matchers::{method as http_method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(http_method("POST"))
+            .and(path("/"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({ "scrobbles": {} })),
+            )
+            .mount(&server)
+            .await;
+
+        let store = Arc::new(MemoryCredentialStore::default());
+        store
+            .save(LASTFM_SERVICE, &StoredCredential { username: "v".into(), secret: "sk".into() })
+            .unwrap();
+        let service = ScrobblerService::new(
+            reqwest::Client::new(),
+            server.uri(),
+            "http://127.0.0.1:1",
+            store,
+            "key".into(),
+            "secret".into(),
+            true,
+            false,
+        );
+        service
+            .handle_intent(ScrobbleIntent::Scrobble { item: queue_item(), started_at: 1 })
+            .await;
+        service.flush_queues().await;
+        assert_eq!(service.status().lastfm.queued, 0);
+    }
+
+    #[tokio::test]
+    async fn an_invalid_session_marks_needs_reconnect_and_notifies_once() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use wiremock::matchers::{method as http_method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(http_method("POST"))
+            .and(path("/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({ "error": 9 })))
+            .mount(&server)
+            .await;
+
+        let store = Arc::new(MemoryCredentialStore::default());
+        store
+            .save(LASTFM_SERVICE, &StoredCredential { username: "v".into(), secret: "sk".into() })
+            .unwrap();
+        let service = ScrobblerService::new(
+            reqwest::Client::new(),
+            server.uri(),
+            "http://127.0.0.1:1",
+            store,
+            "key".into(),
+            "secret".into(),
+            true,
+            false,
+        );
+        let calls = Arc::new(AtomicUsize::new(0));
+        let counter = calls.clone();
+        service.set_auth_error_sink(Arc::new(move |_| {
+            counter.fetch_add(1, Ordering::SeqCst);
+        }));
+
+        service
+            .handle_intent(ScrobbleIntent::Scrobble { item: queue_item(), started_at: 1 })
+            .await;
+        service.flush_queues().await;
+        service.flush_queues().await;
+        let status = service.status();
+        assert!(status.lastfm.needs_reconnect);
+        assert_eq!(calls.load(Ordering::SeqCst), 1, "toast must fire once");
+        assert!(!status.listenbrainz.needs_reconnect, "other service untouched");
     }
 }
