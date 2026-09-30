@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { evaluate, metricsFor, readRuns } from "./check.mjs";
+import { evaluate, metricsFor, readRuns, unmatchedScenarios } from "./check.mjs";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -65,4 +65,18 @@ test("evaluate supports a minimum floor", () => {
   assert.equal(pass.ok, true);
   const fail = evaluate([{ scenario: "S8", metrics: { cache_hit_rate: 0.5 } }], config);
   assert.equal(fail.ok, false);
+});
+
+test("unmatchedScenarios treats explicit empty budgets as informational, not missing", () => {
+  const config = { S7: [], S1: [{ metric: "first_paint_ms", max: 1500 }] };
+  const runs = [{ scenario: "S7" }, { scenario: "S1" }, { scenario: "S9" }];
+  const { missing, informational } = unmatchedScenarios(runs, config);
+  assert.deepEqual(informational, ["S7"]);
+  assert.deepEqual(missing, ["S9"]);
+});
+
+test("explicit empty budgets yield ok with no results (informational exit path)", () => {
+  const { ok, results } = evaluate([{ scenario: "S7", metrics: {} }], { S7: [] });
+  assert.equal(ok, true);
+  assert.equal(results.length, 0);
 });

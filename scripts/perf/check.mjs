@@ -133,6 +133,16 @@ export function evaluate(aggregatedRuns, config) {
   return { ok: results.every((r) => r.status !== "fail"), results };
 }
 
+export function unmatchedScenarios(runs, config) {
+  const scenarios = [...new Set(runs.map((r) => r.scenario))];
+  return {
+    missing: scenarios.filter((s) => !Object.hasOwn(config, s)),
+    informational: scenarios.filter(
+      (s) => Object.hasOwn(config, s) && (config[s] ?? []).length === 0,
+    ),
+  };
+}
+
 function main() {
   const args = process.argv.slice(2);
   const dirFlag = args.indexOf("--dir");
@@ -152,8 +162,15 @@ function main() {
   const aggregated = [...aggregate(runs).values()].map((m) => ({ scenario: m.scenario, metrics: m }));
   const { ok, results } = evaluate(aggregated, config);
   if (results.length === 0) {
-    console.error(`no budgets matched ${runs.length} run(s) in ${dir}`);
-    process.exit(1);
+    const { missing, informational } = unmatchedScenarios(runs, config);
+    if (missing.length > 0 || informational.length === 0) {
+      console.error(`no budgets matched ${runs.length} run(s) in ${dir}`);
+      process.exit(1);
+    }
+    for (const scenario of informational) {
+      console.log(`INFO       ${scenario.padEnd(16)} no metric budgets (informational)`);
+    }
+    process.exit(0);
   }
   for (const result of results) {
     const value = result.value === undefined ? "n/a" : result.value.toFixed(1);

@@ -81,48 +81,103 @@ const until = async (expression, label, maxMs = 30000) => {
   throw new Error(`timed out waiting for ${label}`);
 };
 
-const scenarioFallback = async (id) => {
-  if (id.startsWith("S5")) {
-    await until("!!window.__perf", "__perf bridge");
-    await evaluate('window.__perf.goto("tracks")');
-    await until('!!document.querySelector("[data-perf-scroll]")', "track table");
-    await delay(3000);
-    for (let i = 0; i < 12; i++) {
-      await evaluate("window.__perf.scrollTracks(1200)");
-      await delay(600);
-    }
-    await delay(3000);
-  } else if (id.startsWith("S6")) {
-    await until("!!window.__perf", "__perf bridge");
-    await evaluate('window.__perf.goto("tracks")');
-    await until('!!document.querySelector("[data-perf-filter]")', "filter input");
-    await delay(5000); // let the full library load so filtering is over loaded rows
-    for (const query of ["a", "th", "the ", "the e", ""]) {
-      await evaluate(`window.__perf.setFilter(${JSON.stringify(query)})`);
-      await delay(800);
-    }
-    await delay(3000);
-  } else if (id === "S7") {
-    await until("!!window.__TAURI_INTERNALS__", "tauri internals");
-    const started = Date.now();
-    await evaluate(`(async () => {
-      const tracks = await window.__TAURI_INTERNALS__.invoke("get_favorite_tracks");
-      const items = tracks.map((t) => ({
-        track_id: t.id,
-        title: t.title,
-        artist: (t.artists ?? []).map((a) => a.name).join(", "),
-        album: t.album?.title ?? "",
-        duration_secs: t.duration,
-        cover: t.album?.cover ?? null,
-      }));
-      await window.__TAURI_INTERNALS__.invoke("play_tracks", { items, start: 0, shuffle: false });
-      return tracks.length;
-    })()`).then((count) => console.log(`S7 invoked play_tracks for ${count} tracks`));
-    console.log(`S7 command round-trip: ${Date.now() - started} ms`);
-    await delay(5000);
+const awaitLoggedIn = () =>
+  until(
+    '(async () => window.__TAURI_INTERNALS__ && (await window.__TAURI_INTERNALS__.invoke("auth_status")))()',
+    "login",
+    60000,
+  );
+
+const setUiMode = async (mode) => {
+  const viaBridge = await evaluate('typeof window.__perf?.setMode === "function"');
+  if (viaBridge) {
+    await evaluate(`window.__perf.setMode(${JSON.stringify(mode)})`);
   } else {
-    // Start-only scenarios (S1/S2 and manual ones): idle while marks accumulate.
-    await delay(Number(flag("--idle", "8000")));
+    await evaluate(`window.__TAURI_INTERNALS__.invoke("set_ui_mode", { mode: ${JSON.stringify(mode)} })`);
+  }
+};
+
+const scenarioFallback = async (id) => {
+  const targetMode = id.startsWith("S5-atmosphere")
+    ? "atmosphere"
+    : id.startsWith("S5") || id.startsWith("S6")
+      ? "instrument"
+      : null;
+  let originalMode = null;
+  if (targetMode) {
+    try {
+      originalMode = await evaluate(
+        'window.__TAURI_INTERNALS__.invoke("get_config").then((c) => c.ui.mode)',
+      );
+    } catch {
+      originalMode = null; // cannot restore -> leave the owner's setting untouched
+    }
+  }
+  let modeApplied = false;
+  const applyScenarioMode = async () => {
+    if (!targetMode || !originalMode || originalMode === targetMode || modeApplied) return;
+    modeApplied = true;
+    try {
+      await setUiMode(targetMode);
+    } catch (e) {
+      console.error(`mode switch to ${targetMode} failed: ${e.message}`);
+    }
+  };
+  try {
+    if (id.startsWith("S5")) {
+      await awaitLoggedIn();
+      await until("!!window.__perf", "__perf bridge");
+      await applyScenarioMode();
+      await evaluate('window.__perf.goto("tracks")');
+      await until('!!document.querySelector("[data-perf-scroll]")', "track table");
+      await delay(3000);
+      for (let i = 0; i < 12; i++) {
+        await evaluate("window.__perf.scrollTracks(1200)");
+        await delay(600);
+      }
+      await delay(3000);
+    } else if (id.startsWith("S6")) {
+      await awaitLoggedIn();
+      await until("!!window.__perf", "__perf bridge");
+      await applyScenarioMode();
+      await evaluate('window.__perf.goto("tracks")');
+      await until('!!document.querySelector("[data-perf-filter]")', "filter input");
+      await delay(5000); // let the full library load so filtering is over loaded rows
+      for (const query of ["a", "th", "the ", "the e", ""]) {
+        await evaluate(`window.__perf.setFilter(${JSON.stringify(query)})`);
+        await delay(800);
+      }
+      await delay(3000);
+    } else if (id === "S7") {
+      await awaitLoggedIn();
+      const started = Date.now();
+      await evaluate(`(async () => {
+        const tracks = await window.__TAURI_INTERNALS__.invoke("get_favorite_tracks");
+        const items = tracks.map((t) => ({
+          track_id: t.id,
+          title: t.title,
+          artist: (t.artists ?? []).map((a) => a.name).join(", "),
+          album: t.album?.title ?? "",
+          duration_secs: t.duration,
+          cover: t.album?.cover ?? null,
+        }));
+        await window.__TAURI_INTERNALS__.invoke("play_tracks", { items, start: 0, shuffle: false });
+        return tracks.length;
+      })()`).then((count) => console.log(`S7 invoked play_tracks for ${count} tracks`));
+      console.log(`S7 command round-trip: ${Date.now() - started} ms`);
+      await delay(5000);
+    } else {
+      // Start-only scenarios (S1/S2 and manual ones): idle while marks accumulate.
+      await delay(Number(flag("--idle", "8000")));
+    }
+  } finally {
+    if (modeApplied) {
+      try {
+        await setUiMode(originalMode);
+      } catch (e) {
+        console.error(`mode restore to ${originalMode} failed: ${e.message}`);
+      }
+    }
   }
 };
 

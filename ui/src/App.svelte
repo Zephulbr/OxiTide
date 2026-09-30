@@ -198,6 +198,7 @@
         input.dispatchEvent(new Event("input", { bubbles: true }));
         return true;
       },
+      setMode: (mode: "instrument" | "atmosphere") => appearance.setMode(mode),
     };
     (window as unknown as { __perf?: typeof bridge }).__perf = bridge;
     return () => {
