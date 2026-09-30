@@ -45,14 +45,21 @@ export function metricsFor(run) {
   const frames = new Map(); // mode -> number[]
   const longTasks = [];
   const memories = []; // {t_ms, mb}
+  const cacheDecisions = []; // 1 = hit, 0 = miss, in event order
   let advanceMax = 0;
   for (const line of run.lines) {
     if (line.kind === "mark") metrics[`${line.name}_ms`] = line.t_ms;
     if (line.kind === "ttfs") metrics.ttfs_ms = line.ms;
     if (line.kind === "memory") memories.push({ t: line.t_ms, mb: line.mb });
     if (line.kind === "audio") {
-      if (line.event === "cache_hit") metrics.cache_hits += 1;
-      if (line.event === "cache_miss") metrics.cache_misses += 1;
+      if (line.event === "cache_hit") {
+        metrics.cache_hits += 1;
+        cacheDecisions.push(1);
+      }
+      if (line.event === "cache_miss") {
+        metrics.cache_misses += 1;
+        cacheDecisions.push(0);
+      }
       if (line.event === "advance") advanceMax = Math.max(advanceMax, line.gap_ms ?? 0);
     }
     if (line.kind === "ui_metrics") {
@@ -73,12 +80,19 @@ export function metricsFor(run) {
   }
   for (const [mode, samples] of frames) {
     metrics[`frame_p95_ms:${mode}`] = Math.max(...samples.map((s) => s.p95));
+    const p99s = samples.map((s) => s.p99).filter((v) => typeof v === "number");
+    if (p99s.length > 0) metrics[`frame_p99_ms:${mode}`] = Math.max(...p99s);
   }
   if (longTasks.length > 0) {
     metrics.long_task_max_ms = Math.max(...longTasks.map((t) => t.max_ms));
   }
-  const totalCache = (metrics.cache_hits ?? 0) + (metrics.cache_misses ?? 0);
-  if (totalCache > 0) metrics.cache_hit_rate = (metrics.cache_hits ?? 0) / totalCache;
+  if (cacheDecisions.length > 0) {
+    const tail = cacheDecisions.slice(-10);
+    // S8: second-pass hit rate.
+    metrics.cache_hit_rate_last10 = tail.reduce((a, b) => a + b, 0) / tail.length;
+  }
+  const totalCache = metrics.cache_hits + metrics.cache_misses;
+  if (totalCache > 0) metrics.cache_hit_rate = metrics.cache_hits / totalCache;
   return metrics;
 }
 
@@ -104,6 +118,7 @@ export function aggregate(runs) {
       if (values.length === 0) continue;
       out[key] = p95(values);
       out[`${key}_mean`] = values.reduce((a, b) => a + b, 0) / values.length;
+      out[`${key}_min`] = Math.min(...values);
     }
     aggregated.set(scenario, out);
   }
@@ -116,7 +131,10 @@ export function evaluate(aggregatedRuns, config) {
     const budgets = config[run.scenario];
     if (!budgets) continue;
     for (const budget of budgets) {
-      const value = run.metrics[budget.metric];
+      const useMin = budget.min !== undefined;
+      const value = useMin
+        ? (run.metrics[`${budget.metric}_min`] ?? run.metrics[budget.metric])
+        : run.metrics[budget.metric];
       const maxOk = budget.max === undefined || (value !== undefined && value <= budget.max);
       const minOk = budget.min === undefined || (value !== undefined && value >= budget.min);
       const status =
@@ -126,6 +144,7 @@ export function evaluate(aggregatedRuns, config) {
         metric: budget.metric,
         value,
         max: budget.max ?? budget.min,
+        bound: useMin ? "min" : "max",
         status,
       });
     }
@@ -175,7 +194,7 @@ function main() {
   for (const result of results) {
     const value = result.value === undefined ? "n/a" : result.value.toFixed(1);
     console.log(
-      `${result.status.toUpperCase().padEnd(10)} ${result.scenario.padEnd(16)} ${result.metric.padEnd(28)} ${value}  (max ${result.max})`,
+      `${result.status.toUpperCase().padEnd(10)} ${result.scenario.padEnd(16)} ${result.metric.padEnd(28)} ${value}  (${result.bound} ${result.max})`,
     );
   }
   process.exit(ok ? 0 : 1);

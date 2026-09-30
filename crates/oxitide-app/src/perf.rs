@@ -50,8 +50,12 @@ pub struct PerfSession {
     run_id: String,
     scenario: String,
     jsonl_path: PathBuf,
+    /// Session-creation instant; `t_ms` adds `loader_offset_ms` to this.
     start: Instant,
     process_start_unix_ms: u128,
+    /// Milliseconds between process creation and session creation, so `t_ms`
+    /// stays process-relative (loader time included).
+    loader_offset_ms: u64,
     out: Mutex<BufWriter<File>>,
     marks: Mutex<Vec<PerfMark>>,
     counters: Mutex<Counters>,
@@ -70,13 +74,18 @@ impl PerfSession {
         let run_id = format!("{scenario}-{unix_secs}");
         let jsonl_path = dir.join(format!("{run_id}.jsonl"));
         let file = OpenOptions::new().create(true).append(true).open(&jsonl_path)?;
+        let process_start_unix_ms =
+            process_creation_unix_ms().unwrap_or_else(now_unix_ms);
+        let loader_offset_ms = now_unix_ms()
+            .saturating_sub(process_start_unix_ms)
+            .min(u64::MAX as u128) as u64;
         let session = Arc::new(PerfSession {
             run_id,
             scenario: scenario.to_string(),
             jsonl_path,
             start: Instant::now(),
-            process_start_unix_ms: process_creation_unix_ms()
-                .unwrap_or_else(now_unix_ms),
+            process_start_unix_ms,
+            loader_offset_ms,
             out: Mutex::new(BufWriter::new(file)),
             marks: Mutex::new(Vec::new()),
             counters: Mutex::new(Counters::default()),
@@ -108,7 +117,8 @@ impl PerfSession {
     }
 
     fn elapsed_ms(&self) -> u64 {
-        self.start.elapsed().as_millis().min(u64::MAX as u128) as u64
+        let session_ms = self.start.elapsed().as_millis().min(u64::MAX as u128) as u64;
+        self.loader_offset_ms.saturating_add(session_ms)
     }
 
     pub fn mark(&self, name: &str) {
@@ -476,6 +486,35 @@ mod tests {
         let snapshot = snapshot_for(None);
         assert!(!snapshot.active);
         assert!(snapshot.marks.is_empty());
+    }
+
+    #[test]
+    fn marks_are_process_relative_and_share_the_unix_base() {
+        let created = process_creation_unix_ms();
+        let before_session = now_unix_ms();
+        let dir = temp_dir("processbase");
+        let session = PerfSession::create_in(&dir, "S1").unwrap();
+        session.mark("config_loaded");
+        let text = std::fs::read_to_string(session.jsonl_path()).unwrap();
+        let lines: Vec<serde_json::Value> = text
+            .lines()
+            .map(|l| serde_json::from_str(l).expect("every line must be valid JSON"))
+            .collect();
+        let session_line = lines.iter().find(|l| l["kind"] == "session").unwrap();
+        let mark = lines.iter().find(|l| l["kind"] == "mark").unwrap();
+        let t_ms = mark["t_ms"].as_u64().unwrap() as u128;
+        if let Some(created) = created {
+            assert!(
+                t_ms >= before_session.saturating_sub(created),
+                "t_ms {t_ms} must include loader time (process age {})",
+                before_session.saturating_sub(created)
+            );
+        }
+        assert_eq!(
+            mark["unix_ms"].as_u64().unwrap() as u128,
+            session_line["unix_ms"].as_u64().unwrap() as u128 + t_ms,
+            "unix_ms must be process start plus t_ms"
+        );
     }
 
     #[cfg(windows)]

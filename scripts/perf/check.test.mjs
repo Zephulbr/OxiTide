@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { evaluate, metricsFor, readRuns, unmatchedScenarios } from "./check.mjs";
+import { aggregate, evaluate, metricsFor, readRuns, unmatchedScenarios } from "./check.mjs";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -44,6 +44,7 @@ test("metricsFor derives mark, ttfs, frame, and memory metrics", () => {
   assert.equal(metrics.memory_max_mb, 340);
   assert.equal(metrics.memory_drift_mb, 40);
   assert.equal(metrics["frame_p95_ms:instrument"], 10);
+  assert.equal(metrics["frame_p99_ms:instrument"], 12);
 });
 
 test("evaluate flags a budget breach and passes within budget", () => {
@@ -96,4 +97,38 @@ test("a run with no cache hits fails a cache_hits floor instead of going unmeasu
   });
   assert.equal(results[0].status, "fail");
   assert.equal(ok, false);
+});
+
+test("cache_hit_rate_last10 measures only the tail decisions", () => {
+  const events = [];
+  for (let i = 0; i < 5; i++) events.push({ kind: "audio", event: "cache_miss", track_id: i, t_ms: i });
+  for (let i = 0; i < 10; i++) events.push({ kind: "audio", event: "cache_hit", track_id: i, t_ms: 10 + i });
+  const file = runFile([{ kind: "session", run_id: "S8-1", scenario: "S8" }, ...events]);
+  const [run] = readRuns([file]);
+  const metrics = metricsFor(run);
+  assert.equal(metrics.cache_hits, 10);
+  assert.equal(metrics.cache_misses, 5);
+  assert.equal(metrics.cache_hit_rate, 10 / 15);
+  assert.equal(metrics.cache_hit_rate_last10, 1);
+});
+
+function hitFile(runId, hits, misses) {
+  const lines = [{ kind: "session", run_id: runId, scenario: "S8" }];
+  for (let i = 0; i < hits; i++) lines.push({ kind: "audio", event: "cache_hit", track_id: i, t_ms: i });
+  for (let i = 0; i < misses; i++) lines.push({ kind: "audio", event: "cache_miss", track_id: i, t_ms: 100 + i });
+  return runFile(lines);
+}
+
+test("min budgets use the minimum across runs while max budgets keep the p95", () => {
+  const files = [0, 2, 2, 2, 2].map((hits, i) => hitFile(`S8-${i}`, hits, 0));
+  const aggregated = [...aggregate(readRuns(files)).values()].map((m) => ({ scenario: m.scenario, metrics: m }));
+  const fail = evaluate(aggregated, { S8: [{ metric: "cache_hits", min: 1 }] });
+  assert.equal(fail.results[0].value, 0);
+  assert.equal(fail.results[0].status, "fail");
+  assert.equal(fail.ok, false);
+  const maxFail = evaluate(aggregated, { S8: [{ metric: "cache_hits", max: 1 }] });
+  assert.equal(maxFail.results[0].value, 2);
+  assert.equal(maxFail.results[0].status, "fail");
+  const maxPass = evaluate(aggregated, { S8: [{ metric: "cache_hits", max: 2 }] });
+  assert.equal(maxPass.results[0].status, "pass");
 });

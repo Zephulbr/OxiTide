@@ -1,25 +1,53 @@
 {
   "S1": [
     { "metric": "first_paint_ms", "max": 1500 },
-    { "metric": "ui_ready_ms", "max": 2500 }
+    { "metric": "ui_ready_ms", "max": 2500 },
+    { "metric": "memory_max_mb", "max": 300 },
+    { "metric": "long_task_max_ms", "max": 100 }
   ],
-  "S2": [{ "metric": "first_paint_ms", "max": 1000 }],
-  "S3-miss": [{ "metric": "ttfs_ms", "max": 2500 }],
+  "S2": [
+    { "metric": "first_paint_ms", "max": 1000 },
+    { "metric": "memory_max_mb", "max": 300 },
+    { "metric": "long_task_max_ms", "max": 100 }
+  ],
+  "S3-miss": [
+    { "metric": "ttfs_ms", "max": 2500 },
+    { "metric": "ttfs_ms_mean", "max": 1200 },
+    { "metric": "memory_max_mb", "max": 450 }
+  ],
   "S3-hit": [
     { "metric": "ttfs_ms", "max": 300 },
-    { "metric": "cache_hits", "min": 1 }
+    { "metric": "cache_hits", "min": 1 },
+    { "metric": "memory_max_mb", "max": 450 }
   ],
-  "S4": [{ "metric": "advance_max_gap_ms", "max": 100 }],
+  "S4": [
+    { "metric": "advance_max_gap_ms", "max": 100 },
+    { "metric": "memory_max_mb", "max": 450 }
+  ],
   "S5-instrument": [
     { "metric": "frame_p95_ms:instrument", "max": 16.7 },
-    { "metric": "long_task_max_ms", "max": 100 }
+    { "metric": "frame_p99_ms:instrument", "max": 33 },
+    { "metric": "long_task_max_ms", "max": 100 },
+    { "metric": "memory_max_mb", "max": 450 }
   ],
   "S5-atmosphere": [
     { "metric": "frame_p95_ms:atmosphere", "max": 20 },
-    { "metric": "long_task_max_ms", "max": 100 }
+    { "metric": "frame_p99_ms:atmosphere", "max": 33 },
+    { "metric": "long_task_max_ms", "max": 100 },
+    { "metric": "memory_max_mb", "max": 450 }
   ],
-  "S6": [{ "metric": "frame_p95_ms:instrument", "max": 16.7 }],
-  "S7": [],
-  "S8": [{ "metric": "cache_hit_rate", "min": 0.9 }],
-  "S9": [{ "metric": "memory_drift_mb", "max": 50 }]
+  "S6": [
+    { "metric": "frame_p95_ms:instrument", "max": 16.7 },
+    { "metric": "frame_p99_ms:instrument", "max": 33 },
+    { "metric": "memory_max_mb", "max": 450 }
+  ],
+  "S7": [{ "metric": "memory_max_mb", "max": 450 }],
+  "S8": [
+    { "metric": "cache_hit_rate_last10", "min": 0.9 },
+    { "metric": "memory_max_mb", "max": 450 }
+  ],
+  "S9": [
+    { "metric": "memory_drift_mb", "max": 50 },
+    { "metric": "memory_max_mb", "max": 450 }
+  ]
 }
