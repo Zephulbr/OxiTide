@@ -3,6 +3,7 @@
 mod artwork;
 mod commands;
 mod config;
+mod discord;
 mod lrc;
 mod lyrics;
 mod media_controls;
