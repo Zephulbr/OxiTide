@@ -27,8 +27,10 @@
   import ToastHost from "./lib/components/ToastHost.svelte";
   import ContextMenu from "./lib/components/ContextMenu.svelte";
   import Neko from "./lib/components/Neko.svelte";
+  import PerfHud from "./lib/components/PerfHud.svelte";
   import { createNav } from "./lib/nav.svelte";
   import { appearance, clampQueueWidth } from "./lib/appearance.svelte";
+  import { perf } from "./lib/perf.svelte";
   import { errorMessage } from "./lib/errors";
   import { menu } from "./lib/menu.svelte";
   import { escapeTarget, isShortcutHandled, matchShortcut, type ShortcutAction } from "./lib/shortcuts";
@@ -173,6 +175,34 @@
 
   $effect(() => {
     void appearance.init();
+  });
+
+  $effect(() => {
+    void perf.init();
+  });
+
+  $effect(() => {
+    if (!booting) perf.mark("ui_ready");
+  });
+
+  $effect(() => {
+    if (!perf.active) return;
+    const bridge = {
+      goto: (name: string) => nav.goto({ name } as never),
+      scrollTracks: (px: number) =>
+        document.querySelector<HTMLElement>("[data-perf-scroll]")?.scrollBy({ top: px }),
+      setFilter: (text: string) => {
+        const input = document.querySelector<HTMLInputElement>("[data-perf-filter]");
+        if (!input) return false;
+        input.value = text;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        return true;
+      },
+    };
+    (window as unknown as { __perf?: typeof bridge }).__perf = bridge;
+    return () => {
+      delete (window as unknown as { __perf?: unknown }).__perf;
+    };
   });
 
   $effect(() => {
@@ -422,3 +452,4 @@
 <svelte:window onkeydown={onKeydown} onmousedown={onSideButton} onauxclick={onSideButton} />
 <ToastHost {toasts} />
 <ContextMenu {menu} />
+<PerfHud />

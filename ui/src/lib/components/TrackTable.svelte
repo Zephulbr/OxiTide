@@ -136,6 +136,7 @@
   <input
     class="filter"
     placeholder="Filter tracks"
+    data-perf-filter
     value={view.filter}
     oninput={(event) => view.setFilter(event.currentTarget.value)}
   />
@@ -158,6 +159,7 @@
   style:max-height={fill ? "none" : maxHeight}
   bind:clientHeight={viewport}
   onscroll={onScroll}
+  data-perf-scroll
   use:trackDrag={drag}
 >
   <div

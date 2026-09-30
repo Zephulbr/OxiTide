@@ -76,6 +76,17 @@ export interface ScrobbleStatusDto {
   lastfm: ScrobbleServiceStatus;
   listenbrainz: ScrobbleServiceStatus;
 }
+export interface PerfMark { name: string; t_ms: number; unix_ms: number }
+export interface PerfSnapshot {
+  active: boolean;
+  run_id: string;
+  scenario: string;
+  marks: PerfMark[];
+  cache_hits: number;
+  cache_misses: number;
+  last_ttfs_ms: number | null;
+  memory_mb: number | null;
+}
 export interface CoverPalette {
   primary: string;
   on_primary: string;
@@ -275,6 +286,10 @@ export const api = {
   setExclusive: (enabled: boolean) => invoke<void>("set_exclusive", { enabled }),
   setExclusiveFallback: (mode: "shared" | "warn_only") => invoke<void>("set_exclusive_fallback", { mode }),
   getAudioStatus: () => invoke<AudioStatus>("get_audio_status"),
+  getPerfSnapshot: () => invoke<PerfSnapshot>("get_perf_snapshot"),
+  perfMark: (name: string) => invoke<void>("perf_mark", { name }),
+  perfSubmitUiMetrics: (metrics: Record<string, unknown>) =>
+    invoke<void>("perf_submit_ui_metrics", { metrics }),
   getConfig: () => invoke<Config>("get_config"),
   setAllowFallback: (enabled: boolean) => invoke<void>("set_allow_fallback", { enabled }),
   setQualityDisplay: (mode: "compact" | "detailed") =>
