@@ -27,6 +27,10 @@
   onkeydown={(event) => {
     if (event.key === "Escape") onclose();
   }}
+  onmousedown={(event) => {
+    if (!panel || !(event.target instanceof Node) || panel.contains(event.target)) return;
+    onclose();
+  }}
 />
 
 <div class="overlay">
@@ -48,8 +52,10 @@
     align-items: center;
     justify-content: center;
     background: rgb(0 0 0 / 0.5);
+    backdrop-filter: blur(var(--overlay-blur));
   }
   .panel {
+    --modal-fill: color-mix(in srgb, var(--accent) 8%, var(--surface-float));
     max-width: min(560px, 90vw);
     max-height: 80vh;
     overflow: auto;
@@ -57,7 +63,7 @@
     border: 1px solid transparent;
     border-radius: var(--radius-sheet);
     background:
-      linear-gradient(var(--surface-3), var(--surface-3)) padding-box,
+      linear-gradient(var(--modal-fill), var(--modal-fill)) padding-box,
       var(--edge-lit) border-box;
     backdrop-filter: blur(var(--glass-blur));
   }

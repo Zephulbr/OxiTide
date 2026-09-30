@@ -8,6 +8,7 @@
   --surface-float: rgba(23, 18, 14, 0.82);
   --glass-blur: 18px;
   --glass-veil: transparent; /* the blur alone frosts the sticky header */
+  --overlay-blur: 8px;
   --flag-backdrop-art: 1;
   --flag-glass-blur: 1;
   --flag-grain: 1;
@@ -25,6 +26,7 @@
   --edge-lit: linear-gradient(135deg, var(--line), var(--line));
   --glass-blur: 0px;
   --glass-veil: var(--surface-1); /* no blur: the veil is the frost */
+  --overlay-blur: 0px;
   --flag-backdrop-art: 0;
   --flag-glass-blur: 0;
   --flag-grain: 0;

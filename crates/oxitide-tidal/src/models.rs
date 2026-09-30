@@ -121,6 +121,14 @@ pub struct Playlist {
     /// square sizes 403 on the CDN), so square surfaces want this field.
     #[serde(default, rename = "squareImage")]
     pub square_image: Option<String>,
+    /// When TIDAL last recorded an item added to this playlist; `null` for
+    /// playlists that never had a track added. Drives the picker's
+    /// recent-activity ordering.
+    #[serde(default, rename = "lastItemAddedAt")]
+    pub last_item_added_at: Option<String>,
+    /// When TIDAL last recorded any playlist edit (rename, track change).
+    #[serde(default, rename = "lastUpdated")]
+    pub last_updated: Option<String>,
     #[serde(default, skip_serializing)]
     pub creator: Option<PlaylistCreator>,
     #[serde(skip_deserializing, default)]

@@ -19,6 +19,7 @@ export interface Playlist {
   uuid: string; title: string; description?: string | null;
   numberOfTracks: number; duration: number; image?: string | null;
   squareImage?: string | null;
+  lastItemAddedAt?: string | null; lastUpdated?: string | null;
   owned: boolean;
 }
 export interface PageItem { id: string; title: string; subtitle?: string | null; item_type: string; artwork?: string | null }

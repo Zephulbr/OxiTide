@@ -1618,6 +1618,8 @@ mod tests {
             duration: 0,
             image: None,
             square_image: Some("sq".into()),
+            last_item_added_at: None,
+            last_updated: None,
             creator: None,
             owned: true,
         };
@@ -1625,5 +1627,7 @@ mod tests {
         assert_eq!(value["numberOfTracks"], serde_json::json!(3));
         assert_eq!(value["uuid"], serde_json::json!("u"));
         assert_eq!(value["squareImage"], serde_json::json!("sq"));
+        assert_eq!(value["lastItemAddedAt"], serde_json::Value::Null);
+        assert_eq!(value["lastUpdated"], serde_json::Value::Null);
     }
 }

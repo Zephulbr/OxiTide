@@ -81,6 +81,7 @@
   /* Glass recipe knobs (mode stylesheets override) */
   --glass-blur: 0px;
   --glass-veil: var(--surface-1);
+  --overlay-blur: 0px;
 
   /* Dynamic-color crossfade (spec §5.2): @property-registered tokens
      interpolate natively; a new value interrupts the in-flight transition

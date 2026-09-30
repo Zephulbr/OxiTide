@@ -2,6 +2,8 @@
   import { untrack } from "svelte";
   import { api, type Playlist } from "../api";
   import type { PlaylistActions } from "../playlists.svelte";
+  import { sortPlaylistsByRecency } from "../playlistSort";
+  import Icon from "./Icon.svelte";
   import Modal from "./Modal.svelte";
 
   let {
@@ -15,6 +17,8 @@
   let name = $state("");
   let description = $state("");
   let formError = $state("");
+
+  let sorted = $derived(sortPlaylistsByRecency(playlists));
 
   $effect(() => {
     if (!actions.open || actions.step !== "list") return;
@@ -68,24 +72,31 @@
 {#if actions.open}
   <Modal title="Add to playlist" onclose={close}>
     {#if actions.step === "list"}
-      {#if loading}
-        <p class="muted">Loading…</p>
-      {:else if listError}
-        <p class="error">{listError}</p>
-        <button onclick={loadPlaylists}>Retry</button>
-      {:else}
-        <ul>
-          {#each playlists as p (p.uuid)}
-            <li>
-              <button disabled={actions.busy} onclick={() => void actions.addTo(p)}>
-                {p.title} <span class="muted">{p.numberOfTracks} tracks</span>
+      <div class="list-step">
+        <button class="new" disabled={actions.busy} onclick={() => actions.startCreate()}>
+          <span class="new-icon"><Icon name="plus" size={16} /></span>
+          New playlist…
+        </button>
+        <div class="sep" role="separator"></div>
+        <div class="list">
+          {#if loading}
+            <p class="muted pad">Loading…</p>
+          {:else if listError}
+            <p class="error pad">{listError}</p>
+            <button class="retry" onclick={loadPlaylists}>Retry</button>
+          {:else}
+            {#each sorted as p (p.uuid)}
+              <button class="row" disabled={actions.busy} onclick={() => void actions.addTo(p)}>
+                <span class="title">{p.title}</span>
+                <span class="count">
+                  {p.numberOfTracks} {p.numberOfTracks === 1 ? "track" : "tracks"}
+                </span>
               </button>
-            </li>
-          {/each}
-          {#if playlists.length === 0}<li class="muted">No playlists yet</li>{/if}
-        </ul>
-        <button disabled={actions.busy} onclick={() => actions.startCreate()}>New playlist…</button>
-      {/if}
+            {/each}
+            {#if playlists.length === 0}<p class="muted pad">No playlists yet</p>{/if}
+          {/if}
+        </div>
+      </div>
     {:else if actions.step === "create"}
       <form
         onsubmit={(event) => {
@@ -142,8 +153,74 @@
 {/if}
 
 <style>
-  ul {
-    padding-left: 18px;
+  .list-step {
+    display: flex;
+    flex-direction: column;
+    min-width: min(320px, 76vw);
+  }
+  .new,
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 9px 10px;
+    border: 0;
+    border-radius: var(--radius-control);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .new:hover:not(:disabled),
+  .row:hover:not(:disabled) {
+    background: var(--surface-2);
+  }
+  .new:disabled,
+  .row:disabled {
+    color: var(--text-muted);
+    cursor: default;
+  }
+  .new-icon {
+    display: grid;
+    place-items: center;
+    color: var(--text-muted);
+  }
+  .sep {
+    height: 1px;
+    margin: 6px 0;
+    background: var(--line);
+  }
+  .list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: min(50vh, 420px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .row .title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .row .count {
+    flex: none;
+    color: var(--text-muted);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .pad {
+    margin: 0;
+    padding: 9px 10px;
+  }
+  .retry {
+    align-self: flex-start;
+    margin: 0 10px 9px;
   }
   .dupes {
     max-height: 45vh;

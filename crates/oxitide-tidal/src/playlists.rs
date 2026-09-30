@@ -838,4 +838,33 @@ mod tests {
         let items = client(&server).user_playlists(50, 0).await.unwrap();
         assert!(items.iter().all(|playlist| playlist.owned));
     }
+
+    #[tokio::test]
+    async fn user_playlists_decodes_recency_timestamps() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/users/42/playlists"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [
+                    {"uuid": "a", "title": "A",
+                     "lastItemAddedAt": "2026-09-29T20:19:47.004+0000",
+                     "lastUpdated": "2026-09-29T20:19:47.004+0000"},
+                    {"uuid": "b", "title": "B", "lastItemAddedAt": null,
+                     "lastUpdated": "2025-01-02T03:04:05.000+0000"}
+                ],
+                "totalNumberOfItems": 2, "limit": 50, "offset": 0
+            })))
+            .mount(&server)
+            .await;
+        let items = client(&server).user_playlists(50, 0).await.unwrap();
+        assert_eq!(
+            items[0].last_item_added_at.as_deref(),
+            Some("2026-09-29T20:19:47.004+0000")
+        );
+        assert_eq!(items[1].last_item_added_at, None);
+        assert_eq!(
+            items[1].last_updated.as_deref(),
+            Some("2025-01-02T03:04:05.000+0000")
+        );
+    }
 }
