@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use crate::media_controls::{cover_url, PlayState, TrackMeta};
 
 pub const COVER_SIZE: u32 = 640;

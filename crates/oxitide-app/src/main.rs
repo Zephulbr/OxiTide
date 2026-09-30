@@ -323,6 +323,7 @@ fn main() {
             commands::set_start_in_mini,
             commands::set_oneko,
             commands::set_smtc,
+            commands::set_discord,
             commands::set_cache_max_size_mb,
             commands::set_cache_clear_on_exit,
             commands::get_logs_dir,

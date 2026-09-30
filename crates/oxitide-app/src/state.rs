@@ -40,6 +40,7 @@ pub struct AppState {
     pub lyrics: Mutex<Option<Arc<LyricsService>>>,
     pub scrobbler: Mutex<Option<Arc<ScrobblerService>>>,
     pub media: Mutex<Option<crate::media_controls::MediaSession>>,
+    pub discord: Mutex<Option<crate::discord::DiscordPresence>>,
     session_expired: AtomicBool,
     handle: Mutex<Option<AppHandle>>,
 }
@@ -141,6 +142,14 @@ impl AppState {
         self.media.lock().unwrap().take()
     }
 
+    pub fn set_discord(&self, service: crate::discord::DiscordPresence) {
+        *self.discord.lock().unwrap() = Some(service);
+    }
+
+    pub fn take_discord(&self) -> Option<crate::discord::DiscordPresence> {
+        self.discord.lock().unwrap().take()
+    }
+
     /// Remember the app handle so `notify_session_expired` can reach the UI.
     pub fn set_handle(&self, handle: AppHandle) {
         *self.handle.lock().unwrap() = Some(handle);
@@ -178,6 +187,7 @@ impl AppState {
 
     pub fn logout(&self) {
         let _ = self.take_media();
+        let _ = self.take_discord();
         *self.client.write().unwrap() = None;
         *self.player.write().unwrap() = None;
         self.clear_session_expired();

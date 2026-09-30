@@ -363,10 +363,11 @@ fn build_player(
     engine
         .handle(EngineCmd::SetVolume(config.audio.volume))
         .map_err(|e| e.to_string())?;
+    let state = app.state::<AppState>();
+    let _ = state.take_media();
+    let _ = state.take_discord();
     #[cfg(windows)]
-    let sender = {
-        let state = app.state::<AppState>();
-        let _ = state.take_media();
+    let smtc_sender = {
         let mut found = None;
         match app.get_webview_window("main").map(|window| window.hwnd()) {
             Some(Ok(hwnd)) => {
@@ -388,9 +389,17 @@ fn build_player(
         found
     };
     #[cfg(not(windows))]
-    let sender: Option<crate::media_controls::SessionSender> = {
-        let _ = app.state::<AppState>().take_media();
-        None
+    let smtc_sender: Option<crate::media_controls::SessionSender> = None;
+    let discord_sender = match crate::discord::DiscordPresence::spawn(config.integrations.discord) {
+        Ok(service) => {
+            let sender = service.sender();
+            state.set_discord(service);
+            Some(sender)
+        }
+        Err(e) => {
+            tracing::warn!("Discord presence disabled: {e}");
+            None
+        }
     };
 
     let handle = app.clone();
@@ -401,12 +410,17 @@ fn build_player(
                 handle.state::<AppState>().notify_session_expired();
             }
         }
-        if let Some(sender) = &sender {
+        if smtc_sender.is_some() || discord_sender.is_some() {
             let mut last = last_track.lock().unwrap();
             let (updates, next) = crate::media_controls::plan(&event, *last);
             *last = next;
             for update in updates {
-                sender.send(update);
+                if let Some(sender) = &smtc_sender {
+                    sender.send(update.clone());
+                }
+                if let Some(sender) = &discord_sender {
+                    sender.send(update);
+                }
             }
         }
         let _ = tauri::Emitter::emit(&handle, "playback_event", crate::player::to_dto(event));
@@ -1291,6 +1305,18 @@ pub fn set_smtc(state: State<'_, AppState>, enabled: bool) -> Result<(), String>
     state.set_config(config);
     if let Some(session) = state.media.lock().unwrap().as_ref() {
         session.set_enabled(enabled);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_discord(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    let mut config = state.config();
+    config.integrations.discord = enabled;
+    config.save()?;
+    state.set_config(config);
+    if let Some(service) = state.discord.lock().unwrap().as_ref() {
+        service.set_enabled(enabled);
     }
     Ok(())
 }
