@@ -8,6 +8,7 @@ pub mod error;
 pub mod fetch;
 pub mod mpd;
 pub mod output;
+pub mod perf;
 pub mod queue;
 pub mod seek;
 pub mod source;

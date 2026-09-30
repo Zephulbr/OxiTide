@@ -8,6 +8,7 @@ use crate::decode::{PcmBuffer, PcmFormat, PcmSink, StreamInfo};
 use crate::error::{Error, Result};
 use crate::fetch::{self, Fetcher, StreamBuffer};
 use crate::output::{AudioOutput, AudioOutputSpec, ExclusiveFallback, OutputMode, OutputStatus};
+use crate::perf::{AudioPerfEvent, PerfHook};
 use crate::queue::{Queue, QueueItem, RepeatMode};
 use crate::seek::{self, Discarder};
 use crate::source::{is_he_aac, StreamPlan};
@@ -99,6 +100,7 @@ struct Inner {
     exclusive_fallback: Mutex<ExclusiveFallback>,
     output_status: Mutex<OutputStatus>,
     listeners: Mutex<Vec<Listener>>,
+    perf_hook: Mutex<Option<PerfHook>>,
     /// Serializes queue mutation against the worker's advance decision.
     /// Lock ordering: always take `playback_lock` before `queue`.
     playback_lock: Mutex<()>,
@@ -160,6 +162,13 @@ fn emit(inner: &Arc<Inner>, event: EngineEvent) {
     }
 }
 
+fn fire_perf(inner: &Inner, event: AudioPerfEvent) {
+    let hook = inner.perf_hook.lock().unwrap().clone();
+    if let Some(hook) = hook {
+        hook(event);
+    }
+}
+
 impl Engine {
     /// `make_fetcher` runs on the playback worker thread, so a blocking fetcher
     /// (e.g. `HttpFetcher`'s `reqwest::blocking::Client`) is never built on the
@@ -186,6 +195,7 @@ impl Engine {
             exclusive_fallback: Mutex::new(ExclusiveFallback::Shared),
             output_status: Mutex::new(OutputStatus::default()),
             listeners: Mutex::new(Vec::new()),
+            perf_hook: Mutex::new(None),
             playback_lock: Mutex::new(()),
             generation: AtomicU64::new(0),
             paused: AtomicBool::new(false),
@@ -234,6 +244,12 @@ impl Engine {
     pub fn set_output_device(&self, device: Option<String>) {
         *self.inner.device_id.lock().unwrap() = device;
         self.restart_current_at_position();
+    }
+
+    /// Install a perf hook. Events are delivered on engine threads and must be
+    /// cheap; the engine never waits on the hook.
+    pub fn set_perf_hook(&self, hook: PerfHook) {
+        *self.inner.perf_hook.lock().unwrap() = Some(hook);
     }
 
     fn output_device(&self) -> Option<String> {
@@ -620,32 +636,39 @@ fn decode_track(
         )));
         return;
     }
+    fire_perf(&inner, AudioPerfEvent::DecodeStart { track_id: item.track_id });
     let cache_key = plan.manifest_hash.map(|manifest_hash| CacheKey {
         track_id: item.track_id,
         quality,
         manifest_hash,
     });
-    if let Some(key) = cache_key {
-        if let Some(path) = inner.cache.lookup(&key) {
-            inner.cache.protect(&key);
-            let result =
-                decode_from_file(&inner, &item, mode, generation, seek_ms, &tx, &path, &plan);
-            inner.cache.unprotect(&key);
-            match result {
-                Ok(()) => return,
-                Err(e) => {
-                    if inner.generation.load(Ordering::SeqCst) != generation {
-                        let _ = tx.send(Err(e));
-                        return;
+    match cache_key {
+        Some(key) => match inner.cache.lookup(&key) {
+            Some(path) => {
+                fire_perf(&inner, AudioPerfEvent::CacheHit { track_id: item.track_id });
+                inner.cache.protect(&key);
+                let result =
+                    decode_from_file(&inner, &item, mode, generation, seek_ms, &tx, &path, &plan);
+                inner.cache.unprotect(&key);
+                match result {
+                    Ok(()) => return,
+                    Err(e) => {
+                        if inner.generation.load(Ordering::SeqCst) != generation {
+                            let _ = tx.send(Err(e));
+                            return;
+                        }
+                        tracing::warn!(
+                            "cache entry {} failed to decode ({e}); refetching",
+                            key.file_name()
+                        );
+                        inner.cache.remove(&key);
+                        fire_perf(&inner, AudioPerfEvent::CacheMiss { track_id: item.track_id });
                     }
-                    tracing::warn!(
-                        "cache entry {} failed to decode ({e}); refetching",
-                        key.file_name()
-                    );
-                    inner.cache.remove(&key);
                 }
             }
-        }
+            None => fire_perf(&inner, AudioPerfEvent::CacheMiss { track_id: item.track_id }),
+        },
+        None => fire_perf(&inner, AudioPerfEvent::CacheMiss { track_id: item.track_id }),
     }
     decode_from_network(inner, item, mode, generation, seek_ms, tx, buffer, plan, cache_key);
 }
@@ -933,6 +956,8 @@ fn run_session(
             };
         }
     }
+    let mut first_write_of_track;
+    let mut last_write: Option<(u64, Instant)> = None;
     let mut stream = start_track(inner, first_item, mode, gen, seek_ms);
     let mut prefetch = start_prefetch(inner, mode, gen);
     // Unplayable tracks passed over since the last track that started; bounds
@@ -1041,6 +1066,7 @@ fn run_session(
         let channels = info.channels;
         let rate = info.sample_rate;
         let track_id = stream.item.track_id;
+        first_write_of_track = true;
         let mut last_volume = f32::from_bits(inner.volume.load(Ordering::SeqCst));
         loop {
             if inner.generation.load(Ordering::SeqCst) != gen {
@@ -1081,6 +1107,22 @@ fn run_session(
                         };
                     }
                     frames += buf.frames(channels);
+                    if first_write_of_track {
+                        first_write_of_track = false;
+                        fire_perf(inner, AudioPerfEvent::FirstPcm { track_id });
+                        if let Some((previous, at)) = last_write {
+                            if previous != track_id {
+                                fire_perf(
+                                    inner,
+                                    AudioPerfEvent::Advance {
+                                        track_id,
+                                        gap_ms: at.elapsed().as_millis() as u64,
+                                    },
+                                );
+                            }
+                        }
+                    }
+                    last_write = Some((track_id, Instant::now()));
                     if rate > 0 {
                         inner
                             .position_ms
@@ -2353,6 +2395,37 @@ mod tests {
 
         wait_for(|| !specs.lock().unwrap().is_empty());
         assert_eq!(specs.lock().unwrap()[0].device_id.as_deref(), Some("device-x"));
+    }
+
+    #[test]
+    fn perf_hook_receives_decode_cache_and_first_pcm_events() {
+        let (plan, files) = fixture_plan();
+        let events: Arc<Mutex<Vec<crate::perf::AudioPerfEvent>>> = Arc::new(Mutex::new(Vec::new()));
+        let sink = events.clone();
+        let engine = build_engine(
+            Arc::new(FakeResolver { plan }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(NullOutput::new()),
+            Quality::Lossless,
+        );
+        engine.set_perf_hook(Arc::new(move |event| sink.lock().unwrap().push(event)));
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+
+        wait_for(|| {
+            events
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|e| matches!(e, crate::perf::AudioPerfEvent::FirstPcm { track_id: 1 }))
+        });
+        let events = events.lock().unwrap().clone();
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, crate::perf::AudioPerfEvent::DecodeStart { track_id: 1 })));
+        // The fixture plan has no manifest hash, so it cannot be cached.
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, crate::perf::AudioPerfEvent::CacheMiss { track_id: 1 })));
     }
 
     /// An output that always reports the given status.
