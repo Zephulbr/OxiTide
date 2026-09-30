@@ -116,8 +116,12 @@ fn set_activity(
 
 fn worker(rx: Receiver<SessionUpdate>, enabled: Arc<AtomicBool>, shutdown: Arc<AtomicBool>) {
     if DISCORD_CLIENT_ID.is_empty() {
-        tracing::warn!("Discord presence disabled: client ID not configured");
+        let mut warned = false;
         while !shutdown.load(Ordering::Relaxed) {
+            if !warned && enabled.load(Ordering::Relaxed) {
+                tracing::warn!("Discord presence disabled: client ID not configured");
+                warned = true;
+            }
             std::thread::sleep(LOOP_TIMEOUT);
         }
         return;
@@ -135,10 +139,15 @@ fn worker(rx: Receiver<SessionUpdate>, enabled: Arc<AtomicBool>, shutdown: Arc<A
         }
         let want = enabled.load(Ordering::Relaxed);
         if !want && sent.shown {
-            if let Some(c) = client.as_mut() {
-                let _ = c.clear_activity();
+            match client.as_mut().map(|c| c.clear_activity()) {
+                Some(Ok(())) => sent = Sent::NEVER,
+                Some(Err(e)) => {
+                    tracing::debug!("Discord presence clear failed: {e}");
+                    client = None;
+                    next_connect = Instant::now() + SEND_FAILURE_DELAY;
+                }
+                None => sent = Sent::NEVER,
             }
-            sent = Sent::NEVER;
         }
         if want && client.is_none() && Instant::now() >= next_connect {
             let mut fresh = DiscordIpcClient::new(DISCORD_CLIENT_ID);
@@ -189,7 +198,10 @@ fn worker(rx: Receiver<SessionUpdate>, enabled: Arc<AtomicBool>, shutdown: Arc<A
                             sent = Sent {
                                 track_id: desired.track.as_ref().map(|track| track.track_id),
                                 play: desired.play,
-                                start_ms: spec.timestamps.map(|(start, _)| start).unwrap_or(now),
+                                start_ms: spec
+                                    .timestamps
+                                    .map(|(start, _)| start)
+                                    .unwrap_or(now - desired.position_ms as i64),
                                 at_ms: now,
                                 shown: true,
                             };
@@ -222,6 +234,8 @@ mod tests {
     fn disabled_service_spawns_sends_and_drops() {
         let service = DiscordPresence::spawn(false).expect("spawn");
         service.sender().send(SessionUpdate::Playback(PlayState::Paused));
+        let started = Instant::now();
         drop(service);
+        assert!(started.elapsed() < Duration::from_secs(1));
     }
 }

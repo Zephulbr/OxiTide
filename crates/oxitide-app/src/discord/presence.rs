@@ -55,6 +55,14 @@ pub fn clip(text: &str) -> String {
     out
 }
 
+fn min_len2(text: String) -> String {
+    if text.chars().count() < 2 {
+        format!("{text} ")
+    } else {
+        text
+    }
+}
+
 pub fn track_url(track_id: u64) -> String {
     format!("https://tidal.com/track/{track_id}")
 }
@@ -99,10 +107,10 @@ pub fn assemble(
         None
     };
     Some(ActivitySpec {
-        details,
-        state,
+        details: min_len2(details),
+        state: min_len2(state),
         large_image,
-        large_text,
+        large_text: min_len2(large_text),
         small_image: "logo",
         small_text: "OxiTide",
         timestamps,
@@ -240,6 +248,27 @@ mod tests {
     #[test]
     fn track_url_shape() {
         assert_eq!(track_url(42), "https://tidal.com/track/42");
+    }
+
+    #[test]
+    fn single_character_fields_are_padded() {
+        let mut track = meta(7, Some("2fa8b7a6-9d5b-4a1e-9f0a-4a1e9f0a4a1e"));
+        track.title = "A".into();
+        track.artist = "B".into();
+        track.album = "C".into();
+        let spec = assemble(Some(&track), PlayState::Playing, 0, NOW).unwrap();
+        assert_eq!(spec.details, "A ");
+        assert_eq!(spec.state, "B ");
+        assert_eq!(spec.large_text, "C ");
+    }
+
+    #[test]
+    fn cover_with_empty_album_falls_back_on_hover_text() {
+        let mut track = meta(7, Some("2fa8b7a6-9d5b-4a1e-9f0a-4a1e9f0a4a1e"));
+        track.album = String::new();
+        let spec = assemble(Some(&track), PlayState::Playing, 0, NOW).unwrap();
+        assert!(spec.large_image.starts_with("https://resources.tidal.com"));
+        assert_eq!(spec.large_text, "OxiTide");
     }
 
     #[test]
