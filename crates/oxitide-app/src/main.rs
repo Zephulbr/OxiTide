@@ -8,6 +8,7 @@ mod lrc;
 mod lyrics;
 mod media_controls;
 mod palette;
+pub mod perf;
 mod player;
 mod scheme;
 mod scrobble;

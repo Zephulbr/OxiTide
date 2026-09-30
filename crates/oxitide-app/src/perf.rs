@@ -1,0 +1,487 @@
+//! Performance harness core: process-start milestones, audio/cache counters,
+//! memory samples, and the JSONL report sink for a perf session.
+//!
+//! Inactive unless `OXITIDE_PERF_SCENARIO` is set at launch. In normal runs
+//! nothing is written and the per-event cost is a single `OnceLock` read.
+
+use std::fs::{File, OpenOptions};
+use std::io::{BufWriter, Write};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+use oxitide_audio::perf::AudioPerfEvent;
+use serde::Serialize;
+
+pub const SCENARIO_ENV: &str = "OXITIDE_PERF_SCENARIO";
+pub const DIR_ENV: &str = "OXITIDE_PERF_DIR";
+
+static SESSION: OnceLock<Arc<PerfSession>> = OnceLock::new();
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PerfMark {
+    pub name: String,
+    /// Milliseconds since process creation (monotonic within the run).
+    pub t_ms: u64,
+    /// Wall-clock time of the mark.
+    pub unix_ms: u128,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PerfSnapshot {
+    pub active: bool,
+    pub run_id: String,
+    pub scenario: String,
+    pub marks: Vec<PerfMark>,
+    pub cache_hits: u64,
+    pub cache_misses: u64,
+    pub last_ttfs_ms: Option<u64>,
+    pub memory_mb: Option<u64>,
+}
+
+#[derive(Default)]
+struct Counters {
+    cache_hits: u64,
+    cache_misses: u64,
+    last_ttfs_ms: Option<u64>,
+}
+
+pub struct PerfSession {
+    run_id: String,
+    scenario: String,
+    jsonl_path: PathBuf,
+    start: Instant,
+    process_start_unix_ms: u128,
+    out: Mutex<BufWriter<File>>,
+    marks: Mutex<Vec<PerfMark>>,
+    counters: Mutex<Counters>,
+    play_pending: Mutex<Option<Instant>>,
+}
+
+impl PerfSession {
+    /// Create the run file under `dir`. Fails cleanly when `dir` cannot be
+    /// created or the run file cannot be opened.
+    pub fn create_in(dir: &Path, scenario: &str) -> std::io::Result<Arc<PerfSession>> {
+        std::fs::create_dir_all(dir)?;
+        let unix_secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let run_id = format!("{scenario}-{unix_secs}");
+        let jsonl_path = dir.join(format!("{run_id}.jsonl"));
+        let file = OpenOptions::new().create(true).append(true).open(&jsonl_path)?;
+        let session = Arc::new(PerfSession {
+            run_id,
+            scenario: scenario.to_string(),
+            jsonl_path,
+            start: Instant::now(),
+            process_start_unix_ms: process_creation_unix_ms()
+                .unwrap_or_else(now_unix_ms),
+            out: Mutex::new(BufWriter::new(file)),
+            marks: Mutex::new(Vec::new()),
+            counters: Mutex::new(Counters::default()),
+            play_pending: Mutex::new(None),
+        });
+        session.write(serde_json::json!({
+            "kind": "session",
+            "run_id": session.run_id,
+            "scenario": session.scenario,
+            "unix_ms": session.process_start_unix_ms,
+        }));
+        Ok(session)
+    }
+
+    pub fn jsonl_path(&self) -> &Path {
+        &self.jsonl_path
+    }
+
+    fn write(&self, mut value: serde_json::Value) {
+        if let serde_json::Value::Object(map) = &mut value {
+            map.insert("run_id".into(), serde_json::Value::String(self.run_id.clone()));
+        }
+        let mut out = self.out.lock().unwrap();
+        let mut line = value.to_string();
+        line.push('\n');
+        if let Err(e) = out.write_all(line.as_bytes()).and_then(|()| out.flush()) {
+            tracing::warn!("perf write failed: {e}");
+        }
+    }
+
+    fn elapsed_ms(&self) -> u64 {
+        self.start.elapsed().as_millis().min(u64::MAX as u128) as u64
+    }
+
+    pub fn mark(&self, name: &str) {
+        let t_ms = self.elapsed_ms();
+        let unix_ms = self.process_start_unix_ms + t_ms as u128;
+        let mark = PerfMark { name: name.to_string(), t_ms, unix_ms };
+        self.marks.lock().unwrap().push(mark.clone());
+        self.write(serde_json::json!({
+            "kind": "mark",
+            "name": mark.name,
+            "t_ms": mark.t_ms,
+            "unix_ms": mark.unix_ms,
+        }));
+    }
+
+    /// Called by the play commands so the next `FirstPcm` yields a TTFS.
+    pub fn note_play_command(&self) {
+        *self.play_pending.lock().unwrap() = Some(Instant::now());
+    }
+
+    pub fn audio_event(&self, event: AudioPerfEvent) {
+        let mut counters = self.counters.lock().unwrap();
+        match &event {
+            AudioPerfEvent::CacheHit { .. } => counters.cache_hits += 1,
+            AudioPerfEvent::CacheMiss { .. } => counters.cache_misses += 1,
+            AudioPerfEvent::FirstPcm { .. } => {
+                if let Some(started) = self.play_pending.lock().unwrap().take() {
+                    // A pending play that never produced audio (pause toggles,
+                    // errors) must not pair with a much later first PCM.
+                    if started.elapsed() <= Duration::from_secs(30) {
+                        let ms = started.elapsed().as_millis().min(u64::MAX as u128) as u64;
+                        counters.last_ttfs_ms = Some(ms);
+                        self.write(serde_json::json!({
+                            "kind": "ttfs",
+                            "ms": ms,
+                            "t_ms": self.elapsed_ms(),
+                        }));
+                    }
+                }
+            }
+            _ => {}
+        }
+        let (kind, track_id, gap_ms) = match &event {
+            AudioPerfEvent::DecodeStart { track_id } => ("decode_start", *track_id, None),
+            AudioPerfEvent::CacheHit { track_id } => ("cache_hit", *track_id, None),
+            AudioPerfEvent::CacheMiss { track_id } => ("cache_miss", *track_id, None),
+            AudioPerfEvent::FirstPcm { track_id } => ("first_pcm", *track_id, None),
+            AudioPerfEvent::Advance { track_id, gap_ms } => ("advance", *track_id, Some(*gap_ms)),
+        };
+        self.write(serde_json::json!({
+            "kind": "audio",
+            "event": kind,
+            "track_id": track_id,
+            "gap_ms": gap_ms,
+            "t_ms": self.elapsed_ms(),
+        }));
+    }
+
+    pub fn ui_metrics(&self, metrics: serde_json::Value) {
+        self.write(serde_json::json!({
+            "kind": "ui_metrics",
+            "t_ms": self.elapsed_ms(),
+            "metrics": metrics,
+        }));
+    }
+
+    pub fn write_memory_sample(&self) {
+        if let Some(mb) = process_tree_memory_mb() {
+            self.write(serde_json::json!({
+                "kind": "memory",
+                "mb": mb,
+                "t_ms": self.elapsed_ms(),
+            }));
+        }
+    }
+
+    pub fn snapshot(&self) -> PerfSnapshot {
+        let counters = self.counters.lock().unwrap();
+        PerfSnapshot {
+            active: true,
+            run_id: self.run_id.clone(),
+            scenario: self.scenario.clone(),
+            marks: self.marks.lock().unwrap().clone(),
+            cache_hits: counters.cache_hits,
+            cache_misses: counters.cache_misses,
+            last_ttfs_ms: counters.last_ttfs_ms,
+            memory_mb: process_tree_memory_mb(),
+        }
+    }
+}
+
+/// Start the session from the environment. `None` (with no side effects) when
+/// `OXITIDE_PERF_SCENARIO` is unset; a warning and `None` when the directory is
+/// unusable.
+pub fn install() -> Option<Arc<PerfSession>> {
+    let scenario = std::env::var(SCENARIO_ENV)
+        .ok()
+        .filter(|s| !s.trim().is_empty())?;
+    let dir = std::env::var(DIR_ENV)
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .map(PathBuf::from)
+        .or_else(default_dir)?;
+    match PerfSession::create_in(&dir, &scenario) {
+        Ok(session) => {
+            tracing::info!("perf session {} -> {}", session.run_id, dir.display());
+            std::thread::Builder::new()
+                .name("oxitide-perf-mem".into())
+                .spawn({
+                    let session = session.clone();
+                    move || loop {
+                        std::thread::sleep(Duration::from_secs(2));
+                        session.write_memory_sample();
+                    }
+                })
+                .ok();
+            let _ = SESSION.set(session.clone());
+            Some(session)
+        }
+        Err(e) => {
+            tracing::warn!("perf session disabled: {e}");
+            None
+        }
+    }
+}
+
+pub fn session() -> Option<&'static Arc<PerfSession>> {
+    SESSION.get()
+}
+
+pub fn mark(name: &str) {
+    if let Some(session) = session() {
+        session.mark(name);
+    }
+}
+
+pub fn note_play_command() {
+    if let Some(session) = session() {
+        session.note_play_command();
+    }
+}
+
+pub fn audio_event(event: AudioPerfEvent) {
+    if let Some(session) = session() {
+        session.audio_event(event);
+    }
+}
+
+pub fn ui_metrics(metrics: serde_json::Value) {
+    if let Some(session) = session() {
+        session.ui_metrics(metrics);
+    }
+}
+
+pub fn snapshot() -> PerfSnapshot {
+    snapshot_for(session())
+}
+
+fn snapshot_for(session: Option<&Arc<PerfSession>>) -> PerfSnapshot {
+    session.map(|s| s.snapshot()).unwrap_or(PerfSnapshot {
+        active: false,
+        run_id: String::new(),
+        scenario: String::new(),
+        marks: Vec::new(),
+        cache_hits: 0,
+        cache_misses: 0,
+        last_ttfs_ms: None,
+        memory_mb: None,
+    })
+}
+
+#[cfg(debug_assertions)]
+fn default_dir() -> Option<PathBuf> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    Some(root.join(".superpowers/perf/runs"))
+}
+
+#[cfg(not(debug_assertions))]
+fn default_dir() -> Option<PathBuf> {
+    None
+}
+
+fn now_unix_ms() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0)
+}
+
+/// Windows: the process creation time in unix milliseconds from
+/// `GetProcessTimes`; `None` when unavailable.
+#[cfg(windows)]
+fn process_creation_unix_ms() -> Option<u128> {
+    use windows::Win32::Foundation::FILETIME;
+    use windows::Win32::System::Threading::{GetCurrentProcess, GetProcessTimes};
+
+    let mut creation = FILETIME::default();
+    let mut exit = FILETIME::default();
+    let mut kernel = FILETIME::default();
+    let mut user = FILETIME::default();
+    unsafe {
+        GetProcessTimes(GetCurrentProcess(), &mut creation, &mut exit, &mut kernel, &mut user)
+            .ok()?;
+    }
+    let ticks = ((creation.dwHighDateTime as u64) << 32) | creation.dwLowDateTime as u64;
+    // FILETIME counts 100 ns intervals since 1601-01-01; unix epoch offset:
+    const UNIX_EPOCH_FILETIME_TICKS: u64 = 116_444_736_000_000_000;
+    if ticks < UNIX_EPOCH_FILETIME_TICKS {
+        return None;
+    }
+    Some(((ticks - UNIX_EPOCH_FILETIME_TICKS) / 10_000) as u128)
+}
+
+#[cfg(not(windows))]
+fn process_creation_unix_ms() -> Option<u128> {
+    None
+}
+
+/// Working set of this process plus all descendant processes (the WebView2
+/// helpers), in MiB. Windows only; `None` elsewhere.
+#[cfg(windows)]
+fn process_tree_memory_mb() -> Option<u64> {
+    use windows::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
+    use windows::Win32::System::ProcessStatus::{
+        GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS,
+    };
+    use windows::Win32::System::Threading::{
+        OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ,
+    };
+
+    let self_pid = std::process::id();
+    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) }.ok()?;
+    let mut entry = PROCESSENTRY32W {
+        dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+        ..Default::default()
+    };
+    let mut parents: Vec<(u32, u32)> = Vec::new();
+    unsafe {
+        if Process32FirstW(snapshot, &mut entry).is_ok() {
+            loop {
+                parents.push((entry.th32ProcessID, entry.th32ParentProcessID));
+                if Process32NextW(snapshot, &mut entry).is_err() {
+                    break;
+                }
+            }
+        }
+        let _ = CloseHandle(snapshot);
+    }
+    let is_descendant = |pid: u32| {
+        let mut current = pid;
+        for _ in 0..8 {
+            if current == self_pid {
+                return true;
+            }
+            match parents.iter().find(|(p, _)| *p == current) {
+                Some((_, parent)) if *parent != 0 => current = *parent,
+                _ => return false,
+            }
+        }
+        false
+    };
+    let mut total: u64 = 0;
+    for &(pid, _) in &parents {
+        if !is_descendant(pid) {
+            continue;
+        }
+        let handle: HANDLE =
+            match unsafe { OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, pid) } {
+                Ok(handle) => handle,
+                Err(_) => continue,
+            };
+        let mut counters = PROCESS_MEMORY_COUNTERS::default();
+        let ok = unsafe {
+            GetProcessMemoryInfo(
+                handle,
+                &mut counters,
+                std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32,
+            )
+        };
+        let _ = unsafe { CloseHandle(handle) };
+        if ok.is_ok() {
+            total += counters.WorkingSetSize as u64;
+        }
+    }
+    Some(total / (1024 * 1024))
+}
+
+#[cfg(not(windows))]
+fn process_tree_memory_mb() -> Option<u64> {
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use oxitide_audio::perf::AudioPerfEvent;
+
+    fn temp_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir()
+            .join(format!("oxitide-perf-test-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        dir
+    }
+
+    #[test]
+    fn run_id_contains_the_scenario() {
+        let session = PerfSession::create_in(&temp_dir("runid"), "S1").unwrap();
+        assert!(session.run_id.starts_with("S1-"));
+    }
+
+    #[test]
+    fn marks_are_flushed_as_parseable_jsonl() {
+        let dir = temp_dir("marks");
+        let session = PerfSession::create_in(&dir, "S1").unwrap();
+        session.mark("config_loaded");
+        session.mark("window_shown");
+        let text = std::fs::read_to_string(session.jsonl_path()).unwrap();
+        let lines: Vec<serde_json::Value> = text
+            .lines()
+            .map(|l| serde_json::from_str(l).expect("every line must be valid JSON"))
+            .collect();
+        assert_eq!(lines[0]["kind"], "session");
+        assert_eq!(lines[1]["kind"], "mark");
+        assert_eq!(lines[1]["name"], "config_loaded");
+        assert_eq!(lines[2]["name"], "window_shown");
+        assert!(lines[1]["t_ms"].as_u64().is_some());
+    }
+
+    #[test]
+    fn first_pcm_after_a_play_command_records_ttfs() {
+        let session = PerfSession::create_in(&temp_dir("ttfs"), "S3-hit").unwrap();
+        session.note_play_command();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        session.audio_event(AudioPerfEvent::FirstPcm { track_id: 7 });
+        let snapshot = session.snapshot();
+        let ttfs = snapshot.last_ttfs_ms.expect("ttfs recorded");
+        assert!(ttfs >= 5, "ttfs should include the sleep, got {ttfs}");
+    }
+
+    #[test]
+    fn audio_events_count_cache_hits_and_misses() {
+        let session = PerfSession::create_in(&temp_dir("counters"), "S8").unwrap();
+        session.audio_event(AudioPerfEvent::CacheHit { track_id: 1 });
+        session.audio_event(AudioPerfEvent::CacheMiss { track_id: 2 });
+        session.audio_event(AudioPerfEvent::CacheMiss { track_id: 3 });
+        let snapshot = session.snapshot();
+        assert_eq!(snapshot.cache_hits, 1);
+        assert_eq!(snapshot.cache_misses, 2);
+    }
+
+    #[test]
+    fn create_in_fails_when_the_path_is_a_file() {
+        let file = temp_dir("file");
+        std::fs::write(&file, b"not a dir").unwrap();
+        assert!(PerfSession::create_in(&file, "S1").is_err());
+        let _ = std::fs::remove_file(&file);
+    }
+
+    #[test]
+    fn snapshot_without_a_session_is_inactive() {
+        let snapshot = snapshot_for(None);
+        assert!(!snapshot.active);
+        assert!(snapshot.marks.is_empty());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn process_tree_memory_is_positive() {
+        let mb = process_tree_memory_mb().expect("measurement available on Windows");
+        assert!(mb > 0, "expected a positive working set, got {mb}");
+    }
+}
