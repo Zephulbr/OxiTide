@@ -41,7 +41,7 @@ export function readRuns(files) {
 }
 
 export function metricsFor(run) {
-  const metrics = { scenario: run.scenario };
+  const metrics = { scenario: run.scenario, cache_hits: 0, cache_misses: 0 };
   const frames = new Map(); // mode -> number[]
   const longTasks = [];
   const memories = []; // {t_ms, mb}
@@ -51,8 +51,8 @@ export function metricsFor(run) {
     if (line.kind === "ttfs") metrics.ttfs_ms = line.ms;
     if (line.kind === "memory") memories.push({ t: line.t_ms, mb: line.mb });
     if (line.kind === "audio") {
-      if (line.event === "cache_hit") metrics.cache_hits = (metrics.cache_hits ?? 0) + 1;
-      if (line.event === "cache_miss") metrics.cache_misses = (metrics.cache_misses ?? 0) + 1;
+      if (line.event === "cache_hit") metrics.cache_hits += 1;
+      if (line.event === "cache_miss") metrics.cache_misses += 1;
       if (line.event === "advance") advanceMax = Math.max(advanceMax, line.gap_ms ?? 0);
     }
     if (line.kind === "ui_metrics") {

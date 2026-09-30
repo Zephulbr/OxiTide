@@ -119,8 +119,6 @@ const getFavoriteTracks = () => invoke("get_favorite_tracks");
 
 const playItems = (items, args = {}) => invoke("play_tracks", { items, start: 0, shuffle: false, ...args });
 
-const getPlaybackState = () => invoke("get_playback_state");
-
 const awaitPlaying = (label = "playback", maxMs = 30000) =>
   until(
     '(async () => { const s = await window.__TAURI_INTERNALS__.invoke("get_playback_state"); return s.playing && s.position_ms > 0; })()',
@@ -234,29 +232,28 @@ const scenarioFallback = async (id) => {
       await delay(2000);
     } else if (id.startsWith("S4")) {
       await awaitLoggedIn();
-      const items = requireTracks(await getFavoriteTracks(), 3).slice(0, 3).map(trackToQueueItem);
+      await invoke("set_repeat", { mode: "off" });
+      const items = requireTracks(await getFavoriteTracks(), 3)
+        .slice()
+        .sort((a, b) => (a.duration ?? 0) - (b.duration ?? 0))
+        .slice(0, 3)
+        .map(trackToQueueItem);
+      const boundSecs = items[0].duration_secs + items[1].duration_secs + 90;
+      console.log(
+        `S4: tracks=[${items.map((i) => `${i.track_id}:${i.duration_secs}s`).join(", ")}] two-transition bound=${boundSecs}s`,
+      );
       await playItems(items);
       await until(
         `(async () => { const s = await window.__TAURI_INTERNALS__.invoke("get_playback_state"); return s.playing && !!s.current && s.current.track_id === ${JSON.stringify(items[0].track_id)}; })()`,
         `S4 start track ${items[0].track_id}`,
         30000,
       );
-      for (let i = 1; i < items.length; i++) {
-        const state = await getPlaybackState();
-        if (state.duration_ms > 3000) {
-          await invoke("seek", { positionMs: state.duration_ms - 2000 });
-        }
-        try {
-          await awaitCurrentTrack(items[i].track_id, `S4 advance to track ${items[i].track_id}`, 30000);
-        } catch {
-          await awaitCurrentTrack(
-            items[i].track_id,
-            `S4 natural advance to track ${items[i].track_id}`,
-            Math.max(30000, state.duration_ms + 30000),
-          );
-        }
-        await delay(1500);
-      }
+      await awaitCurrentTrack(
+        items[2].track_id,
+        `S4 two natural transitions to track ${items[2].track_id}`,
+        boundSecs * 1000,
+      );
+      await delay(1500);
     } else if (id.startsWith("S8")) {
       await awaitLoggedIn();
       const originalQuality = await evaluate(

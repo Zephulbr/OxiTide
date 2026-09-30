@@ -80,3 +80,20 @@ test("explicit empty budgets yield ok with no results (informational exit path)"
   assert.equal(ok, true);
   assert.equal(results.length, 0);
 });
+
+test("a run with no cache hits fails a cache_hits floor instead of going unmeasured", () => {
+  const file = runFile([
+    { kind: "session", run_id: "S3-hit-2", scenario: "S3-hit" },
+    { kind: "ttfs", ms: 260, t_ms: 900 },
+    { kind: "audio", event: "cache_miss", track_id: 1, t_ms: 890 },
+  ]);
+  const [run] = readRuns([file]);
+  const metrics = metricsFor(run);
+  assert.equal(metrics.cache_hits, 0);
+  assert.equal(metrics.cache_misses, 1);
+  const { ok, results } = evaluate([{ scenario: "S3-hit", metrics }], {
+    "S3-hit": [{ metric: "cache_hits", min: 1 }],
+  });
+  assert.equal(results[0].status, "fail");
+  assert.equal(ok, false);
+});
