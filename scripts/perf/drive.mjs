@@ -107,7 +107,15 @@ const scenarioFallback = async (id) => {
     const started = Date.now();
     await evaluate(`(async () => {
       const tracks = await window.__TAURI_INTERNALS__.invoke("get_favorite_tracks");
-      await window.__TAURI_INTERNALS__.invoke("play_tracks", { items: tracks, start: 0, shuffle: false });
+      const items = tracks.map((t) => ({
+        track_id: t.id,
+        title: t.title,
+        artist: (t.artists ?? []).map((a) => a.name).join(", "),
+        album: t.album?.title ?? "",
+        duration_secs: t.duration,
+        cover: t.album?.cover ?? null,
+      }));
+      await window.__TAURI_INTERNALS__.invoke("play_tracks", { items, start: 0, shuffle: false });
       return tracks.length;
     })()`).then((count) => console.log(`S7 invoked play_tracks for ${count} tracks`));
     console.log(`S7 command round-trip: ${Date.now() - started} ms`);
