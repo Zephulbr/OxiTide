@@ -1,9 +1,9 @@
 # Track 3 — scripted perf baseline
 
 - **Date:** 2026-09-30
-- **Build:** `track3-harness` worktree, debug build (`target/debug/oxitide-app.exe`, HEAD `c67fb5e` plus this commit's S4 natural-transition rewrite and `S3-hit` cache-hit floor) served by the Vite dev server on port 1420; scenarios driven over the WebView2 CDP endpoint (`scripts/perf/run-scenario.ps1` + `scripts/perf/drive.mjs`); budget gate `scripts/perf/check.mjs`.
+- **Build:** `track3-harness` worktree, debug build (`target/debug/oxitide-app.exe`, HEAD `4d57e13`, including the S4 natural-transition rewrite and the `S3-hit` cache-hit floor) served by the Vite dev server on port 1420; scenarios driven over the WebView2 CDP endpoint (`scripts/perf/run-scenario.ps1` + `scripts/perf/drive.mjs`); budget gate `scripts/perf/check.mjs`.
 - **Machine:** Ryzen 7 5700X3D / 32 GB / RX 9070 XT / Windows 11 25H2.
-- **Conditions:** per-scenario mode is auto-pinned by the driver (S5/S6 instrument, S5-atmosphere atmosphere; the owner's persisted mode is restored after each run). Network as-is (no throttling or isolation). All runs were single-app, foreground, no deliberate background load. The 14 scratch runs left over from harness development were moved to `.superpowers/perf/runs-prebaseline/` before this baseline; after the Task 8b review, the earlier S3/S4 scratch corpus (11 files) was quarantined to `.superpowers/perf/runs-quarantine/` and S3/S4 were re-run fresh. Every S3/S4 aggregate below therefore covers only the 15 uniform runner-produced runs (S3-miss x5, S3-hit x5, S4 x5); the other sections cover the original 26-run corpus (S1 x5, S2 x5, S5-instrument x5, S5-atmosphere x5, S6 x3, S7 x3). Raw JSONL is gitignored under `.superpowers/perf/runs/`; command logs are under `.superpowers/perf/logs/`.
+- **Conditions:** per-scenario mode is auto-pinned by the driver (S5/S6 instrument, S5-atmosphere atmosphere; the owner's persisted mode is restored after each run). Network as-is (no throttling or isolation). All runs were single-app, foreground, no deliberate background load. The 14 scratch runs left over from harness development were moved to `.superpowers/perf/runs-prebaseline/` before this baseline; after the Task 8b review, the earlier S3/S4 scratch corpus (11 files) was quarantined to `.superpowers/perf/runs-quarantine/` and S3/S4 were re-run fresh. Every S3/S4 aggregate below therefore covers only the 15 uniform runner-produced runs (S3-miss x5, S3-hit x5, S4 x5), and S8 adds 2 fresh runner-produced runs; the other sections cover the original 26-run corpus (S1 x5, S2 x5, S5-instrument x5, S5-atmosphere x5, S6 x3, S7 x3). Raw JSONL is gitignored under `.superpowers/perf/runs/`; command logs are under `.superpowers/perf/logs/`.
 
 ## S1 — cold start, 5 runs
 
@@ -194,6 +194,24 @@ The driver sorts favorites by duration ascending and plays the 3 shortest with `
 
 Runs 1–3 pass; runs 4–5 exceed the 100 ms gap on the first transition. `check.mjs` exit code 1.
 
+## S8 — cache loop over the 10 shortest tracks, 2 runs
+
+Command: `powershell -ExecutionPolicy Bypass -File scripts/perf/run-scenario.ps1 -Scenario S8 -Runs 2`
+
+```
+PASS       S8               cache_hit_rate               1.0  (max 0.9)
+```
+
+The driver sorts favorites by duration ascending, plays the 10 shortest at Max quality with `repeat all`, waits `2 × 707 s + 90 s = 1504 s` per run, then restores the saved quality and `repeat off`. Chosen queue (playback order): `41352612` 49 s, `458258760` 50 s, `458258761` 66 s, `458258750` 68 s, `423198288` 72 s, `458258758` 75 s, `247718412` 80 s, `458258759` 82 s, `381937277` 82 s, `458258746` 83 s (total 707 s). Both runs logged `S8: 10 tracks, totalSecs=707, waiting ~1504s`; the batch took 3087 s (~51 min).
+
+| Run | cache hits | cache misses | cache_hit_rate | first_pcm events |
+| --- | --- | --- | --- | --- |
+| 1 | 17 | 8 | 0.68 | 23 |
+| 2 | 25 | 0 | 1.00 | 23 |
+| **p95 (2 runs)** | | | **1.0** | |
+
+Run 1 started with 2 of the 10 tracks already cached by the S4 batch (the S4 driver exits 1.5 s after entering the third track, so only its first two tracks finalized): 8 misses in the first pass, then hits; the 1504 s window also covers ~90 s of the third pass (23 `first_pcm` events). Run 2 was fully warm (25 hits / 0 misses). Per-run rates differ (0.68 cold vs 1.00 warm); the gate's p95 is 1.00 → PASS. `check.mjs` exit code 0.
+
 ## Discovered during baseline — cached-seek defect (deferred to Phase D)
 
 Seeking a fully cached track does not reposition playback. In `crates/oxitide-audio/src/engine.rs`, the cache path's `decode_from_file` passes the full plan (with `seek_ms`) into `decode_source`, while `ChannelSink::on_stream_info` computes a segment-relative discard via `seek::target_segment`; the network path instead truncates the download plan first with `plan.from_segment(target.segment_index)` in `decode_from_network`. Net effect on a cache hit: the seek resumes near the track start while `position_ms` is seeded at the target, so the reported position runs past `duration_ms` and no natural `advance` occurs near the seek target (observed during the S4 investigation: a 137 s seek on a 139 s cached track was still playing at position 257 s with no transition; an uncached network seek transitioned within ~2 s). This is recorded, not fixed; the scripted S4 protocol now uses natural playback only. Deferred to Phase D.
@@ -215,27 +233,21 @@ Seeking a fully cached track does not reposition playback. In `crates/oxitide-au
 | S3-hit | ttfs_ms | ≤ 300 | 308.0 | FAIL (over by 8 ms) |
 | S3-hit | cache_hits | ≥ 1 | 2.0 | PASS |
 | S4 | advance_max_gap_ms | ≤ 100 | 103.0 | FAIL (2/5 runs at 103 ms) |
-| S8 | cache_hit_rate | ≥ 0.9 | — | UNMEASURED (owner run pending) |
-| S9 | memory_drift_mb | ≤ 50 | — | UNMEASURED (owner run pending) |
+| S8 | cache_hit_rate | ≥ 0.9 | 1.0 | PASS (run rates 0.68 / 1.00; p95 1.00) |
+| S9 | memory_drift_mb | ≤ 50 | — | Pending (owner run when away) |
 
-The original scripted baseline invocations exited 0; the fresh S3/S4 dispatch records two budget misses (`S3-hit` ttfs 308 > 300, `S4` 103 > 100) while every gate ran and every run produced JSONL. No harness-level failures (every run launched, produced JSONL, and the driver exited 0; no torn or missing run files). The `track3-harness` branch fixes landed before this baseline (`2a11cde` pins scenario mode and allows empty budgets), so the driver mode pin was active throughout.
+The original scripted baseline invocations exited 0; the fresh S3/S4/S8 dispatch records two budget misses (`S3-hit` ttfs 308 > 300, `S4` 103 > 100) and passes the S8 loop, while every gate ran and every run produced JSONL. No harness-level failures (every run launched, produced JSONL, and the driver exited 0; no torn or missing run files). The `track3-harness` branch fixes landed before this baseline (`2a11cde` pins scenario mode and allows empty budgets), so the driver mode pin was active throughout.
 
-## Manual scenarios — pending owner run
+## S9 — pending owner run
 
-S3-miss, S3-hit, and S4 are now automated and recorded above (fresh runner-produced runs). S8 and S9 still need an owner run with a real account and playback.
-
-Commands:
+S3-miss, S3-hit, S4, and S8 are now automated and recorded above (fresh runner-produced runs). S9 (2-hour soak) still needs an owner run when away:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/perf/run-scenario.ps1 -Scenario S8 -Runs 2 -Manual
-powershell -ExecutionPolicy Bypass -File scripts/perf/run-scenario.ps1 -Scenario S9 -Runs 1 -Manual
+powershell -ExecutionPolicy Bypass -File scripts/perf/run-scenario.ps1 -Scenario S9 -Runs 1
 ```
 
-Protocol per scenario (the runner prompts on each run):
-
-- **S8 — Pending.** Play the same 10 Max-quality tracks in a loop twice (album repeat); note the queue actually uses Max.
-- **S9 — Pending.** Leave a queue playing/skipping for 2 hours (skip/quality-switch churn is allowed); do not restart the app.
+The driver defaults to `--minutes 120`; the runner does not forward extra flags to `drive.mjs`, so the default 120-minute run is the owner protocol. A different duration would require a direct driver invocation (`node scripts/perf/drive.mjs --scenario S9 --minutes <N>`) against a manually started app. Leave a queue playing/skipping for the full duration (skip/quality-switch churn is allowed); do not restart the app.
 
 ## Recalibration (T3-D9)
 
-`budgets.json` gained one row for this batch: `S3-hit.cache_hits ≥ 1` (Task 8b review ruling), so a zero-hit corpus can no longer pass the hit scenario on `ttfs` alone. No threshold recalibration is proposed yet: the fresh S3/S4 batch records two baseline misses (`S3-hit` ttfs p95 308 ms vs 300; `S4` gap p95 103 ms vs 100) that are optimization targets, not threshold changes. Any adjustment to `budgets.json` or the spec §4.2 table still requires owner sign-off; S8/S9 may surface one round of proposals once the owner runs them.
+`budgets.json` gained one row for this batch: `S3-hit.cache_hits ≥ 1` (Task 8b review ruling), so a zero-hit corpus can no longer pass the hit scenario on `ttfs` alone. No threshold recalibration is proposed yet: the fresh S3/S4 batch records two baseline misses (`S3-hit` ttfs p95 308 ms vs 300; `S4` gap p95 103 ms vs 100) that are optimization targets, not threshold changes. Any adjustment to `budgets.json` or the spec §4.2 table still requires owner sign-off; S9 may surface one round of proposals once the owner runs it.
