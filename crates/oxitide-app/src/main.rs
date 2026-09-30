@@ -129,10 +129,13 @@ fn handle_deep_link(app: &tauri::AppHandle, raw: &str) {
 }
 
 fn main() {
+    let _ = perf::install();
     init_logging();
     let config = config::Config::load();
+    perf::mark("config_loaded");
     let state = AppState::default();
     state.set_cache(player::build_cache(&config));
+    perf::mark("cache_ready");
     state.set_artwork(artwork::ArtworkService::new(
         reqwest::Client::new(),
         "https://resources.tidal.com/images".into(),
@@ -166,6 +169,7 @@ fn main() {
         config.scrobbling.listenbrainz_enabled,
     );
     state.set_scrobbler(scrobbler.clone());
+    perf::mark("services_ready");
     state.set_config(config);
 
     tauri::Builder::default()
@@ -233,6 +237,7 @@ fn main() {
                     tracing::warn!("failed to show the main window: {e}");
                 }
             }
+            perf::mark("window_shown");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -329,6 +334,9 @@ fn main() {
             commands::set_cache_clear_on_exit,
             commands::get_logs_dir,
             commands::open_logs_folder,
+            commands::perf_mark,
+            commands::get_perf_snapshot,
+            commands::perf_submit_ui_metrics,
             commands::analyze_cover,
         ])
         .build(tauri::generate_context!())

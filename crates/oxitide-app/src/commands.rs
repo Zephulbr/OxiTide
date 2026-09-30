@@ -299,6 +299,7 @@ pub async fn auth_restore(
                 .cache()
                 .unwrap_or_else(|| crate::player::build_cache(&config));
             state.set_player(replace_player(&app, &state, client, &config, cache)?);
+            crate::perf::mark("auth_restored");
             Ok(Some(SessionInfoDto {
                 country_code: session.country_code,
                 user_id: session.user_id,
@@ -431,6 +432,8 @@ fn build_player(
             scrobbler.on_player_event(&event);
         }
     }));
+    engine.set_perf_hook(std::sync::Arc::new(crate::perf::audio_event));
+    crate::perf::mark("player_built");
     Ok(Player { engine })
 }
 
@@ -937,12 +940,14 @@ pub fn play_tracks(
     } else {
         EngineCmd::PlayTracks { items, start }
     };
+    crate::perf::note_play_command();
     player.engine.handle(cmd).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn play_pause(state: State<'_, AppState>) -> Result<(), String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
+    crate::perf::note_play_command();
     player
         .engine
         .handle(EngineCmd::PlayPause)
@@ -1056,6 +1061,21 @@ pub fn queue_add(state: State<'_, AppState>, items: Vec<QueueItem>) -> Result<()
 pub fn get_playback_state(state: State<'_, AppState>) -> Result<PlaybackState, String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
     Ok(player.engine.state())
+}
+
+#[tauri::command]
+pub fn perf_mark(name: String) {
+    crate::perf::mark(&name);
+}
+
+#[tauri::command]
+pub fn get_perf_snapshot() -> crate::perf::PerfSnapshot {
+    crate::perf::snapshot()
+}
+
+#[tauri::command]
+pub fn perf_submit_ui_metrics(metrics: serde_json::Value) {
+    crate::perf::ui_metrics(metrics);
 }
 
 #[tauri::command]
