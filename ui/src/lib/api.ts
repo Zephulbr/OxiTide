@@ -151,6 +151,7 @@ export interface Config {
   };
   integrations: {
     smtc: boolean;
+    discord: boolean;
   };
   cache: { dir: string; max_size_mb: number; clear_on_exit: boolean };
   scrobbling: {
@@ -291,6 +292,7 @@ export const api = {
   setStartInMini: (enabled: boolean) => invoke<void>("set_start_in_mini", { enabled }),
   setOneko: (enabled: boolean) => invoke<void>("set_oneko", { enabled }),
   setSmtc: (enabled: boolean) => invoke<void>("set_smtc", { enabled }),
+  setDiscord: (enabled: boolean) => invoke<void>("set_discord", { enabled }),
   setCacheMaxSizeMb: (mb: number) => invoke<void>("set_cache_max_size_mb", { mb }),
   setCacheClearOnExit: (enabled: boolean) =>
     invoke<void>("set_cache_clear_on_exit", { enabled }),

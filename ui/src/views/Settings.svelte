@@ -307,6 +307,12 @@
     api.setSmtc(enabled).catch(apply);
   }
 
+  function setDiscord(enabled: boolean) {
+    if (!config) return;
+    config = { ...config, integrations: { ...config.integrations, discord: enabled } };
+    api.setDiscord(enabled).catch(apply);
+  }
+
   function openCredit(url: string) {
     openUrl(url).catch(apply);
   }
@@ -539,19 +545,7 @@
       role="tabpanel"
       aria-labelledby="settings-tab-connections"
     >
-      {#snippet planned(name: string, description: string)}
-        <div class="planned">
-          <div class="planned-main">
-            <label class="planned-head">
-              <input type="checkbox" disabled />
-              <span>{name}</span>
-            </label>
-            <span class="muted">{description}</span>
-          </div>
-          <span class="pill">Planned</span>
-        </div>
-      {/snippet}
-      <p class="muted">Scrobbling and media controls are configurable below; Discord Rich Presence is planned.</p>
+      <p class="muted">Scrobbling, media controls, and Discord Rich Presence are configurable below.</p>
       <h3>Scrobbling</h3>
       {#if scrobble}
         <div class="scrobble">
@@ -631,7 +625,21 @@
         >your profile</button>.
       </p>
       <h3>Presence & controls</h3>
-      {@render planned("Discord Rich Presence", "Show what you're listening to on your Discord profile.")}
+      <div class="planned">
+        <div class="planned-main">
+          <label class="planned-head">
+            <input
+              type="checkbox"
+              checked={config.integrations.discord}
+              onchange={(e) => setDiscord((e.target as HTMLInputElement).checked)}
+            />
+            <span>Discord Rich Presence</span>
+          </label>
+          <span class="muted">
+            Shows the current track on your Discord profile. Requires the Discord desktop client.
+          </span>
+        </div>
+      </div>
       <div class="planned">
         <div class="planned-main">
           <label class="planned-head">
@@ -808,14 +816,6 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 12px;
-  }
-  .pill {
-    padding: 2px 8px;
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    color: var(--text-muted);
-    font-size: 12px;
-    white-space: nowrap;
   }
   .custom-font {
     display: flex;
