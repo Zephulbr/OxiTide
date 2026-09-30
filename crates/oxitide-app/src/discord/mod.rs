@@ -14,7 +14,7 @@ mod presence;
 
 use presence::{plan_action, Action, ActivitySpec, Desired, Sent};
 
-pub const DISCORD_CLIENT_ID: &str = "";
+pub const DISCORD_CLIENT_ID: &str = "1554830262083264532";
 
 const CHANNEL_CAPACITY: usize = 64;
 const LOOP_TIMEOUT: Duration = Duration::from_millis(500);
