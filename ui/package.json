@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
+    "perf:check": "node ../scripts/perf/check.mjs",
     "app:dev": "cd .. && tauri dev",
     "app:build": "cd .. && tauri build"
   },
