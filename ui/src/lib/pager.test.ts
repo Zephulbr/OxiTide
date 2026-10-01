@@ -805,4 +805,28 @@ describe("pager in-place updates", () => {
     expect(pager.done).toBe(true);
     expect(pager.items.length).toBe(total);
   });
+
+  /// Review fix: `ensureAll` must share `loadMore`'s single-flight. Two
+  /// concurrent walks used to burst the same windows from the same offset;
+  /// playlists run with `dedupe: false`, so every row was appended twice.
+  it("keeps concurrent ensureAll calls single-flight on a dedupe-free pager", async () => {
+    const total = 1000;
+    const load = vi.fn(async (offset: number, limit: number) => {
+      const to = Math.min(offset + limit, total);
+      return page(range(offset + 1, to).map(track), offset, limit, total);
+    });
+    const pager = createTrackPager("ensure-concurrent", load, {
+      pageSize: 100,
+      dedupe: false,
+      prefetchWindow: 200,
+      prefetchMaxTotal: 300,
+      concurrency: 4,
+    });
+
+    await Promise.all([pager.ensureAll(), pager.ensureAll()]);
+
+    expect(ids(pager.items)).toEqual(range(1, total));
+    expect(pager.items).toHaveLength(total);
+    expect(pager.done).toBe(true);
+  });
 });

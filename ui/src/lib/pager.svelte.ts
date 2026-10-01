@@ -197,28 +197,33 @@ export function createTrackPager(
     publish();
   }
 
-  async function makeProgress() {
+  async function makeProgress(all: boolean) {
     let loadedFirstPage = false;
     if (items.length === 0 && nextOffset === 0) {
       await loadSequentialPage();
       loadedFirstPage = true;
     }
     if (done) return;
-    if (prefetch && total > 0 && total <= prefetchMaxTotal) {
+    if (prefetch && total > 0 && (all || total <= prefetchMaxTotal)) {
       await runBurst();
     } else if (!loadedFirstPage) {
       await loadSequentialPage();
     }
   }
 
-  function loadMore(): Promise<void> {
+  /// `all` is the explicit ensureAll mode: above `prefetchMaxTotal` the
+  /// remainder still bursts instead of walking one page at a time. It stays
+  /// behind the same single-flight as `loadMore` so concurrent ensureAll
+  /// calls cannot fetch and apply the same windows twice (playlists run with
+  /// `dedupe: false`, where that doubled every row).
+  function loadMore(all = false): Promise<void> {
     if (inflight) return inflight;
     if (done) return Promise.resolve();
     inflight = (async () => {
       loading = true;
       error = "";
       try {
-        await makeProgress();
+        await makeProgress(all);
       } catch (e) {
         error = String(e);
         // Keep whatever windows completed before the failure.
@@ -239,19 +244,8 @@ export function createTrackPager(
     // A prior failure leaves `error` set; clear it so a later call (the
     // header Retry) drives the failed page instead of returning at once.
     if (error !== "") error = "";
-    // Keep the progressive first page: it paints fast and seeds `total`.
-    if (items.length === 0 && nextOffset === 0 && !done) await loadMore();
     while (!done && error === "") {
-      // Prefetched pagers already burst; when the caller explicitly asks for
-      // the whole list (sort/filter/play-all) do the same above
-      // `prefetchMaxTotal` instead of walking one small page at a time.
-      try {
-        if (prefetch && total > 0) await runBurst();
-        else await loadMore();
-      } catch (e) {
-        error = String(e);
-        publish();
-      }
+      await loadMore(true);
     }
   }
 
