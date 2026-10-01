@@ -227,6 +227,16 @@
         await perfHooks.buildSyntheticQueue(count);
         return true;
       },
+      gotoAlbum: (id: number) => {
+        nav.goto({ name: "album", id });
+        return true;
+      },
+      albumHookReady: () => typeof perfHooks.measureAlbumOpen === "function",
+      measureAlbumOpen: (count: number) => {
+        if (!perfHooks.measureAlbumOpen) return false;
+        perfHooks.measureAlbumOpen(count);
+        return true;
+      },
       setMode: (mode: "instrument" | "atmosphere") => appearance.setMode(mode),
     };
     (window as unknown as { __perf?: typeof bridge }).__perf = bridge;

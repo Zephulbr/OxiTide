@@ -215,6 +215,34 @@ test("a required budget fails when the metric is missing", () => {
   assert.equal(optional.ok, true);
 });
 
+test("page and album interactions aggregate into their metrics", () => {
+  const file = runFile([
+    { kind: "session", run_id: "S5-instrument-1", scenario: "S5-instrument" },
+    {
+      kind: "ui_metrics",
+      t_ms: 1,
+      metrics: {
+        mode: "instrument",
+        interactions: {
+          page_count: 1,
+          page_max_ms: 210,
+          album_count: 1,
+          album_max_ms: 640,
+          filter_count: 0,
+          filter_max_ms: 0,
+          sort_count: 0,
+          sort_max_ms: 0,
+          queue_count: 0,
+          queue_max_ms: 0,
+        },
+      },
+    },
+  ]);
+  const metrics = metricsFor(readRuns([file])[0]);
+  assert.equal(metrics.page_open_ms, 210);
+  assert.equal(metrics.album_open_ms, 640);
+});
+
 test("queue build samples aggregate into queue_build_ms", () => {
   const file = runFile([
     { kind: "session", run_id: "S7-1", scenario: "S7" },

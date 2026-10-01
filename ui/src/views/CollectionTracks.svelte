@@ -50,6 +50,18 @@
     return warmTrackSearch(list).cancel;
   });
 
+  // Page-open gate: first painted page after the first window resolves, once
+  // per run, real favorites only (the synthetic run has its own gates).
+  let pageTimed = false;
+  $effect(() => {
+    if (pageTimed || synthetic !== null || rows.length === 0 || !perf.active) return;
+    pageTimed = true;
+    const started = performance.now();
+    requestAnimationFrame(() =>
+      perf.recordInteraction("page", performance.now() - started),
+    );
+  });
+
   $effect(() => {
     if (!perf.active) return;
     perfHooks.loadSyntheticTracks = (count: number) => {

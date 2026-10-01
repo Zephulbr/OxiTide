@@ -94,9 +94,13 @@ export interface InteractionSummary {
   sort_max_ms: number;
   queue_count: number;
   queue_max_ms: number;
+  page_count: number;
+  page_max_ms: number;
+  album_count: number;
+  album_max_ms: number;
 }
 
-export type InteractionKind = "filter" | "sort" | "queue";
+export type InteractionKind = "filter" | "sort" | "queue" | "page" | "album";
 
 /// Timed user interactions (S6 filter/sort, S7 queue build) for the
 /// ui_metrics submission.
@@ -107,6 +111,10 @@ export class InteractionLog {
   private sortMax = 0;
   private queueCount = 0;
   private queueMax = 0;
+  private pageCount = 0;
+  private pageMax = 0;
+  private albumCount = 0;
+  private albumMax = 0;
 
   record(kind: InteractionKind, ms: number) {
     if (kind === "filter") {
@@ -115,9 +123,15 @@ export class InteractionLog {
     } else if (kind === "sort") {
       this.sortCount += 1;
       this.sortMax = Math.max(this.sortMax, ms);
-    } else {
+    } else if (kind === "queue") {
       this.queueCount += 1;
       this.queueMax = Math.max(this.queueMax, ms);
+    } else if (kind === "page") {
+      this.pageCount += 1;
+      this.pageMax = Math.max(this.pageMax, ms);
+    } else {
+      this.albumCount += 1;
+      this.albumMax = Math.max(this.albumMax, ms);
     }
   }
 
@@ -128,6 +142,10 @@ export class InteractionLog {
     this.sortMax = 0;
     this.queueCount = 0;
     this.queueMax = 0;
+    this.pageCount = 0;
+    this.pageMax = 0;
+    this.albumCount = 0;
+    this.albumMax = 0;
   }
 
   summary(): InteractionSummary {
@@ -138,6 +156,10 @@ export class InteractionLog {
       sort_max_ms: this.sortMax,
       queue_count: this.queueCount,
       queue_max_ms: this.queueMax,
+      page_count: this.pageCount,
+      page_max_ms: this.pageMax,
+      album_count: this.albumCount,
+      album_max_ms: this.albumMax,
     };
   }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { makeSyntheticTracks } from "./perfFixture";
+import { makeSyntheticAlbum, makeSyntheticTracks } from "./perfFixture";
 
 describe("makeSyntheticTracks", () => {
   it("is deterministic and unique", () => {
@@ -16,5 +16,16 @@ describe("makeSyntheticTracks", () => {
     const matches = tracks.filter((t) => t.title.toLowerCase().includes("the ")).length;
     expect(matches).toBeGreaterThan(0);
     expect(matches).toBeLessThan(tracks.length);
+  });
+
+  it("builds a deterministic 500-track album", () => {
+    const { album, tracks } = makeSyntheticAlbum(500);
+    expect(album.id).toBe(-1);
+    expect(album.title).toContain("500");
+    expect(album.numberOfTracks).toBe(500);
+    expect(tracks).toHaveLength(500);
+    expect(tracks[0].album?.id).toBe(album.id);
+    const again = makeSyntheticAlbum(500);
+    expect(again.tracks[42].title).toBe(tracks[42].title);
   });
 });

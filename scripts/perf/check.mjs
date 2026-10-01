@@ -90,6 +90,12 @@ export function metricsFor(run) {
         if (typeof interactions.queue_max_ms === "number" && interactions.queue_count > 0) {
           metrics.queue_build_ms = Math.max(metrics.queue_build_ms ?? 0, interactions.queue_max_ms);
         }
+        if (typeof interactions.page_max_ms === "number" && interactions.page_count > 0) {
+          metrics.page_open_ms = Math.max(metrics.page_open_ms ?? 0, interactions.page_max_ms);
+        }
+        if (typeof interactions.album_max_ms === "number" && interactions.album_count > 0) {
+          metrics.album_open_ms = Math.max(metrics.album_open_ms ?? 0, interactions.album_max_ms);
+        }
       }
     }
   }

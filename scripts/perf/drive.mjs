@@ -216,6 +216,11 @@ const scenarioFallback = async (id) => {
         if (!measured) throw new Error("S6: sort measurement unavailable");
         await delay(500);
       }
+      await evaluate("window.__perf.gotoAlbum(0)");
+      await until("window.__perf.albumHookReady()", "album hook");
+      const albumMeasured = await evaluate("window.__perf.measureAlbumOpen(500)");
+      if (!albumMeasured) throw new Error("S6: album measurement unavailable");
+      await delay(2000);
       await delay(3000);
     } else if (id === "S7") {
       await awaitLoggedIn();

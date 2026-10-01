@@ -82,4 +82,23 @@ describe("InteractionLog", () => {
     log.reset();
     expect(log.summary()).toMatchObject({ queue_count: 0, queue_max_ms: 0 });
   });
+
+  it("tracks page-open and album-open samples", () => {
+    const log = new InteractionLog();
+    log.record("page", 80);
+    log.record("album", 240);
+    expect(log.summary()).toMatchObject({
+      page_count: 1,
+      page_max_ms: 80,
+      album_count: 1,
+      album_max_ms: 240,
+    });
+    log.reset();
+    expect(log.summary()).toMatchObject({
+      page_count: 0,
+      page_max_ms: 0,
+      album_count: 0,
+      album_max_ms: 0,
+    });
+  });
 });

@@ -1,4 +1,4 @@
-import type { Track } from "./api";
+import type { Album, Track } from "./api";
 
 const FIRST = ["The", "A", "My", "Your", "Our", "Every", "Last", "First"];
 const SECOND = ["Midnight", "Golden", "Silent", "Electric", "Broken", "Endless", "Hidden", "Neon"];
@@ -26,4 +26,25 @@ export function makeSyntheticTracks(count: number): Track[] {
     });
   }
   return tracks;
+}
+
+/// Deterministic synthetic album for the 500-track open gate; reuses the track
+/// generator so list rendering and filtering see the same shapes as S6.
+export function makeSyntheticAlbum(count: number): { album: Album; tracks: Track[] } {
+  const tracks = makeSyntheticTracks(count).map((track) => ({
+    ...track,
+    album: { id: -1, title: `Synthetic Album (${count})`, cover: null },
+  }));
+  return {
+    album: {
+      id: -1,
+      title: `Synthetic Album (${count})`,
+      artists: [{ id: -1, name: "OxiTide Perf" }],
+      cover: null,
+      numberOfTracks: count,
+      duration: tracks.reduce((sum, t) => sum + t.duration, 0),
+      audioQuality: "LOSSLESS",
+    },
+    tracks,
+  };
 }

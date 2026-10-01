@@ -30,12 +30,14 @@
     { "metric": "frame_p95_ms:instrument", "max": 16.7 },
     { "metric": "frame_p99_ms:instrument", "max": 33 },
     { "metric": "long_task_max_ms", "max": 100 },
+    { "metric": "page_open_ms", "max": 500, "required": true },
     { "metric": "memory_max_mb", "max": 450 }
   ],
   "S5-atmosphere": [
     { "metric": "frame_p95_ms:atmosphere", "max": 20 },
     { "metric": "frame_p99_ms:atmosphere", "max": 33 },
     { "metric": "long_task_max_ms", "max": 100 },
+    { "metric": "page_open_ms", "max": 500, "required": true },
     { "metric": "memory_max_mb", "max": 450 }
   ],
   "S6": [
@@ -43,6 +45,7 @@
     { "metric": "frame_p99_ms:instrument", "max": 33 },
     { "metric": "filter_max_ms", "max": 50, "required": true },
     { "metric": "sort_max_ms", "max": 150, "required": true },
+    { "metric": "album_open_ms", "max": 1000, "required": true },
     { "metric": "memory_max_mb", "max": 450 }
   ],
   "S7": [

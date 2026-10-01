@@ -6,6 +6,9 @@
   import Icon from "../lib/components/Icon.svelte";
   import Loading from "../lib/components/Loading.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
+  import { perf } from "../lib/perf.svelte";
+  import { makeSyntheticAlbum } from "../lib/perfFixture";
+  import { perfHooks } from "../lib/perfHooks";
   import { createTrackView } from "../lib/trackView.svelte";
   import { playSource } from "../lib/playSource.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
@@ -40,6 +43,24 @@
 
   $effect(() => {
     load();
+  });
+
+  $effect(() => {
+    if (!perf.active) return;
+    perfHooks.measureAlbumOpen = (count: number) => {
+      const started = performance.now();
+      const data = makeSyntheticAlbum(count);
+      album = data.album;
+      tracks = data.tracks;
+      error = "";
+      loading = false;
+      requestAnimationFrame(() =>
+        perf.recordInteraction("album", performance.now() - started),
+      );
+    };
+    return () => {
+      delete perfHooks.measureAlbumOpen;
+    };
   });
 
   function playFrom(index: number) {
