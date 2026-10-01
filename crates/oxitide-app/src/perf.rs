@@ -377,7 +377,7 @@ fn process_memory_rows() -> Vec<(String, u64, bool)> {
         dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
         ..Default::default()
     };
-    let mut parents: Vec<(u32, u32, String)> = Vec::new();
+    let mut parents: Vec<ProcessRow> = Vec::new();
     unsafe {
         if Process32FirstW(snapshot, &mut entry).is_ok() {
             loop {
@@ -387,7 +387,8 @@ fn process_memory_rows() -> Vec<(String, u64, bool)> {
                     .position(|c| *c == 0)
                     .unwrap_or(entry.szExeFile.len());
                 let name = String::from_utf16_lossy(&entry.szExeFile[..len]);
-                parents.push((entry.th32ProcessID, entry.th32ParentProcessID, name));
+                let created = creation_ms_for_pid(entry.th32ProcessID);
+                parents.push((entry.th32ProcessID, entry.th32ParentProcessID, name, created));
                 if Process32NextW(snapshot, &mut entry).is_err() {
                     break;
                 }
@@ -395,22 +396,9 @@ fn process_memory_rows() -> Vec<(String, u64, bool)> {
         }
         let _ = CloseHandle(snapshot);
     }
-    let is_descendant = |pid: u32| {
-        let mut current = pid;
-        for _ in 0..8 {
-            if current == self_pid {
-                return true;
-            }
-            match parents.iter().find(|(p, _, _)| *p == current) {
-                Some((_, parent, _)) if *parent != 0 => current = *parent,
-                _ => return false,
-            }
-        }
-        false
-    };
     let mut rows = Vec::new();
-    for &(pid, _, ref name) in &parents {
-        if !is_descendant(pid) {
+    for &(pid, _, ref name, _) in &parents {
+        if !is_descendant(&parents, self_pid, pid) {
             continue;
         }
         let handle: HANDLE =
@@ -436,6 +424,73 @@ fn process_memory_rows() -> Vec<(String, u64, bool)> {
         }
     }
     rows
+}
+
+/// One process from the Toolhelp snapshot: `(pid, parent pid, name, creation
+/// time in unix ms when readable)`.
+type ProcessRow = (u32, u32, String, Option<u64>);
+
+/// Walk up to 8 ancestors looking for `self_pid`. Creation-time ordering
+/// rejects PID-reuse false positives: a "parent" created after its child
+/// cannot be the real ancestor (observed once: unrelated browser processes
+/// were folded into an S4 memory sample this way).
+fn is_descendant(processes: &[ProcessRow], self_pid: u32, pid: u32) -> bool {
+    let Some(start) = processes.iter().find(|(p, _, _, _)| *p == pid) else {
+        return false;
+    };
+    let mut child_created = start.3;
+    let mut current = pid;
+    for _ in 0..8 {
+        if current == self_pid {
+            return true;
+        }
+        let Some(entry) = processes.iter().find(|(p, _, _, _)| *p == current) else {
+            return false;
+        };
+        if entry.1 == 0 {
+            return false;
+        }
+        let Some(parent) = processes.iter().find(|(p, _, _, _)| *p == entry.1) else {
+            return false;
+        };
+        if let (Some(child), Some(parent_created)) = (child_created, parent.3) {
+            if parent_created > child {
+                return false;
+            }
+        }
+        child_created = parent.3;
+        current = parent.0;
+    }
+    false
+}
+
+/// Creation time of a process in unix ms, for the PID-reuse guard.
+#[cfg(windows)]
+fn creation_ms_for_pid(pid: u32) -> Option<u64> {
+    use windows::Win32::Foundation::{CloseHandle, FILETIME};
+    use windows::Win32::System::Threading::{
+        GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+
+    let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }.ok()?;
+    let mut creation = FILETIME::default();
+    let mut exit = FILETIME::default();
+    let mut kernel = FILETIME::default();
+    let mut user = FILETIME::default();
+    let ok = unsafe { GetProcessTimes(handle, &mut creation, &mut exit, &mut kernel, &mut user) };
+    let _ = unsafe { CloseHandle(handle) };
+    ok.ok()?;
+    let ticks = ((creation.dwHighDateTime as u64) << 32) | creation.dwLowDateTime as u64;
+    const UNIX_EPOCH_FILETIME_TICKS: u64 = 116_444_736_000_000_000;
+    if ticks < UNIX_EPOCH_FILETIME_TICKS {
+        return None;
+    }
+    Some((ticks - UNIX_EPOCH_FILETIME_TICKS) / 10_000)
+}
+
+#[cfg(not(windows))]
+fn creation_ms_for_pid(_pid: u32) -> Option<u64> {
+    None
 }
 
 #[cfg(not(windows))]
@@ -559,6 +614,29 @@ mod tests {
     fn process_tree_memory_is_positive() {
         let mb = process_tree_memory_mb().expect("measurement available on Windows");
         assert!(mb > 0, "expected a positive working set, got {mb}");
+    }
+
+    #[test]
+    fn descendant_walk_rejects_pid_reuse() {
+        let processes: Vec<ProcessRow> = vec![
+            (10, 0, "self".into(), Some(100)),
+            (20, 10, "child".into(), Some(200)),
+            (30, 20, "grandchild".into(), Some(300)),
+        ];
+        assert!(is_descendant(&processes, 10, 30));
+        assert!(is_descendant(&processes, 10, 10));
+        assert!(!is_descendant(&processes, 99, 30));
+
+        // PID 20 was reused after the real parent exited: the current process
+        // with that pid was created *after* its supposed child, so the chain
+        // must be rejected (the S4 run-4 zen.exe contamination).
+        let reused: Vec<ProcessRow> = vec![
+            (10, 0, "self".into(), Some(100)),
+            (20, 10, "reused".into(), Some(900)),
+            (30, 20, "child".into(), Some(300)),
+            (40, 30, "zen.exe".into(), Some(450)),
+        ];
+        assert!(!is_descendant(&reused, 10, 40));
     }
 
     #[cfg(windows)]
