@@ -197,10 +197,20 @@ const scenarioFallback = async (id) => {
       await applyScenarioMode();
       await evaluate('window.__perf.goto("tracks")');
       await until('!!document.querySelector("[data-perf-filter]")', "filter input");
-      await delay(5000); // let the full library load so filtering is over loaded rows
+      await until(
+        'typeof window.__perf.loadSyntheticTracks === "function"',
+        "synthetic fixture hook",
+      );
+      const loaded = await evaluate("window.__perf.loadSyntheticTracks(10000)");
+      if (!loaded) throw new Error("S6: synthetic track fixture unavailable");
+      await delay(2000); // let the 10k-row view render
       for (const query of ["a", "th", "the ", "the e", ""]) {
-        await evaluate(`window.__perf.setFilter(${JSON.stringify(query)})`);
-        await delay(800);
+        await evaluate(`window.__perf.measureFilter(${JSON.stringify(query)})`);
+        await delay(300);
+      }
+      for (const key of ["title", "duration", "title"]) {
+        await evaluate(`window.__perf.measureSort(${JSON.stringify(key)})`);
+        await delay(500);
       }
       await delay(3000);
     } else if (id === "S7") {

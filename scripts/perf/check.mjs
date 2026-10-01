@@ -77,8 +77,31 @@ export function metricsFor(run) {
         frames.get(mode).push(line.metrics.frames);
       }
       if (line.metrics?.long_tasks) longTasks.push(line.metrics.long_tasks);
+      const interactions = line.metrics?.interactions;
+      if (interactions) {
+        if (typeof interactions.filter_max_ms === "number") {
+          metrics.filter_max_ms = Math.max(metrics.filter_max_ms ?? 0, interactions.filter_max_ms);
+        }
+        if (typeof interactions.sort_max_ms === "number") {
+          metrics.sort_max_ms = Math.max(metrics.sort_max_ms ?? 0, interactions.sort_max_ms);
+        }
+      }
     }
   }
+  // The spec's pre-paint span rule: no application-owned startup step may
+  // block the first frame for >100 ms. Runtime-owned spans (loader → first
+  // mark, Tauri/WebView2 construction, dev-bundle render) are excluded.
+  const appSteps = [
+    ["logging_ready", "config_loaded"],
+    ["config_loaded", "cache_ready"],
+    ["cache_ready", "services_ready"],
+  ]
+    .filter(
+      ([from, to]) =>
+        metrics[`${from}_ms`] !== undefined && metrics[`${to}_ms`] !== undefined,
+    )
+    .map(([from, to]) => metrics[`${to}_ms`] - metrics[`${from}_ms`]);
+  if (appSteps.length > 0) metrics.startup_step_max_ms = Math.max(...appSteps);
   if (advanceMax > 0) metrics.advance_max_gap_ms = advanceMax;
   if (memories.length > 0) {
     metrics.memory_max_mb = Math.max(...memories.map((m) => m.mb));

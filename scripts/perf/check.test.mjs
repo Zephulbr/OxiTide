@@ -147,3 +147,39 @@ test("min budgets use the minimum across runs while max budgets keep the p95", (
   const maxPass = evaluate(aggregated, { S8: [{ metric: "cache_hits", max: 2 }] });
   assert.equal(maxPass.results[0].status, "pass");
 });
+
+test("ui interaction metrics aggregate S6 filter and sort maxima", () => {
+  const file = runFile([
+    { kind: "session", run_id: "S6-1", scenario: "S6" },
+    {
+      kind: "ui_metrics",
+      t_ms: 1,
+      metrics: {
+        interactions: { filter_count: 2, filter_max_ms: 18, sort_count: 1, sort_max_ms: 40 },
+      },
+    },
+    {
+      kind: "ui_metrics",
+      t_ms: 2,
+      metrics: {
+        interactions: { filter_count: 1, filter_max_ms: 27, sort_count: 1, sort_max_ms: 33 },
+      },
+    },
+  ]);
+  const metrics = metricsFor(readRuns([file])[0]);
+  assert.equal(metrics.filter_max_ms, 27);
+  assert.equal(metrics.sort_max_ms, 40);
+});
+
+test("startup step metric measures the largest app-owned pre-paint step", () => {
+  const file = runFile([
+    { kind: "session", run_id: "S1-2", scenario: "S1" },
+    { kind: "mark", name: "logging_ready", t_ms: 390 },
+    { kind: "mark", name: "config_loaded", t_ms: 391 },
+    { kind: "mark", name: "cache_ready", t_ms: 392 },
+    { kind: "mark", name: "services_ready", t_ms: 441 },
+    { kind: "mark", name: "window_shown", t_ms: 805 },
+  ]);
+  const metrics = metricsFor(readRuns([file])[0]);
+  assert.equal(metrics.startup_step_max_ms, 49);
+});
