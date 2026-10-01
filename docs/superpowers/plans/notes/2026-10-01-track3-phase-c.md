@@ -144,3 +144,12 @@ Every memory ceiling remains a genuine miss (S1 491 vs 300; S2 500 vs 300; S3–
 | S7 | `1790862288`, `1790862326`, `1790862363`, `1790862400`, `1790862437` | — |
 
 Full local suite at the recorded HEAD: `cargo test --workspace` (496 passed, 1 ignored), `cargo clippy --workspace -- -D warnings` clean, `npm --prefix ui test` (379 passed), `npm --prefix ui run check` clean, `node --test scripts/perf/check.test.mjs` (12 passed).
+
+## Post-measurement review fixes (2026-10-01, commits `7701adc` and `8420ae3`)
+
+The whole-branch review found, and this phase fixed, two issues after the runs above:
+
+- `7701adc fix(ui): keep ensureAll behind the pager single-flight` — two concurrent `ensureAll()` walks could burst the same windows from the same offset; playlists run `dedupe: false`, so every row was appended twice (regression test: 1891 → 1000 rows for a 1000-row list). `ensureAll` now drives the shared `loadMore(true)` single-flight, which also restores the `removeItem`-during-walk resync and the header loading flag. The measured S1–S7 numbers are unaffected: S6 uses the synthetic fixture (its `ensureAll` is a no-op) and S5/S7 do not exercise concurrent `ensureAll`.
+- `8420ae3 fix(perf): fail the S6 interaction rows when nothing was measured` — a zero-count `interactions` submission used to record a 0 ms metric that passed the new rows; the S6 `filter_max_ms`/`sort_max_ms` rows are now `required` (missing → FAIL), count-0 submissions are ignored, and the driver throws when a measurement is unavailable. The rest of the table keeps the spec's invalid-run posture (an unmeasured non-required row does not fail the gate).
+
+Final suite at the fix-pass HEAD (`8420ae3`): `npm --prefix ui test` 380 passed, `node --test scripts/perf/check.test.mjs` 14 passed, `cargo test --workspace` 496 passed (1 ignored), clippy clean, svelte-check clean.
