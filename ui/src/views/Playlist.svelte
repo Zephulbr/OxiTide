@@ -10,7 +10,7 @@
   import { createTrackPager } from "../lib/pager.svelte";
   import { playSource } from "../lib/playSource.svelte";
   import { invalidatePlaylistCovers } from "../lib/playlistArt.svelte";
-  import { createTrackView, visibleIndexOf } from "../lib/trackView.svelte";
+  import { createTrackView, visibleIndexOf, warmTrackSearch } from "../lib/trackView.svelte";
   import type { CollectionTree } from "../lib/collection.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { Nav } from "../lib/nav.svelte";
@@ -84,6 +84,14 @@
   $effect(() => {
     const current = pager;
     untrack(() => current.loadMore());
+  });
+
+  // Warm the filter/sort caches in idle chunks for large playlists (see
+  // CollectionTracks); the first keystroke must not pay the whole build.
+  $effect(() => {
+    const list = pager.items;
+    if (list.length < 500) return;
+    return warmTrackSearch(list).cancel;
   });
 
   function startRename() {

@@ -57,6 +57,38 @@ function matches(track: Track, needle: string): boolean {
   return searchable(track).some((part) => part.includes(needle));
 }
 
+/// Fill the per-track search and sort caches in small macrotask chunks so the
+/// first filter or sort over a large list does not pay the whole build on the
+/// keystroke (measured ~80 ms cold for 10k rows). Cached rows are skipped, so
+/// repeated calls after pager appends are cheap. Returns a cancel function and
+/// a promise that resolves when the walk finishes or is cancelled.
+export function warmTrackSearch(
+  tracks: Track[],
+  chunkSize = 500,
+): { cancel: () => void; done: Promise<void> } {
+  let cancel = () => {};
+  const done = new Promise<void>((resolve) => {
+    let index = 0;
+    let cancelled = false;
+    cancel = () => {
+      cancelled = true;
+      resolve();
+    };
+    const step = () => {
+      if (cancelled) return;
+      const end = Math.min(index + chunkSize, tracks.length);
+      for (; index < end; index++) {
+        searchable(tracks[index]);
+        titleKey(tracks[index]);
+      }
+      if (index < tracks.length) setTimeout(step, 0);
+      else resolve();
+    };
+    setTimeout(step, 0);
+  });
+  return { cancel, done };
+}
+
 function applyView(
   list: Track[],
   filter: string,

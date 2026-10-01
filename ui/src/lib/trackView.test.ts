@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Track } from "./api";
 import { createTrackPager } from "./pager.svelte";
-import { createTrackView, visibleIndexOf } from "./trackView.svelte";
+import { createTrackView, visibleIndexOf, warmTrackSearch } from "./trackView.svelte";
 
 function track(id: number, title: string, duration = 100, artist = "A"): Track {
   return {
@@ -317,5 +317,37 @@ describe("track view live updates", () => {
 
     expect(ids(view.items)).toEqual([1, 3]);
     expect(view.sourceIndex(1)).toBe(2);
+  });
+});
+
+describe("warmTrackSearch", () => {
+  it("fills the caches in chunks so a later filter does not rebuild them", async () => {
+    const tracks = [track(1, "Alpha"), track(2, "Beta"), track(3, "Gamma")];
+    const spy = vi.spyOn(String.prototype, "toLowerCase");
+    const warm = warmTrackSearch(tracks, 2);
+    await warm.done;
+    const warmCalls = spy.mock.calls.length;
+
+    const view = createTrackView(() => tracks);
+    view.setFilter("alp");
+    void view.items;
+    const filterCalls = spy.mock.calls.length - warmCalls;
+    spy.mockRestore();
+
+    expect(warmCalls).toBeGreaterThanOrEqual(3);
+    expect(filterCalls).toBe(1);
+    expect(ids(view.items)).toEqual([1]);
+  });
+
+  it("stops warming when cancelled", async () => {
+    const tracks = [track(1, "Alpha"), track(2, "Beta"), track(3, "Gamma")];
+    const spy = vi.spyOn(String.prototype, "toLowerCase");
+    const warm = warmTrackSearch(tracks, 1);
+    warm.cancel();
+    await warm.done;
+    const calls = spy.mock.calls.length;
+    spy.mockRestore();
+
+    expect(calls).toBeLessThanOrEqual(2);
   });
 });

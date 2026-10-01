@@ -10,7 +10,7 @@
   import { makeSyntheticTracks } from "../lib/perfFixture";
   import { perfHooks } from "../lib/perfHooks";
   import { playSource } from "../lib/playSource.svelte";
-  import { createTrackView, visibleIndexOf } from "../lib/trackView.svelte";
+  import { createTrackView, visibleIndexOf, warmTrackSearch } from "../lib/trackView.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { PlaylistActions } from "../lib/playlists.svelte";
   import type { Player } from "../lib/player.svelte";
@@ -40,6 +40,14 @@
   const view = createTrackView(() => rows, async () => {
     if (synthetic) return; // the synthetic fixture is already complete
     await ensureAllFavorites();
+  });
+
+  // Warm the filter/sort caches in idle chunks: a first keystroke over a 10k
+  // list must not pay the whole build (~80 ms measured).
+  $effect(() => {
+    const list = rows;
+    if (list.length < 500) return;
+    return warmTrackSearch(list).cancel;
   });
 
   $effect(() => {
