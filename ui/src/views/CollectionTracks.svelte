@@ -1,11 +1,14 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import { api, trackToQueueItem } from "../lib/api";
+  import { api, trackToQueueItem, type Track } from "../lib/api";
   import ErrorState from "../lib/components/ErrorState.svelte";
   import Icon from "../lib/components/Icon.svelte";
   import Loading from "../lib/components/Loading.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
   import { createTrackPager } from "../lib/pager.svelte";
+  import { perf } from "../lib/perf.svelte";
+  import { makeSyntheticTracks } from "../lib/perfFixture";
+  import { perfHooks } from "../lib/perfHooks";
   import { playSource } from "../lib/playSource.svelte";
   import { createTrackView, visibleIndexOf } from "../lib/trackView.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
@@ -24,12 +27,32 @@
     api.getFavoriteTracksPage(offset, limit),
   );
 
+  /// S6-only: the perf bridge swaps in a synthetic 10k list so filter/sort
+  /// budgets are measured at the spec's scale. Null in every normal run.
+  let synthetic = $state<Track[] | null>(null);
+  const rows = $derived(synthetic ?? favoritesPager.items);
+
   async function ensureAllFavorites() {
     await favoritesPager.ensureAll();
     if (favoritesPager.error) throw favoritesPager.error;
   }
 
-  const view = createTrackView(() => favoritesPager.items, ensureAllFavorites);
+  const view = createTrackView(() => rows, async () => {
+    if (synthetic) return; // the synthetic fixture is already complete
+    await ensureAllFavorites();
+  });
+
+  $effect(() => {
+    if (!perf.active) return;
+    perfHooks.loadSyntheticTracks = (count: number) => {
+      synthetic = makeSyntheticTracks(count);
+    };
+    perfHooks.toggleViewSort = (key) => view.toggleSort(key);
+    return () => {
+      delete perfHooks.loadSyntheticTracks;
+      delete perfHooks.toggleViewSort;
+    };
+  });
 
   $effect(() => {
     untrack(() => favoritesPager.loadMore());
@@ -88,9 +111,9 @@
     <button onclick={() => favoritesPager.refresh()}>Refresh</button>
     <span class="muted">
       {#if favoritesPager.unavailable > 0}
-        {favoritesPager.items.length} tracks ({favoritesPager.unavailable} unavailable)
+        {rows.length} tracks ({favoritesPager.unavailable} unavailable)
       {:else}
-        {favoritesPager.items.length} tracks
+        {rows.length} tracks
       {/if}
     </span>
     {#if favoritesPager.loading}<Loading />{/if}
