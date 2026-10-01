@@ -32,6 +32,7 @@
   import { appearance, clampQueueWidth } from "./lib/appearance.svelte";
   import { perf } from "./lib/perf.svelte";
   import { perfHooks } from "./lib/perfHooks";
+  import { makeSyntheticTracks } from "./lib/perfFixture";
   import { errorMessage } from "./lib/errors";
   import { menu } from "./lib/menu.svelte";
   import { escapeTarget, isShortcutHandled, matchShortcut, type ShortcutAction } from "./lib/shortcuts";
@@ -46,7 +47,7 @@
   import { createCollectionActions } from "./lib/collectionActions.svelte";
   import { clearPagerCache } from "./lib/pager.svelte";
   import { clearPlaylistCovers } from "./lib/playlistArt.svelte";
-  import { api, SCROBBLE_AUTH_ERROR_EVENT, type QueueItem } from "./lib/api";
+  import { api, SCROBBLE_AUTH_ERROR_EVENT, trackToQueueItem, type QueueItem } from "./lib/api";
   import type { QualityDisplay } from "./lib/quality";
 
   interface ExpiredSession {
@@ -223,8 +224,10 @@
         return true;
       },
       buildSyntheticQueue: async (count: number) => {
-        if (!perfHooks.buildSyntheticQueue) return false;
-        await perfHooks.buildSyntheticQueue(count);
+        const items = makeSyntheticTracks(count).map(trackToQueueItem);
+        const started = performance.now();
+        await api.perfQueueBuild(items);
+        perf.recordInteraction("queue", performance.now() - started);
         return true;
       },
       gotoAlbum: (id: number) => {
