@@ -131,6 +131,7 @@ fn handle_deep_link(app: &tauri::AppHandle, raw: &str) {
 fn main() {
     let _ = perf::install();
     init_logging();
+    perf::mark("logging_ready");
     let config = config::Config::load();
     perf::mark("config_loaded");
     let state = AppState::default();
@@ -182,11 +183,6 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .manage(state)
         .setup(|app| {
-            scheme::remember(scheme::snapshot());
-            #[cfg(any(windows, target_os = "linux"))]
-            if let Err(e) = app.deep_link().register_all() {
-                tracing::warn!("deep link registration failed: {e}");
-            }
             let handle = app.handle().clone();
             app.deep_link().on_open_url({
                 let handle = handle.clone();
@@ -238,6 +234,27 @@ fn main() {
                 }
             }
             perf::mark("window_shown");
+            // Background startup: cache cleanup and scheme registration are
+            // not needed for the first frame, so they run after the window is
+            // shown. A quit before this finishes simply skips the scheme
+            // restore (no snapshot remembered).
+            let bg = app.handle().clone();
+            let cache = app.state::<AppState>().cache();
+            std::thread::Builder::new()
+                .name("oxitide-startup".into())
+                .spawn(move || {
+                    if let Some(cache) = cache {
+                        cache.cleanup();
+                        perf::mark("cache_cleanup_done");
+                    }
+                    scheme::remember(scheme::snapshot());
+                    #[cfg(any(windows, target_os = "linux"))]
+                    if let Err(e) = bg.deep_link().register_all() {
+                        tracing::warn!("deep link registration failed: {e}");
+                    }
+                    perf::mark("startup_background_done");
+                })
+                .ok();
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

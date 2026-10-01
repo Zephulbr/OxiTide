@@ -12,22 +12,20 @@ use crate::config::{default_cache_dir, Config};
 
 /// Build the disk cache from config: the configured directory when usable,
 /// else the default, else a temp directory. `DiskCache::new` is infallible.
-/// Startup cleanup sweeps stale `.part` files and applies the configured cap.
+/// The stale-`.part` sweep and cap enforcement (`cleanup`) run on the startup
+/// background thread after the window is shown; see `main.rs`.
 pub fn build_cache(config: &Config) -> Arc<DiskCache> {
     let max_bytes = config.cache.max_size_mb.saturating_mul(1024 * 1024);
     let configured = config.cache.dir.trim();
     if !configured.is_empty() {
         let cache = DiskCache::new(std::path::PathBuf::from(configured), max_bytes);
         if cache.usable() {
-            cache.cleanup();
             return cache;
         }
         tracing::warn!("configured cache dir is unusable; falling back to the default");
     }
     let dir = default_cache_dir().unwrap_or_else(|| std::env::temp_dir().join("oxitide-cache"));
-    let cache = DiskCache::new(dir, max_bytes);
-    cache.cleanup();
-    cache
+    DiskCache::new(dir, max_bytes)
 }
 
 /// Resolves a track's stream plan using a `TidalClient`. Runs the async client
@@ -144,7 +142,7 @@ mod tests {
     use std::time::{Duration, SystemTime};
 
     #[test]
-    fn build_cache_cleans_stale_parts_and_applies_the_cap() {
+    fn build_cache_selects_the_directory_and_cleanup_sweeps_stale_parts() {
         let dir =
             std::env::temp_dir().join(format!("oxitide-build-cache-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -161,7 +159,9 @@ mod tests {
         let cache = build_cache(&config);
         assert_eq!(cache.dir(), dir.as_path());
         assert_eq!(cache.max_bytes(), 1024 * 1024);
-        assert!(!part.exists(), "stale .part survived build_cache");
+        assert!(part.exists(), "build_cache must not scan the directory");
+        cache.cleanup();
+        assert!(!part.exists(), "cleanup must remove the stale .part");
         let _ = std::fs::remove_dir_all(dir);
     }
 

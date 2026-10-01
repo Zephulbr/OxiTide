@@ -166,8 +166,7 @@ pub async fn finish_login(
     store.save(&tokens).map_err(|e| e.to_string())?;
     let client = TidalClient::new(http, API_BASE, TOKEN_URL, session.clone(), tokens, store);
     state.set_client(client.clone());
-    let config = Config::load();
-    state.set_config(config.clone());
+    let config = state.config();
     let cache = state
         .cache()
         .unwrap_or_else(|| crate::player::build_cache(&config));
@@ -293,8 +292,7 @@ pub async fn auth_restore(
             let client =
                 TidalClient::new(http, API_BASE, TOKEN_URL, session.clone(), tokens, store);
             state.set_client(client.clone());
-            let config = Config::load();
-            state.set_config(config.clone());
+            let config = state.config();
             let cache = state
                 .cache()
                 .unwrap_or_else(|| crate::player::build_cache(&config));
