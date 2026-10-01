@@ -7,6 +7,7 @@
 - **Revised:** 2026-10-01 — Track 3 Phase A (harness + baseline) complete; no budget recalibration; Phase B (startup + TTFS) complete; Phase C next.
 - **Revised:** 2026-10-01 — ASIO output assessed and parked as an optional, uncommitted Track 7 candidate (spike note: `plans/notes/2026-10-01-asio-spike.md`).
 - **Revised:** 2026-10-01 — Track 3 Phase C (UI + large library) complete; Phase D (memory, cache/eviction, stability) next.
+- **Revised:** 2026-10-01 — Track 8 (Linux support) added and sequenced before Track 7; findings in `plans/notes/2026-10-01-linux-support-spike.md`.
 - **Owner:** V
 - **Parent:** `2026-09-21-oxitide-design.md` (§9 Phasing)
 - **Supersedes:** the parent's Phase 2–4 ordering. The shipped Phase 1 MVP (v0.2.0) is
@@ -21,8 +22,8 @@ dated spec → plan → implementation cycle; this document only fixes scope, ex
 decisions, and the research each track needs. Plan numbers continue the existing sequence
 (Plan 6 onward) in execution order; a track may span one or more plans.
 
-Owner-confirmed ordering (2026-09-24), execution order revised 2026-09-28 (PM-D5),
-statuses refreshed 2026-09-30.
+Owner-confirmed ordering (2026-09-24), execution order revised 2026-09-28 (PM-D5) and
+2026-10-01 (Track 8 before Track 7); statuses refreshed 2026-10-01.
 
 **Track labels are stable; the execution order below is not track-number order.** Tracks
 4–6 are complete; Track 3 is the active track in the sequence.
@@ -36,7 +37,8 @@ statuses refreshed 2026-09-30.
 | 2 | Track 5 | Scrobbling: Last.fm and ListenBrainz in parallel, independent toggles; now-playing, offline queue, retry | Done (Last.fm + ListenBrainz; smoke closed 2026-09-29) |
 | 3 | Track 6 | Remaining integrations: Discord RPC; SMTC + hardware media keys | Done (6a SMTC/media keys + 6b Discord Rich Presence) |
 | now | Track 3 | Performance & stability wave: profile and fix startup, time-to-first-sound, UI jank, memory, cache/eviction churn, large-library handling; build a measurement harness | Active — Phases A–C complete 2026-10-01; Phase D (memory, cache/stability) next |
-| 5 | Track 7 | Advanced audio: DSP/EQ (opt-in, mutually exclusive with bit-perfect); casting/TIDAL Connect; Dolby Atmos; optional ASIO output (maybe, see `plans/notes/2026-10-01-asio-spike.md`) | Parked last |
+| 5 | Track 8 | Linux support: ALSA output backend, MPRIS media controls, Secret Service keyring, deb/AppImage/AUR packaging | Proposed — before Track 7 (owner call); see `plans/notes/2026-10-01-linux-support-spike.md` |
+| 6 | Track 7 | Advanced audio: DSP/EQ (opt-in, mutually exclusive with bit-perfect); casting/TIDAL Connect; Dolby Atmos; optional ASIO output (maybe, see `plans/notes/2026-10-01-asio-spike.md`) | Parked last |
 
 Track 2b has no hard "done" gate before Track 4 starts; it may still receive bug fixes and
 polish in parallel.
@@ -158,8 +160,27 @@ polish in parallel.
   build time, in-process driver crash risk, software-only volume (breaks bit-perfect below
   100%), no hotplug, and single-client conflicts. Revisit only if an affected interface
   appears or the owner wants parity; then run the normal spec → plan cycle.
-- Parked until Track 3 closes and the owner calls it; Tracks 1–6 are otherwise complete
-  (Track 2b remains open for polish).
+- Parked last, after Track 8 (Linux support), until the owner calls it; Tracks 1–6 are
+  otherwise complete (Track 2b remains open for polish).
+
+### Track 8 — Linux support
+
+- **Target:** modern Arch-based (Arch, CachyOS, Manjaro, EndeavourOS) and Debian-based
+  (Debian, Ubuntu, Mint) distros; build against the oldest supported base (Ubuntu 22.04 /
+  Debian 12 — the WebKitGTK 4.1 floor) per Tauri's AppImage guidance. Kernel choice is a
+  non-factor (mainline USB audio); PipeWire vs PulseAudio, X11 vs Wayland, and
+  GNOME-Keyring vs KWallet are the real test matrix.
+- **Scope:** an ALSA audio backend mapping the existing model (server `default` for shared,
+  direct `hw:` for exclusive/bit-perfect); MPRIS media controls replacing the SMTC stub;
+  Linux keyring features with a graceful no-Secret-Service fallback; deb + AppImage
+  artifacts and an AUR PKGBUILD; Linux port of the Track 3 measurement harness (or an
+  explicit exemption).
+- **Phases:** (1) playable alpha — audio + keyring + build/packaging; (2) desktop
+  integration — MPRIS, deep links/.desktop, Wayland geometry, WebKit CSS pass;
+  (3) parity/hardening — perf harness and distro matrix.
+- **Status:** Proposed (2026-10-01); sequenced **before Track 7**, owner call. Findings,
+  distro/WM/kernel sensitivity, and effort estimate:
+  `plans/notes/2026-10-01-linux-support-spike.md`.
 
 ## 4. Decisions (post-MVP)
 
@@ -174,6 +195,9 @@ polish in parallel.
 ## 5. Open research questions
 
 - Dolby Atmos DRM status (spike) and casting/TIDAL Connect protocol (Track 7).
+- Linux support (Track 8): audio backend choice (ALSA-direct vs server integration),
+  keyring fallback when no Secret Service is present, WebKitGTK/CSS floor, packaging
+  artifacts and baselines.
 - Resolved since: playlist reorder semantics (Plans 6–7); lyrics source and cache (4a);
   discovery endpoints (4b); Last.fm key registration (5); scrobble offline-queue
   dedupe/failure behavior (5).
@@ -195,7 +219,7 @@ polish in parallel.
 
 - Plan numbering continues from Plan 5 and follows the **execution order** (PM-D5): Track 2b
   spans Plans 10–13, then Tracks 4, 5, 6, then the deferred Track 3 (now active), then
-  Track 7. **Track labels do not change** — "Track 3" still names Performance & stability
+  Track 8 (Linux, proposed), then Track 7. **Track labels do not change** — "Track 3" still names Performance & stability
   even though it runs fourth. Track 2 has spanned Plans 8–9 (2a) and Plans 10–13 (2b);
   later tracks may similarly span more than one plan.
 - The parent's Phase 4 ordering (DSP → casting → Atmos) is replaced by Track 7; Atmos
