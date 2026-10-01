@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reduce, emptyState, reconcileSeek, muteTarget, volumeIcon, type PlayerState } from "./player.svelte";
+import { applyEvent, reduce, emptyState, reconcileSeek, muteTarget, volumeIcon, type PlayerState } from "./player.svelte";
 
 describe("player reducer", () => {
   it("applies a state event", () => {
@@ -97,5 +97,61 @@ describe("seek reconciliation", () => {
         queue: [], stream: null,
       }),
     ).toBe(1000);
+  });
+});
+
+describe("player event application", () => {
+  const positioned: PlayerState = { ...emptyState(), queue: [
+    { track_id: 1, title: "T", artist: "A", album: "", duration_secs: 10, cover: null },
+  ] };
+
+  it("mutates the existing state for a position event", () => {
+    const state = { ...positioned };
+    const result = applyEvent(state, { type: "position", position_ms: 1000, duration_ms: 10000 });
+    expect(result).toBe(state);
+    expect(state.position_ms).toBe(1000);
+    expect(state.duration_ms).toBe(10000);
+    expect(state.queue).toHaveLength(1);
+  });
+
+  it("applies a state event field by field", () => {
+    const state = { ...positioned, error: "stale" };
+    const result = applyEvent(state, {
+      type: "state", playing: true, buffering: false, current: null,
+      position_ms: 0, duration_ms: 0, volume: 0.5, shuffle: false,
+      repeat: "off", preferred_quality: "lossless",
+      output_mode: "shared", bit_perfect: false, bit_perfect_notice: null,
+      queue: [],
+      stream: null,
+    });
+    expect(result).toBe(state);
+    expect(state.playing).toBe(true);
+    expect(state.volume).toBe(0.5);
+    expect(state.queue).toEqual([]);
+    expect(state.error).toBe("stale");
+  });
+
+  it("clears the error on now_playing and captures it on error", () => {
+    const state = { ...positioned, error: "old" };
+    applyEvent(state, { type: "now_playing", item: null });
+    expect(state.error).toBe("");
+    applyEvent(state, { type: "error", code: "auth", message: "nope" });
+    expect(state.error).toBe("nope");
+  });
+
+  it("keeps queue and position updates when events interleave", () => {
+    const state = emptyState();
+    applyEvent(state, { type: "position", position_ms: 1000, duration_ms: 10000 });
+    applyEvent(state, {
+      type: "state", playing: true, buffering: false, current: null,
+      position_ms: 1000, duration_ms: 10000, volume: 1, shuffle: false,
+      repeat: "off", preferred_quality: "lossless",
+      output_mode: "shared", bit_perfect: false, bit_perfect_notice: null,
+      queue: [{ track_id: 1, title: "T", artist: "A", album: "", duration_secs: 10, cover: null }],
+      stream: null,
+    });
+    applyEvent(state, { type: "position", position_ms: 2000, duration_ms: 10000 });
+    expect(state.queue).toHaveLength(1);
+    expect(state.position_ms).toBe(2000);
   });
 });
