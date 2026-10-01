@@ -387,6 +387,14 @@ fn process_memory_rows() -> Vec<(String, u64, bool)> {
                     .position(|c| *c == 0)
                     .unwrap_or(entry.szExeFile.len());
                 let name = String::from_utf16_lossy(&entry.szExeFile[..len]);
+                // Keep the app itself even when the binary is renamed (the
+                // test harness runs as `oxitide_app-<hash>.exe`).
+                if entry.th32ProcessID != self_pid && !tracked_process_name(&name) {
+                    if Process32NextW(snapshot, &mut entry).is_err() {
+                        break;
+                    }
+                    continue;
+                }
                 let created = creation_ms_for_pid(entry.th32ProcessID);
                 parents.push((entry.th32ProcessID, entry.th32ParentProcessID, name, created));
                 if Process32NextW(snapshot, &mut entry).is_err() {
@@ -429,6 +437,17 @@ fn process_memory_rows() -> Vec<(String, u64, bool)> {
 /// One process from the Toolhelp snapshot: `(pid, parent pid, name, creation
 /// time in unix ms when readable)`.
 type ProcessRow = (u32, u32, String, Option<u64>);
+
+/// Processes the memory metric tracks: the app itself, WebView2's children,
+/// and the console host Windows spawns alongside them. Restricting the
+/// snapshot keeps the PID-reuse creation-time lookup to a handful of
+/// `OpenProcess` calls per sample; opening every process on the machine
+/// measurably slowed the S5 scroll frames.
+fn tracked_process_name(name: &str) -> bool {
+    name.eq_ignore_ascii_case("oxitide-app.exe")
+        || name.eq_ignore_ascii_case("msedgewebview2.exe")
+        || name.eq_ignore_ascii_case("conhost.exe")
+}
 
 /// Walk up to 8 ancestors looking for `self_pid`. Creation-time ordering
 /// rejects PID-reuse false positives: a "parent" created after its child
@@ -614,6 +633,15 @@ mod tests {
     fn process_tree_memory_is_positive() {
         let mb = process_tree_memory_mb().expect("measurement available on Windows");
         assert!(mb > 0, "expected a positive working set, got {mb}");
+    }
+
+    #[test]
+    fn tracked_process_names_are_the_app_webview2_and_conhost() {
+        assert!(tracked_process_name("oxitide-app.exe"));
+        assert!(tracked_process_name("msedgewebview2.exe"));
+        assert!(tracked_process_name("conhost.exe"));
+        assert!(!tracked_process_name("zen.exe"));
+        assert!(!tracked_process_name("reg.exe"));
     }
 
     #[test]
