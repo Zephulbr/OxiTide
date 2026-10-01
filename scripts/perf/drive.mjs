@@ -207,11 +207,13 @@ const scenarioFallback = async (id) => {
       if (!loaded) throw new Error("S6: synthetic track fixture unavailable");
       await delay(2000); // let the 10k-row view render
       for (const query of ["a", "th", "the ", "the e", ""]) {
-        await evaluate(`window.__perf.measureFilter(${JSON.stringify(query)})`);
+        const measured = await evaluate(`window.__perf.measureFilter(${JSON.stringify(query)})`);
+        if (!measured) throw new Error("S6: filter measurement unavailable");
         await delay(300);
       }
       for (const key of ["title", "duration", "title"]) {
-        await evaluate(`window.__perf.measureSort(${JSON.stringify(key)})`);
+        const measured = await evaluate(`window.__perf.measureSort(${JSON.stringify(key)})`);
+        if (!measured) throw new Error("S6: sort measurement unavailable");
         await delay(500);
       }
       await delay(3000);

@@ -41,8 +41,8 @@
   "S6": [
     { "metric": "frame_p95_ms:instrument", "max": 16.7 },
     { "metric": "frame_p99_ms:instrument", "max": 33 },
-    { "metric": "filter_max_ms", "max": 50 },
-    { "metric": "sort_max_ms", "max": 150 },
+    { "metric": "filter_max_ms", "max": 50, "required": true },
+    { "metric": "sort_max_ms", "max": 150, "required": true },
     { "metric": "memory_max_mb", "max": 450 }
   ],
   "S7": [{ "metric": "memory_max_mb", "max": 450 }],

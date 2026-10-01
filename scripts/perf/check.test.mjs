@@ -183,3 +183,34 @@ test("startup step metric measures the largest app-owned pre-paint step", () => 
   const metrics = metricsFor(readRuns([file])[0]);
   assert.equal(metrics.startup_step_max_ms, 49);
 });
+
+test("zero-count interaction submissions do not fabricate zero metrics", () => {
+  const file = runFile([
+    { kind: "session", run_id: "S6-2", scenario: "S6" },
+    {
+      kind: "ui_metrics",
+      t_ms: 1,
+      metrics: {
+        interactions: { filter_count: 0, filter_max_ms: 0, sort_count: 0, sort_max_ms: 0 },
+      },
+    },
+  ]);
+  const metrics = metricsFor(readRuns([file])[0]);
+  assert.equal(metrics.filter_max_ms, undefined);
+  assert.equal(metrics.sort_max_ms, undefined);
+});
+
+test("a required budget fails when the metric is missing", () => {
+  const { ok, results } = evaluate(
+    [{ scenario: "S6", metrics: {} }],
+    { S6: [{ metric: "filter_max_ms", max: 50, required: true }] },
+  );
+  assert.equal(results[0].status, "fail");
+  assert.equal(ok, false);
+  const optional = evaluate(
+    [{ scenario: "S6", metrics: {} }],
+    { S6: [{ metric: "filter_max_ms", max: 50 }] },
+  );
+  assert.equal(optional.results[0].status, "unmeasured");
+  assert.equal(optional.ok, true);
+});

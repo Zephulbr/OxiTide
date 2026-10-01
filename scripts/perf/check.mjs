@@ -79,10 +79,12 @@ export function metricsFor(run) {
       if (line.metrics?.long_tasks) longTasks.push(line.metrics.long_tasks);
       const interactions = line.metrics?.interactions;
       if (interactions) {
-        if (typeof interactions.filter_max_ms === "number") {
+        // A count of zero carries a placeholder 0 ms; recording it would let a
+        // run that measured nothing pass the required S6 rows.
+        if (typeof interactions.filter_max_ms === "number" && interactions.filter_count > 0) {
           metrics.filter_max_ms = Math.max(metrics.filter_max_ms ?? 0, interactions.filter_max_ms);
         }
-        if (typeof interactions.sort_max_ms === "number") {
+        if (typeof interactions.sort_max_ms === "number" && interactions.sort_count > 0) {
           metrics.sort_max_ms = Math.max(metrics.sort_max_ms ?? 0, interactions.sort_max_ms);
         }
       }
@@ -178,7 +180,13 @@ export function evaluate(aggregatedRuns, config) {
       const maxOk = budget.max === undefined || (value !== undefined && value <= budget.max);
       const minOk = budget.min === undefined || (value !== undefined && value >= budget.min);
       const status =
-        value === undefined ? "unmeasured" : maxOk && minOk ? "pass" : "fail";
+        value === undefined
+          ? budget.required
+            ? "fail"
+            : "unmeasured"
+          : maxOk && minOk
+            ? "pass"
+            : "fail";
       results.push({
         scenario: run.scenario,
         metric: budget.metric,
