@@ -189,11 +189,24 @@ impl PerfSession {
     }
 
     pub fn write_memory_sample(&self) {
-        if let Some(mb) = process_tree_memory_mb() {
+        let rows = process_memory_rows();
+        if rows.is_empty() {
+            return;
+        }
+        let total: u64 = rows.iter().map(|(_, mb, _)| mb).sum();
+        let t_ms = self.elapsed_ms();
+        self.write(serde_json::json!({
+            "kind": "memory",
+            "mb": total,
+            "t_ms": t_ms,
+        }));
+        for (name, mb, is_self) in rows {
             self.write(serde_json::json!({
-                "kind": "memory",
+                "kind": "memory_process",
+                "name": name,
                 "mb": mb,
-                "t_ms": self.elapsed_ms(),
+                "self": is_self,
+                "t_ms": t_ms,
             }));
         }
     }
@@ -341,9 +354,9 @@ fn process_creation_unix_ms() -> Option<u128> {
 }
 
 /// Working set of this process plus all descendant processes (the WebView2
-/// helpers), in MiB. Windows only; `None` elsewhere.
+/// helpers), in MiB, one row per process: (name, mb, is_the_app_itself).
 #[cfg(windows)]
-fn process_tree_memory_mb() -> Option<u64> {
+fn process_memory_rows() -> Vec<(String, u64, bool)> {
     use windows::Win32::Foundation::{CloseHandle, HANDLE};
     use windows::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
@@ -357,16 +370,24 @@ fn process_tree_memory_mb() -> Option<u64> {
     };
 
     let self_pid = std::process::id();
-    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) }.ok()?;
+    let Ok(snapshot) = (unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) }) else {
+        return Vec::new();
+    };
     let mut entry = PROCESSENTRY32W {
         dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
         ..Default::default()
     };
-    let mut parents: Vec<(u32, u32)> = Vec::new();
+    let mut parents: Vec<(u32, u32, String)> = Vec::new();
     unsafe {
         if Process32FirstW(snapshot, &mut entry).is_ok() {
             loop {
-                parents.push((entry.th32ProcessID, entry.th32ParentProcessID));
+                let len = entry
+                    .szExeFile
+                    .iter()
+                    .position(|c| *c == 0)
+                    .unwrap_or(entry.szExeFile.len());
+                let name = String::from_utf16_lossy(&entry.szExeFile[..len]);
+                parents.push((entry.th32ProcessID, entry.th32ParentProcessID, name));
                 if Process32NextW(snapshot, &mut entry).is_err() {
                     break;
                 }
@@ -380,15 +401,15 @@ fn process_tree_memory_mb() -> Option<u64> {
             if current == self_pid {
                 return true;
             }
-            match parents.iter().find(|(p, _)| *p == current) {
-                Some((_, parent)) if *parent != 0 => current = *parent,
+            match parents.iter().find(|(p, _, _)| *p == current) {
+                Some((_, parent, _)) if *parent != 0 => current = *parent,
                 _ => return false,
             }
         }
         false
     };
-    let mut total: u64 = 0;
-    for &(pid, _) in &parents {
+    let mut rows = Vec::new();
+    for &(pid, _, ref name) in &parents {
         if !is_descendant(pid) {
             continue;
         }
@@ -407,15 +428,28 @@ fn process_tree_memory_mb() -> Option<u64> {
         };
         let _ = unsafe { CloseHandle(handle) };
         if ok.is_ok() {
-            total += counters.WorkingSetSize as u64;
+            rows.push((
+                name.clone(),
+                counters.WorkingSetSize as u64 / (1024 * 1024),
+                pid == self_pid,
+            ));
         }
     }
-    Some(total / (1024 * 1024))
+    rows
 }
 
 #[cfg(not(windows))]
+fn process_memory_rows() -> Vec<(String, u64, bool)> {
+    Vec::new()
+}
+
+/// Working set of this process plus all descendant processes, in MiB.
 fn process_tree_memory_mb() -> Option<u64> {
-    None
+    let rows = process_memory_rows();
+    if rows.is_empty() {
+        return None;
+    }
+    Some(rows.iter().map(|(_, mb, _)| mb).sum())
 }
 
 #[cfg(test)]
@@ -525,5 +559,32 @@ mod tests {
     fn process_tree_memory_is_positive() {
         let mb = process_tree_memory_mb().expect("measurement available on Windows");
         assert!(mb > 0, "expected a positive working set, got {mb}");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn memory_samples_name_each_process_and_flag_the_app() {
+        let dir = temp_dir("memproc");
+        let session = PerfSession::create_in(&dir, "S1").unwrap();
+        session.write_memory_sample();
+        let text = std::fs::read_to_string(session.jsonl_path()).unwrap();
+        let lines: Vec<serde_json::Value> = text
+            .lines()
+            .map(|l| serde_json::from_str(l).expect("valid JSON"))
+            .collect();
+        let aggregate = lines.iter().find(|l| l["kind"] == "memory").expect("aggregate line");
+        assert!(aggregate["mb"].as_u64().unwrap() > 0);
+        let processes: Vec<_> =
+            lines.iter().filter(|l| l["kind"] == "memory_process").collect();
+        assert!(!processes.is_empty(), "at least the app process must be sampled");
+        assert!(
+            processes.iter().any(|l| l["self"].as_bool() == Some(true)
+                && l["mb"].as_u64().unwrap() > 0
+                && l["name"].as_str().is_some_and(|n| !n.is_empty())),
+            "the app process must be named and flagged"
+        );
+        let sum: u64 = processes.iter().map(|l| l["mb"].as_u64().unwrap()).sum();
+        assert_eq!(sum, aggregate["mb"].as_u64().unwrap(), "aggregate must be the row sum");
+        let _ = std::fs::remove_dir_all(dir);
     }
 }
