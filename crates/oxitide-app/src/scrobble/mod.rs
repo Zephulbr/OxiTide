@@ -10,6 +10,7 @@ pub mod listenbrainz;
 pub mod queue;
 pub mod tracker;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -110,6 +111,7 @@ pub struct ScrobblerService {
     listenbrainz: ListenBrainzClient,
     store: Arc<dyn CredentialStore>,
     lastfm_configured: bool,
+    credentials_loaded: AtomicBool,
     tx: mpsc::UnboundedSender<ScrobbleIntent>,
     rx: Mutex<Option<mpsc::UnboundedReceiver<ScrobbleIntent>>>,
     inner: Mutex<Inner>,
@@ -136,21 +138,18 @@ impl ScrobblerService {
             lastfm_api_secret.clone(),
         );
         let listenbrainz = ListenBrainzClient::new(http, listenbrainz_base);
-        let lastfm_credential = store.load(LASTFM_SERVICE).ok().flatten();
-        let listenbrainz_credential = store.load(LISTENBRAINZ_SERVICE).ok().flatten();
         let (tx, rx) = mpsc::unbounded_channel();
         Arc::new(Self {
             lastfm,
             listenbrainz,
             store,
             lastfm_configured: !lastfm_api_key.is_empty() && !lastfm_api_secret.is_empty(),
+            credentials_loaded: AtomicBool::new(false),
             tx,
             rx: Mutex::new(Some(rx)),
             inner: Mutex::new(Inner {
                 lastfm_enabled,
                 listenbrainz_enabled,
-                lastfm: lastfm_credential,
-                listenbrainz: listenbrainz_credential,
                 ..Inner::default()
             }),
             on_status: Mutex::new(None),
@@ -179,7 +178,25 @@ impl ScrobblerService {
         self.emit_status();
     }
 
+    /// One-time keyring read, deferred to the first worker/status use so
+    /// startup never waits on the Windows Credential Manager.
+    fn ensure_credentials_loaded(&self) {
+        if self.credentials_loaded.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let lastfm = self.store.load(LASTFM_SERVICE).ok().flatten();
+        let listenbrainz = self.store.load(LISTENBRAINZ_SERVICE).ok().flatten();
+        let mut inner = self.inner.lock().unwrap();
+        if inner.lastfm.is_none() {
+            inner.lastfm = lastfm;
+        }
+        if inner.listenbrainz.is_none() {
+            inner.listenbrainz = listenbrainz;
+        }
+    }
+
     pub fn status(&self) -> ScrobbleStatusDto {
+        self.ensure_credentials_loaded();
         let inner = self.inner.lock().unwrap();
         ScrobbleStatusDto {
             lastfm: ScrobbleServiceStatus {
@@ -241,6 +258,7 @@ impl ScrobblerService {
     }
 
     pub async fn handle_intent(&self, intent: ScrobbleIntent) {
+        self.ensure_credentials_loaded();
         match intent {
             ScrobbleIntent::NowPlaying(item) => {
                 let (lastfm, listenbrainz) = self.enabled_flags();
@@ -298,6 +316,7 @@ impl ScrobblerService {
         };
         let this = self.clone();
         tauri::async_runtime::spawn(async move {
+            this.ensure_credentials_loaded();
             loop {
                 tokio::select! {
                     intent = rx.recv() => {
@@ -1012,5 +1031,53 @@ mod tests {
         );
         assert!(service.listenbrainz_connect("bad".into()).await.is_err());
         assert!(!service.status().listenbrainz.connected);
+    }
+
+    struct CountingStore {
+        inner: MemoryCredentialStore,
+        loads: std::sync::atomic::AtomicUsize,
+    }
+
+    impl CredentialStore for CountingStore {
+        fn save(&self, service: &str, credential: &StoredCredential) -> Result<(), String> {
+            self.inner.save(service, credential)
+        }
+        fn load(&self, service: &str) -> Result<Option<StoredCredential>, String> {
+            self.loads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.inner.load(service)
+        }
+        fn clear(&self, service: &str) -> Result<(), String> {
+            self.inner.clear(service)
+        }
+    }
+
+    /// Construction must not read the Windows Credential Manager; the first
+    /// status/worker use loads each service exactly once.
+    #[test]
+    fn credentials_load_lazily_on_first_use() {
+        let store = Arc::new(CountingStore {
+            inner: MemoryCredentialStore::default(),
+            loads: std::sync::atomic::AtomicUsize::new(0),
+        });
+        store
+            .inner
+            .save(LASTFM_SERVICE, &StoredCredential { username: "v".into(), secret: "sk".into() })
+            .unwrap();
+        let service = ScrobblerService::new(
+            reqwest::Client::new(),
+            "http://127.0.0.1:1",
+            "http://127.0.0.1:1",
+            store.clone(),
+            "key".into(),
+            "secret".into(),
+            true,
+            false,
+        );
+        assert_eq!(store.loads.load(std::sync::atomic::Ordering::SeqCst), 0);
+        let status = service.status();
+        assert!(status.lastfm.connected);
+        assert_eq!(store.loads.load(std::sync::atomic::Ordering::SeqCst), 2);
+        let _ = service.status();
+        assert_eq!(store.loads.load(std::sync::atomic::Ordering::SeqCst), 2);
     }
 }
