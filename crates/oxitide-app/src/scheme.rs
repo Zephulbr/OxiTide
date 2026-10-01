@@ -8,6 +8,7 @@
 //! reuses the prior run's backup rather than discarding the official handler.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use std::sync::Mutex;
 
 #[cfg(windows)]
@@ -61,14 +62,30 @@ pub fn decide(owner: KeyOwner, prior_backup: Option<PathBuf>) -> SchemeAction {
 }
 
 static BACKUP: Mutex<Option<SchemeAction>> = Mutex::new(None);
+static RESTORE_ARMED: AtomicBool = AtomicBool::new(false);
 
 /// Remember the snapshot taken at startup.
 pub fn remember(action: SchemeAction) {
     *BACKUP.lock().unwrap() = Some(action);
 }
 
+/// Arm the exit restore. Called after `register_all` returns so a quit that
+/// beats the background startup thread cannot restore a snapshot for a
+/// registration that never ran (or is still in flight).
+pub fn arm_restore() {
+    RESTORE_ARMED.store(true, AtomicOrdering::SeqCst);
+}
+
+#[cfg(test)]
+pub(crate) fn restore_is_armed() -> bool {
+    RESTORE_ARMED.load(AtomicOrdering::SeqCst)
+}
+
 /// Restore the remembered handler on exit.
 pub fn restore_remembered() {
+    if !RESTORE_ARMED.load(AtomicOrdering::SeqCst) {
+        return;
+    }
     let guard = BACKUP.lock().unwrap();
     if let Some(action) = guard.as_ref() {
         restore(action);
@@ -171,6 +188,15 @@ mod tests {
         assert_eq!(owner_from_query(other, "oxitide.exe"), KeyOwner::Other);
         assert_eq!(owner_from_query("", "oxitide.exe"), KeyOwner::Absent);
         assert_eq!(owner_from_query("   \n", "oxitide.exe"), KeyOwner::Absent);
+    }
+
+    /// Mutates process-global state: run in isolation or accept the terminal
+    /// armed state.
+    #[test]
+    fn restore_stays_disarmed_until_registration_completes() {
+        assert!(!restore_is_armed(), "restore must start disarmed");
+        arm_restore();
+        assert!(restore_is_armed());
     }
 
     #[test]

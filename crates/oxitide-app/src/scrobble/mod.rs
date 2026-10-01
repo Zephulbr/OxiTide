@@ -946,6 +946,10 @@ mod tests {
             .save(LASTFM_SERVICE, &StoredCredential { username: "v".into(), secret: "sk".into() })
             .unwrap();
         let service = service(store.clone());
+        assert!(
+            service.status().lastfm.connected,
+            "the credential must be loaded before disconnecting"
+        );
         service.lastfm_disconnect().unwrap();
         assert!(!service.status().lastfm.connected);
         assert!(store.load(LASTFM_SERVICE).unwrap().is_none());

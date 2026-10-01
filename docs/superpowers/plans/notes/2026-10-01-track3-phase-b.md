@@ -62,9 +62,11 @@ PASS       S2               long_task_max_ms             0.0  (max 100)
 | 5 | 361 | 719 | 907 | 1375 | 0 | 491 |
 | **p95** | 397.0 | 756.0 | **949.0** | **1375.0** | **0.0** | **496.0** |
 
-## Startup breakdown (S1 p95; S2 within 10 ms of S1 on every mark)
+## Startup breakdown (S1 p95; S2 matches S1 within 10 ms through `window_shown`; the post-window marks diverge — S2 `first_paint` 949 vs 938 and `ui_ready` 1375 vs 1207)
 
-Marks, p95 over the 5 runs:
+Marks, p95 over the 5 runs. `t_ms` is the p95 of each mark's absolute
+process-relative time; `Delta` is the p95 of the per-run difference between
+adjacent marks (so it is not derivable from the `t_ms` column by subtraction):
 
 | Mark | t_ms | Delta |
 | --- | --- | --- |
@@ -78,7 +80,7 @@ Marks, p95 over the 5 runs:
 | first_paint | 938 | +194 ms from window_shown (WebView dev bundle + first render) |
 | ui_ready | 1207 | +286 ms from first_paint (player built + auth restored) |
 
-Every application-owned step before `window_shown` is now ≤ 2 ms: config load, cache construction, and service construction. The former pre-paint work (full cache cleanup scan, `palettes.json`/`lyrics.json` parses, keyring read, `reg query`/`register_all`, scheme snapshot) now completes 4–21 ms *after* the window is shown and cannot block first paint. The only remaining >100 ms spans before first paint are runtime-owned: the loader (390 ms), Tauri/WebView2 window construction (364 ms), and the dev-bundle first render (194 ms) — none of these is app work the Phase B design covers. Baseline comparison: `config_loaded → first_paint` was 578–658 ms; it is now 534–554 ms (p95 551 vs 658).
+Every application-owned step before `window_shown` is now ≤ 2 ms: config load, cache construction, and service construction. The former pre-paint work (full cache cleanup scan, `palettes.json`/`lyrics.json` parses, keyring read, `reg query`/`register_all`, scheme snapshot) now completes 4–21 ms *after* the window is shown and cannot block first paint. The only remaining >100 ms spans before first paint are runtime-owned: the loader (390 ms), Tauri/WebView2 window construction (364 ms), and the dev-bundle first render (194 ms) — none of these is app work the Phase B design covers. Baseline comparison: `config_loaded → first_paint` was 578–658 ms; it is now 534–554 ms (p95-of-delta 554 vs 658).
 
 ## TTFS attribution
 
@@ -126,7 +128,7 @@ Two measured notes for Phase D:
 
 ## Which Phase B changes produced the deltas
 
-- `112036b perf(app): gate the window on geometry only and background the rest` (Task 3) — main driver of S1/S2: `show()` now follows only handler registration + geometry; cache cleanup, scheme snapshot/remember, and `register_all` run on the `oxitide-startup` thread (observed `cache_cleanup_done` / `startup_background_done` at +4/+21 ms after `window_shown`), and the duplicate login `Config::load` is gone. `config_loaded → first_paint` improved ~105 ms (p95 658 → 551) and `S2.first_paint_ms` crossed back under 1000 ms.
+- `112036b perf(app): gate the window on geometry only and background the rest` (Task 3) — main driver of S1/S2: `show()` now follows only handler registration + geometry; cache cleanup, scheme snapshot/remember, and `register_all` run on the `oxitide-startup` thread (observed `cache_cleanup_done` / `startup_background_done` at +4/+21 ms after `window_shown`), and the duplicate login `Config::load` is gone. `config_loaded → first_paint` improved ~104 ms (p95-of-delta 658 → 554) and `S2.first_paint_ms` crossed back under 1000 ms.
 - `fa8c730 perf(app): load artwork and lyrics caches lazily` (Task 1) — removes the synchronous `palettes.json`/`lyrics.json` parse from service construction; `config_loaded → services_ready` is now 2 ms.
 - `736cd16 perf(app): load scrobbler credentials lazily` (Task 2) — keyring I/O leaves the pre-show path (one-shot load on first `start()`/`status()`).
 - `031ed5b perf(audio): wake the worker on stream events instead of polling` (Task 4) — removes the 200 ms `wait_for_info` poll; consistent with the S4 max gap 103 → 101 and the S3-hit replay p95 308 → 294 (both still tight margins; the replay is dominated by the resolve stage, not the wait).

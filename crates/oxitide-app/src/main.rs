@@ -240,7 +240,7 @@ fn main() {
             // restore (no snapshot remembered).
             let bg = app.handle().clone();
             let cache = app.state::<AppState>().cache();
-            std::thread::Builder::new()
+            let spawned = std::thread::Builder::new()
                 .name("oxitide-startup".into())
                 .spawn(move || {
                     if let Some(cache) = cache {
@@ -252,9 +252,12 @@ fn main() {
                     if let Err(e) = bg.deep_link().register_all() {
                         tracing::warn!("deep link registration failed: {e}");
                     }
+                    scheme::arm_restore();
                     perf::mark("startup_background_done");
-                })
-                .ok();
+                });
+            if let Err(e) = spawned {
+                tracing::warn!("startup background thread failed: {e}");
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

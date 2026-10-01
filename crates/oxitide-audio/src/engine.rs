@@ -666,6 +666,7 @@ fn decode_track(
                     Err(e) => {
                         if inner.generation.load(Ordering::SeqCst) != generation {
                             let _ = tx.send(Err(e));
+                            inner.notify_worker();
                             return;
                         }
                         tracing::warn!(
@@ -892,44 +893,69 @@ impl PcmSink for ChannelSink {
     }
 }
 
-/// Wait until the producer queues a stream event, or the engine is woken by a
-/// command / generation bump / shutdown. A bare wake returns `Ok(None)`; a
-/// disconnected producer returns `Err(())`. Holding `wake_lock` across the
-/// `try_recv` closes the lost-wakeup race: a send that lands after the check
-/// blocks `notify_worker` until the condvar wait has started.
+#[derive(Debug)]
+enum StreamWait<T> {
+    Event(T),
+    Superseded,
+    Shutdown,
+    Woken,
+    Disconnected,
+}
+
+enum SessionOver {
+    Superseded,
+    Shutdown,
+}
+
+/// Wait until the producer queues a stream event, the session predicate says
+/// the session is over, or the engine is woken. The predicate runs while
+/// `wake_lock` is held, so a command that bumps the generation and notifies
+/// cannot slip between the check and the park. A bare wake returns
+/// `StreamWait::Woken`; a disconnected producer returns `Disconnected`.
 fn wait_for_stream_event<T>(
     wake_lock: &Mutex<()>,
     wake: &Condvar,
     rx: &std::sync::mpsc::Receiver<T>,
-) -> std::result::Result<Option<T>, ()> {
+    session_over: impl Fn() -> Option<SessionOver>,
+) -> StreamWait<T> {
     let guard = wake_lock.lock().unwrap();
+    if let Some(over) = session_over() {
+        return match over {
+            SessionOver::Superseded => StreamWait::Superseded,
+            SessionOver::Shutdown => StreamWait::Shutdown,
+        };
+    }
     match rx.try_recv() {
-        Ok(event) => Ok(Some(event)),
+        Ok(event) => StreamWait::Event(event),
         Err(std::sync::mpsc::TryRecvError::Empty) => {
             let _ = wake.wait_timeout(guard, Duration::from_secs(2));
-            Ok(None)
+            StreamWait::Woken
         }
-        Err(std::sync::mpsc::TryRecvError::Disconnected) => Err(()),
+        Err(std::sync::mpsc::TryRecvError::Disconnected) => StreamWait::Disconnected,
     }
 }
 
 fn wait_for_info(inner: &Arc<Inner>, stream: &mut TrackStream, gen: u64) -> Result<StreamStart> {
     loop {
-        // A supersede while a track is still resolving/fetching (e.g. Next
-        // pressed during a slow network resolve) must exit promptly; command
-        // handling notifies the worker, which wakes the wait below.
-        if inner.generation.load(Ordering::SeqCst) != gen {
-            return Err(Error::Output("playback superseded".into()));
-        }
-        if inner.shutdown.load(Ordering::SeqCst) {
-            return Err(Error::Output("engine shut down".into()));
-        }
-        match wait_for_stream_event(&inner.wake_lock, &inner.wake, &stream.rx) {
-            Err(()) => return Err(Error::Decode("stream ended before any audio".into())),
-            Ok(None) => continue,
-            Ok(Some(Ok(StreamEvent::Info(start)))) => return Ok(start),
-            Ok(Some(Ok(StreamEvent::Samples(_)))) => continue,
-            Ok(Some(Err(e))) => return Err(e),
+        let session_over = || {
+            if inner.generation.load(Ordering::SeqCst) != gen {
+                Some(SessionOver::Superseded)
+            } else if inner.shutdown.load(Ordering::SeqCst) {
+                Some(SessionOver::Shutdown)
+            } else {
+                None
+            }
+        };
+        match wait_for_stream_event(&inner.wake_lock, &inner.wake, &stream.rx, session_over) {
+            StreamWait::Superseded => return Err(Error::Output("playback superseded".into())),
+            StreamWait::Shutdown => return Err(Error::Output("engine shut down".into())),
+            StreamWait::Woken => continue,
+            StreamWait::Disconnected => {
+                return Err(Error::Decode("stream ended before any audio".into()))
+            }
+            StreamWait::Event(Ok(StreamEvent::Info(start))) => return Ok(start),
+            StreamWait::Event(Ok(StreamEvent::Samples(_))) => continue,
+            StreamWait::Event(Err(e)) => return Err(e),
         }
     }
 }
@@ -3319,10 +3345,9 @@ mod tests {
         tx.send(7).unwrap();
         let lock = Mutex::new(());
         let wake = Condvar::new();
-        match wait_for_stream_event(&lock, &wake, &rx) {
-            Ok(Some(7)) => {}
-            Ok(other) => panic!("expected the queued event, got {other:?}"),
-            Err(()) => panic!("unexpected disconnect"),
+        match wait_for_stream_event(&lock, &wake, &rx, || None) {
+            StreamWait::Event(7) => {}
+            other => panic!("expected the queued event, got {other:?}"),
         }
     }
 
@@ -3338,8 +3363,8 @@ mod tests {
             waker.notify_all();
         });
         let started = std::time::Instant::now();
-        let result = wait_for_stream_event(&lock, &wake, &rx);
-        assert!(matches!(result, Ok(None)), "expected a bare wake, got {result:?}");
+        let result = wait_for_stream_event(&lock, &wake, &rx, || None);
+        assert!(matches!(result, StreamWait::Woken), "expected a bare wake, got {result:?}");
         assert!(started.elapsed() < Duration::from_millis(1000));
     }
 
@@ -3349,6 +3374,58 @@ mod tests {
         drop(tx);
         let lock = Mutex::new(());
         let wake = Condvar::new();
-        assert!(matches!(wait_for_stream_event(&lock, &wake, &rx), Err(())));
+        assert!(matches!(
+            wait_for_stream_event(&lock, &wake, &rx, || None),
+            StreamWait::Disconnected
+        ));
+    }
+
+    /// A generation bump + notify that lands while the waiter is parked must be
+    /// observed promptly (the `wait_for_info` loop re-checks the predicate after
+    /// a bare wake), not at the 2 s safety timeout.
+    #[test]
+    fn stream_wait_sees_a_generation_bump_despite_the_park() {
+        let (_tx, rx) = std::sync::mpsc::channel::<u32>();
+        let lock = std::sync::Arc::new(Mutex::new(()));
+        let wake = std::sync::Arc::new(Condvar::new());
+        let generation = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let (locker, waker) = (lock.clone(), wake.clone());
+        let bumper = generation.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(50));
+            bumper.store(1, Ordering::SeqCst);
+            let _guard = locker.lock().unwrap();
+            waker.notify_all();
+        });
+        let session_over = || {
+            if generation.load(Ordering::SeqCst) != 0 {
+                Some(SessionOver::Superseded)
+            } else {
+                None
+            }
+        };
+        let started = std::time::Instant::now();
+        let mut result = wait_for_stream_event(&lock, &wake, &rx, session_over);
+        while matches!(result, StreamWait::Woken) {
+            result = wait_for_stream_event(&lock, &wake, &rx, session_over);
+        }
+        assert!(
+            matches!(result, StreamWait::Superseded),
+            "expected superseded, got {result:?}"
+        );
+        assert!(started.elapsed() < Duration::from_millis(1000));
+    }
+
+    #[test]
+    fn stream_wait_predicate_wins_over_a_queued_event() {
+        let (tx, rx) = std::sync::mpsc::channel::<u32>();
+        tx.send(7).unwrap();
+        let lock = Mutex::new(());
+        let wake = Condvar::new();
+        let result = wait_for_stream_event(&lock, &wake, &rx, || Some(SessionOver::Superseded));
+        assert!(
+            matches!(result, StreamWait::Superseded),
+            "expected superseded, got {result:?}"
+        );
     }
 }
