@@ -159,7 +159,12 @@ const scenarioFallback = async (id) => {
       ? "instrument"
       : null;
   let originalMode = null;
-  if (targetMode) {
+  let modeApplied = false;
+  /// Runs after login and `__perf` are up. The config read must happen here,
+  /// not at connect time: WebView2 starts on about:blank and the eager read
+  /// raced the navigation, silently skipping the pin (and the restore).
+  const applyScenarioMode = async () => {
+    if (!targetMode || modeApplied) return;
     try {
       originalMode = await evaluate(
         'window.__TAURI_INTERNALS__.invoke("get_config").then((c) => c.ui.mode)',
@@ -167,10 +172,7 @@ const scenarioFallback = async (id) => {
     } catch {
       originalMode = null; // cannot restore -> leave the owner's setting untouched
     }
-  }
-  let modeApplied = false;
-  const applyScenarioMode = async () => {
-    if (!targetMode || !originalMode || originalMode === targetMode || modeApplied) return;
+    if (!originalMode || originalMode === targetMode) return;
     modeApplied = true;
     try {
       await setUiMode(targetMode);
