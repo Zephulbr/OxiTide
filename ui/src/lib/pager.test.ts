@@ -687,3 +687,122 @@ describe("pager ensureAll recovery", () => {
     expect(load).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("pager in-place updates", () => {
+  it("appends windows in place so the rendered array identity is stable", async () => {
+    const load = vi.fn(async (offset: number, limit: number) =>
+      page([track(offset + 1), track(offset + 2)], offset, limit, 4),
+    );
+    const pager = createTrackPager("in-place-append", load, { pageSize: 2, prefetch: false });
+    const first = pager.items;
+
+    await pager.loadMore();
+    await pager.loadMore();
+
+    expect(pager.items).toBe(first);
+    expect(ids(pager.items)).toEqual([1, 2, 3, 4]);
+  });
+
+  it("removes and moves rows in place", async () => {
+    const load = vi.fn(async (offset: number, limit: number) =>
+      page([track(1), track(2), track(3)], offset, limit, 3),
+    );
+    const pager = createTrackPager("in-place-edit", load, { pageSize: 3, prefetch: false });
+    await pager.loadMore();
+    const first = pager.items;
+
+    pager.moveItem(0, 2);
+    expect(pager.items).toBe(first);
+    pager.removeItem(1);
+    expect(pager.items).toBe(first);
+
+    expect(ids(pager.items)).toEqual([2, 3]);
+  });
+
+  it("allows a removed row to come back from a later page", async () => {
+    const load = vi.fn(async (offset: number, limit: number) =>
+      offset === 0
+        ? page([track(1), track(2)], offset, limit, 4)
+        : page([track(2), track(3)], offset, limit, 4),
+    );
+    const pager = createTrackPager("remove-then-readd", load, { pageSize: 2, prefetch: false });
+    await pager.loadMore();
+
+    pager.removeItem(2);
+    await pager.loadMore();
+
+    expect(ids(pager.items)).toEqual([1, 2, 3]);
+  });
+
+  it("reorders duplicate rows in place without corrupting the cache", async () => {
+    const load = vi.fn(async (offset: number, limit: number) =>
+      page([track(1), track(2), track(1)], offset, limit, 3),
+    );
+    const pager = createTrackPager("dup-move", load, {
+      pageSize: 3,
+      prefetch: false,
+      dedupe: false,
+    });
+    await pager.loadMore();
+    const first = pager.items;
+
+    pager.moveItem(0, 2);
+
+    expect(pager.items).toBe(first);
+    expect(ids(pager.items)).toEqual([2, 1, 1]);
+    const rehydrated = createTrackPager("dup-move", load, {
+      pageSize: 3,
+      prefetch: false,
+      dedupe: false,
+    });
+    expect(ids(rehydrated.items)).toEqual([2, 1, 1]);
+  });
+
+  it("fetches the remainder in parallel above the burst cap on ensureAll", async () => {
+    const total = 20_100;
+    let active = 0;
+    let maxActive = 0;
+    const load = vi.fn(async (offset: number, limit: number) => {
+      if (offset > 0) {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        await delay(5);
+        active -= 1;
+      }
+      const to = Math.min(offset + limit, total);
+      return page(range(offset + 1, to).map(track), offset, limit, total);
+    });
+    const pager = createTrackPager("ensure-parallel", load, { prefetchMaxTotal: 10_000 });
+
+    await pager.ensureAll();
+
+    expect(pager.done).toBe(true);
+    expect(pager.items.length).toBe(total);
+    expect(maxActive).toBe(4);
+  });
+
+  it("surfaces a burst failure from ensureAll as error, then resumes on retry", async () => {
+    const total = 20_100;
+    let failOnce = true;
+    const load = vi.fn(async (offset: number, limit: number) => {
+      if (offset > 100 && failOnce) {
+        failOnce = false;
+        throw new Error("boom");
+      }
+      const to = Math.min(offset + limit, total);
+      return page(range(offset + 1, to).map(track), offset, limit, total);
+    });
+    const pager = createTrackPager("ensure-parallel-retry", load, {
+      prefetchMaxTotal: 10_000,
+    });
+
+    await expect(pager.ensureAll()).resolves.toBeUndefined();
+    expect(pager.error).toContain("boom");
+
+    await pager.ensureAll();
+
+    expect(pager.error).toBe("");
+    expect(pager.done).toBe(true);
+    expect(pager.items.length).toBe(total);
+  });
+});

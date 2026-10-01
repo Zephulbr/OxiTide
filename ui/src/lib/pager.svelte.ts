@@ -101,6 +101,9 @@ export function createTrackPager(
   let done = $state(cached?.done ?? false);
   let loading = $state(false);
   let error = $state("");
+  /// Ids already appended while `dedupe` is on; maintained across windows so a
+  /// page append does not rebuild a Set over the whole list every time.
+  const loadedIds = new Set<number>(cached ? cached.items.map((t) => t.id) : []);
   /// The first row not yet scanned (window end); also the next request offset.
   let nextOffset = cached?.nextOffset ?? 0;
   // The in-flight request task, shared by concurrent `loadMore` callers so
@@ -112,16 +115,19 @@ export function createTrackPager(
   let needsResync = false;
 
   function publish() {
-    cache.set(key, { items: [...items], total, nextOffset, done });
+    // The cache entry deliberately shares the live array: every mutation
+    // publishes immediately, and a rehydrating pager copies on mount.
+    cache.set(key, { items, total, nextOffset, done });
   }
 
-  /// Append a fetched window and advance past it.
+  /// Append a fetched window in place and advance past it.
   function applyWindow(page: TrackPage, offset: number, limit: number) {
-    if (dedupe) {
-      const seen = new Set(items.map((t) => t.id));
-      items = [...items, ...page.items.filter((t) => !seen.has(t.id))];
-    } else {
-      items = [...items, ...page.items];
+    const incoming = dedupe
+      ? page.items.filter((t) => !loadedIds.has(t.id))
+      : page.items;
+    if (incoming.length > 0) {
+      items.push(...incoming);
+      if (dedupe) for (const t of incoming) loadedIds.add(t.id);
     }
     if (page.total > 0) total = page.total;
     const received = page.items.length;
@@ -132,8 +138,15 @@ export function createTrackPager(
   }
 
   function applyRemoval(id: number) {
-    if (!items.some((t) => t.id === id)) return;
-    items = items.filter((t) => t.id !== id);
+    let removed = false;
+    for (let i = items.length - 1; i >= 0; i--) {
+      if (items[i].id === id) {
+        items.splice(i, 1);
+        removed = true;
+      }
+    }
+    if (!removed) return;
+    loadedIds.delete(id);
     if (total > 0) total -= 1;
     nextOffset = Math.max(0, nextOffset - 1);
     publish();
@@ -151,10 +164,8 @@ export function createTrackPager(
     if (from === to) return;
     if (from < 0 || from >= items.length) return;
     if (to < 0 || to >= items.length) return;
-    const next = [...items];
-    const [moved] = next.splice(from, 1);
-    next.splice(to, 0, moved);
-    items = next;
+    const [moved] = items.splice(from, 1);
+    items.splice(to, 0, moved);
     publish();
   }
 
@@ -228,8 +239,19 @@ export function createTrackPager(
     // A prior failure leaves `error` set; clear it so a later call (the
     // header Retry) drives the failed page instead of returning at once.
     if (error !== "") error = "";
+    // Keep the progressive first page: it paints fast and seeds `total`.
+    if (items.length === 0 && nextOffset === 0 && !done) await loadMore();
     while (!done && error === "") {
-      await loadMore();
+      // Prefetched pagers already burst; when the caller explicitly asks for
+      // the whole list (sort/filter/play-all) do the same above
+      // `prefetchMaxTotal` instead of walking one small page at a time.
+      try {
+        if (prefetch && total > 0) await runBurst();
+        else await loadMore();
+      } catch (e) {
+        error = String(e);
+        publish();
+      }
     }
   }
 
@@ -239,6 +261,7 @@ export function createTrackPager(
     if (inflight) await inflight;
     cache.delete(key);
     items = [];
+    loadedIds.clear();
     total = 0;
     nextOffset = 0;
     done = false;
