@@ -5,7 +5,8 @@ param(
     [switch]$Manual,
     [switch]$SkipCheck,
     [string]$Exe = "target/debug/oxitide-app.exe",
-    [int]$Port = 9222
+    [int]$Port = 9222,
+    [int]$Minutes = 0
 )
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -41,7 +42,9 @@ for ($i = 1; $i -le $Runs; $i++) {
         if ($Manual) {
             Read-Host "Perform the $Scenario scenario in the app, then press Enter to close it"
         } else {
-            node "$root\scripts\perf\drive.mjs" --scenario $Scenario --port $Port
+            $driverArgs = @("$root\scripts\perf\drive.mjs", "--scenario", $Scenario, "--port", "$Port")
+            if ($Minutes -gt 0) { $driverArgs += @("--minutes", "$Minutes") }
+            node @driverArgs
             if ($LASTEXITCODE -ne 0) { Write-Warning "driver reported a failure for run $i" }
         }
     } finally {
