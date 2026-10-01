@@ -281,23 +281,23 @@ These spec §4.2 rows are measurable in principle but have no `budgets.json` ent
 | S7 | memory_max_mb | ≤ 450 | 596.0 | FAIL (Phase D target) |
 | S8 | cache_hit_rate_last10 | ≥ 0.9 | 1.0 (min) | PASS (whole-run rates 0.68 / 1.00) |
 | S8 | memory_max_mb | ≤ 450 | 575.0 | FAIL (Phase D target) |
-| S9 | memory_drift_mb | ≤ 50 | — | Pending (owner run when away) |
-| S9 | memory_max_mb | ≤ 450 | — | Pending (owner run when away) |
+| S9 | memory_drift_mb | ≤ 50 | 56.0 | FAIL (Phase D target) |
+| S9 | memory_max_mb | ≤ 450 | 585.0 | FAIL (Phase D target) |
 
 Every scripted run launched, produced JSONL, and the driver exited 0; the gate exits 1 on the expanded table above. No harness-level failures (no torn or missing run files). Min budgets evaluate the cross-run minimum, max budgets the p95. The memory ceiling misses across S1–S8 (501–596 MB vs the 300/450 targets), plus `S2.first_paint_ms`, `S3-hit.ttfs_ms`, and `S4.advance_max_gap_ms`, are recorded as genuine Phase D targets; no budgets were weakened.
 
-## S9 — pending owner run
+## S9 — soak (owner-run, recorded with caveat)
 
-S3-miss, S3-hit, S4, S7, and S8 are automated and recorded above (fresh runner-produced runs). S9 (2-hour soak) still needs an owner run when away:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/perf/run-scenario.ps1 -Scenario S9 -Runs 1
-```
-
-The driver defaults to `--minutes 120`; the runner does not forward extra flags to `drive.mjs`, so the default 120-minute run is the owner protocol. A different duration would require a direct driver invocation (`node scripts/perf/drive.mjs --scenario S9 --minutes <N>`) against a manually started app. Leave a queue playing/skipping for the full duration (skip/quality-switch churn is allowed); do not restart the app.
+- Started 2026-10-01 02:26; the automated churn loop ran for **60 minutes** (skip every ~45 s plus quality toggles), then the runner/driver process disappeared (terminal closed or stopped) and the app was left orphaned but playing on repeat-all.
+- The app was stopped at **183.8 minutes** total; JSONL recording continued throughout: 5,500 memory samples, 0 error lines, no crash, frames clean.
+- Gate: `memory_drift_mb` **56 (≤50 FAIL)**, `memory_max_mb` **585 (≤450 FAIL)**. Cache decisions: 17 hits / 177 misses (churn skips abort partial downloads and quality toggles change cache keys; `cache_hit_rate` is not gated for S9).
+- **Caveat:** only the first hour was driven churn; the remaining ~2 h is continuous repeat-all playback. The drift observation over the full 3 h is still valid evidence of slow growth (497 → 553 MB, peak 585 MB), and the peak exceeds the ceiling by a wide margin regardless of protocol. A protocol-clean rerun is available but not required, since both rows are Phase D targets either way.
+- The driver's `finally` restore did not run; `config.toml` shows `quality = "lossless"` (no leaked Max setting).
 
 ## Recalibration (T3-D9)
 
 `budgets.json` now mirrors the full measurable spec §4.2 table: memory ceilings (300 MB idle for S1/S2, 450 MB during playback for S3–S9), S5/S6 `frame_p99_ms` ≤ 33, S1/S2 `long_task_max_ms` ≤ 100, S3-miss `ttfs_ms_mean` ≤ 1200 (explicitly a mean proxy for the spec's median), and S8 moved to `cache_hit_rate_last10 ≥ 0.9` (second-pass hit rate; the whole-run `cache_hit_rate` stays informational). `check.mjs` now emits `frame_p99_ms:<mode>` and `<metric>_min` aggregates; min budgets evaluate the minimum across runs while max budgets keep the p95, so one warm run can no longer mask a cold one.
 
-The expanded table surfaces genuine Phase D targets rather than threshold problems — memory (S1 518, S2 511 vs 300; S3–S8 573–596 vs 450), `S2.first_paint_ms` (1052 vs 1000, reflecting the corrected process-relative base), `S3-hit.ttfs_ms` (308 vs 300), and `S4.advance_max_gap_ms` (103 vs 100). No budgets were weakened and no thresholds changed; any adjustment still requires owner sign-off. S9 may surface one round of proposals once the owner runs it.
+The expanded table surfaces genuine Phase D targets rather than threshold problems — memory (S1 518, S2 511 vs 300; S3–S8 573–596 vs 450), `S2.first_paint_ms` (1052 vs 1000, reflecting the corrected process-relative base), `S3-hit.ttfs_ms` (308 vs 300), and `S4.advance_max_gap_ms` (103 vs 100). No budgets were weakened and no thresholds changed.
+
+**Owner decision (2026-10-01): the T3-D9 recalibration round is not used — every budget stays as the target for Phases B–D.** S9's `memory_drift_mb` (56 vs 50) and `memory_max_mb` (585 vs 450) join the Phase D memory targets.
