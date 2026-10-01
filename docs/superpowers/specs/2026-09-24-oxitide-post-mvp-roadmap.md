@@ -4,7 +4,7 @@
 - **Date:** 2026-09-24
 - **Revised:** 2026-09-28 — execution order reordered to Tracks 4 → 5 → 6 → 3 → 7 after Plan 10; Track labels stay stable (see PM-D5).
 - **Revised:** 2026-09-30 — Tracks 4, 5, and 6 complete; Track 3 active (spec approved, Phase A planning).
-- **Revised:** 2026-10-01 — Track 3 Phase A (harness + baseline) complete; no budget recalibration; Phase B next.
+- **Revised:** 2026-10-01 — Track 3 Phase A (harness + baseline) complete; no budget recalibration; Phase B (startup + TTFS) complete; Phase C next.
 - **Owner:** V
 - **Parent:** `2026-09-21-oxitide-design.md` (§9 Phasing)
 - **Supersedes:** the parent's Phase 2–4 ordering. The shipped Phase 1 MVP (v0.2.0) is
@@ -33,7 +33,7 @@ statuses refreshed 2026-09-30.
 | 1 | Track 4 | Lyrics + discovery: synced lyrics view; discovery feeds/mixes; track radio / similar artists | Done (4a lyrics + 4b discovery) |
 | 2 | Track 5 | Scrobbling: Last.fm and ListenBrainz in parallel, independent toggles; now-playing, offline queue, retry | Done (Last.fm + ListenBrainz; smoke closed 2026-09-29) |
 | 3 | Track 6 | Remaining integrations: Discord RPC; SMTC + hardware media keys | Done (6a SMTC/media keys + 6b Discord Rich Presence) |
-| now | Track 3 | Performance & stability wave: profile and fix startup, time-to-first-sound, UI jank, memory, cache/eviction churn, large-library handling; build a measurement harness | Active — Phase A (harness + baseline) complete 2026-10-01; Phase B (startup + TTFS) next |
+| now | Track 3 | Performance & stability wave: profile and fix startup, time-to-first-sound, UI jank, memory, cache/eviction churn, large-library handling; build a measurement harness | Active — Phase A (harness + baseline) and Phase B (startup + TTFS) complete 2026-10-01; Phase C (UI + large library) next |
 | 5 | Track 7 | Advanced audio: DSP/EQ (opt-in, mutually exclusive with bit-perfect); casting/TIDAL Connect; Dolby Atmos | Parked last |
 
 Track 2b has no hard "done" gate before Track 4 starts; it may still receive bug fixes and
@@ -91,8 +91,16 @@ polish in parallel.
   cold start, S3-miss TTFS, S3-hit cache-hit floor, and S8 second-pass hit rate pass;
   memory ceilings, `S2.first_paint_ms`, `S3-hit.ttfs_ms`, and `S4.advance_max_gap_ms`
   are recorded misses and the targets for Phases B–D. No T3-D9 recalibration was used
-  (owner decision 2026-10-01). Phase B (startup + time-to-first-sound) is next. The
-  PM-D1 standing gate continues to apply to every later change.
+  (owner decision 2026-10-01).
+- **Phase B (startup + TTFS) complete 2026-10-01** — `plans/notes/2026-10-01-track3-phase-b.md`:
+  window gated on geometry with cache/scheme/keyring work backgrounded; lazy palettes/lyrics/
+  keyring loads; event-driven worker wakeups; TTFS attributed by stage. S2 first paint
+  1052 → 949 (PASS), S3-hit TTFS 308 → 294 (PASS), S1 first paint 1113 → 938, app-side
+  pre-paint steps are now ≤ 2 ms each. No TTFS fix was warranted (no stage > 60% of TTFS;
+  resolve/fetch/open = 34/41/24%); memory ceilings and `S4.advance_max_gap_ms` (101 vs 100)
+  stay Phase D targets, together with the Phase A cached-seek defect. Owner smoke checklist
+  `plans/notes/2026-10-01-track3-phase-b-smoke.md` is open. **Phase C (UI + large library)
+  is next.** The PM-D1 standing gate continues to apply to every later change.
 
 ### Track 4 — Lyrics + discovery
 
