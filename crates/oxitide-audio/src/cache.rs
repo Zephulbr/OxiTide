@@ -38,6 +38,12 @@ struct Entry {
 pub struct DiskCache {
     dir: PathBuf,
     max_bytes: AtomicU64,
+    /// Committed `.fmp4` bytes; seeded once by a scan, then maintained
+    /// incrementally so normal play never rescans the directory.
+    on_disk_bytes: AtomicU64,
+    /// Bytes in in-flight `.part` files, maintained by writers.
+    pending: AtomicU64,
+    seeded: std::sync::atomic::AtomicBool,
     protected: Mutex<HashSet<PathBuf>>,
     /// Keys with a writer in flight; a second writer for the same key is refused.
     in_flight: Mutex<HashSet<CacheKey>>,
@@ -55,6 +61,9 @@ impl DiskCache {
         Arc::new(Self {
             dir,
             max_bytes: AtomicU64::new(max_bytes),
+            on_disk_bytes: AtomicU64::new(0),
+            pending: AtomicU64::new(0),
+            seeded: std::sync::atomic::AtomicBool::new(false),
             protected: Mutex::new(HashSet::new()),
             in_flight: Mutex::new(HashSet::new()),
             usable,
@@ -135,24 +144,55 @@ impl DiskCache {
         writer.finish_abort();
     }
 
-    pub fn remove(&self, key: &CacheKey) {
-        let _ = fs::remove_file(self.path_for(key));
+    fn add_saturating(value: &AtomicU64, delta: u64) {
+        value.fetch_add(delta, Ordering::SeqCst);
     }
 
-    /// Sum of every `.fmp4` entry.
+    fn sub_saturating(value: &AtomicU64, delta: u64) {
+        let mut current = value.load(Ordering::SeqCst);
+        loop {
+            let next = current.saturating_sub(delta);
+            match value.compare_exchange_weak(current, next, Ordering::SeqCst, Ordering::SeqCst) {
+                Ok(_) => return,
+                Err(observed) => current = observed,
+            }
+        }
+    }
+
+    /// One directory scan to seed the committed total; later calls are O(1).
+    fn seed_on_disk(&self) {
+        if self.seeded.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let total: u64 = self.entries().iter().map(|entry| entry.size).sum();
+        self.on_disk_bytes.store(total, Ordering::SeqCst);
+    }
+
+    pub fn remove(&self, key: &CacheKey) {
+        let path = self.path_for(key);
+        if let Ok(meta) = fs::metadata(&path) {
+            let size = meta.len();
+            if fs::remove_file(&path).is_ok() {
+                self.seed_on_disk();
+                Self::sub_saturating(&self.on_disk_bytes, size);
+            }
+        }
+    }
+
+    /// Sum of every `.fmp4` entry; O(1) after the first seed.
     pub fn size_bytes(&self) -> u64 {
-        self.entries().iter().map(|entry| entry.size).sum()
+        self.seed_on_disk();
+        self.on_disk_bytes.load(Ordering::SeqCst)
     }
 
     /// Sum of every in-flight `.part` file (a writer currently owns it).
     /// In-progress downloads are not counted against the cap.
     pub fn pending_bytes(&self) -> u64 {
-        let in_flight = self.in_flight.lock().unwrap().clone();
-        self.part_entries()
-            .iter()
-            .filter(|entry| in_flight.iter().any(|key| self.part_for(key) == entry.path))
-            .map(|entry| entry.size)
-            .sum()
+        self.pending.load(Ordering::SeqCst)
+    }
+
+    pub fn is_protected(&self, key: &CacheKey) -> bool {
+        self.protected.lock().unwrap().contains(&self.path_for(key))
     }
 
     pub fn clear(&self) {
@@ -167,6 +207,8 @@ impl DiskCache {
                 let _ = fs::remove_file(entry.path());
             }
         }
+        self.seeded.store(true, Ordering::SeqCst);
+        self.on_disk_bytes.store(0, Ordering::SeqCst);
     }
 
     pub fn set_max_bytes(&self, max_bytes: u64) {
@@ -212,10 +254,6 @@ impl DiskCache {
         self.entries_with_suffix(".fmp4")
     }
 
-    fn part_entries(&self) -> Vec<Entry> {
-        self.entries_with_suffix(".part")
-    }
-
     fn entries_with_suffix(&self, suffix: &str) -> Vec<Entry> {
         if !self.usable {
             return Vec::new();
@@ -244,11 +282,12 @@ impl DiskCache {
             return;
         }
         let max = self.max_bytes.load(Ordering::SeqCst);
-        let mut entries = self.entries();
-        let mut total: u64 = entries.iter().map(|entry| entry.size).sum();
-        if total <= max {
+        self.seed_on_disk();
+        if self.on_disk_bytes.load(Ordering::SeqCst) <= max {
             return;
         }
+        let mut entries = self.entries();
+        let mut total: u64 = entries.iter().map(|entry| entry.size).sum();
         let protected = self.protected.lock().unwrap().clone();
         entries.sort_by_key(|entry| entry.modified);
         for entry in entries {
@@ -262,6 +301,9 @@ impl DiskCache {
                 total = total.saturating_sub(entry.size);
             }
         }
+        // A scan is authoritative; store what actually remains so the fast
+        // path re-arms even if files were added or removed behind our back.
+        self.on_disk_bytes.store(total, Ordering::SeqCst);
     }
 }
 
@@ -301,6 +343,7 @@ impl CacheWriter {
             .ok_or_else(|| io::Error::other("cache writer already finished"))?;
         file.write_all(data)?;
         self.bytes += data.len() as u64;
+        DiskCache::add_saturating(&self.cache.pending, data.len() as u64);
         Ok(())
     }
 
@@ -319,12 +362,16 @@ impl CacheWriter {
             return;
         }
         self.finished = true;
+        let published = self.bytes;
         if let Some(file) = self.file.take() {
             if let Err(e) = file.sync_all() {
                 tracing::warn!("cache fsync for {} failed: {e}", self.key.file_name());
             }
             drop(file);
         }
+        // Seed before the rename: a not-yet-seeded scan must not see this file
+        // as committed and then get `published` added on top of it.
+        self.cache.seed_on_disk();
         let final_path = self.cache.path_for(&self.key);
         if final_path.exists() {
             let _ = fs::remove_file(&final_path);
@@ -333,15 +380,21 @@ impl CacheWriter {
         // Hold the single-flight key until the publish has finished, so a
         // concurrent writer cannot delete the temp file mid-rename.
         self.cache.in_flight.lock().unwrap().remove(&self.key);
+        DiskCache::sub_saturating(&self.cache.pending, published);
         if let Err(e) = renamed {
             tracing::warn!("cache commit for {} failed: {e}", self.key.file_name());
             let _ = fs::remove_file(&self.part);
             return;
         }
+        DiskCache::add_saturating(&self.cache.on_disk_bytes, published);
         if let Ok(file) = OpenOptions::new().write(true).open(&final_path) {
             let _ = file.set_modified(SystemTime::now());
         }
-        self.cache.evict_to_fit();
+        if self.cache.on_disk_bytes.load(Ordering::SeqCst)
+            > self.cache.max_bytes.load(Ordering::SeqCst)
+        {
+            self.cache.evict_to_fit();
+        }
     }
 
     fn finish_abort(&mut self) {
@@ -350,6 +403,7 @@ impl CacheWriter {
         }
         self.finished = true;
         self.cache.in_flight.lock().unwrap().remove(&self.key);
+        DiskCache::sub_saturating(&self.cache.pending, self.bytes);
         self.file.take();
         let _ = fs::remove_file(&self.part);
     }
@@ -572,6 +626,62 @@ mod tests {
         cache.clear();
         cache.cleanup();
         cache.set_max_bytes(0);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn sizes_stay_correct_across_clear_abort_and_remove() {
+        let dir = temp_dir();
+        let cache = DiskCache::new(dir.clone(), 1 << 20);
+        let a = key(1);
+        let b = key(2);
+        write_entry(&cache, &a, b"12345");
+        assert_eq!(cache.size_bytes(), 5);
+        let mut partial = cache.begin_write(&b).unwrap();
+        partial.write_all(b"1234567").unwrap();
+        assert_eq!(cache.pending_bytes(), 7);
+        assert_eq!(cache.size_bytes(), 5);
+        partial.abort();
+        assert_eq!(cache.pending_bytes(), 0);
+        cache.remove(&a);
+        assert_eq!(cache.size_bytes(), 0);
+
+        write_entry(&cache, &a, b"12345");
+        let mut writer = cache.begin_write(&b).unwrap();
+        writer.write_all(b"1234567").unwrap();
+        cache.clear();
+        assert_eq!(cache.size_bytes(), 0, "clear must reset the committed total");
+        writer.abort();
+        assert_eq!(cache.pending_bytes(), 0, "abort after clear must not underflow");
+        assert_eq!(cache.size_bytes(), 0);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_commit_updates_both_counters_without_a_rescan() {
+        let dir = temp_dir();
+        let cache = DiskCache::new(dir.clone(), 1 << 20);
+        let a = key(1);
+        let mut writer = cache.begin_write(&a).unwrap();
+        writer.write_all(b"1234567890").unwrap();
+        assert_eq!(cache.pending_bytes(), 10);
+        assert_eq!(cache.size_bytes(), 0);
+        writer.commit();
+        assert_eq!(cache.pending_bytes(), 0);
+        assert_eq!(cache.size_bytes(), 10);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn is_protected_reports_the_protected_set() {
+        let dir = temp_dir();
+        let cache = DiskCache::new(dir.clone(), 1 << 20);
+        let a = key(1);
+        assert!(!cache.is_protected(&a));
+        cache.protect(&a);
+        assert!(cache.is_protected(&a));
+        cache.unprotect(&a);
+        assert!(!cache.is_protected(&a));
         let _ = fs::remove_dir_all(dir);
     }
 }
