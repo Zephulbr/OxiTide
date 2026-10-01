@@ -4,6 +4,7 @@
 export interface PerfHooks {
   loadSyntheticTracks?: (count: number) => void;
   toggleViewSort?: (key: "title" | "duration") => void;
+  buildSyntheticQueue?: (count: number) => Promise<void>;
 }
 
 export const perfHooks: PerfHooks = {};

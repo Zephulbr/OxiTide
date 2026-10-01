@@ -224,6 +224,9 @@ const scenarioFallback = async (id) => {
       await playItems(items);
       console.log(`S7 invoked play_tracks for ${items.length} tracks`);
       console.log(`S7 command round-trip: ${Date.now() - started} ms`);
+      const built = await evaluate("window.__perf.buildSyntheticQueue(10000)");
+      if (!built) throw new Error("S7: synthetic queue build unavailable");
+      await delay(1000);
       await delay(5000);
     } else if (id.startsWith("S3-miss")) {
       await awaitLoggedIn();

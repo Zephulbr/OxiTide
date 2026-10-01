@@ -1,6 +1,6 @@
 import { api, type PerfSnapshot } from "./api";
 import { appearance } from "./appearance.svelte";
-import { FrameSampler, InteractionLog, LongTaskLog } from "./perf";
+import { FrameSampler, InteractionLog, LongTaskLog, type InteractionKind } from "./perf";
 
 export function createPerf() {
   let active = $state(false);
@@ -74,7 +74,7 @@ export function createPerf() {
 
   /// Record a timed interaction and flush immediately: the run ends as soon as
   /// the driver's scenario does, so the periodic submit could lose the last one.
-  function recordInteraction(kind: "filter" | "sort", ms: number) {
+  function recordInteraction(kind: InteractionKind, ms: number) {
     interactions.record(kind, ms);
     void submit();
   }

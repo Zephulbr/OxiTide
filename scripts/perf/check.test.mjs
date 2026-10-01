@@ -214,3 +214,25 @@ test("a required budget fails when the metric is missing", () => {
   assert.equal(optional.results[0].status, "unmeasured");
   assert.equal(optional.ok, true);
 });
+
+test("queue build samples aggregate into queue_build_ms", () => {
+  const file = runFile([
+    { kind: "session", run_id: "S7-1", scenario: "S7" },
+    {
+      kind: "ui_metrics",
+      t_ms: 1,
+      metrics: {
+        interactions: {
+          queue_count: 1,
+          queue_max_ms: 123,
+          filter_count: 0,
+          filter_max_ms: 0,
+          sort_count: 0,
+          sort_max_ms: 0,
+        },
+      },
+    },
+  ]);
+  const metrics = metricsFor(readRuns([file])[0]);
+  assert.equal(metrics.queue_build_ms, 123);
+});

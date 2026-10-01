@@ -60,18 +60,26 @@ describe("InteractionLog", () => {
     log.record("filter", 18);
     log.record("filter", 27);
     log.record("sort", 40);
-    expect(log.summary()).toEqual({
+    expect(log.summary()).toMatchObject({
       filter_count: 2,
       filter_max_ms: 27,
       sort_count: 1,
       sort_max_ms: 40,
     });
     log.reset();
-    expect(log.summary()).toEqual({
+    expect(log.summary()).toMatchObject({
       filter_count: 0,
       filter_max_ms: 0,
       sort_count: 0,
       sort_max_ms: 0,
     });
+  });
+
+  it("tracks queue-build samples", () => {
+    const log = new InteractionLog();
+    log.record("queue", 42);
+    expect(log.summary()).toMatchObject({ queue_count: 1, queue_max_ms: 42 });
+    log.reset();
+    expect(log.summary()).toMatchObject({ queue_count: 0, queue_max_ms: 0 });
   });
 });

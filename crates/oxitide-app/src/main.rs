@@ -357,6 +357,7 @@ fn main() {
             commands::perf_mark,
             commands::get_perf_snapshot,
             commands::perf_submit_ui_metrics,
+            commands::perf_queue_build,
             commands::analyze_cover,
         ])
         .build(tauri::generate_context!())

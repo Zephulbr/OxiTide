@@ -45,7 +45,10 @@
     { "metric": "sort_max_ms", "max": 150, "required": true },
     { "metric": "memory_max_mb", "max": 450 }
   ],
-  "S7": [{ "metric": "memory_max_mb", "max": 450 }],
+  "S7": [
+    { "metric": "memory_max_mb", "max": 450 },
+    { "metric": "queue_build_ms", "max": 250, "required": true }
+  ],
   "S8": [
     { "metric": "cache_hit_rate_last10", "min": 0.9 },
     { "metric": "memory_max_mb", "max": 450 }

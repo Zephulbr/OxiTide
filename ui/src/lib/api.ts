@@ -290,6 +290,7 @@ export const api = {
   perfMark: (name: string) => invoke<void>("perf_mark", { name }),
   perfSubmitUiMetrics: (metrics: Record<string, unknown>) =>
     invoke<void>("perf_submit_ui_metrics", { metrics }),
+  perfQueueBuild: (items: QueueItem[]) => invoke<void>("perf_queue_build", { items, start: 0 }),
   getConfig: () => invoke<Config>("get_config"),
   setAllowFallback: (enabled: boolean) => invoke<void>("set_allow_fallback", { enabled }),
   setQualityDisplay: (mode: "compact" | "detailed") =>

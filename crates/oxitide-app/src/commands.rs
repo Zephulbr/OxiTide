@@ -1076,6 +1076,23 @@ pub fn perf_submit_ui_metrics(metrics: serde_json::Value) {
     crate::perf::ui_metrics(metrics);
 }
 
+/// Perf-session-only: builds a 10k-track play context so the S7 gate can
+/// measure queue construction without touching playback. Errors outside a
+/// session, so normal runs cannot reach it.
+#[tauri::command]
+pub fn perf_queue_build(items: Vec<QueueItem>, start: usize) -> Result<(), String> {
+    perf_queue_build_items(items, start)
+}
+
+fn perf_queue_build_items(items: Vec<QueueItem>, start: usize) -> Result<(), String> {
+    if crate::perf::session().is_none() {
+        return Err("no perf session".into());
+    }
+    let mut queue = oxitide_audio::queue::Queue::default();
+    queue.play_context(items, start);
+    Ok(())
+}
+
 #[tauri::command]
 pub fn get_output_devices() -> Vec<OutputDeviceDto> {
     devices()
@@ -1673,5 +1690,20 @@ mod tests {
         assert_eq!(value["squareImage"], serde_json::json!("sq"));
         assert_eq!(value["lastItemAddedAt"], serde_json::Value::Null);
         assert_eq!(value["lastUpdated"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn perf_queue_build_requires_a_session() {
+        let items = vec![QueueItem {
+            track_id: 1,
+            title: "T".into(),
+            artist: "A".into(),
+            album: "B".into(),
+            duration_secs: 1,
+            cover: None,
+        }];
+        let result = perf_queue_build_items(items, 0);
+        assert!(result.is_err(), "the perf command must not run outside a session");
+        assert_eq!(result.unwrap_err(), "no perf session");
     }
 }

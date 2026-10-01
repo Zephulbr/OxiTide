@@ -222,6 +222,11 @@
         perf.recordInteraction("sort", performance.now() - started);
         return true;
       },
+      buildSyntheticQueue: async (count: number) => {
+        if (!perfHooks.buildSyntheticQueue) return false;
+        await perfHooks.buildSyntheticQueue(count);
+        return true;
+      },
       setMode: (mode: "instrument" | "atmosphere") => appearance.setMode(mode),
     };
     (window as unknown as { __perf?: typeof bridge }).__perf = bridge;

@@ -56,9 +56,16 @@
       synthetic = makeSyntheticTracks(count);
     };
     perfHooks.toggleViewSort = (key) => view.toggleSort(key);
+    perfHooks.buildSyntheticQueue = async (count: number) => {
+      const items = makeSyntheticTracks(count).map(trackToQueueItem);
+      const started = performance.now();
+      await api.perfQueueBuild(items);
+      perf.recordInteraction("queue", performance.now() - started);
+    };
     return () => {
       delete perfHooks.loadSyntheticTracks;
       delete perfHooks.toggleViewSort;
+      delete perfHooks.buildSyntheticQueue;
     };
   });
 

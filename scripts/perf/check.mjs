@@ -87,6 +87,9 @@ export function metricsFor(run) {
         if (typeof interactions.sort_max_ms === "number" && interactions.sort_count > 0) {
           metrics.sort_max_ms = Math.max(metrics.sort_max_ms ?? 0, interactions.sort_max_ms);
         }
+        if (typeof interactions.queue_max_ms === "number" && interactions.queue_count > 0) {
+          metrics.queue_build_ms = Math.max(metrics.queue_build_ms ?? 0, interactions.queue_max_ms);
+        }
       }
     }
   }
