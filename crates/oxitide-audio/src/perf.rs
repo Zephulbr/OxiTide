@@ -6,8 +6,14 @@ use std::sync::Arc;
 /// A milestone the engine reports to an installed [`PerfHook`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AudioPerfEvent {
+    /// The decode thread is about to ask the resolver for the stream plan.
+    ResolveStart { track_id: u64 },
     /// The manifest resolved (playback info fetched and parsed).
     DecodeStart { track_id: u64 },
+    /// Stream info is available (the fetch produced enough to decode).
+    InfoReady { track_id: u64 },
+    /// The output device accepted and started the stream.
+    OutputOpened { track_id: u64 },
     /// A usable disk-cache entry was found for the track.
     CacheHit { track_id: u64 },
     /// No usable cache entry: no cache key, no entry, or a failed hit.

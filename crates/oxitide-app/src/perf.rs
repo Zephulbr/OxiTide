@@ -162,7 +162,10 @@ impl PerfSession {
             _ => {}
         }
         let (kind, track_id, gap_ms) = match &event {
+            AudioPerfEvent::ResolveStart { track_id } => ("resolve_start", *track_id, None),
             AudioPerfEvent::DecodeStart { track_id } => ("decode_start", *track_id, None),
+            AudioPerfEvent::InfoReady { track_id } => ("info_ready", *track_id, None),
+            AudioPerfEvent::OutputOpened { track_id } => ("output_opened", *track_id, None),
             AudioPerfEvent::CacheHit { track_id } => ("cache_hit", *track_id, None),
             AudioPerfEvent::CacheMiss { track_id } => ("cache_miss", *track_id, None),
             AudioPerfEvent::FirstPcm { track_id } => ("first_pcm", *track_id, None),

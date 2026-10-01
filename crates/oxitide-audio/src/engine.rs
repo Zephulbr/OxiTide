@@ -609,6 +609,7 @@ fn decode_track(
     buffer: Arc<StreamBuffer>,
 ) {
     let quality = *inner.quality.lock().unwrap();
+    fire_perf(&inner, AudioPerfEvent::ResolveStart { track_id: item.track_id });
     let plan = match inner.resolver.resolve(item.track_id, quality) {
         Ok(plan) => plan,
         Err(e) => {
@@ -1063,6 +1064,7 @@ fn run_session(
         };
         skipped = 0;
         let StreamStart { info, start_frames, meta } = start;
+        fire_perf(inner, AudioPerfEvent::InfoReady { track_id: stream.item.track_id });
         *inner.stream_meta.lock().unwrap() = Some(meta);
         emit(inner, EngineEvent::State(build_state(inner)));
         // The stream's absolute starting frame (non-zero only for a seek).
@@ -1096,6 +1098,7 @@ fn run_session(
                     track_id: stream.item.track_id,
                 };
             }
+            fire_perf(inner, AudioPerfEvent::OutputOpened { track_id: stream.item.track_id });
             let volume = f32::from_bits(inner.volume.load(Ordering::SeqCst));
             if let Err(e) = output.set_volume(volume) {
                 return SessionOutcome::OutputError {
@@ -2469,6 +2472,15 @@ mod tests {
         assert!(events
             .iter()
             .any(|e| matches!(e, crate::perf::AudioPerfEvent::CacheMiss { track_id: 1 })));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, crate::perf::AudioPerfEvent::ResolveStart { track_id: 1 })));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, crate::perf::AudioPerfEvent::InfoReady { track_id: 1 })));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, crate::perf::AudioPerfEvent::OutputOpened { track_id: 1 })));
     }
 
     /// An output that always reports the given status.

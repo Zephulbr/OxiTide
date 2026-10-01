@@ -61,6 +61,14 @@ export function metricsFor(run) {
         cacheDecisions.push(0);
       }
       if (line.event === "advance") advanceMax = Math.max(advanceMax, line.gap_ms ?? 0);
+      const first = (key) => {
+        const metric = `${key}_ms`;
+        if (metrics[metric] === undefined) metrics[metric] = line.t_ms;
+      };
+      if (line.event === "resolve_start") first("resolve_start");
+      if (line.event === "decode_start") first("decode_start");
+      if (line.event === "info_ready") first("info_ready");
+      if (line.event === "output_opened") first("output_opened");
     }
     if (line.kind === "ui_metrics") {
       const mode = line.metrics?.mode ?? "instrument";
@@ -85,6 +93,15 @@ export function metricsFor(run) {
   }
   if (longTasks.length > 0) {
     metrics.long_task_max_ms = Math.max(...longTasks.map((t) => t.max_ms));
+  }
+  if (metrics.resolve_start_ms !== undefined && metrics.decode_start_ms !== undefined) {
+    metrics.resolve_ms = metrics.decode_start_ms - metrics.resolve_start_ms;
+  }
+  if (metrics.decode_start_ms !== undefined && metrics.info_ready_ms !== undefined) {
+    metrics.fetch_ms = metrics.info_ready_ms - metrics.decode_start_ms;
+  }
+  if (metrics.info_ready_ms !== undefined && metrics.output_opened_ms !== undefined) {
+    metrics.output_open_ms = metrics.output_opened_ms - metrics.info_ready_ms;
   }
   if (cacheDecisions.length > 0) {
     const tail = cacheDecisions.slice(-10);

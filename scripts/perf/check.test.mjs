@@ -47,6 +47,21 @@ test("metricsFor derives mark, ttfs, frame, and memory metrics", () => {
   assert.equal(metrics["frame_p99_ms:instrument"], 12);
 });
 
+test("ttfs attribution derives resolve, fetch, and open stages", () => {
+  const file = runFile([
+    { kind: "session", run_id: "S3-miss-1", scenario: "S3-miss" },
+    { kind: "audio", event: "resolve_start", track_id: 1, t_ms: 100 },
+    { kind: "audio", event: "decode_start", track_id: 1, t_ms: 300 },
+    { kind: "audio", event: "info_ready", track_id: 1, t_ms: 900 },
+    { kind: "audio", event: "output_opened", track_id: 1, t_ms: 1000 },
+    { kind: "audio", event: "first_pcm", track_id: 1, t_ms: 1040 },
+  ]);
+  const metrics = metricsFor(readRuns([file])[0]);
+  assert.equal(metrics.resolve_ms, 200);
+  assert.equal(metrics.fetch_ms, 600);
+  assert.equal(metrics.output_open_ms, 100);
+});
+
 test("evaluate flags a budget breach and passes within budget", () => {
   const config = {
     S1: [{ metric: "first_paint_ms", max: 1500 }],
