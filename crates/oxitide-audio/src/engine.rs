@@ -719,13 +719,18 @@ fn decode_from_network(
 ) {
     // Seek by segment index: media URLs are an ordered list, so restarting
     // at the segment covering the target needs no HTTP Range.
-    let download_plan = match seek_ms {
+    let target = match seek_ms {
         Some(ms) if plan.sample_rate.is_some() => {
-            let target = seek::target_segment(&plan, ms, plan.sample_rate.unwrap());
-            plan.from_segment(target.segment_index)
+            Some(seek::target_segment(&plan, ms, plan.sample_rate.unwrap()))
         }
-        _ => plan.clone(),
+        _ => None,
     };
+    let download_plan = match &target {
+        Some(target) => plan.from_segment(target.segment_index),
+        None => plan.clone(),
+    };
+    let source_start =
+        target.as_ref().map(|t| t.position_frames - t.discard_frames).unwrap_or(0);
     // Only full-track plans are cached; a seek-truncated plan is a partial
     // track and would poison replays.
     let writer = match (seek_ms, cache_key) {
@@ -747,6 +752,7 @@ fn decode_from_network(
         mode,
         generation,
         seek_ms,
+        source_start,
         &tx,
         source,
         plan,
@@ -779,6 +785,7 @@ fn decode_from_file(
         mode,
         generation,
         seek_ms,
+        seek::source_start_frames(plan),
         tx,
         source,
         plan.clone(),
@@ -793,6 +800,7 @@ fn decode_source(
     mode: OutputMode,
     generation: u64,
     seek_ms: Option<u64>,
+    source_start_frames: u64,
     tx: &SyncSender<Result<StreamEvent>>,
     source: impl symphonia::core::io::MediaSource + 'static,
     plan: StreamPlan,
@@ -807,6 +815,7 @@ fn decode_source(
         channels: 2,
         plan,
         seek_ms,
+        source_start_frames,
         discarder: Discarder::default(),
         start_frames: 0,
         duration_secs: item.duration_secs,
@@ -825,6 +834,9 @@ struct ChannelSink {
     /// The original (untruncated) plan, for seek discard math.
     plan: StreamPlan,
     seek_ms: Option<u64>,
+    /// The track frame the decoded stream actually begins at (0 for a cached
+    /// file, the target segment's start for a seeked network stream).
+    source_start_frames: u64,
     discarder: Discarder,
     start_frames: u64,
     /// The queue item's duration, for the bitrate fallback.
@@ -871,7 +883,8 @@ impl PcmSink for ChannelSink {
         self.channels = info.channels;
         if let Some(ms) = self.seek_ms {
             let target = seek::target_segment(&self.plan, ms, info.sample_rate);
-            self.discarder = Discarder::new(target.discard_frames);
+            self.discarder =
+                Discarder::new(seek::discard_frames_for(&target, self.source_start_frames));
             self.start_frames = target.position_frames;
         }
         let meta = StreamMeta {
@@ -3494,5 +3507,57 @@ mod tests {
         engine.handle(EngineCmd::Clear).unwrap();
         wait_for(|| !cache.is_protected(&key));
         assert!(!cache.is_protected(&key), "dropping the stream must release protection");
+    }
+
+    /// Review Focus: seeking a fully cached multi-segment track must discard
+    /// relative to the file's actual start, not the target segment's start.
+    /// The 2 s fixture seeked to 1500 ms leaves 0.5 s (44,100 stereo samples);
+    /// the old math left 1.5 s (132,300) because it discarded only the
+    /// segment-relative 500 ms.
+    #[test]
+    fn cached_seek_starts_at_the_target() {
+        const HASH: u64 = 0x5eed;
+        let (tone_plan, files) = fixture_plan();
+        let tone = files.get("mem://tone").cloned().expect("fixture bytes");
+        let cache = test_cache();
+        let key = CacheKey { track_id: 1, quality: Quality::Lossless, manifest_hash: HASH };
+        let mut writer = cache.begin_write(&key).unwrap();
+        writer.write_all(&tone).unwrap();
+        writer.commit();
+
+        let mut plan = cached_plan("mem://tone", HASH);
+        plan.timescale = 44100;
+        plan.segments = vec![
+            Segment { url: "mem://tone".into(), start_ticks: 0, duration_ticks: 44100 },
+            Segment { url: "mem://tone".into(), start_ticks: 44100, duration_ticks: 44100 },
+        ];
+        plan.sample_rate = tone_plan.sample_rate;
+
+        let output = NullOutput::new();
+        let engine = Engine::new(
+            Arc::new(FakeResolver { plan }),
+            {
+                let files = files.clone();
+                move || Arc::new(crate::fetch::MapFetcher { files }) as Arc<dyn Fetcher>
+            },
+            Box::new(output.clone()),
+            Quality::Lossless,
+            cache.clone(),
+            true,
+        );
+
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| output.samples().len() > 0);
+        let before = output.samples().len();
+        engine.handle(EngineCmd::Seek(1500)).unwrap();
+        wait_for(|| output.flushes() >= 1 && !engine.state().playing);
+        std::thread::sleep(Duration::from_millis(100));
+
+        let after = output.samples().len();
+        assert!(
+            after - before <= 60_000,
+            "cached seek wrote {} samples after the target (expected <= 0.5 s)",
+            after - before
+        );
     }
 }

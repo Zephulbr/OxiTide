@@ -36,6 +36,28 @@ pub fn target_segment(plan: &StreamPlan, position_ms: u64, sample_rate: u32) -> 
     SeekTarget { segment_index: index, discard_frames: frames - start, position_frames: frames }
 }
 
+/// The track frame where a source begins decoding. A cached file contains the
+/// track from its first segment; a network stream truncated by a seek begins
+/// at the target segment.
+pub fn source_start_frames(plan: &StreamPlan) -> u64 {
+    if plan.timescale == 0 {
+        return 0;
+    }
+    plan.sample_rate
+        .and_then(|rate| {
+            plan.segments
+                .first()
+                .map(|s| s.start_ticks.saturating_mul(rate as u64) / plan.timescale)
+        })
+        .unwrap_or(0)
+}
+
+/// How much of the decoded stream to drop before playback: everything between
+/// where the source actually starts and the seek target.
+pub fn discard_frames_for(target: &SeekTarget, source_start_frames: u64) -> u64 {
+    target.position_frames.saturating_sub(source_start_frames)
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Discarder {
     remaining_frames: u64,
@@ -156,5 +178,28 @@ mod tests {
         assert_eq!(discarder.apply(8, 2), (2, 6));
         // Once drained, buffers pass through untouched.
         assert_eq!(discarder.apply(8, 2), (0, 8));
+    }
+
+    #[test]
+    fn source_start_frames_is_the_first_segment_start() {
+        let timed = plan_with_segments(44100, &[(88_200, 88_200), (176_400, 88_200)]);
+        assert_eq!(source_start_frames(&timed), 88_200);
+        let untimed = plan_with_segments(0, &[(0, 0)]);
+        assert_eq!(source_start_frames(&untimed), 0);
+        let empty = plan_with_segments(1, &[]);
+        assert_eq!(source_start_frames(&empty), 0);
+    }
+
+    #[test]
+    fn discard_is_relative_to_the_actual_source_start() {
+        let plan = plan_with_segments(1000, &[(0, 2000), (2000, 2000)]);
+        let target = target_segment(&plan, 2500, 1000);
+        assert_eq!(target.segment_index, 1);
+        assert_eq!(target.discard_frames, 500);
+        assert_eq!(target.position_frames, 2500);
+        // Network path: the source begins at the target segment.
+        assert_eq!(discard_frames_for(&target, 2000), 500);
+        // Cached path: the source begins at the track's first frame.
+        assert_eq!(discard_frames_for(&target, source_start_frames(&plan)), 2500);
     }
 }
