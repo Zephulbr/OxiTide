@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Track } from "./api";
 import { createTrackPager } from "./pager.svelte";
-import { createTrackView, visibleIndexOf } from "./trackView.svelte";
+import { createTrackView, visibleIndexOf, warmTrackSearch } from "./trackView.svelte";
 
 function track(id: number, title: string, duration = 100, artist = "A"): Track {
   return {
@@ -258,5 +258,96 @@ describe("visibleIndexOf", () => {
 
   it("falls back to the captured index when there is no track", () => {
     expect(visibleIndexOf([], undefined, 3)).toBe(3);
+  });
+});
+
+describe("track view sort keys", () => {
+  it("does not call localeCompare per comparison", () => {
+    const spy = vi.spyOn(String.prototype, "localeCompare");
+    const view = createTrackView(() => SOURCE);
+    view.toggleSort("title");
+    const computed = ids(view.items);
+    const calls = spy.mock.calls.length;
+    spy.mockRestore();
+
+    expect(computed).toEqual([2, 3, 1]);
+    expect(calls).toBe(0);
+  });
+
+  it("keeps locale order for accent and case variants with stable ties", () => {
+    const list = [track(1, "éclair"), track(2, "Echo"), track(3, "ÉCLAIR")];
+    const view = createTrackView(() => list);
+
+    view.toggleSort("title");
+
+    expect(ids(view.items)).toEqual([2, 1, 3]);
+  });
+
+  it("maps sourceIndex without scanning the source", () => {
+    const view = createTrackView(() => SOURCE);
+    view.toggleSort("duration");
+    const spy = vi.spyOn(Array.prototype, "indexOf");
+    const mapped = view.sourceIndex(0);
+    const calls = spy.mock.calls.length;
+    spy.mockRestore();
+
+    expect(mapped).toBe(1);
+    expect(calls).toBe(0);
+  });
+});
+
+describe("track view live updates", () => {
+  it("keeps a filtered view consistent while a lazy page appends", async () => {
+    const pager = createTrackPager(
+      "filter-append",
+      async (offset, limit) =>
+        offset === 0
+          ? { items: [track(1, "alpha"), track(2, "beta")], offset, limit, total: 4 }
+          : { items: [track(3, "alphabet"), track(4, "gamma")], offset, limit, total: 4 },
+      { pageSize: 2, prefetch: false },
+    );
+    await pager.loadMore();
+    const view = createTrackView(() => pager.items, async () => {});
+
+    view.setFilter("alp");
+    await vi.waitFor(() => expect(view.preparing).toBe(false));
+    expect(ids(view.items)).toEqual([1]);
+
+    await pager.loadMore();
+
+    expect(ids(view.items)).toEqual([1, 3]);
+    expect(view.sourceIndex(1)).toBe(2);
+  });
+});
+
+describe("warmTrackSearch", () => {
+  it("fills the caches in chunks so a later filter does not rebuild them", async () => {
+    const tracks = [track(1, "Alpha"), track(2, "Beta"), track(3, "Gamma")];
+    const spy = vi.spyOn(String.prototype, "toLowerCase");
+    const warm = warmTrackSearch(tracks, 2);
+    await warm.done;
+    const warmCalls = spy.mock.calls.length;
+
+    const view = createTrackView(() => tracks);
+    view.setFilter("alp");
+    void view.items;
+    const filterCalls = spy.mock.calls.length - warmCalls;
+    spy.mockRestore();
+
+    expect(warmCalls).toBeGreaterThanOrEqual(3);
+    expect(filterCalls).toBe(1);
+    expect(ids(view.items)).toEqual([1]);
+  });
+
+  it("stops warming when cancelled", async () => {
+    const tracks = [track(1, "Alpha"), track(2, "Beta"), track(3, "Gamma")];
+    const spy = vi.spyOn(String.prototype, "toLowerCase");
+    const warm = warmTrackSearch(tracks, 1);
+    warm.cancel();
+    await warm.done;
+    const calls = spy.mock.calls.length;
+    spy.mockRestore();
+
+    expect(calls).toBeLessThanOrEqual(2);
   });
 });

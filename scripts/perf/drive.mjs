@@ -159,7 +159,12 @@ const scenarioFallback = async (id) => {
       ? "instrument"
       : null;
   let originalMode = null;
-  if (targetMode) {
+  let modeApplied = false;
+  /// Runs after login and `__perf` are up. The config read must happen here,
+  /// not at connect time: WebView2 starts on about:blank and the eager read
+  /// raced the navigation, silently skipping the pin (and the restore).
+  const applyScenarioMode = async () => {
+    if (!targetMode || modeApplied) return;
     try {
       originalMode = await evaluate(
         'window.__TAURI_INTERNALS__.invoke("get_config").then((c) => c.ui.mode)',
@@ -167,10 +172,7 @@ const scenarioFallback = async (id) => {
     } catch {
       originalMode = null; // cannot restore -> leave the owner's setting untouched
     }
-  }
-  let modeApplied = false;
-  const applyScenarioMode = async () => {
-    if (!targetMode || !originalMode || originalMode === targetMode || modeApplied) return;
+    if (!originalMode || originalMode === targetMode) return;
     modeApplied = true;
     try {
       await setUiMode(targetMode);
@@ -197,10 +199,22 @@ const scenarioFallback = async (id) => {
       await applyScenarioMode();
       await evaluate('window.__perf.goto("tracks")');
       await until('!!document.querySelector("[data-perf-filter]")', "filter input");
-      await delay(5000); // let the full library load so filtering is over loaded rows
+      await until(
+        'typeof window.__perf.loadSyntheticTracks === "function"',
+        "synthetic fixture hook",
+      );
+      const loaded = await evaluate("window.__perf.loadSyntheticTracks(10000)");
+      if (!loaded) throw new Error("S6: synthetic track fixture unavailable");
+      await delay(2000); // let the 10k-row view render
       for (const query of ["a", "th", "the ", "the e", ""]) {
-        await evaluate(`window.__perf.setFilter(${JSON.stringify(query)})`);
-        await delay(800);
+        const measured = await evaluate(`window.__perf.measureFilter(${JSON.stringify(query)})`);
+        if (!measured) throw new Error("S6: filter measurement unavailable");
+        await delay(300);
+      }
+      for (const key of ["title", "duration", "title"]) {
+        const measured = await evaluate(`window.__perf.measureSort(${JSON.stringify(key)})`);
+        if (!measured) throw new Error("S6: sort measurement unavailable");
+        await delay(500);
       }
       await delay(3000);
     } else if (id === "S7") {

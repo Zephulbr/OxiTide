@@ -31,6 +31,7 @@
   import { createNav } from "./lib/nav.svelte";
   import { appearance, clampQueueWidth } from "./lib/appearance.svelte";
   import { perf } from "./lib/perf.svelte";
+  import { perfHooks } from "./lib/perfHooks";
   import { errorMessage } from "./lib/errors";
   import { menu } from "./lib/menu.svelte";
   import { escapeTarget, isShortcutHandled, matchShortcut, type ShortcutAction } from "./lib/shortcuts";
@@ -196,6 +197,29 @@
         if (!input) return false;
         input.value = text;
         input.dispatchEvent(new Event("input", { bubbles: true }));
+        return true;
+      },
+      loadSyntheticTracks: (count: number) => {
+        if (!perfHooks.loadSyntheticTracks) return false;
+        perfHooks.loadSyntheticTracks(count);
+        return true;
+      },
+      measureFilter: async (text: string) => {
+        const input = document.querySelector<HTMLInputElement>("[data-perf-filter]");
+        if (!input) return false;
+        const started = performance.now();
+        input.value = text;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        perf.recordInteraction("filter", performance.now() - started);
+        return true;
+      },
+      measureSort: async (key: "title" | "duration") => {
+        if (!perfHooks.toggleViewSort) return false;
+        const started = performance.now();
+        perfHooks.toggleViewSort(key);
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        perf.recordInteraction("sort", performance.now() - started);
         return true;
       },
       setMode: (mode: "instrument" | "atmosphere") => appearance.setMode(mode),

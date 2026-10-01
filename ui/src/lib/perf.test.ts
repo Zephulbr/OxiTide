@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FrameSampler, LongTaskLog, formatHudLines, percentile } from "./perf";
+import { FrameSampler, InteractionLog, LongTaskLog, formatHudLines, percentile } from "./perf";
 
 describe("percentile", () => {
   it("returns the nearest-rank percentile", () => {
@@ -51,5 +51,27 @@ describe("formatHudLines", () => {
     expect(lines.join("\n")).toContain("p95 12.0");
     expect(lines.join("\n")).toContain("memory 250 MB");
     expect(lines.join("\n")).toContain("TTFS 420 ms");
+  });
+});
+
+describe("InteractionLog", () => {
+  it("tracks filter and sort maxima independently", () => {
+    const log = new InteractionLog();
+    log.record("filter", 18);
+    log.record("filter", 27);
+    log.record("sort", 40);
+    expect(log.summary()).toEqual({
+      filter_count: 2,
+      filter_max_ms: 27,
+      sort_count: 1,
+      sort_max_ms: 40,
+    });
+    log.reset();
+    expect(log.summary()).toEqual({
+      filter_count: 0,
+      filter_max_ms: 0,
+      sort_count: 0,
+      sort_max_ms: 0,
+    });
   });
 });

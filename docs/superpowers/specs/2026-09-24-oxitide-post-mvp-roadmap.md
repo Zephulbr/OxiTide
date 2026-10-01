@@ -6,6 +6,7 @@
 - **Revised:** 2026-09-30 — Tracks 4, 5, and 6 complete; Track 3 active (spec approved, Phase A planning).
 - **Revised:** 2026-10-01 — Track 3 Phase A (harness + baseline) complete; no budget recalibration; Phase B (startup + TTFS) complete; Phase C next.
 - **Revised:** 2026-10-01 — ASIO output assessed and parked as an optional, uncommitted Track 7 candidate (spike note: `plans/notes/2026-10-01-asio-spike.md`).
+- **Revised:** 2026-10-01 — Track 3 Phase C (UI + large library) complete; Phase D (memory, cache/eviction, stability) next.
 - **Owner:** V
 - **Parent:** `2026-09-21-oxitide-design.md` (§9 Phasing)
 - **Supersedes:** the parent's Phase 2–4 ordering. The shipped Phase 1 MVP (v0.2.0) is
@@ -34,7 +35,7 @@ statuses refreshed 2026-09-30.
 | 1 | Track 4 | Lyrics + discovery: synced lyrics view; discovery feeds/mixes; track radio / similar artists | Done (4a lyrics + 4b discovery) |
 | 2 | Track 5 | Scrobbling: Last.fm and ListenBrainz in parallel, independent toggles; now-playing, offline queue, retry | Done (Last.fm + ListenBrainz; smoke closed 2026-09-29) |
 | 3 | Track 6 | Remaining integrations: Discord RPC; SMTC + hardware media keys | Done (6a SMTC/media keys + 6b Discord Rich Presence) |
-| now | Track 3 | Performance & stability wave: profile and fix startup, time-to-first-sound, UI jank, memory, cache/eviction churn, large-library handling; build a measurement harness | Active — Phase A (harness + baseline) and Phase B (startup + TTFS) complete 2026-10-01; Phase C (UI + large library) next |
+| now | Track 3 | Performance & stability wave: profile and fix startup, time-to-first-sound, UI jank, memory, cache/eviction churn, large-library handling; build a measurement harness | Active — Phases A–C complete 2026-10-01; Phase D (memory, cache/stability) next |
 | 5 | Track 7 | Advanced audio: DSP/EQ (opt-in, mutually exclusive with bit-perfect); casting/TIDAL Connect; Dolby Atmos; optional ASIO output (maybe, see `plans/notes/2026-10-01-asio-spike.md`) | Parked last |
 
 Track 2b has no hard "done" gate before Track 4 starts; it may still receive bug fixes and
@@ -102,6 +103,18 @@ polish in parallel.
   stay Phase D targets, together with the Phase A cached-seek defect. Owner smoke checklist
   `plans/notes/2026-10-01-track3-phase-b-smoke.md` is open. **Phase C (UI + large library)
   is next.** The PM-D1 standing gate continues to apply to every later change.
+- **Phase C (UI + large library) complete 2026-10-01** — `plans/notes/2026-10-01-track3-phase-c.md`:
+  player events apply in place (no more 500 ms whole-state invalidation); track-view filter/sort
+  keys and the source index are precomputed and the search caches warm off the keystroke; pager
+  windows append/remove/move in place and `ensureAll` bursts above the prefetch cap; S6 now
+  loads a deterministic 10k synthetic list and gates real filter/sort interaction times. S6
+  `filter_max_ms` 23.0 (≤ 50) and `sort_max_ms` 36.1 (≤ 150) PASS; S5-instrument p99 20.9 → 14.0
+  and its 65 ms long task → 0; S2 first paint 1052 → 915; the new S1/S2 `startup_step_max_ms`
+  row reads 1 ms. Memory ceilings (491–659 MB) and the Phase B `S4`/TTFS carryovers stay Phase D
+  targets. The scenario-mode pin now runs after the page leaves `about:blank` (a driver race had
+  silently skipped it). Owner smoke checklist
+  `plans/notes/2026-10-01-track3-phase-c-smoke.md` is open. **Phase D (memory, cache/eviction,
+  stability) is next.**
 
 ### Track 4 — Lyrics + discovery
 

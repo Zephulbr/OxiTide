@@ -86,3 +86,44 @@ export function formatHudLines(
     `cache hit ${snapshot.cache_hits} miss ${snapshot.cache_misses}`,
   ];
 }
+
+export interface InteractionSummary {
+  filter_count: number;
+  filter_max_ms: number;
+  sort_count: number;
+  sort_max_ms: number;
+}
+
+/// Timed user interactions (S6 filter/sort) for the ui_metrics submission.
+export class InteractionLog {
+  private filterCount = 0;
+  private filterMax = 0;
+  private sortCount = 0;
+  private sortMax = 0;
+
+  record(kind: "filter" | "sort", ms: number) {
+    if (kind === "filter") {
+      this.filterCount += 1;
+      this.filterMax = Math.max(this.filterMax, ms);
+    } else {
+      this.sortCount += 1;
+      this.sortMax = Math.max(this.sortMax, ms);
+    }
+  }
+
+  reset() {
+    this.filterCount = 0;
+    this.filterMax = 0;
+    this.sortCount = 0;
+    this.sortMax = 0;
+  }
+
+  summary(): InteractionSummary {
+    return {
+      filter_count: this.filterCount,
+      filter_max_ms: this.filterMax,
+      sort_count: this.sortCount,
+      sort_max_ms: this.sortMax,
+    };
+  }
+}

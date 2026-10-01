@@ -28,21 +28,33 @@ export function emptyState(): PlayerState {
   };
 }
 
-export function reduce(state: PlayerState, event: EngineEvent): PlayerState {
+/// Apply an engine event to `state` in place. The returned object is the same
+/// reference, so Svelte invalidates only the properties that changed: position
+/// events arrive every 500 ms and a whole-state replacement re-ran every reader.
+export function applyEvent(state: PlayerState, event: EngineEvent): PlayerState {
   switch (event.type) {
     case "state": {
       const { type, ...rest } = event;
-      return { ...state, ...rest };
+      Object.assign(state, rest);
+      return state;
     }
     case "position":
-      return { ...state, position_ms: event.position_ms, duration_ms: event.duration_ms };
+      state.position_ms = event.position_ms;
+      state.duration_ms = event.duration_ms;
+      return state;
     case "now_playing":
-      return { ...state, error: "" };
+      state.error = "";
+      return state;
     case "error":
-      return { ...state, error: event.message };
+      state.error = event.message;
+      return state;
     default:
       return state;
   }
+}
+
+export function reduce(state: PlayerState, event: EngineEvent): PlayerState {
+  return applyEvent({ ...state }, event);
 }
 
 /** Keeps the slider pinned to the requested position until the engine catches up. */
@@ -74,12 +86,12 @@ export function createPlayer() {
 
   async function init() {
     await listen<EngineEvent>("playback_event", (event) => {
-      state = reduce(state, event.payload);
+      applyEvent(state, event.payload);
       pendingSeek = reconcileSeek(pendingSeek, event.payload);
     });
     try {
       const snapshot = await api.getPlaybackState();
-      state = reduce(state, { type: "state", ...snapshot });
+      applyEvent(state, { type: "state", ...snapshot });
       if (snapshot.volume > 0) lastVolume = snapshot.volume;
     } catch {
       /* not logged in yet */
@@ -96,7 +108,7 @@ export function createPlayer() {
     await api.retry();
     // The engine emits a State event, which does not clear the mirrored
     // error; clear it here once the retry command was accepted.
-    state = { ...state, error: "" };
+    state.error = "";
   }
 
   /// Rebuild the queue after a re-login: start the context, seek to the last
@@ -113,7 +125,7 @@ export function createPlayer() {
     await seek(positionMs);
     if (!wasPlaying) await api.playPause();
     const snapshot = await api.getPlaybackState();
-    state = reduce(state, { type: "state", ...snapshot });
+    applyEvent(state, { type: "state", ...snapshot });
   }
 
   function setVolume(v: number, persist = false) {

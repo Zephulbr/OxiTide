@@ -1,6 +1,6 @@
 import { api, type PerfSnapshot } from "./api";
 import { appearance } from "./appearance.svelte";
-import { FrameSampler, LongTaskLog } from "./perf";
+import { FrameSampler, InteractionLog, LongTaskLog } from "./perf";
 
 export function createPerf() {
   let active = $state(false);
@@ -8,6 +8,7 @@ export function createPerf() {
   let snapshot = $state<PerfSnapshot | null>(null);
   const frames = new FrameSampler();
   const longTasks = new LongTaskLog();
+  const interactions = new InteractionLog();
   let started = false;
   let raf = 0;
   let lastFrame = 0;
@@ -30,6 +31,7 @@ export function createPerf() {
         mode: appearance.mode,
         frames: frames.summary(),
         long_tasks: longTasks.summary(),
+        interactions: interactions.summary(),
       });
     } catch {
       /* never disturb the app for metrics */
@@ -70,6 +72,13 @@ export function createPerf() {
     void api.perfMark(name).catch(() => {});
   }
 
+  /// Record a timed interaction and flush immediately: the run ends as soon as
+  /// the driver's scenario does, so the periodic submit could lose the last one.
+  function recordInteraction(kind: "filter" | "sort", ms: number) {
+    interactions.record(kind, ms);
+    void submit();
+  }
+
   function toggleHud() {
     hudVisible = !hudVisible;
   }
@@ -88,6 +97,7 @@ export function createPerf() {
     get longTasks() { return longTasks; },
     init,
     mark,
+    recordInteraction,
     toggleHud,
     dispose,
   };

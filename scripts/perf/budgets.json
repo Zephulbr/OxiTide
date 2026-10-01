@@ -3,12 +3,14 @@
     { "metric": "first_paint_ms", "max": 1500 },
     { "metric": "ui_ready_ms", "max": 2500 },
     { "metric": "memory_max_mb", "max": 300 },
-    { "metric": "long_task_max_ms", "max": 100 }
+    { "metric": "long_task_max_ms", "max": 100 },
+    { "metric": "startup_step_max_ms", "max": 100 }
   ],
   "S2": [
     { "metric": "first_paint_ms", "max": 1000 },
     { "metric": "memory_max_mb", "max": 300 },
-    { "metric": "long_task_max_ms", "max": 100 }
+    { "metric": "long_task_max_ms", "max": 100 },
+    { "metric": "startup_step_max_ms", "max": 100 }
   ],
   "S3-miss": [
     { "metric": "ttfs_ms", "max": 2500 },
@@ -39,6 +41,8 @@
   "S6": [
     { "metric": "frame_p95_ms:instrument", "max": 16.7 },
     { "metric": "frame_p99_ms:instrument", "max": 33 },
+    { "metric": "filter_max_ms", "max": 50, "required": true },
+    { "metric": "sort_max_ms", "max": 150, "required": true },
     { "metric": "memory_max_mb", "max": 450 }
   ],
   "S7": [{ "metric": "memory_max_mb", "max": 450 }],
