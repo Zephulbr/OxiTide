@@ -5,6 +5,7 @@
 - **Revised:** 2026-09-28 — execution order reordered to Tracks 4 → 5 → 6 → 3 → 7 after Plan 10; Track labels stay stable (see PM-D5).
 - **Revised:** 2026-09-30 — Tracks 4, 5, and 6 complete; Track 3 active (spec approved, Phase A planning).
 - **Revised:** 2026-10-01 — Track 3 Phase A (harness + baseline) complete; no budget recalibration; Phase B (startup + TTFS) complete; Phase C next.
+- **Revised:** 2026-10-01 — ASIO output assessed and parked as an optional, uncommitted Track 7 candidate (spike note: `plans/notes/2026-10-01-asio-spike.md`).
 - **Owner:** V
 - **Parent:** `2026-09-21-oxitide-design.md` (§9 Phasing)
 - **Supersedes:** the parent's Phase 2–4 ordering. The shipped Phase 1 MVP (v0.2.0) is
@@ -34,7 +35,7 @@ statuses refreshed 2026-09-30.
 | 2 | Track 5 | Scrobbling: Last.fm and ListenBrainz in parallel, independent toggles; now-playing, offline queue, retry | Done (Last.fm + ListenBrainz; smoke closed 2026-09-29) |
 | 3 | Track 6 | Remaining integrations: Discord RPC; SMTC + hardware media keys | Done (6a SMTC/media keys + 6b Discord Rich Presence) |
 | now | Track 3 | Performance & stability wave: profile and fix startup, time-to-first-sound, UI jank, memory, cache/eviction churn, large-library handling; build a measurement harness | Active — Phase A (harness + baseline) and Phase B (startup + TTFS) complete 2026-10-01; Phase C (UI + large library) next |
-| 5 | Track 7 | Advanced audio: DSP/EQ (opt-in, mutually exclusive with bit-perfect); casting/TIDAL Connect; Dolby Atmos | Parked last |
+| 5 | Track 7 | Advanced audio: DSP/EQ (opt-in, mutually exclusive with bit-perfect); casting/TIDAL Connect; Dolby Atmos; optional ASIO output (maybe, see `plans/notes/2026-10-01-asio-spike.md`) | Parked last |
 
 Track 2b has no hard "done" gate before Track 4 starts; it may still receive bug fixes and
 polish in parallel.
@@ -138,6 +139,12 @@ polish in parallel.
 - DSP/EQ (opt-in, mutually exclusive with bit-perfect; the UI must make the trade-off
   explicit), casting / TIDAL Connect (protocol research first), Dolby Atmos
   (Phase 0-style DRM spike before any commitment).
+- **ASIO output (maybe, not committed):** feature-parity option, assessed by the
+  2026-10-01 spike (`plans/notes/2026-10-01-asio-spike.md`). WASAPI-only today; a contained
+  `asio-sys` backend is feasible and AGPL-compatible (SDK GPLv3 option), but costs LLVM at
+  build time, in-process driver crash risk, software-only volume (breaks bit-perfect below
+  100%), no hotplug, and single-client conflicts. Revisit only if an affected interface
+  appears or the owner wants parity; then run the normal spec → plan cycle.
 - Parked until Track 3 closes and the owner calls it; Tracks 1–6 are otherwise complete
   (Track 2b remains open for polish).
 
