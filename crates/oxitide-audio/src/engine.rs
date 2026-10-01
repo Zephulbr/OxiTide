@@ -554,13 +554,20 @@ struct TrackStream {
     item: QueueItem,
     rx: Receiver<Result<StreamEvent>>,
     buffer: Arc<StreamBuffer>,
+    cache: Arc<DiskCache>,
+    /// The cache key this stream protects while it is alive, once resolved.
+    cache_key: Arc<Mutex<Option<CacheKey>>>,
 }
 
 impl Drop for TrackStream {
     fn drop(&mut self) {
         // Stop the producer's fetch/decode promptly when the stream is
-        // abandoned (next/prev/seek/clear or track change).
+        // abandoned (next/prev/seek/clear or track change), and release the
+        // cache protection that kept the playing/prefetched file on disk.
         self.buffer.cancel();
+        if let Some(key) = self.cache_key.lock().unwrap().take() {
+            self.cache.unprotect(&key);
+        }
     }
 }
 
@@ -573,12 +580,21 @@ fn start_track(
 ) -> TrackStream {
     let (tx, rx) = std::sync::mpsc::sync_channel::<Result<StreamEvent>>(PREFETCH_BUFFERS);
     let buffer = StreamBuffer::new();
-    let stream = TrackStream { item: item.clone(), rx, buffer: buffer.clone() };
+    let cache_key = Arc::new(Mutex::new(None));
+    let stream = TrackStream {
+        item: item.clone(),
+        rx,
+        buffer: buffer.clone(),
+        cache: inner.cache.clone(),
+        cache_key: cache_key.clone(),
+    };
     let decode_inner = inner.clone();
     let item = item.clone();
     let spawned = std::thread::Builder::new()
         .name("oxitide-decode".into())
-        .spawn(move || decode_track(decode_inner, item, mode, generation, seek_ms, tx, buffer));
+        .spawn(move || {
+            decode_track(decode_inner, item, mode, generation, seek_ms, tx, buffer, cache_key)
+        });
     if let Err(e) = spawned {
         // Dropping `tx` disconnects the channel; the worker treats it as an
         // ended track and advances. Wake it so it sees the disconnect without
@@ -599,6 +615,7 @@ fn start_prefetch(inner: &Arc<Inner>, mode: OutputMode, gen: u64) -> Option<Trac
     next.map(|item| start_track(inner, &item, mode, gen, None))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn decode_track(
     inner: Arc<Inner>,
     item: QueueItem,
@@ -607,6 +624,7 @@ fn decode_track(
     seek_ms: Option<u64>,
     tx: SyncSender<Result<StreamEvent>>,
     buffer: Arc<StreamBuffer>,
+    cache_key_slot: Arc<Mutex<Option<CacheKey>>>,
 ) {
     let quality = *inner.quality.lock().unwrap();
     fire_perf(&inner, AudioPerfEvent::ResolveStart { track_id: item.track_id });
@@ -653,14 +671,16 @@ fn decode_track(
         quality,
         manifest_hash,
     });
+    if let Some(key) = cache_key {
+        *cache_key_slot.lock().unwrap() = Some(key);
+        inner.cache.protect(&key);
+    }
     match cache_key {
         Some(key) => match inner.cache.lookup(&key) {
             Some(path) => {
                 fire_perf(&inner, AudioPerfEvent::CacheHit { track_id: item.track_id });
-                inner.cache.protect(&key);
                 let result =
                     decode_from_file(&inner, &item, mode, generation, seek_ms, &tx, &path, &plan);
-                inner.cache.unprotect(&key);
                 match result {
                     Ok(()) => return,
                     Err(e) => {
@@ -3245,7 +3265,16 @@ mod tests {
         let (tx, _rx) = std::sync::mpsc::sync_channel(512);
         let generation = engine.inner.generation.load(Ordering::SeqCst);
         let buffer = StreamBuffer::new();
-        decode_track(engine.inner.clone(), item(1), OutputMode::Shared, generation, Some(500), tx, buffer);
+        decode_track(
+            engine.inner.clone(),
+            item(1),
+            OutputMode::Shared,
+            generation,
+            Some(500),
+            tx,
+            buffer,
+            Arc::new(Mutex::new(None)),
+        );
         assert_eq!(cache.size_bytes(), 0, "a seek plan must not be cached");
     }
 
@@ -3427,5 +3456,43 @@ mod tests {
             matches!(result, StreamWait::Superseded),
             "expected superseded, got {result:?}"
         );
+    }
+
+    /// Review Focus: a cached stream keeps its entry protected from the moment
+    /// the key is known until the stream is dropped, so a commit for another
+    /// track cannot evict the one being played or prefetched.
+    #[test]
+    fn a_cached_stream_protects_its_entry_for_its_lifetime() {
+        const HASH: u64 = 0xabcd;
+        let (tone_plan, files) = fixture_plan();
+        let tone = files.get("mem://tone").cloned().expect("fixture bytes");
+        let cache = test_cache();
+        let key = CacheKey { track_id: 1, quality: Quality::Lossless, manifest_hash: HASH };
+        let mut writer = cache.begin_write(&key).unwrap();
+        writer.write_all(&tone).unwrap();
+        writer.commit();
+
+        let mut plan = cached_plan("mem://tone", HASH);
+        plan.sample_rate = tone_plan.sample_rate;
+        let output = NullOutput::new();
+        let engine = Engine::new(
+            Arc::new(FakeResolver { plan }),
+            {
+                let files = files.clone();
+                move || Arc::new(crate::fetch::MapFetcher { files }) as Arc<dyn Fetcher>
+            },
+            Box::new(output.clone()),
+            Quality::Lossless,
+            cache.clone(),
+            true,
+        );
+
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| cache.is_protected(&key));
+        assert!(cache.is_protected(&key), "the playing stream must hold its protection");
+
+        engine.handle(EngineCmd::Clear).unwrap();
+        wait_for(|| !cache.is_protected(&key));
+        assert!(!cache.is_protected(&key), "dropping the stream must release protection");
     }
 }
