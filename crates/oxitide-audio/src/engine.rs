@@ -122,7 +122,12 @@ struct Inner {
 }
 
 impl Inner {
+    /// Wake the worker without losing the wakeup against a concurrent wait:
+    /// the waiter holds `wake_lock` across its predicate check and then waits
+    /// on the same lock, so notifying while holding it guarantees the waiter
+    /// either sees the new state or is parked and woken.
     fn notify_worker(&self) {
+        let _guard = self.wake_lock.lock().unwrap();
         self.wake.notify_all();
     }
 }
@@ -569,15 +574,17 @@ fn start_track(
     let (tx, rx) = std::sync::mpsc::sync_channel::<Result<StreamEvent>>(PREFETCH_BUFFERS);
     let buffer = StreamBuffer::new();
     let stream = TrackStream { item: item.clone(), rx, buffer: buffer.clone() };
-    let inner = inner.clone();
+    let decode_inner = inner.clone();
     let item = item.clone();
     let spawned = std::thread::Builder::new()
         .name("oxitide-decode".into())
-        .spawn(move || decode_track(inner, item, mode, generation, seek_ms, tx, buffer));
+        .spawn(move || decode_track(decode_inner, item, mode, generation, seek_ms, tx, buffer));
     if let Err(e) = spawned {
         // Dropping `tx` disconnects the channel; the worker treats it as an
-        // ended track and advances.
+        // ended track and advances. Wake it so it sees the disconnect without
+        // waiting out the safety timeout.
         tracing::error!("failed to spawn decode thread: {e}");
+        inner.notify_worker();
     }
     stream
 }
@@ -606,6 +613,7 @@ fn decode_track(
         Ok(plan) => plan,
         Err(e) => {
             let _ = tx.send(Err(e));
+            inner.notify_worker();
             return;
         }
     };
@@ -626,6 +634,7 @@ fn decode_track(
     if let Some(served) = served {
         if !inner.allow_fallback.load(Ordering::SeqCst) && served < quality {
             let _ = tx.send(Err(Error::Unavailable(served.label().to_string())));
+            inner.notify_worker();
             return;
         }
     }
@@ -634,6 +643,7 @@ fn decode_track(
             "this track is only offered in HE-AAC (TIDAL Low), which the built-in decoder cannot play"
                 .into(),
         )));
+        inner.notify_worker();
         return;
     }
     fire_perf(&inner, AudioPerfEvent::DecodeStart { track_id: item.track_id });
@@ -709,11 +719,21 @@ fn decode_from_network(
         let buffer = buffer.clone();
         Arc::new(move || buffer.total_pushed()) as Arc<dyn Fn() -> u64 + Send + Sync>
     };
-    let result =
-        decode_source(inner, &item, mode, generation, seek_ms, &tx, source, plan, total_bytes);
+    let result = decode_source(
+        inner.clone(),
+        &item,
+        mode,
+        generation,
+        seek_ms,
+        &tx,
+        source,
+        plan,
+        total_bytes,
+    );
     let _ = downloader.join();
     if let Err(e) = result {
         let _ = tx.send(Err(e));
+        inner.notify_worker();
     }
 }
 
@@ -794,7 +814,12 @@ struct ChannelSink {
 
 impl ChannelSink {
     fn send(&self, event: Result<StreamEvent>) -> Result<()> {
-        self.tx.send(event).map_err(|_| Error::Output("playback stream closed".into()))
+        let sent = self
+            .tx
+            .send(event)
+            .map_err(|_| Error::Output("playback stream closed".into()));
+        self.inner.notify_worker();
+        sent
     }
 
     /// Fallback bitrate for a single-file source: fetched bytes over the item's
@@ -866,26 +891,44 @@ impl PcmSink for ChannelSink {
     }
 }
 
+/// Wait until the producer queues a stream event, or the engine is woken by a
+/// command / generation bump / shutdown. A bare wake returns `Ok(None)`; a
+/// disconnected producer returns `Err(())`. Holding `wake_lock` across the
+/// `try_recv` closes the lost-wakeup race: a send that lands after the check
+/// blocks `notify_worker` until the condvar wait has started.
+fn wait_for_stream_event<T>(
+    wake_lock: &Mutex<()>,
+    wake: &Condvar,
+    rx: &std::sync::mpsc::Receiver<T>,
+) -> std::result::Result<Option<T>, ()> {
+    let guard = wake_lock.lock().unwrap();
+    match rx.try_recv() {
+        Ok(event) => Ok(Some(event)),
+        Err(std::sync::mpsc::TryRecvError::Empty) => {
+            let _ = wake.wait_timeout(guard, Duration::from_secs(2));
+            Ok(None)
+        }
+        Err(std::sync::mpsc::TryRecvError::Disconnected) => Err(()),
+    }
+}
+
 fn wait_for_info(inner: &Arc<Inner>, stream: &mut TrackStream, gen: u64) -> Result<StreamStart> {
     loop {
         // A supersede while a track is still resolving/fetching (e.g. Next
-        // pressed during a slow network resolve) must exit promptly.
+        // pressed during a slow network resolve) must exit promptly; command
+        // handling notifies the worker, which wakes the wait below.
         if inner.generation.load(Ordering::SeqCst) != gen {
             return Err(Error::Output("playback superseded".into()));
         }
-        match stream.rx.recv_timeout(Duration::from_millis(200)) {
-            Ok(Ok(StreamEvent::Info(start))) => return Ok(start),
-            Ok(Ok(StreamEvent::Samples(_))) => continue,
-            Ok(Err(e)) => return Err(e),
-            Err(RecvTimeoutError::Timeout) => {
-                if inner.shutdown.load(Ordering::SeqCst) {
-                    return Err(Error::Output("engine shut down".into()));
-                }
-                continue;
-            }
-            Err(RecvTimeoutError::Disconnected) => {
-                return Err(Error::Decode("stream ended before any audio".into()));
-            }
+        if inner.shutdown.load(Ordering::SeqCst) {
+            return Err(Error::Output("engine shut down".into()));
+        }
+        match wait_for_stream_event(&inner.wake_lock, &inner.wake, &stream.rx) {
+            Err(()) => return Err(Error::Decode("stream ended before any audio".into())),
+            Ok(None) => continue,
+            Ok(Some(Ok(StreamEvent::Info(start)))) => return Ok(start),
+            Ok(Some(Ok(StreamEvent::Samples(_)))) => continue,
+            Ok(Some(Err(e))) => return Err(e),
         }
     }
 }
@@ -3256,5 +3299,44 @@ mod tests {
             after_first_play,
             "a replay of a cached queue still fetched"
         );
+    }
+
+    #[test]
+    fn stream_wait_returns_queued_events_without_a_notify() {
+        let (tx, rx) = std::sync::mpsc::channel::<u32>();
+        tx.send(7).unwrap();
+        let lock = Mutex::new(());
+        let wake = Condvar::new();
+        match wait_for_stream_event(&lock, &wake, &rx) {
+            Ok(Some(7)) => {}
+            Ok(other) => panic!("expected the queued event, got {other:?}"),
+            Err(()) => panic!("unexpected disconnect"),
+        }
+    }
+
+    #[test]
+    fn stream_wait_wakes_on_notify_without_an_event() {
+        let (_tx, rx) = std::sync::mpsc::channel::<u32>();
+        let lock = std::sync::Arc::new(Mutex::new(()));
+        let wake = std::sync::Arc::new(Condvar::new());
+        let (locker, waker) = (lock.clone(), wake.clone());
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(50));
+            let _guard = locker.lock().unwrap();
+            waker.notify_all();
+        });
+        let started = std::time::Instant::now();
+        let result = wait_for_stream_event(&lock, &wake, &rx);
+        assert!(matches!(result, Ok(None)), "expected a bare wake, got {result:?}");
+        assert!(started.elapsed() < Duration::from_millis(1000));
+    }
+
+    #[test]
+    fn stream_wait_reports_a_disconnected_producer() {
+        let (tx, rx) = std::sync::mpsc::channel::<u32>();
+        drop(tx);
+        let lock = Mutex::new(());
+        let wake = Condvar::new();
+        assert!(matches!(wait_for_stream_event(&lock, &wake, &rx), Err(())));
     }
 }
