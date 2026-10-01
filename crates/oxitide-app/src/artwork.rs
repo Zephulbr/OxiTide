@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 
 use serde::{Deserialize, Serialize};
 
@@ -58,7 +58,7 @@ impl From<PaletteDto> for Palette {
 pub struct ArtworkService {
     http: reqwest::Client,
     base_url: String,
-    memory: Mutex<HashMap<String, PaletteDto>>,
+    memory: OnceLock<Mutex<HashMap<String, PaletteDto>>>,
     disk_path: PathBuf,
 }
 
@@ -67,17 +67,24 @@ impl ArtworkService {
         if let Some(parent) = disk_path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        let memory = std::fs::read_to_string(&disk_path)
-            .ok()
-            .and_then(|text| serde_json::from_str::<DiskCache>(&text).ok())
-            .map(|cache| cache.palettes)
-            .unwrap_or_default();
         Self {
             http,
             base_url: base_url.trim_end_matches('/').to_string(),
-            memory: Mutex::new(memory),
+            memory: OnceLock::new(),
             disk_path,
         }
+    }
+
+    /// The palette map, read from disk on first use so startup never parses it.
+    fn memory(&self) -> &Mutex<HashMap<String, PaletteDto>> {
+        self.memory.get_or_init(|| {
+            let memory = std::fs::read_to_string(&self.disk_path)
+                .ok()
+                .and_then(|text| serde_json::from_str::<DiskCache>(&text).ok())
+                .map(|cache| cache.palettes)
+                .unwrap_or_default();
+            Mutex::new(memory)
+        })
     }
 
     fn url(base: &str, uuid: &str) -> String {
@@ -90,7 +97,7 @@ impl ArtworkService {
         if uuid.is_empty() {
             return fallback_palette();
         }
-        if let Some(hit) = self.memory.lock().unwrap().get(uuid) {
+        if let Some(hit) = self.memory().lock().unwrap().get(uuid) {
             return hit.clone().into();
         }
         let palette = match self.fetch(uuid).await {
@@ -100,7 +107,7 @@ impl ArtworkService {
                 fallback_palette()
             }
         };
-        self.memory.lock().unwrap().insert(uuid.to_string(), palette.clone().into());
+        self.memory().lock().unwrap().insert(uuid.to_string(), palette.clone().into());
         self.save_disk();
         palette
     }
@@ -129,7 +136,7 @@ impl ArtworkService {
     }
 
     fn save_disk(&self) {
-        let cache = DiskCache { palettes: self.memory.lock().unwrap().clone() };
+        let cache = DiskCache { palettes: self.memory().lock().unwrap().clone() };
         let Ok(text) = serde_json::to_string_pretty(&cache) else { return };
         let tmp = self.disk_path.with_extension("json.tmp");
         if std::fs::write(&tmp, text).is_ok() {
@@ -167,6 +174,44 @@ mod tests {
         ));
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    fn palette_dto(primary: &str) -> PaletteDto {
+        PaletteDto {
+            primary: primary.into(),
+            on_primary: "#000000".into(),
+            secondary: "#111111".into(),
+            tertiary: "#222222".into(),
+            backdrop: "#333333".into(),
+            ceiling_l: 0.5,
+        }
+    }
+
+    fn write_palettes(path: &std::path::Path, uuid: &str, dto: &PaletteDto) {
+        let mut palettes = std::collections::HashMap::new();
+        palettes.insert(uuid.to_string(), dto.clone());
+        let text = serde_json::to_string(&DiskCache { palettes }).unwrap();
+        std::fs::write(path, text).unwrap();
+    }
+
+    /// The constructor must not parse palettes.json; the first use loads what
+    /// is on disk *at that moment*.
+    #[tokio::test]
+    async fn disk_palettes_load_lazily_on_first_use() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(404))
+            .expect(0)
+            .mount(&server)
+            .await;
+        let dir = temp_dir();
+        let path = dir.join("palettes.json");
+        write_palettes(&path, "ab-cd", &palette_dto("#aaaaaa"));
+        let service = service(&server, &dir);
+        write_palettes(&path, "ab-cd", &palette_dto("#bbbbbb"));
+        let palette = service.palette("ab-cd").await;
+        assert_eq!(palette.primary, "#bbbbbb");
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[tokio::test]

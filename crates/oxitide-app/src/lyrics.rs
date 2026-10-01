@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
@@ -68,7 +68,7 @@ enum LyricsOutcome {
 pub struct LyricsService {
     http: reqwest::Client,
     base_url: String,
-    memory: Mutex<HashMap<u64, CacheEntry>>,
+    memory: OnceLock<Mutex<HashMap<u64, CacheEntry>>>,
     disk_path: PathBuf,
 }
 
@@ -77,21 +77,28 @@ impl LyricsService {
         if let Some(parent) = disk_path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        let memory = std::fs::read_to_string(&disk_path)
-            .ok()
-            .and_then(|text| serde_json::from_str::<DiskCache>(&text).ok())
-            .map(|cache| cache.tracks)
-            .unwrap_or_default();
         Self {
             http,
             base_url: lrclib_url.into().trim_end_matches('/').to_string(),
-            memory: Mutex::new(memory),
+            memory: OnceLock::new(),
             disk_path,
         }
     }
 
+    /// The entry map, read from disk on first use so startup never parses it.
+    fn memory(&self) -> &Mutex<HashMap<u64, CacheEntry>> {
+        self.memory.get_or_init(|| {
+            let memory = std::fs::read_to_string(&self.disk_path)
+                .ok()
+                .and_then(|text| serde_json::from_str::<DiskCache>(&text).ok())
+                .map(|cache| cache.tracks)
+                .unwrap_or_default();
+            Mutex::new(memory)
+        })
+    }
+
     pub async fn get(&self, client: &TidalClient, req: &LyricsRequest) -> Option<LyricsDto> {
-        if let Some(entry) = self.memory.lock().unwrap().get(&req.track_id) {
+        if let Some(entry) = self.memory().lock().unwrap().get(&req.track_id) {
             return entry.lyrics.clone();
         }
         match self.fetch(client, req).await {
@@ -212,7 +219,7 @@ impl LyricsService {
             .duration_since(UNIX_EPOCH)
             .map(|duration| duration.as_secs())
             .unwrap_or(0);
-        self.memory
+        self.memory()
             .lock()
             .unwrap()
             .insert(track_id, CacheEntry { fetched_at, lyrics });
@@ -221,7 +228,7 @@ impl LyricsService {
 
     fn save_disk(&self) {
         let cache = {
-            let mut memory = self.memory.lock().unwrap();
+            let mut memory = self.memory().lock().unwrap();
             if memory.len() > CACHE_MAX_ENTRIES {
                 let mut entries: Vec<(u64, CacheEntry)> = memory.drain().collect();
                 entries.sort_by_key(|entry| std::cmp::Reverse(entry.1.fetched_at));
@@ -378,6 +385,50 @@ mod tests {
         ));
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    fn write_lyrics(path: &std::path::Path, track_id: u64, text: &str) {
+        let entry = serde_json::json!({
+            "tracks": {
+                track_id.to_string(): {
+                    "fetched_at": 1,
+                    "lyrics": {
+                        "track_id": track_id,
+                        "source": "tidal",
+                        "synced": true,
+                        "rtl": false,
+                        "lines": [{ "time_ms": 1, "text": text, "words": [] }]
+                    }
+                }
+            }
+        });
+        std::fs::write(path, entry.to_string()).unwrap();
+    }
+
+    /// The constructor must not parse lyrics.json; the first use loads what is
+    /// on disk *at that moment*.
+    #[tokio::test]
+    async fn disk_entries_load_lazily_on_first_use() {
+        let tidal = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(500))
+            .expect(0)
+            .mount(&tidal)
+            .await;
+        let lrclib = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(500))
+            .expect(0)
+            .mount(&lrclib)
+            .await;
+        let dir = temp_dir();
+        let path = dir.join("lyrics.json");
+        write_lyrics(&path, 7, "old");
+        let service = LyricsService::new(reqwest::Client::new(), lrclib.uri(), path.clone());
+        write_lyrics(&path, 7, "new");
+        let got = service.get(&tidal_client(&tidal), &request(7)).await.unwrap();
+        assert_eq!(got.lines[0].text, "new");
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[tokio::test]
@@ -830,7 +881,7 @@ mod tests {
             dir.join("lyrics.json"),
         );
         {
-            let mut memory = service.memory.lock().unwrap();
+            let mut memory = service.memory().lock().unwrap();
             for id in 0..=2_000u64 {
                 memory.insert(
                     id,
@@ -847,7 +898,7 @@ mod tests {
             lrclib.uri(),
             dir.join("lyrics.json"),
         );
-        let memory = reloaded.memory.lock().unwrap();
+        let memory = reloaded.memory().lock().unwrap();
         assert_eq!(memory.len(), 2_000);
         assert!(!memory.contains_key(&0));
         assert!(memory.contains_key(&2_000));
