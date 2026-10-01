@@ -12,10 +12,19 @@ use crate::palette::{extract_palette, fallback_palette, Palette};
 
 const ANALYSIS_SIZE: u32 = 160;
 const EXTRACT_SIDE: u32 = 48;
+/// Newest-N bound, mirroring `lyrics::CACHE_MAX_ENTRIES`; a palette entry is
+/// tiny, but the unbounded map also made every save an O(n) full-file rewrite.
+const PALETTE_MAX_ENTRIES: usize = 2_000;
 
 #[derive(Default, Serialize, Deserialize)]
 struct DiskCache {
     palettes: HashMap<String, PaletteDto>,
+}
+
+/// Borrowed view for serialization, so `save_disk` never clones the map.
+#[derive(Serialize)]
+struct DiskCacheRef<'a> {
+    palettes: &'a HashMap<String, PaletteDto>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -28,6 +37,10 @@ pub struct PaletteDto {
     /// to parse once and the cache self-heals.
     pub backdrop: String,
     pub ceiling_l: f32,
+    /// Unix seconds of the last fetch; pre-Phase-D entries default to 0 and
+    /// prune first. Not part of the API surface.
+    #[serde(default)]
+    pub fetched_at: u64,
 }
 
 impl From<Palette> for PaletteDto {
@@ -39,6 +52,7 @@ impl From<Palette> for PaletteDto {
             tertiary: p.tertiary,
             backdrop: p.backdrop,
             ceiling_l: p.ceiling_l,
+            fetched_at: 0,
         }
     }
 }
@@ -107,7 +121,12 @@ impl ArtworkService {
                 fallback_palette()
             }
         };
-        self.memory().lock().unwrap().insert(uuid.to_string(), palette.clone().into());
+        let mut dto = PaletteDto::from(palette.clone());
+        dto.fetched_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        self.memory().lock().unwrap().insert(uuid.to_string(), dto);
         self.save_disk();
         palette
     }
@@ -136,8 +155,16 @@ impl ArtworkService {
     }
 
     fn save_disk(&self) {
-        let cache = DiskCache { palettes: self.memory().lock().unwrap().clone() };
-        let Ok(text) = serde_json::to_string_pretty(&cache) else { return };
+        let mut memory = self.memory().lock().unwrap();
+        if memory.len() > PALETTE_MAX_ENTRIES {
+            let mut entries: Vec<(String, PaletteDto)> = memory.drain().collect();
+            entries.sort_by_key(|(_, dto)| std::cmp::Reverse(dto.fetched_at));
+            entries.truncate(PALETTE_MAX_ENTRIES);
+            memory.extend(entries);
+        }
+        let Ok(text) = serde_json::to_string_pretty(&DiskCacheRef { palettes: &memory }) else {
+            return;
+        };
         let tmp = self.disk_path.with_extension("json.tmp");
         if std::fs::write(&tmp, text).is_ok() {
             let _ = std::fs::rename(&tmp, &self.disk_path);
@@ -184,6 +211,7 @@ mod tests {
             tertiary: "#222222".into(),
             backdrop: "#333333".into(),
             ceiling_l: 0.5,
+            fetched_at: 0,
         }
     }
 
@@ -268,6 +296,57 @@ mod tests {
         drop(server); // server gone; a fresh service must read the disk cache
         let second = service(&MockServer::start().await, &dir).palette("ab-cd").await;
         assert_eq!(first, second);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn pruning_keeps_the_newest_palettes() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(404))
+            .expect(0)
+            .mount(&server)
+            .await;
+        let dir = temp_dir();
+        let service = service(&server, &dir);
+        {
+            let mut memory = service.memory().lock().unwrap();
+            for i in 0..(PALETTE_MAX_ENTRIES + 5) {
+                let mut dto = palette_dto("#000000");
+                dto.fetched_at = i as u64;
+                memory.insert(format!("uuid-{i:05}"), dto);
+            }
+        }
+        service.save_disk();
+
+        let memory = service.memory().lock().unwrap();
+        assert_eq!(memory.len(), PALETTE_MAX_ENTRIES);
+        assert!(memory.contains_key("uuid-02004"), "the newest entry was pruned");
+        assert!(!memory.contains_key("uuid-00000"), "the oldest entry survived");
+        drop(memory);
+        let text = std::fs::read_to_string(dir.join("palettes.json")).unwrap();
+        let cache: DiskCache = serde_json::from_str(&text).unwrap();
+        assert_eq!(cache.palettes.len(), PALETTE_MAX_ENTRIES);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn old_palette_files_without_fetched_at_still_parse() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(404))
+            .expect(0)
+            .mount(&server)
+            .await;
+        let dir = temp_dir();
+        let path = dir.join("palettes.json");
+        std::fs::write(
+            &path,
+            r##"{"palettes":{"ab-cd":{"primary":"#aaaaaa","on_primary":"#000000","secondary":"#111111","tertiary":"#222222","backdrop":"#333333","ceiling_l":0.5}}}"##,
+        )
+        .unwrap();
+        let palette = service(&server, &dir).palette("ab-cd").await;
+        assert_eq!(palette.primary, "#aaaaaa");
         let _ = std::fs::remove_dir_all(dir);
     }
 }
