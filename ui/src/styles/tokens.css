@@ -39,6 +39,8 @@
   /* Radii (spec §8) */
   --radius-control: 8px;
   --radius-card: 12px;
+  --radius-card-sharp: 4px;
+  --card-badge: 20px;
   --radius-sheet: 16px;
 
   /* Motion (spec §9) */
