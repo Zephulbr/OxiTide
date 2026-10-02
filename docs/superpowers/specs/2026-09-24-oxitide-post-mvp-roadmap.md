@@ -1,6 +1,6 @@
 # OxiTide — Post-MVP Roadmap (Plan 6+)
 
-- **Status:** Approved (owner-confirmed 2026-09-24); execution order revised 2026-09-28; statuses refreshed 2026-09-30
+- **Status:** Approved (owner-confirmed 2026-09-24); execution order revised 2026-09-28; statuses refreshed 2026-10-01
 - **Date:** 2026-09-24
 - **Revised:** 2026-09-28 — execution order reordered to Tracks 4 → 5 → 6 → 3 → 7 after Plan 10; Track labels stay stable (see PM-D5).
 - **Revised:** 2026-09-30 — Tracks 4, 5, and 6 complete; Track 3 active (spec approved, Phase A planning).
@@ -8,6 +8,7 @@
 - **Revised:** 2026-10-01 — ASIO output assessed and parked as an optional, uncommitted Track 7 candidate (spike note: `plans/notes/2026-10-01-asio-spike.md`).
 - **Revised:** 2026-10-01 — Track 3 Phase C (UI + large library) complete; Phase D (memory, cache/eviction, stability) next.
 - **Revised:** 2026-10-01 — Track 8 (Linux support) added and sequenced before Track 7; findings in `plans/notes/2026-10-01-linux-support-spike.md`.
+- **Revised:** 2026-10-01 — Project hygiene batch (LICENSE/notices/CSP/docs) landed; Track 2b closed and its remainder extracted to new **Track 9 (UI completion)**; new **Track 10 (QoL)** added; Track 7 gains ReplayGain and crossfade/automix research; global non-goals recorded (PM-D6).
 - **Owner:** V
 - **Parent:** `2026-09-21-oxitide-design.md` (§9 Phasing)
 - **Supersedes:** the parent's Phase 2–4 ordering. The shipped Phase 1 MVP (v0.2.0) is
@@ -23,7 +24,8 @@ decisions, and the research each track needs. Plan numbers continue the existing
 (Plan 6 onward) in execution order; a track may span one or more plans.
 
 Owner-confirmed ordering (2026-09-24), execution order revised 2026-09-28 (PM-D5) and
-2026-10-01 (Track 8 before Track 7); statuses refreshed 2026-10-01.
+2026-10-01 (Tracks 9–10 added; order Track 9 → Track 8 → Track 10 → Track 7); statuses
+refreshed 2026-10-01.
 
 **Track labels are stable; the execution order below is not track-number order.** Tracks
 4–6 are complete; Track 3 is the active track in the sequence.
@@ -32,16 +34,18 @@ Owner-confirmed ordering (2026-09-24), execution order revised 2026-09-28 (PM-D5
 |---|---|---|---|
 | — | Track 1 | Library editing & favorites: favorite/unfavorite tracks, albums, artists; playlist create/rename/delete; add/remove/reorder tracks | Done (Plans 6–7 + write hotfix) |
 | — | Track 2a | UX behavior: shortcuts, context menus, sorting/filtering, virtualization, nav history, toasts, search-as-you-type | Done (Plans 8–9) |
-| — | Track 2b | Visual: design language, layout/IA, expanded now-playing, density, responsive window fit | In progress (Plans 10–13 + follow-up polish) — mostly implemented, kept **open** for bug fixes and additional polish |
+| — | Track 2b | Visual: design language, layout/IA, expanded now-playing, density, responsive window fit | Done (Plans 10–13); remaining polish/Hi-Fi Rack/light mode extracted to Track 9 |
 | 1 | Track 4 | Lyrics + discovery: synced lyrics view; discovery feeds/mixes; track radio / similar artists | Done (4a lyrics + 4b discovery) |
 | 2 | Track 5 | Scrobbling: Last.fm and ListenBrainz in parallel, independent toggles; now-playing, offline queue, retry | Done (Last.fm + ListenBrainz; smoke closed 2026-09-29) |
 | 3 | Track 6 | Remaining integrations: Discord RPC; SMTC + hardware media keys | Done (6a SMTC/media keys + 6b Discord Rich Presence) |
 | now | Track 3 | Performance & stability wave: profile and fix startup, time-to-first-sound, UI jank, memory, cache/eviction churn, large-library handling; build a measurement harness | Active — Phases A–C complete 2026-10-01; Phase D (memory, cache/stability) next |
-| 5 | Track 8 | Linux support: ALSA output backend, MPRIS media controls, Secret Service keyring, deb/AppImage/AUR packaging | Proposed — before Track 7 (owner call); see `plans/notes/2026-10-01-linux-support-spike.md` |
-| 6 | Track 7 | Advanced audio: DSP/EQ (opt-in, mutually exclusive with bit-perfect); casting/TIDAL Connect; Dolby Atmos; optional ASIO output (maybe, see `plans/notes/2026-10-01-asio-spike.md`) | Parked last |
+| 5 | Track 9 | UI completion: Hi-Fi Rack mode, light mode, artist/credits/album-info surfaces, a11y pass, i18n, remaining UI polish and bug fixes | Proposed — next after Track 3 (owner call) |
+| 6 | Track 8 | Linux support: ALSA output backend, MPRIS media controls, Secret Service keyring, deb/AppImage/AUR packaging | Proposed — after Track 9 (owner call); see `plans/notes/2026-10-01-linux-support-spike.md` |
+| 7 | Track 10 | Daily-driver QoL: session/queue persistence, playback history + stats, sleep timer, scrobble love, AI/explicit content blocking; Phase 2 tray + global hotkeys | Proposed — after Track 8 (owner call); research questions in `plans/notes/2026-10-01-qol-research.md` |
+| 8 | Track 7 | Advanced audio: DSP/EQ + ReplayGain (opt-in, mutually exclusive with bit-perfect); crossfade/automix; casting/TIDAL Connect; Dolby Atmos; 360 RA (difficulty-gated); optional ASIO output (maybe, see `plans/notes/2026-10-01-asio-spike.md`) | Parked last |
 
-Track 2b has no hard "done" gate before Track 4 starts; it may still receive bug fixes and
-polish in parallel.
+Track 2b is closed; its remainder (Hi-Fi Rack, light mode, leftover polish) is Track 9,
+which carries a normal completion gate.
 
 ## 2. Carryover (before Plan 6)
 
@@ -74,9 +78,9 @@ polish in parallel.
   player/queue experience, data presentation & interaction polish, window fit.
 - The look-and-feel direction (references, light/dark, mockups) is decided during the 2b
   brainstorm; a visual pass is expected.
-- **Status:** 2a is done (Plans 8–9). 2b is in progress (Plans 10–13 plus follow-up polish) —
-  mostly implemented but deliberately left **open** for bug fixes and additional polish, with
-  no hard completion gate before Track 4 starts.
+- **Status:** Done — 2a shipped in Plans 8–9; 2b shipped in Plans 10–13 (plus follow-ups).
+  The open-ended remainder (Hi-Fi Rack, light mode, leftover polish/bug fixes) now lives in
+  **Track 9 — UI completion** instead of an unbounded 2b bucket.
 - Virtualization overlaps the Track 3 budgets; the measurement harness now lands with the
   deferred Track 3 wave (see PM-D5).
 
@@ -147,21 +151,27 @@ polish in parallel.
 - SMTC + hardware media keys: Windows System Media Transport Controls via the `windows`
   crate; verify key handling and coexistence with the WebView.
 - **Status:** Done — 6a implemented and 6b Discord Rich Presence shipped; the 6b smoke is
-  closed 2026-09-30. Track 2b polish aside, Tracks 1–6 are complete.
+  closed 2026-09-30. Tracks 1–6 are complete.
 
 ### Track 7 — Advanced audio
 
-- DSP/EQ (opt-in, mutually exclusive with bit-perfect; the UI must make the trade-off
-  explicit), casting / TIDAL Connect (protocol research first), Dolby Atmos
-  (Phase 0-style DRM spike before any commitment).
+- **DSP family (opt-in; mutually exclusive with bit-perfect, and the UI must make the
+  trade-off explicit):** EQ and ReplayGain / volume normalization.
+- **Crossfade / automix:** overlapping crossfade needs two concurrent decoders plus mixing
+  in the engine, and is mutually exclusive with gapless and bit-perfect; an Apple
+  AutoMix-style beat/time-aligned mixer is research only, not committed. The exact scope is
+  fixed in the Track 7 spec.
+- Casting / TIDAL Connect (protocol research first) and Dolby Atmos (Phase 0-style DRM
+  spike before any commitment).
+- **360 Reality Audio:** currently not relevant or in use; whether it is worth implementing
+  is decided by difficulty when Track 7 is scoped.
 - **ASIO output (maybe, not committed):** feature-parity option, assessed by the
   2026-10-01 spike (`plans/notes/2026-10-01-asio-spike.md`). WASAPI-only today; a contained
   `asio-sys` backend is feasible and AGPL-compatible (SDK GPLv3 option), but costs LLVM at
   build time, in-process driver crash risk, software-only volume (breaks bit-perfect below
   100%), no hotplug, and single-client conflicts. Revisit only if an affected interface
   appears or the owner wants parity; then run the normal spec → plan cycle.
-- Parked last, after Track 8 (Linux support), until the owner calls it; Tracks 1–6 are
-  otherwise complete (Track 2b remains open for polish).
+- Parked last, after Track 10, until the owner calls it.
 
 ### Track 8 — Linux support
 
@@ -178,9 +188,38 @@ polish in parallel.
 - **Phases:** (1) playable alpha — audio + keyring + build/packaging; (2) desktop
   integration — MPRIS, deep links/.desktop, Wayland geometry, WebKit CSS pass;
   (3) parity/hardening — perf harness and distro matrix.
-- **Status:** Proposed (2026-10-01); sequenced **before Track 7**, owner call. Findings,
-  distro/WM/kernel sensitivity, and effort estimate:
+- **Status:** Proposed (2026-10-01); sequenced after Track 9 and before Track 10, owner
+  call. Findings, distro/WM/kernel sensitivity, and effort estimate:
   `plans/notes/2026-10-01-linux-support-spike.md`.
+
+### Track 9 — UI completion
+
+- Closes out the visual/UX program so Track 2b can end: **Hi-Fi Rack** mode (convergence
+  doc §2 — needs custom elements and its own design pass), **light mode**, and the remaining
+  2b polish and UI bug fixes.
+- Surface work: artist page layout/redesign, track credits, album info.
+- **A11y pass** with explicit acceptance criteria (keyboard traversal, focus-visible
+  states, screen-reader labels for custom widgets, contrast) so the track can actually
+  close.
+- **i18n** (owner-confirmed placement): locale infrastructure and string extraction; if it
+  outgrows this track it becomes its own track.
+- **Status:** Proposed (2026-10-01); next after Track 3, owner call. Track 3 budgets
+  (PM-D1) apply to every new surface.
+
+### Track 10 — Daily-driver QoL
+
+- **Phase 1 (platform-neutral):** session/queue persistence (resume the queue and position
+  on restart); playback history / recently-played view plus a stats page (local-first
+  data); sleep timer; scrobble-service **love** (Last.fm, ListenBrainz — distinct from the
+  TIDAL heart); AI-content and explicit-language blocking to match the official app (AI
+  labels and filters shipped there in July 2026).
+- **Phase 2 (platform integration):** system tray / close-to-tray and system-wide custom
+  hotkeys; on Linux these ride the Track 8 seams (MPRIS, AppIndicator, portals).
+- **Research before the spec** (`plans/notes/2026-10-01-qol-research.md`): whether the API
+  exposes AI-generated flags and user-settings endpoints for the AI/explicit filters;
+  playback-history and credits endpoints; ListenBrainz feedback support; history/stats
+  data source and retention.
+- **Status:** Proposed (2026-10-01); after Track 8, owner call.
 
 ## 4. Decisions (post-MVP)
 
@@ -191,6 +230,7 @@ polish in parallel.
 | PM-D3 | Scrobbling feeds Last.fm and ListenBrainz in parallel with independent toggles. | No reason to serialize; both may be wanted. |
 | PM-D4 | Track 2 splits into behavior (2a) and visual/IA (2b) specs. | Keeps each plan reviewable and gives the visual direction its own pass. |
 | PM-D5 | Execution order is revised to Tracks 4 → 5 → 6 → 3 → 7 after Plan 10 (labelled order unchanged). Track 3 is deferred wholesale — no early harness. | Tracks 4–6 are additive/user-facing and Track 7 is optional, so the dedicated optimization wave targets a stable feature set. PM-D1's standing gate keeps regressions honest meanwhile; Track 5's Last.fm key registration starts now (long lead). |
+| PM-D6 | **Global non-goals: multiple accounts and music videos.** i18n, crossfade/automix, and 360 RA remain in scope (placement/difficulty per §3). | Single-account personal use; an audio-first client. |
 
 ## 5. Open research questions
 
@@ -198,6 +238,9 @@ polish in parallel.
 - Linux support (Track 8): audio backend choice (ALSA-direct vs server integration),
   keyring fallback when no Secret Service is present, WebKitGTK/CSS floor, packaging
   artifacts and baselines.
+- Daily-driver QoL (Track 10): AI-generated flags and the AI/explicit settings endpoints;
+  playback-history and credits endpoints; ListenBrainz feedback (love); history/stats data
+  source and retention; cross-platform shape of tray and custom hotkeys.
 - Resolved since: playlist reorder semantics (Plans 6–7); lyrics source and cache (4a);
   discovery endpoints (4b); Last.fm key registration (5); scrobble offline-queue
   dedupe/failure behavior (5).
@@ -209,7 +252,6 @@ polish in parallel.
   measured by the Track 3 harness.
 - Performance considered in every track's design decisions (allocations, blocking calls,
   re-renders, API round-trips), not only Track 3; regressions block a track's completion.
-- Queue/session persistence across app restarts.
 - API-drift resilience: version-tolerant parsing, fixture refresh, error taxonomy.
 - Packaging: code signing, auto-update (deferred; required only if shared beyond
   friends); CI (none today).
@@ -219,7 +261,7 @@ polish in parallel.
 
 - Plan numbering continues from Plan 5 and follows the **execution order** (PM-D5): Track 2b
   spans Plans 10–13, then Tracks 4, 5, 6, then the deferred Track 3 (now active), then
-  Track 8 (Linux, proposed), then Track 7. **Track labels do not change** — "Track 3" still names Performance & stability
+  Track 9 (UI completion), Track 8 (Linux), Track 10 (QoL), then Track 7. **Track labels do not change** — "Track 3" still names Performance & stability
   even though it runs fourth. Track 2 has spanned Plans 8–9 (2a) and Plans 10–13 (2b);
   later tracks may similarly span more than one plan.
 - The parent's Phase 4 ordering (DSP → casting → Atmos) is replaced by Track 7; Atmos
