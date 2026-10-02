@@ -44,7 +44,7 @@ refreshed 2026-10-01.
 | 5 | Track 9 | UI completion: Hi-Fi Rack mode, light mode, artist/credits/album-info surfaces, a11y pass, i18n, remaining UI polish and bug fixes | Proposed — next after Track 3 (owner call) |
 | 6 | Track 8 | Linux support: ALSA output backend, MPRIS media controls, Secret Service keyring, deb/AppImage/AUR packaging | Proposed — after Track 9 (owner call); see `plans/notes/2026-10-01-linux-support-spike.md` |
 | 7 | Track 10 | Daily-driver QoL: session/queue persistence, playback history + stats, sleep timer, scrobble love, AI/explicit content blocking; Phase 2 tray + global hotkeys | Proposed — after Track 8 (owner call); research questions in `plans/notes/2026-10-01-qol-research.md` |
-| 8 | Track 7 | Advanced audio: DSP/EQ + ReplayGain (opt-in, mutually exclusive with bit-perfect); crossfade/automix; casting/TIDAL Connect; Dolby Atmos; 360 RA (difficulty-gated); optional ASIO output (maybe, see `plans/notes/2026-10-01-asio-spike.md`) | Parked last |
+| 8 | Track 7 | Advanced audio: DSP/EQ + ReplayGain (opt-in, mutually exclusive with bit-perfect); crossfade/automix; casting/TIDAL Connect; Dolby Atmos; 360 RA (difficulty-gated); optional ASIO output (maybe, see `plans/notes/2026-10-01-asio-spike.md`); **potential post-casting group listen-along** (see `plans/notes/2026-10-02-listen-along-assessment.md`) | Parked last |
 
 Track 2b is closed; its remainder (Hi-Fi Rack, light mode, leftover polish) is Track 9,
 which carries a normal completion gate.
@@ -177,6 +177,15 @@ which carries a normal completion gate.
   fixed in the Track 7 spec.
 - Casting / TIDAL Connect (protocol research first) and Dolby Atmos (Phase 0-style DRM
   spike before any commitment).
+- **Listen Along / group listening (potential, not committed):** synchronize playback across
+  two or more accounts so people listen together, optionally launched from Discord. No audio
+  is streamed — each participant plays from their own account and only transport state (track,
+  position, play/pause) is shared. It reuses casting's playback-session/transport primitive
+  (discovery + control channel + remote `EngineCmd`/`EngineEvent` mapping), so it is assessed
+  only **after** casting / TIDAL Connect lands; the DSP/Atmos/ASIO parts of this track do not
+  overlap. Discord's "Listen Along" is Spotify-exclusive and TIDAL's "Live" is host-broadcast
+  and mobile-only, so this would be OxiTide's own protocol. See
+  `plans/notes/2026-10-02-listen-along-assessment.md`.
 - **360 Reality Audio:** currently not relevant or in use; whether it is worth implementing
   is decided by difficulty when Track 7 is scoped.
 - **ASIO output (maybe, not committed):** feature-parity option, assessed by the
