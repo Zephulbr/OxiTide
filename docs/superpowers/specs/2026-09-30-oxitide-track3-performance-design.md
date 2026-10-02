@@ -1,6 +1,6 @@
 # OxiTide — Track 3 Performance & Stability
 
-- **Status:** Draft for review
+- **Status:** Done — Phases A-D complete 2026-10-02 (S10 manual smoke + official-client sanity pending owner)
 - **Date:** 2026-09-30
 - **Owner:** V
 - **Parents:** `2026-09-24-oxitide-post-mvp-roadmap.md` (Track 3, PM-D1, PM-D5);
@@ -99,7 +99,7 @@ mounted with the auth gate resolved (login screen or home rendered).
 | Filter/sort | filter keystroke → repaint **≤ 50 ms** at 10k loaded rows; full sort of 10k **≤ 150 ms** | Instrument mode; debounce permitted |
 | Play-all/queue | queue build for 10k tracks **≤ 250 ms** | loaded list |
 | Large page open | 2k+ row first page visible **≤ 500 ms** after data resolves; 500-track album opens **≤ 1 s** | warm API caches |
-| Memory | idle after auth **≤ 300 MB**; during playback **≤ 450 MB**; 2 h soak drift **≤ +50 MB** (settled baseline: median of the 1-5 min window vs the last 5 min) with app-process-only drift **≤ +25 MB** | working set = app process + its WebView2 child processes |
+| Memory | idle after auth **≤ 570 MB** (S1) / **≤ 560 MB** (S2); during playback **≤ 645-755 MB** per scenario (`budgets.json`); 2 h soak drift **≤ +50 MB** (settled baseline: median of the 1-5 min window vs the last 5 min) with app-process-only drift **≤ +25 MB** | working set = app process + its WebView2 child processes |
 | Cache/eviction | repeat loop of 10 Max tracks (~2 GB) with the default 2 GiB cap: second pass **≥ 90 % hits**, no track re-downloaded twice within a loop; eviction commit cost stays O(evicted), no full-directory rescan on normal play | local NVMe |
 | Stability | zero main-thread tasks **> 200 ms** outside startup; no crash or unhandled rejection in the 2 h soak; cache files never corrupted (atomic writes verified) | soak includes skip/quality-switch churn |
 
@@ -116,6 +116,12 @@ Notes:
   is not counted as leak; the app-process-only row (`memory_drift_app_mb`, ≤ +25 MB) is
   the leak detector for app-owned memory. Owner-approved metric-semantics ruling,
   2026-10-02, recorded in the final note.
+- Owner-approved memory renegotiation (2026-10-02, `plans/notes/2026-10-02-track3-phase-d.md`):
+  the per-scenario peak ceilings were raised to the measured WebView2-inclusive p95 + ~15%
+  (S1 570, S2 560, S3/S4 645, S5-atmosphere 675, S5-instrument 690, S6 740, S7 670,
+  S8 660, S9 755) because the app-owned share is only 52-91 MB and the WebView2 floor
+  alone exceeds the old ceilings; `S4.advance_max_gap_ms` stays at 100 with the
+  WASAPI-ring finding documented.
 - All budgets are the source of truth; `scripts/perf/budgets.json` mirrors them for the
   gate and must be updated in the same commit as any owner-approved change.
 

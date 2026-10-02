@@ -17,7 +17,7 @@ Prereqs: Rust stable (`rust-toolchain.toml` pins it, with clippy/rustfmt), Node 
 - `crates/oxitide-tidal` — pure async TIDAL API client (PKCE auth, token refresh, catalog/search/library/home). No Tauri/UI deps. All HTTP goes through `TidalClient::get` / `get_all_pages` in `client.rs`, which does single-flight refresh-on-401; new endpoints should reuse it.
 - `crates/oxitide-app` — Tauri shell. New `#[tauri::command]` fns in `src/commands.rs` must also be listed in `generate_handler![...]` in `src/main.rs`, or the UI's `invoke` fails.
 - `ui/` — Svelte 5 runes only (`$state`, `$props`, `$effect`); no Svelte 4 stores or `export let`. Routing is a hand-rolled `Route` union in `ui/src/lib/nav.svelte.ts`, switched in `App.svelte`.
-- Playback is implemented: `crates/oxitide-audio` holds the engine (queue, decode, cache, WASAPI output); `crates/oxitide-app/src/player.rs` wires it and maps DTOs. Plans 1–14 (playback, favorites, playlists, UX/data interaction, visual system, mini-player, integrations) and post-MVP Tracks 1–6 have shipped; Track 3 (performance) is active. Sequencing and future tracks live in `docs/superpowers/specs/2026-09-24-oxitide-post-mvp-roadmap.md`.
+- Playback is implemented: `crates/oxitide-audio` holds the engine (queue, decode, cache, WASAPI output); `crates/oxitide-app/src/player.rs` wires it and maps DTOs. Plans 1–14 (playback, favorites, playlists, UX/data interaction, visual system, mini-player, integrations) and post-MVP Tracks 1–6 have shipped; Track 3 (performance) is complete through Phase D (S10 owner smoke + official-client sanity pending). Sequencing and future tracks live in `docs/superpowers/specs/2026-09-24-oxitide-post-mvp-roadmap.md`.
 - Styling (Plan 10): design tokens live in `ui/src/styles/` — `tokens.css` (base + semantic token layers, motion, flags), `modes.css` (per-`data-mode` overrides), `fonts.css` (vendored Fraunces/Manrope/Inter). Components consume **semantic tokens only** (`--surface-*`, `--text`, `--accent`, …); never base or `--dyn-*` values directly. Appearance settings flow through `ui/src/lib/appearance.svelte.ts` (singleton `appearance`) → `data-mode`/`data-density` + CSS vars, persisted in the TOML config. Icons are inlined Lucide paths in `lib/components/Icon.svelte` — no unicode glyphs. Covers render through `lib/components/Cover.svelte` + `lib/artwork.ts` (`coverUrl` builds `resources.tidal.com` URLs from the dashed UUID).
 - Modes are `atmosphere` (default) / `instrument` via `data-mode` on the root. Dynamic color flows `analyze_cover` (Rust, `artwork.rs` + pure `palette.rs`, cached in `cache/palettes.json`) → `--dyn-*` `@property` tokens. JS flag booleans live on `appearance` (`discSpin`, `waveSeek`, …) — components must not branch on mode. Hi-Fi Rack is deferred to Track 9 (convergence doc §2).
 
@@ -32,6 +32,15 @@ Prereqs: Rust stable (`rust-toolchain.toml` pins it, with clippy/rustfmt), Node 
 - HTTP tests use `wiremock` and must never hit the live TIDAL API.
 - Tokens live in Windows Credential Manager via `KeyringStore` (service `oxitide`, user `tidal`); unit tests must use `MemoryStore`. Never log token values (`TokenSet` has a redacting `Debug` impl). Track 8 adds a Linux backend; note that keyring v3 silently falls back to its mock store if no platform feature is enabled.
 - GUI smoke checks require a human, a real account, and a browser login; record them as checklists in `docs/superpowers/plans/notes/`.
+
+## Performance harness
+
+Track 3's measurement gate lives in `scripts/perf/` (manual; no CI):
+
+- `powershell -ExecutionPolicy Bypass -File scripts/perf/run-scenario.ps1 -Scenario <S1..S10> [-Runs n] [-Manual] [-SkipCheck] [-Minutes n]` — launches the debug exe (Vite must be warm; the script starts it if port 1420 is free) and drives the scenario over the WebView2 CDP endpoint. Raw JSONL lands in the gitignored `.superpowers/perf/runs/`.
+- `node scripts/perf/check.mjs` (or `npm --prefix ui run perf:check`) aggregates the corpus against `scripts/perf/budgets.json` (mirrors spec §4.2) and exits non-zero on any breach.
+- Scenarios: S1 cold start, S2 warm start, S3-miss/S3-hit TTFS, S4 gapless advance, S5-instrument/S5-atmosphere scroll, S6 10k filter/sort/album, S7 10k queue build, S8 cache loop, S9 2 h soak, S10 manual stability. S4/S8/S9/S10 are human-in-the-loop (real account/audio); the rest are scripted.
+- Conditions matter: single app, foreground, Vite warm, no deliberate background load. The current budgets and the S4 documented finding are recorded in `docs/superpowers/plans/notes/2026-10-02-track3-phase-d.md`.
 
 ## Workflow
 
