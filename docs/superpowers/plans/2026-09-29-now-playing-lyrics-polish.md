@@ -136,6 +136,20 @@ cascade at 460ms.
 
 Files: `ui/src/views/NowPlaying.svelte`.
 
+## 3.8 Round 8 (owner review, 2026-10-02)
+
+Owner asked for smoother track-change motion beyond the Next Up FLIP: the art
+swap, the details text, and the spine.
+
+| # | Decision | Rationale |
+|---|---|---|
+| R8-D1 | **Art scale-dissolve:** the keyed `.art-stack` swaps `fade` for `scale` — incoming 0.96→1 over 260ms `cubicOut`, outgoing →0.98 over 200ms. Transform stays on the wrapper; `DiscArt`'s inner rotation is untouched. | The dissolve alone read as a hard snap; the scale gives the new cover a settle without fighting the spin. |
+| R8-D2 | **Details swap-in:** both `details` render sites wrap in `{#key track.track_id}` with a 6px `fly` rise (200ms, no out). | Title/byline/badges were the last instant swap on a skip. No out means the old text clears in one frame and the new one rises in; the tab-switch column fly still leads. |
+| R8-D3 | **Spine fade:** `in:fade` 200ms / `out:fade` 160ms on the Lyrics/Next up spine. | A settled no-lyrics track pops the spine out and shifts the cover; the fade softens the disappearance. The layout shift stays instant (width animation would reflow the cover). |
+
+Files: `ui/src/views/NowPlaying.svelte`. Reduced motion unchanged: `dur()`
+collapses every duration to 0.
+
 ## 4. Explicitly untouched
 
 - `activeLine` / `lyrics.ts` / `lyrics.svelte.ts` → `lyrics.test.ts` and

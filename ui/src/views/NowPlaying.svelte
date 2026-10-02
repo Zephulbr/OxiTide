@@ -1,7 +1,7 @@
 <script lang="ts">
   import { flip } from "svelte/animate";
   import { cubicInOut, cubicOut } from "svelte/easing";
-  import { fade, fly, slide, type TransitionConfig } from "svelte/transition";
+  import { fade, fly, scale, slide, type TransitionConfig } from "svelte/transition";
   import type { QueueItem } from "../lib/api";
   import { appearance } from "../lib/appearance.svelte";
   import Cover from "../lib/components/Cover.svelte";
@@ -130,14 +130,15 @@
     {#if track}
       <div class="stage-row">
         <div class="art">
-          <!-- Keyed on the track so a track change crossfades the artwork
+          <!-- Keyed on the track so a track change scale-dissolves the artwork
                instead of snapping; the grid stack lets outgoing and incoming
-               overlap in the same cell during the swap. -->
+               overlap in the same cell during the swap. The transform lives on
+               this wrapper, so the disc's inner rotation never conflicts. -->
           {#key track.track_id}
             <div
               class="art-stack"
-              in:fade={{ duration: dur(240), easing: cubicOut }}
-              out:fade={{ duration: dur(200) }}
+              in:scale={{ start: 0.96, duration: dur(260), easing: cubicOut }}
+              out:scale={{ start: 0.98, duration: dur(200), easing: cubicOut }}
             >
               {#if appearance.coverShape === "disc"}
                 <button class="art-disc" onclick={() => nav.closeNowPlaying()} aria-label="Close now playing">
@@ -152,7 +153,14 @@
           {/key}
         </div>
         {#if hasLyrics}
-          <div class="spine" role="tablist" aria-orientation="vertical" aria-label="Now playing content">
+          <div
+            class="spine"
+            role="tablist"
+            aria-orientation="vertical"
+            aria-label="Now playing content"
+            in:fade={{ duration: dur(200), easing: cubicOut }}
+            out:fade={{ duration: dur(160) }}
+          >
             <button
               role="tab"
               aria-selected={lyrics.tab === "lyrics"}
@@ -183,7 +191,11 @@
             in:fly={{ y: 16, duration: dur(300), delay: dur(60), easing: cubicOut }}
             out:fly={{ y: 16, duration: dur(170), easing: cubicOut }}
           >
-            {@render details(track)}
+            {#key track.track_id}
+              <div class="details-swap" in:fly={{ y: 6, duration: dur(200), easing: cubicOut }}>
+                {@render details(track)}
+              </div>
+            {/key}
           </div>
         </div>
       {/if}
@@ -217,7 +229,11 @@
           in:fly={{ y: -16, duration: dur(260), delay: dur(40), easing: cubicOut }}
           out:fly={{ y: -10, duration: dur(420), easing: cubicInOut }}
         >
-          {@render details(track)}
+          {#key track.track_id}
+            <div class="details-swap" in:fly={{ y: 6, duration: dur(200), easing: cubicOut }}>
+              {@render details(track)}
+            </div>
+          {/key}
         </div>
 
         <hr

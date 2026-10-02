@@ -105,16 +105,27 @@ Human GUI checklist — needs a real account, a browser login, and
 
 ## Round 7 additions (Next up queue advance, 2026-10-02)
 
-- [ ] Next up tab: skipping shifts the remaining rows up smoothly, the finished
+- [x] Next up tab: skipping shifts the remaining rows up smoothly, the finished
       top row fades in place, and the incoming row rises into the bottom slot
-- [ ] Rapid skipping: no overlap or layout jump; the list always settles on the
+- [x] Rapid skipping: no overlap or layout jump; the list always settles on the
       right three tracks
-- [ ] Queue drag-reorder while Now Playing is open: rows glide to their new
+- [x] Queue drag-reorder while Now Playing is open: rows glide to their new
       positions (FLIP)
-- [ ] Near the end of the queue (2 → 1 → 0 rows): the shrink is smooth and the
+- [x] Near the end of the queue (2 → 1 → 0 rows): the shrink is smooth and the
       column stays centered
-- [ ] Reduced motion: the swap is instant, no slides or fades
-- [ ] Lyrics ↔ Next up swaps still look unchanged
+- [x] Reduced motion: the swap is instant, no slides or fades
+- [x] Lyrics ↔ Next up swaps still look unchanged
+
+## Round 8 additions (track-change motion, 2026-10-02)
+
+- [x] Track change: the artwork scale-dissolves (no hard snap) in both disc and
+      sleeve shapes; the disc keeps spinning through the swap
+- [x] Track change: title/byline/badges rise in; no flicker on rapid skips
+- [x] A track with no lyrics: the spine fades out and the cover recenters (the
+      shift itself stays instant)
+- [x] Tab switches still read as before (the details rise is part of the column
+      arrival, not a double beat)
+- [x] Reduced motion: every swap is instant
 
 ## Result
 
@@ -122,3 +133,6 @@ Human GUI checklist — needs a real account, a browser login, and
   the polish rounds: karaoke tiers and word fill, both tab-swap directions,
   line entrance/stagger, the settled mount, the Next Up exit, and the swap
   stability fixes. All checks passed; no open watch items.
+- Follow-up: Rounds 7–8 (Next Up queue-advance FLIP; track-change art
+  scale-dissolve, details rise, spine fade) owner-verified 2026-10-02 — all
+  checks passed including reduced motion.

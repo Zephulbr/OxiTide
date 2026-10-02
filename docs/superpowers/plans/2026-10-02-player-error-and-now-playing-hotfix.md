@@ -60,7 +60,7 @@
 
 - [x] **Step 1:** amend Track 4a L-D1 and §6 (persistence, loading-row wording).
 - [x] **Step 2:** `cargo test --workspace` (510 passed, 1 ignored); `cargo clippy --workspace -- -D warnings` clean; `npm --prefix ui test` (388 passed); `npm --prefix ui run check` (0 errors, 0 warnings).
-- [ ] **Step 3 (manual, human):** disconnect the output device mid-play → toast appears top-right reading "Audio device has been disconnected or stalled" with Retry; Retry resumes from the failure point. Skip tracks while the Lyrics tab is selected and while Next up is selected → the page sticks; skip to a track without lyrics → Next Up column shows (no tabs), and the next track with lyrics returns to the previously chosen tab.
+- [x] **Step 3 (manual, human):** disconnect the output device mid-play → toast appears top-right reading "Audio device has been disconnected or stalled" with Retry; Retry resumes from the failure point. Skip tracks while the Lyrics tab is selected and while Next up is selected → the page sticks; skip to a track without lyrics → Next Up column shows (no tabs), and the next track with lyrics returns to the previously chosen tab. *(Owner-verified 2026-10-02.)*
 
 ---
 
@@ -106,4 +106,4 @@ Two regressions surfaced after the pass above:
 
 - [x] **Step 1:** amend Track 4a §6 (loading stays in the lyrics column; Next Up only on a confirmed miss).
 - [x] **Step 2:** `cargo test --workspace` (516 passed, 1 ignored); `cargo clippy --workspace -- -D warnings` clean (exit 0); `npm --prefix ui test` (392 passed); `npm --prefix ui run check` (0 errors, 0 warnings).
-- [ ] **Step 3 (manual, human):** disconnect mid-play → toast + Retry; reconnect → Retry → the bar text never reappears after recovery (and no bottom flash between click and resume). Skip tracks with the Lyrics tab open → no Next Up frame, even after a track without lyrics; skip with Next up open → the list stays.
+- [x] **Step 3 (manual, human):** disconnect mid-play → toast + Retry; reconnect → Retry → the bar text never reappears after recovery (and no bottom flash between click and resume). Skip tracks with the Lyrics tab open → no Next Up frame, even after a track without lyrics; skip with Next up open → the list stays. *(Owner-verified 2026-10-02.)*
