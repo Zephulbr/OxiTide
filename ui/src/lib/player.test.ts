@@ -132,11 +132,13 @@ describe("player event application", () => {
   });
 
   it("clears the error on now_playing and captures it on error", () => {
-    const state = { ...positioned, error: "old" };
+    const state = { ...positioned, error: "old", error_code: "output" };
     applyEvent(state, { type: "now_playing", item: null });
     expect(state.error).toBe("");
+    expect(state.error_code).toBe("");
     applyEvent(state, { type: "error", code: "auth", message: "nope" });
     expect(state.error).toBe("nope");
+    expect(state.error_code).toBe("auth");
   });
 
   it("keeps queue and position updates when events interleave", () => {

@@ -46,7 +46,7 @@ performance-harness work (Track 3; PM-D1 still applies here as stated in §9).
 
 | # | Decision | Rationale |
 |---|---|---|
-| L-D1 | **Surface:** in expanded Now Playing, lyrics replace Next Up when the track has lyrics, with a quiet **Lyrics / Next up** tab; lyrics-first default, tab choice resets per track. No lyrics = today's Next Up column unchanged. | Keeps one surface and gives lyrics real room to scroll (owner choice). |
+| L-D1 | **Surface:** in expanded Now Playing, lyrics replace Next Up when the track has lyrics, with a quiet **Lyrics / Next up** tab; lyrics-first default, the chosen tab persists across track changes (amended 2026-10-02 hotfix; originally reset per track). No lyrics = today's Next Up column unchanged. | Keeps one surface and gives lyrics real room to scroll (owner choice). |
 | L-D2 | **Interaction:** active-line highlight + smooth auto-scroll + **click any timed line to seek**; manual scroll pauses following and reveals a jump-to-current glyph. Untimed lyrics are plain scrollable text. | Sampled this from the interactive options; matches how the owner listens. |
 | L-D3 | **Sources: TIDAL-first, silent lrclib fallback.** Legacy `tracks/{id}/lyrics` first; on a confirmed miss, lrclib exact match, then one `/api/search` attempt. The official JSON:API lyrics resource is `required-access-tier: INTERNAL` and is out. | Spike findings; no new dependency for tracks TIDAL covers, silent coverage extension for the rest. |
 | L-D4 | **Cache: disk `cache/lyrics.json`** keyed by track id, memory + disk, **positives and negatives**; only confirmed misses are negative-cached; pruned to the most recent ~2,000 entries by `fetched_at` on save. | Survives restarts, keeps lrclib traffic minimal, bounded growth. |
@@ -144,7 +144,7 @@ interface LyricsDto {
   fade masks; the column top-aligns instead of today's vertical centering. Without
   lyrics the layout is untouched.
 - **Tabs:** the "Next up" eyebrow becomes a quiet two-tab row (**Lyrics / Next up**)
-  only when lyrics exist; the choice resets per track.
+  only when lyrics exist; the choice persists across tracks (cleared when playback stops).
 - **Sync:** active line at full text color, others muted; the active line sits ~40 %
   from the top via a transform transition; blank timed lines never highlight.
   `appearance.reducedMotion` replaces smooth movement with instant positioning.
@@ -153,8 +153,10 @@ interface LyricsDto {
 - **Manual scroll:** wheel/drag pauses auto-follow and shows a jump-to-current icon;
   clicking it (or clicking a line, or a new track) resumes following. Scrolling back
   manually does not auto-resume.
-- **Loading:** while a fetch for a new track is pending, a muted "Loading lyrics…"
-  row shows; a confirmed miss swaps in Next Up. Cached results render immediately.
+- **Loading:** while a fetch for a new track is pending and the Lyrics tab is active, the
+  lyrics column stays in place with a muted "Loading lyrics…" placeholder (the spine
+  stays mounted too); the Next Up column only returns on a confirmed miss. Cached
+  results render immediately.
 - **RTL:** `dir="rtl"` on the lyrics container when the DTO says so.
 - **Density/modes:** leading and text sizes follow existing density tokens; no
   mode-specific branching.

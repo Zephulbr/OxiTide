@@ -117,18 +117,12 @@
         title="Mini player"
       ><Icon name="minimize-2" size={18} /></button>
 
-      {#if player.state.bit_perfect_notice}
+      {#if player.state.bit_perfect_notice && !player.state.error}
         <span style="color:var(--warning)">{player.state.bit_perfect_notice}</span>
       {/if}
     </div>
   {:else}
     <span class="muted">Nothing playing</span>
-  {/if}
-  {#if player.state.error}
-    <div class="player-error">
-      <span style="color:var(--danger)">{player.state.error}</span>
-      <button onclick={() => player.retry()} aria-label="Retry playback">Retry</button>
-    </div>
   {/if}
 </div>
 
@@ -300,20 +294,5 @@
   }
   @media (max-width: 900px) {
     .badge.bp { display: none; }
-  }
-
-  /* Transient errors float over the bar instead of reflowing the zones. */
-  .player-error {
-    position: absolute;
-    right: 14px;
-    top: 50%;
-    transform: translateY(-50%);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 4px 10px;
-    background: var(--surface-3);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-control);
   }
 </style>

@@ -513,7 +513,9 @@ fn push_word(producer: &mut Producer<u32>, word: u32) -> Result<()> {
             Ok(()) => return Ok(()),
             Err(rtrb::PushError::Full(sample)) => {
                 if std::time::Instant::now() > deadline {
-                    return Err(Error::Output("audio device stalled".into()));
+                    return Err(Error::Output(
+                        "Audio device has been disconnected or stalled".into(),
+                    ));
                 }
                 pending = sample;
                 std::thread::sleep(Duration::from_millis(2));

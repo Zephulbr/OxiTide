@@ -103,6 +103,19 @@ Human GUI checklist — needs a real account, a browser login, and
 - [x] Narrow window: details/list still fit the column (the cap follows 100%)
 - [x] Rapid Lyrics ↔ Next up toggling: the panel returns correctly
 
+## Round 7 additions (Next up queue advance, 2026-10-02)
+
+- [ ] Next up tab: skipping shifts the remaining rows up smoothly, the finished
+      top row fades in place, and the incoming row rises into the bottom slot
+- [ ] Rapid skipping: no overlap or layout jump; the list always settles on the
+      right three tracks
+- [ ] Queue drag-reorder while Now Playing is open: rows glide to their new
+      positions (FLIP)
+- [ ] Near the end of the queue (2 → 1 → 0 rows): the shrink is smooth and the
+      column stays centered
+- [ ] Reduced motion: the swap is instant, no slides or fades
+- [ ] Lyrics ↔ Next up swaps still look unchanged
+
 ## Result
 
 - Outcome: Closed — owner-verified 2026-09-30. Reviewed interactively across

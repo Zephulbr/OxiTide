@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { flip } from "svelte/animate";
   import { cubicInOut, cubicOut } from "svelte/easing";
   import { fade, fly, slide, type TransitionConfig } from "svelte/transition";
   import type { QueueItem } from "../lib/api";
@@ -53,8 +54,21 @@
     return player.state.queue.slice(index + 1, index + 4);
   });
 
-  const showLyrics = $derived(lyrics.tab === "lyrics" && lyrics.lyrics !== null);
-  const hasLyrics = $derived(lyrics.lyrics !== null);
+  /// Lyrics belonging to the track on screen; null while the store is still
+  /// catching up (a skip clears the previous track's lyrics synchronously in
+  /// the effect below, one render after the track changes).
+  const currentLyrics = $derived(
+    track !== null && lyrics.trackId === track.track_id ? lyrics.lyrics : null,
+  );
+  /// The store has not caught up with the track yet, or a fetch is pending.
+  const awaitingLyrics = $derived(
+    track !== null && (lyrics.trackId !== track.track_id || lyrics.loading),
+  );
+  /// While lyrics are pending the lyrics layout stays put with the loading
+  /// placeholder, so the Next Up column never flashes in between. A settled
+  /// miss (trackId matches, no lyrics, not loading) falls back to Next Up.
+  const showLyrics = $derived(lyrics.tab === "lyrics" && (awaitingLyrics || currentLyrics !== null));
+  const hasLyrics = $derived(awaitingLyrics || currentLyrics !== null);
 
   /// Transition duration that collapses to 0 when reduced motion is requested.
   const dur = (ms: number) => (appearance.reducedMotion ? 0 : ms);
@@ -181,20 +195,22 @@
   <div class="meta">
     {#if track}
       {#if showLyrics}
-        {@const shown = lyrics.lyrics}
-        {#if shown}
-          <div
-            class="lyrics-slot"
-            in:fly={{ y: 8, duration: dur(320), delay: dur(80), easing: cubicOut }}
-            out:fly={{ y: 12, duration: dur(280), easing: cubicInOut }}
-          >
+        {@const shown = currentLyrics}
+        <div
+          class="lyrics-slot"
+          in:fly={{ y: 8, duration: dur(320), delay: dur(80), easing: cubicOut }}
+          out:fly={{ y: 12, duration: dur(280), easing: cubicInOut }}
+        >
+          {#if shown}
             {#if lyricsSettled}
               {#key shown.track_id}
                 <LyricsPanel {player} dto={shown} />
               {/key}
             {/if}
-          </div>
-        {/if}
+          {:else}
+            <p class="muted loading">Loading lyrics…</p>
+          {/if}
+        </div>
       {:else}
         <div
           class="meta-details"
@@ -214,12 +230,18 @@
           in:fly={{ y: -16, duration: dur(240), delay: dur(80), easing: cubicOut }}
           out:fly={{ y: -10, duration: dur(420), easing: cubicInOut }}
         >
-          {#if lyrics.loading}
-            <p class="muted loading">Loading lyrics…</p>
-          {:else if nextUp.length > 0}
+          {#if nextUp.length > 0}
             <ul class="next-up">
               {#each nextUp as item (item.track_id)}
-                <li>
+                <!-- Queue advance: the finished top row fades in place (Svelte
+                     fixes it out of flow), the rest glide up via FLIP, and the
+                     incoming row rises in. The outro stays transform-free so it
+                     cannot override Svelte's compensating translate. -->
+                <li
+                  in:fly={{ y: 10, duration: dur(240), easing: cubicOut }}
+                  out:fade={{ duration: dur(160) }}
+                  animate:flip={{ duration: dur(240), easing: cubicOut }}
+                >
                   <span class="thumb"><Cover uuid={item.cover} size={80} radius={6} alt="" /></span>
                   <span class="next-title">{item.title}</span>
                   <span class="muted next-artist">{item.artist}</span>

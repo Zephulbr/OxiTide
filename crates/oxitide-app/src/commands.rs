@@ -1375,15 +1375,14 @@ pub fn set_cache_clear_on_exit(state: State<'_, AppState>, enabled: bool) -> Res
     Ok(())
 }
 
-/// Never fails the UI: a missing service, empty uuid, network error, or
-/// undecodable bytes all resolve to the brand fallback (spec §5.2).
+/// Failures propagate so the UI keeps its current colors instead of resetting
+/// to brand teal (spec §5.2).
 #[tauri::command]
 pub async fn analyze_cover(state: State<'_, AppState>, uuid: String) -> Result<PaletteDto, String> {
-    let palette = match state.artwork() {
-        Some(service) => service.palette(&uuid).await,
-        None => crate::palette::fallback_palette(),
+    let Some(service) = state.artwork() else {
+        return Err("artwork service unavailable".into());
     };
-    Ok(palette.into())
+    service.palette(&uuid).await.map(PaletteDto::from)
 }
 
 #[tauri::command]

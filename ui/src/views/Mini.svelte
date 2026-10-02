@@ -95,13 +95,6 @@
     </div>
   {/if}
 
-  {#if player.state.error}
-    <div class="error">
-      <span style="color:var(--danger)">{player.state.error}</span>
-      <button onclick={() => player.retry()} aria-label="Retry playback">Retry</button>
-    </div>
-  {/if}
-
   {#if mini.queueOpen}
     <div class="sheet-backdrop" onclick={() => mini.toggleQueue()} aria-hidden="true"></div>
     <div class="queue-sheet">
@@ -169,12 +162,6 @@
     place-items: center;
     gap: 8px;
     color: var(--text-muted);
-  }
-  .error {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 12px;
   }
   button {
     display: inline-grid;

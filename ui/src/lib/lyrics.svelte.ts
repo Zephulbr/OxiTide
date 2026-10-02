@@ -4,6 +4,11 @@ export interface LyricsStore {
   readonly loading: boolean;
   readonly lyrics: LyricsDto | null;
   readonly tab: "lyrics" | "next";
+  /// The track the current lyrics/loading state describes; it is set as soon
+  /// as a fetch starts and kept after a settled miss, so the view can tell a
+  /// pending fetch (or a track change the store has not seen yet) apart from
+  /// a confirmed "no lyrics".
+  readonly trackId: number | null;
   open(track: QueueItem | null): Promise<void>;
   setTab(tab: "lyrics" | "next"): void;
 }
@@ -12,11 +17,13 @@ export function createLyrics(): LyricsStore {
   let loading = $state(false);
   let lyrics = $state<LyricsDto | null>(null);
   let tab = $state<"lyrics" | "next">("lyrics");
+  let trackId = $state<number | null>(null);
   let currentId: number | null = null;
 
   async function open(track: QueueItem | null) {
     if (!track) {
       currentId = null;
+      trackId = null;
       lyrics = null;
       loading = false;
       tab = "lyrics";
@@ -24,7 +31,9 @@ export function createLyrics(): LyricsStore {
     }
     if (track.track_id === currentId) return;
     currentId = track.track_id;
-    tab = "lyrics";
+    trackId = track.track_id;
+    // The chosen tab persists across tracks; it only resets when playback
+    // stops (the null branch above).
     lyrics = null;
     loading = true;
     let result: LyricsDto | null = null;
@@ -54,6 +63,7 @@ export function createLyrics(): LyricsStore {
     get loading() { return loading; },
     get lyrics() { return lyrics; },
     get tab() { return tab; },
+    get trackId() { return trackId; },
     open,
     setTab: (next) => { tab = next; },
   };

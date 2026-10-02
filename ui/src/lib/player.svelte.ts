@@ -1,5 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { api, type EngineEvent, type PlaybackState, type Quality, type QueueItem, type RepeatMode, type StreamMeta } from "./api";
+import type { Toasts } from "./toasts.svelte";
 
 export interface PlayerState {
   playing: boolean;
@@ -17,6 +18,9 @@ export interface PlayerState {
   queue: QueueItem[];
   stream: StreamMeta | null;
   error: string;
+  /// Engine error code ("output", "playback", "auth"); drives how the error
+  /// clears: output failures wait for the engine to report recovery.
+  error_code: string;
 }
 
 export function emptyState(): PlayerState {
@@ -24,7 +28,7 @@ export function emptyState(): PlayerState {
     playing: false, buffering: false, current: null, position_ms: 0,
     duration_ms: 0, volume: 1, shuffle: false, repeat: "off",
     preferred_quality: "lossless", queue: [], stream: null, error: "",
-    output_mode: "shared", bit_perfect: false, bit_perfect_notice: null,
+    error_code: "", output_mode: "shared", bit_perfect: false, bit_perfect_notice: null,
   };
 }
 
@@ -44,9 +48,11 @@ export function applyEvent(state: PlayerState, event: EngineEvent): PlayerState 
       return state;
     case "now_playing":
       state.error = "";
+      state.error_code = "";
       return state;
     case "error":
       state.error = event.message;
+      state.error_code = event.code;
       return state;
     default:
       return state;
@@ -79,15 +85,44 @@ export function volumeIcon(volume: number): "volume-x" | "volume-1" | "volume-2"
   return volume < 0.5 ? "volume-1" : "volume-2";
 }
 
-export function createPlayer() {
+export function createPlayer(toasts?: Toasts) {
   let state = $state<PlayerState>(emptyState());
   let pendingSeek = $state<number | null>(null);
   let lastVolume = 0.5;
+  let errorToastId: number | null = null;
+
+  function dismissErrorToast() {
+    if (toasts !== undefined && errorToastId !== null) {
+      toasts.dismiss(errorToastId);
+      errorToastId = null;
+    }
+  }
 
   async function init() {
     await listen<EngineEvent>("playback_event", (event) => {
       applyEvent(state, event.payload);
       pendingSeek = reconcileSeek(pendingSeek, event.payload);
+      if (toasts === undefined) return;
+      if (event.payload.type === "error") {
+        dismissErrorToast();
+        errorToastId = toasts.show(event.payload.message, {
+          severity: "error",
+          action: { label: "Retry", run: () => void retry() },
+        });
+      } else if (event.payload.type === "now_playing") {
+        dismissErrorToast();
+      } else if (
+        event.payload.type === "state" &&
+        state.error_code === "output" &&
+        state.error !== "" &&
+        event.payload.bit_perfect_notice !== state.error
+      ) {
+        // The engine reopened the output and no longer reports the failure in
+        // its notice; clear the error now so the recovered status can show.
+        state.error = "";
+        state.error_code = "";
+        dismissErrorToast();
+      }
     });
     try {
       const snapshot = await api.getPlaybackState();
@@ -106,9 +141,15 @@ export function createPlayer() {
 
   async function retry() {
     await api.retry();
+    dismissErrorToast();
     // The engine emits a State event, which does not clear the mirrored
-    // error; clear it here once the retry command was accepted.
+    // error; non-output failures clear here once the command was accepted.
+    // Output failures stay latched until the engine publishes a state whose
+    // notice no longer reports them (the listener above), so the stale bar
+    // notice can never flash between the command and the actual recovery.
+    if (state.error_code === "output") return;
     state.error = "";
+    state.error_code = "";
   }
 
   /// Rebuild the queue after a re-login: start the context, seek to the last

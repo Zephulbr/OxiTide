@@ -58,9 +58,9 @@
   }
 
   const nav = createNav();
-  const player = createPlayer();
-  createDynamicColor(player);
   const toasts = createToasts();
+  const player = createPlayer(toasts);
+  createDynamicColor(player);
   const mini = createMini(toasts);
   const favorites = createFavorites(toasts);
   const playlistActions = createPlaylistActions(toasts);

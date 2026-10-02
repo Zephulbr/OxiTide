@@ -12,7 +12,7 @@ pub enum Error {
     Fetch(String),
     #[error("decode error: {0}")]
     Decode(String),
-    #[error("output error: {0}")]
+    #[error("{0}")]
     Output(String),
     #[error("track unavailable at {0}; enable fallback or lower the streaming quality")]
     Unavailable(String),
@@ -50,6 +50,14 @@ mod tests {
     #[test]
     fn tap_error_includes_message() {
         assert_eq!(Error::Decode("boom".into()).to_string(), "decode error: boom");
+    }
+
+    #[test]
+    fn output_error_has_stable_message() {
+        assert_eq!(
+            Error::Output("Audio device has been disconnected or stalled".into()).to_string(),
+            "Audio device has been disconnected or stalled"
+        );
     }
 
     #[test]

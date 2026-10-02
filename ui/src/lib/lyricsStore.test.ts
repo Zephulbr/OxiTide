@@ -59,23 +59,50 @@ describe("lyrics store", () => {
     expect(model.loading).toBe(false);
   });
 
-  it("resets the tab to lyrics on a track change", async () => {
+  it("keeps the chosen tab on a track change", async () => {
     vi.mocked(api.getLyrics).mockResolvedValue(dto(1));
     const model = createLyrics();
     await model.open(track(1));
     model.setTab("next");
     vi.mocked(api.getLyrics).mockResolvedValue(dto(2));
     await model.open(track(2));
-    expect(model.tab).toBe("lyrics");
+    expect(model.tab).toBe("next");
   });
 
   it("clears state for a null track", async () => {
     vi.mocked(api.getLyrics).mockResolvedValue(dto(1));
     const model = createLyrics();
     await model.open(track(1));
+    model.setTab("next");
     await model.open(null);
     expect(model.lyrics).toBeNull();
     expect(model.loading).toBe(false);
+    expect(model.tab).toBe("lyrics");
+    expect(model.trackId).toBeNull();
+  });
+
+  it("marks the track as current before the fetch resolves", async () => {
+    let resolveFetch: (value: LyricsDto | null) => void = () => {};
+    vi.mocked(api.getLyrics).mockImplementationOnce(
+      () => new Promise<LyricsDto | null>((resolve) => (resolveFetch = resolve)),
+    );
+    const model = createLyrics();
+    const pending = model.open(track(7));
+    expect(model.trackId).toBe(7);
+    expect(model.loading).toBe(true);
+    resolveFetch(dto(7));
+    await pending;
+    expect(model.trackId).toBe(7);
+    expect(model.loading).toBe(false);
+  });
+
+  it("keeps the track id after a settled miss", async () => {
+    vi.mocked(api.getLyrics).mockResolvedValue(null);
+    const model = createLyrics();
+    await model.open(track(5));
+    expect(model.lyrics).toBeNull();
+    expect(model.loading).toBe(false);
+    expect(model.trackId).toBe(5);
   });
 
   it("retries a track after a failed fetch", async () => {

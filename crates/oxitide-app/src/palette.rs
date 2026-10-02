@@ -99,6 +99,17 @@ pub(crate) fn contrast_ratio(text: (u8, u8, u8), bg_luminance: f32) -> f32 {
 const BG: (u8, u8, u8) = (0x17, 0x12, 0x0e);
 /// Structural floor (§5.3 step 1): the scrim is at least 55% room.
 const SCRIM: f32 = 0.55;
+/// Below this chroma a candidate carries no usable hue (spec §5.2).
+const CHROMA_FLOOR: f32 = 0.04;
+/// A candidate at or above this lightness with at most this chroma reads as
+/// white and must not drive the interactive Primary (owner ruling 2026-10-02).
+const NEAR_WHITE_L: f32 = 0.90;
+const NEAR_WHITE_C: f32 = 0.06;
+/// A cover whose overall mean chroma is at or below this is fully neutral —
+/// shadow-only casts and JPEG chroma noise sit below it — and takes the
+/// plain-light Primary; above it the broad cast is boosted into the accent
+/// (owner ruling 2026-10-02).
+const TINT_FLOOR: f32 = 0.012;
 /// Mean of the no-art room gradient (`#1d1712` → `BG`): the backdrop wash when
 /// there is no artwork to blur.
 const ROOM_AVG: (u8, u8, u8) = (0x1a, 0x15, 0x10);
@@ -230,6 +241,21 @@ fn fit_contrast(mut color: Oklch, lo: f32, hi: f32, ceiling: f32, min_contrast: 
 const TEXT: (u8, u8, u8) = (0xf2, 0xec, 0xe6);
 const ON_ACCENT_DARK: (u8, u8, u8) = (0x0b, 0x24, 0x20);
 
+fn is_near_white(color: &Oklch) -> bool {
+    color.l >= NEAR_WHITE_L && color.c <= NEAR_WHITE_C
+}
+
+/// Pick the on-accent ink with the better contrast against the Primary fill.
+fn on_accent(primary: (u8, u8, u8)) -> String {
+    if contrast_ratio(ON_ACCENT_DARK, luminance(primary))
+        >= contrast_ratio(TEXT, luminance(primary))
+    {
+        hex(ON_ACCENT_DARK)
+    } else {
+        hex(TEXT)
+    }
+}
+
 /// The identity floor (spec §5.2 degradation paths): brand teal primary,
 /// warm-neutral secondary, teal-tint tertiary.
 pub fn fallback_palette() -> Palette {
@@ -249,29 +275,49 @@ pub fn extract_palette(pixels: &[(u8, u8, u8)], width: usize, height: usize) -> 
     }
     let blurred = blur_cover(pixels, width, height);
     let ceiling = composite_ceiling(&blurred);
-    let backdrop = hex(blurred_average(&blurred));
+    let mean = blurred_average(&blurred);
+    let backdrop = hex(mean);
     let candidates = cluster(pixels, 6);
 
-    // Primary: the most chromatic candidate; below the chroma floor the cover
-    // is monochrome and the whole palette falls back (spec §5.2). The backdrop
-    // wash still tracks the image itself, so the player bar stays matched.
-    let Some(seed) = candidates.iter().map(|(c, _)| *c).reduce(|a, b| if a.c >= b.c { a } else { b }) else {
-        return fallback_palette();
+    // Primary: the most chromatic candidate that is neither near-white nor
+    // below the chroma floor (spec §5.2). Without one, the cover-wide mean
+    // decides: a broad cast above the noise floor keeps the cover's own hue
+    // (boosted into the envelope) while a lower mean — shadow-only casts,
+    // JPEG chroma noise — keeps a plain-light Primary with neutral
+    // Secondary/Tertiary. The backdrop wash still tracks the image itself, so
+    // the player bar stays matched either way.
+    let usable = candidates
+        .iter()
+        .map(|(c, _)| *c)
+        .filter(|c| !is_near_white(c) && c.c >= CHROMA_FLOOR)
+        .reduce(|a, b| if a.c >= b.c { a } else { b });
+    let seed = match usable {
+        Some(seed) => seed,
+        None => {
+            let mean = srgb_to_oklch(mean.0, mean.1, mean.2);
+            if mean.c > TINT_FLOOR {
+                mean
+            } else {
+                let primary = oklch_to_srgb(Oklch { l: 0.95, c: 0.01, h: 60.0 });
+                return Palette {
+                    primary: hex(primary),
+                    on_primary: on_accent(primary),
+                    secondary: hex(oklch_to_srgb(Oklch { l: 0.35, c: 0.02, h: 60.0 })),
+                    tertiary: hex(oklch_to_srgb(Oklch { l: 0.72, c: 0.02, h: 60.0 })),
+                    backdrop,
+                    ceiling_l: ceiling,
+                };
+            }
+        }
     };
-    if seed.c < 0.04 {
-        return Palette { backdrop, ceiling_l: ceiling, ..fallback_palette() };
-    }
 
     let mut primary = Oklch { l: clamp(seed.l, 0.70, 0.85), c: clamp(seed.c, 0.08, 0.17), h: seed.h };
-    primary = fit_contrast(primary, 0.70, 0.85, ceiling, 4.5).unwrap_or(Oklch { l: 0.95, c: 0.01, h: seed.h });
+    // A bright ceiling can make 4.5:1 unreachable inside the envelope: the
+    // degradation stays chromatic (seed hue at max envelope chroma) instead of
+    // reverting to a white/plain-light accent.
+    primary = fit_contrast(primary, 0.70, 0.85, ceiling, 4.5).unwrap_or(Oklch { l: 0.85, c: 0.17, h: seed.h });
     let primary_rgb = oklch_to_srgb(primary);
-    let on_primary = if contrast_ratio(ON_ACCENT_DARK, luminance(primary_rgb))
-        >= contrast_ratio(TEXT, luminance(primary_rgb))
-    {
-        hex(ON_ACCENT_DARK)
-    } else {
-        hex(TEXT)
-    };
+    let on_primary = on_accent(primary_rgb);
 
     // Secondary: the most populous dark candidate, de-chromed (never text).
     let secondary = candidates
@@ -289,7 +335,9 @@ pub fn extract_palette(pixels: &[(u8, u8, u8)], width: usize, height: usize) -> 
         .map(|(c, _)| *c)
         .filter(|c| sep(c.h, primary.h) >= 30.0)
         .reduce(|a, b| if a.c >= b.c { a } else { b })
-        .unwrap_or(Oklch { h: (primary.h + 150.0).rem_euclid(360.0), ..primary });
+        // No separated hue in the art: collapse to a Primary tint rather than
+        // inventing one (a red cover must not yield a teal badge ring).
+        .unwrap_or(Oklch { l: primary.l - 0.10, c: primary.c, h: primary.h });
     let tertiary = Oklch {
         l: clamp(tertiary_seed.l, 0.65, 0.80),
         c: clamp(tertiary_seed.c.max(0.06), 0.06, 0.14),
@@ -337,18 +385,19 @@ mod tests {
         }
     }
 
-    /// Review Focus: monochrome art must hit the brand identity floor. The
-    /// degradation replaces the three color roles; the per-cover ceiling is a
-    /// separate quantity and is intentionally retained (controller ruling R5).
+    /// A monochrome cover with a faint cast keeps its own hue instead of brand
+    /// teal: the tint is boosted into the Primary envelope (owner ruling
+    /// 2026-10-02).
     #[test]
-    fn monochrome_cover_yields_the_fallback_roles() {
-        let pixels = solid((110, 105, 100), 48 * 48);
+    fn warm_monochrome_cover_boosts_its_tint() {
+        let pixels = solid((120, 110, 95), 48 * 48);
         let palette = extract_palette(&pixels, 48, 48);
-        let fb = fallback_palette();
-        assert_eq!(palette.primary, fb.primary);
-        assert_eq!(palette.on_primary, fb.on_primary);
-        assert_eq!(palette.secondary, fb.secondary);
-        assert_eq!(palette.tertiary, fb.tertiary);
+        assert_ne!(palette.primary, fallback_palette().primary);
+        let primary = srgb_to_oklch_tuple(hex_to_rgb(&palette.primary));
+        assert!(primary.c >= 0.08, "boosted primary chroma {}", primary.c);
+        assert!(hue_diff(primary.h, 78.0) < 15.0, "hue should stay warm: {}", primary.h);
+        let tertiary = srgb_to_oklch_tuple(hex_to_rgb(&palette.tertiary));
+        assert!(hue_diff(tertiary.h, primary.h) < 10.0, "tertiary should echo Primary");
     }
 
     #[test]
@@ -364,12 +413,11 @@ mod tests {
     /// Review Focus: bright regions must tighten the clamp (§5.3).
     /// Controller ruling R6: with SCRIM = 0.55 the maximum composite ceiling is
     /// ~0.206 and a half-white cover yields ~0.190, where 4.5:1 is mathematically
-    /// unreachable even for pure white text (~4.37:1); the spec also pins Primary
-    /// to L ∈ [0.70, 0.85] (no dark accent). So this stress case asserts the
-    /// achievable intent — an elevated ceiling and a plainer/brighter accent —
-    /// not a literal 4.5:1 (documented spec gap, surfaced to the owner).
+    /// unreachable inside the Primary envelope. The degradation must stay
+    /// chromatic — the seed hue at the envelope's max chroma — never the old
+    /// near-white plain-light tone (owner ruling 2026-10-02).
     #[test]
-    fn a_bright_ceiling_forces_a_brighter_or_plainer_primary() {
+    fn a_bright_ceiling_keeps_a_chromatic_primary() {
         let dark = extract_palette(&solid((200, 30, 40), 48 * 48), 48, 48);
         let mut pixels = solid((200, 30, 40), 48 * 48);
         for p in pixels.iter_mut().take(48 * 24) {
@@ -378,23 +426,111 @@ mod tests {
         let palette = extract_palette(&pixels, 48, 48);
         assert!(palette.ceiling_l > 0.15, "ceiling: {}", palette.ceiling_l);
         assert!(palette.ceiling_l > dark.ceiling_l, "bright ceiling not elevated");
-        let bright_lum = luminance(hex_to_rgb(&palette.primary));
-        let dark_lum = luminance(hex_to_rgb(&dark.primary));
-        assert!(
-            bright_lum > dark_lum,
-            "bright primary {:?} (lum {bright_lum}) must be plainer/brighter than dark {:?} (lum {dark_lum})",
-            palette.primary,
-            dark.primary
-        );
+        let primary = srgb_to_oklch_tuple(hex_to_rgb(&palette.primary));
+        assert!(!is_near_white(&primary), "bright primary {:?} must stay chromatic", palette.primary);
+        // Max envelope chroma clips for red at L 0.85; the round trip lands at
+        // a still-clearly-chromatic salmon, never the old near-white tone.
+        assert!(primary.c >= 0.10, "bright primary chroma {}", primary.c);
+        assert!(hue_diff(primary.h, 30.0) < 30.0, "hue should track the art: {}", primary.h);
+    }
+
+    /// White-dominant art with no usable color keeps a plain-light Primary
+    /// instead of the brand-teal identity floor (owner ruling 2026-10-02).
+    #[test]
+    fn pure_white_cover_keeps_a_plain_light_primary() {
+        let palette = extract_palette(&solid((255, 255, 255), 48 * 48), 48, 48);
+        let primary = srgb_to_oklch_tuple(hex_to_rgb(&palette.primary));
+        assert!(primary.l >= 0.9, "plain-light primary L {}", primary.l);
+        assert!(primary.c <= 0.02, "plain-light primary C {}", primary.c);
+        assert_ne!(palette.primary, fallback_palette().primary);
+        assert_eq!(palette.on_primary, hex(ON_ACCENT_DARK));
+        assert_eq!(palette.secondary, fallback_palette().secondary);
+        assert_ne!(palette.tertiary, fallback_palette().tertiary);
+        assert!(srgb_to_oklch_tuple(hex_to_rgb(&palette.tertiary)).c <= 0.03);
+    }
+
+    /// A white-dominant cover that still contains a real color uses the color:
+    /// near-white candidates only win when nothing else is usable.
+    #[test]
+    fn white_dominant_cover_with_one_color_uses_the_color() {
+        let mut pixels = solid((255, 255, 255), 48 * 48);
+        for p in pixels.iter_mut().take((48 * 48) / 20) {
+            *p = (30, 80, 220); // 5% vivid blue
+        }
+        let palette = extract_palette(&pixels, 48, 48);
+        let primary = srgb_to_oklch_tuple(hex_to_rgb(&palette.primary));
+        assert!(!is_near_white(&primary), "primary {:?} must be the blue", palette.primary);
+        assert!(primary.c >= 0.08, "primary chroma {}", primary.c);
+        assert!(hue_diff(primary.h, 264.0) < 40.0, "hue should be blue: {}", primary.h);
+    }
+
+    /// Fully neutral art (no tint above the noise floor) keeps a plain-light
+    /// Primary with neutral Secondary/Tertiary — never brand teal.
+    #[test]
+    fn neutral_monochrome_cover_keeps_a_plain_light_primary() {
+        for color in [(128, 128, 128), (30, 30, 30)] {
+            let palette = extract_palette(&solid(color, 48 * 48), 48, 48);
+            let primary = srgb_to_oklch_tuple(hex_to_rgb(&palette.primary));
+            assert!(primary.l >= 0.9, "{color:?} primary L {}", primary.l);
+            assert!(primary.c <= 0.02, "{color:?} primary C {}", primary.c);
+            let tertiary = srgb_to_oklch_tuple(hex_to_rgb(&palette.tertiary));
+            assert!(tertiary.c <= 0.03, "{color:?} tertiary C {}", tertiary.c);
+            assert_ne!(palette.tertiary, fallback_palette().tertiary);
+        }
+        let mut pixels = solid((230, 230, 230), 48 * 48); // mixed neutral greys
+        for p in pixels.iter_mut().take((48 * 48) * 2 / 5) {
+            *p = (120, 118, 115);
+        }
+        let palette = extract_palette(&pixels, 48, 48);
+        let primary = srgb_to_oklch_tuple(hex_to_rgb(&palette.primary));
+        assert!(primary.l >= 0.9 && primary.c <= 0.02, "mixed neutral primary {:?}", palette.primary);
     }
 
     #[test]
-    fn tertiary_stays_thirty_degrees_from_primary() {
-        let pixels = solid((200, 30, 40), 48 * 48);
+    fn faint_cast_below_the_noise_floor_stays_neutral() {
+        let palette = extract_palette(&solid((128, 127, 126), 48 * 48), 48, 48);
+        let primary = srgb_to_oklch_tuple(hex_to_rgb(&palette.primary));
+        assert!(primary.l >= 0.9 && primary.c <= 0.02, "primary {:?}", palette.primary);
+    }
+
+    /// Regression (The Perfect Girl): a bright B&W halftone whose dark dots
+    /// carry a faint cast must read as monochrome — the shadow cast is not a
+    /// cover-wide tint (owner ruling 2026-10-02).
+    #[test]
+    fn halftone_shadow_cast_stays_neutral() {
+        let mut pixels = solid((245, 245, 245), 48 * 48);
+        for p in pixels.iter_mut().take((48 * 48) * 2 / 5) {
+            *p = (27, 43, 35); // dark dots with a faint cyan cast
+        }
+        let palette = extract_palette(&pixels, 48, 48);
+        let primary = srgb_to_oklch_tuple(hex_to_rgb(&palette.primary));
+        assert!(primary.l >= 0.9 && primary.c <= 0.02, "primary {:?}", palette.primary);
+        assert_ne!(palette.primary, fallback_palette().primary);
+    }
+
+    /// Spec §5.2: tertiary takes a ≥30° hue only when the art provides one.
+    #[test]
+    fn tertiary_uses_a_separated_hue_when_available() {
+        let mut pixels = solid((200, 30, 40), 48 * 48);
+        for p in pixels.iter_mut().take(48 * 24) {
+            *p = (30, 80, 220); // blue half
+        }
         let palette = extract_palette(&pixels, 48, 48);
         let p = srgb_to_oklch_tuple(hex_to_rgb(&palette.primary));
         let t = srgb_to_oklch_tuple(hex_to_rgb(&palette.tertiary));
         assert!(hue_diff(p.h, t.h) >= 30.0, "hues {} vs {}", p.h, t.h);
+    }
+
+    /// Monochrome art must not invent a tertiary hue (a red cover used to
+    /// rotate to teal); it collapses to a Primary tint instead (owner ruling
+    /// 2026-10-02, spec §5.2).
+    #[test]
+    fn tertiary_collapses_to_a_primary_tint_without_a_separated_hue() {
+        let palette = extract_palette(&solid((200, 30, 40), 48 * 48), 48, 48);
+        let p = srgb_to_oklch_tuple(hex_to_rgb(&palette.primary));
+        let t = srgb_to_oklch_tuple(hex_to_rgb(&palette.tertiary));
+        assert!(hue_diff(p.h, t.h) < 10.0, "tertiary must echo Primary: {} vs {}", p.h, t.h);
+        assert_ne!(palette.primary, palette.tertiary);
     }
 
     #[test]

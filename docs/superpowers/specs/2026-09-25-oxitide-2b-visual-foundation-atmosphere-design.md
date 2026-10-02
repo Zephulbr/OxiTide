@@ -128,11 +128,20 @@ Rules:
   harmonious; otherwise keep the best and derive the rest by hue rotation.
 - **Semantic split:** Primary = interactive, Tertiary = informational. Interactive
   elements never use Tertiary; informational surfaces never use Primary.
-- **Degradation paths:** a cover with no compliant candidate (monochrome art) yields
-  brand-teal Primary, warm-neutral Secondary, teal-tint Tertiary — the app keeps an
-  identity floor. **No artwork at all** takes the identical color fallback, and with
-  nothing to blur the backdrop renders as the room's static warm gradient (a no-art
-  track briefly looks like Instrument's backdrop — deterministic, no special casing).
+- **White guard (owner ruling 2026-10-02):** near-white candidates (L ≥ 0.90, C ≤ 0.06)
+  never drive the Primary while any usable colour exists — the strongest chromatic
+  candidate wins even if it is a minority colour. With no usable colour, the cover's
+  overall mean chroma decides: above the noise floor (C > 0.012) its hue is boosted into
+  the Primary envelope (a broad sepia/duotone cast), while a lower mean keeps a
+  plain-light Primary (L 0.95, C 0.01) with neutral Secondary/Tertiary — shadow-only
+  casts and JPEG chroma noise never tint. Extraction never yields brand teal from a
+  cover, and Tertiary never invents a hue: without a ≥30° candidate it collapses to a
+  Primary tint.
+- **Degradation paths:** no track or no artwork keeps the last applied palette (the
+  static brand accent before the first track), and a failed cover fetch leaves the
+  current colours untouched. With nothing to blur the backdrop renders as the room's
+  static warm gradient (a no-art track briefly looks like Instrument's backdrop —
+  deterministic, no special casing).
 - **Semantic colors (danger/success/warning) never go dynamic.**
 - **60-30-10:** Primary/Tertiary only ever fill their semantic slots — a cover cannot
   flood the UI.
@@ -166,9 +175,10 @@ at plan time (§15).
 is achievable while the per-cover composite ceiling stays at or below ~0.18. Above that — a
 very bright cover under the ≥55% scrim — no colour inside Primary's L ∈ [0.70, 0.85]
 envelope can reach 4.5:1; even pure white text tops out near ~4.4:1. Such extreme covers
-degrade to the plain light Primary fallback (Primary is still clamped as far as the envelope
-allows). The text floor is therefore documented as holding **within the ceiling bound**, not
-unconditionally.
+take the seed hue at the envelope's maximum chroma (L 0.85, C 0.17, clipped to gamut), so the
+degradation stays clearly chromatic; only fully neutral art keeps the plain-light Primary
+(2026-10-02 ruling, §5.2). The text floor is therefore documented as holding **within the
+ceiling bound**, not unconditionally.
 
 ### 5.4 Setting
 

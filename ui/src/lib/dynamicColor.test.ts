@@ -56,12 +56,23 @@ describe("createPaletteApplier", () => {
     expect(applied).toEqual([expect.objectContaining({ "--dyn-primary": "#111111" })]);
   });
 
-  it("off and missing covers clear the tokens synchronously", async () => {
+  it("off clears the tokens; a missing cover keeps the last color", async () => {
     const applied: Record<string, string>[] = [];
     const applier = createPaletteApplier((t) => applied.push(t), () => Promise.resolve(palette));
+    await applier.onTrack("uuid", "full");
     await applier.onTrack(null, "full");
     await applier.onTrack("uuid", "off");
-    expect(applied).toEqual([{}, {}]);
+    expect(applied).toEqual([paletteTokens(palette, "full"), {}]);
+  });
+
+  it("a failed fetch keeps the current tokens", async () => {
+    const applied: Record<string, string>[] = [];
+    const applier = createPaletteApplier(
+      (t) => applied.push(t),
+      () => Promise.reject(new Error("offline")),
+    );
+    await applier.onTrack("uuid", "full");
+    expect(applied).toEqual([]);
   });
 
   /// A position tick re-runs the effect with the same cover/mode; it must not

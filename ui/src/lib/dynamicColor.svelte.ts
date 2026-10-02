@@ -35,10 +35,13 @@ export function createPaletteApplier(
       if (key === lastKey) return;
       lastKey = key;
       const id = ++request;
-      if (mode === "off" || !cover) {
+      if (mode === "off") {
         apply({});
         return;
       }
+      // No track or no artwork: keep the last applied palette (owner ruling
+      // 2026-10-02). The counter bump above cancels any in-flight older fetch.
+      if (!cover) return;
       try {
         const palette = await fetcher(cover);
         if (id !== request) return;

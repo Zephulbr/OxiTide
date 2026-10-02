@@ -1,6 +1,7 @@
 //! Cover fetch + palette cache for `analyze_cover` (spec §13: extraction
 //! happens off the UI critical path, from already-decoded artwork bytes).
-//! Every failure degrades to the brand fallback (spec §5.2) — never errors.
+//! Fetch/decode failures propagate so the UI keeps its current colors instead
+//! of resetting to brand teal (spec §5.2).
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -8,22 +9,28 @@ use std::sync::{Mutex, OnceLock};
 
 use serde::{Deserialize, Serialize};
 
-use crate::palette::{extract_palette, fallback_palette, Palette};
+use crate::palette::{extract_palette, Palette};
 
 const ANALYSIS_SIZE: u32 = 160;
 const EXTRACT_SIDE: u32 = 48;
 /// Newest-N bound, mirroring `lyrics::CACHE_MAX_ENTRIES`; a palette entry is
 /// tiny, but the unbounded map also made every save an O(n) full-file rewrite.
 const PALETTE_MAX_ENTRIES: usize = 2_000;
+/// Bump when `extract_palette`'s output changes: older files are discarded so
+/// already-seen covers are refetched under the new rules.
+const CACHE_VERSION: u32 = 4;
 
 #[derive(Default, Serialize, Deserialize)]
 struct DiskCache {
+    #[serde(default)]
+    version: u32,
     palettes: HashMap<String, PaletteDto>,
 }
 
 /// Borrowed view for serialization, so `save_disk` never clones the map.
 #[derive(Serialize)]
 struct DiskCacheRef<'a> {
+    version: u32,
     palettes: &'a HashMap<String, PaletteDto>,
 }
 
@@ -95,6 +102,7 @@ impl ArtworkService {
             let memory = std::fs::read_to_string(&self.disk_path)
                 .ok()
                 .and_then(|text| serde_json::from_str::<DiskCache>(&text).ok())
+                .filter(|cache| cache.version == CACHE_VERSION)
                 .map(|cache| cache.palettes)
                 .unwrap_or_default();
             Mutex::new(memory)
@@ -105,20 +113,20 @@ impl ArtworkService {
         format!("{base}/{}/{ANALYSIS_SIZE}x{ANALYSIS_SIZE}.jpg", uuid.replace('-', "/"))
     }
 
-    /// Never fails: empty uuid, HTTP error, or undecodable bytes all yield
-    /// the brand fallback (spec §5.2 degradation paths).
-    pub async fn palette(&self, uuid: &str) -> Palette {
+    /// `Err` means "no palette available right now" (empty uuid, HTTP error, or
+    /// undecodable bytes): the caller keeps its current colors (spec §5.2).
+    pub async fn palette(&self, uuid: &str) -> Result<Palette, String> {
         if uuid.is_empty() {
-            return fallback_palette();
+            return Err("empty cover uuid".into());
         }
         if let Some(hit) = self.memory().lock().unwrap().get(uuid) {
-            return hit.clone().into();
+            return Ok(hit.clone().into());
         }
         let palette = match self.fetch(uuid).await {
             Ok(p) => p,
             Err(e) => {
                 tracing::warn!("cover analysis failed for {uuid}: {e}");
-                fallback_palette()
+                return Err(e);
             }
         };
         let mut dto = PaletteDto::from(palette.clone());
@@ -128,7 +136,7 @@ impl ArtworkService {
             .unwrap_or(0);
         self.memory().lock().unwrap().insert(uuid.to_string(), dto);
         self.save_disk();
-        palette
+        Ok(palette)
     }
 
     async fn fetch(&self, uuid: &str) -> Result<Palette, String> {
@@ -162,7 +170,7 @@ impl ArtworkService {
             entries.truncate(PALETTE_MAX_ENTRIES);
             memory.extend(entries);
         }
-        let Ok(text) = serde_json::to_string_pretty(&DiskCacheRef { palettes: &memory }) else {
+        let Ok(text) = serde_json::to_string_pretty(&DiskCacheRef { version: CACHE_VERSION, palettes: &memory }) else {
             return;
         };
         let tmp = self.disk_path.with_extension("json.tmp");
@@ -175,6 +183,7 @@ impl ArtworkService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::palette::fallback_palette;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -218,7 +227,7 @@ mod tests {
     fn write_palettes(path: &std::path::Path, uuid: &str, dto: &PaletteDto) {
         let mut palettes = std::collections::HashMap::new();
         palettes.insert(uuid.to_string(), dto.clone());
-        let text = serde_json::to_string(&DiskCache { palettes }).unwrap();
+        let text = serde_json::to_string(&DiskCache { version: CACHE_VERSION, palettes }).unwrap();
         std::fs::write(path, text).unwrap();
     }
 
@@ -237,7 +246,7 @@ mod tests {
         write_palettes(&path, "ab-cd", &palette_dto("#aaaaaa"));
         let service = service(&server, &dir);
         write_palettes(&path, "ab-cd", &palette_dto("#bbbbbb"));
-        let palette = service.palette("ab-cd").await;
+        let palette = service.palette("ab-cd").await.unwrap();
         assert_eq!(palette.primary, "#bbbbbb");
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -250,22 +259,23 @@ mod tests {
             .expect(1)
             .mount(&server).await;
         let dir = temp_dir();
-        let palette = service(&server, &dir).palette("ab-cd").await;
+        let palette = service(&server, &dir).palette("ab-cd").await.unwrap();
         assert_ne!(palette.primary, fallback_palette().primary);
         let _ = std::fs::remove_dir_all(dir);
     }
 
-    /// Review Focus: offline / 404 / garbage must degrade to the fallback.
+    /// Review Focus: offline / 404 / garbage propagate so the UI keeps its
+    /// current colors instead of resetting to brand teal (spec §5.2).
     #[tokio::test]
-    async fn failures_yield_the_fallback() {
+    async fn failures_propagate_to_keep_the_current_colors() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .respond_with(ResponseTemplate::new(404))
             .mount(&server).await;
         let dir = temp_dir();
         let service = service(&server, &dir);
-        assert_eq!(service.palette("missing-uuid").await.primary, fallback_palette().primary);
-        assert_eq!(service.palette("").await.primary, fallback_palette().primary);
+        assert!(service.palette("missing-uuid").await.is_err());
+        assert!(service.palette("").await.is_err());
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -278,8 +288,8 @@ mod tests {
             .mount(&server).await;
         let dir = temp_dir();
         let service = service(&server, &dir);
-        let first = service.palette("ab-cd").await;
-        let second = service.palette("ab-cd").await;
+        let first = service.palette("ab-cd").await.unwrap();
+        let second = service.palette("ab-cd").await.unwrap();
         assert_eq!(first, second);
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -292,10 +302,31 @@ mod tests {
             .expect(1)
             .mount(&server).await;
         let dir = temp_dir();
-        let first = service(&server, &dir).palette("ab-cd").await;
+        let first = service(&server, &dir).palette("ab-cd").await.unwrap();
         drop(server); // server gone; a fresh service must read the disk cache
-        let second = service(&MockServer::start().await, &dir).palette("ab-cd").await;
+        let second = service(&MockServer::start().await, &dir).palette("ab-cd").await.unwrap();
         assert_eq!(first, second);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A palette written before versioning (no `version` field) must be
+    /// discarded so a change in the extraction rules reaches covers seen
+    /// before the change.
+    #[tokio::test]
+    async fn stale_cache_entries_are_discarded_on_version_mismatch() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/ab/cd/160x160.jpg"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(png_bytes([200, 30, 40])))
+            .expect(1) // the stale entry must not suppress the refetch
+            .mount(&server).await;
+        let dir = temp_dir();
+        std::fs::write(
+            dir.join("palettes.json"),
+            r##"{"palettes":{"ab-cd":{"primary":"#ffffff","on_primary":"#000000","secondary":"#111111","tertiary":"#222222","backdrop":"#333333","ceiling_l":0.1}}}"##,
+        )
+        .unwrap();
+        let palette = service(&server, &dir).palette("ab-cd").await.unwrap();
+        assert_ne!(palette.primary, "#ffffff");
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -340,12 +371,11 @@ mod tests {
             .await;
         let dir = temp_dir();
         let path = dir.join("palettes.json");
-        std::fs::write(
-            &path,
-            r##"{"palettes":{"ab-cd":{"primary":"#aaaaaa","on_primary":"#000000","secondary":"#111111","tertiary":"#222222","backdrop":"#333333","ceiling_l":0.5}}}"##,
-        )
-        .unwrap();
-        let palette = service(&server, &dir).palette("ab-cd").await;
+        let text = format!(
+            r##"{{"version":{CACHE_VERSION},"palettes":{{"ab-cd":{{"primary":"#aaaaaa","on_primary":"#000000","secondary":"#111111","tertiary":"#222222","backdrop":"#333333","ceiling_l":0.5}}}}}}"##
+        );
+        std::fs::write(&path, text).unwrap();
+        let palette = service(&server, &dir).palette("ab-cd").await.unwrap();
         assert_eq!(palette.primary, "#aaaaaa");
         let _ = std::fs::remove_dir_all(dir);
     }

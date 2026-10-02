@@ -1166,6 +1166,10 @@ fn run_session(
                 };
             }
             *inner.output_status.lock().unwrap() = output.status();
+            // Publish the fresh status: after a device-loss recovery the
+            // previous notice would otherwise linger in clients until some
+            // unrelated state event.
+            emit(inner, EngineEvent::State(build_state(inner)));
             *open_spec = Some(want);
         }
         let channels = info.channels;
@@ -2726,6 +2730,21 @@ mod tests {
             }),
             Quality::Lossless,
         );
+        // (failure_seen, cleared_after_failure): the UI hides the bar notice
+        // while an error is active, so a recovered output must republish a
+        // state whose notice is gone or the stale text lingers on screen.
+        let watch = Arc::new(Mutex::new((false, false)));
+        let watch_ref = watch.clone();
+        engine.subscribe(Arc::new(move |event| {
+            if let EngineEvent::State(state) = &event {
+                let mut watch = watch_ref.lock().unwrap();
+                if state.bit_perfect_notice.is_some() {
+                    watch.0 = true;
+                } else if watch.0 {
+                    watch.1 = true;
+                }
+            }
+        }));
         engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
 
         wait_for(|| engine.state().bit_perfect_notice.is_some());
@@ -2739,6 +2758,10 @@ mod tests {
         failing.store(false, Ordering::SeqCst);
         engine.handle(EngineCmd::PlayPause).unwrap();
         wait_for(|| samples.lock().unwrap().len() > 0);
+        assert!(
+            watch.lock().unwrap().1,
+            "recovery must publish a state with the output notice cleared"
+        );
         assert!(engine.state().playing, "recovery did not resume playback");
         wait_for(|| !engine.state().playing);
         assert_eq!(samples.lock().unwrap().len(), 176_400);
