@@ -9,6 +9,11 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
+/// A partial frame window (the interaction flush right after page open) can
+/// hold ~95 frames, where p99 is effectively the max; ignore windows too
+/// small to carry a percentile.
+const FRAME_SAMPLE_MIN = 200;
+
 export function readRuns(files) {
   const runs = new Map();
   for (const file of files) {
@@ -97,7 +102,7 @@ export function metricsFor(run) {
     }
     if (line.kind === "ui_metrics") {
       const mode = line.metrics?.mode ?? "instrument";
-      if (line.metrics?.frames?.count) {
+      if (line.metrics?.frames?.count >= FRAME_SAMPLE_MIN) {
         if (!frames.has(mode)) frames.set(mode, []);
         frames.get(mode).push(line.metrics.frames);
       }

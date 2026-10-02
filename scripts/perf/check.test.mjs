@@ -33,7 +33,7 @@ test("metricsFor derives mark, ttfs, frame, and memory metrics", () => {
     { kind: "audio", event: "advance", track_id: 2, gap_ms: 40, t_ms: 2000 },
     { kind: "memory", mb: 300, t_ms: 100 },
     { kind: "memory", mb: 340, t_ms: 5000 },
-    { kind: "ui_metrics", t_ms: 5100, metrics: { frames: { count: 4, p50: 4, p95: 10, p99: 12, max: 20 }, long_tasks: { count: 0, max_ms: 0 }, mode: "instrument" } },
+    { kind: "ui_metrics", t_ms: 5100, metrics: { frames: { count: 700, p50: 4, p95: 10, p99: 12, max: 20 }, long_tasks: { count: 0, max_ms: 0 }, mode: "instrument" } },
   ]);
   const [run] = readRuns([file]);
   const metrics = metricsFor(run);
@@ -296,6 +296,51 @@ test("app-only soak drift uses the self process rows", () => {
   ]);
   const metrics = metricsFor(readRuns([file])[0]);
   assert.equal(metrics.memory_drift_app_mb, 1);
+});
+
+test("partial frame windows do not set the frame percentiles", () => {
+  const file = runFile([
+    { kind: "session", run_id: "S5-instrument-1", scenario: "S5-instrument" },
+    {
+      kind: "ui_metrics",
+      t_ms: 1,
+      metrics: {
+        mode: "instrument",
+        frames: { count: 95, p50: 7, p95: 7.1, p99: 41.7, max: 41.7 },
+        long_tasks: { count: 0, max_ms: 0 },
+      },
+    },
+    {
+      kind: "ui_metrics",
+      t_ms: 2,
+      metrics: {
+        mode: "instrument",
+        frames: { count: 700, p50: 7, p95: 7.1, p99: 13.9, max: 34.8 },
+        long_tasks: { count: 0, max_ms: 0 },
+      },
+    },
+  ]);
+  const metrics = metricsFor(readRuns([file])[0]);
+  assert.equal(metrics["frame_p95_ms:instrument"], 7.1);
+  assert.equal(metrics["frame_p99_ms:instrument"], 13.9);
+});
+
+test("a run with only partial frame windows leaves the frame rows unmeasured", () => {
+  const file = runFile([
+    { kind: "session", run_id: "S5-instrument-2", scenario: "S5-instrument" },
+    {
+      kind: "ui_metrics",
+      t_ms: 1,
+      metrics: {
+        mode: "instrument",
+        frames: { count: 95, p50: 7, p95: 7.1, p99: 41.7, max: 41.7 },
+        long_tasks: { count: 0, max_ms: 0 },
+      },
+    },
+  ]);
+  const metrics = metricsFor(readRuns([file])[0]);
+  assert.equal(metrics["frame_p95_ms:instrument"], undefined);
+  assert.equal(metrics["frame_p99_ms:instrument"], undefined);
 });
 
 test("app-only drift is required and unmeasured without per-process rows", () => {
