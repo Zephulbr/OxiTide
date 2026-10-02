@@ -2,14 +2,21 @@
   import { untrack } from "svelte";
   import { api, trackToQueueItem, type Playlist as PlaylistT } from "../lib/api";
   import ConfirmDialog from "../lib/components/ConfirmDialog.svelte";
+  import DetailAction from "../lib/components/DetailAction.svelte";
+  import DetailHeader from "../lib/components/DetailHeader.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
-  import Icon from "../lib/components/Icon.svelte";
   import Loading from "../lib/components/Loading.svelte";
+  import Modal from "../lib/components/Modal.svelte";
   import PlaylistCover from "../lib/components/PlaylistCover.svelte";
+  import TrackSearch from "../lib/components/TrackSearch.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
+  import { copyText } from "../lib/clipboard";
+  import { formatTotalDuration } from "../lib/format";
+  import { menu, type MenuItem } from "../lib/menu.svelte";
   import { createTrackPager } from "../lib/pager.svelte";
   import { playSource } from "../lib/playSource.svelte";
   import { invalidatePlaylistCovers } from "../lib/playlistArt.svelte";
+  import { shareUrl } from "../lib/share";
   import { createTrackView, visibleIndexOf, warmTrackSearch } from "../lib/trackView.svelte";
   import type { CollectionTree } from "../lib/collection.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
@@ -44,6 +51,8 @@
   let renameDescription = $state("");
   let confirmingDelete = $state(false);
   let busy = $state(false);
+  let publicState = $state<boolean | null>(null);
+  let publicBusy = $state(false);
 
   // `$derived` so navigating to another playlist rebuilds the pager; the new
   // key hydrates from the session cache when that playlist was seen before.
@@ -65,11 +74,26 @@
     });
   });
 
+  // "180 TRACKS (10:16:08) • 1 FAN" — server totals with loaded-item fallback.
+  const stats = $derived.by(() => {
+    if (!playlist) return "";
+    const count = playlist.numberOfTracks || pager.items.length;
+    const seconds =
+      playlist.duration || pager.items.reduce((sum, t) => sum + t.duration, 0);
+    const tracks = `${count} ${count === 1 ? "TRACK" : "TRACKS"}`;
+    const parts = [seconds > 0 ? `${tracks} (${formatTotalDuration(seconds)})` : tracks];
+    const followers = playlist.numberOfFollowers;
+    if (followers != null) parts.push(`${followers} ${followers === 1 ? "FAN" : "FANS"}`);
+    if (pager.unavailable > 0) parts.push(`${pager.unavailable} UNAVAILABLE`);
+    return parts.join(" • ");
+  });
+
   async function load() {
     loading = true;
     error = "";
     try {
       playlist = await api.getPlaylist(id);
+      publicState = playlist.publicPlaylist ?? null;
     } catch (e) {
       error = String(e);
     } finally {
@@ -114,6 +138,55 @@
     } catch (e) {
       toasts.show(errorMessage(e), { severity: "error" });
     }
+  }
+
+  async function togglePublic() {
+    if (publicBusy || publicState === null) return;
+    const next = !publicState;
+    publicBusy = true;
+    publicState = next;
+    try {
+      await api.setPlaylistPublic(id, next);
+      if (playlist) playlist.publicPlaylist = next;
+      toasts.show(next ? "Playlist is now public" : "Playlist is now private", {
+        severity: "success",
+      });
+    } catch (e) {
+      publicState = !next;
+      toasts.show(errorMessage(e), { severity: "error" });
+    } finally {
+      publicBusy = false;
+    }
+  }
+
+  async function share() {
+    const copied = await copyText(shareUrl("playlist", id));
+    toasts.show(copied ? "Link copied" : "Couldn't copy link", {
+      severity: copied ? "success" : "error",
+    });
+  }
+
+  function openMore(event: MouseEvent) {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const items: MenuItem[] = [
+      {
+        id: "refresh",
+        label: "Refresh",
+        run: () => {
+          invalidatePlaylistCovers(id);
+          void pager.refresh();
+        },
+      },
+    ];
+    if (playlist?.owned) {
+      items.push({
+        id: "delete",
+        label: "Delete playlist",
+        danger: true,
+        run: () => (confirmingDelete = true),
+      });
+    }
+    menu.show(rect.left, rect.bottom + 4, items);
   }
 
   async function confirmDelete() {
@@ -197,66 +270,77 @@
 {:else}
   <div class="view-fill">
     {#if playlist}
-      <header class="view-header">
-        <span class="header-art">
+      {@const data = playlist}
+      <DetailHeader
+        kicker="Playlist"
+        title={data.title}
+        {stats}
+        onPlay={playAll}
+        onShuffle={shuffleAll}
+        disabled={view.items.length === 0}
+      >
+        {#snippet cover()}
           <PlaylistCover
-            owned={playlist.owned}
+            owned={data.owned}
             playlist={id}
-            image={playlist.squareImage}
+            image={data.squareImage}
             tracks={pager.items}
-            size={320}
+            size={640}
             radius={12}
-            alt={`${playlist.title} cover`}
+            alt={`${data.title} cover`}
           />
-        </span>
-        <div class="header-meta">
-          <h2>{playlist.title}</h2>
-          {#if playlist.owned}
-            <div class="header-actions">
-              <button onclick={startRename}>Rename</button>
-              <button onclick={() => (confirmingDelete = true)}>Delete</button>
-            </div>
+        {/snippet}
+        {#snippet tools()}
+          <TrackSearch {view} />
+        {/snippet}
+        {#snippet actions()}
+          {#if data.owned}
+            <DetailAction
+              icon="pencil"
+              label="Edit"
+              title="Edit playlist"
+              onclick={startRename}
+            />
+            {#if publicState !== null}
+              <DetailAction
+                icon="globe"
+                label={publicState ? "Public" : "Private"}
+                active={publicState}
+                title={publicState ? "Make private" : "Make public"}
+                disabled={publicBusy}
+                onclick={togglePublic}
+              />
+            {/if}
           {/if}
-        </div>
-      </header>
-      <div class="header-buttons">
-        <button class="btn-play" onclick={playAll} disabled={view.items.length === 0}>
-          <Icon name="play" size={18} /> Play
-        </button>
-        <button class="btn-shuffle" onclick={shuffleAll} disabled={view.items.length === 0}>
-          <Icon name="shuffle" size={18} /> Shuffle
-        </button>
-      </div>
+          <DetailAction icon="share-2" label="Share" title="Copy link" onclick={share} />
+          <DetailAction icon="ellipsis" label="More" title="More actions" onclick={openMore} />
+        {/snippet}
+      </DetailHeader>
     {/if}
     {#if renaming}
-      <p>
-        <input bind:value={renameTitle} aria-label="Playlist name" />
-        <input bind:value={renameDescription} aria-label="Playlist description" />
-        <button onclick={saveRename}>Save</button>
-        <button onclick={() => (renaming = false)}>Cancel</button>
-      </p>
+      <Modal title="Edit playlist" onclose={() => (renaming = false)}>
+        <div class="rename-form">
+          <label>
+            <span>Name</span>
+            <input class="search-input" bind:value={renameTitle} aria-label="Playlist name" />
+          </label>
+          <label>
+            <span>Description</span>
+            <textarea bind:value={renameDescription} aria-label="Playlist description"></textarea>
+          </label>
+          <div class="rename-actions">
+            <button class="ghost" onclick={() => (renaming = false)}>Cancel</button>
+            <button class="primary" onclick={saveRename}>Save</button>
+          </div>
+        </div>
+      </Modal>
     {/if}
-    <p>
-      <button
-        onclick={() => {
-          invalidatePlaylistCovers(id);
-          void pager.refresh();
-        }}
-      >Refresh</button>
-      <span class="muted">
-        {#if pager.unavailable > 0}
-          {pager.items.length} tracks ({pager.unavailable} unavailable)
-        {:else}
-          {pager.items.length} tracks
-        {/if}
-      </span>
-      {#if pager.loading}<Loading />{/if}
-    </p>
     <TrackTable
       {view}
       {favorites}
       {toasts}
       fill
+      showFilter={false}
       onPlay={playFrom}
       onEndReached={() => void pager.loadMore()}
       onAddToPlaylist={(t) => playlistActions.openPicker([t])}
@@ -271,7 +355,7 @@
   </div>
   {#if confirmingDelete}
     <ConfirmDialog
-      title="Delete playlist"
+      title="Delete playlist?"
       message={`Delete "${playlist?.title ?? "this playlist"}"? This cannot be undone.`}
       onconfirm={confirmDelete}
       oncancel={() => (confirmingDelete = false)}
@@ -280,54 +364,48 @@
 {/if}
 
 <style>
-  .view-header {
+  .rename-form {
+    display: grid;
+    gap: 12px;
+    min-width: min(420px, 76vw);
+  }
+  .rename-form label {
+    display: grid;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+  .rename-form textarea {
+    min-height: 96px;
+    resize: vertical;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    background: var(--surface-2);
+    color: var(--text);
+    font: inherit;
+  }
+  .rename-actions {
     display: flex;
-    align-items: flex-end;
-    gap: 20px;
-    margin-bottom: 14px;
-  }
-  .header-art {
-    flex: 0 0 auto;
-    width: 160px;
-  }
-  /* Big labeled actions under the artwork (screenshot layout, app tokens). */
-  .header-buttons {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 18px;
-  }
-  .header-buttons button {
-    display: inline-flex;
-    align-items: center;
+    justify-content: flex-end;
     gap: 8px;
-    height: 44px;
-    padding: 0 22px;
+  }
+  .rename-actions button {
+    height: 38px;
+    padding: 0 18px;
     border-radius: var(--radius-control);
     font-weight: 600;
   }
-  .btn-play {
-    background: var(--accent);
-    color: var(--on-accent);
-  }
-  .btn-play :global(svg) {
-    fill: currentColor;
-  }
-  .btn-shuffle {
+  .rename-actions .ghost {
     background: var(--surface-2);
     border: 1px solid var(--line);
     color: var(--text-muted);
   }
-  .btn-shuffle:hover {
+  .rename-actions .ghost:hover {
     color: var(--text);
   }
-  .header-meta {
-    min-width: 0;
-  }
-  .header-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 10px;
+  .rename-actions .primary {
+    background: var(--accent);
+    color: var(--on-accent);
   }
 </style>

@@ -133,6 +133,14 @@ pub struct Playlist {
     /// When TIDAL last recorded any playlist edit (rename, track change).
     #[serde(default, rename = "lastUpdated")]
     pub last_updated: Option<String>,
+    /// Public/private visibility; `null` when TIDAL omits it (then the client
+    /// falls back to the v2 metadata fetch).
+    #[serde(default, rename = "publicPlaylist")]
+    pub public_playlist: Option<bool>,
+    /// Follower count. The v1 payload omits it, so the client fills it from
+    /// the v2 metadata endpoint; `null` when neither source reports it.
+    #[serde(default, rename = "numberOfFollowers")]
+    pub number_of_followers: Option<u32>,
     #[serde(default, skip_serializing)]
     pub creator: Option<PlaylistCreator>,
     #[serde(skip_deserializing, default)]

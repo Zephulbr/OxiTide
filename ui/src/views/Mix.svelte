@@ -1,12 +1,16 @@
 <script lang="ts">
   import { api, trackToQueueItem, type MixDetail } from "../lib/api";
   import Cover from "../lib/components/Cover.svelte";
+  import DetailAction from "../lib/components/DetailAction.svelte";
+  import DetailHeader from "../lib/components/DetailHeader.svelte";
   import EmptyState from "../lib/components/EmptyState.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
-  import Icon from "../lib/components/Icon.svelte";
   import Loading from "../lib/components/Loading.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
+  import { copyText } from "../lib/clipboard";
+  import { formatTotalDuration } from "../lib/format";
   import { playSource } from "../lib/playSource.svelte";
+  import { shareUrl } from "../lib/share";
   import { createTrackView } from "../lib/trackView.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { PlaylistActions } from "../lib/playlists.svelte";
@@ -27,6 +31,15 @@
 
   const view = createTrackView(() => mix?.tracks ?? []);
   const artwork = $derived(mix?.artwork ?? mix?.tracks[0]?.album?.cover ?? null);
+
+  // "50 TRACKS (3:12:44)" — mixes carry no metadata totals, so sum the tracks.
+  const stats = $derived.by(() => {
+    const tracks = mix?.tracks ?? [];
+    const count = tracks.length;
+    const seconds = tracks.reduce((sum, t) => sum + t.duration, 0);
+    const label = `${count} ${count === 1 ? "TRACK" : "TRACKS"}`;
+    return seconds > 0 ? `${label} (${formatTotalDuration(seconds)})` : label;
+  });
 
   async function load() {
     loading = true;
@@ -60,6 +73,13 @@
     playSource.set(null);
     void api.playTracks(view.items.map(trackToQueueItem), index);
   }
+
+  async function share() {
+    const copied = await copyText(shareUrl("mix", id));
+    toasts.show(copied ? "Link copied" : "Couldn't copy link", {
+      severity: copied ? "success" : "error",
+    });
+  }
 </script>
 
 {#if loading}
@@ -67,29 +87,29 @@
 {:else if error}
   <ErrorState message={error} onRetry={load} />
 {:else if mix}
+  {@const data = mix}
   <div class="view-fill">
-    <header class="view-header">
-      <span class="header-art"><Cover uuid={artwork} size={320} radius={12} alt={`${mix.title} cover`} /></span>
-      <div class="header-meta">
-        <h2>{mix.title}</h2>
-        <p class="muted">Mix · {view.items.length} tracks</p>
-        <div class="header-actions">
-          <button
-            onclick={() => playlistActions.openPicker(view.items)}
-            aria-label="Add mix to playlist"
-            title="Add mix to playlist"
-          >Add to playlist</button>
-        </div>
-      </div>
-    </header>
-    <div class="header-buttons">
-      <button class="btn-play" onclick={playAll} disabled={view.items.length === 0}>
-        <Icon name="play" size={18} /> Play
-      </button>
-      <button class="btn-shuffle" onclick={shuffleAll} disabled={view.items.length === 0}>
-        <Icon name="shuffle" size={18} /> Shuffle
-      </button>
-    </div>
+    <DetailHeader
+      kicker="Mix"
+      title={data.title}
+      {stats}
+      onPlay={playAll}
+      onShuffle={shuffleAll}
+      disabled={view.items.length === 0}
+    >
+      {#snippet cover()}
+        <Cover uuid={artwork} size={640} radius={12} alt={`${data.title} cover`} />
+      {/snippet}
+      {#snippet actions()}
+        <DetailAction
+          icon="list-plus"
+          label="Add"
+          title="Add mix to playlist"
+          onclick={() => playlistActions.openPicker(view.items)}
+        />
+        <DetailAction icon="share-2" label="Share" title="Copy link" onclick={share} />
+      {/snippet}
+    </DetailHeader>
     <TrackTable
       {view}
       {favorites}
@@ -105,54 +125,4 @@
   <EmptyState message="Mix not found." />
 {/if}
 
-<style>
-  .view-header {
-    display: flex;
-    align-items: flex-end;
-    gap: 20px;
-    margin-bottom: 14px;
-  }
-  .header-art {
-    flex: 0 0 auto;
-    width: 160px;
-  }
-  .header-buttons {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 18px;
-  }
-  .header-buttons button {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    height: 44px;
-    padding: 0 22px;
-    border-radius: var(--radius-control);
-    font-weight: 600;
-  }
-  .btn-play {
-    background: var(--accent);
-    color: var(--on-accent);
-  }
-  .btn-play :global(svg) {
-    fill: currentColor;
-  }
-  .btn-shuffle {
-    background: var(--surface-2);
-    border: 1px solid var(--line);
-    color: var(--text-muted);
-  }
-  .btn-shuffle:hover {
-    color: var(--text);
-  }
-  .header-meta {
-    min-width: 0;
-  }
-  .header-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 10px;
-  }
-</style>
+

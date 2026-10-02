@@ -14,9 +14,9 @@
   import type { Favorites } from "../favorites.svelte";
   import type { TrackView } from "../trackView.svelte";
   import { trackDrag, type DragParams } from "../drag";
-  import Loading from "./Loading.svelte";
   import Icon from "./Icon.svelte";
   import Cover from "./Cover.svelte";
+  import TrackFilter from "./TrackFilter.svelte";
   let {
     view,
     favorites,
@@ -28,6 +28,7 @@
     maxHeight = "min(60vh, 560px)",
     fill = false,
     showAlbum = true,
+    showFilter = true,
     playingTrackId = null,
   }: {
     view: TrackView;
@@ -55,6 +56,9 @@
     fill?: boolean;
     /// The album-name column is redundant in single-album view (spec §7.3).
     showAlbum?: boolean;
+    /// Render the filter/status toolbar above the table. Views that surface
+    /// the filter in their header (playlist) pass false.
+    showFilter?: boolean;
     /// Highlights the playing row (accent tint + title, ringed thumb).
     playingTrackId?: number | null;
   } = $props();
@@ -132,25 +136,9 @@
   }
 </script>
 
-<div class="table-tools">
-  <input
-    class="filter"
-    placeholder="Filter tracks"
-    data-perf-filter
-    value={view.filter}
-    oninput={(event) => view.setFilter(event.currentTarget.value)}
-  />
-  {#if view.filter.trim() !== ""}
-    <button onclick={() => view.setFilter("")} aria-label="Clear filter"><Icon name="x" size={14} /></button>
-  {/if}
-  {#if view.preparing}
-    <Loading label="Loading all tracks…" />
-  {/if}
-  {#if view.error}
-    <span class="muted">{view.error}</span>
-    <button onclick={() => view.retry()}>Retry</button>
-  {/if}
-</div>
+{#if showFilter}
+  <div class="table-tools"><TrackFilter {view} /></div>
+{/if}
 
 <div
   class="table-scroll"
@@ -273,13 +261,7 @@
 
 <style>
   .table-tools {
-    display: flex;
-    align-items: center;
-    gap: 8px;
     margin-bottom: 6px;
-  }
-  .table-tools .filter {
-    flex: 0 1 260px;
   }
   .table-scroll {
     overflow: auto;
@@ -347,7 +329,7 @@
     z-index: 2;
     background: transparent;
     transition: background-color var(--dur-state) var(--ease-in);
-    padding: 4px 12px 4px 0;
+    padding: 8px 12px 8px 0;
   }
   .table-scroll.scrolled thead th {
     background: var(--glass-veil);

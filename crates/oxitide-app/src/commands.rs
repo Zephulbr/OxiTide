@@ -1693,6 +1693,8 @@ mod tests {
             created: Some("2026-01-05T00:00:00.000+0000".into()),
             last_item_added_at: None,
             last_updated: None,
+            public_playlist: Some(true),
+            number_of_followers: Some(4),
             creator: None,
             owned: true,
         };
@@ -1700,6 +1702,8 @@ mod tests {
         assert_eq!(value["numberOfTracks"], serde_json::json!(3));
         assert_eq!(value["uuid"], serde_json::json!("u"));
         assert_eq!(value["squareImage"], serde_json::json!("sq"));
+        assert_eq!(value["publicPlaylist"], serde_json::json!(true));
+        assert_eq!(value["numberOfFollowers"], serde_json::json!(4));
         assert_eq!(
             value["created"],
             serde_json::json!("2026-01-05T00:00:00.000+0000")

@@ -56,7 +56,7 @@ body {
 }
 /* position: relative anchors NowPlaying's absolute-positioned close fade. */
 /* Bottom clearance keeps the last content reachable past the floating bar. */
-.main { position: relative; padding: 16px 20px calc(var(--player-height) + 8px); overflow: auto; }
+.main { position: relative; padding: 32px 28px calc(var(--player-height) + 8px); overflow: auto; }
 /* Track-list views: the wrapper owns the main area's height so the track
    table (TrackTable's `fill` prop) grows into the leftover space. */
 .view-fill { display: flex; flex-direction: column; height: 100%; }
@@ -127,6 +127,32 @@ body {
 
 .muted { color: var(--text-muted); }
 .tnum { font-variant-numeric: tabular-nums; }
+
+/* Search/filter fields (Explore, track filters): one shared recipe so every
+   text field reads as the same object. Components only add sizing. Focus uses
+   a soft accent wash + faint glow instead of a hard accent border. */
+.search-input {
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface-2);
+  color: var(--text);
+  transition:
+    background var(--dur-state) var(--ease-in),
+    border-color var(--dur-state) var(--ease-in),
+    box-shadow var(--dur-state) var(--ease-in);
+}
+.search-input::placeholder {
+  color: var(--text-muted);
+}
+.search-input:hover {
+  background: var(--surface-3);
+}
+.search-input:focus {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--line));
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface-2));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 16%, transparent);
+}
 
 /* View titles use the Fraunces display face (spec §6); section headings stay
    in the UI face at the 18/600 step. */

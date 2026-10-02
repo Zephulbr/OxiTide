@@ -138,9 +138,11 @@
 
 <h2>Explore</h2>
 <div class="search-bar">
+  <span class="search-icon" aria-hidden="true"><Icon name="search" size={16} /></span>
   <input
     id="search-input"
     name="oxitide-search"
+    class="search-input search-bar-input"
     value={search.query}
     oninput={(event) => onSearchInput(event.currentTarget.value)}
     onkeydown={onSearchKeydown}
@@ -284,6 +286,20 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    max-width: 560px;
+  }
+  .search-bar-input {
+    flex: 1;
+    min-width: 0;
+    padding-left: 36px;
+  }
+  .search-icon {
+    position: absolute;
+    left: 12px;
+    display: grid;
+    place-items: center;
+    color: var(--text-muted);
+    pointer-events: none;
   }
   /* Recent-search dropdown: the floating-overlay recipe (darker float veil +
      slight accent tint) shared with ContextMenu, so both stay legible over

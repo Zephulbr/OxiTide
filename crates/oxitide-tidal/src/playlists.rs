@@ -45,10 +45,47 @@ fn is_stale_etag(error: &Error) -> bool {
     matches!(error, Error::Api { status: 412, .. })
 }
 
+/// Public OpenAPI playlist metadata (JSON:API). The follower count only
+/// exists on this host; the internal v2 playlist GET omits it.
+#[derive(Debug, Deserialize)]
+struct OpenApiPlaylistMeta {
+    #[serde(default)]
+    data: Option<OpenApiPlaylistData>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenApiPlaylistData {
+    #[serde(default)]
+    attributes: Option<OpenApiPlaylistAttributes>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenApiPlaylistAttributes {
+    #[serde(default, rename = "numberOfFollowers")]
+    number_of_followers: Option<u32>,
+}
+
 impl TidalClient {
+    /// The playlist plus best-effort follower count. v1 supplies everything
+    /// except followers, which only the public OpenAPI host reports; any
+    /// failure there leaves the playlist untouched. Both fetches run
+    /// concurrently so the extra request does not delay the header.
     pub async fn playlist(&self, id: &str) -> Result<Playlist> {
-        let mut playlist: Playlist = self.get(&format!("playlists/{id}"), &[]).await?;
+        let path = format!("playlists/{id}");
+        let params = [("countryCode", self.session().country_code.clone())];
+        let (playlist, meta) = tokio::join!(
+            self.get::<Playlist>(&path, &[]),
+            self.get_openapi::<OpenApiPlaylistMeta>(&path, &params),
+        );
+        let mut playlist = playlist?;
         playlist.mark_owned(self.session().user_id, false);
+        if playlist.number_of_followers.is_none() {
+            playlist.number_of_followers = meta
+                .ok()
+                .and_then(|meta| meta.data)
+                .and_then(|data| data.attributes)
+                .and_then(|attributes| attributes.number_of_followers);
+        }
         Ok(playlist)
     }
 
@@ -861,6 +898,92 @@ mod tests {
             .mount(&missing)
             .await;
         assert!(!client(&missing).playlist("p-uuid").await.unwrap().owned);
+    }
+
+    #[tokio::test]
+    async fn playlist_parses_public_state_from_v1() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/playlists/p-uuid"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "uuid": "p-uuid", "title": "P", "publicPlaylist": true
+            })))
+            .mount(&server)
+            .await;
+        let playlist = client(&server).playlist("p-uuid").await.unwrap();
+        assert_eq!(playlist.public_playlist, Some(true));
+        assert_eq!(playlist.number_of_followers, None);
+    }
+
+    #[tokio::test]
+    async fn playlist_fetches_followers_from_the_openapi_host() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/playlists/p-uuid"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "uuid": "p-uuid", "title": "P", "numberOfTracks": 3
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/openapi/v2/playlists/p-uuid"))
+            .and(query_param("countryCode", "GR"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": {
+                    "id": "p-uuid",
+                    "type": "playlists",
+                    "attributes": {
+                        "name": "P",
+                        "numberOfItems": 3,
+                        "accessType": "PUBLIC",
+                        "numberOfFollowers": 7
+                    }
+                }
+            })))
+            .mount(&server)
+            .await;
+        let playlist = client(&server).playlist("p-uuid").await.unwrap();
+        assert_eq!(playlist.number_of_followers, Some(7));
+    }
+
+    #[tokio::test]
+    async fn playlist_keeps_v1_public_state_with_openapi_followers() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/playlists/p-uuid"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "uuid": "p-uuid", "title": "P", "publicPlaylist": false
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/openapi/v2/playlists/p-uuid"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": {
+                    "type": "playlists",
+                    "attributes": { "accessType": "PRIVATE", "numberOfFollowers": 2 }
+                }
+            })))
+            .mount(&server)
+            .await;
+        let playlist = client(&server).playlist("p-uuid").await.unwrap();
+        assert_eq!(playlist.public_playlist, Some(false));
+        assert_eq!(playlist.number_of_followers, Some(2));
+    }
+
+    #[tokio::test]
+    async fn playlist_survives_missing_openapi_meta() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/playlists/p-uuid"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "uuid": "p-uuid", "title": "P", "publicPlaylist": true
+            })))
+            .mount(&server)
+            .await;
+        let playlist = client(&server).playlist("p-uuid").await.unwrap();
+        assert_eq!(playlist.public_playlist, Some(true));
+        assert_eq!(playlist.number_of_followers, None);
     }
 
     #[tokio::test]

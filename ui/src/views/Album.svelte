@@ -1,16 +1,20 @@
 <script lang="ts">
   import { api, trackToQueueItem, type Album as AlbumT, type Track } from "../lib/api";
-  import EmptyState from "../lib/components/EmptyState.svelte";
   import Cover from "../lib/components/Cover.svelte";
+  import DetailAction from "../lib/components/DetailAction.svelte";
+  import DetailHeader from "../lib/components/DetailHeader.svelte";
+  import EmptyState from "../lib/components/EmptyState.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
-  import Icon from "../lib/components/Icon.svelte";
   import Loading from "../lib/components/Loading.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
+  import { copyText } from "../lib/clipboard";
+  import { formatTotalDuration } from "../lib/format";
   import { perf } from "../lib/perf.svelte";
   import { makeSyntheticAlbum } from "../lib/perfFixture";
   import { perfHooks } from "../lib/perfHooks";
   import { createTrackView } from "../lib/trackView.svelte";
   import { playSource } from "../lib/playSource.svelte";
+  import { shareUrl } from "../lib/share";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { PlaylistActions } from "../lib/playlists.svelte";
   import type { Player } from "../lib/player.svelte";
@@ -28,6 +32,15 @@
   let error = $state("");
 
   const view = createTrackView(() => tracks);
+
+  // "12 TRACKS (43:21)" — album totals with loaded-item fallback.
+  const stats = $derived.by(() => {
+    if (!album) return "";
+    const count = album.numberOfTracks || tracks.length;
+    const seconds = album.duration || tracks.reduce((sum, t) => sum + t.duration, 0);
+    const label = `${count} ${count === 1 ? "TRACK" : "TRACKS"}`;
+    return seconds > 0 ? `${label} (${formatTotalDuration(seconds)})` : label;
+  });
 
   async function load() {
     loading = true;
@@ -79,6 +92,13 @@
     playSource.set(null);
     void api.playTracks(view.items.map(trackToQueueItem), 0, true);
   }
+
+  async function share() {
+    const copied = await copyText(shareUrl("album", id));
+    toasts.show(copied ? "Link copied" : "Couldn't copy link", {
+      severity: copied ? "success" : "error",
+    });
+  }
 </script>
 
 {#if loading}
@@ -87,35 +107,37 @@
   <ErrorState message={error} onRetry={load} />
 {:else if album}
   {@const albumId = album.id}
+  {@const data = album}
   <div class="view-fill">
-    <header class="view-header">
-      <span class="header-art"><Cover uuid={album.cover} size={320} radius={12} alt={`${album.title} cover`} /></span>
-      <div class="header-meta">
-        <h2>{album.title}</h2>
-        <p class="muted">{album.artists.map((a) => a.name).join(", ")} · {album.numberOfTracks} tracks</p>
-        <div class="header-actions">
-          <button
-            class:on={favorites.hasAlbum(albumId)}
-            onclick={() => favorites.toggleAlbum(albumId)}
-            aria-label={favorites.hasAlbum(albumId) ? "Unfavorite album" : "Favorite album"}
-            title={favorites.hasAlbum(albumId) ? "Unfavorite album" : "Favorite album"}
-          ><Icon name="heart" /></button>
-          <button
-            onclick={() => playlistActions.openPicker(tracks)}
-            aria-label="Add album to playlist"
-            title="Add album to playlist"
-          >Add to playlist</button>
-        </div>
-      </div>
-    </header>
-    <div class="header-buttons">
-      <button class="btn-play" onclick={playAll} disabled={view.items.length === 0}>
-        <Icon name="play" size={18} /> Play
-      </button>
-      <button class="btn-shuffle" onclick={shuffleAll} disabled={view.items.length === 0}>
-        <Icon name="shuffle" size={18} /> Shuffle
-      </button>
-    </div>
+    <DetailHeader
+      kicker="Album"
+      title={data.title}
+      subtitle={data.artists.map((a) => a.name).join(", ")}
+      {stats}
+      onPlay={playAll}
+      onShuffle={shuffleAll}
+      disabled={view.items.length === 0}
+    >
+      {#snippet cover()}
+        <Cover uuid={data.cover} size={640} radius={12} alt={`${data.title} cover`} />
+      {/snippet}
+      {#snippet actions()}
+        <DetailAction
+          icon="heart"
+          label={favorites.hasAlbum(albumId) ? "Favorited" : "Favorite"}
+          active={favorites.hasAlbum(albumId)}
+          title={favorites.hasAlbum(albumId) ? "Unfavorite album" : "Favorite album"}
+          onclick={() => favorites.toggleAlbum(albumId)}
+        />
+        <DetailAction
+          icon="list-plus"
+          label="Add"
+          title="Add album to playlist"
+          onclick={() => playlistActions.openPicker(tracks)}
+        />
+        <DetailAction icon="share-2" label="Share" title="Copy link" onclick={share} />
+      {/snippet}
+    </DetailHeader>
     <TrackTable
       {view}
       {favorites}
@@ -130,58 +152,3 @@
 {:else}
   <EmptyState message="Album not found." />
 {/if}
-
-<style>
-  .on { color: var(--accent); }
-  .on :global(svg) { fill: currentColor; }
-  .view-header {
-    display: flex;
-    align-items: flex-end;
-    gap: 20px;
-    margin-bottom: 14px;
-  }
-  .header-art {
-    flex: 0 0 auto;
-    width: 160px;
-  }
-  /* Big labeled actions under the artwork (screenshot layout, app tokens). */
-  .header-buttons {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 18px;
-  }
-  .header-buttons button {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    height: 44px;
-    padding: 0 22px;
-    border-radius: var(--radius-control);
-    font-weight: 600;
-  }
-  .btn-play {
-    background: var(--accent);
-    color: var(--on-accent);
-  }
-  .btn-play :global(svg) {
-    fill: currentColor;
-  }
-  .btn-shuffle {
-    background: var(--surface-2);
-    border: 1px solid var(--line);
-    color: var(--text-muted);
-  }
-  .btn-shuffle:hover {
-    color: var(--text);
-  }
-  .header-meta {
-    min-width: 0;
-  }
-  .header-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 10px;
-  }
-</style>

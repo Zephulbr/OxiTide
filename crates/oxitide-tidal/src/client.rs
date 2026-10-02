@@ -42,6 +42,7 @@ pub struct TidalClient {
     http: reqwest::Client,
     base_url: String,
     v2_base_url: String,
+    openapi_base_url: String,
     token_url: String,
     session: SessionInfo,
     tokens: Arc<RwLock<TokenSet>>,
@@ -64,10 +65,19 @@ impl TidalClient {
             Some(prefix) => format!("{prefix}/v2"),
             None => format!("{trimmed}/v2"),
         };
+        // The public OpenAPI host (JSON:API). The internal v2 endpoint omits
+        // playlist follower counts, and the official host accepts the same
+        // session token. Tests get a sibling path so wiremock can serve it.
+        let openapi_base_url = if trimmed == "https://api.tidal.com/v1" {
+            "https://openapi.tidal.com/v2".to_string()
+        } else {
+            format!("{trimmed}/openapi/v2")
+        };
         Self {
             http,
             base_url,
             v2_base_url,
+            openapi_base_url,
             token_url: token_url.into(),
             session,
             tokens: Arc::new(RwLock::new(tokens)),
@@ -316,16 +326,34 @@ impl TidalClient {
         path: &str,
         params: &[(&str, String)],
     ) -> Result<T> {
+        self.get_at_base(&self.v2_base_url, path, params).await
+    }
+
+    /// GET on the public OpenAPI base (JSON:API). Callers pass `countryCode`
+    /// explicitly; the base does not get it injected like the v1 base.
+    pub async fn get_openapi<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        params: &[(&str, String)],
+    ) -> Result<T> {
+        self.get_at_base(&self.openapi_base_url, path, params).await
+    }
+
+    /// Shared non-v1 GET: refresh-on-401, then decode.
+    async fn get_at_base<T: DeserializeOwned>(
+        &self,
+        base: &str,
+        path: &str,
+        params: &[(&str, String)],
+    ) -> Result<T> {
         let token = self.access_token();
-        let mut resp = self
-            .send_get_at(&self.v2_base_url, path, params, &token)
-            .await?;
+        let mut resp = self.send_get_at(base, path, params, &token).await?;
         let mut refreshed = false;
         if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
             self.try_refresh(&token).await?;
             refreshed = true;
             resp = self
-                .send_get_at(&self.v2_base_url, path, params, &self.access_token())
+                .send_get_at(base, path, params, &self.access_token())
                 .await?;
         }
         if refreshed && resp.status() == reqwest::StatusCode::UNAUTHORIZED {

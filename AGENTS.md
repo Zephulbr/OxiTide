@@ -14,7 +14,7 @@ Prereqs: Rust stable (`rust-toolchain.toml` pins it, with clippy/rustfmt), Node 
 
 ## Architecture
 
-- `crates/oxitide-tidal` — pure async TIDAL API client (PKCE auth, token refresh, catalog/search/library/home). No Tauri/UI deps. All HTTP goes through `TidalClient::get` / `get_all_pages` in `client.rs`, which does single-flight refresh-on-401; new endpoints should reuse it.
+- `crates/oxitide-tidal` — pure async TIDAL API client (PKCE auth, token refresh, catalog/search/library/home). No Tauri/UI deps. All HTTP goes through `TidalClient::get` / `get_all_pages` in `client.rs`, which does single-flight refresh-on-401; new endpoints should reuse it. Two non-v1 bases exist: internal `api.tidal.com/v2` (`get_v2`, used for writes/feed/folders) and public `openapi.tidal.com/v2` (`get_openapi`, JSON:API; playlist follower counts live only there).
 - `crates/oxitide-app` — Tauri shell. New `#[tauri::command]` fns in `src/commands.rs` must also be listed in `generate_handler![...]` in `src/main.rs`, or the UI's `invoke` fails.
 - `ui/` — Svelte 5 runes only (`$state`, `$props`, `$effect`); no Svelte 4 stores or `export let`. Routing is a hand-rolled `Route` union in `ui/src/lib/nav.svelte.ts`, switched in `App.svelte`.
 - Playback is implemented: `crates/oxitide-audio` holds the engine (queue, decode, cache, WASAPI output); `crates/oxitide-app/src/player.rs` wires it and maps DTOs. Plans 1–14 (playback, favorites, playlists, UX/data interaction, visual system, mini-player, integrations) and post-MVP Tracks 1–6 have shipped; Track 3 (performance) is complete (Phases A–D, 2026-10-02). Sequencing and future tracks live in `docs/superpowers/specs/2026-09-24-oxitide-post-mvp-roadmap.md`.

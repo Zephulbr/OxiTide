@@ -21,6 +21,8 @@ export interface Playlist {
   squareImage?: string | null;
   created?: string | null;
   lastItemAddedAt?: string | null; lastUpdated?: string | null;
+  publicPlaylist?: boolean | null;
+  numberOfFollowers?: number | null;
   owned: boolean;
 }
 export interface PageItem { id: string; title: string; subtitle?: string | null; item_type: string; artwork?: string | null }
