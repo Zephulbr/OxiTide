@@ -277,7 +277,7 @@
 {:else if sections.length === 0}
   <EmptyState message="Nothing to explore yet." />
 {:else}
-  <PageSections {sections} {nav} />
+  <PageSections {sections} {nav} {toasts} source="explore" />
 {/if}
 
 <style>

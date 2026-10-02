@@ -6,8 +6,9 @@
   import Loading from "../lib/components/Loading.svelte";
   import PageSections from "../lib/components/PageSections.svelte";
   import type { Nav } from "../lib/nav.svelte";
+  import type { Toasts } from "../lib/toasts.svelte";
 
-  let { nav }: { nav: Nav } = $props();
+  let { nav, toasts }: { nav: Nav; toasts: Toasts } = $props();
 
   let forYou = $state<PageSection[]>([]);
   let mixes = $state<Mix[]>([]);
@@ -44,7 +45,7 @@
   <EmptyState message="No mixes yet." />
 {:else}
   {#if forYou.length > 0}
-    <PageSections sections={forYou} {nav} />
+    <PageSections sections={forYou} {nav} {toasts} source="forYou" />
   {/if}
   {#if mixes.length > 0}
     <h3>Favorite mixes</h3>

@@ -5,8 +5,9 @@
   import Loading from "../lib/components/Loading.svelte";
   import PageSections from "../lib/components/PageSections.svelte";
   import type { Nav } from "../lib/nav.svelte";
+  import type { Toasts } from "../lib/toasts.svelte";
 
-  let { nav }: { nav: Nav } = $props();
+  let { nav, toasts }: { nav: Nav; toasts: Toasts } = $props();
 
   let sections = $state<PageSection[]>([]);
   let loading = $state(true);
@@ -37,5 +38,5 @@
 {:else if sections.length === 0}
   <EmptyState message="Nothing to show yet." />
 {:else}
-  <PageSections {sections} {nav} />
+  <PageSections {sections} {nav} {toasts} source="home" />
 {/if}
