@@ -150,8 +150,8 @@ export function isPlayableTrack(item: PageItem): boolean;
 ### 4.5 Components — `ui/src/lib/components`
 
 - **`MediaCard.svelte` (new):** props `item: PageItem`, `variant: "tile" | "carousel" | "row"`,
-  `onclick?: () => void`, `thumb?: number` (row variant only, default 40), and an optional
-  `art` snippet (used by the strip to render `PlaylistCover` instead of `Cover`). Applies the
+  `onclick?: () => void`, `thumb?: number` (row variant only, default 40), and `collage?:
+  boolean` (renders `PlaylistCover` instead of `Cover`, for owned-playlist tiles). Applies the
   shape class from `shapeForItemType` (radius, deck edge, mix badge with
   the inlined `radio` icon, `aria-hidden` badge), title and optional muted subtitle. Renders a
   `<button>` when `onclick` is set and a plain non-interactive `<div>` otherwise (no hover
