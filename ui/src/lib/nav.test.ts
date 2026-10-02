@@ -257,3 +257,48 @@ describe("routeForPageItem", () => {
     expect(routeForPageItem(pageItem("ALBUM", "not-a-number"))).toBeNull();
   });
 });
+
+describe("section routes", () => {
+  it("round-trips a section route through storage", () => {
+    const storage = fakeStorage();
+    const nav = createNav(storage);
+    nav.goto({ name: "section", source: "home", title: "Suggested new albums" });
+
+    const restored = createNav(storage);
+
+    expect(restored.route).toEqual({
+      name: "section",
+      source: "home",
+      title: "Suggested new albums",
+    });
+  });
+
+  it("treats two sections as distinct history entries", () => {
+    const nav = createNav();
+    nav.goto({ name: "section", source: "home", title: "A" });
+    nav.goto({ name: "section", source: "home", title: "B" });
+
+    expect(nav.canBack).toBe(true);
+    nav.back();
+    expect(nav.route).toEqual({ name: "section", source: "home", title: "A" });
+  });
+
+  it("rejects stored sections with an unknown source or empty title", () => {
+    const cases = [
+      '{"history":[{"name":"section","source":"mixes","title":"A"}],"index":0}',
+      '{"history":[{"name":"section","source":"home","title":""}],"index":0}',
+      '{"history":[{"name":"section","source":"home"}],"index":0}',
+    ];
+    for (const raw of cases) {
+      expect(createNav(fakeStorage(raw)).route, raw).toEqual({ name: "home" });
+    }
+  });
+});
+
+describe("routeForPageItem artists", () => {
+  it("routes artist items with a numeric id", () => {
+    expect(routeForPageItem(pageItem("ARTIST", "42"))).toEqual({ name: "artist", id: 42 });
+    expect(routeForPageItem(pageItem("ARTIST_LIST", "42"))).toEqual({ name: "artist", id: 42 });
+    expect(routeForPageItem(pageItem("ARTIST", "nope"))).toBeNull();
+  });
+});

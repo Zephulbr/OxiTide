@@ -19,6 +19,7 @@ export type Route =
   | { name: "playlist"; id: string }
   | { name: "artist"; id: number }
   | { name: "mix"; id: string }
+  | { name: "section"; source: "home" | "explore" | "forYou"; title: string }
   | { name: "settings" };
 
 export interface Nav {
@@ -39,6 +40,9 @@ export interface Nav {
 
 function sameRoute(a: Route, b: Route): boolean {
   if (a.name !== b.name) return false;
+  if (a.name === "section" && b.name === "section") {
+    return a.source === b.source && a.title === b.title;
+  }
   if ("id" in a && "id" in b) return a.id === b.id;
   return true;
 }
@@ -52,6 +56,9 @@ export function routeForPageItem(item: PageItem): Route | null {
   const type = item.item_type.toUpperCase();
   if (type === "MIX" || type === "MIX_LIST") {
     return { name: "mix", id: item.id };
+  }
+  if (type.includes("ARTIST") && NUMERIC_ID.test(item.id)) {
+    return { name: "artist", id: Number(item.id) };
   }
   if ((type.includes("PLAYLIST") || type.includes("EDITORIAL")) && !NUMERIC_ID.test(item.id)) {
     return { name: "playlist", id: item.id };
@@ -99,6 +106,16 @@ function parseRoute(value: unknown): Route | null {
       return typeof record.id === "string" && record.id.length > 0
         ? { name: "mix", id: record.id }
         : null;
+    case "section": {
+      const source = record.source;
+      if (source === "home" || source === "explore" || source === "forYou") {
+        const title = record.title;
+        if (typeof title === "string" && title.length > 0) {
+          return { name: "section", source, title };
+        }
+      }
+      return null;
+    }
     case "album":
       return typeof record.id === "number" && Number.isInteger(record.id) && record.id > 0
         ? { name: "album", id: record.id }

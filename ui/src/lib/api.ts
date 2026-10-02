@@ -26,7 +26,7 @@ export interface Playlist {
   owned: boolean;
 }
 export interface PageItem { id: string; title: string; subtitle?: string | null; item_type: string; artwork?: string | null }
-export interface PageSection { title: string; items: PageItem[] }
+export interface PageSection { title: string; items: PageItem[]; kind: string }
 /// One release activity from an artist the user follows (v2 feed).
 export interface FeedActivity {
   id: number;
@@ -272,6 +272,8 @@ export const api = {
     invoke<void>("set_favorite_artist", { artistId, favorite }),
   playTracks: (items: QueueItem[], start: number, shuffle = false) =>
     invoke<void>("play_tracks", { items, start, shuffle }),
+  playTrackIds: (ids: number[], start: number, shuffle = false) =>
+    invoke<void>("play_track_ids", { ids, start, shuffle }),
   playPause: () => invoke<void>("play_pause"),
   retry: () => invoke<void>("retry"),
   next: () => invoke<void>("next"),
