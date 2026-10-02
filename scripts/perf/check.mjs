@@ -40,17 +40,42 @@ export function readRuns(files) {
   return [...runs.values()];
 }
 
+/// Median of a numeric array (upper middle for even counts, a real sample).
+function median(values) {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)];
+}
+
+/// Soak drift anchored at a settled baseline: median of the last 5 min minus
+/// the median of the 1-5 min window, so WebView2's process-start ramp is not
+/// counted as a leak. Short runs with no settled window fall back to
+/// last - first.
+export function settledDrift(samples) {
+  const start = samples[0].t;
+  const end = samples[samples.length - 1].t;
+  const baseline = samples.filter((m) => m.t >= start + 60_000 && m.t <= start + 300_000);
+  const tail = samples.filter((m) => m.t >= end - 300_000);
+  if (baseline.length === 0 || tail.length === 0) {
+    return samples[samples.length - 1].mb - samples[0].mb;
+  }
+  return median(tail.map((m) => m.mb)) - median(baseline.map((m) => m.mb));
+}
+
 export function metricsFor(run) {
   const metrics = { scenario: run.scenario, cache_hits: 0, cache_misses: 0 };
   const frames = new Map(); // mode -> number[]
   const longTasks = [];
   const memories = []; // {t_ms, mb}
+  const appMemories = []; // {t_ms, mb} from the self process rows
   const cacheDecisions = []; // 1 = hit, 0 = miss, in event order
   let advanceMax = 0;
   for (const line of run.lines) {
     if (line.kind === "mark") metrics[`${line.name}_ms`] = line.t_ms;
     if (line.kind === "ttfs") metrics.ttfs_ms = line.ms;
     if (line.kind === "memory") memories.push({ t: line.t_ms, mb: line.mb });
+    if (line.kind === "memory_process" && line.self) {
+      appMemories.push({ t: line.t_ms, mb: line.mb });
+    }
     if (line.kind === "audio") {
       if (line.event === "cache_hit") {
         metrics.cache_hits += 1;
@@ -116,9 +141,10 @@ export function metricsFor(run) {
   if (advanceMax > 0) metrics.advance_max_gap_ms = advanceMax;
   if (memories.length > 0) {
     metrics.memory_max_mb = Math.max(...memories.map((m) => m.mb));
-    const first = memories[0].mb;
-    const last = memories[memories.length - 1].mb;
-    metrics.memory_drift_mb = last - first;
+    metrics.memory_drift_mb = settledDrift(memories);
+  }
+  if (appMemories.length > 0) {
+    metrics.memory_drift_app_mb = settledDrift(appMemories);
   }
   for (const [mode, samples] of frames) {
     metrics[`frame_p95_ms:${mode}`] = Math.max(...samples.map((s) => s.p95));

@@ -99,7 +99,7 @@ mounted with the auth gate resolved (login screen or home rendered).
 | Filter/sort | filter keystroke → repaint **≤ 50 ms** at 10k loaded rows; full sort of 10k **≤ 150 ms** | Instrument mode; debounce permitted |
 | Play-all/queue | queue build for 10k tracks **≤ 250 ms** | loaded list |
 | Large page open | 2k+ row first page visible **≤ 500 ms** after data resolves; 500-track album opens **≤ 1 s** | warm API caches |
-| Memory | idle after auth **≤ 300 MB**; during playback **≤ 450 MB**; 2 h soak drift **≤ +50 MB** | working set = app process + its WebView2 child processes |
+| Memory | idle after auth **≤ 300 MB**; during playback **≤ 450 MB**; 2 h soak drift **≤ +50 MB** (settled baseline: median of the 1-5 min window vs the last 5 min) with app-process-only drift **≤ +25 MB** | working set = app process + its WebView2 child processes |
 | Cache/eviction | repeat loop of 10 Max tracks (~2 GB) with the default 2 GiB cap: second pass **≥ 90 % hits**, no track re-downloaded twice within a loop; eviction commit cost stays O(evicted), no full-directory rescan on normal play | local NVMe |
 | Stability | zero main-thread tasks **> 200 ms** outside startup; no crash or unhandled rejection in the 2 h soak; cache files never corrupted (atomic writes verified) | soak includes skip/quality-switch churn |
 
@@ -111,6 +111,11 @@ Notes:
   default 2 GiB cap holds only a few Max tracks. If the outcome cannot be met with LRU
   alone, the fix may include protecting the current and next track and/or documenting a
   recommended cap, but not silently raising defaults beyond what the owner approves.
+- The 2 h soak drift is anchored at a settled baseline (median of the samples 1-5 min
+  after session start vs the median of the last 5 min) so WebView2's process-start ramp
+  is not counted as leak; the app-process-only row (`memory_drift_app_mb`, ≤ +25 MB) is
+  the leak detector for app-owned memory. Owner-approved metric-semantics ruling,
+  2026-10-02, recorded in the final note.
 - All budgets are the source of truth; `scripts/perf/budgets.json` mirrors them for the
   gate and must be updated in the same commit as any owner-approved change.
 

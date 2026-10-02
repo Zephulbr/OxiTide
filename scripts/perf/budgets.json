@@ -58,6 +58,7 @@
   ],
   "S9": [
     { "metric": "memory_drift_mb", "max": 50 },
+    { "metric": "memory_drift_app_mb", "max": 25, "required": true },
     { "metric": "memory_max_mb", "max": 450 }
   ]
 }

@@ -264,3 +264,51 @@ test("queue build samples aggregate into queue_build_ms", () => {
   const metrics = metricsFor(readRuns([file])[0]);
   assert.equal(metrics.queue_build_ms, 123);
 });
+
+test("soak drift measures from a settled baseline, not the cold first sample", () => {
+  const file = runFile([
+    { kind: "session", run_id: "S9-1", scenario: "S9" },
+    { kind: "memory", mb: 363, t_ms: 2500 },
+    { kind: "memory", mb: 551, t_ms: 120000 },
+    { kind: "memory", mb: 552, t_ms: 240000 },
+    { kind: "memory", mb: 560, t_ms: 6000000 },
+    { kind: "memory", mb: 565, t_ms: 7180000 },
+    { kind: "memory", mb: 566, t_ms: 7190000 },
+  ]);
+  const metrics = metricsFor(readRuns([file])[0]);
+  assert.equal(metrics.memory_max_mb, 566);
+  assert.equal(metrics.memory_drift_mb, 14);
+  assert.ok(metrics.memory_drift_mb < 50);
+});
+
+test("app-only soak drift uses the self process rows", () => {
+  const file = runFile([
+    { kind: "session", run_id: "S9-2", scenario: "S9" },
+    { kind: "memory", mb: 363, t_ms: 2500 },
+    { kind: "memory_process", name: "oxitide-app.exe", self: true, mb: 47, t_ms: 2500 },
+    { kind: "memory_process", name: "msedgewebview2.exe", self: false, mb: 306, t_ms: 2500 },
+    { kind: "memory", mb: 551, t_ms: 120000 },
+    { kind: "memory_process", name: "oxitide-app.exe", self: true, mb: 85, t_ms: 120000 },
+    { kind: "memory_process", name: "msedgewebview2.exe", self: false, mb: 456, t_ms: 120000 },
+    { kind: "memory", mb: 566, t_ms: 7190000 },
+    { kind: "memory_process", name: "oxitide-app.exe", self: true, mb: 86, t_ms: 7190000 },
+    { kind: "memory_process", name: "msedgewebview2.exe", self: false, mb: 470, t_ms: 7190000 },
+  ]);
+  const metrics = metricsFor(readRuns([file])[0]);
+  assert.equal(metrics.memory_drift_app_mb, 1);
+});
+
+test("app-only drift is required and unmeasured without per-process rows", () => {
+  const file = runFile([
+    { kind: "session", run_id: "S9-3", scenario: "S9" },
+    { kind: "memory", mb: 500, t_ms: 120000 },
+    { kind: "memory", mb: 520, t_ms: 7190000 },
+  ]);
+  const metrics = metricsFor(readRuns([file])[0]);
+  assert.equal(metrics.memory_drift_app_mb, undefined);
+  const { ok, results } = evaluate([{ scenario: "S9", metrics }], {
+    S9: [{ metric: "memory_drift_app_mb", max: 25, required: true }],
+  });
+  assert.equal(results[0].status, "fail");
+  assert.equal(ok, false);
+});
