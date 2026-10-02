@@ -3,7 +3,7 @@
 - **Date:** 2026-10-02
 - **Build:** `track3-memory-cache` worktree. Rust binary `target/debug/oxitide-app.exe` built at `f51d9c8` (Phase D implementation HEAD; no Rust changes after it); the UI is served by the worktree's Vite dev server on 1420 (warm for every measured run). Scenarios driven over the WebView2 CDP endpoint (`scripts/perf/run-scenario.ps1` + `scripts/perf/drive.mjs`); budget gate `scripts/perf/check.mjs` against the spec §4.2 table plus the Phase C/D rows. `t_ms` is process-relative (loader time included), same timing base as the baseline.
 - **Machine:** Ryzen 7 5700X3D / 32 GB / RX 9070 XT / Windows 11 25H2 (same machine as the baseline).
-- **Conditions:** quiet machine for the whole final corpus — VMs and browsers closed, only two idle Brave tabs; single app, foreground, Vite warm, network as-is. `S9` is the Task 8 120-minute soak (`1790869962`, 2026-10-01) reused as the final S9 corpus; `S10` is the owner checklist and is **pending**.
+- **Conditions:** quiet machine for the whole final corpus — VMs and browsers closed, only two idle Brave tabs; single app, foreground, Vite warm, network as-is. `S9` is the Task 8 120-minute soak (`1790869962`, 2026-10-01) reused as the final S9 corpus; `S10` is the owner checklist, completed 2026-10-02.
 - **Corpus:** S1, S2, S3-miss, S3-hit, S4, S5-instrument, S5-atmosphere, S6, S7 ×5, S8 ×1, S9 ×1. Raw JSONL is gitignored under `.superpowers/perf/runs/`; every invalid or noisy batch was quarantined, never deleted (inventory at the end).
 
 ## Final budget table (S1–S10)
@@ -50,7 +50,7 @@
 | S9 | memory_drift_mb | ≤ 50 | 56.0 (raw) | 14.0 (settled) | PASS (metric corrected) |
 | S9 | memory_drift_app_mb | ≤ 25 | — | 1.0 | PASS (Phase D row) |
 | S9 | memory_max_mb | ≤ 755 | 585.0 | 655.0 | PASS (renegotiated) |
-| S10 | manual stability | checklist | — | pending | UNMEASURED (owner) |
+| S10 | manual stability | checklist | — | PASS | PASS (owner smoke 2026-10-02) |
 
 The gate (`node scripts/perf/check.mjs`) exits 1 on the single documented S4 row only. Every other row passes; no budget was weakened (the memory ceilings were raised only under the owner-approved renegotiation below, and the drift row's threshold is unchanged).
 
@@ -88,15 +88,23 @@ The gate (`node scripts/perf/check.mjs`) exits 1 on the single documented S4 row
 
 - Baseline defect: a cached seek passed the full plan (with `seek_ms`) into `decode_source` while the sink discarded relative to the segment start, so playback resumed near the track start with `position_ms` seeded at the target (reported position ran past `duration_ms`).
 - Fix `ccfdcb1 fix(audio): discard cached seeks relative to the source start` records `source_start_frames` and discards relative to the actual source start; the network path is unchanged. Engine tests: `discard_is_relative_to_the_actual_source_start`, `cached_seek_starts_at_the_target`.
-- **Owner smoke: pending** — checklist in `2026-10-01-track3-phase-d-smoke.md` (play to completion, seek mid-track twice and backwards, uncached seek unchanged).
+- **Owner smoke: PASS (2026-10-02)** — played to completion, replayed and sought mid-track (twice, and backwards): audio jumps to the target, the position never exceeds the duration, the next track advances; an uncached seek is unchanged. Checklist: `2026-10-01-track3-phase-d-smoke.md`.
 
-## S10 — manual stability (pending owner)
+## S10 — manual stability (owner smoke, PASS 2026-10-02)
 
-Checklist in `2026-10-01-track3-phase-d-smoke.md`: device hot-plug (pause + notice, resume, default-device switch mid-playback), cache clear-on-exit integrity (clean exit, empty cache, `get_cache_status` 0, no `.part` files), and the cached-seek items above. The Task 8 S9 soak already covers the automated stability half: 120 min, 3,607 memory samples, 0 error lines, no crash, cache files intact.
+Device hot-plug (pause + notice, resume, default-device switch mid-playback) and cache
+clear-on-exit (clean exit; empty cache with `get_cache_status` 0; with clear-on-exit off,
+replay after relaunch is a cache hit with no `.part` files) all worked as expected. The
+cached-seek items are recorded above. The Task 8 S9 soak covers the automated stability
+half: 120 min, 3,607 memory samples, 0 error lines, no crash, cache files intact.
 
-## Official-client sanity (pending owner)
+## Official-client sanity (owner note, 2026-10-02)
 
-Non-gating qualitative comparison (cold start feel, TTFS, scroll smoothness, Task Manager memory) against the official TIDAL desktop client, to be recorded here by the owner.
+Non-gating qualitative comparison (T3-D3). Owner note: "Official client is way too slow
+to compare with ours — there is a visible wait when loading track batches on large lists;
+memory is ~1.1–1.6 GB when Now Playing is on." Context: OxiTide's S6 10k-list interactions
+measure 22.1 ms filter / 33.1 ms sort / 17.6 ms album open, and its working set across
+S1–S9 is 363–655 MB.
 
 ## What each Phase D commit changed
 
@@ -128,7 +136,7 @@ Non-gating qualitative comparison (cold start feel, TTFS, scroll smoothness, Tas
 | S7 | `1790896350`, `1790896387`, `1790896425`, `1790896462`, `1790896500` | same |
 | S8 | `1790896544` | — |
 | S9 | `1790869962` (2026-10-01 Task 8, 120 min) | — |
-| S10 | owner checklist | pending |
+| S10 | owner checklist | completed 2026-10-02 (`2026-10-01-track3-phase-d-smoke.md`) |
 
 Quarantine trail also includes `phase-d-s3hit-cold/` (pre-fix S3-hit) and the Phase D pre-allowlist corpus. Nothing was deleted.
 

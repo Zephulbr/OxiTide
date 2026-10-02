@@ -1,6 +1,6 @@
 # OxiTide — Track 3 Performance & Stability
 
-- **Status:** Done — Phases A-D complete 2026-10-02 (S10 manual smoke + official-client sanity pending owner)
+- **Status:** Done — Phases A-D complete 2026-10-02
 - **Date:** 2026-09-30
 - **Owner:** V
 - **Parents:** `2026-09-24-oxitide-post-mvp-roadmap.md` (Track 3, PM-D1, PM-D5);

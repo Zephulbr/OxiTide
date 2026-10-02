@@ -10,6 +10,7 @@
 - **Revised:** 2026-10-01 — Track 8 (Linux support) added and sequenced before Track 7; findings in `plans/notes/2026-10-01-linux-support-spike.md`.
 - **Revised:** 2026-10-01 — Project hygiene batch (LICENSE/notices/CSP/docs) landed; Track 2b closed and its remainder extracted to new **Track 9 (UI completion)**; new **Track 10 (QoL)** added; Track 7 gains ReplayGain and crossfade/automix research; global non-goals recorded (PM-D6).
 - **Revised:** 2026-10-02 — Track 3 Phase D (memory, cache/eviction, stability) complete; Phases A–D done, S10 owner smoke + official-client sanity pending.
+- **Revised:** 2026-10-02 — Track 3 closed: S10 owner smoke and the official-client sanity note complete.
 - **Owner:** V
 - **Parent:** `2026-09-21-oxitide-design.md` (§9 Phasing)
 - **Supersedes:** the parent's Phase 2–4 ordering. The shipped Phase 1 MVP (v0.2.0) is
@@ -29,8 +30,7 @@ Owner-confirmed ordering (2026-09-24), execution order revised 2026-09-28 (PM-D5
 refreshed 2026-10-01.
 
 **Track labels are stable; the execution order below is not track-number order.** Tracks
-4–6 are complete; Track 3 is closing (Phases A–D complete 2026-10-02; S10 owner smoke and
-the official-client sanity paragraph pending).
+4–6 are complete; Track 3 is complete (Phases A–D, 2026-10-02).
 
 | Exec | Track | Outcome | Status |
 |---|---|---|---|
@@ -40,7 +40,7 @@ the official-client sanity paragraph pending).
 | 1 | Track 4 | Lyrics + discovery: synced lyrics view; discovery feeds/mixes; track radio / similar artists | Done (4a lyrics + 4b discovery) |
 | 2 | Track 5 | Scrobbling: Last.fm and ListenBrainz in parallel, independent toggles; now-playing, offline queue, retry | Done (Last.fm + ListenBrainz; smoke closed 2026-09-29) |
 | 3 | Track 6 | Remaining integrations: Discord RPC; SMTC + hardware media keys | Done (6a SMTC/media keys + 6b Discord Rich Presence) |
-| now | Track 3 | Performance & stability wave: profile and fix startup, time-to-first-sound, UI jank, memory, cache/eviction churn, large-library handling; build a measurement harness | Closing — Phases A–D complete 2026-10-02; S10 owner smoke + official-client sanity pending (`plans/notes/2026-10-02-track3-phase-d.md`) |
+| now | Track 3 | Performance & stability wave: profile and fix startup, time-to-first-sound, UI jank, memory, cache/eviction churn, large-library handling; build a measurement harness | Done — Phases A–D complete 2026-10-02 (`plans/notes/2026-10-02-track3-phase-d.md`) |
 | 5 | Track 9 | UI completion: Hi-Fi Rack mode, light mode, artist/credits/album-info surfaces, a11y pass, i18n, remaining UI polish and bug fixes | Proposed — next after Track 3 (owner call) |
 | 6 | Track 8 | Linux support: ALSA output backend, MPRIS media controls, Secret Service keyring, deb/AppImage/AUR packaging | Proposed — after Track 9 (owner call); see `plans/notes/2026-10-01-linux-support-spike.md` |
 | 7 | Track 10 | Daily-driver QoL: session/queue persistence, playback history + stats, sleep timer, scrobble love, AI/explicit content blocking; Phase 2 tray + global hotkeys | Proposed — after Track 8 (owner call); research questions in `plans/notes/2026-10-01-qol-research.md` |
@@ -134,7 +134,7 @@ which carries a normal completion gate.
   the peak ceilings to the WebView2-inclusive p95 + ~15% (S1 570, S2 560, S3/S4 645, S5-atm 675,
   S5-inst 690, S6 740, S7 670, S8 660, S9 755) because the app-owned share is only 52–91 MB; S9
   settled drift is +14 all-process / +1 app (≤ 50 / ≤ 25). S10 owner smoke and the official-client
-  sanity paragraph are pending; the harness is documented in `AGENTS.md`.
+  sanity note are complete (2026-10-02); the harness is documented in `AGENTS.md`.
 
 ### Track 4 — Lyrics + discovery
 
