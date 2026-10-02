@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { api, type Album } from "../lib/api";
-  import Cover from "../lib/components/Cover.svelte";
+  import { api, type Album, type PageItem } from "../lib/api";
+  import MediaCard from "../lib/components/MediaCard.svelte";
   import EmptyState from "../lib/components/EmptyState.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
   import Loading from "../lib/components/Loading.svelte";
@@ -39,11 +39,14 @@
 {:else}
   <div class="grid">
     {#each albums as album (album.id)}
-      <button class="card" onclick={() => nav.goto({ name: "album", id: album.id })}>
-        <span class="art"><Cover uuid={album.cover} size={320} radius={12} alt="" /></span>
-        <span class="title">{album.title}</span>
-        <span class="muted sub">{album.artists.map((a) => a.name).join(", ")}</span>
-      </button>
+      {@const item: PageItem = {
+        id: String(album.id),
+        title: album.title,
+        subtitle: album.artists.map((a) => a.name).join(", "),
+        item_type: "ALBUM",
+        artwork: album.cover ?? null,
+      }}
+      <MediaCard {item} variant="tile" onclick={() => nav.goto({ name: "album", id: album.id })} />
     {/each}
   </div>
 {/if}
@@ -53,35 +56,5 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
     gap: 16px;
-  }
-  .card {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    text-align: left;
-    padding: 10px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius-card);
-    color: inherit;
-  }
-  .card:hover {
-    background: var(--surface-2);
-  }
-  .art {
-    display: block;
-    overflow: hidden;
-    border-radius: var(--radius-card);
-  }
-  .title {
-    font-weight: 500;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .sub {
-    font-size: 11.5px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 </style>
