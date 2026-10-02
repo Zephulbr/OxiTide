@@ -7,6 +7,7 @@
   let { actions }: { actions: CollectionActions } = $props();
 
   let name = $state("");
+  let folderName = $state("");
 
   $effect(() => {
     const target = actions.renameTarget;
@@ -15,6 +16,10 @@
         ? target.playlist.title
         : target.folder.name
       : "";
+  });
+
+  $effect(() => {
+    if (actions.createFolderTarget) folderName = "";
   });
 
   function removeMessage(): string {
@@ -44,6 +49,26 @@
       <p class="actions">
         <button type="button" onclick={() => actions.close()}>Cancel</button>
         <button type="submit" disabled={actions.busy || name.trim() === ""}>Save</button>
+      </p>
+    </form>
+  </Modal>
+{/if}
+
+{#if actions.createFolderTarget}
+  <Modal title="New folder" onclose={() => actions.close()}>
+    <form
+      onsubmit={(event) => {
+        event.preventDefault();
+        void actions.createFolder(folderName);
+      }}
+    >
+      <label>
+        Name
+        <input bind:value={folderName} aria-label="Folder name" />
+      </label>
+      <p class="actions">
+        <button type="button" onclick={() => actions.close()}>Cancel</button>
+        <button type="submit" disabled={actions.busy || folderName.trim() === ""}>Create</button>
       </p>
     </form>
   </Modal>

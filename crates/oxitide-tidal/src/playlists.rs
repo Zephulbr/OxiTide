@@ -114,7 +114,9 @@ impl TidalClient {
         Ok(self.playlist_and_etag(id).await?.1)
     }
 
-    /// Create a playlist in the user's root folder (v2 endpoint).
+    /// Create a playlist in the user's root folder (v2 endpoint). Visibility is
+    /// a separate write (`set_playlist_public`); the create call takes no
+    /// public flag.
     pub async fn create_playlist(&self, name: &str, description: &str) -> Result<Playlist> {
         let envelope: V2Envelope<Playlist> = self
             .put_json(
@@ -129,6 +131,13 @@ impl TidalClient {
         let mut playlist = envelope.data;
         playlist.mark_owned(self.session().user_id, true);
         Ok(playlist)
+    }
+
+    /// Toggle the playlist's visibility. TIDAL exposes this as two dedicated
+    /// v2 writes; the create endpoint ignores a public flag.
+    pub async fn set_playlist_public(&self, id: &str, public: bool) -> Result<()> {
+        let action = if public { "set-public" } else { "set-private" };
+        self.put_v2(&format!("playlists/{id}/{action}"), &[]).await
     }
 
     /// Rename a playlist and/or change its description.
@@ -394,6 +403,36 @@ mod tests {
             .mount(&server)
             .await;
         assert!(client(&server).create_playlist("No id", "").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn set_playlist_public_puts_the_v2_endpoint() {
+        let server = MockServer::start().await;
+        Mock::given(method("PUT"))
+            .and(path("/v2/playlists/p-uuid/set-public"))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&server)
+            .await;
+        client(&server)
+            .set_playlist_public("p-uuid", true)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn set_playlist_private_puts_the_v2_endpoint() {
+        let server = MockServer::start().await;
+        Mock::given(method("PUT"))
+            .and(path("/v2/playlists/p-uuid/set-private"))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&server)
+            .await;
+        client(&server)
+            .set_playlist_public("p-uuid", false)
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
@@ -847,9 +886,10 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "items": [
                     {"uuid": "a", "title": "A",
+                     "created": "2026-01-05T00:00:00.000+0000",
                      "lastItemAddedAt": "2026-09-29T20:19:47.004+0000",
                      "lastUpdated": "2026-09-29T20:19:47.004+0000"},
-                    {"uuid": "b", "title": "B", "lastItemAddedAt": null,
+                    {"uuid": "b", "title": "B", "created": null, "lastItemAddedAt": null,
                      "lastUpdated": "2025-01-02T03:04:05.000+0000"}
                 ],
                 "totalNumberOfItems": 2, "limit": 50, "offset": 0
@@ -858,9 +898,14 @@ mod tests {
             .await;
         let items = client(&server).user_playlists(50, 0).await.unwrap();
         assert_eq!(
+            items[0].created.as_deref(),
+            Some("2026-01-05T00:00:00.000+0000")
+        );
+        assert_eq!(
             items[0].last_item_added_at.as_deref(),
             Some("2026-09-29T20:19:47.004+0000")
         );
+        assert_eq!(items[1].created, None);
         assert_eq!(items[1].last_item_added_at, None);
         assert_eq!(
             items[1].last_updated.as_deref(),

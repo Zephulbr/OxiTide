@@ -57,7 +57,7 @@
     playing: boolean;
   }
 
-  const nav = createNav();
+  const nav = createNav(window.localStorage);
   const toasts = createToasts();
   const player = createPlayer(toasts);
   createDynamicColor(player);
@@ -130,6 +130,9 @@
         position: snapshot.position_ms,
         playing: snapshot.playing,
       };
+      // The route and its persisted history stay put: after re-login the same
+      // account resumes where it was. Multi-account is a non-goal (PM-D6), so a
+      // different account inheriting the route is not a case handled here.
       loggedIn = false;
       favorites.reset();
       playlistActions.reset();
@@ -311,6 +314,7 @@
     playlistActions.reset();
     collection.reset();
     collectionActions.reset();
+    nav.reset();
     loggedIn = false;
   }
 
@@ -464,8 +468,8 @@
       {:else if nav.route.name === "profiles"}<Profiles {nav} />
       {:else if nav.route.name === "mixes"}<Mixes {nav} />
       {:else if nav.route.name === "purchases"}<Purchases {nav} />
-      {:else if nav.route.name === "playlists"}<Playlists {nav} {playlistActions} {toasts} {collection} actions={collectionActions} />
-      {:else if nav.route.name === "folder"}<Playlists {nav} {playlistActions} {toasts} {collection} actions={collectionActions} folderId={nav.route.id} folderLabel={nav.route.label ?? ""} />
+      {:else if nav.route.name === "playlists"}<Playlists {nav} {playlistActions} actions={collectionActions} />
+      {:else if nav.route.name === "folder"}<Playlists {nav} {playlistActions} actions={collectionActions} folderId={nav.route.id} folderLabel={nav.route.label ?? ""} />
       {:else if nav.route.name === "album"}<Album id={nav.route.id} {player} {favorites} {playlistActions} {toasts} />
       {:else if nav.route.name === "mix"}<Mix id={nav.route.id} {player} {favorites} {playlistActions} {toasts} />
       {:else if nav.route.name === "playlist"}<Playlist {nav} id={nav.route.id} {player} {favorites} {playlistActions} {toasts} {collection} />

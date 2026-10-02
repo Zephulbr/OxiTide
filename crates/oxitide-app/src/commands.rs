@@ -822,6 +822,18 @@ pub async fn create_playlist(
 }
 
 #[tauri::command]
+pub async fn set_playlist_public(
+    state: State<'_, AppState>,
+    id: String,
+    is_public: bool,
+) -> Result<(), String> {
+    require_client(&state)?
+        .set_playlist_public(&id, is_public)
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
 pub async fn rename_playlist(
     state: State<'_, AppState>,
     id: String,
@@ -1678,6 +1690,7 @@ mod tests {
             duration: 0,
             image: None,
             square_image: Some("sq".into()),
+            created: Some("2026-01-05T00:00:00.000+0000".into()),
             last_item_added_at: None,
             last_updated: None,
             creator: None,
@@ -1687,6 +1700,10 @@ mod tests {
         assert_eq!(value["numberOfTracks"], serde_json::json!(3));
         assert_eq!(value["uuid"], serde_json::json!("u"));
         assert_eq!(value["squareImage"], serde_json::json!("sq"));
+        assert_eq!(
+            value["created"],
+            serde_json::json!("2026-01-05T00:00:00.000+0000")
+        );
         assert_eq!(value["lastItemAddedAt"], serde_json::Value::Null);
         assert_eq!(value["lastUpdated"], serde_json::Value::Null);
     }

@@ -42,8 +42,13 @@ committed scope detail; each question needs a spike/answer first.
    from the TIDAL heart (favorites); do not auto-mirror without an explicit
    setting.
 7. **Session/queue persistence shape:** what persists (queue items, current
-   index, position, shuffle/repeat, volume), where (config vs a data file),
-   migration/versioning, and behavior when cached media is evicted.
+   index, position, shuffle/repeat, volume, and the playlist play-source uuid
+   so the sidebar's playing-playlist marker returns with the queue), where
+   (config vs a data file), migration/versioning, and behavior when cached
+   media is evicted. The resume sequence already exists (`player.restore()`
+   in `ui/src/lib/player.svelte.ts`: playTracks, seek, re-pause); missing are
+   a disk store, a save policy, and an auth-gated boot load. Decide whether a
+   restored session starts paused or playing.
 8. **Tray + hotkeys:** Windows-first behavior (close-to-tray vs minimize-to-tray,
    start minimized), conflict handling with SMTC media keys; Linux specifics ride
    on Track 8 (MPRIS, AppIndicator, Wayland global-shortcut portal).

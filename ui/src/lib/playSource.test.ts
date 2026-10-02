@@ -1,9 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { createPlaySource, playlistRowState } from "./playSource.svelte";
 
 describe("playlistRowState", () => {
-  it("lets the playback source win over the open playlist", () => {
-    expect(playlistRowState(true, true)).toBe("source");
+  it("keeps both the playing treatment and the open highlight when both apply", () => {
+    expect(playlistRowState(true, true)).toBe("source-active");
+  });
+  it("marks the playback source when it is not open", () => {
     expect(playlistRowState(true, false)).toBe("source");
   });
   it("keeps the accent treatment for the open playlist when it is not the source", () => {
@@ -22,5 +24,20 @@ describe("createPlaySource", () => {
     expect(source.playlistId).toBe("p1");
     source.set(null);
     expect(source.playlistId).toBe(null);
+  });
+
+  it("reports each playlist that starts playback", () => {
+    const onPlay = vi.fn();
+    const source = createPlaySource(onPlay);
+    source.set("p1");
+    source.set("p2");
+    expect(onPlay.mock.calls).toEqual([["p1"], ["p2"]]);
+  });
+
+  it("does not report clearing the source", () => {
+    const onPlay = vi.fn();
+    const source = createPlaySource(onPlay);
+    source.set(null);
+    expect(onPlay).not.toHaveBeenCalled();
   });
 });

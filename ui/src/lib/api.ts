@@ -19,6 +19,7 @@ export interface Playlist {
   uuid: string; title: string; description?: string | null;
   numberOfTracks: number; duration: number; image?: string | null;
   squareImage?: string | null;
+  created?: string | null;
   lastItemAddedAt?: string | null; lastUpdated?: string | null;
   owned: boolean;
 }
@@ -245,6 +246,8 @@ export const api = {
   getUserPlaylists: () => invoke<Playlist[]>("get_user_playlists"),
   createPlaylist: (name: string, description: string) =>
     invoke<Playlist>("create_playlist", { name, description }),
+  setPlaylistPublic: (id: string, isPublic: boolean) =>
+    invoke<void>("set_playlist_public", { id, isPublic }),
   renamePlaylist: (id: string, title: string, description: string) =>
     invoke<void>("rename_playlist", { id, title, description }),
   deletePlaylist: (id: string) => invoke<void>("delete_playlist", { id }),

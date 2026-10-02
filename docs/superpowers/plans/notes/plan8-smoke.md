@@ -33,6 +33,6 @@ Counts recorded after the final whole-branch review fix (`ad3783f`): no-op short
 
 ## Known caveats
 - Mouse side buttons depend on WebView2/driver mapping; Alt+←/→ is the fallback.
-- History is in-session only; restarting starts at Home (P8-D5).
+- ~~History is in-session only; restarting starts at Home (P8-D5).~~ Superseded 2026-10-02: the last route and history persist across launches; logout clears them.
 - Toast actions exist in the store but no Plan 8 caller renders one yet (deferred undo).
 - Menus are additive; inline row buttons are unchanged.

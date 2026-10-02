@@ -308,6 +308,7 @@ fn main() {
             commands::set_favorite_artist,
             commands::get_favorite_ids,
             commands::create_playlist,
+            commands::set_playlist_public,
             commands::rename_playlist,
             commands::delete_playlist,
             commands::add_playlist_tracks,

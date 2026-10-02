@@ -7,11 +7,18 @@ Requires: real account, browser login, `npm --prefix ui run app:dev`.
 - [ ] Tree indentation/tree-notes align with the new cover size; long playlist names still ellipsis.
 - [ ] Play a playlist (Play, Shuffle, or double-click a row): its sidebar row shows a play glyph over the cover + accent label, with no row background.
 - [ ] Navigate to a different playlist while one is playing: the playing one keeps glyph + accent label; the open one shows the usual accent background tint.
-- [ ] Open the playlist that is the playback source: glyph + accent label (no background), i.e. source wins over open.
-- [ ] Hover the source row: surface tint appears, label stays accent.
+- [x] Open the playlist that is the playback source: glyph + accent label **and** the usual accent background tint — the open highlight combines with the playing marker instead of being suppressed. (owner-verified 2026-10-02)
+- [ ] Hover the source-only row: surface tint appears, label stays accent. Hover the source-active (open) row: the accent highlight persists, label stays accent.
 - [ ] Start playback from Album / Search / Tracks collection / a mix: the sidebar glyph and accent disappear.
 - [ ] Queue rail: jump/next/prev keep the glyph; "Clear" removes it.
 - [ ] Rail (collapsed) mode still shows the glyph over the cover.
+
+## Last-route restore (added 2026-10-02)
+
+- [x] Open a playlist (or album/folder), quit the app, relaunch: it lands on that page; back/forward still work. (owner-verified 2026-10-02)
+- [ ] Open Settings, quit, relaunch: Settings is restored (any route is remembered).
+- [x] Log out, then relaunch: the app starts at Home (logout clears the remembered route). (owner-verified 2026-10-02)
+- [ ] Simulate corrupt storage (`localStorage.setItem("oxitide.nav", "nope")` in the webview console), relaunch: Home.
 
 ## Footer/scroll fix (many playlists)
 

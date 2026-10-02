@@ -5,6 +5,9 @@
   import { menuFor } from "../menu.svelte";
   import { collectionFolderMenuItems, collectionPlaylistMenuItems } from "../menus";
   import type { Nav } from "../nav.svelte";
+  import { playlistRecency } from "../playlistRecency.svelte";
+  import { filterCollectionEntries, sortCollectionEntries } from "../playlistSort";
+  import { playlistView } from "../playlistView.svelte";
   import { playSource, playlistRowState } from "../playSource.svelte";
   import Icon from "./Icon.svelte";
   import Loading from "./Loading.svelte";
@@ -25,6 +28,19 @@
     rail?: boolean;
   } = $props();
 
+  const recency = playlistRecency();
+  const view = playlistView();
+
+  // Folders first, then the selected sort/filter; reactive so pressing Play or
+  // changing the header menu reorders the tree immediately.
+  const rows = $derived(
+    sortCollectionEntries(filterCollectionEntries(entries, view.prefs.filter), {
+      sort: view.prefs.sort,
+      dir: view.prefs.dir,
+      rank: (uuid) => recency.rank(uuid),
+    }),
+  );
+
   function openFolder(id: string, label: string) {
     nav.goto({ name: "folder", id, label });
   }
@@ -34,7 +50,7 @@
   }
 </script>
 
-{#each entries as entry (entry.kind === "folder" ? `f:${entry.id}` : `p:${entry.uuid}`)}
+{#each rows as entry (entry.kind === "folder" ? `f:${entry.id}` : `p:${entry.uuid}`)}
   {#if entry.kind === "folder"}
     <button
       class="row"
@@ -78,8 +94,8 @@
     {@const rowState = playlistRowState(playSource.playlistId === entry.uuid, isActive)}
     <button
       class="row"
-      class:active={rowState === "active"}
-      class:source={rowState === "source"}
+      class:active={rowState === "active" || rowState === "source-active"}
+      class:source={rowState === "source" || rowState === "source-active"}
       aria-current={isActive ? "page" : undefined}
       onclick={() => openPlaylist(entry.uuid)}
       use:menuFor={() =>
@@ -101,7 +117,7 @@
           radius={6}
           alt=""
         />
-        {#if rowState === "source"}
+        {#if rowState === "source" || rowState === "source-active"}
           <span class="playing-mark" aria-hidden="true"><Icon name="play" size={12} /></span>
         {/if}
       </span>
@@ -129,8 +145,10 @@
     background: color-mix(in srgb, var(--accent) 12%, transparent);
     color: var(--accent);
   }
-  /* The playback source: accent label + play glyph on the cover, no row
-     background (spec/sidebar amendment). Hover keeps just its surface tint. */
+  /* The playback source: accent label + play glyph on the cover. It gets the
+     row background only when it is also the open playlist (.active), so the
+     open highlight is never lost to the playing marker; a source-only row
+     still takes the hover surface tint. */
   .row.source {
     color: var(--accent);
   }

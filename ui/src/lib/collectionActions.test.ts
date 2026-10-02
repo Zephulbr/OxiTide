@@ -8,6 +8,7 @@ import type { ToastSeverity, Toasts } from "./toasts.svelte";
 vi.mock("./api", () => ({
   api: {
     getCollectionItems: vi.fn(),
+    createFolder: vi.fn(),
     renamePlaylist: vi.fn(),
     renameFolder: vi.fn(),
     deletePlaylist: vi.fn(),
@@ -137,6 +138,47 @@ describe("collection actions", () => {
       { folder: folder("a"), depth: 0 },
       { folder: folder("b"), depth: 1 },
     ]);
+  });
+
+  it("creates a folder, bumps revision, refreshes, and closes", async () => {
+    vi.mocked(api.createFolder).mockResolvedValue(folder("f9"));
+    const { tree, refresh } = fakeTree();
+    const { toasts, calls } = fakeToasts();
+    const actions = createCollectionActions(tree, toasts);
+
+    actions.openCreateFolder("root");
+    await actions.createFolder("  Road trip  ");
+
+    expect(api.createFolder).toHaveBeenCalledWith("Road trip", "root");
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(actions.revision).toBe(1);
+    expect(actions.createFolderTarget).toBeNull();
+    expect(calls).toEqual([{ message: "Created Road trip", severity: "success" }]);
+  });
+
+  it("keeps the new-folder dialog open when the write fails", async () => {
+    vi.mocked(api.createFolder).mockRejectedValue(new Error("boom"));
+    const { tree, refresh } = fakeTree();
+    const { toasts, calls } = fakeToasts();
+    const actions = createCollectionActions(tree, toasts);
+
+    actions.openCreateFolder("f1");
+    await actions.createFolder("Nope");
+
+    expect(refresh).not.toHaveBeenCalled();
+    expect(actions.revision).toBe(0);
+    expect(actions.createFolderTarget).toEqual({ parentId: "f1" });
+    expect(calls[0]?.severity).toBe("error");
+  });
+
+  it("ignores a blank folder name", async () => {
+    const actions = createCollectionActions(fakeTree().tree, fakeToasts().toasts);
+
+    actions.openCreateFolder("root");
+    await actions.createFolder("   ");
+
+    expect(api.createFolder).not.toHaveBeenCalled();
+    expect(actions.createFolderTarget).not.toBeNull();
   });
 
   it("orders the move picker as a pre-order walk for a branching tree", async () => {

@@ -23,7 +23,7 @@ export interface PlaylistActions {
   close(): void;
   reset(): void;
   addTo(playlist: Playlist): Promise<void>;
-  createAndAdd(name: string, description: string): Promise<Playlist | null>;
+  createAndAdd(name: string, description: string, isPublic: boolean): Promise<Playlist | null>;
   setChoice(trackId: number, addBoth: boolean): void;
   setAllChoices(addBoth: boolean): void;
   confirmDuplicates(): Promise<void>;
@@ -134,22 +134,36 @@ export function createPlaylistActions(toasts: Toasts): PlaylistActions {
     }
   }
 
-  async function createAndAdd(name: string, description: string): Promise<Playlist | null> {
+  async function createAndAdd(
+    name: string,
+    description: string,
+    isPublic: boolean,
+  ): Promise<Playlist | null> {
     if (busy) return null;
     busy = true;
     try {
       const created = await api.createPlaylist(name, description);
       revision += 1;
+      if (isPublic) {
+        try {
+          await api.setPlaylistPublic(created.uuid, true);
+        } catch (e) {
+          toasts.show(
+            `Created ${created.title}, but making it public failed: ${errorMessage(e)}`,
+            { severity: "error" },
+          );
+        }
+      }
       const ids = dedupe(tracks.map((t) => t.id));
       if (ids.length > 0) {
+        const noun = ids.length === 1 ? "track" : "tracks";
         try {
           await api.addPlaylistTracks(created.uuid, ids, false);
           invalidatePlaylistCovers(created.uuid);
-          toasts.show(`Created ${created.title} with ${ids.length} tracks`, {
+          toasts.show(`Created ${created.title} with ${ids.length} ${noun}`, {
             severity: "success",
           });
         } catch (e) {
-          const noun = ids.length === 1 ? "track" : "tracks";
           toasts.show(
             `Created ${created.title}, but adding ${ids.length} ${noun} failed: ${errorMessage(e)}`,
             { severity: "error" },

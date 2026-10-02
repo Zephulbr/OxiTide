@@ -1,5 +1,9 @@
 import type { PageItem } from "./api";
 
+export const NAV_KEY = "oxitide.nav";
+
+type NavStorage = Pick<Storage, "getItem" | "setItem">;
+
 export type Route =
   | { name: "home" }
   | { name: "explore" }
@@ -29,6 +33,8 @@ export interface Nav {
   toggleQueue(): void;
   toggleNowPlaying(): void;
   closeNowPlaying(): void;
+  /// Return to home and drop the persisted history (logout).
+  reset(): void;
 }
 
 function sameRoute(a: Route, b: Route): boolean {
@@ -56,26 +62,130 @@ export function routeForPageItem(item: PageItem): Route | null {
   return null;
 }
 
-/// In-session route history. `goto` on the current route is a no-op; any new
-/// navigation truncates forward entries. Queue visibility is orthogonal.
-export function createNav(): Nav {
-  let history = $state<Route[]>([{ name: "home" }]);
-  let index = $state(0);
+function parseRoute(value: unknown): Route | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  switch (record.name) {
+    case "home":
+      return { name: "home" };
+    case "explore":
+      return { name: "explore" };
+    case "feed":
+      return { name: "feed" };
+    case "playlists":
+      return { name: "playlists" };
+    case "albums":
+      return { name: "albums" };
+    case "tracks":
+      return { name: "tracks" };
+    case "mixes":
+      return { name: "mixes" };
+    case "profiles":
+      return { name: "profiles" };
+    case "purchases":
+      return { name: "purchases" };
+    case "settings":
+      return { name: "settings" };
+    case "folder":
+      if (typeof record.id !== "string" || record.id.length === 0) return null;
+      return typeof record.label === "string"
+        ? { name: "folder", id: record.id, label: record.label }
+        : { name: "folder", id: record.id };
+    case "playlist":
+      return typeof record.id === "string" && record.id.length > 0
+        ? { name: "playlist", id: record.id }
+        : null;
+    case "mix":
+      return typeof record.id === "string" && record.id.length > 0
+        ? { name: "mix", id: record.id }
+        : null;
+    case "album":
+      return typeof record.id === "number" && Number.isInteger(record.id) && record.id > 0
+        ? { name: "album", id: record.id }
+        : null;
+    case "artist":
+      return typeof record.id === "number" && Number.isInteger(record.id) && record.id > 0
+        ? { name: "artist", id: record.id }
+        : null;
+    default:
+      return null;
+  }
+}
+
+interface StoredNav {
+  history: Route[];
+  index: number;
+}
+
+function load(storage: NavStorage): StoredNav | null {
+  const raw = storage.getItem(NAV_KEY);
+  if (raw === null) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+    const record = parsed as Record<string, unknown>;
+    if (!Array.isArray(record.history) || record.history.length === 0) return null;
+    const history: Route[] = [];
+    for (const entry of record.history) {
+      const route = parseRoute(entry);
+      if (route === null) return null;
+      history.push(route);
+    }
+    const index = record.index;
+    if (
+      typeof index !== "number" ||
+      !Number.isInteger(index) ||
+      index < 0 ||
+      index >= history.length
+    ) {
+      return null;
+    }
+    return { history, index };
+  } catch {
+    return null;
+  }
+}
+
+/// Route history. `goto` on the current route is a no-op; any new navigation
+/// truncates forward entries. Queue visibility is orthogonal. With `storage`,
+/// history and index persist across launches and hydrate on construction;
+/// `reset` clears them (logout). Without it the nav stays in memory.
+export function createNav(storage?: NavStorage): Nav {
+  const stored = storage ? load(storage) : null;
+  let history = $state<Route[]>(stored ? stored.history : [{ name: "home" }]);
+  let index = $state(stored ? stored.index : 0);
   let queueOpen = $state(false);
   let nowPlayingOpen = $state(false);
+
+  function persist() {
+    storage?.setItem(NAV_KEY, JSON.stringify({ history, index }));
+  }
 
   function goto(next: Route) {
     if (sameRoute(history[index], next)) return;
     history = [...history.slice(0, index + 1), next];
     index = history.length - 1;
+    persist();
   }
 
   function back() {
-    if (index > 0) index -= 1;
+    if (index > 0) {
+      index -= 1;
+      persist();
+    }
   }
 
   function forward() {
-    if (index < history.length - 1) index += 1;
+    if (index < history.length - 1) {
+      index += 1;
+      persist();
+    }
+  }
+
+  function reset() {
+    history = [{ name: "home" }];
+    index = 0;
+    persist();
   }
 
   return {
@@ -106,5 +216,6 @@ export function createNav(): Nav {
     closeNowPlaying() {
       nowPlayingOpen = false;
     },
+    reset,
   };
 }

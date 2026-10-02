@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 import type { PageItem } from "./api";
-import { createNav, routeForPageItem } from "./nav.svelte";
+import { NAV_KEY, createNav, routeForPageItem } from "./nav.svelte";
+
+type NavStorage = Pick<Storage, "getItem" | "setItem">;
+
+function fakeStorage(seed?: string): NavStorage {
+  const map = new Map<string, string>();
+  if (seed !== undefined) map.set(NAV_KEY, seed);
+  return {
+    getItem: (key) => map.get(key) ?? null,
+    setItem: (key, value) => void map.set(key, value),
+  };
+}
 
 describe("nav history", () => {
   it("starts at home with no history", () => {
@@ -94,6 +105,74 @@ describe("nav history", () => {
     expect(nav.nowPlayingOpen).toBe(true);
     nav.closeNowPlaying();
     expect(nav.nowPlayingOpen).toBe(false);
+  });
+});
+
+describe("nav persistence", () => {
+  it("restores the last route and history in a new nav", () => {
+    const storage = fakeStorage();
+    const nav = createNav(storage);
+    nav.goto({ name: "playlist", id: "p1" });
+    nav.goto({ name: "folder", id: "f1", label: "MISC" });
+
+    const restored = createNav(storage);
+
+    expect(restored.route).toEqual({ name: "folder", id: "f1", label: "MISC" });
+    expect(restored.canBack).toBe(true);
+    restored.back();
+    expect(restored.route).toEqual({ name: "playlist", id: "p1" });
+  });
+
+  it("persists back and forward", () => {
+    const storage = fakeStorage();
+    const nav = createNav(storage);
+    nav.goto({ name: "album", id: 7 });
+    nav.goto({ name: "playlist", id: "p1" });
+    nav.back();
+
+    const restored = createNav(storage);
+
+    expect(restored.route).toEqual({ name: "album", id: 7 });
+    expect(restored.canForward).toBe(true);
+  });
+
+  it("starts at home when the stored value is corrupt", () => {
+    expect(createNav(fakeStorage("not json")).route).toEqual({ name: "home" });
+    expect(createNav(fakeStorage('{"history":[{"name":"nope"}],"index":0}')).route).toEqual({
+      name: "home",
+    });
+    expect(createNav(fakeStorage('{"history":[],"index":0}')).route).toEqual({ name: "home" });
+    expect(createNav(fakeStorage('{"history":[{"name":"home"}],"index":5}')).route).toEqual({
+      name: "home",
+    });
+  });
+
+  it("starts at home when a stored route id is degenerate", () => {
+    const cases = [
+      '{"history":[{"name":"playlist","id":""}],"index":0}',
+      '{"history":[{"name":"mix","id":""}],"index":0}',
+      '{"history":[{"name":"folder","id":""}],"index":0}',
+      '{"history":[{"name":"album","id":0}],"index":0}',
+      '{"history":[{"name":"album","id":-3}],"index":0}',
+      '{"history":[{"name":"artist","id":0}],"index":0}',
+      '{"history":[{"name":"album","id":"7"}],"index":0}',
+      '{"history":[{"name":"playlist","id":7}],"index":0}',
+    ];
+    for (const raw of cases) {
+      expect(createNav(fakeStorage(raw)).route, raw).toEqual({ name: "home" });
+    }
+  });
+
+  it("reset clears the stored route", () => {
+    const storage = fakeStorage();
+    const nav = createNav(storage);
+    nav.goto({ name: "playlist", id: "p1" });
+
+    nav.reset();
+
+    expect(nav.route).toEqual({ name: "home" });
+    expect(nav.canBack).toBe(false);
+    expect(createNav(storage).route).toEqual({ name: "home" });
   });
 });
 

@@ -412,7 +412,7 @@ a moment"`; anything else → `String(e)`.
 | P8-D2 | Shortcuts are playback + app essentials, fixed map, documented in Settings, no customization. | Covers daily use without a binding system; the palette/configurability stays deferred. |
 | P8-D3 | Context menus are additive; inline buttons stay. | No discoverability loss and no churn to what Plan 7 shipped; menus are the home for future actions. |
 | P8-D4 | Stacked toasts (max 3); errors persist; optional action button. | One outcome surface with correct severity; errors should not vanish before being read. |
-| P8-D5 | History is an in-session stack with Sidebar buttons, `Alt+←/→`, and mouse side buttons. | Desktop expectations; persistence belongs with Track 3 session work. |
+| P8-D5 | History is an in-session stack with Sidebar buttons, `Alt+←/→`, and mouse side buttons. | Desktop expectations. **Superseded 2026-10-02:** route history/index now persist to localStorage and restore on launch (`createNav(window.localStorage)`); logout clears them. Queue/session restore stays in Track 10. |
 | P8-D6 | Logic-only testing; no DOM test environment or new packages. | Matches the repo convention; all new behavior lives in pure stores/modules; components are covered by svelte-check + smoke. |
 | P8-D7 | `createFavorites` migrates to toasts and loses its own error state. | One toast surface; removes the second strip and the App timer effect. |
 | P8-D8 | Load failures inline; action outcomes toasts. | Load errors need Retry in place; transient outcomes should not replace view content. |

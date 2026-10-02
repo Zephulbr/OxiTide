@@ -4,7 +4,10 @@
   import type { Nav } from "../nav.svelte";
   import type { CollectionActions } from "../collectionActions.svelte";
   import type { CollectionTree } from "../collection.svelte";
+  import { menu, type MenuItem } from "../menu.svelte";
   import type { PlaylistActions } from "../playlists.svelte";
+  import { playlistView } from "../playlistView.svelte";
+  import { playlistViewMenuItems } from "../playlistViewMenu";
   import Icon from "./Icon.svelte";
   import PlaylistTree from "./PlaylistTree.svelte";
 
@@ -26,6 +29,38 @@
 
   let collectionOpen = $state(true);
   let showMore = $state(false);
+
+  const view = playlistView();
+
+  function showAtButton(event: MouseEvent, items: MenuItem[]) {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    menu.show(rect.left, rect.bottom + 4, items);
+  }
+
+  function openViewMenu(event: MouseEvent) {
+    showAtButton(
+      event,
+      playlistViewMenuItems(view.prefs, {
+        setSort: (key) => view.setSort(key),
+        setFilter: (filter) => view.setFilter(filter),
+      }),
+    );
+  }
+
+  function openCreateMenu(event: MouseEvent) {
+    showAtButton(event, [
+      {
+        id: "new-playlist",
+        label: "New Playlist",
+        run: () => playlistActions.openCreate(),
+      },
+      {
+        id: "new-folder",
+        label: "New Folder",
+        run: () => actions.openCreateFolder("root"),
+      },
+    ]);
+  }
 
   let revisionSeen = untrack(() => playlistActions.revision);
 
@@ -134,12 +169,27 @@
 
     <div class="divider" role="separator"></div>
 
-    <div class="playlist-head">
-      {#if !rail}<span class="playlist-title">Playlists</span>{/if}
-      <button class="mini" onclick={() => playlistActions.openCreate()} title="New playlist" aria-label="New playlist">
-        <Icon name="plus" size={16} />
-      </button>
-    </div>
+    {#if !rail}
+      <div class="playlist-head">
+        <span class="playlist-title">Playlists</span>
+        <button
+          class="mini"
+          onclick={openCreateMenu}
+          title="New playlist or folder"
+          aria-label="New playlist or folder"
+        >
+          <Icon name="plus" size={16} />
+        </button>
+        <button
+          class="mini"
+          onclick={openViewMenu}
+          title="Sort & filter playlists"
+          aria-label="Sort and filter playlists"
+        >
+          <Icon name="sliders-horizontal" size={16} />
+        </button>
+      </div>
+    {/if}
     <div class="tree">
       {#if collection.error}
         <p class="muted tree-error">{collection.error}</p>
@@ -247,13 +297,17 @@
   .playlist-head {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 2px;
     padding: 8px 9px 3px;
     color: var(--text-muted);
     font-size: 12.5px;
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
+  }
+  .playlist-title {
+    flex: 1;
+    min-width: 0;
   }
   .mini {
     display: grid;
@@ -298,10 +352,6 @@
   }
   .rail .top:has(.collapse:hover, .collapse:focus-visible) .wordmark {
     opacity: 0;
-  }
-  .rail .playlist-head {
-    justify-content: center;
-    padding: 4px 0;
   }
   .rail .tree :global(.row) {
     justify-content: center;

@@ -7,6 +7,7 @@ import type { ToastSeverity, Toasts } from "./toasts.svelte";
 vi.mock("./api", () => ({
   api: {
     createPlaylist: vi.fn(),
+    setPlaylistPublic: vi.fn(),
     addPlaylistTracks: vi.fn(),
     getUserPlaylists: vi.fn(),
   },
@@ -54,6 +55,7 @@ describe("playlist actions store", () => {
     vi.clearAllMocks();
     vi.mocked(api.addPlaylistTracks).mockResolvedValue([]);
     vi.mocked(api.createPlaylist).mockResolvedValue(playlist("new"));
+    vi.mocked(api.setPlaylistPublic).mockResolvedValue(undefined);
   });
 
   it("computes skips from the added ids and opens the duplicates step", async () => {
@@ -173,14 +175,43 @@ describe("playlist actions store", () => {
     const actions = createPlaylistActions(toasts);
     actions.openPicker([track(1), track(2)]);
 
-    const created = await actions.createAndAdd("New", "desc");
+    const created = await actions.createAndAdd("New", "desc", true);
 
     expect(api.createPlaylist).toHaveBeenCalledWith("New", "desc");
+    expect(api.setPlaylistPublic).toHaveBeenCalledWith("new", true);
     expect(api.addPlaylistTracks).toHaveBeenCalledWith("new", [1, 2], false);
     expect(created?.uuid).toBe("new");
     expect(actions.revision).toBe(1);
     expect(actions.open).toBe(false);
     expect(toasts.calls).toEqual([{ message: "Created Mix with 2 tracks", severity: "success" }]);
+  });
+
+  it("does not touch visibility for a private playlist", async () => {
+    const actions = createPlaylistActions(fakeToasts());
+    actions.openPicker([track(1)]);
+
+    await actions.createAndAdd("New", "desc", false);
+
+    expect(api.createPlaylist).toHaveBeenCalledWith("New", "desc");
+    expect(api.setPlaylistPublic).not.toHaveBeenCalled();
+  });
+
+  it("reports a public failure but still adds tracks and returns the playlist", async () => {
+    vi.mocked(api.setPlaylistPublic).mockRejectedValue(new Error("nope"));
+    vi.mocked(api.addPlaylistTracks).mockResolvedValue([1]);
+    const toasts = fakeToasts();
+    const actions = createPlaylistActions(toasts);
+    actions.openPicker([track(1)]);
+
+    const created = await actions.createAndAdd("New", "desc", true);
+
+    expect(created?.uuid).toBe("new");
+    expect(api.addPlaylistTracks).toHaveBeenCalledWith("new", [1], false);
+    expect(toasts.calls).toEqual([
+      { message: "Created Mix, but making it public failed: Error: nope", severity: "error" },
+      { message: "Created Mix with 1 track", severity: "success" },
+    ]);
+    expect(actions.open).toBe(false);
   });
 
   it("returns the created playlist even when the follow-up add fails", async () => {
@@ -189,7 +220,7 @@ describe("playlist actions store", () => {
     const actions = createPlaylistActions(toasts);
     actions.openPicker([track(1)]);
 
-    const created = await actions.createAndAdd("New", "");
+    const created = await actions.createAndAdd("New", "", false);
 
     expect(created?.uuid).toBe("new");
     expect(toasts.calls).toEqual([

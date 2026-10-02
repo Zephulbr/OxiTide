@@ -12,10 +12,15 @@ export interface FolderOption {
   depth: number;
 }
 
+export interface CreateFolderTarget {
+  parentId: string;
+}
+
 export interface CollectionActions {
   readonly renameTarget: RenameTarget | null;
   readonly removeTarget: CollectionEntry | null;
   readonly moveTarget: Playlist | null;
+  readonly createFolderTarget: CreateFolderTarget | null;
   readonly busy: boolean;
   readonly revision: number;
   readonly folderOptions: readonly FolderOption[];
@@ -24,10 +29,12 @@ export interface CollectionActions {
   openRenameFolder(folder: CollectionFolder): void;
   openRemove(entry: CollectionEntry): void;
   openMove(playlist: Playlist): void;
+  openCreateFolder(parentId: string): void;
   close(): void;
   rename(value: string): Promise<void>;
   confirmRemove(): Promise<void>;
   move(folderId: string): Promise<void>;
+  createFolder(name: string): Promise<void>;
   reset(): void;
 }
 
@@ -43,6 +50,7 @@ export function createCollectionActions(
   let renameTarget = $state<RenameTarget | null>(null);
   let removeTarget = $state<CollectionEntry | null>(null);
   let moveTarget = $state<Playlist | null>(null);
+  let createFolderTarget = $state<CreateFolderTarget | null>(null);
   let busy = $state(false);
   let revision = $state(0);
   let folderOptions = $state<FolderOption[]>([]);
@@ -52,6 +60,7 @@ export function createCollectionActions(
     renameTarget = null;
     removeTarget = null;
     moveTarget = null;
+    createFolderTarget = null;
   }
 
   function reset() {
@@ -106,6 +115,10 @@ export function createCollectionActions(
     void loadFolders();
   }
 
+  function openCreateFolder(parentId: string) {
+    createFolderTarget = { parentId };
+  }
+
   async function rename(value: string) {
     const target = renameTarget;
     const name = value.trim();
@@ -154,6 +167,24 @@ export function createCollectionActions(
     }
   }
 
+  async function createFolder(value: string) {
+    const target = createFolderTarget;
+    const name = value.trim();
+    if (!target || name.length === 0 || busy) return;
+    busy = true;
+    try {
+      await api.createFolder(name, target.parentId);
+      toasts.show(`Created ${name}`, { severity: "success" });
+      revision += 1;
+      close();
+      await collection.refresh();
+    } catch (e) {
+      toasts.show(errorMessage(e), { severity: "error" });
+    } finally {
+      busy = false;
+    }
+  }
+
   async function move(folderId: string) {
     const target = moveTarget;
     if (!target || busy) return;
@@ -181,6 +212,9 @@ export function createCollectionActions(
     get moveTarget() {
       return moveTarget;
     },
+    get createFolderTarget() {
+      return createFolderTarget;
+    },
     get busy() {
       return busy;
     },
@@ -197,10 +231,12 @@ export function createCollectionActions(
     openRenameFolder,
     openRemove,
     openMove,
+    openCreateFolder,
     close,
     rename,
     confirmRemove,
     move,
+    createFolder,
     reset,
   };
 }

@@ -1,8 +1,17 @@
+import type { IconName } from "./components/Icon.svelte";
+
 export interface MenuItem {
   id: string;
   label: string;
   disabled?: boolean;
   danger?: boolean;
+  /// Heading rendered above this row; consecutive rows sharing a section get
+  /// one heading. Headings are decorative — keyboard nav skips them.
+  section?: string;
+  /// Filled treatment for the active option (radio-style).
+  selected?: boolean;
+  /// Small icon rendered at the trailing edge, e.g. the sort direction arrow.
+  trailing?: IconName;
   run(): void;
 }
 

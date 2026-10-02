@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Menu, MenuItem } from "../menu.svelte";
+  import Icon from "./Icon.svelte";
 
   let { menu }: { menu: Menu } = $props();
 
@@ -97,16 +98,23 @@
     onkeydown={onKeydown}
   >
     {#each menu.open.items as item, i (item.id)}
+      {#if item.section && item.section !== menu.open.items[i - 1]?.section}
+        <p class="section" class:first={i === 0}>{item.section}</p>
+      {/if}
       <button
         type="button"
         role="menuitem"
         class:active={active === i}
+        class:selected={item.selected}
         class:danger={item.danger}
         disabled={item.disabled}
         onmouseenter={() => (active = i)}
         onmouseleave={() => (active = -1)}
         onclick={() => run(item)}
-      >{item.label}</button>
+      >
+        <span class="label">{item.label}</span>
+        {#if item.trailing}<Icon name={item.trailing} size={14} />{/if}
+      </button>
     {/each}
   </div>
 {/if}
@@ -129,7 +137,25 @@
     box-shadow: 0 6px 18px rgb(0 0 0 / 0.4);
     outline: none;
   }
+  .section {
+    margin: 0;
+    padding: 8px 10px 3px;
+    color: var(--text-muted);
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .section:not(.first) {
+    margin-top: 5px;
+    border-top: 1px solid var(--line);
+    padding-top: 9px;
+  }
   .menu button {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
     text-align: left;
     padding: 6px 10px;
     border: 0;
@@ -138,8 +164,21 @@
     color: inherit;
     cursor: pointer;
   }
+  .menu button .label {
+    flex: 1;
+    min-width: 0;
+  }
+  .menu button :global(svg) {
+    flex: 0 0 auto;
+    color: var(--text-muted);
+  }
   .menu button.active:not(:disabled) {
     background: var(--surface-2);
+  }
+  .menu button.selected {
+    background: var(--surface-2);
+    color: var(--text);
+    font-weight: 600;
   }
   .menu button.danger {
     color: var(--danger);

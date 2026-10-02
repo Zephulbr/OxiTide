@@ -6,30 +6,23 @@
   import ErrorState from "../lib/components/ErrorState.svelte";
   import Icon from "../lib/components/Icon.svelte";
   import Loading from "../lib/components/Loading.svelte";
-  import Modal from "../lib/components/Modal.svelte";
   import PlaylistCover from "../lib/components/PlaylistCover.svelte";
   import type { CollectionActions } from "../lib/collectionActions.svelte";
-  import type { CollectionTree } from "../lib/collection.svelte";
   import { errorMessage } from "../lib/errors";
   import { menuFor } from "../lib/menu.svelte";
   import { collectionFolderMenuItems, collectionPlaylistMenuItems } from "../lib/menus";
   import type { Nav } from "../lib/nav.svelte";
   import type { PlaylistActions } from "../lib/playlists.svelte";
-  import type { Toasts } from "../lib/toasts.svelte";
 
   let {
     nav,
     playlistActions,
-    toasts,
-    collection,
     actions,
     folderId = null,
     folderLabel = "",
   }: {
     nav: Nav;
     playlistActions: PlaylistActions;
-    toasts: Toasts;
-    collection: CollectionTree;
     actions: CollectionActions;
     folderId?: string | null;
     folderLabel?: string;
@@ -39,9 +32,6 @@
   let loading = $state(true);
   let error = $state("");
   let sortMode = $state<CollectionSort>("date");
-  let creatingFolder = $state(false);
-  let folderName = $state("");
-  let savingFolder = $state(false);
   let actionsSeen = untrack(() => actions.revision);
   let createSeen = untrack(() => playlistActions.revision);
 
@@ -82,27 +72,6 @@
     untrack(() => void load());
   });
 
-  function closeCreateFolder() {
-    creatingFolder = false;
-    folderName = "";
-  }
-
-  async function submitFolder() {
-    const name = folderName.trim();
-    if (name.length === 0 || savingFolder) return;
-    savingFolder = true;
-    try {
-      await api.createFolder(name, folderId ?? "root");
-      toasts.show(`Created ${name}`, { severity: "success" });
-      closeCreateFolder();
-      await load();
-      await collection.refresh();
-    } catch (e) {
-      toasts.show(errorMessage(e), { severity: "error" });
-    } finally {
-      savingFolder = false;
-    }
-  }
 </script>
 
 <div class="page-head">
@@ -110,7 +79,7 @@
   <button class="round" onclick={() => playlistActions.openCreate()} title="New playlist" aria-label="New playlist">
     <Icon name="plus" size={16} />
   </button>
-  <button class="round" onclick={() => (creatingFolder = true)} title="New folder" aria-label="New folder">
+  <button class="round" onclick={() => actions.openCreateFolder(folderId ?? "root")} title="New folder" aria-label="New folder">
     <Icon name="folder-plus" size={16} />
   </button>
   <button
@@ -191,26 +160,6 @@
   </div>
 {/if}
 
-{#if creatingFolder}
-  <Modal title="New folder" onclose={closeCreateFolder}>
-    <form
-      onsubmit={(event) => {
-        event.preventDefault();
-        void submitFolder();
-      }}
-    >
-      <label>
-        Name
-        <input bind:value={folderName} aria-label="Folder name" />
-      </label>
-      <p class="dialog-actions">
-        <button type="button" onclick={closeCreateFolder}>Cancel</button>
-        <button type="submit" disabled={savingFolder || folderName.trim() === ""}>Create</button>
-      </p>
-    </form>
-  </Modal>
-{/if}
-
 <style>
   .page-head {
     display: flex;
@@ -282,23 +231,5 @@
   }
   .sub {
     font-size: 11.5px;
-  }
-  label {
-    display: grid;
-    gap: 6px;
-  }
-  input {
-    width: 100%;
-    padding: 8px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius-control);
-    background: var(--surface-2);
-    color: var(--text);
-  }
-  .dialog-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    margin-top: 12px;
   }
 </style>
