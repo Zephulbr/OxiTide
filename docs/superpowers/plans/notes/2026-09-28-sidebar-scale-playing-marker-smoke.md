@@ -16,9 +16,9 @@ Requires: real account, browser login, `npm --prefix ui run app:dev`.
 ## Last-route restore (added 2026-10-02)
 
 - [x] Open a playlist (or album/folder), quit the app, relaunch: it lands on that page; back/forward still work. (owner-verified 2026-10-02)
-- [ ] Open Settings, quit, relaunch: Settings is restored (any route is remembered).
+- [x] Open Settings, quit, relaunch: Settings is restored (any route is remembered). (owner-verified 2026-10-02)
 - [x] Log out, then relaunch: the app starts at Home (logout clears the remembered route). (owner-verified 2026-10-02)
-- [ ] Simulate corrupt storage (`localStorage.setItem("oxitide.nav", "nope")` in the webview console), relaunch: Home.
+- [x] Simulate corrupt storage (`localStorage.setItem("oxitide.nav", "nope")` in the webview console), relaunch: Home. (owner-verified 2026-10-02)
 
 ## Footer/scroll fix (many playlists)
 

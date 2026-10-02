@@ -2,7 +2,7 @@ import type { PageItem } from "./api";
 
 export const NAV_KEY = "oxitide.nav";
 
-type NavStorage = Pick<Storage, "getItem" | "setItem">;
+type NavStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 export type Route =
   | { name: "home" }
@@ -118,9 +118,9 @@ interface StoredNav {
 }
 
 function load(storage: NavStorage): StoredNav | null {
-  const raw = storage.getItem(NAV_KEY);
-  if (raw === null) return null;
   try {
+    const raw = storage.getItem(NAV_KEY);
+    if (raw === null) return null;
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
     const record = parsed as Record<string, unknown>;
@@ -158,7 +158,11 @@ export function createNav(storage?: NavStorage): Nav {
   let nowPlayingOpen = $state(false);
 
   function persist() {
-    storage?.setItem(NAV_KEY, JSON.stringify({ history, index }));
+    try {
+      storage?.setItem(NAV_KEY, JSON.stringify({ history, index }));
+    } catch {
+      // A full or unavailable storage must not break navigation.
+    }
   }
 
   function goto(next: Route) {
@@ -185,7 +189,11 @@ export function createNav(storage?: NavStorage): Nav {
   function reset() {
     history = [{ name: "home" }];
     index = 0;
-    persist();
+    try {
+      storage?.removeItem(NAV_KEY);
+    } catch {
+      // Same as persist: storage failures are not navigation failures.
+    }
   }
 
   return {

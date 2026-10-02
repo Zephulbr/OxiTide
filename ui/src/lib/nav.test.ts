@@ -1,8 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { PageItem } from "./api";
 import { NAV_KEY, createNav, routeForPageItem } from "./nav.svelte";
 
-type NavStorage = Pick<Storage, "getItem" | "setItem">;
+type NavStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 function fakeStorage(seed?: string): NavStorage {
   const map = new Map<string, string>();
@@ -10,6 +10,7 @@ function fakeStorage(seed?: string): NavStorage {
   return {
     getItem: (key) => map.get(key) ?? null,
     setItem: (key, value) => void map.set(key, value),
+    removeItem: (key) => void map.delete(key),
   };
 }
 
@@ -173,6 +174,46 @@ describe("nav persistence", () => {
     expect(nav.route).toEqual({ name: "home" });
     expect(nav.canBack).toBe(false);
     expect(createNav(storage).route).toEqual({ name: "home" });
+  });
+
+  it("reset removes the stored key", () => {
+    const storage = fakeStorage();
+    const nav = createNav(storage);
+    nav.goto({ name: "playlist", id: "p1" });
+
+    nav.reset();
+
+    expect(storage.getItem(NAV_KEY)).toBe(null);
+  });
+
+  it("does not write when navigation does not change", () => {
+    const storage = fakeStorage();
+    const nav = createNav(storage);
+    const write = vi.spyOn(storage, "setItem");
+
+    nav.goto({ name: "home" });
+    nav.back();
+    nav.forward();
+
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it("keeps navigating when storage fails", () => {
+    const storage: NavStorage = {
+      getItem: () => null,
+      setItem: () => {
+        throw new Error("quota exceeded");
+      },
+      removeItem: () => {
+        throw new Error("unavailable");
+      },
+    };
+    const nav = createNav(storage);
+
+    expect(() => nav.goto({ name: "playlist", id: "p1" })).not.toThrow();
+    expect(nav.route).toEqual({ name: "playlist", id: "p1" });
+    expect(() => nav.reset()).not.toThrow();
+    expect(nav.route).toEqual({ name: "home" });
   });
 });
 
