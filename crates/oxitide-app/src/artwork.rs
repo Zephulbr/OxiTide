@@ -18,7 +18,7 @@ const EXTRACT_SIDE: u32 = 48;
 const PALETTE_MAX_ENTRIES: usize = 2_000;
 /// Bump when `extract_palette`'s output changes: older files are discarded so
 /// already-seen covers are refetched under the new rules.
-const CACHE_VERSION: u32 = 4;
+const CACHE_VERSION: u32 = 5;
 
 #[derive(Default, Serialize, Deserialize)]
 struct DiskCache {

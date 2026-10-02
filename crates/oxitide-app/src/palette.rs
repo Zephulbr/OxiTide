@@ -52,18 +52,43 @@ pub(crate) fn srgb_to_oklch(r: u8, g: u8, b: u8) -> Oklch {
 }
 
 #[allow(clippy::excessive_precision)]
-pub(crate) fn oklch_to_srgb(color: Oklch) -> (u8, u8, u8) {
+fn oklch_to_linear(color: Oklch) -> (f32, f32, f32) {
     let a = color.c * color.h.to_radians().cos();
     let b = color.c * color.h.to_radians().sin();
     let l = (color.l + 0.3963377774 * a + 0.2158037573 * b).powi(3);
     let m = (color.l - 0.1055613458 * a - 0.0638541728 * b).powi(3);
     let s = (color.l - 0.0894841775 * a - 1.2914855480 * b).powi(3);
-    let to_u8 = |v: f32| (linear_to_srgb(v.clamp(0.0, 1.0)) * 255.0).round() as u8;
     (
-        to_u8(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s),
-        to_u8(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s),
-        to_u8(-0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s),
+        4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+        -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+        -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s,
     )
+}
+
+pub(crate) fn oklch_to_srgb(color: Oklch) -> (u8, u8, u8) {
+    let (r, g, b) = oklch_to_linear(color);
+    let to_u8 = |v: f32| (linear_to_srgb(v.clamp(0.0, 1.0)) * 255.0).round() as u8;
+    (to_u8(r), to_u8(g), to_u8(b))
+}
+
+/// sRGB gamut test on the unclamped linear channels.
+fn oklch_in_gamut(color: Oklch) -> bool {
+    let (r, g, b) = oklch_to_linear(color);
+    [r, g, b].iter().all(|v| (-0.0005..=1.0005).contains(v))
+}
+
+/// The largest chroma at (l, h) that stays inside sRGB, capped at `cap`.
+fn gamut_chroma(l: f32, h: f32, cap: f32) -> f32 {
+    let (mut lo, mut hi) = (0.0f32, cap.max(0.0));
+    for _ in 0..12 {
+        let mid = (lo + hi) / 2.0;
+        if oklch_in_gamut(Oklch { l, c: mid, h }) {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    lo
 }
 
 fn hex(rgb: (u8, u8, u8)) -> String {
@@ -101,6 +126,13 @@ const BG: (u8, u8, u8) = (0x17, 0x12, 0x0e);
 const SCRIM: f32 = 0.55;
 /// Below this chroma a candidate carries no usable hue (spec §5.2).
 const CHROMA_FLOOR: f32 = 0.04;
+/// Primary envelope (spec §5.2), widened 2026-10-02 for vibrancy: saturated
+/// reds/greens live at lower lightness and higher chroma than the original
+/// L ≥ 0.70 / C ≤ 0.17 allowed, so vivid covers keep their own color.
+const PRIMARY_L_LO: f32 = 0.62;
+const PRIMARY_L_HI: f32 = 0.85;
+const PRIMARY_C_LO: f32 = 0.08;
+const PRIMARY_C_HI: f32 = 0.21;
 /// A candidate at or above this lightness with at most this chroma reads as
 /// white and must not drive the interactive Primary (owner ruling 2026-10-02).
 const NEAR_WHITE_L: f32 = 0.90;
@@ -224,6 +256,7 @@ fn clamp(v: f32, lo: f32, hi: f32) -> f32 {
 /// per-track ceiling, moving away from the ceiling. Returns None when the
 /// envelope cannot satisfy the floor (§5.3: caller picks a safe color).
 fn fit_contrast(mut color: Oklch, lo: f32, hi: f32, ceiling: f32, min_contrast: f32) -> Option<Oklch> {
+    color.c = color.c.min(gamut_chroma(color.l, color.h, color.c));
     for _ in 0..=((hi - lo) / 0.01) as usize {
         let rgb = oklch_to_srgb(color);
         if contrast_ratio(rgb, ceiling) >= min_contrast {
@@ -234,6 +267,9 @@ fn fit_contrast(mut color: Oklch, lo: f32, hi: f32, ceiling: f32, min_contrast: 
         } else {
             (color.l + 0.01).min(hi)
         };
+        // Desaturate into gamut at each step: clipping would distort the
+        // lightness the search depends on.
+        color.c = color.c.min(gamut_chroma(color.l, color.h, color.c));
     }
     None
 }
@@ -311,11 +347,16 @@ pub fn extract_palette(pixels: &[(u8, u8, u8)], width: usize, height: usize) -> 
         }
     };
 
-    let mut primary = Oklch { l: clamp(seed.l, 0.70, 0.85), c: clamp(seed.c, 0.08, 0.17), h: seed.h };
+    let mut primary = Oklch {
+        l: clamp(seed.l, PRIMARY_L_LO, PRIMARY_L_HI),
+        c: clamp(seed.c, PRIMARY_C_LO, PRIMARY_C_HI),
+        h: seed.h,
+    };
+    primary.c = primary.c.min(gamut_chroma(primary.l, primary.h, primary.c));
     // A bright ceiling can make 4.5:1 unreachable inside the envelope: the
-    // degradation stays chromatic (seed hue at max envelope chroma) instead of
-    // reverting to a white/plain-light accent.
-    primary = fit_contrast(primary, 0.70, 0.85, ceiling, 4.5).unwrap_or(Oklch { l: 0.85, c: 0.17, h: seed.h });
+    // fallback keeps the art's own lightness and chroma (vibrancy over the
+    // unreachable text floor) instead of forcing a pale L 0.85 tone.
+    primary = fit_contrast(primary, PRIMARY_L_LO, PRIMARY_L_HI, ceiling, 4.5).unwrap_or(primary);
     let primary_rgb = oklch_to_srgb(primary);
     let on_primary = on_accent(primary_rgb);
 
@@ -375,6 +416,18 @@ mod tests {
         assert!(black.l < 0.01);
     }
 
+    /// Gamut-aware chroma: a red at L 0.62 can carry the full widened cap,
+    /// but the same hue at L 0.85 is desaturated into sRGB instead of clipped.
+    #[test]
+    fn gamut_chroma_desaturates_instead_of_clipping() {
+        let wide = gamut_chroma(0.62, 25.0, 0.21);
+        assert!(wide > 0.19, "red at L 0.62 should stay vivid: {wide}");
+        let high = gamut_chroma(0.85, 25.0, 0.21);
+        assert!(high < 0.16, "red at L 0.85 must desaturate: {high}");
+        assert!(oklch_in_gamut(Oklch { l: 0.85, c: high, h: 25.0 }));
+        assert!(!oklch_in_gamut(Oklch { l: 0.85, c: 0.21, h: 25.0 }));
+    }
+
     #[test]
     fn oklch_round_trip_within_a_couple_of_units() {
         for (r, g, b) in [(46, 226, 196), (200, 30, 40), (23, 18, 14), (120, 120, 120)] {
@@ -394,7 +447,8 @@ mod tests {
         let palette = extract_palette(&pixels, 48, 48);
         assert_ne!(palette.primary, fallback_palette().primary);
         let primary = srgb_to_oklch_tuple(hex_to_rgb(&palette.primary));
-        assert!(primary.c >= 0.08, "boosted primary chroma {}", primary.c);
+        // The envelope floor is 0.08; 8-bit quantization costs a hair.
+        assert!(primary.c >= 0.075, "boosted primary chroma {}", primary.c);
         assert!(hue_diff(primary.h, 78.0) < 15.0, "hue should stay warm: {}", primary.h);
         let tertiary = srgb_to_oklch_tuple(hex_to_rgb(&palette.tertiary));
         assert!(hue_diff(tertiary.h, primary.h) < 10.0, "tertiary should echo Primary");
@@ -410,14 +464,12 @@ mod tests {
         assert!(contrast >= 4.5, "primary vs ceiling: {contrast}");
     }
 
-    /// Review Focus: bright regions must tighten the clamp (§5.3).
-    /// Controller ruling R6: with SCRIM = 0.55 the maximum composite ceiling is
-    /// ~0.206 and a half-white cover yields ~0.190, where 4.5:1 is mathematically
-    /// unreachable inside the Primary envelope. The degradation must stay
-    /// chromatic — the seed hue at the envelope's max chroma — never the old
-    /// near-white plain-light tone (owner ruling 2026-10-02).
+    /// Review Focus: bright regions must tighten the clamp (§5.3), but when
+    /// 4.5:1 is unreachable the fallback keeps the art's own lightness and
+    /// chroma — vibrancy over the unreachable text floor (owner ruling
+    /// 2026-10-02) — instead of the old pale L 0.85 tone.
     #[test]
-    fn a_bright_ceiling_keeps_a_chromatic_primary() {
+    fn a_bright_ceiling_keeps_a_vivid_primary() {
         let dark = extract_palette(&solid((200, 30, 40), 48 * 48), 48, 48);
         let mut pixels = solid((200, 30, 40), 48 * 48);
         for p in pixels.iter_mut().take(48 * 24) {
@@ -428,9 +480,8 @@ mod tests {
         assert!(palette.ceiling_l > dark.ceiling_l, "bright ceiling not elevated");
         let primary = srgb_to_oklch_tuple(hex_to_rgb(&palette.primary));
         assert!(!is_near_white(&primary), "bright primary {:?} must stay chromatic", palette.primary);
-        // Max envelope chroma clips for red at L 0.85; the round trip lands at
-        // a still-clearly-chromatic salmon, never the old near-white tone.
-        assert!(primary.c >= 0.10, "bright primary chroma {}", primary.c);
+        assert!(primary.l <= 0.70, "fallback must keep the art's lightness: L {}", primary.l);
+        assert!(primary.c >= 0.15, "fallback must stay vivid: C {}", primary.c);
         assert!(hue_diff(primary.h, 30.0) < 30.0, "hue should track the art: {}", primary.h);
     }
 

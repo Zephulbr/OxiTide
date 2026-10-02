@@ -11,7 +11,8 @@ Atmosphere in Settings once (also set Typeface to Default).
 - [ ] **Monochrome cover with a broad cast** (e.g. sepia/duotone album): accent is a boosted version of the cover's overall tint — never brand teal.
 - [ ] **B&W cover with a shadow-only cast** (e.g. halftone art like The Perfect Girl): plain-light accent, no invented hue.
 - [ ] **Fully neutral cover** (pure white/gray/dark, no tint): plain-light accent with neutral badges/disc ring — never brand teal.
-- [ ] **Bright cover:** accent stays chromatic (seed hue at max envelope chroma); extreme bright covers cannot reach 4.5:1 under the 55% scrim (known spec gap — see final review).
+- [ ] **Bright cover:** accent keeps the art's own lightness and chroma (vivid, gamut-mapped, not clipped); extreme bright covers cannot reach 4.5:1 under the 55% scrim (known spec gap — see final review).
+- [ ] **Vivid red cover** (e.g. red-on-black art): accent is a true red, not a pale pink.
 - [ ] **Mostly-white cover with one color pop:** accent is the color, not white.
 - [ ] **Badges/disc ring:** only teal when the cover itself has that hue; monochrome covers collapse to a Primary tint.
 - [ ] Dynamic color Accent-only: accent follows the cover, backdrop/scrollbar stay brand; Off: fully static brand.

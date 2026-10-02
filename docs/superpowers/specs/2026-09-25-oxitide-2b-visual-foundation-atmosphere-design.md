@@ -119,7 +119,7 @@ roles, each clamped to an OKLCH envelope so the palette is good **by constructio
 
 | Role | Job | Envelope |
 |---|---|---|
-| **Primary** | Interactive accent: play button, active nav, seek/volume fill, focus rings, ♥-on, links, **playing/selected row tint + title text** | L ∈ [0.70, 0.85], C ∈ [0.08, 0.17]; ≥4.5:1 against the §5.3 composite ceiling (≥3:1 for icons); `--on-accent` computed per cover |
+| **Primary** | Interactive accent: play button, active nav, seek/volume fill, focus rings, ♥-on, links, **playing/selected row tint + title text** | L ∈ [0.62, 0.85], C ∈ [0.08, 0.21], gamut-mapped per hue; ≥4.5:1 against the §5.3 composite ceiling (≥3:1 for icons) where reachable — vibrancy wins otherwise (2026-10-02); `--on-accent` computed per cover |
 | **Secondary** | Atmosphere: backdrop wash, glass tint hue, scrollbar | L ∈ [0.25, 0.45], C ≤ 0.05; never carries text |
 | **Tertiary** | **Informational emphasis, never interactive:** quality/metadata badges, now-playing disc label ring, decorative details | L ∈ [0.65, 0.80], C ∈ [0.06, 0.14]; badge text ≥4.5:1 against the §5.3 composite ceiling, decorative uses ≥1.5:1; ≥30° hue separation from Primary (else collapses to a Primary tint) **so it never reads as interactive** |
 
@@ -173,12 +173,12 @@ at plan time (§15).
 
 **Bound of the guarantee (Plan 11 implementation finding):** the chain's 4.5:1 text floor
 is achievable while the per-cover composite ceiling stays at or below ~0.18. Above that — a
-very bright cover under the ≥55% scrim — no colour inside Primary's L ∈ [0.70, 0.85]
-envelope can reach 4.5:1; even pure white text tops out near ~4.4:1. Such extreme covers
-take the seed hue at the envelope's maximum chroma (L 0.85, C 0.17, clipped to gamut), so the
-degradation stays clearly chromatic; only fully neutral art keeps the plain-light Primary
-(2026-10-02 ruling, §5.2). The text floor is therefore documented as holding **within the
-ceiling bound**, not unconditionally.
+very bright cover under the ≥55% scrim — no colour inside Primary's envelope can reach
+4.5:1; even pure white text tops out near ~4.4:1. Such covers keep the seed's own clamped
+lightness and chroma (gamut-mapped, never clipped) — vibrancy over the unreachable floor
+(2026-10-02 ruling) — so a vivid red cover gets its red instead of a pale tint; only fully
+neutral art keeps the plain-light Primary (§5.2). The text floor is therefore documented as
+holding **within the ceiling bound**, not unconditionally.
 
 ### 5.4 Setting
 
