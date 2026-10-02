@@ -937,6 +937,79 @@ pub async fn get_playlist_tracks_page(
     })
 }
 
+/// Build queue items for `ids`, preserving input order, with at most four
+/// TIDAL requests in flight. Fails on the first fetch error.
+async fn queue_items_from_ids(
+    client: &TidalClient,
+    ids: &[u64],
+) -> Result<Vec<QueueItem>, Error> {
+    let mut results: Vec<Option<QueueItem>> = vec![None; ids.len()];
+    let mut pending = ids.iter().copied().enumerate();
+    let mut set = tokio::task::JoinSet::new();
+    for _ in 0..4 {
+        let Some((index, id)) = pending.next() else {
+            break;
+        };
+        let client = client.clone();
+        set.spawn(async move { (index, client.track(id).await) });
+    }
+    while let Some(joined) = set.join_next().await {
+        let (index, result) = joined.map_err(|e| Error::Task(e.to_string()))?;
+        results[index] = Some(queue_item_from_track(&result?));
+        if let Some((next_index, next_id)) = pending.next() {
+            let client = client.clone();
+            set.spawn(async move { (next_index, client.track(next_id).await) });
+        }
+    }
+    Ok(results.into_iter().flatten().collect())
+}
+
+/// Queue metadata for a track, matching the UI's `trackToQueueItem`.
+fn queue_item_from_track(track: &Track) -> QueueItem {
+    QueueItem {
+        track_id: track.id,
+        title: track.title.clone(),
+        artist: track
+            .artists
+            .iter()
+            .map(|a| a.name.clone())
+            .collect::<Vec<_>>()
+            .join(", "),
+        album: track
+            .album
+            .as_ref()
+            .map(|a| a.title.clone())
+            .unwrap_or_default(),
+        duration_secs: track.duration,
+        cover: track.album.as_ref().and_then(|a| a.cover.clone()),
+    }
+}
+
+/// Play a list of track ids (resolved server-side), replacing the queue.
+#[tauri::command]
+pub async fn play_track_ids(
+    state: State<'_, AppState>,
+    ids: Vec<u64>,
+    start: usize,
+    shuffle: Option<bool>,
+) -> Result<(), String> {
+    if ids.is_empty() {
+        return Err("no tracks".to_string());
+    }
+    let client = require_client(&state)?;
+    let items = queue_items_from_ids(&client, &ids)
+        .await
+        .map_err(|e| state.fail_tidal(e))?;
+    let player = state.player().ok_or_else(|| "not logged in".to_string())?;
+    let cmd = if shuffle.unwrap_or(false) {
+        EngineCmd::PlayShuffled { items }
+    } else {
+        EngineCmd::PlayTracks { items, start }
+    };
+    crate::perf::note_play_command();
+    player.engine.handle(cmd).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn play_tracks(
     state: State<'_, AppState>,
@@ -1725,5 +1798,82 @@ mod tests {
         let result = perf_queue_build_items(items, 0);
         assert!(result.is_err(), "the perf command must not run outside a session");
         assert_eq!(result.unwrap_err(), "no perf session");
+    }
+
+    fn tidal_client(server: &MockServer) -> TidalClient {
+        TidalClient::new(
+            reqwest::Client::new(),
+            server.uri(),
+            format!("{}/token", server.uri()),
+            SessionInfo {
+                session_id: "s".into(),
+                country_code: "GR".into(),
+                user_id: 1,
+            },
+            TokenSet {
+                access_token: "AT".into(),
+                refresh_token: Some("RT".into()),
+                token_type: "Bearer".into(),
+                expires_at: None,
+            },
+            Arc::new(MemoryStore::default()),
+        )
+    }
+
+    #[tokio::test]
+    async fn queue_items_from_ids_preserves_order_and_maps_track_fields() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/tracks/1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": 1, "title": "One", "duration": 210,
+                "artists": [{"id": 5, "name": "A"}, {"id": 6, "name": "B"}],
+                "album": {"id": 9, "title": "Album", "cover": "c-1"}
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/tracks/2"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": 2, "title": "Two", "duration": 90, "artists": []
+            })))
+            .mount(&server)
+            .await;
+
+        let items = queue_items_from_ids(&tidal_client(&server), &[2, 1])
+            .await
+            .unwrap();
+
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].track_id, 2);
+        assert_eq!(items[0].album, "");
+        assert_eq!(items[1].track_id, 1);
+        assert_eq!(items[1].title, "One");
+        assert_eq!(items[1].artist, "A, B");
+        assert_eq!(items[1].album, "Album");
+        assert_eq!(items[1].duration_secs, 210);
+        assert_eq!(items[1].cover.as_deref(), Some("c-1"));
+    }
+
+    #[tokio::test]
+    async fn queue_items_from_ids_fails_fast_on_a_mid_list_error() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/tracks/1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": 1, "title": "One"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/tracks/2"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+
+        let err = queue_items_from_ids(&tidal_client(&server), &[1, 2])
+            .await
+            .unwrap_err();
+        assert!(matches!(err, Error::Api { status: 500, .. }), "got {err:?}");
     }
 }

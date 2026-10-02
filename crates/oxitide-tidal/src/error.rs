@@ -18,6 +18,8 @@ pub enum Error {
     Json(#[from] serde_json::Error),
     #[error("auth error: {0}")]
     Auth(String),
+    #[error("task join error: {0}")]
+    Task(String),
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 }

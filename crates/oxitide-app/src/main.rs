@@ -316,6 +316,7 @@ fn main() {
             commands::move_playlist_items,
             commands::retry,
             commands::play_tracks,
+            commands::play_track_ids,
             commands::play_pause,
             commands::next,
             commands::prev,
