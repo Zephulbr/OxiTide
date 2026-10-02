@@ -79,7 +79,7 @@
     title={actions.removeTarget.kind === "folder"
       ? "Remove folder"
       : actions.removeTarget.owned
-        ? "Delete playlist"
+        ? "Delete playlist?"
         : "Remove from collection"}
     message={removeMessage()}
     onconfirm={() => void actions.confirmRemove()}
