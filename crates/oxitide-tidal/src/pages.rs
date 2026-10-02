@@ -28,6 +28,8 @@ pub struct PageSection {
     pub title: String,
     #[serde(default)]
     pub items: Vec<PageItem>,
+    #[serde(default)]
+    pub kind: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -95,9 +97,17 @@ struct RawItem {
     pub images: Option<RawImages>,
     #[serde(default)]
     pub album: Option<RawAlbum>,
+    #[serde(default)]
+    pub artists: Vec<RawArtist>,
     /// `MIXED_TYPES_LIST` entries wrap the payload as `{type, item}`.
     #[serde(default)]
     pub item: Option<Box<RawItem>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawArtist {
+    #[serde(default)]
+    pub name: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -197,6 +207,7 @@ fn sections_from_page(raw: RawPage) -> Vec<PageSection> {
             sections.push(PageSection {
                 title: module.title,
                 items,
+                kind: module.module_type,
             });
         }
     }
@@ -221,10 +232,23 @@ fn page_item_from_raw(module_type: &str, mut raw: RawItem) -> PageItem {
     } else {
         raw.item_type
     };
+    let subtitle = raw.subtitle.or(raw.description).or_else(|| {
+        if item_type.to_uppercase().contains("TRACK") {
+            let names: Vec<String> = raw
+                .artists
+                .iter()
+                .map(|a| a.name.clone())
+                .filter(|name| !name.is_empty())
+                .collect();
+            (!names.is_empty()).then(|| names.join(", "))
+        } else {
+            None
+        }
+    });
     PageItem {
         id,
         title: raw.title,
-        subtitle: raw.subtitle.or(raw.description),
+        subtitle,
         item_type,
         artwork: raw
             .cover
@@ -697,5 +721,49 @@ mod tests {
             .mount(&server)
             .await;
         assert!(client(&server).mix_page("m").await.unwrap().artwork.is_none());
+    }
+
+    #[tokio::test]
+    async fn home_sections_carry_the_module_kind() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/pages/home"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "rows": [{"modules": [{"type": "MIX_LIST", "title": "Mixes", "items": [
+                    {"id": "mix-1", "title": "Daily Mix"}
+                ]}]}]
+            })))
+            .mount(&server).await;
+        let sections = client(&server).home_page().await.unwrap();
+        assert_eq!(sections[0].kind, "MIX_LIST");
+    }
+
+    #[tokio::test]
+    async fn home_sections_without_module_type_default_to_empty_kind() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/pages/home"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "rows": [{"modules": [{"title": "Untyped", "items": [{"id": 1, "title": "X"}]}]}]
+            })))
+            .mount(&server).await;
+        let sections = client(&server).home_page().await.unwrap();
+        assert_eq!(sections[0].kind, "");
+    }
+
+    #[tokio::test]
+    async fn home_track_items_fall_back_to_artist_names_as_subtitle() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/pages/home"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "rows": [{"modules": [{"type": "TRACK_LIST", "title": "New Tracks", "pagedList": {"items": [
+                    {"id": 1, "title": "Song", "artists": [{"id": 5, "name": "A"}, {"id": 6, "name": "B"}]},
+                    {"id": 2, "title": "Named", "subTitle": "Given", "artists": [{"id": 5, "name": "A"}]},
+                    {"id": 3, "title": "Album Item", "type": "ALBUM", "artists": [{"id": 5, "name": "A"}]}
+                ]}}]}]
+            })))
+            .mount(&server).await;
+        let items = &client(&server).home_page().await.unwrap()[0].items;
+        assert_eq!(items[0].subtitle.as_deref(), Some("A, B"));
+        assert_eq!(items[1].subtitle.as_deref(), Some("Given"));
+        assert_eq!(items[2].subtitle, None);
     }
 }
