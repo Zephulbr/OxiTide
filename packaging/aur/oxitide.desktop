@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=OxiTide
+GenericName=Music Player
+Comment=Unofficial TIDAL desktop client
+Exec=oxitide
+Icon=oxitide
+Terminal=false
+Categories=AudioVideo;Audio;Music;
+StartupWMClass=oxitide
+MimeType=x-scheme-handler/tidal;
+Keywords=tidal;music;streaming;

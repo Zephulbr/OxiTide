@@ -1,0 +1,37 @@
+# Maintainer: OxiTide project <https://codeberg.org/Zephulbr/OxiTide/issues>
+pkgname=oxitide
+pkgver=0.2.0
+pkgrel=1
+pkgdesc="Unofficial TIDAL desktop client"
+arch=('x86_64')
+url="https://codeberg.org/Zephulbr/OxiTide"
+license=('AGPL-3.0-or-later')
+depends=('webkit2gtk-4.1' 'gtk3' 'alsa-lib' 'librsvg' 'hicolor-icon-theme' 'xdg-utils' 'desktop-file-utils')
+makedepends=('rust' 'nodejs' 'npm' 'pkgconf' 'git')
+_commit=9198f94669ba9e38cff29b377491d0c4a417f731
+source=("$pkgname::git+$url.git#commit=$_commit")
+sha256sums=('SKIP')
+
+prepare() {
+  cd "$pkgname"
+  npm --prefix ui ci
+  cargo fetch --locked
+}
+
+build() {
+  cd "$pkgname"
+  export CARGO_NET_OFFLINE=true
+  ./ui/node_modules/.bin/tauri build --no-bundle
+}
+
+package() {
+  cd "$pkgname"
+  install -Dm755 target/release/oxitide-app "$pkgdir/usr/bin/oxitide"
+  install -Dm644 packaging/aur/oxitide.desktop "$pkgdir/usr/share/applications/oxitide.desktop"
+  install -Dm644 crates/oxitide-app/icons/32x32.png "$pkgdir/usr/share/icons/hicolor/32x32/apps/oxitide.png"
+  install -Dm644 crates/oxitide-app/icons/128x128.png "$pkgdir/usr/share/icons/hicolor/128x128/apps/oxitide.png"
+  install -Dm644 crates/oxitide-app/icons/128x128@2x.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/oxitide.png"
+  install -Dm644 crates/oxitide-app/icons/icon.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/oxitide.png"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 THIRD_PARTY_NOTICES.md "$pkgdir/usr/share/licenses/$pkgname/THIRD_PARTY_NOTICES.md"
+}
