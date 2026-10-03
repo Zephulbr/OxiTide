@@ -791,6 +791,48 @@ pub async fn get_artist_albums(
 }
 
 #[tauri::command]
+pub async fn get_artist_top_tracks_page(
+    state: State<'_, AppState>,
+    artist_id: u64,
+    limit: u32,
+    offset: u32,
+) -> Result<TrackPageDto, String> {
+    let (items, total) = require_client(&state)?
+        .artist_top_tracks_page(artist_id, limit, offset)
+        .await
+        .map_err(|e| state.fail_tidal(e))?;
+    Ok(TrackPageDto {
+        items,
+        total,
+        offset,
+        limit,
+    })
+}
+
+#[tauri::command]
+pub async fn get_artist_albums_all(
+    state: State<'_, AppState>,
+    artist_id: u64,
+    filter: ArtistDiscography,
+) -> Result<Vec<Album>, String> {
+    require_client(&state)?
+        .artist_albums_all(artist_id, filter)
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
+pub async fn get_artist_page(
+    state: State<'_, AppState>,
+    artist_id: u64,
+) -> Result<Vec<PageSection>, String> {
+    require_client(&state)?
+        .artist_page(artist_id)
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
 pub async fn search(state: State<'_, AppState>, query: String) -> Result<SearchResults, String> {
     require_client(&state)?
         .search(&query, &["tracks", "albums", "artists", "playlists"], 20, 0)
