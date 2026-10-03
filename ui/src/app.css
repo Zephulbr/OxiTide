@@ -72,6 +72,14 @@ body {
   height: 100%;
   animation: page-in var(--dur-state) var(--ease-in-out) both;
 }
+/* Scrolling pages size to their content so .main's bottom padding lands after
+   the last row; a 100%-tall page would consume that padding beneath its
+   overflowing content. Fill views and Now Playing keep the definite height
+   their layouts rely on. */
+.main:not(:has(.view-fill)):not(:has(.now-playing)) .page {
+  height: auto;
+  min-height: 100%;
+}
 @keyframes page-in {
   from {
     opacity: 0;
