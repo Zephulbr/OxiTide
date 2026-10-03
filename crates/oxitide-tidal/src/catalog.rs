@@ -1,6 +1,10 @@
+use serde::Deserialize;
+
 use crate::client::{TidalClient, DEFAULT_PAGE_SIZE};
 use crate::error::Result;
-use crate::models::{Album, Artist, ArtistDiscography, ItemPage, Track};
+use crate::models::{
+    Album, Artist, ArtistDiscography, ArtistLink, ArtistProfile, ItemPage, Track,
+};
 
 fn page_params(limit: u32, offset: u32) -> Vec<(&'static str, String)> {
     vec![("limit", limit.to_string()), ("offset", offset.to_string())]
@@ -63,6 +67,61 @@ impl TidalClient {
             )
             .await?;
         Ok(page.items)
+    }
+
+    /// Fans, external links, and biography from one public-OpenAPI call.
+    /// `TIDAL_SHARING` self-links and empty/duplicate hrefs are dropped;
+    /// every field is optional.
+    pub async fn artist_profile(&self, id: u64) -> Result<ArtistProfile> {
+        let params = [
+            ("countryCode", self.session().country_code.clone()),
+            ("include", "biography".to_string()),
+        ];
+        let raw: OpenApiArtistProfile = self
+            .get_openapi(&format!("artists/{id}"), &params)
+            .await?;
+
+        let attributes = raw.data.and_then(|data| data.attributes);
+        let mut seen = std::collections::HashSet::new();
+        let external_links = attributes
+            .as_ref()
+            .map(|attributes| attributes.external_links.as_slice())
+            .unwrap_or_default()
+            .iter()
+            .filter(|link| {
+                let kind = link
+                    .meta
+                    .as_ref()
+                    .and_then(|meta| meta.kind.as_deref())
+                    .unwrap_or("");
+                !kind.eq_ignore_ascii_case("TIDAL_SHARING")
+            })
+            .filter(|link| !link.href.trim().is_empty())
+            .filter(|link| seen.insert(link.href.clone()))
+            .map(|link| ArtistLink {
+                site: link
+                    .meta
+                    .as_ref()
+                    .and_then(|meta| meta.kind.clone())
+                    .unwrap_or_default()
+                    .to_uppercase(),
+                url: link.href.clone(),
+            })
+            .collect();
+
+        let bio = raw
+            .included
+            .iter()
+            .find(|entry| entry.resource_type == "artistBiographies")
+            .and_then(|entry| entry.attributes.as_ref())
+            .and_then(|attributes| attributes.text.as_deref())
+            .and_then(clean_bio);
+
+        Ok(ArtistProfile {
+            number_of_followers: attributes.and_then(|attributes| attributes.number_of_followers),
+            external_links,
+            bio,
+        })
     }
 }
 
@@ -145,6 +204,56 @@ fn strip_tags(raw: &str) -> String {
         }
     }
     out
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenApiArtistProfile {
+    #[serde(default)]
+    data: Option<OpenApiArtistData>,
+    #[serde(default)]
+    included: Vec<OpenApiIncluded>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenApiArtistData {
+    #[serde(default)]
+    attributes: Option<OpenApiArtistAttributes>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenApiArtistAttributes {
+    #[serde(default, rename = "numberOfFollowers")]
+    number_of_followers: Option<u64>,
+    #[serde(default, rename = "externalLinks")]
+    external_links: Vec<OpenApiExternalLink>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenApiExternalLink {
+    #[serde(default)]
+    href: String,
+    #[serde(default)]
+    meta: Option<OpenApiExternalLinkMeta>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenApiExternalLinkMeta {
+    #[serde(default, rename = "type")]
+    kind: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenApiIncluded {
+    #[serde(default, rename = "type")]
+    resource_type: String,
+    #[serde(default)]
+    attributes: Option<OpenApiBioAttributes>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenApiBioAttributes {
+    #[serde(default)]
+    text: Option<String>,
 }
 
 #[cfg(test)]
@@ -320,5 +429,74 @@ mod tests {
             .unwrap();
         assert_eq!(albums.len(), 1);
         assert_eq!(albums[0].title, "Single");
+    }
+
+    #[tokio::test]
+    async fn artist_profile_reads_followers_links_and_bio() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/openapi/v2/artists/9"))
+            .and(query_param("countryCode", "GR"))
+            .and(query_param("include", "biography"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": {
+                    "attributes": {
+                        "numberOfFollowers": 1106540,
+                        "externalLinks": [
+                            {"href": "https://twitter.com/acdc", "meta": {"type": "TWITTER"}},
+                            {"href": "https://tidal.com/browse/artist/9", "meta": {"type": "TIDAL_SHARING"}},
+                            {"href": "https://twitter.com/acdc", "meta": {"type": "TWITTER"}}
+                        ]
+                    },
+                    "id": "9",
+                    "type": "artists"
+                },
+                "included": [{
+                    "attributes": {
+                        "source": "TiVo",
+                        "text": "See [wimpLink artistId=\"1\"]Band[/wimpLink].<br/>More."
+                    },
+                    "id": "9",
+                    "type": "artistBiographies"
+                }]
+            })))
+            .mount(&server)
+            .await;
+        let profile = client(&server).artist_profile(9).await.unwrap();
+        assert_eq!(profile.number_of_followers, Some(1106540));
+        assert_eq!(profile.external_links.len(), 1);
+        assert_eq!(profile.external_links[0].site, "TWITTER");
+        assert_eq!(profile.external_links[0].url, "https://twitter.com/acdc");
+        assert_eq!(profile.bio.as_deref(), Some("See Band.\n\nMore."));
+    }
+
+    #[tokio::test]
+    async fn artist_profile_tolerates_missing_fields() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/openapi/v2/artists/9"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": {"id": "9", "type": "artists"}
+            })))
+            .mount(&server)
+            .await;
+        let profile = client(&server).artist_profile(9).await.unwrap();
+        assert_eq!(profile.number_of_followers, None);
+        assert!(profile.external_links.is_empty());
+        assert_eq!(profile.bio, None);
+    }
+
+    #[tokio::test]
+    async fn artist_profile_404_is_not_found() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/openapi/v2/artists/9"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        assert!(matches!(
+            client(&server).artist_profile(9).await.unwrap_err(),
+            Error::NotFound(_)
+        ));
     }
 }
