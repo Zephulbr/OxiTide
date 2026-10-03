@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatDuration, formatTotalDuration } from "./format";
+import { formatCount, formatDuration, formatTotalDuration } from "./format";
 
 describe("formatDuration", () => {
   it("formats minutes and seconds with padding", () => {
@@ -22,5 +22,24 @@ describe("formatTotalDuration", () => {
   });
   it("never returns negative", () => {
     expect(formatTotalDuration(-10)).toBe("0:00");
+  });
+});
+
+describe("formatCount", () => {
+  it("leaves counts under a thousand exact", () => {
+    expect(formatCount(0)).toBe("0");
+    expect(formatCount(999)).toBe("999");
+  });
+  it("compacts thousands with one decimal below a hundred", () => {
+    expect(formatCount(1000)).toBe("1K");
+    expect(formatCount(9672)).toBe("9.7K");
+    expect(formatCount(12000)).toBe("12K");
+  });
+  it("compacts millions and promotes near-boundary thousands", () => {
+    expect(formatCount(999999)).toBe("1M");
+    expect(formatCount(1106540)).toBe("1.1M");
+  });
+  it("compacts billions", () => {
+    expect(formatCount(1_000_000_000)).toBe("1B");
   });
 });

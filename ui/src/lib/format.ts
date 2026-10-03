@@ -14,3 +14,19 @@ export function formatTotalDuration(seconds: number): string {
   const r = s % 60;
   return `${h}:${m.toString().padStart(2, "0")}:${r.toString().padStart(2, "0")}`;
 }
+
+/// Compact fan/listener counts: 999, 9.7K, 12K, 1.1M, 1B.
+export function formatCount(n: number): string {
+  const value = Math.max(0, Math.floor(n));
+  if (value < 1000) return String(value);
+  if (value >= 1e9) return compact(value / 1e9, "B");
+  if (value >= 1e6) return compact(value / 1e6, "M");
+  const thousands = value / 1e3;
+  if (Math.round(thousands) >= 1000) return compact(value / 1e6, "M");
+  return compact(thousands, "K");
+}
+
+function compact(scaled: number, suffix: string): string {
+  const rounded = scaled >= 100 ? Math.round(scaled) : Math.round(scaled * 10) / 10;
+  return `${rounded}${suffix}`;
+}

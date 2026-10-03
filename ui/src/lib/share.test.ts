@@ -15,4 +15,7 @@ describe("shareUrl", () => {
       "https://tidal.com/mix/0069c87839288a76ffd67d83b7cb11",
     );
   });
+  it("builds artist links from the numeric id", () => {
+    expect(shareUrl("artist", 945)).toBe("https://tidal.com/artist/945");
+  });
 });
