@@ -90,7 +90,7 @@
 
 <style>
   .profiles {
-    padding: 0 32px;
+    padding: 0 48px;
   }
   .page-head {
     display: flex;
@@ -114,8 +114,8 @@
   }
   .grid {
     display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-    gap: 56px 28px;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 56px 16px;
     margin-top: 56px;
   }
   .groups {
@@ -141,7 +141,7 @@
     align-items: center;
     gap: 10px;
     text-align: center;
-    padding: 6px;
+    padding: 4px;
     border-radius: var(--radius-card);
     color: inherit;
   }
