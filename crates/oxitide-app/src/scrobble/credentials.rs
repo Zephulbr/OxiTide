@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use serde::{Deserialize, Serialize};
 
 pub const KEYRING_SERVICE: &str = "oxitide";
@@ -56,13 +58,12 @@ impl CredentialStore for KeyringCredentialStore {
     }
 }
 
-#[cfg(test)]
+#[allow(dead_code)]
 #[derive(Default)]
 pub struct MemoryCredentialStore {
     inner: std::sync::Mutex<std::collections::HashMap<String, StoredCredential>>,
 }
 
-#[cfg(test)]
 impl CredentialStore for MemoryCredentialStore {
     fn save(&self, service: &str, credential: &StoredCredential) -> Result<(), String> {
         self.inner
@@ -79,6 +80,17 @@ impl CredentialStore for MemoryCredentialStore {
     fn clear(&self, service: &str) -> Result<(), String> {
         self.inner.lock().unwrap().remove(service);
         Ok(())
+    }
+}
+
+/// Store for scrobble credentials: the OS keyring when the startup probe
+/// found it usable, otherwise session-only memory (spec T8-D2).
+#[allow(dead_code)]
+pub fn select_credential_store(persistent: bool) -> Arc<dyn CredentialStore> {
+    if persistent {
+        Arc::new(KeyringCredentialStore)
+    } else {
+        Arc::new(MemoryCredentialStore::default())
     }
 }
 
@@ -104,5 +116,20 @@ mod tests {
         assert!(!text.contains("super-secret"), "{text}");
         assert!(text.contains("<redacted>"));
         assert!(text.contains("v"));
+    }
+
+    #[test]
+    fn fallback_selection_is_session_only() {
+        let store = select_credential_store(false);
+        let cred = StoredCredential {
+            username: "v".into(),
+            secret: "s".into(),
+        };
+        store.save("lastfm", &cred).unwrap();
+        assert_eq!(store.load("lastfm").unwrap(), Some(cred));
+        let fresh_session = select_credential_store(false);
+        assert!(fresh_session.load("lastfm").unwrap().is_none());
+        store.clear("lastfm").unwrap();
+        assert!(store.load("lastfm").unwrap().is_none());
     }
 }
