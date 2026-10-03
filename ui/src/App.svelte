@@ -10,6 +10,7 @@
   import Album from "./views/Album.svelte";
   import Playlist from "./views/Playlist.svelte";
   import Artist from "./views/Artist.svelte";
+  import ArtistAll from "./views/ArtistAll.svelte";
   import Explore from "./views/Explore.svelte";
   import Feed from "./views/Feed.svelte";
   import CollectionAlbums from "./views/CollectionAlbums.svelte";
@@ -476,6 +477,7 @@
       {:else if nav.route.name === "mix"}<Mix id={nav.route.id} {player} {favorites} {playlistActions} {toasts} />
       {:else if nav.route.name === "playlist"}<Playlist {nav} id={nav.route.id} {player} {favorites} {playlistActions} {toasts} {collection} />
       {:else if nav.route.name === "artist"}<Artist id={nav.route.id} {nav} {player} {favorites} {playlistActions} {toasts} />
+      {:else if nav.route.name === "artist-all"}{#key nav.route.id}<ArtistAll id={nav.route.id} tab={nav.route.tab} {nav} {player} {favorites} {playlistActions} {toasts} />{/key}
       {:else if nav.route.name === "settings"}<Settings {player} {toasts} {onLogout} onQualityDisplay={(mode) => (qualityDisplay = mode)} />{/if}
     </main>
     {#if nav.queueOpen}

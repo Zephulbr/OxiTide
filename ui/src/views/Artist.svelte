@@ -193,6 +193,9 @@
             {expanded ? "Show less" : "Show all"}
           </button>
         {/if}
+        <button class="more" onclick={() => nav.goto({ name: "artist-all", id, tab: "tracks" })}>
+          View all
+        </button>
       </div>
       <TrackTable
         {view}
@@ -208,6 +211,11 @@
   {#if albums.length > 0}
     <section class="shelf">
       <Carousel title="Albums">
+        {#snippet controls()}
+          <button class="more" onclick={() => nav.goto({ name: "artist-all", id, tab: "albums" })}>
+            View all
+          </button>
+        {/snippet}
         {#each albums as album (album.id)}
           <MediaCard
             variant="carousel"
@@ -222,6 +230,11 @@
   {#if eps.length > 0}
     <section class="shelf">
       <Carousel title="Singles & EPs">
+        {#snippet controls()}
+          <button class="more" onclick={() => nav.goto({ name: "artist-all", id, tab: "eps" })}>
+            View all
+          </button>
+        {/snippet}
         {#each eps as album (album.id)}
           <MediaCard
             variant="carousel"
@@ -236,6 +249,11 @@
   {#if comps.length > 0}
     <section class="shelf">
       <Carousel title="Appears on">
+        {#snippet controls()}
+          <button class="more" onclick={() => nav.goto({ name: "artist-all", id, tab: "appears" })}>
+            View all
+          </button>
+        {/snippet}
         {#each comps as album (album.id)}
           <MediaCard
             variant="carousel"
