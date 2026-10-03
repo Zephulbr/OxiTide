@@ -12,6 +12,11 @@
 /* Now Playing artwork size (Track 4a layout): registered so the lyrics-mode
    switch can glide the cover size — unregistered custom properties snap. */
 @property --np-cover { syntax: "<length>"; inherits: true; initial-value: 0px; }
+/* Sleeve hover glare (Now Playing): registered so the specular spot glides
+   back to center on pointer leave instead of snapping. Set on the art
+   wrapper, read by the sleeve's glare child, hence inherits: true. */
+@property --tilt-gx { syntax: "<percentage>"; inherits: true; initial-value: 50%; }
+@property --tilt-gy { syntax: "<percentage>"; inherits: true; initial-value: 50%; }
 
 :root {
   /* Base — Warm Graphite (spec §5.1) */
@@ -35,6 +40,8 @@
   --surface-float: rgba(23, 18, 14, 0.82);
   --line: rgba(255, 240, 225, 0.10);
   --edge-lit: linear-gradient(135deg, rgba(255, 240, 225, 0.28), rgba(255, 240, 225, 0.06) 45%, rgba(0, 0, 0, 0.35));
+  /* Peak alpha of the sleeve's hover glare (Warm Graphite key light). */
+  --glare-alpha: 0.16;
 
   /* Radii (spec §8) */
   --radius-control: 8px;

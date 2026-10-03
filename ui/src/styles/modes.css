@@ -24,6 +24,8 @@
   --surface-3: #2b241c;
   --surface-float: #2b241c;
   --edge-lit: linear-gradient(135deg, var(--line), var(--line));
+  /* Instrument is matte: half the specular punch. */
+  --glare-alpha: 0.1;
   --glass-blur: 0px;
   --glass-veil: var(--surface-1); /* no blur: the veil is the frost */
   --overlay-blur: 0px;

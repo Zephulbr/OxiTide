@@ -13,6 +13,7 @@
   import { formatQuality, type QualityDisplay } from "../lib/quality";
   import type { Nav } from "../lib/nav.svelte";
   import type { Player } from "../lib/player.svelte";
+  import { tiltFromPointer } from "../lib/tilt";
 
   /// Outro pins the closing view absolutely over the incoming route, so the
   /// swap dissolves in place instead of reflowing .main mid-fade. The settle
@@ -73,6 +74,52 @@
   /// Transition duration that collapses to 0 when reduced motion is requested.
   const dur = (ms: number) => (appearance.reducedMotion ? 0 : ms);
 
+  /// Sleeve hover tilt (max degrees) and whether the pointer is on it. The
+  /// pointer geometry is written straight to the art wrapper's custom
+  /// properties so pointermove stays off the rune path; the class only gates
+  /// the tracking transition. Listeners live on the rectangular wrapper, not
+  /// the rounded button, so slipping over a corner never resets the tilt.
+  /// Mouse only, and off under reduced motion (the stylesheet hides the glare
+  /// as a backstop).
+  const MAX_TILT = 8;
+  /// First-contact window: the initial lean eases in on the slow return
+  /// curve, then tracking hands over to the tight linear follow.
+  const ENTER_MS = 480;
+  let sleeveHover = $state(false);
+  let sleeveEntering = $state(false);
+  let enterTimer: number | undefined;
+
+  function sleeveEnter(e: PointerEvent) {
+    if (appearance.coverShape !== "sleeve" || e.pointerType !== "mouse" || appearance.reducedMotion) return;
+    window.clearTimeout(enterTimer);
+    sleeveEntering = true;
+    enterTimer = window.setTimeout(() => (sleeveEntering = false), ENTER_MS);
+  }
+
+  function sleeveMove(e: PointerEvent) {
+    if (appearance.coverShape !== "sleeve" || e.pointerType !== "mouse" || appearance.reducedMotion) return;
+    const el = e.currentTarget as HTMLElement;
+    const t = tiltFromPointer(el.getBoundingClientRect(), e.clientX, e.clientY, MAX_TILT);
+    el.style.setProperty("--rx", `${t.rx}deg`);
+    el.style.setProperty("--ry", `${t.ry}deg`);
+    el.style.setProperty("--tilt-gx", `${t.gx}%`);
+    el.style.setProperty("--tilt-gy", `${t.gy}%`);
+    el.style.setProperty("--tilt-glare", `${t.glare}`);
+    sleeveHover = true;
+  }
+
+  function sleeveLeave(e: PointerEvent) {
+    window.clearTimeout(enterTimer);
+    sleeveEntering = false;
+    sleeveHover = false;
+    const el = e.currentTarget as HTMLElement;
+    el.style.removeProperty("--rx");
+    el.style.removeProperty("--ry");
+    el.style.removeProperty("--tilt-gx");
+    el.style.removeProperty("--tilt-gy");
+    el.style.removeProperty("--tilt-glare");
+  }
+
   /// The lyrics panel mounts as the layout morph settles — laying lines out
   /// mid-glide continuously re-wraps them and drifts the centered line.
   /// GLIDE_MS is 460ms of the 520ms --np-glide: the ease-in-out tail is flat,
@@ -129,7 +176,13 @@
   <div class="stage">
     {#if track}
       <div class="stage-row">
-        <div class="art">
+        <div
+          class="art"
+          role="presentation"
+          onpointerenter={sleeveEnter}
+          onpointermove={sleeveMove}
+          onpointerleave={sleeveLeave}
+        >
           <!-- Keyed on the track so a track change scale-dissolves the artwork
                instead of snapping; the grid stack lets outgoing and incoming
                overlap in the same cell during the swap. The transform lives on
@@ -145,8 +198,15 @@
                   <DiscArt uuid={track.cover} playing={player.state.playing} />
                 </button>
               {:else}
-                <button class="art-sleeve lit" onclick={() => nav.closeNowPlaying()} aria-label="Close now playing">
+                <button
+                  class="art-sleeve lit"
+                  class:hovering={sleeveHover}
+                  class:entering={sleeveEntering}
+                  onclick={() => nav.closeNowPlaying()}
+                  aria-label="Close now playing"
+                >
                   <Cover uuid={track.cover} size={640} radius={12} alt={`${track.title} artwork`} />
+                  <span class="art-glare" aria-hidden="true"></span>
                 </button>
               {/if}
             </div>
@@ -316,6 +376,9 @@
   .art-stack {
     grid-area: 1 / 1;
     width: 100%;
+    /* Depth for the sleeve's hover tilt (the disc ignores it). Kept shallow
+       so the far edge reads as tilt, not a bulge toward the viewer. */
+    perspective: 1400px;
   }
   @keyframes np-fade {
     from { opacity: 0; }
@@ -330,6 +393,12 @@
       animation-name: np-fade;
       animation-delay: 0ms;
     }
+    .art-sleeve {
+      transform: none;
+    }
+    .art-glare {
+      display: none;
+    }
   }
   /* Both shapes are one close affordance (spec §7.2): clicking the artwork
      returns, disc or sleeve. The disc button stays transparent (no lit edge).
@@ -342,19 +411,69 @@
     margin: 0 auto;
     transition: transform var(--dur-state) var(--ease-in-out);
   }
-  .art-sleeve:hover,
   .art-disc:hover {
     transform: scale(1.015);
   }
   /* :not(:disabled) is required to out-specify app.css's global press rule. */
-  .art-sleeve:not(:disabled):active,
   .art-disc:not(:disabled):active {
     transform: scale(0.99);
   }
-  /* Sleeve parity with the disc's shadow, shaped to the cover's radius. */
+  /* Sleeve (square): the same close affordance, but it reads as a record box
+     under the cursor — a perspective tilt toward the pointer with a specular
+     glare mirrored through the center (no grow; the tilt alone carries it).
+     The press lives in --tilt-scale so it composes with the tilt instead of
+     replacing it. */
   .art-sleeve {
+    position: relative;
     border-radius: var(--radius-card);
     box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+    --tilt-scale: 1;
+    /* The leave settle: slower than the hover tracking, decelerating into
+       flat (var(--ease-in)'s fast-start curve) so the return never snaps. */
+    --tilt-return: 480ms;
+    transform: rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) scale(var(--tilt-scale));
+    transition-duration: var(--tilt-return);
+    transition-timing-function: var(--ease-in);
+    will-change: transform;
+  }
+  .art-sleeve.hovering {
+    /* Track the pointer tightly; the base rule eases flat on leave. */
+    transition-duration: var(--dur-micro);
+    transition-timing-function: linear;
+  }
+  /* First contact: lean in on the slow settle curve, then hand over to the
+     tight tracking above. Declared after .hovering so it wins while active. */
+  .art-sleeve.entering {
+    transition-duration: var(--tilt-return);
+    transition-timing-function: var(--ease-in);
+  }
+  .art-sleeve:not(:disabled):active {
+    --tilt-scale: 0.99;
+  }
+  .art-glare {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: var(--radius-card);
+    opacity: var(--tilt-glare, 0);
+    background: radial-gradient(
+      circle at var(--tilt-gx, 50%) var(--tilt-gy, 50%),
+      rgba(255, 240, 225, var(--glare-alpha)),
+      rgba(255, 240, 225, 0) 40%
+    );
+    mix-blend-mode: screen;
+    transition:
+      --tilt-gx var(--tilt-return) var(--ease-in),
+      --tilt-gy var(--tilt-return) var(--ease-in),
+      opacity var(--tilt-return) var(--ease-in);
+  }
+  .art-sleeve.hovering .art-glare {
+    transition-duration: var(--dur-micro);
+    transition-timing-function: linear;
+  }
+  .art-sleeve.entering .art-glare {
+    transition-duration: var(--tilt-return);
+    transition-timing-function: var(--ease-in);
   }
   .art-empty {
     width: min(60%, 320px);
