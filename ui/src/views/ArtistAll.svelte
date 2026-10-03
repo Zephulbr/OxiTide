@@ -363,8 +363,8 @@
     border-radius: 2px;
     background: var(--accent);
     transition:
-      left var(--dur-state) var(--ease-out),
-      width var(--dur-state) var(--ease-out);
+      left var(--dur-state) var(--ease-in-out),
+      width var(--dur-state) var(--ease-in-out);
   }
   .tab-body {
     flex: 1 1 auto;
