@@ -2,6 +2,7 @@
   import { api } from "../lib/api";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import Loading from "../lib/components/Loading.svelte";
+  import KeyringNotice from "../lib/components/KeyringNotice.svelte";
   let {
     onLogin,
     message = "",
@@ -61,6 +62,7 @@
     <p class="intro muted">
       OxiTide opens TIDAL in your browser. Sign in — the app unlocks automatically when you return.
     </p>
+    <KeyringNotice />
 
     {#if waiting}
       <div class="waiting">

@@ -13,6 +13,7 @@
   import { canToggle, queuedLabel, serviceLabel } from "../lib/scrobble";
   import ErrorState from "../lib/components/ErrorState.svelte";
   import Icon from "../lib/components/Icon.svelte";
+  import KeyringNotice from "../lib/components/KeyringNotice.svelte";
   import Loading from "../lib/components/Loading.svelte";
   import {
     appearance,
@@ -703,6 +704,7 @@
   {:else}
     <div id="settings-panel-system" role="tabpanel" aria-labelledby="settings-tab-system">
       <h3>Account</h3>
+      <KeyringNotice />
       <p>
         <button class="logout" onclick={onLogout}>
           <Icon name="log-out" size={16} />
