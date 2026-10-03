@@ -99,9 +99,10 @@
   }
   .grid {
     display: grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-template-columns: repeat(8, minmax(0, 1fr));
     gap: 28px 20px;
     margin-top: 28px;
+    padding: 0 16px;
   }
   .card {
     display: flex;
