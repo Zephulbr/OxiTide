@@ -79,6 +79,7 @@
     display: flex;
     align-items: center;
     gap: 10px;
+    padding-top: 16px;
   }
   .page-head h2 {
     flex: 1;
@@ -95,13 +96,13 @@
     flex: 0 0 auto;
   }
   .empty {
-    margin-top: 28px;
+    margin-top: 40px;
   }
   .grid {
     display: grid;
     grid-template-columns: repeat(8, minmax(0, 1fr));
-    gap: 28px 20px;
-    margin-top: 28px;
+    gap: 40px 20px;
+    margin-top: 40px;
     padding: 0 16px;
   }
   .card {
