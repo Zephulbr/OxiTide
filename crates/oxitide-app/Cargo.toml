@@ -23,7 +23,6 @@ tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 toml.workspace = true
 directories.workspace = true
-keyring = { version = "3", features = ["windows-native"] }
 thiserror.workspace = true
 url.workspace = true
 md-5 = "0.10"
@@ -34,6 +33,7 @@ discord-rich-presence = "1.1"
 wiremock = "0.6"
 
 [target.'cfg(windows)'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
 windows = { version = "0.62", features = [
     "Media",
     "Foundation",
@@ -46,3 +46,11 @@ windows = { version = "0.62", features = [
     "Win32_System_ProcessStatus",
     "Win32_System_Diagnostics_ToolHelp",
 ] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
+
+# Unsupported platforms (macOS is out of scope per spec §2) keep keyring's
+# featureless mock store so they still compile.
+[target.'cfg(not(any(windows, target_os = "linux")))'.dependencies]
+keyring = { version = "3" }
