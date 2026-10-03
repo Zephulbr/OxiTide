@@ -215,7 +215,12 @@ pub fn enumerate_output_devices() -> Result<Vec<OutputDevice>> {
     platform::enumerate()
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
+pub fn enumerate_output_devices() -> Result<Vec<OutputDevice>> {
+    crate::alsa_output::enumerate()
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 pub fn enumerate_output_devices() -> Result<Vec<OutputDevice>> {
     Ok(Vec::new())
 }
@@ -327,5 +332,12 @@ mod tests {
         );
         assert!(exclusive_formats(&info(16, PcmFormat::F32)).is_empty());
         assert!(sixteen.iter().all(|f| f.store_bits == 32 && f.sample_rate == 44100));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn enumeration_is_wired_on_linux() {
+        let devices = enumerate_output_devices().unwrap();
+        assert!(!devices.is_empty());
     }
 }
