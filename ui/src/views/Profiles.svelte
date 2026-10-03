@@ -114,8 +114,8 @@
   }
   .grid {
     display: grid;
-    grid-template-columns: repeat(8, minmax(0, 1fr));
-    gap: 56px 20px;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 56px 28px;
     margin-top: 56px;
   }
   .groups {
@@ -141,7 +141,7 @@
     align-items: center;
     gap: 10px;
     text-align: center;
-    padding: 12px;
+    padding: 6px;
     border-radius: var(--radius-card);
     color: inherit;
   }
