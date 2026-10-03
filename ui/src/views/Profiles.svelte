@@ -1,9 +1,10 @@
 <script lang="ts">
   import { api, type Artist } from "../lib/api";
-  import { visibleArtists, type ArtistSort } from "../lib/artistSort";
+  import { groupArtists, visibleArtists, type ArtistSort } from "../lib/artistSort";
   import Cover from "../lib/components/Cover.svelte";
   import EmptyState from "../lib/components/EmptyState.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
+  import Icon from "../lib/components/Icon.svelte";
   import Loading from "../lib/components/Loading.svelte";
   import type { Nav } from "../lib/nav.svelte";
 
@@ -13,9 +14,10 @@
   let loading = $state(true);
   let error = $state("");
   let query = $state("");
-  let sortMode = $state<ArtistSort>("name");
+  let sortMode = $state<ArtistSort>("date");
 
   const shown = $derived(visibleArtists(artists, query, sortMode));
+  const groups = $derived(sortMode === "date" ? null : groupArtists(shown));
 
   async function load() {
     loading = true;
@@ -34,6 +36,15 @@
   });
 </script>
 
+{#snippet cards(list: Artist[])}
+  {#each list as artist (artist.id)}
+    <button class="card" onclick={() => nav.goto({ name: "artist", id: artist.id })}>
+      <span class="art"><Cover uuid={artist.picture} size={320} radius={160} alt="" /></span>
+      <span class="title">{artist.name}</span>
+    </button>
+  {/each}
+{/snippet}
+
 <div class="page-head">
   <h2>Profiles</h2>
   <span class="muted count">{artists.length} {artists.length === 1 ? "artist" : "artists"}</span>
@@ -44,15 +55,19 @@
     oninput={(event) => (query = event.currentTarget.value)}
     aria-label="Search artists"
   />
-  <select
-    class="search-input sort"
-    value={sortMode}
-    onchange={(event) => (sortMode = event.currentTarget.value as ArtistSort)}
-    aria-label="Sort artists"
-  >
-    <option value="name">Name A–Z</option>
-    <option value="name-desc">Name Z–A</option>
-  </select>
+  <div class="select-wrap">
+    <select
+      class="search-input sort"
+      value={sortMode}
+      onchange={(event) => (sortMode = event.currentTarget.value as ArtistSort)}
+      aria-label="Sort artists"
+    >
+      <option value="date">Date added</option>
+      <option value="name">Name A–Z</option>
+      <option value="name-desc">Name Z–A</option>
+    </select>
+    <span class="chevron" aria-hidden="true"><Icon name="chevron-down" size={14} /></span>
+  </div>
 </div>
 
 {#if loading}
@@ -63,15 +78,15 @@
   <EmptyState message="No artists yet." />
 {:else if shown.length === 0}
   <p class="muted empty">No artists match “{query.trim()}”.</p>
-{:else}
-  <div class="grid">
-    {#each shown as artist (artist.id)}
-      <button class="card" onclick={() => nav.goto({ name: "artist", id: artist.id })}>
-        <span class="art"><Cover uuid={artist.picture} size={320} radius={160} alt="" /></span>
-        <span class="title">{artist.name}</span>
-      </button>
+{:else if groups}
+  <div class="groups">
+    {#each groups as group (group.letter)}
+      <h3 class="letter">{group.letter}</h3>
+      <div class="grid">{@render cards(group.artists)}</div>
     {/each}
   </div>
+{:else}
+  <div class="grid">{@render cards(shown)}</div>
 {/if}
 
 <style>
@@ -92,8 +107,25 @@
   .filter {
     flex: 0 1 240px;
   }
-  .sort {
+  .select-wrap {
+    position: relative;
+    display: flex;
     flex: 0 0 auto;
+  }
+  .sort {
+    appearance: none;
+    padding-right: 30px;
+    cursor: pointer;
+  }
+  .chevron {
+    position: absolute;
+    top: 50%;
+    right: 10px;
+    display: grid;
+    place-items: center;
+    color: var(--text-muted);
+    transform: translateY(-50%);
+    pointer-events: none;
   }
   .empty {
     margin-top: 56px;
@@ -104,6 +136,24 @@
     gap: 56px 20px;
     margin-top: 56px;
     padding: 0 16px;
+  }
+  .groups {
+    margin-top: 56px;
+    padding: 0 16px;
+  }
+  .groups .grid {
+    margin-top: 12px;
+    padding: 0;
+  }
+  .letter {
+    margin: 48px 0 0;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+  }
+  .groups .letter:first-child {
+    margin-top: 0;
   }
   .card {
     display: flex;

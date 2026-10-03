@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Artist } from "./api";
-import { visibleArtists } from "./artistSort";
+import { groupArtists, visibleArtists } from "./artistSort";
 
 function artist(id: number, name: string): Artist {
   return { id, name, picture: null };
@@ -39,5 +39,42 @@ describe("visibleArtists", () => {
     const input = [...artists];
     visibleArtists(input, "", "name-desc");
     expect(input).toEqual(artists);
+  });
+
+  it("keeps the API order in date-added mode", () => {
+    expect(visibleArtists(artists, "", "date").map((a) => a.name)).toEqual([
+      "Radiohead",
+      "arctic monkeys",
+      "Björk",
+    ]);
+    expect(visibleArtists(artists, "bj", "date").map((a) => a.name)).toEqual(["Björk"]);
+  });
+});
+
+describe("groupArtists", () => {
+  it("groups consecutive artists by folded initial", () => {
+    const list = [
+      artist(1, "AC/DC"),
+      artist(2, "Ado"),
+      artist(3, "Aerosmith"),
+      artist(4, "Björk"),
+      artist(5, "bad company"),
+    ];
+    expect(groupArtists(list).map((g) => [g.letter, g.artists.length])).toEqual([
+      ["A", 3],
+      ["B", 2],
+    ]);
+  });
+
+  it("folds diacritics and buckets non-letters under #", () => {
+    expect(groupArtists([artist(1, "Ólafur"), artist(2, "3 Doors Down")]).map((g) => g.letter)).toEqual([
+      "O",
+      "#",
+    ]);
+  });
+
+  it("preserves descending order for Z-A groups", () => {
+    const list = [artist(1, "Zoo"), artist(2, "Yes"), artist(3, "XTC")];
+    expect(groupArtists(list).map((g) => g.letter)).toEqual(["Z", "Y", "X"]);
   });
 });
