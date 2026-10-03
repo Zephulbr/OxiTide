@@ -14,7 +14,11 @@ export interface Album {
   numberOfTracks: number; duration: number; releaseDate?: string | null;
   audioQuality?: string | null;
 }
-export interface Artist { id: number; name: string; picture?: string | null }
+export interface Artist { id: number; name: string; picture?: string | null; mixes?: ArtistMixes | null }
+export interface ArtistMixes {
+  ARTIST_MIX?: string | null;
+  MASTER_ARTIST_MIX?: string | null;
+}
 export interface ArtistLink { site: string; url: string }
 export interface ArtistProfile {
   numberOfFollowers?: number | null;
@@ -224,8 +228,13 @@ export const api = {
   getArtistProfile: (id: number) => invoke<ArtistProfile>("get_artist_profile", { id }),
   getArtistTopTracks: (artistId: number, limit: number) =>
     invoke<Track[]>("get_artist_top_tracks", { artistId, limit }),
+  getArtistTopTracksPage: (artistId: number, offset: number, limit: number) =>
+    invoke<TrackPage>("get_artist_top_tracks_page", { artistId, offset, limit }),
   getArtistAlbums: (artistId: number, filter: ArtistDiscography, limit: number, offset: number) =>
     invoke<Album[]>("get_artist_albums", { artistId, filter, limit, offset }),
+  getArtistAlbumsAll: (artistId: number, filter: ArtistDiscography) =>
+    invoke<Album[]>("get_artist_albums_all", { artistId, filter }),
+  getArtistPage: (artistId: number) => invoke<PageSection[]>("get_artist_page", { artistId }),
   openExternal: (url: string) => invoke<void>("open_external", { url }),
   getLyrics: (trackId: number, title: string, artist: string, album: string, durationSecs: number) =>
     invoke<LyricsDto | null>("get_lyrics", { trackId, title, artist, album, durationSecs }),

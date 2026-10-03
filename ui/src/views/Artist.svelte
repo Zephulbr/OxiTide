@@ -5,9 +5,9 @@
     type Album as AlbumT,
     type Artist as ArtistT,
     type ArtistProfile,
-    type PageItem,
     type Track,
   } from "../lib/api";
+  import { albumCard, artistCard } from "../lib/artistPage";
   import { copyText } from "../lib/clipboard";
   import ArtistHero from "../lib/components/ArtistHero.svelte";
   import Carousel from "../lib/components/Carousel.svelte";
@@ -58,27 +58,6 @@
 
   const visibleTop = $derived(expanded ? topTracks : topTracks.slice(0, 5));
   const view = createTrackView(() => visibleTop);
-
-  function albumCard(album: AlbumT): PageItem {
-    const year = album.releaseDate?.slice(0, 4) ?? "";
-    return {
-      id: String(album.id),
-      title: album.title,
-      subtitle: /^\d{4}$/.test(year) ? year : null,
-      item_type: "ALBUM",
-      artwork: album.cover,
-    };
-  }
-
-  function artistCard(artist: ArtistT): PageItem {
-    return {
-      id: String(artist.id),
-      title: artist.name,
-      subtitle: null,
-      item_type: "ARTIST",
-      artwork: artist.picture,
-    };
-  }
 
   async function load() {
     const token = ++loadToken;
