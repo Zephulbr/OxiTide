@@ -1,41 +1,170 @@
 <script lang="ts">
-  import { api, type Artist as ArtistT } from "../lib/api";
+  import {
+    api,
+    trackToQueueItem,
+    type Album as AlbumT,
+    type Artist as ArtistT,
+    type ArtistProfile,
+    type PageItem,
+    type Track,
+  } from "../lib/api";
+  import { copyText } from "../lib/clipboard";
+  import ArtistHero from "../lib/components/ArtistHero.svelte";
+  import Carousel from "../lib/components/Carousel.svelte";
+  import DetailAction from "../lib/components/DetailAction.svelte";
   import EmptyState from "../lib/components/EmptyState.svelte";
-  import Cover from "../lib/components/Cover.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
-  import Icon from "../lib/components/Icon.svelte";
   import Loading from "../lib/components/Loading.svelte";
+  import MediaCard from "../lib/components/MediaCard.svelte";
+  import TrackTable from "../lib/components/TrackTable.svelte";
+  import { menu } from "../lib/menu.svelte";
+  import { playSource } from "../lib/playSource.svelte";
+  import { playArtistRadio } from "../lib/radio";
+  import { shareUrl } from "../lib/share";
+  import { createTrackView } from "../lib/trackView.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { Nav } from "../lib/nav.svelte";
-  import { playArtistRadio } from "../lib/radio";
+  import type { PlaylistActions } from "../lib/playlists.svelte";
+  import type { Player } from "../lib/player.svelte";
   import type { Toasts } from "../lib/toasts.svelte";
 
   let {
     id,
     nav,
-    toasts,
+    player,
     favorites,
-  }: { id: number; nav: Nav; toasts: Toasts; favorites: Favorites } = $props();
+    playlistActions,
+    toasts,
+  }: {
+    id: number;
+    nav: Nav;
+    player: Player;
+    favorites: Favorites;
+    playlistActions: PlaylistActions;
+    toasts: Toasts;
+  } = $props();
 
   let artist = $state<ArtistT | null>(null);
+  let profile = $state<ArtistProfile | null>(null);
+  let topTracks = $state<Track[]>([]);
+  let albums = $state<AlbumT[]>([]);
+  let eps = $state<AlbumT[]>([]);
+  let comps = $state<AlbumT[]>([]);
   let similar = $state<ArtistT[]>([]);
   let loading = $state(true);
   let error = $state("");
+  let expanded = $state(false);
+  let loadToken = 0;
+
+  const visibleTop = $derived(expanded ? topTracks : topTracks.slice(0, 5));
+  const view = createTrackView(() => visibleTop);
+
+  function albumCard(album: AlbumT): PageItem {
+    const year = album.releaseDate?.slice(0, 4) ?? "";
+    return {
+      id: String(album.id),
+      title: album.title,
+      subtitle: /^\d{4}$/.test(year) ? year : null,
+      item_type: "ALBUM",
+      artwork: album.cover,
+    };
+  }
+
+  function artistCard(artist: ArtistT): PageItem {
+    return {
+      id: String(artist.id),
+      title: artist.name,
+      subtitle: null,
+      item_type: "ARTIST",
+      artwork: artist.picture,
+    };
+  }
 
   async function load() {
+    const token = ++loadToken;
     loading = true;
     error = "";
+    topTracks = [];
+    albums = [];
+    eps = [];
+    comps = [];
+    similar = [];
+    expanded = false;
     try {
-      artist = await api.getArtist(id);
+      const [loadedArtist, loadedProfile] = await Promise.all([
+        api.getArtist(id),
+        api.getArtistProfile(id).catch(() => null),
+      ]);
+      if (token !== loadToken) return;
+      artist = loadedArtist;
+      profile = loadedProfile;
     } catch (e) {
+      if (token !== loadToken) return;
       error = String(e);
-    } finally {
       loading = false;
+      return;
     }
+    loading = false;
+    // Sections load independently: one slow or failed shelf never blocks
+    // the hero or its neighbours, and stale responses are dropped.
+    void api.getArtistTopTracks(id, 10)
+      .then((tracks) => {
+        if (token === loadToken) topTracks = tracks;
+      })
+      .catch(() => {});
+    for (const [filter, target] of [
+      ["albums", "albums"],
+      ["eps_and_singles", "eps"],
+      ["compilations", "comps"],
+    ] as const) {
+      void api.getArtistAlbums(id, filter, 50, 0)
+        .then((list) => {
+          if (token !== loadToken) return;
+          if (target === "albums") albums = list;
+          else if (target === "eps") eps = list;
+          else comps = list;
+        })
+        .catch(() => {});
+    }
+    void api.getSimilarArtists(id)
+      .then((list) => {
+        if (token === loadToken) similar = list;
+      })
+      .catch(() => {});
+  }
+
+  function queueTop(startIndex: number, shuffle = false) {
+    if (topTracks.length === 0) return;
+    playSource.set(null);
+    void api.playTracks(topTracks.map(trackToQueueItem), startIndex, shuffle);
+  }
+
+  function playFrom(index: number) {
+    // `view.items` is a prefix of `topTracks` until a filter/sort engages;
+    // sourceIndex maps the visible row back to the queue's source order.
+    const source = view.sourceIndex(index);
+    if (source < 0) return;
+    queueTop(source);
+  }
+
+  async function share() {
+    const copied = await copyText(shareUrl("artist", id));
+    toasts.show(copied ? "Link copied" : "Couldn't copy link", {
+      severity: copied ? "success" : "error",
+    });
+  }
+
+  function openMenu(event: MouseEvent) {
+    menu.show(event.clientX, event.clientY, [
+      { id: "share", label: "Share", run: () => void share() },
+    ]);
+  }
+
+  async function openLink(url: string) {
     try {
-      similar = await api.getSimilarArtists(id);
-    } catch {
-      similar = [];
+      await api.openExternal(url);
+    } catch (e) {
+      toasts.show(String(e), { severity: "error" });
     }
   }
 
@@ -50,91 +179,131 @@
   <ErrorState message={error} onRetry={load} />
 {:else if artist}
   {@const artistId = artist.id}
-  <header class="view-header">
-    <span class="header-art round"><Cover uuid={artist.picture} size={320} radius={80} alt={artist.name} /></span>
-    <div class="header-meta">
-      <h2>{artist.name}</h2>
-      <p class="muted">Artist</p>
-      <div class="header-actions">
-        <button
-          onclick={() => void playArtistRadio(artistId, toasts)}
-          aria-label="Start artist radio"
-          title="Start artist radio"
-        ><Icon name="radio" /></button>
-        <button
-          class:on={favorites.hasArtist(artistId)}
-          onclick={() => favorites.toggleArtist(artistId)}
-          aria-label={favorites.hasArtist(artistId) ? "Unfavorite artist" : "Favorite artist"}
-          title={favorites.hasArtist(artistId) ? "Unfavorite artist" : "Favorite artist"}
-        ><Icon name="heart" /></button>
+  <ArtistHero
+    {artist}
+    {profile}
+    disabled={topTracks.length === 0}
+    onPlay={() => queueTop(0)}
+    onShuffle={() => queueTop(0, true)}
+    onOpenLink={openLink}
+  >
+    {#snippet actions()}
+      <DetailAction
+        icon="radio"
+        label="Radio"
+        title="Start artist radio"
+        onclick={() => void playArtistRadio(artistId, toasts)}
+      />
+      <DetailAction
+        icon="heart"
+        label={favorites.hasArtist(artistId) ? "Favorited" : "Favorite"}
+        active={favorites.hasArtist(artistId)}
+        title={favorites.hasArtist(artistId) ? "Unfavorite artist" : "Favorite artist"}
+        onclick={() => favorites.toggleArtist(artistId)}
+      />
+      <DetailAction icon="ellipsis" label="More" title="More options" onclick={openMenu} />
+    {/snippet}
+  </ArtistHero>
+
+  {#if topTracks.length > 0}
+    <section class="shelf">
+      <div class="shelf-head">
+        <h3>Top tracks</h3>
+        {#if topTracks.length > 5}
+          <button class="more" onclick={() => (expanded = !expanded)}>
+            {expanded ? "Show less" : "Show all"}
+          </button>
+        {/if}
       </div>
-    </div>
-  </header>
+      <TrackTable
+        {view}
+        {favorites}
+        {toasts}
+        onPlay={playFrom}
+        playingTrackId={player.state.current?.track_id ?? null}
+        onAddToPlaylist={(track) => playlistActions.openPicker([track])}
+      />
+    </section>
+  {/if}
+
+  {#if albums.length > 0}
+    <section class="shelf">
+      <Carousel title="Albums">
+        {#each albums as album (album.id)}
+          <MediaCard
+            variant="carousel"
+            item={albumCard(album)}
+            onclick={() => nav.goto({ name: "album", id: album.id })}
+          />
+        {/each}
+      </Carousel>
+    </section>
+  {/if}
+
+  {#if eps.length > 0}
+    <section class="shelf">
+      <Carousel title="Singles & EPs">
+        {#each eps as album (album.id)}
+          <MediaCard
+            variant="carousel"
+            item={albumCard(album)}
+            onclick={() => nav.goto({ name: "album", id: album.id })}
+          />
+        {/each}
+      </Carousel>
+    </section>
+  {/if}
+
+  {#if comps.length > 0}
+    <section class="shelf">
+      <Carousel title="Appears on">
+        {#each comps as album (album.id)}
+          <MediaCard
+            variant="carousel"
+            item={albumCard(album)}
+            onclick={() => nav.goto({ name: "album", id: album.id })}
+          />
+        {/each}
+      </Carousel>
+    </section>
+  {/if}
+
   {#if similar.length > 0}
-    <h3>Similar artists</h3>
-    <div class="similar-grid">
-      {#each similar as s (s.id)}
-        <button class="similar-card" onclick={() => nav.goto({ name: "artist", id: s.id })} title={s.name}>
-          <span class="similar-art"><Cover uuid={s.picture} size={320} radius={80} alt={s.name} /></span>
-          <span class="similar-name">{s.name}</span>
-        </button>
-      {/each}
-    </div>
+    <section class="shelf">
+      <Carousel title="Similar artists">
+        {#each similar as s (s.id)}
+          <MediaCard
+            variant="carousel"
+            item={artistCard(s)}
+            onclick={() => nav.goto({ name: "artist", id: s.id })}
+          />
+        {/each}
+      </Carousel>
+    </section>
   {/if}
 {:else}
   <EmptyState message="Artist not found." />
 {/if}
 
 <style>
-  .on { color: var(--accent); }
-  .on :global(svg) { fill: currentColor; }
-  .view-header {
+  .shelf {
+    margin-bottom: 28px;
+  }
+  .shelf-head {
     display: flex;
-    align-items: flex-end;
-    gap: 20px;
-    margin-bottom: 20px;
+    align-items: center;
+    gap: 12px;
   }
-  .header-art {
-    flex: 0 0 auto;
-    width: 160px;
-  }
-  .header-meta {
+  .shelf-head h3 {
+    flex: 1;
     min-width: 0;
   }
-  .header-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 10px;
+  .more {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
   }
-  .similar-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    gap: 16px;
-  }
-  .similar-card {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    padding: 10px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius-card);
-    color: inherit;
-    text-align: center;
-  }
-  .similar-card:hover {
-    background: var(--surface-2);
-  }
-  .similar-art {
-    display: block;
-    width: 100%;
-  }
-  .similar-name {
-    font-weight: 500;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  .more:hover {
+    color: var(--text);
   }
 </style>
