@@ -15,6 +15,8 @@
   let error = $state("");
   let query = $state("");
   let sortMode = $state<ArtistSort>("date");
+  let headEl = $state<HTMLElement | null>(null);
+  let scrolled = $state(false);
 
   const shown = $derived(visibleArtists(artists, query, sortMode));
   const groups = $derived(sortMode === "date" ? null : groupArtists(shown));
@@ -34,6 +36,15 @@
   $effect(() => {
     void load();
   });
+
+  $effect(() => {
+    const main = headEl?.closest(".main");
+    if (!main) return;
+    const sync = () => (scrolled = main.scrollTop > 4);
+    sync();
+    main.addEventListener("scroll", sync, { passive: true });
+    return () => main.removeEventListener("scroll", sync);
+  });
 </script>
 
 {#snippet cards(list: Artist[])}
@@ -46,7 +57,8 @@
 {/snippet}
 
 <div class="profiles">
-  <div class="page-head">
+  <div class="page-head" class:scrolled bind:this={headEl}>
+    <span class="head-frost" aria-hidden="true"><i></i><i></i><i></i></span>
     <h2>Profiles</h2>
     <span class="muted count">{artists.length} {artists.length === 1 ? "artist" : "artists"}</span>
     <input
@@ -93,10 +105,57 @@
     padding: 0 48px;
   }
   .page-head {
+    position: sticky;
+    top: -40px;
+    z-index: 5;
     display: flex;
     align-items: center;
     gap: 10px;
-    padding-top: 40px;
+    margin: 0 -48px;
+    padding: 40px 48px 0;
+  }
+  .head-frost {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+  }
+  .head-frost::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: transparent;
+    backdrop-filter: blur(var(--glass-blur));
+    transition: background var(--dur-state) var(--ease-in);
+  }
+  .page-head.scrolled .head-frost::before {
+    background: var(--glass-veil);
+  }
+  .head-frost i {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 8px;
+    opacity: 0;
+    transition: opacity var(--dur-state) var(--ease-in);
+  }
+  .page-head.scrolled .head-frost i {
+    opacity: 1;
+  }
+  .head-frost i:nth-child(1) {
+    top: 100%;
+    background: var(--glass-veil);
+    backdrop-filter: blur(12px);
+  }
+  .head-frost i:nth-child(2) {
+    top: calc(100% + 8px);
+    background: color-mix(in srgb, var(--glass-veil) 66%, transparent);
+    backdrop-filter: blur(7px);
+  }
+  .head-frost i:nth-child(3) {
+    top: calc(100% + 16px);
+    background: color-mix(in srgb, var(--glass-veil) 33%, transparent);
+    backdrop-filter: blur(3px);
   }
   .page-head h2 {
     flex: 1;
