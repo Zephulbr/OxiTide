@@ -43,11 +43,15 @@ plan 8.1). Run in WSL2 Ubuntu 22.04 under WSLg with a real TIDAL account and
   and `cargo tree -p oxitide-tidal -e features -i keyring` (shows
   `sync-secret-service`, `crypto-rust`, and `dbus-secret-service`; no mock
   store).
-- Failed: `cargo clippy --workspace -- -D warnings` on WSL — `unused import:
-  Error` at `crates/oxitide-audio/src/output.rs:7` (used only by Windows code).
-  `crates/oxitide-audio` is unchanged from the base branch, so this is
-  pre-existing and unrelated to plan 8.1; recorded here, not fixed by this
-  verification task.
+- clippy: the `unused import: Error` blocker in
+  `crates/oxitide-audio/src/output.rs` was fixed by cfg-gating the Windows-only
+  `Error` import while keeping the cross-platform `Result` import; WSL clippy
+  for `oxitide-audio` is clean. The `--workspace` gate is still red: with audio
+  clean, clippy proceeds to `oxitide-app` and reports 14 pre-existing Linux
+  dead-code/unused warnings in code untouched by plan 8.1 (`scheme.rs`,
+  `media_controls.rs`, `perf.rs`, `state.rs`). Those files belong to later
+  Linux bring-up work (Track 8.4 owns `media_controls.rs` and pins `scheme.rs`
+  unchanged), so the box above stays unchecked pending a scope ruling.
 - Environment: the WSL cargo gates ran as root on Ubuntu 26.04 (the provisioned
   dev substitute for 22.04); the UI npm gates ran on Windows because this
   worktree's `ui/node_modules` is Windows-native.

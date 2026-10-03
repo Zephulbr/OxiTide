@@ -4,7 +4,9 @@ use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 
 use crate::decode::{PcmBuffer, PcmFormat, StreamInfo};
-use crate::error::{Error, Result};
+use crate::error::Result;
+#[cfg(windows)]
+use crate::error::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OutputDevice {
