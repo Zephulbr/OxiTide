@@ -58,7 +58,9 @@
 
 <div class="profiles">
   <div class="page-head" class:scrolled bind:this={headEl}>
-    <span class="head-frost" aria-hidden="true"></span>
+    <span class="head-frost" aria-hidden="true">
+      <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+    </span>
     <h2>Profiles</h2>
     <span class="muted count">{artists.length} {artists.length === 1 ? "artist" : "artists"}</span>
     <input
@@ -131,17 +133,33 @@
   .page-head.scrolled .head-frost::before {
     background: var(--glass-veil);
   }
+  .head-frost i {
+    position: absolute;
+    right: 0;
+    left: 0;
+    height: 6px;
+    opacity: 0;
+    transition: opacity var(--dur-state) var(--ease-in);
+  }
+  .page-head.scrolled .head-frost i {
+    opacity: 1;
+  }
+  .head-frost i:nth-child(1) { top: 100%; backdrop-filter: blur(18px); }
+  .head-frost i:nth-child(2) { top: calc(100% + 6px); backdrop-filter: blur(15px); }
+  .head-frost i:nth-child(3) { top: calc(100% + 12px); backdrop-filter: blur(12px); }
+  .head-frost i:nth-child(4) { top: calc(100% + 18px); backdrop-filter: blur(10px); }
+  .head-frost i:nth-child(5) { top: calc(100% + 24px); backdrop-filter: blur(8px); }
+  .head-frost i:nth-child(6) { top: calc(100% + 30px); backdrop-filter: blur(6px); }
+  .head-frost i:nth-child(7) { top: calc(100% + 36px); backdrop-filter: blur(4px); }
+  .head-frost i:nth-child(8) { top: calc(100% + 42px); backdrop-filter: blur(2px); }
   .head-frost::after {
     content: "";
     position: absolute;
     top: 100%;
     right: 0;
     left: 0;
-    height: 32px;
-    background: var(--glass-veil);
-    backdrop-filter: blur(var(--glass-blur));
-    -webkit-mask-image: linear-gradient(to bottom, black, transparent);
-    mask-image: linear-gradient(to bottom, black, transparent);
+    height: 48px;
+    background: linear-gradient(to bottom, var(--glass-veil), transparent);
     opacity: 0;
     transition: opacity var(--dur-state) var(--ease-in);
   }
