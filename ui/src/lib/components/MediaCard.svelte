@@ -8,7 +8,7 @@
   let {
     item,
     variant,
-    thumb = 40,
+    thumb = 48,
     onclick,
     collage = false,
   }: {
@@ -67,7 +67,7 @@
   .media {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 8px;
     width: 100%;
     min-width: 0;
     text-align: left;
@@ -76,20 +76,18 @@
   }
   .tile,
   .carousel {
-    padding: 10px;
-    border: 1px solid var(--line);
+    padding: 12px;
   }
   .carousel {
-    width: 168px;
+    width: 210px;
     flex: 0 0 auto;
     scroll-snap-align: start;
   }
   .row {
     flex-direction: row;
     align-items: center;
-    gap: 10px;
-    padding: 6px 8px;
-    border: 1px solid transparent;
+    gap: 12px;
+    padding: 8px;
     border-radius: var(--radius-control);
   }
   .media:not(.inert):hover {
@@ -189,7 +187,7 @@
     white-space: nowrap;
   }
   .sub {
-    font-size: 11.5px;
+    font-size: 12.5px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

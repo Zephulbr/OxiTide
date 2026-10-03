@@ -149,12 +149,12 @@
   }
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 16px;
-    margin-bottom: 20px;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 20px;
+    margin-bottom: 24px;
   }
   .grid.list {
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 8px 16px;
+    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+    gap: 10px 20px;
   }
 </style>

@@ -52,7 +52,7 @@
       <MediaCard
         item={entry.item}
         variant="row"
-        thumb={56}
+        thumb={64}
         collage={entry.playlist}
         onclick={() => nav.goto(entry.route)}
       />
@@ -72,8 +72,8 @@
 <style>
   .shortcuts {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 8px 16px;
-    margin-bottom: 20px;
+    grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+    gap: 12px 20px;
+    margin-bottom: 24px;
   }
 </style>

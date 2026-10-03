@@ -228,8 +228,8 @@ No mode overrides; components continue to read semantic tokens only.
 ### 5.1 Home anatomy (top to bottom)
 
 1. `<h2>Home</h2>` — unchanged.
-2. Quick-access strip — up to 6 wide tiles (`MediaCard variant="row"`, `thumb=56`), responsive
-   grid (`auto-fill, minmax(280px, 1fr)`), no View all.
+2. Quick-access strip — up to 6 wide tiles (`MediaCard variant="row"`, `thumb=64`), responsive
+   grid (`auto-fill, minmax(330px, 1fr)`), no View all.
 3. Feed sections — each header (`h3` + controls) followed by its treatment; spacing and
    typography per the existing foundation; the feed's own empty sections were already dropped
    in Rust.
@@ -239,9 +239,9 @@ No mode overrides; components continue to read semantic tokens only.
 
 | Treatment | Used for | Layout | Cap | Header control |
 |---|---|---|---|---|
-| Tile grid | playlist/editorial sections | `grid`, `auto-fill minmax(160px, 1fr)`, gap 16 | 12 shown | View all when capped |
-| Carousel | album, mix, radio, unknown | scroll-snap row, one card per step | all items | arrows only |
-| Dense list | track/video-major sections | 2-column grid (`auto-fill minmax(320px, 1fr)`), 40px thumbs | 8 shown | View all + Play all |
+| Tile grid | playlist/editorial sections | `grid`, `auto-fill minmax(200px, 1fr)`, gap 20 | 12 shown | View all when capped |
+| Carousel | album, mix, radio, unknown | scroll-snap row, one card per step (210px cards) | all items | arrows only |
+| Dense list | track/video-major sections | 2-column grid (`auto-fill minmax(380px, 1fr)`), 48px thumbs | 8 shown | View all + Play all |
 
 Caps are presentation-only; View all exposes the rest. Carousels expose everything by
 scrolling, so they need no View all.

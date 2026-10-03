@@ -93,7 +93,7 @@
   }
   .row {
     display: flex;
-    gap: 16px;
+    gap: 20px;
     overflow-x: auto;
     scroll-snap-type: x proximity;
     padding: 2px 2px 8px;
