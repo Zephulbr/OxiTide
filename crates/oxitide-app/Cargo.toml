@@ -49,6 +49,7 @@ windows = { version = "0.62", features = [
 
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
+mpris-server = { version = "0.10", default-features = false, features = ["tokio"] }
 
 # Unsupported platforms (macOS is out of scope per spec §2) keep keyring's
 # featureless mock store so they still compile.

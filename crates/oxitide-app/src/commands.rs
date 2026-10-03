@@ -398,7 +398,23 @@ fn build_player(
         }
         found
     };
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
+    let smtc_sender = {
+        let mut found = None;
+        match crate::media_controls::MediaSession::spawn(
+            engine.clone(),
+            config.integrations.smtc,
+            app.clone(),
+        ) {
+            Ok(session) => {
+                found = Some(session.sender());
+                state.set_media(session);
+            }
+            Err(e) => tracing::warn!("MPRIS disabled: {e}"),
+        }
+        found
+    };
+    #[cfg(not(any(windows, target_os = "linux")))]
     let smtc_sender: Option<crate::media_controls::SessionSender> = None;
     let discord_sender = match crate::discord::DiscordPresence::spawn(config.integrations.discord) {
         Ok(service) => {

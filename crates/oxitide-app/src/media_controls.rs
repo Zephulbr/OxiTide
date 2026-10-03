@@ -7,10 +7,17 @@ use oxitide_audio::queue::QueueItem;
 #[path = "media_controls_win.rs"]
 mod win;
 
+#[cfg(target_os = "linux")]
+#[path = "media_controls_linux.rs"]
+mod linux;
+
 #[cfg(windows)]
 pub use win::MediaSession;
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
+pub use linux::MediaSession;
+
+#[cfg(not(any(windows, target_os = "linux")))]
 pub use stub::MediaSession;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -234,7 +241,7 @@ pub fn track_path(track_id: u64) -> String {
     format!("/com/oxitide/track/t{track_id}")
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux")))]
 mod stub {
     use std::sync::mpsc;
 
