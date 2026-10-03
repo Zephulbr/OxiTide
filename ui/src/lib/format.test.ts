@@ -39,6 +39,10 @@ describe("formatCount", () => {
     expect(formatCount(999999)).toBe("1M");
     expect(formatCount(1106540)).toBe("1.1M");
   });
+  it("promotes near-boundary millions to billions", () => {
+    expect(formatCount(999_499_999)).toBe("999M");
+    expect(formatCount(999_500_000)).toBe("1B");
+  });
   it("compacts billions", () => {
     expect(formatCount(1_000_000_000)).toBe("1B");
   });

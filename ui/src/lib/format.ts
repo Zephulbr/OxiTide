@@ -20,7 +20,10 @@ export function formatCount(n: number): string {
   const value = Math.max(0, Math.floor(n));
   if (value < 1000) return String(value);
   if (value >= 1e9) return compact(value / 1e9, "B");
-  if (value >= 1e6) return compact(value / 1e6, "M");
+  if (value >= 1e6) {
+    if (Math.round(value / 1e6) >= 1000) return compact(value / 1e9, "B");
+    return compact(value / 1e6, "M");
+  }
   const thousands = value / 1e3;
   if (Math.round(thousands) >= 1000) return compact(value / 1e6, "M");
   return compact(thousands, "K");

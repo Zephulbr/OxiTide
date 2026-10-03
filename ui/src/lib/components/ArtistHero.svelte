@@ -193,8 +193,8 @@
     inset: 0;
     background: linear-gradient(
       180deg,
-      color-mix(in srgb, var(--bg) 25%, transparent),
-      color-mix(in srgb, var(--bg) 72%, transparent)
+      color-mix(in srgb, var(--surface-1) 25%, transparent),
+      color-mix(in srgb, var(--surface-1) 72%, transparent)
     );
   }
   .content {
