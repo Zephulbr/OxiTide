@@ -2,11 +2,13 @@
   let {
     layers = 10,
     height = 112,
+    strength = 1,
     tint = "",
     tintStrength = 55,
   }: {
     layers?: number;
     height?: number;
+    strength?: number;
     tint?: string;
     tintStrength?: number;
   } = $props();
@@ -16,7 +18,7 @@
 
   const stack = $derived(
     Array.from({ length: layers }, (_, i) => {
-      const factor = (i / Math.max(layers - 1, 1)) ** 2;
+      const factor = ((i / Math.max(layers - 1, 1)) ** 2) * strength;
       const end = 100 - i * (65 / layers);
       const filter = `blur(calc(var(--glass-blur) * ${factor.toFixed(3)}))`;
       const mask = fade(end);
