@@ -216,17 +216,34 @@ fn strip_line_breaks(raw: &str) -> String {
     out
 }
 
+/// Drop well-formed `<...>` tags, keeping unmatched or malformed `<` as text
+/// (a bio like "AC/DC <3 rock" must not lose everything after the `<`).
 fn strip_tags(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len());
-    let mut in_tag = false;
-    for ch in raw.chars() {
-        match ch {
-            '<' => in_tag = true,
-            '>' => in_tag = false,
-            _ if !in_tag => out.push(ch),
-            _ => {}
+    let mut rest = raw;
+    while let Some(start) = rest.find('<') {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 1..];
+        let tag_like = after
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic() || c == '/');
+        if !tag_like {
+            out.push('<');
+            rest = after;
+            continue;
+        }
+        match after.find('>') {
+            Some(close) if !after[..close].contains('<') => {
+                rest = &after[close + 1..];
+            }
+            _ => {
+                out.push('<');
+                rest = after;
+            }
         }
     }
+    out.push_str(rest);
     out
 }
 
@@ -410,6 +427,12 @@ mod tests {
     }
 
     #[test]
+    fn clean_bio_keeps_unmatched_angle_brackets_as_text() {
+        assert_eq!(clean_bio("AC/DC <3 rock"), Some("AC/DC <3 rock".into()));
+        assert_eq!(clean_bio("a < b <p>x</p>"), Some("a < b x".into()));
+    }
+
+    #[test]
     fn discography_filter_params_match_tidal() {
         assert_eq!(ArtistDiscography::Albums.tidal_param(), "ALBUMS");
         assert_eq!(ArtistDiscography::EpsAndSingles.tidal_param(), "EPSANDSINGLES");
@@ -474,6 +497,44 @@ mod tests {
             .unwrap();
         assert_eq!(albums.len(), 1);
         assert_eq!(albums[0].title, "Single");
+    }
+
+    #[tokio::test]
+    async fn artist_albums_sends_the_albums_filter() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/artists/9/albums"))
+            .and(query_param("filter", "ALBUMS"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [{"id": 8, "title": "Album", "artists": []}],
+                "totalNumberOfItems": 1, "limit": 50, "offset": 0
+            })))
+            .mount(&server)
+            .await;
+        let albums = client(&server)
+            .artist_albums(9, ArtistDiscography::Albums, 50, 0)
+            .await
+            .unwrap();
+        assert_eq!(albums[0].title, "Album");
+    }
+
+    #[tokio::test]
+    async fn artist_albums_sends_the_compilations_filter() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/artists/9/albums"))
+            .and(query_param("filter", "COMPILATIONS"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [{"id": 9, "title": "Appears On", "artists": []}],
+                "totalNumberOfItems": 1, "limit": 50, "offset": 0
+            })))
+            .mount(&server)
+            .await;
+        let albums = client(&server)
+            .artist_albums(9, ArtistDiscography::Compilations, 50, 0)
+            .await
+            .unwrap();
+        assert_eq!(albums[0].title, "Appears On");
     }
 
     #[tokio::test]
