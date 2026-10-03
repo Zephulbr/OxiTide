@@ -286,6 +286,29 @@ mod linux {
         Ok(device_list(&hints))
     }
 
+    /// Set the card's playback volume through ALSA's mixer, preferring
+    /// "Master" then "PCM". Returns an error when no writable playback
+    /// element exists, which sends the caller down the software path.
+    pub fn set_hardware_volume(device: &str, volume: f32) -> Result<()> {
+        use alsa::mixer::{Mixer, SelemId};
+        let mixer = Mixer::new(device, false).map_err(to_error)?;
+        for name in ["Master", "PCM"] {
+            let id = SelemId::new(name, 0);
+            let Some(selem) = mixer.find_selem(&id) else {
+                continue;
+            };
+            if !selem.has_playback_volume() {
+                continue;
+            }
+            let (min, max) = selem.get_playback_volume_range();
+            selem
+                .set_playback_volume_all(volume_to_raw(volume, min, max))
+                .map_err(to_error)?;
+            return Ok(());
+        }
+        Err(Error::Output("no writable playback volume control".into()))
+    }
+
     impl AudioOutput for AlsaOutput {
         fn open(&mut self, spec: &AudioOutputSpec) -> Result<()> {
             self.close();
@@ -390,6 +413,22 @@ mod linux {
 
         fn set_volume(&mut self, volume: f32) -> Result<()> {
             self.volume = volume.clamp(0.0, 1.0);
+            let exclusive = self.status.mode == OutputMode::Exclusive;
+            if exclusive {
+                if set_hardware_volume(&self.device, self.volume).is_ok() {
+                    self.software_volume = false;
+                    if self.status.notice.as_deref() == Some(SOFTWARE_VOLUME_NOTICE) {
+                        self.status.notice = None;
+                        self.status.bit_perfect = true;
+                    }
+                    return Ok(());
+                }
+                self.software_volume = true;
+                self.status.bit_perfect = false;
+                self.status.notice = Some(SOFTWARE_VOLUME_NOTICE.into());
+            } else {
+                self.software_volume = true;
+            }
             Ok(())
         }
 
@@ -616,5 +655,46 @@ mod tests {
     fn enumerate_reports_at_least_one_device() {
         let devices = enumerate().unwrap();
         assert!(!devices.is_empty());
+    }
+
+    #[test]
+    fn software_volume_notice_constant_matches_wasapi() {
+        assert_eq!(
+            SOFTWARE_VOLUME_NOTICE,
+            "volume applied in software; bit-perfect compromised"
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn exclusive_volume_without_a_mixer_compromises_bit_perfect() {
+        let mut out = AlsaOutput::new();
+        out.open(&AudioOutputSpec {
+            device_id: Some("null".into()),
+            info: info(16, PcmFormat::I32 { bits: 16 }),
+            mode: OutputMode::Exclusive,
+            exclusive_fallback: ExclusiveFallback::Shared,
+        })
+        .unwrap();
+        out.set_volume(0.5).unwrap();
+        let status = out.status();
+        assert!(!status.bit_perfect);
+        assert_eq!(status.notice.as_deref(), Some(SOFTWARE_VOLUME_NOTICE));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn shared_volume_keeps_its_status_clean() {
+        let mut out = AlsaOutput::new();
+        out.open(&AudioOutputSpec {
+            device_id: Some("null".into()),
+            info: info(16, PcmFormat::I32 { bits: 16 }),
+            mode: OutputMode::Shared,
+            exclusive_fallback: ExclusiveFallback::Shared,
+        })
+        .unwrap();
+        out.set_volume(0.5).unwrap();
+        assert_eq!(out.status().notice, None);
+        assert!(!out.status().bit_perfect);
     }
 }
