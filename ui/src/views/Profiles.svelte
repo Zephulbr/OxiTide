@@ -45,48 +45,53 @@
   {/each}
 {/snippet}
 
-<div class="page-head">
-  <h2>Profiles</h2>
-  <span class="muted count">{artists.length} {artists.length === 1 ? "artist" : "artists"}</span>
-  <input
-    class="search-input filter"
-    placeholder="Search artists"
-    value={query}
-    oninput={(event) => (query = event.currentTarget.value)}
-    aria-label="Search artists"
-  />
-  <SortSelect
-    value={sortMode}
-    options={[
-      { value: "date", label: "Date added" },
-      { value: "name", label: "Name A–Z" },
-      { value: "name-desc", label: "Name Z–A" },
-    ]}
-    label="Sort artists"
-    onchange={(value) => (sortMode = value as ArtistSort)}
-  />
+<div class="profiles">
+  <div class="page-head">
+    <h2>Profiles</h2>
+    <span class="muted count">{artists.length} {artists.length === 1 ? "artist" : "artists"}</span>
+    <input
+      class="search-input filter"
+      placeholder="Search artists"
+      value={query}
+      oninput={(event) => (query = event.currentTarget.value)}
+      aria-label="Search artists"
+    />
+    <SortSelect
+      value={sortMode}
+      options={[
+        { value: "date", label: "Date added" },
+        { value: "name", label: "Name A–Z" },
+        { value: "name-desc", label: "Name Z–A" },
+      ]}
+      label="Sort artists"
+      onchange={(value) => (sortMode = value as ArtistSort)}
+    />
+  </div>
+
+  {#if loading}
+    <Loading />
+  {:else if error}
+    <ErrorState message={error} onRetry={load} />
+  {:else if artists.length === 0}
+    <EmptyState message="No artists yet." />
+  {:else if shown.length === 0}
+    <p class="muted empty">No artists match “{query.trim()}”.</p>
+  {:else if groups}
+    <div class="groups">
+      {#each groups as group (group.letter)}
+        <h3 class="letter">{group.letter}</h3>
+        <div class="grid">{@render cards(group.artists)}</div>
+      {/each}
+    </div>
+  {:else}
+    <div class="grid">{@render cards(shown)}</div>
+  {/if}
 </div>
 
-{#if loading}
-  <Loading />
-{:else if error}
-  <ErrorState message={error} onRetry={load} />
-{:else if artists.length === 0}
-  <EmptyState message="No artists yet." />
-{:else if shown.length === 0}
-  <p class="muted empty">No artists match “{query.trim()}”.</p>
-{:else if groups}
-  <div class="groups">
-    {#each groups as group (group.letter)}
-      <h3 class="letter">{group.letter}</h3>
-      <div class="grid">{@render cards(group.artists)}</div>
-    {/each}
-  </div>
-{:else}
-  <div class="grid">{@render cards(shown)}</div>
-{/if}
-
 <style>
+  .profiles {
+    padding: 0 32px;
+  }
   .page-head {
     display: flex;
     align-items: center;
@@ -112,11 +117,9 @@
     grid-template-columns: repeat(8, minmax(0, 1fr));
     gap: 56px 20px;
     margin-top: 56px;
-    padding: 0 32px;
   }
   .groups {
     margin-top: 56px;
-    padding: 0 32px;
   }
   .groups .grid {
     margin-top: 12px;
