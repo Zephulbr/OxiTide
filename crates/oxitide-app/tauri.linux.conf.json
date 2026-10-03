@@ -1,0 +1,14 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "targets": ["deb", "appimage"],
+    "license": "AGPL-3.0-or-later",
+    "longDescription": "OxiTide is an unofficial TIDAL desktop client with bit-perfect playback, a streaming cache, and a native Tauri UI.",
+    "linux": {
+      "deb": {
+        "depends": ["libasound2", "xdg-utils", "desktop-file-utils"],
+        "desktopTemplate": "crates/oxitide-app/linux/oxitide.desktop.hbs"
+      }
+    }
+  }
+}
