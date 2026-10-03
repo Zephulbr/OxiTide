@@ -111,7 +111,7 @@ async fn serve(
         .await?;
     let state = Arc::new(Mutex::new(MprisState::default()));
     let (effect_tx, effect_rx) = mpsc::channel::<AdapterEffect>();
-    connect(&player, &engine, &raise, &state, &effect_tx);
+    connect(&player, &engine, &raise, &state, &effect_tx, &enabled);
     tokio::task::spawn_local(player.run());
     player.set_identity(IDENTITY).await?;
     player.set_desktop_entry(IDENTITY).await?;
@@ -199,6 +199,7 @@ async fn set_enabled(player: &Player, enabled: bool, state: &Mutex<MprisState>) 
     let _ = player.set_can_seek(enabled).await;
     let _ = player.set_can_go_next(enabled).await;
     let _ = player.set_can_go_previous(enabled).await;
+    let _ = player.set_can_raise(enabled).await;
     if enabled {
         let snapshot = state.lock().unwrap().clone();
         let metadata = match &snapshot.track {
@@ -220,37 +221,68 @@ fn connect(
     raise: &tauri::AppHandle,
     state: &Arc<Mutex<MprisState>>,
     effects: &mpsc::Sender<AdapterEffect>,
+    enabled: &Arc<AtomicBool>,
 ) {
     {
         let engine = engine.clone();
+        let enabled = enabled.clone();
         player.connect_play_pause(move |_| {
+            if !enabled.load(Ordering::Relaxed) {
+                return;
+            }
             let _ = engine.handle(to_engine_cmd(ControlCommand::PlayPause));
         });
     }
     {
         let engine = engine.clone();
         let state = state.clone();
-        player.connect_play(move |_| dispatch_gated(&engine, &state, control_for_play));
+        let enabled = enabled.clone();
+        player.connect_play(move |_| {
+            if !enabled.load(Ordering::Relaxed) {
+                return;
+            }
+            dispatch_gated(&engine, &state, control_for_play);
+        });
     }
     {
         let engine = engine.clone();
         let state = state.clone();
-        player.connect_pause(move |_| dispatch_gated(&engine, &state, control_for_pause));
+        let enabled = enabled.clone();
+        player.connect_pause(move |_| {
+            if !enabled.load(Ordering::Relaxed) {
+                return;
+            }
+            dispatch_gated(&engine, &state, control_for_pause);
+        });
     }
     {
         let engine = engine.clone();
         let state = state.clone();
-        player.connect_stop(move |_| dispatch_gated(&engine, &state, control_for_stop));
+        let enabled = enabled.clone();
+        player.connect_stop(move |_| {
+            if !enabled.load(Ordering::Relaxed) {
+                return;
+            }
+            dispatch_gated(&engine, &state, control_for_stop);
+        });
     }
     {
         let engine = engine.clone();
+        let enabled = enabled.clone();
         player.connect_next(move |_| {
+            if !enabled.load(Ordering::Relaxed) {
+                return;
+            }
             let _ = engine.handle(to_engine_cmd(ControlCommand::Next));
         });
     }
     {
         let engine = engine.clone();
+        let enabled = enabled.clone();
         player.connect_previous(move |_| {
+            if !enabled.load(Ordering::Relaxed) {
+                return;
+            }
             let _ = engine.handle(to_engine_cmd(ControlCommand::Prev));
         });
     }
@@ -258,7 +290,11 @@ fn connect(
         let engine = engine.clone();
         let state = state.clone();
         let effects = effects.clone();
+        let enabled = enabled.clone();
         player.connect_seek(move |_player, offset| {
+            if !enabled.load(Ordering::Relaxed) {
+                return;
+            }
             let target = {
                 let snapshot = state.lock().unwrap();
                 seek_target(&snapshot, offset.as_millis())
@@ -270,7 +306,11 @@ fn connect(
         let engine = engine.clone();
         let state = state.clone();
         let effects = effects.clone();
+        let enabled = enabled.clone();
         player.connect_set_position(move |_player, track_id, position| {
+            if !enabled.load(Ordering::Relaxed) {
+                return;
+            }
             let current = {
                 let snapshot = state.lock().unwrap();
                 snapshot.track.as_ref().map(|track| track.track_id)
@@ -283,7 +323,11 @@ fn connect(
     }
     {
         let raise = raise.clone();
+        let enabled = enabled.clone();
         player.connect_raise(move |_| {
+            if !enabled.load(Ordering::Relaxed) {
+                return;
+            }
             let app = raise.clone();
             let window_handle = app.clone();
             let _ = app.run_on_main_thread(move || {
