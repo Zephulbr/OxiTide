@@ -2,7 +2,7 @@
   import type { Snippet } from "svelte";
   import { api, type Artist, type ArtistProfile } from "../api";
   import { isHttpUrl, linkLabel } from "../artistLinks";
-  import { coverUrl } from "../artwork";
+  import { ARTIST_PICTURE_SIZE, coverUrl } from "../artwork";
   import { formatCount } from "../format";
   import Cover from "./Cover.svelte";
   import Icon from "./Icon.svelte";
@@ -33,7 +33,9 @@
   const fans = $derived(profile?.numberOfFollowers ?? null);
   const bio = $derived(profile?.bio ?? null);
   const links = $derived((profile?.externalLinks ?? []).filter((link) => isHttpUrl(link.url)));
-  const backdrop = $derived(artist.picture ? coverUrl(artist.picture, 640) : "");
+  const backdrop = $derived(
+    artist.picture ? coverUrl(artist.picture, ARTIST_PICTURE_SIZE) : "",
+  );
   const heroStyle = $derived(
     tint
       ? `--hero-primary:${tint.primary};--hero-secondary:${tint.secondary};--hero-tertiary:${tint.tertiary}`
@@ -93,7 +95,7 @@
   <div class="scrim" aria-hidden="true"></div>
   <div class="content">
     <span class="portrait">
-      <Cover uuid={artist.picture} size={640} radius={999} alt={artist.name} />
+      <Cover uuid={artist.picture} size={ARTIST_PICTURE_SIZE} radius={999} alt={artist.name} />
     </span>
     <div class="meta">
       <span class="kicker">Artist</span>

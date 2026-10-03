@@ -1,4 +1,9 @@
-export type CoverSize = 80 | 160 | 320 | 640 | 1280;
+export type CoverSize = 80 | 160 | 320 | 480 | 640 | 1280;
+
+/// Artist pictures 403 at 640 on the CDN; the profileArt pipeline serves
+/// 160/320/480/750 (spike: 2026-10-03-artist-page-spike.md). Album covers
+/// keep using 640.
+export const ARTIST_PICTURE_SIZE: CoverSize = 480;
 
 /// TIDAL serves artwork from an unauthenticated CDN keyed by the dashed
 /// uuid exploded into a path. Mix rows from `pages/*` endpoints instead carry

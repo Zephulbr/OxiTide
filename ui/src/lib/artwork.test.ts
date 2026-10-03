@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { collageCovers, coverUrl } from "./artwork";
+import { ARTIST_PICTURE_SIZE, collageCovers, coverUrl } from "./artwork";
 
 describe("coverUrl", () => {
   it("maps a dashed uuid onto the image CDN path", () => {
@@ -9,9 +9,16 @@ describe("coverUrl", () => {
   });
 
   it("supports every sanctioned size", () => {
-    for (const size of [80, 160, 320, 640, 1280] as const) {
+    for (const size of [80, 160, 320, 480, 640, 1280] as const) {
       expect(coverUrl("u", size)).toContain(`/${size}x${size}.jpg`);
     }
+  });
+
+  /// Artist pictures 403 at 640; the profileArt pipeline serves
+  /// 160/320/480/750 (spike: 2026-10-03-artist-page-spike.md).
+  it("uses a CDN-valid size for artist pictures", () => {
+    expect(ARTIST_PICTURE_SIZE).toBe(480);
+    expect(coverUrl("u", ARTIST_PICTURE_SIZE)).toContain("/480x480.jpg");
   });
 
   /// Review Focus: an empty uuid must not produce a broken-image request.
