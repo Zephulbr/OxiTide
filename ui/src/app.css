@@ -155,14 +155,15 @@ body {
 }
 
 /* View titles use the Fraunces display face (spec §6); section headings stay
-   in the UI face at the 18/600 step. */
+   in the UI face at the 20/600 step. */
 h1, h2 {
   font-family: var(--font-display);
+  font-size: 28px;
   font-weight: 640;
   letter-spacing: -0.02em;
 }
 h3 {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 600;
 }
 
