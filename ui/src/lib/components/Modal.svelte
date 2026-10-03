@@ -52,7 +52,6 @@
     align-items: center;
     justify-content: center;
     background: rgb(0 0 0 / 0.5);
-    backdrop-filter: blur(var(--overlay-blur));
   }
   .panel {
     --modal-fill: color-mix(in srgb, var(--accent) 8%, var(--surface-float));

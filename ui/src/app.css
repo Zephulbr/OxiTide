@@ -70,7 +70,10 @@ body {
    `height: 100%` preserves the `.view-fill` height contract. */
 .page {
   height: 100%;
-  animation: page-in var(--dur-state) var(--ease-in-out) both;
+  /* `backwards` (not `both`): after the 180ms enter finishes the animation
+     stops applying, so the page stops being a containing block for
+     position:fixed children (modals must anchor to the viewport). */
+  animation: page-in var(--dur-state) var(--ease-in-out) backwards;
 }
 /* Scrolling pages size to their content so .main's bottom padding lands after
    the last row; a 100%-tall page would consume that padding beneath its
