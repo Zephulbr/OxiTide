@@ -6,6 +6,7 @@
   import { formatCount } from "../format";
   import Cover from "./Cover.svelte";
   import Icon from "./Icon.svelte";
+  import Modal from "./Modal.svelte";
 
   let {
     artist,
@@ -26,7 +27,7 @@
   } = $props();
 
   let tint = $state<{ primary: string; secondary: string; tertiary: string } | null>(null);
-  let bioOpen = $state(false);
+  let bioModal = $state(false);
   let canExpand = $state(false);
   let bioEl = $state<HTMLParagraphElement | null>(null);
 
@@ -78,7 +79,7 @@
       return;
     }
     const measure = () => {
-      if (!bioOpen) canExpand = node.scrollHeight > node.clientHeight + 1;
+      canExpand = node.scrollHeight > node.clientHeight + 1;
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -99,10 +100,12 @@
     </span>
     <div class="meta">
       <span class="kicker">Artist</span>
-      <h2>{artist.name}</h2>
-      {#if fans !== null}
-        <p class="stats tnum">{formatCount(fans)} {fans === 1 ? "fan" : "fans"}</p>
-      {/if}
+      <div class="name-row">
+        <h2>{artist.name}</h2>
+        {#if fans !== null}
+          <p class="stats tnum">{formatCount(fans)} {fans === 1 ? "fan" : "fans"}</p>
+        {/if}
+      </div>
       <div class="controls">
         <div class="transport">
           <button class="btn-play" onclick={onPlay} {disabled}>
@@ -117,10 +120,10 @@
         {/if}
       </div>
       {#if bio}
-        <p class="bio" class:clamped={!bioOpen} bind:this={bioEl}>{bio}</p>
-        {#if canExpand || bioOpen}
-          <button class="more" aria-expanded={bioOpen} onclick={() => (bioOpen = !bioOpen)}>
-            {bioOpen ? "Show less" : "Read more"}
+        <p class="bio" bind:this={bioEl}>{bio}</p>
+        {#if canExpand}
+          <button class="more" aria-haspopup="dialog" onclick={() => (bioModal = true)}>
+            Read more
           </button>
         {/if}
       {/if}
@@ -141,6 +144,15 @@
       {/if}
     </div>
   </div>
+  {#if bioModal && bio}
+    <Modal title={`About ${artist.name}`} onclose={() => (bioModal = false)}>
+      <div class="bio-full">
+        {#each bio.split("\n\n") as paragraph}
+          <p>{paragraph}</p>
+        {/each}
+      </div>
+    </Modal>
+  {/if}
 </header>
 
 <style>
@@ -188,13 +200,13 @@
   .content {
     position: relative;
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     gap: 32px;
-    padding: 40px 32px 28px;
+    padding: 36px 32px;
   }
   .portrait {
     flex: 0 0 auto;
-    width: 200px;
+    width: 260px;
   }
   .meta {
     flex: 1;
@@ -210,10 +222,16 @@
     text-transform: uppercase;
     color: var(--text-muted);
   }
+  .name-row {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
   h2 {
     margin: 0;
-    font-size: clamp(28px, 3.2vw, 42px);
-    line-height: 1.1;
+    font-size: clamp(38px, 4.4vw, 58px);
+    line-height: 1.05;
   }
   .stats {
     margin: 0;
@@ -277,17 +295,28 @@
     gap: 4px;
   }
   .bio {
-    margin: 4px 0 0;
-    max-width: 72ch;
-    color: var(--text-muted);
-    white-space: pre-line;
-  }
-  .bio.clamped {
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
     line-clamp: 2;
     overflow: hidden;
+    margin: 4px 0 0;
+    max-width: 72ch;
+    color: var(--text-muted);
+    white-space: pre-line;
+  }
+  /* Modal reading layout: roomier type and paragraph spacing. */
+  .bio-full {
+    max-width: 62ch;
+    font-size: 16px;
+    line-height: 1.7;
+    color: var(--text);
+  }
+  .bio-full p {
+    margin: 0 0 14px;
+  }
+  .bio-full p:last-child {
+    margin-bottom: 0;
   }
   .more {
     align-self: flex-start;

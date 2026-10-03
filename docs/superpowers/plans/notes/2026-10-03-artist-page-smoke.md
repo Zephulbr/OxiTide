@@ -5,8 +5,9 @@ Human-in-the-loop checks for the Track 9 artist page. Run with
 
 - [ ] **Rich artist (e.g. AC/DC):** hero renders with the palette backdrop,
       blurred portrait, name, `1.1M fans`, Play/Shuffle enabled.
-- [ ] **Sparse artist (e.g. The Notwist):** bio renders with Read more; no
-      socials row appears; page is still clean with no empty headings.
+- [ ] **Sparse artist (e.g. The Notwist):** bio renders clamped with Read more;
+      the button opens the About modal with paragraph formatting; no socials
+      row appears; page is still clean with no empty headings.
 - [ ] **Profile failure:** block `openapi.tidal.com` (or disconnect the
       network before opening) → hero still renders, no fans/bio/socials,
       Top tracks and shelves still load once the network returns.
