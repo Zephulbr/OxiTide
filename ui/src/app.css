@@ -64,6 +64,7 @@ body {
    inset them from the floating bar; the list carries its own bottom
    clearance instead. */
 .main:has(.view-fill) { padding-bottom: 0; }
+.main:has(.profiles) { padding-top: 0; }
 .queue {
   background: var(--surface-1);
   backdrop-filter: blur(var(--glass-blur));

@@ -107,7 +107,7 @@
 
 <style>
   .profiles {
-    padding: 0 48px;
+    padding: 32px 48px 0;
   }
   .page-head {
     position: sticky;
