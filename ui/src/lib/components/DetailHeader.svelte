@@ -34,7 +34,7 @@
     <span class="hero-art">{@render cover()}</span>
     <div class="hero-meta">
       <span class="kicker">{kicker}</span>
-      <h2 title={title}>{title}</h2>
+      <h2><span class="title-track">{title}</span></h2>
       {#if subtitle}<p class="subtitle">{subtitle}</p>{/if}
       {#if stats}<p class="stats tnum">{stats}</p>{/if}
     </div>
@@ -77,6 +77,7 @@
     flex-direction: column;
     gap: 8px;
     min-width: 0;
+    max-width: 512px;
     padding-bottom: 2px;
   }
   .kicker {
@@ -90,13 +91,30 @@
     margin: 0;
     font-size: clamp(28px, 3.2vw, 42px);
     line-height: 1.1;
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
+    container-type: inline-size;
     overflow: hidden;
-    overflow-wrap: anywhere;
+    white-space: nowrap;
+    text-overflow: ellipsis;
     padding-bottom: 0.1em;
+  }
+  .title-track {
+    display: inline-block;
+    width: max-content;
+    transition: transform 2.5s var(--ease-in-out);
+  }
+  h2:hover {
+    text-overflow: clip;
+  }
+  h2:hover .title-track {
+    transform: translateX(min(0px, calc(100cqw - 100%)));
+    transition-duration: 8s;
+    transition-timing-function: linear;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .title-track,
+    h2:hover .title-track {
+      transition: none;
+    }
   }
   .subtitle {
     margin: 0;
