@@ -96,7 +96,7 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    padding-top: 28px;
+    padding-top: 40px;
   }
   .page-head h2 {
     flex: 1;
@@ -110,16 +110,16 @@
     flex: 0 1 240px;
   }
   .empty {
-    margin-top: 56px;
+    margin-top: 72px;
   }
   .grid {
     display: grid;
     grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 56px 16px;
-    margin-top: 56px;
+    margin-top: 72px;
   }
   .groups {
-    margin-top: 56px;
+    margin-top: 72px;
   }
   .groups .grid {
     margin-top: 12px;
