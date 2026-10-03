@@ -302,3 +302,56 @@ describe("routeForPageItem artists", () => {
     expect(routeForPageItem(pageItem("ARTIST", "nope"))).toBeNull();
   });
 });
+
+describe("artist catalog routes", () => {
+  it("round-trips an artist-all route through storage", () => {
+    const storage = fakeStorage();
+    const nav = createNav(storage);
+    nav.goto({ name: "artist-all", id: 945, tab: "playlists" });
+
+    const restored = createNav(storage);
+
+    expect(restored.route).toEqual({ name: "artist-all", id: 945, tab: "playlists" });
+  });
+
+  it("treats different tabs of the same artist as distinct entries", () => {
+    const nav = createNav();
+    nav.goto({ name: "artist-all", id: 945, tab: "albums" });
+    nav.goto({ name: "artist-all", id: 945, tab: "eps" });
+
+    expect(nav.canBack).toBe(true);
+    nav.back();
+    expect(nav.route).toEqual({ name: "artist-all", id: 945, tab: "albums" });
+  });
+
+  it("ignores a goto to the same artist and tab", () => {
+    const nav = createNav();
+    nav.goto({ name: "artist-all", id: 945, tab: "tracks" });
+    nav.goto({ name: "artist-all", id: 945, tab: "tracks" });
+
+    nav.back();
+    expect(nav.route).toEqual({ name: "home" });
+  });
+
+  it("rejects stored artist-all routes with an unknown tab", () => {
+    const raw = '{"history":[{"name":"artist-all","id":945,"tab":"videos"}],"index":0}';
+    expect(createNav(fakeStorage(raw)).route).toEqual({ name: "home" });
+  });
+
+  it("replace swaps the current entry without growing history", () => {
+    const storage = fakeStorage();
+    const nav = createNav(storage);
+    nav.goto({ name: "artist-all", id: 945, tab: "albums" });
+
+    nav.replace({ name: "artist-all", id: 945, tab: "eps" });
+
+    expect(nav.route).toEqual({ name: "artist-all", id: 945, tab: "eps" });
+
+    const restored = createNav(storage);
+    expect(restored.route).toEqual({ name: "artist-all", id: 945, tab: "eps" });
+
+    expect(nav.canBack).toBe(true);
+    nav.back();
+    expect(nav.route).toEqual({ name: "home" });
+  });
+});

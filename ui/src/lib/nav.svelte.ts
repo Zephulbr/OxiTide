@@ -4,6 +4,17 @@ export const NAV_KEY = "oxitide.nav";
 
 type NavStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
+/// Tabs of the artist catalog page; route values, so they live with the route.
+export type ArtistTab = "tracks" | "albums" | "eps" | "appears" | "playlists" | "mixes";
+const ARTIST_TABS: readonly ArtistTab[] = [
+  "tracks",
+  "albums",
+  "eps",
+  "appears",
+  "playlists",
+  "mixes",
+];
+
 export type Route =
   | { name: "home" }
   | { name: "explore" }
@@ -18,6 +29,7 @@ export type Route =
   | { name: "album"; id: number }
   | { name: "playlist"; id: string }
   | { name: "artist"; id: number }
+  | { name: "artist-all"; id: number; tab: ArtistTab }
   | { name: "mix"; id: string }
   | { name: "section"; source: "home" | "explore" | "forYou"; title: string }
   | { name: "settings" };
@@ -29,6 +41,8 @@ export interface Nav {
   readonly canBack: boolean;
   readonly canForward: boolean;
   goto(next: Route): void;
+  /// Swap the current history entry without pushing a new one (tab switches).
+  replace(next: Route): void;
   back(): void;
   forward(): void;
   toggleQueue(): void;
@@ -42,6 +56,9 @@ function sameRoute(a: Route, b: Route): boolean {
   if (a.name !== b.name) return false;
   if (a.name === "section" && b.name === "section") {
     return a.source === b.source && a.title === b.title;
+  }
+  if (a.name === "artist-all" && b.name === "artist-all") {
+    return a.id === b.id && a.tab === b.tab;
   }
   if ("id" in a && "id" in b) return a.id === b.id;
   return true;
@@ -124,6 +141,19 @@ function parseRoute(value: unknown): Route | null {
       return typeof record.id === "number" && Number.isInteger(record.id) && record.id > 0
         ? { name: "artist", id: record.id }
         : null;
+    case "artist-all": {
+      const tab = record.tab;
+      if (
+        typeof record.id === "number" &&
+        Number.isInteger(record.id) &&
+        record.id > 0 &&
+        typeof tab === "string" &&
+        ARTIST_TABS.includes(tab as ArtistTab)
+      ) {
+        return { name: "artist-all", id: record.id, tab: tab as ArtistTab };
+      }
+      return null;
+    }
     default:
       return null;
   }
@@ -189,6 +219,12 @@ export function createNav(storage?: NavStorage): Nav {
     persist();
   }
 
+  function replace(next: Route) {
+    if (sameRoute(history[index], next)) return;
+    history = history.map((route, i) => (i === index ? next : route));
+    persist();
+  }
+
   function back() {
     if (index > 0) {
       index -= 1;
@@ -230,6 +266,7 @@ export function createNav(storage?: NavStorage): Nav {
       return index < history.length - 1;
     },
     goto,
+    replace,
     back,
     forward,
     toggleQueue() {
