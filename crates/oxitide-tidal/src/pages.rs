@@ -176,6 +176,13 @@ impl TidalClient {
             .await
     }
 
+    /// The official artist page feed (rows/modules). TIDAL exposes no direct
+    /// artist-playlists endpoint; the "Playlists" module lives here.
+    pub async fn artist_page(&self, id: u64) -> Result<Vec<PageSection>> {
+        self.page_sections_at("pages/artist", &[("artistId", id.to_string())])
+            .await
+    }
+
     /// Resolve a mix id into its playable track list. Videos are dropped because
     /// the engine is audio-only; `pages/mix` returns tracks and videos together.
     pub async fn mix_page(&self, mix_id: &str) -> Result<MixDetail> {
@@ -214,6 +221,14 @@ fn sections_from_page(raw: RawPage) -> Vec<PageSection> {
     sections
 }
 
+/// `MIXED_TYPES_LIST` playlist wrappers carry the authorship (`USER` /
+/// `EDITORIAL`) in the inner type while the wrapper's `PLAYLIST` is the item's
+/// actual kind; the kind is what routing and card shapes key on.
+fn is_playlist_subtype(wrapper: &str, inner: &str) -> bool {
+    wrapper.eq_ignore_ascii_case("PLAYLIST")
+        && (inner.eq_ignore_ascii_case("USER") || inner.eq_ignore_ascii_case("EDITORIAL"))
+}
+
 /// Map a raw page entry into a `PageItem`. `module_type` is the fallback kind
 /// when the entry carries no `type` of its own. `MIXED_TYPES_LIST` entries wrap
 /// the payload as `{type, item}`; the wrapper type is the discriminator and is
@@ -222,7 +237,7 @@ fn page_item_from_raw(module_type: &str, mut raw: RawItem) -> PageItem {
     if let Some(inner) = raw.item.take() {
         let wrapper_type = std::mem::take(&mut raw.item_type);
         raw = *inner;
-        if raw.item_type.is_empty() {
+        if raw.item_type.is_empty() || is_playlist_subtype(&wrapper_type, &raw.item_type) {
             raw.item_type = wrapper_type;
         }
     }
@@ -765,5 +780,39 @@ mod tests {
         assert_eq!(items[0].subtitle.as_deref(), Some("A, B"));
         assert_eq!(items[1].subtitle.as_deref(), Some("Given"));
         assert_eq!(items[2].subtitle, None);
+    }
+
+    #[tokio::test]
+    async fn artist_page_reads_the_playlists_module() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/pages/artist"))
+            .and(query_param("artistId", "9"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "rows": [{"modules": [
+                    {"type": "TRACK_LIST", "title": "Top tracks", "items": [
+                        {"id": 1, "title": "Hit"}
+                    ]},
+                    {"type": "MIXED_TYPES_LIST", "title": "Playlists", "items": [
+                        {"type": "PLAYLIST", "item": {
+                            "uuid": "u1", "title": "Fan mix", "squareImage": "img-1", "type": "USER"
+                        }},
+                        {"type": "PLAYLIST", "item": {
+                            "uuid": "u2", "title": "Editorial", "squareImage": "img-2", "type": "EDITORIAL"
+                        }}
+                    ]}
+                ]}]
+            })))
+            .mount(&server)
+            .await;
+        let sections = client(&server).artist_page(9).await.unwrap();
+        assert_eq!(sections.len(), 2);
+        let playlists = &sections[1];
+        assert_eq!(playlists.title, "Playlists");
+        assert_eq!(playlists.kind, "MIXED_TYPES_LIST");
+        assert_eq!(playlists.items[0].id, "u1");
+        assert_eq!(playlists.items[0].item_type, "PLAYLIST");
+        assert_eq!(playlists.items[0].artwork.as_deref(), Some("img-1"));
+        assert_eq!(playlists.items[1].item_type, "PLAYLIST");
     }
 }

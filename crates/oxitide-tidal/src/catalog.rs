@@ -38,13 +38,26 @@ impl TidalClient {
 
     /// One bounded window of the artist's most popular tracks.
     pub async fn artist_top_tracks(&self, id: u64, limit: u32) -> Result<Vec<Track>> {
+        Ok(self.artist_top_tracks_page(id, limit, 0).await?.0)
+    }
+
+    /// One page of the artist's most popular tracks plus the server total.
+    pub async fn artist_top_tracks_page(
+        &self,
+        id: u64,
+        limit: u32,
+        offset: u32,
+    ) -> Result<(Vec<Track>, u32)> {
         let page: ItemPage<Track> = self
             .get(
                 &format!("artists/{id}/toptracks"),
-                &[("limit", limit.to_string())],
+                &[
+                    ("limit", limit.to_string()),
+                    ("offset", offset.to_string()),
+                ],
             )
             .await?;
-        Ok(page.items)
+        Ok((page.items, page.total_number_of_items))
     }
 
     /// One page of an artist's discography under a TIDAL filter
@@ -67,6 +80,17 @@ impl TidalClient {
             )
             .await?;
         Ok(page.items)
+    }
+
+    /// Every page of an artist's discography under one TIDAL filter.
+    pub async fn artist_albums_all(
+        &self,
+        id: u64,
+        filter: ArtistDiscography,
+    ) -> Result<Vec<Album>> {
+        let params = [("filter", filter.tidal_param().to_string())];
+        self.get_all_pages(&format!("artists/{id}/albums"), &params, DEFAULT_PAGE_SIZE)
+            .await
     }
 
     /// Fans, external links, and biography from one public-OpenAPI call.
@@ -410,6 +434,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn artist_top_tracks_page_sends_offset_and_returns_total() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/artists/9/toptracks"))
+            .and(query_param("limit", "100"))
+            .and(query_param("offset", "100"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [{"id": 201, "title": "Later", "artists": []}],
+                "totalNumberOfItems": 284, "limit": 100, "offset": 100
+            })))
+            .mount(&server)
+            .await;
+        let (tracks, total) = client(&server)
+            .artist_top_tracks_page(9, 100, 100)
+            .await
+            .unwrap();
+        assert_eq!(total, 284);
+        assert_eq!(tracks[0].title, "Later");
+    }
+
+    #[tokio::test]
     async fn artist_albums_sends_the_filter_and_parses_items() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
@@ -429,6 +474,38 @@ mod tests {
             .unwrap();
         assert_eq!(albums.len(), 1);
         assert_eq!(albums[0].title, "Single");
+    }
+
+    #[tokio::test]
+    async fn artist_albums_all_fetches_every_page() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/artists/9/albums"))
+            .and(query_param("filter", "ALBUMS"))
+            .and(query_param("offset", "0"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": (1..=100)
+                    .map(|id| serde_json::json!({"id": id, "title": "A"}))
+                    .collect::<Vec<_>>(),
+                "totalNumberOfItems": 101, "limit": 100, "offset": 0
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/artists/9/albums"))
+            .and(query_param("offset", "100"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [{"id": 101, "title": "Last"}],
+                "totalNumberOfItems": 101, "limit": 100, "offset": 100
+            })))
+            .mount(&server)
+            .await;
+        let albums = client(&server)
+            .artist_albums_all(9, ArtistDiscography::Albums)
+            .await
+            .unwrap();
+        assert_eq!(albums.len(), 101);
+        assert_eq!(albums[100].title, "Last");
     }
 
     #[tokio::test]

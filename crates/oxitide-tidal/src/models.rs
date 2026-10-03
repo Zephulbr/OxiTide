@@ -75,6 +75,18 @@ pub struct Artist {
     pub name: String,
     #[serde(default)]
     pub picture: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mixes: Option<ArtistMixes>,
+}
+
+/// TIDAL's artist mix ids (uppercase keys verbatim in the v1 payload).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub struct ArtistMixes {
+    #[serde(default)]
+    pub artist_mix: Option<String>,
+    #[serde(default)]
+    pub master_artist_mix: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -392,5 +404,26 @@ mod tests {
         let json = serde_json::to_value(&profile).unwrap();
         assert_eq!(json["numberOfFollowers"], 1106540);
         assert_eq!(json["externalLinks"][0]["site"], "TWITTER");
+    }
+
+    #[test]
+    fn artist_parses_and_serializes_mixes() {
+        let raw =
+            r#"{"id": 1, "name": "A", "mixes": {"ARTIST_MIX": "abc", "MASTER_ARTIST_MIX": "def"}}"#;
+        let artist: Artist = serde_json::from_str(raw).unwrap();
+        let mixes = artist.mixes.as_ref().unwrap();
+        assert_eq!(mixes.artist_mix.as_deref(), Some("abc"));
+        assert_eq!(mixes.master_artist_mix.as_deref(), Some("def"));
+
+        let value = serde_json::to_value(&artist).unwrap();
+        assert_eq!(value["mixes"]["ARTIST_MIX"], "abc");
+    }
+
+    #[test]
+    fn artist_without_mixes_omits_the_field() {
+        let artist: Artist = serde_json::from_str(r#"{"id": 1, "name": "A"}"#).unwrap();
+        assert!(artist.mixes.is_none());
+        let value = serde_json::to_value(&artist).unwrap();
+        assert!(value.get("mixes").is_none());
     }
 }
