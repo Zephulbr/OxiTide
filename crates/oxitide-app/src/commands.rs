@@ -11,7 +11,7 @@ use oxitide_tidal::library::FavoriteIds;
 use oxitide_tidal::pkce::{
     random_state, Pkce, PKCE_CLIENT_ID, PKCE_REDIRECT_DEEP_LINK, PKCE_REDIRECT_PASTE, TOKEN_URL,
 };
-use oxitide_tidal::token_store::{KeyringStore, TokenSet, TokenStore};
+use oxitide_tidal::token_store::{KeyringStatus, TokenSet, TokenStore};
 use oxitide_tidal::Error;
 use serde::{Deserialize, Serialize};
 use tauri::{Manager, State};
@@ -162,7 +162,9 @@ pub async fn finish_login(
     let session = auth::fetch_session(&http, API_BASE, &tokens.access_token)
         .await
         .map_err(|e| e.to_string())?;
-    let store: Arc<dyn TokenStore> = Arc::new(KeyringStore);
+    let store = state
+        .token_store()
+        .ok_or_else(|| "token store unavailable".to_string())?;
     store.save(&tokens).map_err(|e| e.to_string())?;
     let client = TidalClient::new(http, API_BASE, TOKEN_URL, session.clone(), tokens, store);
     state.set_client(client.clone());
@@ -229,10 +231,17 @@ pub fn auth_logout(state: State<'_, AppState>) -> Result<(), String> {
             .handle(oxitide_audio::engine::EngineCmd::Clear);
         player.engine.shutdown();
     }
-    let store = KeyringStore;
-    store.clear().map_err(|e| e.to_string())?;
+    if let Some(store) = state.token_store() {
+        store.clear().map_err(|e| e.to_string())?;
+    }
     state.logout();
     Ok(())
+}
+
+/// The startup credential-store probe result, for the UI notice.
+#[tauri::command]
+pub fn get_keyring_status(state: State<'_, AppState>) -> Result<KeyringStatus, String> {
+    Ok(state.keyring_status())
 }
 
 /// Load a persisted session from the store, refreshing on `401`.
@@ -284,7 +293,9 @@ pub async fn auth_restore(
     state: State<'_, AppState>,
 ) -> Result<Option<SessionInfoDto>, String> {
     let http = reqwest::Client::new();
-    let store: Arc<dyn TokenStore> = Arc::new(KeyringStore);
+    let store = state
+        .token_store()
+        .ok_or_else(|| "token store unavailable".to_string())?;
     let restored = restore_tokens(&http, API_BASE, TOKEN_URL, store.as_ref()).await?;
     match restored {
         None => Ok(None),

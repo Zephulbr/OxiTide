@@ -58,7 +58,6 @@ impl CredentialStore for KeyringCredentialStore {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Default)]
 pub struct MemoryCredentialStore {
     inner: std::sync::Mutex<std::collections::HashMap<String, StoredCredential>>,
@@ -85,7 +84,6 @@ impl CredentialStore for MemoryCredentialStore {
 
 /// Store for scrobble credentials: the OS keyring when the startup probe
 /// found it usable, otherwise session-only memory (spec T8-D2).
-#[allow(dead_code)]
 pub fn select_credential_store(persistent: bool) -> Arc<dyn CredentialStore> {
     if persistent {
         Arc::new(KeyringCredentialStore)

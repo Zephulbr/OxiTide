@@ -5,6 +5,7 @@ use oxitide_audio::cache::DiskCache;
 use oxitide_audio::engine::Engine;
 use oxitide_tidal::client::TidalClient;
 use oxitide_tidal::pkce::Pkce;
+use oxitide_tidal::token_store::{KeyringStatus, TokenStore};
 use oxitide_tidal::Error;
 use tauri::{AppHandle, Emitter};
 
@@ -39,6 +40,10 @@ pub struct AppState {
     pub artwork: Mutex<Option<Arc<ArtworkService>>>,
     pub lyrics: Mutex<Option<Arc<LyricsService>>>,
     pub scrobbler: Mutex<Option<Arc<ScrobblerService>>>,
+    /// The process-wide token store chosen at startup (keyring or session-only).
+    pub token_store: RwLock<Option<Arc<dyn TokenStore>>>,
+    /// Result of the startup keyring probe, exposed to the UI.
+    pub keyring_status: Mutex<Option<KeyringStatus>>,
     pub media: Mutex<Option<crate::media_controls::MediaSession>>,
     pub discord: Mutex<Option<crate::discord::DiscordPresence>>,
     session_expired: AtomicBool,
@@ -132,6 +137,27 @@ impl AppState {
 
     pub fn scrobbler(&self) -> Option<Arc<ScrobblerService>> {
         self.scrobbler.lock().unwrap().clone()
+    }
+
+    pub fn set_token_store(&self, store: Arc<dyn TokenStore>) {
+        *self.token_store.write().unwrap() = Some(store);
+    }
+
+    pub fn token_store(&self) -> Option<Arc<dyn TokenStore>> {
+        self.token_store.read().unwrap().clone()
+    }
+
+    pub fn set_keyring_status(&self, status: KeyringStatus) {
+        *self.keyring_status.lock().unwrap() = Some(status);
+    }
+
+    /// The startup probe result; persistence is assumed until main sets it.
+    pub fn keyring_status(&self) -> KeyringStatus {
+        self.keyring_status
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap_or_else(KeyringStatus::persistent)
     }
 
     pub fn set_media(&self, session: crate::media_controls::MediaSession) {
@@ -286,5 +312,33 @@ mod tests {
         assert_eq!(state.pre_mini(), Some(geometry));
         assert_eq!(state.take_pre_mini(), Some(geometry));
         assert_eq!(state.pre_mini(), None);
+    }
+
+    #[test]
+    fn keyring_status_round_trips() {
+        let state = AppState::default();
+        assert!(state.keyring_status().persistent);
+        state.set_keyring_status(KeyringStatus::unavailable("no secret service"));
+        let status = state.keyring_status();
+        assert!(!status.persistent);
+        assert_eq!(status.reason.as_deref(), Some("no secret service"));
+    }
+
+    #[test]
+    fn selected_token_store_is_returned_by_later_reads() {
+        use oxitide_tidal::token_store::{MemoryStore, TokenSet};
+        let state = AppState::default();
+        assert!(state.token_store().is_none());
+        let store: Arc<dyn TokenStore> = Arc::new(MemoryStore::default());
+        let tokens = TokenSet {
+            access_token: "a".into(),
+            refresh_token: None,
+            token_type: "Bearer".into(),
+            expires_at: None,
+        };
+        store.save(&tokens).unwrap();
+        state.set_token_store(store);
+        let loaded = state.token_store().unwrap().load().unwrap().unwrap();
+        assert_eq!(loaded.access_token, "a");
     }
 }

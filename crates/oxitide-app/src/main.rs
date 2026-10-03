@@ -135,6 +135,17 @@ fn main() {
     let config = config::Config::load();
     perf::mark("config_loaded");
     let state = AppState::default();
+    let (token_store, keyring_status) = oxitide_tidal::token_store::select_token_store(
+        &oxitide_tidal::token_store::SystemKeyringProbe,
+    );
+    if !keyring_status.persistent {
+        tracing::warn!(
+            reason = %keyring_status.reason.as_deref().unwrap_or("unknown"),
+            "OS keyring unavailable; secrets will last only for this session"
+        );
+    }
+    state.set_token_store(token_store);
+    state.set_keyring_status(keyring_status.clone());
     state.set_cache(player::build_cache(&config));
     perf::mark("cache_ready");
     state.set_artwork(artwork::ArtworkService::new(
@@ -163,7 +174,7 @@ fn main() {
         scrobble_http,
         "https://ws.audioscrobbler.com/2.0/",
         "https://api.listenbrainz.org/1/",
-        std::sync::Arc::new(scrobble::credentials::KeyringCredentialStore),
+        scrobble::credentials::select_credential_store(keyring_status.persistent),
         lastfm_key,
         lastfm_secret,
         config.scrobbling.lastfm_enabled,
@@ -267,6 +278,7 @@ fn main() {
             commands::auth_restore,
             commands::auth_status,
             commands::auth_logout,
+            commands::get_keyring_status,
             commands::get_home,
             commands::get_album,
             commands::get_album_tracks,
