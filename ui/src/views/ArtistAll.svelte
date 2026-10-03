@@ -206,7 +206,7 @@
 {#if tab === "tracks"}
   <div class="list-head">
     <p class="muted tnum count">
-      {#if pager.total > 0}{pager.items.length} of {pager.total} tracks{:else}tracks{/if}
+      {#if pager.total > 0}{pager.total} tracks{:else}tracks{/if}
     </p>
     <button
       class="list-action"
