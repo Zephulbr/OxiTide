@@ -1,6 +1,6 @@
 use crate::client::{TidalClient, DEFAULT_PAGE_SIZE};
 use crate::error::Result;
-use crate::models::{Album, Artist, ItemPage, Track};
+use crate::models::{Album, Artist, ArtistDiscography, ItemPage, Track};
 
 fn page_params(limit: u32, offset: u32) -> Vec<(&'static str, String)> {
     vec![("limit", limit.to_string()), ("offset", offset.to_string())]
@@ -30,6 +30,39 @@ impl TidalClient {
 
     pub async fn artist(&self, id: u64) -> Result<Artist> {
         self.get(&format!("artists/{id}"), &[]).await
+    }
+
+    /// One bounded window of the artist's most popular tracks.
+    pub async fn artist_top_tracks(&self, id: u64, limit: u32) -> Result<Vec<Track>> {
+        let page: ItemPage<Track> = self
+            .get(
+                &format!("artists/{id}/toptracks"),
+                &[("limit", limit.to_string())],
+            )
+            .await?;
+        Ok(page.items)
+    }
+
+    /// One page of an artist's discography under a TIDAL filter
+    /// (`ALBUMS` / `EPSANDSINGLES` / `COMPILATIONS`).
+    pub async fn artist_albums(
+        &self,
+        id: u64,
+        filter: ArtistDiscography,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<Album>> {
+        let page: ItemPage<Album> = self
+            .get(
+                &format!("artists/{id}/albums"),
+                &[
+                    ("filter", filter.tidal_param().to_string()),
+                    ("limit", limit.to_string()),
+                    ("offset", offset.to_string()),
+                ],
+            )
+            .await?;
+        Ok(page.items)
     }
 }
 
@@ -241,5 +274,51 @@ mod tests {
     fn clean_bio_handles_album_links_and_variant_breaks() {
         let raw = "A [wimpLink albumId=\"2\"]record[/wimpLink]<br />B<br>B2";
         assert_eq!(clean_bio(raw).as_deref(), Some("A record\n\nB\n\nB2"));
+    }
+
+    #[test]
+    fn discography_filter_params_match_tidal() {
+        assert_eq!(ArtistDiscography::Albums.tidal_param(), "ALBUMS");
+        assert_eq!(ArtistDiscography::EpsAndSingles.tidal_param(), "EPSANDSINGLES");
+        assert_eq!(ArtistDiscography::Compilations.tidal_param(), "COMPILATIONS");
+    }
+
+    #[tokio::test]
+    async fn artist_top_tracks_sends_limit_and_parses_items() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/artists/9/toptracks"))
+            .and(query_param("limit", "10"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [{"id": 1, "title": "Hit", "artists": []}],
+                "totalNumberOfItems": 200, "limit": 10, "offset": 0
+            })))
+            .mount(&server)
+            .await;
+        let tracks = client(&server).artist_top_tracks(9, 10).await.unwrap();
+        assert_eq!(tracks.len(), 1);
+        assert_eq!(tracks[0].title, "Hit");
+    }
+
+    #[tokio::test]
+    async fn artist_albums_sends_the_filter_and_parses_items() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/artists/9/albums"))
+            .and(query_param("filter", "EPSANDSINGLES"))
+            .and(query_param("limit", "50"))
+            .and(query_param("offset", "0"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [{"id": 7, "title": "Single", "artists": [], "numberOfTracks": 1}],
+                "totalNumberOfItems": 1, "limit": 50, "offset": 0
+            })))
+            .mount(&server)
+            .await;
+        let albums = client(&server)
+            .artist_albums(9, ArtistDiscography::EpsAndSingles, 50, 0)
+            .await
+            .unwrap();
+        assert_eq!(albums.len(), 1);
+        assert_eq!(albums[0].title, "Single");
     }
 }
