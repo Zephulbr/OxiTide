@@ -437,7 +437,9 @@ fn build_player(
 
 use oxitide_tidal::feed::FeedActivity;
 use oxitide_tidal::folders::{CollectionEntry, CollectionFolder};
-use oxitide_tidal::models::{Album, Artist, Mix, Playlist, SearchResults, Track};
+use oxitide_tidal::models::{
+    Album, Artist, ArtistDiscography, ArtistProfile, Mix, Playlist, SearchResults, Track,
+};
 use oxitide_tidal::pages::{MixDetail, PageItem, PageSection};
 
 #[tauri::command]
@@ -729,6 +731,61 @@ pub async fn get_playlist_tracks(
 pub async fn get_artist(state: State<'_, AppState>, id: u64) -> Result<Artist, String> {
     require_client(&state)?
         .artist(id)
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
+/// Only web URLs with a host can be handed to the system browser.
+pub(crate) fn external_url(raw: &str) -> Result<reqwest::Url, String> {
+    let parsed = reqwest::Url::parse(raw).map_err(|_| "invalid URL".to_string())?;
+    match parsed.scheme() {
+        "http" | "https" if parsed.host_str().is_some() => Ok(parsed),
+        _ => Err("only http(s) URLs with a host can be opened".to_string()),
+    }
+}
+
+#[tauri::command]
+pub fn open_external(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let parsed = external_url(&url)?;
+    app.opener()
+        .open_url(parsed.as_str(), None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_artist_profile(
+    state: State<'_, AppState>,
+    id: u64,
+) -> Result<ArtistProfile, String> {
+    require_client(&state)?
+        .artist_profile(id)
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
+pub async fn get_artist_top_tracks(
+    state: State<'_, AppState>,
+    artist_id: u64,
+    limit: u32,
+) -> Result<Vec<Track>, String> {
+    require_client(&state)?
+        .artist_top_tracks(artist_id, limit)
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
+pub async fn get_artist_albums(
+    state: State<'_, AppState>,
+    artist_id: u64,
+    filter: ArtistDiscography,
+    limit: u32,
+    offset: u32,
+) -> Result<Vec<Album>, String> {
+    require_client(&state)?
+        .artist_albums(artist_id, filter, limit, offset)
         .await
         .map_err(|e| state.fail_tidal(e))
 }
@@ -1875,5 +1932,27 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, Error::Api { status: 500, .. }), "got {err:?}");
+    }
+
+    #[test]
+    fn external_url_accepts_http_and_https() {
+        assert_eq!(
+            external_url("https://twitter.com/acdc").unwrap().as_str(),
+            "https://twitter.com/acdc"
+        );
+        assert!(external_url("http://example.com/").is_ok());
+    }
+
+    #[test]
+    fn external_url_rejects_unsafe_schemes_and_missing_hosts() {
+        for raw in [
+            "javascript:alert(1)",
+            "file:///C:/secret",
+            "data:text/html,x",
+            "https://",
+            "",
+        ] {
+            assert!(external_url(raw).is_err(), "{raw} should be rejected");
+        }
     }
 }
