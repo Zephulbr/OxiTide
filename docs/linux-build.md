@@ -118,3 +118,64 @@ dbus-run-session -- bash -lc \
 The daemon unlocks the login keyring with an empty password for the disposable
 WSL environment (never do this on a real desktop). With it running, a login
 survives a restart and the notice is absent.
+
+## Packaging
+
+`crates/oxitide-app/tauri.linux.conf.json` (merged only on Linux) sets the bundle
+targets to `deb` + `AppImage`, sets `license = "AGPL-3.0-or-later"`, replaces the
+base long description (which says "for Windows"), adds `libasound2`, `xdg-utils`,
+and `desktop-file-utils` to the deb `Depends` (Tauri appends
+`libwebkit2gtk-4.1-0` and `libgtk-3-0` automatically), and points at
+`linux/oxitide.desktop.hbs` (app-dir-relative, resolved after the CLI chdirs to
+the app directory). That template terminates the `MimeType=x-scheme-handler/tidal;`
+line that the bundler derives from `plugins.deep-link.desktop.schemes` (Tauri's
+built-in template omits the trailing semicolon). Windows bundling is untouched.
+
+Install `xdg-utils` on the build host before bundling: with deep links
+configured, the AppImage bundler copies `/usr/bin/xdg-mime` into the AppDir and
+fails without it. Install `desktop-file-utils` for `desktop-file-validate`,
+`update-desktop-database` (runtime deep-link registration), and deb inspection.
+
+    sudo apt-get install -y xdg-utils desktop-file-utils
+
+From the repository root (the CLI resolves `desktopTemplate` from the app
+directory after chdir, not from this CWD):
+
+    npm --prefix ui run app:build
+
+Artifacts (unsigned; version from `crates/oxitide-app/tauri.conf.json`):
+
+- `target/release/bundle/deb/OxiTide_0.2.0_amd64.deb`
+- `target/release/bundle/appimage/OxiTide_0.2.0_amd64.AppImage`
+
+Inspect the deb metadata and desktop entry:
+
+    dpkg-deb -f target/release/bundle/deb/OxiTide_0.2.0_amd64.deb Depends
+    rm -rf /tmp/oxitide-deb
+    dpkg-deb -x target/release/bundle/deb/OxiTide_0.2.0_amd64.deb /tmp/oxitide-deb
+    grep -E '^(Name|Exec|Icon|Categories|MimeType)=' /tmp/oxitide-deb/usr/share/applications/OxiTide.desktop
+
+Expected: `Categories=AudioVideo;Audio;Music;`,
+`MimeType=x-scheme-handler/tidal;`, `Name=OxiTide`, `Exec=oxitide-app`,
+`Icon=oxitide-app`.
+
+Inspect the AppImage entry without FUSE:
+
+    ./target/release/bundle/appimage/OxiTide_0.2.0_amd64.AppImage --appimage-extract
+    cat squashfs-root/usr/share/applications/OxiTide.desktop
+
+Launch under WSLg:
+
+    sudo apt-get install -y ./target/release/bundle/deb/OxiTide_0.2.0_amd64.deb
+    oxitide-app
+
+    chmod +x target/release/bundle/appimage/OxiTide_0.2.0_amd64.AppImage
+    ./target/release/bundle/appimage/OxiTide_0.2.0_amd64.AppImage || \
+      ./target/release/bundle/appimage/OxiTide_0.2.0_amd64.AppImage --appimage-extract-and-run
+
+Fact: direct AppImage execution needs FUSE2 (`libfuse2` on Ubuntu 22.04) and
+`/dev/fuse`; `--appimage-extract-and-run` bypasses FUSE. Record which path was
+used in `plans/notes/2026-10-03-track8-packaging-smoke.md`.
+
+AUR: build/install `packaging/aur/PKGBUILD` on Arch against `webkit2gtk-4.1`
+(`makepkg -si`); verification is deferred to the bare-metal checklist.
