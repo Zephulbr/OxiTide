@@ -56,6 +56,7 @@ export interface SearchResults {
 }
 export interface TrackPage { items: Track[]; total: number; offset: number; limit: number }
 export interface SessionInfoDto { country_code: string; user_id: number }
+export interface KeyringStatus { persistent: boolean; reason?: string | null }
 export interface FavoriteIds { tracks: number[]; albums: number[]; artists: number[] }
 export interface Mix {
   id: string; title: string; subTitle?: string | null;
@@ -216,6 +217,7 @@ export const api = {
   authStatus: () => invoke<boolean>("auth_status"),
   authRestore: () => invoke<SessionInfoDto | null>("auth_restore"),
   authLogout: () => invoke<void>("auth_logout"),
+  getKeyringStatus: () => invoke<KeyringStatus>("get_keyring_status"),
   getHome: () => invoke<PageSection[]>("get_home"),
   getExplore: () => invoke<PageSection[]>("get_explore"),
   getFeed: () => invoke<FeedActivity[]>("get_feed"),
