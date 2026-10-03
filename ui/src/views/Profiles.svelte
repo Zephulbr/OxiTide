@@ -50,8 +50,8 @@
 <style>
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    gap: 16px;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 20px;
   }
   .card {
     display: flex;
@@ -59,8 +59,7 @@
     align-items: center;
     gap: 8px;
     text-align: center;
-    padding: 10px;
-    border: 1px solid var(--line);
+    padding: 12px;
     border-radius: var(--radius-card);
     color: inherit;
   }
