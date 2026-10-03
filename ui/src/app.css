@@ -65,6 +65,29 @@ body {
    clearance instead. */
 .main:has(.view-fill) { padding-bottom: 0; }
 .main:has(.profiles) { padding-top: 0; }
+/* Route enter: the incoming page settles in (opacity + 8px rise) while the
+   outgoing one is replaced immediately, so there is no dual-layout crossfade.
+   `height: 100%` preserves the `.view-fill` height contract. */
+.page {
+  height: 100%;
+  animation: page-in var(--dur-state) var(--ease-in-out) both;
+}
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+/* Reduced motion is a hard floor: no page movement at all. */
+@media (prefers-reduced-motion: reduce) {
+  .page {
+    animation: none;
+  }
+}
 .queue {
   background: var(--surface-1);
   backdrop-filter: blur(var(--glass-blur));
