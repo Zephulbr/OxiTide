@@ -33,6 +33,87 @@ impl TidalClient {
     }
 }
 
+/// Strip TIDAL bio markup: `[wimpLink ...]Name[/wimpLink]` keeps `Name`,
+/// `<br>`/`<br/>`/`<br />` become paragraph breaks, and any other tag is
+/// dropped. Returns `None` when nothing but markup remains.
+pub fn clean_bio(raw: &str) -> Option<String> {
+    let text = strip_tags(&strip_line_breaks(&strip_wimp_links(raw)));
+    let paragraphs: Vec<&str> = text
+        .split('\n')
+        .map(str::trim)
+        .filter(|paragraph| !paragraph.is_empty())
+        .collect();
+    if paragraphs.is_empty() {
+        None
+    } else {
+        Some(paragraphs.join("\n\n"))
+    }
+}
+
+/// `[wimpLink artistId="1"]Name[/wimpLink]` -> `Name`; a malformed open tag
+/// drops the remainder rather than leaking raw markup.
+fn strip_wimp_links(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let mut rest = raw;
+    while let Some(start) = rest.find("[wimpLink") {
+        out.push_str(&rest[..start]);
+        let Some(open_end) = rest[start..].find(']') else {
+            rest = "";
+            break;
+        };
+        let after_open = &rest[start + open_end + 1..];
+        let Some(close) = after_open.find("[/wimpLink]") else {
+            out.push_str(after_open);
+            rest = "";
+            break;
+        };
+        out.push_str(&after_open[..close]);
+        rest = &after_open[close + "[/wimpLink]".len()..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Case-insensitive `<br>`, `<br/>`, `<br />` -> newline. Operates byte-wise
+/// on tag matches only, so non-ASCII text passes through unchanged.
+fn strip_line_breaks(raw: &str) -> String {
+    let lower = raw.to_ascii_lowercase();
+    let mut out = String::with_capacity(raw.len());
+    let mut index = 0;
+    while index < raw.len() {
+        let tail = &lower[index..];
+        if tail.starts_with("<br />") {
+            out.push('\n');
+            index += 6;
+        } else if tail.starts_with("<br/>") {
+            out.push('\n');
+            index += 5;
+        } else if tail.starts_with("<br>") {
+            out.push('\n');
+            index += 4;
+        } else {
+            let ch = raw[index..].chars().next().expect("char boundary");
+            out.push(ch);
+            index += ch.len_utf8();
+        }
+    }
+    out
+}
+
+fn strip_tags(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let mut in_tag = false;
+    for ch in raw.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => out.push(ch),
+            _ => {}
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -138,5 +219,27 @@ mod tests {
             client(&server).track(999).await.unwrap_err(),
             Error::NotFound(_)
         ));
+    }
+
+    #[test]
+    fn clean_bio_keeps_wimp_link_text_and_breaks_paragraphs() {
+        let raw = "See [wimpLink artistId=\"1\"]the band[/wimpLink].<br/>Next line.";
+        assert_eq!(
+            clean_bio(raw).as_deref(),
+            Some("See the band.\n\nNext line.")
+        );
+    }
+
+    #[test]
+    fn clean_bio_strips_other_tags_and_empty_input() {
+        assert_eq!(clean_bio("<p>Hi</p>"), Some("Hi".into()));
+        assert_eq!(clean_bio("   <br/>  "), None);
+        assert_eq!(clean_bio(""), None);
+    }
+
+    #[test]
+    fn clean_bio_handles_album_links_and_variant_breaks() {
+        let raw = "A [wimpLink albumId=\"2\"]record[/wimpLink]<br />B<br>B2";
+        assert_eq!(clean_bio(raw).as_deref(), Some("A record\n\nB\n\nB2"));
     }
 }

@@ -78,6 +78,44 @@ pub struct Artist {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ArtistLink {
+    /// Uppercased site key from the API, e.g. "TWITTER".
+    pub site: String,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtistProfile {
+    #[serde(default)]
+    pub number_of_followers: Option<u64>,
+    #[serde(default)]
+    pub external_links: Vec<ArtistLink>,
+    /// Cleaned biography text (no wimpLink/HTML), `None` when absent/empty.
+    #[serde(default)]
+    pub bio: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArtistDiscography {
+    Albums,
+    EpsAndSingles,
+    Compilations,
+}
+
+impl ArtistDiscography {
+    /// The `filter` query value TIDAL expects on `artists/{id}/albums`.
+    pub fn tidal_param(self) -> &'static str {
+        match self {
+            ArtistDiscography::Albums => "ALBUMS",
+            ArtistDiscography::EpsAndSingles => "EPSANDSINGLES",
+            ArtistDiscography::Compilations => "COMPILATIONS",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PlaylistCreator {
     #[serde(default, deserialize_with = "optional_creator_id")]
     pub id: Option<u64>,
@@ -339,5 +377,20 @@ mod tests {
         assert_eq!(mix.id, "m1");
         assert_eq!(mix.sub_title.as_deref(), Some("For you"));
         assert_eq!(mix.mix_type.as_deref(), Some("DAILY_MIX"));
+    }
+
+    #[test]
+    fn artist_profile_serializes_camel_case() {
+        let profile = ArtistProfile {
+            number_of_followers: Some(1106540),
+            external_links: vec![ArtistLink {
+                site: "TWITTER".into(),
+                url: "https://twitter.com/acdc".into(),
+            }],
+            bio: None,
+        };
+        let json = serde_json::to_value(&profile).unwrap();
+        assert_eq!(json["numberOfFollowers"], 1106540);
+        assert_eq!(json["externalLinks"][0]["site"], "TWITTER");
     }
 }
