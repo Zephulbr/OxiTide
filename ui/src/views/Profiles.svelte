@@ -4,8 +4,8 @@
   import Cover from "../lib/components/Cover.svelte";
   import EmptyState from "../lib/components/EmptyState.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
-  import Icon from "../lib/components/Icon.svelte";
   import Loading from "../lib/components/Loading.svelte";
+  import SortSelect from "../lib/components/SortSelect.svelte";
   import type { Nav } from "../lib/nav.svelte";
 
   let { nav }: { nav: Nav } = $props();
@@ -55,19 +55,16 @@
     oninput={(event) => (query = event.currentTarget.value)}
     aria-label="Search artists"
   />
-  <div class="select-wrap">
-    <select
-      class="search-input sort"
-      value={sortMode}
-      onchange={(event) => (sortMode = event.currentTarget.value as ArtistSort)}
-      aria-label="Sort artists"
-    >
-      <option value="date">Date added</option>
-      <option value="name">Name A–Z</option>
-      <option value="name-desc">Name Z–A</option>
-    </select>
-    <span class="chevron" aria-hidden="true"><Icon name="chevron-down" size={14} /></span>
-  </div>
+  <SortSelect
+    value={sortMode}
+    options={[
+      { value: "date", label: "Date added" },
+      { value: "name", label: "Name A–Z" },
+      { value: "name-desc", label: "Name Z–A" },
+    ]}
+    label="Sort artists"
+    onchange={(value) => (sortMode = value as ArtistSort)}
+  />
 </div>
 
 {#if loading}
@@ -107,26 +104,6 @@
   .filter {
     flex: 0 1 240px;
   }
-  .select-wrap {
-    position: relative;
-    display: flex;
-    flex: 0 0 auto;
-  }
-  .sort {
-    appearance: none;
-    padding-right: 30px;
-    cursor: pointer;
-  }
-  .chevron {
-    position: absolute;
-    top: 50%;
-    right: 10px;
-    display: grid;
-    place-items: center;
-    color: var(--text-muted);
-    transform: translateY(-50%);
-    pointer-events: none;
-  }
   .empty {
     margin-top: 56px;
   }
@@ -135,11 +112,11 @@
     grid-template-columns: repeat(8, minmax(0, 1fr));
     gap: 56px 20px;
     margin-top: 56px;
-    padding: 0 16px;
+    padding: 0 32px;
   }
   .groups {
     margin-top: 56px;
-    padding: 0 16px;
+    padding: 0 32px;
   }
   .groups .grid {
     margin-top: 12px;
