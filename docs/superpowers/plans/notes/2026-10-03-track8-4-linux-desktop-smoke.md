@@ -153,21 +153,49 @@ a product failure.
 
 ## WebKit CSS findings (spec §4.6; Track 9 freeze; Plan Task 5)
 
+Track 9 UI freeze: declared by the owner before this pass (confirmation
+recorded in the task ledger ruling; the worktree was clean with no `ui/` edits
+in flight at Task 5 start, 2026-10-04).
+
+The release bundle exposes no usable inspector (Task 4: the
+`WEBKIT_INSPECTOR_SERVER` port binds but its HTTP endpoints return empty
+replies). The engine half of the probe therefore ran in a minimal Python-GI
+`WebKit2.WebView` harness on a blank page under WSLg, 2026-10-04: Ubuntu
+22.04.5 + WSLg (`DISPLAY=:0`, `WAYLAND_DISPLAY=wayland-0`,
+`XDG_RUNTIME_DIR=/run/user/0`), `WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1`,
+`python3-gi` 3.42.1 with the `gir1.2-webkit2-4.1` typelib installed for the
+probe. The page injects one `@property` rule (no app CSS in the harness);
+after `LoadEvent.FINISHED` the identical probe expressions run via
+`evaluate_javascript`, wrapped in `JSON.stringify` for transport. Raw result
+(identical with and without `WEBKIT_DISABLE_COMPOSITING_MODE=1`):
+
+```json
+{"backdropFilter": true, "colorMix": true, "probeInitial": "rgb(46, 226, 196)",
+ "propertyRule": true, "ua": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64)
+ AppleWebKit/605.1.15 (KHTML, like Gecko) Version/60.5 Safari/605.1.15",
+ "webkitBackdropFilter": true}
+```
+
 - WebKitGTK version (`dpkg-query -W -f='${Version}\n' libwebkit2gtk-4.1-0`):
-  **2.50.4-0ubuntu0.22.04.1** (observed 2026-10-04).
-- `CSS.supports("color", "color-mix(in srgb, red 50%, blue)")`: **PENDING
-  (Task 5)** — needs an in-webview JS probe; the release bundle exposes no
-  usable inspector (with `WEBKIT_INSPECTOR_SERVER=127.0.0.1:9222` the port
-  binds, but `/`, `/json`, `/json/list`, `/json/version` all return empty
-  replies).
-- `CSS.supports("backdrop-filter", "blur(2px)")` / `-webkit-` prefix:
-  **PENDING (Task 5)** — same probe.
+  **2.50.4-0ubuntu0.22.04.1** (observed 2026-10-04); `pkg-config --modversion
+  webkit2gtk-4.1` → `2.50.4`.
+- `CSS.supports("color", "color-mix(in srgb, red 50%, blue)")`: **PASS
+  (engine floor; `true`)** 2026-10-04 — harness probe.
+- `CSS.supports("backdrop-filter", "blur(2px)")` / `-webkit-` prefix: **PASS
+  (engine floor; `true` / `true`)** 2026-10-04 — harness probe.
 - `CSSPropertyRule` present in `document.styleSheets` (i.e. `@property`
-  parsed): **PENDING (Task 5)** — same probe.
+  parsed): **PASS (engine floor; `true`)** 2026-10-04 — the injected
+  registration also honoured `inherits: false` (the child resolved to the
+  registered `initial-value`, `rgb(46, 226, 196)` = `#2ee2c4`), so registered
+  token initial values and the crossfade base exist before the first cover
+  analysis on this engine.
 - Visual: dynamic-color crossfade (Now Playing), glass blur (sidebar/player
   bar/menu), accent washes (search focus, playing row): **PENDING (human)** —
-  visible-window check.
-- Fixes applied: none (no failure observed in this task; Task 5 owns fixes).
+  visible-window check; the harness proves the engine features, not the app
+  visuals.
+- Fixes applied: **none — engine floor passes as-is.** No CSS gap was
+  observed, so no fallbacks were added (surface: `color-mix` 37 call sites,
+  `backdrop-filter`/`-webkit-` 17, per repo grep).
 - The oldest-base WebKitGTK 4.1 floor check remains on the bare-metal
   checklist.
 
