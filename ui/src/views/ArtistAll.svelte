@@ -86,6 +86,24 @@
     tab === "albums" || tab === "eps" || tab === "appears" ? tab : null,
   );
 
+  let tabsEl = $state<HTMLElement | null>(null);
+  let indicator = $state({ left: 0, width: 0 });
+
+  // Slide the underline to the active tab; observing the buttons keeps the
+  // line aligned through resize and font swaps.
+  $effect(() => {
+    const row = tabsEl;
+    const active = row?.querySelector<HTMLButtonElement>(`button[data-tab="${tab}"]`);
+    if (!row || !active) return;
+    const update = () => {
+      indicator = { left: active.offsetLeft, width: active.offsetWidth };
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    for (const button of row.querySelectorAll("button")) observer.observe(button);
+    return () => observer.disconnect();
+  });
+
   async function loadArtist() {
     artistError = "";
     try {
@@ -161,19 +179,29 @@
   }
 </script>
 
-<div class="catalog-head">
-  <span class="kicker">Artist</span>
-  <h2>{artist?.name ?? "Artist"}</h2>
-</div>
+<div class="view-fill">
+  <div class="catalog-head">
+    <span class="kicker">Artist</span>
+    <h2>{artist?.name ?? "Artist"}</h2>
+  </div>
 
-<nav class="tabs" aria-label="Artist sections">
-  {#each TABS as entry (entry.id)}
-    <button
-      class:active={tab === entry.id}
-      onclick={() => nav.replace({ name: "artist-all", id, tab: entry.id })}
-    >{entry.label}</button>
-  {/each}
-</nav>
+  <nav class="tabs" aria-label="Artist sections" bind:this={tabsEl}>
+    {#each TABS as entry (entry.id)}
+      <button
+        class:active={tab === entry.id}
+        data-tab={entry.id}
+        aria-current={tab === entry.id ? "page" : undefined}
+        onclick={() => nav.replace({ name: "artist-all", id, tab: entry.id })}
+      >{entry.label}</button>
+    {/each}
+    {#if indicator.width > 0}
+      <span
+        class="tab-underline"
+        style:left="{indicator.left}px"
+        style:width="{indicator.width}px"
+      ></span>
+    {/if}
+  </nav>
 
 {#if tab === "tracks"}
   <div class="list-head">
@@ -206,6 +234,7 @@
       {view}
       {favorites}
       {toasts}
+      fill
       onPlay={playFrom}
       onEndReached={() => void pager.loadMore()}
       onAddToPlaylist={(t) => playlistActions.openPicker([t])}
@@ -215,73 +244,80 @@
 {:else if activeAlbumKind}
   {@const kind = activeAlbumKind}
   {@const list = albumLists[kind]}
-  {#if albumErrors[kind]}
-    <ErrorState message={albumErrors[kind]} onRetry={() => retryAlbums(kind)} />
-  {:else if list === null}
-    <Loading />
-  {:else if list.length === 0}
-    <EmptyState message="No releases." />
-  {:else}
-    <p class="muted tnum count">{list.length} releases</p>
-    <div class="grid">
-      {#each list as release (release.id)}
-        <MediaCard
-          variant="tile"
-          item={albumCard(release)}
-          onclick={() => nav.goto({ name: "album", id: release.id })}
-        />
-      {/each}
-    </div>
-  {/if}
+  <div class="tab-body">
+    {#if albumErrors[kind]}
+      <ErrorState message={albumErrors[kind]} onRetry={() => retryAlbums(kind)} />
+    {:else if list === null}
+      <Loading />
+    {:else if list.length === 0}
+      <EmptyState message="No releases." />
+    {:else}
+      <p class="muted tnum count">{list.length} releases</p>
+      <div class="grid">
+        {#each list as release (release.id)}
+          <MediaCard
+            variant="tile"
+            item={albumCard(release)}
+            onclick={() => nav.goto({ name: "album", id: release.id })}
+          />
+        {/each}
+      </div>
+    {/if}
+  </div>
 {:else if tab === "playlists"}
-  {#if playlistsError}
-    <ErrorState message={playlistsError} onRetry={retryPlaylists} />
-  {:else if playlists === null}
-    <Loading />
-  {:else if playlists.length === 0}
-    <EmptyState message="No playlists with this artist." />
-  {:else}
-    <p class="muted tnum count">{playlists.length} playlists</p>
-    <div class="grid">
-      {#each playlists as entry (entry.id)}
-        {@const route = routeForPageItem(entry)}
-        <MediaCard
-          variant="tile"
-          item={entry}
-          onclick={route ? () => nav.goto(route) : undefined}
-        />
-      {/each}
-    </div>
-  {/if}
+  <div class="tab-body">
+    {#if playlistsError}
+      <ErrorState message={playlistsError} onRetry={retryPlaylists} />
+    {:else if playlists === null}
+      <Loading />
+    {:else if playlists.length === 0}
+      <EmptyState message="No playlists with this artist." />
+    {:else}
+      <p class="muted tnum count">{playlists.length} playlists</p>
+      <div class="grid">
+        {#each playlists as entry (entry.id)}
+          {@const route = routeForPageItem(entry)}
+          <MediaCard
+            variant="tile"
+            item={entry}
+            onclick={route ? () => nav.goto(route) : undefined}
+          />
+        {/each}
+      </div>
+    {/if}
+  </div>
 {:else}
-  {#if artistError}
-    <ErrorState message={artistError} onRetry={loadArtist} />
-  {:else if artist === null}
-    <Loading />
-  {:else}
-    <div class="grid">
-      {#if artist.mixes?.ARTIST_MIX}
-        {@const mixId = artist.mixes.ARTIST_MIX}
-        <MediaCard
-          variant="tile"
-          item={{
-            id: mixId,
-            title: `${artist.name} Mix`,
-            subtitle: "Artist mix",
-            item_type: "MIX",
-            artwork: artist.picture,
-          }}
-          onclick={() => nav.goto({ name: "mix", id: mixId })}
-        />
-      {/if}
-      <button class="radio-tile" onclick={() => void playArtistRadio(id, toasts)}>
-        <span class="radio-icon" aria-hidden="true"><Icon name="radio" size={30} /></span>
-        <span class="radio-title">Artist Radio</span>
-        <span class="radio-sub muted">Endless station seeded on {artist.name}</span>
-      </button>
-    </div>
-  {/if}
+  <div class="tab-body">
+    {#if artistError}
+      <ErrorState message={artistError} onRetry={loadArtist} />
+    {:else if artist === null}
+      <Loading />
+    {:else}
+      <div class="grid">
+        {#if artist.mixes?.ARTIST_MIX}
+          {@const mixId = artist.mixes.ARTIST_MIX}
+          <MediaCard
+            variant="tile"
+            item={{
+              id: mixId,
+              title: `${artist.name} Mix`,
+              subtitle: "Artist mix",
+              item_type: "MIX",
+              artwork: artist.picture,
+            }}
+            onclick={() => nav.goto({ name: "mix", id: mixId })}
+          />
+        {/if}
+        <button class="radio-tile" onclick={() => void playArtistRadio(id, toasts)}>
+          <span class="radio-icon" aria-hidden="true"><Icon name="radio" size={30} /></span>
+          <span class="radio-title">Artist Radio</span>
+          <span class="radio-sub muted">Endless station seeded on {artist.name}</span>
+        </button>
+      </div>
+    {/if}
+  </div>
 {/if}
+</div>
 
 <style>
   .catalog-head {
@@ -298,28 +334,43 @@
     margin: 0;
   }
   .tabs {
+    position: relative;
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
-    margin-bottom: 20px;
+    gap: 4px 26px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--line);
   }
   .tabs button {
-    height: 32px;
-    padding: 0 14px;
-    border: 1px solid var(--line);
-    border-radius: var(--card-badge);
+    position: relative;
+    height: 38px;
+    padding: 0 2px;
     color: var(--text-muted);
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
   }
   .tabs button:hover {
     color: var(--text);
-    background: var(--surface-2);
   }
   .tabs button.active {
-    color: var(--on-accent);
+    color: var(--text);
+  }
+  .tab-underline {
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    height: 2px;
+    border-radius: 2px;
     background: var(--accent);
-    border-color: transparent;
+    transition:
+      left var(--dur-state) var(--ease-out),
+      width var(--dur-state) var(--ease-out);
+  }
+  .tab-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding-bottom: 24px;
   }
   .list-head {
     display: flex;
@@ -352,15 +403,15 @@
   }
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 8px 12px;
+    grid-template-columns: repeat(auto-fill, minmax(192px, 1fr));
+    gap: 16px 20px;
   }
   .radio-tile {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 6px;
-    padding: 12px;
+    gap: 8px;
+    padding: 14px;
     border: 1px solid var(--line);
     border-radius: var(--radius-card);
     color: inherit;
@@ -380,8 +431,9 @@
   }
   .radio-title {
     font-weight: 500;
+    font-size: 15px;
   }
   .radio-sub {
-    font-size: 12.5px;
+    font-size: 13px;
   }
 </style>

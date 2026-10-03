@@ -53,11 +53,9 @@
   let similar = $state<ArtistT[]>([]);
   let loading = $state(true);
   let error = $state("");
-  let expanded = $state(false);
   let loadToken = 0;
 
-  const visibleTop = $derived(expanded ? topTracks : topTracks.slice(0, 5));
-  const view = createTrackView(() => visibleTop);
+  const view = createTrackView(() => topTracks);
 
   async function load() {
     const token = ++loadToken;
@@ -68,7 +66,6 @@
     eps = [];
     comps = [];
     similar = [];
-    expanded = false;
     try {
       const [loadedArtist, loadedProfile] = await Promise.all([
         api.getArtist(id),
@@ -86,7 +83,7 @@
     loading = false;
     // Sections load independently: one slow or failed shelf never blocks
     // the hero or its neighbours, and stale responses are dropped.
-    void api.getArtistTopTracks(id, 10)
+    void api.getArtistTopTracks(id, 20)
       .then((tracks) => {
         if (token === loadToken) topTracks = tracks;
       })
@@ -188,11 +185,6 @@
     <section class="shelf">
       <div class="shelf-head">
         <h3>Top tracks</h3>
-        {#if topTracks.length > 5}
-          <button class="more" onclick={() => (expanded = !expanded)}>
-            {expanded ? "Show less" : "Show all"}
-          </button>
-        {/if}
         <button class="more" onclick={() => nav.goto({ name: "artist-all", id, tab: "tracks" })}>
           View all
         </button>

@@ -45,3 +45,9 @@ Human-in-the-loop checks for the Track 9 artist page. Run with
 - [ ] Mixes tab opens the artist mix page; Artist Radio starts radio.
 - [ ] Back from the catalog (e.g. after opening an album) returns to the tab
       you left; a second back reaches the artist page.
+- [ ] Top tracks on the artist page has no Show all; its list scrolls in place
+      (20 fetched).
+- [ ] Catalog tabs show a sliding underline that animates between tabs; the
+      Tracks tab list reaches the bottom of the window above the player bar.
+- [ ] Album/playlist/mix cards on the catalog page are visibly larger than the
+      old 150px grid.
