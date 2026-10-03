@@ -114,7 +114,7 @@
   }
   .grid {
     display: grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 56px 16px;
     margin-top: 56px;
   }
