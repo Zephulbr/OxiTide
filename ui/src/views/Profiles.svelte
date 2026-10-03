@@ -181,15 +181,54 @@
     padding: 4px;
     border-radius: var(--radius-card);
     color: inherit;
+    transition: transform var(--dur-state) var(--ease-in);
   }
   .card:hover {
-    background: var(--surface-2);
+    transform: translateY(-2px);
+  }
+  .card:focus-visible {
+    outline: none;
+  }
+  .card:focus-visible .art {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
   }
   .art {
+    position: relative;
     display: block;
     width: 100%;
     overflow: hidden;
+    border: 1px solid transparent;
     border-radius: 50%;
+    background:
+      linear-gradient(var(--surface-2), var(--surface-2)) padding-box,
+      var(--edge-lit) border-box;
+    box-shadow: 0 14px 30px -22px rgba(0, 0, 0, 0.75);
+    transition: box-shadow var(--dur-state) var(--ease-in);
+  }
+  .art::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: linear-gradient(
+      135deg,
+      rgba(255, 240, 225, 0.16),
+      transparent 42%,
+      rgba(0, 0, 0, 0.25)
+    );
+    pointer-events: none;
+  }
+  .art :global(img) {
+    transition: transform var(--dur-state) var(--ease-in);
+  }
+  .card:hover .art {
+    box-shadow:
+      0 0 0 5px color-mix(in srgb, var(--accent) 12%, transparent),
+      0 18px 34px -18px rgba(0, 0, 0, 0.7);
+  }
+  .card:hover .art :global(img) {
+    transform: scale(1.04);
   }
   .title {
     font-size: 15px;
