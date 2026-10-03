@@ -20,9 +20,12 @@ built per `docs/linux-build.md`. Check items off with the run date and notes.
 - [ ] Set volume below 100% with no writable mixer; the software-volume notice
   appears and bit-perfect clears.
 
-## Robustness
-- [ ] Unplug the selected USB DAC during playback; playback pauses/fails with a
-  notice and recovers to `default` on the next play.
+## Robustness (bare metal required)
+- [ ] Unplug the selected USB DAC during playback; playback fails with a
+  notice. Linux shared mode does not rewrite the saved device, so reselect an
+  output device in Settings to recover.
+- [ ] With a real or server output, stop the sound server during playback;
+  playback pauses with a notice within ~2 s instead of hanging.
 - [ ] Seek repeatedly during exclusive playback; no dropouts or hangs (flush
   path).
 - [ ] Re-open Settings after a device list change; Refresh lists the new card.

@@ -1,4 +1,5 @@
 use crate::decode::{PcmFormat, StreamInfo};
+use crate::error::{Error, Result};
 use crate::output::{exclusive_formats, ExclusiveFallback, OutputDevice};
 
 /// The ALSA sample formats OxiTide writes, best quality first. All are
@@ -184,20 +185,45 @@ pub fn exclusive_fallback_plan(fallback: ExclusiveFallback) -> AlsaOpen {
     }
 }
 
+/// True when the PCM name addresses hardware directly (`hw:`). Every other
+/// name goes through an alsa-lib plugin (dmix, plug, pulse, …) that may
+/// resample or convert, so only `hw:` names can be exclusive/bit-perfect.
+pub fn is_direct_hw(device: &str) -> bool {
+    device.starts_with("hw:")
+}
+
+/// Reject device names with an interior NUL byte before they reach the alsa
+/// crate, which builds a `CString` from them and panics.
+pub fn validate_device_name(device: &str) -> Result<()> {
+    if device.contains('\0') {
+        return Err(Error::Output("device name contains a NUL byte".into()));
+    }
+    Ok(())
+}
+
 /// Exact notice text used when software volume compromises bit-perfect output;
 /// it matches WASAPI so the engine/UI behavior is identical on both platforms.
 pub const SOFTWARE_VOLUME_NOTICE: &str = "volume applied in software; bit-perfect compromised";
 
 #[cfg(target_os = "linux")]
 mod linux {
+    use std::time::{Duration, Instant};
+
     use alsa::device_name::HintIter;
     use alsa::pcm::{Access, Format, HwParams, PCM};
     use alsa::{Direction, Error as AlsaError, ValueOr};
 
     use super::*;
     use crate::decode::PcmBuffer;
-    use crate::error::{Error, Result};
     use crate::output::{AudioOutput, AudioOutputSpec, OutputDevice, OutputMode, OutputStatus};
+
+    /// Maximum wall-clock time one `write` call may spend on the device before
+    /// it is declared stalled.
+    const WRITE_DEADLINE: Duration = Duration::from_secs(2);
+    /// Longest single poll wait; each wake-up re-checks the deadline.
+    const WAIT_SLICE: Duration = Duration::from_millis(100);
+    /// Consecutive xrun/suspend recoveries tolerated within one `write` call.
+    const MAX_CONSECUTIVE_RECOVERIES: u32 = 8;
 
     pub struct AlsaOutput {
         pcm: Option<PCM>,
@@ -235,6 +261,7 @@ mod linux {
             format: AlsaSampleFormat,
             spec: &AudioOutputSpec,
         ) -> Result<()> {
+            validate_device_name(name)?;
             let pcm = PCM::new(name, Direction::Playback, false).map_err(to_error)?;
             {
                 let hwp = HwParams::any(&pcm).map_err(to_error)?;
@@ -280,6 +307,25 @@ mod linux {
         Error::Output(error.to_string())
     }
 
+    /// Poll until the PCM can accept frames, bounded by `deadline`. A blocking
+    /// `writei` would otherwise wait forever on a full buffer (wedged server).
+    /// PCMs without poll support make `wait` fail; falling through to the
+    /// write keeps those devices working, as before.
+    pub(super) fn wait_writable(pcm: &PCM, deadline: Instant) -> Result<()> {
+        loop {
+            if Instant::now() >= deadline {
+                return Err(Error::Output("audio device stalled".into()));
+            }
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            let wait_ms = remaining.min(WAIT_SLICE).as_millis().max(1) as u32;
+            match pcm.wait(Some(wait_ms)) {
+                Ok(true) => return Ok(()),
+                Ok(false) => continue,
+                Err(_) => return Ok(()),
+            }
+        }
+    }
+
     /// Enumerate output PCMs from ALSA's device hints.
     pub fn enumerate() -> Result<Vec<OutputDevice>> {
         let mut hints: Vec<Hint> = HintIter::new_str(None, "pcm")
@@ -308,6 +354,7 @@ mod linux {
     /// element exists, which sends the caller down the software path.
     pub fn set_hardware_volume(device: &str, volume: f32) -> Result<()> {
         use alsa::mixer::{Mixer, SelemId};
+        validate_device_name(device)?;
         let mixer = Mixer::new(&ctl_name(device), false).map_err(to_error)?;
         for name in ["Master", "PCM"] {
             let id = SelemId::new(name, 0);
@@ -330,12 +377,20 @@ mod linux {
         fn open(&mut self, spec: &AudioOutputSpec) -> Result<()> {
             self.close();
             self.software_volume = true;
+            // Reset before any fallible step so a failed reopen cannot leave
+            // the previous session's exclusive/bit-perfect status visible.
+            self.status = OutputStatus {
+                mode: OutputMode::Shared,
+                bit_perfect: false,
+                notice: None,
+            };
             let requested = spec.mode;
             let device = match spec.device_id.as_deref() {
                 Some(id) if !id.is_empty() => id.to_string(),
                 _ if requested == OutputMode::Exclusive => "hw:0,0".to_string(),
                 _ => "default".to_string(),
             };
+            validate_device_name(&device)?;
             let mut status = OutputStatus {
                 mode: OutputMode::Shared,
                 bit_perfect: false,
@@ -343,9 +398,17 @@ mod linux {
             };
 
             if requested == OutputMode::Exclusive {
-                let opened = alsa_exclusive_formats(&spec.info)
-                    .into_iter()
-                    .find(|format| self.open_pcm(&device, *format, spec).is_ok());
+                // Only `hw:` PCMs bypass alsa-lib's plugins, so only they can
+                // honor a bit-perfect exclusive open. Any other selected name
+                // (default, plughw:, sysdefault:) goes straight to the
+                // fallback plan.
+                let opened = if is_direct_hw(&device) {
+                    alsa_exclusive_formats(&spec.info)
+                        .into_iter()
+                        .find(|format| self.open_pcm(&device, *format, spec).is_ok())
+                } else {
+                    None
+                };
                 match opened {
                     Some(format) => {
                         self.format = format;
@@ -354,7 +417,12 @@ mod linux {
                     }
                     None => match exclusive_fallback_plan(spec.exclusive_fallback) {
                         AlsaOpen::SharedWithNotice => {
-                            self.open_pcm("default", AlsaSampleFormat::S32Le, spec)?;
+                            // Keep the plugin device the user selected; a
+                            // failed direct `hw:` open falls back to the
+                            // system default (which can be shared).
+                            let fallback =
+                                if is_direct_hw(&device) { "default" } else { device.as_str() };
+                            self.open_pcm(fallback, AlsaSampleFormat::S32Le, spec)?;
                             status.notice =
                                 Some("exclusive mode unavailable; using shared output".into());
                         }
@@ -413,12 +481,22 @@ mod linux {
             let frame_bytes =
                 self.format.store_bits() as usize / 8 * self.channels as usize;
             let io = pcm.io_bytes();
+            let deadline = Instant::now() + WRITE_DEADLINE;
+            let mut recoveries = 0u32;
             let mut offset = 0;
             while offset < bytes.len() {
+                wait_writable(pcm, deadline)?;
                 match io.writei(&bytes[offset..]) {
                     Ok(0) => return Err(Error::Output("alsa write made no progress".into())),
-                    Ok(frames) => offset += frames * frame_bytes,
+                    Ok(frames) => {
+                        offset += frames * frame_bytes;
+                        recoveries = 0;
+                    }
                     Err(error) => {
+                        recoveries += 1;
+                        if recoveries > MAX_CONSECUTIVE_RECOVERIES {
+                            return Err(Error::Output("audio device errored repeatedly".into()));
+                        }
                         // xrun / suspend: recover and retry; unrecoverable
                         // errors are returned by `try_recover`.
                         pcm.try_recover(error, true).map_err(to_error)?;
@@ -480,7 +558,7 @@ mod tests {
     #[cfg(target_os = "linux")]
     use crate::decode::PcmBuffer;
     #[cfg(target_os = "linux")]
-    use crate::output::{AudioOutput, AudioOutputSpec, OutputMode};
+    use crate::output::{AudioOutput, AudioOutputSpec, OutputMode, OutputStatus};
 
     fn info(bits: u16, format: PcmFormat) -> StreamInfo {
         StreamInfo { sample_rate: 44_100, channels: 2, bits_per_sample: bits, format }
@@ -622,6 +700,24 @@ mod tests {
         assert_eq!(exclusive_fallback_plan(ExclusiveFallback::WarnOnly), AlsaOpen::Fail);
     }
 
+    #[test]
+    fn is_direct_hw_only_accepts_hw_pcm_names() {
+        assert!(is_direct_hw("hw:0,0"));
+        assert!(is_direct_hw("hw:CARD=X,DEV=0"));
+        assert!(!is_direct_hw("plughw:CARD=X,DEV=0"));
+        assert!(!is_direct_hw("default"));
+        assert!(!is_direct_hw("null"));
+    }
+
+    #[test]
+    fn device_names_with_interior_nul_bytes_are_rejected() {
+        assert!(validate_device_name("hw:0,0").is_ok());
+        assert!(validate_device_name("default").is_ok());
+        let err = validate_device_name("hw:0\0,0").unwrap_err();
+        assert!(matches!(err, crate::error::Error::Output(_)), "got {err:?}");
+        assert!(err.to_string().contains("NUL"), "got {err}");
+    }
+
     #[cfg(target_os = "linux")]
     #[test]
     fn shared_output_lifecycle_on_the_null_device() {
@@ -644,7 +740,7 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn exclusive_output_on_the_null_device_opens_exclusive() {
+    fn exclusive_on_a_non_direct_device_opens_shared_with_a_notice() {
         let mut out = AlsaOutput::new();
         out.open(&AudioOutputSpec {
             device_id: Some("null".into()),
@@ -656,9 +752,13 @@ mod tests {
         out.start().unwrap();
         out.write(&PcmBuffer::I32(vec![0x7fff_0000u32 as i32; 32])).unwrap();
         out.stop().unwrap();
-        // The `null` device has no mixer, so Task 4's volume semantics will
-        // clear bit_perfect here; this test pins the negotiated mode only.
-        assert_eq!(out.status().mode, OutputMode::Exclusive);
+        let status = out.status();
+        assert_eq!(status.mode, OutputMode::Shared);
+        assert_eq!(
+            status.notice.as_deref(),
+            Some("exclusive mode unavailable; using shared output")
+        );
+        assert!(!status.bit_perfect);
     }
 
     #[cfg(target_os = "linux")]
@@ -678,6 +778,30 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
+    fn a_failed_reopen_clears_the_previous_status() {
+        let mut out = AlsaOutput::new();
+        out.open(&AudioOutputSpec {
+            device_id: Some("null".into()),
+            info: info(16, PcmFormat::I32 { bits: 16 }),
+            mode: OutputMode::Exclusive,
+            exclusive_fallback: ExclusiveFallback::Shared,
+        })
+        .unwrap();
+        assert!(out.status().notice.is_some());
+        let err = out
+            .open(&AudioOutputSpec {
+                device_id: Some("hw:99,99".into()),
+                info: info(16, PcmFormat::I32 { bits: 16 }),
+                mode: OutputMode::Exclusive,
+                exclusive_fallback: ExclusiveFallback::WarnOnly,
+            })
+            .unwrap_err();
+        assert!(matches!(err, crate::error::Error::Output(_)), "got {err:?}");
+        assert_eq!(out.status(), OutputStatus::default());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
     fn enumerate_reports_at_least_one_device() {
         let devices = enumerate().unwrap();
         assert!(!devices.is_empty());
@@ -693,7 +817,7 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn exclusive_volume_without_a_mixer_compromises_bit_perfect() {
+    fn exclusive_fallback_survives_a_volume_change() {
         let mut out = AlsaOutput::new();
         out.open(&AudioOutputSpec {
             device_id: Some("null".into()),
@@ -704,8 +828,23 @@ mod tests {
         .unwrap();
         out.set_volume(0.5).unwrap();
         let status = out.status();
+        assert_eq!(status.mode, OutputMode::Shared);
         assert!(!status.bit_perfect);
-        assert_eq!(status.notice.as_deref(), Some(SOFTWARE_VOLUME_NOTICE));
+        // The fallback notice must not be replaced by the software-volume
+        // notice, which only applies to a real exclusive session.
+        assert_eq!(
+            status.notice.as_deref(),
+            Some("exclusive mode unavailable; using shared output")
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn an_expired_write_deadline_reports_a_stall() {
+        let pcm = alsa::pcm::PCM::new("null", alsa::Direction::Playback, false).unwrap();
+        let err = super::linux::wait_writable(&pcm, std::time::Instant::now()).unwrap_err();
+        assert!(matches!(err, crate::error::Error::Output(_)), "got {err:?}");
+        assert_eq!(err.to_string(), "audio device stalled");
     }
 
     #[cfg(target_os = "linux")]
