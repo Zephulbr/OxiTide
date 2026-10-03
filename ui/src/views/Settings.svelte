@@ -649,9 +649,9 @@
               checked={config.integrations.smtc}
               onchange={(e) => setSmtc((e.target as HTMLInputElement).checked)}
             />
-            <span>Windows media controls</span>
+            <span>Media controls</span>
           </label>
-          <span class="muted">Hardware media keys and the Windows media overlay (SMTC).</span>
+          <span class="muted">Hardware media keys and the system media overlay.</span>
         </div>
       </div>
     </div>
