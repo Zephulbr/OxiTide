@@ -18,7 +18,7 @@
 - Artifacts are unsigned. No signing, no updater, no rpm/Flatpak, no code changes expected in `crates/**` or `ui/**`.
 - The AppImage bundler copies `/usr/bin/xdg-mime` whenever deep-link protocols are configured (Tauri CLI 2.11.5, `tauri-bundler/src/bundle/linux/appimage/linuxdeploy.rs`), so the WSL2 build host must have `xdg-utils`. The app's `register_all()` (`crates/oxitide-app/src/main.rs:252`) also needs `xdg-mime` and `update-desktop-database` at runtime (`desktop-file-utils`).
 - Runtime registration of `tidal://` via `register_all()` is the AppImage path; the `.desktop` `MimeType` is the installed-deb/AUR path. Both must remain present.
-- `bundle.linux.deb.desktopTemplate` is passed to the bundler unresolved by Tauri CLI 2.11.5, so its relative path is resolved against the process CWD. Every command in this plan runs from the repository root (the repo's `npm --prefix ui run app:build` script does `cd .. && tauri build`), which is what makes the path valid.
+- Tauri CLI 2.11.5 chdirs to the app directory (`crates/tauri-cli/src/build.rs` `setup()` → `set_current_dir(dirs.tauri)`) before bundling, and the bundler reads `bundle.linux.deb.desktopTemplate` CWD-relative; `desktopTemplate` is therefore app-dir-relative (`linux/oxitide.desktop.hbs`), not repo-root-relative.
 - Commit steps follow the repo's plan convention. If the owner prefers to commit themselves, stop after each task's green verification instead.
 - AUR verification (`makepkg`, `pacman`, `namcap`) is not possible in WSL2 Ubuntu; record it in the smoke note as deferred, never fake it.
 
@@ -26,7 +26,7 @@
 
 1. **`.desktop` scheme registration (user-visible: `tidal://` does nothing).** The entry must contain exactly `MimeType=x-scheme-handler/tidal;` and `Categories=AudioVideo;Audio;Music;`. Tauri's built-in desktop template emits `MimeType=x-scheme-handler/tidal` with **no trailing semicolon** in 2.11.5, so the custom template is load-bearing. Pinned by Task 1's template assertion and Task 2's `grep -qx` checks on the extracted deb and AppImage (plus Task 3 on the AUR `.desktop`).
 2. **AppImage build fails on a bare WSL2 host: `xdg-mime binary not found`.** With deep links configured, the bundler hard-copies `/usr/bin/xdg-mime`; `xdg-utils` is not in the spec's apt list. Pinned by Task 2's `command -v xdg-mime` preflight and the recorded apt install.
-3. **`desktopTemplate` path resolution.** CLI 2.11.5 hands `bundle.linux.deb.desktopTemplate` to the bundler without rebasing it against the config directory, so a wrong relative path fails the build with `Failed to setup custom handlebar template`. Pinned by Task 2's build step (run from repo root) plus the extracted-entry check.
+3. **`desktopTemplate` path resolution.** CLI 2.11.5 chdirs to the app directory (`crates/oxitide-app`) before bundling and hands `bundle.linux.deb.desktopTemplate` to the bundler unresolved, so the path must be app-dir-relative (`linux/oxitide.desktop.hbs`); a wrong path fails the build with `Failed to setup custom handlebar template`. Pinned by Task 1's template assertion, Task 2's build step, and the extracted-entry check.
 4. **AppImage FUSE on WSL2.** Direct AppImage execution mounts through FUSE2; WSL2 may lack `/dev/fuse` or `libfuse.so.2`. Pinned by Task 2's `test -e /dev/fuse` probe and the documented `--appimage-extract-and-run` fallback; extraction-based verification works without FUSE.
 5. **AUR source pin / install layout drift.** The repo has no git tags, so the recipe must pin a commit, and `Exec=oxitide` must match the installed binary path (the deb binary is `oxitide-app`, the AUR rename is `oxitide`). Pinned by Task 3's `git cat-file -e` and `grep -qx 'Exec=oxitide'` checks; install verification is deferred.
 
@@ -80,7 +80,7 @@ if ($json.bundle.longDescription -match 'Windows') { throw 'longDescription stil
 if (($json.bundle.linux.deb.depends -notcontains 'libasound2') -or
     ($json.bundle.linux.deb.depends -notcontains 'xdg-utils') -or
     ($json.bundle.linux.deb.depends -notcontains 'desktop-file-utils')) { throw 'deb depends incomplete' }
-if ($json.bundle.linux.deb.desktopTemplate -ne 'crates/oxitide-app/linux/oxitide.desktop.hbs') { throw 'desktopTemplate path' }
+if ($json.bundle.linux.deb.desktopTemplate -ne 'linux/oxitide.desktop.hbs') { throw 'desktopTemplate path' }
 if (-not (Test-Path $tpl)) { throw "missing $tpl" }
 $tplText = Get-Content $tpl -Raw
 if ($tplText -notmatch [regex]::Escape('MimeType={{mime_type}};')) { throw 'template lacks trailing-semicolon MimeType' }
@@ -105,7 +105,7 @@ Create `crates/oxitide-app/tauri.linux.conf.json` (strict JSON; the CLI validate
     "linux": {
       "deb": {
         "depends": ["libasound2", "xdg-utils", "desktop-file-utils"],
-        "desktopTemplate": "crates/oxitide-app/linux/oxitide.desktop.hbs"
+        "desktopTemplate": "linux/oxitide.desktop.hbs"
       }
     }
   }
@@ -232,7 +232,7 @@ npm --prefix ui run app:build
 
 This runs Vite's production build via `beforeBuildCommand` and then `tauri build` with the merged Linux config, producing `deb` and `appimage`. Expected tail: `Finished 2 bundles at:` followed by the deb and AppImage paths. First Linux release build is long; the AppImage step downloads linuxdeploy/AppRun into the Tauri tools cache on first use, so allow network access.
 
-If the build fails with `Failed to setup custom handlebar template`, the `desktopTemplate` path was resolved against a CWD other than the repo root; re-run from the repo root (do not "fix" it by editing the path).
+If the build fails with `Failed to setup custom handlebar template`, the `desktopTemplate` path is wrong: the CLI chdirs to the app directory before bundling, so it must be app-dir-relative (`linux/oxitide.desktop.hbs`), not repo-root-relative.
 
 - [ ] **Step 4: Verify it passes and launch under WSLg (WSL2)**
 
@@ -464,8 +464,8 @@ fails without it. Install `desktop-file-utils` for `desktop-file-validate`,
 
     sudo apt-get install -y xdg-utils desktop-file-utils
 
-From the repository root (the platform config and desktop template paths assume
-this CWD):
+From the repository root (the CLI resolves `desktopTemplate` from the app
+directory after chdir, not from this CWD):
 
     npm --prefix ui run app:build
 

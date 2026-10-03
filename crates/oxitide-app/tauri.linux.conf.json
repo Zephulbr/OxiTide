@@ -7,7 +7,7 @@
     "linux": {
       "deb": {
         "depends": ["libasound2", "xdg-utils", "desktop-file-utils"],
-        "desktopTemplate": "crates/oxitide-app/linux/oxitide.desktop.hbs"
+        "desktopTemplate": "linux/oxitide.desktop.hbs"
       }
     }
   }
