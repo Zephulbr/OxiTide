@@ -34,7 +34,7 @@
     <span class="hero-art">{@render cover()}</span>
     <div class="hero-meta">
       <span class="kicker">{kicker}</span>
-      <h2>{title}</h2>
+      <h2 title={title}>{title}</h2>
       {#if subtitle}<p class="subtitle">{subtitle}</p>{/if}
       {#if stats}<p class="stats tnum">{stats}</p>{/if}
     </div>
@@ -90,11 +90,19 @@
     margin: 0;
     font-size: clamp(28px, 3.2vw, 42px);
     line-height: 1.1;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    padding-bottom: 0.1em;
   }
   .subtitle {
     margin: 0;
     font-size: 15px;
     color: var(--text-muted);
+    overflow-wrap: anywhere;
   }
   .stats {
     margin: 0;
