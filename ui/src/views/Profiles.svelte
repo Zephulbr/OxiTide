@@ -61,7 +61,7 @@
   <div class="page-head" class:scrolled bind:this={headEl}>
     <div class="head-frost" aria-hidden="true">
       <div class="head-ramp">
-        <EdgeBlur layers={10} height={112} tint="var(--glass-veil)" tintStrength={75} />
+        <EdgeBlur layers={10} height={160} tint="var(--glass-veil)" tintStrength={75} />
       </div>
     </div>
     <h2>Profiles</h2>
