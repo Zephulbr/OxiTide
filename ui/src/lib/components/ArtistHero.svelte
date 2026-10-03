@@ -27,6 +27,8 @@
 
   let tint = $state<{ primary: string; secondary: string; tertiary: string } | null>(null);
   let bioOpen = $state(false);
+  let canExpand = $state(false);
+  let bioEl = $state<HTMLParagraphElement | null>(null);
 
   const fans = $derived(profile?.numberOfFollowers ?? null);
   const bio = $derived(profile?.bio ?? null);
@@ -64,9 +66,27 @@
       current = false;
     };
   });
+
+  // The clamp hides text without any visual affordance; measure the real
+  // overflow instead of guessing from a character count.
+  $effect(() => {
+    const node = bioEl;
+    if (!node) {
+      canExpand = false;
+      return;
+    }
+    const measure = () => {
+      if (!bioOpen) canExpand = node.scrollHeight > node.clientHeight + 1;
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  });
 </script>
 
 <header class="artist-hero" style={heroStyle}>
+  <div class="tint" aria-hidden="true"></div>
   {#if backdrop}
     <div class="photo" style="background-image:url({backdrop})" aria-hidden="true"></div>
   {/if}
@@ -95,8 +115,8 @@
         {/if}
       </div>
       {#if bio}
-        <p class="bio" class:clamped={!bioOpen}>{bio}</p>
-        {#if bio.length > 240}
+        <p class="bio" class:clamped={!bioOpen} bind:this={bioEl}>{bio}</p>
+        {#if canExpand || bioOpen}
           <button class="more" aria-expanded={bioOpen} onclick={() => (bioOpen = !bioOpen)}>
             {bioOpen ? "Show less" : "Read more"}
           </button>
@@ -131,12 +151,19 @@
     margin-bottom: 32px;
     border: 1px solid var(--line);
     border-radius: var(--radius-sheet);
+    background: linear-gradient(135deg, var(--surface-2), var(--surface-3) 55%, var(--surface-1));
+  }
+  /* Palette tint follows the dynamic-color flag: instrument resolves it to 0. */
+  .tint {
+    position: absolute;
+    inset: 0;
     background: linear-gradient(
       135deg,
       var(--hero-primary),
       var(--hero-secondary) 55%,
       var(--hero-tertiary)
     );
+    opacity: var(--flag-dynamic-color);
   }
   .photo {
     position: absolute;
