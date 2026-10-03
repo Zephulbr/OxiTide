@@ -58,7 +58,7 @@
 
 <div class="profiles">
   <div class="page-head" class:scrolled bind:this={headEl}>
-    <span class="head-frost" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span class="head-frost" aria-hidden="true"></span>
     <h2>Profiles</h2>
     <span class="muted count">{artists.length} {artists.length === 1 ? "artist" : "artists"}</span>
     <input
@@ -131,31 +131,22 @@
   .page-head.scrolled .head-frost::before {
     background: var(--glass-veil);
   }
-  .head-frost i {
+  .head-frost::after {
+    content: "";
     position: absolute;
-    left: 0;
+    top: 100%;
     right: 0;
-    height: 8px;
+    left: 0;
+    height: 32px;
+    background: var(--glass-veil);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-mask-image: linear-gradient(to bottom, black, transparent);
+    mask-image: linear-gradient(to bottom, black, transparent);
     opacity: 0;
     transition: opacity var(--dur-state) var(--ease-in);
   }
-  .page-head.scrolled .head-frost i {
+  .page-head.scrolled .head-frost::after {
     opacity: 1;
-  }
-  .head-frost i:nth-child(1) {
-    top: 100%;
-    background: var(--glass-veil);
-    backdrop-filter: blur(12px);
-  }
-  .head-frost i:nth-child(2) {
-    top: calc(100% + 8px);
-    background: color-mix(in srgb, var(--glass-veil) 66%, transparent);
-    backdrop-filter: blur(7px);
-  }
-  .head-frost i:nth-child(3) {
-    top: calc(100% + 16px);
-    background: color-mix(in srgb, var(--glass-veil) 33%, transparent);
-    backdrop-filter: blur(3px);
   }
   .page-head h2 {
     flex: 1;
