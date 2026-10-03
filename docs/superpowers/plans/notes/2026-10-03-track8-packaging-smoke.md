@@ -146,12 +146,18 @@ MimeType=x-scheme-handler/tidal;
       error). The extract-and-run path logged the expected
       `APPDIR`/`APPIMAGE` not-detected warning. **Window visibility is the
       pending human check.**
-- [ ] **AUR recipe static checks (Task 3 owns these):** `bash -n packaging/aur/PKGBUILD`,
+- [x] **AUR recipe static checks (Task 3 owns these):** `bash -n packaging/aur/PKGBUILD`,
       `grep -qx 'MimeType=x-scheme-handler/tidal;' packaging/aur/oxitide.desktop`,
       `grep -qx 'Exec=oxitide' packaging/aur/oxitide.desktop`,
       `desktop-file-validate packaging/aur/oxitide.desktop` (no output), and
       `_commit` resolves to a commit containing `packaging/aur/oxitide.desktop`,
       `LICENSE`, and `crates/oxitide-app/icons/icon.png` (`git cat-file -e`).
+      PASS 2026-10-04 (Task 3): the full Step 1 script printed
+      `OK: AUR recipe static checks`; `desktop-file-validate` produced no output
+      (exit 0); `_commit=31b27a8d532b977637d5418c003a5fd47f7784f0` (commit A,
+      the recipe commit) and `git cat-file -e` succeeded for
+      `packaging/aur/oxitide.desktop`, `LICENSE`, and
+      `crates/oxitide-app/icons/icon.png`; committed blobs are LF-only.
 - [ ] **`tidal://` best effort (WSLg):** if `xdg-open tidal://...` reaches the
       app, record it; full registration is deferred.
       Partial 2026-10-04: the AppImage run's runtime `register_all()` wrote
@@ -170,17 +176,25 @@ MimeType=x-scheme-handler/tidal;
       handler, and `namcap packaging/aur/PKGBUILD` is clean. Then
       `xdg-mime query default x-scheme-handler/tidal` names `oxitide.desktop`
       and `xdg-open 'tidal://...'` launches/focuses the app.
+      **Blocked on push:** `_commit=31b27a8d...` is local-only — `track8-linux`
+      has not been pushed to `https://codeberg.org/Zephulbr/OxiTide.git`, so an
+      AUR user's `makepkg` source fetch fails until it is. Cross-ref
+      `2026-10-03-track8-bare-metal-checklist.md` (Packaging and platform floor,
+      AUR install row).
 - [ ] **Oldest-base launch:** run the deb and the AppImage built here on a
       bare-metal Ubuntu 22.04 (non-WSL) host; confirm no
       `GLIBC_x.y not found`, the window renders, and audio plays once Plan 8.2
-      is in. Also run the AppImage on a current distro.
+      is in. Also run the AppImage on a current distro. Cross-ref
+      `2026-10-03-track8-bare-metal-checklist.md` (Packaging and platform floor,
+      AppImage oldest-base launch and WebKitGTK 4.1 floor rows).
 - [ ] **Real-DE desktop entry:** install the deb on a real desktop session and
       verify the app appears under Audio/Video with the OxiTide icon and that
       `tidal://` opens it (cross-ref bare-metal checklist).
 
 Close-out (2026-10-04): the WSL2-verifiable rows above are PASS except the
-`tidal://` round-trip (partial; registration resolves) and the AUR static
-checks (Task 3). The shared launch rows also live in
+`tidal://` round-trip (partial; registration resolves). The AUR static checks
+were completed by Task 3 (recipe commit `31b27a8`, evidence above). The shared
+launch rows also live in
 `2026-10-03-track8-wslg-smoke.md` (Packaging launch); this note carries the
 detail — keep that file's checkbox in sync. The deferred rows below remain
 open — they are tracked in

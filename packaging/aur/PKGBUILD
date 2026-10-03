@@ -8,7 +8,7 @@ url="https://codeberg.org/Zephulbr/OxiTide"
 license=('AGPL-3.0-or-later')
 depends=('webkit2gtk-4.1' 'gtk3' 'alsa-lib' 'librsvg' 'hicolor-icon-theme' 'xdg-utils' 'desktop-file-utils')
 makedepends=('rust' 'nodejs' 'npm' 'pkgconf' 'git')
-_commit=9198f94669ba9e38cff29b377491d0c4a417f731
+_commit=31b27a8d532b977637d5418c003a5fd47f7784f0
 source=("$pkgname::git+$url.git#commit=$_commit")
 sha256sums=('SKIP')
 
