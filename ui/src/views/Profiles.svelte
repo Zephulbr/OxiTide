@@ -190,8 +190,10 @@
     outline: none;
   }
   .card:focus-visible .art {
-    outline: 2px solid var(--accent);
-    outline-offset: 3px;
+    box-shadow:
+      0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent),
+      0 0 20px 3px color-mix(in srgb, var(--accent) 32%, transparent),
+      0 18px 34px -18px rgba(0, 0, 0, 0.7);
   }
   .art {
     position: relative;
