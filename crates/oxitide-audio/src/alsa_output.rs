@@ -152,6 +152,23 @@ pub fn volume_to_raw(volume: f32, min: i64, max: i64) -> i64 {
     (min as f64 + (volume.clamp(0.0, 1.0) as f64) * (max - min) as f64).round() as i64
 }
 
+/// Map an ALSA PCM device name to the CTL name its mixer lives on:
+/// `hw:CARD=X,DEV=0` -> `hw:CARD=X`, `hw:0,0` -> `hw:0`,
+/// `plughw:`/`sysdefault:` -> `hw:`, `default` stays `default`.
+pub fn ctl_name(pcm: &str) -> String {
+    let base = if let Some(rest) = pcm.strip_prefix("plughw:") {
+        format!("hw:{rest}")
+    } else if let Some(rest) = pcm.strip_prefix("sysdefault:") {
+        format!("hw:{rest}")
+    } else {
+        pcm.to_string()
+    };
+    match base.strip_prefix("hw:") {
+        Some(rest) => format!("hw:{}", rest.split(',').next().unwrap_or(rest)),
+        None => base,
+    }
+}
+
 /// What a failed exclusive attempt does, mirroring WASAPI (`wasapi_output.rs:444`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AlsaOpen {
@@ -291,7 +308,7 @@ mod linux {
     /// element exists, which sends the caller down the software path.
     pub fn set_hardware_volume(device: &str, volume: f32) -> Result<()> {
         use alsa::mixer::{Mixer, SelemId};
-        let mixer = Mixer::new(device, false).map_err(to_error)?;
+        let mixer = Mixer::new(&ctl_name(device), false).map_err(to_error)?;
         for name in ["Master", "PCM"] {
             let id = SelemId::new(name, 0);
             let Some(selem) = mixer.find_selem(&id) else {
@@ -585,6 +602,15 @@ mod tests {
         assert_eq!(volume_to_raw(0.5, 0, 100), 50);
         assert_eq!(volume_to_raw(1.0, 0, 100), 100);
         assert_eq!(raw_to_volume(10, 10, 10), 1.0);
+    }
+
+    #[test]
+    fn ctl_name_maps_pcm_names_to_mixer_ctl_names() {
+        assert_eq!(ctl_name("hw:0,0"), "hw:0");
+        assert_eq!(ctl_name("hw:CARD=X,DEV=0"), "hw:CARD=X");
+        assert_eq!(ctl_name("plughw:CARD=X,DEV=0"), "hw:CARD=X");
+        assert_eq!(ctl_name("sysdefault:CARD=X"), "hw:CARD=X");
+        assert_eq!(ctl_name("default"), "default");
     }
 
     #[test]
