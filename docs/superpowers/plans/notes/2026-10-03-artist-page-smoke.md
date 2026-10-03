@@ -31,3 +31,17 @@ Human-in-the-loop checks for the Track 9 artist page. Run with
 - [ ] **Perf regression check:** with the app warm, run
       `powershell -ExecutionPolicy Bypass -File scripts/perf/run-scenario.ps1 -Scenario S5`
       then `node scripts/perf/check.mjs`; budgets still pass.
+
+## View all / artist catalog (2026-10-03 follow-up)
+
+- [ ] Every shelf (Top tracks, Albums, Singles & EPs, Appears on) shows a
+      View all link that opens the catalog on its tab.
+- [ ] Tracks tab pages through the full top-tracks list; Play/Shuffle queue
+      from there and the loaded-of-total count grows while scrolling.
+- [ ] Albums / Singles & EPs / Appears on show every release (not just the
+      first 50); album cards open the album page.
+- [ ] Playlists tab lists user/editorial playlists; a card opens the playlist
+      page and back returns to the same tab.
+- [ ] Mixes tab opens the artist mix page; Artist Radio starts radio.
+- [ ] Back from the catalog (e.g. after opening an album) returns to the tab
+      you left; a second back reaches the artist page.
