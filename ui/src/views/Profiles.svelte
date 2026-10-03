@@ -61,7 +61,7 @@
   <div class="page-head" class:scrolled bind:this={headEl}>
     <div class="head-frost" aria-hidden="true">
       <div class="head-ramp">
-        <EdgeBlur layers={10} height={112} tint="var(--glass-veil)" />
+        <EdgeBlur layers={10} height={112} tint="var(--glass-veil)" tintStrength={75} />
       </div>
     </div>
     <h2>Profiles</h2>
@@ -111,7 +111,7 @@
   }
   .page-head {
     position: sticky;
-    top: -40px;
+    top: 0;
     z-index: 5;
     display: flex;
     align-items: center;
@@ -125,20 +125,9 @@
     z-index: -1;
     pointer-events: none;
   }
-  .head-frost::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: transparent;
-    backdrop-filter: blur(var(--glass-blur));
-    transition: background var(--dur-state) var(--ease-in);
-  }
-  .page-head.scrolled .head-frost::before {
-    background: var(--glass-veil);
-  }
   .head-ramp {
     position: absolute;
-    top: 100%;
+    top: 0;
     right: 0;
     left: 0;
     visibility: hidden;
