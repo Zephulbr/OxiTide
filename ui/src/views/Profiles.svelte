@@ -86,28 +86,28 @@
     margin: 0;
   }
   .count {
-    font-size: 12.5px;
+    font-size: 13px;
   }
   .filter {
-    flex: 0 1 220px;
+    flex: 0 1 240px;
   }
   .sort {
     flex: 0 0 auto;
   }
   .empty {
-    margin-top: 18px;
+    margin-top: 28px;
   }
   .grid {
     display: grid;
     grid-template-columns: repeat(7, minmax(0, 1fr));
-    gap: 20px;
-    margin-top: 18px;
+    gap: 28px 20px;
+    margin-top: 28px;
   }
   .card {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     text-align: center;
     padding: 12px;
     border-radius: var(--radius-card);
@@ -123,6 +123,7 @@
     border-radius: 50%;
   }
   .title {
+    font-size: 15px;
     font-weight: 500;
     max-width: 100%;
     overflow: hidden;
