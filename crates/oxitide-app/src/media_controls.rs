@@ -13,10 +13,11 @@ pub use win::MediaSession;
 #[cfg(not(windows))]
 pub use stub::MediaSession;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PlayState {
     Playing,
     Paused,
+    #[default]
     Stopped,
 }
 
@@ -132,6 +133,105 @@ pub fn to_engine_cmd(cmd: ControlCommand) -> EngineCmd {
         ControlCommand::Prev => EngineCmd::Prev,
         ControlCommand::Seek(ms) => EngineCmd::Seek(ms),
     }
+}
+
+/// The MPRIS-facing playback snapshot. Platform-neutral so the fold below is
+/// unit-tested on Windows; only the Linux adapter turns it into D-Bus calls.
+#[cfg(any(target_os = "linux", test))]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct MprisState {
+    pub track: Option<TrackMeta>,
+    pub status: PlayState,
+    pub position_ms: u64,
+    pub duration_ms: u64,
+}
+
+/// What the adapter must push after folding one session update.
+#[cfg(any(target_os = "linux", test))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MprisEffect {
+    /// Metadata (or its clearing) changed.
+    Track,
+    /// Playback status changed.
+    Playback,
+    /// Position advanced; `seeked` is true when it jumped unexpectedly.
+    Position { seeked: bool },
+}
+
+/// Position updates arrive about every 500 ms while playing; a jump larger
+/// than this from the expected progression is an external seek.
+#[cfg(any(target_os = "linux", test))]
+const SEEK_TOLERANCE_MS: u64 = 1_500;
+
+/// Whether a position update jumped (an external seek) rather than progressed.
+#[cfg(any(target_os = "linux", test))]
+fn is_seek(previous: PlayState, previous_ms: u64, elapsed_ms: u64, incoming_ms: u64) -> bool {
+    previous == PlayState::Playing
+        && incoming_ms.abs_diff(previous_ms.saturating_add(elapsed_ms)) > SEEK_TOLERANCE_MS
+}
+
+/// Fold one neutral session update into the snapshot and report what changed.
+#[cfg(any(target_os = "linux", test))]
+pub fn apply_session_update(
+    state: &mut MprisState,
+    update: &SessionUpdate,
+    elapsed_ms: u64,
+) -> MprisEffect {
+    match update {
+        SessionUpdate::Track(track) => {
+            state.track = track.clone();
+            state.position_ms = 0;
+            state.duration_ms = track.as_ref().map_or(0, |track| track.duration_ms);
+            MprisEffect::Track
+        }
+        SessionUpdate::Playback(play) => {
+            state.status = *play;
+            MprisEffect::Playback
+        }
+        SessionUpdate::Position { position_ms, duration_ms } => {
+            let seeked = is_seek(state.status, state.position_ms, elapsed_ms, *position_ms);
+            state.position_ms = *position_ms;
+            state.duration_ms = *duration_ms;
+            MprisEffect::Position { seeked }
+        }
+    }
+}
+
+/// MPRIS `Play`: no-op unless paused or stopped.
+#[cfg(any(target_os = "linux", test))]
+pub fn control_for_play(state: &MprisState) -> Option<ControlCommand> {
+    (state.status != PlayState::Playing).then_some(ControlCommand::PlayPause)
+}
+
+/// MPRIS `Pause`: no-op unless playing.
+#[cfg(any(target_os = "linux", test))]
+pub fn control_for_pause(state: &MprisState) -> Option<ControlCommand> {
+    (state.status == PlayState::Playing).then_some(ControlCommand::PlayPause)
+}
+
+/// MPRIS `Stop`: the engine has no separate stop state, so stop pauses.
+#[cfg(any(target_os = "linux", test))]
+pub fn control_for_stop(state: &MprisState) -> Option<ControlCommand> {
+    (state.status == PlayState::Playing).then_some(ControlCommand::PlayPause)
+}
+
+/// MPRIS relative `Seek` offset -> absolute engine target, clamped to the
+/// track bounds when the duration is known.
+#[cfg(any(target_os = "linux", test))]
+pub fn seek_target(state: &MprisState, offset_ms: i64) -> u64 {
+    let target = (state.position_ms as i64).saturating_add(offset_ms).max(0) as u64;
+    if state.duration_ms > 0 {
+        target.min(state.duration_ms)
+    } else {
+        target
+    }
+}
+
+/// D-Bus object path for `mpris:trackid`. Object-path elements may not start
+/// with a digit, hence the `t` prefix.
+#[cfg(any(target_os = "linux", test))]
+pub fn track_path(track_id: u64) -> String {
+    format!("/com/oxitide/track/t{track_id}")
 }
 
 #[cfg(not(windows))]
@@ -290,5 +390,135 @@ mod tests {
         assert!(matches!(to_engine_cmd(ControlCommand::Next), EngineCmd::Next));
         assert!(matches!(to_engine_cmd(ControlCommand::Prev), EngineCmd::Prev));
         assert!(matches!(to_engine_cmd(ControlCommand::Seek(42)), EngineCmd::Seek(42)));
+    }
+
+    fn meta(track_id: u64) -> TrackMeta {
+        TrackMeta {
+            track_id,
+            title: format!("Title {track_id}"),
+            artist: "Artist".into(),
+            album: "Album".into(),
+            duration_ms: 200_000,
+            cover: Some("x".into()),
+        }
+    }
+
+    #[test]
+    fn mpris_state_folds_track_playback_and_position() {
+        let mut snapshot = MprisState::default();
+        assert_eq!(
+            apply_session_update(&mut snapshot, &SessionUpdate::Track(Some(meta(7))), 0),
+            MprisEffect::Track
+        );
+        assert_eq!(snapshot.track.as_ref().unwrap().track_id, 7);
+        assert_eq!(snapshot.duration_ms, 200_000);
+        assert_eq!(snapshot.position_ms, 0);
+
+        assert_eq!(
+            apply_session_update(&mut snapshot, &SessionUpdate::Playback(PlayState::Playing), 0),
+            MprisEffect::Playback
+        );
+        assert_eq!(snapshot.status, PlayState::Playing);
+
+        assert_eq!(
+            apply_session_update(
+                &mut snapshot,
+                &SessionUpdate::Position { position_ms: 500, duration_ms: 200_000 },
+                500,
+            ),
+            MprisEffect::Position { seeked: false }
+        );
+        assert_eq!(snapshot.position_ms, 500);
+    }
+
+    #[test]
+    fn mpris_state_track_change_replaces_metadata_and_resets_position() {
+        let mut snapshot = MprisState::default();
+        apply_session_update(&mut snapshot, &SessionUpdate::Track(Some(meta(1))), 0);
+        apply_session_update(
+            &mut snapshot,
+            &SessionUpdate::Position { position_ms: 60_000, duration_ms: 200_000 },
+            0,
+        );
+        assert_eq!(
+            apply_session_update(&mut snapshot, &SessionUpdate::Track(Some(meta(2))), 0),
+            MprisEffect::Track
+        );
+        let track = snapshot.track.expect("track");
+        assert_eq!(track.track_id, 2);
+        assert_eq!(snapshot.position_ms, 0);
+        assert_eq!(snapshot.duration_ms, 200_000);
+    }
+
+    #[test]
+    fn mpris_state_flags_external_seeks_but_not_progress_or_pauses() {
+        let mut snapshot = MprisState::default();
+        apply_session_update(&mut snapshot, &SessionUpdate::Playback(PlayState::Playing), 0);
+        apply_session_update(
+            &mut snapshot,
+            &SessionUpdate::Position { position_ms: 10_000, duration_ms: 200_000 },
+            0,
+        );
+        // 600 ms later, 10.6 s of progress is not a seek.
+        assert_eq!(
+            apply_session_update(
+                &mut snapshot,
+                &SessionUpdate::Position { position_ms: 10_600, duration_ms: 200_000 },
+                600,
+            ),
+            MprisEffect::Position { seeked: false }
+        );
+        // A 50 s jump forward while playing is an external seek.
+        assert_eq!(
+            apply_session_update(
+                &mut snapshot,
+                &SessionUpdate::Position { position_ms: 60_000, duration_ms: 200_000 },
+                600,
+            ),
+            MprisEffect::Position { seeked: true }
+        );
+        // A paused gap resumes where it left off: not a seek.
+        apply_session_update(&mut snapshot, &SessionUpdate::Playback(PlayState::Paused), 0);
+        assert_eq!(
+            apply_session_update(
+                &mut snapshot,
+                &SessionUpdate::Position { position_ms: 60_000, duration_ms: 200_000 },
+                5_000,
+            ),
+            MprisEffect::Position { seeked: false }
+        );
+    }
+
+    #[test]
+    fn mpris_seek_target_clamps_to_the_track() {
+        let snapshot = MprisState {
+            track: None,
+            status: PlayState::Playing,
+            position_ms: 30_000,
+            duration_ms: 200_000,
+        };
+        assert_eq!(seek_target(&snapshot, -45_000), 0);
+        assert_eq!(seek_target(&snapshot, 10_000), 40_000);
+        assert_eq!(seek_target(&snapshot, 500_000), 200_000);
+        let unknown = MprisState { duration_ms: 0, ..snapshot };
+        assert_eq!(seek_target(&unknown, 500_000), 530_000);
+    }
+
+    #[test]
+    fn mpris_controls_gate_on_playback_state() {
+        let playing = MprisState { status: PlayState::Playing, ..Default::default() };
+        let paused = MprisState { status: PlayState::Paused, ..Default::default() };
+        assert_eq!(control_for_play(&playing), None);
+        assert_eq!(control_for_pause(&playing), Some(ControlCommand::PlayPause));
+        assert_eq!(control_for_stop(&playing), Some(ControlCommand::PlayPause));
+        assert_eq!(control_for_play(&paused), Some(ControlCommand::PlayPause));
+        assert_eq!(control_for_pause(&paused), None);
+        assert_eq!(control_for_stop(&paused), None);
+    }
+
+    #[test]
+    fn mpris_track_path_is_a_valid_dbus_object_path() {
+        assert_eq!(track_path(7), "/com/oxitide/track/t7");
+        assert_eq!(track_path(u64::MAX), "/com/oxitide/track/t18446744073709551615");
     }
 }
