@@ -8,6 +8,8 @@
 
 **Tech Stack:** Rust + Tauri 2 (CLI 2.11.5 pinned in `ui/package-lock.json`), Svelte/Vite frontend, WSL2 Ubuntu 22.04, `dpkg-deb`, linuxdeploy/AppImage, Arch `PKGBUILD` (`webkit2gtk-4.1`), Handlebars desktop template.
 
+> **Version note (post-execution, 2026-10-04):** the Tauri JS packages were aligned to `2.12.1` (`@tauri-apps/api` and `@tauri-apps/cli`) alongside the `tauri` crate 2.12.0 in commit `5c4ecfa`; every "CLI 2.11.5" reference in this plan predates that alignment.
+
 **Spec:** `docs/superpowers/specs/2026-10-03-oxitide-linux-support-design.md` (§4.4, §4.7, §6 Plan 8.3, §9)
 
 ## Global Constraints

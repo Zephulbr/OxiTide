@@ -5,8 +5,9 @@ Human-in-the-loop checks for the packaging half of Track 8 (Plan 8.3,
 Ubuntu 22.04 from Plan 8.1 (`docs/linux-build.md`), with WSLg for GUI windows.
 Run every command from the repository root on the `track8-linux` branch/worktree.
 
-**Result (2026-10-04): PASS** for the WSL2-verifiable rows. The build ran from a
-Linux-side clone, not `/mnt/c`: `git clone --branch track8-linux
+**Result (2026-10-04): PASS** for the build/artifact/static rows; the two
+launch rows are process-level only (window visibility pending). The build ran
+from a Linux-side clone, not `/mnt/c`: `git clone --branch track8-linux
 /mnt/c/Users/V/Documents/Opencode/OxiTide /root/oxitide-8.3`, checked out
 `5c4ecfadce2cb48906d96e296efcb4e0e69fb7ca`, `git status --short` clean. A
 dependency alignment was required first: the committed lockfiles had the
@@ -49,6 +50,20 @@ Expected artifact names (version from `crates/oxitide-app/tauri.conf.json`,
       2026-09-28)`; node `v20.20.2`; npm `10.8.2`; Tauri CLI `tauri-cli 2.12.1`
       after the alignment (was expected `2.11.5` pre-alignment); webkit2gtk-4.1
       `2.50.4` (`tauri info`).
+
+## Windows packaging preflight (post-JS-2.12 alignment, 2026-10-04)
+
+After the `5c4ecfa` alignment, `ui\node_modules\.bin\tauri.cmd info` from this
+worktree shows no version-mismatch error and the aligned set:
+
+```
+    - tauri 🦀: 2.12.0, (outdated, latest: 2.12.1)
+    - @tauri-apps/api  ⱼₛ: 2.12.1
+    - @tauri-apps/cli  ⱼₛ: 2.12.1
+```
+
+(`outdated, latest:` is informational; the mismatch preflight is clean.)
+Windows bundle build not run in this track; release-time check.
 
 ## WSL2-verifiable now
 
@@ -127,37 +142,44 @@ Type=Application
 Categories=AudioVideo;Audio;Music;
 MimeType=x-scheme-handler/tidal;
 ```
-- [x] **Deb launch (WSLg):** `sudo apt-get install -y ./target/release/bundle/deb/OxiTide_0.2.0_amd64.deb`
+- [ ] **Deb launch (WSLg):** `sudo apt-get install -y ./target/release/bundle/deb/OxiTide_0.2.0_amd64.deb`
       then `oxitide-app`; the window opens in WSLg. Record whether this build
       predates Plans 8.1/8.2 (login notice/audio may be stubs).
-      PASS at process level (2026-10-04). `apt-get install -y ./target/...deb`
-      → exit 0, `oxi-tide 0.2.0` installed to `/usr/bin/oxitide-app`;
-      `timeout 20 oxitide-app` → exit `124` (still running when the timeout
-      killed it; no crash). Log: the Plan 8.1 session-only keyring warning
-      (`org.freedesktop.secrets` absent) plus WSLg `Dropped Escape call` lines.
-      Plans 8.1/8.2 are included in this build. **Window visibility is the
-      pending human check** (WSLg window not observable from this run).
-- [x] **AppImage launch (WSLg):** `chmod +x`, probe `test -e /dev/fuse`, then
+      **Process-level result (2026-10-04):** process started and stayed alive
+      20 s; window visibility pending a human check. `apt-get install -y
+      ./target/...deb` → exit 0, `oxi-tide 0.2.0` installed to
+      `/usr/bin/oxitide-app`; `timeout 20 oxitide-app` → exit `124` (still
+      running when the timeout killed it; no crash). Log: the Plan 8.1
+      session-only keyring warning (`org.freedesktop.secrets` absent) plus WSLg
+      `Dropped Escape call` lines. Plans 8.1/8.2 are included in this build.
+- [ ] **AppImage launch (WSLg):** `chmod +x`, probe `test -e /dev/fuse`, then
       run directly; if it fails with a FUSE/`libfuse.so.2` error, rerun with
       `--appimage-extract-and-run` and record which path worked.
-      PASS at process level (2026-10-04). `/dev/fuse` present; both
+      **Process-level result (2026-10-04):** process started and stayed alive
+      20 s; window visibility pending a human check. `/dev/fuse` present; both
       `timeout 20 ./…AppImage` and `timeout 20 ./…AppImage
       --appimage-extract-and-run` → exit `124` (alive at timeout, no FUSE
       error). The extract-and-run path logged the expected
-      `APPDIR`/`APPIMAGE` not-detected warning. **Window visibility is the
-      pending human check.**
+      `APPDIR`/`APPIMAGE` not-detected warning.
 - [x] **AUR recipe static checks (Task 3 owns these):** `bash -n packaging/aur/PKGBUILD`,
       `grep -qx 'MimeType=x-scheme-handler/tidal;' packaging/aur/oxitide.desktop`,
       `grep -qx 'Exec=oxitide' packaging/aur/oxitide.desktop`,
       `desktop-file-validate packaging/aur/oxitide.desktop` (no output), and
-      `_commit` resolves to a commit containing `packaging/aur/oxitide.desktop`,
-      `LICENSE`, and `crates/oxitide-app/icons/icon.png` (`git cat-file -e`).
+      `_commit` resolves to a commit containing all seven source files installed
+      by `package()`: `packaging/aur/oxitide.desktop`,
+      `crates/oxitide-app/icons/{32x32,128x128,128x128@2x,icon}.png`,
+      `LICENSE`, and `THIRD_PARTY_NOTICES.md` (`git cat-file -e`).
       PASS 2026-10-04 (Task 3): the full Step 1 script printed
       `OK: AUR recipe static checks`; `desktop-file-validate` produced no output
       (exit 0); `_commit=31b27a8d532b977637d5418c003a5fd47f7784f0` (commit A,
-      the recipe commit) and `git cat-file -e` succeeded for
-      `packaging/aur/oxitide.desktop`, `LICENSE`, and
-      `crates/oxitide-app/icons/icon.png`; committed blobs are LF-only.
+      the recipe commit). Pin evidence (re-verified 2026-10-04 in the
+      whole-branch review): `git cat-file -e 31b27a8…:<path>` succeeded for all
+      seven installed source files — `packaging/aur/oxitide.desktop`,
+      `crates/oxitide-app/icons/32x32.png`,
+      `crates/oxitide-app/icons/128x128.png`,
+      `crates/oxitide-app/icons/128x128@2x.png`,
+      `crates/oxitide-app/icons/icon.png`, `LICENSE`, and
+      `THIRD_PARTY_NOTICES.md`; committed blobs are LF-only.
 - [ ] **`tidal://` best effort (WSLg):** if `xdg-open tidal://...` reaches the
       app, record it; full registration is deferred.
       Partial 2026-10-04: the AppImage run's runtime `register_all()` wrote
@@ -178,7 +200,14 @@ MimeType=x-scheme-handler/tidal;
       and `xdg-open 'tidal://...'` launches/focuses the app.
       **Blocked on push:** `_commit=31b27a8d...` is local-only — `track8-linux`
       has not been pushed to `https://codeberg.org/Zephulbr/OxiTide.git`, so an
-      AUR user's `makepkg` source fetch fails until it is. Cross-ref
+      AUR user's `makepkg` source fetch fails until it is.
+      **Integration follow-through (after push/merge):** once the branch is on
+      Codeberg, verify the pin reached the remote and re-pin if integration
+      rewrote it — `git fetch origin && git cat-file -e
+      31b27a8d532b977637d5418c003a5fd47f7784f0` (or
+      `git ls-remote origin | grep 31b27a8`); if the commit is not reachable,
+      re-pin `_commit` to the post-integration commit before attempting
+      `makepkg -si`. Cross-ref
       `2026-10-03-track8-bare-metal-checklist.md` (Packaging and platform floor,
       AUR install row).
 - [ ] **Oldest-base launch:** run the deb and the AppImage built here on a
@@ -191,10 +220,11 @@ MimeType=x-scheme-handler/tidal;
       verify the app appears under Audio/Video with the OxiTide icon and that
       `tidal://` opens it (cross-ref bare-metal checklist).
 
-Close-out (2026-10-04): the WSL2-verifiable rows above are PASS except the
-`tidal://` round-trip (partial; registration resolves). The AUR static checks
-were completed by Task 3 (recipe commit `31b27a8`, evidence above). The shared
-launch rows also live in
+Close-out (2026-10-04): the build/artifact/static rows above are PASS; the two
+launch rows are process-level only (window visibility pending a human check),
+and the `tidal://` round-trip is partial (registration resolves). The AUR
+static checks were completed by Task 3 (recipe commit `31b27a8`, evidence
+above). The shared launch rows also live in
 `2026-10-03-track8-wslg-smoke.md` (Packaging launch); this note carries the
 detail — keep that file's checkbox in sync. The deferred rows below remain
 open — they are tracked in
