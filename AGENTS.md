@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Unofficial TIDAL desktop client (Tauri 2 + Rust + Svelte 5). Windows-first, personal use; Linux support is a proposed post-MVP track. No CI — all checks are manual.
+Unofficial TIDAL desktop client (Tauri 2 + Rust + Svelte 5). Windows-first, personal use; Linux support (Track 8) shipped 2026-10-04 (WSL2-verified; bare-metal checks exempted — `docs/superpowers/plans/notes/2026-10-04-track8-completion.md`). No CI — all checks are manual.
 
 ## Commands
 

@@ -11,6 +11,7 @@
 - **Revised:** 2026-10-01 — Project hygiene batch (LICENSE/notices/CSP/docs) landed; Track 2b closed and its remainder extracted to new **Track 9 (UI completion)**; new **Track 10 (QoL)** added; Track 7 gains ReplayGain and crossfade/automix research; global non-goals recorded (PM-D6).
 - **Revised:** 2026-10-02 — Track 3 Phase D (memory, cache/eviction, stability) complete; Phases A–D done, S10 owner smoke + official-client sanity pending.
 - **Revised:** 2026-10-02 — Track 3 closed: S10 owner smoke and the official-client sanity note complete.
+- **Revised:** 2026-10-04 — Track 8 (Plans 8.1–8.5) implemented and WSL2-verified; closed by owner exemption for the deferred bare-metal checks (`plans/notes/2026-10-04-track8-completion.md`).
 - **Owner:** V
 - **Parent:** `2026-09-21-oxitide-design.md` (§9 Phasing)
 - **Supersedes:** the parent's Phase 2–4 ordering. The shipped Phase 1 MVP (v0.2.0) is
@@ -42,7 +43,7 @@ refreshed 2026-10-01.
 | 3 | Track 6 | Remaining integrations: Discord RPC; SMTC + hardware media keys | Done (6a SMTC/media keys + 6b Discord Rich Presence) |
 | now | Track 3 | Performance & stability wave: profile and fix startup, time-to-first-sound, UI jank, memory, cache/eviction churn, large-library handling; build a measurement harness | Done — Phases A–D complete 2026-10-02 (`plans/notes/2026-10-02-track3-phase-d.md`) |
 | 5 | Track 9 | UI completion: Hi-Fi Rack mode, light mode, artist/credits/album-info surfaces, a11y pass, i18n, remaining UI polish and bug fixes | Proposed — next after Track 3 (owner call) |
-| 6 | Track 8 | Linux support: ALSA output backend, MPRIS media controls, Secret Service keyring, deb/AppImage/AUR packaging | Proposed — after Track 9 (owner call); see `plans/notes/2026-10-01-linux-support-spike.md` |
+| 6 | Track 8 | Linux support: ALSA output backend, MPRIS media controls, Secret Service keyring, deb/AppImage/AUR packaging | Done (2026-10-04) — WSL2-verified; bare-metal checks exempted (`plans/notes/2026-10-04-track8-completion.md`) |
 | 7 | Track 10 | Daily-driver QoL: session/queue persistence, playback history + stats, sleep timer, scrobble love, AI/explicit content blocking; Phase 2 tray + global hotkeys | Proposed — after Track 8 (owner call); research questions in `plans/notes/2026-10-01-qol-research.md` |
 | 8 | Track 7 | Advanced audio: DSP/EQ + ReplayGain (opt-in, mutually exclusive with bit-perfect); crossfade/automix; casting/TIDAL Connect; Dolby Atmos; 360 RA (difficulty-gated); optional ASIO output (maybe, see `plans/notes/2026-10-01-asio-spike.md`); **potential post-casting group listen-along** (see `plans/notes/2026-10-02-listen-along-assessment.md`) | Parked last |
 
@@ -211,8 +212,10 @@ which carries a normal completion gate.
 - **Phases:** (1) playable alpha — audio + keyring + build/packaging; (2) desktop
   integration — MPRIS, deep links/.desktop, Wayland geometry, WebKit CSS pass;
   (3) parity/hardening — perf harness and distro matrix.
-- **Status:** Proposed (2026-10-01); sequenced after Track 9 and before Track 10, owner
-  call. Findings, distro/WM/kernel sensitivity, and effort estimate:
+- **Status:** Done (2026-10-04). Plans 8.1–8.5 implemented on `track8-linux`, merged to
+  `main` at `d14f5f4`, and WSL2-verified; the deferred bare-metal checks were exempted by
+  the owner at closure — see `plans/notes/2026-10-04-track8-completion.md` for the
+  verified/exempted split. Findings, distro/WM/kernel sensitivity, and effort estimate:
   `plans/notes/2026-10-01-linux-support-spike.md`.
 
 ### Track 9 — UI completion
