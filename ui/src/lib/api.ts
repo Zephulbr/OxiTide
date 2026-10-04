@@ -313,6 +313,7 @@ export const api = {
   prev: () => invoke<void>("prev"),
   seek: (positionMs: number) => invoke<void>("seek", { positionMs }),
   setVolume: (volume: number, persist = false) => invoke<void>("set_volume", { volume, persist }),
+  fadeAndPause: (durationMs: number) => invoke<void>("fade_and_pause", { durationMs }),
   setShuffle: (enabled: boolean) => invoke<void>("set_shuffle", { enabled }),
   setRepeat: (mode: RepeatMode) => invoke<void>("set_repeat", { mode }),
   queueReorder: (from: number, to: number) => invoke<void>("queue_reorder", { from, to }),

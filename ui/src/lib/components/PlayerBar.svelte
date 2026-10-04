@@ -11,6 +11,8 @@
   import PlayPauseGlyph from "./PlayPauseGlyph.svelte";
   import SeekBar from "./SeekBar.svelte";
   import VolumeSlider from "./VolumeSlider.svelte";
+  import SleepTimerControl from "./SleepTimerControl.svelte";
+  import type { SleepTimer } from "../sleepTimer.svelte";
 
   let {
     player,
@@ -18,12 +20,14 @@
     favorites,
     nav,
     mini,
+    sleepTimer,
   }: {
     player: Player;
     qualityDisplay: QualityDisplay;
     favorites: Favorites;
     nav: Nav;
     mini: Mini;
+    sleepTimer: SleepTimer;
   } = $props();
 
   const position = $derived(player.pendingSeek ?? player.state.position_ms);
@@ -102,6 +106,8 @@
         title="Queue"
         aria-pressed={nav.queueOpen}
       ><Icon name="list-music" size={18} /></button>
+
+      <SleepTimerControl {sleepTimer} />
 
       <VolumeSlider {player} />
 

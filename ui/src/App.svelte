@@ -41,6 +41,7 @@
   import { createToasts } from "./lib/toasts.svelte";
   import { createMini } from "./lib/mini.svelte";
   import { createPlayer } from "./lib/player.svelte";
+  import { createSleepTimer } from "./lib/sleepTimer.svelte";
   import { createAuthGate } from "./lib/authGate";
   import { createDynamicColor } from "./lib/dynamicColor.svelte";
   import { createFavorites } from "./lib/favorites.svelte";
@@ -65,6 +66,9 @@
   const nav = createNav(window.localStorage);
   const toasts = createToasts();
   const player = createPlayer(toasts);
+  const sleepTimer = createSleepTimer((fadeMs) => {
+    api.fadeAndPause(fadeMs).catch((e) => toasts.show(errorMessage(e), { severity: "error" }));
+  });
   createDynamicColor(player);
   const mini = createMini(toasts);
   const favorites = createFavorites(toasts);
@@ -178,6 +182,17 @@
       playerReady = true;
       player.init();
     }
+  });
+
+  // The sleep timer rides the same 500 ms position ticks as the seek bar;
+  // end-of-track mode fires once the last five seconds begin.
+  $effect(() => {
+    sleepTimer.observe(
+      player.state.position_ms,
+      player.state.duration_ms,
+      player.state.playing,
+      player.state.queue.length,
+    );
   });
 
   $effect(() => {
@@ -545,7 +560,7 @@
         </aside>
       {/if}
     {/if}
-    <PlayerBar {player} {qualityDisplay} {favorites} {nav} {mini} />
+    <PlayerBar {player} {qualityDisplay} {favorites} {nav} {mini} {sleepTimer} />
     <PlaylistPicker actions={playlistActions} onnavigate={(id) => nav.goto({ name: "playlist", id })} />
     <CollectionDialogs actions={collectionActions} />
   </div>
