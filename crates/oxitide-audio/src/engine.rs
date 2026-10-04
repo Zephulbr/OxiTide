@@ -2648,7 +2648,9 @@ mod tests {
         wait_for(|| engine.state().playing);
         std::thread::sleep(Duration::from_millis(300));
         assert!(engine.state().playing, "the cancelled fade must not pause later");
-        assert_eq!(output.volumes().last(), Some(&1.0));
+        // A stale ramp step can land just after the cancel; the worker restores
+        // the user volume on its next pass, so wait rather than race the sleep.
+        wait_for(|| output.volumes().last() == Some(&1.0));
     }
 
     /// Review Focus: a volume change during a fade cancels it (the user wins).
