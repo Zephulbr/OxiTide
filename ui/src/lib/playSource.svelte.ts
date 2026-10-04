@@ -30,9 +30,11 @@ export function createPlaySource(
       persist?.(id);
       if (id !== null) onPlay?.(id);
     },
-    /// Re-apply a saved source without recording a new play (session restore).
+    /// Re-apply a saved source without recording a new play (session restore),
+    /// and persist it so the saver cannot clobber the marker on its next write.
     restore(id: string | null) {
       playlistId = id;
+      persist?.(id);
     },
   };
 }

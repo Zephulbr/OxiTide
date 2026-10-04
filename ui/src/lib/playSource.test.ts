@@ -50,6 +50,16 @@ describe("createPlaySource", () => {
     expect(onPlay).not.toHaveBeenCalled();
   });
 
+  it("persists a restored source without reporting a play", () => {
+    const onPlay = vi.fn();
+    const persist = vi.fn();
+    const source = createPlaySource(onPlay, persist);
+    source.restore("p9");
+    expect(source.playlistId).toBe("p9");
+    expect(persist).toHaveBeenCalledWith("p9");
+    expect(onPlay).not.toHaveBeenCalled();
+  });
+
   it("persists every source change, including clearing", () => {
     const persist = vi.fn();
     const source = createPlaySource(undefined, persist);
