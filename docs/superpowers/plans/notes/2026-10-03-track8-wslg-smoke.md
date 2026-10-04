@@ -11,6 +11,13 @@ Record each item as PASS/FAIL with date, distro/kernel, and evidence
 (screenshot, command output, log excerpt). A FAIL becomes an issue; do not
 silently skip an item.
 
+Status (2026-10-04): no human run has been recorded in this file, so every
+checkbox below stays open. The machine-verifiable rows were exercised in the
+companion notes — `2026-10-03-track8-packaging-smoke.md` (build, artifacts,
+process-level launches) and `2026-10-03-track8-4-linux-desktop-smoke.md`
+(MPRIS pre-login, deep links, Wayland, WebKit CSS). Those PASS/partial results
+do not close the human rows here.
+
 ## Shell, login, and keyring
 
 - [ ] **GUI launch (8.1–8.3).** Start Vite (`npm --prefix ui run dev`) and

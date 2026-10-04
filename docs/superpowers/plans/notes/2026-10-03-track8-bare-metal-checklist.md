@@ -8,6 +8,12 @@ item with date, distro/kernel, DE/session (X11/Wayland), audio server
 (`2026-10-01-linux-support-spike.md`): one PipeWire distro + one PulseAudio
 distro, one X11 session + one Wayland session.
 
+Status (2026-10-04): no bare-metal run has been recorded; every checkbox below
+stays open. Machine-verifiable evidence and the deferred-row origins live in
+the companion notes `2026-10-03-track8-packaging-smoke.md` and
+`2026-10-03-track8-4-linux-desktop-smoke.md`; those results do not close any
+item here.
+
 ## Audio
 
 - [ ] **Exclusive / bit-perfect on a real DAC.** Select the DAC in Exclusive
@@ -27,9 +33,27 @@ distro, one X11 session + one Wayland session.
 - [ ] **Real-DE MPRIS + media keys.** On GNOME and KDE (and XFCE/Cinnamon
       where available) the desktop media widget reflects metadata and
       playback, hardware media keys route to OxiTide, and `playerctl` agrees.
+- [ ] **MPRIS desktop-entry resolution per package.** MPRIS advertises
+      `DesktopEntry=OxiTide` (`crates/oxitide-app/src/media_controls_linux.rs:117`),
+      but the installed entry basename differs by package: deb ships
+      `/usr/share/applications/OxiTide.desktop` (matches); AUR installs
+      `oxitide.desktop`; the AppImage's runtime handler writes
+      `oxitide-app-handler.desktop`. On GNOME and KDE, confirm the media widget
+      resolves the entry on each install path (name/icon shown, focus/raise
+      works) and record any package where the name/case mismatch breaks the
+      association. (Carried over from Plan 8.4.)
 - [ ] **`tidal://` registration/launch.** After deb/AUR install,
       `xdg-open 'tidal://...'` launches or focuses the app and routes the
       deep link; a second invocation hits the single-instance path.
+      Plan 8.4 note: in bare WSLg, `xdg-open` exits 4 on the dev-path entry
+      because its generic fallback takes the first word of the spec-legal
+      quoted `Exec` written by `register_all()` (dev entry:
+      `Exec="/root/.../oxitide-app" %u`); GNOME/KDE route `xdg-open` through
+      `open_gnome`/`open_kde` instead. Verify the installed-deb path
+      (`/usr/share/applications/OxiTide.desktop`, `Exec=oxitide-app`,
+      unquoted) on a real DE; if the quirk reproduces there, file it as a
+      product issue. Evidence:
+      `2026-10-03-track8-4-linux-desktop-smoke.md` (deep-link row).
 - [ ] **Wayland behavior.** Under Wayland, size and normal restore keep
       working; mini-player placement and saved-position restore degrade
       (documented limitation) but never visibly misplace the window. Under
