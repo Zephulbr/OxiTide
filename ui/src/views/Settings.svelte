@@ -11,6 +11,7 @@
     type ScrobbleStatusDto,
   } from "../lib/api";
   import { canToggle, queuedLabel, serviceLabel } from "../lib/scrobble";
+  import ConfirmDialog from "../lib/components/ConfirmDialog.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
   import Icon from "../lib/components/Icon.svelte";
   import KeyringNotice from "../lib/components/KeyringNotice.svelte";
@@ -53,6 +54,7 @@
   let lbToken = $state("");
   let lbBusy = $state(false);
   let lbError = $state("");
+  let confirmingHistoryClear = $state(false);
 
   async function refreshScrobble() {
     try {
@@ -333,6 +335,24 @@
 
   function clearCache() {
     api.clearCache().then(refreshCacheStatus).catch(apply);
+  }
+
+  function setHistoryEnabled(enabled: boolean) {
+    if (!config) return;
+    config = { ...config, history: { ...config.history, enabled } };
+    api.setHistoryEnabled(enabled).catch(apply);
+  }
+
+  function setHistoryMaxEntries(value: number) {
+    if (!config) return;
+    const max_entries = Math.min(100_000, Math.max(100, Math.round(value)));
+    config = { ...config, history: { ...config.history, max_entries } };
+    api.setHistoryMaxEntries(max_entries).catch(apply);
+  }
+
+  function clearHistory() {
+    confirmingHistoryClear = false;
+    api.clearHistory().catch(apply);
   }
 
   function formatMb(bytes: number): string {
@@ -699,6 +719,39 @@
           <button onclick={clearCache}>Clear cache</button>
         </p>
         <p class="muted">Directory: {cacheStatus.dir} (edit cache.dir in config.toml)</p>
+      {/if}
+      <h3>Listening history</h3>
+      <p class="muted">Recorded locally in history.jsonl and used by the History view and stats.</p>
+      <p>
+        <label>
+          <input
+            type="checkbox"
+            checked={config.history.enabled}
+            onchange={(e) => setHistoryEnabled((e.target as HTMLInputElement).checked)}
+          />
+          Record listening history
+        </label>
+      </p>
+      <p>
+        <label>
+          Max entries:
+          <input
+            type="number"
+            min="100"
+            max="100000"
+            value={config.history.max_entries}
+            onchange={(e) => setHistoryMaxEntries(Number((e.target as HTMLInputElement).value))}
+          />
+        </label>
+      </p>
+      <p><button onclick={() => (confirmingHistoryClear = true)}>Clear history</button></p>
+      {#if confirmingHistoryClear}
+        <ConfirmDialog
+          title="Clear listening history"
+          message="This permanently deletes your local play history and stats."
+          onconfirm={clearHistory}
+          oncancel={() => (confirmingHistoryClear = false)}
+        />
       {/if}
     </div>
   {:else}
