@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { groupByDay, relativeTime } from "./historyTime";
+import { groupByDay, mergeHistoryEntries, relativeTime } from "./historyTime";
 
 // Local time on purpose: the helpers are local-day based, so constructing the
 // clock with the local Date constructor keeps the tests timezone-independent.
@@ -44,5 +44,23 @@ describe("groupByDay", () => {
   it("returns one group for a single day", () => {
     const entries = [{ started_at: hoursAgo(1) }];
     expect(groupByDay(entries, NOW)).toEqual([{ label: "Today", entries }]);
+  });
+});
+
+describe("mergeHistoryEntries", () => {
+  it("appends new entries and drops rows already shown", () => {
+    const first = [
+      { started_at: 100, track_id: 1 },
+      { started_at: 90, track_id: 2 },
+    ];
+    const second = [
+      { started_at: 90, track_id: 2 },
+      { started_at: 80, track_id: 3 },
+    ];
+    expect(mergeHistoryEntries(first, second)).toEqual([
+      { started_at: 100, track_id: 1 },
+      { started_at: 90, track_id: 2 },
+      { started_at: 80, track_id: 3 },
+    ]);
   });
 });

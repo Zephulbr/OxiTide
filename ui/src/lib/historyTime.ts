@@ -36,6 +36,23 @@ export interface HistoryGroup<T> {
   entries: T[];
 }
 
+/// Merge a later page into the loaded list, dropping rows already shown: the
+/// server's in-flight prepend can shift the page boundary between fetches.
+export function mergeHistoryEntries<T extends { started_at: number; track_id: number }>(
+  existing: T[],
+  incoming: T[],
+): T[] {
+  const seen = new Set(existing.map((entry) => `${entry.started_at}:${entry.track_id}`));
+  const merged = [...existing];
+  for (const entry of incoming) {
+    const key = `${entry.started_at}:${entry.track_id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(entry);
+  }
+  return merged;
+}
+
 /// Group newest-first entries into consecutive local-day buckets.
 export function groupByDay<T extends { started_at: number }>(
   entries: T[],

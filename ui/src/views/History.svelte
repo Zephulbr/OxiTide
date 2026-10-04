@@ -1,6 +1,6 @@
 <script lang="ts">
   import { api, historyToQueueItem, type HistoryEntry, type Stats } from "../lib/api";
-  import { groupByDay, relativeTime } from "../lib/historyTime";
+  import { groupByDay, mergeHistoryEntries, relativeTime } from "../lib/historyTime";
   import type { HistoryTab, Nav } from "../lib/nav.svelte";
   import type { Player } from "../lib/player.svelte";
   import type { Toasts } from "../lib/toasts.svelte";
@@ -26,12 +26,10 @@
 
   let entries = $state<HistoryEntry[]>([]);
   let total = $state(0);
-  let recentLoaded = $state(false);
   let recentLoading = $state(false);
   let recentError = $state("");
 
   let stats = $state<Stats | null>(null);
-  let statsLoaded = $state(false);
   let statsError = $state("");
 
   const groups = $derived(groupByDay(entries, Date.now()));
@@ -42,7 +40,7 @@
     recentError = "";
     try {
       const page = await api.getHistoryPage(reset ? 0 : entries.length, PAGE);
-      entries = reset ? page.items : [...entries, ...page.items];
+      entries = reset ? page.items : mergeHistoryEntries(entries, page.items);
       total = page.total;
     } catch (e) {
       recentError = String(e);
@@ -60,16 +58,15 @@
     }
   }
 
+  // Fetch when a tab becomes active: the view is not remounted on tab
+  // switches, so load-once would leave the list and stats stale.
+  let lastTab: HistoryTab | null = null;
   $effect(() => {
-    if (tab === "recent" && !recentLoaded) {
-      recentLoaded = true;
+    if (tab === lastTab) return;
+    lastTab = tab;
+    if (tab === "recent") {
       void loadRecent(true);
-    }
-  });
-
-  $effect(() => {
-    if (tab === "stats" && !statsLoaded) {
-      statsLoaded = true;
+    } else {
       void loadStats();
     }
   });
@@ -105,12 +102,12 @@
     <div class="tab-body">
       {#if recentError}
         <ErrorState message={recentError} onRetry={() => void loadRecent(true)} />
-      {:else if !recentLoaded && entries.length === 0}
+      {:else if recentLoading && entries.length === 0}
         <Loading />
       {:else if entries.length === 0}
         <EmptyState message="Nothing played yet." />
       {:else}
-        {#each groups as group (group.label)}
+        {#each groups as group (group.entries[0].started_at)}
           <section class="day">
             <h3>{group.label}</h3>
             {#each group.entries as entry, i (entry.started_at + "-" + entry.track_id + "-" + i)}
