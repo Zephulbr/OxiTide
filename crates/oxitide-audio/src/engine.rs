@@ -85,6 +85,10 @@ pub enum EngineCmd {
     Remove(usize),
     Enqueue { items: Vec<QueueItem> },
     Clear,
+    /// Fade the output to silence over `duration_ms`, then pause at the current
+    /// position. The pre-fade volume is restored for the next play; a
+    /// play/pause or volume change cancels the fade.
+    FadeAndPause { duration_ms: u64 },
     /// Restart the current track at its last position (after an error).
     Retry,
 }
@@ -95,6 +99,14 @@ type Listener = Arc<dyn Fn(EngineEvent) + Send + Sync>;
 /// worker. Bounds the lookahead (typically a few seconds of audio) so a long
 /// track never buffers in memory without limit.
 const PREFETCH_BUFFERS: usize = 96;
+
+/// An in-flight sleep-timer fade: the worker ramps the output volume from
+/// `base_volume` to zero over `duration`, then pauses and restores the volume.
+struct FadeState {
+    started: Instant,
+    duration: Duration,
+    base_volume: f32,
+}
 
 struct Inner {
     queue: Mutex<Queue>,
@@ -119,6 +131,9 @@ struct Inner {
     generation: AtomicU64,
     paused: AtomicBool,
     volume: AtomicU32, // f32 bits
+    /// Active sleep-timer fade; the worker ramps the output volume to zero and
+    /// then pauses.
+    fade: Mutex<Option<FadeState>>,
     position_ms: AtomicU64,
     /// Track id the current `position_ms` belongs to (0 = none).
     position_track: AtomicU64,
@@ -170,6 +185,22 @@ fn build_state(inner: &Inner) -> PlaybackState {
     }
 }
 
+/// The volume the output should have right now and whether a sleep fade is
+/// driving it. A fade overrides the user's volume until it completes or is
+/// cancelled; the output-reopen path uses this too, so a format change
+/// mid-fade never jumps back to full volume.
+fn current_volume(inner: &Inner) -> (f32, bool) {
+    let fade = inner.fade.lock().unwrap();
+    match fade.as_ref() {
+        Some(f) => {
+            let duration = f.duration.as_secs_f32().max(0.001);
+            let t = (f.started.elapsed().as_secs_f32() / duration).min(1.0);
+            (f.base_volume * (1.0 - t), true)
+        }
+        None => (f32::from_bits(inner.volume.load(Ordering::SeqCst)), false),
+    }
+}
+
 fn emit(inner: &Arc<Inner>, event: EngineEvent) {
     if let EngineEvent::Error { code, message } = &event {
         tracing::error!("playback error ({code}): {message}");
@@ -217,6 +248,7 @@ impl Engine {
             generation: AtomicU64::new(0),
             paused: AtomicBool::new(false),
             volume: AtomicU32::new(1.0f32.to_bits()),
+            fade: Mutex::new(None),
             position_ms: AtomicU64::new(0),
             position_track: AtomicU64::new(0),
             seek_target: Mutex::new(None),
@@ -357,6 +389,17 @@ impl Engine {
         emit(&self.inner, event);
     }
 
+    /// Cancel an in-flight sleep fade and restore the pre-fade volume. Called
+    /// by every explicit transport or volume change so the user's action wins.
+    fn cancel_fade(&self) {
+        let base = self.inner.fade.lock().unwrap().take().map(|f| f.base_volume);
+        if let Some(base) = base {
+            self.inner.volume.store(base.to_bits(), Ordering::SeqCst);
+            self.inner.queue.lock().unwrap().set_volume(base);
+            self.inner.notify_worker();
+        }
+    }
+
     /// Run a queue-mutating playback command under `playback_lock`, bumping the
     /// generation first so the running worker session is invalidated.
     fn mutate_playing_queue<T>(&self, mutate: impl FnOnce(&mut Queue) -> T) -> T {
@@ -385,6 +428,8 @@ impl Engine {
     /// Replace the playback context via `mutate` and announce the new queue
     /// and current track to listeners.
     fn start_context(&self, mutate: impl FnOnce(&mut Queue)) {
+        // Starting a new context is an explicit user action; end any fade.
+        self.cancel_fade();
         *self.inner.stream_meta.lock().unwrap() = None;
         let item = self.mutate_playing_queue(|q| {
             mutate(q);
@@ -430,6 +475,8 @@ impl Engine {
                 self.emit(EngineEvent::State(self.state()));
             }
             EngineCmd::PlayPause => {
+                // An explicit transport action wins over a sleep fade.
+                self.cancel_fade();
                 // Only toggle when a track is current. On an empty queue
                 // `toggle_play_pause` is a no-op, so flipping `paused` here
                 // would latch it true and silence the next `PlayTracks`.
@@ -496,6 +543,7 @@ impl Engine {
                 self.emit(EngineEvent::State(self.state()));
             }
             EngineCmd::SetVolume(v) => {
+                self.cancel_fade();
                 let clamped = {
                     let mut q = self.inner.queue.lock().unwrap();
                     q.set_volume(v);
@@ -527,11 +575,32 @@ impl Engine {
                 }
             }
             EngineCmd::Clear => {
+                self.cancel_fade();
                 *self.inner.stream_meta.lock().unwrap() = None;
                 self.mutate_playing_queue(|q| q.clear());
                 self.inner.paused.store(false, Ordering::SeqCst);
                 self.inner.notify_worker();
                 self.emit(EngineEvent::NowPlaying(None));
+                self.emit(EngineEvent::State(self.state()));
+            }
+            EngineCmd::FadeAndPause { duration_ms } => {
+                let playing = self.inner.queue.lock().unwrap().is_playing();
+                if playing {
+                    let base = f32::from_bits(self.inner.volume.load(Ordering::SeqCst));
+                    if duration_ms == 0 || base <= 0.0 {
+                        // Nothing to ramp: pause now.
+                        self.inner.queue.lock().unwrap().stop();
+                        self.inner.paused.store(true, Ordering::SeqCst);
+                        self.inner.notify_worker();
+                    } else {
+                        *self.inner.fade.lock().unwrap() = Some(FadeState {
+                            started: Instant::now(),
+                            duration: Duration::from_millis(duration_ms),
+                            base_volume: base,
+                        });
+                        self.inner.notify_worker();
+                    }
+                }
                 self.emit(EngineEvent::State(self.state()));
             }
             EngineCmd::Retry => {
@@ -1196,7 +1265,8 @@ fn run_session(
                 };
             }
             fire_perf(inner, AudioPerfEvent::OutputOpened { track_id: stream.item.track_id });
-            let volume = f32::from_bits(inner.volume.load(Ordering::SeqCst));
+            // A format change mid-fade must not jump back to the user volume.
+            let (volume, _) = current_volume(inner);
             if let Err(e) = output.set_volume(volume) {
                 return SessionOutcome::OutputError {
                     message: e.to_string(),
@@ -1219,8 +1289,15 @@ fn run_session(
             if inner.generation.load(Ordering::SeqCst) != gen {
                 return SessionOutcome::Superseded;
             }
-            let volume = f32::from_bits(inner.volume.load(Ordering::SeqCst));
-            if (volume - last_volume).abs() >= f32::EPSILON {
+            let (volume, fading) = current_volume(inner);
+            // Fades step coarsely (endpoint volume calls are not free);
+            // SetVolume changes are tracked exactly.
+            let changed = if fading {
+                volume <= f32::EPSILON || (volume - last_volume).abs() >= 0.01
+            } else {
+                (volume - last_volume).abs() >= f32::EPSILON
+            };
+            if changed {
                 if let Err(e) = output.set_volume(volume) {
                     return SessionOutcome::OutputError {
                         message: e.to_string(),
@@ -1229,6 +1306,25 @@ fn run_session(
                 }
                 last_volume = volume;
                 *inner.output_status.lock().unwrap() = output.status();
+            }
+            if fading && volume <= f32::EPSILON {
+                // The fade finished: pause here, keep queue and position, and
+                // restore the user's volume so the next play is audible.
+                let base = inner
+                    .fade
+                    .lock()
+                    .unwrap()
+                    .take()
+                    .map(|f| f.base_volume)
+                    .unwrap_or(volume);
+                {
+                    let mut q = inner.queue.lock().unwrap();
+                    q.stop();
+                    q.set_volume(base);
+                }
+                inner.volume.store(base.to_bits(), Ordering::SeqCst);
+                inner.paused.store(true, Ordering::SeqCst);
+                emit(inner, EngineEvent::State(build_state(inner)));
             }
             if inner.paused.load(Ordering::SeqCst) {
                 std::thread::sleep(Duration::from_millis(20));
@@ -2479,6 +2575,148 @@ mod tests {
         let state = engine.state();
         assert!(state.playing);
         assert_eq!(state.current_index, Some(0));
+    }
+
+    /// Review Focus: the sleep fade must ramp through intermediate volumes,
+    /// reach silence, pause, and put the user's volume back.
+    #[test]
+    fn fade_and_pause_ramps_to_zero_then_pauses_and_restores_volume() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        let events = Arc::new(Mutex::new(Vec::new()));
+        engine.subscribe(Arc::new({
+            let events = events.clone();
+            move |event| events.lock().unwrap().push(event)
+        }));
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine.handle(EngineCmd::SetRepeat(RepeatMode::All)).unwrap();
+        wait_for(|| !output.samples().is_empty());
+
+        engine.handle(EngineCmd::FadeAndPause { duration_ms: 150 }).unwrap();
+        wait_for(|| !engine.state().playing);
+
+        assert_eq!(engine.state().volume, 1.0, "pre-fade volume must be restored");
+        wait_for(|| output.volumes().last() == Some(&1.0));
+        let volumes = output.volumes();
+        assert!(
+            volumes.iter().any(|v| *v > 0.05 && *v < 0.95),
+            "no intermediate ramp value: {volumes:?}"
+        );
+        assert!(
+            volumes.iter().any(|v| v.abs() <= f32::EPSILON),
+            "the ramp never reached silence: {volumes:?}"
+        );
+        assert_eq!(volumes.last(), Some(&1.0), "volume not restored after the fade");
+        let done = events.lock().unwrap().iter().any(|event| {
+            matches!(event, EngineEvent::State(state) if !state.playing && state.volume == 1.0)
+        });
+        assert!(done, "no completion State emitted");
+    }
+
+    /// Review Focus: play/pause during a fade cancels it and restores volume.
+    #[test]
+    fn play_pause_cancels_an_active_fade_and_restores_volume() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine.handle(EngineCmd::SetRepeat(RepeatMode::All)).unwrap();
+        wait_for(|| !output.samples().is_empty());
+
+        engine.handle(EngineCmd::FadeAndPause { duration_ms: 60_000 }).unwrap();
+        wait_for(|| output.volumes().iter().any(|v| *v < 0.95));
+
+        engine.handle(EngineCmd::PlayPause).unwrap();
+        assert!(!engine.state().playing);
+        assert_eq!(engine.state().volume, 1.0);
+        wait_for(|| output.volumes().last() == Some(&1.0));
+
+        // Resuming must not inherit a leftover fade that pauses again.
+        engine.handle(EngineCmd::PlayPause).unwrap();
+        wait_for(|| engine.state().playing);
+        std::thread::sleep(Duration::from_millis(300));
+        assert!(engine.state().playing, "the cancelled fade must not pause later");
+        assert_eq!(output.volumes().last(), Some(&1.0));
+    }
+
+    /// Review Focus: a volume change during a fade cancels it (the user wins).
+    #[test]
+    fn set_volume_cancels_an_active_fade() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine.handle(EngineCmd::SetRepeat(RepeatMode::All)).unwrap();
+        wait_for(|| !output.samples().is_empty());
+
+        engine.handle(EngineCmd::FadeAndPause { duration_ms: 60_000 }).unwrap();
+        wait_for(|| output.volumes().iter().any(|v| *v < 0.95));
+
+        engine.handle(EngineCmd::SetVolume(0.25)).unwrap();
+        wait_for(|| output.volumes().last() == Some(&0.25));
+        std::thread::sleep(Duration::from_millis(300));
+        assert_eq!(output.volumes().last(), Some(&0.25), "the fade kept ramping");
+        assert!(engine.state().playing, "the fade must not pause after cancel");
+    }
+
+    /// Review Focus: FadeAndPause on an already-paused queue is inert.
+    #[test]
+    fn fade_and_pause_on_a_paused_queue_changes_nothing() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine.handle(EngineCmd::SetRepeat(RepeatMode::All)).unwrap();
+        wait_for(|| !output.samples().is_empty());
+        engine.handle(EngineCmd::PlayPause).unwrap();
+        assert!(!engine.state().playing);
+        let before = output.volumes().len();
+
+        engine.handle(EngineCmd::FadeAndPause { duration_ms: 50 }).unwrap();
+        std::thread::sleep(Duration::from_millis(200));
+
+        let volumes = output.volumes();
+        assert_eq!(volumes.len(), before, "a paused queue must not fade: {volumes:?}");
+        assert_eq!(volumes.last(), Some(&1.0));
+        assert!(!engine.state().playing);
+    }
+
+    /// Review Focus: a zero-duration fade pauses immediately, with no ramp.
+    #[test]
+    fn fade_and_pause_with_zero_duration_pauses_immediately() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine.handle(EngineCmd::SetRepeat(RepeatMode::All)).unwrap();
+        wait_for(|| !output.samples().is_empty());
+
+        engine.handle(EngineCmd::FadeAndPause { duration_ms: 0 }).unwrap();
+        wait_for(|| !engine.state().playing);
+        assert!(
+            output.volumes().iter().all(|v| *v == 1.0),
+            "zero duration must not ramp: {:?}",
+            output.volumes()
+        );
+    }
+
+    /// Review Focus: the effective output volume follows the fade, not the user
+    /// volume, and cancelling restores the user volume.
+    #[test]
+    fn current_volume_reads_the_fade_target_while_fading() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine.handle(EngineCmd::SetRepeat(RepeatMode::All)).unwrap();
+        engine.handle(EngineCmd::SetVolume(0.8)).unwrap();
+        wait_for(|| !output.samples().is_empty());
+
+        engine.handle(EngineCmd::FadeAndPause { duration_ms: 60_000 }).unwrap();
+        wait_for(|| current_volume(&engine.inner).0 < 0.8);
+        let (volume, fading) = current_volume(&engine.inner);
+        assert!(fading, "the fade must drive the output volume");
+        assert!(volume < 0.8, "the fade target must win, got {volume}");
+
+        engine.handle(EngineCmd::PlayPause).unwrap();
+        let (volume, fading) = current_volume(&engine.inner);
+        assert!(!fading, "play/pause must cancel the fade");
+        assert!((volume - 0.8).abs() < f32::EPSILON, "user volume not restored: {volume}");
     }
 
     /// Regression: `Next` at the end of the queue with repeat off must not
