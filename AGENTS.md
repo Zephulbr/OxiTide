@@ -11,6 +11,7 @@ Prereqs: Rust stable (`rust-toolchain.toml` pins it, with clippy/rustfmt), Node 
 - Package installer: `npm --prefix ui run app:build` (NSIS per-user + MSI; artifacts under `target/release/bundle/`). Unsigned; WebView2 downloads at install time.
 - Rust: `cargo test --workspace`; `cargo clippy --workspace -- -D warnings`. Single test: `cargo test -p oxitide-tidal <test_name>`.
 - UI: `npm --prefix ui run check` (svelte-check); `npm --prefix ui test` (vitest). Single test: `npm --prefix ui test -- src/lib/format.test.ts`.
+- Linux (WSL2 Ubuntu 22.04): environment, apt prerequisites, and build/package commands live in `docs/linux-build.md`; run the same `cargo test --workspace` and `cargo clippy --workspace -- -D warnings` gates there — they compile the `cfg(target_os = "linux")` code.
 
 ## Architecture
 
@@ -37,6 +38,7 @@ Prereqs: Rust stable (`rust-toolchain.toml` pins it, with clippy/rustfmt), Node 
 
 Track 3's measurement gate lives in `scripts/perf/` (manual; no CI):
 
+- Windows-only exemption (Track 8, T8-D3): the scripted runner/driver (`run-scenario.ps1`, `drive.mjs`) speaks the WebView2 CDP endpoint and is not ported to WebKitGTK. On Linux the `/proc` metrics in `crates/oxitide-app/src/perf.rs` keep process-relative marks, memory, and playback rows measurable via `OXITIDE_PERF_SCENARIO` + `node scripts/perf/check.mjs`; frame/interaction budgets stay unmeasured until the deferred harness port. Authority: `docs/superpowers/plans/notes/2026-10-03-track8-perf-exemption.md`.
 - `powershell -ExecutionPolicy Bypass -File scripts/perf/run-scenario.ps1 -Scenario <S1..S10> [-Runs n] [-Manual] [-SkipCheck] [-Minutes n]` — launches the debug exe (Vite must be warm; the script starts it if port 1420 is free) and drives the scenario over the WebView2 CDP endpoint. Raw JSONL lands in the gitignored `.superpowers/perf/runs/`.
 - `node scripts/perf/check.mjs` (or `npm --prefix ui run perf:check`) aggregates the corpus against `scripts/perf/budgets.json` (mirrors spec §4.2) and exits non-zero on any breach.
 - Scenarios: S1 cold start, S2 warm start, S3-miss/S3-hit TTFS, S4 gapless advance, S5-instrument/S5-atmosphere scroll, S6 10k filter/sort/album, S7 10k queue build, S8 cache loop, S9 2 h soak, S10 manual stability. S4/S8/S9/S10 are human-in-the-loop (real account/audio); the rest are scripted.
