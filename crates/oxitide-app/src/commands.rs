@@ -234,10 +234,10 @@ pub fn auth_logout(state: State<'_, AppState>) -> Result<(), String> {
     if let Some(store) = state.token_store() {
         store.clear().map_err(|e| e.to_string())?;
     }
+    state.logout();
     if let Some(saver) = state.session_saver() {
         saver.clear();
     }
-    state.logout();
     Ok(())
 }
 
@@ -434,8 +434,11 @@ fn build_player(
     let handle = app.clone();
     let last_track = std::sync::Mutex::new(None);
     engine.subscribe(Arc::new(move |event| {
-        if let Some(saver) = handle.state::<AppState>().session_saver() {
-            saver.record(&event);
+        let app_state = handle.state::<AppState>();
+        if app_state.player().is_some() {
+            if let Some(saver) = app_state.session_saver() {
+                saver.record(&event);
+            }
         }
         if let EngineEvent::Error { code, .. } = &event {
             if code == "auth" {
