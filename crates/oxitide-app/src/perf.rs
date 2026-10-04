@@ -324,6 +324,114 @@ fn now_unix_ms() -> u128 {
         .unwrap_or(0)
 }
 
+/// Pure `/proc` parsing for the Linux process metrics. Compiled on every
+/// platform so the unit tests run under the Windows gates; the
+/// `#[cfg(target_os = "linux")]` code below only reads files and calls them.
+#[cfg(any(target_os = "linux", test))]
+fn parse_stat_starttime(stat: &str) -> Option<u64> {
+    // `comm` (field 2) may contain spaces and parentheses, so field splitting
+    // starts after the final `)`.
+    let after_comm = stat.get(stat.rfind(')')? + 1..)?;
+    after_comm.split_whitespace().nth(19)?.parse().ok()
+}
+
+/// Anchor a tick-based starttime to the wall clock:
+/// `creation = now - boot_seconds + starttime / ticks_per_sec`.
+#[cfg(any(target_os = "linux", test))]
+fn creation_unix_ms(
+    now_unix_ms: u128,
+    boot_seconds: f64,
+    starttime_ticks: u64,
+    ticks_per_sec: u64,
+) -> Option<u128> {
+    if ticks_per_sec == 0 {
+        return None;
+    }
+    let boot_ms = (boot_seconds * 1000.0) as u128;
+    let start_ms = (starttime_ticks as u128) * 1000 / (ticks_per_sec as u128);
+    Some(now_unix_ms.saturating_sub(boot_ms).saturating_add(start_ms))
+}
+
+/// `Rss:` (kB) from a `/proc/<pid>/smaps_rollup` body.
+#[cfg(any(target_os = "linux", test))]
+fn parse_smaps_rollup_rss_kb(rollup: &str) -> Option<u64> {
+    rollup.lines().find_map(|line| {
+        let value = line.strip_prefix("Rss:")?;
+        value.split_whitespace().next()?.parse().ok()
+    })
+}
+
+/// Second field (resident pages) of a `/proc/<pid>/statm` body.
+#[cfg(any(target_os = "linux", test))]
+fn parse_statm_resident_pages(statm: &str) -> Option<u64> {
+    statm.split_whitespace().nth(1)?.parse().ok()
+}
+
+/// Resident kB from the two `/proc` sources: `smaps_rollup`'s `Rss:` when
+/// readable, else `statm` pages scaled by `page_size`.
+#[cfg(any(target_os = "linux", test))]
+fn memory_kb_from_proc(
+    smaps_rollup: Option<&str>,
+    statm: Option<&str>,
+    page_size: u64,
+) -> Option<u64> {
+    if let Some(kb) = smaps_rollup.and_then(parse_smaps_rollup_rss_kb) {
+        return Some(kb);
+    }
+    let pages = statm.and_then(parse_statm_resident_pages)?;
+    if page_size == 0 {
+        return None;
+    }
+    Some(pages.saturating_mul(page_size) / 1024)
+}
+
+/// kB -> MiB for one process; `None` for zero resident memory (a zombie or a
+/// process that exited mid-sample), so no empty row is emitted.
+#[cfg(any(target_os = "linux", test))]
+fn resident_kb_to_mb(kb: u64) -> Option<u64> {
+    let mb = kb / 1024;
+    (mb > 0).then_some(mb)
+}
+
+/// Space-separated child PIDs from `/proc/<pid>/task/<tid>/children`.
+#[cfg(any(target_os = "linux", test))]
+fn parse_children(children: &str) -> Vec<u32> {
+    children
+        .split_whitespace()
+        .filter_map(|pid| pid.parse().ok())
+        .collect()
+}
+
+/// Child PIDs not yet sampled, in first-seen order; a PID appears once even
+/// when several task `children` files list it.
+#[cfg(any(target_os = "linux", test))]
+fn new_child_pids(
+    sampled: &std::collections::BTreeSet<u32>,
+    task_children: &[Vec<u32>],
+) -> Vec<u32> {
+    let mut seen = sampled.clone();
+    let mut fresh = Vec::new();
+    for list in task_children {
+        for &pid in list {
+            if seen.insert(pid) {
+                fresh.push(pid);
+            }
+        }
+    }
+    fresh
+}
+
+/// `/proc/<pid>/comm` content, trimmed; `None` when empty.
+#[cfg(any(target_os = "linux", test))]
+fn parse_comm(comm: &str) -> Option<String> {
+    let trimmed = comm.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
 /// Windows: the process creation time in unix milliseconds from
 /// `GetProcessTimes`; `None` when unavailable.
 #[cfg(windows)]
@@ -626,6 +734,82 @@ mod tests {
             session_line["unix_ms"].as_u64().unwrap() as u128 + t_ms,
             "unix_ms must be process start plus t_ms"
         );
+    }
+
+    #[test]
+    fn stat_starttime_survives_comm_with_spaces_and_parens() {
+        let stat = "123 (my (weird) app) S 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 987654";
+        assert_eq!(parse_stat_starttime(stat), Some(987654));
+    }
+
+    #[test]
+    fn stat_starttime_rejects_malformed_lines() {
+        assert_eq!(parse_stat_starttime(""), None);
+        assert_eq!(parse_stat_starttime("123 (no closing paren S 1 2"), None);
+        assert_eq!(parse_stat_starttime("123 (proc) S 1 2 3"), None);
+        assert_eq!(
+            parse_stat_starttime("123 (proc) S 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 x"),
+            None
+        );
+    }
+
+    #[test]
+    fn creation_time_anchors_starttime_to_the_wall_clock() {
+        let now = 1_700_000_000_000u128;
+        let created = creation_unix_ms(now, 10_000.0, 12_345, 100).unwrap();
+        assert_eq!(created, now - 10_000_000 + 123_450);
+        assert_eq!(creation_unix_ms(now, 10.0, 1, 0), None);
+    }
+
+    #[test]
+    fn smaps_rollup_rss_is_parsed_from_its_line() {
+        let rollup = "Rss:   12345 kB\nPss:  2345 kB\nShared_Clean: 100 kB\n";
+        assert_eq!(parse_smaps_rollup_rss_kb(rollup), Some(12345));
+        assert_eq!(parse_smaps_rollup_rss_kb("Pss: 1 kB\n"), None);
+        assert_eq!(parse_smaps_rollup_rss_kb("Rss: not-a-number kB\n"), None);
+    }
+
+    #[test]
+    fn statm_resident_pages_are_parsed_and_zero_marks_a_zombie() {
+        assert_eq!(parse_statm_resident_pages("12345 678 90 0 0 0 0"), Some(678));
+        assert_eq!(parse_statm_resident_pages("0 0 0 0 0 0 0"), Some(0));
+        assert_eq!(parse_statm_resident_pages("12345"), None);
+        assert_eq!(parse_statm_resident_pages("12345 pages"), None);
+    }
+
+    #[test]
+    fn memory_kb_prefers_smaps_and_falls_back_to_statm() {
+        let smaps = "Rss: 100 kB\n";
+        let statm = "1000 200 0 0 0 0 0";
+        assert_eq!(memory_kb_from_proc(Some(smaps), Some(statm), 4096), Some(100));
+        assert_eq!(memory_kb_from_proc(None, Some(statm), 4096), Some(800));
+        assert_eq!(memory_kb_from_proc(Some("Pss: 1 kB\n"), Some(statm), 4096), Some(800));
+        assert_eq!(memory_kb_from_proc(None, None, 4096), None);
+        assert_eq!(memory_kb_from_proc(None, Some(statm), 0), None);
+    }
+
+    #[test]
+    fn zero_resident_kb_never_becomes_a_row() {
+        assert_eq!(resident_kb_to_mb(0), None);
+        assert_eq!(resident_kb_to_mb(1023), None);
+        assert_eq!(resident_kb_to_mb(1024), Some(1));
+    }
+
+    #[test]
+    fn task_children_parsing_and_dedup_across_tasks() {
+        assert_eq!(parse_children("101 202\n"), vec![101, 202]);
+        assert_eq!(parse_children("101 junk 202"), vec![101, 202]);
+        assert_eq!(parse_children("   \n"), Vec::<u32>::new());
+        let sampled = std::collections::BTreeSet::from([10u32]);
+        let fresh = new_child_pids(&sampled, &[vec![20, 30], vec![30, 10, 40]]);
+        assert_eq!(fresh, vec![20, 30, 40], "a pid must be queued at most once");
+    }
+
+    #[test]
+    fn comm_is_trimmed_and_empty_names_are_dropped() {
+        assert_eq!(parse_comm("oxitide-app\n"), Some("oxitide-app".to_string()));
+        assert_eq!(parse_comm("  my app  \n"), Some("my app".to_string()));
+        assert_eq!(parse_comm(" \n"), None);
     }
 
     #[cfg(windows)]
