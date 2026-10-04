@@ -1,5 +1,6 @@
 <script lang="ts">
   import { formatCount, formatTotalDuration } from "../format";
+  import { barPercents } from "../historyChart";
   import type { Stats } from "../api";
 
   let { stats }: { stats: Stats } = $props();
@@ -25,6 +26,18 @@
       <span class="muted">{formatCount(stats.plays_30d)} plays</span>
     </div>
   </div>
+
+  {@const heights = barPercents(stats.daily.map((day) => day.plays))}
+  <section class="chart-wrap">
+    <h3>Last 30 days</h3>
+    <div class="chart" role="img" aria-label="Plays per day over the last 30 days">
+      {#each stats.daily as day, i (day.date)}
+        <div class="bar" title={`${day.date}: ${day.plays} ${day.plays === 1 ? "play" : "plays"}`}>
+          <span class="fill" class:empty={day.plays === 0} style:height={`${heights[i]}%`}></span>
+        </div>
+      {/each}
+    </div>
+  </section>
 
   <div class="tops">
     <section>
@@ -78,6 +91,30 @@
     font-family: var(--font-display);
     font-size: 22px;
     font-weight: 640;
+  }
+  .chart-wrap {
+    margin: 4px 0 20px;
+  }
+  .chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 110px;
+  }
+  .bar {
+    flex: 1;
+    height: 100%;
+    display: flex;
+    align-items: flex-end;
+  }
+  .fill {
+    width: 100%;
+    min-height: 2px;
+    border-radius: 2px 2px 0 0;
+    background: var(--accent);
+  }
+  .fill.empty {
+    background: var(--line);
   }
   .tops {
     display: grid;
