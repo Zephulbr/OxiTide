@@ -12,6 +12,7 @@ pub mod perf;
 mod player;
 mod scheme;
 mod scrobble;
+mod session;
 mod state;
 mod window;
 
