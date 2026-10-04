@@ -63,7 +63,8 @@ a product failure.
       (exit 0); pre-login `gdbus ... Raise` returned
       `org.freedesktop.DBus.Error.ServiceUnknown`.
 - [ ] `playerctl status` reflects Playing/Paused; `playerctl metadata` shows
-      the five metadata fields including an art URL.
+      `xesam:title`, `xesam:artist`, `xesam:album`, `mpris:length`, and an
+      `mpris:artUrl` on `resources.tidal.com`.
       **PENDING (human)** 2026-10-04 — login + playback.
 - [ ] Track change (next or auto-advance): metadata flips to the new track;
       no stale title/art (Review Focus 1).
@@ -75,7 +76,8 @@ a product failure.
       drive the app; rapid `play-pause` then `stop` does not desync (Review
       Focus 3).
       **PENDING (human)** 2026-10-04 — login + playback.
-- [ ] Raise focuses from another WSLg window.
+- [ ] Raise focuses from another WSLg window:
+      `gdbus call --session --dest org.mpris.MediaPlayer2.OxiTide --object-path /org/mpris/MediaPlayer2 --method org.mpris.MediaPlayer2.Raise`
       **PENDING (human)** 2026-10-04 — the bus name does not exist pre-login
       (see the `ServiceUnknown` evidence above); focus is visual.
 - [ ] Clearing the queue / stopping playback clears the metadata instead of
@@ -90,13 +92,16 @@ a product failure.
 ## Deep links in WSLg (spec §4.4; requires Plan 8.3)
 
 - [ ] After the first run, the runtime registration (`register_all()`,
-      `crates/oxitide-app/src/main.rs:251`) leaves a desktop entry carrying
-      `MimeType=x-scheme-handler/tidal;`:
+      `crates/oxitide-app/src/main.rs:263`) leaves a desktop entry carrying
+      the `x-scheme-handler/tidal` MIME type:
       `grep -rl "x-scheme-handler/tidal" ~/.local/share/applications/*.desktop`
       **PASS** 2026-10-04 — grep exit 0, matched
-      `oxitide-app-handler.desktop`. After the first run its `Exec` was
-      rewritten from the stale AppImage path to
-      `Exec="/root/oxitide-8.3/target/release/oxitide-app" %u`, i.e.
+      `oxitide-app-handler.desktop`. Recorded fact: the dev-path entry's line
+      is `MimeType=x-scheme-handler/tidal` (no trailing semicolon); the
+      trailing semicolon appears only in the installed deb entry
+      (`/usr/share/applications/OxiTide.desktop`), both checked 2026-10-04.
+      After the first run its `Exec` was rewritten from the stale AppImage
+      path to `Exec="/root/oxitide-8.3/target/release/oxitide-app" %u`, i.e.
       `register_all()` at `ab8bdcf` ran.
 - [ ] Installed deb: `grep -qx 'MimeType=x-scheme-handler/tidal;' /usr/share/applications/OxiTide.desktop`
       after `sudo apt install ./target/release/bundle/deb/*.deb`.
@@ -153,9 +158,10 @@ a product failure.
 
 ## WebKit CSS findings (spec §4.6; Track 9 freeze; Plan Task 5)
 
-Track 9 UI freeze: declared by the owner before this pass (confirmation
-recorded in the task ledger ruling; the worktree was clean with no `ui/` edits
-in flight at Task 5 start, 2026-10-04).
+Track 9 UI freeze: the owner confirmed the freeze on 2026-10-04 (the session
+date), before this pass; the confirmation is recorded in the task ledger
+ruling, and the worktree was clean with no `ui/` edits in flight at Task 5
+start.
 
 The release bundle exposes no usable inspector (Task 4: the
 `WEBKIT_INSPECTOR_SERVER` port binds but its HTTP endpoints return empty
@@ -164,16 +170,16 @@ replies). The engine half of the probe therefore ran in a minimal Python-GI
 22.04.5 + WSLg (`DISPLAY=:0`, `WAYLAND_DISPLAY=wayland-0`,
 `XDG_RUNTIME_DIR=/run/user/0`), `WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1`,
 `python3-gi` 3.42.1 with the `gir1.2-webkit2-4.1` typelib installed for the
-probe. The page injects one `@property` rule (no app CSS in the harness);
-after `LoadEvent.FINISHED` the identical probe expressions run via
+probe. Substitution: the plan's `dynPrimary` read needs app CSS, and the blank
+harness page has none, so the harness replaced it with `probeInitial` — the
+computed color of a child relying on the injected `@property` rule's
+registered initial-value. The page injects one `@property` rule; after
+`LoadEvent.FINISHED` the remaining probe expressions run via
 `evaluate_javascript`, wrapped in `JSON.stringify` for transport. Raw result
 (identical with and without `WEBKIT_DISABLE_COMPOSITING_MODE=1`):
 
 ```json
-{"backdropFilter": true, "colorMix": true, "probeInitial": "rgb(46, 226, 196)",
- "propertyRule": true, "ua": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64)
- AppleWebKit/605.1.15 (KHTML, like Gecko) Version/60.5 Safari/605.1.15",
- "webkitBackdropFilter": true}
+{"backdropFilter": true, "colorMix": true, "probeInitial": "rgb(46, 226, 196)", "propertyRule": true, "ua": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/60.5 Safari/605.1.15", "webkitBackdropFilter": true}
 ```
 
 - WebKitGTK version (`dpkg-query -W -f='${Version}\n' libwebkit2gtk-4.1-0`):
@@ -192,7 +198,11 @@ after `LoadEvent.FINISHED` the identical probe expressions run via
 - Visual: dynamic-color crossfade (Now Playing), glass blur (sidebar/player
   bar/menu), accent washes (search focus, playing row): **PENDING (human)** —
   visible-window check; the harness proves the engine features, not the app
-  visuals.
+  visuals. The human check must run with compositing **enabled** (the
+  default): the only live app run so far used
+  `WEBKIT_DISABLE_COMPOSITING_MODE=1` (Task 4 environment above), a switch
+  that can suppress `backdrop-filter` rendering regardless of engine support,
+  so the glass row cannot be judged from that run.
 - Fixes applied: **none — engine floor passes as-is.** No CSS gap was
   observed, so no fallbacks were added (surface: `color-mix` 37 call sites,
   `backdrop-filter`/`-webkit-` 17, per repo grep).
