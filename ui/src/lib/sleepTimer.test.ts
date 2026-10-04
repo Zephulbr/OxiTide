@@ -76,7 +76,8 @@ describe("sleep timer", () => {
   it("a natural queue end disarms the timer", () => {
     const { timer, fires } = setup();
     timer.armMinutes(30);
-    timer.observe(60_000, 60_000, false, 3);
+    // The last position event before the end lags the duration by up to a tick.
+    timer.observe(59_600, 60_000, false, 3);
     expect(timer.mode).toBe("off");
     vi.advanceTimersByTime(31 * 60_000);
     expect(fires).toEqual([]);

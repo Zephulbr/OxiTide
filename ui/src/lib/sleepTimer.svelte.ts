@@ -78,8 +78,9 @@ export function createSleepTimer(fire: (fadeMs: number) => void): SleepTimer {
       cancel();
       return;
     }
-    if (!playing && durationMs > 0 && positionMs >= durationMs) {
-      // The queue reached its natural end; nothing left to sleep through.
+    if (!playing && durationMs > 0 && positionMs + 500 >= durationMs) {
+      // The queue reached its natural end; nothing left to sleep through. The
+      // last position tick can lag the duration by up to 500 ms.
       cancel();
       return;
     }
