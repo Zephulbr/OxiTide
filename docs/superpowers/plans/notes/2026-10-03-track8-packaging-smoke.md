@@ -198,16 +198,12 @@ MimeType=x-scheme-handler/tidal;
       handler, and `namcap packaging/aur/PKGBUILD` is clean. Then
       `xdg-mime query default x-scheme-handler/tidal` names `oxitide.desktop`
       and `xdg-open 'tidal://...'` launches/focuses the app.
-      **Blocked on push:** `_commit=31b27a8d...` is local-only — `track8-linux`
-      has not been pushed to `https://codeberg.org/Zephulbr/OxiTide.git`, so an
-      AUR user's `makepkg` source fetch fails until it is.
-      **Integration follow-through (after push/merge):** once the branch is on
-      Codeberg, verify the pin reached the remote and re-pin if integration
-      rewrote it — `git fetch origin && git cat-file -e
-      31b27a8d532b977637d5418c003a5fd47f7784f0` (or
-      `git ls-remote origin | grep 31b27a8`); if the commit is not reachable,
-      re-pin `_commit` to the post-integration commit before attempting
-      `makepkg -si`. Cross-ref
+      **Pin reachable (2026-10-04):** `main` was pushed to Codeberg
+      (`3e78bf2..ccd70f2`), and the pinned commit
+      `31b27a8d532b977637d5418c003a5fd47f7784f0` is an ancestor of
+      `origin/main` (`git merge-base --is-ancestor` exit 0), so an AUR user's
+      `makepkg` source fetch resolves. The AUR install itself stays deferred to
+      the Arch host; no re-pin was needed (fast-forward integration). Cross-ref
       `2026-10-03-track8-bare-metal-checklist.md` (Packaging and platform floor,
       AUR install row).
 - [ ] **Oldest-base launch:** run the deb and the AppImage built here on a
