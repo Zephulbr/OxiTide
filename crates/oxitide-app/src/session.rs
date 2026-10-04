@@ -144,7 +144,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use oxitide_audio::engine::{EngineEvent, PlaybackState};
 
-/// State changes flush after this window; position ticks only mark dirty.
+/// Caps how often position-only updates are written. State changes (track,
+/// queue, pause, shuffle, repeat) are urgent and flush on the next saver wake
+/// (the loop polls at most every 100 ms); this window only paces position ticks.
 pub const SESSION_DEBOUNCE: Duration = Duration::from_secs(3);
 
 #[allow(clippy::large_enum_variant)]
@@ -449,7 +451,7 @@ mod tests {
         let _ = fs::remove_dir_all(dir);
     }
 
-    /// Review Focus: clearing must survive the engine's trailing empty state.
+    /// clear() removes the persisted file.
     #[test]
     fn saver_clear_removes_the_file() {
         let dir = temp_dir();
