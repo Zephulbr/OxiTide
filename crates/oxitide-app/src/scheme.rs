@@ -7,7 +7,9 @@
 //! first back up, and after a crash (the key already points at OxiTide) it
 //! reuses the prior run's backup rather than discarding the official handler.
 
-use std::path::{Path, PathBuf};
+#[cfg(windows)]
+use std::path::Path;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use std::sync::Mutex;
 
@@ -15,6 +17,7 @@ use std::sync::Mutex;
 const KEY: &str = r"HKCU\Software\Classes\tidal";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(windows), allow(dead_code))]
 pub enum KeyOwner {
     /// No `tidal` handler under HKCU.
     Absent,
@@ -35,6 +38,7 @@ pub enum SchemeAction {
 }
 
 /// Classify a `reg query` output for the scheme's command key.
+#[cfg_attr(not(windows), allow(dead_code))]
 pub fn owner_from_query(query_output: &str, exe_fragment: &str) -> KeyOwner {
     if query_output.trim().is_empty() {
         KeyOwner::Absent
@@ -50,6 +54,7 @@ pub fn owner_from_query(query_output: &str, exe_fragment: &str) -> KeyOwner {
 
 /// What to restore on exit given the owner seen at startup and a backup file
 /// from a prior run (if any).
+#[cfg_attr(not(windows), allow(dead_code))]
 pub fn decide(owner: KeyOwner, prior_backup: Option<PathBuf>) -> SchemeAction {
     match owner {
         KeyOwner::Absent => SchemeAction::Delete,
