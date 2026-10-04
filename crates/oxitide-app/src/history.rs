@@ -76,13 +76,13 @@ impl HistoryTracker {
             EngineEvent::State(state) => {
                 if state.playing {
                     if let Some(item) = self.pending_start.take() {
-                        self.current = Some(ActivePlay {
-                            item,
-                            started_at: now,
-                            last_pos_ms: 0,
-                            duration_ms: 0,
-                            listened_ms: 0,
-                        });
+                        self.start(item, now);
+                    } else if self.current.is_none() {
+                        // A replay after a queue end (or a stop) has no fresh
+                        // NowPlaying: the engine carries the item on the state.
+                        if let Some(item) = state.current.clone() {
+                            self.start(item, now);
+                        }
                     }
                 }
                 None
@@ -113,6 +113,16 @@ impl HistoryTracker {
     /// Finalize the current play (exit / logout). No-op without one.
     pub fn finish(&mut self) -> Option<HistoryRecord> {
         self.finalize()
+    }
+
+    fn start(&mut self, item: QueueItem, now: i64) {
+        self.current = Some(ActivePlay {
+            item,
+            started_at: now,
+            last_pos_ms: 0,
+            duration_ms: 0,
+            listened_ms: 0,
+        });
     }
 
     fn finalize(&mut self) -> Option<HistoryRecord> {
@@ -345,6 +355,9 @@ fn writer_main(
                     }
                 }
                 if let Some(snapshot) = snapshot {
+                    // A cap trim rewrites the whole file; measured ~82 ms in a
+                    // debug build at the 10k cap (2 MB), so the §9 rotation
+                    // fallback is not needed.
                     rewrite(&path, &snapshot);
                 }
             }
@@ -576,6 +589,14 @@ mod tests {
         EngineEvent::State(playback_state(playing))
     }
 
+    /// A state event that carries the current item, as the engine emits when
+    /// playback resumes after a queue end (no fresh NowPlaying).
+    fn state_with_current(playing: bool, item: &QueueItem) -> EngineEvent {
+        let mut state = playback_state(playing);
+        state.current = Some(item.clone());
+        EngineEvent::State(state)
+    }
+
     fn position(ms: u64, duration_ms: u64) -> EngineEvent {
         EngineEvent::Position { position_ms: ms, duration_ms }
     }
@@ -682,6 +703,25 @@ mod tests {
         let second = tracker.on_event(&EngineEvent::NowPlaying(None), 400).expect("second");
         assert_eq!(first.track_id, 1);
         assert_eq!(second.track_id, 1);
+    }
+
+    /// Review Focus: replaying after the queue ends must be recorded. The
+    /// engine announces `NowPlaying(None)` at the end and only `State` when
+    /// play resumes, so the tracker must start from `state.current`.
+    #[test]
+    fn replay_after_queue_end_is_recorded() {
+        let mut tracker = HistoryTracker::default();
+        play_seconds(&mut tracker, &item(1, 200), 40);
+        tracker.on_event(&EngineEvent::NowPlaying(None), 200);
+
+        tracker.on_event(&state_with_current(true, &item(1, 200)), 300);
+        for step in 1..=40 {
+            tracker.on_event(&position(step * 1000, 200_000), 300);
+        }
+        let record = tracker.on_event(&now_playing(&item(2, 200)), 400).expect("recorded");
+        assert_eq!(record.track_id, 1);
+        assert_eq!(record.listened_ms, 40_000);
+        assert_eq!(record.started_at, 300);
     }
 
     #[test]
@@ -1005,6 +1045,37 @@ mod tests {
             "stats took {:?}",
             started.elapsed()
         );
+    }
+
+    /// PM-D1/§9: measure one append at the 10k cap (trimming rewrites the
+    /// file). The bound is deliberately loose; the recorded figure justifies
+    /// keeping the immediate rewrite instead of a rotation scheme.
+    #[test]
+    fn append_at_the_cap_stays_fast() {
+        let dir = temp_dir();
+        let path = dir.join("history.jsonl");
+        let mut text = String::new();
+        for i in 0..10_000u64 {
+            let entry = record(i, "Artist", "Album", 2_000_000_000 - i as i64, 60_000);
+            text.push_str(&serde_json::to_string(&entry).unwrap());
+            text.push('\n');
+        }
+        fs::write(&path, text).unwrap();
+        let store = store(&dir, 10_000, true);
+        assert_eq!(store.page(0, 1).1, 10_000, "loaded at the cap");
+
+        let started = std::time::Instant::now();
+        record_play(&store, 99_999, 40);
+        store.record(&EngineEvent::NowPlaying(None));
+        let (_, total) = store.page(0, 1);
+        assert_eq!(total, 10_000);
+        eprintln!("cap append + trim rewrite took {:?}", started.elapsed());
+        assert!(
+            started.elapsed() < Duration::from_millis(500),
+            "cap append took {:?}",
+            started.elapsed()
+        );
+        let _ = fs::remove_dir_all(dir);
     }
 
     /// Review Focus: the in-flight play is in the page but not the stats.
