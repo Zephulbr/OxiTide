@@ -48,6 +48,7 @@ windows = { version = "0.62", features = [
 ] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
 keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
 mpris-server = { version = "0.10", default-features = false, features = ["tokio"] }
 

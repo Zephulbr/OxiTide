@@ -456,7 +456,32 @@ fn process_creation_unix_ms() -> Option<u128> {
     Some(((ticks - UNIX_EPOCH_FILETIME_TICKS) / 10_000) as u128)
 }
 
-#[cfg(not(windows))]
+/// Linux: unix milliseconds of process creation, from `/proc/self/stat`
+/// `starttime` anchored to the wall clock by `CLOCK_BOOTTIME` (nanosecond
+/// precision, so back-to-back reads cancel exactly).
+#[cfg(target_os = "linux")]
+fn process_creation_unix_ms() -> Option<u128> {
+    let stat = std::fs::read_to_string("/proc/self/stat").ok()?;
+    let starttime = parse_stat_starttime(&stat)?;
+    let ticks_per_sec = clock_ticks_per_sec()?;
+    creation_unix_ms(now_unix_ms(), boottime_seconds()?, starttime, ticks_per_sec)
+}
+
+/// Seconds since boot from `CLOCK_BOOTTIME`.
+#[cfg(target_os = "linux")]
+fn boottime_seconds() -> Option<f64> {
+    let mut ts = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    let rc = unsafe { libc::clock_gettime(libc::CLOCK_BOOTTIME, &mut ts) };
+    if rc != 0 {
+        return None;
+    }
+    Some(ts.tv_sec as f64 + ts.tv_nsec as f64 / 1_000_000_000.0)
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 fn process_creation_unix_ms() -> Option<u128> {
     None
 }
@@ -544,6 +569,7 @@ fn process_memory_rows() -> Vec<(String, u64, bool)> {
 
 /// One process from the Toolhelp snapshot: `(pid, parent pid, name, creation
 /// time in unix ms when readable)`.
+#[cfg(any(windows, test))]
 type ProcessRow = (u32, u32, String, Option<u64>);
 
 /// Processes the memory metric tracks: the app itself, WebView2's children,
@@ -551,6 +577,7 @@ type ProcessRow = (u32, u32, String, Option<u64>);
 /// snapshot keeps the PID-reuse creation-time lookup to a handful of
 /// `OpenProcess` calls per sample; opening every process on the machine
 /// measurably slowed the S5 scroll frames.
+#[cfg(any(windows, test))]
 fn tracked_process_name(name: &str) -> bool {
     name.eq_ignore_ascii_case("oxitide-app.exe")
         || name.eq_ignore_ascii_case("msedgewebview2.exe")
@@ -561,6 +588,7 @@ fn tracked_process_name(name: &str) -> bool {
 /// rejects PID-reuse false positives: a "parent" created after its child
 /// cannot be the real ancestor (observed once: unrelated browser processes
 /// were folded into an S4 memory sample this way).
+#[cfg(any(windows, test))]
 fn is_descendant(processes: &[ProcessRow], self_pid: u32, pid: u32) -> bool {
     let Some(start) = processes.iter().find(|(p, _, _, _)| *p == pid) else {
         return false;
@@ -615,12 +643,79 @@ fn creation_ms_for_pid(pid: u32) -> Option<u64> {
     Some((ticks - UNIX_EPOCH_FILETIME_TICKS) / 10_000)
 }
 
-#[cfg(not(windows))]
-fn creation_ms_for_pid(_pid: u32) -> Option<u64> {
-    None
+/// Linux clock ticks per second; `/proc` starttime is measured in ticks.
+#[cfg(target_os = "linux")]
+fn clock_ticks_per_sec() -> Option<u64> {
+    let ticks = unsafe { libc::sysconf(libc::_SC_CLK_TCK) };
+    (ticks > 0).then_some(ticks as u64)
 }
 
-#[cfg(not(windows))]
+/// Linux page size for the `statm` fallback.
+#[cfg(target_os = "linux")]
+fn page_size_bytes() -> Option<u64> {
+    let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
+    (page_size > 0).then_some(page_size as u64)
+}
+
+/// One `/proc/<pid>/task/<tid>/children` list per thread of `pid`.
+#[cfg(target_os = "linux")]
+fn read_task_children(pid: u32) -> Vec<Vec<u32>> {
+    let Ok(tasks) = std::fs::read_dir(format!("/proc/{pid}/task")) else {
+        return Vec::new();
+    };
+    tasks
+        .flatten()
+        .filter_map(|entry| std::fs::read_to_string(entry.path().join("children")).ok())
+        .map(|text| parse_children(&text))
+        .collect()
+}
+
+/// `/proc/<pid>/comm`, `None` when the process exited or is unreadable.
+#[cfg(target_os = "linux")]
+fn read_process_name(pid: u32) -> Option<String> {
+    parse_comm(&std::fs::read_to_string(format!("/proc/{pid}/comm")).ok()?)
+}
+
+/// Resident memory in MiB; `None` when the process exited (zombie) or both
+/// `/proc` sources are unreadable.
+#[cfg(target_os = "linux")]
+fn read_process_memory_mb(pid: u32) -> Option<u64> {
+    let smaps_rollup = std::fs::read_to_string(format!("/proc/{pid}/smaps_rollup")).ok();
+    let statm = std::fs::read_to_string(format!("/proc/{pid}/statm")).ok();
+    let page_size = page_size_bytes().unwrap_or(0);
+    let kb = memory_kb_from_proc(smaps_rollup.as_deref(), statm.as_deref(), page_size)?;
+    resident_kb_to_mb(kb)
+}
+
+/// Linux: resident memory of this process and every descendant, by walking
+/// `/proc/<pid>/task/*/children`; one row per process: (name, mb, is_self).
+#[cfg(target_os = "linux")]
+fn process_memory_rows() -> Vec<(String, u64, bool)> {
+    use std::collections::{BTreeSet, VecDeque};
+
+    let self_pid = std::process::id();
+    let mut sampled = BTreeSet::new();
+    let mut queue = VecDeque::from([self_pid]);
+    let mut rows = Vec::new();
+    while let Some(pid) = queue.pop_front() {
+        if !sampled.insert(pid) {
+            continue;
+        }
+        for child in new_child_pids(&sampled, &read_task_children(pid)) {
+            queue.push_back(child);
+        }
+        let Some(name) = read_process_name(pid) else {
+            continue;
+        };
+        let Some(mb) = read_process_memory_mb(pid) else {
+            continue;
+        };
+        rows.push((name, mb, pid == self_pid));
+    }
+    rows
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 fn process_memory_rows() -> Vec<(String, u64, bool)> {
     Vec::new()
 }
@@ -812,11 +907,23 @@ mod tests {
         assert_eq!(parse_comm(" \n"), None);
     }
 
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     #[test]
     fn process_tree_memory_is_positive() {
-        let mb = process_tree_memory_mb().expect("measurement available on Windows");
+        let mb = process_tree_memory_mb().expect("measurement available on Linux and Windows");
         assert!(mb > 0, "expected a positive working set, got {mb}");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_process_creation_is_recent() {
+        let created = process_creation_unix_ms().expect("creation time from /proc");
+        let now = now_unix_ms();
+        assert!(created <= now, "creation {created} must not be in the future");
+        assert!(
+            now - created < 24 * 60 * 60 * 1000,
+            "creation {created} must be less than a day old"
+        );
     }
 
     #[test]
@@ -851,7 +958,7 @@ mod tests {
         assert!(!is_descendant(&reused, 10, 40));
     }
 
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     #[test]
     fn memory_samples_name_each_process_and_flag_the_app() {
         let dir = temp_dir("memproc");

@@ -2876,6 +2876,7 @@ dependencies = [
  "discord-rich-presence",
  "image",
  "keyring",
+ "libc",
  "md-5",
  "mpris-server",
  "oxitide-audio",
