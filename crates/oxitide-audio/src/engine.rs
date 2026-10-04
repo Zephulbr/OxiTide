@@ -37,6 +37,7 @@ pub struct PlaybackState {
     pub playing: bool,
     pub buffering: bool,
     pub current: Option<QueueItem>,
+    pub current_index: Option<usize>,
     pub position_ms: u64,
     pub duration_ms: u64,
     pub volume: f32,
@@ -63,6 +64,16 @@ pub enum EngineCmd {
     PlayTracks { items: Vec<QueueItem>, start: usize },
     /// Replace the queue with a fully shuffled context (header Shuffle).
     PlayShuffled { items: Vec<QueueItem> },
+    /// Replace the queue with a persisted session and start paused: no output
+    /// is opened and no media is fetched until the user presses play. The
+    /// saved queue order is preserved even when `shuffle` is true.
+    RestoreSession {
+        items: Vec<QueueItem>,
+        start: usize,
+        position_ms: u64,
+        shuffle: bool,
+        repeat: RepeatMode,
+    },
     PlayPause,
     Next,
     Prev,
@@ -144,6 +155,7 @@ fn build_state(inner: &Inner) -> PlaybackState {
         playing: q.is_playing(),
         buffering: false,
         current: q.current().cloned(),
+        current_index: q.current_index(),
         position_ms: inner.position_ms.load(Ordering::SeqCst),
         duration_ms: q.current().map(|i| i.duration_secs as u64 * 1000).unwrap_or(0),
         volume: q.volume(),
@@ -390,6 +402,32 @@ impl Engine {
             }
             EngineCmd::PlayShuffled { items } => {
                 self.start_context(|q| q.play_context_shuffled(items));
+            }
+            EngineCmd::RestoreSession { items, start, position_ms, shuffle, repeat } => {
+                *self.inner.stream_meta.lock().unwrap() = None;
+                let item = self.mutate_playing_queue(|q| {
+                    q.restore(items, start, shuffle, repeat);
+                    q.current().cloned()
+                });
+                self.inner.paused.store(true, Ordering::SeqCst);
+                self.inner.position_ms.store(
+                    if item.is_some() { position_ms } else { 0 },
+                    Ordering::SeqCst,
+                );
+                self.inner.position_track.store(
+                    item.as_ref().map(|i| i.track_id).unwrap_or(0),
+                    Ordering::SeqCst,
+                );
+                // A non-auto-start seek keeps the worker idle at restore while
+                // letting the first play resume from the saved position.
+                *self.inner.seek_target.lock().unwrap() = item.as_ref().map(|i| PendingSeek {
+                    track_id: i.track_id,
+                    position_ms,
+                    auto_start: false,
+                });
+                self.inner.notify_worker();
+                self.emit(EngineEvent::NowPlaying(item));
+                self.emit(EngineEvent::State(self.state()));
             }
             EngineCmd::PlayPause => {
                 // Only toggle when a track is current. On an empty queue
@@ -2387,6 +2425,60 @@ mod tests {
         let mut ids: Vec<u64> = state.queue.iter().map(|i| i.track_id).collect();
         ids.sort_unstable();
         assert_eq!(ids, vec![1, 2, 3], "the queue must keep every item");
+    }
+
+    #[test]
+    fn restore_session_starts_paused_and_fetches_nothing() {
+        let (plan, files) = fixture_plan();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let fetcher = Arc::new(CountingFetcher { files, calls: calls.clone() });
+        let engine = build_engine(
+            Arc::new(FakeResolver { plan }),
+            fetcher,
+            Box::new(NullOutput::new()),
+            Quality::Lossless,
+        );
+        engine
+            .handle(EngineCmd::RestoreSession {
+                items: vec![item(1), item(2), item(3)],
+                start: 1,
+                position_ms: 4200,
+                shuffle: true,
+                repeat: RepeatMode::All,
+            })
+            .unwrap();
+        let state = engine.state();
+        assert!(!state.playing, "restore must not start playback");
+        assert_eq!(state.current_index, Some(1));
+        assert_eq!(state.position_ms, 4200);
+        assert!(state.shuffle);
+        assert_eq!(state.repeat, RepeatMode::All);
+        assert_eq!(
+            state.queue.iter().map(|i| i.track_id).collect::<Vec<_>>(),
+            vec![1, 2, 3],
+            "restore must keep the saved order even with shuffle on"
+        );
+        std::thread::sleep(Duration::from_millis(200));
+        assert_eq!(calls.load(Ordering::SeqCst), 0, "restore must not fetch media");
+    }
+
+    #[test]
+    fn restore_session_resumes_at_the_saved_position() {
+        let (plan, files) = fixture_plan();
+        let (engine, _output) = engine_with(plan, files);
+        engine
+            .handle(EngineCmd::RestoreSession {
+                items: vec![item(1), item(2)],
+                start: 0,
+                position_ms: 1200,
+                shuffle: false,
+                repeat: RepeatMode::Off,
+            })
+            .unwrap();
+        engine.handle(EngineCmd::PlayPause).unwrap();
+        let state = engine.state();
+        assert!(state.playing);
+        assert_eq!(state.current_index, Some(0));
     }
 
     /// Regression: `Next` at the end of the queue with repeat off must not

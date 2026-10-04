@@ -291,6 +291,7 @@ mod tests {
             playing,
             buffering: false,
             current,
+            current_index: None,
             position_ms: 0,
             duration_ms: 0,
             volume: 1.0,

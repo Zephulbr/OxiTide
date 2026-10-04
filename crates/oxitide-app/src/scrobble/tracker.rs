@@ -256,6 +256,7 @@ mod tests {
             playing,
             buffering: false,
             current: Some(item(1, 200)),
+            current_index: None,
             position_ms: 0,
             duration_ms: 200_000,
             volume: 1.0,

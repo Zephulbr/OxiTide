@@ -102,6 +102,28 @@ impl Queue {
         }
     }
 
+    /// Restore a saved context exactly as persisted: the item order is kept
+    /// (even with shuffle on — unlike `set_shuffle`, which re-shuffles the
+    /// tail), the start index is clamped, and playback starts paused.
+    pub fn restore(
+        &mut self,
+        items: Vec<QueueItem>,
+        start: usize,
+        shuffle: bool,
+        repeat: RepeatMode,
+    ) {
+        self.items = items;
+        self.shuffle = shuffle;
+        self.repeat = repeat;
+        if self.items.is_empty() {
+            self.current = None;
+            self.playing = false;
+        } else {
+            self.current = Some(start.min(self.items.len() - 1));
+            self.playing = false;
+        }
+    }
+
     pub fn toggle_play_pause(&mut self) {
         if self.current.is_some() {
             self.playing = !self.playing;
@@ -576,5 +598,30 @@ mod tests {
         ids.sort();
         assert_eq!(ids, (1..=8).collect::<Vec<_>>());
         assert_eq!(q.current_index(), None);
+    }
+
+    /// Review Focus: restoring a shuffled session must not re-shuffle it.
+    #[test]
+    fn restore_keeps_exact_order_and_starts_paused() {
+        let mut q = Queue::default();
+        q.restore((1..=3).map(item).collect(), 1, true, RepeatMode::All);
+        assert_eq!(q.current_index(), Some(1));
+        assert!(!q.is_playing());
+        assert!(q.shuffle());
+        assert_eq!(q.repeat(), RepeatMode::All);
+        assert_eq!(
+            q.items().iter().map(|i| i.track_id).collect::<Vec<_>>(),
+            vec![1, 2, 3]
+        );
+    }
+
+    #[test]
+    fn restore_clamps_the_start_index_and_handles_empty() {
+        let mut q = Queue::default();
+        q.restore((1..=2).map(item).collect(), 99, false, RepeatMode::Off);
+        assert_eq!(q.current_index(), Some(1));
+        q.restore(Vec::new(), 0, false, RepeatMode::Off);
+        assert_eq!(q.current_index(), None);
+        assert!(!q.is_playing());
     }
 }
