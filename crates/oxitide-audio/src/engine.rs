@@ -1308,23 +1308,32 @@ fn run_session(
                 *inner.output_status.lock().unwrap() = output.status();
             }
             if fading && volume <= f32::EPSILON {
-                // The fade finished: pause here, keep queue and position, and
-                // restore the user's volume so the next play is audible.
-                let base = inner
-                    .fade
-                    .lock()
-                    .unwrap()
-                    .take()
-                    .map(|f| f.base_volume)
-                    .unwrap_or(volume);
-                {
-                    let mut q = inner.queue.lock().unwrap();
-                    q.stop();
-                    q.set_volume(base);
+                // Only complete when this iteration actually owns the fade: a
+                // concurrent cancel (play/pause, volume, new context) took it
+                // and must win, not be overwritten with a stale zero.
+                if let Some(fade) = inner.fade.lock().unwrap().take() {
+                    // Discard the audio staged at the faded volume before the
+                    // user volume is restored: exclusive endpoint volume
+                    // applies at render time, so a full ring would otherwise
+                    // un-mute an audible tail after the pause.
+                    if let Err(e) = output.flush() {
+                        return SessionOutcome::OutputError {
+                            message: e.to_string(),
+                            track_id: stream.item.track_id,
+                        };
+                    }
+                    // The fade finished: pause here, keep queue and position,
+                    // and restore the user's volume so the next play is audible.
+                    let base = fade.base_volume;
+                    {
+                        let mut q = inner.queue.lock().unwrap();
+                        q.stop();
+                        q.set_volume(base);
+                    }
+                    inner.volume.store(base.to_bits(), Ordering::SeqCst);
+                    inner.paused.store(true, Ordering::SeqCst);
+                    emit(inner, EngineEvent::State(build_state(inner)));
                 }
-                inner.volume.store(base.to_bits(), Ordering::SeqCst);
-                inner.paused.store(true, Ordering::SeqCst);
-                emit(inner, EngineEvent::State(build_state(inner)));
             }
             if inner.paused.load(Ordering::SeqCst) {
                 std::thread::sleep(Duration::from_millis(20));
@@ -2595,6 +2604,10 @@ mod tests {
         engine.handle(EngineCmd::FadeAndPause { duration_ms: 150 }).unwrap();
         wait_for(|| !engine.state().playing);
 
+        assert!(
+            output.flushes() >= 1,
+            "completion must discard the audio staged at the faded volume"
+        );
         assert_eq!(engine.state().volume, 1.0, "pre-fade volume must be restored");
         wait_for(|| output.volumes().last() == Some(&1.0));
         let volumes = output.volumes();
@@ -2717,6 +2730,95 @@ mod tests {
         let (volume, fading) = current_volume(&engine.inner);
         assert!(!fading, "play/pause must cancel the fade");
         assert!((volume - 0.8).abs() < f32::EPSILON, "user volume not restored: {volume}");
+    }
+
+    /// Test output that blocks on the zero-volume call so the test can cancel
+    /// a fade exactly between the worker's fade read and its completion.
+    struct GatedVolumeOutput {
+        inner: NullOutput,
+        entered: Arc<(Mutex<bool>, Condvar)>,
+        release: Arc<(Mutex<bool>, Condvar)>,
+    }
+
+    impl AudioOutput for GatedVolumeOutput {
+        fn open(&mut self, spec: &AudioOutputSpec) -> Result<()> {
+            self.inner.open(spec)
+        }
+        fn start(&mut self) -> Result<()> {
+            self.inner.start()
+        }
+        fn write(&mut self, buf: &PcmBuffer) -> Result<()> {
+            self.inner.write(buf)
+        }
+        fn set_volume(&mut self, volume: f32) -> Result<()> {
+            if volume <= f32::EPSILON {
+                let (entered, cond) = &*self.entered;
+                *entered.lock().unwrap() = true;
+                cond.notify_all();
+                let (release, cond) = &*self.release;
+                let mut released = release.lock().unwrap();
+                while !*released {
+                    released = cond.wait(released).unwrap();
+                }
+            }
+            self.inner.set_volume(volume)
+        }
+        fn flush(&mut self) -> Result<()> {
+            self.inner.flush()
+        }
+        fn stop(&mut self) -> Result<()> {
+            self.inner.stop()
+        }
+        fn status(&self) -> OutputStatus {
+            self.inner.status()
+        }
+    }
+
+    /// Review Focus: a cancel that races the fade's final step must not stop
+    /// playback or zero the volume.
+    #[test]
+    fn cancelling_at_fade_completion_does_not_stop_playback_or_zero_the_volume() {
+        let (plan, files) = fixture_plan();
+        let output = NullOutput::new();
+        let entered = Arc::new((Mutex::new(false), Condvar::new()));
+        let release = Arc::new((Mutex::new(false), Condvar::new()));
+        let engine = build_engine(
+            Arc::new(FakeResolver { plan }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(GatedVolumeOutput {
+                inner: output.clone(),
+                entered: entered.clone(),
+                release: release.clone(),
+            }),
+            Quality::Lossless,
+        );
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine.handle(EngineCmd::SetRepeat(RepeatMode::All)).unwrap();
+        wait_for(|| !output.samples().is_empty());
+
+        engine.handle(EngineCmd::FadeAndPause { duration_ms: 1 }).unwrap();
+        {
+            let (flag, cond) = &*entered;
+            let mut blocked = flag.lock().unwrap();
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while !*blocked && Instant::now() < deadline {
+                let (guard, _) = cond.wait_timeout(blocked, Duration::from_millis(50)).unwrap();
+                blocked = guard;
+            }
+            assert!(*blocked, "the fade never reached the output");
+        }
+
+        // Cancel while the worker is parked on the final zero-volume write.
+        engine.handle(EngineCmd::SetVolume(0.5)).unwrap();
+        {
+            let (flag, cond) = &*release;
+            *flag.lock().unwrap() = true;
+            cond.notify_all();
+        }
+
+        std::thread::sleep(Duration::from_millis(200));
+        assert!(engine.state().playing, "the cancelled fade must not stop playback");
+        assert_eq!(engine.state().volume, 0.5, "the cancelled fade must not zero the volume");
     }
 
     /// Regression: `Next` at the end of the queue with repeat off must not
