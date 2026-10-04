@@ -234,6 +234,9 @@ pub fn auth_logout(state: State<'_, AppState>) -> Result<(), String> {
     if let Some(store) = state.token_store() {
         store.clear().map_err(|e| e.to_string())?;
     }
+    if let Some(history) = state.history() {
+        history.finalize_now();
+    }
     state.logout();
     if let Some(saver) = state.session_saver() {
         saver.clear();
@@ -464,6 +467,12 @@ fn build_player(
     engine.subscribe(Arc::new(move |event| {
         if let Some(scrobbler) = scrobble_handle.state::<AppState>().scrobbler() {
             scrobbler.on_player_event(&event);
+        }
+    }));
+    let history_handle = app.clone();
+    engine.subscribe(Arc::new(move |event| {
+        if let Some(history) = history_handle.state::<AppState>().history() {
+            history.record(&event);
         }
     }));
     engine.set_perf_hook(std::sync::Arc::new(crate::perf::audio_event));
@@ -1224,6 +1233,70 @@ pub fn fade_and_pause(state: State<'_, AppState>, duration_ms: u64) -> Result<()
         .map_err(|e| e.to_string())
 }
 
+/// One page of the local history log, newest first.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct HistoryPageDto {
+    pub items: Vec<crate::history::HistoryRecord>,
+    pub total: usize,
+    pub offset: usize,
+    pub limit: usize,
+}
+
+#[tauri::command]
+pub fn get_history_page(
+    state: State<'_, AppState>,
+    offset: usize,
+    limit: usize,
+) -> Result<HistoryPageDto, String> {
+    let limit = limit.clamp(1, 500);
+    let (items, total) = match state.history() {
+        Some(store) => store.page(offset, limit),
+        None => (Vec::new(), 0),
+    };
+    Ok(HistoryPageDto { items, total, offset, limit })
+}
+
+#[tauri::command]
+pub fn get_stats(state: State<'_, AppState>, offset_minutes: i32) -> Result<crate::history::Stats, String> {
+    Ok(match state.history() {
+        Some(store) => store.stats(offset_minutes),
+        None => crate::history::Stats::default(),
+    })
+}
+
+#[tauri::command]
+pub fn clear_history(state: State<'_, AppState>) -> Result<(), String> {
+    if let Some(store) = state.history() {
+        store.clear();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_history_enabled(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    if let Some(store) = state.history() {
+        store.set_enabled(enabled);
+    }
+    let mut config = state.config();
+    config.history.enabled = enabled;
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_history_max_entries(state: State<'_, AppState>, max_entries: usize) -> Result<(), String> {
+    let max_entries = max_entries.clamp(1, 1_000_000);
+    if let Some(store) = state.history() {
+        store.set_max_entries(max_entries);
+    }
+    let mut config = state.config();
+    config.history.max_entries = max_entries;
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
 #[tauri::command]
 pub fn set_shuffle(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
@@ -1832,6 +1905,16 @@ mod tests {
         assert_eq!(value["offset"], 100);
         assert_eq!(value["limit"], 50);
         assert!(value["items"].is_array());
+    }
+
+    #[test]
+    fn history_page_dto_serializes_fields() {
+        let dto = HistoryPageDto { items: Vec::new(), total: 3, offset: 1, limit: 100 };
+        let value = serde_json::to_value(&dto).unwrap();
+        assert_eq!(value["total"], 3);
+        assert_eq!(value["offset"], 1);
+        assert_eq!(value["limit"], 100);
+        assert!(value["items"].as_array().unwrap().is_empty());
     }
 
     #[test]

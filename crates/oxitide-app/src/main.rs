@@ -191,6 +191,14 @@ fn main() {
             session::SESSION_DEBOUNCE,
         )));
     }
+    if let Some(path) = history::history_path() {
+        let config = state.config();
+        state.set_history(std::sync::Arc::new(history::HistoryStore::start(
+            path,
+            config.history.max_entries,
+            config.history.enabled,
+        )));
+    }
 
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
@@ -350,6 +358,11 @@ fn main() {
             commands::seek,
             commands::set_volume,
             commands::fade_and_pause,
+            commands::get_history_page,
+            commands::get_stats,
+            commands::clear_history,
+            commands::set_history_enabled,
+            commands::set_history_max_entries,
             commands::set_shuffle,
             commands::set_repeat,
             commands::queue_reorder,
@@ -409,6 +422,9 @@ fn main() {
                 let state = app_handle.state::<AppState>();
                 if let Some(saver) = state.session_saver() {
                     saver.flush_now();
+                }
+                if let Some(history) = state.history() {
+                    history.finalize_now();
                 }
                 let config = state.config();
                 if config.cache.clear_on_exit {

@@ -15,6 +15,7 @@ pub struct Config {
     pub cache: CacheConfig,
     pub integrations: IntegrationsConfig,
     pub scrobbling: ScrobblingConfig,
+    pub history: HistoryConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -226,6 +227,20 @@ impl ScrobblingConfig {
     }
 }
 
+/// Local playback history (spec §5.1, §6.3).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct HistoryConfig {
+    pub enabled: bool,
+    pub max_entries: usize,
+}
+
+impl Default for HistoryConfig {
+    fn default() -> Self {
+        Self { enabled: true, max_entries: crate::history::DEFAULT_MAX_ENTRIES }
+    }
+}
+
 impl Config {
     /// Load `%APPDATA%\OxiTide\config.toml`; a missing file yields defaults and
     /// a malformed file is backed up to `config.toml.bak` and replaced with
@@ -358,6 +373,7 @@ mod tests {
             },
             integrations: IntegrationsConfig { smtc: false, discord: true },
             scrobbling: ScrobblingConfig::default(),
+            history: HistoryConfig::default(),
         };
         config.save_to(&path).unwrap();
         assert_eq!(Config::load_from(&path), config);
@@ -658,6 +674,32 @@ mod tests {
         assert!(text.contains("[integrations]"), "{text}");
         assert!(text.contains("discord = true"), "{text}");
         assert!(Config::load_from(&path).integrations.discord);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn history_defaults_and_round_trip() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        let config = Config {
+            history: HistoryConfig { enabled: false, max_entries: 500 },
+            ..Config::default()
+        };
+        config.save_to(&path).unwrap();
+        let loaded = Config::load_from(&path);
+        assert!(!loaded.history.enabled);
+        assert_eq!(loaded.history.max_entries, 500);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn pre_history_file_fills_defaults() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        fs::write(&path, "[audio]\nvolume = 0.5\n").unwrap();
+        let loaded = Config::load_from(&path);
+        assert!(loaded.history.enabled);
+        assert_eq!(loaded.history.max_entries, 10_000);
         let _ = fs::remove_dir_all(dir);
     }
 }

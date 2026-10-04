@@ -43,6 +43,9 @@ pub struct AppState {
     /// Persists the playback session across restarts; `None` when the app has
     /// no writable data directory.
     pub session_saver: Mutex<Option<Arc<crate::session::SessionSaver>>>,
+    /// Local playback history; `None` when the app has no writable data
+    /// directory.
+    pub history: Mutex<Option<Arc<crate::history::HistoryStore>>>,
     /// The process-wide token store chosen at startup (keyring or session-only).
     pub token_store: RwLock<Option<Arc<dyn TokenStore>>>,
     /// Result of the startup keyring probe, exposed to the UI.
@@ -148,6 +151,14 @@ impl AppState {
 
     pub fn session_saver(&self) -> Option<Arc<crate::session::SessionSaver>> {
         self.session_saver.lock().unwrap().clone()
+    }
+
+    pub fn set_history(&self, store: Arc<crate::history::HistoryStore>) {
+        *self.history.lock().unwrap() = Some(store);
+    }
+
+    pub fn history(&self) -> Option<Arc<crate::history::HistoryStore>> {
+        self.history.lock().unwrap().clone()
     }
 
     pub fn set_token_store(&self, store: Arc<dyn TokenStore>) {
@@ -322,6 +333,20 @@ mod tests {
         ));
         state.set_session_saver(saver);
         assert!(state.session_saver().is_some());
+    }
+
+    #[test]
+    fn history_starts_unset_and_is_set_once() {
+        let state = AppState::default();
+        assert!(state.history().is_none());
+        let dir = std::env::temp_dir().join(format!("oxitide-state-history-{}", std::process::id()));
+        let store = Arc::new(crate::history::HistoryStore::start(
+            dir.join("history.jsonl"),
+            100,
+            true,
+        ));
+        state.set_history(store);
+        assert!(state.history().is_some());
     }
 
     #[test]
