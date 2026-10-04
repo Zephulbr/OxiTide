@@ -234,6 +234,9 @@ pub fn auth_logout(state: State<'_, AppState>) -> Result<(), String> {
     if let Some(store) = state.token_store() {
         store.clear().map_err(|e| e.to_string())?;
     }
+    if let Some(saver) = state.session_saver() {
+        saver.clear();
+    }
     state.logout();
     Ok(())
 }
@@ -431,6 +434,9 @@ fn build_player(
     let handle = app.clone();
     let last_track = std::sync::Mutex::new(None);
     engine.subscribe(Arc::new(move |event| {
+        if let Some(saver) = handle.state::<AppState>().session_saver() {
+            saver.record(&event);
+        }
         if let EngineEvent::Error { code, .. } = &event {
             if code == "auth" {
                 handle.state::<AppState>().notify_session_expired();
@@ -1270,6 +1276,65 @@ pub fn queue_add(state: State<'_, AppState>, items: Vec<QueueItem>) -> Result<()
 pub fn get_playback_state(state: State<'_, AppState>) -> Result<PlaybackState, String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
     Ok(player.engine.state())
+}
+
+/// The persisted session as the UI should apply it, or `None` when no usable
+/// file exists. Playback is applied paused by `restore_session`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct RestoredSessionDto {
+    pub queue: Vec<QueueItem>,
+    pub current_index: usize,
+    pub position_ms: u64,
+    pub shuffle: bool,
+    pub repeat: RepeatMode,
+    pub play_source: Option<String>,
+}
+
+#[tauri::command]
+pub fn get_restored_session() -> Result<Option<RestoredSessionDto>, String> {
+    let Some(path) = crate::session::session_path() else {
+        return Ok(None);
+    };
+    Ok(crate::session::load(&path).map(|session| RestoredSessionDto {
+        current_index: session.current_index.unwrap_or(0),
+        position_ms: session.position_ms,
+        shuffle: session.shuffle,
+        repeat: session.repeat,
+        play_source: session.play_source,
+        queue: session.queue.into_iter().map(QueueItem::from).collect(),
+    }))
+}
+
+#[tauri::command]
+pub fn restore_session(
+    state: State<'_, AppState>,
+    items: Vec<QueueItem>,
+    start: usize,
+    position_ms: u64,
+    shuffle: bool,
+    repeat: RepeatMode,
+) -> Result<(), String> {
+    let player = state.player().ok_or_else(|| "not logged in".to_string())?;
+    player
+        .engine
+        .handle(EngineCmd::RestoreSession { items, start, position_ms, shuffle, repeat })
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_play_source(state: State<'_, AppState>, id: Option<String>) -> Result<(), String> {
+    if let Some(saver) = state.session_saver() {
+        saver.set_play_source(id);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn clear_session(state: State<'_, AppState>) -> Result<(), String> {
+    if let Some(saver) = state.session_saver() {
+        saver.clear();
+    }
+    Ok(())
 }
 
 #[tauri::command]

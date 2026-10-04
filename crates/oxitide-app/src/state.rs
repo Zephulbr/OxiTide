@@ -40,6 +40,9 @@ pub struct AppState {
     pub artwork: Mutex<Option<Arc<ArtworkService>>>,
     pub lyrics: Mutex<Option<Arc<LyricsService>>>,
     pub scrobbler: Mutex<Option<Arc<ScrobblerService>>>,
+    /// Persists the playback session across restarts; `None` when the app has
+    /// no writable data directory.
+    pub session_saver: Mutex<Option<Arc<crate::session::SessionSaver>>>,
     /// The process-wide token store chosen at startup (keyring or session-only).
     pub token_store: RwLock<Option<Arc<dyn TokenStore>>>,
     /// Result of the startup keyring probe, exposed to the UI.
@@ -137,6 +140,14 @@ impl AppState {
 
     pub fn scrobbler(&self) -> Option<Arc<ScrobblerService>> {
         self.scrobbler.lock().unwrap().clone()
+    }
+
+    pub fn set_session_saver(&self, saver: Arc<crate::session::SessionSaver>) {
+        *self.session_saver.lock().unwrap() = Some(saver);
+    }
+
+    pub fn session_saver(&self) -> Option<Arc<crate::session::SessionSaver>> {
+        self.session_saver.lock().unwrap().clone()
     }
 
     pub fn set_token_store(&self, store: Arc<dyn TokenStore>) {
@@ -295,6 +306,22 @@ mod tests {
         );
         state.set_scrobbler(service);
         assert!(state.scrobbler().is_some());
+    }
+
+    #[test]
+    fn session_saver_starts_unset_and_is_set_once() {
+        let state = AppState::default();
+        assert!(state.session_saver().is_none());
+        let dir = std::env::temp_dir().join(format!(
+            "oxitide-state-saver-{}",
+            std::process::id()
+        ));
+        let saver = Arc::new(crate::session::SessionSaver::start(
+            dir.join("session.json"),
+            std::time::Duration::from_secs(60),
+        ));
+        state.set_session_saver(saver);
+        assert!(state.session_saver().is_some());
     }
 
     #[test]

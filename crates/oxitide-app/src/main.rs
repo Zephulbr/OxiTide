@@ -184,6 +184,12 @@ fn main() {
     state.set_scrobbler(scrobbler.clone());
     perf::mark("services_ready");
     state.set_config(config);
+    if let Some(path) = session::session_path() {
+        state.set_session_saver(std::sync::Arc::new(session::SessionSaver::start(
+            path,
+            session::SESSION_DEBOUNCE,
+        )));
+    }
 
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
@@ -349,6 +355,10 @@ fn main() {
             commands::queue_add,
             commands::queue_clear,
             commands::get_playback_state,
+            commands::get_restored_session,
+            commands::restore_session,
+            commands::set_play_source,
+            commands::clear_session,
             commands::get_config,
             commands::get_output_devices,
             commands::set_output_device,
@@ -395,6 +405,9 @@ fn main() {
             tauri::RunEvent::Exit => {
                 scheme::restore_remembered();
                 let state = app_handle.state::<AppState>();
+                if let Some(saver) = state.session_saver() {
+                    saver.flush_now();
+                }
                 let config = state.config();
                 if config.cache.clear_on_exit {
                     if let Some(cache) = state.cache() {
