@@ -221,9 +221,26 @@ fn saver_main(path: PathBuf, debounce: Duration, rx: Receiver<SaverMsg>) {
         };
         match rx.recv_timeout(wait) {
             Ok(SaverMsg::Event(EngineEvent::State(state))) => {
+                let session_changed = match snapshot.as_ref() {
+                    None => true,
+                    Some(prev) => {
+                        prev.queue != state.queue
+                            || prev.current_index != state.current_index
+                            || prev.shuffle != state.shuffle
+                            || prev.repeat != state.repeat
+                            || prev.playing != state.playing
+                    }
+                };
+                if let Some(prev) = snapshot.as_ref() {
+                    if prev.position_ms != state.position_ms {
+                        dirty = true;
+                    }
+                }
+                if session_changed {
+                    dirty = true;
+                    urgent = true;
+                }
                 snapshot = Some(state);
-                dirty = true;
-                urgent = true;
             }
             Ok(SaverMsg::Event(EngineEvent::Position { position_ms, .. })) => {
                 if let Some(state) = snapshot.as_mut() {
@@ -474,6 +491,37 @@ mod tests {
         saver.record(&EngineEvent::Position { position_ms: 9000, duration_ms: 3000 });
         std::thread::sleep(Duration::from_millis(400));
         assert_eq!(load(&path).unwrap().position_ms, 9000);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn saver_volume_only_states_stay_off_the_write_path() {
+        let dir = temp_dir();
+        let path = dir.join("session.json");
+        let saver = SessionSaver::start(path.clone(), Duration::from_secs(60));
+        saver.record(&EngineEvent::State(playback_state(&[1], Some(0), 100)));
+        saver.flush_now();
+        let before = fs::metadata(&path).unwrap().modified().unwrap();
+        let mut quiet = playback_state(&[1], Some(0), 100);
+        quiet.volume = 0.5;
+        saver.record(&EngineEvent::State(quiet));
+        std::thread::sleep(Duration::from_millis(300));
+        let after = fs::metadata(&path).unwrap().modified().unwrap();
+        assert_eq!(before, after, "a volume-only state must not rewrite the session");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn saver_queue_change_is_urgent() {
+        let dir = temp_dir();
+        let path = dir.join("session.json");
+        let saver = SessionSaver::start(path.clone(), Duration::from_secs(60));
+        saver.record(&EngineEvent::State(playback_state(&[1], Some(0), 0)));
+        saver.flush_now();
+        assert_eq!(load(&path).unwrap().queue.len(), 1);
+        saver.record(&EngineEvent::State(playback_state(&[1, 2], Some(0), 0)));
+        std::thread::sleep(Duration::from_millis(300));
+        assert_eq!(load(&path).unwrap().queue.len(), 2, "queue edits must flush promptly");
         let _ = fs::remove_dir_all(dir);
     }
 

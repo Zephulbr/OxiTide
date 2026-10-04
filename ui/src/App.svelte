@@ -311,6 +311,10 @@
     try {
       const session = await api.getRestoredSession();
       if (!session) return;
+      if (session.queue.length === 0) {
+        playSource.restore(null);
+        return;
+      }
       await player.restore(
         session.queue,
         session.current_index,

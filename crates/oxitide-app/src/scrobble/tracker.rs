@@ -18,6 +18,7 @@ pub enum ScrobbleIntent {
 #[derive(Default)]
 pub struct ScrobbleTracker {
     current: Option<QueueItem>,
+    pending_start: Option<QueueItem>,
     started_at: i64,
     last_pos_ms: i64,
     listened_ms: i64,
@@ -47,6 +48,7 @@ impl ScrobbleTracker {
         self.listened_ms = 0;
         self.scrobbled = false;
         self.paused_since = None;
+        self.pending_start = None;
         if item.artist.is_empty() || item.title.is_empty() {
             tracing::debug!(
                 track_id = item.track_id,
@@ -56,7 +58,8 @@ impl ScrobbleTracker {
             return Vec::new();
         }
         self.current = Some(item.clone());
-        vec![ScrobbleIntent::NowPlaying(item)]
+        self.pending_start = Some(item);
+        Vec::new()
     }
 
     fn position(&mut self, position_ms: i64, duration_ms: i64) -> Vec<ScrobbleIntent> {
@@ -89,6 +92,11 @@ impl ScrobbleTracker {
                 self.paused_since = Some(now);
             }
             return Vec::new();
+        }
+        if let Some(item) = self.pending_start.take() {
+            self.paused_since = None;
+            self.started_at = now;
+            return vec![ScrobbleIntent::NowPlaying(item)];
         }
         let Some(paused_since) = self.paused_since.take() else { return Vec::new() };
         if now - paused_since >= PAUSE_RESEND_SECS {
@@ -226,11 +234,14 @@ mod tests {
     fn repeat_resets_and_scrobbles_again() {
         let mut tracker = ScrobbleTracker::default();
         start(&mut tracker, item(1, 100), 100);
+        tracker.on_event(&EngineEvent::State(playback_state(true)), 100);
         for step in 1..=50 {
             pos(&mut tracker, step * 1000, 100_000);
         }
         // Replaying the same id must be a fresh play.
         let out = start(&mut tracker, item(1, 100), 200);
+        assert!(out.is_empty(), "start only pends the ping");
+        let out = tracker.on_event(&EngineEvent::State(playback_state(true)), 200);
         assert!(matches!(out.as_slice(), [ScrobbleIntent::NowPlaying(_)]));
         let mut fired = false;
         for step in 1..=50 {
@@ -244,11 +255,30 @@ mod tests {
         let mut tracker = ScrobbleTracker::default();
         start(&mut tracker, item(1, 200), 100);
         let state = |playing: bool| EngineEvent::State(playback_state(playing));
+        let out = tracker.on_event(&state(true), 110);
+        assert!(matches!(out.as_slice(), [ScrobbleIntent::NowPlaying(_)]), "playback start pings");
         assert!(tracker.on_event(&state(false), 1_000).is_empty());
         assert!(tracker.on_event(&state(true), 1_010).is_empty(), "short pause should not re-ping");
         tracker.on_event(&state(false), 2_000);
         let out = tracker.on_event(&state(true), 2_100);
         assert!(matches!(out.as_slice(), [ScrobbleIntent::NowPlaying(_)]));
+    }
+
+    #[test]
+    fn paused_restore_does_not_ping_until_playback_starts() {
+        let mut tracker = ScrobbleTracker::default();
+        assert!(tracker
+            .on_event(&EngineEvent::NowPlaying(Some(item(1, 200))), 100)
+            .is_empty(), "restore must not ping");
+        assert!(tracker
+            .on_event(&EngineEvent::State(playback_state(false)), 110)
+            .is_empty(), "restored-paused must not ping");
+        let out = tracker.on_event(&EngineEvent::State(playback_state(true)), 5_000);
+        assert!(matches!(out.as_slice(), [ScrobbleIntent::NowPlaying(_)]), "first play emits one ping");
+        assert!(
+            tracker.on_event(&EngineEvent::State(playback_state(true)), 5_100).is_empty(),
+            "no duplicate ping"
+        );
     }
 
     fn playback_state(playing: bool) -> oxitide_audio::engine::PlaybackState {
