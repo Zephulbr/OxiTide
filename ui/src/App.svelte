@@ -13,6 +13,7 @@
   import ArtistAll from "./views/ArtistAll.svelte";
   import Explore from "./views/Explore.svelte";
   import Feed from "./views/Feed.svelte";
+  import History from "./views/History.svelte";
   import CollectionAlbums from "./views/CollectionAlbums.svelte";
   import CollectionTracks from "./views/CollectionTracks.svelte";
   import Profiles from "./views/Profiles.svelte";
@@ -532,6 +533,7 @@
           {:else if nav.route.name === "home"}<Home {nav} {toasts} />
           {:else if nav.route.name === "explore"}<Explore {nav} {player} {favorites} {playlistActions} {toasts} />
           {:else if nav.route.name === "feed"}<Feed {nav} />
+          {:else if nav.route.name === "history"}<History {nav} {player} {toasts} tab={nav.route.tab} />
           {:else if nav.route.name === "albums"}<CollectionAlbums {nav} />
           {:else if nav.route.name === "tracks"}<CollectionTracks {player} {favorites} {playlistActions} {toasts} />
           {:else if nav.route.name === "profiles"}<Profiles {nav} />

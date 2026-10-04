@@ -55,6 +55,21 @@ export interface SearchResults {
   artists: SearchGroup<Artist>; playlists: SearchGroup<Playlist>;
 }
 export interface TrackPage { items: Track[]; total: number; offset: number; limit: number }
+export interface HistoryEntry {
+  track_id: number; title: string; artist: string; album: string;
+  duration_secs: number; cover?: string | null;
+  started_at: number; listened_ms: number; completed: boolean;
+}
+export interface HistoryPage { items: HistoryEntry[]; total: number; offset: number; limit: number }
+export interface StatsTopEntry { name: string; plays: number; listened_ms: number }
+export interface StatsTopTrack { track_id: number; title: string; artist: string; plays: number }
+export interface StatsDaily { date: string; plays: number; listened_ms: number }
+export interface Stats {
+  total_listened_ms: number; listened_ms_7d: number; listened_ms_30d: number;
+  total_plays: number; plays_7d: number; plays_30d: number;
+  top_artists: StatsTopEntry[]; top_tracks: StatsTopTrack[]; top_albums: StatsTopEntry[];
+  daily: StatsDaily[];
+}
 export interface SessionInfoDto { country_code: string; user_id: number }
 export interface KeyringStatus { persistent: boolean; reason?: string | null }
 export interface FavoriteIds { tracks: number[]; albums: number[]; artists: number[] }
@@ -195,6 +210,7 @@ export interface Config {
     lastfm_api_key: string;
     lastfm_api_secret: string;
   };
+  history: { enabled: boolean; max_entries: number };
 }
 export type EngineEvent =
   | ({ type: "state" } & PlaybackState)
@@ -215,6 +231,17 @@ export function trackToQueueItem(t: Track): QueueItem {
     album: t.album?.title ?? "",
     duration_secs: t.duration,
     cover: t.album?.cover ?? null,
+  };
+}
+
+export function historyToQueueItem(entry: HistoryEntry): QueueItem {
+  return {
+    track_id: entry.track_id,
+    title: entry.title,
+    artist: entry.artist,
+    album: entry.album,
+    duration_secs: entry.duration_secs,
+    cover: entry.cover ?? null,
   };
 }
 
@@ -330,6 +357,13 @@ export const api = {
     repeat: RepeatMode,
   ) => invoke<void>("restore_session", { items, start, positionMs, shuffle, repeat }),
   setPlaySource: (id: string | null) => invoke<void>("set_play_source", { id }),
+  getHistoryPage: (offset: number, limit: number) =>
+    invoke<HistoryPage>("get_history_page", { offset, limit }),
+  getStats: (offsetMinutes: number) => invoke<Stats>("get_stats", { offsetMinutes }),
+  clearHistory: () => invoke<void>("clear_history"),
+  setHistoryEnabled: (enabled: boolean) => invoke<void>("set_history_enabled", { enabled }),
+  setHistoryMaxEntries: (maxEntries: number) =>
+    invoke<void>("set_history_max_entries", { maxEntries }),
   getOutputDevices: () => invoke<OutputDevice[]>("get_output_devices"),
   setOutputDevice: (deviceId: string) => invoke<void>("set_output_device", { deviceId }),
   setPreferredQuality: (quality: Quality) => invoke<void>("set_preferred_quality", { quality }),

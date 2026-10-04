@@ -355,3 +355,39 @@ describe("artist catalog routes", () => {
     expect(nav.route).toEqual({ name: "home" });
   });
 });
+
+describe("history routes", () => {
+  it("round-trips a history tab through storage", () => {
+    const storage = fakeStorage();
+    const nav = createNav(storage);
+    nav.goto({ name: "history", tab: "stats" });
+
+    const restored = createNav(storage);
+
+    expect(restored.route).toEqual({ name: "history", tab: "stats" });
+  });
+
+  it("treats different tabs of history as distinct entries", () => {
+    const nav = createNav();
+    nav.goto({ name: "history", tab: "recent" });
+    nav.goto({ name: "history", tab: "stats" });
+
+    expect(nav.canBack).toBe(true);
+    nav.back();
+    expect(nav.route).toEqual({ name: "history", tab: "recent" });
+  });
+
+  it("ignores a goto to the same history tab", () => {
+    const nav = createNav();
+    nav.goto({ name: "history", tab: "recent" });
+    nav.goto({ name: "history", tab: "recent" });
+
+    nav.back();
+    expect(nav.route).toEqual({ name: "home" });
+  });
+
+  it("rejects stored history routes with an unknown tab", () => {
+    const raw = '{"history":[{"name":"history","tab":"charts"}],"index":0}';
+    expect(createNav(fakeStorage(raw)).route).toEqual({ name: "home" });
+  });
+});

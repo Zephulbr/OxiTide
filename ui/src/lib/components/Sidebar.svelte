@@ -125,6 +125,9 @@
     <button class="nav-item" class:active={nav.route.name === "feed"} aria-current={nav.route.name === "feed" ? "page" : undefined} onclick={() => nav.goto({ name: "feed" })} title="Feed" aria-label="Feed">
       <Icon name="bell" />{#if !rail}<span>Feed</span>{/if}
     </button>
+    <button class="nav-item" class:active={nav.route.name === "history"} aria-current={nav.route.name === "history" ? "page" : undefined} onclick={() => nav.goto({ name: "history", tab: "recent" })} title="History" aria-label="History">
+      <Icon name="history" />{#if !rail}<span>History</span>{/if}
+    </button>
     <button class="nav-item" class:active={nav.route.name === "settings"} aria-current={nav.route.name === "settings" ? "page" : undefined} onclick={() => nav.goto({ name: "settings" })} title="Settings" aria-label="Settings">
       <Icon name="settings" />{#if !rail}<span>Settings</span>{/if}
     </button>

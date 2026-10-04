@@ -15,10 +15,15 @@ const ARTIST_TABS: readonly ArtistTab[] = [
   "mixes",
 ];
 
+/// Tabs of the History page; route values, so they live with the route.
+export type HistoryTab = "recent" | "stats";
+const HISTORY_TABS: readonly HistoryTab[] = ["recent", "stats"];
+
 export type Route =
   | { name: "home" }
   | { name: "explore" }
   | { name: "feed" }
+  | { name: "history"; tab: HistoryTab }
   | { name: "playlists" }
   | { name: "folder"; id: string; label?: string }
   | { name: "albums" }
@@ -60,6 +65,9 @@ function sameRoute(a: Route, b: Route): boolean {
   if (a.name === "artist-all" && b.name === "artist-all") {
     return a.id === b.id && a.tab === b.tab;
   }
+  if (a.name === "history" && b.name === "history") {
+    return a.tab === b.tab;
+  }
   if ("id" in a && "id" in b) return a.id === b.id;
   return true;
 }
@@ -96,6 +104,13 @@ function parseRoute(value: unknown): Route | null {
       return { name: "explore" };
     case "feed":
       return { name: "feed" };
+    case "history": {
+      const tab = record.tab;
+      if (typeof tab === "string" && HISTORY_TABS.includes(tab as HistoryTab)) {
+        return { name: "history", tab: tab as HistoryTab };
+      }
+      return null;
+    }
     case "playlists":
       return { name: "playlists" };
     case "albums":
