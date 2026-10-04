@@ -2,7 +2,15 @@
 //! background writer, and stats derived on read (spec §5.1, §6.3; QoL-D9).
 //! No network, no engine changes: it rides the same event feed as scrobbling.
 
-use std::path::PathBuf;
+use std::collections::VecDeque;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::mpsc::{Receiver, Sender};
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use oxitide_audio::engine::EngineEvent;
 use oxitide_audio::queue::QueueItem;
@@ -153,9 +161,229 @@ fn record_from(item: &QueueItem, started_at: i64, listened_ms: u64, completed: b
     }
 }
 
+/// Unix seconds (UTC).
+fn now_epoch() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
 /// `%APPDATA%\OxiTide\history.jsonl`, beside `config.toml`.
 pub fn history_path() -> Option<PathBuf> {
     crate::config::config_path().map(|path| path.with_file_name("history.jsonl"))
+}
+
+enum WriterMsg {
+    Append(HistoryRecord),
+    Clear,
+    Flush(Sender<()>),
+}
+
+/// The history log and its tracker. `record` is cheap (in-memory only); a
+/// dedicated thread owns every file write, so the engine event path never
+/// blocks on disk.
+pub struct HistoryStore {
+    tracker: Mutex<HistoryTracker>,
+    records: Arc<Mutex<VecDeque<HistoryRecord>>>, // newest first
+    tx: Sender<WriterMsg>,
+    enabled: AtomicBool,
+    max_entries: Arc<AtomicUsize>,
+}
+
+impl HistoryStore {
+    pub fn start(path: PathBuf, max_entries: usize, enabled: bool) -> Self {
+        let max_entries = Arc::new(AtomicUsize::new(max_entries.max(1)));
+        let (loaded, trimmed) = load_records(&path, max_entries.load(Ordering::SeqCst));
+        let records = Arc::new(Mutex::new(loaded));
+        let (tx, rx) = std::sync::mpsc::channel();
+        let writer_records = records.clone();
+        let writer_max = max_entries.clone();
+        thread::Builder::new()
+            .name("oxitide-history".into())
+            .spawn(move || writer_main(path, writer_records, writer_max, trimmed, rx))
+            .expect("spawn history writer");
+        Self {
+            tracker: Mutex::new(HistoryTracker::default()),
+            records,
+            tx,
+            enabled: AtomicBool::new(enabled),
+            max_entries,
+        }
+    }
+
+    pub fn set_enabled(&self, enabled: bool) {
+        self.enabled.store(enabled, Ordering::SeqCst);
+    }
+
+    pub fn set_max_entries(&self, max_entries: usize) {
+        self.max_entries.store(max_entries.max(1), Ordering::SeqCst);
+    }
+
+    /// Feed one engine event. In-memory only; the writer thread persists any
+    /// finalized record.
+    pub fn record(&self, event: &EngineEvent) {
+        if !self.enabled.load(Ordering::SeqCst) {
+            return;
+        }
+        let finalized = {
+            let mut tracker = self.tracker.lock().unwrap();
+            tracker.on_event(event, now_epoch())
+        };
+        if let Some(record) = finalized {
+            let _ = self.tx.send(WriterMsg::Append(record));
+        }
+    }
+
+    /// Finalize the in-flight play and wait for the writer to drain (exit and
+    /// logout). Best effort: never blocks longer than two seconds.
+    pub fn finalize_now(&self) {
+        let finalized = {
+            let mut tracker = self.tracker.lock().unwrap();
+            tracker.finish()
+        };
+        if let Some(record) = finalized {
+            let _ = self.tx.send(WriterMsg::Append(record));
+        }
+        self.flush();
+    }
+
+    /// Wait for the writer to process every queued append. Reads go through
+    /// this so a page never races a just-finalized play.
+    fn flush(&self) {
+        let (ack_tx, ack_rx) = std::sync::mpsc::channel();
+        if self.tx.send(WriterMsg::Flush(ack_tx)).is_ok() {
+            let _ = ack_rx.recv_timeout(Duration::from_secs(2));
+        }
+    }
+
+    /// Newest-first page; the in-flight play is prepended (spec §6.3) and is
+    /// included in `total`.
+    pub fn page(&self, offset: usize, limit: usize) -> (Vec<HistoryRecord>, usize) {
+        self.flush();
+        let inflight = self.tracker.lock().unwrap().in_flight();
+        let records = self.records.lock().unwrap();
+        let total = records.len() + usize::from(inflight.is_some());
+        let items = inflight
+            .into_iter()
+            .chain(records.iter().cloned())
+            .skip(offset)
+            .take(limit)
+            .collect();
+        (items, total)
+    }
+
+    /// Empty the log and remove the file. The in-flight play is untouched.
+    pub fn clear(&self) {
+        if self.tx.send(WriterMsg::Clear).is_ok() {
+            self.flush();
+        }
+    }
+}
+
+/// Read the log into memory (newest first); malformed lines are skipped so one
+/// bad line never loses the rest. Returns whether the cap trimmed the file.
+fn load_records(path: &Path, max_entries: usize) -> (VecDeque<HistoryRecord>, bool) {
+    let Ok(text) = fs::read_to_string(path) else {
+        return (VecDeque::new(), false);
+    };
+    let mut records = VecDeque::new();
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        match serde_json::from_str::<HistoryRecord>(line) {
+            Ok(record) => records.push_front(record),
+            Err(e) => tracing::warn!("skipping malformed history line: {e}"),
+        }
+    }
+    let mut trimmed = false;
+    while records.len() > max_entries.max(1) {
+        records.pop_back();
+        trimmed = true;
+    }
+    (records, trimmed)
+}
+
+fn writer_main(
+    path: PathBuf,
+    records: Arc<Mutex<VecDeque<HistoryRecord>>>,
+    max_entries: Arc<AtomicUsize>,
+    trimmed: bool,
+    rx: Receiver<WriterMsg>,
+) {
+    if trimmed {
+        let snapshot = records.lock().unwrap().clone();
+        rewrite(&path, &snapshot);
+    }
+    loop {
+        match rx.recv() {
+            Ok(WriterMsg::Append(record)) => {
+                let max = max_entries.load(Ordering::SeqCst).max(1);
+                let (line, snapshot) = {
+                    let mut records = records.lock().unwrap();
+                    records.push_front(record);
+                    let mut trimmed = false;
+                    while records.len() > max {
+                        records.pop_back();
+                        trimmed = true;
+                    }
+                    let line = serde_json::to_string(records.front().unwrap()).unwrap_or_default();
+                    (line, if trimmed { Some(records.clone()) } else { None })
+                };
+                if !line.is_empty() {
+                    if let Err(e) = append_line(&path, &line) {
+                        tracing::warn!("history append failed: {e}");
+                    }
+                }
+                if let Some(snapshot) = snapshot {
+                    rewrite(&path, &snapshot);
+                }
+            }
+            Ok(WriterMsg::Clear) => {
+                records.lock().unwrap().clear();
+                match fs::remove_file(&path) {
+                    Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+                        tracing::warn!("history clear failed: {e}");
+                    }
+                    _ => {}
+                }
+            }
+            Ok(WriterMsg::Flush(ack)) => {
+                let _ = ack.send(());
+            }
+            Err(_) => break,
+        }
+    }
+}
+
+fn append_line(path: &Path, line: &str) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+    file.write_all(line.as_bytes())?;
+    file.write_all(b"\n")?;
+    file.flush()
+}
+
+/// Atomic rewrite (temp file + rename), oldest first.
+fn rewrite(path: &Path, records: &VecDeque<HistoryRecord>) {
+    let mut text = String::new();
+    for record in records.iter().rev() {
+        if let Ok(line) = serde_json::to_string(record) {
+            text.push_str(&line);
+            text.push('\n');
+        }
+    }
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let tmp = path.with_extension("jsonl.tmp");
+    if fs::write(&tmp, text).and_then(|_| fs::rename(&tmp, path)).is_err() {
+        tracing::warn!("failed to rewrite history at {}", path.display());
+    }
 }
 
 #[cfg(test)]
@@ -338,5 +566,194 @@ mod tests {
         let record = tracker.finish().expect("recorded");
         assert_eq!(record.listened_ms, 40_000);
         assert_eq!(tracker.finish(), None, "finishing twice must not duplicate");
+    }
+
+    use std::fs;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    static COUNTER: AtomicU32 = AtomicU32::new(0);
+
+    fn temp_dir() -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "oxitide-history-test-{}-{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::SeqCst)
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn store(dir: &Path, max_entries: usize, enabled: bool) -> HistoryStore {
+        HistoryStore::start(dir.join("history.jsonl"), max_entries, enabled)
+    }
+
+    /// Record `seconds` of a play, then finalize it with a transition.
+    fn record_play(store: &HistoryStore, id: u64, seconds: u64) {
+        let track = item(id, 200);
+        store.record(&now_playing(&track));
+        store.record(&state(true));
+        for step in 1..=seconds {
+            store.record(&position(step * 1000, 200_000));
+        }
+        store.record(&now_playing(&item(id + 1000, 200)));
+    }
+
+    #[test]
+    fn finalized_plays_round_trip_newest_first() {
+        let dir = temp_dir();
+        let store = store(&dir, 100, true);
+        record_play(&store, 1, 40);
+        record_play(&store, 2, 40);
+        store.record(&EngineEvent::NowPlaying(None));
+
+        let (items, total) = store.page(0, 10);
+        assert_eq!(total, 2);
+        assert_eq!(items.iter().map(|r| r.track_id).collect::<Vec<_>>(), vec![2, 1]);
+        assert_eq!(items[0].listened_ms, 40_000);
+        let lines = fs::read_to_string(dir.join("history.jsonl")).unwrap();
+        assert_eq!(lines.lines().count(), 2);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// Review Focus: the in-flight play shows in the page (not yet in stats).
+    #[test]
+    fn in_flight_is_prepended_in_the_page() {
+        let dir = temp_dir();
+        let store = store(&dir, 100, true);
+        let track = item(1, 200);
+        store.record(&now_playing(&track));
+        store.record(&state(true));
+        for step in 1..=40 {
+            store.record(&position(step * 1000, 200_000));
+        }
+
+        let (items, total) = store.page(0, 10);
+        assert_eq!(total, 1);
+        assert_eq!(items[0].track_id, 1);
+        assert_eq!(items[0].listened_ms, 40_000);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn malformed_lines_are_skipped() {
+        let dir = temp_dir();
+        let path = dir.join("history.jsonl");
+        fs::write(
+            &path,
+            "not json\n{\"track_id\":1,\"title\":\"T1\",\"artist\":\"A\",\"album\":\"B\",\"duration_secs\":200,\"started_at\":1,\"listened_ms\":40000,\"completed\":true}\n\n",
+        )
+        .unwrap();
+        let store = store(&dir, 100, true);
+        let (items, total) = store.page(0, 10);
+        assert_eq!(total, 1);
+        assert_eq!(items[0].track_id, 1);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn prunes_oldest_beyond_max_entries() {
+        let dir = temp_dir();
+        let store = store(&dir, 2, true);
+        record_play(&store, 1, 40);
+        record_play(&store, 2, 40);
+        record_play(&store, 3, 40);
+        store.record(&EngineEvent::NowPlaying(None));
+
+        let (items, total) = store.page(0, 10);
+        assert_eq!(total, 2);
+        assert_eq!(items.iter().map(|r| r.track_id).collect::<Vec<_>>(), vec![3, 2]);
+        let lines = fs::read_to_string(dir.join("history.jsonl")).unwrap();
+        assert_eq!(lines.lines().count(), 2, "the file must be pruned too");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn clear_removes_the_file_and_memory() {
+        let dir = temp_dir();
+        let store = store(&dir, 100, true);
+        record_play(&store, 1, 40);
+        store.record(&EngineEvent::NowPlaying(None));
+        assert_eq!(store.page(0, 10).1, 1, "the page read also drains the writer");
+        assert!(dir.join("history.jsonl").exists());
+
+        store.clear();
+
+        assert_eq!(store.page(0, 10).1, 0);
+        assert!(!dir.join("history.jsonl").exists());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn disabled_store_records_nothing() {
+        let dir = temp_dir();
+        let store = store(&dir, 100, false);
+        record_play(&store, 1, 40);
+        store.record(&EngineEvent::NowPlaying(None));
+        assert_eq!(store.page(0, 10).1, 0);
+
+        store.set_enabled(true);
+        record_play(&store, 2, 40);
+        store.record(&EngineEvent::NowPlaying(None));
+        assert_eq!(store.page(0, 10).1, 1);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// Review Focus: exit must flush the in-flight play.
+    #[test]
+    fn finalize_now_flushes_the_in_flight_play() {
+        let dir = temp_dir();
+        let store = store(&dir, 100, true);
+        let track = item(1, 200);
+        store.record(&now_playing(&track));
+        store.record(&state(true));
+        for step in 1..=40 {
+            store.record(&position(step * 1000, 200_000));
+        }
+
+        store.finalize_now();
+
+        let (items, total) = store.page(0, 10);
+        assert_eq!(total, 1);
+        assert_eq!(items[0].track_id, 1);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn page_paginates() {
+        let dir = temp_dir();
+        let store = store(&dir, 100, true);
+        record_play(&store, 1, 40);
+        record_play(&store, 2, 40);
+        record_play(&store, 3, 40);
+        store.record(&EngineEvent::NowPlaying(None));
+
+        let (items, total) = store.page(1, 1);
+        assert_eq!(total, 3);
+        assert_eq!(items.iter().map(|r| r.track_id).collect::<Vec<_>>(), vec![2]);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn set_max_entries_applies_to_later_appends() {
+        let dir = temp_dir();
+        let store = store(&dir, 100, true);
+        store.set_max_entries(1);
+        record_play(&store, 1, 40);
+        record_play(&store, 2, 40);
+        store.record(&EngineEvent::NowPlaying(None));
+        assert_eq!(store.page(0, 10).1, 1);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn unwritable_path_does_not_panic() {
+        let dir = temp_dir();
+        let blocker = dir.join("blocked");
+        fs::write(&blocker, "file").unwrap();
+        let store = HistoryStore::start(blocker.join("history.jsonl"), 100, true);
+        record_play(&store, 1, 40);
+        store.record(&EngineEvent::NowPlaying(None));
+        store.finalize_now();
+        let _ = fs::remove_dir_all(dir);
     }
 }
