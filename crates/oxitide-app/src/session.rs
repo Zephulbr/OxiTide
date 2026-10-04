@@ -138,10 +138,152 @@ fn backup(path: &Path) {
     let _ = fs::rename(path, &backup);
 }
 
+use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
+use std::thread;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+use oxitide_audio::engine::{EngineEvent, PlaybackState};
+
+/// State changes flush after this window; position ticks only mark dirty.
+pub const SESSION_DEBOUNCE: Duration = Duration::from_secs(3);
+
+#[allow(clippy::large_enum_variant)]
+enum SaverMsg {
+    Event(EngineEvent),
+    SetPlaySource(Option<String>),
+    Flush(Sender<()>),
+    Clear,
+}
+
+/// Writes `session.json` from engine events on a dedicated thread so the event
+/// listener never does disk I/O. `flush_now` makes an exit write synchronous.
+pub struct SessionSaver {
+    tx: Sender<SaverMsg>,
+}
+
+impl SessionSaver {
+    pub fn start(path: PathBuf, debounce: Duration) -> Self {
+        let (tx, rx) = std::sync::mpsc::channel();
+        thread::Builder::new()
+            .name("oxitide-session".into())
+            .spawn(move || saver_main(path, debounce, rx))
+            .expect("spawn session saver");
+        Self { tx }
+    }
+
+    pub fn record(&self, event: &EngineEvent) {
+        let _ = self.tx.send(SaverMsg::Event(event.clone()));
+    }
+
+    pub fn set_play_source(&self, id: Option<String>) {
+        let _ = self.tx.send(SaverMsg::SetPlaySource(id));
+    }
+
+    /// Best-effort synchronous flush used on exit; waits briefly for the saver.
+    pub fn flush_now(&self) {
+        let (ack_tx, ack_rx) = std::sync::mpsc::channel();
+        if self.tx.send(SaverMsg::Flush(ack_tx)).is_ok() {
+            let _ = ack_rx.recv_timeout(Duration::from_secs(2));
+        }
+    }
+
+    pub fn clear(&self) {
+        let _ = self.tx.send(SaverMsg::Clear);
+    }
+}
+
+fn session_from_state(state: &PlaybackState, play_source: Option<String>, saved_at: u64) -> Session {
+    Session {
+        version: SESSION_VERSION,
+        queue: state.queue.iter().map(SessionItem::from).collect(),
+        current_index: state.current_index,
+        position_ms: state.position_ms,
+        shuffle: state.shuffle,
+        repeat: state.repeat,
+        play_source,
+        saved_at,
+    }
+}
+
+fn saver_main(path: PathBuf, debounce: Duration, rx: Receiver<SaverMsg>) {
+    let mut snapshot: Option<PlaybackState> = None;
+    let mut play_source: Option<String> = None;
+    let mut dirty = false;
+    let mut urgent = false;
+    let mut last_flush = Instant::now();
+    loop {
+        let wait = if dirty && !urgent {
+            debounce
+                .saturating_sub(last_flush.elapsed())
+                .min(Duration::from_millis(100))
+        } else {
+            Duration::from_millis(100)
+        };
+        match rx.recv_timeout(wait) {
+            Ok(SaverMsg::Event(EngineEvent::State(state))) => {
+                snapshot = Some(state);
+                dirty = true;
+                urgent = true;
+            }
+            Ok(SaverMsg::Event(EngineEvent::Position { position_ms, .. })) => {
+                if let Some(state) = snapshot.as_mut() {
+                    state.position_ms = position_ms;
+                    dirty = true;
+                }
+            }
+            Ok(SaverMsg::Event(_)) => {}
+            Ok(SaverMsg::SetPlaySource(id)) => {
+                play_source = id;
+                dirty = true;
+                urgent = true;
+            }
+            Ok(SaverMsg::Flush(ack)) => {
+                if dirty {
+                    write_snapshot(&path, snapshot.as_ref(), &play_source);
+                    dirty = false;
+                    urgent = false;
+                    last_flush = Instant::now();
+                }
+                let _ = ack.send(());
+            }
+            Ok(SaverMsg::Clear) => {
+                clear(&path);
+                snapshot = None;
+                play_source = None;
+                dirty = false;
+                urgent = false;
+            }
+            Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Disconnected) => break,
+        }
+        if dirty && (urgent || last_flush.elapsed() >= debounce) {
+            write_snapshot(&path, snapshot.as_ref(), &play_source);
+            dirty = false;
+            urgent = false;
+            last_flush = Instant::now();
+        }
+    }
+}
+
+fn write_snapshot(path: &Path, snapshot: Option<&PlaybackState>, play_source: &Option<String>) {
+    let Some(state) = snapshot else { return };
+    let saved_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let session = session_from_state(state, play_source.clone(), saved_at);
+    if let Err(e) = save(path, &session) {
+        tracing::warn!("failed to save session: {e}");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use oxitide_audio::engine::{EngineEvent, PlaybackState};
+    use oxitide_tidal::stream::Quality;
     use std::sync::atomic::{AtomicU32, Ordering};
+    use std::time::Duration;
 
     static COUNTER: AtomicU32 = AtomicU32::new(0);
 
@@ -241,6 +383,109 @@ mod tests {
         fs::write(&blocker, "file").unwrap();
         let path = blocker.join("session.json");
         assert!(save(&path, &session()).is_err());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    fn playback_state(ids: &[u64], current: Option<usize>, position_ms: u64) -> PlaybackState {
+        let items: Vec<QueueItem> = ids
+            .iter()
+            .map(|id| QueueItem {
+                track_id: *id,
+                title: format!("T{id}"),
+                artist: "A".into(),
+                album: "B".into(),
+                duration_secs: 3,
+                cover: None,
+            })
+            .collect();
+        PlaybackState {
+            playing: false,
+            buffering: false,
+            current: current.and_then(|i| items.get(i).cloned()),
+            current_index: current,
+            position_ms,
+            duration_ms: 3000,
+            volume: 1.0,
+            shuffle: true,
+            repeat: RepeatMode::All,
+            preferred_quality: Quality::Lossless,
+            output_mode: oxitide_audio::output::OutputMode::Shared,
+            bit_perfect: false,
+            bit_perfect_notice: None,
+            queue: items,
+            stream: None,
+        }
+    }
+
+    #[test]
+    fn saver_flushes_state_and_position_on_demand() {
+        let dir = temp_dir();
+        let path = dir.join("session.json");
+        let saver = SessionSaver::start(path.clone(), Duration::from_secs(60));
+        saver.record(&EngineEvent::State(playback_state(&[1, 2, 3], Some(1), 1000)));
+        saver.record(&EngineEvent::Position { position_ms: 4200, duration_ms: 3000 });
+        saver.flush_now();
+        let session = load(&path).expect("session written");
+        assert_eq!(
+            session.queue.iter().map(|i| i.track_id).collect::<Vec<_>>(),
+            vec![1, 2, 3]
+        );
+        assert_eq!(session.current_index, Some(1));
+        assert_eq!(session.position_ms, 4200);
+        assert!(session.shuffle);
+        assert_eq!(session.repeat, RepeatMode::All);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn saver_persists_the_play_source() {
+        let dir = temp_dir();
+        let path = dir.join("session.json");
+        let saver = SessionSaver::start(path.clone(), Duration::from_secs(60));
+        saver.record(&EngineEvent::State(playback_state(&[1], Some(0), 0)));
+        saver.set_play_source(Some("pl-1".into()));
+        saver.flush_now();
+        assert_eq!(load(&path).unwrap().play_source.as_deref(), Some("pl-1"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// Review Focus: clearing must survive the engine's trailing empty state.
+    #[test]
+    fn saver_clear_removes_the_file() {
+        let dir = temp_dir();
+        let path = dir.join("session.json");
+        let saver = SessionSaver::start(path.clone(), Duration::from_secs(60));
+        saver.record(&EngineEvent::State(playback_state(&[1], Some(0), 0)));
+        saver.flush_now();
+        assert!(path.exists());
+        saver.clear();
+        saver.flush_now();
+        assert!(!path.exists());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn saver_debounces_position_updates() {
+        let dir = temp_dir();
+        let path = dir.join("session.json");
+        let saver = SessionSaver::start(path.clone(), Duration::from_millis(50));
+        saver.record(&EngineEvent::State(playback_state(&[1], Some(0), 100)));
+        saver.flush_now();
+        saver.record(&EngineEvent::Position { position_ms: 9000, duration_ms: 3000 });
+        std::thread::sleep(Duration::from_millis(400));
+        assert_eq!(load(&path).unwrap().position_ms, 9000);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn saver_survives_an_unwritable_path() {
+        let dir = temp_dir();
+        let blocker = dir.join("blocked");
+        fs::write(&blocker, "file").unwrap();
+        let path = blocker.join("session.json");
+        let saver = SessionSaver::start(path, Duration::from_secs(60));
+        saver.record(&EngineEvent::State(playback_state(&[1], Some(0), 0)));
+        saver.flush_now(); // must log, not panic
         let _ = fs::remove_dir_all(dir);
     }
 }
