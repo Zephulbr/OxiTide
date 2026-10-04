@@ -99,7 +99,13 @@ pub fn load(path: &Path) -> Option<Session> {
             None
         }
         Err(e) => {
-            tracing::warn!("malformed session at {}: {e}", path.display());
+            tracing::warn!(
+                "malformed session at {} ({:?} at line {}, column {})",
+                path.display(),
+                e.classify(),
+                e.line(),
+                e.column()
+            );
             backup(path);
             None
         }
