@@ -1,3 +1,4 @@
+import { api } from "./api";
 import { playlistRecency } from "./playlistRecency.svelte";
 
 export type PlaylistRowState = "source" | "active" | "source-active" | "idle";
@@ -17,15 +18,26 @@ export function playlistRowState(isSource: boolean, isActive: boolean): Playlist
 /// transport controls leave it alone — they keep the same queue. `onPlay`
 /// fires whenever a playlist becomes the source (never on clearing), letting
 /// the recency store count every listened-to playlist.
-export function createPlaySource(onPlay?: (uuid: string) => void) {
+export function createPlaySource(
+  onPlay?: (uuid: string) => void,
+  persist?: (id: string | null) => void,
+) {
   let playlistId = $state<string | null>(null);
   return {
     get playlistId() { return playlistId; },
     set(id: string | null) {
       playlistId = id;
+      persist?.(id);
       if (id !== null) onPlay?.(id);
+    },
+    /// Re-apply a saved source without recording a new play (session restore).
+    restore(id: string | null) {
+      playlistId = id;
     },
   };
 }
 
-export const playSource = createPlaySource((id) => playlistRecency().record(id));
+export const playSource = createPlaySource(
+  (id) => playlistRecency().record(id),
+  (id) => { void api.setPlaySource(id).catch(() => {}); },
+);

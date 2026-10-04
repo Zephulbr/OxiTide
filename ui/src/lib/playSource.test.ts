@@ -40,4 +40,21 @@ describe("createPlaySource", () => {
     source.set(null);
     expect(onPlay).not.toHaveBeenCalled();
   });
+
+  /// Review Focus: restoring must not count as a new play in the recency log.
+  it("restore re-applies the source without reporting a play", () => {
+    const onPlay = vi.fn();
+    const source = createPlaySource(onPlay);
+    source.restore("p9");
+    expect(source.playlistId).toBe("p9");
+    expect(onPlay).not.toHaveBeenCalled();
+  });
+
+  it("persists every source change, including clearing", () => {
+    const persist = vi.fn();
+    const source = createPlaySource(undefined, persist);
+    source.set("p1");
+    source.set(null);
+    expect(persist.mock.calls).toEqual([["p1"], [null]]);
+  });
 });

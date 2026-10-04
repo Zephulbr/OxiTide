@@ -127,6 +127,7 @@ export interface StreamMeta {
 }
 export interface PlaybackState {
   playing: boolean; buffering: boolean; current?: QueueItem | null;
+  current_index?: number | null;
   position_ms: number; duration_ms: number; volume: number;
   shuffle: boolean; repeat: RepeatMode;
   preferred_quality: Quality;
@@ -135,6 +136,14 @@ export interface PlaybackState {
   bit_perfect_notice?: string | null;
   queue: QueueItem[];
   stream?: StreamMeta | null;
+}
+export interface RestoredSession {
+  queue: QueueItem[];
+  current_index: number;
+  position_ms: number;
+  shuffle: boolean;
+  repeat: RepeatMode;
+  play_source: string | null;
 }
 export interface OutputDevice { id: string; name: string; is_default: boolean }
 export interface AudioStatus {
@@ -311,6 +320,15 @@ export const api = {
   queueAdd: (items: QueueItem[]) => invoke<void>("queue_add", { items }),
   queueClear: () => invoke<void>("queue_clear"),
   getPlaybackState: () => invoke<PlaybackState>("get_playback_state"),
+  getRestoredSession: () => invoke<RestoredSession | null>("get_restored_session"),
+  restoreSession: (
+    items: QueueItem[],
+    start: number,
+    positionMs: number,
+    shuffle: boolean,
+    repeat: RepeatMode,
+  ) => invoke<void>("restore_session", { items, start, positionMs, shuffle, repeat }),
+  setPlaySource: (id: string | null) => invoke<void>("set_play_source", { id }),
   getOutputDevices: () => invoke<OutputDevice[]>("get_output_devices"),
   setOutputDevice: (deviceId: string) => invoke<void>("set_output_device", { deviceId }),
   setPreferredQuality: (quality: Quality) => invoke<void>("set_preferred_quality", { quality }),

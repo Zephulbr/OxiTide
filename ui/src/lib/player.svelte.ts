@@ -6,6 +6,7 @@ export interface PlayerState {
   playing: boolean;
   buffering: boolean;
   current: QueueItem | null;
+  current_index: number | null;
   position_ms: number;
   duration_ms: number;
   volume: number;
@@ -25,7 +26,7 @@ export interface PlayerState {
 
 export function emptyState(): PlayerState {
   return {
-    playing: false, buffering: false, current: null, position_ms: 0,
+    playing: false, buffering: false, current: null, current_index: null, position_ms: 0,
     duration_ms: 0, volume: 1, shuffle: false, repeat: "off",
     preferred_quality: "lossless", queue: [], stream: null, error: "",
     error_code: "", output_mode: "shared", bit_perfect: false, bit_perfect_notice: null,
@@ -152,19 +153,17 @@ export function createPlayer(toasts?: Toasts) {
     state.error_code = "";
   }
 
-  /// Rebuild the queue after a re-login: start the context, seek to the last
-  /// position, and pause again when the session was paused. `play_context`
-  /// always starts playback, hence the extra `playPause` for paused sessions.
+  /// Rebuild the queue from a saved session: the engine loads the exact order
+  /// paused at the saved position, so nothing plays until the user asks.
   async function restore(
     queue: QueueItem[],
     index: number,
     positionMs: number,
-    wasPlaying: boolean,
+    shuffle: boolean,
+    repeat: RepeatMode,
   ) {
     if (queue.length === 0) return;
-    await api.playTracks(queue, index);
-    await seek(positionMs);
-    if (!wasPlaying) await api.playPause();
+    await api.restoreSession(queue, index, positionMs, shuffle, repeat);
     const snapshot = await api.getPlaybackState();
     applyEvent(state, { type: "state", ...snapshot });
   }

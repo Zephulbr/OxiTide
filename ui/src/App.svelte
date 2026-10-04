@@ -49,14 +49,17 @@
   import { createCollectionActions } from "./lib/collectionActions.svelte";
   import { clearPagerCache } from "./lib/pager.svelte";
   import { clearPlaylistCovers } from "./lib/playlistArt.svelte";
-  import { api, SCROBBLE_AUTH_ERROR_EVENT, trackToQueueItem, type QueueItem } from "./lib/api";
+  import { playSource } from "./lib/playSource.svelte";
+  import { api, SCROBBLE_AUTH_ERROR_EVENT, trackToQueueItem, type QueueItem, type RepeatMode } from "./lib/api";
   import type { QualityDisplay } from "./lib/quality";
 
   interface ExpiredSession {
     queue: QueueItem[];
     index: number;
     position: number;
-    playing: boolean;
+    shuffle: boolean;
+    repeat: RepeatMode;
+    playSource: string | null;
   }
 
   const nav = createNav(window.localStorage);
@@ -136,11 +139,15 @@
       const current = snapshot.current;
       expired = {
         queue: snapshot.queue,
-        index: current
-          ? Math.max(0, snapshot.queue.findIndex((item) => item.track_id === current.track_id))
-          : 0,
+        index:
+          snapshot.current_index ??
+          (current
+            ? Math.max(0, snapshot.queue.findIndex((item) => item.track_id === current.track_id))
+            : 0),
         position: snapshot.position_ms,
-        playing: snapshot.playing,
+        shuffle: snapshot.shuffle,
+        repeat: snapshot.repeat,
+        playSource: playSource.playlistId,
       };
       // The route and its persisted history stay put: after re-login the same
       // account resumes where it was. Multi-account is a non-goal (PM-D6), so a
@@ -276,8 +283,11 @@
   $effect(() => {
     api
       .authRestore()
-      .then((session) => {
-        if (session) loggedIn = true;
+      .then(async (session) => {
+        if (session) {
+          await restoreSavedSession();
+          loggedIn = true;
+        }
       })
       .catch((e) => {
         error = String(e);
@@ -297,6 +307,23 @@
     return () => gate.dispose();
   });
 
+  async function restoreSavedSession() {
+    try {
+      const session = await api.getRestoredSession();
+      if (!session) return;
+      await player.restore(
+        session.queue,
+        session.current_index,
+        session.position_ms,
+        session.shuffle,
+        session.repeat,
+      );
+      playSource.restore(session.play_source);
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
   async function onLogin() {
     authError = "";
     clearPagerCache();
@@ -306,10 +333,19 @@
     expired = null;
     if (restore) {
       try {
-        await player.restore(restore.queue, restore.index, restore.position, restore.playing);
+        await player.restore(
+          restore.queue,
+          restore.index,
+          restore.position,
+          restore.shuffle,
+          restore.repeat,
+        );
+        playSource.restore(restore.playSource);
       } catch (e) {
         error = String(e);
       }
+    } else {
+      await restoreSavedSession();
     }
     loggedIn = true;
   }

@@ -4,7 +4,12 @@ import { playArtistRadio, playTrackRadio } from "./radio";
 import type { ToastSeverity, Toasts } from "./toasts.svelte";
 
 vi.mock("./api", () => ({
-  api: { getTrackRadio: vi.fn(), getArtistRadio: vi.fn(), playTracks: vi.fn() },
+  api: {
+    getTrackRadio: vi.fn(),
+    getArtistRadio: vi.fn(),
+    playTracks: vi.fn(),
+    setPlaySource: vi.fn(async () => {}),
+  },
   trackToQueueItem: (t: { id: number }) => ({ track_id: t.id }),
 }));
 
