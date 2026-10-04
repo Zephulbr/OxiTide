@@ -348,6 +348,7 @@ fn main() {
             commands::prev,
             commands::seek,
             commands::set_volume,
+            commands::fade_and_pause,
             commands::set_shuffle,
             commands::set_repeat,
             commands::queue_reorder,

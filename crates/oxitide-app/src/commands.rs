@@ -1216,6 +1216,15 @@ pub fn set_volume(state: State<'_, AppState>, volume: f32, persist: bool) -> Res
 }
 
 #[tauri::command]
+pub fn fade_and_pause(state: State<'_, AppState>, duration_ms: u64) -> Result<(), String> {
+    let player = state.player().ok_or_else(|| "not logged in".to_string())?;
+    player
+        .engine
+        .handle(EngineCmd::FadeAndPause { duration_ms })
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn set_shuffle(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
     player
