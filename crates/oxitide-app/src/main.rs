@@ -191,10 +191,12 @@ fn main() {
     ));
     state.set_track_flags(track_flags.clone());
     if let Some(path) = session::session_path() {
-        state.set_session_saver(std::sync::Arc::new(session::SessionSaver::start(
+        let saver = std::sync::Arc::new(session::SessionSaver::start(
             path,
             session::SESSION_DEBOUNCE,
-        )));
+        ));
+        saver.set_flags(track_flags);
+        state.set_session_saver(saver);
     }
     if let Some(path) = history::history_path() {
         let config = state.config();

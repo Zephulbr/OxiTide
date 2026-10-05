@@ -137,10 +137,14 @@ fn backup(path: &Path) {
 }
 
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use oxitide_audio::engine::{EngineEvent, PlaybackState};
+
+use crate::config::ContentConfig;
+use crate::track_flags::{is_blocked, TrackFlagsStore};
 
 /// Caps how often position-only updates are written. State changes (track,
 /// queue, pause, shuffle, repeat) are urgent and flush on the next saver wake
@@ -159,16 +163,24 @@ enum SaverMsg {
 /// listener never does disk I/O. `flush_now` makes an exit write synchronous.
 pub struct SessionSaver {
     tx: Sender<SaverMsg>,
+    flags: Arc<Mutex<Option<Arc<TrackFlagsStore>>>>,
 }
 
 impl SessionSaver {
     pub fn start(path: PathBuf, debounce: Duration) -> Self {
         let (tx, rx) = std::sync::mpsc::channel();
+        let flags = Arc::new(Mutex::new(None));
+        let worker_flags = flags.clone();
         thread::Builder::new()
             .name("oxitide-session".into())
-            .spawn(move || saver_main(path, debounce, rx))
+            .spawn(move || saver_main(path, debounce, worker_flags, rx))
             .expect("spawn session saver");
-        Self { tx }
+        Self { tx, flags }
+    }
+
+    /// Wire the flag cache after both services exist (main.rs startup).
+    pub fn set_flags(&self, source: Arc<TrackFlagsStore>) {
+        *self.flags.lock().unwrap() = Some(source);
     }
 
     pub fn record(&self, event: &EngineEvent) {
@@ -192,10 +204,26 @@ impl SessionSaver {
     }
 }
 
-fn session_from_state(state: &PlaybackState, play_source: Option<String>, saved_at: u64) -> Session {
+fn session_from_state(
+    state: &PlaybackState,
+    play_source: Option<String>,
+    saved_at: u64,
+    flags: Option<&TrackFlagsStore>,
+) -> Session {
     Session {
         version: SESSION_VERSION,
-        queue: state.queue.iter().map(SessionItem::from).collect(),
+        queue: state
+            .queue
+            .iter()
+            .map(|item| {
+                let mut saved = SessionItem::from(item);
+                if let Some(entry) = flags.and_then(|store| store.get(item.track_id)) {
+                    saved.explicit = entry.explicit;
+                    saved.ai = entry.ai;
+                }
+                saved
+            })
+            .collect(),
         current_index: state.current_index,
         position_ms: state.position_ms,
         shuffle: state.shuffle,
@@ -205,7 +233,64 @@ fn session_from_state(state: &PlaybackState, play_source: Option<String>, saved_
     }
 }
 
-fn saver_main(path: PathBuf, debounce: Duration, rx: Receiver<SaverMsg>) {
+#[derive(Debug, Clone, PartialEq)]
+pub struct FilteredQueue {
+    pub items: Vec<SessionItem>,
+    pub current_index: Option<usize>,
+    pub position_ms: u64,
+}
+
+/// Drop persisted items the active filters hide (unknown flags pass), then
+/// remap the current index: the same item when kept, else the next kept one,
+/// else the previous kept one. Dropping the current item resets position.
+pub fn filter_session_queue(
+    queue: Vec<SessionItem>,
+    current_index: Option<usize>,
+    position_ms: u64,
+    content: &ContentConfig,
+) -> FilteredQueue {
+    let blocked: Vec<bool> = queue
+        .iter()
+        .map(|item| is_blocked(item.explicit, item.ai, content))
+        .collect();
+    if !blocked.iter().any(|blocked| *blocked) {
+        return FilteredQueue { items: queue, current_index, position_ms };
+    }
+    let kept: Vec<usize> = (0..queue.len()).filter(|index| !blocked[*index]).collect();
+    let current_kept = current_index
+        .and_then(|index| blocked.get(index).copied())
+        .is_some_and(|blocked| !blocked);
+    let position_ms = if current_kept { position_ms } else { 0 };
+    let Some(current) = current_index else {
+        let items = queue
+            .into_iter()
+            .zip(blocked.iter())
+            .filter(|(_, blocked)| !**blocked)
+            .map(|(item, _)| item)
+            .collect();
+        return FilteredQueue { items, current_index: None, position_ms };
+    };
+    let new_current = if current_kept {
+        kept.iter().position(|index| *index == current)
+    } else {
+        kept.iter().position(|index| *index >= current).or(Some(kept.len().saturating_sub(1)))
+    };
+    let new_current = new_current.filter(|_| !kept.is_empty());
+    let items = queue
+        .into_iter()
+        .zip(blocked.iter())
+        .filter(|(_, blocked)| !**blocked)
+        .map(|(item, _)| item)
+        .collect();
+    FilteredQueue { items, current_index: new_current, position_ms }
+}
+
+fn saver_main(
+    path: PathBuf,
+    debounce: Duration,
+    flags: Arc<Mutex<Option<Arc<TrackFlagsStore>>>>,
+    rx: Receiver<SaverMsg>,
+) {
     let mut snapshot: Option<PlaybackState> = None;
     let mut play_source: Option<String> = None;
     let mut dirty = false;
@@ -256,7 +341,7 @@ fn saver_main(path: PathBuf, debounce: Duration, rx: Receiver<SaverMsg>) {
             }
             Ok(SaverMsg::Flush(ack)) => {
                 if dirty {
-                    write_snapshot(&path, snapshot.as_ref(), &play_source);
+                    write_snapshot(&path, snapshot.as_ref(), &play_source, &flags);
                     dirty = false;
                     urgent = false;
                     last_flush = Instant::now();
@@ -274,7 +359,7 @@ fn saver_main(path: PathBuf, debounce: Duration, rx: Receiver<SaverMsg>) {
             Err(RecvTimeoutError::Disconnected) => break,
         }
         if dirty && (urgent || last_flush.elapsed() >= debounce) {
-            write_snapshot(&path, snapshot.as_ref(), &play_source);
+            write_snapshot(&path, snapshot.as_ref(), &play_source, &flags);
             dirty = false;
             urgent = false;
             last_flush = Instant::now();
@@ -282,13 +367,19 @@ fn saver_main(path: PathBuf, debounce: Duration, rx: Receiver<SaverMsg>) {
     }
 }
 
-fn write_snapshot(path: &Path, snapshot: Option<&PlaybackState>, play_source: &Option<String>) {
+fn write_snapshot(
+    path: &Path,
+    snapshot: Option<&PlaybackState>,
+    play_source: &Option<String>,
+    flags: &Arc<Mutex<Option<Arc<TrackFlagsStore>>>>,
+) {
     let Some(state) = snapshot else { return };
     let saved_at = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    let session = session_from_state(state, play_source.clone(), saved_at);
+    let source = flags.lock().unwrap().clone();
+    let session = session_from_state(state, play_source.clone(), saved_at, source.as_deref());
     if let Err(e) = save(path, &session) {
         tracing::warn!("failed to save session: {e}");
     }
@@ -534,6 +625,84 @@ mod tests {
         let saver = SessionSaver::start(path, Duration::from_secs(60));
         saver.record(&EngineEvent::State(playback_state(&[1], Some(0), 0)));
         saver.flush_now(); // must log, not panic
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    fn content(block_explicit: bool, block_ai: bool) -> crate::config::ContentConfig {
+        crate::config::ContentConfig { block_explicit, block_ai }
+    }
+
+    fn flagged(id: u64, explicit: Option<bool>, ai: Option<bool>) -> SessionItem {
+        SessionItem { explicit, ai, ..item(id) }
+    }
+
+    #[test]
+    fn filter_session_queue_drops_blocked_and_remaps_the_dropped_current() {
+        let queue = vec![
+            flagged(1, Some(true), None),
+            flagged(2, None, Some(true)),
+            flagged(3, None, None),
+        ];
+        // The current item (index 1, track 2) is AI-blocked and must be replaced
+        // by the next kept item (track 3), with the position reset.
+        let filtered = filter_session_queue(queue, Some(1), 5_000, &content(false, true));
+        assert_eq!(
+            filtered.items.iter().map(|item| item.track_id).collect::<Vec<_>>(),
+            vec![1, 3]
+        );
+        assert_eq!(filtered.current_index, Some(1));
+        assert_eq!(filtered.position_ms, 0);
+    }
+
+    #[test]
+    fn filter_session_queue_falls_back_to_the_previous_kept_current() {
+        let queue = vec![flagged(9, None, None), flagged(2, None, Some(true))];
+        let filtered = filter_session_queue(queue, Some(1), 5_000, &content(false, true));
+        assert_eq!(filtered.items.iter().map(|item| item.track_id).collect::<Vec<_>>(), vec![9]);
+        assert_eq!(filtered.current_index, Some(0));
+        assert_eq!(filtered.position_ms, 0);
+    }
+
+    #[test]
+    fn filter_session_queue_keeps_position_when_the_current_item_survives() {
+        let queue = vec![flagged(1, Some(true), None), flagged(2, Some(false), None)];
+        let filtered = filter_session_queue(queue, Some(1), 42_000, &content(true, false));
+        assert_eq!(filtered.items.iter().map(|item| item.track_id).collect::<Vec<_>>(), vec![2]);
+        assert_eq!(filtered.current_index, Some(0));
+        assert_eq!(filtered.position_ms, 42_000);
+    }
+
+    #[test]
+    fn filter_session_queue_passes_through_when_filters_are_off() {
+        let queue = vec![flagged(1, Some(true), Some(true))];
+        let filtered = filter_session_queue(queue, Some(0), 1_000, &ContentConfig::default());
+        assert_eq!(filtered.items.len(), 1);
+        assert_eq!(filtered.current_index, Some(0));
+        assert_eq!(filtered.position_ms, 1_000);
+    }
+
+    #[test]
+    fn session_from_state_captures_cached_flags() {
+        let store = crate::track_flags::TrackFlagsStore::start(None);
+        store.record_explicit(3, true);
+        let state = playback_state(&[3], Some(0), 0);
+        let session = session_from_state(&state, None, 100, Some(&store));
+        assert_eq!(session.queue[0].explicit, Some(true));
+        assert_eq!(session.queue[0].ai, None);
+    }
+
+    #[test]
+    fn saver_persists_flags_set_after_start() {
+        let dir = temp_dir();
+        let path = dir.join("session.json");
+        let store = std::sync::Arc::new(crate::track_flags::TrackFlagsStore::start(None));
+        store.record_explicit(1, true);
+        let saver = SessionSaver::start(path.clone(), Duration::from_secs(60));
+        saver.set_flags(store);
+        saver.record(&EngineEvent::State(playback_state(&[1], Some(0), 0)));
+        saver.flush_now();
+        let session = load(&path).expect("session");
+        assert_eq!(session.queue[0].explicit, Some(true));
         let _ = fs::remove_dir_all(dir);
     }
 }

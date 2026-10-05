@@ -138,7 +138,6 @@ impl TrackFlagsStore {
         }
     }
 
-    #[allow(dead_code)] // consumed by the session saver in Task 6
     pub fn get(&self, track_id: u64) -> Option<TrackFlagEntry> {
         self.ensure_loaded();
         self.memory.read().unwrap().get(&track_id).copied()

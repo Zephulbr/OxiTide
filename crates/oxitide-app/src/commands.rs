@@ -1571,17 +1571,27 @@ pub struct RestoredSessionDto {
 }
 
 #[tauri::command]
-pub fn get_restored_session() -> Result<Option<RestoredSessionDto>, String> {
+pub fn get_restored_session(state: State<'_, AppState>) -> Result<Option<RestoredSessionDto>, String> {
     let Some(path) = crate::session::session_path() else {
         return Ok(None);
     };
-    Ok(crate::session::load(&path).map(|session| RestoredSessionDto {
-        current_index: session.current_index.unwrap_or(0),
-        position_ms: session.position_ms,
+    let Some(session) = crate::session::load(&path) else {
+        return Ok(None);
+    };
+    let content = state.config().content;
+    let filtered = crate::session::filter_session_queue(
+        session.queue,
+        session.current_index,
+        session.position_ms,
+        &content,
+    );
+    Ok(Some(RestoredSessionDto {
+        current_index: filtered.current_index.unwrap_or(0),
+        position_ms: filtered.position_ms,
         shuffle: session.shuffle,
         repeat: session.repeat,
         play_source: session.play_source,
-        queue: session.queue.into_iter().map(QueueItem::from).collect(),
+        queue: filtered.items.into_iter().map(QueueItem::from).collect(),
     }))
 }
 
