@@ -115,6 +115,13 @@ impl HistoryTracker {
         self.finalize()
     }
 
+    /// Drop the in-flight and pending play without recording it (history
+    /// cleared, or recording turned off mid-play).
+    fn reset(&mut self) {
+        self.current = None;
+        self.pending_start = None;
+    }
+
     fn start(&mut self, item: QueueItem, now: i64) {
         self.current = Some(ActivePlay {
             item,
@@ -222,8 +229,14 @@ impl HistoryStore {
         }
     }
 
+    /// Toggling off also drops the in-flight play so it neither shows in the
+    /// page nor finalizes later; re-enabling resumes on the next engine event
+    /// that carries the playing track.
     pub fn set_enabled(&self, enabled: bool) {
         self.enabled.store(enabled, Ordering::SeqCst);
+        if !enabled {
+            self.tracker.lock().unwrap().reset();
+        }
     }
 
     pub fn set_max_entries(&self, max_entries: usize) {
@@ -290,8 +303,9 @@ impl HistoryStore {
         compute_stats(&records, now_epoch(), offset_minutes)
     }
 
-    /// Empty the log and remove the file. The in-flight play is untouched.
+    /// Empty the log and remove the file, including the in-flight play.
     pub fn clear(&self) {
+        self.tracker.lock().unwrap().reset();
         if self.tx.send(WriterMsg::Clear).is_ok() {
             self.flush();
         }
@@ -879,6 +893,55 @@ mod tests {
         record_play(&store, 2, 40);
         store.record(&EngineEvent::NowPlaying(None));
         assert_eq!(store.page(0, 10).1, 1);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// Review Focus (smoke 10.3 #8): clearing must drop the in-flight play,
+    /// not just the finalized log, or the current track stays "recently played".
+    #[test]
+    fn clear_drops_the_in_flight_play() {
+        let dir = temp_dir();
+        let store = store(&dir, 100, true);
+        let track = item(1, 200);
+        store.record(&now_playing(&track));
+        store.record(&state(true));
+        for step in 1..=40 {
+            store.record(&position(step * 1000, 200_000));
+        }
+        assert_eq!(store.page(0, 10).1, 1);
+
+        store.clear();
+
+        assert_eq!(store.page(0, 10).1, 0, "the in-flight play must not survive a clear");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// Review Focus (smoke 10.3 #8): turning history off mid-play drops the
+    /// in-flight play; re-enabling resumes on the next state event.
+    #[test]
+    fn disabling_history_drops_the_in_flight_play() {
+        let dir = temp_dir();
+        let store = store(&dir, 100, true);
+        let track = item(1, 200);
+        store.record(&now_playing(&track));
+        store.record(&state(true));
+        for step in 1..=40 {
+            store.record(&position(step * 1000, 200_000));
+        }
+        assert_eq!(store.page(0, 10).1, 1);
+
+        store.set_enabled(false);
+
+        assert_eq!(store.page(0, 10).1, 0, "disabled history must not show the in-flight play");
+
+        store.set_enabled(true);
+        store.record(&state_with_current(true, &track));
+        for step in 1..=40 {
+            store.record(&position(step * 1000, 200_000));
+        }
+        let (items, total) = store.page(0, 10);
+        assert_eq!(total, 1, "tracking resumes after re-enabling");
+        assert_eq!(items[0].track_id, 1);
         let _ = fs::remove_dir_all(dir);
     }
 
