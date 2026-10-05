@@ -1,7 +1,6 @@
 //! Content-blocking flags (spec §6.5): `explicit` observed from v1 Track
 //! DTOs, `ai` fetched from the public OpenAPI, cached in memory and in
 //! `cache/track_flags.json`. Every failure is fail-open (QoL-D11).
-#![allow(dead_code)]
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -139,6 +138,7 @@ impl TrackFlagsStore {
         }
     }
 
+    #[allow(dead_code)] // consumed by the session saver in Task 6
     pub fn get(&self, track_id: u64) -> Option<TrackFlagEntry> {
         self.ensure_loaded();
         self.memory.read().unwrap().get(&track_id).copied()

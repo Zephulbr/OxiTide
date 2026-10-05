@@ -1082,10 +1082,12 @@ pub async fn get_playlist_tracks_page(
 }
 
 /// Build queue items for `ids`, preserving input order, with at most four
-/// TIDAL requests in flight. Fails on the first fetch error.
+/// TIDAL requests in flight. Fails on the first fetch error. `flags` receives
+/// every observed `explicit` value so session saves and later filters can use it.
 async fn queue_items_from_ids(
     client: &TidalClient,
     ids: &[u64],
+    flags: Option<&crate::track_flags::TrackFlagsStore>,
 ) -> Result<Vec<QueueItem>, Error> {
     let mut results: Vec<Option<QueueItem>> = vec![None; ids.len()];
     let mut pending = ids.iter().copied().enumerate();
@@ -1099,7 +1101,11 @@ async fn queue_items_from_ids(
     }
     while let Some(joined) = set.join_next().await {
         let (index, result) = joined.map_err(|e| Error::Task(e.to_string()))?;
-        results[index] = Some(queue_item_from_track(&result?));
+        let track = result?;
+        if let Some(store) = flags {
+            store.record_explicit(track.id, track.explicit);
+        }
+        results[index] = Some(queue_item_from_track(&track));
         if let Some((next_index, next_id)) = pending.next() {
             let client = client.clone();
             set.spawn(async move { (next_index, client.track(next_id).await) });
@@ -1129,7 +1135,47 @@ fn queue_item_from_track(track: &Track) -> QueueItem {
     }
 }
 
+/// Fetch the requested tracks and drop the ones the active content filters
+/// hide. Unknown flags never block. Returns the kept items and their ids so
+/// callers can remap a start index.
+async fn resolve_playable_items(
+    client: &TidalClient,
+    ids: &[u64],
+    flags: Option<&crate::track_flags::TrackFlagsStore>,
+    content: &crate::config::ContentConfig,
+) -> Result<(Vec<QueueItem>, Vec<u64>), Error> {
+    let items = queue_items_from_ids(client, ids, flags).await?;
+    if !content.block_explicit && !content.block_ai {
+        return Ok((items, ids.to_vec()));
+    }
+    let known: std::collections::HashMap<u64, crate::track_flags::TrackFlagEntry> = match flags {
+        Some(store) => {
+            if content.block_ai {
+                store.enrich(client, ids).await?;
+            }
+            store.known(ids).into_iter().collect()
+        }
+        None => std::collections::HashMap::new(),
+    };
+    let mut kept_items = Vec::new();
+    let mut kept_ids = Vec::new();
+    for item in items {
+        let entry = known.get(&item.track_id);
+        let blocked = crate::track_flags::is_blocked(
+            entry.and_then(|entry| entry.explicit),
+            entry.and_then(|entry| entry.ai),
+            content,
+        );
+        if !blocked {
+            kept_ids.push(item.track_id);
+            kept_items.push(item);
+        }
+    }
+    Ok((kept_items, kept_ids))
+}
+
 /// Play a list of track ids (resolved server-side), replacing the queue.
+/// Content filters are enforced here as a backstop for every UI path.
 #[tauri::command]
 pub async fn play_track_ids(
     state: State<'_, AppState>,
@@ -1141,9 +1187,16 @@ pub async fn play_track_ids(
         return Err("no tracks".to_string());
     }
     let client = require_client(&state)?;
-    let items = queue_items_from_ids(&client, &ids)
-        .await
-        .map_err(|e| state.fail_tidal(e))?;
+    let content = state.config().content;
+    let store = state.track_flags();
+    let (items, kept_ids) =
+        resolve_playable_items(&client, &ids, store.as_deref(), &content)
+            .await
+            .map_err(|e| state.fail_tidal(e))?;
+    if items.is_empty() {
+        return Err("all tracks are hidden by your content filters".to_string());
+    }
+    let start = crate::track_flags::remap_start(&ids, &kept_ids, start);
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
     let cmd = if shuffle.unwrap_or(false) {
         EngineCmd::PlayShuffled { items }
@@ -1384,6 +1437,96 @@ pub fn queue_clear(state: State<'_, AppState>) -> Result<(), String> {
         .engine
         .handle(EngineCmd::Clear)
         .map_err(|e| e.to_string())
+}
+
+/// Enforce the current content filters on the live queue: `block_explicit`
+/// clears it (official parity), `block_ai` removes only AI-labeled items and
+/// advances playback when the current track is removed. No-op when both
+/// filters are off or nothing is blocked.
+#[tauri::command]
+pub async fn apply_content_filters(state: State<'_, AppState>) -> Result<(), String> {
+    let content = state.config().content;
+    if !content.block_explicit && !content.block_ai {
+        return Ok(());
+    }
+    let Some(player) = state.player() else {
+        return Ok(());
+    };
+    if content.block_explicit {
+        return player
+            .engine
+            .handle(EngineCmd::Clear)
+            .map_err(|e| e.to_string());
+    }
+    let snapshot = player.engine.state();
+    if snapshot.queue.is_empty() {
+        return Ok(());
+    }
+    let ids: Vec<u64> = snapshot.queue.iter().map(|item| item.track_id).collect();
+    let entries = match state.track_flags() {
+        Some(store) => match require_client(&state) {
+            Ok(client) => store
+                .enrich(&client, &ids)
+                .await
+                .map_err(|e| state.fail_tidal(e))?,
+            Err(_) => store.known(&ids),
+        },
+        None => Vec::new(),
+    };
+    let known: std::collections::HashMap<u64, crate::track_flags::TrackFlagEntry> =
+        entries.into_iter().collect();
+    let blocked: Vec<bool> = snapshot
+        .queue
+        .iter()
+        .map(|item| {
+            let entry = known.get(&item.track_id);
+            crate::track_flags::is_blocked(
+                entry.and_then(|entry| entry.explicit),
+                entry.and_then(|entry| entry.ai),
+                &content,
+            )
+        })
+        .collect();
+    let outcome = crate::track_flags::plan_prune(snapshot.queue.len(), snapshot.current_index, &blocked);
+    if outcome.remove.is_empty() {
+        return Ok(());
+    }
+    if outcome.current_removed {
+        let keep: Vec<QueueItem> = snapshot
+            .queue
+            .iter()
+            .zip(blocked.iter())
+            .filter(|(_, blocked)| !**blocked)
+            .map(|(item, _)| item.clone())
+            .collect();
+        if keep.is_empty() {
+            return player
+                .engine
+                .handle(EngineCmd::Clear)
+                .map_err(|e| e.to_string());
+        }
+        let start = outcome.new_current.unwrap_or(0);
+        let cmd = if snapshot.playing {
+            EngineCmd::PlayTracks { items: keep, start }
+        } else {
+            EngineCmd::RestoreSession {
+                items: keep,
+                start,
+                position_ms: 0,
+                shuffle: snapshot.shuffle,
+                repeat: snapshot.repeat,
+            }
+        };
+        player.engine.handle(cmd).map_err(|e| e.to_string())?;
+    } else {
+        for index in outcome.remove {
+            player
+                .engine
+                .handle(EngineCmd::Remove(index))
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -2185,7 +2328,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let items = queue_items_from_ids(&tidal_client(&server), &[2, 1])
+        let items = queue_items_from_ids(&tidal_client(&server), &[2, 1], None)
             .await
             .unwrap();
 
@@ -2216,10 +2359,130 @@ mod tests {
             .mount(&server)
             .await;
 
-        let err = queue_items_from_ids(&tidal_client(&server), &[1, 2])
+        let err = queue_items_from_ids(&tidal_client(&server), &[1, 2], None)
             .await
             .unwrap_err();
         assert!(matches!(err, Error::Api { status: 500, .. }), "got {err:?}");
+    }
+
+    fn content(block_explicit: bool, block_ai: bool) -> crate::config::ContentConfig {
+        crate::config::ContentConfig { block_explicit, block_ai }
+    }
+
+    fn v1_track(id: u64, explicit: bool) -> serde_json::Value {
+        serde_json::json!({
+            "id": id, "title": format!("T{id}"), "duration": 100,
+            "artists": [{"id": 1, "name": "A"}], "explicit": explicit
+        })
+    }
+
+    #[tokio::test]
+    async fn resolve_playable_items_filters_explicit_without_enrichment() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/tracks/1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(v1_track(1, true)))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/tracks/2"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(v1_track(2, false)))
+            .mount(&server)
+            .await;
+
+        let store = crate::track_flags::TrackFlagsStore::start(None);
+        let client = tidal_client(&server);
+        let (items, kept) = resolve_playable_items(
+            &client,
+            &[1, 2],
+            Some(&store),
+            &content(true, false),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(kept, vec![2]);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].track_id, 2);
+        assert_eq!(store.get(2).unwrap().explicit, Some(false));
+    }
+
+    #[tokio::test]
+    async fn resolve_playable_items_does_not_enrich_when_filters_are_off() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/tracks/1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(v1_track(1, false)))
+            .mount(&server)
+            .await;
+        let store = crate::track_flags::TrackFlagsStore::start(None);
+        let client = tidal_client(&server);
+        let (items, kept) =
+            resolve_playable_items(&client, &[1], Some(&store), &content(false, false))
+                .await
+                .unwrap();
+        assert_eq!(kept, vec![1]);
+        assert_eq!(items.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn resolve_playable_items_filters_ai_after_enrichment() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/tracks/1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(v1_track(1, false)))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/tracks/2"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(v1_track(2, false)))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/openapi/v2/tracks"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": [
+                    {"id": "1", "type": "tracks", "attributes": {"explicit": false, "ai": true}},
+                    {"id": "2", "type": "tracks", "attributes": {"explicit": false, "ai": false}}
+                ]
+            })))
+            .mount(&server)
+            .await;
+
+        let store = crate::track_flags::TrackFlagsStore::start(None);
+        let client = tidal_client(&server);
+        let (items, kept) =
+            resolve_playable_items(&client, &[1, 2], Some(&store), &content(false, true))
+                .await
+                .unwrap();
+
+        assert_eq!(kept, vec![2]);
+        assert_eq!(items[0].track_id, 2);
+    }
+
+    #[tokio::test]
+    async fn resolve_playable_items_fails_open_when_enrichment_fails() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/tracks/1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(v1_track(1, false)))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/openapi/v2/tracks"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+
+        let store = crate::track_flags::TrackFlagsStore::start(None);
+        let client = tidal_client(&server);
+        let (items, kept) =
+            resolve_playable_items(&client, &[1], Some(&store), &content(false, true))
+                .await
+                .unwrap();
+
+        assert_eq!(kept, vec![1], "unknown ai must not block");
+        assert_eq!(items.len(), 1);
     }
 
     #[test]
