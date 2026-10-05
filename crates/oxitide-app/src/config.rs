@@ -16,6 +16,7 @@ pub struct Config {
     pub integrations: IntegrationsConfig,
     pub scrobbling: ScrobblingConfig,
     pub history: HistoryConfig,
+    pub content: ContentConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -241,6 +242,15 @@ impl Default for HistoryConfig {
     }
 }
 
+/// Content blocking (spec §6.5): client-side filters for explicit and
+/// AI-labeled tracks. Both default off.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ContentConfig {
+    pub block_explicit: bool,
+    pub block_ai: bool,
+}
+
 impl Config {
     /// Load `%APPDATA%\OxiTide\config.toml`; a missing file yields defaults and
     /// a malformed file is backed up to `config.toml.bak` and replaced with
@@ -374,6 +384,7 @@ mod tests {
             integrations: IntegrationsConfig { smtc: false, discord: true },
             scrobbling: ScrobblingConfig::default(),
             history: HistoryConfig::default(),
+            content: ContentConfig::default(),
         };
         config.save_to(&path).unwrap();
         assert_eq!(Config::load_from(&path), config);
@@ -421,6 +432,8 @@ mod tests {
         assert!(!config.integrations.discord);
         assert!(!config.scrobbling.lastfm_enabled);
         assert_eq!(config.scrobbling.lastfm_api_key, "");
+        assert!(!config.content.block_explicit);
+        assert!(!config.content.block_ai);
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -700,6 +713,27 @@ mod tests {
         let loaded = Config::load_from(&path);
         assert!(loaded.history.enabled);
         assert_eq!(loaded.history.max_entries, 10_000);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn content_defaults_are_off() {
+        let config = Config::default();
+        assert!(!config.content.block_explicit);
+        assert!(!config.content.block_ai);
+    }
+
+    #[test]
+    fn content_round_trips_as_documented_toml() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        let mut config = Config::default();
+        config.content.block_explicit = true;
+        config.content.block_ai = true;
+        config.save_to(&path).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("[content]"));
+        assert_eq!(Config::load_from(&path), config);
         let _ = fs::remove_dir_all(dir);
     }
 }
