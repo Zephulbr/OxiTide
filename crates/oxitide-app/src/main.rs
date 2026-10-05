@@ -5,6 +5,7 @@ mod commands;
 mod config;
 mod discord;
 mod history;
+mod hotkeys;
 mod lrc;
 mod lyrics;
 mod media_controls;
@@ -218,6 +219,11 @@ fn main() {
         }))
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(hotkeys::handle)
+                .build(),
+        )
         .manage(state)
         .setup(|app| {
             let handle = app.handle().clone();
@@ -238,6 +244,10 @@ fn main() {
             match tray::build(app.handle()) {
                 Ok(icon) => app.state::<AppState>().set_tray(icon),
                 Err(e) => tracing::warn!("system tray unavailable: {e}"),
+            }
+            let config = app.state::<AppState>().config();
+            if let Err(e) = hotkeys::register_all(app.handle(), &config.hotkeys) {
+                tracing::warn!("global hotkeys unavailable: {e}");
             }
             if let Some(scrobbler) = app.state::<AppState>().scrobbler() {
                 let handle = app.handle().clone();
@@ -415,6 +425,8 @@ fn main() {
             commands::set_oneko,
             commands::set_smtc,
             commands::set_discord,
+            commands::set_close_to_tray,
+            commands::set_hotkey,
             commands::set_cache_max_size_mb,
             commands::set_cache_clear_on_exit,
             commands::get_logs_dir,

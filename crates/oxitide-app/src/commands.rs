@@ -1939,6 +1939,45 @@ pub fn set_discord(state: State<'_, AppState>, enabled: bool) -> Result<(), Stri
 }
 
 #[tauri::command]
+pub fn set_close_to_tray(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    let mut config = state.config();
+    config.ui.close_to_tray = enabled;
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
+/// Bind (or clear, with an empty accelerator) one global hotkey. Registration
+/// failures restore the previous config and binding, then surface an error.
+#[tauri::command(async)]
+pub fn set_hotkey(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    action: String,
+    accelerator: String,
+) -> Result<(), String> {
+    if !crate::hotkeys::is_action(&action) {
+        return Err(format!("unknown hotkey action: {action}"));
+    }
+    let accelerator = accelerator.trim().to_string();
+    if !accelerator.is_empty() {
+        crate::hotkeys::parse(&accelerator)?;
+    }
+    let previous = state.config();
+    let mut next = previous.clone();
+    crate::hotkeys::set(&mut next.hotkeys, &action, &accelerator)?;
+    next.save()?;
+    state.set_config(next.clone());
+    if let Err(e) = crate::hotkeys::register_all(&app, &next.hotkeys) {
+        let _ = previous.save();
+        state.set_config(previous.clone());
+        let _ = crate::hotkeys::register_all(&app, &previous.hotkeys);
+        return Err(e);
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub fn set_cache_max_size_mb(state: State<'_, AppState>, mb: u64) -> Result<(), String> {
     require_cache(&state)?.set_max_bytes(mb.saturating_mul(1024 * 1024));
     let mut config = state.config();
