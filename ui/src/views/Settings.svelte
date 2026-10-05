@@ -29,6 +29,12 @@
   import type { Toasts } from "../lib/toasts.svelte";
   import type { Player } from "../lib/player.svelte";
   import { SHORTCUTS } from "../lib/shortcuts";
+  import {
+    HOTKEY_ACTIONS,
+    acceleratorFromEvent,
+    displayAccelerator,
+    type HotkeyAction,
+  } from "../lib/hotkeys";
   let {
     player,
     toasts,
@@ -57,6 +63,7 @@
   let lbError = $state("");
   let confirmingHistoryClear = $state(false);
   let confirmingBlockExplicit = $state(false);
+  let recordingAction = $state<HotkeyAction | null>(null);
 
   async function refreshScrobble() {
     try {
@@ -177,6 +184,16 @@
   // Keep the editable draft in sync when the stored value loads/changes.
   $effect(() => {
     customDraft = appearance.customTypeface;
+  });
+
+  // While recording, a capture-phase listener owns the keyboard: the app's
+  // window-level shortcut handler never sees the press.
+  $effect(() => {
+    if (!recordingAction) return;
+    const handler = (event: KeyboardEvent) => onHotkeyKeydown(event);
+    window.addEventListener("keydown", handler, true);
+    document.getElementById(`hotkey-${recordingAction}`)?.focus();
+    return () => window.removeEventListener("keydown", handler, true);
   });
 
   const queryLocalFonts = (
@@ -312,6 +329,45 @@
     if (!config) return;
     config = { ...config, integrations: { ...config.integrations, smtc: enabled } };
     api.setSmtc(enabled).catch(apply);
+  }
+
+  function setCloseToTray(enabled: boolean) {
+    if (!config) return;
+    config = { ...config, ui: { ...config.ui, close_to_tray: enabled } };
+    api.setCloseToTray(enabled).catch(apply);
+  }
+
+  function onHotkeyKeydown(event: KeyboardEvent) {
+    if (!recordingAction) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.key === "Escape") {
+      recordingAction = null;
+      return;
+    }
+    if (event.key === "Backspace" || event.key === "Delete") {
+      void saveHotkey(recordingAction, "");
+      return;
+    }
+    const accelerator = acceleratorFromEvent(event);
+    if (!accelerator) return;
+    const action = recordingAction;
+    recordingAction = null;
+    void saveHotkey(action, accelerator);
+  }
+
+  /// Optimistic update; the Rust command rolls back its own config on a
+  /// registration conflict, so a failure restores the shown binding too.
+  async function saveHotkey(action: HotkeyAction, accelerator: string) {
+    if (!config) return;
+    const previous = config.hotkeys[action];
+    config = { ...config, hotkeys: { ...config.hotkeys, [action]: accelerator } };
+    try {
+      await api.setHotkey(action, accelerator);
+    } catch (e) {
+      config = { ...config, hotkeys: { ...config.hotkeys, [action]: previous } };
+      apply(e);
+    }
   }
 
   function setDiscord(enabled: boolean) {
@@ -853,6 +909,45 @@
           Log out
         </button>
       </p>
+      <h3>Desktop</h3>
+      <div class="planned">
+        <div class="planned-main">
+          <label class="planned-head">
+            <input
+              type="checkbox"
+              checked={config.ui.close_to_tray}
+              onchange={(e) => setCloseToTray((e.target as HTMLInputElement).checked)}
+            />
+            <span>Close to tray</span>
+          </label>
+          <span class="muted">
+            Closing the window hides it and keeps playback running; Quit lives in
+            the tray menu.
+          </span>
+        </div>
+      </div>
+
+      <h3>Global hotkeys</h3>
+      <p class="muted">
+        Work while OxiTide is in the background. Record a shortcut, or press
+        Backspace/Delete while recording to clear it. A shortcut that is already
+        taken shows a message and keeps the old binding.
+      </p>
+      {#each HOTKEY_ACTIONS as entry (entry.id)}
+        <div class="hotkey-row">
+          <span class="hotkey-label">{entry.label}</span>
+          <kbd>{displayAccelerator(config.hotkeys[entry.id]) || "Not set"}</kbd>
+          <button
+            id={`hotkey-${entry.id}`}
+            class:recording={recordingAction === entry.id}
+            onclick={() =>
+              (recordingAction = recordingAction === entry.id ? null : entry.id)}
+          >{recordingAction === entry.id ? "Press keys…" : "Record"}</button>
+          {#if config.hotkeys[entry.id]}
+            <button onclick={() => void saveHotkey(entry.id, "")}>Clear</button>
+          {/if}
+        </div>
+      {/each}
       <h3>Keyboard shortcuts</h3>
       <ul>
         {#each SHORTCUTS as shortcut (shortcut.keys)}
@@ -1001,5 +1096,22 @@
   }
   .logout:active {
     transform: scale(0.97);
+  }
+  .hotkey-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 6px 0;
+  }
+  .hotkey-label {
+    min-width: 150px;
+  }
+  .hotkey-row kbd {
+    min-width: 140px;
+    color: var(--text-muted);
+  }
+  .hotkey-row button.recording {
+    border: 1px solid var(--accent);
+    color: var(--accent);
   }
 </style>
