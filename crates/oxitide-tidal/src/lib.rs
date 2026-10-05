@@ -4,6 +4,7 @@ pub mod client;
 pub mod discovery;
 pub mod error;
 pub mod feed;
+pub mod flags;
 pub mod folders;
 pub mod library;
 pub mod lyrics;
