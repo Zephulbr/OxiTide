@@ -10,11 +10,16 @@
         try {
           t = localStorage.getItem("oxitide.theme") || "dark";
         } catch (e) {}
-        if (t !== "dark" && t !== "light") {
-          t =
-            window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+        if (t === "system") {
+          if (window.matchMedia) {
+            t = window.matchMedia("(prefers-color-scheme: dark)").matches
               ? "dark"
               : "light";
+          } else {
+            t = "dark";
+          }
+        } else if (t !== "dark" && t !== "light") {
+          t = "dark";
         }
         document.documentElement.dataset.theme = t;
         document.documentElement.style.colorScheme = t;
