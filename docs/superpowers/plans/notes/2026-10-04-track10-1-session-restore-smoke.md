@@ -17,7 +17,7 @@ Mark each item pass/fail with a note; failures become plan fixes, not silent exc
    - Reorder or remove a queue item, then quit and relaunch.
      PASS = the edited order is restored.
 4. Logout
-   - Log out. PASS = queue empties and `%APPDATA%\OxiTide\session.json` is gone.
+   - Log out. PASS = queue empties and `%APPDATA%\OxiTide\config\session.json` is gone.
    - Log back in. PASS = the app starts with an empty queue, not the old one.
 5. Corrupt file
    - Quit. Overwrite `session.json` with `garbage`. Launch.

@@ -34,5 +34,5 @@ second launch. Steps 7–8 need a real track flagged `explicit` or AI-labeled.
     position 0, and the queue no longer contains blocked items.
 11. Offline check: disconnect the network, open a list view with Block AI on;
     rows render (unknown flags play), no error toast storm, playback works.
-12. `%APPDATA%\OxiTide\cache\track_flags.json` exists after step 6/7 and its
+12. `%APPDATA%\OxiTide\config\cache\track_flags.json` exists after step 6/7 and its
     entries contain numeric keys with `explicit`/`ai`.

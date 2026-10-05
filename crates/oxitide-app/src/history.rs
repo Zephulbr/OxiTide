@@ -179,7 +179,7 @@ fn now_epoch() -> i64 {
         .unwrap_or(0)
 }
 
-/// `%APPDATA%\OxiTide\history.jsonl`, beside `config.toml`.
+/// `%APPDATA%\OxiTide\config\history.jsonl`, beside `config.toml`.
 pub fn history_path() -> Option<PathBuf> {
     crate::config::config_path().map(|path| path.with_file_name("history.jsonl"))
 }

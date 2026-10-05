@@ -114,7 +114,7 @@ fn kept_before(blocked: &[bool], index: usize) -> usize {
     blocked[..index].iter().filter(|blocked| !**blocked).count()
 }
 
-/// `%APPDATA%\OxiTide\cache\track_flags.json`.
+/// `%APPDATA%\OxiTide\config\cache\track_flags.json`.
 pub fn track_flags_path() -> Option<PathBuf> {
     default_cache_dir().map(|dir| dir.join("track_flags.json"))
 }

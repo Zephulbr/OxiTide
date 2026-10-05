@@ -79,7 +79,7 @@ impl Default for Session {
     }
 }
 
-/// `%APPDATA%\OxiTide\session.json`, beside `config.toml`.
+/// `%APPDATA%\OxiTide\config\session.json`, beside `config.toml`.
 pub fn session_path() -> Option<PathBuf> {
     crate::config::config_path().map(|path| path.with_file_name("session.json"))
 }

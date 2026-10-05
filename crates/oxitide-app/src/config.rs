@@ -323,7 +323,7 @@ impl Config {
     }
 }
 
-/// `%APPDATA%\OxiTide\config.toml`.
+/// `%APPDATA%\OxiTide\config\config.toml`.
 pub fn config_path() -> Option<PathBuf> {
     directories::ProjectDirs::from("", "", "OxiTide")
         .map(|dirs| dirs.config_dir().join("config.toml"))
