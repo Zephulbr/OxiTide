@@ -9,6 +9,11 @@ export interface Track {
   explicit: boolean;
   mediaMetadata?: { tags: string[] } | null;
 }
+export interface TrackFlag {
+  track_id: number;
+  explicit: boolean | null;
+  ai: boolean | null;
+}
 export interface Album {
   id: number; title: string; artists: ArtistRef[]; cover?: string | null;
   numberOfTracks: number; duration: number; releaseDate?: string | null;
@@ -211,6 +216,7 @@ export interface Config {
     lastfm_api_secret: string;
   };
   history: { enabled: boolean; max_entries: number };
+  content: { block_explicit: boolean; block_ai: boolean };
 }
 export type EngineEvent =
   | ({ type: "state" } & PlaybackState)
@@ -364,6 +370,10 @@ export const api = {
   setHistoryEnabled: (enabled: boolean) => invoke<void>("set_history_enabled", { enabled }),
   setHistoryMaxEntries: (maxEntries: number) =>
     invoke<void>("set_history_max_entries", { maxEntries }),
+  getTrackFlags: (ids: number[]) => invoke<TrackFlag[]>("get_track_flags", { ids }),
+  setBlockExplicit: (enabled: boolean) => invoke<void>("set_block_explicit", { enabled }),
+  setBlockAi: (enabled: boolean) => invoke<void>("set_block_ai", { enabled }),
+  applyContentFilters: () => invoke<void>("apply_content_filters"),
   getOutputDevices: () => invoke<OutputDevice[]>("get_output_devices"),
   setOutputDevice: (deviceId: string) => invoke<void>("set_output_device", { deviceId }),
   setPreferredQuality: (quality: Quality) => invoke<void>("set_preferred_quality", { quality }),

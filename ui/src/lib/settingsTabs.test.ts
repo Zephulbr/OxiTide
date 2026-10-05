@@ -5,6 +5,9 @@ describe("nextTab", () => {
   it("steps forward", () => {
     expect(nextTab("appearance", 1)).toBe("playback");
   });
+  it("steps into the content tab after playback", () => {
+    expect(nextTab("playback", 1)).toBe("content");
+  });
   it("steps backward", () => {
     expect(nextTab("storage", -1)).toBe("connections");
   });

@@ -154,6 +154,7 @@
   const TAB_LABELS: Record<SettingsTab, string> = {
     appearance: "Appearance",
     playback: "Playback",
+    content: "Content",
     connections: "Connections",
     storage: "Storage",
     system: "System",

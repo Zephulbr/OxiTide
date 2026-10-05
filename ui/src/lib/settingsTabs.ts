@@ -1,6 +1,7 @@
 export const SETTINGS_TABS = [
   "appearance",
   "playback",
+  "content",
   "connections",
   "storage",
   "system",
