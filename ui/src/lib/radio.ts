@@ -1,6 +1,7 @@
 import { api, trackToQueueItem, type Track } from "./api";
 import { errorMessage } from "./errors";
 import { playSource } from "./playSource.svelte";
+import { trackFlags } from "./trackFlags.svelte";
 import type { Toasts } from "./toasts.svelte";
 
 async function playRadio(fetchTracks: () => Promise<Track[]>, toasts: Toasts): Promise<void> {
@@ -10,8 +11,13 @@ async function playRadio(fetchTracks: () => Promise<Track[]>, toasts: Toasts): P
       toasts.show("No radio tracks available.", { severity: "info" });
       return;
     }
+    const prepared = await trackFlags.filterPlayable(tracks, 0);
+    if (!prepared) {
+      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      return;
+    }
     playSource.set(null);
-    await api.playTracks(tracks.map(trackToQueueItem), 0);
+    await api.playTracks(prepared.items.map(trackToQueueItem), prepared.start);
   } catch (e) {
     const message =
       String(e) === "forbidden"

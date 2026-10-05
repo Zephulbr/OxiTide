@@ -19,6 +19,7 @@
   import TrackTable from "../lib/components/TrackTable.svelte";
   import { menu } from "../lib/menu.svelte";
   import { playSource } from "../lib/playSource.svelte";
+  import { trackFlags } from "../lib/trackFlags.svelte";
   import { playArtistRadio } from "../lib/radio";
   import { shareUrl } from "../lib/share";
   import { createTrackView } from "../lib/trackView.svelte";
@@ -109,10 +110,15 @@
       .catch(() => {});
   }
 
-  function queueTop(startIndex: number, shuffle = false) {
+  async function queueTop(startIndex: number, shuffle = false) {
     if (topTracks.length === 0) return;
+    const prepared = await trackFlags.filterPlayable(topTracks, startIndex);
+    if (!prepared) {
+      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      return;
+    }
     playSource.set(null);
-    void api.playTracks(topTracks.map(trackToQueueItem), startIndex, shuffle);
+    await api.playTracks(prepared.items.map(trackToQueueItem), prepared.start, shuffle);
   }
 
   function playFrom(index: number) {
@@ -120,7 +126,7 @@
     // sourceIndex maps the visible row back to the queue's source order.
     const source = view.sourceIndex(index);
     if (source < 0) return;
-    queueTop(source);
+    void queueTop(source);
   }
 
   async function share() {

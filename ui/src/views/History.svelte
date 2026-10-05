@@ -5,6 +5,7 @@
   import type { Player } from "../lib/player.svelte";
   import type { Toasts } from "../lib/toasts.svelte";
   import { playSource } from "../lib/playSource.svelte";
+  import { trackFlags } from "../lib/trackFlags.svelte";
   import Cover from "../lib/components/Cover.svelte";
   import EmptyState from "../lib/components/EmptyState.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
@@ -71,13 +72,22 @@
     }
   });
 
-  function playEntry(entry: HistoryEntry) {
+  async function playEntry(entry: HistoryEntry) {
     const index = entries.indexOf(entry);
     if (index < 0) return;
+    // History records carry no flags: explicit fails open, AI is enriched by id.
+    const items = entries.map((e) => ({ entry: e, id: e.track_id, explicit: undefined }));
+    const prepared = await trackFlags.filterPlayable(items, index);
+    if (!prepared) {
+      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      return;
+    }
     playSource.set(null);
-    void api.playTracks(entries.map(historyToQueueItem), index).catch((e) => {
-      toasts.show(String(e), { severity: "error" });
-    });
+    void api
+      .playTracks(prepared.items.map((item) => historyToQueueItem(item.entry)), prepared.start)
+      .catch((e) => {
+        toasts.show(String(e), { severity: "error" });
+      });
   }
 
   function selectTab(next: HistoryTab) {
