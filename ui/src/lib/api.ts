@@ -416,6 +416,7 @@ export const api = {
   setCloseToTray: (enabled: boolean) => invoke<void>("set_close_to_tray", { enabled }),
   setHotkey: (action: HotkeyAction, accelerator: string) =>
     invoke<void>("set_hotkey", { action, accelerator }),
+  setHotkeyCapture: (active: boolean) => invoke<void>("set_hotkey_capture", { active }),
   setDiscord: (enabled: boolean) => invoke<void>("set_discord", { enabled }),
   setCacheMaxSizeMb: (mb: number) => invoke<void>("set_cache_max_size_mb", { mb }),
   setCacheClearOnExit: (enabled: boolean) =>

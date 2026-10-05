@@ -186,14 +186,25 @@
     customDraft = appearance.customTypeface;
   });
 
-  // While recording, a capture-phase listener owns the keyboard: the app's
-  // window-level shortcut handler never sees the press.
+  // While recording, a capture-phase listener owns the keyboard and the
+  // registered global hotkeys are suspended so a captured chord is not also
+  // dispatched by the plugin. Cleanup restores both (Escape, save, cancel,
+  // unmount).
   $effect(() => {
     if (!recordingAction) return;
+    api.setHotkeyCapture(true).catch(apply);
     const handler = (event: KeyboardEvent) => onHotkeyKeydown(event);
     window.addEventListener("keydown", handler, true);
     document.getElementById(`hotkey-${recordingAction}`)?.focus();
-    return () => window.removeEventListener("keydown", handler, true);
+    return () => {
+      window.removeEventListener("keydown", handler, true);
+      api.setHotkeyCapture(false).catch(apply);
+    };
+  });
+
+  // Recording only makes sense on the System tab; leaving it cancels capture.
+  $effect(() => {
+    if (tab !== "system") recordingAction = null;
   });
 
   const queryLocalFonts = (
@@ -346,7 +357,9 @@
       return;
     }
     if (event.key === "Backspace" || event.key === "Delete") {
-      void saveHotkey(recordingAction, "");
+      const action = recordingAction;
+      recordingAction = null;
+      void saveHotkey(action, "");
       return;
     }
     const accelerator = acceleratorFromEvent(event);
