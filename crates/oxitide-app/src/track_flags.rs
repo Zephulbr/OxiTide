@@ -39,6 +39,26 @@ pub fn is_blocked(explicit: Option<bool>, ai: Option<bool>, content: &ContentCon
         || (content.block_ai && ai == Some(true))
 }
 
+/// Which queue action a Settings toggle change should trigger.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FilterAction {
+    Noop,
+    Clear,
+    Prune,
+}
+
+/// The explicit toggle clears the queue (official parity); the AI toggle only
+/// prunes blocked items, even when explicit blocking is also on.
+pub fn filter_action(scope: &str, content: &ContentConfig) -> FilterAction {
+    match scope {
+        "explicit" if content.block_explicit => FilterAction::Clear,
+        "explicit" => FilterAction::Noop,
+        "ai" if content.block_ai => FilterAction::Prune,
+        "ai" => FilterAction::Noop,
+        _ => FilterAction::Noop,
+    }
+}
+
 /// Index of the original `start` track inside the kept list, or the position
 /// of the next kept track, clamped to the last kept item.
 pub fn remap_start(ids: &[u64], kept: &[u64], start: usize) -> usize {
@@ -186,6 +206,9 @@ impl TrackFlagsStore {
             match client.track_flags(chunk).await {
                 Ok(rows) => {
                     self.insert_rows(rows);
+                    // Ids the API omitted are still "fetched": negative-cache
+                    // them so scrolls do not re-request the same batch forever.
+                    self.mark_fetched(chunk);
                     fetched = true;
                 }
                 Err(Error::Unauthorized) => return Err(Error::Unauthorized),
@@ -199,6 +222,21 @@ impl TrackFlagsStore {
             self.save();
         }
         Ok(self.known(ids))
+    }
+
+    /// Stamp `fetched_at` for ids the API did not return, preserving any
+    /// observed flags.
+    fn mark_fetched(&self, ids: &[u64]) {
+        let now = now_secs();
+        let mut memory = self.memory.write().unwrap();
+        for id in ids {
+            let entry = memory.entry(*id).or_insert(TrackFlagEntry {
+                explicit: None,
+                ai: None,
+                fetched_at: 0,
+            });
+            entry.fetched_at = now;
+        }
     }
 
     fn insert_rows(&self, rows: Vec<(u64, TrackFlags)>) {
@@ -218,12 +256,15 @@ impl TrackFlagsStore {
             }
             entry.fetched_at = now;
         }
-        prune(&mut memory);
     }
 
     fn save(&self) {
         let Some(path) = self.path.as_ref() else { return };
-        let memory = self.memory.read().unwrap();
+        let mut memory = self.memory.write().unwrap();
+        // Prune only when persisting: a large enrich keeps every requested id
+        // in memory for the rest of the session, so callers can mark them
+        // fetched even when the on-disk cache is capped.
+        prune(&mut memory);
         let cache = DiskCache {
             version: TRACK_FLAGS_VERSION,
             tracks: memory
@@ -425,6 +466,30 @@ mod tests {
         assert!(store.get(1).is_none());
     }
 
+    #[tokio::test]
+    async fn enrich_marks_omitted_ids_as_fetched_and_does_not_refetch() {
+        let server = MockServer::start().await;
+        let requests = Arc::new(AtomicUsize::new(0));
+        let counter = requests.clone();
+        Mock::given(method("GET"))
+            .and(path("/openapi/v2/tracks"))
+            .respond_with(move |_req: &Request| {
+                counter.fetch_add(1, Ordering::SeqCst);
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"data": []}))
+            })
+            .mount(&server)
+            .await;
+        let store = TrackFlagsStore::start(None);
+
+        let entries = store.enrich(&client(&server), &[1, 2]).await.unwrap();
+        assert_eq!(entries.len(), 2, "omitted ids still get a cached entry");
+        assert!(entries.iter().all(|(_, entry)| entry.fetched_at > 0));
+
+        let again = store.enrich(&client(&server), &[1, 2]).await.unwrap();
+        assert_eq!(again.len(), 2);
+        assert_eq!(requests.load(Ordering::SeqCst), 1, "fetched ids were refetched");
+    }
+
     #[test]
     fn record_explicit_merges_without_clobbering_ai() {
         let store = TrackFlagsStore::start(None);
@@ -469,5 +534,21 @@ mod tests {
         assert_eq!(map.len(), TRACK_FLAGS_MAX_ENTRIES);
         assert!(!map.contains_key(&0));
         assert!(map.contains_key(&u64::try_from(TRACK_FLAGS_MAX_ENTRIES).unwrap()));
+    }
+
+    #[test]
+    fn filter_action_scopes_the_clear_to_the_explicit_toggle() {
+        let both = ContentConfig { block_explicit: true, block_ai: true };
+        assert_eq!(filter_action("ai", &both), FilterAction::Prune);
+        assert_eq!(filter_action("explicit", &both), FilterAction::Clear);
+
+        let ai_only = ContentConfig { block_explicit: false, block_ai: true };
+        assert_eq!(filter_action("ai", &ai_only), FilterAction::Prune);
+        assert_eq!(filter_action("explicit", &ai_only), FilterAction::Noop);
+
+        let off = ContentConfig::default();
+        assert_eq!(filter_action("ai", &off), FilterAction::Noop);
+        assert_eq!(filter_action("explicit", &off), FilterAction::Noop);
+        assert_eq!(filter_action("bogus", &both), FilterAction::Noop);
     }
 }

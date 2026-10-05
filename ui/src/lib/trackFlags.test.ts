@@ -95,10 +95,29 @@ describe("ensure", () => {
     await store.ensure([1, 2]);
     expect(api.getTrackFlags).not.toHaveBeenCalled();
   });
+
+  it("does not re-request ids whose flags came back unknown", async () => {
+    vi.mocked(api.getTrackFlags).mockResolvedValue([{ track_id: 1, explicit: null, ai: null }]);
+    const store = createTrackFlags();
+    store.setContentFlags(false, true);
+    await store.ensure([1]);
+    await store.ensure([1]);
+    expect(api.getTrackFlags).toHaveBeenCalledTimes(1);
+  });
+
+  it("still fetches after recordTracks seeds only explicit", async () => {
+    vi.mocked(api.getTrackFlags).mockResolvedValue([{ track_id: 1, explicit: true, ai: false }]);
+    const store = createTrackFlags();
+    store.setContentFlags(false, true);
+    store.recordTracks([track(1, true)]);
+    await store.ensure([1]);
+    expect(api.getTrackFlags).toHaveBeenCalledTimes(1);
+    expect(store.isBlocked(track(1, true))).toBe(false);
+  });
 });
 
 describe("init and reset", () => {
-  it("loads the toggles from config and clears on reset", async () => {
+  it("keeps the config toggles across reset and clears the flag cache", async () => {
     vi.mocked(api.getConfig).mockResolvedValue({
       content: { block_explicit: true, block_ai: true },
     } as never);
@@ -107,8 +126,8 @@ describe("init and reset", () => {
     expect(store.blockExplicit).toBe(true);
     expect(store.blockAi).toBe(true);
     store.reset();
-    expect(store.blockExplicit).toBe(false);
-    expect(store.blockAi).toBe(false);
+    expect(store.blockExplicit).toBe(true);
+    expect(store.blockAi).toBe(true);
     expect(store.isBlocked({ id: 1, explicit: true })).toBe(false);
   });
 });

@@ -4,6 +4,9 @@ import { api } from "./api";
 export interface TrackFlagInfo {
   explicit: boolean | null;
   ai: boolean | null;
+  /// True once a lookup for this id has completed, even if the API returned
+  /// no attributes; prevents re-requesting permanently unknown ids.
+  fetched: boolean;
 }
 
 /// Anything with an id and, when known from the Track DTO, an explicit flag.
@@ -51,7 +54,7 @@ export function createTrackFlags(): TrackFlagsStore {
   let flushing: Promise<void> | null = null;
 
   function known(id: number): boolean {
-    return flags.has(id) && flags.get(id)!.ai !== null;
+    return flags.get(id)?.fetched === true;
   }
 
   async function init(): Promise<void> {
@@ -74,7 +77,11 @@ export function createTrackFlags(): TrackFlagsStore {
       if (track.explicit === undefined) continue;
       const entry = flags.get(track.id);
       if (entry?.explicit === track.explicit) continue;
-      flags.set(track.id, { explicit: track.explicit, ai: entry?.ai ?? null });
+      flags.set(track.id, {
+        explicit: track.explicit,
+        ai: entry?.ai ?? null,
+        fetched: entry?.fetched ?? false,
+      });
     }
   }
 
@@ -98,6 +105,7 @@ export function createTrackFlags(): TrackFlagsStore {
             flags.set(row.track_id, {
               explicit: row.explicit ?? entry?.explicit ?? null,
               ai: row.ai ?? entry?.ai ?? null,
+              fetched: true,
             });
           }
         } catch {
@@ -135,9 +143,9 @@ export function createTrackFlags(): TrackFlagsStore {
     return { items, start: remapStart(tracks.map((track) => track.id), kept, start) };
   }
 
+  // The toggles mirror global config, not account state, so they survive a
+  // logout reset; only the per-account flag cache is dropped.
   function reset() {
-    blockExplicit = false;
-    blockAi = false;
     flags.clear();
     pending.clear();
     flushing = null;

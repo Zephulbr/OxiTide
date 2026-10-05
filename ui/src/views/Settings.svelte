@@ -356,7 +356,7 @@
       .setBlockExplicit(enabled)
       .then(async () => {
         trackFlags.setContentFlags(enabled, next.content.block_ai);
-        if (enabled) await api.applyContentFilters();
+        if (enabled) await api.applyContentFilters("explicit");
       })
       .catch(apply);
   }
@@ -378,7 +378,7 @@
       .setBlockAi(enabled)
       .then(async () => {
         trackFlags.setContentFlags(next.content.block_explicit, enabled);
-        if (enabled) await api.applyContentFilters();
+        if (enabled) await api.applyContentFilters("ai");
       })
       .catch(apply);
   }

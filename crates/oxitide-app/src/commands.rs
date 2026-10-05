@@ -1439,25 +1439,32 @@ pub fn queue_clear(state: State<'_, AppState>) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-/// Enforce the current content filters on the live queue: `block_explicit`
-/// clears it (official parity), `block_ai` removes only AI-labeled items and
-/// advances playback when the current track is removed. No-op when both
-/// filters are off or nothing is blocked.
+/// Enforce a just-changed content filter on the live queue: the explicit
+/// toggle clears it (official parity), the AI toggle removes only blocked
+/// items and advances playback when the current track is removed. No-op when
+/// the scope's filter is off or nothing is blocked.
 #[tauri::command]
-pub async fn apply_content_filters(state: State<'_, AppState>) -> Result<(), String> {
+pub async fn apply_content_filters(
+    state: State<'_, AppState>,
+    scope: String,
+) -> Result<(), String> {
     let content = state.config().content;
-    if !content.block_explicit && !content.block_ai {
-        return Ok(());
+    match crate::track_flags::filter_action(&scope, &content) {
+        crate::track_flags::FilterAction::Noop => return Ok(()),
+        crate::track_flags::FilterAction::Clear => {
+            let Some(player) = state.player() else {
+                return Ok(());
+            };
+            return player
+                .engine
+                .handle(EngineCmd::Clear)
+                .map_err(|e| e.to_string());
+        }
+        crate::track_flags::FilterAction::Prune => {}
     }
     let Some(player) = state.player() else {
         return Ok(());
     };
-    if content.block_explicit {
-        return player
-            .engine
-            .handle(EngineCmd::Clear)
-            .map_err(|e| e.to_string());
-    }
     let snapshot = player.engine.state();
     if snapshot.queue.is_empty() {
         return Ok(());

@@ -373,7 +373,8 @@ export const api = {
   getTrackFlags: (ids: number[]) => invoke<TrackFlag[]>("get_track_flags", { ids }),
   setBlockExplicit: (enabled: boolean) => invoke<void>("set_block_explicit", { enabled }),
   setBlockAi: (enabled: boolean) => invoke<void>("set_block_ai", { enabled }),
-  applyContentFilters: () => invoke<void>("apply_content_filters"),
+  applyContentFilters: (scope: "explicit" | "ai") =>
+    invoke<void>("apply_content_filters", { scope }),
   getOutputDevices: () => invoke<OutputDevice[]>("get_output_devices"),
   setOutputDevice: (deviceId: string) => invoke<void>("set_output_device", { deviceId }),
   setPreferredQuality: (quality: Quality) => invoke<void>("set_preferred_quality", { quality }),
