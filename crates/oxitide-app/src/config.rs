@@ -17,6 +17,7 @@ pub struct Config {
     pub scrobbling: ScrobblingConfig,
     pub history: HistoryConfig,
     pub content: ContentConfig,
+    pub hotkeys: HotkeysConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -132,6 +133,8 @@ pub struct UiConfig {
     /// Launch the window in the mini player (spec MP-D7); default off.
     pub start_in_mini: bool,
     pub oneko: bool,
+    /// Close hides the window to the tray instead of exiting (QoL-D3).
+    pub close_to_tray: bool,
     pub window_width: u32,
     pub window_height: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -154,6 +157,7 @@ impl Default for UiConfig {
             queue_width: 320,
             start_in_mini: false,
             oneko: false,
+            close_to_tray: true,
             window_width: 1200,
             window_height: 800,
             window_x: None,
@@ -249,6 +253,20 @@ impl Default for HistoryConfig {
 pub struct ContentConfig {
     pub block_explicit: bool,
     pub block_ai: bool,
+}
+
+/// Global hotkeys (spec §6.6): one accelerator per action, empty means
+/// unbound. Values are parsed by `tauri-plugin-global-shortcut`; the UI keeps
+/// them in the plugin's format (`"Ctrl+Alt+KeyP"`, `"MediaPlayPause"`).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct HotkeysConfig {
+    pub play_pause: String,
+    pub next: String,
+    pub prev: String,
+    pub volume_up: String,
+    pub volume_down: String,
+    pub show_hide: String,
 }
 
 impl Config {
@@ -370,6 +388,7 @@ mod tests {
                 queue_width: 320,
                 start_in_mini: false,
                 oneko: true,
+                close_to_tray: true,
                 window_width: 1280,
                 window_height: 720,
                 window_x: Some(40),
@@ -385,6 +404,7 @@ mod tests {
             scrobbling: ScrobblingConfig::default(),
             history: HistoryConfig::default(),
             content: ContentConfig::default(),
+            hotkeys: HotkeysConfig::default(),
         };
         config.save_to(&path).unwrap();
         assert_eq!(Config::load_from(&path), config);
@@ -434,6 +454,13 @@ mod tests {
         assert_eq!(config.scrobbling.lastfm_api_key, "");
         assert!(!config.content.block_explicit);
         assert!(!config.content.block_ai);
+        assert!(config.ui.close_to_tray);
+        assert_eq!(config.hotkeys.play_pause, "");
+        assert_eq!(config.hotkeys.next, "");
+        assert_eq!(config.hotkeys.prev, "");
+        assert_eq!(config.hotkeys.volume_up, "");
+        assert_eq!(config.hotkeys.volume_down, "");
+        assert_eq!(config.hotkeys.show_hide, "");
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -733,6 +760,36 @@ mod tests {
         config.save_to(&path).unwrap();
         let text = fs::read_to_string(&path).unwrap();
         assert!(text.contains("[content]"));
+        assert_eq!(Config::load_from(&path), config);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn close_to_tray_defaults_true_and_round_trips() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        assert!(Config::default().ui.close_to_tray);
+        let mut config = Config::default();
+        config.ui.close_to_tray = false;
+        config.save_to(&path).unwrap();
+        assert!(fs::read_to_string(&path).unwrap().contains("close_to_tray = false"));
+        assert!(!Config::load_from(&path).ui.close_to_tray);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn hotkeys_default_to_empty_and_round_trip() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        let fresh = Config::default();
+        assert_eq!(fresh.hotkeys.play_pause, "");
+        assert_eq!(fresh.hotkeys.show_hide, "");
+        let mut config = Config::default();
+        config.hotkeys.play_pause = "Ctrl+Alt+Space".into();
+        config.hotkeys.volume_up = "VolumeUp".into();
+        config.save_to(&path).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("[hotkeys]"), "{text}");
         assert_eq!(Config::load_from(&path), config);
         let _ = fs::remove_dir_all(dir);
     }
