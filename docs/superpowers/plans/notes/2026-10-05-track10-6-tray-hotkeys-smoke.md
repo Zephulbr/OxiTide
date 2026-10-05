@@ -18,11 +18,13 @@ exemption pattern and are checked in the track completion note.
    unminimizes, and focuses; no second tray icon appears.
 6. Settings → System: "Close to tray" is checked. Turn it off, press X: the app
    exits. Turn it on again: X hides.
-7. Record `Ctrl+Alt+Space` for Play / pause; the row shows "Ctrl + Alt + Space"
-   and playback toggles from another focused app. With the OxiTide window
-   focused, pressing Space still toggles exactly once (no double-fire).
-8. Try to record `Ctrl+Alt+Space` for Next: a toast appears and Play / pause
-   keeps its binding; restarting keeps it too.
+7. Record `Space` for Play / pause; the row shows "Space" and a single press
+   toggles playback exactly once while the OxiTide window is focused and while
+   another app is focused (once a chord is registered the global handler is the
+   only delivery path). Global hotkeys are temporarily unregistered while the
+   recorder is active.
+8. Try to record `Space` for Next: a toast appears and Play / pause keeps its
+   binding; restarting keeps it too.
 9. Record a chord another app already owns (e.g. an OS-reserved one): a toast
    appears and the previous binding stays.
 10. Clear a hotkey (Backspace/Delete while recording, or the Clear button):
@@ -32,9 +34,7 @@ exemption pattern and are checked in the track completion note.
 12. `%APPDATA%\OxiTide\config\config.toml` contains `close_to_tray = true|false`
     under `[ui]` and a `[hotkeys]` section with the recorded accelerators.
 13. Known edges: (a) hand-edit `next = "Bogus+Key"` into the `[hotkeys]` section
-    of `%APPDATA%\OxiTide\config\config.toml`, relaunch: the app starts (warning
-    logged), and valid bindings after `next` in the fixed action order
-    (`play_pause, next, prev, volume_up, volume_down, show_hide`) may not
-    register — remove the bad value to recover. (b) Start recording a hotkey,
-    switch to another Settings tab, then press a chord: it is saved silently
-    with the row no longer visible; press Esc while recording to cancel.
+    of `%APPDATA%\OxiTide\config\config.toml`, relaunch: the app starts with a
+    warning logged and the remaining valid bindings still register; remove the
+    bad value to recover. (b) Start recording a hotkey, then switch to another
+    Settings tab: recording is cancelled and the global hotkeys are restored.

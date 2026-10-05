@@ -1288,11 +1288,13 @@ exemption pattern and are checked in the track completion note.
    unminimizes, and focuses; no second tray icon appears.
 6. Settings → System: "Close to tray" is checked. Turn it off, press X: the app
    exits. Turn it on again: X hides.
-7. Record `Ctrl+Alt+Space` for Play / pause; the row shows "Ctrl + Alt + Space"
-   and playback toggles from another focused app. With the OxiTide window
-   focused, pressing Space still toggles exactly once (no double-fire).
-8. Try to record `Ctrl+Alt+Space` for Next: a toast appears and Play / pause
-   keeps its binding; restarting keeps it too.
+7. Record `Space` for Play / pause; the row shows "Space" and a single press
+   toggles playback exactly once while the OxiTide window is focused and while
+   another app is focused (once a chord is registered the global handler is the
+   only delivery path). Global hotkeys are temporarily unregistered while the
+   recorder is active.
+8. Try to record `Space` for Next: a toast appears and Play / pause keeps its
+   binding; restarting keeps it too.
 9. Record a chord another app already owns (e.g. an OS-reserved one): a toast
    appears and the previous binding stays.
 10. Clear a hotkey (Backspace/Delete while recording, or the Clear button):
@@ -1301,6 +1303,11 @@ exemption pattern and are checked in the track completion note.
     restart (`config.audio.volume`).
 12. `%APPDATA%\OxiTide\config\config.toml` contains `close_to_tray = true|false`
     under `[ui]` and a `[hotkeys]` section with the recorded accelerators.
+13. Known edges: (a) hand-edit `next = "Bogus+Key"` into the `[hotkeys]` section
+    of `%APPDATA%\OxiTide\config\config.toml`, relaunch: the app starts with a
+    warning logged and the remaining valid bindings still register; remove the
+    bad value to recover. (b) Start recording a hotkey, then switch to another
+    Settings tab: recording is cancelled and the global hotkeys are restored.
 ```
 
 - [ ] **Step 2: Commit**
@@ -1317,3 +1324,9 @@ git commit -m "docs: add the Track 10.6 tray and hotkeys smoke checklist"
 - **Spec coverage:** tray feature + menu Show/Hide, Play/Pause, Next, Previous, separator, Quit (§6.6) → Task 2; tooltip mirrors NowPlaying (§6.6) → Task 2 (`update_tooltip` on `NowPlaying`/`State`); close-to-tray default true + setting-off restores exit (§6.6, QoL-D3) → Tasks 1, 2, 5; single-instance show+unminimize+focus (§6.6) → Task 2; global hotkeys via `tauri-plugin-global-shortcut`, empty defaults, startup + save registration, unregister-old-first, conflict keeps previous binding, focused-skip of the in-app table, media keys stay on SMTC (§6.6, QoL-D10) → Tasks 3–5; config `[hotkeys]` + `ui.close_to_tray` (§5.3) → Task 1; Linux caveats documented (tray/libappindicator, Wayland portal) → smoke note + Task spec refinements; PM-D1 impact is nil (no polling, one tray/tooltip update per track, bounded 5% config writes) → noted in Task 3.
 - **Deferred scope untouched:** no `love` action (rejected by `is_action`), no 10.4 module work; `AGENTS.md` updates left to the track completion note.
 - **Type consistency:** `HotkeyAction` ids match `ACTIONS` and `HOTKEY_ACTIONS`; `bindings` order matches `ACTIONS`; `set`/`action_from_name` cover the same six names; Task 4's `Config.hotkeys` keys match `HotkeysConfig` fields exactly.
+
+---
+
+## Post-review amendment (2026-10-05)
+
+Whole-branch review rulings R1–R4 supersede the focused-skip design in Task 3: on Windows a registered chord is consumed before the webview, so `app_shortcuts`/`should_skip_when_focused`/`window_focused` are removed and the global handler is the only delivery path once a chord is registered. `register_all` now rejects duplicate parsed bindings in-app (`"<second> duplicates the <first> binding"`), logs and skips malformed persisted values instead of aborting the loop (R4), and the new `set_hotkey_capture` command suspends every hotkey while the settings recorder is active (R3), restoring the configured set on cancel/Escape/tab-away/unmount. The Task 6 checklist and smoke note steps 7, 8, and 13 reflect this behavior.
