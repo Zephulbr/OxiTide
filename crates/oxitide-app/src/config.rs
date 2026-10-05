@@ -74,6 +74,16 @@ pub enum UiMode {
     Atmosphere,
 }
 
+/// Color theme. Orthogonal to `UiMode`; `System` follows the OS preference.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Theme {
+    #[default]
+    Dark,
+    Light,
+    System,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Typeface {
@@ -123,6 +133,7 @@ pub fn clamp_queue_width(px: u32) -> u32 {
 pub struct UiConfig {
     pub quality_display: QualityDisplay,
     pub mode: UiMode,
+    pub theme: Theme,
     pub typeface: Typeface,
     /// Font family name used when `typeface == Custom`.
     pub custom_typeface: String,
@@ -149,6 +160,7 @@ impl Default for UiConfig {
         Self {
             quality_display: QualityDisplay::Compact,
             mode: UiMode::Atmosphere,
+            theme: Theme::Dark,
             typeface: Typeface::Auto,
             custom_typeface: String::new(),
             density: Density::Comfortable,
@@ -388,6 +400,7 @@ mod tests {
             ui: UiConfig {
                 quality_display: QualityDisplay::Detailed,
                 mode: UiMode::Instrument,
+                theme: Theme::Dark,
                 typeface: Typeface::Manrope,
                 custom_typeface: String::new(),
                 density: Density::Comfortable,
@@ -558,6 +571,20 @@ mod tests {
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[test]
+    fn theme_round_trips_and_defaults_to_dark() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        let mut config = Config::default();
+        assert_eq!(config.ui.theme, Theme::Dark);
+        config.ui.theme = Theme::System;
+        config.save_to(&path).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("theme = \"system\""), "{text}");
+        assert_eq!(Config::load_from(&path), config);
+        let _ = fs::remove_dir_all(dir);
+    }
+
     /// Review Focus: a config written before Plan 10 lacks every appearance
     /// key; serde defaults must fill them.
     #[test]
@@ -568,6 +595,7 @@ mod tests {
         let config = Config::load_from(&path);
         assert_eq!(config.ui.quality_display, QualityDisplay::Detailed);
         assert_eq!(config.ui.mode, UiMode::Atmosphere);
+        assert_eq!(config.ui.theme, Theme::Dark);
         assert_eq!(config.ui.typeface, Typeface::Auto);
         assert_eq!(config.ui.dynamic_color, DynamicColor::Auto);
         assert_eq!(config.ui.custom_typeface, "");

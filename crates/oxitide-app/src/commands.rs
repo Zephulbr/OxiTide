@@ -18,7 +18,8 @@ use tauri::{Manager, State};
 
 use crate::artwork::PaletteDto;
 use crate::config::{
-    clamp_queue_width, Config, CoverShape, Density, DynamicColor, QualityDisplay, Typeface, UiMode,
+    clamp_queue_width, Config, CoverShape, Density, DynamicColor, QualityDisplay, Theme, Typeface,
+    UiMode,
 };
 use crate::lyrics::{LyricsDto, LyricsRequest};
 use crate::player::{devices, OutputDeviceDto, QualityDto};
@@ -1815,6 +1816,15 @@ pub fn set_quality_display(state: State<'_, AppState>, mode: QualityDisplay) -> 
 pub fn set_ui_mode(state: State<'_, AppState>, mode: UiMode) -> Result<(), String> {
     let mut config = state.config();
     config.ui.mode = mode;
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_theme(state: State<'_, AppState>, theme: Theme) -> Result<(), String> {
+    let mut config = state.config();
+    config.ui.theme = theme;
     config.save()?;
     state.set_config(config);
     Ok(())

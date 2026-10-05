@@ -192,6 +192,7 @@ export interface Config {
   ui: {
     quality_display: "compact" | "detailed";
     mode: "instrument" | "atmosphere";
+    theme: "dark" | "light" | "system";
     typeface: "auto" | "manrope" | "inter" | "system" | "custom";
     custom_typeface: string;
     density: "comfortable" | "compact";
@@ -403,6 +404,7 @@ export const api = {
   setQualityDisplay: (mode: "compact" | "detailed") =>
     invoke<void>("set_quality_display", { mode }),
   setUiMode: (mode: "instrument" | "atmosphere") => invoke<void>("set_ui_mode", { mode }),
+  setTheme: (theme: "dark" | "light" | "system") => invoke<void>("set_theme", { theme }),
   setTypeface: (typeface: "auto" | "manrope" | "inter" | "system" | "custom") =>
     invoke<void>("set_typeface", { typeface }),
   setCustomTypeface: (name: string) => invoke<void>("set_custom_typeface", { name }),
