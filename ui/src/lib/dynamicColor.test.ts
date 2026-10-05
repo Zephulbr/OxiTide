@@ -46,8 +46,8 @@ describe("createPaletteApplier", () => {
     const fetcher = (uuid: string) => (uuid === "slow" ? slow.promise : fast.promise);
     const applier = createPaletteApplier((t) => applied.push(t), fetcher);
 
-    void applier.onTrack("slow", "full");
-    void applier.onTrack("fast", "full");
+    void applier.onTrack("slow", "full", "dark");
+    void applier.onTrack("fast", "full", "dark");
     fast.resolve({ ...palette, primary: "#111111" });
     await Promise.resolve();
     slow.resolve({ ...palette, primary: "#999999" });
@@ -59,9 +59,9 @@ describe("createPaletteApplier", () => {
   it("off clears the tokens; a missing cover keeps the last color", async () => {
     const applied: Record<string, string>[] = [];
     const applier = createPaletteApplier((t) => applied.push(t), () => Promise.resolve(palette));
-    await applier.onTrack("uuid", "full");
-    await applier.onTrack(null, "full");
-    await applier.onTrack("uuid", "off");
+    await applier.onTrack("uuid", "full", "dark");
+    await applier.onTrack(null, "full", "dark");
+    await applier.onTrack("uuid", "off", "dark");
     expect(applied).toEqual([paletteTokens(palette, "full"), {}]);
   });
 
@@ -71,7 +71,7 @@ describe("createPaletteApplier", () => {
       (t) => applied.push(t),
       () => Promise.reject(new Error("offline")),
     );
-    await applier.onTrack("uuid", "full");
+    await applier.onTrack("uuid", "full", "dark");
     expect(applied).toEqual([]);
   });
 
@@ -87,13 +87,30 @@ describe("createPaletteApplier", () => {
     };
     const applier = createPaletteApplier((t) => applied.push(t), fetcher);
 
-    void applier.onTrack("uuid", "full");
-    void applier.onTrack("uuid", "full");
+    void applier.onTrack("uuid", "full", "dark");
+    void applier.onTrack("uuid", "full", "dark");
     pending.resolve(palette);
     await Promise.resolve();
     await Promise.resolve();
 
     expect(fetches).toBe(1);
     expect(applied).toEqual([paletteTokens(palette, "full")]);
+  });
+
+  /// Review Focus 2: a theme change with the same cover/mode must re-analyze.
+  it("re-fetches when only the theme changes", async () => {
+    const applied: Record<string, string>[] = [];
+    let fetches = 0;
+    const fetcher = async () => {
+      fetches += 1;
+      return { ...palette, primary: fetches === 1 ? "#111111" : "#222222" };
+    };
+    const applier = createPaletteApplier((t) => applied.push(t), fetcher);
+    await applier.onTrack("uuid", "full", "dark");
+    await applier.onTrack("uuid", "full", "light");
+    expect(fetches).toBe(2);
+    expect(applied[applied.length - 1]).toEqual(
+      expect.objectContaining({ "--dyn-primary": "#222222" }),
+    );
   });
 });

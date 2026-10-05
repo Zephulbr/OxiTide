@@ -25,13 +25,13 @@ export function paletteTokens(p: CoverPalette, mode: "full" | "accent" | "off"):
 /// skip-storms never apply a stale palette (spec §5.2 interrupt-and-restart).
 export function createPaletteApplier(
   apply: (tokens: DynamicColorApply) => void,
-  fetcher: (uuid: string) => Promise<CoverPalette>,
+  fetcher: (uuid: string, theme: "dark" | "light") => Promise<CoverPalette>,
 ) {
   let request = 0;
   let lastKey: string | undefined;
   return {
-    async onTrack(cover: string | null, mode: "full" | "accent" | "off") {
-      const key = `${mode}|${cover ?? ""}`;
+    async onTrack(cover: string | null, mode: "full" | "accent" | "off", theme: "dark" | "light") {
+      const key = `${mode}|${theme}|${cover ?? ""}`;
       if (key === lastKey) return;
       lastKey = key;
       const id = ++request;
@@ -43,7 +43,7 @@ export function createPaletteApplier(
       // 2026-10-02). The counter bump above cancels any in-flight older fetch.
       if (!cover) return;
       try {
-        const palette = await fetcher(cover);
+        const palette = await fetcher(cover, theme);
         if (id !== request) return;
         apply(paletteTokens(palette, mode));
       } catch {
@@ -71,7 +71,8 @@ function applyToDocument(tokens: DynamicColorApply) {
 export function createDynamicColor(player: Player) {
   const applier = createPaletteApplier(applyToDocument, api.analyzeCover);
   const cover = $derived(player.state.current?.cover ?? null);
+  const theme = $derived(appearance.resolvedTheme);
   $effect(() => {
-    void applier.onTrack(cover, appearance.dynamicColor);
+    void applier.onTrack(cover, appearance.dynamicColor, theme);
   });
 }

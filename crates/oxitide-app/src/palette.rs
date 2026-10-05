@@ -20,7 +20,6 @@ pub enum Room {
 }
 
 impl Room {
-    #[cfg_attr(not(test), expect(dead_code, reason = "the room-scoped cache key lands in Task 7"))]
     pub fn as_str(self) -> &'static str {
         match self {
             Room::Dark => "dark",

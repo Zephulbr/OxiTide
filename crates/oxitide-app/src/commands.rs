@@ -2035,11 +2035,15 @@ pub fn set_cache_clear_on_exit(state: State<'_, AppState>, enabled: bool) -> Res
 /// Failures propagate so the UI keeps its current colors instead of resetting
 /// to brand teal (spec §5.2).
 #[tauri::command]
-pub async fn analyze_cover(state: State<'_, AppState>, uuid: String) -> Result<PaletteDto, String> {
+pub async fn analyze_cover(
+    state: State<'_, AppState>,
+    uuid: String,
+    theme: crate::palette::Room,
+) -> Result<PaletteDto, String> {
     let Some(service) = state.artwork() else {
         return Err("artwork service unavailable".into());
     };
-    service.palette(&uuid).await.map(PaletteDto::from)
+    service.palette(&uuid, theme).await.map(PaletteDto::from)
 }
 
 #[tauri::command]

@@ -429,5 +429,6 @@ export const api = {
   clearCache: () => invoke<void>("clear_cache"),
   getLogsDir: () => invoke<string>("get_logs_dir"),
   openLogsFolder: () => invoke<void>("open_logs_folder"),
-  analyzeCover: (uuid: string) => invoke<CoverPalette>("analyze_cover", { uuid }),
+  analyzeCover: (uuid: string, theme: "dark" | "light") =>
+    invoke<CoverPalette>("analyze_cover", { uuid, theme }),
 };

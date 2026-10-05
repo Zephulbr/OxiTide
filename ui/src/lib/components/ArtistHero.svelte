@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import { api, type Artist, type ArtistProfile } from "../api";
+  import { appearance } from "../appearance.svelte";
   import { isHttpUrl, linkLabel } from "../artistLinks";
   import { ARTIST_PICTURE_SIZE, coverUrl } from "../artwork";
   import { formatCount } from "../format";
@@ -46,13 +47,14 @@
   // Local palette only: the hero must not repaint the app-wide --dyn-* mood.
   $effect(() => {
     const uuid = artist.picture;
+    const theme = appearance.resolvedTheme;
     if (!uuid) {
       tint = null;
       return;
     }
     let current = true;
     void api
-      .analyzeCover(uuid)
+      .analyzeCover(uuid, theme)
       .then((palette) => {
         if (current) {
           tint = {

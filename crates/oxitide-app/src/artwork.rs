@@ -18,7 +18,7 @@ const EXTRACT_SIDE: u32 = 48;
 const PALETTE_MAX_ENTRIES: usize = 2_000;
 /// Bump when `extract_palette`'s output changes: older files are discarded so
 /// already-seen covers are refetched under the new rules.
-const CACHE_VERSION: u32 = 5;
+const CACHE_VERSION: u32 = 6; // 5 → 6: palettes are keyed by room now
 
 #[derive(Default, Serialize, Deserialize)]
 struct DiskCache {
@@ -115,14 +115,15 @@ impl ArtworkService {
 
     /// `Err` means "no palette available right now" (empty uuid, HTTP error, or
     /// undecodable bytes): the caller keeps its current colors (spec §5.2).
-    pub async fn palette(&self, uuid: &str) -> Result<Palette, String> {
+    pub async fn palette(&self, uuid: &str, room: Room) -> Result<Palette, String> {
         if uuid.is_empty() {
             return Err("empty cover uuid".into());
         }
-        if let Some(hit) = self.memory().lock().unwrap().get(uuid) {
+        let key = format!("{}|{uuid}", room.as_str());
+        if let Some(hit) = self.memory().lock().unwrap().get(&key) {
             return Ok(hit.clone().into());
         }
-        let palette = match self.fetch(uuid).await {
+        let palette = match self.fetch(uuid, room).await {
             Ok(p) => p,
             Err(e) => {
                 tracing::warn!("cover analysis failed for {uuid}: {e}");
@@ -134,12 +135,12 @@ impl ArtworkService {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0);
-        self.memory().lock().unwrap().insert(uuid.to_string(), dto);
+        self.memory().lock().unwrap().insert(key, dto);
         self.save_disk();
         Ok(palette)
     }
 
-    async fn fetch(&self, uuid: &str) -> Result<Palette, String> {
+    async fn fetch(&self, uuid: &str, room: Room) -> Result<Palette, String> {
         let bytes = self
             .http
             .get(Self::url(&self.base_url, uuid))
@@ -159,7 +160,7 @@ impl ArtworkService {
             image::imageops::FilterType::Triangle,
         );
         let pixels: Vec<(u8, u8, u8)> = small.pixels().map(|p| (p[0], p[1], p[2])).collect();
-        Ok(extract_palette(&pixels, EXTRACT_SIDE as usize, EXTRACT_SIDE as usize, Room::Dark))
+        Ok(extract_palette(&pixels, EXTRACT_SIDE as usize, EXTRACT_SIDE as usize, room))
     }
 
     fn save_disk(&self) {
@@ -243,10 +244,10 @@ mod tests {
             .await;
         let dir = temp_dir();
         let path = dir.join("palettes.json");
-        write_palettes(&path, "ab-cd", &palette_dto("#aaaaaa"));
+        write_palettes(&path, "dark|ab-cd", &palette_dto("#aaaaaa"));
         let service = service(&server, &dir);
-        write_palettes(&path, "ab-cd", &palette_dto("#bbbbbb"));
-        let palette = service.palette("ab-cd").await.unwrap();
+        write_palettes(&path, "dark|ab-cd", &palette_dto("#bbbbbb"));
+        let palette = service.palette("ab-cd", Room::Dark).await.unwrap();
         assert_eq!(palette.primary, "#bbbbbb");
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -259,8 +260,25 @@ mod tests {
             .expect(1)
             .mount(&server).await;
         let dir = temp_dir();
-        let palette = service(&server, &dir).palette("ab-cd").await.unwrap();
+        let palette = service(&server, &dir).palette("ab-cd", Room::Dark).await.unwrap();
         assert_ne!(palette.primary, fallback_palette(Room::Dark).primary);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// The same cover fetched for both rooms must produce separate cache entries
+    /// and different palettes (Review Focus 3/5).
+    #[tokio::test]
+    async fn rooms_cache_separately_and_extract_differently() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/ab/cd/160x160.jpg"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(png_bytes([200, 30, 40])))
+            .expect(2) // once per room; neither may serve the other's entry
+            .mount(&server).await;
+        let dir = temp_dir();
+        let service = service(&server, &dir);
+        let dark = service.palette("ab-cd", Room::Dark).await.unwrap();
+        let light = service.palette("ab-cd", Room::Light).await.unwrap();
+        assert_ne!(dark.primary, light.primary);
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -274,8 +292,8 @@ mod tests {
             .mount(&server).await;
         let dir = temp_dir();
         let service = service(&server, &dir);
-        assert!(service.palette("missing-uuid").await.is_err());
-        assert!(service.palette("").await.is_err());
+        assert!(service.palette("missing-uuid", Room::Dark).await.is_err());
+        assert!(service.palette("", Room::Dark).await.is_err());
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -288,8 +306,8 @@ mod tests {
             .mount(&server).await;
         let dir = temp_dir();
         let service = service(&server, &dir);
-        let first = service.palette("ab-cd").await.unwrap();
-        let second = service.palette("ab-cd").await.unwrap();
+        let first = service.palette("ab-cd", Room::Dark).await.unwrap();
+        let second = service.palette("ab-cd", Room::Dark).await.unwrap();
         assert_eq!(first, second);
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -302,9 +320,9 @@ mod tests {
             .expect(1)
             .mount(&server).await;
         let dir = temp_dir();
-        let first = service(&server, &dir).palette("ab-cd").await.unwrap();
+        let first = service(&server, &dir).palette("ab-cd", Room::Dark).await.unwrap();
         drop(server); // server gone; a fresh service must read the disk cache
-        let second = service(&MockServer::start().await, &dir).palette("ab-cd").await.unwrap();
+        let second = service(&MockServer::start().await, &dir).palette("ab-cd", Room::Dark).await.unwrap();
         assert_eq!(first, second);
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -325,7 +343,7 @@ mod tests {
             r##"{"palettes":{"ab-cd":{"primary":"#ffffff","on_primary":"#000000","secondary":"#111111","tertiary":"#222222","backdrop":"#333333","ceiling_l":0.1}}}"##,
         )
         .unwrap();
-        let palette = service(&server, &dir).palette("ab-cd").await.unwrap();
+        let palette = service(&server, &dir).palette("ab-cd", Room::Dark).await.unwrap();
         assert_ne!(palette.primary, "#ffffff");
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -372,10 +390,10 @@ mod tests {
         let dir = temp_dir();
         let path = dir.join("palettes.json");
         let text = format!(
-            r##"{{"version":{CACHE_VERSION},"palettes":{{"ab-cd":{{"primary":"#aaaaaa","on_primary":"#000000","secondary":"#111111","tertiary":"#222222","backdrop":"#333333","ceiling_l":0.5}}}}}}"##
+            r##"{{"version":{CACHE_VERSION},"palettes":{{"dark|ab-cd":{{"primary":"#aaaaaa","on_primary":"#000000","secondary":"#111111","tertiary":"#222222","backdrop":"#333333","ceiling_l":0.5}}}}}}"##
         );
         std::fs::write(&path, text).unwrap();
-        let palette = service(&server, &dir).palette("ab-cd").await.unwrap();
+        let palette = service(&server, &dir).palette("ab-cd", Room::Dark).await.unwrap();
         assert_eq!(palette.primary, "#aaaaaa");
         let _ = std::fs::remove_dir_all(dir);
     }
