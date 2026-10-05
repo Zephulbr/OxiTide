@@ -44,7 +44,7 @@ refreshed 2026-10-01.
 | now | Track 3 | Performance & stability wave: profile and fix startup, time-to-first-sound, UI jank, memory, cache/eviction churn, large-library handling; build a measurement harness | Done — Phases A–D complete 2026-10-02 (`plans/notes/2026-10-02-track3-phase-d.md`) |
 | 5 | Track 9 | UI completion: Hi-Fi Rack mode, light mode, artist/credits/album-info surfaces, a11y pass, i18n, remaining UI polish and bug fixes | Proposed — next after Track 3 (owner call) |
 | 6 | Track 8 | Linux support: ALSA output backend, MPRIS media controls, Secret Service keyring, deb/AppImage/AUR packaging | Done (2026-10-04) — WSL2-verified; bare-metal checks exempted (`plans/notes/2026-10-04-track8-completion.md`) |
-| 7 | Track 10 | Daily-driver QoL: session/queue persistence, playback history + stats, sleep timer, scrobble love, AI/explicit content blocking; Phase 2 tray + global hotkeys | Proposed — after Track 8 (owner call); research questions in `plans/notes/2026-10-01-qol-research.md` |
+| 7 | Track 10 | Daily-driver QoL: session/queue persistence, playback history + stats, sleep timer, scrobble love (deferred 2026-10-05), AI/explicit content blocking; Phase 2 tray + global hotkeys | Proposed — after Track 8 (owner call); research questions in `plans/notes/2026-10-01-qol-research.md` |
 | 8 | Track 7 | Advanced audio: DSP/EQ + ReplayGain (opt-in, mutually exclusive with bit-perfect); crossfade/automix; casting/TIDAL Connect; Dolby Atmos; 360 RA (difficulty-gated); optional ASIO output (maybe, see `plans/notes/2026-10-01-asio-spike.md`); **potential post-casting group listen-along** (see `plans/notes/2026-10-02-listen-along-assessment.md`) | Parked last |
 
 Track 2b is closed; its remainder (Hi-Fi Rack, light mode, leftover polish) is Track 9,
@@ -237,8 +237,9 @@ which carries a normal completion gate.
 - **Phase 1 (platform-neutral):** session/queue persistence (resume the queue and position
   on restart); playback history / recently-played view plus a stats page (local-first
   data); sleep timer; scrobble-service **love** (Last.fm, ListenBrainz — distinct from the
-  TIDAL heart); AI-content and explicit-language blocking to match the official app (AI
-  labels and filters shipped there in July 2026).
+  TIDAL heart; **deferred 2026-10-05** — owner uses ListenBrainz for stats, not feedback);
+  AI-content and explicit-language blocking to match the official app (AI labels and
+  filters shipped there in July 2026).
 - **Phase 2 (platform integration):** system tray / close-to-tray and system-wide custom
   hotkeys; on Linux these ride the Track 8 seams (MPRIS, AppIndicator, portals).
 - **Research before the spec** (`plans/notes/2026-10-01-qol-research.md`): whether the API

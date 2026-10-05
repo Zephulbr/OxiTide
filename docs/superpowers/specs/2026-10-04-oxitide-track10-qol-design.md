@@ -9,6 +9,10 @@
 - **Process note:** scope, decisions, and architecture were brainstormed live with the
   owner on 2026-10-04. The desk spikes resolved the pre-spec open questions (§4). This
   document is the standalone source of truth for Track 10.
+- **Scope change (2026-10-05):** Plan 10.4 (scrobble love) is deferred — the owner uses
+  ListenBrainz for listening stats, not feedback/recommendations, so there is no love
+  consumer. Numbering is unchanged; execution resumes at 10.5. The design stays in §6.4
+  for a possible revival.
 
 ---
 
@@ -16,7 +20,7 @@
 
 Track 10 turns OxiTide into a daily driver: the app remembers **where you were and what
 was playing**, gives the library a **memory** (playback history + stats), adds the small
-creature comforts (sleep timer, scrobble love, content blocking), and behaves like a
+creature comforts (sleep timer, content blocking), and behaves like a
 resident desktop app (tray, close-to-tray, global hotkeys).
 
 **Outcome:**
@@ -26,8 +30,8 @@ resident desktop app (tray, close-to-tray, global hotkeys).
 - A sleep timer fades out and pauses after a countdown or at the end of the current
   track (§6.2).
 - A local, private play log powers a Recently-played view and a stats page (§6.3).
-- Loved tracks can be sent to Last.fm and ListenBrainz independently of the TIDAL heart
-  (§6.4).
+- **(Deferred 2026-10-05)** Loved tracks can be sent to Last.fm and ListenBrainz
+  independently of the TIDAL heart (§6.4).
 - AI-labeled and explicit content can be blocked with official-app-like behavior:
   grayed out, skipped, queue pruned/cleared on toggle (§6.5).
 - The window closes to a system tray, and user-defined global hotkeys control playback
@@ -51,6 +55,7 @@ the completion note in §10 with an explicit verified/exempted split.
   and privacy controls.
 - Scrobble love for Last.fm (`track.love`/`unlove`) and ListenBrainz
   (`recording-feedback`), with offline retry and pending-msid handling.
+  **Deferred 2026-10-05** (§6.4) — no love consumer in the owner's setup.
 - AI/explicit content blocking: `track_flags` enrichment via public v2, gray-out UI,
   enqueue filtering, toggle behaviors.
 - System tray, close-to-tray, the single-instance re-show fix, and global hotkeys.
@@ -77,7 +82,7 @@ the completion note in §10 with an explicit verified/exempted split.
 | QoL-D4 | **Sleep timer fades out (~5 s) then pauses**, queue kept; in-memory only, resets on restart. | Owner call; pause-over-quit keeps the morning resume. |
 | QoL-D5 | **Rust owns the new state** (Approach A): versioned data files under `%APPDATA%\OxiTide\`; UI uses commands/events; `config.toml` stays preferences-only. | Testable without a window, survives WebView storage clears, no size ceiling. |
 | QoL-D6 | **One spec for the whole track, staged plans (10.1–10.6).** | Mirrors Track 3/Track 8; each plan independently reviewable. |
-| QoL-D7 | **Scrobble love is separate from the TIDAL heart and never auto-mirrors.** State is local-first; services are write targets. | Research note; avoids surprising account writes. |
+| QoL-D7 | **(Deferred with 10.4, 2026-10-05)** Scrobble love is separate from the TIDAL heart and never auto-mirrors. State is local-first; services are write targets. | Research note; avoids surprising account writes. Owner uses ListenBrainz for stats, not feedback. |
 | QoL-D8 | **ListenBrainz love resolves an msid at now-playing time** (`return_msid: true`), falls back to a metadata lookup, then stays pending until resolvable. No hate. | Only viable path to LB feedback parity. |
 | QoL-D9 | **History is local-first JSONL**, default cap 10k entries, stats derived on read; per-track recording threshold follows listen semantics (≥30 s, or ≥50% under 60 s). | Private, offline, retention-controlled. |
 | QoL-D10 | **Global hotkeys are user-defined with empty defaults**, registered via `tauri-plugin-global-shortcut`; conflicts keep the previous binding. | Avoids OS conflicts; media keys stay on SMTC/MPRIS. |
@@ -118,8 +123,8 @@ Desk spikes (2026-10-04) resolved the pre-spec questions in
 
 ### 5.1 Data ownership and files
 
-New modules in `crates/oxitide-app`: `session.rs`, `history.rs`, `loves.rs`,
-`track_flags.rs`. All files live under the existing `ProjectDirs` app-data root
+New modules in `crates/oxitide-app`: `session.rs`, `history.rs`, `loves.rs` (deferred with
+10.4), `track_flags.rs`. All files live under the existing `ProjectDirs` app-data root
 (`%APPDATA%\OxiTide\`), use atomic tmp+rename writes (the `config.rs` pattern), and
 carry their own `version` where the format is a single object.
 
@@ -127,7 +132,7 @@ carry their own `version` where the format is a single object.
 |---|---|---|
 | `session.json` | `version`, `queue[]` (item fields + optional cached `explicit`/`ai` flags), `current_index`, `position_ms`, `shuffle`, `repeat`, `play_source`, `saved_at` | Written on a debounce; cleared on explicit logout; malformed → renamed `.bak`, treated as absent |
 | `history.jsonl` | Append-only play records: `track_id, title, artist, album, duration_secs, started_at, listened_ms, completed` | Appended on play finalize; pruned oldest-first at `history.max_entries` |
-| `loves.json` | `version`, `loves: {track_id → {lastfm, listenbrainz, loved_at}}`, `pending_listenbrainz[]` | Updated on love/unlove; malformed → `.bak` |
+| `loves.json` | `version`, `loves: {track_id → {lastfm, listenbrainz, loved_at}}`, `pending_listenbrainz[]` | Updated on love/unlove; malformed → `.bak`; deferred with 10.4 |
 | `cache/track_flags.json` | `version`, `{track_id → {explicit?, ai?, fetched_at}}` | Written by enrichment lookups; pruned by count |
 
 **Save policy.** A dedicated background task owns the session dirty-flag: flush at most
@@ -152,7 +157,7 @@ during events. The tray-hide path never exits, so the timer keeps flushing norma
 
 New Tauri commands (all registered in `main.rs`'s `generate_handler!`): session
 `get_restored_session`, `set_play_source`, `clear_session`; history `get_history_page`,
-`get_stats`, `clear_history`; love `get_love_state`, `set_love`; flags
+`get_stats`, `clear_history`; love `get_love_state`, `set_love` (10.4, deferred); flags
 `get_track_flags`; content setters write `config.content`; tray/hotkeys commands in
 10.6. New DTOs mirror camelCase IPC conventions; `ui/src/lib/api.ts` stays in sync by
 hand (AGENTS.md contract). No new remote origins: enrichment and feedback reuse the
@@ -210,7 +215,12 @@ accelerator table.
 - Stats are derived on read from the log. PM-D1 gate: `get_stats` ≤50 ms at the 10k
   cap; otherwise the plan adds a periodic aggregate.
 
-### 6.4 Scrobble love (Plan 10.4)
+### 6.4 Scrobble love (Plan 10.4) — deferred 2026-10-05
+
+> **Deferred 2026-10-05.** The owner uses ListenBrainz for listening stats, not
+> feedback/recommendations, and does not use love on either service. No plan is written;
+> execution continues with 10.5 after 10.3. The design below is kept for a possible
+> revival.
 
 - UI: a love toggle in the player bar / NowPlaying (visible when a love-capable service
   is connected) plus a track-row context-menu action. It is visually and behaviorally
@@ -283,15 +293,15 @@ accelerator table.
   session store round-trip/versioning/atomic write/malformed-`.bak`; save-debounce
   behavior; history recorder state machine, threshold, retention, stats math; love
   intents, Last.fm signing, LB feedback + msid capture + pending flush + lookup
-  fallback; `track_flags` batching/cache/fail-open; engine tests for `FadeAndPause`,
-  `start_paused`, `current_index`; config serde defaults.
+  fallback (10.4, deferred); `track_flags` batching/cache/fail-open; engine tests for
+  `FadeAndPause`, `start_paused`, `current_index`; config serde defaults.
 - **UI (`npm --prefix ui test`, `npm --prefix ui run check`):** extended restore
   sequence (all six fields, start-paused ordering); flags store gray-out and
   pre-enqueue filtering; sleep-timer countdown/end-of-track firing; hotkey validation;
   tray-setting persistence; history/stats rendering with fixture data.
 - **Manual GUI smoke checklists** in `plans/notes/` (human, real account): restart
   restore paused, sleep fade at expiry and end-of-track, history/stats views after a
-  real session, love on both services incl. an offline retry, content blocking incl.
+  real session, content blocking incl.
   queue clear/prune and restore filtering, close-to-tray + Quit, global hotkeys from an
   unfocused window.
 
@@ -310,8 +320,8 @@ accelerator table.
 
 - `SetShuffle` may reorder on restore — pinned by a 10.1 test; fallback is a
   restore-safe no-op path.
-- LB may not return `msid` despite `return_msid: true` on our token — the pending path
-  keeps love correct regardless.
+- (10.4, deferred) LB may not return `msid` despite `return_msid: true` on our token —
+  the pending path keeps love correct regardless.
 - `ai` may be absent for some catalog items/countries — fail-open by design, so
   blocking is best-effort there.
 - Tray/hotkey builds on Linux depend on libappindicator/portal availability — caveats
@@ -323,14 +333,15 @@ accelerator table.
 
 ## 10. Plan sequence and closure
 
-Plans execute in order, each with TDD, the full gate suite, and its own smoke note:
+Plans execute in order — 10.1 → 10.2 → 10.3 → 10.5 → 10.6; 10.4 is deferred
+(2026-10-05) — each with TDD, the full gate suite, and its own smoke note:
 
 1. **10.1 Session restore** — `session.rs`, engine `current_index` + `start_paused`,
    `get_restored_session`/`set_play_source`/`clear_session`, UI restore extension.
 2. **10.2 Sleep timer** — `FadeAndPause`, timer UI, countdown/end-of-track logic.
 3. **10.3 History and stats** — `history.rs`, commands, History route and stats UI.
-4. **10.4 Scrobble love** — `loves.rs`, Last.fm love/unlove intents, LB msid/feedback,
-   UI toggles.
+4. **10.4 Scrobble love — deferred 2026-10-05** — `loves.rs`, Last.fm love/unlove
+   intents, LB msid/feedback, UI toggles. Design retained; no plan.
 5. **10.5 Content blocking** — `track_flags.rs`, Content tab, badges/gray-out, enqueue
    filtering, toggle/restore behavior.
 6. **10.6 Tray and global hotkeys** — tray feature + menu, close-to-tray, single-
