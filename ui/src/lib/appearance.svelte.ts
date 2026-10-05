@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { readThemeMirror, resolveTheme, writeThemeMirror, type ResolvedTheme, type ThemeSetting } from "./theme";
 
 export type UiMode = "instrument" | "atmosphere";
 export type Typeface = "manrope" | "inter" | "system" | "custom";
@@ -45,6 +46,8 @@ export function fontStack(typeface: Typeface, custom: string): string {
 
 export interface Appearance {
   readonly mode: UiMode;
+  readonly theme: ThemeSetting;
+  readonly resolvedTheme: ResolvedTheme;
   readonly typeface: TypefaceSetting;
   readonly customTypeface: string;
   readonly density: Density;
@@ -61,6 +64,7 @@ export interface Appearance {
   readonly ambientMotion: boolean;
   init(): Promise<void>;
   setMode(mode: UiMode): Promise<void>;
+  setTheme(theme: ThemeSetting): Promise<void>;
   setTypeface(typeface: TypefaceSetting): Promise<void>;
   setCustomTypeface(name: string): Promise<void>;
   setDensity(density: Density): Promise<void>;
@@ -72,6 +76,8 @@ export interface Appearance {
 
 export function createAppearance(): Appearance {
   let mode = $state<UiMode>("atmosphere");
+  let theme = $state<ThemeSetting>(readThemeMirror(globalThis.localStorage));
+  let prefersDark = $state(false);
   let typefaceSetting = $state<TypefaceSetting>("auto");
   let customTypeface = $state("");
   let density = $state<Density>("comfortable");
@@ -83,7 +89,10 @@ export function createAppearance(): Appearance {
 
   function apply() {
     const root = document.documentElement;
+    const resolved = resolveTheme(theme, prefersDark);
     root.dataset.mode = mode;
+    root.dataset.theme = resolved;
+    root.style.colorScheme = resolved;
     root.dataset.density = density;
     root.style.setProperty("--font-ui", fontStack(resolveTypeface(typefaceSetting, mode), customTypeface));
     root.style.setProperty("--queue-width", `${queueWidth}px`);
@@ -93,9 +102,16 @@ export function createAppearance(): Appearance {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
     reducedMotion = media.matches;
     media.addEventListener("change", (e) => (reducedMotion = e.matches));
+    const themeMedia = window.matchMedia("(prefers-color-scheme: dark)");
+    prefersDark = themeMedia.matches;
+    themeMedia.addEventListener("change", (e) => {
+      prefersDark = e.matches;
+      apply();
+    });
     try {
       const config = await api.getConfig();
       mode = config.ui.mode;
+      theme = config.ui.theme;
       typefaceSetting = config.ui.typeface;
       customTypeface = config.ui.custom_typeface;
       density = config.ui.density;
@@ -106,6 +122,7 @@ export function createAppearance(): Appearance {
     } catch {
       // Defaults are fine; a config failure must not block boot.
     }
+    writeThemeMirror(globalThis.localStorage, theme);
     apply();
   }
 
@@ -117,6 +134,8 @@ export function createAppearance(): Appearance {
 
   return {
     get mode() { return mode; },
+    get theme() { return theme; },
+    get resolvedTheme() { return resolveTheme(theme, prefersDark); },
     get typeface() { return typefaceSetting; },
     get customTypeface() { return customTypeface; },
     get density() { return density; },
@@ -133,6 +152,7 @@ export function createAppearance(): Appearance {
     get ambientMotion() { return mode === "atmosphere" && !reducedMotion; },
     init,
     setMode: (m) => { mode = m; return persist(() => api.setUiMode(m)); },
+    setTheme: (t) => { theme = t; writeThemeMirror(globalThis.localStorage, t); return persist(() => api.setTheme(t)); },
     setTypeface: (t) => { typefaceSetting = t; return persist(() => api.setTypeface(t)); },
     setCustomTypeface: (n) => { customTypeface = n; return persist(() => api.setCustomTypeface(n)); },
     setDensity: (d) => { density = d; return persist(() => api.setDensity(d)); },

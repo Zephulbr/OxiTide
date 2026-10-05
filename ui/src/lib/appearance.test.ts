@@ -12,6 +12,7 @@ vi.mock("./api", () => ({
   api: {
     getConfig: vi.fn(),
     setOneko: vi.fn(),
+    setTheme: vi.fn(),
   },
 }));
 
@@ -93,5 +94,42 @@ describe("oneko setting", () => {
     await appearance.setOneko(false);
     expect(appearance.oneko).toBe(false);
     expect(api.setOneko).toHaveBeenCalledWith(false);
+  });
+});
+
+describe("theme", () => {
+  beforeEach(() => {
+    vi.stubGlobal("window", {
+      matchMedia: () => ({ matches: false, addEventListener: () => {} }),
+    });
+    vi.stubGlobal("document", {
+      documentElement: { dataset: {}, style: { setProperty: () => {} } },
+    });
+    vi.stubGlobal("localStorage", { getItem: () => null, setItem: vi.fn() });
+    vi.mocked(api.getConfig).mockResolvedValue({ ui: { oneko: false, theme: "system" } } as never);
+    vi.mocked(api.setTheme).mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  it("init resolves system, applies data-theme, and mirrors the setting", async () => {
+    const appearance = createAppearance();
+    await appearance.init();
+    expect(appearance.theme).toBe("system");
+    expect(appearance.resolvedTheme).toBe("light"); // matchMedia matches: false
+    expect(document.documentElement.dataset.theme).toBe("light");
+    expect(localStorage.setItem).toHaveBeenCalledWith("oxitide.theme", "system");
+  });
+
+  it("setTheme applies and persists", async () => {
+    const appearance = createAppearance();
+    await appearance.init();
+    await appearance.setTheme("dark");
+    expect(appearance.resolvedTheme).toBe("dark");
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(api.setTheme).toHaveBeenCalledWith("dark");
   });
 });
