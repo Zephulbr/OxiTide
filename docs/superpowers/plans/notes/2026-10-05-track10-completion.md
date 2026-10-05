@@ -1,7 +1,7 @@
 # Track 10 completion note (2026-10-05)
 
-- **Status:** Implementation complete and merged — owner smoke run in progress: 10.1/10.2 pass;
-  10.3 one bug found and fixed (re-check pending); 10.5/10.6 pass, follow-up enhancements landed
+- **Status:** Closed 2026-10-05 — owner smoke passed (10.1–10.3, 10.5, 10.6), including the
+  post-smoke fixes and enhancements; follow-up fixes through `70d0bc9`
 - **Owner:** V
 - **Scope:** Plans 10.1–10.3, 10.5, 10.6 (daily-driver QoL); 10.4 (scrobble love) deferred 2026-10-05
 - **Merged:** `main` at `446e054` (branch `track10-tray-hotkeys`, fast-forward, 2026-10-05)
@@ -34,16 +34,16 @@
 
 - **10.1 session restore — PASS (7/7).**
 - **10.2 sleep timer — PASS (9/9).**
-- **10.3 history & stats — 8/9; step 8 (disable/clear mid-play) found a bug:** the in-flight track
-  stayed in Recently played because `clear()` and `set_enabled(false)` left the tracker's active
-  play in place while the page prepends it. Fixed in `1ad2a9d` (reset the in-flight and pending
-  play on clear and on disabling; two regression tests). Step 8 re-check pending.
-- **10.5 content blocking — PASS;** follow-up enhancement: `content.show_labels` (default on) tags
-  known explicit/AI tracks with muted E/AI chips even when not blocking, with a Settings toggle
-  that also stops the lookups (checklist step 13).
-- **10.6 tray & hotkeys — PASS;** follow-up enhancement: recording a chord already used by another
-  action opens a Reassign modal (readable names, one click moves the binding), and OS-level
-  failures get a readable toast (checklist steps 8–9).
+- **10.3 history & stats — PASS (re-checked); step 8 found a bug and it is fixed:** the in-flight
+  track stayed in Recently played because `clear()` and `set_enabled(false)` left the tracker's
+  active play in place while the page prepends it. Fixed in `1ad2a9d` (reset the in-flight and
+  pending play on clear and on disabling; two regression tests); the re-check passed.
+- **10.5 content blocking — PASS, including step 13;** follow-up enhancement: `content.show_labels`
+  (default on) tags known explicit/AI tracks with muted E/AI chips even when not blocking, with a
+  Settings toggle that also stops the lookups.
+- **10.6 tray & hotkeys — PASS, including steps 8–9;** follow-up enhancement: recording a chord
+  already used by another action opens a Reassign modal (readable names, one click moves the
+  binding), and OS-level failures get a readable toast.
 
 Checklist paths were corrected on 2026-10-05 to the shipped locations: the config directory is
 `%APPDATA%\OxiTide\config\`, so session is `%APPDATA%\OxiTide\config\session.json` and the flag
@@ -64,8 +64,8 @@ cache is `%APPDATA%\OxiTide\config\cache\track_flags.json` (code doc comments up
 - Gates at this head: `cargo test --workspace` exit 0, clippy clean, 552 vitest pass (59 files),
   svelte-check 0 errors / 0 warnings.
 
-Remaining verification: re-run 10.3 step 8; optionally re-check 10.5 step 13 and 10.6 steps 8–9.
-Flip this note's status to closed when those pass.
+Closed by owner sign-off 2026-10-05, covering the 10.3 step-8 re-check, 10.5 step 13 (content
+labels), 10.6 steps 8–9 (reassign modal), and the resumed-start detailed-quality check.
 
 ## Linux / WSL2
 

@@ -12,7 +12,7 @@
 - **Revised:** 2026-10-02 — Track 3 Phase D (memory, cache/eviction, stability) complete; Phases A–D done, S10 owner smoke + official-client sanity pending.
 - **Revised:** 2026-10-02 — Track 3 closed: S10 owner smoke and the official-client sanity note complete.
 - **Revised:** 2026-10-04 — Track 8 (Plans 8.1–8.5) implemented and WSL2-verified; closed by owner exemption for the deferred bare-metal checks (`plans/notes/2026-10-04-track8-completion.md`).
-- **Revised:** 2026-10-05 — Track 10 (QoL) implemented and merged to `main` at `446e054`; 10.4 scrobble love deferred; owner smoke checklists pending (`plans/notes/2026-10-05-track10-completion.md`).
+- **Revised:** 2026-10-05 — Track 10 (QoL) implemented, merged to `main` at `446e054` (follow-up fixes through `70d0bc9`), and closed with owner smoke passed; 10.4 scrobble love deferred (`plans/notes/2026-10-05-track10-completion.md`).
 - **Owner:** V
 - **Parent:** `2026-09-21-oxitide-design.md` (§9 Phasing)
 - **Supersedes:** the parent's Phase 2–4 ordering. The shipped Phase 1 MVP (v0.2.0) is
@@ -45,7 +45,7 @@ refreshed 2026-10-01.
 | now | Track 3 | Performance & stability wave: profile and fix startup, time-to-first-sound, UI jank, memory, cache/eviction churn, large-library handling; build a measurement harness | Done — Phases A–D complete 2026-10-02 (`plans/notes/2026-10-02-track3-phase-d.md`) |
 | 5 | Track 9 | UI completion: Hi-Fi Rack mode, light mode, artist/credits/album-info surfaces, a11y pass, i18n, remaining UI polish and bug fixes | Proposed — next after Track 3 (owner call) |
 | 6 | Track 8 | Linux support: ALSA output backend, MPRIS media controls, Secret Service keyring, deb/AppImage/AUR packaging | Done (2026-10-04) — WSL2-verified; bare-metal checks exempted (`plans/notes/2026-10-04-track8-completion.md`) |
-| 7 | Track 10 | Daily-driver QoL: session/queue persistence, playback history + stats, sleep timer, scrobble love (deferred 2026-10-05), AI/explicit content blocking; Phase 2 tray + global hotkeys | Implemented — merged 2026-10-05 (`446e054`); owner smoke pending (`plans/notes/2026-10-05-track10-completion.md`); 10.4 deferred |
+| 7 | Track 10 | Daily-driver QoL: session/queue persistence, playback history + stats, sleep timer, scrobble love (deferred 2026-10-05), AI/explicit content blocking; Phase 2 tray + global hotkeys | Done (2026-10-05) — merged at `446e054` with follow-up fixes through `70d0bc9`; owner smoke passed; 10.4 deferred |
 | 8 | Track 7 | Advanced audio: DSP/EQ + ReplayGain (opt-in, mutually exclusive with bit-perfect); crossfade/automix; casting/TIDAL Connect; Dolby Atmos; 360 RA (difficulty-gated); optional ASIO output (maybe, see `plans/notes/2026-10-01-asio-spike.md`); **potential post-casting group listen-along** (see `plans/notes/2026-10-02-listen-along-assessment.md`) | Parked last |
 
 Track 2b is closed; its remainder (Hi-Fi Rack, light mode, leftover polish) is Track 9,
@@ -247,7 +247,7 @@ which carries a normal completion gate.
   exposes AI-generated flags and user-settings endpoints for the AI/explicit filters;
   playback-history and credits endpoints; ListenBrainz feedback support; history/stats
   data source and retention.
-- **Status:** Implemented (2026-10-05) — merged at `446e054`; owner smoke checklists pending (`plans/notes/2026-10-05-track10-completion.md`); 10.4 (scrobble love) deferred 2026-10-05.
+- **Status:** Done (2026-10-05) — merged at `446e054` with follow-up fixes and enhancements through `70d0bc9`; owner smoke passed (`plans/notes/2026-10-05-track10-completion.md`); 10.4 (scrobble love) deferred 2026-10-05.
 
 ## 4. Decisions (post-MVP)
 

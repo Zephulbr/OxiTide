@@ -44,5 +44,5 @@ Record results below.
 - [x] 5 restart persistence
 - [x] 6 day grouping
 - [x] 7 clear
-- [ ] 8 disable (if the current song playing is tracked and hte history is turned off and deleted, the current song remains in recently played, the rest are cleared)
+- [x] 8 disable (found: the in-flight track survived a clear/disable while playing; fixed in 1ad2a9d, re-check passed)
 - [x] 9 max entries
