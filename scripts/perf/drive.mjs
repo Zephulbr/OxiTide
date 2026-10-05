@@ -99,6 +99,12 @@ const setUiMode = async (mode) => {
   }
 };
 
+const setTheme = async (theme) => {
+  await evaluate(
+    `window.__TAURI_INTERNALS__.invoke("set_theme", { theme: ${JSON.stringify(theme)} })`,
+  );
+};
+
 const invoke = (cmd, args) =>
   evaluate(
     args === undefined
@@ -180,11 +186,32 @@ const scenarioFallback = async (id) => {
       console.error(`mode switch to ${targetMode} failed: ${e.message}`);
     }
   };
+  const targetTheme = id.endsWith("-light") ? "light" : null;
+  let originalTheme = null;
+  let themeApplied = false;
+  const applyScenarioTheme = async () => {
+    if (!targetTheme || themeApplied) return;
+    try {
+      originalTheme = await evaluate(
+        'window.__TAURI_INTERNALS__.invoke("get_config").then((c) => c.ui.theme)',
+      );
+    } catch {
+      originalTheme = null;
+    }
+    if (!originalTheme || originalTheme === targetTheme) return;
+    themeApplied = true;
+    try {
+      await setTheme(targetTheme);
+    } catch (e) {
+      console.error(`theme switch to ${targetTheme} failed: ${e.message}`);
+    }
+  };
   try {
     if (id.startsWith("S5")) {
       await awaitLoggedIn();
       await until("!!window.__perf", "__perf bridge");
       await applyScenarioMode();
+      await applyScenarioTheme();
       await evaluate('window.__perf.goto("tracks")');
       await until('!!document.querySelector("[data-perf-scroll]")', "track table");
       await delay(3000);
@@ -355,6 +382,13 @@ const scenarioFallback = async (id) => {
         await setUiMode(originalMode);
       } catch (e) {
         console.error(`mode restore to ${originalMode} failed: ${e.message}`);
+      }
+    }
+    if (themeApplied) {
+      try {
+        await setTheme(originalTheme);
+      } catch (e) {
+        console.error(`theme restore to ${originalTheme} failed: ${e.message}`);
       }
     }
   }
