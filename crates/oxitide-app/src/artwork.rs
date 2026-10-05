@@ -9,7 +9,7 @@ use std::sync::{Mutex, OnceLock};
 
 use serde::{Deserialize, Serialize};
 
-use crate::palette::{extract_palette, Palette};
+use crate::palette::{extract_palette, Palette, Room};
 
 const ANALYSIS_SIZE: u32 = 160;
 const EXTRACT_SIDE: u32 = 48;
@@ -159,7 +159,7 @@ impl ArtworkService {
             image::imageops::FilterType::Triangle,
         );
         let pixels: Vec<(u8, u8, u8)> = small.pixels().map(|p| (p[0], p[1], p[2])).collect();
-        Ok(extract_palette(&pixels, EXTRACT_SIDE as usize, EXTRACT_SIDE as usize))
+        Ok(extract_palette(&pixels, EXTRACT_SIDE as usize, EXTRACT_SIDE as usize, Room::Dark))
     }
 
     fn save_disk(&self) {
@@ -260,7 +260,7 @@ mod tests {
             .mount(&server).await;
         let dir = temp_dir();
         let palette = service(&server, &dir).palette("ab-cd").await.unwrap();
-        assert_ne!(palette.primary, fallback_palette().primary);
+        assert_ne!(palette.primary, fallback_palette(Room::Dark).primary);
         let _ = std::fs::remove_dir_all(dir);
     }
 

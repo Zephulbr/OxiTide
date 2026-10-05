@@ -10,6 +10,78 @@ pub struct Oklch {
     pub h: f32,
 }
 
+/// Visual room the palette is extracted for (Track 9 spec §5.2). `Dark` is
+/// Warm Graphite; `Light` is its warm-paper counterpart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Room {
+    Dark,
+    Light,
+}
+
+impl Room {
+    #[cfg_attr(not(test), expect(dead_code, reason = "the room-scoped cache key lands in Task 7"))]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Room::Dark => "dark",
+            Room::Light => "light",
+        }
+    }
+}
+
+/// Per-room extraction constants. Everything that used to be a module const
+/// and assumed a dark room lives here.
+struct RoomConsts {
+    bg: (u8, u8, u8),
+    room_avg: (u8, u8, u8),
+    text: (u8, u8, u8),
+    ink: (u8, u8, u8),
+    scrim: f32,
+    primary_l: (f32, f32),
+    primary_c: (f32, f32),
+    secondary_l: (f32, f32),
+    secondary_c_cap: f32,
+    secondary_dark: bool,
+    tertiary_l: (f32, f32),
+    tertiary_c: (f32, f32),
+    plain_l: f32,
+}
+
+fn room_consts(room: Room) -> RoomConsts {
+    match room {
+        Room::Dark => RoomConsts {
+            bg: (0x17, 0x12, 0x0e),
+            room_avg: (0x1a, 0x15, 0x10),
+            text: (0xf2, 0xec, 0xe6),
+            ink: (0x0b, 0x24, 0x20),
+            scrim: 0.55,
+            primary_l: (0.62, 0.85),
+            primary_c: (0.08, 0.21),
+            secondary_l: (0.25, 0.45),
+            secondary_c_cap: 0.05,
+            secondary_dark: true,
+            tertiary_l: (0.65, 0.80),
+            tertiary_c: (0.06, 0.14),
+            plain_l: 0.95,
+        },
+        Room::Light => RoomConsts {
+            bg: (0xf6, 0xf1, 0xea),
+            room_avg: (0xee, 0xe7, 0xdd),
+            text: (0x2a, 0x21, 0x1a),
+            ink: (0xff, 0xff, 0xff),
+            scrim: 0.55,
+            primary_l: (0.15, 0.24),
+            primary_c: (0.08, 0.21),
+            secondary_l: (0.80, 0.92),
+            secondary_c_cap: 0.04,
+            secondary_dark: false,
+            tertiary_l: (0.30, 0.52),
+            tertiary_c: (0.06, 0.14),
+            plain_l: 0.30,
+        },
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Palette {
     pub primary: String,
@@ -120,19 +192,8 @@ pub(crate) fn contrast_ratio(text: (u8, u8, u8), bg_luminance: f32) -> f32 {
     (hi + 0.05) / (lo + 0.05)
 }
 
-/// The room background (spec §5.1), used for the scrim composite.
-const BG: (u8, u8, u8) = (0x17, 0x12, 0x0e);
-/// Structural floor (§5.3 step 1): the scrim is at least 55% room.
-const SCRIM: f32 = 0.55;
 /// Below this chroma a candidate carries no usable hue (spec §5.2).
 const CHROMA_FLOOR: f32 = 0.04;
-/// Primary envelope (spec §5.2), widened 2026-10-02 for vibrancy: saturated
-/// reds/greens live at lower lightness and higher chroma than the original
-/// L ≥ 0.70 / C ≤ 0.17 allowed, so vivid covers keep their own color.
-const PRIMARY_L_LO: f32 = 0.62;
-const PRIMARY_L_HI: f32 = 0.85;
-const PRIMARY_C_LO: f32 = 0.08;
-const PRIMARY_C_HI: f32 = 0.21;
 /// A candidate at or above this lightness with at most this chroma reads as
 /// white and must not drive the interactive Primary (owner ruling 2026-10-02).
 const NEAR_WHITE_L: f32 = 0.90;
@@ -142,13 +203,10 @@ const NEAR_WHITE_C: f32 = 0.06;
 /// plain-light Primary; above it the broad cast is boosted into the accent
 /// (owner ruling 2026-10-02).
 const TINT_FLOOR: f32 = 0.012;
-/// Mean of the no-art room gradient (`#1d1712` → `BG`): the backdrop wash when
-/// there is no artwork to blur.
-const ROOM_AVG: (u8, u8, u8) = (0x1a, 0x15, 0x10);
 
-fn composite(pixel: (u8, u8, u8)) -> (u8, u8, u8) {
-    let blend = |src: u8, bg: u8| (src as f32 * (1.0 - SCRIM) + bg as f32 * SCRIM).round() as u8;
-    (blend(pixel.0, BG.0), blend(pixel.1, BG.1), blend(pixel.2, BG.2))
+fn composite(pixel: (u8, u8, u8), r: &RoomConsts) -> (u8, u8, u8) {
+    let blend = |src: u8, bg: u8| (src as f32 * (1.0 - r.scrim) + bg as f32 * r.scrim).round() as u8;
+    (blend(pixel.0, r.bg.0), blend(pixel.1, r.bg.1), blend(pixel.2, r.bg.2))
 }
 
 /// Wide box blur approximating the CSS backdrop blur over the already
@@ -160,9 +218,9 @@ fn blur_cover(pixels: &[(u8, u8, u8)], width: usize, height: usize) -> Vec<(u8, 
 
 /// Mean of the blurred pixels (the pre-scrim backdrop wash). A solid cover
 /// blurs to itself, so its exact value survives.
-fn blurred_average(blurred: &[(u8, u8, u8)]) -> (u8, u8, u8) {
+fn blurred_average(blurred: &[(u8, u8, u8)], r: &RoomConsts) -> (u8, u8, u8) {
     if blurred.is_empty() {
-        return ROOM_AVG;
+        return r.room_avg;
     }
     let n = blurred.len() as u32;
     let (mut r, mut g, mut b) = (0u32, 0u32, 0u32);
@@ -175,8 +233,8 @@ fn blurred_average(blurred: &[(u8, u8, u8)]) -> (u8, u8, u8) {
 }
 
 /// Scrim → luminance map → P90 (§5.3 step 2).
-fn composite_ceiling(blurred: &[(u8, u8, u8)]) -> f32 {
-    let mut ls: Vec<f32> = blurred.iter().map(|&p| luminance(composite(p))).collect();
+fn composite_ceiling(blurred: &[(u8, u8, u8)], r: &RoomConsts) -> f32 {
+    let mut ls: Vec<f32> = blurred.iter().map(|&p| luminance(composite(p, r))).collect();
     ls.sort_by(|a, b| a.partial_cmp(b).unwrap());
     ls[(ls.len() as f32 * 0.9) as usize].min(1.0)
 }
@@ -274,44 +332,50 @@ fn fit_contrast(mut color: Oklch, lo: f32, hi: f32, ceiling: f32, min_contrast: 
     None
 }
 
-const TEXT: (u8, u8, u8) = (0xf2, 0xec, 0xe6);
-const ON_ACCENT_DARK: (u8, u8, u8) = (0x0b, 0x24, 0x20);
-
 fn is_near_white(color: &Oklch) -> bool {
     color.l >= NEAR_WHITE_L && color.c <= NEAR_WHITE_C
 }
 
 /// Pick the on-accent ink with the better contrast against the Primary fill.
-fn on_accent(primary: (u8, u8, u8)) -> String {
-    if contrast_ratio(ON_ACCENT_DARK, luminance(primary))
-        >= contrast_ratio(TEXT, luminance(primary))
-    {
-        hex(ON_ACCENT_DARK)
+fn on_accent(primary: (u8, u8, u8), r: &RoomConsts) -> String {
+    if contrast_ratio(r.ink, luminance(primary)) >= contrast_ratio(r.text, luminance(primary)) {
+        hex(r.ink)
     } else {
-        hex(TEXT)
+        hex(r.text)
     }
 }
 
 /// The identity floor (spec §5.2 degradation paths): brand teal primary,
 /// warm-neutral secondary, teal-tint tertiary.
-pub fn fallback_palette() -> Palette {
+pub fn fallback_palette(room: Room) -> Palette {
+    let r = room_consts(room);
+    let dark = room == Room::Dark;
     Palette {
-        primary: hex(oklch_to_srgb(Oklch { l: 0.81, c: 0.12, h: 172.0 })),
-        on_primary: hex(ON_ACCENT_DARK),
-        secondary: hex(oklch_to_srgb(Oklch { l: 0.35, c: 0.02, h: 60.0 })),
-        tertiary: hex(oklch_to_srgb(Oklch { l: 0.72, c: 0.10, h: 172.0 })),
-        backdrop: hex(ROOM_AVG),
-        ceiling_l: luminance(BG),
+        primary: hex(oklch_to_srgb(Oklch {
+            l: if dark { 0.81 } else { 0.45 },
+            c: 0.12,
+            h: 172.0,
+        })),
+        on_primary: hex(r.ink),
+        secondary: hex(oklch_to_srgb(Oklch { l: r.secondary_l.0, c: 0.02, h: 60.0 })),
+        tertiary: hex(oklch_to_srgb(Oklch {
+            l: if dark { 0.72 } else { 0.42 },
+            c: 0.10,
+            h: 172.0,
+        })),
+        backdrop: hex(r.room_avg),
+        ceiling_l: luminance(r.bg),
     }
 }
 
-pub fn extract_palette(pixels: &[(u8, u8, u8)], width: usize, height: usize) -> Palette {
+pub fn extract_palette(pixels: &[(u8, u8, u8)], width: usize, height: usize, room: Room) -> Palette {
+    let r = room_consts(room);
     if pixels.is_empty() || width == 0 || height == 0 {
-        return fallback_palette();
+        return fallback_palette(room);
     }
     let blurred = blur_cover(pixels, width, height);
-    let ceiling = composite_ceiling(&blurred);
-    let mean = blurred_average(&blurred);
+    let ceiling = composite_ceiling(&blurred, &r);
+    let mean = blurred_average(&blurred, &r);
     let backdrop = hex(mean);
     let candidates = cluster(pixels, 6);
 
@@ -334,12 +398,12 @@ pub fn extract_palette(pixels: &[(u8, u8, u8)], width: usize, height: usize) -> 
             if mean.c > TINT_FLOOR {
                 mean
             } else {
-                let primary = oklch_to_srgb(Oklch { l: 0.95, c: 0.01, h: 60.0 });
+                let primary = oklch_to_srgb(Oklch { l: r.plain_l, c: 0.01, h: 60.0 });
                 return Palette {
                     primary: hex(primary),
-                    on_primary: on_accent(primary),
-                    secondary: hex(oklch_to_srgb(Oklch { l: 0.35, c: 0.02, h: 60.0 })),
-                    tertiary: hex(oklch_to_srgb(Oklch { l: 0.72, c: 0.02, h: 60.0 })),
+                    on_primary: on_accent(primary, &r),
+                    secondary: hex(oklch_to_srgb(Oklch { l: r.secondary_l.0, c: 0.02, h: 60.0 })),
+                    tertiary: hex(oklch_to_srgb(Oklch { l: r.tertiary_l.0, c: 0.02, h: 60.0 })),
                     backdrop,
                     ceiling_l: ceiling,
                 };
@@ -348,25 +412,38 @@ pub fn extract_palette(pixels: &[(u8, u8, u8)], width: usize, height: usize) -> 
     };
 
     let mut primary = Oklch {
-        l: clamp(seed.l, PRIMARY_L_LO, PRIMARY_L_HI),
-        c: clamp(seed.c, PRIMARY_C_LO, PRIMARY_C_HI),
+        l: clamp(seed.l, r.primary_l.0, r.primary_l.1),
+        c: clamp(seed.c, r.primary_c.0, r.primary_c.1),
         h: seed.h,
     };
     primary.c = primary.c.min(gamut_chroma(primary.l, primary.h, primary.c));
-    // A bright ceiling can make 4.5:1 unreachable inside the envelope: the
-    // fallback keeps the art's own lightness and chroma (vibrancy over the
-    // unreachable text floor) instead of forcing a pale L 0.85 tone.
-    primary = fit_contrast(primary, PRIMARY_L_LO, PRIMARY_L_HI, ceiling, 4.5).unwrap_or(primary);
+    primary = fit_contrast(primary, r.primary_l.0, r.primary_l.1, ceiling, 4.5).unwrap_or_else(|| {
+        if room == Room::Light {
+            // Best effort on light surfaces: the darkest in-gamut envelope
+            // point keeps the accent usable when 4.5:1 is unreachable.
+            let mut fallback = Oklch { l: r.primary_l.0, c: primary.c, h: primary.h };
+            fallback.c = fallback.c.min(gamut_chroma(fallback.l, fallback.h, fallback.c));
+            fallback
+        } else {
+            primary
+        }
+    });
     let primary_rgb = oklch_to_srgb(primary);
-    let on_primary = on_accent(primary_rgb);
+    let on_primary = on_accent(primary_rgb, &r);
 
     // Secondary: the most populous dark candidate, de-chromed (never text).
     let secondary = candidates
         .iter()
-        .filter(|(c, _)| c.l < 0.5)
+        .filter(|(c, _)| {
+            if r.secondary_dark { c.l < 0.5 } else { c.l > 0.5 }
+        })
         .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
-        .map(|(c, _)| Oklch { l: clamp(c.l, 0.25, 0.45), c: c.c.min(0.05), h: c.h })
-        .unwrap_or(Oklch { l: 0.35, c: 0.02, h: 60.0 });
+        .map(|(c, _)| Oklch {
+            l: clamp(c.l, r.secondary_l.0, r.secondary_l.1),
+            c: c.c.min(r.secondary_c_cap),
+            h: c.h,
+        })
+        .unwrap_or(Oklch { l: r.secondary_l.0, c: 0.02, h: 60.0 });
 
     // Tertiary: informational only — ≥30° hue separation from Primary, else a
     // rotation so it never reads as interactive (spec §5.2).
@@ -380,11 +457,21 @@ pub fn extract_palette(pixels: &[(u8, u8, u8)], width: usize, height: usize) -> 
         // inventing one (a red cover must not yield a teal badge ring).
         .unwrap_or(Oklch { l: primary.l - 0.10, c: primary.c, h: primary.h });
     let tertiary = Oklch {
-        l: clamp(tertiary_seed.l, 0.65, 0.80),
-        c: clamp(tertiary_seed.c.max(0.06), 0.06, 0.14),
+        l: clamp(tertiary_seed.l, r.tertiary_l.0, r.tertiary_l.1),
+        c: clamp(tertiary_seed.c.max(r.tertiary_c.0), r.tertiary_c.0, r.tertiary_c.1),
         h: tertiary_seed.h,
     };
-    let tertiary = fit_contrast(tertiary, 0.65, 0.80, ceiling, 4.5).unwrap_or(tertiary);
+    let tertiary = fit_contrast(tertiary, r.tertiary_l.0, r.tertiary_l.1, ceiling, 4.5)
+        .unwrap_or_else(|| {
+            if room == Room::Light {
+                let mut fallback =
+                    Oklch { l: r.tertiary_l.0, c: tertiary.c, h: tertiary.h };
+                fallback.c = fallback.c.min(gamut_chroma(fallback.l, fallback.h, fallback.c));
+                fallback
+            } else {
+                tertiary
+            }
+        });
 
     Palette {
         primary: hex(primary_rgb),
@@ -444,8 +531,8 @@ mod tests {
     #[test]
     fn warm_monochrome_cover_boosts_its_tint() {
         let pixels = solid((120, 110, 95), 48 * 48);
-        let palette = extract_palette(&pixels, 48, 48);
-        assert_ne!(palette.primary, fallback_palette().primary);
+        let palette = extract_palette(&pixels, 48, 48, Room::Dark);
+        assert_ne!(palette.primary, fallback_palette(Room::Dark).primary);
         let primary = srgb_to_oklch_tuple(hex_to_rgb(&palette.primary));
         // The envelope floor is 0.08; 8-bit quantization costs a hair.
         assert!(primary.c >= 0.075, "boosted primary chroma {}", primary.c);
@@ -457,8 +544,8 @@ mod tests {
     #[test]
     fn saturated_cover_drives_a_contrasting_primary() {
         let pixels = solid((200, 30, 40), 48 * 48); // saturated red cover
-        let palette = extract_palette(&pixels, 48, 48);
-        assert_ne!(palette.primary, fallback_palette().primary);
+        let palette = extract_palette(&pixels, 48, 48, Room::Dark);
+        assert_ne!(palette.primary, fallback_palette(Room::Dark).primary);
         let primary = hex_to_rgb(&palette.primary);
         let contrast = contrast_ratio(primary, palette.ceiling_l);
         assert!(contrast >= 4.5, "primary vs ceiling: {contrast}");
@@ -470,12 +557,12 @@ mod tests {
     /// 2026-10-02) — instead of the old pale L 0.85 tone.
     #[test]
     fn a_bright_ceiling_keeps_a_vivid_primary() {
-        let dark = extract_palette(&solid((200, 30, 40), 48 * 48), 48, 48);
+        let dark = extract_palette(&solid((200, 30, 40), 48 * 48), 48, 48, Room::Dark);
         let mut pixels = solid((200, 30, 40), 48 * 48);
         for p in pixels.iter_mut().take(48 * 24) {
             *p = (250, 245, 238); // top half near-white
         }
-        let palette = extract_palette(&pixels, 48, 48);
+        let palette = extract_palette(&pixels, 48, 48, Room::Dark);
         assert!(palette.ceiling_l > 0.15, "ceiling: {}", palette.ceiling_l);
         assert!(palette.ceiling_l > dark.ceiling_l, "bright ceiling not elevated");
         let primary = srgb_to_oklch_tuple(hex_to_rgb(&palette.primary));
@@ -489,14 +576,14 @@ mod tests {
     /// instead of the brand-teal identity floor (owner ruling 2026-10-02).
     #[test]
     fn pure_white_cover_keeps_a_plain_light_primary() {
-        let palette = extract_palette(&solid((255, 255, 255), 48 * 48), 48, 48);
+        let palette = extract_palette(&solid((255, 255, 255), 48 * 48), 48, 48, Room::Dark);
         let primary = srgb_to_oklch_tuple(hex_to_rgb(&palette.primary));
         assert!(primary.l >= 0.9, "plain-light primary L {}", primary.l);
         assert!(primary.c <= 0.02, "plain-light primary C {}", primary.c);
-        assert_ne!(palette.primary, fallback_palette().primary);
-        assert_eq!(palette.on_primary, hex(ON_ACCENT_DARK));
-        assert_eq!(palette.secondary, fallback_palette().secondary);
-        assert_ne!(palette.tertiary, fallback_palette().tertiary);
+        assert_ne!(palette.primary, fallback_palette(Room::Dark).primary);
+        assert_eq!(palette.on_primary, hex(room_consts(Room::Dark).ink));
+        assert_eq!(palette.secondary, fallback_palette(Room::Dark).secondary);
+        assert_ne!(palette.tertiary, fallback_palette(Room::Dark).tertiary);
         assert!(srgb_to_oklch_tuple(hex_to_rgb(&palette.tertiary)).c <= 0.03);
     }
 
@@ -508,7 +595,7 @@ mod tests {
         for p in pixels.iter_mut().take((48 * 48) / 20) {
             *p = (30, 80, 220); // 5% vivid blue
         }
-        let palette = extract_palette(&pixels, 48, 48);
+        let palette = extract_palette(&pixels, 48, 48, Room::Dark);
         let primary = srgb_to_oklch_tuple(hex_to_rgb(&palette.primary));
         assert!(!is_near_white(&primary), "primary {:?} must be the blue", palette.primary);
         assert!(primary.c >= 0.08, "primary chroma {}", primary.c);
@@ -520,26 +607,26 @@ mod tests {
     #[test]
     fn neutral_monochrome_cover_keeps_a_plain_light_primary() {
         for color in [(128, 128, 128), (30, 30, 30)] {
-            let palette = extract_palette(&solid(color, 48 * 48), 48, 48);
+            let palette = extract_palette(&solid(color, 48 * 48), 48, 48, Room::Dark);
             let primary = srgb_to_oklch_tuple(hex_to_rgb(&palette.primary));
             assert!(primary.l >= 0.9, "{color:?} primary L {}", primary.l);
             assert!(primary.c <= 0.02, "{color:?} primary C {}", primary.c);
             let tertiary = srgb_to_oklch_tuple(hex_to_rgb(&palette.tertiary));
             assert!(tertiary.c <= 0.03, "{color:?} tertiary C {}", tertiary.c);
-            assert_ne!(palette.tertiary, fallback_palette().tertiary);
+            assert_ne!(palette.tertiary, fallback_palette(Room::Dark).tertiary);
         }
         let mut pixels = solid((230, 230, 230), 48 * 48); // mixed neutral greys
         for p in pixels.iter_mut().take((48 * 48) * 2 / 5) {
             *p = (120, 118, 115);
         }
-        let palette = extract_palette(&pixels, 48, 48);
+        let palette = extract_palette(&pixels, 48, 48, Room::Dark);
         let primary = srgb_to_oklch_tuple(hex_to_rgb(&palette.primary));
         assert!(primary.l >= 0.9 && primary.c <= 0.02, "mixed neutral primary {:?}", palette.primary);
     }
 
     #[test]
     fn faint_cast_below_the_noise_floor_stays_neutral() {
-        let palette = extract_palette(&solid((128, 127, 126), 48 * 48), 48, 48);
+        let palette = extract_palette(&solid((128, 127, 126), 48 * 48), 48, 48, Room::Dark);
         let primary = srgb_to_oklch_tuple(hex_to_rgb(&palette.primary));
         assert!(primary.l >= 0.9 && primary.c <= 0.02, "primary {:?}", palette.primary);
     }
@@ -553,10 +640,10 @@ mod tests {
         for p in pixels.iter_mut().take((48 * 48) * 2 / 5) {
             *p = (27, 43, 35); // dark dots with a faint cyan cast
         }
-        let palette = extract_palette(&pixels, 48, 48);
+        let palette = extract_palette(&pixels, 48, 48, Room::Dark);
         let primary = srgb_to_oklch_tuple(hex_to_rgb(&palette.primary));
         assert!(primary.l >= 0.9 && primary.c <= 0.02, "primary {:?}", palette.primary);
-        assert_ne!(palette.primary, fallback_palette().primary);
+        assert_ne!(palette.primary, fallback_palette(Room::Dark).primary);
     }
 
     /// Spec §5.2: tertiary takes a ≥30° hue only when the art provides one.
@@ -566,7 +653,7 @@ mod tests {
         for p in pixels.iter_mut().take(48 * 24) {
             *p = (30, 80, 220); // blue half
         }
-        let palette = extract_palette(&pixels, 48, 48);
+        let palette = extract_palette(&pixels, 48, 48, Room::Dark);
         let p = srgb_to_oklch_tuple(hex_to_rgb(&palette.primary));
         let t = srgb_to_oklch_tuple(hex_to_rgb(&palette.tertiary));
         assert!(hue_diff(p.h, t.h) >= 30.0, "hues {} vs {}", p.h, t.h);
@@ -577,7 +664,7 @@ mod tests {
     /// 2026-10-02, spec §5.2).
     #[test]
     fn tertiary_collapses_to_a_primary_tint_without_a_separated_hue() {
-        let palette = extract_palette(&solid((200, 30, 40), 48 * 48), 48, 48);
+        let palette = extract_palette(&solid((200, 30, 40), 48 * 48), 48, 48, Room::Dark);
         let p = srgb_to_oklch_tuple(hex_to_rgb(&palette.primary));
         let t = srgb_to_oklch_tuple(hex_to_rgb(&palette.tertiary));
         assert!(hue_diff(p.h, t.h) < 10.0, "tertiary must echo Primary: {} vs {}", p.h, t.h);
@@ -590,14 +677,14 @@ mod tests {
         for p in pixels.iter_mut().take(48 * 12) {
             *p = (255, 255, 255); // quarter white, three quarters black
         }
-        let palette = extract_palette(&pixels, 48, 48);
+        let palette = extract_palette(&pixels, 48, 48, Room::Dark);
         assert!(palette.ceiling_l > 0.2, "P90 should sit in the white quarter");
     }
 
     #[test]
     fn backdrop_is_the_blurred_cover_mean() {
-        let bright = extract_palette(&solid((250, 245, 238), 48 * 48), 48, 48);
-        let dark = extract_palette(&solid((10, 12, 14), 48 * 48), 48, 48);
+        let bright = extract_palette(&solid((250, 245, 238), 48 * 48), 48, 48, Room::Dark);
+        let dark = extract_palette(&solid((10, 12, 14), 48 * 48), 48, 48, Room::Dark);
         assert_eq!(bright.backdrop, "#faf5ee");
         assert_eq!(dark.backdrop, "#0a0c0e");
         assert!(
@@ -611,14 +698,61 @@ mod tests {
     #[test]
     fn monochrome_backdrop_keeps_the_cover_gray() {
         let pixels = solid((110, 105, 100), 48 * 48);
-        let palette = extract_palette(&pixels, 48, 48);
+        let palette = extract_palette(&pixels, 48, 48, Room::Dark);
         assert_eq!(palette.backdrop, "#6e6964");
-        assert_ne!(palette.backdrop, fallback_palette().backdrop);
+        assert_ne!(palette.backdrop, fallback_palette(Room::Dark).backdrop);
     }
 
     #[test]
     fn no_art_uses_the_room_tone() {
-        assert_eq!(fallback_palette().backdrop, "#1a1510");
-        assert_eq!(extract_palette(&[], 0, 0).backdrop, "#1a1510");
+        assert_eq!(fallback_palette(Room::Dark).backdrop, "#1a1510");
+        assert_eq!(extract_palette(&[], 0, 0, Room::Dark).backdrop, "#1a1510");
+    }
+
+    #[test]
+    fn light_room_saturated_cover_clears_the_light_ceiling() {
+        let pixels = solid((30, 80, 220), 48 * 48);
+        let palette = extract_palette(&pixels, 48, 48, Room::Light);
+        let primary = hex_to_rgb(&palette.primary);
+        let contrast = contrast_ratio(primary, palette.ceiling_l);
+        assert!(contrast >= 4.5, "primary vs light ceiling: {contrast}");
+        let oklch = srgb_to_oklch_tuple(primary);
+        assert!(hue_diff(oklch.h, 264.0) < 40.0, "hue should stay blue: {}", oklch.h);
+    }
+
+    /// Review Focus 5: when 4.5:1 is unreachable on light surfaces, the accent
+    /// darkens to the envelope's best point instead of staying pale.
+    #[test]
+    fn light_room_unreachable_floor_keeps_a_dark_accent() {
+        let pixels = solid((200, 30, 40), 48 * 48);
+        let palette = extract_palette(&pixels, 48, 48, Room::Light);
+        let oklch = srgb_to_oklch_tuple(hex_to_rgb(&palette.primary));
+        assert!(oklch.l <= 0.25, "light-room fallback must be dark: L {}", oklch.l);
+        assert!(hue_diff(oklch.h, 30.0) < 40.0, "hue should track the art: {}", oklch.h);
+    }
+
+    #[test]
+    fn light_room_backdrop_keeps_the_cover_mean() {
+        let bright = extract_palette(&solid((250, 245, 238), 48 * 48), 48, 48, Room::Light);
+        assert_eq!(bright.backdrop, "#faf5ee");
+    }
+
+    #[test]
+    fn light_room_fallback_uses_the_light_room_tone() {
+        assert_eq!(Room::Dark.as_str(), "dark");
+        assert_eq!(Room::Light.as_str(), "light");
+        let light = fallback_palette(Room::Light);
+        assert_eq!(light.backdrop, "#eee7dd");
+        assert_ne!(light.primary, fallback_palette(Room::Dark).primary);
+    }
+
+    /// The same cover must not share a palette across rooms.
+    #[test]
+    fn rooms_produce_different_primaries_for_the_same_cover() {
+        let pixels = solid((200, 30, 40), 48 * 48);
+        assert_ne!(
+            extract_palette(&pixels, 48, 48, Room::Dark).primary,
+            extract_palette(&pixels, 48, 48, Room::Light).primary
+        );
     }
 }
