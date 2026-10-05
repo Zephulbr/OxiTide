@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { HotkeyAction } from "./hotkeys";
 
 export interface ArtistRef { id: number; name: string }
 export interface AlbumRef { id: number; title: string; cover?: string | null }
@@ -198,6 +199,7 @@ export interface Config {
     queue_width: number;
     start_in_mini: boolean;
     oneko: boolean;
+    close_to_tray: boolean;
     window_width: number;
     window_height: number;
     window_x?: number | null;
@@ -217,6 +219,14 @@ export interface Config {
   };
   history: { enabled: boolean; max_entries: number };
   content: { block_explicit: boolean; block_ai: boolean };
+  hotkeys: {
+    play_pause: string;
+    next: string;
+    prev: string;
+    volume_up: string;
+    volume_down: string;
+    show_hide: string;
+  };
 }
 export type EngineEvent =
   | ({ type: "state" } & PlaybackState)
@@ -403,6 +413,9 @@ export const api = {
   setStartInMini: (enabled: boolean) => invoke<void>("set_start_in_mini", { enabled }),
   setOneko: (enabled: boolean) => invoke<void>("set_oneko", { enabled }),
   setSmtc: (enabled: boolean) => invoke<void>("set_smtc", { enabled }),
+  setCloseToTray: (enabled: boolean) => invoke<void>("set_close_to_tray", { enabled }),
+  setHotkey: (action: HotkeyAction, accelerator: string) =>
+    invoke<void>("set_hotkey", { action, accelerator }),
   setDiscord: (enabled: boolean) => invoke<void>("set_discord", { enabled }),
   setCacheMaxSizeMb: (mb: number) => invoke<void>("set_cache_max_size_mb", { mb }),
   setCacheClearOnExit: (enabled: boolean) =>
