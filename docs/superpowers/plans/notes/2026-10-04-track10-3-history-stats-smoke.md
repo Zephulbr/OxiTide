@@ -37,12 +37,12 @@ fixes, not silent exceptions.
 
 Record results below.
 
-- [ ] 1 recently played
-- [ ] 2 skips not recorded
-- [ ] 3 in-flight play
-- [ ] 4 stats + chart
-- [ ] 5 restart persistence
-- [ ] 6 day grouping
-- [ ] 7 clear
-- [ ] 8 disable
-- [ ] 9 max entries
+- [x] 1 recently played
+- [x] 2 skips not recorded
+- [x] 3 in-flight play
+- [x] 4 stats + chart
+- [x] 5 restart persistence
+- [x] 6 day grouping
+- [x] 7 clear
+- [ ] 8 disable (if the current song playing is tracked and hte history is turned off and deleted, the current song remains in recently played, the rest are cleared)
+- [x] 9 max entries

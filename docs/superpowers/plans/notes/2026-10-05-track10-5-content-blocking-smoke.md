@@ -36,3 +36,8 @@ second launch. Steps 7–8 need a real track flagged `explicit` or AI-labeled.
     rows render (unknown flags play), no error toast storm, playback works.
 12. `%APPDATA%\OxiTide\config\cache\track_flags.json` exists after step 6/7 and its
     entries contain numeric keys with `explicit`/`ai`.
+13. Content labels (default on): with both filters off, explicit rows show a muted
+    `E` chip and AI-labeled rows a muted `AI` chip after the background lookup
+    (cached rows are instant); turning "Show content labels" off removes the
+    chips and stops the lookups; with a filter on, blocked rows keep the
+    warning-colored badge and the struck-through title.

@@ -1,6 +1,7 @@
 # Track 10 completion note (2026-10-05)
 
-- **Status:** Implementation complete and merged — owner smoke verification pending
+- **Status:** Implementation complete and merged — owner smoke run in progress: 10.1/10.2 pass;
+  10.3 one bug found and fixed (re-check pending); 10.5/10.6 pass, follow-up enhancements landed
 - **Owner:** V
 - **Scope:** Plans 10.1–10.3, 10.5, 10.6 (daily-driver QoL); 10.4 (scrobble love) deferred 2026-10-05
 - **Merged:** `main` at `446e054` (branch `track10-tray-hotkeys`, fast-forward, 2026-10-05)
@@ -29,26 +30,38 @@
 - Every plan ran TDD with per-task review; 10.6 passed a whole-branch review and a scoped
   re-review after the fix wave (`3d9af22`, `a830ce9`, `446e054`).
 
-## Pending — owner smoke run (Windows, real account)
+## Smoke results (owner, 2026-10-05)
 
-Run in plan order; record results in each checklist (and mirror the outcome here):
+- **10.1 session restore — PASS (7/7).**
+- **10.2 sleep timer — PASS (9/9).**
+- **10.3 history & stats — 8/9; step 8 (disable/clear mid-play) found a bug:** the in-flight track
+  stayed in Recently played because `clear()` and `set_enabled(false)` left the tracker's active
+  play in place while the page prepends it. Fixed in `1ad2a9d` (reset the in-flight and pending
+  play on clear and on disabling; two regression tests). Step 8 re-check pending.
+- **10.5 content blocking — PASS;** follow-up enhancement: `content.show_labels` (default on) tags
+  known explicit/AI tracks with muted E/AI chips even when not blocking, with a Settings toggle
+  that also stops the lookups (checklist step 13).
+- **10.6 tray & hotkeys — PASS;** follow-up enhancement: recording a chord already used by another
+  action opens a Reassign modal (readable names, one click moves the binding), and OS-level
+  failures get a readable toast (checklist steps 8–9).
 
-1. `plans/notes/2026-10-04-track10-1-session-restore-smoke.md` — restart paused, position/queue/
-   marker, logout, corrupt file, mini player, empty queue.
-2. `plans/notes/2026-10-04-track10-2-sleep-timer-smoke.md` — fade at expiry and end-of-track,
-   cancel semantics, restart reset, exclusive mode if configured.
-3. `plans/notes/2026-10-04-track10-3-history-stats-smoke.md` — recently played, skip threshold,
-   in-flight row, stats/chart, clear/disable, retention.
-4. `plans/notes/2026-10-05-track10-5-content-blocking-smoke.md` — badges, queue clear/prune,
-   restore filtering, offline fail-open, flag cache file.
-5. `plans/notes/2026-10-05-track10-6-tray-hotkeys-smoke.md` — tray/menu/tooltip, close-to-tray,
-   single-instance, recorder/conflicts, volume persistence, known edges (step 13).
-
-Checklist paths corrected on 2026-10-05 to the shipped locations: the config directory is
+Checklist paths were corrected on 2026-10-05 to the shipped locations: the config directory is
 `%APPDATA%\OxiTide\config\`, so session is `%APPDATA%\OxiTide\config\session.json` and the flag
 cache is `%APPDATA%\OxiTide\config\cache\track_flags.json` (code doc comments updated to match).
 
-When the run is complete, append the results here and flip this note's status to closed.
+## Post-smoke fixes and enhancements (2026-10-05)
+
+- `1ad2a9d` fix(history): drop the in-flight play on clear and disable.
+- Content labels: `content.show_labels` + `set_show_labels`; `trackFlags` gains
+  `showLabels`/`labels` and its `ensure` enriches for tagging too; TrackTable renders muted
+  chips; Settings → Content gets the toggle.
+- Hotkey conflicts: `hotkeys::apply_binding` + `set_hotkey(action, accelerator, replace)`;
+  `conflictFor` pre-check; Settings Reassign modal; readable OS-failure/backstop toasts.
+- Gates at this head: `cargo test --workspace` exit 0, clippy clean, 550 vitest pass (59 files),
+  svelte-check 0 errors / 0 warnings.
+
+Remaining verification: re-run 10.3 step 8; optionally re-check 10.5 step 13 and 10.6 steps 8–9.
+Flip this note's status to closed when those pass.
 
 ## Linux / WSL2
 

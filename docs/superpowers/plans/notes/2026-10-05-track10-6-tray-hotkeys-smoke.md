@@ -23,10 +23,13 @@ exemption pattern and are checked in the track completion note.
    another app is focused (once a chord is registered the global handler is the
    only delivery path). Global hotkeys are temporarily unregistered while the
    recorder is active.
-8. Try to record `Space` for Next: a toast appears and Play / pause keeps its
-   binding; restarting keeps it too.
+8. Try to record `Space` for Next: a modal appears reading `"Space" is already
+   used by "Play / pause". Reassign it to "Next track"?`. Cancel keeps both
+   bindings; repeating and choosing Reassign moves `Space` to Next and leaves
+   Play / pause "Not set". Both outcomes survive a restart.
 9. Record a chord another app already owns (e.g. an OS-reserved one): a toast
-   appears and the previous binding stays.
+   appears ("Couldn't register … another app may be using it.") and the
+   previous binding stays.
 10. Clear a hotkey (Backspace/Delete while recording, or the Clear button):
     the row shows "Not set" and the accelerator no longer fires after restart.
 11. Volume up/down hotkeys move the volume in 5% steps and the level survives a

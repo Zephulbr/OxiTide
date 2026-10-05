@@ -30,10 +30,10 @@ Mark each item pass/fail with a note; failures become plan fixes, not silent exc
 
 Record results below.
 
-- [ ] 1 queue in/out
-- [ ] 2 resume position
-- [ ] 3 edits survive
-- [ ] 4 logout clears + fresh login empty
-- [ ] 5 corrupt file boots empty
-- [ ] 6 mini player restore
-- [ ] 7 empty queue
+- [x] 1 queue in/out
+- [x] 2 resume position
+- [x] 3 edits survive
+- [x] 4 logout clears + fresh login empty
+- [x] 5 corrupt file boots empty
+- [x] 6 mini player restore
+- [x] 7 empty queue

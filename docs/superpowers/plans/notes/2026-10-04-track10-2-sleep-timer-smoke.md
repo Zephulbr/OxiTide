@@ -38,12 +38,12 @@ exceptions.
 
 Record results below.
 
-- [ ] 1 duration fade
-- [ ] 2 resume
-- [ ] 3 end of track
-- [ ] 4 off
-- [ ] 5 queue clear
-- [ ] 6 pause cancels
-- [ ] 7 volume cancels
-- [ ] 8 restart resets
-- [ ] 9 exclusive
+- [x] 1 duration fade
+- [x] 2 resume
+- [x] 3 end of track
+- [x] 4 off
+- [x] 5 queue clear
+- [x] 6 pause cancels
+- [x] 7 volume cancels
+- [x] 8 restart resets
+- [x] 9 exclusive
