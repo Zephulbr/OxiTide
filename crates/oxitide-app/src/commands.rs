@@ -448,6 +448,15 @@ fn build_player(
                 handle.state::<AppState>().notify_session_expired();
             }
         }
+        match &event {
+            EngineEvent::NowPlaying(item) => {
+                crate::tray::update_tooltip(&handle, item.as_ref());
+            }
+            EngineEvent::State(snapshot) => {
+                crate::tray::update_tooltip(&handle, snapshot.current.as_ref());
+            }
+            _ => {}
+        }
         if smtc_sender.is_some() || discord_sender.is_some() {
             let mut last = last_track.lock().unwrap();
             let (updates, next) = crate::media_controls::plan(&event, *last);

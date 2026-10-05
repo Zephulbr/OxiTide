@@ -16,6 +16,7 @@ mod scrobble;
 mod session;
 mod state;
 mod track_flags;
+mod tray;
 mod window;
 
 use std::sync::OnceLock;
@@ -79,7 +80,7 @@ fn init_logging() {
 }
 
 /// Best-effort geometry save; called while the main window is closing.
-fn save_window_state(app: &tauri::AppHandle) {
+pub(crate) fn save_window_state(app: &tauri::AppHandle) {
     let state = app.state::<AppState>();
     let Some(window) = app.get_webview_window("main") else {
         return;
@@ -210,6 +211,8 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
                 let _ = window.set_focus();
             }
         }))
@@ -232,6 +235,10 @@ fn main() {
                 }
             }
             app.state::<AppState>().set_handle(app.handle().clone());
+            match tray::build(app.handle()) {
+                Ok(icon) => app.state::<AppState>().set_tray(icon),
+                Err(e) => tracing::warn!("system tray unavailable: {e}"),
+            }
             if let Some(scrobbler) = app.state::<AppState>().scrobbler() {
                 let handle = app.handle().clone();
                 scrobbler.set_status_sink(std::sync::Arc::new(move |status| {
@@ -423,10 +430,16 @@ fn main() {
         .run(|app_handle, event| match event {
             tauri::RunEvent::WindowEvent {
                 label,
-                event: tauri::WindowEvent::CloseRequested { .. },
+                event: tauri::WindowEvent::CloseRequested { api, .. },
                 ..
             } if label == "main" => {
                 save_window_state(app_handle);
+                if app_handle.state::<AppState>().config().ui.close_to_tray {
+                    api.prevent_close();
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        let _ = window.hide();
+                    }
+                }
             }
             tauri::RunEvent::Exit => {
                 scheme::restore_remembered();

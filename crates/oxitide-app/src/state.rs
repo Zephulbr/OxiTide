@@ -48,6 +48,8 @@ pub struct AppState {
     pub history: Mutex<Option<Arc<crate::history::HistoryStore>>>,
     /// Content-blocking flag cache; `None` only before startup wiring.
     pub track_flags: Mutex<Option<Arc<crate::track_flags::TrackFlagsStore>>>,
+    /// System tray handle; `None` when the tray could not be created.
+    pub tray: Mutex<Option<tauri::tray::TrayIcon>>,
     /// The process-wide token store chosen at startup (keyring or session-only).
     pub token_store: RwLock<Option<Arc<dyn TokenStore>>>,
     /// Result of the startup keyring probe, exposed to the UI.
@@ -169,6 +171,14 @@ impl AppState {
 
     pub fn track_flags(&self) -> Option<Arc<crate::track_flags::TrackFlagsStore>> {
         self.track_flags.lock().unwrap().clone()
+    }
+
+    pub fn set_tray(&self, tray: tauri::tray::TrayIcon) {
+        *self.tray.lock().unwrap() = Some(tray);
+    }
+
+    pub fn tray(&self) -> Option<tauri::tray::TrayIcon> {
+        self.tray.lock().unwrap().clone()
     }
 
     pub fn set_token_store(&self, store: Arc<dyn TokenStore>) {
