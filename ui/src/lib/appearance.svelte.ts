@@ -12,6 +12,16 @@ export type CoverShape = "disc" | "sleeve";
 export const QUEUE_WIDTH_MIN = 260;
 export const QUEUE_WIDTH_MAX = 420;
 
+/// An embedder may throw on the `localStorage` property getter itself, before
+/// theme.ts's item-level guards can run; the mirror is best-effort either way.
+function themeStorage(): Storage | undefined {
+  try {
+    return globalThis.localStorage;
+  } catch {
+    return undefined;
+  }
+}
+
 export function clampQueueWidth(px: number): number {
   return Math.min(QUEUE_WIDTH_MAX, Math.max(QUEUE_WIDTH_MIN, Math.round(px)));
 }
@@ -99,7 +109,7 @@ export function createAppearance(): Appearance {
   }
 
   async function init() {
-    theme = readThemeMirror(globalThis.localStorage);
+    theme = readThemeMirror(themeStorage());
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
     reducedMotion = media.matches;
     media.addEventListener("change", (e) => (reducedMotion = e.matches));
@@ -123,7 +133,7 @@ export function createAppearance(): Appearance {
     } catch {
       // Defaults are fine; a config failure must not block boot.
     }
-    writeThemeMirror(globalThis.localStorage, theme);
+    writeThemeMirror(themeStorage(), theme);
     apply();
   }
 
@@ -153,7 +163,7 @@ export function createAppearance(): Appearance {
     get ambientMotion() { return mode === "atmosphere" && !reducedMotion; },
     init,
     setMode: (m) => { mode = m; return persist(() => api.setUiMode(m)); },
-    setTheme: (t) => { theme = t; writeThemeMirror(globalThis.localStorage, t); return persist(() => api.setTheme(t)); },
+    setTheme: (t) => { theme = t; writeThemeMirror(themeStorage(), t); return persist(() => api.setTheme(t)); },
     setTypeface: (t) => { typefaceSetting = t; return persist(() => api.setTypeface(t)); },
     setCustomTypeface: (n) => { customTypeface = n; return persist(() => api.setCustomTypeface(n)); },
     setDensity: (d) => { density = d; return persist(() => api.setDensity(d)); },

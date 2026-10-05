@@ -29,6 +29,16 @@ export function createPaletteApplier(
 ) {
   let request = 0;
   let lastKey: string | undefined;
+  let appliedTheme: "dark" | "light" | undefined;
+  /// Clearing back to the room's static CSS is correct only when the applied
+  /// palette belongs to the other room; a same-theme failure keeps current
+  /// colors (spec §5.2).
+  const clearIfStale = (theme: "dark" | "light") => {
+    if (appliedTheme !== undefined && appliedTheme !== theme) {
+      apply({});
+      appliedTheme = theme;
+    }
+  };
   return {
     async onTrack(cover: string | null, mode: "full" | "accent" | "off", theme: "dark" | "light") {
       const key = `${mode}|${theme}|${cover ?? ""}`;
@@ -37,17 +47,27 @@ export function createPaletteApplier(
       const id = ++request;
       if (mode === "off") {
         apply({});
+        appliedTheme = theme;
         return;
       }
       // No track or no artwork: keep the last applied palette (owner ruling
-      // 2026-10-02). The counter bump above cancels any in-flight older fetch.
-      if (!cover) return;
+      // 2026-10-02), unless it belongs to the other theme. The counter bump
+      // above cancels any in-flight older fetch.
+      if (!cover) {
+        clearIfStale(theme);
+        return;
+      }
       try {
         const palette = await fetcher(cover, theme);
         if (id !== request) return;
         apply(paletteTokens(palette, mode));
+        appliedTheme = theme;
       } catch {
-        // Keep the current colors; the next track retries.
+        if (id !== request) return;
+        // Keep the current colors; the next track retries. A theme switch
+        // failed before re-analysis: the stale other-room palette must not
+        // survive, so drop to the room's static fallbacks instead.
+        clearIfStale(theme);
       }
     },
   };

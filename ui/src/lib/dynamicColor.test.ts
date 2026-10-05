@@ -35,7 +35,15 @@ describe("paletteTokens", () => {
 describe("createPaletteApplier", () => {
   function deferred<T>() {
     let resolve!: (v: T) => void;
-    return { promise: new Promise<T>((r) => (resolve = r)), resolve };
+    let reject!: (e: unknown) => void;
+    return {
+      promise: new Promise<T>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      }),
+      resolve,
+      reject,
+    };
   }
 
   /// Review Focus: a stale response must never clobber a newer track.
@@ -95,6 +103,62 @@ describe("createPaletteApplier", () => {
 
     expect(fetches).toBe(1);
     expect(applied).toEqual([paletteTokens(palette, "full")]);
+  });
+
+  /// A stale failure must not clear a palette a newer request already applied.
+  it("ignores an older failed response after a newer track applied", async () => {
+    const applied: Record<string, string>[] = [];
+    const slow = deferred<CoverPalette>();
+    const fast = deferred<CoverPalette>();
+    const fetcher = (uuid: string) => (uuid === "slow" ? slow.promise : fast.promise);
+    const applier = createPaletteApplier((t) => applied.push(t), fetcher);
+
+    const stale = applier.onTrack("slow", "full", "dark");
+    void applier.onTrack("fast", "full", "light");
+    fast.resolve({ ...palette, primary: "#111111" });
+    await Promise.resolve();
+    slow.reject(new Error("offline"));
+    await stale;
+
+    expect(applied).toEqual([expect.objectContaining({ "--dyn-primary": "#111111" })]);
+  });
+
+  /// Review Focus 4: a failed re-analysis after a theme switch must fall back
+  /// to the room's static CSS instead of keeping the other room's inline palette.
+  it("clears a stale palette when the re-fetch for the new theme fails", async () => {
+    const applied: Record<string, string>[] = [];
+    let fetches = 0;
+    const fetcher = async () => {
+      fetches += 1;
+      if (fetches === 1) return palette;
+      throw new Error("offline");
+    };
+    const applier = createPaletteApplier((t) => applied.push(t), fetcher);
+    await applier.onTrack("uuid", "full", "dark");
+    await applier.onTrack("uuid", "full", "light");
+    expect(applied).toEqual([paletteTokens(palette, "full"), {}]);
+  });
+
+  it("keeps the current palette when a same-theme re-fetch fails", async () => {
+    const applied: Record<string, string>[] = [];
+    let fetches = 0;
+    const fetcher = async () => {
+      fetches += 1;
+      if (fetches === 1) return palette;
+      throw new Error("offline");
+    };
+    const applier = createPaletteApplier((t) => applied.push(t), fetcher);
+    await applier.onTrack("uuid", "full", "dark");
+    await applier.onTrack("other", "full", "dark");
+    expect(applied).toEqual([paletteTokens(palette, "full")]);
+  });
+
+  it("clears a stale palette when the theme changes with no cover", async () => {
+    const applied: Record<string, string>[] = [];
+    const applier = createPaletteApplier((t) => applied.push(t), () => Promise.resolve(palette));
+    await applier.onTrack("uuid", "full", "dark");
+    await applier.onTrack(null, "full", "light");
+    expect(applied).toEqual([paletteTokens(palette, "full"), {}]);
   });
 
   /// Review Focus 2: a theme change with the same cover/mode must re-analyze.

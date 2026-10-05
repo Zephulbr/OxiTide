@@ -143,6 +143,21 @@ describe("theme", () => {
     expect(api.setTheme).toHaveBeenCalledWith("dark");
   });
 
+  /// An embedder may throw on the localStorage property getter itself, before
+  /// theme.ts's item-level guards can run; boot must not reject for that.
+  it("init survives an embedder whose localStorage getter throws", async () => {
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      get() {
+        throw new Error("denied");
+      },
+    });
+    const appearance = createAppearance();
+    await expect(appearance.init()).resolves.toBeUndefined();
+    expect(appearance.theme).toBe("system");
+    expect(document.documentElement.dataset.theme).toBe("light");
+  });
+
   it("system follows an OS preference change", async () => {
     const appearance = createAppearance();
     await appearance.init();
