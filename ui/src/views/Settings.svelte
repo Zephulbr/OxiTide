@@ -12,6 +12,7 @@
   } from "../lib/api";
   import { canToggle, queuedLabel, serviceLabel } from "../lib/scrobble";
   import ConfirmDialog from "../lib/components/ConfirmDialog.svelte";
+  import { trackFlags } from "../lib/trackFlags.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
   import Icon from "../lib/components/Icon.svelte";
   import KeyringNotice from "../lib/components/KeyringNotice.svelte";
@@ -55,6 +56,7 @@
   let lbBusy = $state(false);
   let lbError = $state("");
   let confirmingHistoryClear = $state(false);
+  let confirmingBlockExplicit = $state(false);
 
   async function refreshScrobble() {
     try {
@@ -250,6 +252,7 @@
         api.setOutputDevice("").catch(apply);
       }
       config = next;
+      trackFlags.setContentFlags(next.content.block_explicit, next.content.block_ai);
     } catch (e) {
       error = String(e);
     }
@@ -342,6 +345,42 @@
     if (!config) return;
     config = { ...config, history: { ...config.history, enabled } };
     api.setHistoryEnabled(enabled).catch(apply);
+  }
+
+  function applyBlockExplicit(enabled: boolean) {
+    confirmingBlockExplicit = false;
+    if (!config) return;
+    const next = { ...config, content: { ...config.content, block_explicit: enabled } };
+    config = next;
+    api
+      .setBlockExplicit(enabled)
+      .then(async () => {
+        trackFlags.setContentFlags(enabled, next.content.block_ai);
+        if (enabled) await api.applyContentFilters();
+      })
+      .catch(apply);
+  }
+
+  function setBlockExplicit(enabled: boolean) {
+    if (!config) return;
+    if (enabled && !config.content.block_explicit) {
+      confirmingBlockExplicit = true;
+      return;
+    }
+    applyBlockExplicit(enabled);
+  }
+
+  function setBlockAi(enabled: boolean) {
+    if (!config) return;
+    const next = { ...config, content: { ...config.content, block_ai: enabled } };
+    config = next;
+    api
+      .setBlockAi(enabled)
+      .then(async () => {
+        trackFlags.setContentFlags(next.content.block_explicit, enabled);
+        if (enabled) await api.applyContentFilters();
+      })
+      .catch(apply);
   }
 
   function setHistoryMaxEntries(value: number) {
@@ -560,6 +599,55 @@
         <option value="compact">Compact (MAX / LOSSLESS / AAC)</option>
         <option value="detailed">Detailed (bit depth / rate / bitrate)</option>
       </select>
+    </div>
+  {:else if tab === "content"}
+    <div id="settings-panel-content" role="tabpanel" aria-labelledby="settings-tab-content">
+      <h3>Content filters</h3>
+      <p class="muted">
+        OxiTide enforces these client-side: TIDAL does not expose its own filters to
+        third-party clients, and blocked tracks can still appear in TIDAL recommendations.
+        Flagged rows are grayed out and skipped; unknown flags always play.
+      </p>
+      <div class="planned">
+        <div class="planned-main">
+          <label class="planned-head">
+            <input
+              type="checkbox"
+              checked={config.content.block_explicit}
+              onchange={(e) => setBlockExplicit((e.target as HTMLInputElement).checked)}
+            />
+            <span>Block explicit content</span>
+          </label>
+          <span class="muted">
+            Hides explicit tracks and blocks them from playing. Enabling clears the current
+            queue, matching the official app.
+          </span>
+        </div>
+      </div>
+      <div class="planned">
+        <div class="planned-main">
+          <label class="planned-head">
+            <input
+              type="checkbox"
+              checked={config.content.block_ai}
+              onchange={(e) => setBlockAi((e.target as HTMLInputElement).checked)}
+            />
+            <span>Block AI-generated content</span>
+          </label>
+          <span class="muted">
+            Hides tracks TIDAL labels as AI-generated and removes them from the queue.
+            Labels may be missing for some tracks or regions; those play normally.
+          </span>
+        </div>
+      </div>
+      {#if confirmingBlockExplicit}
+        <ConfirmDialog
+          title="Block explicit content"
+          message="This clears the current queue, matching the TIDAL app. Playback will stop."
+          onconfirm={() => applyBlockExplicit(true)}
+          oncancel={() => (confirmingBlockExplicit = false)}
+        />
+      {/if}
     </div>
   {:else if tab === "connections"}
     <div
