@@ -62,7 +62,7 @@
     inset: 0;
     z-index: 0;
     overflow: hidden;
-    background: linear-gradient(160deg, #1d1712, var(--bg)); /* no-art room (§5.2) */
+    background: linear-gradient(160deg, var(--room-top), var(--bg)); /* no-art room (§5.2) */
     opacity: var(--flag-backdrop-art);
   }
   .backdrop img {
@@ -82,6 +82,6 @@
     content: "";
     position: absolute;
     inset: 0;
-    background: linear-gradient(180deg, rgba(23, 18, 14, 0.55), rgba(23, 18, 14, 0.78));
+    background: linear-gradient(180deg, var(--scrim-top), var(--scrim-bottom));
   }
 </style>

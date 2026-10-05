@@ -214,7 +214,7 @@
     border-radius: 50%;
     background: linear-gradient(
       135deg,
-      rgba(255, 240, 225, 0.16),
+      color-mix(in srgb, var(--text) 16%, transparent),
       transparent 42%,
       rgba(0, 0, 0, 0.25)
     );

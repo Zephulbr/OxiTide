@@ -20,9 +20,6 @@
 
 :root {
   /* Base — Warm Graphite (spec §5.1) */
-  --bg: #17120e;
-  --text: #f2ece6;
-  --text-muted: #a99f94;
   --accent-brand: #2ee2c4;
   --on-accent-brand: #0b2420;
   --danger: #ff8a7a;
@@ -30,6 +27,9 @@
   --warning: #e0a030;
 
   /* Semantic (components consume only these) */
+  --bg: #17120e;
+  --text: #f2ece6;
+  --text-muted: #a99f94;
   --accent: var(--dyn-primary);
   --on-accent: var(--dyn-on-primary);
   --surface-1: rgba(255, 240, 225, 0.05);
@@ -42,6 +42,22 @@
   --edge-lit: linear-gradient(135deg, rgba(255, 240, 225, 0.28), rgba(255, 240, 225, 0.06) 45%, rgba(0, 0, 0, 0.35));
   /* Peak alpha of the sleeve's hover glare (Warm Graphite key light). */
   --glare-alpha: 0.16;
+
+  /* Theme-paired room + scrim (Backdrop reads these; themes.css flips them). */
+  --room-top: #1d1712;
+  --scrim-top: rgba(23, 18, 14, 0.55);
+  --scrim-bottom: rgba(23, 18, 14, 0.78);
+  /* Film-grain opacity multiplier (spec §10.1); drops in light (§4.4). */
+  --grain-alpha: 0.045;
+
+  /* Static fallbacks for the dynamic tokens, so the brand pair has one
+     source; themes.css re-declares the light values. Dynamic color overrides
+     these inline when active. */
+  --dyn-primary: var(--accent-brand);
+  --dyn-on-primary: var(--on-accent-brand);
+  --dyn-secondary: #17120e;
+  --dyn-tertiary: var(--accent-brand);
+  --dyn-backdrop: #1a1510;
 
   /* Radii (spec §8) */
   --radius-control: 8px;

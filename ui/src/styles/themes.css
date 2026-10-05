@@ -1,0 +1,52 @@
+/* Theme deltas. `data-theme` is orthogonal to `data-mode` (spec §6.1):
+   components never read these names; only semantic tokens change.
+   The dark recipe lives in :root; this file carries the light inversion. */
+
+[data-theme="light"] {
+  /* Warm paper counterpart to Warm Graphite (foundation §4.4). */
+  --bg: #f6f1ea;
+  --text: #2a211a;
+  --text-muted: #665a4f;
+  --accent-brand: #0e7a67;
+  --on-accent-brand: #ffffff;
+  --danger: #b3261e;
+  --success: #1e6b3a;
+  --warning: #8a5a00;
+
+  /* Static fallbacks for cleared inline --dyn-* values (Review Focus 4). */
+  --dyn-primary: #0e7a67;
+  --dyn-on-primary: #ffffff;
+  --dyn-secondary: #e8dfd3;
+  --dyn-tertiary: #8a4a1f;
+  --dyn-backdrop: #ece4da;
+
+  --surface-1: rgba(42, 33, 26, 0.045);
+  --surface-2: rgba(42, 33, 26, 0.065);
+  --surface-3: rgba(42, 33, 26, 0.085);
+  --surface-float: rgba(250, 246, 240, 0.94);
+  --line: rgba(42, 33, 26, 0.14);
+  --edge-lit: linear-gradient(135deg, rgba(255, 255, 255, 0.85), rgba(42, 33, 26, 0.05) 45%, rgba(42, 33, 26, 0.18));
+  --glare-alpha: 0.10;
+  --grain-alpha: 0.025;
+
+  --room-top: #efe9e0;
+  --scrim-top: rgba(246, 241, 234, 0.55);
+  --scrim-bottom: rgba(246, 241, 234, 0.78);
+}
+
+[data-mode="atmosphere"][data-theme="light"] {
+  --surface-1: rgba(42, 33, 26, 0.045);
+  --surface-2: rgba(42, 33, 26, 0.065);
+  --surface-3: rgba(42, 33, 26, 0.085);
+  --surface-float: rgba(250, 246, 240, 0.94);
+  --glass-veil: rgba(246, 241, 234, 0.30);
+}
+
+[data-mode="instrument"][data-theme="light"] {
+  --surface-1: #fbf8f3;
+  --surface-2: #f2ece3;
+  --surface-3: #eae2d7;
+  --surface-float: #fffdf9;
+  --edge-lit: linear-gradient(135deg, var(--line), var(--line));
+  --glare-alpha: 0.08;
+}

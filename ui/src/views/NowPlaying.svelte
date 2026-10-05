@@ -458,8 +458,8 @@
     opacity: var(--tilt-glare, 0);
     background: radial-gradient(
       circle at var(--tilt-gx, 50%) var(--tilt-gy, 50%),
-      rgba(255, 240, 225, var(--glare-alpha)),
-      rgba(255, 240, 225, 0) 40%
+      rgba(255, 255, 255, var(--glare-alpha)),
+      rgba(255, 255, 255, 0) 40%
     );
     mix-blend-mode: screen;
     transition:
