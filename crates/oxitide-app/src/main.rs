@@ -15,6 +15,7 @@ mod scheme;
 mod scrobble;
 mod session;
 mod state;
+mod track_flags;
 mod window;
 
 use std::sync::OnceLock;
