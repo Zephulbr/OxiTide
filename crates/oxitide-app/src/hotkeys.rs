@@ -5,7 +5,7 @@
 use oxitide_audio::engine::EngineCmd;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_global_shortcut::{
-    Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutEvent, ShortcutState,
+    GlobalShortcutExt, Shortcut, ShortcutEvent, ShortcutState,
 };
 
 use crate::config::HotkeysConfig;
@@ -81,31 +81,36 @@ pub fn set(config: &mut HotkeysConfig, action: &str, accelerator: &str) -> Resul
     Ok(())
 }
 
-/// The accelerators the DOM owns (`ui/src/lib/shortcuts.ts`). While the
-/// window is focused the global handler ignores them so one press fires once.
-pub fn app_shortcuts() -> Vec<Shortcut> {
-    use Code::*;
-    vec![
-        Shortcut::new(None, Space),
-        Shortcut::new(None, Slash),
-        Shortcut::new(None, Escape),
-        Shortcut::new(None, ArrowLeft),
-        Shortcut::new(None, ArrowRight),
-        Shortcut::new(None, ArrowUp),
-        Shortcut::new(None, ArrowDown),
-        Shortcut::new(None, KeyM),
-        Shortcut::new(Some(Modifiers::SHIFT), ArrowLeft),
-        Shortcut::new(Some(Modifiers::SHIFT), ArrowRight),
-        Shortcut::new(Some(Modifiers::ALT), ArrowLeft),
-        Shortcut::new(Some(Modifiers::ALT), ArrowRight),
-        Shortcut::new(Some(Modifiers::CONTROL), KeyF),
-    ]
+/// Valid parsed bindings and malformed persisted values, both in action order.
+pub type ParsedBindings = (Vec<(&'static str, Shortcut)>, Vec<(&'static str, String)>);
+
+/// Parsed configured bindings, split into valid shortcuts and malformed
+/// persisted values (action, parse error). Entries keep action order.
+pub fn parsed_bindings(config: &HotkeysConfig) -> ParsedBindings {
+    let mut parsed = Vec::new();
+    let mut malformed = Vec::new();
+    for (name, accelerator) in bindings(config) {
+        match parse(accelerator) {
+            Ok(shortcut) => parsed.push((name, shortcut)),
+            Err(error) => malformed.push((name, error)),
+        }
+    }
+    (parsed, malformed)
 }
 
-pub fn should_skip_when_focused(shortcut: &Shortcut) -> bool {
-    app_shortcuts()
-        .iter()
-        .any(|candidate| candidate.matches(shortcut.mods, shortcut.key))
+/// The first two parsed bindings that resolve to the same chord, as
+/// `(first action, duplicate action)`. Comparison uses `Shortcut::id()`, which
+/// canonicalizes modifiers and key.
+pub fn duplicate_binding(config: &HotkeysConfig) -> Option<(&'static str, &'static str)> {
+    let (parsed, _) = parsed_bindings(config);
+    for (index, (first, shortcut)) in parsed.iter().enumerate() {
+        for (second, other) in parsed.iter().skip(index + 1) {
+            if shortcut.id() == other.id() {
+                return Some((*first, *second));
+            }
+        }
+    }
+    None
 }
 
 /// The action bound to a triggered shortcut under the current config.
@@ -120,24 +125,17 @@ pub fn action_for(config: &HotkeysConfig, shortcut: &Shortcut) -> Option<HotkeyA
     })
 }
 
-/// Plugin handler: fires for every registered accelerator press.
+/// Plugin handler: fires for every registered accelerator press. Once a chord
+/// is registered the global handler is the only delivery path; a registered
+/// chord never reaches the webview.
 pub fn handle(app: &AppHandle, shortcut: &Shortcut, event: ShortcutEvent) {
     if event.state != ShortcutState::Pressed {
-        return;
-    }
-    if window_focused(app) && should_skip_when_focused(shortcut) {
         return;
     }
     let config = app.state::<AppState>().config();
     if let Some(action) = action_for(&config.hotkeys, shortcut) {
         run(app, action);
     }
-}
-
-pub fn window_focused(app: &AppHandle) -> bool {
-    app.get_webview_window("main")
-        .and_then(|window| window.is_focused().ok())
-        .unwrap_or(false)
 }
 
 /// Run one hotkey action; transport is a no-op without a player.
@@ -171,12 +169,12 @@ fn adjust_volume(app: &AppHandle, delta: f32) {
     let Some(player) = state.player() else {
         return;
     };
-    let volume = next_volume(player.engine.state().volume, delta);
+    let mut config = state.config();
+    let volume = next_volume(config.audio.volume, delta);
     if let Err(e) = player.engine.handle(EngineCmd::SetVolume(volume)) {
         tracing::warn!("global hotkey volume failed: {e}");
         return;
     }
-    let mut config = state.config();
     config.audio.volume = volume;
     if let Err(e) = config.save() {
         tracing::warn!("failed to persist hotkey volume: {e}");
@@ -185,18 +183,36 @@ fn adjust_volume(app: &AppHandle, delta: f32) {
 }
 
 /// Register every configured accelerator, clearing the previous set first.
-/// The returned error names the action whose binding failed; registrations
-/// that already succeeded in this call stay active until the next call.
+/// Duplicate chords and a failed registration name the offending action;
+/// malformed persisted values are logged and skipped.
 pub fn register_all(app: &AppHandle, config: &HotkeysConfig) -> Result<(), String> {
+    if let Some((first, second)) = duplicate_binding(config) {
+        return Err(format!("{second} duplicates the {first} binding"));
+    }
     let shortcuts = app.global_shortcut();
     if let Err(e) = shortcuts.unregister_all() {
         tracing::warn!("failed to clear global hotkeys: {e}");
     }
-    for (name, accelerator) in bindings(config) {
-        let shortcut = parse(accelerator).map_err(|e| format!("{name}: {e}"))?;
+    let (parsed, malformed) = parsed_bindings(config);
+    for (name, error) in malformed {
+        tracing::warn!("skipping malformed hotkey {name}: {error}");
+    }
+    for (name, shortcut) in parsed {
         shortcuts.register(shortcut).map_err(|e| format!("{name}: {e}"))?;
     }
     Ok(())
+}
+
+/// Suspend every registered hotkey while capture is active, then restore the
+/// configured set when it ends.
+pub fn set_capture(app: &AppHandle, config: &HotkeysConfig, active: bool) -> Result<(), String> {
+    if active {
+        app.global_shortcut()
+            .unregister_all()
+            .map_err(|e| e.to_string())
+    } else {
+        register_all(app, config)
+    }
 }
 
 #[cfg(test)]
@@ -243,16 +259,29 @@ mod tests {
         assert_eq!(action_for(&config, &parse("F9").unwrap()), None);
     }
 
-    /// Review Focus: while the window is focused the DOM owns its table; a
-    /// custom chord must still reach the global handler.
     #[test]
-    fn focused_skip_covers_the_dom_table_but_not_custom_chords() {
-        assert!(should_skip_when_focused(&parse("Space").unwrap()));
-        assert!(should_skip_when_focused(&parse("KeyM").unwrap()));
-        assert!(should_skip_when_focused(&parse("Ctrl+KeyF").unwrap()));
-        assert!(should_skip_when_focused(&parse("Shift+ArrowRight").unwrap()));
-        assert!(!should_skip_when_focused(&parse("Ctrl+Alt+KeyP").unwrap()));
-        assert!(!should_skip_when_focused(&parse("MediaPlayPause").unwrap()));
+    fn duplicate_binding_detects_same_chord_ignoring_case_and_format() {
+        let mut config = HotkeysConfig::default();
+        config.play_pause = "Ctrl+Alt+KeyP".into();
+        config.next = "ctrl+alt+keyp".into();
+        assert_eq!(duplicate_binding(&config), Some(("play_pause", "next")));
+        let mut distinct = HotkeysConfig::default();
+        distinct.play_pause = "Ctrl+Alt+KeyP".into();
+        distinct.next = "Ctrl+Alt+KeyN".into();
+        assert_eq!(duplicate_binding(&distinct), None);
+        assert_eq!(duplicate_binding(&HotkeysConfig::default()), None);
+    }
+
+    #[test]
+    fn parsed_bindings_split_malformed_entries_and_keep_later_valid_ones() {
+        let mut config = HotkeysConfig::default();
+        config.next = "Bogus+Key".into();
+        config.prev = "F9".into();
+        let (parsed, malformed) = parsed_bindings(&config);
+        assert_eq!(parsed, vec![("prev", parse("F9").unwrap())]);
+        assert_eq!(malformed.len(), 1);
+        assert_eq!(malformed[0].0, "next");
+        assert!(!malformed[0].1.is_empty());
     }
 
     #[test]

@@ -1977,6 +1977,16 @@ pub fn set_hotkey(
     Ok(())
 }
 
+#[tauri::command(async)]
+pub fn set_hotkey_capture(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    active: bool,
+) -> Result<(), String> {
+    let config = state.config();
+    crate::hotkeys::set_capture(&app, &config.hotkeys, active)
+}
+
 #[tauri::command]
 pub fn set_cache_max_size_mb(state: State<'_, AppState>, mb: u64) -> Result<(), String> {
     require_cache(&state)?.set_max_bytes(mb.saturating_mul(1024 * 1024));
