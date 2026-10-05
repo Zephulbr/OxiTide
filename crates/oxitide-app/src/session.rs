@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use oxitide_audio::engine::StreamMeta;
 use oxitide_audio::queue::{QueueItem, RepeatMode};
 use serde::{Deserialize, Serialize};
 
@@ -61,6 +62,10 @@ pub struct Session {
     pub shuffle: bool,
     pub repeat: RepeatMode,
     pub play_source: Option<String>,
+    /// The last stream actually served for the current track, so a paused
+    /// restore can still render the detailed quality readout.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stream: Option<StreamMeta>,
     pub saved_at: u64,
 }
 
@@ -73,6 +78,7 @@ impl Default for Session {
             position_ms: 0,
             shuffle: false,
             repeat: RepeatMode::Off,
+            stream: None,
             play_source: None,
             saved_at: 0,
         }
@@ -229,6 +235,7 @@ fn session_from_state(
         shuffle: state.shuffle,
         repeat: state.repeat,
         play_source,
+        stream: state.stream.clone(),
         saved_at,
     }
 }
@@ -427,8 +434,42 @@ mod tests {
             shuffle: true,
             repeat: RepeatMode::All,
             play_source: Some("pl-1".into()),
+            stream: Some(StreamMeta {
+                quality: Some(Quality::Max),
+                codec: Some("flac".into()),
+                sample_rate: 44_100,
+                bit_depth: 24,
+                channels: 2,
+                bitrate_kbps: Some(1058),
+            }),
             saved_at: 1_700_000_000,
         }
+    }
+
+    #[test]
+    fn session_from_state_captures_the_stream_meta() {
+        let mut state = playback_state(&[1], Some(0), 0);
+        state.stream = Some(StreamMeta {
+            quality: Some(Quality::Max),
+            codec: Some("flac".into()),
+            sample_rate: 44_100,
+            bit_depth: 24,
+            channels: 2,
+            bitrate_kbps: Some(1058),
+        });
+        let saved = session_from_state(&state, None, 100, None);
+        assert_eq!(saved.stream.expect("stream").bit_depth, 24);
+    }
+
+    #[test]
+    fn legacy_session_without_stream_loads_with_none() {
+        let dir = temp_dir();
+        let path = dir.join("session.json");
+        let mut value = serde_json::to_value(session()).unwrap();
+        value.as_object_mut().unwrap().remove("stream");
+        fs::write(&path, value.to_string()).unwrap();
+        assert_eq!(load(&path).unwrap().stream, None);
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

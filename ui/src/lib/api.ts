@@ -165,6 +165,7 @@ export interface RestoredSession {
   shuffle: boolean;
   repeat: RepeatMode;
   play_source: string | null;
+  stream?: StreamMeta | null;
 }
 export interface OutputDevice { id: string; name: string; is_default: boolean }
 export interface AudioStatus {

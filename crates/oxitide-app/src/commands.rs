@@ -1593,6 +1593,9 @@ pub struct RestoredSessionDto {
     pub shuffle: bool,
     pub repeat: RepeatMode,
     pub play_source: Option<String>,
+    /// Last known stream for the restored current track (detailed quality
+    /// display before playback opens a stream).
+    pub stream: Option<oxitide_audio::engine::StreamMeta>,
 }
 
 #[tauri::command]
@@ -1616,6 +1619,7 @@ pub fn get_restored_session(state: State<'_, AppState>) -> Result<Option<Restore
         shuffle: session.shuffle,
         repeat: session.repeat,
         play_source: session.play_source,
+        stream: session.stream,
         queue: filtered.items.into_iter().map(QueueItem::from).collect(),
     }))
 }

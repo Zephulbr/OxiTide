@@ -57,7 +57,11 @@ cache is `%APPDATA%\OxiTide\config\cache\track_flags.json` (code doc comments up
   chips; Settings → Content gets the toggle.
 - Hotkey conflicts: `hotkeys::apply_binding` + `set_hotkey(action, accelerator, replace)`;
   `conflictFor` pre-check; Settings Reassign modal; readable OS-failure/backstop toasts.
-- Gates at this head: `cargo test --workspace` exit 0, clippy clean, 550 vitest pass (59 files),
+- Resumed-start quality display: `session.json` now carries the last served `StreamMeta`
+  (optional, backward-compatible) and the restore path feeds it into the paused snapshot, so
+  Detailed mode shows the real bit-depth/rate readout immediately instead of the preferred-
+  quality fallback that looks identical to Compact.
+- Gates at this head: `cargo test --workspace` exit 0, clippy clean, 552 vitest pass (59 files),
   svelte-check 0 errors / 0 warnings.
 
 Remaining verification: re-run 10.3 step 8; optionally re-check 10.5 step 13 and 10.6 steps 8–9.

@@ -161,11 +161,14 @@ export function createPlayer(toasts?: Toasts) {
     positionMs: number,
     shuffle: boolean,
     repeat: RepeatMode,
+    stream: StreamMeta | null = null,
   ) {
     if (queue.length === 0) return;
     await api.restoreSession(queue, index, positionMs, shuffle, repeat);
     const snapshot = await api.getPlaybackState();
-    applyEvent(state, { type: "state", ...snapshot });
+    // The engine restores paused without a stream; show the last known stream
+    // so the detailed quality readout survives a restart.
+    applyEvent(state, { type: "state", ...snapshot, stream: stream ?? snapshot.stream });
   }
 
   function setVolume(v: number, persist = false) {

@@ -53,7 +53,7 @@
   import { clearPlaylistCovers } from "./lib/playlistArt.svelte";
   import { playSource } from "./lib/playSource.svelte";
   import { trackFlags } from "./lib/trackFlags.svelte";
-  import { api, SCROBBLE_AUTH_ERROR_EVENT, trackToQueueItem, type QueueItem, type RepeatMode } from "./lib/api";
+  import { api, SCROBBLE_AUTH_ERROR_EVENT, trackToQueueItem, type QueueItem, type RepeatMode, type StreamMeta } from "./lib/api";
   import type { QualityDisplay } from "./lib/quality";
 
   interface ExpiredSession {
@@ -63,6 +63,7 @@
     shuffle: boolean;
     repeat: RepeatMode;
     playSource: string | null;
+    stream: StreamMeta | null;
   }
 
   const nav = createNav(window.localStorage);
@@ -154,6 +155,7 @@
         shuffle: snapshot.shuffle,
         repeat: snapshot.repeat,
         playSource: playSource.playlistId,
+        stream: snapshot.stream,
       };
       // The route and its persisted history stay put: after re-login the same
       // account resumes where it was. Multi-account is a non-goal (PM-D6), so a
@@ -343,6 +345,7 @@
         session.position_ms,
         session.shuffle,
         session.repeat,
+        session.stream ?? null,
       );
       playSource.restore(session.play_source);
     } catch (e) {
@@ -365,6 +368,7 @@
           restore.position,
           restore.shuffle,
           restore.repeat,
+          restore.stream,
         );
         playSource.restore(restore.playSource);
       } catch (e) {

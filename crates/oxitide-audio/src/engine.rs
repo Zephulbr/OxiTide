@@ -19,7 +19,7 @@ pub trait StreamResolver: Send + Sync + 'static {
 }
 
 /// The stream that was actually served and decoded for the current track.
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StreamMeta {
     /// The served/actual quality (`None` when undecidable).
     pub quality: Option<Quality>,

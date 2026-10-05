@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("./api", () => ({ api: mocks }));
 
 import { createPlayer, emptyState } from "./player.svelte";
+import type { StreamMeta } from "./api";
 
 const queue = [
   { track_id: 1, title: "A", artist: "X", album: "", duration_secs: 10, cover: null },
@@ -31,6 +32,28 @@ describe("player.restore", () => {
 
     expect(mocks.restoreSession).toHaveBeenCalledWith(queue, 1, 1500, true, "all");
     expect(mocks.getPlaybackState).toHaveBeenCalled();
+  });
+
+  it("applies the saved stream meta to the paused snapshot", async () => {
+    const stream: StreamMeta = {
+      quality: "max",
+      codec: "flac",
+      sample_rate: 44_100,
+      bit_depth: 24,
+      channels: 2,
+      bitrate_kbps: 1058,
+    };
+    const player = createPlayer();
+    await player.restore(queue, 1, 1500, false, "off", stream);
+
+    expect(player.state.stream).toEqual(stream);
+  });
+
+  it("keeps the snapshot stream when none was saved", async () => {
+    const player = createPlayer();
+    await player.restore(queue, 1, 1500, false, "off");
+
+    expect(player.state.stream).toBeNull();
   });
 
   it("does nothing for an empty queue", async () => {
