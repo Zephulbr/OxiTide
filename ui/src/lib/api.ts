@@ -218,7 +218,7 @@ export interface Config {
     lastfm_api_secret: string;
   };
   history: { enabled: boolean; max_entries: number };
-  content: { block_explicit: boolean; block_ai: boolean };
+  content: { block_explicit: boolean; block_ai: boolean; show_labels: boolean };
   hotkeys: {
     play_pause: string;
     next: string;
@@ -383,6 +383,7 @@ export const api = {
   getTrackFlags: (ids: number[]) => invoke<TrackFlag[]>("get_track_flags", { ids }),
   setBlockExplicit: (enabled: boolean) => invoke<void>("set_block_explicit", { enabled }),
   setBlockAi: (enabled: boolean) => invoke<void>("set_block_ai", { enabled }),
+  setShowLabels: (enabled: boolean) => invoke<void>("set_show_labels", { enabled }),
   applyContentFilters: (scope: "explicit" | "ai") =>
     invoke<void>("apply_content_filters", { scope }),
   getOutputDevices: () => invoke<OutputDevice[]>("get_output_devices"),
@@ -414,8 +415,8 @@ export const api = {
   setOneko: (enabled: boolean) => invoke<void>("set_oneko", { enabled }),
   setSmtc: (enabled: boolean) => invoke<void>("set_smtc", { enabled }),
   setCloseToTray: (enabled: boolean) => invoke<void>("set_close_to_tray", { enabled }),
-  setHotkey: (action: HotkeyAction, accelerator: string) =>
-    invoke<void>("set_hotkey", { action, accelerator }),
+  setHotkey: (action: HotkeyAction, accelerator: string, replace: HotkeyAction | null = null) =>
+    invoke<void>("set_hotkey", { action, accelerator, replace }),
   setHotkeyCapture: (active: boolean) => invoke<void>("set_hotkey_capture", { active }),
   setDiscord: (enabled: boolean) => invoke<void>("set_discord", { enabled }),
   setCacheMaxSizeMb: (mb: number) => invoke<void>("set_cache_max_size_mb", { mb }),

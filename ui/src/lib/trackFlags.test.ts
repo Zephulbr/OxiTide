@@ -15,7 +15,7 @@ function track(id: number, explicit = false): TrackLike {
 
 beforeEach(() => {
   vi.mocked(api.getConfig).mockResolvedValue({
-    content: { block_explicit: false, block_ai: false },
+    content: { block_explicit: false, block_ai: false, show_labels: true },
   } as never);
   vi.mocked(api.getTrackFlags).mockReset();
 });
@@ -90,8 +90,9 @@ describe("ensure", () => {
     expect(batch).toEqual([1, 2]);
   });
 
-  it("does nothing when the AI filter is off", async () => {
+  it("does nothing when the AI filter and labels are off", async () => {
     const store = createTrackFlags();
+    store.setShowLabels(false);
     await store.ensure([1, 2]);
     expect(api.getTrackFlags).not.toHaveBeenCalled();
   });
@@ -116,18 +117,50 @@ describe("ensure", () => {
   });
 });
 
+describe("labels", () => {
+  it("fetches flags for tagging when the AI filter is off but labels are on", async () => {
+    vi.mocked(api.getTrackFlags).mockResolvedValue([
+      { track_id: 1, explicit: true, ai: true },
+    ]);
+    const store = createTrackFlags();
+    await store.ensure([1]);
+    expect(api.getTrackFlags).toHaveBeenCalledTimes(1);
+    expect(store.labels(track(1))).toEqual(["explicit", "ai"]);
+    expect(store.isBlocked(track(1))).toBe(false);
+  });
+
+  it("reports no AI labels and makes no request when showLabels is off", async () => {
+    vi.mocked(api.getTrackFlags).mockResolvedValue([
+      { track_id: 1, explicit: false, ai: true },
+    ]);
+    const store = createTrackFlags();
+    store.setShowLabels(false);
+    await store.ensure([1]);
+    expect(api.getTrackFlags).not.toHaveBeenCalled();
+    expect(store.labels(track(1))).toEqual([]);
+  });
+
+  it("uses the DTO explicit flag before enrichment lands", () => {
+    const store = createTrackFlags();
+    expect(store.labels(track(1, true))).toEqual(["explicit"]);
+    expect(store.labels(track(2, false))).toEqual([]);
+  });
+});
+
 describe("init and reset", () => {
   it("keeps the config toggles across reset and clears the flag cache", async () => {
     vi.mocked(api.getConfig).mockResolvedValue({
-      content: { block_explicit: true, block_ai: true },
+      content: { block_explicit: true, block_ai: true, show_labels: false },
     } as never);
     const store = createTrackFlags();
     await store.init();
     expect(store.blockExplicit).toBe(true);
     expect(store.blockAi).toBe(true);
+    expect(store.showLabels).toBe(false);
     store.reset();
     expect(store.blockExplicit).toBe(true);
     expect(store.blockAi).toBe(true);
+    expect(store.showLabels).toBe(false);
     expect(store.isBlocked({ id: 1, explicit: true })).toBe(false);
   });
 });

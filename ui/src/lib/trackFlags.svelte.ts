@@ -23,12 +23,15 @@ export interface Playable<T> {
 export interface TrackFlagsStore {
   readonly blockExplicit: boolean;
   readonly blockAi: boolean;
+  readonly showLabels: boolean;
   init(): Promise<void>;
   setContentFlags(blockExplicit: boolean, blockAi: boolean): void;
+  setShowLabels(show: boolean): void;
   recordTracks(tracks: readonly TrackLike[]): void;
   ensure(ids: readonly number[]): Promise<void>;
   isBlocked(track: TrackLike): boolean;
   blockReasons(track: TrackLike): ("explicit" | "ai")[];
+  labels(track: TrackLike): ("explicit" | "ai")[];
   filterPlayable<T extends TrackLike>(
     tracks: readonly T[],
     start: number,
@@ -49,6 +52,7 @@ export function remapStart(ids: readonly number[], kept: readonly number[], star
 export function createTrackFlags(): TrackFlagsStore {
   let blockExplicit = $state(false);
   let blockAi = $state(false);
+  let showLabels = $state(true);
   const flags = new SvelteMap<number, TrackFlagInfo>();
   const pending = new Set<number>();
   let flushing: Promise<void> | null = null;
@@ -62,6 +66,7 @@ export function createTrackFlags(): TrackFlagsStore {
       const config = await api.getConfig();
       blockExplicit = config.content.block_explicit;
       blockAi = config.content.block_ai;
+      showLabels = config.content.show_labels;
     } catch {
       // Defaults stay off; enforcement then matches a fresh config.
     }
@@ -70,6 +75,10 @@ export function createTrackFlags(): TrackFlagsStore {
   function setContentFlags(explicit: boolean, ai: boolean) {
     blockExplicit = explicit;
     blockAi = ai;
+  }
+
+  function setShowLabels(show: boolean) {
+    showLabels = show;
   }
 
   function recordTracks(tracks: readonly TrackLike[]) {
@@ -86,7 +95,8 @@ export function createTrackFlags(): TrackFlagsStore {
   }
 
   async function ensure(ids: readonly number[]): Promise<void> {
-    if (!blockAi) return;
+    // Enrich for blocking or for tagging; labels-off and no filter is a no-op.
+    if (!blockAi && !showLabels) return;
     for (const id of ids) if (!known(id)) pending.add(id);
     if (pending.size === 0) {
       await flushing;
@@ -131,6 +141,17 @@ export function createTrackFlags(): TrackFlagsStore {
     return blockReasons(track).length > 0;
   }
 
+  /// Known flags for tagging, independent of the active filters. The DTO's
+  /// explicit value covers rows before enrichment lands.
+  function labels(track: TrackLike): ("explicit" | "ai")[] {
+    const entry = flags.get(track.id);
+    const explicit = entry?.explicit ?? track.explicit ?? null;
+    const reasons: ("explicit" | "ai")[] = [];
+    if (explicit === true) reasons.push("explicit");
+    if (entry?.ai === true) reasons.push("ai");
+    return reasons;
+  }
+
   async function filterPlayable<T extends TrackLike>(
     tracks: readonly T[],
     start: number,
@@ -158,12 +179,17 @@ export function createTrackFlags(): TrackFlagsStore {
     get blockAi() {
       return blockAi;
     },
+    get showLabels() {
+      return showLabels;
+    },
     init,
     setContentFlags,
+    setShowLabels,
     recordTracks,
     ensure,
     isBlocked,
     blockReasons,
+    labels,
     filterPlayable,
     reset,
   };

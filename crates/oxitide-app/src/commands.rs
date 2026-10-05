@@ -1404,6 +1404,15 @@ pub fn set_block_ai(state: State<'_, AppState>, enabled: bool) -> Result<(), Str
 }
 
 #[tauri::command]
+pub fn set_show_labels(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    let mut config = state.config();
+    config.content.show_labels = enabled;
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
+#[tauri::command]
 pub fn set_shuffle(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
     player
@@ -1947,14 +1956,17 @@ pub fn set_close_to_tray(state: State<'_, AppState>, enabled: bool) -> Result<()
     Ok(())
 }
 
-/// Bind (or clear, with an empty accelerator) one global hotkey. Registration
-/// failures restore the previous config and binding, then surface an error.
+/// Bind (or clear, with an empty accelerator) one global hotkey. `replace`
+/// names another action whose conflicting binding is cleared in the same
+/// mutation (the Settings reassign flow). Registration failures restore the
+/// previous config and binding, then surface an error.
 #[tauri::command(async)]
 pub fn set_hotkey(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
     action: String,
     accelerator: String,
+    replace: Option<String>,
 ) -> Result<(), String> {
     if !crate::hotkeys::is_action(&action) {
         return Err(format!("unknown hotkey action: {action}"));
@@ -1965,7 +1977,7 @@ pub fn set_hotkey(
     }
     let previous = state.config();
     let mut next = previous.clone();
-    crate::hotkeys::set(&mut next.hotkeys, &action, &accelerator)?;
+    crate::hotkeys::apply_binding(&mut next.hotkeys, &action, &accelerator, replace.as_deref())?;
     next.save()?;
     state.set_config(next.clone());
     if let Err(e) = crate::hotkeys::register_all(&app, &next.hotkeys) {
@@ -2441,7 +2453,7 @@ mod tests {
     }
 
     fn content(block_explicit: bool, block_ai: bool) -> crate::config::ContentConfig {
-        crate::config::ContentConfig { block_explicit, block_ai }
+        crate::config::ContentConfig { block_explicit, block_ai, ..Default::default() }
     }
 
     fn v1_track(id: u64, explicit: bool) -> serde_json::Value {

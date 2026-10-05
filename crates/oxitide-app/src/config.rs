@@ -247,12 +247,20 @@ impl Default for HistoryConfig {
 }
 
 /// Content blocking (spec §6.5): client-side filters for explicit and
-/// AI-labeled tracks. Both default off.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+/// AI-labeled tracks. Both filters default off; content labels default on.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ContentConfig {
     pub block_explicit: bool,
     pub block_ai: bool,
+    /// Tag `E`/`AI` on known flagged tracks even when not blocking them.
+    pub show_labels: bool,
+}
+
+impl Default for ContentConfig {
+    fn default() -> Self {
+        Self { block_explicit: false, block_ai: false, show_labels: true }
+    }
 }
 
 /// Global hotkeys (spec §6.6): one accelerator per action, empty means
@@ -454,6 +462,7 @@ mod tests {
         assert_eq!(config.scrobbling.lastfm_api_key, "");
         assert!(!config.content.block_explicit);
         assert!(!config.content.block_ai);
+        assert!(config.content.show_labels);
         assert!(config.ui.close_to_tray);
         assert_eq!(config.hotkeys.play_pause, "");
         assert_eq!(config.hotkeys.next, "");
@@ -748,6 +757,7 @@ mod tests {
         let config = Config::default();
         assert!(!config.content.block_explicit);
         assert!(!config.content.block_ai);
+        assert!(config.content.show_labels, "labels default on");
     }
 
     #[test]
@@ -757,9 +767,11 @@ mod tests {
         let mut config = Config::default();
         config.content.block_explicit = true;
         config.content.block_ai = true;
+        config.content.show_labels = false;
         config.save_to(&path).unwrap();
         let text = fs::read_to_string(&path).unwrap();
         assert!(text.contains("[content]"));
+        assert!(text.contains("show_labels = false"));
         assert_eq!(Config::load_from(&path), config);
         let _ = fs::remove_dir_all(dir);
     }

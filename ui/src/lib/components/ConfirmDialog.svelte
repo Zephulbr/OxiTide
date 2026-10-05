@@ -3,16 +3,23 @@
   let {
     title,
     message,
+    confirmLabel = "Confirm",
     onconfirm,
     oncancel,
-  }: { title: string; message: string; onconfirm: () => void; oncancel: () => void } = $props();
+  }: {
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    onconfirm: () => void;
+    oncancel: () => void;
+  } = $props();
 </script>
 
 <Modal {title} onclose={oncancel}>
   <p>{message}</p>
   <p class="actions">
     <button class="cancel" onclick={oncancel}>Cancel</button>
-    <button class="confirm" onclick={onconfirm}>Confirm</button>
+    <button class="confirm" onclick={onconfirm}>{confirmLabel}</button>
   </p>
 </Modal>
 

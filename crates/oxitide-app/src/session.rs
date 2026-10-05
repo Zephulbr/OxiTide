@@ -629,7 +629,7 @@ mod tests {
     }
 
     fn content(block_explicit: bool, block_ai: bool) -> crate::config::ContentConfig {
-        crate::config::ContentConfig { block_explicit, block_ai }
+        crate::config::ContentConfig { block_explicit, block_ai, ..Default::default() }
     }
 
     fn flagged(id: u64, explicit: Option<bool>, ai: Option<bool>) -> SessionItem {

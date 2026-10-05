@@ -390,6 +390,7 @@ fn main() {
             commands::get_track_flags,
             commands::set_block_explicit,
             commands::set_block_ai,
+            commands::set_show_labels,
             commands::set_shuffle,
             commands::set_repeat,
             commands::queue_reorder,

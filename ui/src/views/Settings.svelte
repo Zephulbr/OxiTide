@@ -32,6 +32,8 @@
   import {
     HOTKEY_ACTIONS,
     acceleratorFromEvent,
+    actionLabel,
+    conflictFor,
     displayAccelerator,
     type HotkeyAction,
   } from "../lib/hotkeys";
@@ -64,6 +66,9 @@
   let confirmingHistoryClear = $state(false);
   let confirmingBlockExplicit = $state(false);
   let recordingAction = $state<HotkeyAction | null>(null);
+  let hotkeyConflict = $state<
+    { action: HotkeyAction; accelerator: string; other: HotkeyAction } | null
+  >(null);
 
   async function refreshScrobble() {
     try {
@@ -281,6 +286,7 @@
       }
       config = next;
       trackFlags.setContentFlags(next.content.block_explicit, next.content.block_ai);
+      trackFlags.setShowLabels(next.content.show_labels);
     } catch (e) {
       error = String(e);
     }
@@ -366,21 +372,65 @@
     if (!accelerator) return;
     const action = recordingAction;
     recordingAction = null;
+    const other = config ? conflictFor(config.hotkeys, action, accelerator) : null;
+    if (other) {
+      hotkeyConflict = { action, accelerator, other };
+      return;
+    }
     void saveHotkey(action, accelerator);
   }
 
-  /// Optimistic update; the Rust command rolls back its own config on a
-  /// registration conflict, so a failure restores the shown binding too.
-  async function saveHotkey(action: HotkeyAction, accelerator: string) {
-    if (!config) return;
-    const previous = config.hotkeys[action];
-    config = { ...config, hotkeys: { ...config.hotkeys, [action]: accelerator } };
-    try {
-      await api.setHotkey(action, accelerator);
-    } catch (e) {
-      config = { ...config, hotkeys: { ...config.hotkeys, [action]: previous } };
-      apply(e);
+  function hotkeyErrorMessage(failure: unknown, accelerator: string): string {
+    const shown = displayAccelerator(accelerator);
+    if (errorMessage(failure).includes("duplicates")) {
+      return `"${shown}" is already in use by another shortcut.`;
     }
+    return `Couldn't register "${shown}" — another app may be using it.`;
+  }
+
+  /// Optimistic update; passing `replace` clears that action's binding in the
+  /// same mutation. The Rust command rolls back its own config on failure, so
+  /// a failed save restores both shown bindings too.
+  async function saveHotkey(
+    action: HotkeyAction,
+    accelerator: string,
+    replace: HotkeyAction | null = null,
+  ) {
+    if (!config) return;
+    const previousAction = config.hotkeys[action];
+    const previousOther = replace ? config.hotkeys[replace] : null;
+    config = {
+      ...config,
+      hotkeys: {
+        ...config.hotkeys,
+        [action]: accelerator,
+        ...(replace ? { [replace]: "" } : {}),
+      },
+    };
+    try {
+      await api.setHotkey(action, accelerator, replace);
+    } catch (e) {
+      config = {
+        ...config,
+        hotkeys: {
+          ...config.hotkeys,
+          [action]: previousAction,
+          ...(replace ? { [replace]: previousOther ?? "" } : {}),
+        },
+      };
+      toasts.show(hotkeyErrorMessage(e, accelerator), { severity: "error" });
+    }
+  }
+
+  function confirmReassign() {
+    const conflict = hotkeyConflict;
+    hotkeyConflict = null;
+    if (!conflict) return;
+    void saveHotkey(conflict.action, conflict.accelerator, conflict.other);
+  }
+
+  function cancelReassign() {
+    hotkeyConflict = null;
   }
 
   function setDiscord(enabled: boolean) {
@@ -450,6 +500,13 @@
         if (enabled) await api.applyContentFilters("ai");
       })
       .catch(apply);
+  }
+
+  function setShowLabels(enabled: boolean) {
+    if (!config) return;
+    config = { ...config, content: { ...config.content, show_labels: enabled } };
+    trackFlags.setShowLabels(enabled);
+    api.setShowLabels(enabled).catch(apply);
   }
 
   function setHistoryMaxEntries(value: number) {
@@ -709,6 +766,23 @@
           </span>
         </div>
       </div>
+      <div class="planned">
+        <div class="planned-main">
+          <label class="planned-head">
+            <input
+              type="checkbox"
+              checked={config.content.show_labels}
+              onchange={(e) => setShowLabels((e.target as HTMLInputElement).checked)}
+            />
+            <span>Show content labels</span>
+          </label>
+          <span class="muted">
+            Tags explicit tracks with <strong>E</strong> and AI-generated tracks with
+            <strong>AI</strong>, even when not blocking them. Turning this off stops the
+            background label lookups too.
+          </span>
+        </div>
+      </div>
       {#if confirmingBlockExplicit}
         <ConfirmDialog
           title="Block explicit content"
@@ -943,8 +1017,9 @@
       <h3>Global hotkeys</h3>
       <p class="muted">
         Work while OxiTide is in the background. Record a shortcut, or press
-        Backspace/Delete while recording to clear it. A shortcut that is already
-        taken shows a message and keeps the old binding.
+        Backspace/Delete while recording to clear it. A shortcut already used by
+        another action asks whether to reassign it; one another app owns shows a
+        message and keeps the old binding.
       </p>
       {#each HOTKEY_ACTIONS as entry (entry.id)}
         <div class="hotkey-row">
@@ -961,6 +1036,15 @@
           {/if}
         </div>
       {/each}
+      {#if hotkeyConflict}
+        <ConfirmDialog
+          title="Shortcut already in use"
+          message={`"${displayAccelerator(hotkeyConflict.accelerator)}" is already used by "${actionLabel(hotkeyConflict.other)}". Reassign it to "${actionLabel(hotkeyConflict.action)}"?`}
+          confirmLabel="Reassign"
+          onconfirm={confirmReassign}
+          oncancel={cancelReassign}
+        />
+      {/if}
       <h3>Keyboard shortcuts</h3>
       <ul>
         {#each SHORTCUTS as shortcut (shortcut.keys)}

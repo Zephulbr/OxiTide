@@ -13,6 +13,79 @@ export const HOTKEY_ACTIONS = [
 
 export type HotkeyAction = (typeof HOTKEY_ACTIONS)[number]["id"];
 
+export function actionLabel(action: HotkeyAction): string {
+  return HOTKEY_ACTIONS.find((entry) => entry.id === action)?.label ?? action;
+}
+
+const MODIFIER_ALIASES: Record<string, "alt" | "ctrl" | "shift" | "super"> = {
+  ALT: "alt",
+  OPTION: "alt",
+  CONTROL: "ctrl",
+  CTRL: "ctrl",
+  COMMAND: "super",
+  CMD: "super",
+  SUPER: "super",
+  META: "super",
+  SHIFT: "shift",
+};
+
+const KEY_ALIASES: Record<string, string> = {
+  LEFT: "ARROWLEFT",
+  RIGHT: "ARROWRIGHT",
+  UP: "ARROWUP",
+  DOWN: "ARROWDOWN",
+  ESC: "ESCAPE",
+  "`": "BACKQUOTE",
+  "\\": "BACKSLASH",
+  "[": "BRACKETLEFT",
+  "]": "BRACKETRIGHT",
+  ",": "COMMA",
+  "-": "MINUS",
+  ".": "PERIOD",
+  "'": "QUOTE",
+  ";": "SEMICOLON",
+  "/": "SLASH",
+  "=": "EQUAL",
+};
+
+/// Parser-equivalent fingerprint (modifier order, aliases, key spelling) used
+/// only for conflict detection; null when the accelerator is invalid.
+export function normalizeAccelerator(accelerator: string): string | null {
+  const tokens = accelerator.split("+").map((token) => token.trim()).filter(Boolean);
+  if (tokens.length === 0) return null;
+  const modifiers = new Set<string>();
+  let key: string | null = null;
+  for (const token of tokens) {
+    const upper = token.toUpperCase();
+    const modifier = MODIFIER_ALIASES[upper];
+    if (modifier) {
+      modifiers.add(modifier);
+      continue;
+    }
+    if (key !== null) return null;
+    if (/^KEY[A-Z]$/.test(upper)) key = upper.slice(3);
+    else if (/^DIGIT\d$/.test(upper)) key = upper.slice(5);
+    else key = KEY_ALIASES[upper] ?? upper;
+  }
+  if (key === null) return null;
+  return `${[...modifiers].sort().join("+")}|${key}`;
+}
+
+/// The other action already bound to `accelerator`, if any.
+export function conflictFor(
+  bindings: Record<HotkeyAction, string>,
+  action: HotkeyAction,
+  accelerator: string,
+): HotkeyAction | null {
+  const target = normalizeAccelerator(accelerator);
+  if (!target) return null;
+  for (const entry of HOTKEY_ACTIONS) {
+    if (entry.id === action) continue;
+    if (normalizeAccelerator(bindings[entry.id]) === target) return entry.id;
+  }
+  return null;
+}
+
 export interface KeyLike {
   code: string;
   ctrlKey: boolean;

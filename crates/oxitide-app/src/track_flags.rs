@@ -376,12 +376,14 @@ mod tests {
 
     #[test]
     fn is_blocked_respects_each_toggle_and_fails_open() {
-        let content = ContentConfig { block_explicit: true, block_ai: false };
+        let content =
+            ContentConfig { block_explicit: true, block_ai: false, ..Default::default() };
         assert!(is_blocked(Some(true), Some(true), &content));
         assert!(!is_blocked(None, Some(true), &content));
         assert!(!is_blocked(Some(false), Some(false), &content));
 
-        let ai_only = ContentConfig { block_explicit: false, block_ai: true };
+        let ai_only =
+            ContentConfig { block_explicit: false, block_ai: true, ..Default::default() };
         assert!(is_blocked(Some(true), Some(true), &ai_only));
         assert!(!is_blocked(Some(true), None, &ai_only));
 
@@ -538,11 +540,13 @@ mod tests {
 
     #[test]
     fn filter_action_scopes_the_clear_to_the_explicit_toggle() {
-        let both = ContentConfig { block_explicit: true, block_ai: true };
+        let both =
+            ContentConfig { block_explicit: true, block_ai: true, ..Default::default() };
         assert_eq!(filter_action("ai", &both), FilterAction::Prune);
         assert_eq!(filter_action("explicit", &both), FilterAction::Clear);
 
-        let ai_only = ContentConfig { block_explicit: false, block_ai: true };
+        let ai_only =
+            ContentConfig { block_explicit: false, block_ai: true, ..Default::default() };
         assert_eq!(filter_action("ai", &ai_only), FilterAction::Prune);
         assert_eq!(filter_action("explicit", &ai_only), FilterAction::Noop);
 

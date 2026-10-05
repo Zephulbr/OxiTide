@@ -80,8 +80,8 @@
   const slice = $derived(rows.slice(range.first, range.last));
   const columns = $derived(showAlbum ? 8 : 7);
 
-  // Rows render immediately; AI flags land asynchronously and only when the
-  // AI filter is on (the store's `ensure` is a no-op otherwise).
+  // Rows render immediately; flags land asynchronously when the AI filter or
+  // content labels are on (the store's `ensure` is a no-op when both are off).
   $effect(() => {
     trackFlags.recordTracks(slice);
     void trackFlags.ensure(slice.map((t) => t.id));
@@ -219,6 +219,9 @@
         {@const index = range.first + i}
         {@const quality = trackQualityLabel(t.audioQuality)}
         {@const reasons = trackFlags.blockReasons(t)}
+        {@const tags = trackFlags.showLabels
+          ? [...new Set([...reasons, ...trackFlags.labels(t)])]
+          : reasons}
         <tr
           class="row"
           class:blocked={reasons.length > 0}
@@ -251,8 +254,16 @@
           </td>
           <td class="title-cell"><div class="title-text">
             {t.title}
-            {#if reasons.includes("explicit")}<span class="badge block-badge" title="Hidden: explicit">E</span>{/if}
-            {#if reasons.includes("ai")}<span class="badge block-badge" title="Hidden: AI-generated">AI</span>{/if}
+            {#each tags as tag (tag)}
+              <span
+                class="badge"
+                class:block-badge={reasons.includes(tag)}
+                class:tag-badge={!reasons.includes(tag)}
+                title={reasons.includes(tag)
+                  ? (tag === "explicit" ? "Hidden: explicit" : "Hidden: AI-generated")
+                  : (tag === "explicit" ? "Explicit" : "AI-generated")}
+              >{tag === "explicit" ? "E" : "AI"}</span>
+            {/each}
           </div></td>
           <td class="text-cell muted"><div class="cell-text">{t.artists.map((a) => a.name).join(", ")}</div></td>
           {#if showAlbum}
@@ -499,6 +510,11 @@
     margin-left: 6px;
     border-color: color-mix(in srgb, var(--warning) 55%, transparent);
     color: var(--warning);
+  }
+  .tag-badge {
+    margin-left: 6px;
+    border-color: var(--line);
+    color: var(--text-muted);
   }
   .on {
     color: var(--accent);

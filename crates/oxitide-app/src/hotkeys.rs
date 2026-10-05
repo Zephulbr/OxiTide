@@ -81,6 +81,22 @@ pub fn set(config: &mut HotkeysConfig, action: &str, accelerator: &str) -> Resul
     Ok(())
 }
 
+/// Write one action's accelerator; when `replace` names another action, that
+/// action is cleared first so the new binding is not an in-app duplicate.
+pub fn apply_binding(
+    config: &mut HotkeysConfig,
+    action: &str,
+    accelerator: &str,
+    replace: Option<&str>,
+) -> Result<(), String> {
+    if let Some(replace) = replace {
+        if replace != action {
+            set(config, replace, "")?;
+        }
+    }
+    set(config, action, accelerator)
+}
+
 /// Valid parsed bindings and malformed persisted values, both in action order.
 pub type ParsedBindings = (Vec<(&'static str, Shortcut)>, Vec<(&'static str, String)>);
 
@@ -246,6 +262,30 @@ mod tests {
         assert_eq!(config.play_pause, "Ctrl+Alt+KeyP");
         assert!(set(&mut config, "love", "Ctrl+Alt+KeyL").is_err());
         assert!(config.next.is_empty());
+    }
+
+    #[test]
+    fn apply_binding_clears_the_replaced_action() {
+        let mut config = HotkeysConfig::default();
+        set(&mut config, "volume_up", "Ctrl+Alt+Space").unwrap();
+        apply_binding(&mut config, "play_pause", "Ctrl+Alt+Space", Some("volume_up")).unwrap();
+        assert_eq!(config.play_pause, "Ctrl+Alt+Space");
+        assert_eq!(config.volume_up, "");
+        assert!(duplicate_binding(&config).is_none());
+    }
+
+    #[test]
+    fn apply_binding_ignores_a_replace_equal_to_the_action() {
+        let mut config = HotkeysConfig::default();
+        apply_binding(&mut config, "next", "F9", Some("next")).unwrap();
+        assert_eq!(config.next, "F9");
+    }
+
+    #[test]
+    fn apply_binding_rejects_an_unknown_replace() {
+        let mut config = HotkeysConfig::default();
+        assert!(apply_binding(&mut config, "next", "F9", Some("love")).is_err());
+        assert_eq!(config.next, "");
     }
 
     #[test]
