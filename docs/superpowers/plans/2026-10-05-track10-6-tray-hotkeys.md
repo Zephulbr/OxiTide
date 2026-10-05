@@ -1299,8 +1299,8 @@ exemption pattern and are checked in the track completion note.
     the row shows "Not set" and the accelerator no longer fires after restart.
 11. Volume up/down hotkeys move the volume in 5% steps and the level survives a
     restart (`config.audio.volume`).
-12. `%APPDATA%\OxiTide\config.toml` contains `close_to_tray = true|false` under
-    `[ui]` and a `[hotkeys]` section with the recorded accelerators.
+12. `%APPDATA%\OxiTide\config\config.toml` contains `close_to_tray = true|false`
+    under `[ui]` and a `[hotkeys]` section with the recorded accelerators.
 ```
 
 - [ ] **Step 2: Commit**

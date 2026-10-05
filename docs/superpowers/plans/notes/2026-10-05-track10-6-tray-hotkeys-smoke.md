@@ -29,11 +29,12 @@ exemption pattern and are checked in the track completion note.
     the row shows "Not set" and the accelerator no longer fires after restart.
 11. Volume up/down hotkeys move the volume in 5% steps and the level survives a
     restart (`config.audio.volume`).
-12. `%APPDATA%\OxiTide\config.toml` contains `close_to_tray = true|false` under
-    `[ui]` and a `[hotkeys]` section with the recorded accelerators.
-13. Known edges: (a) hand-edit `next = "Bogus+Key"` into `[hotkeys]`, relaunch:
-    the app starts (warning logged), and any valid bindings listed after the
-    malformed one may not register — remove the bad value to recover. (b) Start
-    recording a hotkey, switch to another Settings tab, then press a chord: it
-    is saved silently with the row no longer visible; press Esc before leaving
-    the tab to cancel instead.
+12. `%APPDATA%\OxiTide\config\config.toml` contains `close_to_tray = true|false`
+    under `[ui]` and a `[hotkeys]` section with the recorded accelerators.
+13. Known edges: (a) hand-edit `next = "Bogus+Key"` into the `[hotkeys]` section
+    of `%APPDATA%\OxiTide\config\config.toml`, relaunch: the app starts (warning
+    logged), and valid bindings after `next` in the fixed action order
+    (`play_pause, next, prev, volume_up, volume_down, show_hide`) may not
+    register — remove the bad value to recover. (b) Start recording a hotkey,
+    switch to another Settings tab, then press a chord: it is saved silently
+    with the row no longer visible; press Esc while recording to cancel.
