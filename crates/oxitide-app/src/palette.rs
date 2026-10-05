@@ -45,6 +45,8 @@ struct RoomConsts {
     tertiary_l: (f32, f32),
     tertiary_c: (f32, f32),
     plain_l: f32,
+    plain_secondary_l: f32,
+    plain_tertiary_l: f32,
 }
 
 fn room_consts(room: Room) -> RoomConsts {
@@ -63,6 +65,8 @@ fn room_consts(room: Room) -> RoomConsts {
             tertiary_l: (0.65, 0.80),
             tertiary_c: (0.06, 0.14),
             plain_l: 0.95,
+            plain_secondary_l: 0.35,
+            plain_tertiary_l: 0.72,
         },
         Room::Light => RoomConsts {
             bg: (0xf6, 0xf1, 0xea),
@@ -78,6 +82,8 @@ fn room_consts(room: Room) -> RoomConsts {
             tertiary_l: (0.30, 0.52),
             tertiary_c: (0.06, 0.14),
             plain_l: 0.30,
+            plain_secondary_l: 0.80,
+            plain_tertiary_l: 0.30,
         },
     }
 }
@@ -357,7 +363,7 @@ pub fn fallback_palette(room: Room) -> Palette {
             h: 172.0,
         })),
         on_primary: hex(r.ink),
-        secondary: hex(oklch_to_srgb(Oklch { l: r.secondary_l.0, c: 0.02, h: 60.0 })),
+        secondary: hex(oklch_to_srgb(Oklch { l: r.plain_secondary_l, c: 0.02, h: 60.0 })),
         tertiary: hex(oklch_to_srgb(Oklch {
             l: if dark { 0.72 } else { 0.42 },
             c: 0.10,
@@ -402,8 +408,8 @@ pub fn extract_palette(pixels: &[(u8, u8, u8)], width: usize, height: usize, roo
                 return Palette {
                     primary: hex(primary),
                     on_primary: on_accent(primary, &r),
-                    secondary: hex(oklch_to_srgb(Oklch { l: r.secondary_l.0, c: 0.02, h: 60.0 })),
-                    tertiary: hex(oklch_to_srgb(Oklch { l: r.tertiary_l.0, c: 0.02, h: 60.0 })),
+                    secondary: hex(oklch_to_srgb(Oklch { l: r.plain_secondary_l, c: 0.02, h: 60.0 })),
+                    tertiary: hex(oklch_to_srgb(Oklch { l: r.plain_tertiary_l, c: 0.02, h: 60.0 })),
                     backdrop,
                     ceiling_l: ceiling,
                 };
@@ -443,7 +449,7 @@ pub fn extract_palette(pixels: &[(u8, u8, u8)], width: usize, height: usize, roo
             c: c.c.min(r.secondary_c_cap),
             h: c.h,
         })
-        .unwrap_or(Oklch { l: r.secondary_l.0, c: 0.02, h: 60.0 });
+        .unwrap_or(Oklch { l: r.plain_secondary_l, c: 0.02, h: 60.0 });
 
     // Tertiary: informational only — ≥30° hue separation from Primary, else a
     // rotation so it never reads as interactive (spec §5.2).
@@ -744,6 +750,18 @@ mod tests {
         let light = fallback_palette(Room::Light);
         assert_eq!(light.backdrop, "#eee7dd");
         assert_ne!(light.primary, fallback_palette(Room::Dark).primary);
+    }
+
+    /// The pre-refactor dark-room defaults are pinned so the room refactor
+    /// cannot drift them (identity fallback and plain-neutral branch).
+    #[test]
+    fn dark_room_defaults_stay_pinned() {
+        let fallback = fallback_palette(Room::Dark);
+        assert_eq!(fallback.secondary, "#433830");
+        assert_eq!(fallback.tertiary, "#5ab99d");
+        let neutral = extract_palette(&solid((128, 128, 128), 48 * 48), 48, 48, Room::Dark);
+        assert_eq!(neutral.secondary, fallback.secondary);
+        assert_eq!(neutral.tertiary, "#aea298");
     }
 
     /// The same cover must not share a palette across rooms.
