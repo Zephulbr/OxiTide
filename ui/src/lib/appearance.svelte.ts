@@ -76,7 +76,7 @@ export interface Appearance {
 
 export function createAppearance(): Appearance {
   let mode = $state<UiMode>("atmosphere");
-  let theme = $state<ThemeSetting>(readThemeMirror(globalThis.localStorage));
+  let theme = $state<ThemeSetting>("dark");
   let prefersDark = $state(false);
   let typefaceSetting = $state<TypefaceSetting>("auto");
   let customTypeface = $state("");
@@ -99,6 +99,7 @@ export function createAppearance(): Appearance {
   }
 
   async function init() {
+    theme = readThemeMirror(globalThis.localStorage);
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
     reducedMotion = media.matches;
     media.addEventListener("change", (e) => (reducedMotion = e.matches));

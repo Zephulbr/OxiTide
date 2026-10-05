@@ -78,7 +78,8 @@ describe("oneko setting", () => {
     vi.stubGlobal("document", {
       documentElement: { dataset: {}, style: { setProperty: () => {} } },
     });
-    vi.mocked(api.getConfig).mockResolvedValue({ ui: { oneko: true } } as never);
+    vi.stubGlobal("localStorage", { getItem: () => null, setItem: vi.fn() });
+    vi.mocked(api.getConfig).mockResolvedValue({ ui: { oneko: true, theme: "dark" } } as never);
     vi.mocked(api.setOneko).mockResolvedValue(undefined);
   });
 
@@ -98,9 +99,17 @@ describe("oneko setting", () => {
 });
 
 describe("theme", () => {
+  let themeMediaListener: ((e: { matches: boolean }) => void) | undefined;
+
   beforeEach(() => {
+    themeMediaListener = undefined;
     vi.stubGlobal("window", {
-      matchMedia: () => ({ matches: false, addEventListener: () => {} }),
+      matchMedia: (query: string) => ({
+        matches: false,
+        addEventListener: (_event: string, listener: (e: { matches: boolean }) => void) => {
+          if (query === "(prefers-color-scheme: dark)") themeMediaListener = listener;
+        },
+      }),
     });
     vi.stubGlobal("document", {
       documentElement: { dataset: {}, style: { setProperty: () => {} } },
@@ -121,6 +130,7 @@ describe("theme", () => {
     expect(appearance.theme).toBe("system");
     expect(appearance.resolvedTheme).toBe("light"); // matchMedia matches: false
     expect(document.documentElement.dataset.theme).toBe("light");
+    expect(document.documentElement.style.colorScheme).toBe("light");
     expect(localStorage.setItem).toHaveBeenCalledWith("oxitide.theme", "system");
   });
 
@@ -131,5 +141,16 @@ describe("theme", () => {
     expect(appearance.resolvedTheme).toBe("dark");
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(api.setTheme).toHaveBeenCalledWith("dark");
+  });
+
+  it("system follows an OS preference change", async () => {
+    const appearance = createAppearance();
+    await appearance.init();
+    expect(appearance.resolvedTheme).toBe("light");
+    expect(themeMediaListener).toBeDefined();
+    themeMediaListener?.({ matches: true });
+    expect(appearance.resolvedTheme).toBe("dark");
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(document.documentElement.style.colorScheme).toBe("dark");
   });
 });
