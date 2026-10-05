@@ -1,42 +1,31 @@
 # Track 9.1 light mode — owner smoke checklist
 
-- **Status:** Scripted perf results recorded 2026-10-06 (S1/S2 misses — see below); owner smoke pending (Windows, real account)
+- **Status:** Scripted S5-light re-run under the true light pin recorded 2026-10-06; S1/S2 quiet re-run **BLOCKED** (machine not quiet — see below); owner smoke pending (Windows, real account)
 - **Authority:** `docs/superpowers/specs/2026-10-05-track9-ui-completion-design.md` §6.1
 
 ## Scripted perf results (2026-10-06)
 
-- **Build/conditions:** branch `track9-light-mode`; debug binary rebuilt 2026-10-06 00:32 via `cargo build -p oxitide-app`; Vite dev server on 1420 warm; one OxiTide instance at a time, foreground; the machine was **not** quiet (other apps and their WebView2 processes were running).
+- **Build/conditions:** branch `track9-light-mode`; debug binary rebuilt 2026-10-06 00:32 via `cargo build -p oxitide-app`; Vite dev server on 1420 warm; one OxiTide instance at a time, foreground. The machine was **not quiet** (chrome/zen/OBS/official TIDAL active, total CPU sampled at 21–30%): the S5-light re-run went ahead (no quiet requirement), the S1/S2 budget re-run was blocked (see below).
+- **Fix carried by these runs:** `__perf.setTheme` bridge in `App.svelte` drives `appearance.setTheme` (same path as `setMode`); `drive.mjs` prefers that bridge and **asserts** `document.documentElement.dataset.theme === "light"` before the S5 measurement loop, failing the run otherwise; the original theme is restored through the same path. Probe on the running app: backend/dataset/mirror all `light` after the bridge call and all back to `dark` after restore.
 - **Commands:**
   - `powershell -ExecutionPolicy Bypass -File scripts/perf/run-scenario.ps1 -Scenario S5-atmosphere-light -Runs 2` (runner also checks)
   - `node scripts/perf/check.mjs --scenario S5-atmosphere-light`
-  - `powershell -ExecutionPolicy Bypass -File scripts/perf/run-scenario.ps1 -Scenario S1 -Runs 3`
-  - `powershell -ExecutionPolicy Bypass -File scripts/perf/run-scenario.ps1 -Scenario S2 -Runs 3`
-  - `node scripts/perf/check.mjs`
-- **Gate results (`check.mjs`, p95 over the accumulated runs dir):**
+  - S1/S2 quiet re-run (`-Scenario S1 -Runs 3`, `-Scenario S2 -Runs 3`, `node scripts/perf/check.mjs`): **not run — blocked, machine not quiet**
+- **S5-atmosphere-light (true light pin; run ids `1791237174`, `1791237221`):**
 
 | Scenario | Metric | Value | Budget | Result |
 | --- | --- | --- | --- | --- |
-| S5-atmosphere-light | frame_p95_ms:atmosphere | 13.9 | ≤ 20 | PASS |
-| S5-atmosphere-light | frame_p99_ms:atmosphere | 20.9 | ≤ 33 | PASS |
-| S1 | first_paint_ms | 1113.0 | ≤ 1500 | PASS |
-| S1 | ui_ready_ms | 1331.0 | ≤ 2500 | PASS |
-| S1 | memory_max_mb | 593.0 | ≤ 570 | **FAIL** |
-| S1 | long_task_max_ms | 0.0 | ≤ 100 | PASS |
-| S1 | startup_step_max_ms | 7.0 | ≤ 100 | PASS |
-| S2 | first_paint_ms | 1108.0 | ≤ 1000 | **FAIL** |
-| S2 | memory_max_mb | 597.0 | ≤ 560 | **FAIL** |
-| S2 | long_task_max_ms | 0.0 | ≤ 100 | PASS |
-| S2 | startup_step_max_ms | 7.0 | ≤ 100 | PASS |
+| S5-atmosphere-light | frame_p95_ms:atmosphere | 7.3 | ≤ 20 | PASS |
+| S5-atmosphere-light | frame_p99_ms:atmosphere | 20.8 | ≤ 33 | PASS |
 
-- **New-run detail (this corpus only):**
-  - S5-light per run: p95 13.9 / p99 20.9 aggregate; 5000-frame final sample p95 7.1 / p99 7.1 both runs; memory max 670 / 640 MB (informational — this key has no memory budget).
-  - S1 per run: first_paint 984 / 1016 / 969 ms; ui_ready 1230 / 1257 / 1198 ms; memory max 586 / 593 / 589 MB.
-  - S2 per run: first_paint 1108 / 962 / 998 ms; ui_ready 1646 / 1506 / 1279 ms; memory max 595 / 592 / 597 MB.
-- **Caveats and misses:**
-  - **The theme pin changes backend `ui.theme` only — the rendered theme is not switched.** `drive.mjs` sets it with the raw `set_theme` invoke, but the UI's `appearance` singleton is initialized once (`App.svelte:220`) and there is no `__perf.setTheme` bridge (only `setMode`). A CDP probe on the running app confirmed: after raw `set_theme("light")`, `get_config().ui.theme == "light"` while `document.documentElement.dataset.theme` stays `"dark"` (and the localStorage mirror stays `"dark"`). So the S5-atmosphere-light frame rows above were measured with the **dark** rendering; the light pin needs a bridge/apply step before the result means what its name says.
-  - **S1/S2 misses are global, not S5-light-specific.** Every current sample is ~60–100 MB above the 2026-10-02 Phase D corpus (S1 586–593 vs 492–518; S2 592–597 vs 487–511; S5-light 640–670 vs S5-atmosphere 584). The WebView2 runtime updated to 154.0.4258.53 on 2026-10-03, after Phase D, and the Windows `perf.rs` memory code is unchanged since 2026-10-01. No A/B baseline on the current runtime exists, so the cause is unproven; budgets were not adjusted.
-  - The full-corpus `node scripts/perf/check.mjs` also reports stale-corpus failures unrelated to this change: S3-hit ttfs 308 (2026-10-01 runs), S4 gap 103 (documented debt), and `n/a` required interaction rows on the 2026-09-30 S5/S6/S7/S9 runs, which predate those metrics.
-  - The owner's original theme (`dark`) was restored after the S5-light runs (`config.toml` ends with `theme = "dark"`).
+  - Evidence the runs rendered light: `drive.mjs` proceeds to the S5 loop only after the `dataset.theme === "light"` assertion resolves; both driver runs exited 0 with no pin/restore errors. Raw JSONL: `mode=atmosphere`, 5000-frame final samples p95 7.1 / 7.2. Memory max 667 / 681 MB (informational — no budget for this key). `config.toml` ends `theme = "dark"` (owner restored).
+  - The two earlier first-pass runs (`1791236003`, `1791236052`) used the raw `set_theme` invoke and measured **dark** rendering; they were moved to `.superpowers/perf/runs-quarantine/2026-10-06-task9-dark-pin/` and their PASS is withdrawn.
+- **S1/S2 first pass (2026-10-06, non-quiet) — unadjudicated; quiet re-run blocked.** Gate rows over the accumulated runs dir: S1 memory 593/570 FAIL (per-run 586/593/589), S2 first_paint 1108/1000 FAIL (per-run 1108/962/998), S2 memory 597/560 FAIL (per-run 595/592/597); S1 first_paint 1113/1500 (per-run 984/1016/969), S1 ui_ready 1331/2500 (per-run 1230/1257/1198), long_task and startup-step rows PASS. Attribution evidence (raw JSONL, all six runs):
+  - app-side pre-paint spans `logging_ready → config_loaded → cache_ready → services_ready` max **6–7 ms** (budget 100) — **no Track 9.1 code signature in the startup steps**; the first_paint misses are not a new app-side step.
+  - app-owned memory (`memory_process`, `self: true`) **62–65 MB**, inside the Phase D measured app-owned range (52–91 MB); the whole ~60–100 MB growth sits in the `msedgewebview2` children.
+  - uniform across runs and scenarios (S1 586–593, S2 592–597, S5-light 640–681 vs Phase D: S1 492–518, S5-atmosphere 584), tracking the WebView2 runtime update to 154.0.4258.53 on 2026-10-03 (after the Phase D corpus) — i.e. a pre-existing/environmental signature, **not proven** as a Track 9.1 code regression, but not adjudicable without a quiet run.
+- **Blocker (S1/S2):** the machine cannot produce a quiet run right now — chrome ~0.6 core, zen ~0.5, official TIDAL ~0.9, OBS active; total CPU 21–30% over repeated samples. Numbers recorded under this load would be ambiguous, so the quiet re-run and the final `node scripts/perf/check.mjs` adjudication are pending. Unblock: quiet those apps and re-run the two commands above.
+- The full-corpus `node scripts/perf/check.mjs` also reports stale-corpus failures unrelated to this change: S3-hit ttfs 308 (2026-10-01 runs), S4 gap 103 (documented debt), S2 first_paint 1052 (2026-09-30 run, above the current 1000 budget), and `n/a` required interaction rows on the 2026-09-30 S5/S6/S7/S9 runs, which predate those metrics.
 
 ## Theme switching
 - [ ] Settings → Appearance shows Dark / Light / System; each selection applies immediately.

@@ -287,6 +287,7 @@
         return true;
       },
       setMode: (mode: "instrument" | "atmosphere") => appearance.setMode(mode),
+      setTheme: (theme: "dark" | "light" | "system") => appearance.setTheme(theme),
     };
     (window as unknown as { __perf?: typeof bridge }).__perf = bridge;
     return () => {

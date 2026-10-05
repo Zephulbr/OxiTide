@@ -100,9 +100,14 @@ const setUiMode = async (mode) => {
 };
 
 const setTheme = async (theme) => {
-  await evaluate(
-    `window.__TAURI_INTERNALS__.invoke("set_theme", { theme: ${JSON.stringify(theme)} })`,
-  );
+  const viaBridge = await evaluate('typeof window.__perf?.setTheme === "function"');
+  if (viaBridge) {
+    await evaluate(`window.__perf.setTheme(${JSON.stringify(theme)})`);
+  } else {
+    await evaluate(
+      `window.__TAURI_INTERNALS__.invoke("set_theme", { theme: ${JSON.stringify(theme)} })`,
+    );
+  }
 };
 
 const invoke = (cmd, args) =>
@@ -212,6 +217,12 @@ const scenarioFallback = async (id) => {
       await until("!!window.__perf", "__perf bridge");
       await applyScenarioMode();
       await applyScenarioTheme();
+      if (targetTheme) {
+        await until(
+          `document.documentElement.dataset.theme === ${JSON.stringify(targetTheme)}`,
+          `${targetTheme} theme pin`,
+        );
+      }
       await evaluate('window.__perf.goto("tracks")');
       await until('!!document.querySelector("[data-perf-scroll]")', "track table");
       await delay(3000);
