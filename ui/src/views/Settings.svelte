@@ -558,6 +558,18 @@
     >
       <h3>Appearance</h3>
       <div class="field">
+        <span class="field-label">Theme:</span>
+        <div class="segmented" role="group" aria-label="Theme">
+          <button class:active={appearance.theme === "dark"} onclick={() => appearance.setTheme("dark").catch(apply)}>Dark</button>
+          <button class:active={appearance.theme === "light"} onclick={() => appearance.setTheme("light").catch(apply)}>Light</button>
+          <button class:active={appearance.theme === "system"} onclick={() => appearance.setTheme("system").catch(apply)}>System</button>
+        </div>
+      </div>
+      {#if appearance.theme === "system"}
+        <p class="muted">Follows the operating system's app theme.</p>
+      {/if}
+
+      <div class="field">
         <span class="field-label">Mode:</span>
         <div class="segmented" role="group" aria-label="Mode">
           <button class:active={appearance.mode === "atmosphere"} onclick={() => appearance.setMode("atmosphere").catch(apply)}>Atmosphere</button>
