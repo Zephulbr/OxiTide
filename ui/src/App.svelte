@@ -52,6 +52,7 @@
   import { clearPagerCache } from "./lib/pager.svelte";
   import { clearPlaylistCovers } from "./lib/playlistArt.svelte";
   import { playSource } from "./lib/playSource.svelte";
+  import { trackFlags } from "./lib/trackFlags.svelte";
   import { api, SCROBBLE_AUTH_ERROR_EVENT, trackToQueueItem, type QueueItem, type RepeatMode } from "./lib/api";
   import type { QualityDisplay } from "./lib/quality";
 
@@ -162,6 +163,7 @@
       playlistActions.reset();
       collection.reset();
       collectionActions.reset();
+      trackFlags.reset();
     });
     return () => {
       unlisten.then((off) => off());
@@ -215,6 +217,10 @@
 
   $effect(() => {
     void appearance.init();
+  });
+
+  $effect(() => {
+    void trackFlags.init();
   });
 
   $effect(() => {
@@ -382,6 +388,7 @@
     playlistActions.reset();
     collection.reset();
     collectionActions.reset();
+    trackFlags.reset();
     nav.reset();
     loggedIn = false;
   }
