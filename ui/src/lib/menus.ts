@@ -13,6 +13,8 @@ export interface TrackMenuContext {
   addToQueue(): void;
   addToPlaylist(): void;
   copyTitle(): void;
+  /// True when the active content filters hide this track.
+  blocked?: boolean;
   playlist?: {
     onRemove(index: number): void;
     onMove(index: number, delta: -1 | 1): void;
@@ -26,10 +28,21 @@ export interface TrackMenuContext {
 /// Track row items. The playlist block is present only while the list is
 /// editable; edge moves are disabled instead of hidden so the menu is stable.
 export function trackMenuItems(ctx: TrackMenuContext): MenuItem[] {
+  const playbackBlocked = ctx.blocked === true;
   const items: MenuItem[] = [
-    { id: "play", label: "Play", run: () => void ctx.play() },
-    { id: "radio", label: "Track Radio", run: () => ctx.startRadio() },
-    { id: "add-queue", label: "Add to queue", run: () => ctx.addToQueue() },
+    { id: "play", label: "Play", disabled: playbackBlocked, run: () => void ctx.play() },
+    {
+      id: "radio",
+      label: "Track Radio",
+      disabled: playbackBlocked,
+      run: () => ctx.startRadio(),
+    },
+    {
+      id: "add-queue",
+      label: "Add to queue",
+      disabled: playbackBlocked,
+      run: () => ctx.addToQueue(),
+    },
     { id: "add-playlist", label: "Add to playlist", run: () => ctx.addToPlaylist() },
     {
       id: "favorite",

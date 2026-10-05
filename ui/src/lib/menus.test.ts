@@ -81,6 +81,17 @@ describe("trackMenuItems", () => {
     expect(trackMenuItems(baseCtx({ favorites: favorites(false) }))[4].label).toBe("Favorite");
   });
 
+  it("disables playback actions for a blocked track but keeps the rest", () => {
+    const items = trackMenuItems(baseCtx({ blocked: true }));
+    const byId = new Map(items.map((i) => [i.id, i]));
+    expect(byId.get("play")?.disabled).toBe(true);
+    expect(byId.get("radio")?.disabled).toBe(true);
+    expect(byId.get("add-queue")?.disabled).toBe(true);
+    expect(byId.get("favorite")?.disabled).toBeFalsy();
+    expect(byId.get("copy-title")?.disabled).toBeFalsy();
+    expect(byId.get("add-playlist")?.disabled).toBeFalsy();
+  });
+
   it("invokes each callback once", () => {
     const ctx = baseCtx();
     for (const item of trackMenuItems(ctx)) item.run();

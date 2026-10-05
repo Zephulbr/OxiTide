@@ -10,6 +10,7 @@
   import type { Toasts } from "../toasts.svelte";
   import { windowRange } from "../virtual";
   import { appearance } from "../appearance.svelte";
+  import { trackFlags } from "../trackFlags.svelte";
   import { rowHeightFor } from "../rowHeight";
   import type { Favorites } from "../favorites.svelte";
   import type { TrackView } from "../trackView.svelte";
@@ -79,6 +80,13 @@
   const slice = $derived(rows.slice(range.first, range.last));
   const columns = $derived(showAlbum ? 8 : 7);
 
+  // Rows render immediately; AI flags land asynchronously and only when the
+  // AI filter is on (the store's `ensure` is a no-op otherwise).
+  $effect(() => {
+    trackFlags.recordTracks(slice);
+    void trackFlags.ensure(slice.map((t) => t.id));
+  });
+
   let dragFrom = $state<number | null>(null);
   let dropAt = $state<number | null>(null);
   let theadHeight = $state(0);
@@ -107,7 +115,27 @@
     return view.direction === "asc" ? "▲" : "▼";
   }
 
+  function blockedNotice(title: string) {
+    toasts.show(
+      `"${title}" is hidden by your content filters. Change them in Settings → Content.`,
+      { severity: "info" },
+    );
+  }
+
+  function queueOne(t: Track) {
+    if (trackFlags.isBlocked(t)) {
+      blockedNotice(t.title);
+      return;
+    }
+    void api.queueAdd([trackToQueueItem(t)]);
+  }
+
   async function play(index: number) {
+    const target = rows[index];
+    if (target && trackFlags.isBlocked(target)) {
+      blockedNotice(target.title);
+      return;
+    }
     if (onPlay) {
       loadingAll = true;
       try {
@@ -117,7 +145,12 @@
       }
       return;
     }
-    api.playTracks(rows.map(trackToQueueItem), index);
+    const prepared = await trackFlags.filterPlayable(rows, index);
+    if (!prepared) {
+      blockedNotice(target?.title ?? "This track");
+      return;
+    }
+    await api.playTracks(prepared.items.map(trackToQueueItem), prepared.start);
   }
 
   function onRowDoubleClick(event: MouseEvent, index: number) {
@@ -185,8 +218,10 @@
       {#each slice as t, i (`${t.id}-${range.first + i}`)}
         {@const index = range.first + i}
         {@const quality = trackQualityLabel(t.audioQuality)}
+        {@const reasons = trackFlags.blockReasons(t)}
         <tr
           class="row"
+          class:blocked={reasons.length > 0}
           class:dragging={dragFrom === index}
           class:playing={playingTrackId !== null && t.id === playingTrackId}
           draggable={canDrag}
@@ -198,9 +233,10 @@
               index,
               trackCount: rows.length,
               favorites,
+              blocked: reasons.length > 0,
               play: () => play(index),
               startRadio: () => void playTrackRadio(t.id, toasts),
-              addToQueue: () => api.queueAdd([trackToQueueItem(t)]),
+              addToQueue: () => queueOne(t),
               addToPlaylist: () => onAddToPlaylist?.(t),
               copyTitle: () => void copyText(t.title),
               playlist: playlistActions && { ...playlistActions, canMove: !view.engaged },
@@ -213,7 +249,11 @@
               <span class="thumb-play" aria-hidden="true"><Icon name="play" size={14} /></span>
             </button>
           </td>
-          <td class="title-cell"><div class="title-text">{t.title}</div></td>
+          <td class="title-cell"><div class="title-text">
+            {t.title}
+            {#if reasons.includes("explicit")}<span class="badge block-badge" title="Hidden: explicit">E</span>{/if}
+            {#if reasons.includes("ai")}<span class="badge block-badge" title="Hidden: AI-generated">AI</span>{/if}
+          </div></td>
           <td class="text-cell muted"><div class="cell-text">{t.artists.map((a) => a.name).join(", ")}</div></td>
           {#if showAlbum}
             <td class="text-cell muted"><div class="cell-text">{t.album?.title ?? ""}</div></td>
@@ -225,7 +265,7 @@
           <td class="actions-cell">
             <button
               class="reveal"
-              onclick={() => api.queueAdd([trackToQueueItem(t)])}
+              onclick={() => queueOne(t)}
               aria-label="Add to queue"
               title="Add to queue"
             ><Icon name="plus" size={14} /></button>
@@ -446,6 +486,19 @@
   .badge.max {
     border-color: var(--dyn-tertiary);
     color: var(--dyn-tertiary);
+  }
+  .row.blocked .title-text,
+  .row.blocked .cell-text {
+    opacity: 0.45;
+  }
+  .row.blocked .title-text {
+    text-decoration: line-through;
+    text-decoration-color: var(--line);
+  }
+  .block-badge {
+    margin-left: 6px;
+    border-color: color-mix(in srgb, var(--warning) 55%, transparent);
+    color: var(--warning);
   }
   .on {
     color: var(--accent);
