@@ -46,6 +46,8 @@ pub struct AppState {
     /// Local playback history; `None` when the app has no writable data
     /// directory.
     pub history: Mutex<Option<Arc<crate::history::HistoryStore>>>,
+    /// Content-blocking flag cache; `None` only before startup wiring.
+    pub track_flags: Mutex<Option<Arc<crate::track_flags::TrackFlagsStore>>>,
     /// The process-wide token store chosen at startup (keyring or session-only).
     pub token_store: RwLock<Option<Arc<dyn TokenStore>>>,
     /// Result of the startup keyring probe, exposed to the UI.
@@ -159,6 +161,14 @@ impl AppState {
 
     pub fn history(&self) -> Option<Arc<crate::history::HistoryStore>> {
         self.history.lock().unwrap().clone()
+    }
+
+    pub fn set_track_flags(&self, store: Arc<crate::track_flags::TrackFlagsStore>) {
+        *self.track_flags.lock().unwrap() = Some(store);
+    }
+
+    pub fn track_flags(&self) -> Option<Arc<crate::track_flags::TrackFlagsStore>> {
+        self.track_flags.lock().unwrap().clone()
     }
 
     pub fn set_token_store(&self, store: Arc<dyn TokenStore>) {
@@ -347,6 +357,15 @@ mod tests {
         ));
         state.set_history(store);
         assert!(state.history().is_some());
+    }
+
+    #[test]
+    fn track_flags_starts_unset_and_is_set_once() {
+        let state = AppState::default();
+        assert!(state.track_flags().is_none());
+        let store = Arc::new(crate::track_flags::TrackFlagsStore::start(None));
+        state.set_track_flags(store);
+        assert!(state.track_flags().is_some());
     }
 
     #[test]

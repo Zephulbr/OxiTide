@@ -186,6 +186,10 @@ fn main() {
     state.set_scrobbler(scrobbler.clone());
     perf::mark("services_ready");
     state.set_config(config);
+    let track_flags = std::sync::Arc::new(track_flags::TrackFlagsStore::start(
+        track_flags::track_flags_path(),
+    ));
+    state.set_track_flags(track_flags.clone());
     if let Some(path) = session::session_path() {
         state.set_session_saver(std::sync::Arc::new(session::SessionSaver::start(
             path,
@@ -364,6 +368,9 @@ fn main() {
             commands::clear_history,
             commands::set_history_enabled,
             commands::set_history_max_entries,
+            commands::get_track_flags,
+            commands::set_block_explicit,
+            commands::set_block_ai,
             commands::set_shuffle,
             commands::set_repeat,
             commands::queue_reorder,

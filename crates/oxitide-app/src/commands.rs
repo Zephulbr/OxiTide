@@ -1298,6 +1298,50 @@ pub fn set_history_max_entries(state: State<'_, AppState>, max_entries: usize) -
 }
 
 #[tauri::command]
+pub async fn get_track_flags(
+    state: State<'_, AppState>,
+    ids: Vec<u64>,
+) -> Result<Vec<TrackFlagDto>, String> {
+    let Some(store) = state.track_flags() else {
+        return Ok(Vec::new());
+    };
+    let entries = match require_client(&state) {
+        Ok(client) => store
+            .enrich(&client, &ids)
+            .await
+            .map_err(|e| state.fail_tidal(e))?,
+        // Not logged in: cached flags only; unknown stays unknown.
+        Err(_) => store.known(&ids),
+    };
+    Ok(entries
+        .into_iter()
+        .map(|(track_id, entry)| TrackFlagDto {
+            track_id,
+            explicit: entry.explicit,
+            ai: entry.ai,
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub fn set_block_explicit(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    let mut config = state.config();
+    config.content.block_explicit = enabled;
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_block_ai(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    let mut config = state.config();
+    config.content.block_ai = enabled;
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
+#[tauri::command]
 pub fn set_shuffle(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
     player
@@ -1361,6 +1405,14 @@ pub fn queue_add(state: State<'_, AppState>, items: Vec<QueueItem>) -> Result<()
 pub fn get_playback_state(state: State<'_, AppState>) -> Result<PlaybackState, String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
     Ok(player.engine.state())
+}
+
+/// One track's cached flags as the UI enrichment store expects them.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TrackFlagDto {
+    pub track_id: u64,
+    pub explicit: Option<bool>,
+    pub ai: Option<bool>,
 }
 
 /// The persisted session as the UI should apply it, or `None` when no usable
@@ -2104,6 +2156,13 @@ mod tests {
             },
             Arc::new(MemoryStore::default()),
         )
+    }
+
+    #[test]
+    fn track_flag_dto_serializes_camel_case_free_fields() {
+        let dto = TrackFlagDto { track_id: 7, explicit: Some(true), ai: None };
+        let json = serde_json::to_value(&dto).unwrap();
+        assert_eq!(json, serde_json::json!({"track_id": 7, "explicit": true, "ai": null}));
     }
 
     #[tokio::test]
