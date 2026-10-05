@@ -10,6 +10,7 @@
   import { makeSyntheticTracks } from "../lib/perfFixture";
   import { perfHooks } from "../lib/perfHooks";
   import { playSource } from "../lib/playSource.svelte";
+  import { trackFlags } from "../lib/trackFlags.svelte";
   import { createTrackView, visibleIndexOf, warmTrackSearch } from "../lib/trackView.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { PlaylistActions } from "../lib/playlists.svelte";
@@ -90,22 +91,37 @@
     if (favoritesPager.error) return;
     const start = visibleIndexOf(view.items, clicked, index);
     if (start < 0) return;
+    const prepared = await trackFlags.filterPlayable(view.items, start);
+    if (!prepared) {
+      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      return;
+    }
     playSource.set(null);
-    api.playTracks(view.items.map(trackToQueueItem), start);
+    void api.playTracks(prepared.items.map(trackToQueueItem), prepared.start);
   }
 
   async function playAll() {
     await favoritesPager.ensureAll();
     if (favoritesPager.error) return;
+    const prepared = await trackFlags.filterPlayable(view.items, 0);
+    if (!prepared) {
+      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      return;
+    }
     playSource.set(null);
-    api.playTracks(view.items.map(trackToQueueItem), 0);
+    void api.playTracks(prepared.items.map(trackToQueueItem), prepared.start);
   }
 
   async function shuffleAll() {
     await favoritesPager.ensureAll();
     if (favoritesPager.error) return;
+    const prepared = await trackFlags.filterPlayable(view.items, 0);
+    if (!prepared) {
+      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      return;
+    }
     playSource.set(null);
-    api.playTracks(view.items.map(trackToQueueItem), 0, true);
+    void api.playTracks(prepared.items.map(trackToQueueItem), 0, true);
   }
 </script>
 

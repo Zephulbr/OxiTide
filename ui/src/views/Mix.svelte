@@ -10,6 +10,7 @@
   import { copyText } from "../lib/clipboard";
   import { formatTotalDuration } from "../lib/format";
   import { playSource } from "../lib/playSource.svelte";
+  import { trackFlags } from "../lib/trackFlags.svelte";
   import { shareUrl } from "../lib/share";
   import { createTrackView } from "../lib/trackView.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
@@ -57,21 +58,36 @@
     load();
   });
 
-  function playAll() {
+  async function playAll() {
     if (view.items.length === 0) return;
+    const prepared = await trackFlags.filterPlayable(view.items, 0);
+    if (!prepared) {
+      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      return;
+    }
     playSource.set(null);
-    void api.playTracks(view.items.map(trackToQueueItem), 0);
+    void api.playTracks(prepared.items.map(trackToQueueItem), prepared.start);
   }
 
-  function shuffleAll() {
+  async function shuffleAll() {
     if (view.items.length === 0) return;
+    const prepared = await trackFlags.filterPlayable(view.items, 0);
+    if (!prepared) {
+      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      return;
+    }
     playSource.set(null);
-    void api.playTracks(view.items.map(trackToQueueItem), 0, true);
+    void api.playTracks(prepared.items.map(trackToQueueItem), 0, true);
   }
 
-  function playFrom(index: number) {
+  async function playFrom(index: number) {
+    const prepared = await trackFlags.filterPlayable(view.items, index);
+    if (!prepared) {
+      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      return;
+    }
     playSource.set(null);
-    void api.playTracks(view.items.map(trackToQueueItem), index);
+    void api.playTracks(prepared.items.map(trackToQueueItem), prepared.start);
   }
 
   async function share() {

@@ -18,6 +18,7 @@
   import { routeForPageItem, type ArtistTab, type Nav } from "../lib/nav.svelte";
   import { createTrackPager } from "../lib/pager.svelte";
   import { playSource } from "../lib/playSource.svelte";
+  import { trackFlags } from "../lib/trackFlags.svelte";
   import { playArtistRadio } from "../lib/radio";
   import { createTrackView, visibleIndexOf } from "../lib/trackView.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
@@ -167,15 +168,25 @@
     if (pager.error) return;
     const start = visibleIndexOf(view.items, clicked, index);
     if (start < 0) return;
+    const prepared = await trackFlags.filterPlayable(view.items, start);
+    if (!prepared) {
+      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      return;
+    }
     playSource.set(null);
-    void api.playTracks(view.items.map(trackToQueueItem), start);
+    void api.playTracks(prepared.items.map(trackToQueueItem), prepared.start);
   }
 
   async function playAll(shuffle = false) {
     await pager.ensureAll();
     if (pager.error) return;
+    const prepared = await trackFlags.filterPlayable(view.items, 0);
+    if (!prepared) {
+      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      return;
+    }
     playSource.set(null);
-    void api.playTracks(view.items.map(trackToQueueItem), 0, shuffle);
+    void api.playTracks(prepared.items.map(trackToQueueItem), 0, shuffle);
   }
 </script>
 

@@ -9,6 +9,7 @@
   import PlaylistCover from "../lib/components/PlaylistCover.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
   import { playSource } from "../lib/playSource.svelte";
+  import { trackFlags } from "../lib/trackFlags.svelte";
   import { createSearch } from "../lib/search.svelte";
   import { searchHistory } from "../lib/searchHistory.svelte";
   import { createTrackView } from "../lib/trackView.svelte";
@@ -118,21 +119,36 @@
     activeSuggestion = -1;
   }
 
-  function playFrom(index: number) {
+  async function playFrom(index: number) {
+    const prepared = await trackFlags.filterPlayable(resultsView.items, index);
+    if (!prepared) {
+      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      return;
+    }
     playSource.set(null);
-    void api.playTracks(resultsView.items.map(trackToQueueItem), index);
+    void api.playTracks(prepared.items.map(trackToQueueItem), prepared.start);
   }
 
-  function playAll() {
+  async function playAll() {
     if (resultsView.items.length === 0) return;
+    const prepared = await trackFlags.filterPlayable(resultsView.items, 0);
+    if (!prepared) {
+      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      return;
+    }
     playSource.set(null);
-    void api.playTracks(resultsView.items.map(trackToQueueItem), 0);
+    void api.playTracks(prepared.items.map(trackToQueueItem), prepared.start);
   }
 
-  function shuffleAll() {
+  async function shuffleAll() {
     if (resultsView.items.length === 0) return;
+    const prepared = await trackFlags.filterPlayable(resultsView.items, 0);
+    if (!prepared) {
+      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      return;
+    }
     playSource.set(null);
-    void api.playTracks(resultsView.items.map(trackToQueueItem), 0, true);
+    void api.playTracks(prepared.items.map(trackToQueueItem), 0, true);
   }
 </script>
 
