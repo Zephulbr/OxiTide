@@ -1218,12 +1218,14 @@ async fn queue_items_from_page_items(
     items: &[PageTrackDto],
     flags: Option<&crate::track_flags::TrackFlagsStore>,
 ) -> Result<Vec<QueueItem>, Error> {
+    let mut seen = std::collections::HashSet::new();
     let missing: Vec<u64> = items
         .iter()
         .filter(|item| item.embedded().is_none())
         .map(|item| item.id)
+        .filter(|id| seen.insert(*id))
         .collect();
-    let mut resolved: std::collections::HashMap<u64, QueueItem> = if missing.is_empty() {
+    let resolved: std::collections::HashMap<u64, QueueItem> = if missing.is_empty() {
         std::collections::HashMap::new()
     } else {
         queue_items_from_ids(client, &missing, flags)
@@ -1239,7 +1241,7 @@ async fn queue_items_from_page_items(
                 store.record_explicit(item.id, explicit);
             }
             out.push(entry);
-        } else if let Some(entry) = resolved.remove(&item.id) {
+        } else if let Some(entry) = resolved.get(&item.id).cloned() {
             out.push(entry);
         } else {
             return Err(Error::NotFound(format!("tracks/{}", item.id)));
@@ -2819,6 +2821,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn queue_items_from_page_items_resolves_duplicate_incomplete_ids_once() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/tracks/2"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": 2, "title": "Fetched", "duration": 180,
+                "artists": [{"id": 5, "name": "Artist"}]
+            })))
+            .mount(&server)
+            .await;
+        let items = queue_items_from_page_items(
+            &tidal_client(&server),
+            &[page_track(2, false), page_track(2, false)],
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].track_id, 2);
+        assert_eq!(items[1].track_id, 2);
+        assert_eq!(items[0].title, "Fetched");
+        assert_eq!(items[1].title, "Fetched");
+        let requests = server.received_requests().await.unwrap();
+        let track_gets = requests
+            .iter()
+            .filter(|request| request.url.path() == "/tracks/2")
+            .count();
+        assert_eq!(track_gets, 1, "duplicate incomplete ids must cost one GET");
+    }
+
+    #[tokio::test]
     async fn queue_items_from_page_items_records_embedded_explicit() {
         let server = MockServer::start().await;
         let store = crate::track_flags::TrackFlagsStore::start(None);
@@ -2850,7 +2883,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn filter_playable_items_enriches_ai_flags_fail_open() {
+    async fn filter_playable_items_enriches_ai_flags() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/openapi/v2/tracks"))
