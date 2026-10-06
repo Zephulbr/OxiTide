@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Track } from "../api";
+  import type { VolumeSection } from "../albumVolumes";
   import { api, trackToQueueItem } from "../api";
   import { copyText } from "../clipboard";
   import { formatDuration } from "../format";
@@ -30,6 +31,10 @@
     fill = false,
     showAlbum = true,
     showFilter = true,
+    /// Multi-volume album groups (album page); ignored while a sort/filter is
+    /// engaged. Grouped lists render whole (no virtualization) and section
+    /// headings reset the row number per volume.
+    sections,
     playingTrackId = null,
   }: {
     view: TrackView;
@@ -60,6 +65,7 @@
     /// Render the filter/status toolbar above the table. Views that surface
     /// the filter in their header (playlist) pass false.
     showFilter?: boolean;
+    sections?: VolumeSection[];
     /// Highlights the playing row (accent tint + title, ringed thumb).
     playingTrackId?: number | null;
   } = $props();
@@ -76,8 +82,46 @@
   let loadingAll = $state(false);
 
   const rows = $derived(view.items);
-  const range = $derived(windowRange(rows.length, scrollTop, viewport, rowHeight, OVERSCAN));
-  const slice = $derived(rows.slice(range.first, range.last));
+  const grouping = $derived(sections !== undefined && !view.engaged ? sections : null);
+  const range = $derived(
+    grouping
+      ? { first: 0, last: rows.length, padTop: 0, padBottom: 0 }
+      : windowRange(rows.length, scrollTop, viewport, rowHeight, OVERSCAN),
+  );
+  const slice = $derived(grouping ? rows : rows.slice(range.first, range.last));
+
+  interface DisplayRow {
+    key: string;
+    /// Non-null marks a volume heading row.
+    label: string | null;
+    track?: Track;
+    index?: number;
+    number?: number;
+  }
+
+  /// Flat rows when ungrouped; heading rows interleaved with disc-scoped
+  /// numbers when grouped.
+  const displayRows = $derived.by<DisplayRow[]>(() => {
+    if (!grouping) {
+      return rows.slice(range.first, range.last).map((track, i) => ({
+        key: `${track.id}-${range.first + i}`,
+        label: null,
+        track,
+        index: range.first + i,
+        number: range.first + i + 1,
+      }));
+    }
+    const out: DisplayRow[] = [];
+    let index = 0;
+    for (const section of grouping) {
+      out.push({ key: `section-${section.label}`, label: section.label });
+      section.tracks.forEach((track, i) => {
+        out.push({ key: `${track.id}-${index}`, label: null, track, index, number: i + 1 });
+        index += 1;
+      });
+    }
+    return out;
+  });
   const columns = $derived(showAlbum ? 8 : 7);
 
   // Rows render immediately; flags land asynchronously when the AI filter or
@@ -215,87 +259,94 @@
       {#if range.padTop > 0}
         <tr aria-hidden="true"><td colspan={columns} style="height:{range.padTop}px;padding:0;border:0"></td></tr>
       {/if}
-      {#each slice as t, i (`${t.id}-${range.first + i}`)}
-        {@const index = range.first + i}
-        {@const quality = trackQualityLabel(t.audioQuality)}
-        {@const reasons = trackFlags.blockReasons(t)}
-        {@const tags = trackFlags.showLabels
-          ? [...new Set([...reasons, ...trackFlags.labels(t)])]
-          : reasons}
-        <tr
-          class="row"
-          class:blocked={reasons.length > 0}
-          class:dragging={dragFrom === index}
-          class:playing={playingTrackId !== null && t.id === playingTrackId}
-          draggable={canDrag}
-          data-drag-index={canDrag ? index : undefined}
-          ondblclick={(event) => onRowDoubleClick(event, index)}
-          use:menuFor={() =>
-            trackMenuItems({
-              track: t,
-              index,
-              trackCount: rows.length,
-              favorites,
-              blocked: reasons.length > 0,
-              play: () => play(index),
-              startRadio: () => void playTrackRadio(t.id, toasts),
-              addToQueue: () => queueOne(t),
-              addToPlaylist: () => onAddToPlaylist?.(t),
-              copyTitle: () => void copyText(t.title),
-              playlist: playlistActions && { ...playlistActions, canMove: !view.engaged },
-            })}
-        >
-          <td class="muted tnum num-cell">{index + 1}</td>
-          <td class="thumb-cell">
-            <button class="thumb" onclick={() => play(index)} disabled={loadingAll} aria-label="Play" title="Play">
-              <Cover uuid={t.album?.cover} size={80} radius={0} alt="" />
-              <span class="thumb-play" aria-hidden="true"><Icon name="play" size={14} /></span>
-            </button>
-          </td>
-          <td class="title-cell"><div class="title-text">
-            {t.title}
-            {#each tags as tag (tag)}
-              <span
-                class="badge"
-                class:block-badge={reasons.includes(tag)}
-                class:tag-badge={!reasons.includes(tag)}
-                title={reasons.includes(tag)
-                  ? (tag === "explicit" ? "Hidden: explicit" : "Hidden: AI-generated")
-                  : (tag === "explicit" ? "Explicit" : "AI-generated")}
-              >{tag === "explicit" ? "E" : "AI"}</span>
-            {/each}
-          </div></td>
-          <td class="text-cell muted"><div class="cell-text">{t.artists.map((a) => a.name).join(", ")}</div></td>
-          {#if showAlbum}
-            <td class="text-cell muted"><div class="cell-text">{t.album?.title ?? ""}</div></td>
-          {/if}
-          <td class="muted tnum nowrap-cell time-cell">{formatDuration(t.duration)}</td>
-          <td class="nowrap-cell">
-            {#if quality}<span class="badge" class:max={quality === "MAX"}>{quality}</span>{/if}
-          </td>
-          <td class="actions-cell">
-            <button
-              class="reveal"
-              onclick={() => queueOne(t)}
-              aria-label="Add to queue"
-              title="Add to queue"
-            ><Icon name="plus" size={14} /></button>
-            {#if onAddToPlaylist}
+      {#each displayRows as row (row.key)}
+        {#if row.label !== null}
+          <tr class="section-row">
+            <th colspan={columns}>{row.label}</th>
+          </tr>
+        {:else if row.track !== undefined}
+          {@const t = row.track}
+          {@const index = row.index ?? 0}
+          {@const quality = trackQualityLabel(t.audioQuality)}
+          {@const reasons = trackFlags.blockReasons(t)}
+          {@const tags = trackFlags.showLabels
+            ? [...new Set([...reasons, ...trackFlags.labels(t)])]
+            : reasons}
+          <tr
+            class="row"
+            class:blocked={reasons.length > 0}
+            class:dragging={dragFrom === index}
+            class:playing={playingTrackId !== null && t.id === playingTrackId}
+            draggable={canDrag}
+            data-drag-index={canDrag ? index : undefined}
+            ondblclick={(event) => onRowDoubleClick(event, index)}
+            use:menuFor={() =>
+              trackMenuItems({
+                track: t,
+                index,
+                trackCount: rows.length,
+                favorites,
+                blocked: reasons.length > 0,
+                play: () => play(index),
+                startRadio: () => void playTrackRadio(t.id, toasts),
+                addToQueue: () => queueOne(t),
+                addToPlaylist: () => onAddToPlaylist?.(t),
+                copyTitle: () => void copyText(t.title),
+                playlist: playlistActions && { ...playlistActions, canMove: !view.engaged },
+              })}
+          >
+            <td class="muted tnum num-cell">{row.number ?? index + 1}</td>
+            <td class="thumb-cell">
+              <button class="thumb" onclick={() => play(index)} disabled={loadingAll} aria-label="Play" title="Play">
+                <Cover uuid={t.album?.cover} size={80} radius={0} alt="" />
+                <span class="thumb-play" aria-hidden="true"><Icon name="play" size={14} /></span>
+              </button>
+            </td>
+            <td class="title-cell"><div class="title-text">
+              {t.title}
+              {#each tags as tag (tag)}
+                <span
+                  class="badge"
+                  class:block-badge={reasons.includes(tag)}
+                  class:tag-badge={!reasons.includes(tag)}
+                  title={reasons.includes(tag)
+                    ? (tag === "explicit" ? "Hidden: explicit" : "Hidden: AI-generated")
+                    : (tag === "explicit" ? "Explicit" : "AI-generated")}
+                >{tag === "explicit" ? "E" : "AI"}</span>
+              {/each}
+            </div></td>
+            <td class="text-cell muted"><div class="cell-text">{t.artists.map((a) => a.name).join(", ")}</div></td>
+            {#if showAlbum}
+              <td class="text-cell muted"><div class="cell-text">{t.album?.title ?? ""}</div></td>
+            {/if}
+            <td class="muted tnum nowrap-cell time-cell">{formatDuration(t.duration)}</td>
+            <td class="nowrap-cell">
+              {#if quality}<span class="badge" class:max={quality === "MAX"}>{quality}</span>{/if}
+            </td>
+            <td class="actions-cell">
               <button
                 class="reveal"
-                onclick={() => onAddToPlaylist(t)}
-                aria-label="Add to playlist"
-                title="Add to playlist"
-              ><Icon name="list-plus" size={14} /></button>
-            {/if}
-            <button
-              class:on={favorites.hasTrack(t.id)}
-              onclick={() => favorites.toggleTrack(t.id)}
-              aria-label={favorites.hasTrack(t.id) ? "Unfavorite" : "Favorite"}
-              title={favorites.hasTrack(t.id) ? "Unfavorite" : "Favorite"}
-            ><Icon name="heart" size={14} /></button>
-          </td>
-        </tr>
+                onclick={() => queueOne(t)}
+                aria-label="Add to queue"
+                title="Add to queue"
+              ><Icon name="plus" size={14} /></button>
+              {#if onAddToPlaylist}
+                <button
+                  class="reveal"
+                  onclick={() => onAddToPlaylist(t)}
+                  aria-label="Add to playlist"
+                  title="Add to playlist"
+                ><Icon name="list-plus" size={14} /></button>
+              {/if}
+              <button
+                class:on={favorites.hasTrack(t.id)}
+                onclick={() => favorites.toggleTrack(t.id)}
+                aria-label={favorites.hasTrack(t.id) ? "Unfavorite" : "Favorite"}
+                title={favorites.hasTrack(t.id) ? "Unfavorite" : "Favorite"}
+              ><Icon name="heart" size={14} /></button>
+            </td>
+          </tr>
+        {/if}
       {/each}
       {#if range.padBottom > 0}
         <tr aria-hidden="true"><td colspan={columns} style="height:{range.padBottom}px;padding:0;border:0"></td></tr>
@@ -529,5 +580,14 @@
   }
   td button.thumb {
     display: block;
+  }
+  .section-row th {
+    text-align: left;
+    padding: 16px 12px 6px 0;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted);
   }
 </style>
