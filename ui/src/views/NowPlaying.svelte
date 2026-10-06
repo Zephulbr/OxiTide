@@ -7,6 +7,7 @@
   import Cover from "../lib/components/Cover.svelte";
   import DiscArt from "../lib/components/DiscArt.svelte";
   import Icon from "../lib/components/Icon.svelte";
+  import InfoPanel from "../lib/components/InfoPanel.svelte";
   import LyricsPanel from "../lib/components/LyricsPanel.svelte";
   import { formatDuration } from "../lib/format";
   import { lyrics } from "../lib/lyrics.svelte";
@@ -70,6 +71,26 @@
   /// miss (trackId matches, no lyrics, not loading) falls back to Next Up.
   const showLyrics = $derived(lyrics.tab === "lyrics" && (awaitingLyrics || currentLyrics !== null));
   const hasLyrics = $derived(awaitingLyrics || currentLyrics !== null);
+  const showInfo = $derived(lyrics.tab === "info" && track !== null);
+  /// The spine layout (cover + side column) is shared by lyrics and info.
+  const wide = $derived(showLyrics || showInfo);
+
+  const NP_TABS = ["lyrics", "next", "info"] as const;
+
+  /// Vertical tablist keyboard pattern (spec §6.2): roving focus with
+  /// Up/Down (wrapping) and Home/End; activation follows focus.
+  function onTabKeydown(event: KeyboardEvent, current: (typeof NP_TABS)[number]) {
+    const index = NP_TABS.indexOf(current);
+    let target: (typeof NP_TABS)[number] | null = null;
+    if (event.key === "ArrowDown") target = NP_TABS[(index + 1) % NP_TABS.length];
+    else if (event.key === "ArrowUp") target = NP_TABS[(index - 1 + NP_TABS.length) % NP_TABS.length];
+    else if (event.key === "Home") target = NP_TABS[0];
+    else if (event.key === "End") target = NP_TABS[NP_TABS.length - 1];
+    if (!target) return;
+    event.preventDefault();
+    lyrics.setTab(target);
+    document.getElementById(`np-tab-${target}`)?.focus();
+  }
 
   /// Transition duration that collapses to 0 when reduced motion is requested.
   const dur = (ms: number) => (appearance.reducedMotion ? 0 : ms);
@@ -169,7 +190,7 @@
 
 <div
   class="now-playing"
-  class:with-lyrics={showLyrics}
+  class:with-lyrics={wide}
   class:has-lyrics={hasLyrics}
   out:npOut
 >
@@ -212,7 +233,7 @@
             </div>
           {/key}
         </div>
-        {#if hasLyrics}
+        {#if track}
           <div
             class="spine"
             role="tablist"
@@ -222,20 +243,40 @@
             out:fade={{ duration: dur(160) }}
           >
             <button
+              id="np-tab-lyrics"
               role="tab"
+              tabindex={lyrics.tab === "lyrics" ? 0 : -1}
               aria-selected={lyrics.tab === "lyrics"}
+              aria-controls="np-panel-lyrics"
               class:active={lyrics.tab === "lyrics"}
               onclick={() => lyrics.setTab("lyrics")}
+              onkeydown={(event) => onTabKeydown(event, "lyrics")}
             >
               Lyrics
             </button>
             <button
+              id="np-tab-next"
               role="tab"
+              tabindex={lyrics.tab === "next" ? 0 : -1}
               aria-selected={lyrics.tab === "next"}
+              aria-controls="np-panel-next"
               class:active={lyrics.tab === "next"}
               onclick={() => lyrics.setTab("next")}
+              onkeydown={(event) => onTabKeydown(event, "next")}
             >
               Next up
+            </button>
+            <button
+              id="np-tab-info"
+              role="tab"
+              tabindex={lyrics.tab === "info" ? 0 : -1}
+              aria-selected={lyrics.tab === "info"}
+              aria-controls="np-panel-info"
+              class:active={lyrics.tab === "info"}
+              onclick={() => lyrics.setTab("info")}
+              onkeydown={(event) => onTabKeydown(event, "info")}
+            >
+              Info
             </button>
           </div>
         {/if}
@@ -270,6 +311,9 @@
         {@const shown = currentLyrics}
         <div
           class="lyrics-slot"
+          role="tabpanel"
+          id="np-panel-lyrics"
+          aria-labelledby="np-tab-lyrics"
           in:fly={{ y: 8, duration: dur(320), delay: dur(80), easing: cubicOut }}
           out:fly={{ y: 12, duration: dur(280), easing: cubicInOut }}
         >
@@ -283,9 +327,23 @@
             <p class="muted loading">Loading lyrics…</p>
           {/if}
         </div>
+      {:else if showInfo}
+        <div
+          class="lyrics-slot"
+          role="tabpanel"
+          id="np-panel-info"
+          aria-labelledby="np-tab-info"
+          in:fly={{ y: 8, duration: dur(320), delay: dur(80), easing: cubicOut }}
+          out:fly={{ y: 12, duration: dur(280), easing: cubicInOut }}
+        >
+          <InfoPanel trackId={track.track_id} {nav} onNavigate={() => nav.closeNowPlaying()} />
+        </div>
       {:else}
         <div
           class="meta-details"
+          role="tabpanel"
+          id="np-panel-next"
+          aria-labelledby="np-tab-next"
           in:fly={{ y: -16, duration: dur(260), delay: dur(40), easing: cubicOut }}
           out:fly={{ y: -10, duration: dur(420), easing: cubicInOut }}
         >

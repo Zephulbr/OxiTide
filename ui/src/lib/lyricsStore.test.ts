@@ -69,6 +69,18 @@ describe("lyrics store", () => {
     expect(model.tab).toBe("next");
   });
 
+  it("keeps the info tab on a track change and resets on stop", async () => {
+    vi.mocked(api.getLyrics).mockResolvedValue(dto(1));
+    const model = createLyrics();
+    await model.open(track(1));
+    model.setTab("info");
+    vi.mocked(api.getLyrics).mockResolvedValue(dto(2));
+    await model.open(track(2));
+    expect(model.tab).toBe("info");
+    await model.open(null);
+    expect(model.tab).toBe("lyrics");
+  });
+
   it("clears state for a null track", async () => {
     vi.mocked(api.getLyrics).mockResolvedValue(dto(1));
     const model = createLyrics();
