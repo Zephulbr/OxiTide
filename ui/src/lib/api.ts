@@ -146,6 +146,15 @@ export interface QueueItem {
   track_id: number; title: string; artist: string; album: string;
   duration_secs: number; cover?: string | null;
 }
+export interface PageTrackInput {
+  id: number;
+  title?: string | null;
+  artists?: string[] | null;
+  album?: string | null;
+  duration?: number | null;
+  cover?: string | null;
+  explicit?: boolean | null;
+}
 export type RepeatMode = "off" | "all" | "one";
 export type Quality = "low" | "high" | "lossless" | "max";
 export interface StreamMeta {
@@ -365,6 +374,8 @@ export const api = {
     invoke<void>("play_tracks", { items, start, shuffle }),
   playTrackIds: (ids: number[], start: number, shuffle = false) =>
     invoke<void>("play_track_ids", { ids, start, shuffle }),
+  playPageItems: (items: PageTrackInput[], start: number, shuffle = false) =>
+    invoke<void>("play_page_items", { items, start, shuffle }),
   playPause: () => invoke<void>("play_pause"),
   retry: () => invoke<void>("retry"),
   next: () => invoke<void>("next"),

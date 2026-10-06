@@ -1119,6 +1119,43 @@ pub async fn get_playlist_tracks_page(
     })
 }
 
+/// One page-feed track as the UI sends it for instant playback: embedded
+/// metadata is used when complete, otherwise the id is resolved server-side.
+#[derive(Debug, Clone, Deserialize)]
+pub struct PageTrackDto {
+    pub id: u64,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub artists: Option<Vec<String>>,
+    #[serde(default)]
+    pub album: Option<String>,
+    #[serde(default)]
+    pub duration: Option<u32>,
+    #[serde(default)]
+    pub cover: Option<String>,
+    #[serde(default)]
+    pub explicit: Option<bool>,
+}
+
+impl PageTrackDto {
+    /// The queue item when the payload carried enough metadata; `None` asks
+    /// the caller to resolve the track by id.
+    fn embedded(&self) -> Option<QueueItem> {
+        let title = self.title.as_deref().filter(|title| !title.is_empty())?;
+        let artists = self.artists.as_ref().filter(|artists| !artists.is_empty())?;
+        let duration = self.duration.filter(|duration| *duration > 0)?;
+        Some(QueueItem {
+            track_id: self.id,
+            title: title.to_string(),
+            artist: artists.join(", "),
+            album: self.album.clone().unwrap_or_default(),
+            duration_secs: duration,
+            cover: self.cover.clone(),
+        })
+    }
+}
+
 /// Build queue items for `ids`, preserving input order, with at most four
 /// TIDAL requests in flight. Fails on the first fetch error. `flags` receives
 /// every observed `explicit` value so session saves and later filters can use it.
@@ -1173,9 +1210,45 @@ fn queue_item_from_track(track: &Track) -> QueueItem {
     }
 }
 
-/// Fetch the requested tracks and drop the ones the active content filters
-/// hide. Unknown flags never block. Returns the kept items and their ids so
-/// callers can remap a start index.
+/// Queue items for page-feed tracks, preserving order. Complete embedded
+/// metadata skips the per-track API call (spec §5.4); incomplete entries fall
+/// back to `queue_items_from_ids`, so a partial payload still plays.
+async fn queue_items_from_page_items(
+    client: &TidalClient,
+    items: &[PageTrackDto],
+    flags: Option<&crate::track_flags::TrackFlagsStore>,
+) -> Result<Vec<QueueItem>, Error> {
+    let missing: Vec<u64> = items
+        .iter()
+        .filter(|item| item.embedded().is_none())
+        .map(|item| item.id)
+        .collect();
+    let mut resolved: std::collections::HashMap<u64, QueueItem> = if missing.is_empty() {
+        std::collections::HashMap::new()
+    } else {
+        queue_items_from_ids(client, &missing, flags)
+            .await?
+            .into_iter()
+            .map(|item| (item.track_id, item))
+            .collect()
+    };
+    let mut out = Vec::with_capacity(items.len());
+    for item in items {
+        if let Some(entry) = item.embedded() {
+            if let (Some(store), Some(explicit)) = (flags, item.explicit) {
+                store.record_explicit(item.id, explicit);
+            }
+            out.push(entry);
+        } else if let Some(entry) = resolved.remove(&item.id) {
+            out.push(entry);
+        } else {
+            return Err(Error::NotFound(format!("tracks/{}", item.id)));
+        }
+    }
+    Ok(out)
+}
+
+/// Fetch the requested tracks and filter them; kept for the id-only path.
 async fn resolve_playable_items(
     client: &TidalClient,
     ids: &[u64],
@@ -1183,8 +1256,21 @@ async fn resolve_playable_items(
     content: &crate::config::ContentConfig,
 ) -> Result<(Vec<QueueItem>, Vec<u64>), Error> {
     let items = queue_items_from_ids(client, ids, flags).await?;
+    filter_playable_items(client, ids, items, flags, content).await
+}
+
+/// Apply the active content filters to already-resolved queue items. Unknown
+/// flags never block; AI enrichment uses `ids` to batch-fetch flags.
+async fn filter_playable_items(
+    client: &TidalClient,
+    ids: &[u64],
+    items: Vec<QueueItem>,
+    flags: Option<&crate::track_flags::TrackFlagsStore>,
+    content: &crate::config::ContentConfig,
+) -> Result<(Vec<QueueItem>, Vec<u64>), Error> {
     if !content.block_explicit && !content.block_ai {
-        return Ok((items, ids.to_vec()));
+        let kept_ids = items.iter().map(|item| item.track_id).collect();
+        return Ok((items, kept_ids));
     }
     let known: std::collections::HashMap<u64, crate::track_flags::TrackFlagEntry> = match flags {
         Some(store) => {
@@ -1240,6 +1326,43 @@ pub async fn play_track_ids(
         EngineCmd::PlayShuffled { items }
     } else {
         EngineCmd::PlayTracks { items, start }
+    };
+    crate::perf::note_play_command();
+    player.engine.handle(cmd).map_err(|e| e.to_string())
+}
+
+/// Play page-feed tracks, using embedded metadata and resolving only the
+/// items whose payload was incomplete. Content filters are enforced here as
+/// the backstop for every UI path.
+#[tauri::command]
+pub async fn play_page_items(
+    state: State<'_, AppState>,
+    items: Vec<PageTrackDto>,
+    start: usize,
+    shuffle: Option<bool>,
+) -> Result<(), String> {
+    if items.is_empty() {
+        return Err("no tracks".to_string());
+    }
+    let client = require_client(&state)?;
+    let content = state.config().content;
+    let store = state.track_flags();
+    let ids: Vec<u64> = items.iter().map(|item| item.id).collect();
+    let queue = queue_items_from_page_items(&client, &items, store.as_deref())
+        .await
+        .map_err(|e| state.fail_tidal(e))?;
+    let (queue, kept_ids) = filter_playable_items(&client, &ids, queue, store.as_deref(), &content)
+        .await
+        .map_err(|e| state.fail_tidal(e))?;
+    if queue.is_empty() {
+        return Err("all tracks are hidden by your content filters".to_string());
+    }
+    let start = crate::track_flags::remap_start(&ids, &kept_ids, start);
+    let player = state.player().ok_or_else(|| "not logged in".to_string())?;
+    let cmd = if shuffle.unwrap_or(false) {
+        EngineCmd::PlayShuffled { items: queue }
+    } else {
+        EngineCmd::PlayTracks { items: queue, start }
     };
     crate::perf::note_play_command();
     player.engine.handle(cmd).map_err(|e| e.to_string())
@@ -2616,6 +2739,141 @@ mod tests {
 
         assert_eq!(kept, vec![1], "unknown ai must not block");
         assert_eq!(items.len(), 1);
+    }
+
+    fn page_track(id: u64, complete: bool) -> PageTrackDto {
+        if complete {
+            PageTrackDto {
+                id,
+                title: Some(format!("T{id}")),
+                artists: Some(vec!["A".into()]),
+                album: Some("B".into()),
+                duration: Some(200),
+                cover: Some("c".into()),
+                explicit: Some(false),
+            }
+        } else {
+            PageTrackDto {
+                id,
+                title: None,
+                artists: None,
+                album: None,
+                duration: None,
+                cover: None,
+                explicit: None,
+            }
+        }
+    }
+
+    fn queue_row(id: u64) -> QueueItem {
+        QueueItem {
+            track_id: id,
+            title: format!("T{id}"),
+            artist: "A".into(),
+            album: "B".into(),
+            duration_secs: 200,
+            cover: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn queue_items_from_page_items_skips_fetch_for_complete_metadata() {
+        let server = MockServer::start().await;
+        // No /tracks/{id} mock is mounted; any fetch would 404 and fail the call.
+        let items =
+            queue_items_from_page_items(&tidal_client(&server), &[page_track(1, true)], None)
+                .await
+                .unwrap();
+        assert_eq!(items[0].track_id, 1);
+        assert_eq!(items[0].title, "T1");
+        assert_eq!(items[0].artist, "A");
+        assert_eq!(items[0].album, "B");
+        assert_eq!(items[0].duration_secs, 200);
+        assert_eq!(items[0].cover.as_deref(), Some("c"));
+    }
+
+    #[tokio::test]
+    async fn queue_items_from_page_items_fetches_only_incomplete_metadata() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/tracks/2"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": 2, "title": "Fetched", "duration": 180,
+                "artists": [{"id": 5, "name": "Artist"}],
+                "album": {"id": 7, "title": "Album", "cover": "cover-2"}
+            })))
+            .mount(&server)
+            .await;
+        let items = queue_items_from_page_items(
+            &tidal_client(&server),
+            &[page_track(1, true), page_track(2, false)],
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].track_id, 1);
+        assert_eq!(items[1].track_id, 2);
+        assert_eq!(items[1].title, "Fetched");
+        assert_eq!(items[1].duration_secs, 180);
+    }
+
+    #[tokio::test]
+    async fn queue_items_from_page_items_records_embedded_explicit() {
+        let server = MockServer::start().await;
+        let store = crate::track_flags::TrackFlagsStore::start(None);
+        let mut track = page_track(1, true);
+        track.explicit = Some(true);
+        queue_items_from_page_items(&tidal_client(&server), &[track], Some(&store))
+            .await
+            .unwrap();
+        let known = store.known(&[1]);
+        assert_eq!(known[0].1.explicit, Some(true));
+    }
+
+    #[tokio::test]
+    async fn filter_playable_items_blocks_and_reports_kept_ids() {
+        let server = MockServer::start().await;
+        let store = crate::track_flags::TrackFlagsStore::start(None);
+        store.record_explicit(2, true);
+        let (kept, ids) = filter_playable_items(
+            &tidal_client(&server),
+            &[1, 2],
+            vec![queue_row(1), queue_row(2)],
+            Some(&store),
+            &content(true, false),
+        )
+        .await
+        .unwrap();
+        assert_eq!(ids, vec![1]);
+        assert_eq!(kept.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn filter_playable_items_enriches_ai_flags_fail_open() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/openapi/v2/tracks"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": [
+                    {"id": "1", "type": "tracks", "attributes": {"explicit": false, "ai": true}},
+                    {"id": "2", "type": "tracks", "attributes": {"explicit": false, "ai": false}}
+                ]
+            })))
+            .mount(&server)
+            .await;
+        let store = crate::track_flags::TrackFlagsStore::start(None);
+        let (kept, ids) = filter_playable_items(
+            &tidal_client(&server),
+            &[1, 2],
+            vec![queue_row(1), queue_row(2)],
+            Some(&store),
+            &content(false, true),
+        )
+        .await
+        .unwrap();
+        assert_eq!(ids, vec![2]);
+        assert_eq!(kept[0].track_id, 2);
     }
 
     #[test]
