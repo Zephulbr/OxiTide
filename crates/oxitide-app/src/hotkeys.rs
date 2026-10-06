@@ -29,6 +29,20 @@ pub enum HotkeyAction {
 pub const ACTIONS: [&str; 6] =
     ["play_pause", "next", "prev", "volume_up", "volume_down", "show_hide"];
 
+/// Serializes hotkey config writes and re-registration across the Tauri
+/// commands: a capture release can never interleave with a save's
+/// registration, so the registration that runs last always reflects the
+/// latest config (Track 10 follow-up; spec §6.3). Each command reads
+/// `state.config()` inside the lock.
+static MUTATION_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+pub fn with_mutation_lock<T>(run: impl FnOnce() -> T) -> T {
+    let _guard = MUTATION_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    run()
+}
+
 pub fn is_action(action: &str) -> bool {
     ACTIONS.contains(&action)
 }
@@ -337,5 +351,31 @@ mod tests {
         assert!(is_action("volume_down"));
         assert!(!is_action("love"), "love ships with the deferred 10.4 slice");
         assert_eq!(action_from_name("show_hide"), Some(HotkeyAction::ShowHide));
+    }
+
+    #[test]
+    fn mutations_are_serialized() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+        let inside = Arc::new(AtomicBool::new(false));
+        let overlapped = Arc::new(AtomicBool::new(false));
+        let mut handles = Vec::new();
+        for _ in 0..2 {
+            let inside = inside.clone();
+            let overlapped = overlapped.clone();
+            handles.push(std::thread::spawn(move || {
+                with_mutation_lock(|| {
+                    if inside.swap(true, Ordering::SeqCst) {
+                        overlapped.store(true, Ordering::SeqCst);
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                    inside.store(false, Ordering::SeqCst);
+                });
+            }));
+        }
+        for handle in handles {
+            handle.join().unwrap();
+        }
+        assert!(!overlapped.load(Ordering::SeqCst));
     }
 }

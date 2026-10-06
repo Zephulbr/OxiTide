@@ -2135,25 +2135,27 @@ pub fn set_hotkey(
     accelerator: String,
     replace: Option<String>,
 ) -> Result<(), String> {
-    if !crate::hotkeys::is_action(&action) {
-        return Err(format!("unknown hotkey action: {action}"));
-    }
-    let accelerator = accelerator.trim().to_string();
-    if !accelerator.is_empty() {
-        crate::hotkeys::parse(&accelerator)?;
-    }
-    let previous = state.config();
-    let mut next = previous.clone();
-    crate::hotkeys::apply_binding(&mut next.hotkeys, &action, &accelerator, replace.as_deref())?;
-    next.save()?;
-    state.set_config(next.clone());
-    if let Err(e) = crate::hotkeys::register_all(&app, &next.hotkeys) {
-        let _ = previous.save();
-        state.set_config(previous.clone());
-        let _ = crate::hotkeys::register_all(&app, &previous.hotkeys);
-        return Err(e);
-    }
-    Ok(())
+    crate::hotkeys::with_mutation_lock(|| {
+        if !crate::hotkeys::is_action(&action) {
+            return Err(format!("unknown hotkey action: {action}"));
+        }
+        let accelerator = accelerator.trim().to_string();
+        if !accelerator.is_empty() {
+            crate::hotkeys::parse(&accelerator)?;
+        }
+        let previous = state.config();
+        let mut next = previous.clone();
+        crate::hotkeys::apply_binding(&mut next.hotkeys, &action, &accelerator, replace.as_deref())?;
+        next.save()?;
+        state.set_config(next.clone());
+        if let Err(e) = crate::hotkeys::register_all(&app, &next.hotkeys) {
+            let _ = previous.save();
+            state.set_config(previous.clone());
+            let _ = crate::hotkeys::register_all(&app, &previous.hotkeys);
+            return Err(e);
+        }
+        Ok(())
+    })
 }
 
 #[tauri::command(async)]
@@ -2162,8 +2164,10 @@ pub fn set_hotkey_capture(
     state: State<'_, AppState>,
     active: bool,
 ) -> Result<(), String> {
-    let config = state.config();
-    crate::hotkeys::set_capture(&app, &config.hotkeys, active)
+    crate::hotkeys::with_mutation_lock(|| {
+        let config = state.config();
+        crate::hotkeys::set_capture(&app, &config.hotkeys, active)
+    })
 }
 
 #[tauri::command]

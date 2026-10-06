@@ -38,6 +38,7 @@
     displayAccelerator,
     type HotkeyAction,
   } from "../lib/hotkeys";
+  import { createHotkeyCapture } from "../lib/hotkeyCapture.svelte";
   let {
     player,
     toasts,
@@ -66,10 +67,14 @@
   let lbError = $state("");
   let confirmingHistoryClear = $state(false);
   let confirmingBlockExplicit = $state(false);
-  let recordingAction = $state<HotkeyAction | null>(null);
   let hotkeyConflict = $state<
     { action: HotkeyAction; accelerator: string; other: HotkeyAction } | null
   >(null);
+  const capture = createHotkeyCapture({
+    setCapture: (active) => api.setHotkeyCapture(active),
+    save: (action, accelerator, replace) => api.setHotkey(action, accelerator, replace),
+    report: apply,
+  });
 
   async function refreshScrobble() {
     try {
@@ -192,25 +197,23 @@
     customDraft = appearance.customTypeface;
   });
 
-  // While recording, a capture-phase listener owns the keyboard and the
-  // registered global hotkeys are suspended so a captured chord is not also
-  // dispatched by the plugin. Cleanup restores both (Escape, save, cancel,
-  // unmount).
+  // While capture is active, a capture-phase listener owns the keyboard; the
+  // controller attaches it only after the backend suspended global hotkeys.
+  // Cleanup restores both (Escape, save, cancel, unmount).
   $effect(() => {
-    if (!recordingAction) return;
-    api.setHotkeyCapture(true).catch(apply);
+    if (!capture.active || capture.recording === null) return;
+    const action = capture.recording;
     const handler = (event: KeyboardEvent) => onHotkeyKeydown(event);
     window.addEventListener("keydown", handler, true);
-    document.getElementById(`hotkey-${recordingAction}`)?.focus();
+    document.getElementById(`hotkey-${action}`)?.focus();
     return () => {
       window.removeEventListener("keydown", handler, true);
-      api.setHotkeyCapture(false).catch(apply);
     };
   });
 
   // Recording only makes sense on the System tab; leaving it cancels capture.
   $effect(() => {
-    if (tab !== "system") recordingAction = null;
+    if (tab !== "system") capture.cancel();
   });
 
   const queryLocalFonts = (
@@ -376,29 +379,27 @@
   }
 
   function onHotkeyKeydown(event: KeyboardEvent) {
-    if (!recordingAction) return;
+    const action = capture.recording;
+    if (!action) return;
     event.preventDefault();
     event.stopPropagation();
     if (event.key === "Escape") {
-      recordingAction = null;
+      capture.cancel();
       return;
     }
     if (event.key === "Backspace" || event.key === "Delete") {
-      const action = recordingAction;
-      recordingAction = null;
-      void saveHotkey(action, "");
+      void capture.finish(action, "");
       return;
     }
     const accelerator = acceleratorFromEvent(event);
     if (!accelerator) return;
-    const action = recordingAction;
-    recordingAction = null;
     const other = config ? conflictFor(config.hotkeys, action, accelerator) : null;
     if (other) {
+      capture.cancel();
       hotkeyConflict = { action, accelerator, other };
       return;
     }
-    void saveHotkey(action, accelerator);
+    void capture.finish(action, accelerator);
   }
 
   function hotkeyErrorMessage(failure: unknown, accelerator: string): string {
@@ -1060,10 +1061,9 @@
           <kbd>{displayAccelerator(config.hotkeys[entry.id]) || "Not set"}</kbd>
           <button
             id={`hotkey-${entry.id}`}
-            class:recording={recordingAction === entry.id}
-            onclick={() =>
-              (recordingAction = recordingAction === entry.id ? null : entry.id)}
-          >{recordingAction === entry.id ? "Press keys…" : "Record"}</button>
+            class:recording={capture.recording === entry.id}
+            onclick={() => void capture.start(entry.id)}
+          >{capture.recording === entry.id ? "Press keys…" : "Record"}</button>
           {#if config.hotkeys[entry.id]}
             <button onclick={() => void saveHotkey(entry.id, "")}>Clear</button>
           {/if}
