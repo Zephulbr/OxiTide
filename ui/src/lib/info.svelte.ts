@@ -34,6 +34,10 @@ export function createInfo(): InfoStore {
     trackId = id;
     const cached = cache.get(id);
     if (cached) {
+      // A cache hit supersedes any fetch still in flight: without bumping the
+      // token the pending request would keep the newest token and overwrite
+      // this cached track.
+      ++requestId;
       track = cached.track;
       credits = cached.credits;
       creditsError = cached.creditsError;
@@ -48,11 +52,13 @@ export function createInfo(): InfoStore {
     error = "";
     creditsError = "";
     let loaded: Track | null = null;
+    let trackFailure = "";
     try {
       loaded = await api.getTrack(id);
     } catch (e) {
-      error = String(e);
+      trackFailure = String(e);
     }
+    if (token !== requestId) return; // a newer open superseded this fetch
     let loadedCredits: TrackCredits | null = null;
     let failure = "";
     if (loaded !== null) {
@@ -62,12 +68,13 @@ export function createInfo(): InfoStore {
         failure = String(e);
       }
     }
-    if (token !== requestId) return; // a newer open superseded this fetch
+    if (token !== requestId) return; // superseded during the credits fetch
     if (loaded !== null && failure === "") {
       cache.set(id, { track: loaded, credits: loadedCredits, creditsError: "" });
     }
     track = loaded;
     credits = loadedCredits;
+    error = loaded !== null ? "" : trackFailure;
     creditsError = failure;
     loading = false;
   }

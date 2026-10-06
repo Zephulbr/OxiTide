@@ -52,6 +52,38 @@ describe("info store", () => {
     expect(model.trackId).toBe(2);
   });
 
+  it("a cache hit invalidates an in-flight fetch for another id", async () => {
+    let resolveSecond: (value: Track) => void = () => {};
+    vi.mocked(api.getTrack)
+      .mockResolvedValueOnce(track(1))
+      .mockImplementationOnce(() => new Promise<Track>((resolve) => (resolveSecond = resolve)));
+    const model = createInfo();
+    await model.open(1);
+    const second = model.open(2);
+    await model.open(1);
+    resolveSecond(track(2));
+    await second;
+    expect(model.track?.id).toBe(1);
+    expect(model.trackId).toBe(1);
+  });
+
+  it("a superseded track failure does not paint an error", async () => {
+    let rejectFirst: (reason: unknown) => void = () => {};
+    vi.mocked(api.getTrack)
+      .mockImplementationOnce(
+        () => new Promise<Track>((_resolve, reject) => (rejectFirst = reject)),
+      )
+      .mockResolvedValueOnce(track(2));
+    const model = createInfo();
+    const first = model.open(1);
+    await model.open(2);
+    rejectFirst(new Error("offline"));
+    await first;
+    expect(model.track?.id).toBe(2);
+    expect(model.error).toBe("");
+    expect(model.trackId).toBe(2);
+  });
+
   it("surfaces a track failure and retries", async () => {
     vi.mocked(api.getTrack).mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce(track(1));
     const model = createInfo();

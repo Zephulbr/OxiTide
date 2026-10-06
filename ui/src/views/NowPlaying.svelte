@@ -74,6 +74,12 @@
   const showInfo = $derived(lyrics.tab === "info" && track !== null);
   /// The spine layout (cover + side column) is shared by lyrics and info.
   const wide = $derived(showLyrics || showInfo);
+  /// Display-only tab: a settled no-lyrics miss shows the Next up fallback, so
+  /// the Lyrics tab must not claim selection over an absent panel. The store
+  /// keeps the user's choice, so a track with lyrics snaps back to Lyrics.
+  const effectiveTab = $derived(
+    track !== null && lyrics.tab === "lyrics" && !hasLyrics ? "next" : lyrics.tab,
+  );
 
   const NP_TABS = ["lyrics", "next", "info"] as const;
 
@@ -245,10 +251,10 @@
             <button
               id="np-tab-lyrics"
               role="tab"
-              tabindex={lyrics.tab === "lyrics" ? 0 : -1}
-              aria-selected={lyrics.tab === "lyrics"}
+              tabindex={effectiveTab === "lyrics" ? 0 : -1}
+              aria-selected={effectiveTab === "lyrics"}
               aria-controls="np-panel-lyrics"
-              class:active={lyrics.tab === "lyrics"}
+              class:active={effectiveTab === "lyrics"}
               onclick={() => lyrics.setTab("lyrics")}
               onkeydown={(event) => onTabKeydown(event, "lyrics")}
             >
@@ -257,10 +263,10 @@
             <button
               id="np-tab-next"
               role="tab"
-              tabindex={lyrics.tab === "next" ? 0 : -1}
-              aria-selected={lyrics.tab === "next"}
+              tabindex={effectiveTab === "next" ? 0 : -1}
+              aria-selected={effectiveTab === "next"}
               aria-controls="np-panel-next"
-              class:active={lyrics.tab === "next"}
+              class:active={effectiveTab === "next"}
               onclick={() => lyrics.setTab("next")}
               onkeydown={(event) => onTabKeydown(event, "next")}
             >
@@ -269,10 +275,10 @@
             <button
               id="np-tab-info"
               role="tab"
-              tabindex={lyrics.tab === "info" ? 0 : -1}
-              aria-selected={lyrics.tab === "info"}
+              tabindex={effectiveTab === "info" ? 0 : -1}
+              aria-selected={effectiveTab === "info"}
               aria-controls="np-panel-info"
-              class:active={lyrics.tab === "info"}
+              class:active={effectiveTab === "info"}
               onclick={() => lyrics.setTab("info")}
               onkeydown={(event) => onTabKeydown(event, "info")}
             >
@@ -340,52 +346,56 @@
         </div>
       {:else}
         <div
-          class="meta-details"
+          class="next-slot"
           role="tabpanel"
           id="np-panel-next"
           aria-labelledby="np-tab-next"
-          in:fly={{ y: -16, duration: dur(260), delay: dur(40), easing: cubicOut }}
-          out:fly={{ y: -10, duration: dur(420), easing: cubicInOut }}
         >
-          {#key track.track_id}
-            <div class="details-swap" in:fly={{ y: 6, duration: dur(200), easing: cubicOut }}>
-              {@render details(track)}
-            </div>
-          {/key}
-        </div>
+          <div
+            class="meta-details"
+            in:fly={{ y: -16, duration: dur(260), delay: dur(40), easing: cubicOut }}
+            out:fly={{ y: -10, duration: dur(420), easing: cubicInOut }}
+          >
+            {#key track.track_id}
+              <div class="details-swap" in:fly={{ y: 6, duration: dur(200), easing: cubicOut }}>
+                {@render details(track)}
+              </div>
+            {/key}
+          </div>
 
-        <hr
-          in:fly={{ y: -16, duration: dur(240), delay: dur(60), easing: cubicOut }}
-          out:fly={{ y: -10, duration: dur(420), easing: cubicInOut }}
-        />
+          <hr
+            in:fly={{ y: -16, duration: dur(240), delay: dur(60), easing: cubicOut }}
+            out:fly={{ y: -10, duration: dur(420), easing: cubicInOut }}
+          />
 
-        <div
-          class="meta-list"
-          in:fly={{ y: -16, duration: dur(240), delay: dur(80), easing: cubicOut }}
-          out:fly={{ y: -10, duration: dur(420), easing: cubicInOut }}
-        >
-          {#if nextUp.length > 0}
-            <ul class="next-up">
-              {#each nextUp as item (item.track_id)}
-                <!-- Queue advance: the finished top row fades in place (Svelte
-                     fixes it out of flow), the rest glide up via FLIP, and the
-                     incoming row rises in. The outro stays transform-free so it
-                     cannot override Svelte's compensating translate. -->
-                <li
-                  in:fly={{ y: 10, duration: dur(240), easing: cubicOut }}
-                  out:fade={{ duration: dur(160) }}
-                  animate:flip={{ duration: dur(240), easing: cubicOut }}
-                >
-                  <span class="thumb"><Cover uuid={item.cover} size={80} radius={6} alt="" /></span>
-                  <span class="next-title">{item.title}</span>
-                  <span class="muted next-artist">{item.artist}</span>
-                  <span class="muted tnum">{formatDuration(item.duration_secs)}</span>
-                </li>
-              {/each}
-            </ul>
-          {:else}
-            <p class="muted">Queue is empty</p>
-          {/if}
+          <div
+            class="meta-list"
+            in:fly={{ y: -16, duration: dur(240), delay: dur(80), easing: cubicOut }}
+            out:fly={{ y: -10, duration: dur(420), easing: cubicInOut }}
+          >
+            {#if nextUp.length > 0}
+              <ul class="next-up">
+                {#each nextUp as item (item.track_id)}
+                  <!-- Queue advance: the finished top row fades in place (Svelte
+                       fixes it out of flow), the rest glide up via FLIP, and the
+                       incoming row rises in. The outro stays transform-free so it
+                       cannot override Svelte's compensating translate. -->
+                  <li
+                    in:fly={{ y: 10, duration: dur(240), easing: cubicOut }}
+                    out:fade={{ duration: dur(160) }}
+                    animate:flip={{ duration: dur(240), easing: cubicOut }}
+                  >
+                    <span class="thumb"><Cover uuid={item.cover} size={80} radius={6} alt="" /></span>
+                    <span class="next-title">{item.title}</span>
+                    <span class="muted next-artist">{item.artist}</span>
+                    <span class="muted tnum">{formatDuration(item.duration_secs)}</span>
+                  </li>
+                {/each}
+              </ul>
+            {:else}
+              <p class="muted">Queue is empty</p>
+            {/if}
+          </div>
         </div>
       {/if}
     {:else}
@@ -668,6 +678,12 @@
   .meta-details {
     display: flex;
     flex-direction: column;
+  }
+  /* Structural tabpanel only: display: contents keeps the details, divider,
+     and list in .meta's flex flow (with their transitions) exactly as the
+     unwrapped layout had them. */
+  .next-slot {
+    display: contents;
   }
   .stage-row {
     display: flex;
