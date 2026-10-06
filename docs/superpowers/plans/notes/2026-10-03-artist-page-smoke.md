@@ -3,6 +3,10 @@
 Human-in-the-loop checks for the Track 9 artist page. Run with
 `npm --prefix ui run app:dev` and a real account.
 
+> **Track 9.0 triage (2026-10-06):** skip the main-list "Show all" item below — Top
+> tracks scrolls in place (20 fetched); the catalog follow-up section owns the
+> "View all" behavior. See `2026-10-06-track9-carry-in-triage.md`.
+
 - [ ] **Rich artist (e.g. AC/DC):** hero renders with the palette backdrop,
       blurred portrait, name, `1.1M fans`, Play/Shuffle enabled.
 - [ ] **Sparse artist (e.g. The Notwist):** bio renders clamped with Read more;

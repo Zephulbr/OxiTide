@@ -3,6 +3,11 @@
 Implementation: `docs/superpowers/plans/2026-10-03-home-rhythm-card-language.md`
 Spec: `docs/superpowers/specs/2026-10-03-home-layout-card-language-design.md`
 
+> **Track 9.0 triage (2026-10-06):** use the current budgets in
+> `scripts/perf/budgets.json` for the perf re-check (S1 570 / S2 560 MB after the
+> 2026-10-02 renegotiation), not the historical context below. The card rows will be
+> re-checked after Plan 9.3 (feed enrichment). See `2026-10-06-track9-carry-in-triage.md`.
+
 ## Automated gates (run 2026-10-03)
 
 - `cargo test --workspace` — 207 + 166 + 1 + 155 passed, 1 ignored, 0 failed.
