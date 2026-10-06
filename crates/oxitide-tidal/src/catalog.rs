@@ -3,7 +3,7 @@ use serde::Deserialize;
 use crate::client::{TidalClient, DEFAULT_PAGE_SIZE};
 use crate::error::Result;
 use crate::models::{
-    Album, Artist, ArtistDiscography, ArtistLink, ArtistProfile, ItemPage, Track,
+    Album, AlbumInfo, Artist, ArtistDiscography, ArtistLink, ArtistProfile, ItemPage, Track,
 };
 
 fn page_params(limit: u32, offset: u32) -> Vec<(&'static str, String)> {
@@ -30,6 +30,24 @@ impl TidalClient {
     pub async fn album_tracks_all(&self, id: u64) -> Result<Vec<Track>> {
         self.get_all_pages(&format!("albums/{id}/tracks"), &[], DEFAULT_PAGE_SIZE)
             .await
+    }
+
+    /// Album facts from the public OpenAPI; every field is optional and a
+    /// missing document body yields `AlbumInfo::default()`.
+    pub async fn album_info(&self, id: u64) -> Result<AlbumInfo> {
+        let params = [("countryCode", self.session().country_code.clone())];
+        let raw: OpenApiAlbumInfo = self.get_openapi(&format!("albums/{id}"), &params).await?;
+        Ok(raw
+            .data
+            .and_then(|data| data.attributes)
+            .map(|attributes| AlbumInfo {
+                release_date: attributes.release_date,
+                copyright: attributes.copyright.and_then(|copyright| copyright.text),
+                barcode_id: attributes.barcode_id,
+                number_of_volumes: attributes.number_of_volumes,
+                number_of_items: attributes.number_of_items,
+            })
+            .unwrap_or_default())
     }
 
     pub async fn artist(&self, id: u64) -> Result<Artist> {
@@ -248,6 +266,38 @@ fn strip_tags(raw: &str) -> String {
 }
 
 #[derive(Debug, Deserialize)]
+struct OpenApiAlbumInfo {
+    #[serde(default)]
+    data: Option<OpenApiAlbumInfoData>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenApiAlbumInfoData {
+    #[serde(default)]
+    attributes: Option<OpenApiAlbumInfoAttributes>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenApiAlbumInfoAttributes {
+    #[serde(default, rename = "releaseDate")]
+    release_date: Option<String>,
+    #[serde(default)]
+    copyright: Option<OpenApiCopyright>,
+    #[serde(default, rename = "barcodeId")]
+    barcode_id: Option<String>,
+    #[serde(default, rename = "numberOfVolumes")]
+    number_of_volumes: Option<u32>,
+    #[serde(default, rename = "numberOfItems")]
+    number_of_items: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenApiCopyright {
+    #[serde(default)]
+    text: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct OpenApiArtistProfile {
     #[serde(default)]
     data: Option<OpenApiArtistData>,
@@ -388,6 +438,64 @@ mod tests {
             .await
             .unwrap()
             .is_empty());
+    }
+
+    #[tokio::test]
+    async fn album_info_reads_facts_and_sends_country_code() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/openapi/v2/albums/9"))
+            .and(query_param("countryCode", "GR"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": {
+                    "id": "9",
+                    "type": "albums",
+                    "attributes": {
+                        "releaseDate": "2017-06-30",
+                        "copyright": { "text": "(C) 2017 S. Carter Enterprises" },
+                        "barcodeId": "00881377068540",
+                        "numberOfVolumes": 2,
+                        "numberOfItems": 24,
+                        "title": "4:44"
+                    }
+                }
+            })))
+            .mount(&server)
+            .await;
+        let info = client(&server).album_info(9).await.unwrap();
+        assert_eq!(info.release_date.as_deref(), Some("2017-06-30"));
+        assert_eq!(info.copyright.as_deref(), Some("(C) 2017 S. Carter Enterprises"));
+        assert_eq!(info.barcode_id.as_deref(), Some("00881377068540"));
+        assert_eq!(info.number_of_volumes, Some(2));
+        assert_eq!(info.number_of_items, Some(24));
+    }
+
+    #[tokio::test]
+    async fn album_info_missing_attributes_default_to_none() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/openapi/v2/albums/9"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": { "id": "9", "type": "albums", "attributes": { "title": "X" } }
+            })))
+            .mount(&server)
+            .await;
+        let info = client(&server).album_info(9).await.unwrap();
+        assert_eq!(info, AlbumInfo::default());
+    }
+
+    #[tokio::test]
+    async fn album_info_404_is_not_found() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/openapi/v2/albums/999"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        assert!(matches!(
+            client(&server).album_info(999).await.unwrap_err(),
+            Error::NotFound(_)
+        ));
     }
 
     #[tokio::test]

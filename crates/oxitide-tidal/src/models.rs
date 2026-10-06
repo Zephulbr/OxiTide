@@ -69,6 +69,23 @@ pub struct Album {
     pub audio_quality: Option<String>,
 }
 
+/// Public v2 album facts (spec §5.3). Absent attributes stay `None` and the
+/// UI omits them; the public API exposes no label field (only `copyright`).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlbumInfo {
+    #[serde(default)]
+    pub release_date: Option<String>,
+    #[serde(default)]
+    pub copyright: Option<String>,
+    #[serde(default)]
+    pub barcode_id: Option<String>,
+    #[serde(default)]
+    pub number_of_volumes: Option<u32>,
+    #[serde(default)]
+    pub number_of_items: Option<u32>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Artist {
     pub id: u64,
@@ -290,6 +307,23 @@ mod tests {
         assert_eq!(t.artists[0].name, "Beck");
         assert_eq!(t.album.as_ref().unwrap().title, "Sea Change");
         assert!(t.is_hi_res());
+    }
+
+    #[test]
+    fn album_info_serializes_camel_case_and_omits_nothing() {
+        let info = AlbumInfo {
+            release_date: Some("2017-06-30".into()),
+            copyright: Some("(C) 2017 S. Carter Enterprises".into()),
+            barcode_id: Some("00881377068540".into()),
+            number_of_volumes: Some(2),
+            number_of_items: Some(24),
+        };
+        let value = serde_json::to_value(&info).unwrap();
+        assert_eq!(value["releaseDate"], "2017-06-30");
+        assert_eq!(value["barcodeId"], "00881377068540");
+        assert_eq!(value["numberOfVolumes"], 2);
+        assert_eq!(value["numberOfItems"], 24);
+        assert_eq!(AlbumInfo::default().number_of_volumes, None);
     }
 
     #[test]

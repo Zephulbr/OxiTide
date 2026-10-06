@@ -493,7 +493,7 @@ fn build_player(
 use oxitide_tidal::feed::FeedActivity;
 use oxitide_tidal::folders::{CollectionEntry, CollectionFolder};
 use oxitide_tidal::models::{
-    Album, Artist, ArtistDiscography, ArtistProfile, Mix, Playlist, SearchResults, Track,
+    Album, AlbumInfo, Artist, ArtistDiscography, ArtistProfile, Mix, Playlist, SearchResults, Track,
 };
 use oxitide_tidal::pages::{MixDetail, PageItem, PageSection};
 
@@ -759,6 +759,14 @@ pub async fn get_album(state: State<'_, AppState>, id: u64) -> Result<Album, Str
 pub async fn get_album_tracks(state: State<'_, AppState>, id: u64) -> Result<Vec<Track>, String> {
     require_client(&state)?
         .album_tracks_all(id)
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
+pub async fn get_album_info(state: State<'_, AppState>, id: u64) -> Result<AlbumInfo, String> {
+    require_client(&state)?
+        .album_info(id)
         .await
         .map_err(|e| state.fail_tidal(e))
 }
