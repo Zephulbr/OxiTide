@@ -26,6 +26,7 @@
   import Section from "./views/Section.svelte";
   import Mini from "./views/Mini.svelte";
   import PlaylistPicker from "./lib/components/PlaylistPicker.svelte";
+  import TrackInfoHost from "./lib/components/TrackInfoHost.svelte";
   import CollectionDialogs from "./lib/components/CollectionDialogs.svelte";
   import ToastHost from "./lib/components/ToastHost.svelte";
   import ContextMenu from "./lib/components/ContextMenu.svelte";
@@ -575,6 +576,7 @@
       {/if}
     {/if}
     <PlayerBar {player} {qualityDisplay} {favorites} {nav} {mini} {sleepTimer} />
+    <TrackInfoHost {player} {nav} />
     <PlaylistPicker actions={playlistActions} onnavigate={(id) => nav.goto({ name: "playlist", id })} />
     <CollectionDialogs actions={collectionActions} />
   </div>

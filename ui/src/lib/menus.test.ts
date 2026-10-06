@@ -60,6 +60,7 @@ function baseCtx(overrides: Partial<TrackMenuContext> = {}): TrackMenuContext {
     addToQueue: vi.fn(),
     addToPlaylist: vi.fn(),
     copyTitle: vi.fn(),
+    trackInfo: vi.fn(),
     ...overrides,
   };
 }
@@ -73,7 +74,16 @@ describe("trackMenuItems", () => {
       "add-playlist",
       "favorite",
       "copy-title",
+      "track-info",
     ]);
+  });
+
+  it("track info invokes its callback", () => {
+    const ctx = { ...baseCtx(), trackInfo: vi.fn() };
+    const item = trackMenuItems(ctx).find((entry) => entry.id === "track-info");
+    expect(item?.label).toBe("Track info");
+    item?.run();
+    expect(ctx.trackInfo).toHaveBeenCalledTimes(1);
   });
 
   it("labels favorite according to state", () => {
@@ -115,6 +125,7 @@ describe("trackMenuItems", () => {
       "add-playlist",
       "favorite",
       "copy-title",
+      "track-info",
       "move-up",
       "move-down",
       "remove",
@@ -151,6 +162,7 @@ describe("trackMenuItems", () => {
       "add-playlist",
       "favorite",
       "copy-title",
+      "track-info",
       "remove",
     ]);
   });

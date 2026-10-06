@@ -13,6 +13,9 @@ export interface TrackMenuContext {
   addToQueue(): void;
   addToPlaylist(): void;
   copyTitle(): void;
+  /// Opens the Info surface: the playing track routes to Now Playing's Info
+  /// tab, any other row opens the modal (host decides).
+  trackInfo(): void;
   /// True when the active content filters hide this track.
   blocked?: boolean;
   playlist?: {
@@ -50,6 +53,7 @@ export function trackMenuItems(ctx: TrackMenuContext): MenuItem[] {
       run: () => void ctx.favorites.toggleTrack(ctx.track.id),
     },
     { id: "copy-title", label: "Copy title", run: () => ctx.copyTitle() },
+    { id: "track-info", label: "Track info", run: () => ctx.trackInfo() },
   ];
   const playlist = ctx.playlist;
   if (playlist && !playlist.busy && !playlist.disabled) {

@@ -16,6 +16,7 @@
   import { windowRange } from "../virtual";
   import { appearance } from "../appearance.svelte";
   import { trackFlags } from "../trackFlags.svelte";
+  import { trackInfo } from "../trackInfo.svelte";
   import { rowHeightFor } from "../rowHeight";
   import type { Favorites } from "../favorites.svelte";
   import type { TrackView } from "../trackView.svelte";
@@ -289,6 +290,7 @@
                 addToQueue: () => queueOne(t),
                 addToPlaylist: () => onAddToPlaylist?.(t),
                 copyTitle: () => void copyText(t.title),
+                trackInfo: () => trackInfo.open(t),
                 playlist: playlistActions && { ...playlistActions, canMove: !view.engaged },
               })}
           >
