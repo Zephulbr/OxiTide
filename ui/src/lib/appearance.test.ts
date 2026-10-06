@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "./api";
 import {
+  appearance,
   clampQueueWidth,
   createAppearance,
   fontStack,
@@ -95,6 +96,12 @@ describe("oneko setting", () => {
     await appearance.setOneko(false);
     expect(appearance.oneko).toBe(false);
     expect(api.setOneko).toHaveBeenCalledWith(false);
+  });
+
+  it("setOneko rolls back when persistence fails", async () => {
+    vi.mocked(api.setOneko).mockRejectedValueOnce(new Error("disk full"));
+    await expect(appearance.setOneko(true)).rejects.toThrow("disk full");
+    expect(appearance.oneko).toBe(false);
   });
 });
 

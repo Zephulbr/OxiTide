@@ -143,6 +143,19 @@ export function createAppearance(): Appearance {
     await run();
   }
 
+  /// Local-first like the other setters, but a failed persist reverts the
+  /// flag so the UI never disagrees with the stored config.
+  async function setOneko(enabled: boolean): Promise<void> {
+    const previous = oneko;
+    oneko = enabled;
+    try {
+      await api.setOneko(enabled);
+    } catch (error) {
+      oneko = previous;
+      throw error;
+    }
+  }
+
   return {
     get mode() { return mode; },
     get theme() { return theme; },
@@ -170,7 +183,7 @@ export function createAppearance(): Appearance {
     setCoverShape: (s) => { coverShape = s; return persist(() => api.setCoverShape(s)); },
     setDynamicColor: (s) => { dynamicColorSetting = s; return persist(() => api.setDynamicColor(s)); },
     setQueueWidth: (px) => { queueWidth = clampQueueWidth(px); return persist(() => api.setQueueWidth(queueWidth)); },
-    setOneko: (enabled) => { oneko = enabled; return persist(() => api.setOneko(enabled)); },
+    setOneko,
   };
 }
 

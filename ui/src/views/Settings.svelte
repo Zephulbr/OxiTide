@@ -24,6 +24,7 @@
     type TypefaceSetting,
   } from "../lib/appearance.svelte";
   import { errorMessage } from "../lib/errors";
+  import { optimistic } from "../lib/optimistic";
   import type { QualityDisplay } from "../lib/quality";
   import { SETTINGS_TABS, nextTab, type SettingsTab } from "../lib/settingsTabs";
   import type { Toasts } from "../lib/toasts.svelte";
@@ -338,20 +339,40 @@
 
   function setOneko(enabled: boolean) {
     if (!config) return;
+    const previous = config.ui.oneko;
     config = { ...config, ui: { ...config.ui, oneko: enabled } };
-    appearance.setOneko(enabled).catch(apply);
+    appearance.setOneko(enabled).catch((e) => {
+      if (config) config = { ...config, ui: { ...config.ui, oneko: previous } };
+      apply(e);
+    });
   }
 
   function setSmtc(enabled: boolean) {
     if (!config) return;
-    config = { ...config, integrations: { ...config.integrations, smtc: enabled } };
-    api.setSmtc(enabled).catch(apply);
+    void optimistic(
+      config.integrations.smtc,
+      enabled,
+      (value) => {
+        if (config) {
+          config = { ...config, integrations: { ...config.integrations, smtc: value } };
+        }
+      },
+      () => api.setSmtc(enabled),
+      apply,
+    );
   }
 
   function setCloseToTray(enabled: boolean) {
     if (!config) return;
-    config = { ...config, ui: { ...config.ui, close_to_tray: enabled } };
-    api.setCloseToTray(enabled).catch(apply);
+    void optimistic(
+      config.ui.close_to_tray,
+      enabled,
+      (value) => {
+        if (config) config = { ...config, ui: { ...config.ui, close_to_tray: value } };
+      },
+      () => api.setCloseToTray(enabled),
+      apply,
+    );
   }
 
   function onHotkeyKeydown(event: KeyboardEvent) {
