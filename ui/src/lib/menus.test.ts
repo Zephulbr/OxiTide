@@ -66,7 +66,7 @@ function baseCtx(overrides: Partial<TrackMenuContext> = {}): TrackMenuContext {
 }
 
 describe("trackMenuItems", () => {
-  it("lists the six base actions", () => {
+  it("lists the seven base actions", () => {
     expect(trackMenuItems(baseCtx()).map((i) => i.id)).toEqual([
       "play",
       "radio",
@@ -111,6 +111,7 @@ describe("trackMenuItems", () => {
     expect(vi.mocked(ctx.addToQueue)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(ctx.addToPlaylist)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(ctx.copyTitle)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(ctx.trackInfo)).toHaveBeenCalledTimes(1);
   });
 
   it("appends playlist editing when the context is editable", () => {

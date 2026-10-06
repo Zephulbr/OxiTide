@@ -89,6 +89,7 @@
       const data = makeSyntheticAlbum(count);
       album = data.album;
       tracks = data.tracks;
+      info = null;
       error = "";
       loading = false;
       requestAnimationFrame(() =>

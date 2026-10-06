@@ -110,7 +110,7 @@
   /// numbers when grouped.
   const displayRows = $derived.by<VolumeDisplayRow[]>(() => {
     if (!grouping) {
-      return rows.slice(range.first, range.last).map((track, i) => ({
+      return slice.map((track, i) => ({
         key: `${track.id}-${range.first + i}`,
         label: null,
         track,
@@ -134,7 +134,8 @@
   let theadHeight = $state(0);
 
   const canDrag = $derived(
-    playlistActions !== undefined &&
+    sections === undefined &&
+      playlistActions !== undefined &&
       !playlistActions.busy &&
       !playlistActions.disabled &&
       !view.engaged,
