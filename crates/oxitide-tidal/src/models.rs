@@ -138,6 +138,15 @@ pub struct ArtistLink {
     pub url: String,
 }
 
+/// One bio text run; `artist_id` marks a `[wimpLink artistId="…"]` link.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BioSegment {
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artist_id: Option<u64>,
+}
+
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArtistProfile {
@@ -148,6 +157,9 @@ pub struct ArtistProfile {
     /// Cleaned biography text (no wimpLink/HTML), `None` when absent/empty.
     #[serde(default)]
     pub bio: Option<String>,
+    /// In-text bio runs with `[wimpLink artistId]` navigation (spec §6.3).
+    #[serde(default)]
+    pub bio_segments: Vec<BioSegment>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -459,6 +471,7 @@ mod tests {
                 url: "https://twitter.com/acdc".into(),
             }],
             bio: None,
+            bio_segments: Vec::new(),
         };
         let json = serde_json::to_value(&profile).unwrap();
         assert_eq!(json["numberOfFollowers"], 1106540);

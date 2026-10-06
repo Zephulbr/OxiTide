@@ -214,6 +214,7 @@
     onPlay={() => queueTop(0)}
     onShuffle={() => queueTop(0, true)}
     onOpenLink={openLink}
+    onOpenArtist={(artistId) => nav.goto({ name: "artist", id: artistId })}
   >
     {#snippet actions()}
       <DetailAction

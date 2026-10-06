@@ -5,6 +5,7 @@
   import { isHttpUrl, linkLabel } from "../artistLinks";
   import { ARTIST_PICTURE_SIZE, coverUrl } from "../artwork";
   import { formatCount } from "../format";
+  import BioText from "./BioText.svelte";
   import Cover from "./Cover.svelte";
   import Icon from "./Icon.svelte";
   import Modal from "./Modal.svelte";
@@ -16,6 +17,7 @@
     onPlay,
     onShuffle,
     onOpenLink,
+    onOpenArtist,
     actions,
   }: {
     artist: Artist;
@@ -24,6 +26,7 @@
     onPlay: () => void;
     onShuffle: () => void;
     onOpenLink: (url: string) => void;
+    onOpenArtist?: (id: number) => void;
     actions?: Snippet;
   } = $props();
 
@@ -33,7 +36,7 @@
   let bioEl = $state<HTMLParagraphElement | null>(null);
 
   const fans = $derived(profile?.numberOfFollowers ?? null);
-  const bio = $derived(profile?.bio ?? null);
+  const bioSegments = $derived(profile?.bioSegments ?? []);
   const links = $derived((profile?.externalLinks ?? []).filter((link) => isHttpUrl(link.url)));
   const backdrop = $derived(
     artist.picture ? coverUrl(artist.picture, ARTIST_PICTURE_SIZE) : "",
@@ -121,8 +124,8 @@
           <div class="actions">{@render actions()}</div>
         {/if}
       </div>
-      {#if bio}
-        <p class="bio" bind:this={bioEl}>{bio}</p>
+      {#if bioSegments.length > 0}
+        <p class="bio" bind:this={bioEl}><BioText segments={bioSegments} onArtist={onOpenArtist} /></p>
         {#if canExpand}
           <button class="more" aria-haspopup="dialog" onclick={() => (bioModal = true)}>
             Read more
@@ -146,12 +149,16 @@
       {/if}
     </div>
   </div>
-  {#if bioModal && bio}
+  {#if bioModal && bioSegments.length > 0}
     <Modal title={`About ${artist.name}`} onclose={() => (bioModal = false)}>
       <div class="bio-full">
-        {#each bio.split("\n\n") as paragraph}
-          <p>{paragraph}</p>
-        {/each}
+        <BioText
+          segments={bioSegments}
+          onArtist={(artistId) => {
+            bioModal = false;
+            onOpenArtist?.(artistId);
+          }}
+        />
       </div>
     </Modal>
   {/if}
@@ -307,18 +314,14 @@
     color: var(--text-muted);
     white-space: pre-line;
   }
-  /* Modal reading layout: roomier type and paragraph spacing. */
+  /* Modal reading layout: segments carry raw newlines, so pre-line keeps
+     paragraph breaks while the roomier type does the rest. */
   .bio-full {
     max-width: 62ch;
     font-size: 16px;
     line-height: 1.7;
     color: var(--text);
-  }
-  .bio-full p {
-    margin: 0 0 14px;
-  }
-  .bio-full p:last-child {
-    margin-bottom: 0;
+    white-space: pre-line;
   }
   .more {
     align-self: flex-start;

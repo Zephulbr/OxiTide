@@ -3,8 +3,8 @@ use serde::Deserialize;
 use crate::client::{TidalClient, DEFAULT_PAGE_SIZE};
 use crate::error::Result;
 use crate::models::{
-    Album, AlbumInfo, Artist, ArtistDiscography, ArtistLink, ArtistProfile, CreditContributor,
-    CreditRole, ItemPage, Track, TrackCredits,
+    Album, AlbumInfo, Artist, ArtistDiscography, ArtistLink, ArtistProfile, BioSegment,
+    CreditContributor, CreditRole, ItemPage, Track, TrackCredits,
 };
 
 fn page_params(limit: u32, offset: u32) -> Vec<(&'static str, String)> {
@@ -163,18 +163,20 @@ impl TidalClient {
             })
             .collect();
 
-        let bio = raw
+        let biography = raw
             .included
             .iter()
             .find(|entry| entry.resource_type == "artistBiographies")
             .and_then(|entry| entry.attributes.as_ref())
-            .and_then(|attributes| attributes.text.as_deref())
-            .and_then(clean_bio);
+            .and_then(|attributes| attributes.text.as_deref());
+        let bio = biography.and_then(clean_bio);
+        let bio_segments = biography.map(bio_segments).unwrap_or_default();
 
         Ok(ArtistProfile {
             number_of_followers: attributes.and_then(|attributes| attributes.number_of_followers),
             external_links,
             bio,
+            bio_segments,
         })
     }
 }
@@ -194,6 +196,66 @@ pub fn clean_bio(raw: &str) -> Option<String> {
     } else {
         Some(paragraphs.join("\n\n"))
     }
+}
+
+/// Split a raw bio into in-text runs: plain text plus
+/// `[wimpLink artistId="N"]` links. Fragments are cleaned like `clean_bio`
+/// but text is preserved verbatim (inline spacing and `\n` line breaks
+/// included), so concatenating the run texts reproduces the stripped bio.
+pub fn bio_segments(raw: &str) -> Vec<BioSegment> {
+    let mut segments: Vec<BioSegment> = Vec::new();
+    let mut rest = raw;
+    while let Some(start) = rest.find("[wimpLink") {
+        push_bio_text(&mut segments, clean_fragment(&rest[..start]));
+        let Some(open_end) = rest[start..].find(']') else {
+            return segments;
+        };
+        let open_tag = &rest[start..start + open_end + 1];
+        let after_open = &rest[start + open_end + 1..];
+        let Some(close) = after_open.find("[/wimpLink]") else {
+            push_bio_text(&mut segments, clean_fragment(after_open));
+            return segments;
+        };
+        push_bio_segment(
+            &mut segments,
+            clean_fragment(&after_open[..close]),
+            parse_wimp_artist_id(open_tag),
+        );
+        rest = &after_open[close + "[/wimpLink]".len()..];
+    }
+    push_bio_text(&mut segments, clean_fragment(rest));
+    segments
+}
+
+fn clean_fragment(raw: &str) -> String {
+    strip_tags(&strip_line_breaks(raw))
+}
+
+/// Append a verbatim text run; consecutive runs for the same target merge.
+fn push_bio_text(segments: &mut Vec<BioSegment>, text: String) {
+    push_bio_segment(segments, text, None);
+}
+
+fn push_bio_segment(segments: &mut Vec<BioSegment>, text: String, artist_id: Option<u64>) {
+    if text.is_empty() {
+        return;
+    }
+    if let Some(last) = segments.last_mut() {
+        if last.artist_id == artist_id {
+            last.text.push_str(&text);
+            return;
+        }
+    }
+    segments.push(BioSegment { text, artist_id });
+}
+
+/// `[wimpLink artistId="13" …]` -> `Some(13)`; absent or malformed ids fall
+/// back to plain text.
+fn parse_wimp_artist_id(open_tag: &str) -> Option<u64> {
+    let start = open_tag.find("artistId=\"")? + "artistId=\"".len();
+    let rest = &open_tag[start..];
+    let end = rest.find('"')?;
+    rest[..end].parse::<u64>().ok()
 }
 
 /// `[wimpLink artistId="1"]Name[/wimpLink]` -> `Name`; a malformed open tag
@@ -675,6 +737,40 @@ mod tests {
     }
 
     #[test]
+    fn bio_segments_plain_text_is_one_run() {
+        let segments = bio_segments("Just a bio.");
+        assert_eq!(segments.len(), 1);
+        assert_eq!(segments[0].text, "Just a bio.");
+        assert_eq!(segments[0].artist_id, None);
+    }
+
+    #[test]
+    fn bio_segments_capture_artist_links() {
+        let segments =
+            bio_segments("See [wimpLink artistId=\"13\"]Band[/wimpLink]. <br/>Then more.");
+        let texts: Vec<&str> = segments.iter().map(|segment| segment.text.as_str()).collect();
+        assert_eq!(texts, vec!["See ", "Band", ". \nThen more."]);
+        let ids: Vec<Option<u64>> = segments.iter().map(|segment| segment.artist_id).collect();
+        assert_eq!(ids, vec![None, Some(13), None]);
+    }
+
+    #[test]
+    fn bio_segments_without_artist_id_stay_text() {
+        let segments = bio_segments("[wimpLink foo=\"bar\"]Label[/wimpLink]");
+        assert_eq!(segments.len(), 1);
+        assert_eq!(segments[0].text, "Label");
+        assert_eq!(segments[0].artist_id, None);
+    }
+
+    #[test]
+    fn bio_segments_concat_matches_clean_bio() {
+        let raw = "One [wimpLink artistId=\"1\"]two[/wimpLink]<br/>three";
+        let concatenated: String = bio_segments(raw).iter().map(|s| s.text.clone()).collect();
+        assert_eq!(concatenated, "One two\nthree");
+        assert_eq!(clean_bio(raw).as_deref(), Some("One two\n\nthree"));
+    }
+
+    #[test]
     fn discography_filter_params_match_tidal() {
         assert_eq!(ArtistDiscography::Albums.tidal_param(), "ALBUMS");
         assert_eq!(ArtistDiscography::EpsAndSingles.tidal_param(), "EPSANDSINGLES");
@@ -848,6 +944,11 @@ mod tests {
         assert_eq!(profile.external_links[0].site, "TWITTER");
         assert_eq!(profile.external_links[0].url, "https://twitter.com/acdc");
         assert_eq!(profile.bio.as_deref(), Some("See Band.\n\nMore."));
+        assert_eq!(profile.bio_segments.len(), 3);
+        assert_eq!(profile.bio_segments[0].text, "See ");
+        assert_eq!(profile.bio_segments[1].text, "Band");
+        assert_eq!(profile.bio_segments[1].artist_id, Some(1));
+        assert_eq!(profile.bio_segments[2].text, ".\nMore.");
     }
 
     #[tokio::test]

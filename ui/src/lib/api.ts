@@ -36,10 +36,12 @@ export interface ArtistMixes {
   MASTER_ARTIST_MIX?: string | null;
 }
 export interface ArtistLink { site: string; url: string }
+export interface BioSegment { text: string; artistId?: number | null }
 export interface ArtistProfile {
   numberOfFollowers?: number | null;
   externalLinks: ArtistLink[];
   bio?: string | null;
+  bioSegments?: BioSegment[] | null;
 }
 export type ArtistDiscography = "albums" | "eps_and_singles" | "compilations";
 export interface Playlist {
