@@ -3,7 +3,8 @@ use serde::Deserialize;
 use crate::client::{TidalClient, DEFAULT_PAGE_SIZE};
 use crate::error::Result;
 use crate::models::{
-    Album, AlbumInfo, Artist, ArtistDiscography, ArtistLink, ArtistProfile, ItemPage, Track,
+    Album, AlbumInfo, Artist, ArtistDiscography, ArtistLink, ArtistProfile, CreditContributor,
+    CreditRole, ItemPage, Track, TrackCredits,
 };
 
 fn page_params(limit: u32, offset: u32) -> Vec<(&'static str, String)> {
@@ -48,6 +49,17 @@ impl TidalClient {
                 number_of_items: attributes.number_of_items,
             })
             .unwrap_or_default())
+    }
+
+    /// Role-grouped credits from the public v2 track document. An empty
+    /// `roles` list means the API exposed no credits for this track.
+    pub async fn track_credits(&self, id: u64) -> Result<TrackCredits> {
+        let params = [
+            ("countryCode", self.session().country_code.clone()),
+            ("include", "credits.artist".to_string()),
+        ];
+        let raw: OpenApiTrackCredits = self.get_openapi(&format!("tracks/{id}"), &params).await?;
+        Ok(credits_from_document(raw))
     }
 
     pub async fn artist(&self, id: u64) -> Result<Artist> {
@@ -295,6 +307,128 @@ struct OpenApiAlbumInfoAttributes {
 struct OpenApiCopyright {
     #[serde(default)]
     text: Option<String>,
+}
+
+/// Group included `credits` resources by role, preserving first-seen role and
+/// contributor order; the credit's `artist` relationship id becomes
+/// `artist_id` when present and parseable. Non-credit or unreferenced
+/// `included` entries, blank rows, and duplicate (role, name, artist) rows are
+/// dropped.
+fn credits_from_document(raw: OpenApiTrackCredits) -> TrackCredits {
+    let referenced: std::collections::HashSet<String> = raw
+        .data
+        .and_then(|data| data.relationships)
+        .and_then(|relationships| relationships.credits)
+        .map(|credits| credits.data.into_iter().map(|entry| entry.id).collect())
+        .unwrap_or_default();
+    let mut order: Vec<String> = Vec::new();
+    let mut roles: std::collections::HashMap<String, Vec<CreditContributor>> =
+        std::collections::HashMap::new();
+    let mut seen: std::collections::HashSet<(String, String, Option<u64>)> =
+        std::collections::HashSet::new();
+    for resource in raw.included {
+        if resource.resource_type != "credits" || !referenced.contains(&resource.id) {
+            continue;
+        }
+        let Some(attributes) = resource.attributes else { continue };
+        if attributes.name.trim().is_empty() || attributes.role.trim().is_empty() {
+            continue;
+        }
+        let artist_id = resource
+            .relationships
+            .and_then(|relationships| relationships.artist)
+            .and_then(|artist| artist.data)
+            .and_then(|data| data.id.parse::<u64>().ok());
+        if !seen.insert((attributes.role.clone(), attributes.name.clone(), artist_id)) {
+            continue;
+        }
+        if !roles.contains_key(&attributes.role) {
+            order.push(attributes.role.clone());
+        }
+        roles.entry(attributes.role).or_default().push(CreditContributor {
+            name: attributes.name,
+            artist_id,
+        });
+    }
+    TrackCredits {
+        roles: order
+            .into_iter()
+            .map(|role| CreditRole {
+                contributors: roles.remove(&role).unwrap_or_default(),
+                role,
+            })
+            .collect(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenApiTrackCredits {
+    #[serde(default)]
+    data: Option<OpenApiTrackCreditsData>,
+    #[serde(default)]
+    included: Vec<OpenApiCreditResource>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenApiTrackCreditsData {
+    #[serde(default)]
+    relationships: Option<OpenApiTrackCreditsRelationships>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenApiTrackCreditsRelationships {
+    #[serde(default)]
+    credits: Option<OpenApiCreditRefs>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenApiCreditRefs {
+    #[serde(default)]
+    data: Vec<OpenApiCreditRef>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenApiCreditRef {
+    #[serde(default)]
+    id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenApiCreditResource {
+    #[serde(default, rename = "type")]
+    resource_type: String,
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    attributes: Option<OpenApiCreditAttributes>,
+    #[serde(default)]
+    relationships: Option<OpenApiCreditRelationships>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenApiCreditAttributes {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    role: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenApiCreditRelationships {
+    #[serde(default)]
+    artist: Option<OpenApiCreditArtist>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenApiCreditArtist {
+    #[serde(default)]
+    data: Option<OpenApiCreditArtistData>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenApiCreditArtistData {
+    #[serde(default)]
+    id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -744,5 +878,120 @@ mod tests {
             client(&server).artist_profile(9).await.unwrap_err(),
             Error::NotFound(_)
         ));
+    }
+
+    #[test]
+    fn credits_group_by_role_in_first_seen_order() {
+        let raw: OpenApiTrackCredits = serde_json::from_value(serde_json::json!({
+            "data": {
+                "relationships": { "credits": { "data": [
+                    { "id": "c1", "type": "credits" },
+                    { "id": "c2", "type": "credits" },
+                    { "id": "c3", "type": "credits" }
+                ] } }
+            },
+            "included": [
+                { "id": "c1", "type": "credits",
+                  "attributes": { "name": "John Lennon", "role": "Vocals" },
+                  "relationships": { "artist": { "data": { "id": "13", "type": "artists" } } } },
+                { "id": "c2", "type": "credits",
+                  "attributes": { "name": "Paul McCartney", "role": "Vocals" } },
+                { "id": "c3", "type": "credits",
+                  "attributes": { "name": "George Martin", "role": "Producer" } }
+            ]
+        }))
+        .unwrap();
+        let credits = credits_from_document(raw);
+        assert_eq!(credits.roles.len(), 2);
+        assert_eq!(credits.roles[0].role, "Vocals");
+        assert_eq!(credits.roles[0].contributors.len(), 2);
+        assert_eq!(credits.roles[0].contributors[0].artist_id, Some(13));
+        assert_eq!(credits.roles[0].contributors[1].artist_id, None);
+        assert_eq!(credits.roles[1].role, "Producer");
+    }
+
+    #[test]
+    fn credits_ignore_unreferenced_or_non_credit_included() {
+        let raw: OpenApiTrackCredits = serde_json::from_value(serde_json::json!({
+            "data": { "relationships": { "credits": { "data": [{ "id": "c1", "type": "credits" }] } } },
+            "included": [
+                { "id": "c9", "type": "credits", "attributes": { "name": "Ghost", "role": "Vocals" } },
+                { "id": "a1", "type": "artists", "attributes": { "name": "Artist" } }
+            ]
+        }))
+        .unwrap();
+        assert!(credits_from_document(raw).roles.is_empty());
+    }
+
+    #[test]
+    fn credits_drop_blank_and_duplicate_rows() {
+        let raw: OpenApiTrackCredits = serde_json::from_value(serde_json::json!({
+            "data": { "relationships": { "credits": { "data": [
+                { "id": "c1" }, { "id": "c2" }, { "id": "c3" }, { "id": "c4" }
+            ] } } },
+            "included": [
+                { "id": "c1", "type": "credits", "attributes": { "name": "A", "role": "Vocals" } },
+                { "id": "c2", "type": "credits", "attributes": { "name": "A", "role": "Vocals" } },
+                { "id": "c3", "type": "credits", "attributes": { "name": "", "role": "Vocals" } },
+                { "id": "c4", "type": "credits", "attributes": { "name": "B" } }
+            ]
+        }))
+        .unwrap();
+        let credits = credits_from_document(raw);
+        assert_eq!(credits.roles.len(), 1);
+        assert_eq!(credits.roles[0].contributors.len(), 1);
+    }
+
+    #[test]
+    fn credits_without_a_relationship_are_empty() {
+        let raw: OpenApiTrackCredits =
+            serde_json::from_value(serde_json::json!({ "data": { "id": "1" } })).unwrap();
+        assert!(credits_from_document(raw).roles.is_empty());
+    }
+
+    #[tokio::test]
+    async fn track_credits_reads_the_include_and_maps_roles() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/openapi/v2/tracks/1"))
+            .and(query_param("countryCode", "GR"))
+            .and(query_param("include", "credits.artist"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": {
+                    "id": "1",
+                    "type": "tracks",
+                    "relationships": { "credits": { "data": [
+                        { "id": "c1", "type": "credits" },
+                        { "id": "c2", "type": "credits" }
+                    ] } }
+                },
+                "included": [
+                    { "id": "c1", "type": "credits",
+                      "attributes": { "name": "John Lennon", "role": "Vocals" },
+                      "relationships": { "artist": { "data": { "id": "13", "type": "artists" } } } },
+                    { "id": "c2", "type": "credits",
+                      "attributes": { "name": "George Martin", "role": "Producer" } }
+                ]
+            })))
+            .mount(&server)
+            .await;
+        let credits = client(&server).track_credits(1).await.unwrap();
+        assert_eq!(credits.roles.len(), 2);
+        assert_eq!(credits.roles[0].contributors[0].name, "John Lennon");
+        assert_eq!(credits.roles[0].contributors[0].artist_id, Some(13));
+        assert_eq!(credits.roles[1].contributors[0].artist_id, None);
+    }
+
+    #[tokio::test]
+    async fn track_credits_without_a_credits_relationship_is_empty() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/openapi/v2/tracks/1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": { "id": "1", "type": "tracks", "attributes": { "title": "X" } }
+            })))
+            .mount(&server)
+            .await;
+        assert!(client(&server).track_credits(1).await.unwrap().roles.is_empty());
     }
 }

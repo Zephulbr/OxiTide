@@ -323,6 +323,8 @@ fn main() {
             commands::get_album,
             commands::get_album_tracks,
             commands::get_album_info,
+            commands::get_track,
+            commands::get_track_credits,
             commands::get_playlist,
             commands::get_playlist_tracks,
             commands::get_artist,

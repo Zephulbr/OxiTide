@@ -27,6 +27,9 @@ export interface AlbumInfo {
   numberOfVolumes?: number | null;
   numberOfItems?: number | null;
 }
+export interface CreditContributor { name: string; artistId?: number | null }
+export interface CreditRole { role: string; contributors: CreditContributor[] }
+export interface TrackCredits { roles: CreditRole[] }
 export interface Artist { id: number; name: string; picture?: string | null; mixes?: ArtistMixes | null }
 export interface ArtistMixes {
   ARTIST_MIX?: string | null;
@@ -324,6 +327,8 @@ export const api = {
   getAlbum: (id: number) => invoke<Album>("get_album", { id }),
   getAlbumTracks: (id: number) => invoke<Track[]>("get_album_tracks", { id }),
   getAlbumInfo: (id: number) => invoke<AlbumInfo>("get_album_info", { id }),
+  getTrack: (id: number) => invoke<Track>("get_track", { id }),
+  getTrackCredits: (id: number) => invoke<TrackCredits>("get_track_credits", { id }),
   getPlaylist: (id: string) => invoke<Playlist>("get_playlist", { id }),
   getPlaylistTracks: (id: string) => invoke<Track[]>("get_playlist_tracks", { id }),
   getArtist: (id: number) => invoke<Artist>("get_artist", { id }),

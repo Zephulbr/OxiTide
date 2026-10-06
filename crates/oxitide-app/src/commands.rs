@@ -494,6 +494,7 @@ use oxitide_tidal::feed::FeedActivity;
 use oxitide_tidal::folders::{CollectionEntry, CollectionFolder};
 use oxitide_tidal::models::{
     Album, AlbumInfo, Artist, ArtistDiscography, ArtistProfile, Mix, Playlist, SearchResults, Track,
+    TrackCredits,
 };
 use oxitide_tidal::pages::{MixDetail, PageItem, PageSection};
 
@@ -767,6 +768,25 @@ pub async fn get_album_tracks(state: State<'_, AppState>, id: u64) -> Result<Vec
 pub async fn get_album_info(state: State<'_, AppState>, id: u64) -> Result<AlbumInfo, String> {
     require_client(&state)?
         .album_info(id)
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
+pub async fn get_track(state: State<'_, AppState>, id: u64) -> Result<Track, String> {
+    require_client(&state)?
+        .track(id)
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
+#[tauri::command]
+pub async fn get_track_credits(
+    state: State<'_, AppState>,
+    id: u64,
+) -> Result<TrackCredits, String> {
+    require_client(&state)?
+        .track_credits(id)
         .await
         .map_err(|e| state.fail_tidal(e))
 }

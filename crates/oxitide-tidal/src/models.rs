@@ -86,6 +86,31 @@ pub struct AlbumInfo {
     pub number_of_items: Option<u32>,
 }
 
+/// Track credits from the public v2 `credits` relationship (spec §5.3).
+/// An empty `roles` list is a settled "no credits exposed" result.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrackCredits {
+    #[serde(default)]
+    pub roles: Vec<CreditRole>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreditRole {
+    pub role: String,
+    #[serde(default)]
+    pub contributors: Vec<CreditContributor>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreditContributor {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artist_id: Option<u64>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Artist {
     pub id: u64,
