@@ -258,6 +258,10 @@ fn main() {
                 scrobbler.set_auth_error_sink(std::sync::Arc::new(move |service| {
                     let _ = tauri::Emitter::emit(&handle, "scrobble://auth-error", service);
                 }));
+                let handle = app.handle().clone();
+                scrobbler.set_scrobbled_sink(std::sync::Arc::new(move |track_id| {
+                    let _ = tauri::Emitter::emit(&handle, "scrobble://scrobbled", track_id);
+                }));
                 scrobbler.start();
             }
             if let Some(window) = app.get_webview_window("main") {

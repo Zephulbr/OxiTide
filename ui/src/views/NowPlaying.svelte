@@ -12,6 +12,7 @@
   import { formatDuration } from "../lib/format";
   import { lyrics } from "../lib/lyrics.svelte";
   import { formatQuality, type QualityDisplay } from "../lib/quality";
+  import { scrobbled } from "../lib/scrobbled.svelte";
   import type { Nav } from "../lib/nav.svelte";
   import type { Player } from "../lib/player.svelte";
   import { tiltFromPointer } from "../lib/tilt";
@@ -181,6 +182,11 @@
   $effect(() => {
     void lyrics.open(track);
   });
+
+  // The badge only describes the current play; a track change clears it.
+  $effect(() => {
+    if (track?.track_id !== scrobbled.trackId) scrobbled.clear();
+  });
 </script>
 
 {#snippet details(t: QueueItem)}
@@ -191,6 +197,7 @@
     {#if quality}<span class="badge" class:max={quality === "MAX"}>{quality}</span>{/if}
     {#if player.state.bit_perfect}<span class="badge">Bit-perfect</span>{/if}
     {#if qualityDetail}<span class="badge muted">{qualityDetail}</span>{/if}
+    {#if scrobbled.trackId === t.track_id}<span class="badge">Scrobbled</span>{/if}
   </div>
 {/snippet}
 

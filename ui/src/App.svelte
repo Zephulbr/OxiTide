@@ -53,8 +53,9 @@
   import { clearPagerCache } from "./lib/pager.svelte";
   import { clearPlaylistCovers } from "./lib/playlistArt.svelte";
   import { playSource } from "./lib/playSource.svelte";
+  import { scrobbled } from "./lib/scrobbled.svelte";
   import { trackFlags } from "./lib/trackFlags.svelte";
-  import { api, SCROBBLE_AUTH_ERROR_EVENT, trackToQueueItem, type QueueItem, type RepeatMode, type StreamMeta } from "./lib/api";
+  import { api, SCROBBLE_AUTH_ERROR_EVENT, SCROBBLE_SCROBBLED_EVENT, trackToQueueItem, type QueueItem, type RepeatMode, type StreamMeta } from "./lib/api";
   import type { QualityDisplay } from "./lib/quality";
 
   interface ExpiredSession {
@@ -177,6 +178,15 @@
     const unlisten = listen<string>(SCROBBLE_AUTH_ERROR_EVENT, (event) => {
       const name = event.payload === "lastfm" ? "Last.fm" : "ListenBrainz";
       toasts.show(`${name} scrobbling needs reconnecting.`, { severity: "error" });
+    });
+    return () => {
+      unlisten.then((off) => off());
+    };
+  });
+
+  $effect(() => {
+    const unlisten = listen<number>(SCROBBLE_SCROBBLED_EVENT, (event) => {
+      scrobbled.mark(event.payload);
     });
     return () => {
       unlisten.then((off) => off());

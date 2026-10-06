@@ -29,6 +29,7 @@ pub const LISTENBRAINZ_SERVICE: &str = "listenbrainz";
 
 pub type StatusSink = Arc<dyn Fn(ScrobbleStatusDto) + Send + Sync>;
 pub type AuthErrorSink = Arc<dyn Fn(String) + Send + Sync>;
+pub type ScrobbledSink = Arc<dyn Fn(u64) + Send + Sync>;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ScrobbleServiceStatus {
@@ -117,6 +118,7 @@ pub struct ScrobblerService {
     inner: Mutex<Inner>,
     on_status: Mutex<Option<StatusSink>>,
     on_auth_error: Mutex<Option<AuthErrorSink>>,
+    on_scrobbled: Mutex<Option<ScrobbledSink>>,
 }
 
 impl ScrobblerService {
@@ -154,6 +156,7 @@ impl ScrobblerService {
             }),
             on_status: Mutex::new(None),
             on_auth_error: Mutex::new(None),
+            on_scrobbled: Mutex::new(None),
         })
     }
 
@@ -163,6 +166,18 @@ impl ScrobblerService {
 
     pub fn set_auth_error_sink(&self, sink: AuthErrorSink) {
         *self.on_auth_error.lock().unwrap() = Some(sink);
+    }
+
+    pub fn set_scrobbled_sink(&self, sink: ScrobbledSink) {
+        *self.on_scrobbled.lock().unwrap() = Some(sink);
+    }
+
+    /// One service accepted a scrobble for this play; the UI shows the badge
+    /// while the track is still current.
+    fn emit_scrobbled(&self, track_id: u64) {
+        if let Some(sink) = self.on_scrobbled.lock().unwrap().as_ref() {
+            sink(track_id);
+        }
     }
 
     fn emit_status(&self) {
@@ -413,6 +428,9 @@ impl ScrobblerService {
                     inner.lastfm_error = None;
                 }
                 self.emit_status();
+                for entry in &batch {
+                    self.emit_scrobbled(entry.item.track_id);
+                }
             }
             Err(LastFmError::Retryable) => {
                 self.lastfm_retryable("last.fm is temporarily unavailable", None)
@@ -468,11 +486,14 @@ impl ScrobblerService {
                 .await
             {
                 Ok(()) => {
-                    let mut inner = self.inner.lock().unwrap();
-                    inner.listenbrainz_queue.remove_front(1);
-                    inner.listenbrainz_backoff.reset();
-                    inner.listenbrainz_error = None;
-                    sent += 1;
+                    {
+                        let mut inner = self.inner.lock().unwrap();
+                        inner.listenbrainz_queue.remove_front(1);
+                        inner.listenbrainz_backoff.reset();
+                        inner.listenbrainz_error = None;
+                        sent += 1;
+                    }
+                    self.emit_scrobbled(entry.item.track_id);
                 }
                 Err(ListenBrainzError::Retryable) => {
                     self.listenbrainz_retryable(
@@ -788,6 +809,47 @@ mod tests {
             .await;
         service.flush_queues().await;
         assert_eq!(service.status().lastfm.queued, 0);
+    }
+
+    #[tokio::test]
+    async fn a_successful_flush_reports_scrobbled_track_ids() {
+        use wiremock::matchers::{method as http_method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(http_method("POST"))
+            .and(path("/"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({ "scrobbles": {} })),
+            )
+            .mount(&server)
+            .await;
+
+        let store = Arc::new(MemoryCredentialStore::default());
+        store
+            .save(LASTFM_SERVICE, &StoredCredential { username: "v".into(), secret: "sk".into() })
+            .unwrap();
+        let service = ScrobblerService::new(
+            reqwest::Client::new(),
+            server.uri(),
+            "http://127.0.0.1:1",
+            store,
+            "key".into(),
+            "secret".into(),
+            true,
+            false,
+        );
+        let reported: Arc<std::sync::Mutex<Vec<u64>>> =
+            Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = reported.clone();
+        service.set_scrobbled_sink(Arc::new(move |track_id| {
+            sink.lock().unwrap().push(track_id);
+        }));
+        service
+            .handle_intent(ScrobbleIntent::Scrobble { item: queue_item(), started_at: 1 })
+            .await;
+        service.flush_queues().await;
+        assert_eq!(*reported.lock().unwrap(), vec![7]);
     }
 
     #[tokio::test]

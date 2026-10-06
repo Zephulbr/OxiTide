@@ -269,6 +269,7 @@ export const AUTH_SUCCESS_EVENT = "auth://success";
 export const AUTH_ERROR_EVENT = "auth://error";
 export const SCROBBLE_STATUS_EVENT = "scrobble://status";
 export const SCROBBLE_AUTH_ERROR_EVENT = "scrobble://auth-error";
+export const SCROBBLE_SCROBBLED_EVENT = "scrobble://scrobbled";
 
 export function trackToQueueItem(t: Track): QueueItem {
   return {
