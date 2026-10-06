@@ -853,6 +853,91 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_successful_listenbrainz_flush_reports_scrobbled_track_ids() {
+        use wiremock::matchers::{method as http_method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(http_method("POST"))
+            .and(path("/submit-listens"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+
+        let store = Arc::new(MemoryCredentialStore::default());
+        store
+            .save(
+                LISTENBRAINZ_SERVICE,
+                &StoredCredential { username: "v".into(), secret: "tok".into() },
+            )
+            .unwrap();
+        let service = ScrobblerService::new(
+            reqwest::Client::new(),
+            "http://127.0.0.1:1",
+            server.uri(),
+            store,
+            "key".into(),
+            "secret".into(),
+            false,
+            true,
+        );
+        let reported: Arc<std::sync::Mutex<Vec<u64>>> =
+            Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = reported.clone();
+        service.set_scrobbled_sink(Arc::new(move |track_id| {
+            sink.lock().unwrap().push(track_id);
+        }));
+        service
+            .handle_intent(ScrobbleIntent::Scrobble { item: queue_item(), started_at: 1 })
+            .await;
+        service.flush_queues().await;
+        assert_eq!(*reported.lock().unwrap(), vec![7]);
+    }
+
+    #[tokio::test]
+    async fn a_failed_listenbrainz_flush_reports_nothing() {
+        use wiremock::matchers::{method as http_method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(http_method("POST"))
+            .and(path("/submit-listens"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+
+        let store = Arc::new(MemoryCredentialStore::default());
+        store
+            .save(
+                LISTENBRAINZ_SERVICE,
+                &StoredCredential { username: "v".into(), secret: "tok".into() },
+            )
+            .unwrap();
+        let service = ScrobblerService::new(
+            reqwest::Client::new(),
+            "http://127.0.0.1:1",
+            server.uri(),
+            store,
+            "key".into(),
+            "secret".into(),
+            false,
+            true,
+        );
+        let reported: Arc<std::sync::Mutex<Vec<u64>>> =
+            Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = reported.clone();
+        service.set_scrobbled_sink(Arc::new(move |track_id| {
+            sink.lock().unwrap().push(track_id);
+        }));
+        service
+            .handle_intent(ScrobbleIntent::Scrobble { item: queue_item(), started_at: 1 })
+            .await;
+        service.flush_queues().await;
+        assert!(reported.lock().unwrap().is_empty(), "a failed flush must not emit");
+        assert_eq!(service.status().listenbrainz.queued, 1, "500 must stay queued");
+    }
+
+    #[tokio::test]
     async fn an_invalid_session_marks_needs_reconnect_and_notifies_once() {
         use std::sync::atomic::{AtomicUsize, Ordering};
         use wiremock::matchers::{method as http_method, path};

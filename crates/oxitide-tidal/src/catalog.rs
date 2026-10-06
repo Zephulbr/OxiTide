@@ -200,8 +200,8 @@ pub fn clean_bio(raw: &str) -> Option<String> {
 
 /// Split a raw bio into in-text runs: plain text plus
 /// `[wimpLink artistId="N"]` links. Fragments are cleaned like `clean_bio`
-/// but text is preserved verbatim (inline spacing and `\n` line breaks
-/// included), so concatenating the run texts reproduces the stripped bio.
+/// but the runs are preserved verbatim (inline spacing and `\n` line breaks
+/// included); `clean_bio` instead normalizes those runs into paragraphs.
 pub fn bio_segments(raw: &str) -> Vec<BioSegment> {
     let mut segments: Vec<BioSegment> = Vec::new();
     let mut rest = raw;

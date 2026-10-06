@@ -124,7 +124,7 @@
           <div class="actions">{@render actions()}</div>
         {/if}
       </div>
-      {#if bioSegments.length > 0}
+      {#if bioSegments.some((segment) => segment.text.trim() !== "")}
         <p class="bio" bind:this={bioEl}><BioText segments={bioSegments} onArtist={onOpenArtist} /></p>
         {#if canExpand}
           <button class="more" aria-haspopup="dialog" onclick={() => (bioModal = true)}>

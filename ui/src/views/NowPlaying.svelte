@@ -182,11 +182,6 @@
   $effect(() => {
     void lyrics.open(track);
   });
-
-  // The badge only describes the current play; a track change clears it.
-  $effect(() => {
-    if (track?.track_id !== scrobbled.trackId) scrobbled.clear();
-  });
 </script>
 
 {#snippet details(t: QueueItem)}

@@ -134,4 +134,30 @@ describe("hotkey capture", () => {
     expect(capture.recording).toBeNull();
     expect(capture.active).toBe(false);
   });
+
+  it("retries a failed release on a later cancel", async () => {
+    const calls: string[] = [];
+    const report = vi.fn();
+    let releases = 0;
+    const capture = createHotkeyCapture({
+      setCapture: vi.fn(async (active: boolean) => {
+        calls.push(`capture:${active}`);
+        if (!active) {
+          releases += 1;
+          if (releases === 1) throw new Error("plugin down");
+        }
+      }),
+      save: vi.fn(),
+      report,
+    });
+    await capture.start("play_pause");
+    capture.cancel();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(report).toHaveBeenCalled();
+    expect(calls).toEqual(["capture:true", "capture:false"]);
+
+    capture.cancel();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(calls).toEqual(["capture:true", "capture:false", "capture:false"]);
+  });
 });

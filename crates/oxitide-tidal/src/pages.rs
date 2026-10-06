@@ -869,6 +869,7 @@ mod tests {
         assert_eq!(item.audio_quality.as_deref(), Some("HIRES_LOSSLESS"));
         assert_eq!(item.album_title.as_deref(), Some("Record"));
         assert_eq!(item.artists, vec!["Band".to_string(), "Guest".to_string()]);
+        assert_eq!(item.artwork.as_deref(), Some("c-1"));
     }
 
     #[tokio::test]

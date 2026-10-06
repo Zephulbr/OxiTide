@@ -39,10 +39,12 @@ export function createHotkeyCapture(options: HotkeyCaptureOptions): HotkeyCaptur
 
   async function disengage() {
     if (!engaged) return;
-    engaged = false;
     try {
       await options.setCapture(false);
+      engaged = false;
     } catch (error) {
+      // Keep `engaged` set so a later cancel retries the release instead of
+      // leaving the backend capturing keys forever.
       options.report(error);
     }
   }
@@ -70,7 +72,7 @@ export function createHotkeyCapture(options: HotkeyCaptureOptions): HotkeyCaptur
   }
 
   function cancel() {
-    if (recording === null && !active) return;
+    if (recording === null && !active && !engaged) return;
     recording = null;
     active = false;
     generation += 1;

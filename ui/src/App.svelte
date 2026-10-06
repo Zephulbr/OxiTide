@@ -193,6 +193,13 @@
     };
   });
 
+  // The badge only describes the current play; a track change clears it even
+  // while the Now Playing overlay is closed.
+  $effect(() => {
+    const current = player.state.current?.track_id ?? null;
+    if (current !== scrobbled.trackId) scrobbled.clear();
+  });
+
   $effect(() => {
     if (loggedIn && !playerReady) {
       playerReady = true;

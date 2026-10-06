@@ -92,7 +92,10 @@
       const effective = uncapped && treatment === "carousel" ? "tiles" : treatment;
       const cap = effective === "list" ? LIST_CAP : TILE_CAP;
       const shown = uncapped ? section.items : section.items.slice(0, cap);
-      tracks.push(...feedTracks(shown));
+      // Carousels render every item, so flags must cover every item; the list
+      // treatment renders the capped `shown`.
+      const rendered = effective === "carousel" ? section.items : shown;
+      tracks.push(...feedTracks(rendered));
     }
     return tracks;
   });

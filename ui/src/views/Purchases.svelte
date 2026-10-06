@@ -39,9 +39,10 @@
 {:else}
   <div class="purchases">
     {#each items as item (item.id || item.title)}
+      {@const display = item.subtitle ? item : { ...item, subtitle: item.item_type }}
       {@const route = routeForPageItem(item)}
       <MediaCard
-        item={item}
+        item={display}
         variant="row"
         onclick={route ? () => nav.goto(route) : undefined}
       />
