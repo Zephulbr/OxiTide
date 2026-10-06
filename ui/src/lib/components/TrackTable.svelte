@@ -1,6 +1,10 @@
 <script lang="ts">
   import type { Track } from "../api";
-  import type { VolumeSection } from "../albumVolumes";
+  import {
+    volumeDisplayRows,
+    type VolumeSection,
+    type VolumeDisplayRow,
+  } from "../albumVolumes";
   import { api, trackToQueueItem } from "../api";
   import { copyText } from "../clipboard";
   import { formatDuration } from "../format";
@@ -90,18 +94,20 @@
   );
   const slice = $derived(grouping ? rows : rows.slice(range.first, range.last));
 
-  interface DisplayRow {
-    key: string;
-    /// Non-null marks a volume heading row.
-    label: string | null;
-    track?: Track;
-    index?: number;
-    number?: number;
-  }
+  /// Grouped rows resolve their index through identity against `rows`
+  /// (source order), which can differ from display order when a payload
+  /// interleaves volumes.
+  const rowSourceIndex = $derived.by(() => {
+    const index = new Map<Track, number>();
+    rows.forEach((track, i) => {
+      if (!index.has(track)) index.set(track, i);
+    });
+    return index;
+  });
 
   /// Flat rows when ungrouped; heading rows interleaved with disc-scoped
   /// numbers when grouped.
-  const displayRows = $derived.by<DisplayRow[]>(() => {
+  const displayRows = $derived.by<VolumeDisplayRow[]>(() => {
     if (!grouping) {
       return rows.slice(range.first, range.last).map((track, i) => ({
         key: `${track.id}-${range.first + i}`,
@@ -111,16 +117,7 @@
         number: range.first + i + 1,
       }));
     }
-    const out: DisplayRow[] = [];
-    let index = 0;
-    for (const section of grouping) {
-      out.push({ key: `section-${section.label}`, label: section.label });
-      section.tracks.forEach((track, i) => {
-        out.push({ key: `${track.id}-${index}`, label: null, track, index, number: i + 1 });
-        index += 1;
-      });
-    }
-    return out;
+    return volumeDisplayRows(grouping, rowSourceIndex);
   });
   const columns = $derived(showAlbum ? 8 : 7);
 
