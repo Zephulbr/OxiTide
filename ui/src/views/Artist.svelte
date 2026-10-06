@@ -9,6 +9,7 @@
   } from "../lib/api";
   import { albumCard, artistCard } from "../lib/artistPage";
   import { copyText } from "../lib/clipboard";
+  import { errorMessage } from "../lib/errors";
   import ArtistHero from "../lib/components/ArtistHero.svelte";
   import Carousel from "../lib/components/Carousel.svelte";
   import DetailAction from "../lib/components/DetailAction.svelte";
@@ -18,6 +19,7 @@
   import MediaCard from "../lib/components/MediaCard.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
   import { menu } from "../lib/menu.svelte";
+  import { artistMoreItems } from "../lib/menus";
   import { playSource } from "../lib/playSource.svelte";
   import { trackFlags } from "../lib/trackFlags.svelte";
   import { playArtistRadio } from "../lib/radio";
@@ -56,12 +58,69 @@
   let error = $state("");
   let loadToken = 0;
 
+  type SectionKey = "tracks" | "albums" | "eps" | "comps" | "similar";
+  let sectionErrors = $state<Partial<Record<SectionKey, string>>>({});
+
+  function setSectionError(key: SectionKey, error: unknown) {
+    sectionErrors = { ...sectionErrors, [key]: errorMessage(error) };
+  }
+
+  function clearSectionError(key: SectionKey) {
+    if (sectionErrors[key] === undefined) return;
+    const next = { ...sectionErrors };
+    delete next[key];
+    sectionErrors = next;
+  }
+
+  function loadSection<T>(key: SectionKey, run: () => Promise<T>, assign: (value: T) => void) {
+    const token = loadToken;
+    run()
+      .then((value) => {
+        if (token !== loadToken) return;
+        clearSectionError(key);
+        assign(value);
+      })
+      .catch((error) => {
+        if (token !== loadToken) return;
+        setSectionError(key, error);
+      });
+  }
+
+  function retrySection(key: SectionKey) {
+    switch (key) {
+      case "tracks":
+        loadSection("tracks", () => api.getArtistTopTracks(id, 20), (list) => (topTracks = list));
+        break;
+      case "albums":
+        loadSection("albums", () => api.getArtistAlbums(id, "albums", 50, 0), (list) => (albums = list));
+        break;
+      case "eps":
+        loadSection(
+          "eps",
+          () => api.getArtistAlbums(id, "eps_and_singles", 50, 0),
+          (list) => (eps = list),
+        );
+        break;
+      case "comps":
+        loadSection(
+          "comps",
+          () => api.getArtistAlbums(id, "compilations", 50, 0),
+          (list) => (comps = list),
+        );
+        break;
+      case "similar":
+        loadSection("similar", () => api.getSimilarArtists(id), (list) => (similar = list));
+        break;
+    }
+  }
+
   const view = createTrackView(() => topTracks);
 
   async function load() {
     const token = ++loadToken;
     loading = true;
     error = "";
+    sectionErrors = {};
     topTracks = [];
     albums = [];
     eps = [];
@@ -84,30 +143,11 @@
     loading = false;
     // Sections load independently: one slow or failed shelf never blocks
     // the hero or its neighbours, and stale responses are dropped.
-    void api.getArtistTopTracks(id, 20)
-      .then((tracks) => {
-        if (token === loadToken) topTracks = tracks;
-      })
-      .catch(() => {});
-    for (const [filter, target] of [
-      ["albums", "albums"],
-      ["eps_and_singles", "eps"],
-      ["compilations", "comps"],
-    ] as const) {
-      void api.getArtistAlbums(id, filter, 50, 0)
-        .then((list) => {
-          if (token !== loadToken) return;
-          if (target === "albums") albums = list;
-          else if (target === "eps") eps = list;
-          else comps = list;
-        })
-        .catch(() => {});
-    }
-    void api.getSimilarArtists(id)
-      .then((list) => {
-        if (token === loadToken) similar = list;
-      })
-      .catch(() => {});
+    loadSection("tracks", () => api.getArtistTopTracks(id, 20), (list) => (topTracks = list));
+    loadSection("albums", () => api.getArtistAlbums(id, "albums", 50, 0), (list) => (albums = list));
+    loadSection("eps", () => api.getArtistAlbums(id, "eps_and_singles", 50, 0), (list) => (eps = list));
+    loadSection("comps", () => api.getArtistAlbums(id, "compilations", 50, 0), (list) => (comps = list));
+    loadSection("similar", () => api.getSimilarArtists(id), (list) => (similar = list));
   }
 
   async function queueTop(startIndex: number, shuffle = false) {
@@ -137,9 +177,15 @@
   }
 
   function openMenu(event: MouseEvent) {
-    menu.show(event.clientX, event.clientY, [
-      { id: "share", label: "Share", run: () => void share() },
-    ]);
+    menu.show(
+      event.clientX,
+      event.clientY,
+      artistMoreItems({
+        share: () => void share(),
+        mixId: artist?.mixes?.ARTIST_MIX ?? null,
+        openMix: (mixId) => nav.goto({ name: "mix", id: mixId }),
+      }),
+    );
   }
 
   async function openLink(url: string) {
@@ -204,6 +250,11 @@
         onAddToPlaylist={(track) => playlistActions.openPicker([track])}
       />
     </section>
+  {:else if sectionErrors.tracks}
+    <section class="shelf">
+      <div class="shelf-head"><h3>Top tracks</h3></div>
+      <ErrorState message={sectionErrors.tracks} onRetry={() => retrySection("tracks")} />
+    </section>
   {/if}
 
   {#if albums.length > 0}
@@ -222,6 +273,11 @@
           />
         {/each}
       </Carousel>
+    </section>
+  {:else if sectionErrors.albums}
+    <section class="shelf">
+      <div class="shelf-head"><h3>Albums</h3></div>
+      <ErrorState message={sectionErrors.albums} onRetry={() => retrySection("albums")} />
     </section>
   {/if}
 
@@ -242,6 +298,11 @@
         {/each}
       </Carousel>
     </section>
+  {:else if sectionErrors.eps}
+    <section class="shelf">
+      <div class="shelf-head"><h3>Singles & EPs</h3></div>
+      <ErrorState message={sectionErrors.eps} onRetry={() => retrySection("eps")} />
+    </section>
   {/if}
 
   {#if comps.length > 0}
@@ -261,6 +322,11 @@
         {/each}
       </Carousel>
     </section>
+  {:else if sectionErrors.comps}
+    <section class="shelf">
+      <div class="shelf-head"><h3>Appears on</h3></div>
+      <ErrorState message={sectionErrors.comps} onRetry={() => retrySection("comps")} />
+    </section>
   {/if}
 
   {#if similar.length > 0}
@@ -274,6 +340,11 @@
           />
         {/each}
       </Carousel>
+    </section>
+  {:else if sectionErrors.similar}
+    <section class="shelf">
+      <div class="shelf-head"><h3>Similar artists</h3></div>
+      <ErrorState message={sectionErrors.similar} onRetry={() => retrySection("similar")} />
     </section>
   {/if}
 {:else}

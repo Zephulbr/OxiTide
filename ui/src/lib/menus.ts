@@ -91,6 +91,21 @@ export function queueMenuItems(ctx: {
   ];
 }
 
+/// The artist-page overflow ("More") menu: Share always, the artist mix when
+/// the parsed v1 payload exposes one (spec §6.3).
+export function artistMoreItems(ctx: {
+  share(): void;
+  mixId?: string | null;
+  openMix(id: string): void;
+}): MenuItem[] {
+  const items: MenuItem[] = [{ id: "share", label: "Share", run: () => ctx.share() }];
+  if (ctx.mixId) {
+    const mixId = ctx.mixId;
+    items.push({ id: "artist-mix", label: "Artist mix", run: () => ctx.openMix(mixId) });
+  }
+  return items;
+}
+
 export function libraryPlaylistMenuItems(ctx: {
   playlist: Playlist;
   editable: boolean;

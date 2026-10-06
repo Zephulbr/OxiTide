@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Playlist, Track } from "./api";
 import type { Favorites } from "./favorites.svelte";
 import {
+  artistMoreItems,
   libraryPlaylistMenuItems,
   queueMenuItems,
   trackMenuItems,
@@ -240,5 +241,18 @@ describe("libraryPlaylistMenuItems", () => {
     expect(open).toHaveBeenCalledTimes(1);
     expect(rename).not.toHaveBeenCalled();
     expect(remove).not.toHaveBeenCalled();
+  });
+});
+
+describe("artistMoreItems", () => {
+  it("artistMoreItems adds the mix action only when a mix exists", () => {
+    const openMix = vi.fn();
+    const without = artistMoreItems({ share: vi.fn(), mixId: null, openMix });
+    expect(without.map((item) => item.id)).toEqual(["share"]);
+
+    const withMix = artistMoreItems({ share: vi.fn(), mixId: "m-1", openMix });
+    expect(withMix.map((item) => item.id)).toEqual(["share", "artist-mix"]);
+    withMix[1].run();
+    expect(openMix).toHaveBeenCalledWith("m-1");
   });
 });
