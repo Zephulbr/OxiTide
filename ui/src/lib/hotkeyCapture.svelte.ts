@@ -60,6 +60,7 @@ export function createHotkeyCapture(options: HotkeyCaptureOptions): HotkeyCaptur
           recording = null;
           active = false;
         }
+        await disengage();
         options.report(error);
         return;
       }
@@ -85,7 +86,7 @@ export function createHotkeyCapture(options: HotkeyCaptureOptions): HotkeyCaptur
     active = false;
     generation += 1;
     await enqueue(disengage);
-    await options.save(action, accelerator, replace);
+    await enqueue(() => options.save(action, accelerator, replace));
   }
 
   return {

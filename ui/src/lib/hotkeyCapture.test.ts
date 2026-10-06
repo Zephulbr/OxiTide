@@ -86,4 +86,52 @@ describe("hotkey capture", () => {
     expect(report).toHaveBeenCalled();
     expect(capture.recording).toBeNull();
   });
+
+  it("keeps a superseding start behind an in-flight save", async () => {
+    const calls: string[] = [];
+    let releaseSave: () => void = () => {};
+    const capture = createHotkeyCapture({
+      setCapture: vi.fn(async (active: boolean) => {
+        calls.push(`capture:${active}`);
+      }),
+      save: vi.fn(() => {
+        calls.push("save");
+        return new Promise<void>((resolve) => (releaseSave = resolve));
+      }),
+      report: vi.fn(),
+    });
+    await capture.start("next");
+    const finishing = capture.finish("next", "Ctrl+Alt+KeyN");
+    for (let i = 0; i < 5 && calls.length < 3; i += 1) {
+      await Promise.resolve(); // save reached the backend and is pending
+    }
+    const restarting = capture.start("prev");
+    await Promise.resolve();
+    expect(calls).toEqual(["capture:true", "capture:false", "save"]);
+    releaseSave();
+    await finishing;
+    await restarting;
+    expect(calls).toEqual(["capture:true", "capture:false", "save", "capture:true"]);
+  });
+
+  it("disengages when a re-engage fails after a prior engagement", async () => {
+    const calls: string[] = [];
+    let engage = 0;
+    const capture = createHotkeyCapture({
+      setCapture: vi.fn(async (active: boolean) => {
+        calls.push(`capture:${active}`);
+        if (active) {
+          engage += 1;
+          if (engage === 2) throw new Error("plugin down");
+        }
+      }),
+      save: vi.fn(),
+      report: vi.fn(),
+    });
+    await capture.start("next");
+    await capture.start("prev");
+    expect(calls).toEqual(["capture:true", "capture:true", "capture:false"]);
+    expect(capture.recording).toBeNull();
+    expect(capture.active).toBe(false);
+  });
 });

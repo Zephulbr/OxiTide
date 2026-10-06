@@ -72,7 +72,7 @@
   >(null);
   const capture = createHotkeyCapture({
     setCapture: (active) => api.setHotkeyCapture(active),
-    save: (action, accelerator, replace) => api.setHotkey(action, accelerator, replace),
+    save: saveHotkey,
     report: apply,
   });
 
@@ -214,6 +214,12 @@
   // Recording only makes sense on the System tab; leaving it cancels capture.
   $effect(() => {
     if (tab !== "system") capture.cancel();
+  });
+
+  // Navigating away unmounts Settings while capture may still be engaged;
+  // cancel is idempotent and restores global delivery.
+  $effect(() => {
+    return () => capture.cancel();
   });
 
   const queryLocalFonts = (
