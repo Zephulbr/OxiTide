@@ -5,17 +5,20 @@
   import Loading from "../lib/components/Loading.svelte";
   import PageSections from "../lib/components/PageSections.svelte";
   import type { Nav } from "../lib/nav.svelte";
+  import type { Player } from "../lib/player.svelte";
   import type { Toasts } from "../lib/toasts.svelte";
 
   let {
     source,
     title,
     nav,
+    player,
     toasts,
   }: {
     source: "home" | "explore" | "forYou";
     title: string;
     nav: Nav;
+    player: Player;
     toasts: Toasts;
   } = $props();
 
@@ -55,7 +58,7 @@
   <EmptyState message="Section no longer available." />
 {:else}
   <p class="muted count">{section.items.length} items</p>
-  <PageSections sections={[section]} {nav} {toasts} {source} uncapped showTitle={false} />
+  <PageSections sections={[section]} {nav} {player} {toasts} {source} uncapped showTitle={false} />
 {/if}
 
 <style>

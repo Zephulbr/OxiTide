@@ -7,9 +7,10 @@
   import MediaCard from "../lib/components/MediaCard.svelte";
   import PageSections from "../lib/components/PageSections.svelte";
   import type { Nav } from "../lib/nav.svelte";
+  import type { Player } from "../lib/player.svelte";
   import type { Toasts } from "../lib/toasts.svelte";
 
-  let { nav, toasts }: { nav: Nav; toasts: Toasts } = $props();
+  let { nav, player, toasts }: { nav: Nav; player: Player; toasts: Toasts } = $props();
 
   let sections = $state<PageSection[]>([]);
   let shortcuts = $state<ShortcutEntry[]>([]);
@@ -66,7 +67,7 @@
 {:else if sections.length === 0}
   <EmptyState message="Nothing to show yet." />
 {:else}
-  <PageSections {sections} {nav} {toasts} source="home" />
+  <PageSections {sections} {nav} {player} {toasts} source="home" />
 {/if}
 
 <style>

@@ -1,9 +1,11 @@
 <script lang="ts">
   import { api, type PageItem, type PageSection } from "../api";
   import { errorMessage } from "../errors";
-  import { classifySection, isPlayableTrack, playableTrackIds } from "../media";
+  import { classifySection, isPlayableTrack, pageTrackInput } from "../media";
   import { routeForPageItem, type Nav } from "../nav.svelte";
   import { playSource } from "../playSource.svelte";
+  import type { Player } from "../player.svelte";
+  import { trackFlags } from "../trackFlags.svelte";
   import type { Toasts } from "../toasts.svelte";
   import Carousel from "./Carousel.svelte";
   import Icon from "./Icon.svelte";
@@ -14,6 +16,7 @@
     nav,
     toasts,
     source,
+    player = null,
     uncapped = false,
     showTitle = true,
   }: {
@@ -21,6 +24,7 @@
     nav: Nav;
     toasts: Toasts;
     source: "home" | "explore" | "forYou";
+    player?: Player | null;
     uncapped?: boolean;
     showTitle?: boolean;
   } = $props();
@@ -30,9 +34,27 @@
 
   let busy = $state(false);
 
-  function play(ids: number[]) {
+  const playingId = $derived(player?.state.current?.track_id ?? null);
+
+  function asTrackLike(item: PageItem) {
+    return { id: Number(item.id), explicit: item.explicit ?? undefined };
+  }
+
+  function isPlaying(item: PageItem): boolean {
+    return isPlayableTrack(item) && Number(item.id) === playingId;
+  }
+
+  function isBlocked(item: PageItem): boolean {
+    return isPlayableTrack(item) && trackFlags.blockReasons(asTrackLike(item)).length > 0;
+  }
+
+  function feedTracks(items: PageItem[]): PageItem[] {
+    return items.filter(isPlayableTrack);
+  }
+
+  function play(items: PageItem[], start: number) {
     playSource.set(null);
-    return api.playTrackIds(ids, 0);
+    return api.playPageItems(items.map(pageTrackInput), start);
   }
 
   function activate(item: PageItem): (() => void) | undefined {
@@ -40,7 +62,7 @@
     if (route) return () => nav.goto(route);
     if (isPlayableTrack(item)) {
       return () => {
-        void play([Number(item.id)]).catch((e) =>
+        void play([item], 0).catch((e) =>
           toasts.show(errorMessage(e), { severity: "error" }),
         );
       };
@@ -48,17 +70,37 @@
     return undefined;
   }
 
-  async function playAll(ids: number[]) {
+  async function playAll(items: PageItem[]) {
     if (busy) return;
     busy = true;
     try {
-      await play(ids);
+      await play(items, 0);
     } catch (e) {
       toasts.show(errorMessage(e), { severity: "error" });
     } finally {
       busy = false;
     }
   }
+
+  /// Visible track items across every rendered section; the flags store
+  /// batches them (≤20/request, fail-open) and is a no-op when the filters and
+  /// labels are off.
+  const visibleTracks = $derived.by(() => {
+    const tracks: PageItem[] = [];
+    for (const section of sections) {
+      const treatment = classifySection(section.kind, section.items);
+      const effective = uncapped && treatment === "carousel" ? "tiles" : treatment;
+      const cap = effective === "list" ? LIST_CAP : TILE_CAP;
+      const shown = uncapped ? section.items : section.items.slice(0, cap);
+      tracks.push(...feedTracks(shown));
+    }
+    return tracks;
+  });
+
+  $effect(() => {
+    trackFlags.recordTracks(visibleTracks.map(asTrackLike));
+    void trackFlags.ensure(visibleTracks.map((item) => Number(item.id)));
+  });
 </script>
 
 {#each sections as section, si (`${section.title}-${si}`)}
@@ -66,25 +108,31 @@
   {@const effective = uncapped && treatment === "carousel" ? "tiles" : treatment}
   {@const cap = effective === "list" ? LIST_CAP : TILE_CAP}
   {@const shown = uncapped ? section.items : section.items.slice(0, cap)}
-  {@const ids = effective === "list" ? playableTrackIds(section.items) : []}
+  {@const tracks = effective === "list" ? feedTracks(section.items) : []}
   {@const capped = !uncapped && section.items.length > cap}
   {#if effective === "carousel"}
     <Carousel title={section.title}>
       {#each section.items as item, i (item.id || `${item.title}-${i}`)}
         {@const onclick = activate(item)}
-        <MediaCard {item} variant="carousel" {onclick} />
+        <MediaCard
+          {item}
+          variant="carousel"
+          {onclick}
+          playing={isPlaying(item)}
+          blocked={isBlocked(item)}
+        />
       {/each}
     </Carousel>
   {:else}
-    {#if showTitle || ids.length > 0 || capped}
+    {#if showTitle || tracks.length > 0 || capped}
       <div class="head">
         {#if showTitle}<h3>{section.title}</h3>{/if}
         <div class="controls">
-          {#if ids.length > 0}
+          {#if tracks.length > 0}
             <button
               type="button"
               class="control"
-              onclick={() => playAll(ids)}
+              onclick={() => playAll(tracks)}
               disabled={busy}
               aria-label="Play all"
               title="Play all"
@@ -103,7 +151,13 @@
     <div class="grid" class:list={effective === "list"}>
       {#each shown as item, i (item.id || `${item.title}-${i}`)}
         {@const onclick = activate(item)}
-        <MediaCard {item} variant={effective === "list" ? "row" : "tile"} {onclick} />
+        <MediaCard
+          {item}
+          variant={effective === "list" ? "row" : "tile"}
+          {onclick}
+          playing={isPlaying(item)}
+          blocked={isBlocked(item)}
+        />
       {/each}
     </div>
   {/if}

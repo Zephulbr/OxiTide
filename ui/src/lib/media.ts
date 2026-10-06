@@ -1,4 +1,4 @@
-import type { Mix, PageItem, Playlist } from "./api";
+import type { Mix, PageItem, PageTrackInput, Playlist } from "./api";
 
 export type CardShape = "artist" | "album" | "playlist" | "mix" | "plain";
 export type SectionTreatment = "tiles" | "carousel" | "list";
@@ -51,6 +51,20 @@ export function isPlayableTrack(item: PageItem): boolean {
 /// Numeric track ids in section order, skipping everything else.
 export function playableTrackIds(items: PageItem[]): number[] {
   return items.filter(isPlayableTrack).map((item) => Number(item.id));
+}
+
+/// Playable page item → the payload for `playPageItems`. Per-field nulls mark
+/// metadata the payload did not carry; the backend resolves those ids.
+export function pageTrackInput(item: PageItem): PageTrackInput {
+  return {
+    id: Number(item.id),
+    title: item.title || null,
+    artists: item.artists && item.artists.length > 0 ? item.artists : null,
+    album: item.album_title ?? null,
+    duration: item.duration ?? null,
+    cover: item.artwork ?? null,
+    explicit: item.explicit ?? null,
+  };
 }
 
 export interface ShortcutEntry {

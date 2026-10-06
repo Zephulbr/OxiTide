@@ -543,18 +543,18 @@
       {#key pageKey}
         <div class="page">
           {#if nav.nowPlayingOpen}<NowPlaying {player} {nav} {qualityDisplay} />
-          {:else if nav.route.name === "home"}<Home {nav} {toasts} />
+          {:else if nav.route.name === "home"}<Home {nav} {player} {toasts} />
           {:else if nav.route.name === "explore"}<Explore {nav} {player} {favorites} {playlistActions} {toasts} />
           {:else if nav.route.name === "feed"}<Feed {nav} />
           {:else if nav.route.name === "history"}<History {nav} {player} {toasts} tab={nav.route.tab} />
           {:else if nav.route.name === "albums"}<CollectionAlbums {nav} />
           {:else if nav.route.name === "tracks"}<CollectionTracks {player} {favorites} {playlistActions} {toasts} />
           {:else if nav.route.name === "profiles"}<Profiles {nav} />
-          {:else if nav.route.name === "mixes"}<Mixes {nav} {toasts} />
+          {:else if nav.route.name === "mixes"}<Mixes {nav} {player} {toasts} />
           {:else if nav.route.name === "purchases"}<Purchases {nav} />
           {:else if nav.route.name === "playlists"}<Playlists {nav} {playlistActions} actions={collectionActions} />
           {:else if nav.route.name === "folder"}<Playlists {nav} {playlistActions} actions={collectionActions} folderId={nav.route.id} folderLabel={nav.route.label ?? ""} />
-          {:else if nav.route.name === "section"}<Section source={nav.route.source} title={nav.route.title} {nav} {toasts} />
+          {:else if nav.route.name === "section"}<Section source={nav.route.source} title={nav.route.title} {nav} {player} {toasts} />
           {:else if nav.route.name === "album"}<Album id={nav.route.id} {player} {favorites} {playlistActions} {toasts} />
           {:else if nav.route.name === "mix"}<Mix id={nav.route.id} {player} {favorites} {playlistActions} {toasts} />
           {:else if nav.route.name === "playlist"}<Playlist {nav} id={nav.route.id} {player} {favorites} {playlistActions} {toasts} {collection} />

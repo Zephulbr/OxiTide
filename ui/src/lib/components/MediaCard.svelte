@@ -11,12 +11,20 @@
     thumb = 48,
     onclick,
     collage = false,
+    playing = false,
+    blocked = false,
   }: {
     item: PageItem;
     variant: "tile" | "carousel" | "row";
     thumb?: number;
     onclick?: () => void;
     collage?: boolean;
+    /// Review Focus 3: highlight matches by numeric id and never highlights a
+    /// non-track card.
+    playing?: boolean;
+    /// Review Focus 2: gray-out is presentation only; the store fails open and
+    /// the Rust backstop decides playback.
+    blocked?: boolean;
   } = $props();
 
   const shape = $derived(shapeForItemType(item.item_type));
@@ -56,11 +64,13 @@
   <button
     type="button"
     class="media {variant} shape-{shape}"
+    class:playing
+    class:blocked
     onclick={onclick}
     aria-label={playable ? `Play ${item.title}` : undefined}
   >{@render body()}</button>
 {:else}
-  <div class="media {variant} shape-{shape} inert">{@render body()}</div>
+  <div class="media {variant} shape-{shape} inert" class:playing class:blocked>{@render body()}</div>
 {/if}
 
 <style>
@@ -95,6 +105,23 @@
   }
   .media.inert {
     opacity: 0.9;
+  }
+  .media.playing {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+  }
+  .media.playing .title {
+    color: var(--accent);
+  }
+  .media.blocked .title,
+  .media.blocked .sub {
+    opacity: 0.45;
+  }
+  .media.blocked .title {
+    text-decoration: line-through;
+    text-decoration-color: var(--line);
+  }
+  .media.blocked .art-clip :global(img) {
+    opacity: 0.55;
   }
   .art {
     position: relative;

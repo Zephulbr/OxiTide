@@ -3,6 +3,7 @@ import type { Mix, PageItem, Playlist } from "./api";
 import {
   classifySection,
   isPlayableTrack,
+  pageTrackInput,
   playableTrackIds,
   shapeForItemType,
   shortcutEntries,
@@ -84,6 +85,31 @@ describe("track playback predicates", () => {
         item("TRACK_LIST", "x"),
       ]),
     ).toEqual([3, 1]);
+  });
+});
+
+describe("pageTrackInput", () => {
+  it("maps complete enriched items for instant play", () => {
+    const input = pageTrackInput({
+      id: "5", title: "Song", subtitle: "Band", item_type: "TRACK",
+      artwork: "c-1", duration: 213, explicit: true, audio_quality: "LOSSLESS",
+      album_title: "Record", artists: ["Band", "Guest"],
+    });
+    expect(input).toEqual({
+      id: 5, title: "Song", artists: ["Band", "Guest"], album: "Record",
+      duration: 213, cover: "c-1", explicit: true,
+    });
+  });
+
+  it("sends null for missing metadata so the backend resolves it", () => {
+    const input = pageTrackInput({
+      id: "5", title: "Bare", subtitle: null, item_type: "TRACK", artwork: null,
+    });
+    expect(input.artists).toBeNull();
+    expect(input.album).toBeNull();
+    expect(input.duration).toBeNull();
+    expect(input.cover).toBeNull();
+    expect(input.explicit).toBeNull();
   });
 });
 

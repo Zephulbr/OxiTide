@@ -52,7 +52,15 @@ export interface Playlist {
   numberOfFollowers?: number | null;
   owned: boolean;
 }
-export interface PageItem { id: string; title: string; subtitle?: string | null; item_type: string; artwork?: string | null }
+export interface PageItem {
+  id: string; title: string; subtitle?: string | null; item_type: string; artwork?: string | null;
+  /// Embedded track metadata when the feed payload carries it (Track 9.3).
+  artists?: string[] | null;
+  duration?: number | null;
+  explicit?: boolean | null;
+  audio_quality?: string | null;
+  album_title?: string | null;
+}
 export interface PageSection { title: string; items: PageItem[]; kind: string }
 /// One release activity from an artist the user follows (v2 feed).
 export interface FeedActivity {

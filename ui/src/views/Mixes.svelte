@@ -6,9 +6,10 @@
   import MediaCard from "../lib/components/MediaCard.svelte";
   import PageSections from "../lib/components/PageSections.svelte";
   import type { Nav } from "../lib/nav.svelte";
+  import type { Player } from "../lib/player.svelte";
   import type { Toasts } from "../lib/toasts.svelte";
 
-  let { nav, toasts }: { nav: Nav; toasts: Toasts } = $props();
+  let { nav, player, toasts }: { nav: Nav; player: Player; toasts: Toasts } = $props();
 
   let forYou = $state<PageSection[]>([]);
   let mixes = $state<Mix[]>([]);
@@ -45,7 +46,7 @@
   <EmptyState message="No mixes yet." />
 {:else}
   {#if forYou.length > 0}
-    <PageSections sections={forYou} {nav} {toasts} source="forYou" />
+    <PageSections sections={forYou} {nav} {player} {toasts} source="forYou" />
   {/if}
   {#if mixes.length > 0}
     <h3>Favorite mixes</h3>
