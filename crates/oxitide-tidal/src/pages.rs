@@ -16,6 +16,18 @@ pub struct PageItem {
     /// Artwork uuid, resolved best-effort from the type-varying raw fields.
     #[serde(default)]
     pub artwork: Option<String>,
+    /// Track metadata when the page payload carries it (spec §5.4); absent
+    /// fields make playback fall back to a per-item resolve.
+    #[serde(default)]
+    pub artists: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub explicit: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio_quality: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub album_title: Option<String>,
 }
 
 fn default_kind() -> String {
@@ -99,6 +111,12 @@ struct RawItem {
     pub album: Option<RawAlbum>,
     #[serde(default)]
     pub artists: Vec<RawArtist>,
+    #[serde(default)]
+    pub duration: Option<u32>,
+    #[serde(default)]
+    pub explicit: Option<bool>,
+    #[serde(default, rename = "audioQuality")]
+    pub audio_quality: Option<String>,
     /// `MIXED_TYPES_LIST` entries wrap the payload as `{type, item}`.
     #[serde(default)]
     pub item: Option<Box<RawItem>>,
@@ -130,6 +148,8 @@ struct RawImageUrl {
 struct RawAlbum {
     #[serde(default)]
     pub cover: Option<String>,
+    #[serde(default)]
+    pub title: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -247,19 +267,20 @@ fn page_item_from_raw(module_type: &str, mut raw: RawItem) -> PageItem {
     } else {
         raw.item_type
     };
+    let artists: Vec<String> = raw
+        .artists
+        .iter()
+        .map(|artist| artist.name.clone())
+        .filter(|name| !name.is_empty())
+        .collect();
     let subtitle = raw.subtitle.or(raw.description).or_else(|| {
         if item_type.to_uppercase().contains("TRACK") {
-            let names: Vec<String> = raw
-                .artists
-                .iter()
-                .map(|a| a.name.clone())
-                .filter(|name| !name.is_empty())
-                .collect();
-            (!names.is_empty()).then(|| names.join(", "))
+            (!artists.is_empty()).then(|| artists.join(", "))
         } else {
             None
         }
     });
+    let album_title = raw.album.as_ref().and_then(|album| album.title.clone());
     PageItem {
         id,
         title: raw.title,
@@ -270,13 +291,18 @@ fn page_item_from_raw(module_type: &str, mut raw: RawItem) -> PageItem {
             .or(raw.square_image)
             .or(raw.image)
             .or(raw.picture)
-            .or_else(|| raw.album.and_then(|album| album.cover))
+            .or_else(|| raw.album.as_ref().and_then(|album| album.cover.clone()))
             .or(raw.image_id)
             .or_else(|| {
                 raw.images
                     .and_then(|images| images.medium.or(images.large).or(images.small))
                     .and_then(|image| image.url)
             }),
+        artists,
+        duration: raw.duration,
+        explicit: raw.explicit,
+        audio_quality: raw.audio_quality,
+        album_title,
     }
 }
 
@@ -314,6 +340,11 @@ pub fn page_item_from_value(value: &serde_json::Value) -> Option<PageItem> {
         subtitle: None,
         item_type,
         artwork,
+        artists: Vec::new(),
+        duration: None,
+        explicit: None,
+        audio_quality: None,
+        album_title: None,
     })
 }
 
@@ -814,5 +845,50 @@ mod tests {
         assert_eq!(playlists.items[0].item_type, "PLAYLIST");
         assert_eq!(playlists.items[0].artwork.as_deref(), Some("img-1"));
         assert_eq!(playlists.items[1].item_type, "PLAYLIST");
+    }
+
+    #[tokio::test]
+    async fn home_track_items_carry_embedded_metadata() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/pages/home"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "rows": [{"modules": [{"type": "TRACK_LIST", "title": "New", "pagedList": {"items": [
+                    {"id": 5, "title": "Song", "duration": 213, "explicit": true,
+                     "audioQuality": "HIRES_LOSSLESS",
+                     "artists": [{"id": 1, "name": "Band"}, {"id": 2, "name": "Guest"}],
+                     "album": {"id": 9, "title": "Record", "cover": "c-1"}}
+                ]}}]}]
+            })))
+            .mount(&server)
+            .await;
+        let sections = client(&server).home_page().await.unwrap();
+        let item = &sections[0].items[0];
+        assert_eq!(item.duration, Some(213));
+        assert_eq!(item.explicit, Some(true));
+        assert_eq!(item.audio_quality.as_deref(), Some("HIRES_LOSSLESS"));
+        assert_eq!(item.album_title.as_deref(), Some("Record"));
+        assert_eq!(item.artists, vec!["Band".to_string(), "Guest".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn home_track_items_without_metadata_keep_defaults() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/pages/home"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "rows": [{"modules": [{"type": "TRACK_LIST", "title": "New", "items": [
+                    {"id": 5, "title": "Bare"}
+                ]}]}]
+            })))
+            .mount(&server)
+            .await;
+        let sections = client(&server).home_page().await.unwrap();
+        let item = &sections[0].items[0];
+        assert_eq!(item.duration, None);
+        assert_eq!(item.explicit, None);
+        assert_eq!(item.audio_quality, None);
+        assert_eq!(item.album_title, None);
+        assert!(item.artists.is_empty());
     }
 }
