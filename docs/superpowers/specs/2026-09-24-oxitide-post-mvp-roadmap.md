@@ -13,7 +13,7 @@
 - **Revised:** 2026-10-02 — Track 3 closed: S10 owner smoke and the official-client sanity note complete.
 - **Revised:** 2026-10-04 — Track 8 (Plans 8.1–8.5) implemented and WSL2-verified; closed by owner exemption for the deferred bare-metal checks (`plans/notes/2026-10-04-track8-completion.md`).
 - **Revised:** 2026-10-05 — Track 10 (QoL) implemented, merged to `main` at `446e054` (follow-up fixes through `70d0bc9`), and closed with owner smoke passed; 10.4 scrobble love deferred (`plans/notes/2026-10-05-track10-completion.md`).
-- **Revised:** 2026-10-07 — Track 7 called by the owner with the **DSP core** scope (ReplayGain, 10-band EQ, crossfade); spec `2026-10-07-oxitide-track7-advanced-audio-design.md`, Plans 7.1–7.2 implemented on `track7-dsp`, owner smoke pending. Casting/TIDAL Connect, Atmos, 360 RA, ASIO, listen-along, and automix stay parked. Track 9.4 (a11y) resumes after Track 7.
+- **Revised:** 2026-10-07 — Track 7 called by the owner with the **DSP core** scope (ReplayGain, 10-band EQ, crossfade); spec `2026-10-07-oxitide-track7-advanced-audio-design.md`, Plans 7.1–7.2 implemented on `track7-dsp`; owner smoke passed and Track 7 (DSP core) closed the same day. Casting/TIDAL Connect, Atmos, 360 RA, ASIO, listen-along, and automix stay parked. Track 9.4 (a11y) resumes after Track 7.
 - **Owner:** V
 - **Parent:** `2026-09-21-oxitide-design.md` (§9 Phasing)
 - **Supersedes:** the parent's Phase 2–4 ordering. The shipped Phase 1 MVP (v0.2.0) is
@@ -47,7 +47,7 @@ refreshed 2026-10-01.
 | 5 | Track 9 | UI completion: Hi-Fi Rack mode, light mode, artist/credits/album-info surfaces, a11y pass, i18n, remaining UI polish and bug fixes | Proposed — next after Track 3 (owner call) |
 | 6 | Track 8 | Linux support: ALSA output backend, MPRIS media controls, Secret Service keyring, deb/AppImage/AUR packaging | Done (2026-10-04) — WSL2-verified; bare-metal checks exempted (`plans/notes/2026-10-04-track8-completion.md`) |
 | 7 | Track 10 | Daily-driver QoL: session/queue persistence, playback history + stats, sleep timer, scrobble love (deferred 2026-10-05), AI/explicit content blocking; Phase 2 tray + global hotkeys | Done (2026-10-05) — merged at `446e054` with follow-up fixes through `70d0bc9`; owner smoke passed; 10.4 deferred |
-| 8 | Track 7 | Advanced audio: DSP/EQ + ReplayGain (opt-in, mutually exclusive with bit-perfect); crossfade/automix; casting/TIDAL Connect; Dolby Atmos; 360 RA (difficulty-gated); optional ASIO output (maybe, see `plans/notes/2026-10-01-asio-spike.md`); **potential post-casting group listen-along** (see `plans/notes/2026-10-02-listen-along-assessment.md`) | DSP core implemented 2026-10-07 (ReplayGain, EQ, crossfade; owner smoke pending — `plans/notes/2026-10-07-track7-completion.md`); casting/Atmos/360 RA/ASIO/listen-along/automix parked |
+| 8 | Track 7 | Advanced audio: DSP/EQ + ReplayGain (opt-in, mutually exclusive with bit-perfect); crossfade/automix; casting/TIDAL Connect; Dolby Atmos; 360 RA (difficulty-gated); optional ASIO output (maybe, see `plans/notes/2026-10-01-asio-spike.md`); **potential post-casting group listen-along** (see `plans/notes/2026-10-02-listen-along-assessment.md`) | DSP core done 2026-10-07 (ReplayGain, EQ, crossfade; owner smoke passed — `plans/notes/2026-10-07-track7-completion.md`); casting/Atmos/360 RA/ASIO/listen-along/automix parked |
 
 Track 2b is closed; its remainder (Hi-Fi Rack, light mode, leftover polish) is Track 9,
 which carries a normal completion gate.

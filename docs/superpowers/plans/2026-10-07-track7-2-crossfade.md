@@ -29,4 +29,4 @@ Same as Plan 7.1. Crossfade off must leave the gapless path byte-for-byte unchan
 ### Task 4: UI + verification
 
 - [ ] Settings "Crossfade" controls (duration slider 0–12 s, skip same album).
-- [ ] Gates; `plans/notes/2026-10-07-track7-2-crossfade-smoke.md`; completion note; roadmap/AGENTS.md updates.
+- [ ] Gates; `plans/notes/DONE-2026-10-07-track7-2-crossfade-smoke.md`; completion note; roadmap/AGENTS.md updates.

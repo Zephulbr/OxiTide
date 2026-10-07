@@ -44,4 +44,4 @@
 
 ### Task 6: Verification + smoke checklist
 
-- [ ] All four gates; write `plans/notes/2026-10-07-track7-1-dsp-smoke.md`.
+- [ ] All four gates; write `plans/notes/DONE-2026-10-07-track7-1-dsp-smoke.md`.

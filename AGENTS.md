@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Unofficial TIDAL desktop client (Tauri 2 + Rust + Svelte 5). Windows-first, personal use; Linux support (Track 8) shipped 2026-10-04 (WSL2-verified; bare-metal checks exempted — `docs/superpowers/plans/notes/2026-10-04-track8-completion.md`). Track 10 (daily-driver QoL: session restore, sleep timer, history/stats, content blocking, tray/hotkeys) shipped 2026-10-05 (owner smoke passed — `docs/superpowers/plans/notes/2026-10-05-track10-completion.md`); scrobble love (10.4) deferred. Track 7 DSP core (ReplayGain, EQ, crossfade) implemented 2026-10-07, owner smoke pending (`docs/superpowers/plans/notes/2026-10-07-track7-completion.md`). No CI — all checks are manual.
+Unofficial TIDAL desktop client (Tauri 2 + Rust + Svelte 5). Windows-first, personal use; Linux support (Track 8) shipped 2026-10-04 (WSL2-verified; bare-metal checks exempted — `docs/superpowers/plans/notes/2026-10-04-track8-completion.md`). Track 10 (daily-driver QoL: session restore, sleep timer, history/stats, content blocking, tray/hotkeys) shipped 2026-10-05 (owner smoke passed — `docs/superpowers/plans/notes/2026-10-05-track10-completion.md`); scrobble love (10.4) deferred. Track 7 DSP core (ReplayGain, EQ, crossfade) shipped 2026-10-07, owner smoke passed (`docs/superpowers/plans/notes/2026-10-07-track7-completion.md`). No CI — all checks are manual.
 
 ## Commands
 

@@ -1,6 +1,6 @@
 # OxiTide — Track 7 Advanced Audio (DSP core)
 
-- **Status:** Approved scope (owner, 2026-10-07); implementation via Plans 7.1–7.2
+- **Status:** Done — Plans 7.1–7.2 implemented and owner smoke passed (2026-10-07)
 - **Date:** 2026-10-07
 - **Owner:** V
 - **Parents:** `2026-09-24-oxitide-post-mvp-roadmap.md` (Track 7; PM-D1, PM-D6);
@@ -147,8 +147,8 @@ FIFO with the session.
   not crossfade.
 - **wiremock:** `playbackinfo` parses the four ReplayGain fields and tolerates their absence.
 - **UI vitest:** presets, auto preamp, clamping, settings patch helpers.
-- **Smoke (human):** `plans/notes/2026-10-07-track7-1-dsp-smoke.md`,
-  `plans/notes/2026-10-07-track7-2-crossfade-smoke.md`.
+- **Smoke (human):** `plans/notes/DONE-2026-10-07-track7-1-dsp-smoke.md`,
+  `plans/notes/DONE-2026-10-07-track7-2-crossfade-smoke.md`.
 
 ## 8. Performance (PM-D1)
 

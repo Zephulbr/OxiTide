@@ -1,7 +1,7 @@
 # Track 7 completion note (2026-10-07)
 
-- **Status:** Implemented 2026-10-07 on branch `track7-dsp`; scripted gates green; **owner smoke
-  pending** (7.1 and 7.2 checklists below). Track 7 closes when both smokes pass.
+- **Status:** Closed 2026-10-07 — owner smoke passed (7.1 DSP and 7.2 crossfade checklists);
+  scripted gates green on Windows and WSL2
 - **Owner:** V
 - **Scope:** DSP core (T7-D1) — Plans 7.1 (DSP pipeline, ReplayGain, EQ) and 7.2 (crossfade).
   Casting/TIDAL Connect, Dolby Atmos, 360 RA, ASIO, listen-along, and automix stay parked.
@@ -41,12 +41,18 @@
   history crossfade completion; UI `dsp.test.ts` and the sleep-timer lead.
 - The crossfade engine tests ran 6× back to back without a flake.
 
-## Pending (human)
+## Owner smoke (2026-10-07)
 
-- `plans/notes/2026-10-07-track7-1-dsp-smoke.md` (10 rows, including the S3/S4 regression rows).
-- `plans/notes/2026-10-07-track7-2-crossfade-smoke.md` (9 rows).
-- Exclusive-mode DSP on a real DAC (rows 7.1-7 and 7.2-5); bare-metal Linux stays under the
-  Track 8 exemption.
+- `plans/notes/DONE-2026-10-07-track7-1-dsp-smoke.md` — passed (including the S3/S4 regression
+  rows).
+- `plans/notes/DONE-2026-10-07-track7-2-crossfade-smoke.md` — passed.
+- Bare-metal Linux stays under the Track 8 exemption.
+
+## Deferred
+
+- **Automix** (beat/tempo-aligned, Apple AutoMix-style) remains research only (T7-D7); the
+  equal-power crossfade is the committed transition. Revisit with its own spike → spec cycle.
+- Casting/TIDAL Connect, Dolby Atmos, 360 RA, ASIO, and listen-along keep their parked status.
 
 ## Known limitations (spec §9)
 
