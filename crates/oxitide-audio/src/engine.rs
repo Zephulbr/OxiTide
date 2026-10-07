@@ -1,11 +1,12 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
-use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender};
+use std::collections::VecDeque;
+use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender, TryRecvError};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use crate::cache::{CacheKey, DiskCache};
 use crate::decode::{PcmBuffer, PcmFormat, PcmSink, StreamInfo};
-use crate::dsp::{DspSettings, TrackDsp};
+use crate::dsp::{CrossfadeSettings, DspSettings, Tail, TrackDsp, STAGE_CROSSFADE};
 use crate::error::{Error, Result};
 use crate::fetch::{self, Fetcher, StreamBuffer};
 use crate::output::{AudioOutput, AudioOutputSpec, ExclusiveFallback, OutputMode, OutputStatus};
@@ -56,6 +57,9 @@ pub struct PlaybackState {
     pub dsp_active: bool,
     /// The stages altering samples, for display (e.g. `["ReplayGain", "EQ"]`).
     pub dsp_stages: Vec<&'static str>,
+    /// Configured crossfade length (0 = off): a crossfading track hands over
+    /// this long before its end.
+    pub crossfade_ms: u32,
     pub queue: Vec<QueueItem>,
     pub stream: Option<StreamMeta>,
 }
@@ -209,6 +213,7 @@ fn build_state(inner: &Inner) -> PlaybackState {
         bit_perfect_notice: status.notice,
         dsp_active: !dsp_stages.is_empty(),
         dsp_stages,
+        crossfade_ms: inner.dsp.lock().unwrap().crossfade.duration_ms,
         queue: q.items().to_vec(),
         stream: inner.stream_meta.lock().unwrap().clone(),
     }
@@ -1164,9 +1169,34 @@ fn emit_position_if_due(inner: &Arc<Inner>, frames: u64, rate: u32, last: &mut I
     emit(inner, EngineEvent::Position { position_ms, duration_ms });
 }
 
-/// Record which DSP stages alter the current track's samples.
-fn publish_dsp_stages(inner: &Inner, dsp: &TrackDsp) {
-    *inner.dsp_stages.lock().unwrap() = dsp.active_stages();
+/// Record which DSP stages alter the current track's samples; `crossfading`
+/// while the previous track's tail is being mixed in.
+fn publish_dsp_stages(inner: &Inner, dsp: &TrackDsp, crossfading: bool) {
+    let mut stages = dsp.active_stages();
+    if crossfading {
+        stages.push(STAGE_CROSSFADE);
+    }
+    *inner.dsp_stages.lock().unwrap() = stages;
+}
+
+/// How many frames of `current` to hold back for a crossfade into `next`; 0
+/// when crossfade is off, nothing follows, or both share an album and albums
+/// stay gapless.
+fn crossfade_frames(
+    settings: &CrossfadeSettings,
+    current: &QueueItem,
+    next: Option<&QueueItem>,
+    rate: u32,
+) -> u64 {
+    let Some(next) = next else {
+        return 0;
+    };
+    if settings.duration_ms == 0
+        || (settings.skip_same_album && !current.album.is_empty() && current.album == next.album)
+    {
+        return 0;
+    }
+    settings.duration_ms as u64 * rate as u64 / 1000
 }
 
 /// A pending seek: the track it belongs to, the target, and whether it may
@@ -1226,6 +1256,8 @@ fn run_session(
     // Unplayable tracks passed over since the last track that started; bounds
     // the skip chain so repeat-all/repeat-one cannot loop forever.
     let mut skipped: usize = 0;
+    // The previous track's held-back end, waiting to cross into this one.
+    let mut pending_tail: Option<Tail> = None;
     let mut frames: u64;
     let mut last_emit;
     loop {
@@ -1284,10 +1316,35 @@ fn run_session(
         skipped = 0;
         let StreamStart { info, start_frames, mut meta, replay_gain } = start;
         fire_perf(inner, AudioPerfEvent::InfoReady { track_id: stream.item.track_id });
+        let want = AudioOutputSpec {
+            device_id: inner.device_id.lock().unwrap().clone(),
+            info,
+            mode,
+            exclusive_fallback: fallback,
+        };
+        // The previous track's held-back end overlaps this one only when the
+        // output stays as it is; across a reopen it fades out on its own.
+        let mut incoming: Option<Tail> = None;
+        if let Some(mut tail) = pending_tail.take() {
+            if open_spec.as_ref() == Some(&want) {
+                incoming = Some(tail);
+            } else if open_spec.is_some() {
+                if let Err(e) = output.write(&tail.fade_out_remaining()) {
+                    return SessionOutcome::OutputError {
+                        message: e.to_string(),
+                        track_id: stream.item.track_id,
+                    };
+                }
+            }
+        }
         let mut dsp_version = inner.dsp_version.load(Ordering::SeqCst);
+        let mut crossfade = {
+            let settings = inner.dsp.lock().unwrap();
+            settings.crossfade.clone()
+        };
         let mut dsp = TrackDsp::new(&info, replay_gain, &inner.dsp.lock().unwrap());
         meta.replay_gain_db = dsp.replay_gain_db();
-        publish_dsp_stages(inner, &dsp);
+        publish_dsp_stages(inner, &dsp, incoming.is_some());
         *inner.stream_meta.lock().unwrap() = Some(meta);
         emit(inner, EngineEvent::State(build_state(inner)));
         // The stream's absolute starting frame (non-zero only for a seek).
@@ -1299,12 +1356,6 @@ fn run_session(
                 .position_ms
                 .store(frames.saturating_mul(1000) / info.sample_rate as u64, Ordering::SeqCst);
         }
-        let want = AudioOutputSpec {
-            device_id: inner.device_id.lock().unwrap().clone(),
-            info,
-            mode,
-            exclusive_fallback: fallback,
-        };
         if open_spec.as_ref() != Some(&want) {
             if open_spec.is_some() {
                 let _ = output.stop();
@@ -1342,6 +1393,13 @@ fn run_session(
         let track_id = stream.item.track_id;
         first_write_of_track = true;
         let mut last_volume = f32::from_bits(inner.volume.load(Ordering::SeqCst));
+        // Decoded audio read ahead of the output. Empty unless a crossfade is
+        // armed, when it holds the crossfade length so that, once the producer
+        // ends, it is exactly the track's tail.
+        let mut fifo: VecDeque<PcmBuffer> = VecDeque::new();
+        let mut fifo_frames: u64 = 0;
+        let mut ended = false;
+        let mut hand_off = false;
         loop {
             if inner.generation.load(Ordering::SeqCst) != gen {
                 return SessionOutcome::Superseded;
@@ -1349,11 +1407,15 @@ fn run_session(
             let version = inner.dsp_version.load(Ordering::SeqCst);
             if version != dsp_version {
                 dsp_version = version;
-                dsp.update(&inner.dsp.lock().unwrap());
+                {
+                    let settings = inner.dsp.lock().unwrap();
+                    dsp.update(&settings);
+                    crossfade = settings.crossfade.clone();
+                }
                 if let Some(meta) = inner.stream_meta.lock().unwrap().as_mut() {
                     meta.replay_gain_db = dsp.replay_gain_db();
                 }
-                publish_dsp_stages(inner, &dsp);
+                publish_dsp_stages(inner, &dsp, incoming.is_some());
                 emit(inner, EngineEvent::State(build_state(inner)));
             }
             let (volume, fading) = current_volume(inner);
@@ -1410,59 +1472,125 @@ fn run_session(
                 emit_position_if_due(inner, frames, rate, &mut last_emit);
                 continue;
             }
-            let received = stream.rx.recv_timeout(Duration::from_millis(50));
-            // A seek or track change bumps the generation. Once it moves, this
-            // session is superseded and must not publish a stale position or
-            // write buffered audio from the pre-seek offset.
-            if inner.generation.load(Ordering::SeqCst) != gen {
-                return SessionOutcome::Superseded;
+            // A sleep fade ends the session on this track; never cross into
+            // the next one while it runs.
+            let target = if fading {
+                0
+            } else {
+                crossfade_frames(&crossfade, &stream.item, prefetch.as_ref().map(|p| &p.item), rate)
+            };
+            if fifo.is_empty() {
+                if ended {
+                    break;
+                }
+                let received = stream.rx.recv_timeout(Duration::from_millis(50));
+                // A seek or track change bumps the generation. Once it moves,
+                // this session is superseded and must not publish a stale
+                // position or write buffered audio from the pre-seek offset.
+                if inner.generation.load(Ordering::SeqCst) != gen {
+                    return SessionOutcome::Superseded;
+                }
+                match received {
+                    Ok(Ok(StreamEvent::Samples(buf))) => {
+                        fifo_frames += buf.frames(channels);
+                        fifo.push_back(buf);
+                    }
+                    Ok(Ok(StreamEvent::Info(_))) => continue,
+                    Ok(Err(e)) => {
+                        // The producer reports "playback superseded" once the
+                        // generation moves; that case was caught just above.
+                        return SessionOutcome::StreamError(e);
+                    }
+                    Err(RecvTimeoutError::Timeout) => {
+                        emit_position_if_due(inner, frames, rate, &mut last_emit);
+                        continue;
+                    }
+                    Err(RecvTimeoutError::Disconnected) => {
+                        ended = true;
+                        continue;
+                    }
+                }
             }
-            match received {
-                Ok(Ok(StreamEvent::Samples(buf))) => {
-                    let buf = dsp.process(buf);
-                    if let Err(e) = output.write(&buf) {
-                        return SessionOutcome::OutputError {
-                            message: e.to_string(),
-                            track_id: stream.item.track_id,
-                        };
+            // Read ahead (the producer decodes faster than real time) until
+            // the FIFO holds a crossfade's worth of audio.
+            while target > 0 && !ended && fifo_frames < target {
+                match stream.rx.try_recv() {
+                    Ok(Ok(StreamEvent::Samples(buf))) => {
+                        fifo_frames += buf.frames(channels);
+                        fifo.push_back(buf);
                     }
-                    frames += buf.frames(channels);
-                    if first_write_of_track {
-                        first_write_of_track = false;
-                        fire_perf(inner, AudioPerfEvent::FirstPcm { track_id });
-                        if let Some((previous, at)) = last_write {
-                            if previous != track_id {
-                                fire_perf(
-                                    inner,
-                                    AudioPerfEvent::Advance {
-                                        track_id,
-                                        gap_ms: at.elapsed().as_millis() as u64,
-                                    },
-                                );
-                            }
+                    Ok(Ok(StreamEvent::Info(_))) => {}
+                    Ok(Err(e)) => {
+                        if inner.generation.load(Ordering::SeqCst) != gen {
+                            return SessionOutcome::Superseded;
                         }
+                        return SessionOutcome::StreamError(e);
                     }
-                    last_write = Some((track_id, Instant::now()));
-                    if rate > 0 {
-                        inner
-                            .position_ms
-                            .store(frames.saturating_mul(1000) / rate as u64, Ordering::SeqCst);
-                        inner.position_track.store(track_id, Ordering::SeqCst);
+                    Err(TryRecvError::Empty) => break,
+                    Err(TryRecvError::Disconnected) => ended = true,
+                }
+            }
+            if ended && target > 0 {
+                // The FIFO is the whole tail: hand it to the next track.
+                hand_off = true;
+                break;
+            }
+            let Some(buf) = fifo.pop_front() else {
+                continue;
+            };
+            fifo_frames -= buf.frames(channels);
+            let mut buf = dsp.process(buf);
+            if let Some(tail) = incoming.as_mut() {
+                buf = tail.mix_into(buf);
+                if tail.is_done() {
+                    incoming = None;
+                    publish_dsp_stages(inner, &dsp, false);
+                    emit(inner, EngineEvent::State(build_state(inner)));
+                }
+            }
+            if let Err(e) = output.write(&buf) {
+                return SessionOutcome::OutputError {
+                    message: e.to_string(),
+                    track_id: stream.item.track_id,
+                };
+            }
+            frames += buf.frames(channels);
+            if first_write_of_track {
+                first_write_of_track = false;
+                fire_perf(inner, AudioPerfEvent::FirstPcm { track_id });
+                if let Some((previous, at)) = last_write {
+                    if previous != track_id {
+                        fire_perf(
+                            inner,
+                            AudioPerfEvent::Advance {
+                                track_id,
+                                gap_ms: at.elapsed().as_millis() as u64,
+                            },
+                        );
                     }
-                    emit_position_if_due(inner, frames, rate, &mut last_emit);
                 }
-                Ok(Ok(StreamEvent::Info(_))) => {}
-                Ok(Err(e)) => {
-                    // The producer reports "playback superseded" once the
-                    // generation moves; that case was caught just above.
-                    return SessionOutcome::StreamError(e);
-                }
-                Err(RecvTimeoutError::Timeout) => {
-                    emit_position_if_due(inner, frames, rate, &mut last_emit);
-                }
-                Err(RecvTimeoutError::Disconnected) => break,
+            }
+            last_write = Some((track_id, Instant::now()));
+            if rate > 0 {
+                inner
+                    .position_ms
+                    .store(frames.saturating_mul(1000) / rate as u64, Ordering::SeqCst);
+                inner.position_track.store(track_id, Ordering::SeqCst);
+            }
+            emit_position_if_due(inner, frames, rate, &mut last_emit);
+        }
+        // A track shorter than the crossfade ends before the previous tail
+        // finished; let the rest of that tail fade out on its own.
+        if let Some(mut tail) = incoming.take() {
+            if let Err(e) = output.write(&tail.fade_out_remaining()) {
+                return SessionOutcome::OutputError { message: e.to_string(), track_id };
             }
         }
+        let tail: Vec<PcmBuffer> = if hand_off {
+            fifo.drain(..).map(|buf| dsp.process(buf)).collect()
+        } else {
+            Vec::new()
+        };
         // Track ended: advance the queue under the playback lock, the same way
         // the old per-track thread did.
         let next = {
@@ -1488,8 +1616,17 @@ fn run_session(
                     _ => start_track(inner, &item, mode, gen, None),
                 };
                 prefetch = start_prefetch(inner, mode, gen);
+                if !tail.is_empty() {
+                    pending_tail = Some(Tail::new(&tail, channels));
+                }
             }
             None => {
+                // Nothing follows after all: the held-back end plays as is.
+                for buf in &tail {
+                    if let Err(e) = output.write(buf) {
+                        return SessionOutcome::OutputError { message: e.to_string(), track_id };
+                    }
+                }
                 // The queue is over, so the worker is about to go idle. Bump
                 // the generation here so a `PlayPause` that raced the worker
                 // clearing `worker_busy` still starts a fresh session.
@@ -4202,5 +4339,183 @@ mod tests {
         assert!(engine.state().bit_perfect, "flat settings must restore bit-perfect");
         assert!(engine.state().position_ms < 1900, "track ended before the checks finished");
         assert_eq!(output.opens(), opens, "a DSP change must not reopen the output");
+    }
+    fn album_item(id: u64, album: &str) -> QueueItem {
+        QueueItem { album: album.into(), ..item(id) }
+    }
+
+    fn crossfade(duration_ms: u32, skip_same_album: bool) -> DspSettings {
+        let mut settings = DspSettings::default();
+        settings.crossfade.duration_ms = duration_ms;
+        settings.crossfade.skip_same_album = skip_same_album;
+        settings
+    }
+
+    /// Plays `items` to the end through a lightly throttled output (so the
+    /// producer runs ahead like real playback) and returns the engine, output,
+    /// and every `dsp_stages` list published.
+    fn play_to_end(
+        plan: StreamPlan,
+        files: HashMap<String, Vec<u8>>,
+        settings: DspSettings,
+        items: Vec<QueueItem>,
+        expected_samples: usize,
+    ) -> (Engine, NullOutput, Vec<Vec<&'static str>>) {
+        let output = NullOutput::new();
+        let engine = build_engine(
+            Arc::new(FakeResolver { plan }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(ThrottledOutput { inner: output.clone(), delay: Duration::from_millis(3) }),
+            Quality::Lossless,
+        );
+        let stages = Arc::new(Mutex::new(Vec::new()));
+        let stages_ref = stages.clone();
+        engine.subscribe(Arc::new(move |event| {
+            if let EngineEvent::State(state) = event {
+                stages_ref.lock().unwrap().push(state.dsp_stages);
+            }
+        }));
+        engine.set_dsp(settings);
+        engine.handle(EngineCmd::PlayTracks { items, start: 0 }).unwrap();
+        wait_for(|| !engine.state().playing && output.samples().len() >= expected_samples);
+        std::thread::sleep(Duration::from_millis(50));
+        let seen = stages.lock().unwrap().clone();
+        (engine, output, seen)
+    }
+
+    /// T7-D6: a natural end overlaps the next track by about the crossfade
+    /// length, on the same open output.
+    #[test]
+    fn crossfade_overlaps_tracks_from_different_albums() {
+        let (plan, files) = fixture_plan();
+        let overlap = 2 * 44_100; // 1 s of stereo samples
+        let (engine, output, stages) = play_to_end(
+            plan,
+            files,
+            crossfade(1000, true),
+            vec![album_item(1, "A"), album_item(2, "B")],
+            2 * 176_400 - overlap - 2 * 8192,
+        );
+        let total = output.samples().len();
+        // The FIFO tops up a whole buffer at a time, so the overlap is the
+        // target within one decoded packet (4096 frames).
+        let slack = 2 * 4096;
+        assert!(
+            total + overlap <= 2 * 176_400 + slack && total + overlap + slack >= 2 * 176_400,
+            "expected ~{} samples, got {total}",
+            2 * 176_400 - overlap
+        );
+        assert_eq!(output.opens(), 1, "a crossfade must not reopen the output");
+        assert!(stages.iter().any(|s| s.contains(&"crossfade")), "{stages:?}");
+        assert!(engine.state().dsp_stages.is_empty(), "the crossfade stage must clear");
+        assert!(output.samples().iter().all(|s| s.abs() <= 1.0));
+    }
+
+    #[test]
+    fn crossfade_keeps_consecutive_album_tracks_gapless() {
+        let (plan, files) = fixture_plan();
+        let (_engine, output, stages) = play_to_end(
+            plan,
+            files,
+            crossfade(1000, true),
+            vec![album_item(1, "Same"), album_item(2, "Same")],
+            2 * 176_400,
+        );
+        assert_eq!(output.samples().len(), 2 * 176_400);
+        assert!(stages.iter().all(|s| !s.contains(&"crossfade")));
+    }
+
+    #[test]
+    fn crossfade_can_include_album_tracks() {
+        let (plan, files) = fixture_plan();
+        let (_engine, output, _) = play_to_end(
+            plan,
+            files,
+            crossfade(1000, false),
+            vec![album_item(1, "Same"), album_item(2, "Same")],
+            2 * 176_400 - 2 * 44_100 - 2 * 8192,
+        );
+        assert!(output.samples().len() < 2 * 176_400 - 2 * 44_100 + 2 * 4096);
+    }
+
+    #[test]
+    fn crossfade_off_and_a_lone_track_play_every_sample() {
+        let (plan, files) = fixture_plan();
+        let (_engine, output, _) = play_to_end(
+            plan.clone(),
+            files.clone(),
+            crossfade(0, false),
+            vec![album_item(1, "A"), album_item(2, "B")],
+            2 * 176_400,
+        );
+        assert_eq!(output.samples().len(), 2 * 176_400);
+        let (_engine, output, _) =
+            play_to_end(plan, files, crossfade(3000, false), vec![album_item(1, "A")], 176_400);
+        assert_eq!(output.samples().len(), 176_400, "nothing follows, so nothing is held back");
+    }
+
+    /// Different output specs cannot overlap: the tail fades out, the output
+    /// reopens, and no audio is dropped.
+    #[test]
+    fn crossfade_across_a_format_change_fades_out_instead() {
+        let tone16 = std::fs::read("tests/fixtures/tone.mp4").unwrap();
+        let tone48 = std::fs::read("tests/fixtures/tone48.mp4").unwrap();
+        let mut plans = HashMap::new();
+        plans.insert(1, plan_for("mem://t16", 44100, 16));
+        plans.insert(2, plan_for("mem://t48", 48000, 16));
+        let mut files = HashMap::new();
+        files.insert("mem://t16".to_string(), tone16);
+        files.insert("mem://t48".to_string(), tone48);
+        let output = NullOutput::new();
+        let engine = build_engine(
+            Arc::new(PerTrackResolver { plans, order: Arc::new(Mutex::new(Vec::new())) }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(ThrottledOutput { inner: output.clone(), delay: Duration::from_millis(3) }),
+            Quality::Lossless,
+        );
+        engine.set_dsp(crossfade(1000, true));
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![album_item(1, "A"), album_item(2, "B")],
+                start: 0,
+            })
+            .unwrap();
+        wait_for(|| !engine.state().playing && output.samples().len() >= 176_400 + 192_000);
+        let samples = output.samples();
+        assert_eq!(samples.len(), 176_400 + 192_000);
+        assert_eq!(output.opens(), 2);
+        // The last frame of track 1 is faded to (near) silence.
+        let last = samples[176_400 - 2].abs();
+        assert!(last < 0.01, "tail not faded out: {last}");
+    }
+    /// A sleep fade (end-of-track sleep timer) must pause on the fading track,
+    /// never cross into the next one.
+    #[test]
+    fn a_sleep_fade_disarms_the_crossfade() {
+        let (plan, files) = fixture_plan();
+        let output = NullOutput::new();
+        let engine = build_engine(
+            Arc::new(FakeResolver { plan }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(ThrottledOutput { inner: output.clone(), delay: Duration::from_millis(60) }),
+            Quality::Lossless,
+        );
+        // 1.5 s of a 2 s track: armed, the hand-off would come at 0.5 s.
+        engine.set_dsp(crossfade(1500, true));
+        assert_eq!(engine.state().crossfade_ms, 1500);
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![album_item(1, "A"), album_item(2, "B")],
+                start: 0,
+            })
+            .unwrap();
+        wait_for(|| engine.state().position_ms >= 100);
+        // ~33 writes of ~26 ms of audio each: the fade runs well past 0.5 s.
+        engine.handle(EngineCmd::FadeAndPause { duration_ms: 2000 }).unwrap();
+        wait_for(|| !engine.state().playing);
+        let state = engine.state();
+        assert!(!state.playing);
+        assert_eq!(state.current.map(|i| i.track_id), Some(1), "the fade crossed into track 2");
+        assert!(state.position_ms > 600, "paused before the would-be hand-off: {}", state.position_ms);
     }
 }

@@ -8,7 +8,7 @@ describe("player reducer", () => {
       position_ms: 0, duration_ms: 0, volume: 0.5, shuffle: false,
       repeat: "off", preferred_quality: "lossless",
       output_mode: "shared", bit_perfect: false, bit_perfect_notice: null,
-      dsp_active: false, dsp_stages: [],
+      dsp_active: false, dsp_stages: [], crossfade_ms: 0,
       queue: [],
       stream: null,
     });
@@ -22,7 +22,7 @@ describe("player reducer", () => {
       position_ms: 0, duration_ms: 0, volume: 1, shuffle: false,
       repeat: "off", preferred_quality: "lossless",
       output_mode: "shared", bit_perfect: false, bit_perfect_notice: null,
-      dsp_active: false, dsp_stages: [],
+      dsp_active: false, dsp_stages: [], crossfade_ms: 0,
       queue: [],
       stream: { quality: "lossless", codec: "flac", sample_rate: 44100, bit_depth: 16, channels: 2, bitrate_kbps: 1000 },
     });
@@ -96,7 +96,7 @@ describe("seek reconciliation", () => {
         position_ms: 1000, duration_ms: 2000, volume: 1, shuffle: false,
         repeat: "off", preferred_quality: "lossless",
         output_mode: "shared", bit_perfect: false, bit_perfect_notice: null,
-        dsp_active: false, dsp_stages: [],
+        dsp_active: false, dsp_stages: [], crossfade_ms: 0,
         queue: [], stream: null,
       }),
     ).toBe(1000);
@@ -124,7 +124,7 @@ describe("player event application", () => {
       position_ms: 0, duration_ms: 0, volume: 0.5, shuffle: false,
       repeat: "off", preferred_quality: "lossless",
       output_mode: "shared", bit_perfect: false, bit_perfect_notice: null,
-      dsp_active: false, dsp_stages: [],
+      dsp_active: false, dsp_stages: [], crossfade_ms: 0,
       queue: [],
       stream: null,
     });
@@ -153,7 +153,7 @@ describe("player event application", () => {
       position_ms: 1000, duration_ms: 10000, volume: 1, shuffle: false,
       repeat: "off", preferred_quality: "lossless",
       output_mode: "shared", bit_perfect: false, bit_perfect_notice: null,
-      dsp_active: false, dsp_stages: [],
+      dsp_active: false, dsp_stages: [], crossfade_ms: 0,
       queue: [{ track_id: 1, title: "T", artist: "A", album: "", duration_secs: 10, cover: null }],
       stream: null,
     });

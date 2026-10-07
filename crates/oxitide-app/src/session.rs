@@ -565,6 +565,7 @@ mod tests {
             bit_perfect_notice: None,
             dsp_active: false,
             dsp_stages: Vec::new(),
+            crossfade_ms: 0,
             queue: items,
             stream: None,
         }

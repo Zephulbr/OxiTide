@@ -57,6 +57,9 @@ struct ActivePlay {
 pub struct HistoryTracker {
     current: Option<ActivePlay>,
     pending_start: Option<QueueItem>,
+    /// The engine's crossfade length: a crossfading track hands over this long
+    /// before its end, which still counts as played to the end.
+    crossfade_ms: u64,
 }
 
 impl HistoryTracker {
@@ -74,6 +77,7 @@ impl HistoryTracker {
                 finalized
             }
             EngineEvent::State(state) => {
+                self.crossfade_ms = state.crossfade_ms as u64;
                 if state.playing {
                     if let Some(item) = self.pending_start.take() {
                         self.start(item, now);
@@ -142,7 +146,8 @@ impl HistoryTracker {
         if !should_record(play.listened_ms, duration_ms) {
             return None;
         }
-        let completed = is_completed(play.listened_ms, duration_ms, play.last_pos_ms);
+        let completed =
+            is_completed(play.listened_ms, duration_ms, play.last_pos_ms, self.crossfade_ms);
         Some(record_from(&play.item, play.started_at, play.listened_ms, completed))
     }
 }
@@ -155,13 +160,14 @@ fn should_record(listened_ms: u64, duration_ms: u64) -> bool {
     duration_ms > 0 && duration_ms < HISTORY_SHORT_TRACK_MS && listened_ms * 2 >= duration_ms
 }
 
-/// Completed at 90% listened or a position within one tick of the end.
-fn is_completed(listened_ms: u64, duration_ms: u64, last_pos_ms: u64) -> bool {
+/// Completed at 90% listened or a position within one tick (plus any
+/// crossfade hand-over) of the end.
+fn is_completed(listened_ms: u64, duration_ms: u64, last_pos_ms: u64, crossfade_ms: u64) -> bool {
     if duration_ms == 0 {
         return false;
     }
     listened_ms * 10 >= duration_ms * 9
-        || last_pos_ms.saturating_add(HISTORY_END_SLACK_MS) >= duration_ms
+        || last_pos_ms.saturating_add(HISTORY_END_SLACK_MS + crossfade_ms) >= duration_ms
 }
 
 fn record_from(item: &QueueItem, started_at: i64, listened_ms: u64, completed: bool) -> HistoryRecord {
@@ -592,6 +598,7 @@ mod tests {
             bit_perfect_notice: None,
             dsp_active: false,
             dsp_stages: Vec::new(),
+            crossfade_ms: 0,
             queue: Vec::new(),
             stream: None,
         }
@@ -700,6 +707,25 @@ mod tests {
         play_seconds(&mut tracker, &item(1, 100), 80);
         let record = tracker.on_event(&now_playing(&item(2, 100)), 200).expect("recorded");
         assert!(!record.completed);
+    }
+
+    #[test]
+    fn crossfaded_end_is_completed() {
+        let mut crossfading = playback_state(true);
+        crossfading.crossfade_ms = 10_000;
+        let mut tracker = HistoryTracker::default();
+        tracker.on_event(&now_playing(&item(1, 60)), 100);
+        tracker.on_event(&EngineEvent::State(crossfading), 100);
+        for step in 1..=50 {
+            tracker.on_event(&position(step * 1000, 60_000), 100);
+        }
+        let record = tracker.on_event(&now_playing(&item(2, 60)), 200).expect("recorded");
+        assert!(record.completed, "handing over 10 s early is still a full play");
+
+        let mut tracker = HistoryTracker::default();
+        play_seconds(&mut tracker, &item(1, 60), 50);
+        let record = tracker.on_event(&now_playing(&item(2, 60)), 200).expect("recorded");
+        assert!(!record.completed, "without a crossfade, 50 of 60 s is a skip");
     }
 
     #[test]

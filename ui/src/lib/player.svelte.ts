@@ -18,6 +18,7 @@ export interface PlayerState {
   bit_perfect_notice: string | null;
   dsp_active: boolean;
   dsp_stages: string[];
+  crossfade_ms: number;
   queue: QueueItem[];
   stream: StreamMeta | null;
   error: string;
@@ -32,7 +33,7 @@ export function emptyState(): PlayerState {
     duration_ms: 0, volume: 1, shuffle: false, repeat: "off",
     preferred_quality: "lossless", queue: [], stream: null, error: "",
     error_code: "", output_mode: "shared", bit_perfect: false, bit_perfect_notice: null,
-    dsp_active: false, dsp_stages: [],
+    dsp_active: false, dsp_stages: [], crossfade_ms: 0,
   };
 }
 

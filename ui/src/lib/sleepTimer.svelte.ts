@@ -13,8 +13,15 @@ export interface SleepTimer {
   armEndOfTrack(): void;
   cancel(): void;
   /// Fed from the player's 500 ms position ticks; fires end-of-track mode when
-  /// five seconds remain, and disarms when the queue is over.
-  observe(positionMs: number, durationMs: number, playing: boolean, queueLength: number): void;
+  /// five seconds remain, and disarms when the queue is over. `leadMs` is the
+  /// crossfade length: a crossfading track hands over that much before its end.
+  observe(
+    positionMs: number,
+    durationMs: number,
+    playing: boolean,
+    queueLength: number,
+    leadMs?: number,
+  ): void;
 }
 
 /// The sleep timer is in-memory only (QoL-D4): a restart disarms it. `fire`
@@ -72,6 +79,7 @@ export function createSleepTimer(fire: (fadeMs: number) => void): SleepTimer {
     durationMs: number,
     playing: boolean,
     queueLength: number,
+    leadMs = 0,
   ) {
     if (mode === "off") return;
     if (queueLength === 0) {
@@ -85,8 +93,10 @@ export function createSleepTimer(fire: (fadeMs: number) => void): SleepTimer {
       return;
     }
     if (mode !== "end-of-track" || !playing || durationMs === 0) return;
+    // The engine stops crossfading once the fade starts, so firing a lead
+    // early keeps the fade on this track.
     const remaining = durationMs - positionMs;
-    if (remaining > 0 && remaining <= SLEEP_FADE_MS) fireOnce();
+    if (remaining > 0 && remaining <= SLEEP_FADE_MS + Math.max(0, leadMs)) fireOnce();
   }
 
   return {

@@ -215,6 +215,7 @@
       player.state.duration_ms,
       player.state.playing,
       player.state.queue.length,
+      player.state.crossfade_ms,
     );
   });
 

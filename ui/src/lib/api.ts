@@ -190,6 +190,8 @@ export interface PlaybackState {
   dsp_active: boolean;
   /** The stages altering samples, e.g. ["ReplayGain", "EQ"]. */
   dsp_stages: string[];
+  /** Configured crossfade length in ms (0 = off). */
+  crossfade_ms: number;
   queue: QueueItem[];
   stream?: StreamMeta | null;
 }

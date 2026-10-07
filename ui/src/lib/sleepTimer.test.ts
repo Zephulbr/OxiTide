@@ -56,6 +56,15 @@ describe("sleep timer", () => {
     expect(fires).toEqual([SLEEP_FADE_MS]);
   });
 
+  it("end-of-track fires a crossfade early so the fade stays on this track", () => {
+    const { timer, fires } = setup();
+    timer.armEndOfTrack();
+    timer.observe(48_400, 60_000, true, 2, 6000);
+    expect(fires).toEqual([]);
+    timer.observe(49_000, 60_000, true, 2, 6000);
+    expect(fires).toEqual([SLEEP_FADE_MS]);
+  });
+
   it("end-of-track ignores pauses and zero durations", () => {
     const { timer, fires } = setup();
     timer.armEndOfTrack();

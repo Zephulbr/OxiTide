@@ -372,6 +372,107 @@ pub fn f64_to_i32(x: f64) -> i32 {
     (x * I32_SCALE).round().clamp(i32::MIN as f64, i32::MAX as f64) as i32
 }
 
+/// Equal-power crossfade gains at `t` in [0, 1]: `(outgoing, incoming)`.
+/// `out² + in² = 1` throughout, so uncorrelated tracks keep their loudness.
+pub fn equal_power(t: f64) -> (f64, f64) {
+    let angle = t.clamp(0.0, 1.0) * std::f64::consts::FRAC_PI_2;
+    (angle.cos(), angle.sin())
+}
+
+#[inline]
+fn sample_f64(buf: &PcmBuffer, index: usize) -> f64 {
+    match buf {
+        PcmBuffer::F32(v) => v[index] as f64,
+        PcmBuffer::I32(v) => v[index] as f64 / I32_SCALE,
+    }
+}
+
+/// The held-back end of a track, faded out across the start of the next one.
+pub struct Tail {
+    /// Interleaved, normalized samples.
+    samples: Vec<f64>,
+    channels: usize,
+    /// Frames already mixed or written.
+    cursor: usize,
+    /// True when the source buffers were `i32` (exclusive output).
+    int: bool,
+}
+
+impl Tail {
+    pub fn new(buffers: &[PcmBuffer], channels: u16) -> Self {
+        let mut samples = Vec::with_capacity(buffers.iter().map(PcmBuffer::len).sum());
+        for buf in buffers {
+            samples.extend((0..buf.len()).map(|i| sample_f64(buf, i)));
+        }
+        let int = matches!(buffers.first(), Some(PcmBuffer::I32(_)));
+        Self { samples, channels: channels.max(1) as usize, cursor: 0, int }
+    }
+
+    pub fn frames(&self) -> usize {
+        self.samples.len() / self.channels
+    }
+
+    pub fn is_done(&self) -> bool {
+        self.cursor >= self.frames()
+    }
+
+    fn gains(&self, frame: usize) -> (f64, f64) {
+        equal_power(frame as f64 / self.frames().max(1) as f64)
+    }
+
+    /// Mix the tail into the start of `next` (the incoming track's samples),
+    /// advancing through the fade. Frames past the tail's end are untouched.
+    pub fn mix_into(&mut self, next: PcmBuffer) -> PcmBuffer {
+        let channels = self.channels;
+        let frames = self.frames();
+        let mix = |tail: &Self, index: usize, value: f64| -> f64 {
+            let frame = tail.cursor + index / channels;
+            if frame >= frames {
+                return value;
+            }
+            let (out_gain, in_gain) = tail.gains(frame);
+            let old = tail.samples[frame * channels + index % channels];
+            (value * in_gain + old * out_gain).clamp(-1.0, 1.0)
+        };
+        let mixed = match next {
+            PcmBuffer::F32(mut v) => {
+                for (i, s) in v.iter_mut().enumerate() {
+                    *s = mix(self, i, *s as f64) as f32;
+                }
+                PcmBuffer::F32(v)
+            }
+            PcmBuffer::I32(mut v) => {
+                for (i, s) in v.iter_mut().enumerate() {
+                    if self.cursor + i / channels < frames {
+                        *s = f64_to_i32(mix(self, i, *s as f64 / I32_SCALE));
+                    }
+                }
+                PcmBuffer::I32(v)
+            }
+        };
+        self.cursor = (self.cursor + mixed.len() / channels).min(frames);
+        mixed
+    }
+
+    /// Whatever is left of the tail, faded out on its own (no incoming track
+    /// to overlap), in the representation it arrived in.
+    pub fn fade_out_remaining(&mut self) -> PcmBuffer {
+        let channels = self.channels;
+        let start = self.cursor;
+        let values = (start * channels..self.samples.len()).map(|i| {
+            let (out_gain, _) = self.gains(i / channels);
+            self.samples[i] * out_gain
+        });
+        let out = if self.int {
+            PcmBuffer::I32(values.map(f64_to_i32).collect())
+        } else {
+            PcmBuffer::F32(values.map(|x| x as f32).collect())
+        };
+        self.cursor = self.frames();
+        out
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -572,5 +673,59 @@ mod tests {
         assert!(s.replay_gain.prevent_clipping);
         assert!(s.crossfade.skip_same_album);
         assert_eq!(s.eq.bands_db.len(), 10);
+    }
+
+    #[test]
+    fn equal_power_has_unit_power_and_correct_endpoints() {
+        assert_eq!(equal_power(0.0), (1.0, 0.0));
+        let (out, inc) = equal_power(1.0);
+        assert!(out.abs() < 1e-12 && (inc - 1.0).abs() < 1e-12);
+        for step in 0..=20 {
+            let (out, inc) = equal_power(step as f64 / 20.0);
+            assert!((out * out + inc * inc - 1.0).abs() < 1e-12);
+        }
+        assert_eq!(equal_power(-1.0), (1.0, 0.0));
+    }
+
+    #[test]
+    fn tail_mixes_across_buffer_boundaries_then_passes_through() {
+        // A 4-frame stereo tail of 0.5 against an incoming signal of 0.25.
+        let tail_buf = PcmBuffer::F32(vec![0.5; 8]);
+        let mut tail = Tail::new(&[tail_buf], 2);
+        assert_eq!(tail.frames(), 4);
+        let first = tail.mix_into(PcmBuffer::F32(vec![0.25; 6]));
+        let second = tail.mix_into(PcmBuffer::F32(vec![0.25; 6]));
+        assert!(tail.is_done());
+        let all: Vec<f32> = [first.as_f32().unwrap(), second.as_f32().unwrap()].concat();
+        for frame in 0..4 {
+            let (out, inc) = equal_power(frame as f64 / 4.0);
+            let want = (0.25 * inc + 0.5 * out) as f32;
+            assert!((all[frame * 2] - want).abs() < 1e-6, "frame {frame}");
+            assert_eq!(all[frame * 2], all[frame * 2 + 1]);
+        }
+        assert_eq!(&all[8..], &[0.25; 4], "frames past the tail are untouched");
+    }
+
+    #[test]
+    fn tail_mixes_i32_and_leaves_later_samples_bit_exact() {
+        let mut tail = Tail::new(&[PcmBuffer::I32(vec![1 << 30, 1 << 30])], 2);
+        let out = tail.mix_into(PcmBuffer::I32(vec![0, 0, 12_345, -12_345]));
+        let v = out.as_i32().unwrap();
+        assert_eq!(v[0], 1 << 30, "t = 0 is all outgoing");
+        assert_eq!(&v[2..], &[12_345, -12_345]);
+    }
+
+    #[test]
+    fn tail_fades_out_what_is_left() {
+        let mut tail = Tail::new(&[PcmBuffer::F32(vec![1.0; 8])], 2);
+        let _ = tail.mix_into(PcmBuffer::F32(vec![0.0; 2]));
+        let rest = tail.fade_out_remaining();
+        let v = rest.as_f32().unwrap();
+        assert_eq!(v.len(), 6);
+        assert!(v.windows(2).step_by(2).all(|w| w[0] == w[1]));
+        assert!(v[0] > v[2] && v[2] > v[4] && v[4] > 0.0, "{v:?}");
+        assert!(tail.is_done());
+        let i32_rest = Tail::new(&[PcmBuffer::I32(vec![1 << 30; 4])], 2).fade_out_remaining();
+        assert_eq!(i32_rest.as_i32().unwrap()[0], 1 << 30);
     }
 }
