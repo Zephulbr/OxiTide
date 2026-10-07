@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use oxitide_audio::cache::DiskCache;
+use oxitide_audio::dsp::DspSettings;
 use oxitide_audio::engine::{Engine, EngineCmd, EngineEvent, PlaybackState};
 use oxitide_audio::fetch::HttpFetcher;
 use oxitide_audio::output::{ExclusiveFallback, OutputMode};
@@ -377,6 +378,7 @@ fn build_player(
         OutputMode::Shared
     });
     engine.set_exclusive_fallback(config.audio.exclusive_fallback);
+    engine.set_dsp(config.dsp.clone());
     engine
         .handle(EngineCmd::SetVolume(config.audio.volume))
         .map_err(|e| e.to_string())?;
@@ -1904,6 +1906,24 @@ pub fn set_exclusive_fallback(
     config.save()?;
     state.set_config(config);
     Ok(())
+}
+
+/// Replace the sound-processing settings (EQ, ReplayGain, crossfade). Applies
+/// live to the playing track and persists the sanitized values.
+#[tauri::command]
+pub fn set_dsp_settings(
+    state: State<'_, AppState>,
+    settings: DspSettings,
+) -> Result<DspSettings, String> {
+    let settings = settings.sanitized();
+    if let Some(player) = state.player() {
+        player.engine.set_dsp(settings.clone());
+    }
+    let mut config = state.config();
+    config.dsp = settings.clone();
+    config.save()?;
+    state.set_config(config);
+    Ok(settings)
 }
 
 #[tauri::command]

@@ -301,6 +301,7 @@ mod tests {
             output_mode: OutputMode::Shared,
             bit_perfect: false,
             bit_perfect_notice: None,
+            dsp_active: false,
             queue: Vec::new(),
             stream: None,
         })

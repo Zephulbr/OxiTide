@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use oxitide_audio::dsp::DspSettings;
 use oxitide_audio::output::ExclusiveFallback;
 use serde::{Deserialize, Serialize};
 
@@ -18,6 +19,8 @@ pub struct Config {
     pub history: HistoryConfig,
     pub content: ContentConfig,
     pub hotkeys: HotkeysConfig,
+    /// Sound processing (Track 7): EQ, ReplayGain, crossfade. All off by default.
+    pub dsp: DspSettings,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -426,6 +429,15 @@ mod tests {
             history: HistoryConfig::default(),
             content: ContentConfig::default(),
             hotkeys: HotkeysConfig::default(),
+            dsp: {
+                let mut dsp = DspSettings::default();
+                dsp.eq.enabled = true;
+                dsp.eq.bands_db[0] = 4.5;
+                dsp.replay_gain.mode = oxitide_audio::dsp::ReplayGainMode::Album;
+                dsp.replay_gain.preamp_db = -2.0;
+                dsp.crossfade.duration_ms = 6000;
+                dsp
+            },
         };
         config.save_to(&path).unwrap();
         assert_eq!(Config::load_from(&path), config);
@@ -443,6 +455,27 @@ mod tests {
         assert_eq!(config, Config::default());
         assert!(!path.exists());
         assert!(dir.join("config.toml.bak").exists());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn partial_dsp_table_fills_defaults() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        fs::write(&path, "[dsp.replay_gain]
+mode = \"track\"
+
+[dsp.crossfade]
+duration_ms = 4000
+")
+            .unwrap();
+        let config = Config::load_from(&path);
+        assert_eq!(config.dsp.replay_gain.mode, oxitide_audio::dsp::ReplayGainMode::Track);
+        assert!(config.dsp.replay_gain.prevent_clipping);
+        assert_eq!(config.dsp.crossfade.duration_ms, 4000);
+        assert!(config.dsp.crossfade.skip_same_album);
+        assert!(!config.dsp.eq.enabled);
+        assert_eq!(config.dsp.eq.bands_db.len(), 10);
         let _ = fs::remove_dir_all(dir);
     }
 

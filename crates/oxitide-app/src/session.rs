@@ -441,6 +441,7 @@ mod tests {
                 bit_depth: 24,
                 channels: 2,
                 bitrate_kbps: Some(1058),
+                replay_gain_db: None,
             }),
             saved_at: 1_700_000_000,
         }
@@ -456,6 +457,7 @@ mod tests {
             bit_depth: 24,
             channels: 2,
             bitrate_kbps: Some(1058),
+            replay_gain_db: None,
         });
         let saved = session_from_state(&state, None, 100, None);
         assert_eq!(saved.stream.expect("stream").bit_depth, 24);
@@ -561,6 +563,7 @@ mod tests {
             output_mode: oxitide_audio::output::OutputMode::Shared,
             bit_perfect: false,
             bit_perfect_notice: None,
+            dsp_active: false,
             queue: items,
             stream: None,
         }

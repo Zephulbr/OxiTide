@@ -296,6 +296,7 @@ mod tests {
             output_mode: oxitide_audio::output::OutputMode::Shared,
             bit_perfect: false,
             bit_perfect_notice: None,
+            dsp_active: false,
             queue: Vec::new(),
             stream: None,
         }

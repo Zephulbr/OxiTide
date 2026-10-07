@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 
 use crate::cache::{CacheKey, DiskCache};
 use crate::decode::{PcmBuffer, PcmFormat, PcmSink, StreamInfo};
+use crate::dsp::{DspSettings, TrackDsp};
 use crate::error::{Error, Result};
 use crate::fetch::{self, Fetcher, StreamBuffer};
 use crate::output::{AudioOutput, AudioOutputSpec, ExclusiveFallback, OutputMode, OutputStatus};
@@ -12,7 +13,7 @@ use crate::perf::{AudioPerfEvent, PerfHook};
 use crate::queue::{Queue, QueueItem, RepeatMode};
 use crate::seek::{self, Discarder};
 use crate::source::{is_he_aac, StreamPlan};
-use oxitide_tidal::stream::Quality;
+use oxitide_tidal::stream::{Quality, ReplayGain};
 
 pub trait StreamResolver: Send + Sync + 'static {
     fn resolve(&self, track_id: u64, quality: Quality) -> Result<StreamPlan>;
@@ -30,6 +31,9 @@ pub struct StreamMeta {
     pub channels: u16,
     /// Manifest bandwidth, else computed from the fetched bytes.
     pub bitrate_kbps: Option<u32>,
+    /// The ReplayGain applied to this track, in dB, while ReplayGain is on.
+    #[serde(default)]
+    pub replay_gain_db: Option<f32>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
@@ -47,6 +51,8 @@ pub struct PlaybackState {
     pub output_mode: OutputMode,
     pub bit_perfect: bool,
     pub bit_perfect_notice: Option<String>,
+    /// True while a DSP stage (EQ, ReplayGain, crossfade) alters samples.
+    pub dsp_active: bool,
     pub queue: Vec<QueueItem>,
     pub stream: Option<StreamMeta>,
 }
@@ -122,6 +128,12 @@ struct Inner {
     output_mode: Mutex<OutputMode>,
     exclusive_fallback: Mutex<ExclusiveFallback>,
     output_status: Mutex<OutputStatus>,
+    /// Sound-processing settings; `dsp_version` bumps on every change so the
+    /// worker re-applies them live.
+    dsp: Mutex<DspSettings>,
+    dsp_version: AtomicU64,
+    /// DSP stages currently altering samples (empty = untouched).
+    dsp_stages: Mutex<Vec<&'static str>>,
     listeners: Mutex<Vec<Listener>>,
     perf_hook: Mutex<Option<PerfHook>>,
     /// Serializes queue mutation against the worker's advance decision.
@@ -163,8 +175,21 @@ pub struct Engine {
     inner: Arc<Inner>,
 }
 
+/// The output status with active DSP folded in: processed samples are never
+/// bit-perfect, and the notice names the stages responsible.
+fn effective_status(inner: &Inner) -> (OutputStatus, bool) {
+    let mut status = inner.output_status.lock().unwrap().clone();
+    let stages = inner.dsp_stages.lock().unwrap().clone();
+    let dsp_active = !stages.is_empty();
+    if dsp_active && status.bit_perfect {
+        status.bit_perfect = false;
+        status.notice = Some(format!("DSP active ({}); bit-perfect off", stages.join(", ")));
+    }
+    (status, dsp_active)
+}
+
 fn build_state(inner: &Inner) -> PlaybackState {
-    let status = inner.output_status.lock().unwrap().clone();
+    let (status, dsp_active) = effective_status(inner);
     let q = inner.queue.lock().unwrap();
     PlaybackState {
         playing: q.is_playing(),
@@ -180,6 +205,7 @@ fn build_state(inner: &Inner) -> PlaybackState {
         output_mode: status.mode,
         bit_perfect: status.bit_perfect,
         bit_perfect_notice: status.notice,
+        dsp_active,
         queue: q.items().to_vec(),
         stream: inner.stream_meta.lock().unwrap().clone(),
     }
@@ -242,6 +268,9 @@ impl Engine {
             output_mode: Mutex::new(OutputMode::Shared),
             exclusive_fallback: Mutex::new(ExclusiveFallback::Shared),
             output_status: Mutex::new(OutputStatus::default()),
+            dsp: Mutex::new(DspSettings::default()),
+            dsp_version: AtomicU64::new(0),
+            dsp_stages: Mutex::new(Vec::new()),
             listeners: Mutex::new(Vec::new()),
             perf_hook: Mutex::new(None),
             playback_lock: Mutex::new(()),
@@ -305,9 +334,22 @@ impl Engine {
         self.inner.device_id.lock().unwrap().clone()
     }
 
-    /// The mode/bit-perfect state the output last reported.
+    /// The mode/bit-perfect state the output last reported, with active DSP
+    /// folded in.
     pub fn audio_status(&self) -> OutputStatus {
-        self.inner.output_status.lock().unwrap().clone()
+        effective_status(&self.inner).0
+    }
+
+    /// Replace the sound-processing settings. Applies live: the playing track
+    /// picks them up on its next buffer without restarting.
+    pub fn set_dsp(&self, settings: DspSettings) {
+        *self.inner.dsp.lock().unwrap() = settings.sanitized();
+        self.inner.dsp_version.fetch_add(1, Ordering::SeqCst);
+        self.inner.notify_worker();
+    }
+
+    pub fn dsp(&self) -> DspSettings {
+        self.inner.dsp.lock().unwrap().clone()
     }
 
     /// Select shared or exclusive output. Applies immediately (restarts the
@@ -648,6 +690,7 @@ struct StreamStart {
     info: StreamInfo,
     start_frames: u64,
     meta: StreamMeta,
+    replay_gain: ReplayGain,
 }
 
 /// One decoded chunk handed from a track's producer to the worker.
@@ -1001,11 +1044,13 @@ impl PcmSink for ChannelSink {
             bit_depth: info.bits_per_sample,
             channels: info.channels,
             bitrate_kbps: self.plan.bitrate_kbps.or_else(|| self.computed_bitrate_kbps()),
+            replay_gain_db: None,
         };
         self.send(Ok(StreamEvent::Info(StreamStart {
             info: *info,
             start_frames: self.start_frames,
             meta,
+            replay_gain: self.plan.replay_gain,
         })))
     }
 
@@ -1114,6 +1159,11 @@ fn emit_position_if_due(inner: &Arc<Inner>, frames: u64, rate: u32, last: &mut I
         .map(|i| i.duration_secs as u64 * 1000)
         .unwrap_or(0);
     emit(inner, EngineEvent::Position { position_ms, duration_ms });
+}
+
+/// Record which DSP stages alter the current track's samples.
+fn publish_dsp_stages(inner: &Inner, dsp: &TrackDsp) {
+    *inner.dsp_stages.lock().unwrap() = dsp.active_stages();
 }
 
 /// A pending seek: the track it belongs to, the target, and whether it may
@@ -1229,8 +1279,12 @@ fn run_session(
             Err(e) => return SessionOutcome::StreamError(e),
         };
         skipped = 0;
-        let StreamStart { info, start_frames, meta } = start;
+        let StreamStart { info, start_frames, mut meta, replay_gain } = start;
         fire_perf(inner, AudioPerfEvent::InfoReady { track_id: stream.item.track_id });
+        let mut dsp_version = inner.dsp_version.load(Ordering::SeqCst);
+        let mut dsp = TrackDsp::new(&info, replay_gain, &inner.dsp.lock().unwrap());
+        meta.replay_gain_db = dsp.replay_gain_db();
+        publish_dsp_stages(inner, &dsp);
         *inner.stream_meta.lock().unwrap() = Some(meta);
         emit(inner, EngineEvent::State(build_state(inner)));
         // The stream's absolute starting frame (non-zero only for a seek).
@@ -1288,6 +1342,16 @@ fn run_session(
         loop {
             if inner.generation.load(Ordering::SeqCst) != gen {
                 return SessionOutcome::Superseded;
+            }
+            let version = inner.dsp_version.load(Ordering::SeqCst);
+            if version != dsp_version {
+                dsp_version = version;
+                dsp.update(&inner.dsp.lock().unwrap());
+                if let Some(meta) = inner.stream_meta.lock().unwrap().as_mut() {
+                    meta.replay_gain_db = dsp.replay_gain_db();
+                }
+                publish_dsp_stages(inner, &dsp);
+                emit(inner, EngineEvent::State(build_state(inner)));
             }
             let (volume, fading) = current_volume(inner);
             // Fades step coarsely (endpoint volume calls are not free);
@@ -1352,6 +1416,7 @@ fn run_session(
             }
             match received {
                 Ok(Ok(StreamEvent::Samples(buf))) => {
+                    let buf = dsp.process(buf);
                     if let Err(e) = output.write(&buf) {
                         return SessionOutcome::OutputError {
                             message: e.to_string(),
@@ -4019,5 +4084,119 @@ mod tests {
             "cached seek wrote {} samples after the target (expected <= 0.5 s)",
             after - before
         );
+    }
+    /// Collects decoded samples as left-aligned `i32`, exactly as the
+    /// exclusive path receives them.
+    struct ReferenceI32Sink(Vec<i32>);
+
+    impl PcmSink for ReferenceI32Sink {
+        fn preferred_format(&self) -> PcmFormat {
+            PcmFormat::I32 { bits: 16 }
+        }
+        fn on_stream_info(&mut self, _info: &StreamInfo) -> Result<()> {
+            Ok(())
+        }
+        fn on_samples(&mut self, buf: &PcmBuffer) -> Result<()> {
+            self.0.extend_from_slice(buf.as_i32().expect("i32 samples"));
+            Ok(())
+        }
+    }
+
+    fn reference_i32() -> Vec<i32> {
+        let bytes = std::fs::read("tests/fixtures/tone.mp4").unwrap();
+        let mut sink = ReferenceI32Sink(Vec::new());
+        crate::decode::run(crate::demux::BytesSource::new(bytes), "mp4", &mut sink).unwrap();
+        sink.0
+    }
+
+    /// T7-D2: DSP settings that leave samples untouched (flat EQ, ReplayGain
+    /// on a track without data at 0 dB) must keep exclusive output exact.
+    #[test]
+    fn identity_dsp_keeps_exclusive_output_sample_exact() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        engine.set_output_mode(OutputMode::Exclusive);
+        let mut settings = DspSettings::default();
+        settings.eq.enabled = true;
+        settings.replay_gain.mode = crate::dsp::ReplayGainMode::Track;
+        engine.set_dsp(settings);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+
+        let reference = reference_i32();
+        wait_for(|| output.i32_samples().len() >= reference.len());
+        assert_eq!(output.i32_samples(), reference, "identity DSP altered samples");
+        assert!(engine.audio_status().bit_perfect);
+        assert!(!engine.state().dsp_active);
+    }
+
+    #[test]
+    fn replay_gain_scales_exclusive_output_and_clears_bit_perfect() {
+        let (mut plan, files) = fixture_plan();
+        plan.replay_gain = ReplayGain { track_gain_db: Some(-6.0), ..Default::default() };
+        let (engine, output) = engine_with(plan, files);
+        let applied = Arc::new(Mutex::new(None));
+        let applied_ref = applied.clone();
+        engine.subscribe(Arc::new(move |event| {
+            if let EngineEvent::State(state) = event {
+                if let Some(db) = state.stream.and_then(|s| s.replay_gain_db) {
+                    *applied_ref.lock().unwrap() = Some(db);
+                }
+            }
+        }));
+        engine.set_output_mode(OutputMode::Exclusive);
+        let mut settings = DspSettings::default();
+        settings.replay_gain.mode = crate::dsp::ReplayGainMode::Track;
+        engine.set_dsp(settings);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+
+        let reference = reference_i32();
+        wait_for(|| output.i32_samples().len() >= reference.len());
+        let out = output.i32_samples();
+        assert_eq!(out.len(), reference.len());
+        let gain = 10f64.powf(-6.0 / 20.0);
+        for (index, (&got, &src)) in out.iter().zip(&reference).enumerate() {
+            let want = src as f64 * gain;
+            assert!((got as f64 - want).abs() <= 1.0, "sample {index}: {got} vs {want}");
+        }
+        let status = engine.audio_status();
+        assert!(!status.bit_perfect);
+        assert_eq!(status.notice.as_deref(), Some("DSP active (ReplayGain); bit-perfect off"));
+        assert!(engine.state().dsp_active);
+        let db = applied.lock().unwrap().expect("replay gain published in the stream meta");
+        assert!((db + 6.0).abs() < 1e-3, "{db}");
+    }
+
+    /// T7-D3: a DSP change while playing applies without reopening or
+    /// restarting, and bit-perfect follows it both ways.
+    #[test]
+    fn dsp_changes_apply_live_and_flip_bit_perfect() {
+        let (plan, files) = fixture_plan();
+        let output = NullOutput::new();
+        let engine = build_engine(
+            Arc::new(FakeResolver { plan }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(ThrottledOutput { inner: output.clone(), delay: Duration::from_millis(60) }),
+            Quality::Lossless,
+        );
+        engine.set_output_mode(OutputMode::Exclusive);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| engine.state().position_ms >= 200 && engine.state().playing);
+        assert!(engine.state().bit_perfect);
+        let opens = output.opens();
+
+        let mut boosted = DspSettings::default();
+        boosted.eq.enabled = true;
+        boosted.eq.bands_db[5] = 6.0;
+        engine.set_dsp(boosted);
+        wait_for(|| !engine.state().bit_perfect);
+        let state = engine.state();
+        assert!(state.dsp_active);
+        assert_eq!(state.bit_perfect_notice.as_deref(), Some("DSP active (EQ); bit-perfect off"));
+
+        engine.set_dsp(DspSettings::default());
+        wait_for(|| engine.state().bit_perfect);
+        assert!(engine.state().bit_perfect, "flat settings must restore bit-perfect");
+        assert!(engine.state().position_ms < 1900, "track ended before the checks finished");
+        assert_eq!(output.opens(), opens, "a DSP change must not reopen the output");
     }
 }
