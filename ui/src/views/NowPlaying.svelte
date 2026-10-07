@@ -9,6 +9,7 @@
   import Icon from "../lib/components/Icon.svelte";
   import InfoPanel from "../lib/components/InfoPanel.svelte";
   import LyricsPanel from "../lib/components/LyricsPanel.svelte";
+  import { dspBadgeTitle } from "../lib/dsp";
   import { formatDuration } from "../lib/format";
   import { lyrics } from "../lib/lyrics.svelte";
   import { formatQuality, type QualityDisplay } from "../lib/quality";
@@ -190,7 +191,7 @@
   <p class="byline">{t.artist}{t.album ? ` — ${t.album}` : ""}</p>
   <div class="badges">
     {#if quality}<span class="badge" class:max={quality === "MAX"}>{quality}</span>{/if}
-    {#if player.state.bit_perfect}<span class="badge">Bit-perfect</span>{/if}
+    {#if player.state.bit_perfect}<span class="badge">Bit-perfect</span>{:else if player.state.dsp_active}<span class="badge" title={dspBadgeTitle(player.state.dsp_stages)}>DSP</span>{/if}
     {#if qualityDetail}<span class="badge muted">{qualityDetail}</span>{/if}
     {#if scrobbled.trackId === t.track_id}<span class="badge">Scrobbled</span>{/if}
   </div>

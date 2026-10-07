@@ -174,6 +174,8 @@ export interface StreamMeta {
   bit_depth: number;
   channels: number;
   bitrate_kbps?: number | null;
+  /** ReplayGain applied to this track, in dB, while ReplayGain is on. */
+  replay_gain_db?: number | null;
 }
 export interface PlaybackState {
   playing: boolean; buffering: boolean; current?: QueueItem | null;
@@ -184,6 +186,10 @@ export interface PlaybackState {
   output_mode: "shared" | "exclusive";
   bit_perfect: boolean;
   bit_perfect_notice?: string | null;
+  /** True while a DSP stage alters samples (bit_perfect is then false). */
+  dsp_active: boolean;
+  /** The stages altering samples, e.g. ["ReplayGain", "EQ"]. */
+  dsp_stages: string[];
   queue: QueueItem[];
   stream?: StreamMeta | null;
 }
@@ -201,6 +207,28 @@ export interface AudioStatus {
   output_mode: "shared" | "exclusive";
   bit_perfect: boolean;
   notice?: string | null;
+}
+export type ReplayGainMode = "off" | "track" | "album";
+export interface EqSettings {
+  enabled: boolean;
+  auto_preamp: boolean;
+  preamp_db: number;
+  bands_db: number[];
+}
+export interface ReplayGainSettings {
+  mode: ReplayGainMode;
+  preamp_db: number;
+  untagged_db: number;
+  prevent_clipping: boolean;
+}
+export interface CrossfadeSettings {
+  duration_ms: number;
+  skip_same_album: boolean;
+}
+export interface DspSettings {
+  eq: EqSettings;
+  replay_gain: ReplayGainSettings;
+  crossfade: CrossfadeSettings;
 }
 export interface CacheStatus {
   dir: string;
@@ -258,6 +286,7 @@ export interface Config {
     volume_down: string;
     show_hide: string;
   };
+  dsp: DspSettings;
 }
 export type EngineEvent =
   | ({ type: "state" } & PlaybackState)
@@ -429,6 +458,8 @@ export const api = {
   setExclusive: (enabled: boolean) => invoke<void>("set_exclusive", { enabled }),
   setExclusiveFallback: (mode: "shared" | "warn_only") => invoke<void>("set_exclusive_fallback", { mode }),
   getAudioStatus: () => invoke<AudioStatus>("get_audio_status"),
+  setDspSettings: (settings: DspSettings) =>
+    invoke<DspSettings>("set_dsp_settings", { settings }),
   getPerfSnapshot: () => invoke<PerfSnapshot>("get_perf_snapshot"),
   perfMark: (name: string) => invoke<void>("perf_mark", { name }),
   perfSubmitUiMetrics: (metrics: Record<string, unknown>) =>

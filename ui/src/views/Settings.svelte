@@ -6,7 +6,11 @@
     SCROBBLE_STATUS_EVENT,
     type CacheStatus,
     type Config,
+    type CrossfadeSettings,
+    type DspSettings,
+    type EqSettings,
     type OutputDevice,
+    type ReplayGainSettings,
     type ScrobbleServiceId,
     type ScrobbleStatusDto,
   } from "../lib/api";
@@ -23,6 +27,22 @@
     type DynamicColorSetting,
     type TypefaceSetting,
   } from "../lib/appearance.svelte";
+  import {
+    CROSSFADE_MAX_MS,
+    DB_STEP,
+    EQ_BANDS_HZ,
+    EQ_MAX_DB,
+    EQ_PRESETS,
+    REPLAY_GAIN_MAX_DB,
+    bandLabel,
+    clampDb,
+    effectivePreamp,
+    formatCrossfade,
+    formatDb,
+    matchPreset,
+    presetBands,
+    withBand,
+  } from "../lib/dsp";
   import { errorMessage } from "../lib/errors";
   import { optimistic } from "../lib/optimistic";
   import type { QualityDisplay } from "../lib/quality";
@@ -305,6 +325,58 @@
   $effect(() => {
     load();
   });
+
+  /// Sliders fire on every step; the engine applies settings live, so push
+  /// them after a short pause instead of rewriting the config per tick.
+  let pendingDsp: DspSettings | null = null;
+  let dspTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function flushDsp() {
+    clearTimeout(dspTimer);
+    if (pendingDsp) {
+      api.setDspSettings(pendingDsp).catch(apply);
+      pendingDsp = null;
+    }
+  }
+
+  $effect(() => flushDsp);
+
+  function setDsp(next: DspSettings) {
+    if (!config) return;
+    config = { ...config, dsp: next };
+    pendingDsp = next;
+    clearTimeout(dspTimer);
+    dspTimer = setTimeout(flushDsp, 150);
+  }
+
+  function setEq(patch: Partial<EqSettings>) {
+    if (config) setDsp({ ...config.dsp, eq: { ...config.dsp.eq, ...patch } });
+  }
+
+  function setBand(index: number, db: number) {
+    if (config) setDsp({ ...config.dsp, eq: withBand(config.dsp.eq, index, db) });
+  }
+
+  function setPreset(id: string) {
+    const bands = presetBands(id);
+    if (bands) setEq({ bands_db: bands });
+  }
+
+  function setReplayGain(patch: Partial<ReplayGainSettings>) {
+    if (config) {
+      setDsp({ ...config.dsp, replay_gain: { ...config.dsp.replay_gain, ...patch } });
+    }
+  }
+
+  function setCrossfade(patch: Partial<CrossfadeSettings>) {
+    if (config) {
+      setDsp({ ...config.dsp, crossfade: { ...config.dsp.crossfade, ...patch } });
+    }
+  }
+
+  function rangeValue(event: Event): number {
+    return Number((event.target as HTMLInputElement).value);
+  }
 
   function setDevice(deviceId: string) {
     saveAudio({ output_device: deviceId });
@@ -732,6 +804,172 @@
       </p>
       {#if player.state.bit_perfect_notice}
         <p style="color:var(--warning)">{player.state.bit_perfect_notice}</p>
+      {/if}
+
+      <h3>Sound</h3>
+      <p class="muted">
+        Off by default. Any active processing changes the samples, so bit-perfect output is
+        off while it is in effect{config.audio.exclusive
+          ? "; exclusive mode keeps the device to itself"
+          : ""}. Settings that leave the sound untouched keep bit-perfect.
+      </p>
+      {#if player.state.dsp_active}
+        <p class="muted">Active now: {player.state.dsp_stages.join(", ")}</p>
+      {/if}
+
+      <div class="field">
+        <span class="field-label">ReplayGain:</span>
+        <div class="segmented" role="group" aria-label="ReplayGain">
+          <button aria-pressed={config.dsp.replay_gain.mode === "off"} class:active={config.dsp.replay_gain.mode === "off"} onclick={() => setReplayGain({ mode: "off" })}>Off</button>
+          <button aria-pressed={config.dsp.replay_gain.mode === "track"} class:active={config.dsp.replay_gain.mode === "track"} onclick={() => setReplayGain({ mode: "track" })}>Track</button>
+          <button aria-pressed={config.dsp.replay_gain.mode === "album"} class:active={config.dsp.replay_gain.mode === "album"} onclick={() => setReplayGain({ mode: "album" })}>Album</button>
+        </div>
+      </div>
+      {#if config.dsp.replay_gain.mode !== "off"}
+        <p class="muted">
+          Levels loudness with TIDAL's ReplayGain data. Album mode keeps the dynamics between
+          tracks of one album and falls back to the track gain.
+        </p>
+        <label class="db-row">
+          <span>Preamp</span>
+          <input
+            type="range"
+            min={-REPLAY_GAIN_MAX_DB}
+            max={REPLAY_GAIN_MAX_DB}
+            step={DB_STEP}
+            value={config.dsp.replay_gain.preamp_db}
+            aria-valuetext={formatDb(config.dsp.replay_gain.preamp_db)}
+            oninput={(e) => setReplayGain({ preamp_db: clampDb(rangeValue(e), REPLAY_GAIN_MAX_DB) })}
+          />
+          <output>{formatDb(config.dsp.replay_gain.preamp_db)}</output>
+        </label>
+        <label class="db-row">
+          <span>Tracks without data</span>
+          <input
+            type="range"
+            min={-REPLAY_GAIN_MAX_DB}
+            max={REPLAY_GAIN_MAX_DB}
+            step={DB_STEP}
+            value={config.dsp.replay_gain.untagged_db}
+            aria-valuetext={formatDb(config.dsp.replay_gain.untagged_db)}
+            oninput={(e) => setReplayGain({ untagged_db: clampDb(rangeValue(e), REPLAY_GAIN_MAX_DB) })}
+          />
+          <output>{formatDb(config.dsp.replay_gain.untagged_db)}</output>
+        </label>
+        <p>
+          <label>
+            <input
+              type="checkbox"
+              checked={config.dsp.replay_gain.prevent_clipping}
+              onchange={(e) => setReplayGain({ prevent_clipping: (e.target as HTMLInputElement).checked })}
+            />
+            Prevent clipping (never raise a track past its peak)
+          </label>
+        </p>
+        {#if player.state.stream?.replay_gain_db != null}
+          <p class="muted">Current track: {formatDb(Math.round(player.state.stream.replay_gain_db * 10) / 10)}</p>
+        {/if}
+      {/if}
+
+      <p>
+        <label>
+          <input
+            type="checkbox"
+            checked={config.dsp.eq.enabled}
+            onchange={(e) => setEq({ enabled: (e.target as HTMLInputElement).checked })}
+          />
+          Equalizer
+        </label>
+      </p>
+      {#if config.dsp.eq.enabled}
+        <div class="field">
+          <label>
+            Preset:
+            <select
+              value={matchPreset(config.dsp.eq.bands_db)}
+              onchange={(e) => setPreset((e.target as HTMLSelectElement).value)}
+            >
+              {#each EQ_PRESETS as preset (preset.id)}
+                <option value={preset.id}>{preset.label}</option>
+              {/each}
+              <option value="custom" disabled>Custom</option>
+            </select>
+          </label>
+        </div>
+        <div class="eq" role="group" aria-label="Equalizer bands">
+          {#each EQ_BANDS_HZ as hz, index (hz)}
+            <label class="db-row">
+              <span>{bandLabel(hz)} Hz</span>
+              <input
+                type="range"
+                min={-EQ_MAX_DB}
+                max={EQ_MAX_DB}
+                step={DB_STEP}
+                value={config.dsp.eq.bands_db[index] ?? 0}
+                aria-valuetext={formatDb(config.dsp.eq.bands_db[index] ?? 0)}
+                oninput={(e) => setBand(index, rangeValue(e))}
+              />
+              <output>{formatDb(config.dsp.eq.bands_db[index] ?? 0)}</output>
+            </label>
+          {/each}
+        </div>
+        <p>
+          <label>
+            <input
+              type="checkbox"
+              checked={config.dsp.eq.auto_preamp}
+              onchange={(e) => setEq({ auto_preamp: (e.target as HTMLInputElement).checked })}
+            />
+            Automatic preamp (lowers the level by the largest boost so it cannot clip)
+          </label>
+        </p>
+        {#if config.dsp.eq.auto_preamp}
+          <p class="muted">Preamp: {formatDb(effectivePreamp(config.dsp.eq))}</p>
+        {:else}
+          <label class="db-row">
+            <span>Preamp</span>
+            <input
+              type="range"
+              min={-EQ_MAX_DB}
+              max={EQ_MAX_DB}
+              step={DB_STEP}
+              value={config.dsp.eq.preamp_db}
+              aria-valuetext={formatDb(config.dsp.eq.preamp_db)}
+              oninput={(e) => setEq({ preamp_db: clampDb(rangeValue(e), EQ_MAX_DB) })}
+            />
+            <output>{formatDb(config.dsp.eq.preamp_db)}</output>
+          </label>
+        {/if}
+      {/if}
+
+      <label class="db-row">
+        <span>Crossfade</span>
+        <input
+          type="range"
+          min="0"
+          max={CROSSFADE_MAX_MS}
+          step="500"
+          value={config.dsp.crossfade.duration_ms}
+          aria-valuetext={formatCrossfade(config.dsp.crossfade.duration_ms)}
+          oninput={(e) => setCrossfade({ duration_ms: rangeValue(e) })}
+        />
+        <output>{formatCrossfade(config.dsp.crossfade.duration_ms)}</output>
+      </label>
+      {#if config.dsp.crossfade.duration_ms > 0}
+        <p>
+          <label>
+            <input
+              type="checkbox"
+              checked={config.dsp.crossfade.skip_same_album}
+              onchange={(e) => setCrossfade({ skip_same_album: (e.target as HTMLInputElement).checked })}
+            />
+            Keep albums gapless (no crossfade between consecutive tracks of one album)
+          </label>
+        </p>
+        <p class="muted">
+          Crossfades when a track ends on its own; skipping and seeking cut straight over.
+          Tracks with different sample rates fade out instead of overlapping.
+        </p>
       {/if}
 
       <h3>Streaming quality</h3>
@@ -1232,6 +1470,25 @@
   }
   .logout:active {
     transform: scale(0.97);
+  }
+  .db-row {
+    display: grid;
+    grid-template-columns: 150px minmax(120px, 280px) 72px;
+    align-items: center;
+    gap: 12px;
+    margin: 4px 0;
+  }
+  .db-row output {
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+  .eq {
+    margin: 4px 0 8px;
+    padding: 8px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    background: var(--surface-1);
   }
   .hotkey-row {
     display: flex;

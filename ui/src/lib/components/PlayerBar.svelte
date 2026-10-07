@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dspBadgeTitle } from "../dsp";
   import { formatDuration } from "../format";
   import { formatQuality, type QualityDisplay } from "../quality";
   import type { RepeatMode } from "../api";
@@ -113,7 +114,7 @@
 
       <div class="badges">
         <span class="badge" class:max={maxQuality} title={player.state.stream ? "Actual stream quality" : "Preferred quality"}>{quality}</span>
-        {#if player.state.bit_perfect}<span class="badge bp">Bit-perfect</span>{/if}
+        {#if player.state.bit_perfect}<span class="badge bp">Bit-perfect</span>{:else if player.state.dsp_active}<span class="badge" title={dspBadgeTitle(player.state.dsp_stages)}>DSP</span>{/if}
       </div>
 
       <button

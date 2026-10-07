@@ -39,6 +39,8 @@ function snapshot(overrides: Record<string, unknown> = {}) {
     output_mode: "shared",
     bit_perfect: false,
     bit_perfect_notice: null,
+    dsp_active: false,
+    dsp_stages: [],
     queue: [],
     stream: null,
     ...overrides,
