@@ -10,23 +10,23 @@ Same as Plan 7.1. Crossfade off must leave the gapless path byte-for-byte unchan
 
 ### Task 1: Crossfade primitives (`dsp.rs`)
 
-- [ ] `equal_power(t) -> (out, in)`; `Tail` (queued `f32` frames + cursor) with `mix_into(&mut [f32], channels)` and `fade_out_remaining()`.
-- [ ] Tests: endpoints, constant power, partial mixes across buffer boundaries, fade-out tail.
+- [x] `equal_power(t) -> (out, in)`; `Tail` (queued `f32` frames + cursor) with `mix_into(&mut [f32], channels)` and `fade_out_remaining()`.
+- [x] Tests: endpoints, constant power, partial mixes across buffer boundaries, fade-out tail.
 
 ### Task 2: Hold-back FIFO in the worker
 
-- [ ] While armed (`duration_ms > 0`, a next item exists, not excluded by `skip_same_album`), read ahead with `try_recv` until the FIFO holds the crossfade length; write from the FIFO head.
-- [ ] Disarmed: drain the FIFO in order, then return to the direct path (no samples lost when the setting or the next item changes).
-- [ ] On disconnect: the FIFO becomes the carried `Tail`.
+- [x] While armed (`duration_ms > 0`, a next item exists, not excluded by `skip_same_album`), read ahead with `try_recv` until the FIFO holds the crossfade length; write from the FIFO head.
+- [x] Disarmed: drain the FIFO in order, then return to the direct path (no samples lost when the setting or the next item changes).
+- [x] On disconnect: the FIFO becomes the carried `Tail`.
 
 ### Task 3: Boundary
 
-- [ ] Same output spec: mix the `Tail` into the next stream's first frames (after its DSP), `NowPlaying` at overlap start.
-- [ ] Different spec: write the `Tail` with a fade-out to the old output, then reopen.
-- [ ] Queue end with a `Tail`: write it unfaded (natural ending).
-- [ ] Engine tests: overlap shortens the total; same-album skip keeps the gapless total; Next is a cut.
+- [x] Same output spec: mix the `Tail` into the next stream's first frames (after its DSP), `NowPlaying` at overlap start.
+- [x] Different spec: write the `Tail` with a fade-out to the old output, then reopen.
+- [x] Queue end with a `Tail`: write it unfaded (natural ending).
+- [x] Engine tests: overlap shortens the total; same-album skip keeps the gapless total; Next is a cut.
 
 ### Task 4: UI + verification
 
-- [ ] Settings "Crossfade" controls (duration slider 0–12 s, skip same album).
-- [ ] Gates; `plans/notes/DONE-2026-10-07-track7-2-crossfade-smoke.md`; completion note; roadmap/AGENTS.md updates.
+- [x] Settings "Crossfade" controls (duration slider 0–12 s, skip same album).
+- [x] Gates; `plans/notes/DONE-2026-10-07-track7-2-crossfade-smoke.md`; completion note; roadmap/AGENTS.md updates.

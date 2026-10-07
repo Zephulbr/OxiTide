@@ -14,34 +14,34 @@
 
 ### Task 1: ReplayGain from `playbackinfo`
 
-- [ ] `oxitide-tidal/src/stream.rs`: `ReplayGain` struct (four `Option<f32>`), parsed from `trackReplayGain`/`trackPeakAmplitude`/`albumReplayGain`/`albumPeakAmplitude`; `PlaybackInfo.replay_gain`.
-- [ ] wiremock tests: fields parsed; absent fields are `None`.
-- [ ] `oxitide-audio/src/source.rs`: `StreamPlan.replay_gain` copied in both manifest branches; every literal construction updated.
+- [x] `oxitide-tidal/src/stream.rs`: `ReplayGain` struct (four `Option<f32>`), parsed from `trackReplayGain`/`trackPeakAmplitude`/`albumReplayGain`/`albumPeakAmplitude`; `PlaybackInfo.replay_gain`.
+- [x] wiremock tests: fields parsed; absent fields are `None`.
+- [x] `oxitide-audio/src/source.rs`: `StreamPlan.replay_gain` copied in both manifest branches; every literal construction updated.
 
 ### Task 2: `dsp.rs` (pure)
 
-- [ ] `DspSettings` (`EqSettings`, `ReplayGainSettings`, `CrossfadeSettings`) with serde defaults (all off) and clamping (`sanitized`).
-- [ ] `Biquad` (RBJ peaking, `f64` TDF-II), `Equalizer` (per-channel state, `retune` keeps state).
-- [ ] `replay_gain_linear(settings, data) -> f32`; `TrackDsp` (`new(info, data)`, `update(settings)`, `is_identity`, `active_stages`, `process(PcmBuffer) -> PcmBuffer`).
-- [ ] Unit tests from spec §7.
+- [x] `DspSettings` (`EqSettings`, `ReplayGainSettings`, `CrossfadeSettings`) with serde defaults (all off) and clamping (`sanitized`).
+- [x] `Biquad` (RBJ peaking, `f64` TDF-II), `Equalizer` (per-channel state, `retune` keeps state).
+- [x] `replay_gain_linear(settings, data) -> f32`; `TrackDsp` (`new(info, data)`, `update(settings)`, `is_identity`, `active_stages`, `process(PcmBuffer) -> PcmBuffer`).
+- [x] Unit tests from spec §7.
 
 ### Task 3: Engine integration
 
-- [ ] `Inner`: `dsp`, `dsp_version`, `dsp_stages`; `Engine::set_dsp`; `PlaybackState.dsp_active`; `build_state` folds stages into `bit_perfect`/notice; `StreamMeta.replay_gain_db`.
-- [ ] Worker: build `TrackDsp` per track from `StreamStart`; re-check version per buffer; process before `output.write`; publish a state event when the active-stage set changes.
-- [ ] Engine tests: identity sample-exact (exclusive `i32`), RG gain on the fixture, live toggle flips `bit_perfect`.
+- [x] `Inner`: `dsp`, `dsp_version`, `dsp_stages`; `Engine::set_dsp`; `PlaybackState.dsp_active`; `build_state` folds stages into `bit_perfect`/notice; `StreamMeta.replay_gain_db`.
+- [x] Worker: build `TrackDsp` per track from `StreamStart`; re-check version per buffer; process before `output.write`; publish a state event when the active-stage set changes.
+- [x] Engine tests: identity sample-exact (exclusive `i32`), RG gain on the fixture, live toggle flips `bit_perfect`.
 
 ### Task 4: App config + command
 
-- [ ] `config.rs`: `Config.dsp: DspSettings` (`#[serde(default)]`), round-trip test.
-- [ ] `commands.rs`: `set_dsp_settings`; `build_player` applies config; `main.rs` handler list.
+- [x] `config.rs`: `Config.dsp: DspSettings` (`#[serde(default)]`), round-trip test.
+- [x] `commands.rs`: `set_dsp_settings`; `build_player` applies config; `main.rs` handler list.
 
 ### Task 5: UI
 
-- [ ] `api.ts`: `DspSettings` types, `Config.dsp`, `PlaybackState.dsp_active`, `setDspSettings`.
-- [ ] `lib/dsp.ts` + `lib/dsp.test.ts`: band labels, presets, `effectivePreamp`, `clampDb`, `presetMatching`.
-- [ ] `views/Settings.svelte` Playback tab "Sound" section; trade-off copy; vertical band sliders with `aria-label`s and dB readouts.
+- [x] `api.ts`: `DspSettings` types, `Config.dsp`, `PlaybackState.dsp_active`, `setDspSettings`.
+- [x] `lib/dsp.ts` + `lib/dsp.test.ts`: band labels, presets, `effectivePreamp`, `clampDb`, `presetMatching`.
+- [x] `views/Settings.svelte` Playback tab "Sound" section; trade-off copy; one labelled horizontal slider row per band (`aria-valuetext` + dB readout; vertical range inputs are not reliable on WebKitGTK).
 
 ### Task 6: Verification + smoke checklist
 
-- [ ] All four gates; write `plans/notes/DONE-2026-10-07-track7-1-dsp-smoke.md`.
+- [x] All four gates; write `plans/notes/DONE-2026-10-07-track7-1-dsp-smoke.md`.
