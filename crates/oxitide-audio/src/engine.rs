@@ -353,11 +353,13 @@ impl Engine {
     pub fn set_dsp(&self, settings: DspSettings) {
         *self.inner.dsp.lock().unwrap() = settings.sanitized();
         self.inner.dsp_version.fetch_add(1, Ordering::SeqCst);
+        if !self.inner.worker_busy.load(Ordering::SeqCst) {
+            // Nothing is playing: no stage alters samples until a track starts
+            // (a live session republishes its own stages).
+            self.inner.dsp_stages.lock().unwrap().clear();
+        }
         self.inner.notify_worker();
-    }
-
-    pub fn dsp(&self) -> DspSettings {
-        self.inner.dsp.lock().unwrap().clone()
+        self.emit(EngineEvent::State(self.state()));
     }
 
     /// Select shared or exclusive output. Applies immediately (restarts the
@@ -627,6 +629,7 @@ impl Engine {
             EngineCmd::Clear => {
                 self.cancel_fade();
                 *self.inner.stream_meta.lock().unwrap() = None;
+                self.inner.dsp_stages.lock().unwrap().clear();
                 self.mutate_playing_queue(|q| q.clear());
                 self.inner.paused.store(false, Ordering::SeqCst);
                 self.inner.notify_worker();
@@ -4517,5 +4520,23 @@ mod tests {
         assert!(!state.playing);
         assert_eq!(state.current.map(|i| i.track_id), Some(1), "the fade crossed into track 2");
         assert!(state.position_ms > 600, "paused before the would-be hand-off: {}", state.position_ms);
+    }
+    #[test]
+    fn idle_engine_reports_no_dsp_stages() {
+        let (mut plan, files) = fixture_plan();
+        plan.replay_gain = ReplayGain { track_gain_db: Some(-6.0), ..Default::default() };
+        let (engine, output) = engine_with(plan, files);
+        let mut settings = DspSettings::default();
+        settings.replay_gain.mode = crate::dsp::ReplayGainMode::Track;
+        engine.set_dsp(settings);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| !engine.state().playing && output.samples().len() >= 176_400);
+        wait_for(|| !engine.inner.worker_busy.load(Ordering::SeqCst));
+        assert_eq!(engine.state().dsp_stages, vec!["ReplayGain"], "the last track's stages stay visible");
+
+        engine.set_dsp(DspSettings::default());
+        assert!(engine.state().dsp_stages.is_empty());
+        engine.handle(EngineCmd::Clear).unwrap();
+        assert!(!engine.state().dsp_active);
     }
 }
