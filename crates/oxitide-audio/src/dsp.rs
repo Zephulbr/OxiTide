@@ -104,11 +104,26 @@ pub struct CrossfadeSettings {
     pub duration_ms: u32,
     /// Keep consecutive tracks of the same album gapless.
     pub skip_same_album: bool,
+    /// AutoMix Phase 1: overlap audible audio, skipping silence at the
+    /// outgoing end and the incoming start.
+    pub trim_silence: bool,
+    /// AutoMix Phase 1: overlap tracks of different sample rates or channel
+    /// counts by resampling the held-back tail instead of fading it out.
+    pub resample: bool,
+    /// AutoMix Phase 2: align the overlap beat-to-beat when both tracks have a
+    /// confident beat grid and compatible tempos.
+    pub beat_match: bool,
 }
 
 impl Default for CrossfadeSettings {
     fn default() -> Self {
-        Self { duration_ms: 0, skip_same_album: true }
+        Self {
+            duration_ms: 0,
+            skip_same_album: true,
+            trim_silence: false,
+            resample: false,
+            beat_match: false,
+        }
     }
 }
 
@@ -454,6 +469,76 @@ impl Tail {
         mixed
     }
 
+    pub fn channels(&self) -> usize {
+        self.channels
+    }
+
+    /// Interleaved normalized samples not yet mixed or written.
+    pub fn remaining(&self) -> &[f64] {
+        &self.samples[self.cursor * self.channels..]
+    }
+
+    fn to_buffer(&self, values: impl Iterator<Item = f64>) -> PcmBuffer {
+        // Exact for the source representation: i32/2^31 and f32 both survive
+        // the f64 round trip, so an unmixed preroll stays bit-perfect.
+        if self.int {
+            PcmBuffer::I32(values.map(f64_to_i32).collect())
+        } else {
+            PcmBuffer::F32(values.map(|x| x as f32).collect())
+        }
+    }
+
+    /// Remove and return the next `frames` frames unmixed, in the tail's own
+    /// representation (the outgoing track's audio before the overlap).
+    pub fn take_front(&mut self, frames: usize) -> PcmBuffer {
+        let start = self.cursor * self.channels;
+        let end = (start + frames * self.channels).min(self.samples.len());
+        let out = self.to_buffer(self.samples[start..end].iter().copied());
+        self.samples.drain(start..end);
+        out
+    }
+
+    /// Keep at most `frames` remaining frames; the rest is dropped.
+    pub fn truncate(&mut self, frames: usize) {
+        let keep = (self.cursor + frames) * self.channels;
+        self.samples.truncate(keep.min(self.samples.len()));
+    }
+
+    /// The remaining tail at another rate and channel count, so it can
+    /// overlap a track whose output format differs. Channels map first (mono
+    /// averages, extra channels repeat the last source channel), then an FFT
+    /// resampler converts the rate.
+    pub fn converted(&self, from_rate: u32, to_rate: u32, to_channels: usize) -> Tail {
+        let src = self.remaining();
+        let from_ch = self.channels;
+        let to_ch = to_channels.max(1);
+        let frames = src.len() / from_ch;
+        let mut planar: Vec<Vec<f64>> = vec![Vec::with_capacity(frames); to_ch];
+        for frame in src.chunks(from_ch) {
+            for (c, plane) in planar.iter_mut().enumerate() {
+                let value = if to_ch == 1 {
+                    frame.iter().sum::<f64>() / from_ch as f64
+                } else {
+                    frame[c.min(from_ch - 1)]
+                };
+                plane.push(value);
+            }
+        }
+        let planar = if from_rate == to_rate || frames == 0 {
+            planar
+        } else {
+            resample_planar(&planar, from_rate, to_rate)
+        };
+        let out_frames = planar.first().map_or(0, Vec::len);
+        let mut samples = Vec::with_capacity(out_frames * to_ch);
+        for i in 0..out_frames {
+            for plane in &planar {
+                samples.push(plane[i].clamp(-1.0, 1.0));
+            }
+        }
+        Tail { samples, channels: to_ch, cursor: 0, int: self.int }
+    }
+
     /// Whatever is left of the tail, faded out on its own (no incoming track
     /// to overlap), in the representation it arrived in.
     pub fn fade_out_remaining(&mut self) -> PcmBuffer {
@@ -463,14 +548,58 @@ impl Tail {
             let (out_gain, _) = self.gains(i / channels);
             self.samples[i] * out_gain
         });
-        let out = if self.int {
-            PcmBuffer::I32(values.map(f64_to_i32).collect())
-        } else {
-            PcmBuffer::F32(values.map(|x| x as f32).collect())
-        };
+        let out = self.to_buffer(values);
         self.cursor = self.frames();
         out
     }
+}
+
+/// Offline rate conversion of whole planar channels (an FFT resampler fed in
+/// fixed chunks, flushed, with its delay removed).
+fn resample_planar(input: &[Vec<f64>], from_rate: u32, to_rate: u32) -> Vec<Vec<f64>> {
+    use rubato::{FftFixedIn, Resampler};
+    const CHUNK: usize = 1024;
+    let channels = input.len();
+    let frames = input[0].len();
+    let expected = (frames as f64 * to_rate as f64 / from_rate as f64).round() as usize;
+    let Ok(mut resampler) =
+        FftFixedIn::<f64>::new(from_rate as usize, to_rate as usize, CHUNK, 2, channels)
+    else {
+        return input.to_vec();
+    };
+    let delay = resampler.output_delay();
+    let mut out: Vec<Vec<f64>> = vec![Vec::with_capacity(expected + delay + CHUNK); channels];
+    let append = |out: &mut Vec<Vec<f64>>, chunk: Vec<Vec<f64>>| {
+        for (plane, part) in out.iter_mut().zip(chunk) {
+            plane.extend(part);
+        }
+    };
+    let mut pos = 0;
+    while pos + resampler.input_frames_next() <= frames {
+        let n = resampler.input_frames_next();
+        let slices: Vec<&[f64]> = input.iter().map(|c| &c[pos..pos + n]).collect();
+        match resampler.process(&slices, None) {
+            Ok(chunk) => append(&mut out, chunk),
+            Err(_) => return input.to_vec(),
+        }
+        pos += n;
+    }
+    if pos < frames {
+        let slices: Vec<&[f64]> = input.iter().map(|c| &c[pos..]).collect();
+        if let Ok(chunk) = resampler.process_partial(Some(&slices), None) {
+            append(&mut out, chunk);
+        }
+    }
+    // Flush the resampler's internal delay so the end of the tail survives.
+    while out[0].len() < expected + delay {
+        match resampler.process_partial::<&[f64]>(None, None) {
+            Ok(chunk) if !chunk[0].is_empty() => append(&mut out, chunk),
+            _ => break,
+        }
+    }
+    out.into_iter()
+        .map(|plane| plane.into_iter().skip(delay).take(expected).collect())
+        .collect()
 }
 
 #[cfg(test)]
@@ -727,5 +856,51 @@ mod tests {
         assert!(tail.is_done());
         let i32_rest = Tail::new(&[PcmBuffer::I32(vec![1 << 30; 4])], 2).fade_out_remaining();
         assert_eq!(i32_rest.as_i32().unwrap()[0], 1 << 30);
+    }
+
+    #[test]
+    fn take_front_is_bit_exact_and_truncate_drops_the_rest() {
+        let source = vec![i32::MIN, -7, 123_456_789, i32::MAX, 1 << 20, -(1 << 20)];
+        let mut tail = Tail::new(&[PcmBuffer::I32(source.clone())], 2);
+        assert_eq!(tail.take_front(2), PcmBuffer::I32(source[..4].to_vec()));
+        assert_eq!(tail.frames(), 1);
+        tail.truncate(0);
+        assert!(tail.is_done());
+
+        let floats = vec![0.1f32, -0.2, 0.3, -0.4];
+        let mut tail = Tail::new(&[PcmBuffer::F32(floats.clone())], 2);
+        assert_eq!(tail.take_front(1), PcmBuffer::F32(floats[..2].to_vec()));
+    }
+
+    #[test]
+    fn converted_maps_channels() {
+        let tail = Tail::new(&[PcmBuffer::F32(vec![0.2, 0.4, -0.2, -0.4])], 2);
+        let mono = tail.converted(44_100, 44_100, 1);
+        assert_eq!(mono.channels(), 1);
+        assert!(mono.remaining().iter().zip([0.3, -0.3]).all(|(a, b)| (a - b).abs() < 1e-6));
+        let stereo = Tail::new(&[PcmBuffer::F32(vec![0.5, -0.5])], 1).converted(48_000, 48_000, 2);
+        assert_eq!(stereo.remaining(), &[0.5, 0.5, -0.5, -0.5]);
+    }
+
+    /// Zero crossings per second of the first channel.
+    fn frequency(samples: &[f64], channels: usize, rate: u32) -> f64 {
+        let mono: Vec<f64> = samples.iter().step_by(channels).copied().collect();
+        let skip = mono.len() / 10;
+        let body = &mono[skip..mono.len() - skip];
+        let crossings = body.windows(2).filter(|w| w[0] < 0.0 && w[1] >= 0.0).count();
+        crossings as f64 / (body.len() as f64 / rate as f64)
+    }
+
+    #[test]
+    fn converted_resamples_length_and_pitch() {
+        let input: Vec<f32> = sine(44_100, 440.0, 44_100 * 2, 0.5);
+        let tail = Tail::new(&[PcmBuffer::F32(input)], 2);
+        for to in [48_000u32, 96_000, 32_000] {
+            let out = tail.converted(44_100, to, 2);
+            let expected = 2 * to as usize;
+            assert!(out.frames().abs_diff(expected) <= 1, "{to}: {} frames", out.frames());
+            let f = frequency(out.remaining(), 2, to);
+            assert!((f - 440.0).abs() < 2.0, "{to}: {f:.1} Hz");
+        }
     }
 }

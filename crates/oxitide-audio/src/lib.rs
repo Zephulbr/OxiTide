@@ -1,4 +1,5 @@
 pub mod alsa_output;
+pub mod automix;
 pub mod cache;
 pub mod decode;
 pub mod demux;

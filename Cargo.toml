@@ -22,3 +22,14 @@ base64 = "0.22"
 toml = "1"
 directories = "6"
 rand = "0.10"
+
+# Track 7b: AutoMix analysis runs at track boundaries; keep the FFT/resampling
+# crates fast in dev builds so `app:dev` does not underrun during a transition.
+[profile.dev.package.rustfft]
+opt-level = 3
+
+[profile.dev.package.realfft]
+opt-level = 3
+
+[profile.dev.package.rubato]
+opt-level = 3
