@@ -159,6 +159,8 @@ in `Cargo.lock` (counts as of 2026-10-01):
 | Unlicense/MIT | 2 (same-file, walkdir) |
 | (MIT OR Apache-2.0) AND Unicode-3.0 | 1 (unicode-ident) |
 
+Added since: `realfft` and `rubato` (MIT, 2026-10-08, Track 7b AutoMix resampling).
+
 Notice-sensitive items worth calling out:
 
 - **MPL-2.0** (file-level copyleft, unmodified): `symphonia` and its

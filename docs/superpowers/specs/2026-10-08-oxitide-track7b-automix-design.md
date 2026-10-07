@@ -152,5 +152,10 @@ record keep/drop: `plans/notes/2026-10-08-track7b-automix-smoke.md`.
 - Beat grids on syncopated or live material can be confidently wrong → audible flams; the
   report makes these visible for tuning the floor.
 - Head pre-read needs the next track decoded ~8 s ahead; on a slow network the plan falls back.
-- Resampling a ≤ 12 s tail runs on a helper thread during the preroll; with no preroll the
-  worker waits for it (a short gap at a format change, which reopens the device anyway).
+- Resampling a ≤ 12 s tail runs synchronously at the next track's start (an FFT resampler,
+  optimized even in dev builds); the device reopens at that moment anyway.
+- Beat analysis takes ~30 ms in release and ~0.6 s in debug builds, so it runs on a helper
+  thread while the tail keeps playing; a plan that arrives after its overlap should have started
+  degrades to a plain crossfade with a note.
+- Timing-sensitive engine tests (e.g. the Track 10 fade-cancel test) can flake under full-suite
+  CPU load; they pass in isolation on this branch and on `main`.
