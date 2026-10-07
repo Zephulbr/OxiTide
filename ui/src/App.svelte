@@ -501,6 +501,9 @@
 
   function onKeydown(event: KeyboardEvent) {
     if (!loggedIn) return;
+    // A component already handled this key (slider, tabs, menu, row focus):
+    // acting on it globally too would double-seek or double-step.
+    if (event.defaultPrevented) return;
     const overlayOpen = dialogs.count > 0;
     const action = matchShortcut(event, { overlayOpen });
     if (!action) {
