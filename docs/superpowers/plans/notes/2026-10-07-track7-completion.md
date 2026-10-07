@@ -2,6 +2,7 @@
 
 - **Status:** Closed 2026-10-07 — owner smoke passed (7.1 DSP and 7.2 crossfade checklists);
   scripted gates green on Windows and WSL2
+- **Merged:** `main` at `030fae8` (branch `track7-dsp`, fast-forward, 2026-10-07)
 - **Owner:** V
 - **Scope:** DSP core (T7-D1) — Plans 7.1 (DSP pipeline, ReplayGain, EQ) and 7.2 (crossfade).
   Casting/TIDAL Connect, Dolby Atmos, 360 RA, ASIO, listen-along, and automix stay parked.
