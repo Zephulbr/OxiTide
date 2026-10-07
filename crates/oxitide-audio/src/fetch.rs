@@ -371,6 +371,7 @@ mod tests {
             bitrate_kbps: None,
             quality: None,
             manifest_hash: Some(7),
+            replay_gain: Default::default(),
         }
     }
 
@@ -428,6 +429,7 @@ mod tests {
             bitrate_kbps: None,
             quality: None,
             manifest_hash: None,
+            replay_gain: Default::default(),
         };
         let buf = StreamBuffer::new();
         download(buf.clone(), fetcher, plan, None);
@@ -449,6 +451,7 @@ mod tests {
             bitrate_kbps: None,
             quality: None,
             manifest_hash: None,
+            replay_gain: Default::default(),
         };
         let buf = StreamBuffer::new();
         download(buf.clone(), fetcher, plan, None);
@@ -494,6 +497,7 @@ mod tests {
             bitrate_kbps: None,
             quality: None,
             manifest_hash: None,
+            replay_gain: Default::default(),
         };
         let buf = StreamBuffer::new();
         download(buf.clone(), fetcher.clone(), plan, None);
@@ -516,6 +520,7 @@ mod tests {
             bitrate_kbps: None,
             quality: None,
             manifest_hash: None,
+            replay_gain: Default::default(),
         };
         let buf = StreamBuffer::new();
         download(buf.clone(), fetcher.clone(), plan, None);
@@ -589,6 +594,7 @@ mod tests {
             bitrate_kbps: None,
             quality: None,
             manifest_hash: None,
+            replay_gain: Default::default(),
         };
         let buf = StreamBuffer::new();
         let handle = {

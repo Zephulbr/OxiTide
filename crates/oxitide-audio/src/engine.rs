@@ -1665,6 +1665,7 @@ mod tests {
             bitrate_kbps: None,
             quality: None,
             manifest_hash: None,
+            replay_gain: Default::default(),
         };
         let mut files = HashMap::new();
         files.insert("mem://tone".to_string(), bytes);
@@ -1712,6 +1713,7 @@ mod tests {
             bitrate_kbps: None,
             quality: None,
             manifest_hash: Some(manifest_hash),
+            replay_gain: Default::default(),
         }
     }
 
@@ -3510,6 +3512,7 @@ mod tests {
             bitrate_kbps: None,
             quality: None,
             manifest_hash: None,
+            replay_gain: Default::default(),
         }
     }
 

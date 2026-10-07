@@ -108,6 +108,7 @@ mod tests {
             bitrate_kbps: None,
             quality: None,
             manifest_hash: None,
+            replay_gain: Default::default(),
         }
     }
 

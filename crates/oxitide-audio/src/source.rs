@@ -1,4 +1,4 @@
-use oxitide_tidal::stream::{PlaybackInfo, Quality};
+use oxitide_tidal::stream::{PlaybackInfo, Quality, ReplayGain};
 
 use crate::error::{Error, Result};
 use crate::mpd;
@@ -32,6 +32,8 @@ pub struct StreamPlan {
     /// plans built directly (tests, `StreamPlan::single`) — such plans bypass
     /// the cache.
     pub manifest_hash: Option<u64>,
+    /// Loudness metadata from `playbackinfo` (all `None` when absent).
+    pub replay_gain: ReplayGain,
 }
 
 impl StreamPlan {
@@ -52,6 +54,7 @@ impl StreamPlan {
             bitrate_kbps: None,
             quality: None,
             manifest_hash: None,
+            replay_gain: ReplayGain::default(),
         }
     }
 
@@ -192,6 +195,7 @@ pub fn plan_from_info(info: &PlaybackInfo) -> Result<StreamPlan> {
                 bitrate_kbps,
                 quality,
                 manifest_hash: Some(hash),
+                replay_gain: info.replay_gain,
             })
         }
         BTS_MIME => {
@@ -219,6 +223,7 @@ pub fn plan_from_info(info: &PlaybackInfo) -> Result<StreamPlan> {
                 bitrate_kbps: None,
                 quality,
                 manifest_hash: Some(hash),
+                replay_gain: info.replay_gain,
             })
         }
         other => Err(Error::Manifest(format!("unsupported manifest mime type: {other}"))),
@@ -236,6 +241,7 @@ mod tests {
             actual_quality: None,
             manifest_mime: mime.into(),
             manifest: body.to_vec(),
+            replay_gain: Default::default(),
         }
     }
 
@@ -245,6 +251,7 @@ mod tests {
             actual_quality: actual,
             manifest_mime: mime.into(),
             manifest: body.to_vec(),
+            replay_gain: Default::default(),
         }
     }
 
@@ -278,6 +285,22 @@ mod tests {
         assert_eq!(plan.media_urls(), vec!["https://cdn/x/seg-1.mp4", "https://cdn/x/seg-2.mp4"]);
         assert_eq!(plan.sample_rate, Some(48000));
         assert_eq!(plan.bit_depth, Some(24));
+    }
+
+    #[test]
+    fn plans_carry_the_replay_gain_metadata() {
+        let gain = ReplayGain {
+            track_gain_db: Some(-7.5),
+            track_peak: Some(0.9),
+            album_gain_db: Some(-6.0),
+            album_peak: Some(1.0),
+        };
+        let mut dash = info(DASH_MIME, flac_mpd("flac", 44100, 16).as_bytes());
+        dash.replay_gain = gain;
+        assert_eq!(plan_from_info(&dash).unwrap().replay_gain, gain);
+        let mut bts = info(BTS_MIME, br#"{"codecs":"flac","urls":["https://cdn/a.flac"]}"#);
+        bts.replay_gain = gain;
+        assert_eq!(plan_from_info(&bts).unwrap().replay_gain, gain);
     }
 
     #[test]

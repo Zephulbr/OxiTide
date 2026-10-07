@@ -45,6 +45,16 @@ impl Quality {
     }
 }
 
+/// Loudness metadata from `playbackinfo`: gains in dB, peaks as linear sample
+/// amplitude (1.0 = full scale). Each field is absent when TIDAL omits it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+pub struct ReplayGain {
+    pub track_gain_db: Option<f32>,
+    pub track_peak: Option<f32>,
+    pub album_gain_db: Option<f32>,
+    pub album_peak: Option<f32>,
+}
+
 /// The decoded `playbackinfo` response. `manifest` is raw bytes: XML for DASH,
 /// JSON for BTS.
 #[derive(Debug, Clone, PartialEq)]
@@ -55,6 +65,7 @@ pub struct PlaybackInfo {
     pub actual_quality: Option<Quality>,
     pub manifest_mime: String,
     pub manifest: Vec<u8>,
+    pub replay_gain: ReplayGain,
 }
 
 #[derive(Deserialize)]
@@ -65,6 +76,14 @@ struct RawPlaybackInfo {
     manifest: String,
     #[serde(default, rename = "audioQuality")]
     audio_quality: Option<String>,
+    #[serde(default, rename = "trackReplayGain")]
+    track_replay_gain: Option<f32>,
+    #[serde(default, rename = "trackPeakAmplitude")]
+    track_peak_amplitude: Option<f32>,
+    #[serde(default, rename = "albumReplayGain")]
+    album_replay_gain: Option<f32>,
+    #[serde(default, rename = "albumPeakAmplitude")]
+    album_peak_amplitude: Option<f32>,
 }
 
 impl TidalClient {
@@ -90,6 +109,12 @@ impl TidalClient {
                 .and_then(Quality::from_tidal_param),
             manifest_mime: raw.manifest_mime_type,
             manifest,
+            replay_gain: ReplayGain {
+                track_gain_db: raw.track_replay_gain,
+                track_peak: raw.track_peak_amplitude,
+                album_gain_db: raw.album_replay_gain,
+                album_peak: raw.album_peak_amplitude,
+            },
         })
     }
 }
@@ -183,6 +208,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn playback_info_parses_replay_gain() {
+        let server = MockServer::start().await;
+        let encoded = base64::engine::general_purpose::STANDARD.encode("<MPD></MPD>");
+        Mock::given(method("GET"))
+            .and(path("/tracks/9/playbackinfo"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "manifestMimeType": "application/dash+xml",
+                "manifest": encoded,
+                "trackReplayGain": -9.5,
+                "trackPeakAmplitude": 0.98,
+                "albumReplayGain": -8.25,
+                "albumPeakAmplitude": 1.0
+            })))
+            .mount(&server)
+            .await;
+        let info = client(&server)
+            .playback_info(9, Quality::Lossless)
+            .await
+            .unwrap();
+        assert_eq!(
+            info.replay_gain,
+            ReplayGain {
+                track_gain_db: Some(-9.5),
+                track_peak: Some(0.98),
+                album_gain_db: Some(-8.25),
+                album_peak: Some(1.0),
+            }
+        );
+    }
+
+    #[tokio::test]
     async fn playback_info_without_audio_quality_is_none() {
         let server = MockServer::start().await;
         let encoded = base64::engine::general_purpose::STANDARD.encode("<MPD></MPD>");
@@ -199,6 +255,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(info.actual_quality, None);
+        assert_eq!(info.replay_gain, ReplayGain::default());
     }
 
     #[tokio::test]
