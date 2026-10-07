@@ -61,8 +61,9 @@ pub struct PlaybackState {
     /// Configured crossfade length (0 = off): a crossfading track hands over
     /// this long before its end.
     pub crossfade_ms: u32,
-    /// What the most recent crossfade did (AutoMix A/B readout).
-    pub last_transition: Option<TransitionReport>,
+    /// What the most recent crossfade did (AutoMix A/B readout). Boxed so the
+    /// state event stays small.
+    pub last_transition: Option<Box<TransitionReport>>,
     pub queue: Vec<QueueItem>,
     pub stream: Option<StreamMeta>,
 }
@@ -219,7 +220,7 @@ fn build_state(inner: &Inner) -> PlaybackState {
         dsp_active: !dsp_stages.is_empty(),
         dsp_stages,
         crossfade_ms: inner.dsp.lock().unwrap().crossfade.duration_ms,
-        last_transition: inner.last_transition.lock().unwrap().clone(),
+        last_transition: inner.last_transition.lock().unwrap().clone().map(Box::new),
         queue: q.items().to_vec(),
         stream: inner.stream_meta.lock().unwrap().clone(),
     }
