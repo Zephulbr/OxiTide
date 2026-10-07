@@ -56,12 +56,18 @@
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       move(event.key === "ArrowDown" ? 1 : -1);
+    } else if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      if (options.length > 0) active = event.key === "Home" ? 0 : options.length - 1;
     } else if (event.key === "Enter") {
       event.preventDefault();
       const option = options[active];
       if (option) choose(option);
     } else if (event.key === "Escape") {
       event.preventDefault();
+      close();
+    } else if (event.key === "Tab") {
+      // Refocus the trigger; the default Tab action then continues from it.
       close();
     }
   }
@@ -102,12 +108,17 @@
       role="listbox"
       tabindex="-1"
       aria-label={label}
+      aria-activedescendant={active >= 0 && options[active]
+        ? `sort-option-${options[active].value}`
+        : undefined}
       onkeydown={onKeydown}
     >
       {#each options as option, i (option.value)}
         <button
+          id={`sort-option-${option.value}`}
           type="button"
           role="option"
+          tabindex="-1"
           aria-selected={option.value === value}
           class:active={active === i}
           class:selected={option.value === value}
