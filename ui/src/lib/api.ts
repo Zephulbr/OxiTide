@@ -192,6 +192,8 @@ export interface PlaybackState {
   dsp_stages: string[];
   /** Configured crossfade length in ms (0 = off). */
   crossfade_ms: number;
+  /** The most recent crossfade's report (AutoMix A/B readout). */
+  last_transition?: TransitionReport | null;
   queue: QueueItem[];
   stream?: StreamMeta | null;
 }
@@ -226,6 +228,27 @@ export interface ReplayGainSettings {
 export interface CrossfadeSettings {
   duration_ms: number;
   skip_same_album: boolean;
+  /** AutoMix: overlap audible audio, skipping silence at track edges. */
+  trim_silence: boolean;
+  /** AutoMix: overlap across sample-rate/channel changes by resampling. */
+  resample: boolean;
+  /** AutoMix: align the overlap beat-to-beat when tempos fit. */
+  beat_match: boolean;
+}
+export type TransitionKind = "crossfade" | "beat_matched" | "fade_out";
+/** What the most recent crossfade did (Rust `automix::TransitionReport`). */
+export interface TransitionReport {
+  kind: TransitionKind;
+  overlap_ms: number;
+  trimmed_out_ms: number;
+  trimmed_in_ms: number;
+  resampled: boolean;
+  out_bpm?: number | null;
+  in_bpm?: number | null;
+  out_confidence?: number | null;
+  in_confidence?: number | null;
+  beats?: number | null;
+  note?: string | null;
 }
 export interface DspSettings {
   eq: EqSettings;

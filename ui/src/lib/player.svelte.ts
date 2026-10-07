@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
-import { api, type EngineEvent, type PlaybackState, type Quality, type QueueItem, type RepeatMode, type StreamMeta } from "./api";
+import { api, type EngineEvent, type PlaybackState, type Quality, type QueueItem, type RepeatMode, type StreamMeta, type TransitionReport } from "./api";
 import type { Toasts } from "./toasts.svelte";
 
 export interface PlayerState {
@@ -19,6 +19,7 @@ export interface PlayerState {
   dsp_active: boolean;
   dsp_stages: string[];
   crossfade_ms: number;
+  last_transition?: TransitionReport | null;
   queue: QueueItem[];
   stream: StreamMeta | null;
   error: string;

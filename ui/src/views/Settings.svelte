@@ -38,8 +38,10 @@
     clampDb,
     effectivePreamp,
     formatCrossfade,
+    describeTransition,
     formatDb,
     matchPreset,
+    nearEndTarget,
     presetBands,
     withBand,
   } from "../lib/dsp";
@@ -968,8 +970,55 @@
         </p>
         <p class="muted">
           Crossfades when a track ends on its own; skipping and seeking cut straight over.
-          Tracks with different sample rates fade out instead of overlapping.
         </p>
+
+        <div class="automix">
+          <strong>AutoMix (experimental)</strong>
+          <p class="muted">
+            Each option works on its own so you can A/B them. Transitions that do not fit
+            fall back to the plain crossfade and say why below.
+          </p>
+          <label>
+            <input
+              type="checkbox"
+              checked={config.dsp.crossfade.trim_silence}
+              onchange={(e) => setCrossfade({ trim_silence: (e.target as HTMLInputElement).checked })}
+            />
+            Skip silence at track edges (overlap the music, not the gaps)
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={config.dsp.crossfade.resample}
+              onchange={(e) => setCrossfade({ resample: (e.target as HTMLInputElement).checked })}
+            />
+            Overlap across sample-rate changes (otherwise the track fades out first)
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={config.dsp.crossfade.beat_match}
+              onchange={(e) => setCrossfade({ beat_match: (e.target as HTMLInputElement).checked })}
+            />
+            Beat-match when tempos fit (aligns beats; no tempo stretching yet)
+          </label>
+          {#if player.state.current && player.state.duration_ms > 0}
+            <button
+              type="button"
+              class="jump"
+              onclick={() => player.seek(nearEndTarget(player.state.duration_ms))}
+            >Jump near the end of this track</button>
+          {/if}
+          {#if player.state.last_transition}
+            {@const summary = describeTransition(player.state.last_transition)}
+            <div class="report" aria-live="polite">
+              <span class="field-label">Last transition:</span> <strong>{summary.title}</strong>
+              <ul>
+                {#each summary.details as line (line)}<li class="muted">{line}</li>{/each}
+              </ul>
+            </div>
+          {/if}
+        </div>
       {/if}
 
       <h3>Streaming quality</h3>
@@ -1482,6 +1531,26 @@
     color: var(--text-muted);
     font-variant-numeric: tabular-nums;
     text-align: right;
+  }
+  .automix {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 8px 0 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    background: var(--surface-1);
+  }
+  .automix p {
+    margin: 0;
+  }
+  .automix .jump {
+    align-self: flex-start;
+  }
+  .report ul {
+    margin: 4px 0 0;
+    padding-left: 18px;
   }
   .eq {
     margin: 4px 0 8px;

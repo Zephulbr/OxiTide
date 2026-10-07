@@ -1,4 +1,4 @@
-import type { DspSettings, EqSettings } from "./api";
+import type { DspSettings, EqSettings, TransitionReport } from "./api";
 
 /// Mirrors `oxitide_audio::dsp`: band centres and ranges.
 export const EQ_BANDS_HZ = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000] as const;
@@ -27,7 +27,13 @@ export function defaultDspSettings(): DspSettings {
   return {
     eq: { enabled: false, auto_preamp: true, preamp_db: 0, bands_db: EQ_BANDS_HZ.map(() => 0) },
     replay_gain: { mode: "off", preamp_db: 0, untagged_db: 0, prevent_clipping: true },
-    crossfade: { duration_ms: 0, skip_same_album: true },
+    crossfade: {
+      duration_ms: 0,
+      skip_same_album: true,
+      trim_silence: false,
+      resample: false,
+      beat_match: false,
+    },
   };
 }
 
@@ -72,6 +78,43 @@ export function formatDb(db: number): string {
 
 export function formatCrossfade(ms: number): string {
   return ms <= 0 ? "Off" : `${(ms / 1000).toFixed(ms % 1000 === 0 ? 0 : 1)} s`;
+}
+
+const KIND_LABELS: Record<TransitionReport["kind"], string> = {
+  crossfade: "Crossfade",
+  beat_matched: "Beat-matched",
+  fade_out: "Fade-out (no overlap)",
+};
+
+function seconds(ms: number): string {
+  return `${(ms / 1000).toFixed(1)} s`;
+}
+
+/// The "Last transition" readout: a headline plus detail lines, for A/B
+/// listening notes.
+export function describeTransition(report: TransitionReport): { title: string; details: string[] } {
+  const details: string[] = [];
+  if (report.kind !== "fade_out") {
+    details.push(
+      report.beats ? `${seconds(report.overlap_ms)} overlap (${report.beats} beats)` : `${seconds(report.overlap_ms)} overlap`,
+    );
+  }
+  if (report.trimmed_out_ms > 0 || report.trimmed_in_ms > 0) {
+    details.push(`Silence skipped: ${seconds(report.trimmed_out_ms)} end, ${seconds(report.trimmed_in_ms)} start`);
+  }
+  if (report.resampled) details.push("Resampled across a format change");
+  if (report.out_bpm != null || report.in_bpm != null) {
+    const bpm = (value?: number | null, confidence?: number | null) =>
+      value == null ? "no grid" : `${value.toFixed(1)} BPM (${Math.round((confidence ?? 0) * 100)}%)`;
+    details.push(`Tempo: ${bpm(report.out_bpm, report.out_confidence)} → ${bpm(report.in_bpm, report.in_confidence)}`);
+  }
+  if (report.note) details.push(report.note);
+  return { title: KIND_LABELS[report.kind], details };
+}
+
+/// Where "Jump near the end" seeks: 25 s before the end (or the start).
+export function nearEndTarget(durationMs: number): number {
+  return Math.max(0, durationMs - 25_000);
 }
 
 /// Tooltip for the player-bar DSP badge.

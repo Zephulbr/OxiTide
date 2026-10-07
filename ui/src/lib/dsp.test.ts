@@ -5,11 +5,13 @@ import {
   bandLabel,
   clampDb,
   defaultDspSettings,
+  describeTransition,
   dspBadgeTitle,
   effectivePreamp,
   formatCrossfade,
   formatDb,
   matchPreset,
+  nearEndTarget,
   presetBands,
   withBand,
 } from "./dsp";
@@ -22,7 +24,13 @@ describe("dsp settings helpers", () => {
     expect(settings.eq.bands_db).toHaveLength(EQ_BANDS_HZ.length);
     expect(settings.replay_gain.mode).toBe("off");
     expect(settings.replay_gain.prevent_clipping).toBe(true);
-    expect(settings.crossfade).toEqual({ duration_ms: 0, skip_same_album: true });
+    expect(settings.crossfade).toEqual({
+      duration_ms: 0,
+      skip_same_album: true,
+      trim_silence: false,
+      resample: false,
+      beat_match: false,
+    });
   });
 
   it("labels bands in Hz and kHz", () => {
@@ -77,5 +85,63 @@ describe("dsp settings helpers", () => {
     expect(formatCrossfade(6000)).toBe("6 s");
     expect(formatCrossfade(2500)).toBe("2.5 s");
     expect(dspBadgeTitle(["ReplayGain", "EQ"])).toBe("ReplayGain, EQ active — bit-perfect off");
+  });
+});
+
+describe("automix readout", () => {
+  const base = {
+    kind: "crossfade" as const,
+    overlap_ms: 6000,
+    trimmed_out_ms: 0,
+    trimmed_in_ms: 0,
+    resampled: false,
+  };
+
+  it("summarizes a plain crossfade in one line", () => {
+    expect(describeTransition(base)).toEqual({ title: "Crossfade", details: ["6.0 s overlap"] });
+  });
+
+  it("lists beats, trims, resampling, tempos, and the reason", () => {
+    const summary = describeTransition({
+      ...base,
+      kind: "beat_matched",
+      overlap_ms: 3750,
+      beats: 8,
+      trimmed_out_ms: 1500,
+      trimmed_in_ms: 250,
+      resampled: true,
+      out_bpm: 128,
+      in_bpm: 127.4,
+      out_confidence: 0.82,
+      in_confidence: 0.61,
+    });
+    expect(summary.title).toBe("Beat-matched");
+    expect(summary.details).toEqual([
+      "3.8 s overlap (8 beats)",
+      "Silence skipped: 1.5 s end, 0.3 s start",
+      "Resampled across a format change",
+      "Tempo: 128.0 BPM (82%) → 127.4 BPM (61%)",
+    ]);
+  });
+
+  it("explains a fallback and a fade-out", () => {
+    const fallback = describeTransition({
+      ...base,
+      out_bpm: 128,
+      in_bpm: null,
+      out_confidence: 0.7,
+      note: "no beat grid (too short or no onsets)",
+    });
+    expect(fallback.details).toContain("Tempo: 128.0 BPM (70%) → no grid");
+    expect(fallback.details[fallback.details.length - 1]).toBe("no beat grid (too short or no onsets)");
+    expect(describeTransition({ ...base, kind: "fade_out" })).toEqual({
+      title: "Fade-out (no overlap)",
+      details: [],
+    });
+  });
+
+  it("jumps 25 s before the end", () => {
+    expect(nearEndTarget(200_000)).toBe(175_000);
+    expect(nearEndTarget(10_000)).toBe(0);
   });
 });
