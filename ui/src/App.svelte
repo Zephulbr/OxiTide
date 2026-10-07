@@ -30,6 +30,7 @@
   import CollectionDialogs from "./lib/components/CollectionDialogs.svelte";
   import ToastHost from "./lib/components/ToastHost.svelte";
   import ContextMenu from "./lib/components/ContextMenu.svelte";
+  import { dialogs } from "./lib/dialogs.svelte";
   import Neko from "./lib/components/Neko.svelte";
   import PerfHud from "./lib/components/PerfHud.svelte";
   import { createNav } from "./lib/nav.svelte";
@@ -500,7 +501,7 @@
 
   function onKeydown(event: KeyboardEvent) {
     if (!loggedIn) return;
-    const overlayOpen = document.querySelector('[role="dialog"]') !== null;
+    const overlayOpen = dialogs.count > 0;
     const action = matchShortcut(event, { overlayOpen });
     if (!action) {
       // A held Space is ignored as a toggle, but it must not scroll the page
@@ -545,9 +546,11 @@
 {:else}
   <Backdrop {player} />
   {#if mini.active}
-    <Mini {player} {favorites} {mini} />
+    <div class="mini-layer" inert={dialogs.count > 0}>
+      <Mini {player} {favorites} {mini} />
+    </div>
   {:else}
-  <div class="app" data-sidebar={sidebarRail ? "rail" : "full"} data-now-playing={nav.nowPlayingOpen}>
+  <div class="app" data-sidebar={sidebarRail ? "rail" : "full"} data-now-playing={nav.nowPlayingOpen} inert={dialogs.count > 0}>
     <Sidebar
       {nav}
       rail={sidebarRail}

@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import { dialogs } from "../dialogs.svelte";
   import { focusTrap } from "../focusTrap";
+  import { portal } from "../portal";
   import Icon from "./Icon.svelte";
   let {
     title,
@@ -9,6 +11,8 @@
   }: { title: string; onclose: () => void; children: Snippet } = $props();
 
   let panel = $state<HTMLDivElement | null>(null);
+
+  $effect(() => dialogs.register());
 </script>
 
 <svelte:window
@@ -21,7 +25,7 @@
   }}
 />
 
-<div class="overlay">
+<div class="overlay" use:portal>
   <div
     class="panel"
     role="dialog"

@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/svelte";
 import { createRawSnippet } from "svelte";
+import { dialogs } from "../dialogs.svelte";
 import Modal from "./Modal.svelte";
 
 afterEach(cleanup);
@@ -41,6 +42,23 @@ describe("Modal", () => {
     cleanup();
     expect(document.activeElement).toBe(opener);
     opener.remove();
+  });
+});
+
+describe("Modal portal", () => {
+  it("portals the overlay to the body and registers as an open dialog", async () => {
+    render(Modal, {
+      title: "Test",
+      onclose: vi.fn(),
+      children: children('<button id="inner">inner</button>'),
+    });
+
+    const panel = document.querySelector('[role="dialog"]')!;
+    await waitFor(() => expect(panel.closest(".overlay")!.parentElement).toBe(document.body));
+    await waitFor(() => expect(dialogs.count).toBe(1));
+
+    cleanup();
+    expect(dialogs.count).toBe(0);
   });
 });
 
