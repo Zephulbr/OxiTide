@@ -566,6 +566,7 @@ mod tests {
             dsp_active: false,
             dsp_stages: Vec::new(),
             crossfade_ms: 0,
+            last_transition: None,
             queue: items,
             stream: None,
         }

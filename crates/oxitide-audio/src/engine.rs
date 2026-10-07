@@ -6,7 +6,8 @@ use std::time::{Duration, Instant};
 
 use crate::cache::{CacheKey, DiskCache};
 use crate::decode::{PcmBuffer, PcmFormat, PcmSink, StreamInfo};
-use crate::dsp::{CrossfadeSettings, DspSettings, Tail, TrackDsp, STAGE_CROSSFADE};
+use crate::automix::{self, Clip, TransitionKind, TransitionPlan, TransitionReport};
+use crate::dsp::{extend_normalized, CrossfadeSettings, DspSettings, Tail, TrackDsp, STAGE_CROSSFADE};
 use crate::error::{Error, Result};
 use crate::fetch::{self, Fetcher, StreamBuffer};
 use crate::output::{AudioOutput, AudioOutputSpec, ExclusiveFallback, OutputMode, OutputStatus};
@@ -60,6 +61,8 @@ pub struct PlaybackState {
     /// Configured crossfade length (0 = off): a crossfading track hands over
     /// this long before its end.
     pub crossfade_ms: u32,
+    /// What the most recent crossfade did (AutoMix A/B readout).
+    pub last_transition: Option<TransitionReport>,
     pub queue: Vec<QueueItem>,
     pub stream: Option<StreamMeta>,
 }
@@ -141,6 +144,8 @@ struct Inner {
     dsp_version: AtomicU64,
     /// DSP stages currently altering samples (empty = untouched).
     dsp_stages: Mutex<Vec<&'static str>>,
+    /// The most recent transition report.
+    last_transition: Mutex<Option<TransitionReport>>,
     listeners: Mutex<Vec<Listener>>,
     perf_hook: Mutex<Option<PerfHook>>,
     /// Serializes queue mutation against the worker's advance decision.
@@ -214,6 +219,7 @@ fn build_state(inner: &Inner) -> PlaybackState {
         dsp_active: !dsp_stages.is_empty(),
         dsp_stages,
         crossfade_ms: inner.dsp.lock().unwrap().crossfade.duration_ms,
+        last_transition: inner.last_transition.lock().unwrap().clone(),
         queue: q.items().to_vec(),
         stream: inner.stream_meta.lock().unwrap().clone(),
     }
@@ -279,6 +285,7 @@ impl Engine {
             dsp: Mutex::new(DspSettings::default()),
             dsp_version: AtomicU64::new(0),
             dsp_stages: Mutex::new(Vec::new()),
+            last_transition: Mutex::new(None),
             listeners: Mutex::new(Vec::new()),
             perf_hook: Mutex::new(None),
             playback_lock: Mutex::new(()),
@@ -718,6 +725,70 @@ struct TrackStream {
     cache: Arc<DiskCache>,
     /// The cache key this stream protects while it is alive, once resolved.
     cache_key: Arc<Mutex<Option<CacheKey>>>,
+    /// Events pre-read from `rx` while this stream waits as the prefetch (the
+    /// AutoMix head); every read consumes them first, in order.
+    pending: VecDeque<Result<StreamEvent>>,
+    /// The stream info seen while pre-reading, and the sample frames queued.
+    pending_info: Option<StreamInfo>,
+    pending_frames: u64,
+}
+
+impl TrackStream {
+    /// Pre-read up to `seconds` of decoded audio without blocking. Events stay
+    /// queued in order, so nothing changes for the eventual consumer.
+    fn prefill(&mut self, seconds: f64) {
+        loop {
+            if let Some(info) = self.pending_info {
+                if self.pending_frames as f64 >= seconds * info.sample_rate as f64 {
+                    return;
+                }
+            }
+            if matches!(self.pending.back(), Some(Err(_))) {
+                return;
+            }
+            let Ok(event) = self.rx.try_recv() else {
+                return;
+            };
+            match &event {
+                Ok(StreamEvent::Info(start)) => self.pending_info = Some(start.info),
+                Ok(StreamEvent::Samples(buf)) => {
+                    let channels = self.pending_info.map_or(2, |info| info.channels);
+                    self.pending_frames += buf.frames(channels);
+                }
+                Err(_) => {}
+            }
+            self.pending.push_back(event);
+        }
+    }
+
+    fn try_recv(&mut self) -> std::result::Result<Result<StreamEvent>, TryRecvError> {
+        match self.pending.pop_front() {
+            Some(event) => Ok(event),
+            None => self.rx.try_recv(),
+        }
+    }
+
+    fn recv_timeout(
+        &mut self,
+        timeout: Duration,
+    ) -> std::result::Result<Result<StreamEvent>, RecvTimeoutError> {
+        match self.pending.pop_front() {
+            Some(event) => Ok(event),
+            None => self.rx.recv_timeout(timeout),
+        }
+    }
+
+    /// The pre-read opening as normalized interleaved samples, for planning.
+    fn head(&self) -> Option<(Vec<f64>, StreamInfo)> {
+        let info = self.pending_info?;
+        let mut samples = Vec::new();
+        for event in &self.pending {
+            if let Ok(StreamEvent::Samples(buf)) = event {
+                extend_normalized(&mut samples, buf);
+            }
+        }
+        (!samples.is_empty()).then_some((samples, info))
+    }
 }
 
 impl Drop for TrackStream {
@@ -748,6 +819,9 @@ fn start_track(
         buffer: buffer.clone(),
         cache: inner.cache.clone(),
         cache_key: cache_key.clone(),
+        pending: VecDeque::new(),
+        pending_info: None,
+        pending_frames: 0,
     };
     let decode_inner = inner.clone();
     let item = item.clone();
@@ -1132,6 +1206,14 @@ fn wait_for_stream_event<T>(
 }
 
 fn wait_for_info(inner: &Arc<Inner>, stream: &mut TrackStream, gen: u64) -> Result<StreamStart> {
+    // A pre-read head already holds the info (and audio after it).
+    while let Some(event) = stream.pending.pop_front() {
+        match event {
+            Ok(StreamEvent::Info(start)) => return Ok(start),
+            Ok(StreamEvent::Samples(_)) => continue,
+            Err(e) => return Err(e),
+        }
+    }
     loop {
         let session_over = || {
             if inner.generation.load(Ordering::SeqCst) != gen {
@@ -1180,6 +1262,90 @@ fn publish_dsp_stages(inner: &Inner, dsp: &TrackDsp, crossfading: bool) {
         stages.push(STAGE_CROSSFADE);
     }
     *inner.dsp_stages.lock().unwrap() = stages;
+}
+
+/// The held-back end of one track on its way into the next: the tail left
+/// after the preroll, where the next track's overlap starts, and the report.
+struct Handoff {
+    tail: Tail,
+    rate: u32,
+    /// Incoming frames to skip before the overlap (trimmed silence / beat
+    /// alignment), valid only for `head_track`.
+    skip_frames: usize,
+    head_track: Option<u64>,
+    report: TransitionReport,
+}
+
+/// A beat analysis running on a helper thread while the tail keeps playing.
+struct PendingPlan {
+    rx: Receiver<TransitionPlan>,
+    /// Tail frames played since the analysis started.
+    written: u64,
+    head_track: Option<u64>,
+}
+
+/// Drop the first `frames` frames of `buf`.
+fn drop_front_frames(buf: PcmBuffer, frames: usize, channels: u16) -> PcmBuffer {
+    let skip = (frames * channels.max(1) as usize).min(buf.len());
+    match buf {
+        PcmBuffer::F32(v) => PcmBuffer::F32(v[skip..].to_vec()),
+        PcmBuffer::I32(v) => PcmBuffer::I32(v[skip..].to_vec()),
+    }
+}
+
+/// The queue item that would play after the current one (prefetch target).
+fn upcoming_track(inner: &Inner) -> Option<u64> {
+    let q = inner.queue.lock().unwrap();
+    q.peek_next_index().and_then(|i| q.items().get(i)).map(|item| item.track_id)
+}
+
+/// Offsets from a plan computed while `written` tail frames kept playing.
+/// A plan whose overlap would have started already degrades to a plain
+/// crossfade over what is left.
+fn rebase_plan(
+    plan: TransitionPlan,
+    written: u64,
+    remaining: usize,
+    base_frames: u64,
+    rate: u32,
+) -> TransitionPlan {
+    let written = written as usize;
+    if written <= plan.preroll_frames {
+        return TransitionPlan { preroll_frames: plan.preroll_frames - written, ..plan };
+    }
+    let mut late = plain_plan(remaining, base_frames, rate, "beat analysis finished late; plain crossfade");
+    // Keep what the analysis learned (BPMs, confidences, trims) for the readout.
+    late.report = TransitionReport {
+        kind: late.report.kind,
+        overlap_ms: late.report.overlap_ms,
+        beats: None,
+        note: late.report.note,
+        ..plan.report
+    };
+    late
+}
+
+/// The plain Track 7 crossfade over the last `base_frames` of `remaining`.
+fn plain_plan(remaining: usize, base_frames: u64, rate: u32, note: &str) -> TransitionPlan {
+    let mix = (base_frames as usize).min(remaining);
+    TransitionPlan {
+        preroll_frames: remaining - mix,
+        mix_frames: mix,
+        incoming_skip_frames: 0,
+        report: TransitionReport {
+            kind: TransitionKind::Crossfade,
+            overlap_ms: (mix as f64 * 1000.0 / rate.max(1) as f64).round() as u32,
+            trimmed_out_ms: 0,
+            trimmed_in_ms: 0,
+            resampled: false,
+            out_bpm: None,
+            in_bpm: None,
+            out_confidence: None,
+            in_confidence: None,
+            beats: None,
+            note: Some(note.into()),
+        },
+    }
 }
 
 /// How many frames of `current` to hold back for a crossfade into `next`; 0
@@ -1260,7 +1426,7 @@ fn run_session(
     // the skip chain so repeat-all/repeat-one cannot loop forever.
     let mut skipped: usize = 0;
     // The previous track's held-back end, waiting to cross into this one.
-    let mut pending_tail: Option<Tail> = None;
+    let mut pending_handoff: Option<Handoff> = None;
     let mut frames: u64;
     let mut last_emit;
     loop {
@@ -1325,13 +1491,30 @@ fn run_session(
             mode,
             exclusive_fallback: fallback,
         };
-        // The previous track's held-back end overlaps this one only when the
-        // output stays as it is; across a reopen it fades out on its own.
+        // The previous track's held-back end overlaps this one when the output
+        // stays as it is, or after a reopen once resampled (AutoMix); otherwise
+        // it fades out on its own.
         let mut incoming: Option<Tail> = None;
-        if let Some(mut tail) = pending_tail.take() {
+        // Incoming frames to drop before the overlap (trimmed lead silence or
+        // beat alignment); they still count toward the position.
+        let mut skip_remaining: u64 = 0;
+        if let Some(handoff) = pending_handoff.take() {
+            let Handoff { mut tail, rate: tail_rate, skip_frames, head_track, mut report } = handoff;
+            let skip = if head_track == Some(stream.item.track_id) {
+                skip_frames as u64
+            } else {
+                0
+            };
+            let resample = inner.dsp.lock().unwrap().crossfade.resample;
             if open_spec.as_ref() == Some(&want) {
                 incoming = Some(tail);
+                skip_remaining = skip;
+            } else if resample && open_spec.is_some() {
+                incoming = Some(tail.converted(tail_rate, info.sample_rate, info.channels as usize));
+                skip_remaining = skip;
+                report.resampled = true;
             } else if open_spec.is_some() {
+                report.kind = TransitionKind::FadeOut;
                 if let Err(e) = output.write(&tail.fade_out_remaining()) {
                     return SessionOutcome::OutputError {
                         message: e.to_string(),
@@ -1339,6 +1522,22 @@ fn run_session(
                     };
                 }
             }
+            tracing::info!(
+                kind = ?report.kind,
+                overlap_ms = report.overlap_ms,
+                trimmed_out_ms = report.trimmed_out_ms,
+                trimmed_in_ms = report.trimmed_in_ms,
+                resampled = report.resampled,
+                out_bpm = ?report.out_bpm,
+                in_bpm = ?report.in_bpm,
+                out_confidence = ?report.out_confidence,
+                in_confidence = ?report.in_confidence,
+                beats = ?report.beats,
+                note = ?report.note,
+                "transition into track {}",
+                stream.item.track_id
+            );
+            *inner.last_transition.lock().unwrap() = Some(report);
         }
         let mut dsp_version = inner.dsp_version.load(Ordering::SeqCst);
         let mut crossfade = {
@@ -1402,7 +1601,11 @@ fn run_session(
         let mut fifo: VecDeque<PcmBuffer> = VecDeque::new();
         let mut fifo_frames: u64 = 0;
         let mut ended = false;
-        let mut hand_off = false;
+        // The crossing plan once the tail is final (synchronous for a plain or
+        // trimmed crossfade; from a helper thread for beat matching).
+        let mut planned: Option<(TransitionPlan, u64, Option<u64>)> = None;
+        let mut analysis: Option<PendingPlan> = None;
+        let mut base_frames: u64 = 0;
         loop {
             if inner.generation.load(Ordering::SeqCst) != gen {
                 return SessionOutcome::Superseded;
@@ -1477,16 +1680,32 @@ fn run_session(
             }
             // A sleep fade ends the session on this track; never cross into
             // the next one while it runs.
-            let target = if fading {
+            let base = if fading {
                 0
             } else {
                 crossfade_frames(&crossfade, &stream.item, prefetch.as_ref().map(|p| &p.item), rate)
             };
+            // AutoMix needs room to move the overlap earlier (trimmed silence,
+            // beat windows) and the next track's opening to plan against.
+            let target = if base > 0 {
+                base + automix::extra_hold_ms(&crossfade) as u64 * rate as u64 / 1000
+            } else {
+                0
+            };
+            if base > 0 {
+                base_frames = base;
+                let head_seconds = automix::head_seconds(&crossfade);
+                if head_seconds > 0.0 {
+                    if let Some(next) = prefetch.as_mut() {
+                        next.prefill(head_seconds);
+                    }
+                }
+            }
             if fifo.is_empty() {
                 if ended {
                     break;
                 }
-                let received = stream.rx.recv_timeout(Duration::from_millis(50));
+                let received = stream.recv_timeout(Duration::from_millis(50));
                 // A seek or track change bumps the generation. Once it moves,
                 // this session is superseded and must not publish a stale
                 // position or write buffered audio from the pre-seek offset.
@@ -1517,7 +1736,7 @@ fn run_session(
             // Read ahead (the producer decodes faster than real time) until
             // the FIFO holds a crossfade's worth of audio.
             while target > 0 && !ended && fifo_frames < target {
-                match stream.rx.try_recv() {
+                match stream.try_recv() {
                     Ok(Ok(StreamEvent::Samples(buf))) => {
                         fifo_frames += buf.frames(channels);
                         fifo.push_back(buf);
@@ -1534,14 +1753,79 @@ fn run_session(
                 }
             }
             if ended && target > 0 {
-                // The FIFO is the whole tail: hand it to the next track.
-                hand_off = true;
-                break;
+                // The FIFO is the whole tail: plan the crossing into the next
+                // track, against its pre-read opening when that is the track
+                // that follows.
+                if let Some(pending) = analysis.as_ref() {
+                    if let Ok(plan) = pending.rx.try_recv() {
+                        planned = Some((plan, pending.written, pending.head_track));
+                        break;
+                    }
+                    // Still analysing: keep playing the tail meanwhile.
+                } else {
+                    let head_track = upcoming_track(inner);
+                    let head = prefetch
+                        .as_ref()
+                        .filter(|next| Some(next.item.track_id) == head_track)
+                        .and_then(TrackStream::head);
+                    let mut tail_audio = Vec::with_capacity(fifo_frames as usize * channels as usize);
+                    for buf in &fifo {
+                        extend_normalized(&mut tail_audio, buf);
+                    }
+                    let settings = crossfade.clone();
+                    let plan_with = move || {
+                        let tail = Clip { samples: &tail_audio, channels: channels as usize, rate };
+                        let head_clip = head.as_ref().map(|(samples, info)| Clip {
+                            samples,
+                            channels: info.channels as usize,
+                            rate: info.sample_rate,
+                        });
+                        automix::plan_transition(&tail, head_clip.as_ref(), &settings)
+                    };
+                    if crossfade.beat_match {
+                        // Beat analysis can take longer than the device ring
+                        // holds; run it aside while the tail keeps playing.
+                        let (tx, rx) = std::sync::mpsc::sync_channel(1);
+                        let notify = inner.clone();
+                        let spawned = std::thread::Builder::new()
+                            .name("oxitide-automix".into())
+                            .spawn(move || {
+                                let _ = tx.send(plan_with());
+                                notify.notify_worker();
+                            });
+                        if spawned.is_ok() {
+                            analysis = Some(PendingPlan { rx, written: 0, head_track });
+                        } else {
+                            let remaining = fifo_frames as usize;
+                            let plan = plain_plan(remaining, base, rate, "beat analysis unavailable");
+                            planned = Some((plan, 0, head_track));
+                            break;
+                        }
+                    } else {
+                        planned = Some((plan_with(), 0, head_track));
+                        break;
+                    }
+                }
             }
             let Some(buf) = fifo.pop_front() else {
                 continue;
             };
             fifo_frames -= buf.frames(channels);
+            let buf = if skip_remaining > 0 {
+                let available = buf.frames(channels);
+                let dropped = skip_remaining.min(available);
+                skip_remaining -= dropped;
+                frames += dropped;
+                if dropped == available {
+                    continue;
+                }
+                drop_front_frames(buf, dropped as usize, channels)
+            } else {
+                buf
+            };
+            if let Some(pending) = analysis.as_mut() {
+                pending.written += buf.frames(channels);
+            }
             let mut buf = dsp.process(buf);
             if let Some(tail) = incoming.as_mut() {
                 buf = tail.mix_into(buf);
@@ -1589,11 +1873,35 @@ fn run_session(
                 return SessionOutcome::OutputError { message: e.to_string(), track_id };
             }
         }
-        let tail: Vec<PcmBuffer> = if hand_off {
-            fifo.drain(..).map(|buf| dsp.process(buf)).collect()
-        } else {
-            Vec::new()
-        };
+        // Split the held-back tail: the preroll plays now as this track's own
+        // audio, the overlap part waits for the next track, the rest (silence
+        // or past the beat window) is dropped.
+        let mut handoff: Option<Handoff> = None;
+        if let Some((plan, written, head_track)) = planned.take() {
+            let processed: Vec<PcmBuffer> = fifo.drain(..).map(|buf| dsp.process(buf)).collect();
+            let mut tail = Tail::new(&processed, channels);
+            let plan = rebase_plan(plan, written, tail.frames(), base_frames, rate);
+            let preroll = tail.take_front(plan.preroll_frames);
+            if !preroll.is_empty() {
+                if let Err(e) = output.write(&preroll) {
+                    return SessionOutcome::OutputError { message: e.to_string(), track_id };
+                }
+                frames += preroll.frames(channels);
+                if rate > 0 {
+                    inner
+                        .position_ms
+                        .store(frames.saturating_mul(1000) / rate as u64, Ordering::SeqCst);
+                }
+            }
+            tail.truncate(plan.mix_frames);
+            handoff = Some(Handoff {
+                tail,
+                rate,
+                skip_frames: plan.incoming_skip_frames,
+                head_track,
+                report: plan.report,
+            });
+        }
         // Track ended: advance the queue under the playback lock, the same way
         // the old per-track thread did.
         let next = {
@@ -1619,14 +1927,14 @@ fn run_session(
                     _ => start_track(inner, &item, mode, gen, None),
                 };
                 prefetch = start_prefetch(inner, mode, gen);
-                if !tail.is_empty() {
-                    pending_tail = Some(Tail::new(&tail, channels));
-                }
+                pending_handoff = handoff.filter(|h| !h.tail.is_done());
             }
             None => {
                 // Nothing follows after all: the held-back end plays as is.
-                for buf in &tail {
-                    if let Err(e) = output.write(buf) {
+                if let Some(mut handoff) = handoff {
+                    let frames_left = handoff.tail.frames();
+                    let rest = handoff.tail.take_front(frames_left);
+                    if let Err(e) = output.write(&rest) {
                         return SessionOutcome::OutputError { message: e.to_string(), track_id };
                     }
                 }
@@ -4538,5 +4846,144 @@ mod tests {
         assert!(engine.state().dsp_stages.is_empty());
         engine.handle(EngineCmd::Clear).unwrap();
         assert!(!engine.state().dsp_active);
+    }
+
+    fn automix(duration_ms: u32, trim: bool, resample: bool, beat_match: bool) -> DspSettings {
+        let mut settings = crossfade(duration_ms, true);
+        settings.crossfade.trim_silence = trim;
+        settings.crossfade.resample = resample;
+        settings.crossfade.beat_match = beat_match;
+        settings
+    }
+
+    #[test]
+    fn a_plain_crossfade_publishes_its_report() {
+        let (plan, files) = fixture_plan();
+        let (engine, output, _) = play_to_end(
+            plan,
+            files,
+            crossfade(1000, true),
+            vec![album_item(1, "A"), album_item(2, "B")],
+            2 * 176_400 - 2 * 44_100 - 2 * 8192,
+        );
+        let report = engine.state().last_transition.expect("report");
+        assert_eq!(report.kind, TransitionKind::Crossfade);
+        assert!(report.overlap_ms > 800 && report.overlap_ms <= 1000, "{report:?}");
+        assert!(!report.resampled && report.note.is_none() && report.out_bpm.is_none());
+        assert!(output.samples().len() < 2 * 176_400);
+    }
+
+    /// Trim on a fixture without silence behaves like the plain crossfade,
+    /// with nothing trimmed; the extra hold-back plays as the outgoing track.
+    #[test]
+    fn trim_silence_without_silence_matches_the_plain_overlap() {
+        let (plan, files) = fixture_plan();
+        let (engine, output, _) = play_to_end(
+            plan,
+            files,
+            automix(1000, true, false, false),
+            vec![album_item(1, "A"), album_item(2, "B")],
+            2 * 176_400 - 2 * 44_100 - 2 * 8192,
+        );
+        let report = engine.state().last_transition.expect("report");
+        assert_eq!(report.kind, TransitionKind::Crossfade);
+        assert!(report.trimmed_out_ms < 50 && report.trimmed_in_ms < 50, "{report:?}");
+        let total = output.samples().len();
+        let overlap = 2 * 44_100;
+        assert!(
+            total + overlap <= 2 * 176_400 + 2 * 4096 && total + overlap + 2 * 4096 >= 2 * 176_400,
+            "expected ~{} samples, got {total}",
+            2 * 176_400 - overlap
+        );
+        assert!(output.samples().iter().all(|s| s.abs() <= 1.0));
+    }
+
+    /// A steady tone has no beat grid: beat matching falls back to the plain
+    /// crossfade and says why.
+    #[test]
+    fn beat_match_on_a_tone_falls_back_with_a_reason() {
+        let (plan, files) = fixture_plan();
+        let (engine, output, _) = play_to_end(
+            plan,
+            files,
+            automix(1000, false, false, true),
+            vec![album_item(1, "A"), album_item(2, "B")],
+            2 * 176_400 - 2 * 44_100 - 2 * 8192,
+        );
+        let report = engine.state().last_transition.expect("report");
+        assert_eq!(report.kind, TransitionKind::Crossfade, "{report:?}");
+        assert!(report.note.is_some(), "{report:?}");
+        assert!(output.samples().len() < 2 * 176_400, "the fallback still overlaps");
+    }
+
+    /// With `resample`, a 44.1 kHz tail overlaps a 48 kHz track after the
+    /// reopen instead of fading out on its own.
+    #[test]
+    fn resample_overlaps_across_a_format_change() {
+        let tone16 = std::fs::read("tests/fixtures/tone.mp4").unwrap();
+        let tone48 = std::fs::read("tests/fixtures/tone48.mp4").unwrap();
+        let mut plans = HashMap::new();
+        plans.insert(1, plan_for("mem://t16", 44100, 16));
+        plans.insert(2, plan_for("mem://t48", 48000, 16));
+        let mut files = HashMap::new();
+        files.insert("mem://t16".to_string(), tone16);
+        files.insert("mem://t48".to_string(), tone48);
+        let output = NullOutput::new();
+        let engine = build_engine(
+            Arc::new(PerTrackResolver { plans, order: Arc::new(Mutex::new(Vec::new())) }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(ThrottledOutput { inner: output.clone(), delay: Duration::from_millis(3) }),
+            Quality::Lossless,
+        );
+        engine.set_dsp(automix(1000, false, true, false));
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![album_item(1, "A"), album_item(2, "B")],
+                start: 0,
+            })
+            .unwrap();
+        // Track 1 plays its first second alone (88_200 samples at 44.1 kHz);
+        // its last second overlaps the first second of the 48 kHz track.
+        let expected = 88_200 + 192_000;
+        wait_for(|| !engine.state().playing && output.samples().len() >= expected - 2 * 8192);
+        std::thread::sleep(Duration::from_millis(50));
+        let total = output.samples().len();
+        assert!(total.abs_diff(expected) <= 2 * 8192, "expected ~{expected}, got {total}");
+        assert_eq!(output.opens(), 2);
+        let report = engine.state().last_transition.expect("report");
+        assert!(report.resampled, "{report:?}");
+        assert_eq!(report.kind, TransitionKind::Crossfade);
+        assert!(output.samples().iter().all(|s| s.abs() <= 1.0));
+    }
+
+    /// With every AutoMix toggle off the format change still fades out.
+    #[test]
+    fn a_format_change_without_resample_reports_a_fade_out() {
+        let tone16 = std::fs::read("tests/fixtures/tone.mp4").unwrap();
+        let tone48 = std::fs::read("tests/fixtures/tone48.mp4").unwrap();
+        let mut plans = HashMap::new();
+        plans.insert(1, plan_for("mem://t16", 44100, 16));
+        plans.insert(2, plan_for("mem://t48", 48000, 16));
+        let mut files = HashMap::new();
+        files.insert("mem://t16".to_string(), tone16);
+        files.insert("mem://t48".to_string(), tone48);
+        let output = NullOutput::new();
+        let engine = build_engine(
+            Arc::new(PerTrackResolver { plans, order: Arc::new(Mutex::new(Vec::new())) }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(ThrottledOutput { inner: output.clone(), delay: Duration::from_millis(3) }),
+            Quality::Lossless,
+        );
+        engine.set_dsp(crossfade(1000, true));
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![album_item(1, "A"), album_item(2, "B")],
+                start: 0,
+            })
+            .unwrap();
+        wait_for(|| !engine.state().playing && output.samples().len() >= 176_400 + 192_000);
+        assert_eq!(output.samples().len(), 176_400 + 192_000);
+        let report = engine.state().last_transition.expect("report");
+        assert_eq!(report.kind, TransitionKind::FadeOut);
     }
 }

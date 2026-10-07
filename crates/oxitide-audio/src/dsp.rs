@@ -402,6 +402,11 @@ fn sample_f64(buf: &PcmBuffer, index: usize) -> f64 {
     }
 }
 
+/// Append `buf` to `out` as normalized `f64` samples (interleaved).
+pub fn extend_normalized(out: &mut Vec<f64>, buf: &PcmBuffer) {
+    out.extend((0..buf.len()).map(|i| sample_f64(buf, i)));
+}
+
 /// The held-back end of a track, faded out across the start of the next one.
 pub struct Tail {
     /// Interleaved, normalized samples.
