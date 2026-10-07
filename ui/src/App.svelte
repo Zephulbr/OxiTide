@@ -34,7 +34,13 @@
   import Neko from "./lib/components/Neko.svelte";
   import PerfHud from "./lib/components/PerfHud.svelte";
   import { createNav } from "./lib/nav.svelte";
-  import { appearance, clampQueueWidth } from "./lib/appearance.svelte";
+  import {
+    appearance,
+    clampQueueWidth,
+    QUEUE_WIDTH_MAX,
+    QUEUE_WIDTH_MIN,
+  } from "./lib/appearance.svelte";
+  import { routeTitle } from "./lib/titles";
   import { perf } from "./lib/perf.svelte";
   import { perfHooks } from "./lib/perfHooks";
   import { makeSyntheticTracks } from "./lib/perfFixture";
@@ -131,6 +137,42 @@
     target.addEventListener("pointermove", onMove);
     target.addEventListener("pointerup", onUp);
   }
+
+  /// Keyboard resize for the queue splitter (a slider over the rail width).
+  /// Left/Right follow the handle, which sits on the rail's left edge, so
+  /// ArrowLeft widens; Up/Down follow the value. Shift takes bigger steps.
+  function onQueueResizeKeydown(event: KeyboardEvent) {
+    const step = event.shiftKey ? 48 : 16;
+    let width: number | null = null;
+    if (event.key === "ArrowLeft" || event.key === "ArrowUp") width = appearance.queueWidth + step;
+    else if (event.key === "ArrowRight" || event.key === "ArrowDown") width = appearance.queueWidth - step;
+    else if (event.key === "Home") width = QUEUE_WIDTH_MIN;
+    else if (event.key === "End") width = QUEUE_WIDTH_MAX;
+    if (width === null) return;
+    event.preventDefault();
+    void appearance.setQueueWidth(width).catch(() => {});
+  }
+
+  $effect(() => {
+    document.title = routeTitle(nav.route, nav.nowPlayingOpen);
+  });
+
+  // Restore focus to whatever opened Now Playing / the floating queue overlay
+  // once it closes (both swap content out from under the focused element).
+  let restoreTarget: HTMLElement | null = null;
+  $effect(() => {
+    const open = nav.nowPlayingOpen || (queueOverlay && nav.queueOpen);
+    if (open) {
+      const active = document.activeElement;
+      if (restoreTarget === null && active instanceof HTMLElement && active !== document.body) {
+        restoreTarget = active;
+      }
+    } else if (restoreTarget !== null) {
+      const target = restoreTarget;
+      restoreTarget = null;
+      if (target.isConnected) target.focus();
+    }
+  });
 
   $effect(() => {
     const media = window.matchMedia("(max-width: 1080px)");
@@ -554,6 +596,7 @@
     </div>
   {:else}
   <div class="app" data-sidebar={sidebarRail ? "rail" : "full"} data-now-playing={nav.nowPlayingOpen} inert={dialogs.count > 0}>
+    <a class="skip-link" href="#main">Skip to content</a>
     <Sidebar
       {nav}
       rail={sidebarRail}
@@ -562,7 +605,7 @@
       {playlistActions}
       actions={collectionActions}
     />
-    <main class="main">
+    <main class="main" id="main" tabindex="-1">
       {#if error}<p style="color:var(--danger)">{error}</p>{/if}
       {#key pageKey}
         <div class="page">
@@ -594,7 +637,18 @@
         <aside class="queue floating"><QueueRail {player} /></aside>
       {:else}
         <aside class="queue">
-          <div class="queue-resize" onpointerdown={startQueueDrag} role="separator" aria-orientation="vertical" aria-label="Resize queue"></div>
+          <div
+            class="queue-resize"
+            onpointerdown={startQueueDrag}
+            onkeydown={onQueueResizeKeydown}
+            tabindex="0"
+            role="slider"
+            aria-label="Queue width"
+            aria-valuemin={QUEUE_WIDTH_MIN}
+            aria-valuemax={QUEUE_WIDTH_MAX}
+            aria-valuenow={appearance.queueWidth}
+            aria-valuetext={`${appearance.queueWidth} pixels`}
+          ></div>
           <QueueRail {player} />
         </aside>
       {/if}
