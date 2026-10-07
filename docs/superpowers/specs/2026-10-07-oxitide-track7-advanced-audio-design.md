@@ -128,7 +128,7 @@ bands 0 dB and effective preamp 0 dB is identity.
 ### 6.3 Crossfade (Plan 7.2)
 
 Armed when `duration_ms > 0` and the next item is known and not excluded by
-`skip_same_album` (same non-empty `album` and `artist`). At a natural end, the FIFO tail
+`skip_same_album` (same non-empty `album` title; artist is ignored because compilation tracks carry per-track artists). A running sleep fade disarms the crossfade so the fade pauses on its own track; the UI fires end-of-track sleep `crossfade_ms` early (`PlaybackState.crossfade_ms`), and history counts a hand-over within `crossfade_ms` of the end as completed. At a natural end, the FIFO tail
 (`L ≤ duration` frames) is mixed into the next stream's first `L` frames:
 `out = next · sin(πt/2) + tail · cos(πt/2)`, `t = i/L`. `NowPlaying` switches at the start
 of the overlap and the position restarts at 0. If the next track needs a different output
