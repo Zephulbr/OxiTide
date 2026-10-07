@@ -2,6 +2,7 @@ pub mod alsa_output;
 pub mod cache;
 pub mod decode;
 pub mod demux;
+pub mod dsp;
 #[cfg(windows)]
 pub mod endpoint_volume;
 pub mod engine;
