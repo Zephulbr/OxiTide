@@ -10,6 +10,7 @@
     overscan = 8,
     drag,
     bottomPadding = "0px",
+    role = undefined,
     children,
   }: {
     total: number;
@@ -18,6 +19,8 @@
     overscan?: number;
     drag?: DragParams;
     bottomPadding?: string;
+    /// ARIA role for the scroller; rows then carry the matching item role.
+    role?: "list";
     children: Snippet<[number]>;
   } = $props();
 
@@ -43,16 +46,17 @@
 
 <div
   class="scroll"
+  {role}
   style="max-height:{maxHeight};padding-bottom:{bottomPadding}"
   bind:clientHeight={viewport}
   onscroll={onScroll}
   use:trackDrag={drag ?? NO_DRAG}
 >
-  <div style="height:{range.padTop}px"></div>
+  <div style="height:{range.padTop}px" aria-hidden="true"></div>
   {#each indexes as index (index)}
     {@render children(index)}
   {/each}
-  <div style="height:{range.padBottom}px"></div>
+  <div style="height:{range.padBottom}px" aria-hidden="true"></div>
 </div>
 
 <style>
