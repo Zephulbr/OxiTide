@@ -187,7 +187,7 @@
         run: () => (confirmingDelete = true),
       });
     }
-    menu.show(rect.left, rect.bottom + 4, items);
+    menu.show(rect.left, rect.bottom + 4, items, event.currentTarget as HTMLElement);
   }
 
   async function confirmDelete() {

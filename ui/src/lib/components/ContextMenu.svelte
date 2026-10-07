@@ -22,6 +22,14 @@
     top = Math.max(4, Math.min(state.y, window.innerHeight - rect.height - 4));
   }
 
+  function moveTo(position: "first" | "last") {
+    const state = menu.open;
+    if (!state) return;
+    const enabled = enabledIndexes(state.items);
+    if (enabled.length === 0) return;
+    active = position === "first" ? enabled[0] : enabled[enabled.length - 1];
+  }
+
   function moveActive(delta: -1 | 1) {
     const state = menu.open;
     if (!state) return;
@@ -55,7 +63,7 @@
   // Close when anything scrolls, including nested scrollers.
   $effect(() => {
     if (!menu.open) return;
-    const close = () => menu.close();
+    const close = () => menu.close(false);
     window.addEventListener("scroll", close, true);
     return () => window.removeEventListener("scroll", close, true);
   });
@@ -67,6 +75,10 @@
       event.preventDefault();
       event.stopPropagation();
       moveActive(event.key === "ArrowDown" ? 1 : -1);
+    } else if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      event.stopPropagation();
+      moveTo(event.key === "Home" ? "first" : "last");
     } else if (event.key === "Enter") {
       event.preventDefault();
       event.stopPropagation();
@@ -76,17 +88,22 @@
       event.preventDefault();
       event.stopPropagation();
       menu.close();
+    } else if (event.key === "Tab") {
+      // No preventDefault: closing restores focus to the opener first, then
+      // the default Tab action continues from there.
+      menu.close();
     }
   }
 
   function onWindowMouseDown(event: MouseEvent) {
     if (!menu.open) return;
     if (panel && event.target instanceof Node && panel.contains(event.target)) return;
-    menu.close();
+    // The pointer is choosing a new focus target; do not pull focus back.
+    menu.close(false);
   }
 </script>
 
-<svelte:window onmousedown={onWindowMouseDown} onresize={() => menu.close()} />
+<svelte:window onmousedown={onWindowMouseDown} onresize={() => menu.close(false)} />
 
 {#if menu.open}
   <div
@@ -94,6 +111,9 @@
     class="menu"
     role="menu"
     tabindex="-1"
+    aria-activedescendant={active >= 0 && menu.open.items[active]
+      ? `menu-item-${menu.open.items[active].id}`
+      : undefined}
     style="left:{left}px;top:{top}px"
     onkeydown={onKeydown}
   >
@@ -102,8 +122,10 @@
         <p class="section" class:first={i === 0}>{item.section}</p>
       {/if}
       <button
+        id={`menu-item-${item.id}`}
         type="button"
         role="menuitem"
+        tabindex="-1"
         class:active={active === i}
         class:selected={item.selected}
         class:danger={item.danger}
