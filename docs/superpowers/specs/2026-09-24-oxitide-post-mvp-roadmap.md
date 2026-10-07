@@ -14,6 +14,7 @@
 - **Revised:** 2026-10-04 — Track 8 (Plans 8.1–8.5) implemented and WSL2-verified; closed by owner exemption for the deferred bare-metal checks (`plans/notes/2026-10-04-track8-completion.md`).
 - **Revised:** 2026-10-05 — Track 10 (QoL) implemented, merged to `main` at `446e054` (follow-up fixes through `70d0bc9`), and closed with owner smoke passed; 10.4 scrobble love deferred (`plans/notes/2026-10-05-track10-completion.md`).
 - **Revised:** 2026-10-07 — Track 7 called by the owner with the **DSP core** scope (ReplayGain, 10-band EQ, crossfade); spec `2026-10-07-oxitide-track7-advanced-audio-design.md`, Plans 7.1–7.2 implemented on `track7-dsp`; owner smoke passed and Track 7 (DSP core) closed the same day. Casting/TIDAL Connect, Atmos, 360 RA, ASIO, listen-along, and automix stay parked. Track 9.4 (a11y) resumes after Track 7.
+- **Revised:** 2026-10-07 — AutoMix spike written (`plans/notes/2026-10-07-automix-spike.md`): recommends a small Phase 1 (silence trim + rate-mismatch overlap) before any beat-aligned work; still research-only until the owner calls it.
 - **Owner:** V
 - **Parent:** `2026-09-21-oxitide-design.md` (§9 Phasing)
 - **Supersedes:** the parent's Phase 2–4 ordering. The shipped Phase 1 MVP (v0.2.0) is
