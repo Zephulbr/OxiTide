@@ -51,8 +51,11 @@ pub struct PlaybackState {
     pub output_mode: OutputMode,
     pub bit_perfect: bool,
     pub bit_perfect_notice: Option<String>,
-    /// True while a DSP stage (EQ, ReplayGain, crossfade) alters samples.
+    /// True while a DSP stage (EQ, ReplayGain, crossfade) alters samples;
+    /// `bit_perfect` is then false.
     pub dsp_active: bool,
+    /// The stages altering samples, for display (e.g. `["ReplayGain", "EQ"]`).
+    pub dsp_stages: Vec<&'static str>,
     pub queue: Vec<QueueItem>,
     pub stream: Option<StreamMeta>,
 }
@@ -176,20 +179,19 @@ pub struct Engine {
 }
 
 /// The output status with active DSP folded in: processed samples are never
-/// bit-perfect, and the notice names the stages responsible.
-fn effective_status(inner: &Inner) -> (OutputStatus, bool) {
+/// bit-perfect. The notice stays the output's own (DSP is an opted-in choice,
+/// surfaced through `dsp_stages`, not a warning).
+fn effective_status(inner: &Inner) -> (OutputStatus, Vec<&'static str>) {
     let mut status = inner.output_status.lock().unwrap().clone();
     let stages = inner.dsp_stages.lock().unwrap().clone();
-    let dsp_active = !stages.is_empty();
-    if dsp_active && status.bit_perfect {
+    if !stages.is_empty() {
         status.bit_perfect = false;
-        status.notice = Some(format!("DSP active ({}); bit-perfect off", stages.join(", ")));
     }
-    (status, dsp_active)
+    (status, stages)
 }
 
 fn build_state(inner: &Inner) -> PlaybackState {
-    let (status, dsp_active) = effective_status(inner);
+    let (status, dsp_stages) = effective_status(inner);
     let q = inner.queue.lock().unwrap();
     PlaybackState {
         playing: q.is_playing(),
@@ -205,7 +207,8 @@ fn build_state(inner: &Inner) -> PlaybackState {
         output_mode: status.mode,
         bit_perfect: status.bit_perfect,
         bit_perfect_notice: status.notice,
-        dsp_active,
+        dsp_active: !dsp_stages.is_empty(),
+        dsp_stages,
         queue: q.items().to_vec(),
         stream: inner.stream_meta.lock().unwrap().clone(),
     }
@@ -4160,8 +4163,9 @@ mod tests {
         }
         let status = engine.audio_status();
         assert!(!status.bit_perfect);
-        assert_eq!(status.notice.as_deref(), Some("DSP active (ReplayGain); bit-perfect off"));
+        assert_eq!(status.notice, None, "DSP is a choice, not an output warning");
         assert!(engine.state().dsp_active);
+        assert_eq!(engine.state().dsp_stages, vec!["ReplayGain"]);
         let db = applied.lock().unwrap().expect("replay gain published in the stream meta");
         assert!((db + 6.0).abs() < 1e-3, "{db}");
     }
@@ -4191,7 +4195,7 @@ mod tests {
         wait_for(|| !engine.state().bit_perfect);
         let state = engine.state();
         assert!(state.dsp_active);
-        assert_eq!(state.bit_perfect_notice.as_deref(), Some("DSP active (EQ); bit-perfect off"));
+        assert_eq!(state.dsp_stages, vec!["EQ"]);
 
         engine.set_dsp(DspSettings::default());
         wait_for(|| engine.state().bit_perfect);

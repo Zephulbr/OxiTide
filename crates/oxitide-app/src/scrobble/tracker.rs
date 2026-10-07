@@ -297,6 +297,7 @@ mod tests {
             bit_perfect: false,
             bit_perfect_notice: None,
             dsp_active: false,
+            dsp_stages: Vec::new(),
             queue: Vec::new(),
             stream: None,
         }

@@ -26,8 +26,8 @@ output is no longer bit-perfect and why.
 - Crossfade of 1–12 s on natural track ends, skipping consecutive same-album tracks by
   default so gapless albums stay gapless (§6.3).
 - Every change applies live, with no track restart (T7-D3).
-- `PlaybackState.bit_perfect` is false, with a notice naming the active stages, exactly when
-  a stage alters samples (T7-D2).
+- `PlaybackState.bit_perfect` is false, and `dsp_stages` names the active stages, exactly
+  when a stage alters samples (T7-D2).
 
 **Success =** the scripted gates stay green (`cargo test --workspace`,
 `cargo clippy --workspace -- -D warnings`, `npm --prefix ui run check`,
@@ -54,7 +54,7 @@ the Settings → Playback "Sound" UI, and the bit-perfect status contract.
 | ID | Decision |
 |---|---|
 | T7-D1 | Scope is the DSP core: ReplayGain, EQ, crossfade. Everything else in roadmap Track 7 stays parked. |
-| T7-D2 | **Bit-perfect is decided by reality, not by toggles.** A stage that would leave samples untouched (EQ disabled or flat with 0 dB preamp, ReplayGain off or exactly 0 dB, crossfade off or outside a transition) is skipped entirely, so the exclusive `i32` path stays sample-exact. When any stage alters samples, `bit_perfect = false` and the notice names the stages (e.g. "DSP active (EQ, ReplayGain); bit-perfect off"). Exclusive mode keeps exclusive device access with DSP on: processing runs in float and is converted back to the left-aligned `i32` container. |
+| T7-D2 | **Bit-perfect is decided by reality, not by toggles.** A stage that would leave samples untouched (EQ disabled or flat with 0 dB preamp, ReplayGain off or exactly 0 dB, crossfade off or outside a transition) is skipped entirely, so the exclusive `i32` path stays sample-exact. When any stage alters samples, `bit_perfect = false` and `PlaybackState.dsp_stages` names the stages; the output notice is left alone (an opted-in choice is not a warning) and the UI swaps the Bit-perfect badge for a "DSP" badge listing them. Exclusive mode keeps exclusive device access with DSP on: processing runs in float and is converted back to the left-aligned `i32` container. |
 | T7-D3 | DSP settings apply live. A settings version counter is checked once per buffer; EQ coefficients are rebuilt while the filter state is kept (no click, no restart). |
 | T7-D4 | Chain order: decode → ReplayGain → EQ (preamp then bands) → crossfade mix → output volume. A final clamp to [-1, 1] protects the integer conversion. |
 | T7-D5 | ReplayGain values come from `playbackinfo` (`trackReplayGain`, `trackPeakAmplitude`, `albumReplayGain`, `albumPeakAmplitude`; dB gain and linear peak). Modes `off` / `track` / `album` (album falls back to track). A track without data gets the "untagged" gain (default 0 dB = untouched). Prevent-clipping (default on) caps the linear gain at `1 / peak`. |
@@ -95,9 +95,9 @@ album_peak }` (all `Option<f32>`), parsed from `playbackinfo`.
   identity check + in-place `f32` processing + `PcmBuffer` round-trip), and crossfade helpers
   (`equal_power`, `Tail`).
 - `engine.rs`: `Inner` gains `dsp: Mutex<DspSettings>`, `dsp_version: AtomicU64`,
-  `dsp_active: Mutex<Vec<&'static str>>`; `Engine::set_dsp(settings)`; `PlaybackState`
-  gains `dsp_active: bool`; `build_state` folds the DSP state into `bit_perfect` and the
-  notice. `StreamMeta` gains `replay_gain_db: Option<f32>` (the gain actually applied).
+  `dsp_stages: Mutex<Vec<&'static str>>`; `Engine::set_dsp(settings)`; `PlaybackState`
+  gains `dsp_active: bool` and `dsp_stages`; `build_state` folds the DSP state into
+  `bit_perfect`. `StreamMeta` gains `replay_gain_db: Option<f32>` (the gain actually applied).
 
 ### 5.3 `oxitide-app` and UI
 
@@ -141,7 +141,7 @@ FIFO with the session.
   0.3 dB); RG math (modes, fallback, preamp, clip cap); identity detection; `i32` round-trip;
   equal-power curve endpoints and constant power.
 - **Rust engine:** identity settings keep exclusive `i32` output sample-exact; RG halves a
-  known fixture's amplitude (−6.02 dB); live `set_dsp` flips `bit_perfect` and the notice;
+  known fixture's amplitude (−6.02 dB); live `set_dsp` flips `bit_perfect` and `dsp_stages`;
   crossfade produces fewer total frames than two tracks played back to back (overlap) and
   blends the boundary; `skip_same_album` keeps the gapless total; Next during playback does
   not crossfade.
