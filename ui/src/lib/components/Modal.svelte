@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import { focusTrap } from "../focusTrap";
   import Icon from "./Icon.svelte";
   let {
     title,
@@ -8,19 +9,6 @@
   }: { title: string; onclose: () => void; children: Snippet } = $props();
 
   let panel = $state<HTMLDivElement | null>(null);
-
-  $effect(() => {
-    const node = panel;
-    if (!node) return;
-    const previous = document.activeElement as HTMLElement | null;
-    const first = node.querySelector<HTMLElement>(
-      'input, select, textarea, button, [href], [tabindex]:not([tabindex="-1"])',
-    );
-    first?.focus();
-    return () => {
-      if (previous?.isConnected) previous.focus();
-    };
-  });
 </script>
 
 <svelte:window
@@ -34,7 +22,15 @@
 />
 
 <div class="overlay">
-  <div class="panel" role="dialog" aria-modal="true" aria-label={title} bind:this={panel}>
+  <div
+    class="panel"
+    role="dialog"
+    aria-modal="true"
+    aria-label={title}
+    tabindex="-1"
+    use:focusTrap
+    bind:this={panel}
+  >
     <header>
       <strong>{title}</strong>
       <button onclick={onclose} aria-label="Close"><Icon name="x" size={16} /></button>

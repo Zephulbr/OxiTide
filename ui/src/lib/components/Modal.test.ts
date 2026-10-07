@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, waitFor } from "@testing-library/svelte";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/svelte";
 import { createRawSnippet } from "svelte";
 import Modal from "./Modal.svelte";
 
@@ -41,5 +41,42 @@ describe("Modal", () => {
     cleanup();
     expect(document.activeElement).toBe(opener);
     opener.remove();
+  });
+});
+
+describe("Modal focus trap", () => {
+  it("wraps Tab from the last control to the first, and Shift+Tab back", async () => {
+    render(Modal, {
+      title: "Test",
+      onclose: vi.fn(),
+      children: children('<button id="inner">inner</button>'),
+    });
+
+    const closeButton = document.querySelector<HTMLElement>('[aria-label="Close"]')!;
+    const inner = document.getElementById("inner")!;
+    await waitFor(() => expect(document.activeElement).toBe(closeButton));
+
+    inner.focus();
+    await fireEvent.keyDown(inner, { key: "Tab" });
+    expect(document.activeElement).toBe(closeButton);
+
+    await fireEvent.keyDown(closeButton, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(inner);
+  });
+
+  it("keeps focus on the panel when it has no focusable control", async () => {
+    render(Modal, {
+      title: "Empty",
+      onclose: vi.fn(),
+      children: children("<p>nothing focusable</p>"),
+    });
+
+    const panel = document.querySelector<HTMLElement>('[role="dialog"]')!;
+    const closeButton = document.querySelector<HTMLElement>('[aria-label="Close"]')!;
+    closeButton.remove();
+    panel.focus();
+
+    await fireEvent.keyDown(panel, { key: "Tab" });
+    expect(document.activeElement).toBe(panel);
   });
 });
