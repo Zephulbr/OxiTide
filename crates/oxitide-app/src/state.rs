@@ -56,6 +56,8 @@ pub struct AppState {
     pub keyring_status: Mutex<Option<KeyringStatus>>,
     pub media: Mutex<Option<crate::media_controls::MediaSession>>,
     pub discord: Mutex<Option<crate::discord::DiscordPresence>>,
+    /// Hi-Fi Rack level meter emitter; idle unless the UI enables it.
+    pub meter: crate::meter::MeterEmitter,
     session_expired: AtomicBool,
     handle: Mutex<Option<AppHandle>>,
 }

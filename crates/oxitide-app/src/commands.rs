@@ -19,8 +19,8 @@ use tauri::{Manager, State};
 
 use crate::artwork::PaletteDto;
 use crate::config::{
-    clamp_queue_width, Config, CoverShape, Density, DynamicColor, QualityDisplay, Theme, Typeface,
-    UiMode,
+    clamp_queue_width, Config, CoverShape, Density, DynamicColor, QualityDisplay, RackConfig, Theme,
+    Typeface, UiMode,
 };
 use crate::lyrics::{LyricsDto, LyricsRequest};
 use crate::player::{devices, OutputDeviceDto, QualityDto};
@@ -2045,6 +2045,54 @@ pub fn set_dynamic_color(state: State<'_, AppState>, mode: DynamicColor) -> Resu
     config.ui.dynamic_color = mode;
     config.save()?;
     state.set_config(config);
+    Ok(())
+}
+
+/// Hi-Fi Rack options (Track 9.5). The whole section is written at once; the
+/// stored (clamped) value is returned so the UI can reconcile.
+#[tauri::command]
+pub fn set_rack_settings(
+    state: State<'_, AppState>,
+    settings: RackConfig,
+) -> Result<RackConfig, String> {
+    let mut config = state.config();
+    config.rack = settings.clamped();
+    let stored = config.rack.clone();
+    config.save()?;
+    state.set_config(config);
+    Ok(stored)
+}
+
+/// Start or stop the Rack level meters (RK-D7). While enabled, the current
+/// engine's tap measures written audio and `level_frame` is emitted ~30 Hz.
+/// The tap is re-enabled every tick so an engine rebuilt after re-login is
+/// picked up.
+#[tauri::command]
+pub fn set_level_meter(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    enabled: bool,
+) -> Result<(), String> {
+    use tauri::{Emitter, Manager};
+    if enabled {
+        state.meter.start(move || {
+            let state = app.state::<AppState>();
+            let Some(player) = state.player() else {
+                return;
+            };
+            let tap = player.engine.level_tap();
+            if !tap.is_enabled() {
+                tap.set_enabled(true);
+            }
+            let frame = crate::meter::LevelFrameDto::from(tap.read());
+            let _ = app.emit(crate::meter::LEVEL_FRAME_EVENT, frame);
+        });
+    } else {
+        state.meter.stop();
+        if let Some(player) = state.player() {
+            player.engine.level_tap().set_enabled(false);
+        }
+    }
     Ok(())
 }
 
