@@ -1,6 +1,7 @@
 # Track 9.4 a11y pass — smoke checklist (2026-10-07)
 
-- **Status:** Scripted gates green; perf re-runs and human rows **pending (owner)**
+- **Status:** Passed 2026-10-08 — scripted gates and PM-D1 perf re-runs green; owner signed off
+  the keyboard, NVDA, contrast, and scoped re-run rows
 - **Authority:** `specs/2026-10-05-track9-ui-completion-design.md` §6.4, T9-D7 (AC-1–AC-6), PM-D1
 - **Plan:** `plans/2026-10-07-track9-4-a11y-pass.md`
 - **Build under test:** branch `track9-4-a11y` at `0a218ba`
@@ -54,10 +55,17 @@ Record the rows here:
 
 | Scenario | Result |
 |---|---|
-| S5-instrument | |
-| S5-atmosphere | |
-| S6 | |
-| S7 | |
+| S5-instrument | PASS — p95 7.2 ms, p99 27.7 ms, long task 65 ms, memory 668 MB (max 690) |
+| S5-atmosphere | PASS on re-adjudication — p95 7.2 ms, p99 20.8 ms; memory 686 / 653 MB vs max 675 (first run over; `main` baseline ×3: 674 / 678 / 665, same edge) |
+| S6 | PASS — p95 13.9 ms, filter 26.5 ms, sort 47.2 ms, album 28.3 ms, memory 714 MB (max 740) |
+| S7 | PASS on re-adjudication — queue build ≤ 118 ms; memory 685 / 642, then ×3 633 / 628 / 627 MB vs max 670 (`main` baseline ×3: 630 / 627 / 651) |
+
+Re-run 2026-10-08 on `track9-4-a11y` at `029cfb7` (Windows, Vite warm, single app).
+`check.mjs` over the whole corpus exits 1, but every failing row other than the two above
+comes from older runs (S2, S3-hit, S4, S9, S5-atmosphere-light — pre-existing, untouched by
+this plan). The two memory breaches are first-run outliers: same-condition `main` runs sit at
+the same edge (S5-atmosphere) or the same range (S7), so they are not a 9.4 regression. Frame,
+interaction, and queue-build rows pass with margin.
 
 ## Keyboard-only script (AC-1, AC-2, AC-5, AC-6)
 
@@ -109,4 +117,12 @@ token floors are pinned by `themeTokens.test.ts` (dark + light).
 
 ## Verdicts
 
-Record results below.
+- **Scripted gates (2026-10-08 re-run):** `cargo test --workspace` 765 passed; clippy clean;
+  svelte-check 0 errors / 0 warnings; vitest 665 passed (80 files).
+- **Perf (PM-D1):** pass — see the table above; no 9.4 regression.
+- **Keyboard-only script (AC-1, AC-2, AC-5, AC-6):** pass (owner, 2026-10-08).
+- **NVDA pass (AC-3):** pass (owner, 2026-10-08); the Mini sheet's `aria-modal` without `inert`
+  stays the documented known limitation.
+- **Contrast spot check (AC-4):** pass (owner, 2026-10-08).
+- **Scoped re-runs (T9-D9):** pass (owner, 2026-10-08).
+- **Follow-ups:** none.
