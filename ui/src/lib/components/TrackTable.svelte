@@ -285,7 +285,7 @@
 {/if}
 
 <div
-  class="table-scroll"
+  class="table-scroll pane pane-flush"
   class:fill
   class:scrolled
   bind:this={scrollEl}

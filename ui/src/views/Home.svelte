@@ -48,7 +48,7 @@
 
 <h2>Home</h2>
 {#if shortcuts.length > 0}
-  <section class="shortcuts" aria-label="Quick access">
+  <section class="shortcuts pane" aria-label="Quick access">
     {#each shortcuts as entry (entry.key)}
       <MediaCard
         item={entry.item}

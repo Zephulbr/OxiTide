@@ -151,7 +151,7 @@
         </div>
       </div>
     {/if}
-    <div class="grid" class:list={effective === "list"}>
+    <div class="grid pane" class:list={effective === "list"}>
       {#each shown as item, i (item.id || `${item.title}-${i}`)}
         {@const onclick = activate(item)}
         <MediaCard

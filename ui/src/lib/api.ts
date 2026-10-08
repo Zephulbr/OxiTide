@@ -250,7 +250,7 @@ export interface Config {
   streaming: { quality: Quality; allow_fallback: boolean };
   ui: {
     quality_display: "compact" | "detailed";
-    mode: "instrument" | "atmosphere";
+    mode: "instrument" | "atmosphere" | "rack";
     theme: "dark" | "light" | "system";
     typeface: "auto" | "manrope" | "inter" | "system" | "custom";
     custom_typeface: string;
@@ -289,7 +289,27 @@ export interface Config {
     show_hide: string;
   };
   dsp: DspSettings;
+  rack: RackSettings;
 }
+export type DeckFace = "transport" | "cd" | "display";
+export type MeterStyle = "needles" | "bars" | "led" | "spectrum";
+export type LampColor = "amber" | "blue" | "green" | "red" | "white" | "cover";
+/** Hi-Fi Rack options (`[rack]`, Track 9.5). */
+export interface RackSettings {
+  deck_face: DeckFace;
+  meters: MeterStyle;
+  lamp: LampColor;
+  eq_unit: boolean;
+  /** Percent, 40–100. */
+  lamp_brightness: number;
+}
+/** One `level_frame` event: linear peaks/RMS (1 = full scale), bands in dBFS. */
+export interface LevelFrame {
+  peak: [number, number];
+  rms: [number, number];
+  bands: number[];
+}
+export const LEVEL_FRAME_EVENT = "level_frame";
 export type EngineEvent =
   | ({ type: "state" } & PlaybackState)
   | { type: "now_playing"; [k: string]: unknown }
@@ -471,7 +491,10 @@ export const api = {
   setAllowFallback: (enabled: boolean) => invoke<void>("set_allow_fallback", { enabled }),
   setQualityDisplay: (mode: "compact" | "detailed") =>
     invoke<void>("set_quality_display", { mode }),
-  setUiMode: (mode: "instrument" | "atmosphere") => invoke<void>("set_ui_mode", { mode }),
+  setUiMode: (mode: "instrument" | "atmosphere" | "rack") => invoke<void>("set_ui_mode", { mode }),
+  setRackSettings: (settings: RackSettings) =>
+    invoke<RackSettings>("set_rack_settings", { settings }),
+  setLevelMeter: (enabled: boolean) => invoke<void>("set_level_meter", { enabled }),
   setTheme: (theme: "dark" | "light" | "system") => invoke<void>("set_theme", { theme }),
   setTypeface: (typeface: "auto" | "manrope" | "inter" | "system" | "custom") =>
     invoke<void>("set_typeface", { typeface }),

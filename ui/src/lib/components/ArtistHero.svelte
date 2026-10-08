@@ -93,7 +93,7 @@
   });
 </script>
 
-<header class="artist-hero" style={heroStyle}>
+<header class="artist-hero pane" style={heroStyle}>
   <div class="tint" aria-hidden="true"></div>
   {#if backdrop}
     <div class="photo" style="background-image:url({backdrop})" aria-hidden="true"></div>

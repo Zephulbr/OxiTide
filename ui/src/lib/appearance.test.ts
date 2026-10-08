@@ -2,8 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "./api";
 import {
   appearance,
+  clampLampBrightness,
   clampQueueWidth,
   createAppearance,
+  defaultRackSettings,
   fontStack,
   resolveDynamicColor,
   resolveTypeface,
@@ -14,8 +16,74 @@ vi.mock("./api", () => ({
     getConfig: vi.fn(),
     setOneko: vi.fn(),
     setTheme: vi.fn(),
+    setUiMode: vi.fn(),
+    setRackSettings: vi.fn(),
   },
 }));
+
+describe("rack mode", () => {
+  beforeEach(() => {
+    vi.stubGlobal("window", {
+      matchMedia: () => ({ matches: false, addEventListener: () => {} }),
+    });
+    vi.stubGlobal("document", {
+      documentElement: { dataset: {}, style: { setProperty: () => {} } },
+    });
+    vi.stubGlobal("localStorage", { getItem: () => null, setItem: vi.fn() });
+    vi.mocked(api.getConfig).mockResolvedValue({
+      ui: { mode: "rack", theme: "dark", dynamic_color: "full", typeface: "auto" },
+      rack: { deck_face: "cd", meters: "led", lamp: "blue", eq_unit: false, lamp_brightness: 70 },
+    } as never);
+    vi.mocked(api.setUiMode).mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  it("init reads [rack], sets data-mode and the rack flags", async () => {
+    const a = createAppearance();
+    await a.init();
+    expect(document.documentElement.dataset.mode).toBe("rack");
+    expect(a.rackShell).toBe(true);
+    expect(a.rack).toEqual({ deck_face: "cd", meters: "led", lamp: "blue", eq_unit: false, lamp_brightness: 70 });
+    // Rack draws its own materials: the Atmosphere effects stay off.
+    expect(a.backdropArt).toBe(false);
+    expect(a.glassPanels).toBe(false);
+    expect(a.discSpin).toBe(false);
+    expect(a.waveSeek).toBe(false);
+    // Lamp colour replaces dynamic colour (RK-D9), even when set to full.
+    expect(a.dynamicColor).toBe("off");
+  });
+
+  it("setRack is local-first, stores the returned value, and reverts on failure", async () => {
+    const a = createAppearance();
+    await a.init();
+    vi.mocked(api.setRackSettings).mockImplementationOnce(async (s) => ({ ...s, lamp_brightness: 40 }));
+    await a.setRack({ meters: "bars", lamp_brightness: 10 });
+    expect(api.setRackSettings).toHaveBeenCalledWith(expect.objectContaining({ meters: "bars", lamp_brightness: 40 }));
+    expect(a.rack.meters).toBe("bars");
+    vi.mocked(api.setRackSettings).mockRejectedValueOnce(new Error("disk full"));
+    await expect(a.setRack({ deck_face: "transport" })).rejects.toThrow("disk full");
+    expect(a.rack.deck_face).toBe("cd");
+  });
+
+  it("leaving rack drops the shell flag", async () => {
+    const a = createAppearance();
+    await a.init();
+    await a.setMode("atmosphere");
+    expect(a.rackShell).toBe(false);
+    expect(api.setUiMode).toHaveBeenCalledWith("atmosphere");
+  });
+
+  it("defaults and clamps", () => {
+    expect(defaultRackSettings()).toEqual({ deck_face: "display", meters: "needles", lamp: "amber", eq_unit: true, lamp_brightness: 100 });
+    expect(clampLampBrightness(10)).toBe(40);
+    expect(clampLampBrightness(150)).toBe(100);
+    expect(clampLampBrightness(Number.NaN)).toBe(100);
+  });
+});
 
 describe("clampQueueWidth", () => {
   it("clamps to the 260–420 dock range", () => {
@@ -52,6 +120,7 @@ describe("resolveTypeface", () => {
   it("auto follows the mode default", () => {
     expect(resolveTypeface("auto", "atmosphere")).toBe("manrope");
     expect(resolveTypeface("auto", "instrument")).toBe("inter");
+    expect(resolveTypeface("auto", "rack")).toBe("manrope");
   });
   it("explicit picks always win", () => {
     expect(resolveTypeface("system", "atmosphere")).toBe("system");

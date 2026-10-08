@@ -36,6 +36,7 @@
     REPLAY_GAIN_MAX_DB,
     bandLabel,
     clampDb,
+    defaultDspSettings,
     effectivePreamp,
     formatCrossfade,
     formatDb,
@@ -43,6 +44,7 @@
     presetBands,
     withBand,
   } from "../lib/dsp";
+  import { dspStore } from "../lib/dspStore.svelte";
   import { errorMessage } from "../lib/errors";
   import { optimistic } from "../lib/optimistic";
   import type { QualityDisplay } from "../lib/quality";
@@ -315,6 +317,7 @@
         api.setOutputDevice("").catch(apply);
       }
       config = next;
+      dspStore.hydrate(next.dsp);
       trackFlags.setContentFlags(next.content.block_explicit, next.content.block_ai);
       trackFlags.setShowLabels(next.content.show_labels);
     } catch (e) {
@@ -326,35 +329,23 @@
     load();
   });
 
-  /// Sliders fire on every step; the engine applies settings live, so push
-  /// them after a short pause instead of rewriting the config per tick.
-  let pendingDsp: DspSettings | null = null;
-  let dspTimer: ReturnType<typeof setTimeout> | undefined;
+  /// DSP lives in the shared store (the Hi-Fi Rack's amp and EQ units write it
+  /// too); it debounces persistence because sliders fire on every step.
+  const dsp = $derived(dspStore.settings ?? config?.dsp ?? defaultDspSettings());
 
-  function flushDsp() {
-    clearTimeout(dspTimer);
-    if (pendingDsp) {
-      api.setDspSettings(pendingDsp).catch(apply);
-      pendingDsp = null;
-    }
-  }
-
-  $effect(() => flushDsp);
+  $effect(() => () => dspStore.flush());
 
   function setDsp(next: DspSettings) {
     if (!config) return;
-    config = { ...config, dsp: next };
-    pendingDsp = next;
-    clearTimeout(dspTimer);
-    dspTimer = setTimeout(flushDsp, 150);
+    dspStore.set(next, apply);
   }
 
   function setEq(patch: Partial<EqSettings>) {
-    if (config) setDsp({ ...config.dsp, eq: { ...config.dsp.eq, ...patch } });
+    if (config) setDsp({ ...dsp, eq: { ...dsp.eq, ...patch } });
   }
 
   function setBand(index: number, db: number) {
-    if (config) setDsp({ ...config.dsp, eq: withBand(config.dsp.eq, index, db) });
+    if (config) setDsp({ ...dsp, eq: withBand(dsp.eq, index, db) });
   }
 
   function setPreset(id: string) {
@@ -364,13 +355,13 @@
 
   function setReplayGain(patch: Partial<ReplayGainSettings>) {
     if (config) {
-      setDsp({ ...config.dsp, replay_gain: { ...config.dsp.replay_gain, ...patch } });
+      setDsp({ ...dsp, replay_gain: { ...dsp.replay_gain, ...patch } });
     }
   }
 
   function setCrossfade(patch: Partial<CrossfadeSettings>) {
     if (config) {
-      setDsp({ ...config.dsp, crossfade: { ...config.dsp.crossfade, ...patch } });
+      setDsp({ ...dsp, crossfade: { ...dsp.crossfade, ...patch } });
     }
   }
 
@@ -674,10 +665,67 @@
         <div class="segmented" role="group" aria-label="Mode">
           <button class:active={appearance.mode === "atmosphere"} onclick={() => appearance.setMode("atmosphere").catch(apply)}>Atmosphere</button>
           <button class:active={appearance.mode === "instrument"} onclick={() => appearance.setMode("instrument").catch(apply)}>Instrument</button>
+          <button class:active={appearance.mode === "rack"} onclick={() => appearance.setMode("rack").catch(apply)}>Hi-Fi Rack</button>
         </div>
       </div>
       {#if appearance.mode === "instrument"}
         <p class="muted">Instrument minimizes animation and visual effects.</p>
+      {:else if appearance.mode === "rack"}
+        <p class="muted">Hi-Fi Rack swaps the sidebar and player bar for a component stack. It is always dark, whatever the theme.</p>
+      {/if}
+
+      {#if appearance.mode === "rack"}
+        <h3>Rack</h3>
+        <div class="field">
+          <span class="field-label">Deck face:</span>
+          <div class="segmented" role="group" aria-label="Deck face">
+            <button class:active={appearance.rack.deck_face === "transport"} onclick={() => appearance.setRack({ deck_face: "transport" }).catch(apply)}>Transport</button>
+            <button class:active={appearance.rack.deck_face === "cd"} onclick={() => appearance.setRack({ deck_face: "cd" }).catch(apply)}>CD player</button>
+            <button class:active={appearance.rack.deck_face === "display"} onclick={() => appearance.setRack({ deck_face: "display" }).catch(apply)}>Display</button>
+          </div>
+        </div>
+        <p class="muted">What the compact deck shows. Now Playing always opens the turntable.</p>
+        <div class="field">
+          <span class="field-label">Amp meters:</span>
+          <div class="segmented" role="group" aria-label="Amp meters">
+            <button class:active={appearance.rack.meters === "needles"} onclick={() => appearance.setRack({ meters: "needles" }).catch(apply)}>Needles</button>
+            <button class:active={appearance.rack.meters === "bars"} onclick={() => appearance.setRack({ meters: "bars" }).catch(apply)}>Bars</button>
+            <button class:active={appearance.rack.meters === "led"} onclick={() => appearance.setRack({ meters: "led" }).catch(apply)}>LED</button>
+            <button class:active={appearance.rack.meters === "spectrum"} onclick={() => appearance.setRack({ meters: "spectrum" }).catch(apply)}>Spectrum</button>
+          </div>
+        </div>
+        <div class="field">
+          <span class="field-label">Lamp color:</span>
+          <div class="segmented" role="group" aria-label="Lamp color">
+            {#each [["amber", "Amber"], ["blue", "Blue"], ["green", "Green"], ["red", "Red"], ["white", "White"], ["cover", "Cover"]] as const as [id, label] (id)}
+              <button class:active={appearance.rack.lamp === id} onclick={() => appearance.setRack({ lamp: id }).catch(apply)}>{label}</button>
+            {/each}
+          </div>
+        </div>
+        <p class="muted">Cover takes the hue of the album art but keeps the brightness of a lit screen; grey covers fall back to amber.</p>
+        <div class="field">
+          <label>
+            <input
+              type="checkbox"
+              checked={appearance.rack.eq_unit}
+              onchange={(e) => appearance.setRack({ eq_unit: (e.target as HTMLInputElement).checked }).catch(apply)}
+            />
+            Show the graphic EQ unit
+          </label>
+        </div>
+        <label class="db-row">
+          <span>Lamp brightness</span>
+          <input
+            type="range"
+            min="40"
+            max="100"
+            step="5"
+            value={appearance.rack.lamp_brightness}
+            aria-valuetext={`${appearance.rack.lamp_brightness} percent`}
+            onchange={(e) => appearance.setRack({ lamp_brightness: Number((e.target as HTMLInputElement).value) }).catch(apply)}
+          />
+          <output>{appearance.rack.lamp_brightness}%</output>
+        </label>
       {/if}
 
       <div class="field">
@@ -820,12 +868,12 @@
       <div class="field">
         <span class="field-label">ReplayGain:</span>
         <div class="segmented" role="group" aria-label="ReplayGain">
-          <button aria-pressed={config.dsp.replay_gain.mode === "off"} class:active={config.dsp.replay_gain.mode === "off"} onclick={() => setReplayGain({ mode: "off" })}>Off</button>
-          <button aria-pressed={config.dsp.replay_gain.mode === "track"} class:active={config.dsp.replay_gain.mode === "track"} onclick={() => setReplayGain({ mode: "track" })}>Track</button>
-          <button aria-pressed={config.dsp.replay_gain.mode === "album"} class:active={config.dsp.replay_gain.mode === "album"} onclick={() => setReplayGain({ mode: "album" })}>Album</button>
+          <button aria-pressed={dsp.replay_gain.mode === "off"} class:active={dsp.replay_gain.mode === "off"} onclick={() => setReplayGain({ mode: "off" })}>Off</button>
+          <button aria-pressed={dsp.replay_gain.mode === "track"} class:active={dsp.replay_gain.mode === "track"} onclick={() => setReplayGain({ mode: "track" })}>Track</button>
+          <button aria-pressed={dsp.replay_gain.mode === "album"} class:active={dsp.replay_gain.mode === "album"} onclick={() => setReplayGain({ mode: "album" })}>Album</button>
         </div>
       </div>
-      {#if config.dsp.replay_gain.mode !== "off"}
+      {#if dsp.replay_gain.mode !== "off"}
         <p class="muted">
           Levels loudness with TIDAL's ReplayGain data. Album mode keeps the dynamics between
           tracks of one album and falls back to the track gain.
@@ -837,11 +885,11 @@
             min={-REPLAY_GAIN_MAX_DB}
             max={REPLAY_GAIN_MAX_DB}
             step={DB_STEP}
-            value={config.dsp.replay_gain.preamp_db}
-            aria-valuetext={formatDb(config.dsp.replay_gain.preamp_db)}
+            value={dsp.replay_gain.preamp_db}
+            aria-valuetext={formatDb(dsp.replay_gain.preamp_db)}
             oninput={(e) => setReplayGain({ preamp_db: clampDb(rangeValue(e), REPLAY_GAIN_MAX_DB) })}
           />
-          <output>{formatDb(config.dsp.replay_gain.preamp_db)}</output>
+          <output>{formatDb(dsp.replay_gain.preamp_db)}</output>
         </label>
         <label class="db-row">
           <span>Tracks without data</span>
@@ -850,17 +898,17 @@
             min={-REPLAY_GAIN_MAX_DB}
             max={REPLAY_GAIN_MAX_DB}
             step={DB_STEP}
-            value={config.dsp.replay_gain.untagged_db}
-            aria-valuetext={formatDb(config.dsp.replay_gain.untagged_db)}
+            value={dsp.replay_gain.untagged_db}
+            aria-valuetext={formatDb(dsp.replay_gain.untagged_db)}
             oninput={(e) => setReplayGain({ untagged_db: clampDb(rangeValue(e), REPLAY_GAIN_MAX_DB) })}
           />
-          <output>{formatDb(config.dsp.replay_gain.untagged_db)}</output>
+          <output>{formatDb(dsp.replay_gain.untagged_db)}</output>
         </label>
         <p>
           <label>
             <input
               type="checkbox"
-              checked={config.dsp.replay_gain.prevent_clipping}
+              checked={dsp.replay_gain.prevent_clipping}
               onchange={(e) => setReplayGain({ prevent_clipping: (e.target as HTMLInputElement).checked })}
             />
             Prevent clipping (never raise a track past its peak)
@@ -875,18 +923,18 @@
         <label>
           <input
             type="checkbox"
-            checked={config.dsp.eq.enabled}
+            checked={dsp.eq.enabled}
             onchange={(e) => setEq({ enabled: (e.target as HTMLInputElement).checked })}
           />
           Equalizer
         </label>
       </p>
-      {#if config.dsp.eq.enabled}
+      {#if dsp.eq.enabled}
         <div class="field">
           <label>
             Preset:
             <select
-              value={matchPreset(config.dsp.eq.bands_db)}
+              value={matchPreset(dsp.eq.bands_db)}
               onchange={(e) => setPreset((e.target as HTMLSelectElement).value)}
             >
               {#each EQ_PRESETS as preset (preset.id)}
@@ -905,11 +953,11 @@
                 min={-EQ_MAX_DB}
                 max={EQ_MAX_DB}
                 step={DB_STEP}
-                value={config.dsp.eq.bands_db[index] ?? 0}
-                aria-valuetext={formatDb(config.dsp.eq.bands_db[index] ?? 0)}
+                value={dsp.eq.bands_db[index] ?? 0}
+                aria-valuetext={formatDb(dsp.eq.bands_db[index] ?? 0)}
                 oninput={(e) => setBand(index, rangeValue(e))}
               />
-              <output>{formatDb(config.dsp.eq.bands_db[index] ?? 0)}</output>
+              <output>{formatDb(dsp.eq.bands_db[index] ?? 0)}</output>
             </label>
           {/each}
         </div>
@@ -917,14 +965,14 @@
           <label>
             <input
               type="checkbox"
-              checked={config.dsp.eq.auto_preamp}
+              checked={dsp.eq.auto_preamp}
               onchange={(e) => setEq({ auto_preamp: (e.target as HTMLInputElement).checked })}
             />
             Automatic preamp (lowers the level by the largest boost so it cannot clip)
           </label>
         </p>
-        {#if config.dsp.eq.auto_preamp}
-          <p class="muted">Preamp: {formatDb(effectivePreamp(config.dsp.eq))}</p>
+        {#if dsp.eq.auto_preamp}
+          <p class="muted">Preamp: {formatDb(effectivePreamp(dsp.eq))}</p>
         {:else}
           <label class="db-row">
             <span>Preamp</span>
@@ -933,11 +981,11 @@
               min={-EQ_MAX_DB}
               max={EQ_MAX_DB}
               step={DB_STEP}
-              value={config.dsp.eq.preamp_db}
-              aria-valuetext={formatDb(config.dsp.eq.preamp_db)}
+              value={dsp.eq.preamp_db}
+              aria-valuetext={formatDb(dsp.eq.preamp_db)}
               oninput={(e) => setEq({ preamp_db: clampDb(rangeValue(e), EQ_MAX_DB) })}
             />
-            <output>{formatDb(config.dsp.eq.preamp_db)}</output>
+            <output>{formatDb(dsp.eq.preamp_db)}</output>
           </label>
         {/if}
       {/if}
@@ -949,18 +997,18 @@
           min="0"
           max={CROSSFADE_MAX_MS}
           step="500"
-          value={config.dsp.crossfade.duration_ms}
-          aria-valuetext={formatCrossfade(config.dsp.crossfade.duration_ms)}
+          value={dsp.crossfade.duration_ms}
+          aria-valuetext={formatCrossfade(dsp.crossfade.duration_ms)}
           oninput={(e) => setCrossfade({ duration_ms: rangeValue(e) })}
         />
-        <output>{formatCrossfade(config.dsp.crossfade.duration_ms)}</output>
+        <output>{formatCrossfade(dsp.crossfade.duration_ms)}</output>
       </label>
-      {#if config.dsp.crossfade.duration_ms > 0}
+      {#if dsp.crossfade.duration_ms > 0}
         <p>
           <label>
             <input
               type="checkbox"
-              checked={config.dsp.crossfade.skip_same_album}
+              checked={dsp.crossfade.skip_same_album}
               onchange={(e) => setCrossfade({ skip_same_album: (e.target as HTMLInputElement).checked })}
             />
             Keep albums gapless (no crossfade between consecutive tracks of one album)
