@@ -9,6 +9,7 @@ use crate::decode::{PcmBuffer, PcmFormat, PcmSink, StreamInfo};
 use crate::dsp::{CrossfadeSettings, DspSettings, Tail, TrackDsp, STAGE_CROSSFADE};
 use crate::error::{Error, Result};
 use crate::fetch::{self, Fetcher, StreamBuffer};
+use crate::meter::LevelTap;
 use crate::output::{AudioOutput, AudioOutputSpec, ExclusiveFallback, OutputMode, OutputStatus};
 use crate::perf::{AudioPerfEvent, PerfHook};
 use crate::queue::{Queue, QueueItem, RepeatMode};
@@ -143,6 +144,8 @@ struct Inner {
     dsp_stages: Mutex<Vec<&'static str>>,
     listeners: Mutex<Vec<Listener>>,
     perf_hook: Mutex<Option<PerfHook>>,
+    /// Read-only meter tap (Hi-Fi Rack): every written buffer is offered to it.
+    level_tap: Arc<LevelTap>,
     /// Serializes queue mutation against the worker's advance decision.
     /// Lock ordering: always take `playback_lock` before `queue`.
     playback_lock: Mutex<()>,
@@ -281,6 +284,7 @@ impl Engine {
             dsp_stages: Mutex::new(Vec::new()),
             listeners: Mutex::new(Vec::new()),
             perf_hook: Mutex::new(None),
+            level_tap: Arc::new(LevelTap::new()),
             playback_lock: Mutex::new(()),
             generation: AtomicU64::new(0),
             paused: AtomicBool::new(false),
@@ -344,6 +348,11 @@ impl Engine {
 
     /// The mode/bit-perfect state the output last reported, with active DSP
     /// folded in.
+    /// The meter tap; enable it while a level display is visible.
+    pub fn level_tap(&self) -> Arc<LevelTap> {
+        self.inner.level_tap.clone()
+    }
+
     pub fn audio_status(&self) -> OutputStatus {
         effective_status(&self.inner).0
     }
@@ -1331,13 +1340,15 @@ fn run_session(
         if let Some(mut tail) = pending_tail.take() {
             if open_spec.as_ref() == Some(&want) {
                 incoming = Some(tail);
-            } else if open_spec.is_some() {
-                if let Err(e) = output.write(&tail.fade_out_remaining()) {
+            } else if let Some(previous) = open_spec.as_ref() {
+                let faded = tail.fade_out_remaining();
+                if let Err(e) = output.write(&faded) {
                     return SessionOutcome::OutputError {
                         message: e.to_string(),
                         track_id: stream.item.track_id,
                     };
                 }
+                inner.level_tap.push(&faded, previous.info.channels, previous.info.sample_rate);
             }
         }
         let mut dsp_version = inner.dsp_version.load(Ordering::SeqCst);
@@ -1557,6 +1568,7 @@ fn run_session(
                     track_id: stream.item.track_id,
                 };
             }
+            inner.level_tap.push(&buf, channels, rate);
             frames += buf.frames(channels);
             if first_write_of_track {
                 first_write_of_track = false;
@@ -1585,9 +1597,11 @@ fn run_session(
         // A track shorter than the crossfade ends before the previous tail
         // finished; let the rest of that tail fade out on its own.
         if let Some(mut tail) = incoming.take() {
-            if let Err(e) = output.write(&tail.fade_out_remaining()) {
+            let faded = tail.fade_out_remaining();
+            if let Err(e) = output.write(&faded) {
                 return SessionOutcome::OutputError { message: e.to_string(), track_id };
             }
+            inner.level_tap.push(&faded, channels, rate);
         }
         let tail: Vec<PcmBuffer> = if hand_off {
             fifo.drain(..).map(|buf| dsp.process(buf)).collect()
@@ -1629,6 +1643,7 @@ fn run_session(
                     if let Err(e) = output.write(buf) {
                         return SessionOutcome::OutputError { message: e.to_string(), track_id };
                     }
+                    inner.level_tap.push(buf, channels, rate);
                 }
                 // The queue is over, so the worker is about to go idle. Bump
                 // the generation here so a `PlayPause` that raced the worker
@@ -2227,6 +2242,25 @@ mod tests {
         assert_eq!(state.current.map(|i| i.track_id), Some(1));
         assert!(state.playing);
         assert_eq!(output.opens(), opens, "enqueue must not restart the session");
+    }
+
+    #[test]
+    fn level_tap_measures_written_audio_only_while_enabled() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        let tap = engine.level_tap();
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| !output.samples().is_empty());
+        assert_eq!(tap.read(), crate::meter::LevelFrame::silent(), "disabled tap must stay silent");
+
+        tap.set_enabled(true);
+        let mut peak = 0.0f32;
+        let started = std::time::Instant::now();
+        while peak <= 0.0 && started.elapsed() < std::time::Duration::from_secs(5) {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            peak = tap.read().peak[0];
+        }
+        assert!(peak > 0.0, "an enabled tap must see the tone");
     }
 
     #[test]

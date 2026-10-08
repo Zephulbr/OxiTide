@@ -8,6 +8,7 @@ pub mod endpoint_volume;
 pub mod engine;
 pub mod error;
 pub mod fetch;
+pub mod meter;
 pub mod mpd;
 pub mod output;
 pub mod perf;
