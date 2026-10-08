@@ -1,6 +1,6 @@
 # Track 7b AutoMix — A/B smoke checklist (2026-10-08)
 
-- **Status:** Scripted gates green; **owner A/B listening pending**
+- **Status:** Scripted gates green; owner A/B listening **paused 2026-10-08** for transition-quality research
 - **Authority:** `specs/2026-10-08-oxitide-track7b-automix-design.md` §8
 - **Build under test:** branch `track7b-automix`
 
@@ -60,3 +60,6 @@ Verdict: keep / drop / tune — notes:
 ## Results
 
 Record results below.
+
+- **2026-10-08 (owner, first pass):** transitions are either distracting / not smooth or so faint
+  they are not heard. Paused for research: `2026-10-08-automix-transition-quality-research.md`.
