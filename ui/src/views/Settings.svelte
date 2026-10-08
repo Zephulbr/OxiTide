@@ -13,6 +13,8 @@
     type ReplayGainSettings,
     type ScrobbleServiceId,
     type ScrobbleStatusDto,
+    type TransitionReplay,
+    type TransitionStyle,
   } from "../lib/api";
   import { canToggle, queuedLabel, serviceLabel } from "../lib/scrobble";
   import ConfirmDialog from "../lib/components/ConfirmDialog.svelte";
@@ -34,10 +36,12 @@
     EQ_MAX_DB,
     EQ_PRESETS,
     REPLAY_GAIN_MAX_DB,
+    TRANSITION_STYLES,
     bandLabel,
     clampDb,
     effectivePreamp,
     formatCrossfade,
+    formatReplayTime,
     describeTransition,
     formatDb,
     matchPreset,
@@ -375,6 +379,49 @@
       setDsp({ ...config.dsp, crossfade: { ...config.dsp.crossfade, ...patch } });
     }
   }
+
+  // AutoMix replay lab: the last transition re-rendered in a chosen style,
+  // played through the webview while the player is paused.
+  let replay = $state<{ style: TransitionStyle; result: TransitionReplay } | null>(null);
+  let replayPlaying = $state<TransitionStyle | null>(null);
+  let replayBusy = $state(false);
+  let replayError = $state("");
+  let replayAudio: HTMLAudioElement | null = null;
+  let replayUrl = "";
+
+  function stopReplay() {
+    replayAudio?.pause();
+    replayAudio = null;
+    replayPlaying = null;
+    if (replayUrl) URL.revokeObjectURL(replayUrl);
+    replayUrl = "";
+  }
+
+  async function playReplay(style: TransitionStyle) {
+    replayBusy = true;
+    replayError = "";
+    try {
+      const result = await api.automixRender(style);
+      stopReplay();
+      if (player.state.playing) await player.playPause();
+      replay = { style, result };
+      replayUrl = URL.createObjectURL(result.wav);
+      const audio = new Audio(replayUrl);
+      audio.onended = () => {
+        if (replayAudio === audio) replayPlaying = null;
+      };
+      replayAudio = audio;
+      replayPlaying = style;
+      await audio.play();
+    } catch (e) {
+      replayError = errorMessage(e);
+      stopReplay();
+    } finally {
+      replayBusy = false;
+    }
+  }
+
+  $effect(() => stopReplay);
 
   function rangeValue(event: Event): number {
     return Number((event.target as HTMLInputElement).value);
@@ -978,13 +1025,28 @@
             Each option works on its own so you can A/B them. Transitions that do not fit
             fall back to the plain crossfade and say why below.
           </p>
+          <fieldset class="styles">
+            <legend>Transition style</legend>
+            {#each TRANSITION_STYLES as option (option.id)}
+              <label>
+                <input
+                  type="radio"
+                  name="transition-style"
+                  value={option.id}
+                  checked={config.dsp.crossfade.style === option.id}
+                  onchange={() => setCrossfade({ style: option.id })}
+                />
+                {option.label} <span class="muted">— {option.hint}</span>
+              </label>
+            {/each}
+          </fieldset>
           <label>
             <input
               type="checkbox"
               checked={config.dsp.crossfade.trim_silence}
               onchange={(e) => setCrossfade({ trim_silence: (e.target as HTMLInputElement).checked })}
             />
-            Skip silence at track edges (overlap the music, not the gaps)
+            Skip silence at track edges (Quick and Blend always do)
           </label>
           <label>
             <input
@@ -1018,6 +1080,31 @@
               </ul>
             </div>
           {/if}
+          <div class="replay" role="group" aria-label="Replay the last transition">
+            <span class="field-label">Replay last transition as:</span>
+            {#each TRANSITION_STYLES as option (option.id)}
+              <button
+                type="button"
+                disabled={replayBusy}
+                aria-pressed={replayPlaying === option.id}
+                onclick={() => (replayPlaying === option.id ? stopReplay() : playReplay(option.id))}
+              >{replayPlaying === option.id ? `Stop ${option.label}` : option.label}</button>
+            {/each}
+            {#if replayError}
+              <p class="muted" role="alert">{replayError}</p>
+            {:else if replay}
+              {@const summary = describeTransition(replay.result.report)}
+              <p class="muted" aria-live="polite">
+                {summary.title}: overlap {formatReplayTime(replay.result.overlap_start_ms)}–{formatReplayTime(replay.result.overlap_end_ms)}
+                · {summary.details.join(" · ")}
+              </p>
+            {:else}
+              <p class="muted">
+                Let a track end on its own with AutoMix on, then compare the same pair in each
+                style. Replays pause playback and skip EQ and ReplayGain.
+              </p>
+            {/if}
+          </div>
         </div>
       {/if}
 
@@ -1551,6 +1638,29 @@
   .report ul {
     margin: 4px 0 0;
     padding-left: 18px;
+  }
+  .automix .styles {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 0;
+    padding: 6px 0;
+    border: 0;
+  }
+  .automix .styles legend {
+    padding: 0;
+    font-weight: 600;
+  }
+  .automix .replay {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--line);
+  }
+  .automix .replay p {
+    flex-basis: 100%;
   }
   .eq {
     margin: 4px 0 8px;

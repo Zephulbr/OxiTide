@@ -234,7 +234,11 @@ export interface CrossfadeSettings {
   resample: boolean;
   /** AutoMix: align the overlap beat-to-beat when tempos fit. */
   beat_match: boolean;
+  /** Where the overlap sits and how the tracks trade places. */
+  style: TransitionStyle;
 }
+/** Rust `dsp::TransitionStyle`. */
+export type TransitionStyle = "classic" | "quick" | "blend";
 export type TransitionKind = "crossfade" | "beat_matched" | "fade_out";
 /** What the most recent crossfade did (Rust `automix::TransitionReport`). */
 export interface TransitionReport {
@@ -249,6 +253,18 @@ export interface TransitionReport {
   in_confidence?: number | null;
   beats?: number | null;
   note?: string | null;
+  style: TransitionStyle;
+  /** Audible outgoing audio dropped after the overlap. */
+  cut_out_ms: number;
+  /** Incoming intro skipped beyond its leading silence. */
+  cut_in_ms: number;
+}
+/** A transition re-rendered by the AutoMix replay lab (`automix_render`). */
+export interface TransitionReplay {
+  report: TransitionReport;
+  overlap_start_ms: number;
+  overlap_end_ms: number;
+  wav: Blob;
 }
 export interface DspSettings {
   eq: EqSettings;
@@ -344,6 +360,18 @@ export function historyToQueueItem(entry: HistoryEntry): QueueItem {
     album: entry.album,
     duration_secs: entry.duration_secs,
     cover: entry.cover ?? null,
+  };
+}
+
+/// Split an `automix_render` payload: `[u32 LE header length][JSON][WAV]`.
+export function parseReplay(buffer: ArrayBuffer): TransitionReplay {
+  const length = new DataView(buffer).getUint32(0, true);
+  const header = JSON.parse(new TextDecoder().decode(new Uint8Array(buffer, 4, length)));
+  return {
+    report: header.report,
+    overlap_start_ms: header.overlap_start_ms,
+    overlap_end_ms: header.overlap_end_ms,
+    wav: new Blob([new Uint8Array(buffer, 4 + length)], { type: "audio/wav" }),
   };
 }
 
@@ -485,6 +513,8 @@ export const api = {
   getAudioStatus: () => invoke<AudioStatus>("get_audio_status"),
   setDspSettings: (settings: DspSettings) =>
     invoke<DspSettings>("set_dsp_settings", { settings }),
+  automixRender: async (style: TransitionStyle) =>
+    parseReplay(await invoke<ArrayBuffer>("automix_render", { style })),
   getPerfSnapshot: () => invoke<PerfSnapshot>("get_perf_snapshot"),
   perfMark: (name: string) => invoke<void>("perf_mark", { name }),
   perfSubmitUiMetrics: (metrics: Record<string, unknown>) =>

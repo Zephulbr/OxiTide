@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use oxitide_audio::cache::DiskCache;
-use oxitide_audio::dsp::DspSettings;
+use oxitide_audio::dsp::{DspSettings, TransitionStyle};
 use oxitide_audio::engine::{Engine, EngineCmd, EngineEvent, PlaybackState};
 use oxitide_audio::fetch::HttpFetcher;
 use oxitide_audio::output::{ExclusiveFallback, OutputMode};
@@ -1926,6 +1926,59 @@ pub fn set_dsp_settings(
     Ok(settings)
 }
 
+/// AutoMix replay lab: the last transition re-planned and mixed in `style`
+/// with the current crossfade settings, rendered in memory (never written to
+/// disk). The payload is `[u32 LE header length][JSON header][16-bit WAV]`;
+/// the header holds the report and where the overlap sits in the audio.
+#[tauri::command]
+pub fn automix_render(
+    state: State<'_, AppState>,
+    style: TransitionStyle,
+) -> Result<tauri::ipc::Response, String> {
+    let player = state.player().ok_or("Playback is not ready")?;
+    let mut settings = state.config().dsp.crossfade;
+    settings.style = style;
+    let rendered = player.engine.render_last_transition(&settings).ok_or(
+        "Nothing to replay yet: let a track end on its own with AutoMix on.",
+    )?;
+    let header = serde_json::json!({
+        "report": rendered.report,
+        "overlap_start_ms": rendered.overlap_start_ms,
+        "overlap_end_ms": rendered.overlap_end_ms,
+    })
+    .to_string();
+    let wav = wav_pcm16(&rendered.samples, rendered.channels, rendered.rate);
+    let mut payload = Vec::with_capacity(4 + header.len() + wav.len());
+    payload.extend_from_slice(&(header.len() as u32).to_le_bytes());
+    payload.extend_from_slice(header.as_bytes());
+    payload.extend_from_slice(&wav);
+    Ok(tauri::ipc::Response::new(payload))
+}
+
+/// A canonical 16-bit PCM WAV of interleaved normalized samples.
+fn wav_pcm16(samples: &[f32], channels: usize, rate: u32) -> Vec<u8> {
+    let channels = channels.max(1) as u16;
+    let data_len = (samples.len() * 2) as u32;
+    let mut wav = Vec::with_capacity(44 + data_len as usize);
+    wav.extend_from_slice(b"RIFF");
+    wav.extend_from_slice(&(36 + data_len).to_le_bytes());
+    wav.extend_from_slice(b"WAVEfmt ");
+    wav.extend_from_slice(&16u32.to_le_bytes());
+    wav.extend_from_slice(&1u16.to_le_bytes());
+    wav.extend_from_slice(&channels.to_le_bytes());
+    wav.extend_from_slice(&rate.to_le_bytes());
+    wav.extend_from_slice(&(rate * channels as u32 * 2).to_le_bytes());
+    wav.extend_from_slice(&(channels * 2).to_le_bytes());
+    wav.extend_from_slice(&16u16.to_le_bytes());
+    wav.extend_from_slice(b"data");
+    wav.extend_from_slice(&data_len.to_le_bytes());
+    for &s in samples {
+        let v = (s.clamp(-1.0, 1.0) * i16::MAX as f32).round() as i16;
+        wav.extend_from_slice(&v.to_le_bytes());
+    }
+    wav
+}
+
 #[tauri::command]
 pub fn get_config(state: State<'_, AppState>) -> Result<Config, String> {
     // The renderer must never receive the Last.fm API secret; the UI uses
@@ -2246,6 +2299,19 @@ mod tests {
     use oxitide_tidal::token_store::MemoryStore;
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[test]
+    fn replay_wav_has_a_canonical_pcm16_header() {
+        let wav = wav_pcm16(&[0.0, 1.0, -1.0, 0.5], 2, 48_000);
+        assert_eq!(&wav[..4], b"RIFF");
+        assert_eq!(u32::from_le_bytes(wav[4..8].try_into().unwrap()), 36 + 8);
+        assert_eq!(&wav[8..16], b"WAVEfmt ");
+        assert_eq!(u16::from_le_bytes([wav[22], wav[23]]), 2, "channels");
+        assert_eq!(u32::from_le_bytes(wav[24..28].try_into().unwrap()), 48_000);
+        assert_eq!(&wav[36..40], b"data");
+        let data: Vec<i16> = wav[44..].chunks(2).map(|b| i16::from_le_bytes([b[0], b[1]])).collect();
+        assert_eq!(data, vec![0, i16::MAX, -i16::MAX, 16_384]);
+    }
 
     fn outcome(state: Option<&str>) -> auth::RedirectOutcome {
         auth::RedirectOutcome {

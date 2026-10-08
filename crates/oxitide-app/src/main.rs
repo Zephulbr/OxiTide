@@ -418,6 +418,7 @@ fn main() {
             commands::set_exclusive,
             commands::set_exclusive_fallback,
             commands::set_dsp_settings,
+            commands::automix_render,
             commands::get_audio_status,
             commands::get_cache_status,
             commands::clear_cache,

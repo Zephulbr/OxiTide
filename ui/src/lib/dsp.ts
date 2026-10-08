@@ -1,4 +1,4 @@
-import type { DspSettings, EqSettings, TransitionReport } from "./api";
+import type { DspSettings, EqSettings, TransitionReport, TransitionStyle } from "./api";
 
 /// Mirrors `oxitide_audio::dsp`: band centres and ranges.
 export const EQ_BANDS_HZ = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000] as const;
@@ -33,8 +33,23 @@ export function defaultDspSettings(): DspSettings {
       trim_silence: false,
       resample: false,
       beat_match: false,
+      style: "classic",
     },
   };
+}
+
+export const TRANSITION_STYLES: { id: TransitionStyle; label: string; hint: string }[] = [
+  { id: "classic", label: "Classic", hint: "Equal-power fade over the last seconds of the track" },
+  { id: "quick", label: "Quick", hint: "Short overlap once the track has died down; keeps endings" },
+  {
+    id: "blend",
+    label: "Blend",
+    hint: "Apple-style: cuts the fade-out and slow intros, swaps the bass mid-way",
+  },
+];
+
+function styleLabel(style: TransitionStyle): string {
+  return TRANSITION_STYLES.find((s) => s.id === style)?.label ?? style;
 }
 
 export function bandLabel(hz: number): string {
@@ -90,6 +105,14 @@ function seconds(ms: number): string {
   return `${(ms / 1000).toFixed(1)} s`;
 }
 
+/// The readout headline: the kind for Classic, the style (and whether it was
+/// beat-matched) otherwise.
+function transitionTitle(report: TransitionReport): string {
+  if (report.style === "classic" || report.kind === "fade_out") return KIND_LABELS[report.kind];
+  const style = styleLabel(report.style);
+  return report.kind === "beat_matched" ? `${style} (beat-matched)` : style;
+}
+
 /// The "Last transition" readout: a headline plus detail lines, for A/B
 /// listening notes.
 export function describeTransition(report: TransitionReport): { title: string; details: string[] } {
@@ -102,6 +125,9 @@ export function describeTransition(report: TransitionReport): { title: string; d
   if (report.trimmed_out_ms > 0 || report.trimmed_in_ms > 0) {
     details.push(`Silence skipped: ${seconds(report.trimmed_out_ms)} end, ${seconds(report.trimmed_in_ms)} start`);
   }
+  if (report.cut_out_ms > 0 || report.cut_in_ms > 0) {
+    details.push(`Cut: ${seconds(report.cut_out_ms)} of the ending, ${seconds(report.cut_in_ms)} of the intro`);
+  }
   if (report.resampled) details.push("Resampled across a format change");
   if (report.out_bpm != null || report.in_bpm != null) {
     const bpm = (value?: number | null, confidence?: number | null) =>
@@ -109,12 +135,20 @@ export function describeTransition(report: TransitionReport): { title: string; d
     details.push(`Tempo: ${bpm(report.out_bpm, report.out_confidence)} → ${bpm(report.in_bpm, report.in_confidence)}`);
   }
   if (report.note) details.push(report.note);
-  return { title: KIND_LABELS[report.kind], details };
+  return { title: transitionTitle(report), details };
 }
 
-/// Where "Jump near the end" seeks: 25 s before the end (or the start).
+/// Where "Jump near the end" seeks: 35 s before the end (or the start), so
+/// AutoMix's longer hold-back (crossfade + 14 s) can fill before the end.
 export function nearEndTarget(durationMs: number): number {
-  return Math.max(0, durationMs - 25_000);
+  return Math.max(0, durationMs - 35_000);
+}
+
+/// "0:06.2" for the replay lab's overlap markers.
+export function formatReplayTime(ms: number): string {
+  const total = Math.max(0, ms) / 1000;
+  const minutes = Math.floor(total / 60);
+  return `${minutes}:${(total - minutes * 60).toFixed(1).padStart(4, "0")}`;
 }
 
 /// Tooltip for the player-bar DSP badge.
