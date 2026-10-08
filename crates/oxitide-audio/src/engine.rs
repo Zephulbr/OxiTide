@@ -6,8 +6,11 @@ use std::time::{Duration, Instant};
 
 use crate::cache::{CacheKey, DiskCache};
 use crate::decode::{PcmBuffer, PcmFormat, PcmSink, StreamInfo};
-use crate::automix::{self, Clip, TransitionKind, TransitionPlan, TransitionReport};
-use crate::dsp::{extend_normalized, CrossfadeSettings, DspSettings, Tail, TrackDsp, STAGE_CROSSFADE};
+use crate::automix::{self, Clip, Rendered, TransitionKind, TransitionPlan, TransitionReport};
+use crate::dsp::{
+    extend_normalized, CrossfadeSettings, DspSettings, MixShape, Tail, TrackDsp, TransitionStyle,
+    STAGE_CROSSFADE,
+};
 use crate::error::{Error, Result};
 use crate::fetch::{self, Fetcher, StreamBuffer};
 use crate::output::{AudioOutput, AudioOutputSpec, ExclusiveFallback, OutputMode, OutputStatus};
@@ -147,6 +150,8 @@ struct Inner {
     dsp_stages: Mutex<Vec<&'static str>>,
     /// The most recent transition report.
     last_transition: Mutex<Option<TransitionReport>>,
+    /// The raw material of the last AutoMix transition, for the replay lab.
+    last_capture: Mutex<Option<Arc<Capture>>>,
     listeners: Mutex<Vec<Listener>>,
     perf_hook: Mutex<Option<PerfHook>>,
     /// Serializes queue mutation against the worker's advance decision.
@@ -287,6 +292,7 @@ impl Engine {
             dsp_version: AtomicU64::new(0),
             dsp_stages: Mutex::new(Vec::new()),
             last_transition: Mutex::new(None),
+            last_capture: Mutex::new(None),
             listeners: Mutex::new(Vec::new()),
             perf_hook: Mutex::new(None),
             playback_lock: Mutex::new(()),
@@ -359,7 +365,12 @@ impl Engine {
     /// Replace the sound-processing settings. Applies live: the playing track
     /// picks them up on its next buffer without restarting.
     pub fn set_dsp(&self, settings: DspSettings) {
-        *self.inner.dsp.lock().unwrap() = settings.sanitized();
+        let settings = settings.sanitized();
+        if settings.crossfade.duration_ms == 0 || !automix::active(&settings.crossfade) {
+            // The replay lab only serves while AutoMix is on; free its audio.
+            *self.inner.last_capture.lock().unwrap() = None;
+        }
+        *self.inner.dsp.lock().unwrap() = settings;
         self.inner.dsp_version.fetch_add(1, Ordering::SeqCst);
         if !self.inner.worker_busy.load(Ordering::SeqCst) {
             // Nothing is playing: no stage alters samples until a track starts
@@ -368,6 +379,21 @@ impl Engine {
         }
         self.inner.notify_worker();
         self.emit(EngineEvent::State(self.state()));
+    }
+
+    /// Replay lab (AM-D12): plan and mix the last AutoMix transition again
+    /// with `settings` (e.g. another style), offline and without DSP. `None`
+    /// until a transition ran with AutoMix on and the next track's opening
+    /// decoded in time.
+    pub fn render_last_transition(&self, settings: &CrossfadeSettings) -> Option<Rendered> {
+        let capture = self.inner.last_capture.lock().unwrap().clone()?;
+        let tail: Vec<f64> = capture.tail.iter().map(|&s| s as f64).collect();
+        let head: Vec<f64> = capture.head.iter().map(|&s| s as f64).collect();
+        Some(automix::render_transition(
+            &Clip { samples: &tail, channels: capture.tail_channels, rate: capture.tail_rate },
+            &Clip { samples: &head, channels: capture.head_channels, rate: capture.head_rate },
+            settings,
+        ))
     }
 
     /// Select shared or exclusive output. Applies immediately (restarts the
@@ -1277,6 +1303,17 @@ struct Handoff {
     report: TransitionReport,
 }
 
+/// The pre-DSP held-back tail and pre-read opening of the last AutoMix
+/// transition, kept in memory only (never written to disk, PM-D2).
+struct Capture {
+    tail: Vec<f32>,
+    tail_channels: usize,
+    tail_rate: u32,
+    head: Vec<f32>,
+    head_channels: usize,
+    head_rate: u32,
+}
+
 /// A beat analysis running on a helper thread while the tail keeps playing.
 struct PendingPlan {
     rx: Receiver<TransitionPlan>,
@@ -1314,7 +1351,13 @@ fn rebase_plan(
     if written <= plan.preroll_frames {
         return TransitionPlan { preroll_frames: plan.preroll_frames - written, ..plan };
     }
-    let mut late = plain_plan(remaining, base_frames, rate, "beat analysis finished late; plain crossfade");
+    let mut late = plain_plan(
+        remaining,
+        base_frames,
+        rate,
+        plan.report.style,
+        "beat analysis finished late; plain crossfade",
+    );
     // Keep what the analysis learned (BPMs, confidences, trims) for the readout.
     late.report = TransitionReport {
         kind: late.report.kind,
@@ -1327,12 +1370,19 @@ fn rebase_plan(
 }
 
 /// The plain Track 7 crossfade over the last `base_frames` of `remaining`.
-fn plain_plan(remaining: usize, base_frames: u64, rate: u32, note: &str) -> TransitionPlan {
+fn plain_plan(
+    remaining: usize,
+    base_frames: u64,
+    rate: u32,
+    style: TransitionStyle,
+    note: &str,
+) -> TransitionPlan {
     let mix = (base_frames as usize).min(remaining);
     TransitionPlan {
         preroll_frames: remaining - mix,
         mix_frames: mix,
         incoming_skip_frames: 0,
+        shape: MixShape::EqualPower,
         report: TransitionReport {
             kind: TransitionKind::Crossfade,
             overlap_ms: (mix as f64 * 1000.0 / rate.max(1) as f64).round() as u32,
@@ -1345,6 +1395,9 @@ fn plain_plan(remaining: usize, base_frames: u64, rate: u32, note: &str) -> Tran
             in_confidence: None,
             beats: None,
             note: Some(note.into()),
+            style,
+            cut_out_ms: 0,
+            cut_in_ms: 0,
         },
     }
 }
@@ -1773,6 +1826,16 @@ fn run_session(
                     for buf in &fifo {
                         extend_normalized(&mut tail_audio, buf);
                     }
+                    if let Some((samples, info)) = head.as_ref().filter(|_| automix::active(&crossfade)) {
+                        *inner.last_capture.lock().unwrap() = Some(Arc::new(Capture {
+                            tail: tail_audio.iter().map(|&s| s as f32).collect(),
+                            tail_channels: channels as usize,
+                            tail_rate: rate,
+                            head: samples.iter().map(|&s| s as f32).collect(),
+                            head_channels: info.channels as usize,
+                            head_rate: info.sample_rate,
+                        }));
+                    }
                     let settings = crossfade.clone();
                     let plan_with = move || {
                         let tail = Clip { samples: &tail_audio, channels: channels as usize, rate };
@@ -1798,7 +1861,13 @@ fn run_session(
                             analysis = Some(PendingPlan { rx, written: 0, head_track });
                         } else {
                             let remaining = fifo_frames as usize;
-                            let plan = plain_plan(remaining, base, rate, "beat analysis unavailable");
+                            let plan = plain_plan(
+                                remaining,
+                                base,
+                                rate,
+                                crossfade.style,
+                                "beat analysis unavailable",
+                            );
                             planned = Some((plan, 0, head_track));
                             break;
                         }
@@ -1895,6 +1964,7 @@ fn run_session(
                 }
             }
             tail.truncate(plan.mix_frames);
+            tail.set_shape(plan.shape, rate);
             handoff = Some(Handoff {
                 tail,
                 rate,
@@ -4872,6 +4942,35 @@ mod tests {
         assert!(report.overlap_ms > 800 && report.overlap_ms <= 1000, "{report:?}");
         assert!(!report.resampled && report.note.is_none() && report.out_bpm.is_none());
         assert!(output.samples().len() < 2 * 176_400);
+    }
+
+    /// A blend runs end to end and leaves a capture the replay lab re-renders
+    /// in every style; turning AutoMix off frees it.
+    #[test]
+    fn blend_transitions_are_captured_for_replay() {
+        let (plan, files) = fixture_plan();
+        let mut settings = crossfade(1000, true);
+        settings.crossfade.style = TransitionStyle::Blend;
+        let (engine, output, _) = play_to_end(
+            plan,
+            files,
+            settings.clone(),
+            vec![album_item(1, "A"), album_item(2, "B")],
+            2 * 176_400 - 2 * 44_100 - 2 * 8192,
+        );
+        let report = engine.state().last_transition.expect("report");
+        assert_eq!(report.style, TransitionStyle::Blend);
+        assert!(report.overlap_ms > 800, "{report:?}");
+        assert!(output.samples().iter().all(|s| s.abs() <= 1.0));
+        for style in [TransitionStyle::Classic, TransitionStyle::Quick, TransitionStyle::Blend] {
+            let replay = CrossfadeSettings { style, ..settings.crossfade.clone() };
+            let rendered = engine.render_last_transition(&replay).expect("capture");
+            assert_eq!(rendered.report.style, style);
+            assert!(rendered.overlap_end_ms > rendered.overlap_start_ms, "{style:?}");
+            assert!(!rendered.samples.is_empty());
+        }
+        engine.set_dsp(crossfade(1000, true));
+        assert!(engine.render_last_transition(&settings.crossfade).is_none());
     }
 
     /// Trim on a fixture without silence behaves like the plain crossfade,

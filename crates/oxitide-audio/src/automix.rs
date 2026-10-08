@@ -6,7 +6,34 @@ use rustfft::num_complex::Complex;
 use rustfft::FftPlanner;
 use serde::{Deserialize, Serialize};
 
-use crate::dsp::CrossfadeSettings;
+use crate::decode::PcmBuffer;
+use crate::dsp::{extend_normalized, CrossfadeSettings, MixShape, Tail, TransitionStyle};
+
+/// Short-term level analysis: block length and smoothing half-width (blocks).
+const LEVEL_BLOCK_S: f64 = 0.05;
+const LEVEL_SMOOTH: usize = 4;
+/// The outgoing fade has started once the level stays this far under the body.
+const FADE_DB: f64 = 4.0;
+/// The outgoing track has died down once it stays this far under the body.
+const QUIET_DB: f64 = 18.0;
+/// An opening is "in" (or "cold" from its first 150 ms) this close to its body.
+const ENTRY_DB: f64 = 6.0;
+/// Quick overlaps never run longer than this.
+const QUICK_MAX_S: f64 = 1.5;
+/// Share of a quick overlap over which the incoming track comes up.
+const QUICK_ATTACK: f64 = 0.35;
+/// Most audible ending a blend cuts, and most intro (beyond silence) it skips.
+const MAX_CUT_OUT_S: f64 = 12.0;
+const MAX_CUT_IN_S: f64 = 8.0;
+/// Width of the bass swap at the centre of a blend.
+const SWAP_S: f64 = 0.25;
+/// Outgoing tail held back beyond the crossfade, and incoming opening
+/// pre-read, whenever AutoMix is on: enough for any style to be planned (and
+/// replayed) from one transition.
+const AUTOMIX_HOLD_MS: u32 = 14_000;
+const AUTOMIX_HEAD_S: f64 = 20.0;
+/// Audio kept around the overlap in a replay.
+const REPLAY_CONTEXT_S: f64 = 6.0;
 
 /// Peak level below which audio counts as silence (−54 dBFS).
 const SILENCE_THRESHOLD: f64 = 0.001_995;
@@ -60,6 +87,89 @@ pub fn audible_bounds(clip: &Clip) -> Option<(usize, usize)> {
     let start = clip.samples.chunks(ch).position(loud)?;
     let end = clip.samples.chunks(ch).rposition(loud)? + 1;
     Some((start, end))
+}
+
+/// Short-term level in dB per `block` frames: `smooth` averages power over
+/// ±200 ms, `raw` is the block alone.
+struct Levels {
+    smooth: Vec<f64>,
+    raw: Vec<f64>,
+    block: usize,
+}
+
+fn levels(clip: &Clip) -> Levels {
+    let ch = clip.channels.max(1);
+    let block = ((clip.rate as f64 * LEVEL_BLOCK_S) as usize).max(1);
+    let power: Vec<f64> = clip
+        .samples
+        .chunks(block * ch)
+        .map(|c| c.iter().map(|s| s * s).sum::<f64>() / c.len() as f64)
+        .collect();
+    let db = |p: f64| 10.0 * p.max(1e-12).log10();
+    let smooth = (0..power.len())
+        .map(|i| {
+            let lo = i.saturating_sub(LEVEL_SMOOTH);
+            let hi = (i + LEVEL_SMOOTH + 1).min(power.len());
+            db(power[lo..hi].iter().sum::<f64>() / (hi - lo) as f64)
+        })
+        .collect();
+    Levels { smooth, raw: power.iter().map(|&p| db(p)).collect(), block }
+}
+
+fn percentile(values: &[f64], q: f64) -> f64 {
+    let mut sorted = values.to_vec();
+    sorted.sort_by(f64::total_cmp);
+    sorted[((sorted.len() - 1) as f64 * q).round() as usize]
+}
+
+/// How an outgoing track ends, in frames of its (audible) tail.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Ending {
+    /// Where its level starts to stay `FADE_DB` under the body (a fade-out or
+    /// the final chord's decay); the tail's end when it never drops.
+    fade_start: usize,
+    /// Where it stays `QUIET_DB` under the body: the track has died down.
+    quiet: usize,
+}
+
+fn ending(clip: &Clip) -> Option<Ending> {
+    let lv = levels(clip);
+    let n = lv.smooth.len();
+    let per_second = (1.0 / LEVEL_BLOCK_S) as usize;
+    if n < 2 * per_second {
+        return None;
+    }
+    // The body is the loud part of the tail away from its last 4 s.
+    let body_end = n.saturating_sub(4 * per_second).max(n / 2);
+    let body = percentile(&lv.smooth[..body_end], 0.75);
+    let stays_under = |drop: f64| {
+        let mut i = n;
+        while i > 0 && lv.smooth[i - 1] < body - drop {
+            i -= 1;
+        }
+        (i * lv.block).min(clip.frames())
+    };
+    Some(Ending { fade_start: stays_under(FADE_DB), quiet: stays_under(QUIET_DB) })
+}
+
+/// How an incoming track opens, in frames from its first audible sample.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Opening {
+    /// First point within `ENTRY_DB` of its body level (end of a slow intro).
+    entry: usize,
+    /// Loud from its first 150 ms (a hit or a full band at once).
+    cold: bool,
+}
+
+fn opening(clip: &Clip) -> Option<Opening> {
+    let lv = levels(clip);
+    if lv.smooth.len() < (1.0 / LEVEL_BLOCK_S) as usize {
+        return None;
+    }
+    let body = percentile(&lv.smooth, 0.75);
+    let entry = lv.smooth.iter().position(|&l| l >= body - ENTRY_DB)?;
+    let cold = lv.raw.iter().take(3).any(|&l| l >= body - ENTRY_DB);
+    Some(Opening { entry: entry * lv.block, cold })
 }
 
 /// A tempo estimate and beat positions for one clip.
@@ -323,8 +433,14 @@ pub struct TransitionReport {
     pub out_confidence: Option<f32>,
     pub in_confidence: Option<f32>,
     pub beats: Option<u32>,
-    /// Why beat matching did not apply, when it was asked for.
+    /// Why beat matching did not apply, when it was asked for (or another
+    /// planning remark).
     pub note: Option<String>,
+    pub style: TransitionStyle,
+    /// Audible outgoing audio dropped after the overlap (its fade or ending).
+    pub cut_out_ms: u32,
+    /// Incoming intro skipped beyond its leading silence.
+    pub cut_in_ms: u32,
 }
 
 /// How to cross from the held-back tail into the next track. Tail frames are
@@ -337,6 +453,8 @@ pub struct TransitionPlan {
     pub mix_frames: usize,
     /// Incoming frames skipped before the overlap starts.
     pub incoming_skip_frames: usize,
+    /// How the two tracks trade places across the overlap.
+    pub shape: MixShape,
     pub report: TransitionReport,
 }
 
@@ -345,6 +463,8 @@ struct Alignment {
     preroll_s: f64,
     mix_s: f64,
     skip_s: f64,
+    /// The outgoing beat the incoming centre beat lands on.
+    centre_s: f64,
     beats: u32,
 }
 
@@ -399,7 +519,7 @@ fn align(out: &BeatGrid, inn: &BeatGrid, target_s: f64, tail_end_s: f64) -> Resu
         if mix_s < 2.0 * op {
             continue;
         }
-        return Ok(Alignment { preroll_s, mix_s, skip_s, beats: beats as u32 });
+        return Ok(Alignment { preroll_s, mix_s, skip_s, centre_s: ob[k + half], beats: beats as u32 });
     }
     Err("beats drift too far for even a 4-beat overlap".into())
 }
@@ -409,72 +529,122 @@ fn ms(frames: usize, rate: u32) -> u32 {
 }
 
 /// Plan the crossing from `tail` into the track whose opening is `head`.
-/// Without any AutoMix toggle this is the plain Track 7 crossfade: the last
-/// `duration_ms` of the tail overlap the start of the next track.
+/// Classic without any AutoMix toggle is the plain Track 7 crossfade: the
+/// last `duration_ms` of the tail overlap the start of the next track.
 pub fn plan_transition(
     tail: &Clip,
     head: Option<&Clip>,
     settings: &CrossfadeSettings,
 ) -> TransitionPlan {
-    let target_frames = (settings.duration_ms as f64 / 1000.0 * tail.rate as f64).round() as usize;
-    let tail_frames = tail.frames();
-    let audible_end = if settings.trim_silence {
-        audible_bounds(tail).map_or(0, |(_, end)| end)
-    } else {
-        tail_frames
+    match settings.style {
+        TransitionStyle::Classic => plan_classic(tail, head, settings),
+        TransitionStyle::Quick => plan_quick(tail, head, settings),
+        TransitionStyle::Blend => plan_blend(tail, head, settings),
+    }
+}
+
+/// The tail's audible end and the head's leading silence, when trimming.
+fn edges(tail: &Clip, head: Option<&Clip>, trim: bool) -> (usize, usize) {
+    if !trim {
+        return (tail.frames(), 0);
+    }
+    let audible_end = audible_bounds(tail).map_or(0, |(_, end)| end);
+    let lead = head.map_or(0, |head| {
+        let cap = (MAX_LEAD_TRIM_S * head.rate as f64) as usize;
+        audible_bounds(head).map_or(cap, |(start, _)| start).min(cap).min(head.frames())
+    });
+    (audible_end, lead)
+}
+
+fn frames_at(seconds: f64, rate: u32) -> usize {
+    (seconds * rate as f64).round() as usize
+}
+
+/// A crossfade report before any overlap is chosen.
+fn base_report(
+    style: TransitionStyle,
+    tail: &Clip,
+    head: Option<&Clip>,
+    audible_end: usize,
+    lead: usize,
+) -> TransitionReport {
+    TransitionReport {
+        kind: TransitionKind::Crossfade,
+        overlap_ms: 0,
+        trimmed_out_ms: ms(tail.frames() - audible_end, tail.rate),
+        trimmed_in_ms: head.map_or(0, |h| ms(lead, h.rate)),
+        resampled: false,
+        out_bpm: None,
+        in_bpm: None,
+        out_confidence: None,
+        in_confidence: None,
+        beats: None,
+        note: None,
+        style,
+        cut_out_ms: 0,
+        cut_in_ms: 0,
+    }
+}
+
+/// Beat grids of the outgoing window and the incoming opening, recorded in
+/// the report; `None` (with a note) when either is missing.
+fn grids(
+    tail: &Clip,
+    head: Option<&Clip>,
+    tail_end: usize,
+    head_start: usize,
+    report: &mut TransitionReport,
+) -> Option<(BeatGrid, BeatGrid)> {
+    let Some(head) = head else {
+        report.note = Some("next track was not decoded ahead in time".into());
+        return None;
     };
-    let lead = match head {
-        Some(head) if settings.trim_silence => {
-            let cap = (MAX_LEAD_TRIM_S * head.rate as f64) as usize;
-            audible_bounds(head).map_or(cap, |(start, _)| start).min(cap).min(head.frames())
+    let out = analyze_beats(&tail.slice(0, tail_end));
+    let inn = analyze_beats(&head.slice(head_start, head.frames()));
+    report.out_bpm = out.as_ref().map(|g| g.bpm as f32);
+    report.in_bpm = inn.as_ref().map(|g| g.bpm as f32);
+    report.out_confidence = out.as_ref().map(|g| g.confidence as f32);
+    report.in_confidence = inn.as_ref().map(|g| g.confidence as f32);
+    match (out, inn) {
+        (Some(out), Some(inn)) => Some((out, inn)),
+        _ => {
+            report.note = Some("no beat grid (too short or no onsets)".into());
+            None
         }
-        _ => 0,
-    };
+    }
+}
+
+/// Track 7 (plus the 7b toggles): the last `duration_ms` of audible audio,
+/// equal power.
+fn plan_classic(tail: &Clip, head: Option<&Clip>, settings: &CrossfadeSettings) -> TransitionPlan {
+    let target_frames = frames_at(settings.duration_ms as f64 / 1000.0, tail.rate);
+    let (audible_end, lead) = edges(tail, head, settings.trim_silence);
     let mix = target_frames.min(audible_end);
+    let mut report = base_report(TransitionStyle::Classic, tail, head, audible_end, lead);
+    report.overlap_ms = ms(mix, tail.rate);
     let mut plan = TransitionPlan {
         preroll_frames: audible_end - mix,
         mix_frames: mix,
         incoming_skip_frames: lead,
-        report: TransitionReport {
-            kind: TransitionKind::Crossfade,
-            overlap_ms: ms(mix, tail.rate),
-            trimmed_out_ms: ms(tail_frames - audible_end, tail.rate),
-            trimmed_in_ms: head.map_or(0, |h| ms(lead, h.rate)),
-            resampled: false,
-            out_bpm: None,
-            in_bpm: None,
-            out_confidence: None,
-            in_confidence: None,
-            beats: None,
-            note: None,
-        },
+        shape: MixShape::EqualPower,
+        report,
     };
     if !settings.beat_match {
         return plan;
     }
-    let Some(head) = head else {
-        plan.report.note = Some("next track was not decoded ahead in time".into());
+    let Some((out, inn)) = grids(tail, head, audible_end, lead, &mut plan.report) else {
         return plan;
     };
-    let out = analyze_beats(&tail.slice(0, audible_end));
-    let inn = analyze_beats(&head.slice(lead, head.frames()));
-    plan.report.out_bpm = out.as_ref().map(|g| g.bpm as f32);
-    plan.report.in_bpm = inn.as_ref().map(|g| g.bpm as f32);
-    plan.report.out_confidence = out.as_ref().map(|g| g.confidence as f32);
-    plan.report.in_confidence = inn.as_ref().map(|g| g.confidence as f32);
-    let (Some(out), Some(inn)) = (out, inn) else {
-        plan.report.note = Some("no beat grid (too short or no onsets)".into());
-        return plan;
-    };
+    let head_rate = head.map_or(tail.rate, |h| h.rate);
     let target_s = settings.duration_ms as f64 / 1000.0;
     let tail_end_s = audible_end as f64 / tail.rate as f64;
     match align(&out, &inn, target_s, tail_end_s) {
         Ok(a) => {
-            let preroll = ((a.preroll_s * tail.rate as f64).round() as usize).min(audible_end);
-            let mix = ((a.mix_s * tail.rate as f64).round() as usize).min(audible_end - preroll);
+            let preroll = frames_at(a.preroll_s, tail.rate).min(audible_end);
+            let mix = frames_at(a.mix_s, tail.rate).min(audible_end - preroll);
             plan.preroll_frames = preroll;
             plan.mix_frames = mix;
-            plan.incoming_skip_frames = lead + (a.skip_s * head.rate as f64).round() as usize;
+            plan.incoming_skip_frames = lead + frames_at(a.skip_s, head_rate);
             plan.report.kind = TransitionKind::BeatMatched;
             plan.report.overlap_ms = ms(mix, tail.rate);
             plan.report.beats = Some(a.beats);
@@ -484,24 +654,181 @@ pub fn plan_transition(
     plan
 }
 
+/// A short overlap once the outgoing track has died down (AM-D9): the
+/// incoming track lands as the last one rings out.
+fn plan_quick(tail: &Clip, head: Option<&Clip>, settings: &CrossfadeSettings) -> TransitionPlan {
+    let rate = tail.rate;
+    let (audible_end, lead) = edges(tail, head, true);
+    let len = frames_at((settings.duration_ms as f64 / 1000.0).min(QUICK_MAX_S), rate);
+    let quiet = ending(&tail.slice(0, audible_end)).map_or(audible_end, |e| e.quiet);
+    let start = quiet.saturating_sub(len / 2).min(audible_end.saturating_sub(len));
+    let mix = len.min(audible_end - start);
+    let cold = head
+        .and_then(|h| opening(&h.slice(lead, h.frames())))
+        .is_some_and(|o| o.cold);
+    let mut report = base_report(TransitionStyle::Quick, tail, head, audible_end, lead);
+    report.overlap_ms = ms(mix, rate);
+    report.cut_out_ms = ms(audible_end - start - mix, rate);
+    if cold {
+        report.note = Some("next track opens loud: no fade-in".into());
+    }
+    TransitionPlan {
+        preroll_frames: start,
+        mix_frames: mix,
+        incoming_skip_frames: lead,
+        shape: MixShape::Quick { attack: if cold { 0.0 } else { QUICK_ATTACK } },
+        report,
+    }
+}
+
+/// A bass swap of `SWAP_S` centred at `centre` (fraction of a `mix_s` overlap).
+fn bass_swap(centre: f64, mix_s: f64) -> MixShape {
+    let half = (SWAP_S / 2.0 / mix_s.max(1e-9)).min(0.5);
+    MixShape::BassSwap {
+        swap_start: (centre - half).clamp(0.0, 1.0),
+        swap_end: (centre + half).clamp(0.0, 1.0),
+    }
+}
+
+/// Apple-style (AM-D10): the overlap ends where the outgoing fade starts, so
+/// that fade is cut; the incoming track skips a slow intro so it reaches its
+/// body as the overlap ends; the lows swap at the centre.
+fn plan_blend(tail: &Clip, head: Option<&Clip>, settings: &CrossfadeSettings) -> TransitionPlan {
+    let rate = tail.rate;
+    let (audible_end, lead) = edges(tail, head, true);
+    let len = frames_at(settings.duration_ms as f64 / 1000.0, rate);
+    let fade_start = ending(&tail.slice(0, audible_end)).map_or(audible_end, |e| e.fade_start);
+    let end = fade_start
+        .max(audible_end.saturating_sub(frames_at(MAX_CUT_OUT_S, rate)))
+        .max(len.min(audible_end));
+    let start = end.saturating_sub(len);
+    let mix = end - start;
+    let cut_in = head.map_or(0, |h| {
+        let entry = opening(&h.slice(lead, h.frames())).map_or(0, |o| o.entry);
+        let mix_in = frames_at(mix as f64 / rate as f64, h.rate);
+        entry.saturating_sub(mix_in).min(frames_at(MAX_CUT_IN_S, h.rate))
+    });
+    let head_rate = head.map_or(rate, |h| h.rate);
+    let mut report = base_report(TransitionStyle::Blend, tail, head, audible_end, lead);
+    report.overlap_ms = ms(mix, rate);
+    report.cut_out_ms = ms(audible_end - end, rate);
+    report.cut_in_ms = ms(cut_in, head_rate);
+    let mix_s = mix as f64 / rate as f64;
+    let mut plan = TransitionPlan {
+        preroll_frames: start,
+        mix_frames: mix,
+        incoming_skip_frames: lead + cut_in,
+        shape: bass_swap(0.5, mix_s),
+        report,
+    };
+    if !settings.beat_match {
+        return plan;
+    }
+    let Some((out, inn)) = grids(tail, head, end, lead + cut_in, &mut plan.report) else {
+        return plan;
+    };
+    let target_s = settings.duration_ms as f64 / 1000.0;
+    match align(&out, &inn, target_s, end as f64 / rate as f64) {
+        Ok(a) => {
+            let preroll = frames_at(a.preroll_s, rate).min(end);
+            let mix = frames_at(a.mix_s, rate).min(end - preroll);
+            let skip = lead + cut_in + frames_at(a.skip_s, head_rate);
+            plan.preroll_frames = preroll;
+            plan.mix_frames = mix;
+            plan.incoming_skip_frames = skip;
+            plan.shape = bass_swap((a.centre_s - a.preroll_s) / a.mix_s.max(1e-9), a.mix_s);
+            plan.report.kind = TransitionKind::BeatMatched;
+            plan.report.overlap_ms = ms(mix, rate);
+            plan.report.beats = Some(a.beats);
+            plan.report.cut_out_ms = ms(audible_end - preroll - mix, rate);
+            plan.report.cut_in_ms = ms(skip - lead, head_rate);
+        }
+        Err(reason) => plan.report.note = Some(reason),
+    }
+    plan
+}
+
+/// Whether any AutoMix behaviour is on; all off is the exact Track 7 path.
+pub fn active(settings: &CrossfadeSettings) -> bool {
+    settings.style != TransitionStyle::Classic || settings.trim_silence || settings.beat_match
+}
+
 /// Seconds of decoded audio worth pre-reading from the next track.
 pub fn head_seconds(settings: &CrossfadeSettings) -> f64 {
-    if settings.beat_match {
-        12.0
-    } else if settings.trim_silence {
-        MAX_LEAD_TRIM_S + 0.5
+    if active(settings) {
+        AUTOMIX_HEAD_S
     } else {
         0.0
     }
 }
 
-/// Extra tail held back beyond the crossfade, so trims and beat windows have
-/// room to move the overlap earlier.
+/// Extra tail held back beyond the crossfade, so every style has room to
+/// move the overlap earlier (AM-D11).
 pub fn extra_hold_ms(settings: &CrossfadeSettings) -> u32 {
-    if settings.trim_silence || settings.beat_match {
-        6_000
+    if active(settings) {
+        AUTOMIX_HOLD_MS
     } else {
         0
+    }
+}
+
+/// A transition rendered offline for the replay lab (AM-D12): a few seconds
+/// of the outgoing track, the overlap, and a few seconds of the incoming one,
+/// interleaved in the incoming track's format.
+#[derive(Debug, Clone)]
+pub struct Rendered {
+    pub samples: Vec<f32>,
+    pub channels: usize,
+    pub rate: u32,
+    pub report: TransitionReport,
+    pub overlap_start_ms: u32,
+    pub overlap_end_ms: u32,
+}
+
+/// Plan the crossing from `tail` into `head` with `settings` and mix it the
+/// way the engine would (same `Tail` mixer), without DSP.
+pub fn render_transition(tail: &Clip, head: &Clip, settings: &CrossfadeSettings) -> Rendered {
+    let mut plan = plan_transition(tail, Some(head), settings);
+    let (rate, channels) = (head.rate, head.channels.max(1));
+    let tail_ch = tail.channels.max(1);
+    let same = tail.rate == head.rate && tail_ch == channels;
+    plan.report.resampled = !same;
+    let part = |from: usize, to: usize| {
+        let part = Tail::from_normalized(tail.samples[from * tail_ch..to * tail_ch].to_vec(), tail_ch, false);
+        if same {
+            part
+        } else {
+            part.converted(tail.rate, rate, channels)
+        }
+    };
+    let preroll = plan.preroll_frames.min(tail.frames());
+    let mix_end = (preroll + plan.mix_frames).min(tail.frames());
+    let context = frames_at(REPLAY_CONTEXT_S, tail.rate);
+    let mut out: Vec<f64> = part(preroll.saturating_sub(context), preroll).remaining().to_vec();
+    let overlap_start = out.len() / channels;
+    let mut overlap = part(preroll, mix_end);
+    overlap.set_shape(plan.shape, rate);
+    let overlap_end = overlap_start + overlap.frames();
+    let stop = overlap_end + frames_at(REPLAY_CONTEXT_S, rate);
+    let mut pos = plan.incoming_skip_frames.min(head.frames());
+    while pos < head.frames() && out.len() / channels < stop {
+        let next = (pos + 4096).min(head.frames());
+        let chunk = head.samples[pos * channels..next * channels].iter().map(|&s| s as f32).collect();
+        extend_normalized(&mut out, &overlap.mix_into(PcmBuffer::F32(chunk)));
+        pos = next;
+    }
+    if !overlap.is_done() {
+        // The opening ran out mid-overlap: the tail fades out on its own.
+        extend_normalized(&mut out, &overlap.fade_out_remaining());
+    }
+    out.truncate(stop.max(overlap_end) * channels);
+    Rendered {
+        samples: out.iter().map(|&s| s as f32).collect(),
+        channels,
+        rate,
+        report: plan.report,
+        overlap_start_ms: ms(overlap_start, rate),
+        overlap_end_ms: ms(overlap_end, rate),
     }
 }
 
@@ -791,7 +1118,150 @@ mod tests {
         assert_eq!((extra_hold_ms(&s), head_seconds(&s)), (0, 0.0));
         s.trim_silence = true;
         assert!(extra_hold_ms(&s) > 0 && head_seconds(&s) > MAX_LEAD_TRIM_S);
+        s.trim_silence = false;
+        s.style = TransitionStyle::Blend;
+        // Room for the longest crossfade plus the largest cut.
+        assert!(extra_hold_ms(&s) as f64 >= MAX_CUT_OUT_S * 1000.0);
+        assert!(head_seconds(&s) >= MAX_CUT_IN_S + 12.0);
+    }
+
+    /// A stereo 220 Hz + 3 kHz tone whose level follows `gain_db(t)`.
+    fn tone(seconds: f64, gain_db: impl Fn(f64) -> f64) -> Vec<f64> {
+        (0..(seconds * RATE as f64) as usize)
+            .flat_map(|n| {
+                let t = n as f64 / RATE as f64;
+                let g = 0.3 * 10f64.powf(gain_db(t) / 20.0);
+                let s = g * (0.7 * (2.0 * std::f64::consts::PI * 220.0 * t).sin()
+                    + 0.3 * (2.0 * std::f64::consts::PI * 3000.0 * t).sin());
+                [s, s]
+            })
+            .collect()
+    }
+
+    fn style(style: TransitionStyle, duration_ms: u32) -> CrossfadeSettings {
+        CrossfadeSettings { duration_ms, style, ..Default::default() }
+    }
+
+    fn secs(frames: usize) -> f64 {
+        frames as f64 / RATE as f64
+    }
+
+    /// 10 s of body, then a 6 s fade of 40 dB, then 1 s of silence.
+    fn fading_tail() -> Vec<f64> {
+        let mut tail = tone(16.0, |t| if t < 10.0 { 0.0 } else { -40.0 * (t - 10.0) / 6.0 });
+        tail.extend(vec![0.0; 2 * RATE as usize]);
+        tail
+    }
+
+    /// `intro_s` at −20 dB, then the body.
+    fn slow_intro(intro_s: f64, seconds: f64) -> Vec<f64> {
+        tone(seconds, |t| if t < intro_s { -20.0 } else { 0.0 })
+    }
+
+    #[test]
+    fn quick_lands_once_the_fade_has_died_down() {
+        let tail = fading_tail();
+        let head = slow_intro(1.0, 8.0);
+        let plan = plan_transition(&clip(&tail), Some(&clip(&head)), &style(TransitionStyle::Quick, 6000));
+        // −18 dB is 2.7 s into the fade (12.7 s); the 1.5 s overlap is centred there.
+        let start = secs(plan.preroll_frames);
+        assert!((11.6..=12.3).contains(&start), "overlap starts at {start:.2} s");
+        assert_eq!(plan.mix_frames, (1.5 * RATE as f64) as usize);
+        assert_eq!(plan.shape, MixShape::Quick { attack: QUICK_ATTACK });
+        assert!(plan.report.cut_out_ms > 1000, "the rest of the fade is dropped: {:?}", plan.report);
+        assert_eq!(plan.report.style, TransitionStyle::Quick);
+    }
+
+    #[test]
+    fn quick_does_not_fade_in_a_cold_opening() {
+        let tail = fading_tail();
+        let head = tone(8.0, |_| 0.0);
+        let plan = plan_transition(&clip(&tail), Some(&clip(&head)), &style(TransitionStyle::Quick, 6000));
+        assert_eq!(plan.shape, MixShape::Quick { attack: 0.0 });
+        assert!(plan.report.note.as_deref().unwrap().contains("opens loud"));
+    }
+
+    #[test]
+    fn quick_on_a_hard_stop_overlaps_the_last_moment() {
+        // Full level to the very end, then silence.
+        let mut tail = tone(12.0, |_| 0.0);
+        tail.extend(vec![0.0; RATE as usize]);
+        let plan = plan_transition(&clip(&tail), None, &style(TransitionStyle::Quick, 4000));
+        assert_eq!(secs(plan.preroll_frames + plan.mix_frames), 12.0);
+        assert_eq!(secs(plan.mix_frames), 1.5);
+        // Never longer than the crossfade setting.
+        let plan = plan_transition(&clip(&tail), None, &style(TransitionStyle::Quick, 1000));
+        assert_eq!(secs(plan.mix_frames), 1.0);
+    }
+
+    #[test]
+    fn blend_cuts_the_fade_and_skips_a_slow_intro() {
+        let tail = fading_tail();
+        let head = slow_intro(10.0, 18.0);
+        let plan = plan_transition(&clip(&tail), Some(&clip(&head)), &style(TransitionStyle::Blend, 6000));
+        // −4 dB is 0.6 s into the fade: the overlap ends there.
+        let end = secs(plan.preroll_frames + plan.mix_frames);
+        assert!((10.3..=11.0).contains(&end), "overlap ends at {end:.2} s");
+        assert_eq!(secs(plan.mix_frames), 6.0);
+        assert!(plan.report.cut_out_ms > 5_000, "{:?}", plan.report);
+        // The intro reaches its body (10 s) as the 6 s overlap ends: 4 s skipped.
+        let skip = secs(plan.incoming_skip_frames);
+        assert!((3.6..=4.4).contains(&skip), "incoming skip {skip:.2} s");
+        assert_eq!(plan.report.cut_in_ms, ms(plan.incoming_skip_frames, RATE));
+        let MixShape::BassSwap { swap_start, swap_end } = plan.shape else {
+            panic!("{:?}", plan.shape);
+        };
+        assert!(swap_start < 0.5 && swap_end > 0.5 && swap_end - swap_start < 0.1);
+    }
+
+    #[test]
+    fn blend_caps_how_much_it_cuts() {
+        // A 20 s fade starting 2 s in: the cut stops at 12 s of audible ending.
+        let tail = tone(22.0, |t| if t < 2.0 { 0.0 } else { -40.0 * (t - 2.0) / 20.0 });
+        let intro = slow_intro(30.0, 20.0);
+        let plan = plan_transition(&clip(&tail), Some(&clip(&intro)), &style(TransitionStyle::Blend, 6000));
+        assert!((secs(plan.preroll_frames + plan.mix_frames) - 10.0).abs() < 0.01, "{plan:?}");
+        // An opening that never gets louder has nothing to skip.
+        assert_eq!(plan.report.cut_in_ms, 0);
+    }
+
+    #[test]
+    fn blend_beat_matches_and_swaps_on_the_centre_beat() {
+        let tail = drums(128.0, 24.0, 0.12, 11);
+        let head = drums(127.0, 16.0, 0.40, 12);
+        let mut s = style(TransitionStyle::Blend, 6000);
         s.beat_match = true;
-        assert!(head_seconds(&s) >= 8.0);
+        let plan = plan_transition(&clip(&tail), Some(&clip(&head)), &s);
+        assert_eq!(plan.report.kind, TransitionKind::BeatMatched, "{:?}", plan.report);
+        let MixShape::BassSwap { swap_start, swap_end } = plan.shape else {
+            panic!("{:?}", plan.shape);
+        };
+        assert!(swap_start > 0.2 && swap_end < 0.8, "{:?}", plan.shape);
+        assert!(aligned_error(128.0, 0.12, 127.0, 0.40, &plan) < 0.015);
+    }
+
+    #[test]
+    fn render_places_the_overlap_between_context() {
+        let tail = fading_tail();
+        let head = slow_intro(1.0, 20.0);
+        for style_ in [TransitionStyle::Classic, TransitionStyle::Quick, TransitionStyle::Blend] {
+            let r = render_transition(&clip(&tail), &clip(&head), &style(style_, 6000));
+            assert_eq!((r.rate, r.channels), (RATE, 2));
+            assert!(!r.report.resampled);
+            let overlap = r.overlap_end_ms - r.overlap_start_ms;
+            assert_eq!(overlap, r.report.overlap_ms, "{style_:?}");
+            // Up to 6 s of lead-in (less when the overlap starts early in the tail).
+            let plan = plan_transition(&clip(&tail), Some(&clip(&head)), &style(style_, 6000));
+            assert_eq!(r.overlap_start_ms, ms(plan.preroll_frames.min(6 * RATE as usize), RATE), "{style_:?}");
+            let total_ms = ms(r.samples.len() / 2, RATE);
+            assert_eq!(total_ms, r.overlap_end_ms + 6_000, "{style_:?}");
+            assert!(r.samples.iter().all(|s| s.is_finite() && s.abs() <= 1.0));
+        }
+        // A different incoming format renders in that format.
+        let head48: Vec<f64> = slow_intro(1.0, 20.0);
+        let head48 = Clip { samples: &head48, channels: 2, rate: 48_000 };
+        let r = render_transition(&clip(&tail), &head48, &style(TransitionStyle::Blend, 6000));
+        assert_eq!(r.rate, 48_000);
+        assert!(r.report.resampled);
     }
 }

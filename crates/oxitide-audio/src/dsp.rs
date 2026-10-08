@@ -113,6 +113,8 @@ pub struct CrossfadeSettings {
     /// AutoMix Phase 2: align the overlap beat-to-beat when both tracks have a
     /// confident beat grid and compatible tempos.
     pub beat_match: bool,
+    /// Where the overlap sits and how the tracks trade places (Track 7b.2).
+    pub style: TransitionStyle,
 }
 
 impl Default for CrossfadeSettings {
@@ -123,8 +125,22 @@ impl Default for CrossfadeSettings {
             trim_silence: false,
             resample: false,
             beat_match: false,
+            style: TransitionStyle::Classic,
         }
     }
+}
+
+/// How a crossfade is placed and shaped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TransitionStyle {
+    /// Track 7: equal power over the last `duration_ms` of audio.
+    #[default]
+    Classic,
+    /// A short overlap once the outgoing track has died down.
+    Quick,
+    /// Apple-style: cut the outgoing fade, skip a slow intro, swap the bass.
+    Blend,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -196,6 +212,34 @@ struct Coeffs {
 }
 
 impl Coeffs {
+    /// RBJ second-order Butterworth low-pass.
+    fn lowpass(rate: u32, freq: f64) -> Self {
+        let (sin, cos) = (2.0 * std::f64::consts::PI * freq / rate as f64).sin_cos();
+        let alpha = sin * std::f64::consts::FRAC_1_SQRT_2;
+        let a0 = 1.0 + alpha;
+        Self {
+            b0: (1.0 - cos) / 2.0 / a0,
+            b1: (1.0 - cos) / a0,
+            b2: (1.0 - cos) / 2.0 / a0,
+            a1: (-2.0 * cos) / a0,
+            a2: (1.0 - alpha) / a0,
+        }
+    }
+
+    /// RBJ second-order Butterworth high-pass.
+    fn highpass(rate: u32, freq: f64) -> Self {
+        let (sin, cos) = (2.0 * std::f64::consts::PI * freq / rate as f64).sin_cos();
+        let alpha = sin * std::f64::consts::FRAC_1_SQRT_2;
+        let a0 = 1.0 + alpha;
+        Self {
+            b0: (1.0 + cos) / 2.0 / a0,
+            b1: -(1.0 + cos) / a0,
+            b2: (1.0 + cos) / 2.0 / a0,
+            a1: (-2.0 * cos) / a0,
+            a2: (1.0 - alpha) / a0,
+        }
+    }
+
     fn peaking(rate: u32, freq: f64, gain_db: f64, q: f64) -> Self {
         let a = 10f64.powf(gain_db / 40.0);
         let w0 = 2.0 * std::f64::consts::PI * freq / rate as f64;
@@ -407,6 +451,90 @@ pub fn extend_normalized(out: &mut Vec<f64>, buf: &PcmBuffer) {
     out.extend((0..buf.len()).map(|i| sample_f64(buf, i)));
 }
 
+/// Crossover of the bass swap, in Hz: kick and bass line sit below it.
+pub const BASS_SWAP_HZ: f64 = 180.0;
+
+/// How the tail and the incoming track trade places across the overlap.
+/// Positions are fractions of the overlap, so a resampled tail keeps them.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum MixShape {
+    /// Track 7: equal power across the whole overlap.
+    #[default]
+    EqualPower,
+    /// The tail fades with equal power; the incoming track reaches full level
+    /// by `attack` (0 = at once, for openings that start loud).
+    Quick { attack: f64 },
+    /// Mids/highs cross with equal power across the overlap; the lows (below
+    /// `BASS_SWAP_HZ`) swap within `[swap_start, swap_end]`.
+    BassSwap { swap_start: f64, swap_end: f64 },
+}
+
+impl MixShape {
+    /// Gains at `t` in [0, 1]: `[out_low, out_high, in_low, in_high]`.
+    /// Full-band shapes give both bands of a side the same gain. For the bass
+    /// swap, `in_low` is how far the incoming track has moved from its
+    /// high-passed form to its full band (0 → 1), under `in_high`.
+    pub fn gains(&self, t: f64) -> [f64; 4] {
+        let t = t.clamp(0.0, 1.0);
+        match *self {
+            MixShape::EqualPower => {
+                let (out, inc) = equal_power(t);
+                [out, out, inc, inc]
+            }
+            MixShape::Quick { attack } => {
+                let (out, _) = equal_power(t);
+                let inc = if attack <= 0.0 { 1.0 } else { equal_power(t / attack).1 };
+                [out, out, inc, inc]
+            }
+            MixShape::BassSwap { swap_start, swap_end } => {
+                let (out_high, in_high) = equal_power(t);
+                let u = if swap_end > swap_start {
+                    (t - swap_start) / (swap_end - swap_start)
+                } else if t >= swap_start {
+                    1.0
+                } else {
+                    0.0
+                };
+                let (out_low, in_low) = equal_power(u);
+                [out_low, out_high, in_low, in_high]
+            }
+        }
+    }
+}
+
+/// Linkwitz-Riley high-pass (two cascaded Butterworth stages), one channel.
+#[derive(Debug, Clone, Copy, Default)]
+struct Lr4 {
+    stages: [BiquadState; 2],
+}
+
+impl Lr4 {
+    #[inline]
+    fn run(&mut self, c: &Coeffs, x: f64) -> f64 {
+        let y = self.stages[0].run(c, x);
+        self.stages[1].run(c, y)
+    }
+}
+
+/// Zero-phase low band of interleaved `samples` (a Butterworth low-pass run
+/// forward, then backward), so `x − low` is an exact complementary high band.
+fn zero_phase_low(samples: &[f64], channels: usize, rate: u32, freq: f64) -> Vec<f64> {
+    let coeffs = Coeffs::lowpass(rate, freq);
+    let mut low = vec![0.0; samples.len()];
+    for channel in 0..channels {
+        let mut state = BiquadState::default();
+        for i in (channel..samples.len()).step_by(channels) {
+            low[i] = state.run(&coeffs, samples[i]);
+        }
+        let mut state = BiquadState::default();
+        let indices: Vec<usize> = (channel..samples.len()).step_by(channels).collect();
+        for &i in indices.iter().rev() {
+            low[i] = state.run(&coeffs, low[i]);
+        }
+    }
+    low
+}
+
 /// The held-back end of a track, faded out across the start of the next one.
 pub struct Tail {
     /// Interleaved, normalized samples.
@@ -416,6 +544,14 @@ pub struct Tail {
     cursor: usize,
     /// True when the source buffers were `i32` (exclusive output).
     int: bool,
+    shape: MixShape,
+    /// The tail's zero-phase low band, aligned with `samples` (bass swap
+    /// only; the tail is fully in memory).
+    low: Vec<f64>,
+    /// High-pass for the streaming incoming track and its per-channel state
+    /// (bass swap only).
+    incoming_hp: Option<Coeffs>,
+    incoming_state: Vec<Lr4>,
 }
 
 impl Tail {
@@ -425,7 +561,21 @@ impl Tail {
             samples.extend((0..buf.len()).map(|i| sample_f64(buf, i)));
         }
         let int = matches!(buffers.first(), Some(PcmBuffer::I32(_)));
-        Self { samples, channels: channels.max(1) as usize, cursor: 0, int }
+        Self::from_normalized(samples, channels.max(1) as usize, int)
+    }
+
+    /// A tail over interleaved normalized samples (offline rendering).
+    pub fn from_normalized(samples: Vec<f64>, channels: usize, int: bool) -> Self {
+        Self {
+            samples,
+            channels: channels.max(1),
+            cursor: 0,
+            int,
+            shape: MixShape::EqualPower,
+            low: Vec::new(),
+            incoming_hp: None,
+            incoming_state: Vec::new(),
+        }
     }
 
     pub fn frames(&self) -> usize {
@@ -436,8 +586,27 @@ impl Tail {
         self.cursor >= self.frames()
     }
 
-    fn gains(&self, frame: usize) -> (f64, f64) {
-        equal_power(frame as f64 / self.frames().max(1) as f64)
+    pub fn shape(&self) -> MixShape {
+        self.shape
+    }
+
+    /// Use `shape` for the overlap. Call once the tail holds exactly the
+    /// overlap (after `take_front`/`truncate`); `rate` tunes the band split.
+    pub fn set_shape(&mut self, shape: MixShape, rate: u32) {
+        self.shape = shape;
+        self.low.clear();
+        self.incoming_hp = None;
+        self.incoming_state.clear();
+        if matches!(shape, MixShape::BassSwap { .. }) && rate > 0 {
+            let freq = BASS_SWAP_HZ.min(rate as f64 * 0.45);
+            self.low = zero_phase_low(&self.samples, self.channels, rate, freq);
+            self.incoming_hp = Some(Coeffs::highpass(rate, freq));
+            self.incoming_state = vec![Lr4::default(); self.channels];
+        }
+    }
+
+    fn fade_gain(&self, frame: usize) -> f64 {
+        equal_power(frame as f64 / self.frames().max(1) as f64).0
     }
 
     /// Mix the tail into the start of `next` (the incoming track's samples),
@@ -445,14 +614,30 @@ impl Tail {
     pub fn mix_into(&mut self, next: PcmBuffer) -> PcmBuffer {
         let channels = self.channels;
         let frames = self.frames();
-        let mix = |tail: &Self, index: usize, value: f64| -> f64 {
+        let mix = |tail: &mut Self, index: usize, value: f64| -> f64 {
             let frame = tail.cursor + index / channels;
             if frame >= frames {
                 return value;
             }
-            let (out_gain, in_gain) = tail.gains(frame);
-            let old = tail.samples[frame * channels + index % channels];
-            (value * in_gain + old * out_gain).clamp(-1.0, 1.0)
+            let channel = index % channels;
+            let at = frame * channels + channel;
+            let old = tail.samples[at];
+            let [out_low, out_high, in_low, in_high] =
+                tail.shape.gains(frame as f64 / frames.max(1) as f64);
+            let mixed = match tail.incoming_hp {
+                Some(coeffs) => {
+                    // Outgoing: exact zero-phase split. Incoming: high-passed
+                    // until the swap, then its full band (weights sum to 1, so
+                    // the shared highs keep their level).
+                    let high_in = tail.incoming_state[channel].run(&coeffs, value);
+                    let low_out = tail.low[at];
+                    low_out * out_low
+                        + (old - low_out) * out_high
+                        + (high_in * (1.0 - in_low) + value * in_low) * in_high
+                }
+                None => old * out_high + value * in_high,
+            };
+            mixed.clamp(-1.0, 1.0)
         };
         let mixed = match next {
             PcmBuffer::F32(mut v) => {
@@ -500,6 +685,9 @@ impl Tail {
         let end = (start + frames * self.channels).min(self.samples.len());
         let out = self.to_buffer(self.samples[start..end].iter().copied());
         self.samples.drain(start..end);
+        if !self.low.is_empty() {
+            self.low.drain(start..end);
+        }
         out
     }
 
@@ -507,12 +695,13 @@ impl Tail {
     pub fn truncate(&mut self, frames: usize) {
         let keep = (self.cursor + frames) * self.channels;
         self.samples.truncate(keep.min(self.samples.len()));
+        self.low.truncate(keep.min(self.low.len()));
     }
 
     /// The remaining tail at another rate and channel count, so it can
     /// overlap a track whose output format differs. Channels map first (mono
     /// averages, extra channels repeat the last source channel), then an FFT
-    /// resampler converts the rate.
+    /// resampler converts the rate. The mix shape carries over.
     pub fn converted(&self, from_rate: u32, to_rate: u32, to_channels: usize) -> Tail {
         let src = self.remaining();
         let from_ch = self.channels;
@@ -541,7 +730,9 @@ impl Tail {
                 samples.push(plane[i].clamp(-1.0, 1.0));
             }
         }
-        Tail { samples, channels: to_ch, cursor: 0, int: self.int }
+        let mut tail = Tail::from_normalized(samples, to_ch, self.int);
+        tail.set_shape(self.shape, to_rate);
+        tail
     }
 
     /// Whatever is left of the tail, faded out on its own (no incoming track
@@ -549,10 +740,8 @@ impl Tail {
     pub fn fade_out_remaining(&mut self) -> PcmBuffer {
         let channels = self.channels;
         let start = self.cursor;
-        let values = (start * channels..self.samples.len()).map(|i| {
-            let (out_gain, _) = self.gains(i / channels);
-            self.samples[i] * out_gain
-        });
+        let values = (start * channels..self.samples.len())
+            .map(|i| self.samples[i] * self.fade_gain(i / channels));
         let out = self.to_buffer(values);
         self.cursor = self.frames();
         out
@@ -894,6 +1083,87 @@ mod tests {
         let body = &mono[skip..mono.len() - skip];
         let crossings = body.windows(2).filter(|w| w[0] < 0.0 && w[1] >= 0.0).count();
         crossings as f64 / (body.len() as f64 / rate as f64)
+    }
+
+    #[test]
+    fn mix_shapes_give_the_documented_gains() {
+        let close = |a: [f64; 4], b: [f64; 4]| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-9);
+        assert!(close(MixShape::EqualPower.gains(0.0), [1.0, 1.0, 0.0, 0.0]));
+        // A cold opening is at full level from the first frame.
+        assert!(close(MixShape::Quick { attack: 0.0 }.gains(0.0), [1.0, 1.0, 1.0, 1.0]));
+        let quick = MixShape::Quick { attack: 0.35 };
+        assert!((quick.gains(0.35)[3] - 1.0).abs() < 1e-9 && quick.gains(0.1)[3] < 1.0);
+        let swap = MixShape::BassSwap { swap_start: 0.45, swap_end: 0.55 };
+        let before = swap.gains(0.3);
+        assert_eq!((before[0], before[2]), (1.0, 0.0), "lows stay with the outgoing track");
+        assert!(before[1] < 1.0 && before[3] > 0.0, "highs are already crossing");
+        let after = swap.gains(0.7);
+        assert!(after[0].abs() < 1e-9 && (after[2] - 1.0).abs() < 1e-9, "{after:?}");
+    }
+
+    /// RMS of `samples`' first channel low-passed at about 100 Hz (crude
+    /// one-pole), i.e. how much bass is in it.
+    fn bass_rms(samples: &[f32], channels: usize, rate: u32) -> f64 {
+        let a = (-2.0 * std::f64::consts::PI * 100.0 / rate as f64).exp();
+        let mut y = 0.0;
+        let mut sum = 0.0;
+        let mut n = 0.0;
+        for s in samples.iter().step_by(channels) {
+            y = a * y + (1.0 - a) * *s as f64;
+            sum += y * y;
+            n += 1.0;
+        }
+        (sum / n).sqrt()
+    }
+
+    #[test]
+    fn bass_swap_holds_the_incoming_lows_back_until_the_swap() {
+        let rate = 44_100;
+        let frames = rate as usize * 2;
+        // Incoming: a 50 Hz bass line plus a 2 kHz lead; tail: silence.
+        let incoming: Vec<f32> = (0..frames)
+            .flat_map(|n| {
+                let t = n as f64 / rate as f64;
+                let s = (0.4 * (2.0 * std::f64::consts::PI * 50.0 * t).sin()
+                    + 0.2 * (2.0 * std::f64::consts::PI * 2000.0 * t).sin()) as f32;
+                [s, s]
+            })
+            .collect();
+        let mut tail = Tail::from_normalized(vec![0.0; frames * 2], 2, false);
+        tail.set_shape(MixShape::BassSwap { swap_start: 0.5, swap_end: 0.5 }, rate);
+        let out = tail.mix_into(PcmBuffer::F32(incoming.clone()));
+        let v = out.as_f32().unwrap();
+        let quarter = frames / 4 * 2;
+        let early = bass_rms(&v[quarter..2 * quarter], 2, rate);
+        let late = bass_rms(&v[3 * quarter..], 2, rate);
+        assert!(early < 0.05, "incoming bass leaked before the swap: {early:.3}");
+        assert!(late > 0.15, "incoming bass missing after the swap: {late:.3}");
+        // The outgoing side mirrors it: its bass stays until the swap, then
+        // leaves while its highs keep fading.
+        let outgoing: Vec<f64> = incoming.iter().map(|&s| s as f64).collect();
+        let mut tail = Tail::from_normalized(outgoing, 2, false);
+        tail.set_shape(MixShape::BassSwap { swap_start: 0.5, swap_end: 0.5 }, rate);
+        let out = tail.mix_into(PcmBuffer::F32(vec![0.0; frames * 2]));
+        let v = out.as_f32().unwrap();
+        let early = bass_rms(&v[quarter..2 * quarter], 2, rate);
+        let late = bass_rms(&v[3 * quarter..], 2, rate);
+        assert!(early > 0.2, "outgoing bass dropped before the swap: {early:.3}");
+        assert!(late < 0.03, "outgoing bass kept after the swap: {late:.3}");
+        // Before any gain moves, the split sums back to the tail exactly.
+        assert!((v[0] as f64 - incoming[0] as f64).abs() < 1e-6);
+        // Past the overlap the incoming track is untouched.
+        let mut done = Tail::from_normalized(vec![0.0; 4], 2, false);
+        done.set_shape(MixShape::BassSwap { swap_start: 0.5, swap_end: 0.5 }, rate);
+        let out = done.mix_into(PcmBuffer::F32(incoming[..12].to_vec()));
+        assert_eq!(&out.as_f32().unwrap()[4..], &incoming[4..12]);
+    }
+
+    #[test]
+    fn converted_keeps_the_mix_shape() {
+        let mut tail = Tail::new(&[PcmBuffer::F32(sine(44_100, 440.0, 4_410, 0.5))], 2);
+        let shape = MixShape::BassSwap { swap_start: 0.4, swap_end: 0.6 };
+        tail.set_shape(shape, 44_100);
+        assert_eq!(tail.converted(44_100, 48_000, 2).shape(), shape);
     }
 
     #[test]
