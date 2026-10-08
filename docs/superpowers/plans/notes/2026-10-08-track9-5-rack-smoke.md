@@ -1,0 +1,55 @@
+# Track 9.5 — Hi-Fi Rack smoke checklist
+
+Human run with a real account: `npm --prefix ui run app:dev`, then Settings →
+Appearance → Mode → **Hi-Fi Rack**. Spec:
+`docs/superpowers/specs/2026-10-08-oxitide-track9-5-hifi-rack-design.md`.
+
+Automated gates at hand-off (2026-10-08, branch `track9-5-hifi-rack`): `cargo test
+--workspace`, `cargo clippy --workspace -- -D warnings`, `npm --prefix ui run check`,
+`npm --prefix ui test` — all green.
+
+## Shell and navigation
+- [ ] Switching to Hi-Fi Rack swaps the sidebar + player bar for the rack, live; switching back restores the default shell with no leftovers (lamp colour, dark scheme).
+- [ ] Source keys: the lamp follows the page (Home, Explore, Library for collection/album/artist/mix pages, Playlists for playlists/folders, Setup for Settings). Search jumps to Explore and focuses the search box.
+- [ ] Library shows the sub-source key tray (Albums … Feed) on collection pages only.
+- [ ] Back/forward keys, Alt+←/→ and mouse side buttons navigate.
+- [ ] Drawer key opens the playlist tree over the display; picking a playlist navigates and closes it; the scrim closes it.
+- [ ] Queue key (deck) opens the queue drawer; Esc closes it.
+- [ ] Sleep timer and Mini keys behave as in the player bar.
+- [ ] Skip link, Tab order and focus rings work across selector, deck, amp, EQ and the display.
+
+## Deck
+- [ ] Deck face setting: Transport (cover + up next), CD player (calendar, remaining, eject opens queue), Display (format line, bar meter, next).
+- [ ] VFD: title, artist · album, 7-segment elapsed, annunciators (PLAY, BUF, RPT/RPT 1, SHUF, XFADE, TRK nn/nn); errors and the bit-perfect notice show on the sub line.
+- [ ] VFD seek: click/drag seeks; arrows ±5 s, PageUp/PageDown ±10 %, Home/End.
+- [ ] Transport keys, Shuffle, Repeat (off → all → one), ♥ favourite, Queue.
+- [ ] Now Playing (cover click, expand key, existing shortcuts) expands the deck: turntable spins only while playing, tonearm follows progress, spectrum + lyrics VFD on the right; Esc / the collapse key return.
+- [ ] Short window (< 680px tall): face windows hide; VFD and keys stay.
+
+## Amp and EQ
+- [ ] Meters setting: Needles, Bars (PEAK HOLD readout), LED (peak LED holds), Spectrum — all move with the music and fall to rest on pause.
+- [ ] Meters stop (no CPU/IPC) when the window is minimised or hidden to tray, and resume on restore.
+- [ ] Volume knob: drag, wheel, arrows, Page keys, Home/End, double-click mute; LED ring follows; volume persists.
+- [ ] Status LEDs: quality, Bit-perfect (green) or DSP, format (24/96).
+- [ ] DSP keys toggle EQ / ReplayGain / Crossfade and Settings → Playback shows the same values (and vice versa).
+- [ ] EQ unit: presets select; faders drag/wheel/keys; moving a fader with EQ off turns it on; "Custom" shows when no preset matches. Hidden below 1000px wide and when the setting is off.
+- [ ] Bit-perfect still reports true with EQ/ReplayGain/crossfade off while the meters run (the tap only reads).
+
+## Pages and Setup
+- [ ] Album, playlist, artist, mix headers are glass panes with light-bar Play/Shuffle keys; track tables are panes with rows edge to edge.
+- [ ] Home, Explore, Library grids and carousels sit in panes under printed labels with an engraved rule.
+- [ ] Settings: tabs and segmented choices are key trays, sliders are faders, inputs/selects read as VFDs, checkboxes are lamps; every control still works.
+- [ ] Rack group: Deck face, Amp meters, Lamp colour, EQ unit, Lamp brightness all apply live and persist across restart.
+
+## Lamp colour
+- [ ] Amber, Blue, Green, Red (over-zone turns hot white), White all read as lit screens; text stays legible at 40% brightness.
+- [ ] Cover: lamp follows the album art's hue and glides on track change; a grey cover keeps amber.
+- [ ] Atmosphere's dynamic colour is unaffected after switching back.
+
+## Regression (other modes)
+- [ ] Atmosphere and Instrument look identical to `main` (A/B a few pages: album, home, settings).
+- [ ] Mini player works from Rack and returns to Rack.
+
+## Perf (PM-D1)
+- [ ] Default-mode S1 and S5 re-run under unchanged budgets.
+- [ ] Rack: record S1 and S5 once; note meter CPU while playing.

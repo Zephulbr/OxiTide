@@ -1,0 +1,2322 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>OxiTide — Hi-Fi Rack mockups</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+@font-face { font-family: "Fraunces"; src: url("/ui/src/assets/fonts/fraunces-latin-wght-normal.woff2") format("woff2"); font-weight: 300 700; }
+@font-face { font-family: "Fraunces"; src: url("/ui/src/assets/fonts/fraunces-latin-wght-italic.woff2") format("woff2"); font-weight: 300 700; font-style: italic; }
+@font-face { font-family: "Manrope"; src: url("/ui/src/assets/fonts/manrope-latin-wght-normal.woff2") format("woff2"); font-weight: 200 800; }
+
+/* ------------------------------------------------------------------
+   Direction tokens. Everything below reads only these.
+   ------------------------------------------------------------------ */
+:root {
+  --brushed: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='600' height='300'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.0015 0.9' numOctaves='2' seed='4'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .55 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  --grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .5 0'/></filter><rect width='100%' height='100%' filter='url(%23g)'/></svg>");
+  --wood: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='800'><filter id='w'><feTurbulence type='fractalNoise' baseFrequency='0.08 0.004' numOctaves='3' seed='9'/><feColorMatrix values='0 0 0 0 .32  0 0 0 0 .17  0 0 0 0 .08  0 0 0 1.4 -.25'/></filter><rect width='100%' height='100%' fill='%23402213'/><rect width='100%' height='100%' filter='url(%23w)'/></svg>");
+}
+
+body[data-dir="a"] {           /* Graphite & Amber */
+  --room: #0f0d0b;
+  --plate-base: #2c2824;
+  --plate-hi: #3a3530;
+  --plate-texture: var(--brushed);
+  --plate-texture-alpha: .16;
+  --plate-sheen: linear-gradient(180deg, rgba(255,255,255,.07), transparent 22%, transparent 80%, rgba(0,0,0,.25));
+  --silk: #cbbfae;
+  --silk-dim: #8c8274;
+  --lamp: #ffae3d;
+  --lamp-glow: rgba(255,160,50,.55);
+  --meter-face: radial-gradient(120% 140% at 50% 110%, #ffe4a8 0%, #f2cf86 38%, #c9a15c 100%);
+  --meter-ink: #2a1b0c;
+  --meter-red: #b8321e;
+  --needle: #1a120a;
+  --vfd: #ffb43c;
+  --vfd-ghost: rgba(255,180,60,.07);
+  --vfd-bg: #120c06;
+  --knob-skirt: repeating-conic-gradient(from 0deg, #d8d4cd 0 2deg, #8f8a83 2deg 4deg);
+  --knob-cap: radial-gradient(circle at 35% 30%, #f4f2ee, #b9b4ac 55%, #7e7972);
+  --knob-mark: #2a2622;
+  --key: linear-gradient(180deg, #4a443d, #2f2a25);
+  --key-ink: #e9e1d4;
+  --screen: #15120f;
+  --screen-text: #ece4d8;
+  --screen-muted: #9a8f81;
+  --screen-accent: #ffb04a;
+  --cheek: none;
+  --cheek-w: 0px;
+}
+
+body[data-dir="b"] {           /* Black Glass */
+  --room: #050505;
+  --plate-base: #0d0c0b;
+  --plate-hi: #1a1816;
+  --plate-texture: var(--grain);
+  --plate-texture-alpha: .05;
+  --plate-sheen: linear-gradient(160deg, rgba(255,255,255,.09) 0%, rgba(255,255,255,.02) 30%, transparent 31%, transparent 100%);
+  --silk: #b8ab98;
+  --silk-dim: #6f665a;
+  --lamp: #ff9d2e;
+  --lamp-glow: rgba(255,140,30,.6);
+  --meter-face: radial-gradient(130% 150% at 50% 115%, #3a2208 0%, #1b1006 45%, #0b0703 100%);
+  --meter-ink: #ffb54d;
+  --meter-red: #ff5a3a;
+  --needle: #ffd28a;
+  --vfd: #ffa93a;
+  --vfd-ghost: rgba(255,170,60,.06);
+  --vfd-bg: #070503;
+  --knob-skirt: repeating-conic-gradient(from 0deg, #2b2a28 0 2deg, #121110 2deg 4deg);
+  --knob-cap: radial-gradient(circle at 35% 30%, #4a4643, #1c1a18 60%, #0a0908);
+  --knob-mark: #ffae4a;
+  --key: linear-gradient(180deg, #1d1b19, #0c0b0a);
+  --key-ink: #c9bba5;
+  --screen: #0a0908;
+  --screen-text: #e8ddcb;
+  --screen-muted: #8a7f70;
+  --screen-accent: #ffa63a;
+  --cheek: none;
+  --cheek-w: 0px;
+}
+
+body[data-dir="c"] {           /* Walnut & Bakelite */
+  --room: #120d09;
+  --plate-base: #24211e;
+  --plate-hi: #302c28;
+  --plate-texture: var(--brushed);
+  --plate-texture-alpha: .1;
+  --plate-sheen: linear-gradient(180deg, rgba(255,240,220,.06), transparent 25%, transparent 78%, rgba(0,0,0,.3));
+  --silk: #e6d7b8;
+  --silk-dim: #a08f72;
+  --lamp: #ff8f2a;
+  --lamp-glow: rgba(255,130,40,.55);
+  --meter-face: radial-gradient(120% 140% at 50% 110%, #fff0b8 0%, #ecc86c 40%, #a87d34 100%);
+  --meter-ink: #241606;
+  --meter-red: #a82a18;
+  --needle: #1c1006;
+  --vfd: #ff7f2e;
+  --vfd-ghost: rgba(255,120,40,.07);
+  --vfd-bg: #120703;
+  --knob-skirt: repeating-conic-gradient(from 0deg, #1b1714 0 3deg, #0d0b09 3deg 6deg);
+  --knob-cap: radial-gradient(circle at 35% 30%, #3b322b, #15110e 65%);
+  --knob-mark: #efe0bf;
+  --key: linear-gradient(180deg, #3b342d, #221e1a);
+  --key-ink: #efe0bf;
+  --screen: #14100c;
+  --screen-text: #efe5d2;
+  --screen-muted: #a39377;
+  --screen-accent: #ff9440;
+  --cheek: var(--wood);
+  --cheek-w: 26px;
+}
+
+/* ------------------------------------------------------------------ */
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--room);
+  color: var(--silk);
+  font-family: "Manrope", system-ui, sans-serif;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+
+/* Mockup controls, deliberately not equipment */
+.studio {
+  display: flex; gap: 14px; align-items: center; flex-wrap: nowrap; white-space: nowrap; overflow-x: auto; scrollbar-width: none;
+  padding: 6px 12px; font-size: 12px;
+  background: #1d1d1f; color: #d6d6d6; border-bottom: 1px solid #333;
+  font-family: system-ui, sans-serif;
+}
+.studio .group { display: flex; gap: 6px; align-items: center; }
+.studio button {
+  background: #2c2c2f; border: 1px solid #444; border-radius: 6px;
+  padding: 4px 10px; cursor: pointer;
+}
+.studio button[aria-pressed="true"] { background: #4b4b52; border-color: #888; color: #fff; }
+.studio .note { margin-left: auto; color: #8b8b8b; }
+
+/* ------------------------------------------------------------------
+   The rack
+   ------------------------------------------------------------------ */
+.rack {
+  flex: 1; min-height: 0;
+  display: grid;
+  grid-template-columns: var(--cheek-w) 392px 1fr var(--cheek-w);
+  grid-template-rows: auto 1fr;
+  gap: 6px;
+  padding: 10px;
+  background: var(--room);
+}
+.cheek { grid-row: 1 / -1; background: var(--cheek); border-radius: 4px;
+  box-shadow: inset -3px 0 6px rgba(0,0,0,.5), inset 2px 0 2px rgba(255,220,180,.12); }
+.cheek.right { grid-column: 4; }
+.cheek.left { grid-column: 1; }
+
+.unit {
+  position: relative;
+  border-radius: 5px;
+  background:
+    var(--plate-sheen),
+    var(--plate-texture),
+    linear-gradient(180deg, var(--plate-hi), var(--plate-base));
+  background-blend-mode: normal, soft-light, normal;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.10),
+    inset 0 -2px 0 rgba(0,0,0,.45),
+    inset 1px 0 0 rgba(255,255,255,.04),
+    0 2px 0 #000,
+    0 10px 24px rgba(0,0,0,.55);
+  padding: 14px 18px;
+}
+.unit::before {          /* texture strength knob per direction */
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: var(--plate-texture); opacity: var(--plate-texture-alpha); mix-blend-mode: overlay;
+}
+.screw {
+  position: absolute; width: 11px; height: 11px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #a39d94, #4d4842 70%);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.55), 0 1px 0 rgba(255,255,255,.08);
+}
+.screw::after { content: ""; position: absolute; left: 1.5px; right: 1.5px; top: 4.5px; height: 2px;
+  background: rgba(0,0,0,.6); transform: rotate(var(--r, 35deg)); }
+.screw.tl { top: 7px; left: 7px; } .screw.tr { top: 7px; right: 7px; --r: -20deg; }
+.screw.bl { bottom: 7px; left: 7px; --r: 70deg; } .screw.br { bottom: 7px; right: 7px; --r: 10deg; }
+
+.silk { font-size: 10px; letter-spacing: .14em; font-weight: 700; color: var(--silk-dim); text-transform: uppercase; }
+.model { font-family: "Fraunces", serif; font-style: italic; font-weight: 520; color: var(--silk); letter-spacing: .01em; }
+
+/* ---- Selector unit -------------------------------------------------- */
+.selector { grid-column: 2 / 4; display: flex; align-items: center; gap: 22px; padding: 12px 30px; }
+.brand { display: flex; align-items: baseline; gap: 10px; min-width: 200px; }
+.brand .model { font-size: 22px; }
+.sources { display: flex; gap: 10px; }
+.src {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  background: none; border: 0; cursor: pointer; padding: 0;
+}
+.src .lampdot { width: 18px; height: 4px; border-radius: 2px; background: #2a1a08; box-shadow: inset 0 1px 1px rgba(0,0,0,.7); }
+.src[aria-current="page"] .lampdot { background: var(--lamp); box-shadow: 0 0 8px var(--lamp-glow), 0 0 2px var(--lamp); }
+.src .cap {
+  min-width: 78px; padding: 7px 10px 6px; border-radius: 3px;
+  background: var(--key); color: var(--key-ink);
+  font-size: 11px; font-weight: 700; letter-spacing: .06em;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 2px 0 rgba(0,0,0,.8), 0 3px 6px rgba(0,0,0,.4);
+  transition: transform .06s, box-shadow .06s;
+}
+.src:active .cap { transform: translateY(2px); box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 0 0 rgba(0,0,0,.8); }
+.selector .right { margin-left: auto; display: flex; align-items: center; gap: 16px; }
+.power { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.power .lampdot { width: 6px; height: 6px; border-radius: 50%; background: var(--lamp); box-shadow: 0 0 8px var(--lamp-glow); }
+
+/* ---- Left column ---------------------------------------------------- */
+.column { grid-column: 2; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+.unit-head { display: flex; justify-content: space-between; align-items: baseline; margin: 0 8px 10px; }
+.unit-head .model { font-size: 14px; }
+
+/* Deck */
+.deck { --pl: clamp(118px, calc(100vh - 680px), 196px); }
+.deck .turntable { display: grid; grid-template-columns: 1fr; place-items: center; position: relative; height: calc(var(--pl) + 10px); }
+.plinth {
+  position: relative; width: var(--pl); height: var(--pl); border-radius: 50%;
+  background: radial-gradient(circle, #0b0a09 64%, #2d2a27 65%, #121110 69%, #3d3934 70%, #1a1816 72%);
+  box-shadow: 0 6px 16px rgba(0,0,0,.6);
+}
+.record {
+  position: absolute; inset: 9px; border-radius: 50%;
+  background:
+    conic-gradient(from 20deg, rgba(255,255,255,.0) 0deg, rgba(255,255,255,.10) 30deg, rgba(255,255,255,0) 70deg, rgba(255,255,255,0) 190deg, rgba(255,255,255,.07) 215deg, rgba(255,255,255,0) 250deg),
+    repeating-radial-gradient(circle, #121212 0 1px, #070707 1px 2.2px);
+}
+.record .label {
+  position: absolute; inset: 34%; border-radius: 50%;
+  background: var(--cover);
+  box-shadow: 0 0 0 1px rgba(0,0,0,.6);
+  animation: spin 1.8s linear infinite; animation-play-state: var(--spin, running);
+}
+.record .label::after { content: ""; position: absolute; inset: 46%; border-radius: 50%; background: #c9c3ba; box-shadow: inset 0 1px 1px rgba(0,0,0,.6); }
+.record .label .tick { position: absolute; left: 50%; top: 6%; width: 2px; height: 16%; background: rgba(255,255,255,.55); transform: translateX(-50%); }
+@keyframes spin { to { transform: rotate(360deg); } }
+.tonearm { position: absolute; width: calc(var(--pl) * 1.12); height: calc(var(--pl) * 1.12); left: 50%; top: 50%; transform: translate(-28%, -58%); pointer-events: none; }
+.tonearm .arm { transform-origin: 170px 30px; transition: transform .3s; }
+
+.deckbar { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; margin-top: 10px; }
+.transport { display: flex; gap: 5px; }
+.key {
+  width: 40px; height: 30px; border: 0; border-radius: 3px; cursor: pointer;
+  background: var(--key); color: var(--key-ink);
+  display: grid; place-items: center;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 2px 0 rgba(0,0,0,.85), 0 3px 6px rgba(0,0,0,.4);
+}
+.key:active { transform: translateY(2px); box-shadow: inset 0 1px 0 rgba(255,255,255,.08); }
+.key svg { width: 15px; height: 15px; }
+
+/* VFD */
+.vfd {
+  position: relative; border-radius: 3px; padding: 8px 12px;
+  background: var(--vfd-bg);
+  box-shadow: inset 0 2px 6px rgba(0,0,0,.9), inset 0 0 0 1px rgba(0,0,0,.8), 0 1px 0 rgba(255,255,255,.07);
+  color: var(--vfd); overflow: hidden;
+}
+.vfd::after { /* glass: dot mesh + reflection */
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background:
+    linear-gradient(170deg, rgba(255,255,255,.07), transparent 40%),
+    radial-gradient(circle, transparent 0.6px, rgba(0,0,0,.35) 1.1px) 0 0 / 2.5px 2.5px;
+}
+.vfd .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.vfd .text {
+  font-family: "Manrope", sans-serif; font-weight: 700; font-size: 13px; letter-spacing: .08em;
+  text-shadow: 0 0 6px var(--vfd), 0 0 1px var(--vfd); white-space: nowrap; overflow: hidden;
+}
+.vfd .sub { font-size: 10.5px; opacity: .8; letter-spacing: .1em; }
+.seg svg { height: 22px; filter: drop-shadow(0 0 3px var(--vfd)); }
+.seg .on { fill: var(--vfd); }
+.seg .off { fill: var(--vfd-ghost); }
+.vfd .anno { display: flex; gap: 8px; font-size: 8.5px; font-weight: 800; letter-spacing: .12em; }
+.vfd .anno span { opacity: .12; }
+.vfd .anno span.on { opacity: 1; text-shadow: 0 0 6px var(--vfd); }
+
+/* Amp */
+.amprow { display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: center; }
+.meters { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.meter {
+  position: relative; aspect-ratio: 1.55; border-radius: 4px; overflow: hidden;
+  background: #000;
+  box-shadow: inset 0 0 0 2px #070605, inset 0 3px 10px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.08);
+}
+.meter svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.meter .face { fill: url(#faceA); }
+.meter .glass { position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(160deg, rgba(255,255,255,.16), rgba(255,255,255,.02) 38%, transparent 39%),
+              radial-gradient(90% 60% at 50% 120%, var(--lamp-glow), transparent 70%);
+  mix-blend-mode: screen; }
+.ampbar { margin-top: 12px; }
+.knobwrap { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.knob {
+  --v: .55;
+  position: relative; width: 66px; height: 66px; border-radius: 50%; cursor: grab;
+  background: var(--knob-skirt);
+  box-shadow: 0 6px 12px rgba(0,0,0,.7), 0 0 0 3px rgba(0,0,0,.6), 0 0 0 4px rgba(255,255,255,.05);
+  transform: rotate(calc(-135deg + var(--v) * 270deg));
+  touch-action: none;
+}
+.knob::before { content: ""; position: absolute; inset: 9px; border-radius: 50%; background: var(--knob-cap); box-shadow: 0 2px 4px rgba(0,0,0,.6); }
+.knob::after { content: ""; position: absolute; left: 50%; top: 14px; width: 3px; height: 14px; margin-left: -1.5px; border-radius: 2px; background: var(--knob-mark); }
+.knob:focus-visible { outline-offset: 5px; border-radius: 50%; }
+.knob-scale { position: relative; width: 104px; height: 20px; margin-bottom: -4px; }
+.leds { display: grid; grid-template-columns: repeat(3, auto); gap: 8px 14px; justify-content: start; }
+.led { display: flex; align-items: center; gap: 7px; font-size: 9.5px; font-weight: 700; letter-spacing: .1em; color: var(--silk-dim); }
+.led i { width: 7px; height: 7px; border-radius: 50%; background: #2a1606; box-shadow: inset 0 1px 1px rgba(0,0,0,.8); }
+.led.on { color: var(--silk); }
+.led.on i { background: var(--lamp); box-shadow: 0 0 7px var(--lamp-glow), 0 0 1px var(--lamp); }
+.led.on.green i { background: #8cff6a; box-shadow: 0 0 7px rgba(140,255,106,.6); }
+
+/* EQ */
+.eq .faders { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; justify-items: center; }
+.fader { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+.fader .slot { position: relative; width: 6px; height: 58px; border-radius: 3px; background: #050403; box-shadow: inset 0 1px 2px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.07); }
+.fader .slot::before { content: ""; position: absolute; left: -7px; right: -7px; top: 50%; height: 1px; background: var(--silk-dim); opacity: .5; }
+.fader .cap { position: absolute; left: 50%; width: 22px; height: 11px; margin-left: -11px; border-radius: 2px;
+  background: linear-gradient(180deg, #d9d4cc, #8f8981); box-shadow: 0 2px 3px rgba(0,0,0,.6), inset 0 -1px 0 rgba(0,0,0,.3); }
+.fader .cap::after { content: ""; position: absolute; left: 3px; right: 3px; top: 5px; height: 1px; background: #222; }
+.fader span { font-size: 8.5px; font-weight: 700; color: var(--silk-dim); letter-spacing: .04em; }
+.eq.off { display: none; }
+
+/* ---- Display unit (content) ---------------------------------------- */
+.display { grid-column: 3; padding: 16px; display: flex; flex-direction: column; min-height: 0; }
+.bezel {
+  flex: 1; min-height: 0; border-radius: 8px; padding: 6px;
+  background: linear-gradient(180deg, #050403, #14110e);
+  box-shadow: inset 0 3px 8px rgba(0,0,0,.95), 0 1px 0 rgba(255,255,255,.08);
+}
+.screen {
+  position: relative; height: 100%; border-radius: 5px; overflow: auto;
+  background: var(--screen); color: var(--screen-text);
+  scrollbar-color: #3a342e transparent;
+}
+.screen::after { /* glass reflection, fixed over scrolling content */
+  content: ""; position: sticky; display: block; top: 0; height: 0; pointer-events: none;
+}
+.glassover { position: absolute; inset: 22px; border-radius: 5px; pointer-events: none;
+  background: linear-gradient(165deg, rgba(255,255,255,.035), transparent 30%); }
+.page { padding: 28px 34px 40px; max-width: 980px; }
+.album-head { display: grid; grid-template-columns: 180px 1fr; gap: 26px; align-items: end; }
+.cover { width: 180px; aspect-ratio: 1; border-radius: 4px; background: var(--cover); box-shadow: 0 10px 30px rgba(0,0,0,.6); }
+.album-head h1 { font-family: "Fraunces", serif; font-weight: 640; font-size: 34px; line-height: 1.1; margin: 4px 0 6px; font-variation-settings: "opsz" 72; }
+.album-head .by { font-family: "Fraunces", serif; font-style: italic; font-size: 17px; color: var(--screen-muted); }
+.album-head .facts { margin-top: 14px; font-size: 12.5px; color: var(--screen-muted); }
+.actions { display: flex; gap: 10px; margin-top: 16px; }
+.actions button { border: 1px solid #3b342d; background: transparent; border-radius: 4px; padding: 7px 14px; cursor: pointer; font-size: 13px; font-weight: 600; }
+.actions button.primary { background: var(--screen-accent); color: #1b1006; border-color: transparent; }
+table { width: 100%; border-collapse: collapse; margin-top: 26px; font-size: 14px; }
+th { text-align: left; font-size: 11px; font-weight: 600; color: var(--screen-muted); padding: 6px 10px; border-bottom: 1px solid #2c2620; }
+td { padding: 9px 10px; border-bottom: 1px solid rgba(255,255,255,.04); }
+td.n, td.t { color: var(--screen-muted); font-variant-numeric: tabular-nums; width: 40px; }
+td.t { text-align: right; width: 70px; }
+tr.playing td { color: var(--screen-accent); background: color-mix(in srgb, var(--screen-accent) 9%, transparent); }
+tr:hover td { background: rgba(255,255,255,.03); }
+
+/* ---- Expanded deck ---------------------------------------------------- */
+.rack.expanded .display { display: none; }
+.rack.expanded .column { grid-column: 2 / 4; display: grid; grid-template-columns: 1.25fr 1fr; grid-template-rows: auto auto 1fr; }
+.rack.expanded .deck { grid-row: 1 / 4; display: flex; flex-direction: column; }
+.rack.expanded .deck .turntable { height: auto; flex: 1; }
+.rack.expanded .deck { --pl: min(440px, 52vh); }
+.spectrum-unit { display: none; }
+.rack.expanded .spectrum-unit { display: block; }
+.spectrum { display: grid; grid-template-columns: repeat(28, 1fr); gap: 3px; height: 120px; align-items: end; padding: 10px 12px; }
+.spectrum .bar {
+  height: var(--h, 10%);
+  background: repeating-linear-gradient(0deg, var(--vfd) 0 3px, transparent 3px 5px);
+  filter: drop-shadow(0 0 3px var(--vfd));
+}
+.lyrics { margin-top: 10px; display: grid; gap: 4px; }
+.lyrics .text { font-size: 12px; }
+.lyrics .text.dim { opacity: .35; text-shadow: none; }
+
+/* ==================================================================
+   D · Black Glass, refined (v2): darker, premium, late-80s/90s.
+   No fasteners; units read as one machined chassis with shadow gaps,
+   a glossy glass band over brushed black, and a hairline champagne trim.
+   ================================================================== */
+body[data-dir="d"] {
+  --room: #030303;
+  --plate-base: #0a0a0a;
+  --plate-hi: #141413;
+  --plate-texture: var(--brushed);
+  --plate-texture-alpha: .07;
+  --plate-sheen:
+    linear-gradient(180deg, rgba(255,255,255,.075) 0, rgba(255,255,255,.015) 38%, rgba(0,0,0,0) 38.5%),
+    linear-gradient(165deg, rgba(255,255,255,.05), transparent 30%);
+  --trim: linear-gradient(90deg, transparent, rgba(214,190,150,.55) 12%, rgba(240,222,190,.8) 50%, rgba(214,190,150,.55) 88%, transparent);
+  --silk: #b9b1a6;
+  --silk-dim: #6a645c;
+  --lamp: #ff9f33;
+  --lamp-glow: rgba(255,140,30,.6);
+  --meter-face: radial-gradient(130% 150% at 50% 115%, #3a2208 0%, #1a0f05 45%, #080502 100%);
+  --meter-ink: #ffb54d;
+  --meter-red: #ff5a3a;
+  --needle: #ffd28a;
+  --vfd: #ffa93a;
+  --vfd-ghost: rgba(255,170,60,.055);
+  --vfd-bg: #050302;
+  --knob-skirt: repeating-conic-gradient(from 0deg, #262523 0 1.5deg, #0c0c0b 1.5deg 3deg);
+  --knob-cap: radial-gradient(circle at 50% 50%, #1b1a19 0 40%, #232120 41% 42%, #121110 43% 70%, #1d1c1a 71%),
+              repeating-conic-gradient(from 0deg, rgba(255,255,255,.05) 0 .6deg, transparent .6deg 1.8deg);
+  --knob-mark: #ffae4a;
+  --key: linear-gradient(180deg, #1a1918, #0b0b0a);
+  --key-ink: #b9ad9c;
+  --screen: #070707;
+  --screen-text: #e6ddd0;
+  --screen-muted: #847a6d;
+  --screen-accent: #ffa63a;
+  --cheek: none;
+  --cheek-w: 0px;
+}
+body[data-dir="d"] .rack { gap: 3px; padding: 8px; }
+body[data-dir="d"] .unit {
+  border-radius: 3px;
+  background: var(--plate-sheen), linear-gradient(180deg, var(--plate-hi), var(--plate-base));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.09),        /* chamfer catch-light */
+    inset 0 -1px 0 rgba(255,255,255,.03),
+    inset 0 -3px 6px rgba(0,0,0,.6),
+    0 0 0 1px #000,                              /* shadow gap between units */
+    0 14px 30px rgba(0,0,0,.7);
+}
+body[data-dir="d"] .unit::after {               /* hairline champagne trim */
+  content: ""; position: absolute; left: 14px; right: 14px; top: 0; height: 1px;
+  background: var(--trim); opacity: .55; pointer-events: none;
+}
+body[data-dir="d"] .model {
+  font-family: "Manrope", sans-serif; font-style: normal; font-weight: 300;
+  letter-spacing: .22em; text-transform: lowercase; color: #d9cfc0;
+}
+body[data-dir="d"] .brand .model { font-size: 19px; font-weight: 400; letter-spacing: .3em; }
+body[data-dir="d"] .silk { font-weight: 600; letter-spacing: .2em; font-size: 9px; }
+/* Slim soft-touch keys with an LED inside the key instead of a lamp above it. */
+body[data-dir="d"] .src { flex-direction: row; }
+body[data-dir="d"] .src .lampdot { display: none; }
+body[data-dir="d"] .src .cap {
+  position: relative; min-width: 92px; padding: 8px 14px 7px 24px; border-radius: 2px;
+  font-weight: 600; letter-spacing: .14em; font-size: 10px; text-align: left;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 0 0 1px #000, 0 2px 4px rgba(0,0,0,.7);
+}
+body[data-dir="d"] .src .cap::before {
+  content: ""; position: absolute; left: 10px; top: 50%; width: 5px; height: 5px; margin-top: -2.5px; border-radius: 50%;
+  background: #241405; box-shadow: inset 0 1px 1px rgba(0,0,0,.8);
+}
+body[data-dir="d"] .src[aria-current="page"] .cap { color: #f1e4cf; }
+body[data-dir="d"] .src[aria-current="page"] .cap::before { background: var(--lamp); box-shadow: 0 0 6px var(--lamp-glow), 0 0 1px var(--lamp); }
+body[data-dir="d"] .key { box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 0 0 1px #000, 0 2px 4px rgba(0,0,0,.7); border-radius: 2px; }
+body[data-dir="d"] .fader .cap { background: linear-gradient(180deg, #2c2a27, #121110); box-shadow: 0 2px 3px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.12); }
+body[data-dir="d"] .fader .cap::after { background: var(--lamp); box-shadow: 0 0 4px var(--lamp-glow); }
+body[data-dir="d"] .meter { border-radius: 2px; }
+
+/* Fasteners: off unless asked for (owner, 2026-10-08). */
+body[data-screws="off"] .screw { display: none; }
+
+/* ---- Content treatments ------------------------------------------------ */
+/* Flush glass: the content sits behind the same smoked glass as the
+   faceplate, flush with it. No bezel; edge = chamfer catch-light only. */
+body[data-content="flush"] .display { padding: 0; }
+body[data-content="flush"] .bezel { padding: 0; background: none; box-shadow: none; border-radius: 3px; }
+body[data-content="flush"] .screen {
+  border-radius: 3px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,0) 120px),
+    radial-gradient(120% 70% at 85% -10%, rgba(255,170,80,.05), transparent 60%),
+    var(--screen);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08), inset 0 0 0 1px rgba(255,255,255,.025);
+}
+body[data-content="flush"] .glassover { display: none; }
+/* Open panel: no screen at all; pages are printed straight onto the
+   brushed faceplate, and only the playing row is "lit". */
+body[data-content="open"] .bezel { padding: 0; background: none; box-shadow: none; }
+body[data-content="open"] .screen { background: transparent; }
+body[data-content="open"] .glassover { display: none; }
+body[data-content="open"] .page { padding-top: 14px; }
+body[data-content="open"] tr.playing td { background: color-mix(in srgb, var(--screen-accent) 7%, transparent); text-shadow: 0 0 8px var(--lamp-glow); }
+
+/* ==================================================================
+   E · Black Glass, modern (v3 exploration): today's high-end separates.
+   Smooth glass with no brushing, a thin anthracite frame, sentence-case
+   labels, OLED-crisp readouts instead of dot-matrix VFD, an LED ring
+   around the volume knob. Same amber light.
+   ================================================================== */
+body[data-dir="e"] {
+  --room: #020202;
+  --plate-base: #060606;
+  --plate-hi: #0d0d0d;
+  --plate-texture: var(--grain);
+  --plate-texture-alpha: .035;
+  --plate-sheen:
+    linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,0) 46%),
+    linear-gradient(112deg, transparent 58%, rgba(255,255,255,.03) 64%, transparent 72%);
+  --silk: #b3ada5;
+  --silk-dim: #625e58;
+  --lamp: #ffa344;
+  --lamp-glow: rgba(255,150,50,.55);
+  --meter-face: radial-gradient(140% 160% at 50% 125%, #1d1309 0%, #0a0705 50%, #030302 100%);
+  --meter-ink: #f0c98f;
+  --meter-red: #ff6a45;
+  --needle: #ffb75a;
+  --meter-title-font: Manrope;
+  --meter-title-style: normal;
+  --meter-title-weight: 300;
+  --vfd: #ffb65c;
+  --vfd-ghost: transparent;
+  --vfd-bg: #020101;
+  --knob-skirt: repeating-conic-gradient(from 0deg, #393939 0 .8deg, #191919 .8deg 1.6deg);
+  --knob-cap: radial-gradient(circle at 50% 50%, #161616 0 58%, #222 59% 60%, #121212 61%);
+  --knob-mark: var(--lamp);
+  --key: linear-gradient(180deg, #181818, #0d0d0d);
+  --key-ink: #a69e93;
+  --screen: #050505;
+  --screen-text: #e9e2d8;
+  --screen-muted: #857d72;
+  --screen-accent: #ffa844;
+  --cheek: none;
+  --cheek-w: 0px;
+}
+body[data-dir="e"] .rack { gap: 7px; padding: 10px; }
+body[data-dir="e"] .unit {
+  border-radius: 7px;
+  background: var(--plate-sheen), linear-gradient(180deg, var(--plate-hi), var(--plate-base));
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,.055),     /* anthracite frame */
+    inset 0 1px 0 rgba(255,255,255,.08),
+    0 0 0 1px #000,
+    0 18px 36px rgba(0,0,0,.75);
+}
+body[data-dir="e"] .model { font-family: "Manrope", sans-serif; font-style: normal; font-weight: 400; letter-spacing: .01em; color: #ddd5ca; }
+body[data-dir="e"] .brand .model { font-size: 19px; font-weight: 300; letter-spacing: .04em; }
+body[data-dir="e"] .silk { text-transform: none; letter-spacing: .03em; font-weight: 500; font-size: 10.5px; }
+body[data-dir="e"] .vfd { border-radius: 5px; }
+body[data-dir="e"] .vfd::after { background: linear-gradient(170deg, rgba(255,255,255,.05), transparent 40%); }
+body[data-dir="e"] .vfd .text { text-transform: none; letter-spacing: .01em; font-weight: 600; font-size: 14px; text-shadow: 0 0 10px rgba(255,170,80,.35); }
+body[data-dir="e"] .vfd .sub { font-weight: 500; font-size: 11.5px; opacity: .7; }
+body[data-dir="e"] .seg, body[data-dir="e"] .vfd .anno { display: none; }
+body[data-dir="e"] .clock { display: block; }
+body[data-dir="e"] .spectrum .bar { background: linear-gradient(to top, var(--vfd) 0%, var(--vfd) 75%, #ffe0b0 100%); filter: drop-shadow(0 0 4px rgba(255,170,80,.4)); border-radius: 1px; }
+body[data-dir="e"] .meter { border-radius: 5px; }
+body[data-dir="e"] .knob-ring { display: block; }
+body[data-dir="e"] .knob { width: 58px; height: 58px; box-shadow: 0 8px 14px rgba(0,0,0,.8), 0 0 0 2px #000; }
+body[data-dir="e"] .knob::after { top: 9px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; box-shadow: 0 0 6px var(--lamp-glow); }
+
+/* Readouts: 7-segment clock (D/B) vs crisp numerals (E). */
+.vfd .text { text-transform: uppercase; }
+.clock { display: none; font: 200 26px/1 "Manrope", sans-serif; font-variant-numeric: tabular-nums; color: var(--vfd); text-shadow: 0 0 10px rgba(255,170,80,.4); }
+
+/* ==================================================================
+   Components from the owner's reference set, modded to our materials.
+   Scoped to D and E; A/B/C keep the v1 parts.
+   ================================================================== */
+:is(body[data-dir="d"], body[data-dir="e"], body[data-dir="f"]) {
+  --tray: #000;
+}
+
+/* Source selector, ref "buttons-example-1": keys sit in a black tray;
+   the chosen key drops flush, loses its shadow, and its legend lights. */
+:is(body[data-dir="d"], body[data-dir="e"]) .sources {
+  gap: 2px; padding: 3px; border-radius: 6px; background: var(--tray);
+  box-shadow: inset 0 1px 3px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.06);
+}
+:is(body[data-dir="d"], body[data-dir="e"]) .src { flex-direction: row; position: relative; }
+:is(body[data-dir="d"], body[data-dir="e"]) .src .lampdot { display: none; }
+:is(body[data-dir="d"], body[data-dir="e"]) .src .cap {
+  position: relative; min-width: 88px; height: 34px; padding: 0 14px;
+  display: grid; place-items: center;
+  border-radius: 0; text-align: center;
+  background: linear-gradient(180deg, #2a2928, #1c1b1a);
+  border-top: 1px solid rgba(255,255,255,.13);
+  color: #3b3835; font-weight: 800; font-size: 10.5px; letter-spacing: .14em;
+  text-shadow: -1px -1px 0 rgba(255,255,255,.06), 0 1px 2px rgba(0,0,0,.5);
+  box-shadow: 0 10px 4px -3px rgba(0,0,0,.45);
+  transition: background .1s linear, color .1s linear, box-shadow .1s linear;
+}
+:is(body[data-dir="d"], body[data-dir="e"]) .src .cap::before {
+  content: ""; position: absolute; inset: 0 -1px; margin: 0; width: auto; height: auto; top: 0; left: -1px;
+  border-radius: 0; box-shadow: none; background: transparent; transition: background .1s linear;
+}
+:is(body[data-dir="d"], body[data-dir="e"]) .src:first-child .cap { border-radius: 4px 0 0 4px; }
+:is(body[data-dir="d"], body[data-dir="e"]) .src:last-child .cap { border-radius: 0 4px 4px 0; }
+:is(body[data-dir="d"], body[data-dir="e"]) .src:hover .cap { color: #57524c; }
+:is(body[data-dir="d"], body[data-dir="e"]) .src[aria-current="page"] .cap {
+  background: #141312; border-top-color: transparent; box-shadow: none;
+  color: var(--lamp); text-shadow: 0 0 10px var(--lamp-glow), 0 0 2px var(--lamp-glow);
+}
+:is(body[data-dir="d"], body[data-dir="e"]) .src[aria-current="page"] .cap::before {
+  background: linear-gradient(180deg, transparent 10%, color-mix(in srgb, var(--lamp) 13%, transparent), transparent 90%);
+}
+body[data-dir="e"] .src .cap { font-weight: 700; letter-spacing: .04em; font-size: 12px; text-transform: none; }
+
+/* Transport, ref "buttons-example-2": a light bar under each key; the key
+   tilts back into the chassis while held, and the play key's bar stays lit. */
+:is(body[data-dir="d"], body[data-dir="e"], body[data-dir="f"]) .transport { gap: 5px; padding: 4px; border-radius: 6px; background: var(--tray); box-shadow: inset 0 1px 3px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.05); }
+:is(body[data-dir="d"], body[data-dir="e"], body[data-dir="f"]) .key {
+  position: relative; width: 46px; height: 34px; border-radius: 3px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; padding-top: 3px;
+  background: #222120; border-top: 1px solid #353331;
+  box-shadow: none; transition: transform .08s linear, box-shadow .08s linear;
+}
+:is(body[data-dir="d"], body[data-dir="e"], body[data-dir="f"]) .key::after {
+  content: ""; width: 70%; height: 3px; border-radius: 99px;
+  background: #1a1918; border-top: 1px solid #2f2d2b; box-shadow: 0 0 3px #111;
+}
+:is(body[data-dir="d"], body[data-dir="e"], body[data-dir="f"]) .key:active {
+  transform: perspective(200px) rotateX(-16deg); transform-origin: 50% 40%;
+  box-shadow: inset 0 -16px 12px rgba(0,0,0,.5); border-top-color: color-mix(in srgb, var(--lamp) 35%, transparent);
+}
+:is(body[data-dir="d"], body[data-dir="e"], body[data-dir="f"]) .key:active::after,
+:is(body[data-dir="d"], body[data-dir="e"], body[data-dir="f"]) .key.on::after {
+  background: var(--lamp); border-top-color: transparent; box-shadow: 0 0 8px var(--lamp-glow);
+}
+:is(body[data-dir="d"], body[data-dir="e"], body[data-dir="f"]) .key svg { width: 14px; height: 14px; }
+
+/* Lit lens buttons, ref "light-button-example": a black bezel, a dotted
+   lens that glows amber when on and cools down slowly when switched off
+   (incandescent). No flicker. Real toggles (aria-pressed). */
+.lit { display: none; }
+:is(body[data-dir="d"], body[data-dir="e"], body[data-dir="f"]) .lit { display: inline-flex; align-items: center; gap: 8px; background: none; border: 0; padding: 0; cursor: pointer; }
+.lit .bezel-ring {
+  position: relative; width: 28px; height: 28px; border-radius: 50%; background: #000;
+  box-shadow: 0 0 6px 1px rgba(0,0,0,.4), 0 0 0 1.5px #000, inset 0 2px 2px -2px #fff, inset 0 0 1px 3px #2a2a2a, inset 0 0 1px 9px #000;
+}
+.lit .lens {
+  position: absolute; inset: 6px; border-radius: 50%; overflow: hidden; background: #2a2622;
+}
+.lit .lens::before {           /* the lamp */
+  content: ""; position: absolute; inset: 0; border-radius: 50%;
+  background: radial-gradient(#ffe3b8, var(--lamp) 60%, color-mix(in srgb, var(--lamp) 20%, transparent) 74%);
+  opacity: 0; transition: opacity .45s cubic-bezier(.2,.8,.2,1);
+}
+.lit .lens::after {            /* dot-grid diffuser */
+  content: ""; position: absolute; inset: 0;
+  background-image: radial-gradient(transparent 30%, rgba(0,0,0,.85) 72%); background-size: 4px 4px;
+}
+.lit[aria-pressed="true"] .lens::before { opacity: 1; transition-duration: .08s; }
+.lit[aria-pressed="true"] .bezel-ring { box-shadow: 0 0 12px 1px var(--lamp-glow), 0 0 0 1.5px #000, inset 0 2px 2px -2px #fff, inset 0 0 1px 3px #2a2a2a, inset 0 0 1px 9px #000; }
+.lit .lbl { font-size: 10px; font-weight: 600; letter-spacing: .12em; color: var(--silk-dim); text-transform: uppercase; }
+.lit[aria-pressed="true"] .lbl { color: var(--silk); }
+body[data-dir="e"] .lit .lbl { text-transform: none; letter-spacing: .03em; font-size: 11px; }
+.litrow { display: flex; gap: 16px; align-items: center; }
+
+/* Status LEDs moved into the amp's header in D/E. */
+.status { display: none; }
+:is(body[data-dir="d"], body[data-dir="e"], body[data-dir="f"]) .status { display: flex; gap: 12px; }
+:is(body[data-dir="d"], body[data-dir="e"], body[data-dir="f"]) .amp .unit-head .silk.out { display: none; }
+:is(body[data-dir="d"], body[data-dir="e"], body[data-dir="f"]) .leds { display: none; }
+
+/* EQ faders, ref "sldier-example": tick ladders both sides of a recessed
+   slot; the cap is ribbed metal with a lit centre line. Draggable. */
+:is(body[data-dir="d"], body[data-dir="e"], body[data-dir="f"]) .fader .slot {
+  width: 5px; background: #000; cursor: ns-resize; touch-action: none;
+}
+:is(body[data-dir="d"], body[data-dir="e"], body[data-dir="f"]) .fader .slot::before { display: none; }
+:is(body[data-dir="d"], body[data-dir="e"], body[data-dir="f"]) .fader .ladder {
+  position: absolute; inset: 2px -11px; pointer-events: none;
+  background-image: linear-gradient(to bottom, #3a3836 1px, transparent 1px), linear-gradient(to bottom, #3a3836 1px, transparent 1px);
+  background-size: 5px 9px; background-position: left top, right top; background-repeat: repeat-y;
+}
+:is(body[data-dir="d"], body[data-dir="e"], body[data-dir="f"]) .fader .ladder::after {   /* 0 dB mark */
+  content: ""; position: absolute; left: -2px; right: -2px; top: 50%; height: 1px; background: var(--silk-dim);
+}
+:is(body[data-dir="d"], body[data-dir="e"], body[data-dir="f"]) .fader .cap {
+  width: 24px; height: 13px; margin-left: -12px; border-radius: 2px; z-index: 1;
+  background: linear-gradient(to bottom, #3a3a3a 0%, #575757 38%, #1a1a1a 44%, var(--lamp) 47%, var(--lamp) 53%, #1a1a1a 56%, #575757 62%, #3a3a3a 100%);
+  border: 1px solid #0a0a0a;
+  box-shadow: 0 2px 6px rgba(0,0,0,.75), 0 4px 10px rgba(0,0,0,.45), inset 0 1px 1px rgba(255,255,255,.18);
+}
+:is(body[data-dir="d"], body[data-dir="e"], body[data-dir="f"]) .fader .cap::after { display: none; }
+:is(body[data-dir="d"], body[data-dir="e"], body[data-dir="f"]) .fader .slot:focus-visible { outline-offset: 6px; }
+
+/* EQ presets, ref "small-button-example": dimpled round selectors; the
+   chosen one is pressed in and shows a small amber pip. */
+.presets { display: none; }
+:is(body[data-dir="d"], body[data-dir="e"], body[data-dir="f"]) .presets { display: flex; gap: 12px; align-items: center; }
+.preset { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 0; cursor: pointer; color: var(--silk-dim); font-size: 10px; font-weight: 600; letter-spacing: .06em; }
+.preset .dimple {
+  position: relative; width: 14px; height: 14px; border-radius: 50%;
+  background: linear-gradient(145deg, #262524, #121110);
+  box-shadow: 2px 2px 4px rgba(0,0,0,.7), -1px -1px 2px rgba(255,255,255,.08);
+  transition: box-shadow .2s, transform .2s;
+}
+.preset[aria-checked="true"] { color: var(--silk); }
+.preset[aria-checked="true"] .dimple {
+  transform: scale(1.08);
+  box-shadow: 2px 2px 4px rgba(0,0,0,.7), -1px -1px 2px rgba(255,255,255,.08), inset 2px 2px 3px rgba(0,0,0,.8), inset -1px -1px 2px rgba(255,255,255,.06);
+}
+.preset[aria-checked="true"] .dimple::after {
+  content: ""; position: absolute; inset: 4.5px; border-radius: 50%; background: var(--lamp); box-shadow: 0 0 5px var(--lamp-glow);
+}
+
+/* Volume LED ring (E only). */
+.knobbox { position: relative; display: grid; place-items: center; width: 76px; height: 76px; }
+.knob-ring { display: none; position: absolute; inset: 0; pointer-events: none; }
+.knob-ring i { position: absolute; left: 50%; top: 50%; width: 3px; height: 3px; margin: -1.5px; border-radius: 50%; background: #241709; }
+.knob-ring i.on { background: var(--lamp); box-shadow: 0 0 4px var(--lamp-glow); }
+
+/* ==================================================================
+   F · v4 — the converged direction (owner, 2026-10-08).
+   B's black-glass chassis and VFD + lamp-above source keys; one button
+   language (the light-bar key) for transport and every toggle; dimple
+   presets; status LEDs in the amp header; LED ring round B's knob;
+   plain sentence-case panel names; quiet EQ faders.
+   ================================================================== */
+body[data-dir="f"] {
+  --room: #050505;
+  --plate-base: #0d0c0b;
+  --plate-hi: #1a1816;
+  --plate-texture: var(--grain);
+  --plate-texture-alpha: .05;
+  --plate-sheen: linear-gradient(160deg, rgba(255,255,255,.09) 0%, rgba(255,255,255,.02) 30%, transparent 31%, transparent 100%);
+  --silk: #b8ab98;
+  --silk-dim: #6f665a;
+  --lamp: #ff9d2e;
+  --lamp-glow: rgba(255,140,30,.6);
+  --meter-face: radial-gradient(130% 150% at 50% 115%, #3a2208 0%, #1b1006 45%, #0b0703 100%);
+  --meter-ink: #ffb54d;
+  --meter-red: #ff5a3a;
+  --needle: #ffd28a;
+  --meter-title-font: Manrope;
+  --meter-title-style: normal;
+  --meter-title-weight: 700;
+  --vfd: #ffa93a;
+  --vfd-ghost: rgba(255,170,60,.06);
+  --vfd-bg: #070503;
+  --knob-skirt: repeating-conic-gradient(from 0deg, #2b2a28 0 2deg, #121110 2deg 4deg);
+  --knob-cap: radial-gradient(circle at 35% 30%, #4a4643, #1c1a18 60%, #0a0908);
+  --knob-mark: #ffae4a;
+  --key: linear-gradient(180deg, #1d1b19, #0c0b0a);
+  --key-ink: #c9bba5;
+  --screen: #0a0908;
+  --screen-text: #e8ddcb;
+  --screen-muted: #8a7f70;
+  --screen-accent: #ffa63a;
+  --cheek: none;
+  --cheek-w: 0px;
+}
+body[data-dir="f"] .model { font-family: "Manrope", sans-serif; font-style: normal; font-weight: 500; letter-spacing: .01em; color: #d6cbbb; }
+body[data-dir="f"] .column { gap: 4px; }
+body[data-dir="f"] .brand .model { font-size: 20px; font-weight: 400; letter-spacing: .03em; }
+
+/* Small toggles = small light-bar keys (replaces the lens buttons). */
+body[data-dir="f"] .lit {
+  flex-direction: column; justify-content: center; gap: 4px;
+  min-width: 58px; height: 30px; padding: 3px 9px 0; border-radius: 3px;
+  background: #222120; border-top: 1px solid #353331;
+  box-shadow: 0 0 0 1px #000, 0 2px 4px rgba(0,0,0,.6);
+  transition: transform .08s linear, box-shadow .08s linear;
+}
+body[data-dir="f"] .lit .bezel-ring { display: none; }
+body[data-dir="f"] .lit .lbl { font-size: 9.5px; letter-spacing: .06em; font-weight: 700; color: #8d8478; text-transform: none; }
+body[data-dir="f"] .lit[aria-pressed="true"] .lbl { color: #e9dcc6; }
+body[data-dir="f"] .lit::after {
+  content: ""; width: 80%; height: 3px; border-radius: 99px;
+  background: #1a1918; border-top: 1px solid #2f2d2b; box-shadow: 0 0 3px #111;
+  transition: background .35s cubic-bezier(.2,.8,.2,1), box-shadow .35s;
+}
+body[data-dir="f"] .lit[aria-pressed="true"]::after { background: var(--lamp); border-top-color: transparent; box-shadow: 0 0 8px var(--lamp-glow); transition-duration: .08s; }
+body[data-dir="f"] .lit:active { transform: perspective(200px) rotateX(-16deg); transform-origin: 50% 40%; box-shadow: inset 0 -12px 10px rgba(0,0,0,.5), 0 0 0 1px #000; }
+body[data-dir="f"] .litrow { gap: 5px; padding: 4px; border-radius: 6px; background: #000; box-shadow: inset 0 1px 3px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.05); }
+body[data-dir="f"] .litrow.dsp { display: inline-flex; }
+body[data-dir="f"] .lit .lbl { order: 0; }
+
+/* Knob: B's knob, slightly smaller so the LED ring clears it. */
+body[data-dir="f"] .knob { width: 58px; height: 58px; box-shadow: 0 6px 12px rgba(0,0,0,.7), 0 0 0 2px #000; }
+body[data-dir="f"] .knob::before { inset: 7px; }
+body[data-dir="f"] .knob::after { top: 10px; height: 11px; }
+body[data-dir="f"] .knob-ring { display: block; }
+
+/* Quiet faders: marks only at +12 / 0 / -12, both sides. */
+body[data-dir="f"] .fader .ladder {
+  inset: 0 -10px;
+  background:
+    linear-gradient(var(--silk-dim), var(--silk-dim)) left top / 5px 1px no-repeat,
+    linear-gradient(var(--silk-dim), var(--silk-dim)) right top / 5px 1px no-repeat,
+    linear-gradient(var(--silk-dim), var(--silk-dim)) left bottom / 5px 1px no-repeat,
+    linear-gradient(var(--silk-dim), var(--silk-dim)) right bottom / 5px 1px no-repeat;
+}
+body[data-dir="f"] .fader .ladder::after { left: 0; right: 0; opacity: .9; }
+
+/* ---- Content blocks (all content modes) ------------------------------ */
+.block { margin-top: 26px; }
+.block:first-child { margin-top: 0; }
+.pane-label { margin: 0 0 10px; font: 600 15px/1.2 "Manrope", sans-serif; color: var(--screen-text); }
+.block:first-child .pane-label { font-size: 12px; font-weight: 500; color: var(--screen-muted); margin-bottom: 4px; }
+.pane table { margin-top: 0; }
+.pair { display: grid; grid-template-columns: 1.35fr 1fr; gap: 18px; margin-top: 26px; }
+.pair .block { margin-top: 0; display: flex; flex-direction: column; }
+.pair .pane { flex: 1; }
+.minis { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.minis li { display: grid; gap: 3px; min-width: 0; font-size: 12.5px; }
+.minis b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.minis span { color: var(--screen-muted); font-size: 11.5px; }
+.mini { aspect-ratio: 1; border-radius: 3px; margin-bottom: 5px; background: linear-gradient(140deg, var(--c1), var(--c2)); box-shadow: 0 6px 14px rgba(0,0,0,.5); }
+.info { display: grid; grid-template-columns: auto 1fr; gap: 9px 18px; margin: 0; font-size: 13px; }
+.info dt { color: var(--screen-muted); }
+.info dd { margin: 0; line-height: 1.45; }
+
+/* ---- Panes: the content area is open faceplate; every section is its
+   own recessed glass window cut into it (owner idea, 2026-10-08).
+   Section names move out of the glass and are printed on the metal. ---- */
+body[data-content="panes"] .bezel { padding: 0; background: none; box-shadow: none; }
+body[data-content="panes"] .screen { background: transparent; scrollbar-color: #2e2a26 transparent; }
+body[data-content="panes"] .glassover { display: none; }
+body[data-content="panes"] .page { padding: 22px 26px 34px; }
+body[data-content="panes"] .pane-label,
+body[data-content="panes"] .block:first-child .pane-label {
+  display: flex; align-items: center; gap: 12px; margin: 0 2px 9px;
+  font: 600 11px/1 "Manrope", sans-serif; letter-spacing: .05em; color: var(--silk-dim);
+  text-shadow: 0 1px 0 rgba(255,255,255,.05);              /* screen-printed on metal */
+}
+body[data-content="panes"] .pane-label::after {           /* engraved rule out to the edge */
+  content: ""; flex: 1; height: 1px;
+  background: linear-gradient(90deg, rgba(0,0,0,.75), rgba(0,0,0,0));
+  box-shadow: 0 1px 0 rgba(255,255,255,.045);
+}
+body[data-content="panes"] .pane {
+  position: relative; isolation: isolate;
+  border-radius: 7px; padding: 20px 22px;
+  background:
+    radial-gradient(110% 70% at 50% 125%, color-mix(in srgb, var(--lamp) 5%, transparent), transparent 62%),   /* edge backlight */
+    linear-gradient(180deg, #040302, #090706 40%, #0b0908);
+  box-shadow:
+    0 0 0 1px #000,                                  /* the cut in the faceplate */
+    0 1px 0 1px rgba(255,255,255,.075),              /* lower lip catches the light */
+    0 -1px 0 1px rgba(0,0,0,.55),                    /* upper lip in shadow */
+    inset 0 3px 8px rgba(0,0,0,.95),                 /* depth: the glass sits behind the plate */
+    inset 0 0 0 1px rgba(255,255,255,.02);
+}
+body[data-content="panes"] .pane::after {               /* the glass itself */
+  content: ""; position: absolute; inset: 0; z-index: 2; border-radius: inherit; pointer-events: none;
+  background:
+    linear-gradient(166deg, rgba(255,255,255,.055) 0%, rgba(255,255,255,.012) 36%, rgba(255,255,255,0) 36.4%),
+    linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,0) 10px);
+  box-shadow: inset 0 0 18px rgba(0,0,0,.55);       /* vignette at the window edge */
+}
+/* Rows run edge to edge inside their window. */
+body[data-content="panes"] .pane.flushrows { padding: 6px 0 8px; }
+body[data-content="panes"] .pane.flushrows th:first-child, body[data-content="panes"] .pane.flushrows td:first-child { padding-left: 22px; }
+body[data-content="panes"] .pane.flushrows th:last-child, body[data-content="panes"] .pane.flushrows td:last-child { padding-right: 22px; }
+body[data-content="panes"] .pane th { border-bottom-color: rgba(255,255,255,.06); }
+body[data-content="panes"] .pane tr:last-child td { border-bottom: 0; }
+body[data-content="panes"] .pane tr.playing td { text-shadow: 0 0 10px color-mix(in srgb, var(--lamp) 35%, transparent); }
+body[data-content="panes"] .album-head { grid-template-columns: 168px 1fr; }
+body[data-content="panes"] .cover { width: 168px; }
+body[data-content="panes"] .actions button:not(.primary) { border-color: rgba(255,255,255,.12); background: rgba(255,255,255,.02); }
+
+/* ---- Panes polish (round 5) ------------------------------------------ */
+/* 1. Windows span the whole display; no orphaned faceplate on the right. */
+body[data-content="panes"] .page { max-width: none; }
+
+/* 2. The rack column and the display share one bottom edge: the last
+   visible unit in the column takes up the slack. */
+body[data-dir="f"] .rack:not(.expanded) .column .eq:not(.off) { flex: 1; display: flex; flex-direction: column; }
+body[data-dir="f"] .rack:not(.expanded) .column .eq:not(.off) .faders { flex: 1; align-content: center; }
+body[data-dir="f"] .rack:not(.expanded) .column:has(.eq.off) .amp { flex: 1; }
+
+/* 3. Album actions are the rack's light-bar keys, not web buttons.
+   Play's bar is lit; the others light while held. */
+body[data-content="panes"] .actions { gap: 6px; padding: 4px; border-radius: 6px; width: max-content; background: #000;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.05); }
+body[data-content="panes"] .actions button,
+body[data-content="panes"] .actions button:not(.primary) {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;
+  min-width: 92px; height: 36px; padding: 4px 14px 0; border: 0; border-radius: 3px;
+  background: #222120; border-top: 1px solid #353331; color: #a59a8b;
+  font: 700 11px/1 "Manrope", sans-serif; letter-spacing: .05em;
+  box-shadow: 0 0 0 1px #000, 0 2px 4px rgba(0,0,0,.6);
+  transition: transform .08s linear, box-shadow .08s linear;
+}
+body[data-content="panes"] .actions button::after {
+  content: ""; width: 70%; height: 3px; border-radius: 99px;
+  background: #1a1918; border-top: 1px solid #2f2d2b; box-shadow: 0 0 3px #111;
+  transition: background .35s cubic-bezier(.2,.8,.2,1), box-shadow .35s;
+}
+body[data-content="panes"] .actions button.primary { color: #f0e2cb; }
+body[data-content="panes"] .actions button.primary::after,
+body[data-content="panes"] .actions button:active::after { background: var(--lamp); border-top-color: transparent; box-shadow: 0 0 8px var(--lamp-glow); transition-duration: .08s; }
+body[data-content="panes"] .actions button:active { transform: perspective(200px) rotateX(-16deg); transform-origin: 50% 40%;
+  box-shadow: inset 0 -14px 10px rgba(0,0,0,.5), 0 0 0 1px #000; border-top-color: color-mix(in srgb, var(--lamp) 35%, transparent); }
+
+/* 4. Stronger glass: a brighter, crisper reflection; strongest on the
+   large album window where it has room and crosses little text. */
+body[data-content="panes"] .pane::after {
+  background:
+    linear-gradient(166deg, rgba(255,255,255,.08) 0%, rgba(255,255,255,.022) 34%, rgba(255,255,255,0) 34.3%),
+    linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,0) 12px);
+}
+body[data-content="panes"] .block:first-child .pane::after {
+  background:
+    linear-gradient(162deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 30%, rgba(255,255,255,0) 30.3%),
+    linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,0) 12px);
+}
+
+/* 5 + 6. Trays fit their keys: transport keys share the deck tray, and the
+   DSP tray spans the amp so the corner under the knob isn't dead space. */
+body[data-dir="f"] .transport .key { flex: 1; width: auto; }
+body[data-dir="f"] .ampbar .litrow.dsp { display: flex; }
+body[data-dir="f"] .ampbar .litrow.dsp .lit { flex: 1; }
+
+/* 7. Hardware type: a bold sans title, the artist in plain silk grey. */
+body[data-content="panes"] .album-head h1 { font: 700 32px/1.1 "Manrope", sans-serif; letter-spacing: -.015em; margin: 0 0 6px; }
+body[data-content="panes"] .album-head .by { font: 500 16px/1.3 "Manrope", sans-serif; font-style: normal; color: #cfc3b1; }
+
+/* 9. Scrollbar as an engraved groove in the faceplate. */
+body[data-content="panes"] .screen { scrollbar-color: auto; }
+body[data-content="panes"] .screen::-webkit-scrollbar { width: 10px; }
+body[data-content="panes"] .screen::-webkit-scrollbar-track {
+  margin: 6px 0; border-radius: 99px; background: #050403;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,.95), 0 1px 0 rgba(255,255,255,.05);
+  border: 3px solid transparent; background-clip: padding-box;
+}
+body[data-content="panes"] .screen::-webkit-scrollbar-thumb {
+  border-radius: 99px; border: 3px solid transparent; background-clip: padding-box;
+  background-color: #3a342e;
+}
+body[data-content="panes"] .screen::-webkit-scrollbar-thumb:hover { background-color: #574d43; }
+
+/* ---- Compact deck = network transport (round 6) ------------------------
+   The turntable only appears when the deck expands; the compact deck shows
+   the cover and the next tracks in two glass windows, matching the content. */
+.as-transport { display: none; }
+.rack:not(.expanded) .deck .as-deck { display: none; }
+.rack:not(.expanded) .deck .as-transport { display: inline; }
+.rack:not(.expanded) .deck .turntable { display: none; }
+.rack.expanded .nowwin { display: none; }
+.nowwin { display: grid; grid-template-columns: var(--pl) 1fr; gap: 10px; height: var(--pl); margin-bottom: 4px; }
+.win {
+  position: relative; isolation: isolate; overflow: hidden; border-radius: 5px;
+  background: linear-gradient(180deg, #040302, #090706 40%, #0b0908);
+  box-shadow: 0 0 0 1px #000, 0 1px 0 1px rgba(255,255,255,.07), inset 0 3px 8px rgba(0,0,0,.95);
+}
+.win::after {
+  content: ""; position: absolute; inset: 0; z-index: 2; border-radius: inherit; pointer-events: none;
+  background:
+    linear-gradient(162deg, rgba(255,255,255,.10) 0%, rgba(255,255,255,.025) 32%, rgba(255,255,255,0) 32.3%),
+    linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,0) 10px);
+  box-shadow: inset 0 0 14px rgba(0,0,0,.6);
+}
+.artwin { padding: 6px; }
+.art { width: 100%; height: 100%; border-radius: 2px; background: var(--cover); }
+.nextup { padding: 9px 12px; display: flex; flex-direction: column; min-width: 0; }
+.nexthead { font: 600 10px/1 "Manrope", sans-serif; letter-spacing: .05em; color: var(--silk-dim); padding-bottom: 7px; border-bottom: 1px solid rgba(255,255,255,.06); }
+.nextup ol { list-style: none; margin: 0; padding: 0; flex: 1; display: flex; flex-direction: column; justify-content: space-evenly; }
+.nextup li { display: grid; grid-template-columns: 14px 1fr auto; gap: 8px; align-items: baseline; font-size: 12px; color: var(--screen-text); }
+.nextup li span, .nextup li i { font-style: normal; color: var(--screen-muted); font-variant-numeric: tabular-nums; font-size: 11px; }
+.nextup li b { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---- Alternative deck faces (round 7): toolbar "Deck face" ---------- */
+.cdface, .vfdtop { display: none; }
+body:not([data-face="transport"]) .nowwin { display: none; }
+body[data-face="cd"] .rack:not(.expanded) .cdface { display: flex; }
+body[data-face="display"] .rack:not(.expanded) .vfdtop { display: flex; }
+
+/* CD player: the disc drawer with an eject key, and a music-calendar VFD. */
+.cdface { flex-direction: column; gap: 8px; height: var(--pl); margin-bottom: 4px; }
+.tray { display: flex; gap: 5px; height: 34px; padding: 4px; border-radius: 5px; background: #000;
+  box-shadow: inset 0 2px 4px #000, 0 1px 0 rgba(255,255,255,.06); }
+.drawer { flex: 1; position: relative; display: grid; place-items: center; border-radius: 2px;
+  background: linear-gradient(180deg, #27251f, #161513 55%, #0e0d0c); border-top: 1px solid #3b3833;
+  box-shadow: 0 1px 2px rgba(0,0,0,.8); transition: transform .5s cubic-bezier(.3,.7,.2,1); }
+.drawer::before { /* the slot lip */
+  content: ""; position: absolute; left: 10px; right: 10px; bottom: 5px; height: 1px; background: #000; box-shadow: 0 1px 0 rgba(255,255,255,.05); }
+.drawer span { font: 600 8.5px/1 "Manrope", sans-serif; letter-spacing: .24em; text-transform: uppercase; color: var(--silk-dim); margin-top: -4px; }
+.eject { width: 44px; border: 0; border-radius: 3px; cursor: pointer; display: grid; place-items: center;
+  background: #222120; border-top: 1px solid #353331; color: #8d8478; box-shadow: 0 0 0 1px #000;
+  transition: transform .08s linear; }
+.eject svg { width: 12px; height: 12px; }
+.eject:active { transform: perspective(200px) rotateX(-16deg); transform-origin: 50% 40%; color: var(--lamp); }
+.vfd.calendar { flex: 1; margin: 0; display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center; }
+.cal { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px 2px; }
+.cal span { font: 800 10px/1 "Manrope", sans-serif; text-align: center; padding: 3px 0; border-radius: 2px;
+  font-variant-numeric: tabular-nums; opacity: .1; }
+.cal span.has { opacity: .8; text-shadow: 0 0 5px var(--vfd); }
+.cal span.cur { opacity: 1; box-shadow: inset 0 0 0 1px var(--vfd), 0 0 6px color-mix(in srgb, var(--lamp) 35%, transparent); }
+.remain { display: grid; justify-items: end; gap: 4px; }
+.remain .big { font: 700 20px/1 "Manrope", sans-serif; font-variant-numeric: tabular-nums; letter-spacing: .02em;
+  text-shadow: 0 0 8px var(--vfd), 0 0 1px var(--vfd); }
+
+/* Display: the VFD grows upward into one tall screen - format, a bar-graph
+   level meter (VU ballistics, same feed as the needles) and the next track. */
+.vfdtop { flex-direction: column; justify-content: space-between; height: calc(var(--pl) - 12px); padding-bottom: 10px; margin-bottom: 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--lamp) 10%, transparent); }
+.lvls { display: grid; gap: 5px; }
+.lvl { display: grid; grid-template-columns: 12px 1fr; gap: 6px; align-items: center; }
+.lvl b { font: 800 9px/1 "Manrope", sans-serif; text-shadow: 0 0 5px var(--vfd); }
+.lvl .bar { position: relative; height: 7px;
+  --seg: repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 6px); }
+.lvl .bar::before, .lvl .bar::after { content: ""; position: absolute; inset: 0 auto 0 0; background: var(--seg); }
+.lvl .bar::before { right: 0; opacity: .1; }
+.lvl .bar::after { width: calc(var(--lv) * 100%); filter: drop-shadow(0 0 3px var(--vfd)); }
+.lvl .bar { background: linear-gradient(90deg, transparent 77%, rgba(255,90,58,.18) 77%) 0 0 / 100% 100% no-repeat; }
+.scale { display: flex; justify-content: space-between; margin-left: 18px; font: 700 7.5px/1 "Manrope", sans-serif; letter-spacing: .06em; opacity: .55; }
+.nextline span { opacity: .55; }
+body[data-face="display"] .rack:not(.expanded) .vfd .text:not(.sub) { font-size: 16px; }
+body[data-face="display"] .rack:not(.expanded) .vfd .text.sub:not(.nextline) { font-size: 11.5px; }
+body[data-face="display"] .rack:not(.expanded) .vfd { padding: 12px 14px 10px; }
+
+/* VFD seek bar: a row of dim segments; the elapsed part glows. */
+.vseek { position: relative; height: 12px; margin-top: 8px; cursor: pointer; touch-action: none;
+  --seg: repeating-linear-gradient(90deg, currentColor 0 3px, transparent 3px 5px); color: var(--vfd); }
+.vseek::before, .vseek i { content: ""; position: absolute; left: 0; top: 4px; height: 4px; background: var(--seg); }
+.vseek::before { right: 0; opacity: .12; }
+.vseek i { width: calc(var(--p, 0) * 100%); filter: drop-shadow(0 0 3px var(--vfd)); }
+.vseek:focus-visible { outline: 1px solid var(--vfd); outline-offset: 2px; border-radius: 2px; }
+
+/* ---- More pages (round 8): Home, Explore, Library, Playlists, Artist,
+   Search, Setup. Same vocabulary: labels on the metal, glass windows,
+   light-bar keys for every choice, VFDs for anything you type or read. */
+.screen > .page[hidden], .stab[hidden] { display: none; }
+.pane-label .meta { order: 1; display: inline-flex; align-items: center; font-weight: 500; letter-spacing: .03em; }
+.tiles { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 20px 16px; }
+.tiles.row6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.tiles.row3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.tiles li { display: grid; gap: 3px; min-width: 0; font-size: 12.5px; cursor: pointer; }
+.tiles b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color .15s; }
+.tiles span { color: var(--screen-muted); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tiles .mini { margin-bottom: 6px; transition: transform .15s, box-shadow .15s; }
+.tiles li:hover .mini { transform: translateY(-2px); box-shadow: 0 10px 20px rgba(0,0,0,.6); }
+.tiles li:hover b { color: var(--screen-accent); }
+.tiles.round .mini { border-radius: 50%; }
+.tiles.round li { text-align: center; }
+.by a { color: inherit; cursor: pointer; text-decoration: none; }
+.by a:hover { color: var(--screen-accent); }
+
+/* The light-bar key tray, for every segmented choice and tab row. */
+.keys { display: inline-flex; gap: 5px; padding: 4px; border-radius: 6px; width: max-content; background: #000;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.05); }
+.keys button {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;
+  min-width: 74px; height: 34px; padding: 4px 12px 0; border: 0; border-radius: 3px; cursor: pointer;
+  background: #222120; border-top: 1px solid #353331; color: #8d8478;
+  font: 700 10.5px/1 "Manrope", sans-serif; letter-spacing: .05em; white-space: nowrap;
+  box-shadow: 0 0 0 1px #000, 0 2px 4px rgba(0,0,0,.6); transition: transform .08s linear, color .2s;
+}
+.keys button::after {
+  content: ""; width: 70%; height: 3px; border-radius: 99px;
+  background: #1a1918; border-top: 1px solid #2f2d2b; box-shadow: 0 0 3px #111;
+  transition: background .35s cubic-bezier(.2,.8,.2,1), box-shadow .35s;
+}
+.keys button:hover { color: #b9ad9c; }
+.keys button[aria-pressed="true"] { color: #f0e2cb; }
+.keys button[aria-pressed="true"]::after, .keys button:active::after { background: var(--lamp); border-top-color: transparent; box-shadow: 0 0 8px var(--lamp-glow); transition-duration: .08s; }
+.keys button:active { transform: perspective(200px) rotateX(-16deg); transform-origin: 50% 40%; box-shadow: inset 0 -12px 10px rgba(0,0,0,.5), 0 0 0 1px #000; }
+.keys.sm button { min-width: 0; height: 30px; padding: 3px 12px 0; font-size: 10px; }
+.keys.xs { padding: 3px; gap: 4px; }
+.keys.xs button { min-width: 0; height: 24px; padding: 2px 9px 0; font-size: 9.5px; gap: 3px; }
+.keys.xs button::after { height: 2px; }
+.keys .tog { min-width: 46px !important; }
+
+.subnav { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+.subnav > .keys, .subnav > .stepper { flex: none; }
+.subnav .vfdin { margin-left: auto; flex: 0 1 230px; }
+.subnav .vfdin input { width: 0; }
+
+/* Anything you type is a VFD. */
+.vfdin { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 12px; margin: 0; cursor: text; }
+.vfdin input { flex: 1; min-width: 0; width: 170px; background: none; border: 0; outline: 0; padding: 0;
+  font: 700 12px/1 "Manrope", sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--vfd);
+  text-shadow: 0 0 6px var(--vfd); caret-color: var(--vfd); position: relative; z-index: 1; }
+.vfdin input::placeholder { color: var(--vfd); opacity: .22; text-shadow: none; }
+.vfdin:focus-within { box-shadow: inset 0 2px 6px rgba(0,0,0,.9), inset 0 0 0 1px color-mix(in srgb, var(--lamp) 35%, transparent), 0 1px 0 rgba(255,255,255,.07); }
+.vfdin.big { height: 66px; padding: 0 20px; margin-bottom: 18px; }
+.vfdin.big input { font-size: 24px; letter-spacing: .1em; }
+.stepper { display: inline-flex; align-items: stretch; gap: 4px; padding: 4px; height: 38px; box-sizing: border-box; border-radius: 6px; background: #000;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.05); }
+.stepper button { width: 28px; border: 0; border-radius: 3px; cursor: pointer; display: grid; place-items: center;
+  background: #222120; border-top: 1px solid #353331; color: #8d8478; box-shadow: 0 0 0 1px #000; }
+.stepper button:hover { color: var(--lamp); }
+.stepper button svg { width: 12px; height: 12px; }
+.stepper output { min-width: 130px; display: flex; align-items: center; padding: 0 10px; border-radius: 2px;
+  background: var(--vfd-bg); color: var(--vfd); box-shadow: inset 0 1px 3px #000;
+  font: 700 10.5px/1 "Manrope", sans-serif; letter-spacing: .08em; text-transform: uppercase; text-shadow: 0 0 6px var(--vfd); white-space: nowrap; }
+
+/* Home: the week in numbers, lit like a readout. */
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 20px; margin: 0; height: 100%; align-content: center; }
+.stats dt { font: 600 10.5px/1 "Manrope", sans-serif; letter-spacing: .05em; color: var(--screen-muted); margin-bottom: 7px; }
+.stats dd { margin: 0; font: 700 24px/1 "Manrope", sans-serif; font-variant-numeric: tabular-nums; color: var(--vfd); text-shadow: 0 0 8px color-mix(in srgb, var(--lamp) 45%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stats dd.sm { font-size: 16px; }
+.pair .tiles.row3 .mini { margin-bottom: 6px; }
+
+/* Explore: genre plates with a coloured edge. */
+.chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.chip { height: 52px; border: 0; border-radius: 4px; padding: 0 14px; cursor: pointer; text-align: left;
+  font: 600 13px/1 "Manrope", sans-serif; color: var(--screen-text);
+  background: linear-gradient(115deg, color-mix(in srgb, var(--c) 32%, #0b0908), #0d0b0a 72%);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.05), inset 3px 0 0 var(--c); transition: filter .15s; }
+.chip:hover { filter: brightness(1.25); }
+
+/* Playlists: folder list beside the grid. */
+.split { display: grid; grid-template-columns: 220px 1fr; gap: 18px; align-items: stretch; }
+.split .block { margin-top: 0; display: flex; flex-direction: column; }
+.split .pane { flex: 1; }
+.folders { list-style: none; margin: 0; padding: 0; }
+.folders li { display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,.045); font-size: 13px; cursor: pointer; }
+.folders li:last-child { border-bottom: 0; }
+.folders li span { margin-left: auto; color: var(--screen-muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.folders li i { width: 6px; height: 6px; border-radius: 50%; margin-right: 12px; background: #2a1a08; box-shadow: inset 0 1px 1px rgba(0,0,0,.7); }
+.folders li.on { color: var(--screen-accent); }
+.folders li.on i { background: var(--lamp); box-shadow: 0 0 6px var(--lamp-glow); }
+.folders li:hover:not(.on) { color: #fff; }
+.cover.mosaic { display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; background: none; }
+.cover.mosaic i { background: linear-gradient(140deg, var(--c1), var(--c2)); }
+.cover.portrait { background: radial-gradient(circle at 50% 40%, #4d86b8 0 19%, transparent 19.5%), radial-gradient(ellipse 60% 40% at 50% 100%, #2c5c88 0 70%, transparent 71%), linear-gradient(160deg, #10263a, #050b12); }
+td.al { color: var(--screen-muted); }
+tr.playing td.al { color: color-mix(in srgb, var(--screen-accent) 70%, transparent); }
+
+/* Artist */
+.bio p { margin: 0 0 12px; font-size: 13px; line-height: 1.65; color: #cfc3b1; }
+.bio p:last-child { margin-bottom: 0; }
+
+/* Search */
+.topres { display: grid; grid-template-columns: 112px 1fr; gap: 20px; align-items: center; cursor: pointer; height: 100%; }
+.topres .mini { border-radius: 50%; margin: 0; }
+.topres h3 { margin: 0 0 4px; font: 700 24px/1.1 "Manrope", sans-serif; letter-spacing: -.01em; }
+.topres .kind { font: 600 11px/1 "Manrope", sans-serif; letter-spacing: .05em; color: var(--screen-muted); }
+.topres .actions { margin-top: 14px; }
+.topres:hover h3 { color: var(--screen-accent); }
+
+/* Setup: label left, control right; every control is hardware. */
+body[data-content="panes"] .pane.srows { padding-top: 6px; padding-bottom: 6px; }
+.srow { display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: center; padding: 14px 0; border-bottom: 1px solid rgba(255,255,255,.045); }
+.srow:last-child { border-bottom: 0; }
+.srow b { display: block; font-weight: 600; font-size: 13.5px; }
+.srow .sl span { display: block; margin-top: 4px; font-size: 12px; line-height: 1.45; color: var(--screen-muted); max-width: 52ch; }
+.sc { display: flex; align-items: center; gap: 12px; }
+.sc .count { font-size: 12px; color: var(--screen-muted); }
+.hf { position: relative; width: 190px; height: 28px; cursor: ew-resize; touch-action: none;
+  background:
+    linear-gradient(var(--silk-dim), var(--silk-dim)) left top / 1px 5px no-repeat,
+    linear-gradient(var(--silk-dim), var(--silk-dim)) center top / 1px 5px no-repeat,
+    linear-gradient(var(--silk-dim), var(--silk-dim)) right top / 1px 5px no-repeat; }
+.hf::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 5px; margin-top: -1px; border-radius: 2px; background: #000; box-shadow: 0 1px 0 rgba(255,255,255,.06); }
+.hf i { position: absolute; top: 50%; left: calc(var(--v) * 100%); width: 13px; height: 22px; margin: -9px 0 0 -6.5px; border-radius: 2px; z-index: 1;
+  background: linear-gradient(to right, #3a3a3a 0%, #575757 38%, #1a1a1a 44%, var(--lamp) 47%, var(--lamp) 53%, #1a1a1a 56%, #575757 62%, #3a3a3a 100%);
+  border: 1px solid #0a0a0a; box-shadow: 0 2px 6px rgba(0,0,0,.75), inset 0 1px 1px rgba(255,255,255,.18); }
+.hf:focus-visible { outline: 1px solid var(--lamp); outline-offset: 4px; border-radius: 2px; }
+.sc output.val { min-width: 58px; text-align: right; font: 700 12px/1 "Manrope", sans-serif; font-variant-numeric: tabular-nums; color: var(--vfd); text-shadow: 0 0 6px color-mix(in srgb, var(--lamp) 50%, transparent); }
+.vfd.usage { width: 250px; padding: 8px 12px 9px; }
+.vfd.usage .text { font-size: 11px; }
+.vfd.usage .lvl { grid-template-columns: 1fr; margin-top: 7px; }
+.kc { font: 700 10.5px/1 "Manrope", sans-serif; letter-spacing: .06em; padding: 7px 9px; border-radius: 3px;
+  background: var(--vfd-bg); color: var(--vfd); text-shadow: 0 0 6px var(--vfd); box-shadow: inset 0 1px 3px #000, 0 1px 0 rgba(255,255,255,.05); }
+.kc.dim { opacity: .45; text-shadow: none; }
+.selector .right { display: flex; align-items: center; gap: 26px; }
+
+/* ---- Lamp colour (round 9): one hue + chroma drives every lit thing.
+   Lightness is fixed per role, so any hue still reads as phosphor/lamp. ---- */
+@property --ah { syntax: "<number>"; inherits: true; initial-value: 64; }
+@property --ac { syntax: "<number>"; inherits: true; initial-value: .16; }
+body[data-dir="f"] {
+  --ah: 64; --ac: .16;
+  transition: --ah 1.2s ease, --ac 1.2s ease;          /* cover changes glide, like a lamp warming */
+  --lamp: oklch(.78 var(--ac) var(--ah));
+  --lamp-glow: oklch(.72 calc(var(--ac) * 1.05) var(--ah) / .6);
+  --meter-face: radial-gradient(130% 150% at 50% 115%, oklch(.31 calc(var(--ac) * .55) var(--ah)) 0%, oklch(.18 calc(var(--ac) * .32) var(--ah)) 45%, oklch(.1 calc(var(--ac) * .12) var(--ah)) 100%);
+  --meter-ink: oklch(.83 calc(var(--ac) * .85) var(--ah));
+  --needle: oklch(.9 calc(var(--ac) * .5) var(--ah));
+  --vfd: oklch(.8 var(--ac) var(--ah));
+  --vfd-ghost: oklch(.8 var(--ac) var(--ah) / .06);
+  --vfd-bg: oklch(.115 calc(var(--ac) * .1) var(--ah));
+  --knob-mark: oklch(.82 var(--ac) var(--ah));
+  --screen-accent: oklch(.79 var(--ac) var(--ah));
+}
+body[data-dir="f"][data-accent="red"] { --meter-red: oklch(.9 .06 60); }   /* red lamps: the over zone turns hot white */
+.swatches button { position: relative; }
+.swatches button::after { background: oklch(.42 calc(var(--sw-c, .16) * .6) var(--sw-h, 64)); border-top-color: transparent; }
+.swatches button[aria-pressed="true"]::after { background: oklch(.78 var(--sw-c, .16) var(--sw-h, 64)); box-shadow: 0 0 8px oklch(.72 var(--sw-c, .16) var(--sw-h, 64) / .6); }
+.swatches .sw-cover::after { background: linear-gradient(90deg, oklch(.45 .1 64), oklch(.45 .1 165), oklch(.45 .1 235), oklch(.45 .1 330)); }
+.swatches .sw-cover[aria-pressed="true"]::after { background: var(--lamp); }
+
+/* ---- Amp meter styles (round 9). The digital ones share the needles' slot. ---- */
+.dmeters { display: none; }
+body:not([data-meter="needles"]) .amprow .meters { display: none; }
+body:not([data-meter="needles"]) .amprow .dmeters { display: block; grid-column: 1; grid-row: 1; height: 96px; }
+.dmeters > * { display: none; height: 100%; box-sizing: border-box; }
+body[data-meter="bars"] .dm-bars, body[data-meter="spectrum"] .dm-spec { display: flex; }
+body[data-meter="led"] .dm-led { display: flex; }
+
+/* Bars: VFD, segmented, red past 0 dBFS, a peak-hold tick. */
+.dm-bars { flex-direction: column; justify-content: space-between; padding: 9px 12px 8px; }
+.dbar { display: grid; grid-template-columns: 12px 1fr; gap: 8px; align-items: center; }
+.dbar b { font: 800 9.5px/1 "Manrope", sans-serif; text-shadow: 0 0 5px var(--vfd); }
+.dbar .track { position: relative; height: 11px; }
+.dbar .track::before, .dbar .fill { content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, var(--vfd) 0 93%, var(--meter-red) 93%);
+  -webkit-mask: repeating-linear-gradient(90deg, #000 0 4px, transparent 4px 6px); mask: repeating-linear-gradient(90deg, #000 0 4px, transparent 4px 6px); }
+.dbar .track::before { opacity: .1; }
+.dbar .fill { clip-path: inset(0 calc((1 - var(--f, 0)) * 100%) 0 0); filter: drop-shadow(0 0 3px var(--vfd)); }
+.dbar .pk { position: absolute; top: -1px; bottom: -1px; width: 3px; left: calc(var(--pk, 0) * 100% - 3px); background: var(--vfd); box-shadow: 0 0 6px var(--vfd); }
+.dscale { position: relative; height: 8px; margin-left: 20px; font: 700 7.5px/1 "Manrope", sans-serif; opacity: .6; }
+.dscale span { position: absolute; transform: translateX(-50%); }
+.dscale span:first-child { transform: none; }
+.dscale span:last-child { transform: translateX(-100%); }
+
+/* LED: real discrete LEDs on the faceplate, not a screen. */
+.dm-led { flex-direction: column; justify-content: center; gap: 9px; padding: 12px 12px 8px; border-radius: 4px; background: #050404;
+  box-shadow: inset 0 0 0 2px #070605, inset 0 3px 10px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.08); }
+.ledrow { display: grid; grid-template-columns: 12px 1fr; gap: 8px; align-items: center; }
+.ledrow b { font: 800 9.5px/1 "Manrope", sans-serif; color: var(--silk-dim); }
+.ledline { display: grid; grid-template-columns: repeat(20, 1fr); gap: 3px; }
+.ledline i { height: 12px; border-radius: 2px; background: oklch(.22 calc(var(--ac) * .35) var(--ah)); box-shadow: inset 0 1px 1px rgba(0,0,0,.7), 0 1px 0 rgba(255,255,255,.04); transition: background .06s; }
+.ledline i.hot { background: oklch(.22 .06 28); }
+.ledline i.on, .ledline i.pk { background: var(--lamp); box-shadow: 0 0 6px var(--lamp-glow), inset 0 1px 0 rgba(255,255,255,.35); transition-duration: 0s; }
+.ledline i.hot.on, .ledline i.hot.pk { background: var(--meter-red); box-shadow: 0 0 6px color-mix(in srgb, var(--meter-red) 60%, transparent), inset 0 1px 0 rgba(255,255,255,.35); }
+.ledscale { display: grid; grid-template-columns: repeat(20, 1fr); gap: 3px; margin-left: 20px; font: 700 7px/1 "Manrope", sans-serif; color: var(--silk-dim); text-align: center; white-space: nowrap; }
+
+/* Spectrum: 20 VFD bands with falling peak caps. */
+.dm-spec { flex-direction: column; padding: 9px 12px 6px; gap: 5px; }
+.mspec { flex: 1; display: grid; grid-template-columns: repeat(20, 1fr); gap: 3px; }
+.mspec .mb { position: relative; }
+.mspec .mb::before { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: var(--h, 0%);
+  background: repeating-linear-gradient(0deg, var(--vfd) 0 3px, transparent 3px 5px); filter: drop-shadow(0 0 3px var(--vfd)); }
+.mspec .mb i { position: absolute; left: 0; right: 0; height: 2px; bottom: var(--cap, 0%); background: var(--vfd); box-shadow: 0 0 4px var(--vfd); }
+.specscale { display: flex; justify-content: space-between; font: 700 7.5px/1 "Manrope", sans-serif; opacity: .6; }
+
+/* 10. Table header printed like the section labels. */
+body[data-content="panes"] .pane th { font: 600 10.5px/1 "Manrope", sans-serif; letter-spacing: .05em; color: var(--silk-dim);
+  text-shadow: 0 1px 0 rgba(255,255,255,.04); padding-top: 12px; padding-bottom: 10px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lit .lens::before, .src .cap, .key, body[data-dir="f"] .lit, body[data-dir="f"] .lit::after { transition: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .record .label { animation: none; }
+}
+</style>
+</head>
+<body data-dir="f" data-screws="off" data-content="panes" data-face="transport" data-meter="needles" data-accent="amber">
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-prev" viewBox="0 0 24 24"><polygon points="19 20 9 12 19 4 19 20" fill="currentColor"/><line x1="5" y1="19" x2="5" y2="5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24"><polygon points="5 4 15 12 5 20 5 4" fill="currentColor"/><line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><polygon points="6 3 20 12 6 21 6 3" fill="currentColor"/></symbol>
+    <symbol id="i-eject" viewBox="0 0 24 24"><polygon points="12 4 21 15 3 15" fill="currentColor"/><rect x="3" y="18" width="18" height="2.6" fill="currentColor"/></symbol>
+    <symbol id="i-left" viewBox="0 0 24 24"><polyline points="15 5 8 12 15 19" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-right" viewBox="0 0 24 24"><polyline points="9 5 16 12 9 19" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" fill="currentColor"/><rect x="14" y="4" width="4" height="16" fill="currentColor"/></symbol>
+  </defs>
+</svg>
+
+<div class="studio" role="toolbar" aria-label="Mockup controls">
+<div id="dirs" hidden><button data-dir="f" aria-pressed="true">v4</button></div>
+  <div class="group" id="contents">
+    <span>Content</span>
+    <button data-content="panes" aria-pressed="true">Panes</button>
+    <button data-content="flush" aria-pressed="false">Flush glass</button>
+    <button data-content="open" aria-pressed="false">Open panel</button>
+    <button data-content="bezel" aria-pressed="false">Bezel (v1)</button>
+  </div>
+  <div class="group" id="faces">
+    <span>Deck face</span>
+    <button data-face="transport" aria-pressed="true">Transport</button>
+    <button data-face="cd" aria-pressed="false">CD player</button>
+    <button data-face="display" aria-pressed="false">Display</button>
+  </div>
+  <div class="group" id="meterModes">
+    <span>Meters</span>
+    <button data-meter="needles" aria-pressed="true">Needles</button>
+    <button data-meter="bars" aria-pressed="false">Bars</button>
+    <button data-meter="led" aria-pressed="false">LED</button>
+    <button data-meter="spectrum" aria-pressed="false">Spectrum</button>
+  </div>
+  <div class="group" id="accents">
+    <span>Lamp</span>
+    <button data-accent="amber" aria-pressed="true">Amber</button>
+    <button data-accent="blue" aria-pressed="false">Blue</button>
+    <button data-accent="green" aria-pressed="false">Green</button>
+    <button data-accent="red" aria-pressed="false">Red</button>
+    <button data-accent="white" aria-pressed="false">White</button>
+    <button data-accent="cover" aria-pressed="false">Cover</button>
+  </div>
+  <div class="group" id="covers">
+    <span>Now playing</span>
+    <button data-cover="0" aria-pressed="true" title="Kind of Blue">KoB</button>
+    <button data-cover="1" aria-pressed="false" title="Sketches of Spain">Sketches</button>
+    <button data-cover="2" aria-pressed="false" title="Milestones">Milestones</button>
+    <button data-cover="3" aria-pressed="false" title="In a Silent Way (grey cover: falls back to amber)">Silent Way</button>
+    <button data-cover="4" aria-pressed="false" title="Bitches Brew">Brew</button>
+  </div>
+  <div class="group">
+    <button id="expand" aria-pressed="false">Expand deck</button>
+    <button id="eqtoggle" aria-pressed="true">EQ unit</button>
+    <button id="screws" aria-pressed="false" hidden>Screws</button>
+  </div>
+  <span class="note" title="Simulated signal. Try: source keys, transport, lit buttons, EQ faders and presets, volume knob.">Frozen: <a href="/.superpowers/brainstorm/rack/v2-black-glass.html" style="color:#9ab">v2</a> · <a href="/.superpowers/brainstorm/rack/v3-modern-components.html" style="color:#9ab">v3 (D/E)</a></span>
+</div>
+
+<div class="rack" id="rack">
+  <div class="cheek left" aria-hidden="true"></div>
+
+  <!-- Selector unit: navigation -->
+  <header class="unit selector">
+    <i class="screw tl"></i><i class="screw bl"></i><i class="screw tr"></i><i class="screw br"></i>
+    <div class="brand"><span class="model">OxiTide</span><span class="silk">Network audio player</span></div>
+    <nav class="sources" aria-label="Source">
+      <button class="src" data-go="home" aria-current="page"><span class="lampdot"></span><span class="cap">Home</span></button>
+      <button class="src" data-go="explore"><span class="lampdot"></span><span class="cap">Explore</span></button>
+      <button class="src" data-go="library"><span class="lampdot"></span><span class="cap">Library</span></button>
+      <button class="src" data-go="playlists"><span class="lampdot"></span><span class="cap">Playlists</span></button>
+      <button class="src" data-go="search"><span class="lampdot"></span><span class="cap">Search</span></button>
+    </nav>
+    <div class="right">
+      <button class="src" data-go="settings"><span class="lampdot"></span><span class="cap">Setup</span></button>
+      <div class="power"><span class="lampdot"></span><span class="silk">Power</span></div>
+    </div>
+  </header>
+
+  <div class="column">
+    <!-- Deck -->
+    <section class="unit deck" aria-label="Turntable">
+      <i class="screw tl"></i><i class="screw tr"></i><i class="screw bl"></i><i class="screw br"></i>
+      <div class="unit-head"><span class="model"><span class="as-deck">Direct drive deck</span><span class="as-transport">Network transport</span></span><span class="silk"><span class="as-deck">33⅓</span><span class="as-transport">TIDAL · FLAC</span></span></div>
+      <div class="nowwin">
+        <div class="win artwin"><div class="art"></div></div>
+        <div class="win nextup">
+          <div class="nexthead">Up next</div>
+          <ol>
+            <li><span>2</span><b>Freddie Freeloader</b><i>9:46</i></li>
+            <li><span>3</span><b>Blue in Green</b><i>5:37</i></li>
+            <li><span>4</span><b>All Blues</b><i>11:33</i></li>
+          </ol>
+        </div>
+      </div>
+      <div class="cdface">
+        <div class="tray">
+          <div class="drawer"><span>Digital audio</span></div>
+          <button class="eject" aria-label="Open disc tray"><svg><use href="#i-eject"/></svg></button>
+        </div>
+        <div class="vfd calendar">
+          <div class="cal" id="cal" aria-label="Track 1 of 5"></div>
+          <div class="remain">
+            <div class="anno"><span class="on">REMAIN</span></div>
+            <div class="big" id="remain">-38:10</div>
+            <div class="anno"><span class="on">5 TR</span><span class="on">45:44</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="turntable">
+        <div class="plinth"><div class="record"><div class="label"><span class="tick"></span></div></div></div>
+        <svg class="tonearm" viewBox="0 0 220 220" aria-hidden="true">
+          <circle cx="170" cy="30" r="17" fill="#1a1816" stroke="#5a554e" stroke-width="2"/>
+          <circle cx="170" cy="30" r="9" fill="url(#chrome)"/>
+          <g class="arm" id="arm">
+            <rect x="178" y="22" width="18" height="16" rx="2" fill="#3a3632"/>
+            <path d="M170 30 L150 150 L128 182" stroke="url(#chrome)" stroke-width="5" fill="none" stroke-linecap="round"/>
+            <rect x="113" y="176" width="26" height="15" rx="2" transform="rotate(32 126 183)" fill="#1d1b19" stroke="#6b665f"/>
+          </g>
+          <defs><linearGradient id="chrome" x1="0" x2="1"><stop offset="0" stop-color="#7d7871"/><stop offset=".5" stop-color="#eeeae4"/><stop offset="1" stop-color="#6e6a63"/></linearGradient></defs>
+        </svg>
+      </div>
+      <div class="vfd" id="vfd" style="margin-top:6px">
+        <div class="vfdtop" aria-hidden="true">
+          <div class="row">
+            <div class="anno"><span class="on">FLAC</span><span class="on">24BIT</span><span class="on">96kHz</span><span class="on">EXCL</span></div>
+            <div class="anno"><span class="on">TIDAL MAX</span></div>
+          </div>
+          <div class="lvls">
+            <div class="lvl"><b>L</b><div class="bar" style="--lv: var(--lvL, 0)"></div></div>
+            <div class="lvl"><b>R</b><div class="bar" style="--lv: var(--lvR, 0)"></div></div>
+            <div class="scale"><span>-20</span><span>-10</span><span>-7</span><span>-5</span><span>-3</span><span>0</span><span>+3 dB</span></div>
+          </div>
+          <div class="text sub nextline"><span>NEXT</span> FREDDIE FREELOADER <span>9:46</span></div>
+        </div>
+        <div class="row">
+          <div style="min-width:0">
+            <div class="text" id="vfdTitle">So What</div>
+            <div class="text sub">Miles Davis, Kind of Blue</div>
+          </div>
+          <div class="seg" id="time" aria-label="Elapsed 2:14"></div>
+          <div class="clock" id="clock">2:14</div>
+        </div>
+        <div class="vseek" id="seek" role="slider" tabindex="0" aria-label="Seek" aria-valuemin="0" aria-valuemax="562" aria-valuenow="134" aria-valuetext="2:14 of 9:22"><i></i></div>
+        <div class="row" style="margin-top:6px">
+          <div class="anno"><span class="on" data-anno="repeat">RPT</span><span data-anno="shuffle">SHUF</span><span class="on">GAPLESS</span></div>
+          <div class="anno"><span>TRK</span><span class="on">01/05</span></div>
+        </div>
+      </div>
+      <div class="deckbar">
+        <div class="transport">
+          <button class="key" aria-label="Previous track"><svg><use href="#i-prev"/></svg></button>
+          <button class="key on" id="play" aria-label="Pause"><svg><use href="#i-pause"/></svg></button>
+          <button class="key" aria-label="Next track"><svg><use href="#i-next"/></svg></button>
+        </div>
+        <div class="litrow">
+          <button class="lit" data-mode-key="shuffle" aria-pressed="false"><span class="bezel-ring"><span class="lens"></span></span><span class="lbl">Shuffle</span></button>
+          <button class="lit" data-mode-key="repeat" aria-pressed="true"><span class="bezel-ring"><span class="lens"></span></span><span class="lbl">Repeat</span></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Amp -->
+    <section class="unit amp" aria-label="Amplifier">
+      <i class="screw tl"></i><i class="screw tr"></i><i class="screw bl"></i><i class="screw br"></i>
+      <div class="unit-head"><span class="model">Stereo amplifier</span><span class="silk out">Output · WASAPI exclusive</span>
+        <div class="status" aria-label="Signal">
+          <span class="led on"><i></i>MAX</span>
+          <span class="led on green" id="bp"><i></i>Bit-perfect</span>
+          <span class="led on"><i></i>24/96</span>
+        </div>
+      </div>
+      <div class="amprow">
+        <div class="meters" aria-hidden="true">
+          <div class="meter"><svg viewBox="0 0 200 129" id="mL"></svg><div class="glass"></div></div>
+          <div class="meter"><svg viewBox="0 0 200 129" id="mR"></svg><div class="glass"></div></div>
+        </div>
+        <div class="dmeters" aria-hidden="true">
+          <div class="vfd dm-bars">
+            <div class="row"><div class="anno"><span class="on">PEAK</span><span class="on">HOLD</span></div><div class="anno"><span class="on" id="pkread">-12.0 dB</span></div></div>
+            <div class="dbar" data-ch="L"><b>L</b><div class="track"><i class="fill"></i><i class="pk"></i></div></div>
+            <div class="dbar" data-ch="R"><b>R</b><div class="track"><i class="fill"></i><i class="pk"></i></div></div>
+            <div class="dscale" data-scale></div>
+          </div>
+          <div class="dm-led">
+            <div class="ledrow" data-ch="L"><b>L</b><div class="ledline"></div></div>
+            <div class="ledrow" data-ch="R"><b>R</b><div class="ledline"></div></div>
+            <div class="ledscale"></div>
+          </div>
+          <div class="vfd dm-spec">
+            <div class="mspec" id="mspec"></div>
+            <div class="specscale"><span>63</span><span>250</span><span>1k</span><span>4k</span><span>16k</span></div>
+          </div>
+        </div>
+        <div class="knobwrap">
+          <div class="knobbox"><div class="knob-ring" id="ring" aria-hidden="true"></div><div class="knob" id="knob" role="slider" tabindex="0" aria-label="Volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="55" aria-valuetext="55 percent"></div></div>
+          <span class="silk">Volume</span>
+        </div>
+      </div>
+      <div class="ampbar">
+        <div class="litrow dsp">
+          <button class="lit" data-dsp="eq" aria-pressed="false"><span class="bezel-ring"><span class="lens"></span></span><span class="lbl">EQ</span></button>
+          <button class="lit" data-dsp="rg" aria-pressed="false"><span class="bezel-ring"><span class="lens"></span></span><span class="lbl">ReplayGain</span></button>
+          <button class="lit" data-dsp="xf" aria-pressed="false"><span class="bezel-ring"><span class="lens"></span></span><span class="lbl">Crossfade</span></button>
+        </div>
+        <div class="leds">
+          <span class="led on"><i></i>MAX</span>
+          <span class="led on green"><i></i>Bit-perfect</span>
+          <span class="led on"><i></i>24/96</span>
+          <span class="led"><i></i>EQ</span>
+          <span class="led"><i></i>ReplayGain</span>
+          <span class="led"><i></i>Crossfade</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Graphic EQ (optional unit) -->
+    <section class="unit eq" id="eq" aria-label="Graphic equalizer">
+      <i class="screw tl"></i><i class="screw tr"></i><i class="screw bl"></i><i class="screw br"></i>
+      <div class="unit-head"><span class="model">Graphic equalizer</span>
+        <div class="presets" role="radiogroup" aria-label="EQ preset">
+          <button class="preset" role="radio" aria-checked="false" data-preset="flat"><span class="dimple"></span>Flat</button>
+          <button class="preset" role="radio" aria-checked="true" data-preset="loud"><span class="dimple"></span>Loudness</button>
+          <button class="preset" role="radio" aria-checked="false" data-preset="vocal"><span class="dimple"></span>Vocal</button>
+        </div>
+      </div>
+      <div class="faders" id="faders"></div>
+    </section>
+
+    <!-- Spectrum (shown when the deck expands) -->
+    <section class="unit spectrum-unit" aria-label="Spectrum analyzer">
+      <i class="screw tl"></i><i class="screw tr"></i><i class="screw bl"></i><i class="screw br"></i>
+      <div class="unit-head"><span class="model">Spectrum analyzer</span><span class="silk">28 band</span></div>
+      <div class="vfd"><div class="spectrum" id="spectrum"></div></div>
+      <div class="vfd lyrics">
+        <div class="text dim">…</div>
+        <div class="text" id="lyricNow">♪ instrumental</div>
+        <div class="text dim">…</div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Display: every existing page renders in here -->
+  <section class="unit display" aria-label="Library">
+    <i class="screw tl"></i><i class="screw tr"></i><i class="screw bl"></i><i class="screw br"></i>
+    <div class="bezel">
+      <div class="screen">
+        <!-- ============ Home ============ -->
+        <div class="page" data-page="home">
+          <section class="block">
+            <h2 class="pane-label">Recently played</h2>
+            <div class="pane"><ul class="tiles row6" data-tiles="recent"></ul></div>
+          </section>
+          <div class="pair">
+            <section class="block">
+              <h2 class="pane-label">Your mixes</h2>
+              <div class="pane"><ul class="tiles row3" data-tiles="mixes"></ul></div>
+            </section>
+            <section class="block">
+              <h2 class="pane-label">This week<span class="meta">History</span></h2>
+              <div class="pane">
+                <dl class="stats">
+                  <div><dt>Listening time</dt><dd>14 h 22 m</dd></div>
+                  <div><dt>Tracks played</dt><dd>312</dd></div>
+                  <div><dt>Top artist</dt><dd class="sm">Miles Davis</dd></div>
+                  <div><dt>Top album</dt><dd class="sm">Kind of Blue</dd></div>
+                </dl>
+              </div>
+            </section>
+          </div>
+          <section class="block">
+            <h2 class="pane-label">New releases</h2>
+            <div class="pane"><ul class="tiles row6" data-tiles="fresh"></ul></div>
+          </section>
+        </div>
+
+        <!-- ============ Explore ============ -->
+        <div class="page" data-page="explore" hidden>
+          <section class="block">
+            <h2 class="pane-label">Genres</h2>
+            <div class="pane"><div class="chips" data-chips="genres"></div></div>
+          </section>
+          <section class="block">
+            <h2 class="pane-label">Moods and activities</h2>
+            <div class="pane"><div class="chips" data-chips="moods"></div></div>
+          </section>
+          <section class="block">
+            <h2 class="pane-label">Staff picks</h2>
+            <div class="pane"><ul class="tiles row6" data-tiles="fresh"></ul></div>
+          </section>
+        </div>
+
+        <!-- ============ Library (albums) ============ -->
+        <div class="page" data-page="library" hidden>
+          <div class="subnav">
+            <div class="keys sm" role="group" aria-label="Library section">
+              <button aria-pressed="true">Albums</button><button aria-pressed="false">Tracks</button><button aria-pressed="false">Artists</button><button aria-pressed="false">Mixes</button><button aria-pressed="false">History</button>
+            </div>
+            <label class="vfd vfdin"><span class="anno"><span class="on">FILTER</span></span><input placeholder="Type to filter" aria-label="Filter albums"></label>
+            <div class="stepper" role="group" aria-label="Sort">
+              <button aria-label="Previous sort order"><svg><use href="#i-left"/></svg></button><output>Recently added</output><button aria-label="Next sort order"><svg><use href="#i-right"/></svg></button>
+            </div>
+          </div>
+          <section class="block">
+            <h2 class="pane-label">Albums<span class="meta">248</span></h2>
+            <div class="pane"><ul class="tiles" data-tiles="library"></ul></div>
+          </section>
+        </div>
+
+        <!-- ============ Playlists ============ -->
+        <div class="page" data-page="playlists" hidden>
+          <div class="split">
+            <section class="block">
+              <h2 class="pane-label">Folders</h2>
+              <div class="pane">
+                <ul class="folders">
+                  <li class="on"><i></i>All playlists<span>14</span></li>
+                  <li><i></i>Jazz<span>5</span></li>
+                  <li><i></i>Focus<span>3</span></li>
+                  <li><i></i>Workouts<span>2</span></li>
+                  <li><i></i>Archive<span>4</span></li>
+                </ul>
+              </div>
+            </section>
+            <section class="block">
+              <h2 class="pane-label">All playlists<span class="meta">14</span></h2>
+              <div class="pane"><ul class="tiles" data-tiles="playlists"></ul></div>
+            </section>
+          </div>
+        </div>
+
+        <!-- ============ Playlist ============ -->
+        <div class="page" data-page="playlist" hidden>
+          <section class="block">
+            <h2 class="pane-label">Playlist</h2>
+            <div class="pane">
+              <div class="album-head">
+                <div class="cover mosaic"><i style="--c1:#0f2a44;--c2:#3f7fb5"></i><i style="--c1:#402a10;--c2:#e0b04f"></i><i style="--c1:#1d3b2c;--c2:#c9b46a"></i><i style="--c1:#2b1d3f;--c2:#b0532b"></i></div>
+                <div>
+                  <h1>Late Night Jazz</h1>
+                  <div class="by">By you</div>
+                  <div class="facts">42 tracks, 3 h 12 min · Updated 3 days ago · Slow and quiet, for after midnight.</div>
+                  <div class="actions"><button class="primary">Play</button><button>Shuffle</button><button>Add to queue</button><button>Edit</button></div>
+                </div>
+              </div>
+            </div>
+          </section>
+          <section class="block">
+            <h2 class="pane-label">Tracks</h2>
+            <div class="pane flushrows">
+              <table>
+                <thead><tr><th>#</th><th>Title</th><th>Artist</th><th>Album</th><th style="text-align:right">Time</th></tr></thead>
+                <tbody data-rows="playlist"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <!-- ============ Artist ============ -->
+        <div class="page" data-page="artist" hidden>
+          <section class="block">
+            <h2 class="pane-label">Artist</h2>
+            <div class="pane">
+              <div class="album-head">
+                <div class="cover portrait"></div>
+                <div>
+                  <h1>Miles Davis</h1>
+                  <div class="by">Jazz · Trumpet, composer, bandleader</div>
+                  <div class="facts">2.1 million followers · 61 albums</div>
+                  <div class="actions"><button class="primary">Play</button><button>Shuffle</button><button>Radio</button><button class="primary">Following</button></div>
+                </div>
+              </div>
+            </div>
+          </section>
+          <div class="pair">
+            <section class="block">
+              <h2 class="pane-label">Top tracks</h2>
+              <div class="pane flushrows">
+                <table><tbody data-rows="top"></tbody></table>
+              </div>
+            </section>
+            <section class="block">
+              <h2 class="pane-label">Biography</h2>
+              <div class="pane bio">
+                <p>Trumpeter, bandleader and composer Miles Davis (1926–1991) stood at the front of nearly every turn jazz took after the Second World War: bebop, cool jazz, hard bop, modal jazz and fusion.</p>
+                <p>Kind of Blue, recorded in 1959 with John Coltrane, Cannonball Adderley and Bill Evans, is often called the best-selling jazz record ever made.</p>
+              </div>
+            </section>
+          </div>
+          <section class="block">
+            <h2 class="pane-label">Albums<span class="meta"><span class="keys xs" role="group" aria-label="Release type"><button aria-pressed="true">Albums</button><button aria-pressed="false">EPs and singles</button><button aria-pressed="false">Appears on</button></span></span></h2>
+            <div class="pane"><ul class="tiles row6" data-tiles="discography"></ul></div>
+          </section>
+          <section class="block">
+            <h2 class="pane-label">Similar artists</h2>
+            <div class="pane"><ul class="tiles row6 round" data-tiles="similar"></ul></div>
+          </section>
+        </div>
+
+        <!-- ============ Search ============ -->
+        <div class="page" data-page="search" hidden>
+          <label class="vfd vfdin big"><span class="anno"><span class="on">SEARCH</span></span><input value="miles davis" aria-label="Search TIDAL" spellcheck="false"><span class="anno"><span class="on">ALL</span></span></label>
+          <div class="subnav">
+            <div class="keys sm" role="group" aria-label="Result type">
+              <button aria-pressed="true">All</button><button aria-pressed="false">Tracks</button><button aria-pressed="false">Albums</button><button aria-pressed="false">Artists</button><button aria-pressed="false">Playlists</button>
+            </div>
+          </div>
+          <div class="pair">
+            <section class="block">
+              <h2 class="pane-label">Top result</h2>
+              <div class="pane">
+                <div class="topres" data-go="artist">
+                  <div class="mini" style="--c1:#0f2a44;--c2:#3f7fb5"></div>
+                  <div><h3>Miles Davis</h3><div class="kind">Artist</div><div class="actions"><button class="primary">Play</button></div></div>
+                </div>
+              </div>
+            </section>
+            <section class="block">
+              <h2 class="pane-label">Tracks</h2>
+              <div class="pane flushrows"><table><tbody data-rows="searchTracks"></tbody></table></div>
+            </section>
+          </div>
+          <section class="block">
+            <h2 class="pane-label">Albums</h2>
+            <div class="pane"><ul class="tiles row6" data-tiles="discography"></ul></div>
+          </section>
+          <section class="block">
+            <h2 class="pane-label">Playlists</h2>
+            <div class="pane"><ul class="tiles row6" data-tiles="searchPlaylists"></ul></div>
+          </section>
+        </div>
+
+        <!-- ============ Setup (settings) ============ -->
+        <div class="page" data-page="settings" hidden>
+          <div class="subnav">
+            <div class="keys sm" role="tablist" aria-label="Settings categories" id="stabs">
+              <button role="tab" data-tab="appearance" aria-pressed="false">Appearance</button><button role="tab" data-tab="playback" aria-pressed="true">Playback</button><button role="tab" data-tab="content" aria-pressed="false">Content</button><button role="tab" data-tab="connections" aria-pressed="false">Connections</button><button role="tab" data-tab="storage" aria-pressed="false">Storage</button><button role="tab" data-tab="system" aria-pressed="false">System</button>
+            </div>
+          </div>
+
+          <div class="stab" data-tab="playback">
+            <section class="block">
+              <h2 class="pane-label">Audio output</h2>
+              <div class="pane srows">
+                <div class="srow"><div class="sl"><b>Output device</b><span>Where OxiTide sends audio.</span></div>
+                  <div class="sc"><div class="stepper"><button aria-label="Previous device"><svg><use href="#i-left"/></svg></button><output>USB DAC · Speakers</output><button aria-label="Next device"><svg><use href="#i-right"/></svg></button></div></div></div>
+                <div class="srow"><div class="sl"><b>Exclusive mode</b><span>Takes over the device so its sample rate follows each track.</span></div>
+                  <div class="sc"><span class="keys sm"><button class="tog" aria-pressed="true">On</button></span></div></div>
+                <div class="srow"><div class="sl"><b>Bit-perfect output</b><span>Sends samples untouched. Switches off while EQ, ReplayGain or crossfade change the audio.</span></div>
+                  <div class="sc"><span class="led on green"><i></i>Active</span><span class="keys sm"><button class="tog" aria-pressed="true">On</button></span></div></div>
+              </div>
+            </section>
+            <section class="block">
+              <h2 class="pane-label">Sound</h2>
+              <div class="pane srows">
+                <div class="srow"><div class="sl"><b>ReplayGain</b><span>Evens out loudness between tracks or albums.</span></div>
+                  <div class="sc"><div class="keys sm" role="group" aria-label="ReplayGain"><button aria-pressed="true">Off</button><button aria-pressed="false">Track</button><button aria-pressed="false">Album</button></div></div></div>
+                <div class="srow"><div class="sl"><b>Preamp</b><span>Gain applied before ReplayGain.</span></div>
+                  <div class="sc"><div class="hf" role="slider" tabindex="0" aria-label="Preamp" data-min="-12" data-max="12" data-unit=" dB" style="--v:.5"><i></i></div><output class="val">0.0 dB</output></div></div>
+                <div class="srow"><div class="sl"><b>Crossfade</b><span>Blends the end of one track into the next. Gapless albums are left alone.</span></div>
+                  <div class="sc"><span class="keys sm"><button class="tog" aria-pressed="false">Off</button></span></div></div>
+                <div class="srow"><div class="sl"><b>Crossfade length</b></div>
+                  <div class="sc"><div class="hf" role="slider" tabindex="0" aria-label="Crossfade length" data-min="1" data-max="12" data-unit=" s" style="--v:.45"><i></i></div><output class="val">6 s</output></div></div>
+              </div>
+            </section>
+            <section class="block">
+              <h2 class="pane-label">Streaming quality</h2>
+              <div class="pane srows">
+                <div class="srow"><div class="sl"><b>Quality</b><span>Max plays Hi-Res FLAC up to 24-bit/192 kHz when available.</span></div>
+                  <div class="sc"><div class="keys sm" role="group" aria-label="Quality"><button aria-pressed="false">Low</button><button aria-pressed="false">High</button><button aria-pressed="true">Max</button></div></div></div>
+                <div class="srow"><div class="sl"><b>Show format badges</b><span>Lights the format readout on the amplifier.</span></div>
+                  <div class="sc"><span class="keys sm"><button class="tog" aria-pressed="true">On</button></span></div></div>
+              </div>
+            </section>
+          </div>
+
+          <div class="stab" data-tab="appearance" hidden>
+            <section class="block">
+              <h2 class="pane-label">Display</h2>
+              <div class="pane srows">
+                <div class="srow"><div class="sl"><b>Mode</b><span>The whole interface. Hi-Fi Rack swaps the sidebar and player bar for the rack.</span></div>
+                  <div class="sc"><div class="keys sm" role="group" aria-label="Mode"><button aria-pressed="false">Atmosphere</button><button aria-pressed="false">Instrument</button><button aria-pressed="true">Hi-Fi Rack</button></div></div></div>
+                <div class="srow"><div class="sl"><b>Theme</b><span>Light turns the faceplate silver.</span></div>
+                  <div class="sc"><div class="keys sm" role="group" aria-label="Theme"><button aria-pressed="true">Dark</button><button aria-pressed="false">Light</button></div></div></div>
+                <div class="srow"><div class="sl"><b>Lamp color</b><span>Lamps, light bars, screens and meters. Cover takes the hue of the album art but keeps the brightness of a lit screen; grey covers fall back to amber.</span></div>
+                  <div class="sc"><div class="keys sm swatches" role="group" aria-label="Lamp color" id="accentSetting"><button data-accent="amber" aria-pressed="true" style="--sw-h:64;--sw-c:.16">Amber</button><button data-accent="blue" aria-pressed="false" style="--sw-h:235;--sw-c:.14">Blue</button><button data-accent="green" aria-pressed="false" style="--sw-h:165;--sw-c:.15">Green</button><button data-accent="red" aria-pressed="false" style="--sw-h:27;--sw-c:.19">Red</button><button data-accent="white" aria-pressed="false" style="--sw-h:80;--sw-c:.025">White</button><button data-accent="cover" aria-pressed="false" class="sw-cover">Cover</button></div></div></div>
+              </div>
+            </section>
+            <section class="block">
+              <h2 class="pane-label">Rack</h2>
+              <div class="pane srows">
+                <div class="srow"><div class="sl"><b>Deck face</b><span>What the compact deck shows. The expanded deck is always the turntable.</span></div>
+                  <div class="sc"><div class="keys sm" role="group" aria-label="Deck face" id="faceSetting"><button data-face="transport" aria-pressed="true">Transport</button><button data-face="cd" aria-pressed="false">CD player</button><button data-face="display" aria-pressed="false">Display</button></div></div></div>
+                <div class="srow"><div class="sl"><b>Amp meters</b><span>Needles are analog VU. Bars and LED show peak level with a hold marker; Spectrum shows 20 bands.</span></div>
+                  <div class="sc"><div class="keys sm" role="group" aria-label="Amp meters" id="meterSetting"><button data-meter="needles" aria-pressed="true">Needles</button><button data-meter="bars" aria-pressed="false">Bars</button><button data-meter="led" aria-pressed="false">LED</button><button data-meter="spectrum" aria-pressed="false">Spectrum</button></div></div></div>
+                <div class="srow"><div class="sl"><b>Units</b><span>Optional units in the rack column.</span></div>
+                  <div class="sc"><div class="keys sm" role="group" aria-label="Units"><button class="tog-only" data-unit="eq" aria-pressed="true">EQ</button><button class="tog-only" aria-pressed="false">Spectrum</button><button class="tog-only" aria-pressed="false">Changer</button></div></div></div>
+                <div class="srow"><div class="sl"><b>Lamp brightness</b><span>Dims the lamps, light bars and screens together.</span></div>
+                  <div class="sc"><div class="hf" role="slider" tabindex="0" aria-label="Lamp brightness" data-min="20" data-max="100" data-unit=" %" style="--v:1"><i></i></div><output class="val">100 %</output></div></div>
+              </div>
+            </section>
+          </div>
+
+          <div class="stab" data-tab="content" hidden>
+            <section class="block">
+              <h2 class="pane-label">Content filters</h2>
+              <div class="pane srows">
+                <div class="srow"><div class="sl"><b>Hide explicit tracks</b></div><div class="sc"><span class="keys sm"><button class="tog" aria-pressed="false">Off</button></span></div></div>
+                <div class="srow"><div class="sl"><b>Blocked artists and tracks</b><span>Skipped everywhere, including mixes and radio.</span></div><div class="sc"><span class="count">3 artists · 7 tracks</span><span class="keys sm"><button>Manage</button></span></div></div>
+                <div class="srow"><div class="sl"><b>Show block labels</b><span>Marks blocked items in lists instead of hiding them.</span></div><div class="sc"><span class="keys sm"><button class="tog" aria-pressed="true">On</button></span></div></div>
+              </div>
+            </section>
+          </div>
+
+          <div class="stab" data-tab="connections" hidden>
+            <section class="block">
+              <h2 class="pane-label">Scrobbling</h2>
+              <div class="pane srows">
+                <div class="srow"><div class="sl"><b>Last.fm</b><span>Scrobbles after half a track or four minutes.</span></div><div class="sc"><span class="led on green"><i></i>Connected</span><span class="keys sm"><button>Disconnect</button></span></div></div>
+                <div class="srow"><div class="sl"><b>ListenBrainz</b></div><div class="sc"><span class="led"><i></i>Off</span><span class="keys sm"><button>Connect</button></span></div></div>
+              </div>
+            </section>
+            <section class="block">
+              <h2 class="pane-label">Presence and controls</h2>
+              <div class="pane srows">
+                <div class="srow"><div class="sl"><b>Discord presence</b><span>Shows what you're playing on your Discord profile.</span></div><div class="sc"><span class="keys sm"><button class="tog" aria-pressed="false">Off</button></span></div></div>
+                <div class="srow"><div class="sl"><b>Media keys</b></div><div class="sc"><span class="keys sm"><button class="tog" aria-pressed="true">On</button></span></div></div>
+              </div>
+            </section>
+          </div>
+
+          <div class="stab" data-tab="storage" hidden>
+            <section class="block">
+              <h2 class="pane-label">Cache</h2>
+              <div class="pane srows">
+                <div class="srow"><div class="sl"><b>Audio cache</b><span>Recently played tracks start instantly and play offline.</span></div>
+                  <div class="sc"><div class="vfd usage"><div class="row"><span class="anno"><span class="on">USED</span></span><span class="text">3.2 GB / 10 GB</span></div><div class="lvl"><div class="bar" style="--lv:.32"></div></div></div></div></div>
+                <div class="srow"><div class="sl"><b>Cache limit</b></div>
+                  <div class="sc"><div class="hf" role="slider" tabindex="0" aria-label="Cache limit" data-min="1" data-max="50" data-unit=" GB" style="--v:.18"><i></i></div><output class="val">10 GB</output></div></div>
+                <div class="srow"><div class="sl"><b>Clear cache</b></div><div class="sc"><span class="keys sm"><button>Clear</button></span></div></div>
+              </div>
+            </section>
+            <section class="block">
+              <h2 class="pane-label">Listening history</h2>
+              <div class="pane srows">
+                <div class="srow"><div class="sl"><b>Record history</b><span>Stays on this computer. Powers the stats on Home.</span></div><div class="sc"><span class="keys sm"><button class="tog" aria-pressed="true">On</button></span></div></div>
+                <div class="srow"><div class="sl"><b>Clear history</b></div><div class="sc"><span class="keys sm"><button>Clear</button></span></div></div>
+              </div>
+            </section>
+          </div>
+
+          <div class="stab" data-tab="system" hidden>
+            <section class="block">
+              <h2 class="pane-label">Account</h2>
+              <div class="pane srows">
+                <div class="srow"><div class="sl"><b>TIDAL</b><span>Signed in. Your token is kept in Windows Credential Manager.</span></div><div class="sc"><span class="led on green"><i></i>Signed in</span><span class="keys sm"><button>Sign out</button></span></div></div>
+              </div>
+            </section>
+            <section class="block">
+              <h2 class="pane-label">Desktop</h2>
+              <div class="pane srows">
+                <div class="srow"><div class="sl"><b>Close to tray</b><span>Closing the window keeps the music playing.</span></div><div class="sc"><span class="keys sm"><button class="tog" aria-pressed="true">On</button></span></div></div>
+              </div>
+            </section>
+            <section class="block">
+              <h2 class="pane-label">Global hotkeys</h2>
+              <div class="pane srows">
+                <div class="srow"><div class="sl"><b>Play / pause</b></div><div class="sc"><span class="kc">Ctrl</span><span class="kc">Alt</span><span class="kc">Space</span></div></div>
+                <div class="srow"><div class="sl"><b>Next track</b></div><div class="sc"><span class="kc">Ctrl</span><span class="kc">Alt</span><span class="kc">Right</span></div></div>
+                <div class="srow"><div class="sl"><b>Previous track</b></div><div class="sc"><span class="kc dim">Not set</span><span class="keys sm"><button>Record</button></span></div></div>
+              </div>
+            </section>
+          </div>
+        </div>
+        <div class="page" data-page="album" hidden>
+          <section class="block">
+            <h2 class="pane-label">Album</h2>
+            <div class="pane">
+              <div class="album-head">
+                <div class="cover"></div>
+                <div>
+                  <h1>Kind of Blue</h1>
+                  <div class="by"><a data-go="artist">Miles Davis</a></div>
+                  <div class="facts">1959 · Columbia · 5 tracks, 45 min · Hi-Res 24-bit/96 kHz</div>
+                  <div class="actions"><button class="primary">Play</button><button>Shuffle</button><button>Add to queue</button></div>
+                </div>
+              </div>
+            </div>
+          </section>
+          <section class="block">
+            <h2 class="pane-label">Tracks</h2>
+            <div class="pane flushrows">
+              <table>
+                <thead><tr><th>#</th><th>Title</th><th style="text-align:right">Time</th></tr></thead>
+                <tbody>
+                  <tr class="playing"><td class="n">1</td><td>So What</td><td class="t">9:22</td></tr>
+                  <tr><td class="n">2</td><td>Freddie Freeloader</td><td class="t">9:46</td></tr>
+                  <tr><td class="n">3</td><td>Blue in Green</td><td class="t">5:37</td></tr>
+                  <tr><td class="n">4</td><td>All Blues</td><td class="t">11:33</td></tr>
+                  <tr><td class="n">5</td><td>Flamenco Sketches</td><td class="t">9:26</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+          <div class="pair">
+            <section class="block">
+              <h2 class="pane-label">More by Miles Davis</h2>
+              <div class="pane">
+                <ul class="minis">
+                  <li><div class="mini" style="--c1:#7a1f12;--c2:#d9862b"></div><b>Sketches of Spain</b><span>1960</span></li>
+                  <li><div class="mini" style="--c1:#1d3b2c;--c2:#c9b46a"></div><b>Milestones</b><span>1958</span></li>
+                  <li><div class="mini" style="--c1:#c9c3b6;--c2:#6c6a63"></div><b>In a Silent Way</b><span>1969</span></li>
+                  <li><div class="mini" style="--c1:#2b1d3f;--c2:#b0532b"></div><b>Bitches Brew</b><span>1970</span></li>
+                </ul>
+              </div>
+            </section>
+            <section class="block">
+              <h2 class="pane-label">Album info</h2>
+              <div class="pane">
+                <dl class="info">
+                  <dt>Recorded</dt><dd>March 2 and April 22, 1959</dd>
+                  <dt>Studio</dt><dd>Columbia 30th Street Studio, New York</dd>
+                  <dt>Producer</dt><dd>Irving Townsend</dd>
+                  <dt>Personnel</dt><dd>Miles Davis, John Coltrane, Cannonball Adderley, Bill Evans, Wynton Kelly, Paul Chambers, Jimmy Cobb</dd>
+                </dl>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="cheek right" aria-hidden="true"></div>
+</div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+document.documentElement.style.setProperty("--cover",
+  "radial-gradient(circle at 70% 30%, #2f6f9f 0 18%, transparent 19%), linear-gradient(135deg, #0d2c4a, #13436b 55%, #0a1a2b)");
+
+/* ---- Direction / layout toggles ---- */
+document.querySelectorAll("#dirs button").forEach((b) => b.addEventListener("click", () => {
+  document.body.dataset.dir = b.dataset.dir;
+  document.querySelectorAll("#dirs button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+  drawMeters();
+}));
+document.querySelectorAll("#contents button").forEach((b) => b.addEventListener("click", () => {
+  document.body.dataset.content = b.dataset.content;
+  document.querySelectorAll("#contents button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+}));
+$("#screws").addEventListener("click", (e) => {
+  const on = document.body.dataset.screws === "off";
+  document.body.dataset.screws = on ? "on" : "off";
+  e.currentTarget.setAttribute("aria-pressed", String(on));
+});
+$("#expand").addEventListener("click", (e) => {
+  const on = $("#rack").classList.toggle("expanded");
+  e.currentTarget.setAttribute("aria-pressed", String(on));
+});
+$("#eqtoggle").addEventListener("click", (e) => {
+  const off = $("#eq").classList.toggle("off");
+  e.currentTarget.setAttribute("aria-pressed", String(!off));
+});
+/* ---- Pages: source keys and links switch the display ---- */
+const SOURCE_OF = { album: "library", artist: "library", playlist: "playlists" };
+function go(page) {
+  document.querySelectorAll(".screen > .page").forEach((p) => { p.hidden = p.dataset.page !== page; });
+  const src = SOURCE_OF[page] ?? page;
+  document.querySelectorAll(".src").forEach((x) => {
+    if (x.dataset.go === src) x.setAttribute("aria-current", "page"); else x.removeAttribute("aria-current");
+  });
+  $(".screen").scrollTop = 0;
+}
+document.addEventListener("click", (e) => {
+  const link = e.target.closest("[data-go]");
+  if (link && !e.target.closest(".actions")) go(link.dataset.go);
+});
+
+const P = [["#7a1f12","#d9862b"],["#1d3b2c","#c9b46a"],["#c9c3b6","#6c6a63"],["#2b1d3f","#b0532b"],["#0f2a44","#3f7fb5"],["#3a1030","#c2507a"],
+  ["#12332f","#5fb3a1"],["#402a10","#e0b04f"],["#1a1a1a","#7d7d7d"],["#28123f","#6f5bd6"],["#3b0f0f","#d0463a"],["#10263a","#9cc4e4"]];
+const T = (title, sub, i, to = "album") => ({ title, sub, c: P[i % P.length], to });
+const TILES = {
+  recent: [T("Kind of Blue","Miles Davis",4), T("A Love Supreme","John Coltrane",8), T("Blue Train","John Coltrane",11), T("Mingus Ah Um","Charles Mingus",10), T("Time Out","The Dave Brubeck Quartet",7), T("Moanin’","Art Blakey & The Jazz Messengers",3)],
+  mixes: [T("My Mix 1","Coltrane, Monk, Mingus",9,"playlist"), T("My Mix 2","Bill Evans, Chet Baker",6,"playlist"), T("Daily Discovery","New to you, every day",0,"playlist")],
+  fresh: [T("Sonicwonderland","Hiromi",5), T("Promises","Floating Points",6), T("LongGone","Joshua Redman",1), T("Fearless Movement","Kamasi Washington",0), T("The Omnichord Real Book","Meshell Ndegeocello",9), T("Love in Exile","Arooj Aftab",2)],
+  library: [T("Kind of Blue","Miles Davis",4), T("A Love Supreme","John Coltrane",8), T("Blue Train","John Coltrane",11), T("Mingus Ah Um","Charles Mingus",10), T("Time Out","The Dave Brubeck Quartet",7), T("Moanin’","Art Blakey",3), T("Waltz for Debby","Bill Evans Trio",6), T("Chet Baker Sings","Chet Baker",2), T("Speak No Evil","Wayne Shorter",9), T("Maiden Voyage","Herbie Hancock",11), T("Somethin’ Else","Cannonball Adderley",1), T("Head Hunters","Herbie Hancock",0)],
+  playlists: [T("Late Night Jazz","42 tracks",4,"playlist"), T("Focus","120 tracks",6,"playlist"), T("Sunday Morning","38 tracks",7,"playlist"), T("Hi-Res Showcase","25 tracks",9,"playlist"), T("Running","64 tracks",10,"playlist"), T("Road Trip","88 tracks",0,"playlist"), T("Ambient Evenings","51 tracks",11,"playlist"), T("Favourites 2025","100 tracks",5,"playlist")],
+  discography: [T("Kind of Blue","1959",4), T("Sketches of Spain","1960",0), T("Milestones","1958",1), T("In a Silent Way","1969",2), T("Bitches Brew","1970",3), T("’Round About Midnight","1957",8)],
+  similar: [T("John Coltrane","Artist",8,"artist"), T("Bill Evans","Artist",6,"artist"), T("Thelonious Monk","Artist",10,"artist"), T("Cannonball Adderley","Artist",1,"artist"), T("Chet Baker","Artist",2,"artist"), T("Herbie Hancock","Artist",11,"artist")],
+  searchPlaylists: [T("Miles Davis Essentials","TIDAL",4,"playlist"), T("Miles in the Sixties","TIDAL",9,"playlist"), T("Electric Miles","TIDAL",3,"playlist"), T("Cool Jazz","TIDAL",11,"playlist"), T("Modal Jazz","TIDAL",6,"playlist"), T("Jazz Trumpet","TIDAL",0,"playlist")],
+};
+document.querySelectorAll("[data-tiles]").forEach((ul) => {
+  ul.innerHTML = TILES[ul.dataset.tiles].map((t) =>
+    `<li data-go="${t.to}"><div class="mini" style="--c1:${t.c[0]};--c2:${t.c[1]}"></div><b>${t.title}</b><span>${t.sub}</span></li>`).join("");
+});
+const CHIPS = {
+  genres: [["Jazz","#3f7fb5"],["Classical","#c9b46a"],["Electronic","#6f5bd6"],["Hip-hop","#d0463a"],["Rock","#b0532b"],["Soul and R&B","#c2507a"],["Folk","#5fb3a1"],["Blues","#3f6fb5"],["Pop","#e0b04f"],["Ambient","#9cc4e4"],["Latin","#d9862b"],["Country","#a08050"]],
+  moods: [["Late night","#3f7fb5"],["Focus","#5fb3a1"],["Workout","#d0463a"],["Dinner","#e0b04f"],["Chill","#9cc4e4"],["Party","#c2507a"]],
+};
+document.querySelectorAll("[data-chips]").forEach((d) => {
+  d.innerHTML = CHIPS[d.dataset.chips].map(([n, c]) => `<button class="chip" style="--c:${c}">${n}</button>`).join("");
+});
+const ROWS = {
+  playlist: [["Blue in Green","Miles Davis","Kind of Blue","5:37"],["Naima","John Coltrane","Giant Steps","4:21"],["Peace Piece","Bill Evans","Everybody Digs Bill Evans","6:42"],["’Round Midnight","Thelonious Monk","Genius of Modern Music","3:11"],["My Funny Valentine","Chet Baker","Chet Baker Sings","2:20"],["In a Sentimental Mood","Duke Ellington, John Coltrane","Duke Ellington & John Coltrane","4:16"],["Goodbye Pork Pie Hat","Charles Mingus","Mingus Ah Um","5:44"],["Lush Life","John Coltrane, Johnny Hartman","John Coltrane and Johnny Hartman","5:20"]],
+  top: [["So What","Kind of Blue","9:22"],["Blue in Green","Kind of Blue","5:37"],["It Never Entered My Mind","Workin’","5:26"],["Freddie Freeloader","Kind of Blue","9:46"],["’Round Midnight","’Round About Midnight","5:58"]],
+  searchTracks: [["So What","Kind of Blue","9:22"],["Blue in Green","Kind of Blue","5:37"],["Milestones","Milestones","5:47"],["All Blues","Kind of Blue","11:33"]],
+};
+document.querySelectorAll("[data-rows]").forEach((tb) => {
+  const kind = tb.dataset.rows;
+  tb.innerHTML = ROWS[kind].map((r, i) => {
+    const cells = r.slice(0, -1).map((c, j) => `<td${j > 0 ? ' class="al"' : ""}>${c}</td>`).join("");
+    return `<tr${kind !== "playlist" && i === 0 ? ' class="playing"' : ""}><td class="n">${i + 1}</td>${cells}<td class="t">${r.at(-1)}</td></tr>`;
+  }).join("");
+});
+
+/* Setup tabs, segmented keys, toggles and horizontal faders. */
+document.querySelectorAll("#stabs button").forEach((b) => b.addEventListener("click", () => {
+  document.querySelectorAll("#stabs button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+  document.querySelectorAll(".stab").forEach((p) => { p.hidden = p.dataset.tab !== b.dataset.tab; });
+}));
+document.querySelectorAll(".keys[role=group]:not(#faceSetting):not(#accentSetting):not(#meterSetting)").forEach((g) => g.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
+  if (b.classList.contains("tog-only")) { b.setAttribute("aria-pressed", String(b.getAttribute("aria-pressed") !== "true")); return; }
+  g.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+})));
+document.querySelectorAll(".tog").forEach((b) => b.addEventListener("click", () => {
+  const on = b.getAttribute("aria-pressed") !== "true";
+  b.setAttribute("aria-pressed", String(on)); b.textContent = on ? "On" : "Off";
+}));
+document.querySelectorAll(".hf").forEach((f) => {
+  const out = f.nextElementSibling, min = +f.dataset.min, max = +f.dataset.max, unit = f.dataset.unit;
+  const set = (v) => {
+    v = Math.max(0, Math.min(1, v)); f.style.setProperty("--v", v);
+    const x = min + v * (max - min);
+    const txt = (unit === " dB" ? (x > 0 ? "+" : "") + x.toFixed(1) : Math.round(x)) + unit;
+    out.textContent = txt; f.setAttribute("aria-valuetext", txt); f.setAttribute("aria-valuenow", x.toFixed(1));
+    f.setAttribute("aria-valuemin", min); f.setAttribute("aria-valuemax", max);
+  };
+  set(+f.style.getPropertyValue("--v"));
+  f.addEventListener("pointerdown", (e) => {
+    f.setPointerCapture(e.pointerId);
+    const at = (m) => { const b = f.getBoundingClientRect(); set((m.clientX - b.left) / b.width); };
+    at(e); f.addEventListener("pointermove", at);
+    f.addEventListener("pointerup", () => f.removeEventListener("pointermove", at), { once: true });
+  });
+  f.addEventListener("keydown", (e) => {
+    const d = { ArrowRight: .05, ArrowUp: .05, ArrowLeft: -.05, ArrowDown: -.05 }[e.key];
+    if (d) { e.preventDefault(); set(+f.style.getPropertyValue("--v") + d); }
+  });
+});
+
+
+/* ---- Seven-segment readout ---- */
+const SEG = { 0:"abcdef",1:"bc",2:"abged",3:"abgcd",4:"fgbc",5:"afgcd",6:"afgedc",7:"abc",8:"abcdefg",9:"abcfgd" };
+const POLY = {
+  a:"3,1 17,1 15,4 5,4", b:"18,2 18,16 15,15 15,5", c:"18,20 18,34 15,31 15,21",
+  d:"3,35 17,35 15,32 5,32", e:"2,20 2,34 5,31 5,21", f:"2,2 2,16 5,15 5,5", g:"3,18 5,16.5 15,16.5 17,18 15,19.5 5,19.5",
+};
+function digit(d, x) {
+  return Object.entries(POLY).map(([k, p]) =>
+    `<polygon transform="translate(${x} 0) skewX(-6)" points="${p}" class="${SEG[d].includes(k) ? "on" : "off"}"/>`).join("");
+}
+function renderTime(sec) {
+  const m = Math.floor(sec / 60), s = Math.floor(sec % 60);
+  const ds = [m, Math.floor(s / 10), s % 10];
+  const svg = `<svg viewBox="0 0 74 36">${digit(ds[0], 4)}<circle cx="27" cy="12" r="1.7" class="on"/><circle cx="25.6" cy="25" r="1.7" class="on"/>${digit(ds[1], 32)}${digit(ds[2], 54)}</svg>`;
+  $("#time").innerHTML = svg;
+  $("#time").setAttribute("aria-label", `Elapsed ${m}:${String(s).padStart(2, "0")}`);
+  $("#clock").textContent = `${m}:${String(s).padStart(2, "0")}`;
+}
+
+/* ---- VU meters ---- */
+const VU = [-20,-10,-7,-5,-3,-2,-1,0,1,2,3];
+const PIV = { x: 100, y: 150 }, R = 112;
+const posOf = (db) => (Math.pow(10, db / 20) - 0.1) / (Math.pow(10, 3 / 20) - 0.1);
+const angOf = (p) => (-46 + p * 92) * Math.PI / 180;
+function pt(a, r) { return [PIV.x + Math.sin(a) * r, PIV.y - Math.cos(a) * r]; }
+function arc(a0, a1, r) { const [x0,y0] = pt(a0,r), [x1,y1] = pt(a1,r); return `M${x0} ${y0} A${r} ${r} 0 0 1 ${x1} ${y1}`; }
+function drawMeter(svg, ch) {
+  const cs = getComputedStyle(document.body);
+  const ink = "var(--meter-ink)", red = "var(--meter-red)", face = "var(--meter-face)";
+  let s = `<foreignObject x="0" y="0" width="200" height="129"><div xmlns="http://www.w3.org/1999/xhtml" style="width:200px;height:129px;background:${face}"></div></foreignObject>`;
+  s += `<path d="${arc(angOf(0), angOf(posOf(0)), R)}" style="stroke:${ink}" stroke-width="1.6" fill="none"/>`;
+  s += `<path d="${arc(angOf(posOf(0)), angOf(1), R)}" style="stroke:${red}" stroke-width="5" fill="none"/>`;
+  for (const db of VU) {
+    const a = angOf(posOf(db)), major = [-20,-10,-5,-3,0,3].includes(db) || db === -7;
+    const [x0,y0] = pt(a, R - (major ? 9 : 6)), [x1,y1] = pt(a, R + 1);
+    s += `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" style="stroke:${db > 0 ? red : ink}" stroke-width="${major ? 1.6 : 1}"/>`;
+    const [tx,ty] = pt(a, R + 9);
+    s += `<text x="${tx}" y="${ty}" font-size="8.5" font-weight="700" text-anchor="middle" style="fill:${db > 0 ? red : ink}" font-family="Manrope">${db > 0 ? "+" + db : Math.abs(db)}</text>`;
+  }
+  for (let p = 0; p <= 1.0001; p += 0.25) {             // percent modulation scale under the arc
+    const [x0,y0] = pt(angOf(p * posOf(0)), R - 16), [x1,y1] = pt(angOf(p * posOf(0)), R - 20);
+    s += `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" style="stroke:${ink}" stroke-width=".8" opacity=".6"/>`;
+  }
+  s += `<text x="100" y="92" font-size="17" font-weight="${cs.getPropertyValue("--meter-title-weight").trim() || 800}" text-anchor="middle" style="fill:${ink}" font-family="${cs.getPropertyValue("--meter-title-font").trim() || "Fraunces"}" font-style="${cs.getPropertyValue("--meter-title-style").trim() || "italic"}">VU</text>`;
+  s += `<text x="22" y="118" font-size="9" font-weight="700" style="fill:${ink}" font-family="Manrope" opacity=".75">${ch}</text>`;
+  s += `<text x="${pt(angOf(0), R - 26)[0] + 6}" y="${pt(angOf(0), R - 26)[1]}" font-size="7" style="fill:${ink}" opacity=".6" font-family="Manrope">−</text>`;
+  s += `<text x="${pt(angOf(1), R - 26)[0] - 10}" y="${pt(angOf(1), R - 26)[1]}" font-size="7" style="fill:${red}" opacity=".9" font-family="Manrope">+</text>`;
+  s += `<line class="needle" x1="${PIV.x}" y1="${PIV.y}" x2="${PIV.x}" y2="${PIV.y - R - 4}" style="stroke:var(--needle)" stroke-width="1.4"/>`;
+  s += `<rect x="0" y="124" width="200" height="5" fill="rgba(0,0,0,.5)"/><ellipse cx="100" cy="146" rx="26" ry="18" fill="#141210"/>`;
+  svg.innerHTML = s;
+}
+function drawMeters() { drawMeter($("#mL"), "L"); drawMeter($("#mR"), "R"); }
+drawMeters();
+
+/* ---- EQ faders: real sliders (drag, wheel, keys) + presets ---- */
+const bands = ["31","62","125","250","500","1k","2k","4k","8k","16k"];
+const PRESETS = { flat: [0,0,0,0,0,0,0,0,0,0], loud: [4,2.5,1,0,-1,-1.5,0,1.5,3,4.5], vocal: [-3,-2,-1,0,2,3.5,3,1.5,0,-1] };
+const gains = PRESETS.loud.slice();
+$("#faders").innerHTML = bands.map((b) =>
+  `<div class="fader"><div class="slot" role="slider" aria-label="${b} Hz" aria-valuemin="-12" aria-valuemax="12" tabindex="0"><span class="ladder"></span><div class="cap"></div></div><span>${b}</span></div>`).join("");
+const slots = [...document.querySelectorAll("#faders .slot")];
+function setGain(i, g, fromPreset) {
+  gains[i] = Math.round(Math.min(12, Math.max(-12, g)) * 2) / 2;
+  const el = slots[i];
+  el.querySelector(".cap").style.top = `calc(${(12 - gains[i]) / 24 * 100}% - 6.5px)`;
+  el.setAttribute("aria-valuenow", gains[i]);
+  el.setAttribute("aria-valuetext", `${gains[i] > 0 ? "+" : ""}${gains[i]} dB`);
+  if (!fromPreset) document.querySelectorAll(".preset").forEach((p) => p.setAttribute("aria-checked", "false"));
+}
+slots.forEach((el, i) => {
+  setGain(i, gains[i], true);
+  el.addEventListener("keydown", (e) => {
+    const step = { ArrowUp: .5, ArrowRight: .5, ArrowDown: -.5, ArrowLeft: -.5, PageUp: 3, PageDown: -3 }[e.key];
+    if (step !== undefined) { setGain(i, gains[i] + step); e.preventDefault(); }
+    if (e.key === "Home") setGain(i, -12); if (e.key === "End") setGain(i, 12);
+  });
+  el.addEventListener("wheel", (e) => { setGain(i, gains[i] - Math.sign(e.deltaY) * .5); e.preventDefault(); }, { passive: false });
+  el.addEventListener("pointerdown", (e) => {
+    el.setPointerCapture(e.pointerId);
+    const at = (m) => { const r = el.getBoundingClientRect(); setGain(i, 12 - ((m.clientY - r.top) / r.height) * 24); };
+    at(e);
+    el.addEventListener("pointermove", at);
+    el.addEventListener("pointerup", () => el.removeEventListener("pointermove", at), { once: true });
+  });
+});
+document.querySelectorAll(".preset").forEach((p) => p.addEventListener("click", () => {
+  document.querySelectorAll(".preset").forEach((x) => x.setAttribute("aria-checked", String(x === p)));
+  PRESETS[p.dataset.preset].forEach((g, i) => setGain(i, g, true));
+}));
+
+/* ---- Lit lens buttons: real toggles. EQ/ReplayGain alter samples, so
+   either one drops the Bit-perfect lamp (Track 7 rule). ---- */
+document.querySelectorAll(".lit").forEach((b) => b.addEventListener("click", () => {
+  b.setAttribute("aria-pressed", String(b.getAttribute("aria-pressed") !== "true"));
+  const altering = [...document.querySelectorAll(".lit[data-dsp=eq], .lit[data-dsp=rg]")].some((x) => x.getAttribute("aria-pressed") === "true");
+  $("#bp").classList.toggle("on", !altering);
+}));
+
+/* ---- Volume LED ring (E) ---- */
+const RING = 23;
+$("#ring").innerHTML = Array.from({ length: RING }, (_, i) => {
+  const a = (-135 + (i / (RING - 1)) * 270) * Math.PI / 180;
+  return `<i style="transform: translate(${Math.sin(a) * 35}px, ${-Math.cos(a) * 35}px)"></i>`;
+}).join("");
+const ringDots = [...document.querySelectorAll("#ring i")];
+
+/* ---- Spectrum ---- */
+$("#spectrum").innerHTML = Array.from({ length: 28 }, () => `<div class="bar"></div>`).join("");
+const bars = [...document.querySelectorAll("#spectrum .bar")];
+
+/* ---- Volume knob (real slider semantics) ---- */
+const knob = $("#knob");
+let vol = 0.55;
+function setVol(v) {
+  vol = Math.min(1, Math.max(0, v));
+  knob.style.setProperty("--v", vol);
+  knob.setAttribute("aria-valuenow", Math.round(vol * 100));
+  knob.setAttribute("aria-valuetext", `${Math.round(vol * 100)} percent`);
+  ringDots.forEach((d, i) => d.classList.toggle("on", i / (RING - 1) <= vol + 1e-6 && vol > 0));
+}
+knob.addEventListener("keydown", (e) => {
+  const step = { ArrowUp: .02, ArrowRight: .02, ArrowDown: -.02, ArrowLeft: -.02, PageUp: .1, PageDown: -.1 }[e.key];
+  if (step !== undefined) { setVol(vol + step); e.preventDefault(); }
+  if (e.key === "Home") setVol(0); if (e.key === "End") setVol(1);
+});
+knob.addEventListener("wheel", (e) => { setVol(vol - Math.sign(e.deltaY) * .02); e.preventDefault(); }, { passive: false });
+knob.addEventListener("pointerdown", (e) => {
+  knob.setPointerCapture(e.pointerId);
+  const y0 = e.clientY, v0 = vol;
+  const move = (m) => setVol(v0 + (y0 - m.clientY) / 200);
+  knob.addEventListener("pointermove", move);
+  knob.addEventListener("pointerup", () => knob.removeEventListener("pointermove", move), { once: true });
+});
+
+/* ---- Transport ---- */
+let playing = true;
+$("#play").addEventListener("click", () => {
+  playing = !playing;
+  $("#play").innerHTML = `<svg><use href="#i-${playing ? "pause" : "play"}"/></svg>`;
+  $("#play").setAttribute("aria-label", playing ? "Pause" : "Play");
+  $("#play").classList.toggle("on", playing);
+  document.documentElement.style.setProperty("--spin", playing ? "running" : "paused");
+});
+
+/* ---- Simulated signal with VU ballistics ---- */
+let t = 134, last = performance.now();
+const needle = { L: 0, R: 0 }, spec = new Array(28).fill(0);
+function level(time, ch) {
+  const beat = Math.pow(Math.max(0, Math.sin(time * Math.PI * 2 * 2.1)), 8);
+  const swell = 0.55 + 0.25 * Math.sin(time * 0.37 + ch) + 0.1 * Math.sin(time * 1.7 + ch * 2);
+  return Math.max(0, swell + 0.35 * beat + (Math.random() - .5) * 0.18);
+}
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (playing) t += dt;
+  const k = 1 - Math.exp(-dt / 0.3);                     // ~300 ms VU integration
+  for (const [ch, id] of [["L", "#mL"], ["R", "#mR"]]) {
+    const target = playing ? level(t, ch === "L" ? 0 : 1.3) * vol * 1.5 : 0;
+    needle[ch] += (target - needle[ch]) * k;
+    inst[ch] = target;
+    const db = 20 * Math.log10(Math.max(needle[ch], 0.0001));
+    const p = Math.min(1.04, Math.max(-0.04, posOf(db)));
+    const a = -46 + p * 92;
+    const el = document.querySelector(id + " .needle");
+    if (el) el.setAttribute("transform", `rotate(${a} ${PIV.x} ${PIV.y})`);
+    vfdEl.style.setProperty("--lv" + ch, Math.max(0, Math.min(1, p)).toFixed(3));
+  }
+  if (!$("#rack").classList.contains("expanded")) { /* spectrum idle when hidden */ }
+  else bars.forEach((b, i) => {
+    const tilt = 1 - i / 34;
+    const target = playing ? Math.min(1, level(t * (1 + i * .07), i) * tilt * vol * 1.4) : 0;
+    spec[i] = target > spec[i] ? target : spec[i] - dt * 1.2;
+    b.style.setProperty("--h", `${Math.max(3, spec[i] * 100)}%`);
+  });
+  updateDigital(dt, now);
+  renderTime(t);
+  const prog = (t % 562) / 562;                          // So What: 9:22
+  $("#arm").setAttribute("transform", `rotate(${prog * 22} 170 30)`);
+  setSeek(prog);
+  renderRemain(prog);
+  if (!reduce) requestAnimationFrame(frame);
+}
+/* ---- Lamp colour: presets are a hue + chroma; brightness is fixed, so
+   every choice (and every cover) reads as a lit screen, never a flat UI tint. ---- */
+const ACCENTS = { amber: [64, .16], blue: [235, .14], green: [165, .15], red: [27, .19], white: [80, .025] };
+const COVERS = [
+  { css: "radial-gradient(circle at 70% 30%, #2f6f9f 0 18%, transparent 19%), linear-gradient(135deg, #0d2c4a, #13436b 55%, #0a1a2b)", sw: ["#0d2c4a", "#2f6f9f"] },
+  { css: "linear-gradient(140deg, #7a1f12, #d9862b)", sw: ["#7a1f12", "#d9862b"] },
+  { css: "linear-gradient(140deg, #1d3b2c, #5fb3a1)", sw: ["#1d3b2c", "#5fb3a1"] },
+  { css: "linear-gradient(140deg, #c9c3b6, #6c6a63)", sw: ["#c9c3b6", "#6c6a63"] },
+  { css: "linear-gradient(140deg, #28123f, #6f5bd6)", sw: ["#28123f", "#6f5bd6"] },
+];
+let accent = "amber", coverIx = 0;
+function oklchOf(hex) {               // sRGB hex -> [L, C, h] (OKLab)
+  const lin = (v) => (v /= 255) <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  const [r, g, b] = [1, 3, 5].map((i) => lin(parseInt(hex.slice(i, i + 2), 16)));
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const q = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  const L = 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * q;
+  const A = 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * q;
+  const B = 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * q;
+  return [L, Math.hypot(A, B), (Math.atan2(B, A) * 180 / Math.PI + 360) % 360];
+}
+function coverHue() {                 // most vivid swatch; near-grey covers keep amber
+  const best = COVERS[coverIx].sw.map(oklchOf).sort((x, y) => y[1] - x[1])[0];
+  return best[1] < 0.05 ? ACCENTS.amber : [best[2], 0.15];
+}
+function applyAccent() {
+  const [h, c] = accent === "cover" ? coverHue() : ACCENTS[accent];
+  document.body.style.setProperty("--ah", h.toFixed(1));
+  document.body.style.setProperty("--ac", c);
+  document.body.dataset.accent = accent;
+  document.querySelectorAll("#accents button, #accentSetting button").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.accent === accent)));
+}
+document.querySelectorAll("#accents button, #accentSetting button").forEach((b) => b.addEventListener("click", () => { accent = b.dataset.accent; applyAccent(); }));
+document.querySelectorAll("#covers button").forEach((b) => b.addEventListener("click", () => {
+  coverIx = +b.dataset.cover;
+  document.documentElement.style.setProperty("--cover", COVERS[coverIx].css);
+  document.querySelectorAll("#covers button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+  applyAccent();
+}));
+
+/* ---- Amp meter style ---- */
+function setMeter(m) {
+  document.body.dataset.meter = m;
+  document.querySelectorAll("#meterModes button, #meterSetting button").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.meter === m)));
+}
+document.querySelectorAll("#meterModes button, #meterSetting button").forEach((b) => b.addEventListener("click", () => setMeter(b.dataset.meter)));
+
+/* Digital meters: peak ballistics (instant attack, 1.5 s hold, slow fall),
+   dB scale -40..+3 dBFS. Fed by the same level tap as the needles. */
+const inst = { L: 0, R: 0 };
+const DB_MIN = -40, DB_MAX = 3, fracOf = (db) => Math.max(0, Math.min(1, (db - DB_MIN) / (DB_MAX - DB_MIN)));
+const LED_STEPS = [-40, -30, -24, -20, -17, -14, -12, -10, -8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3];
+const pk = { L: { v: 0, hold: 0, peak: 0 }, R: { v: 0, hold: 0, peak: 0 } };
+const mspecBars = [];
+(function buildDigital() {
+  const ticks = [-40, -30, -20, -10, -6, -3, 0, 3];
+  document.querySelectorAll("[data-scale]").forEach((el) => {
+    el.innerHTML = ticks.map((d) => `<span style="left:${fracOf(d) * 100}%">${d > 0 ? "+" + d : d}</span>`).join("");
+  });
+  document.querySelectorAll(".ledline").forEach((el) => {
+    el.innerHTML = LED_STEPS.map((d) => `<i class="${d > 0 ? "hot" : ""}"></i>`).join("");
+  });
+  document.querySelector(".ledscale").innerHTML = LED_STEPS.map((d) => `<span>${[-40, -20, -10, -6, -3, 0, 3].includes(d) ? (d > 0 ? "+" + d : d) : ""}</span>`).join("");
+  const ms = document.getElementById("mspec");
+  for (let i = 0; i < 20; i++) { const b = document.createElement("div"); b.className = "mb"; b.innerHTML = "<i></i>"; ms.appendChild(b); mspecBars.push({ el: b, v: 0, cap: 0 }); }
+})();
+function updateDigital(dt, now) {
+  const mode = document.body.dataset.meter;
+  if (mode === "needles") return;
+  if (mode === "spectrum") {
+    mspecBars.forEach((b, i) => {
+      const target = playing ? Math.min(1, level(t * (1 + i * .09), i * .7) * (1 - i / 30) * vol * 1.35) : 0;
+      b.v = target > b.v ? target : Math.max(0, b.v - dt * 1.4);
+      b.cap = b.v > b.cap ? b.v : Math.max(0, b.cap - dt * .35);
+      b.el.style.setProperty("--h", (b.v * 100).toFixed(1) + "%");
+      b.el.style.setProperty("--cap", (b.cap * 100).toFixed(1) + "%");
+    });
+    return;
+  }
+  let maxDb = -99;
+  for (const ch of ["L", "R"]) {
+    const db = 20 * Math.log10(Math.max(inst[ch] * 1.4, 0.0001)) + (Math.random() - .5) * 1.5;
+    const p = pk[ch];
+    p.v = db > p.v ? db : p.v - dt * 24;                   // 24 dB/s fall
+    if (db >= p.peak) { p.peak = db; p.hold = now; } else if (now - p.hold > 1500) p.peak -= dt * 12;
+    maxDb = Math.max(maxDb, p.peak);
+    if (mode === "bars") {
+      const row = document.querySelector(`.dbar[data-ch="${ch}"]`);
+      row.style.setProperty("--f", fracOf(p.v).toFixed(3));
+      row.style.setProperty("--pk", fracOf(p.peak).toFixed(3));
+    } else {
+      const leds = document.querySelectorAll(`.ledrow[data-ch="${ch}"] i`);
+      const pkIx = LED_STEPS.findLastIndex((d) => p.peak >= d);
+      leds.forEach((el, i) => { el.classList.toggle("on", p.v >= LED_STEPS[i]); el.classList.toggle("pk", i === pkIx && p.v < LED_STEPS[i]); });
+    }
+  }
+  if (mode === "bars") $("#pkread").textContent = (maxDb > 0 ? "+" : "") + Math.max(-40, maxDb).toFixed(1) + " dB";
+}
+
+/* ---- Deck faces ---- */
+function setFace(f) {
+  document.body.dataset.face = f;
+  document.querySelectorAll("#faces button, #faceSetting button").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.face === f)));
+}
+document.querySelectorAll("#faces button, #faceSetting button").forEach((b) => b.addEventListener("click", () => setFace(b.dataset.face)));
+const TRACKS = [562, 586, 337, 693, 566];
+$("#cal").innerHTML = Array.from({ length: 20 }, (_, i) =>
+  `<span class="${i === 0 ? "has cur" : i < TRACKS.length ? "has" : ""}">${i + 1}</span>`).join("");
+const vfdEl = $("#vfd");
+function renderRemain(prog) {
+  const left = TRACKS[0] * (1 - prog) + TRACKS.slice(1).reduce((a, b) => a + b, 0);
+  $("#remain").textContent = "-" + mmss(left);
+}
+
+/* ---- VFD seek bar: a real slider ---- */
+const DUR = 562, seek = $("#seek");
+const mmss = (x) => `${Math.floor(x / 60)}:${String(Math.floor(x % 60)).padStart(2, "0")}`;
+function setSeek(p) {
+  seek.style.setProperty("--p", p);
+  seek.setAttribute("aria-valuenow", Math.round(p * DUR));
+  seek.setAttribute("aria-valuetext", `${mmss(p * DUR)} of ${mmss(DUR)}`);
+}
+const seekTo = (x) => { t = Math.max(0, Math.min(DUR - 1, x)); setSeek(t / DUR); renderTime(t); };
+seek.addEventListener("pointerdown", (e) => {
+  seek.setPointerCapture(e.pointerId);
+  const at = (m) => { const b = seek.getBoundingClientRect(); seekTo((m.clientX - b.left) / b.width * DUR); };
+  at(e);
+  seek.addEventListener("pointermove", at);
+  seek.addEventListener("pointerup", () => seek.removeEventListener("pointermove", at), { once: true });
+});
+seek.addEventListener("keydown", (e) => {
+  const d = { ArrowRight: 5, ArrowUp: 5, ArrowLeft: -5, ArrowDown: -5, PageUp: 30, PageDown: -30 }[e.key];
+  if (d) { e.preventDefault(); seekTo((t % DUR) + d); }
+  if (e.key === "Home") { e.preventDefault(); seekTo(0); }
+});
+/* Shuffle / Repeat keys drive their VFD annunciators. */
+document.querySelectorAll("[data-mode-key]").forEach((k) => k.addEventListener("click", () => queueMicrotask(() => {
+  const a = document.querySelector(`[data-anno="${k.dataset.modeKey}"]`);
+  a.classList.toggle("on", k.getAttribute("aria-pressed") === "true");
+})));
+
+if (reduce) { renderTime(t); needle.L = needle.R = .7; } else requestAnimationFrame(frame);
+setVol(vol);
+applyAccent();
+setSeek((t % DUR) / DUR);
+renderRemain((t % DUR) / DUR);
+</script>
+</body>
+</html>
