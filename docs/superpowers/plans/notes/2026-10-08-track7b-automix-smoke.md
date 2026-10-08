@@ -52,6 +52,26 @@ Verdict: keep / drop / tune — notes:
 
 Verdict: keep / drop / tune — notes:
 
+## D2. Transition styles and the replay lab (Track 7b.2, 2026-10-08)
+
+Plan: `plans/2026-10-08-track7b-2-transition-styles.md`. Crossfade 6 s, any AutoMix option on.
+Let one track end on its own (Jump near the end now seeks 35 s back), then use **Replay last
+transition as: Classic / Quick / Blend** to hear the same pair three ways. Replays pause
+playback and skip EQ/ReplayGain; the line under the buttons gives the overlap position in the
+replay (it starts ~6 s in) and what was cut.
+
+12a. Rock pair (fade-out ending) — Classic vs Quick vs Blend. Is Quick's incoming entry on time
+     (lands as the old track dies away, no dead air)? Does Blend's cut of the fade feel natural?
+12b. Phonk/pop pair (hard or looped ending, loud cold open) — Quick should not fade in the
+     opening hit ("next track opens loud"); Blend's bass swap: no double kick/808 mud.
+12c. A slow-intro incoming track — Blend skips into the intro ("Cut: … of the intro"); is the
+     skip acceptable or too greedy (cap 8 s)?
+12d. Blend + Beat-match on a same-tempo pair: readout "Blend (beat-matched)"; does the bass swap
+     land on the beat?
+12e. Pick a style and live-play ~10 transitions: does the live result match its replay?
+
+Verdict per style: keep / drop / tune — notes:
+
 ## E. Regression rows (PM-D1)
 
 13. AutoMix toggles off: gapless album playback (S4) and time-to-first-sound (S3) feel unchanged.
