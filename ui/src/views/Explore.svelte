@@ -171,21 +171,22 @@
       activeSuggestion = -1;
     }}
     placeholder="Search TIDAL"
+    aria-label="Search TIDAL"
     autocomplete="off"
     spellcheck="false"
+    role="combobox"
+    aria-autocomplete="list"
     aria-expanded={showSuggestions}
     aria-controls="search-suggestions"
+    aria-activedescendant={showSuggestions && activeSuggestion >= 0
+      ? `search-suggestion-${activeSuggestion}`
+      : undefined}
   />
   {#if search.loading && search.results}
     <Loading label="Searching…" />
   {/if}
   {#if showSuggestions}
-    <div
-      class="suggest"
-      id="search-suggestions"
-      role="listbox"
-      aria-label="Recent searches"
-    >
+    <div class="suggest">
       <div class="suggest-head">
         <span>Recent searches</span>
         <button
@@ -197,21 +198,26 @@
           onclick={clearHistory}
         ><Icon name="x" size={14} /></button>
       </div>
-      {#each suggestions as suggestion, i (suggestion)}
-        <button
-          type="button"
-          role="option"
-          aria-selected={i === activeSuggestion}
-          class:active={i === activeSuggestion}
-          onmouseenter={() => (activeSuggestion = i)}
-          onmouseleave={() => (activeSuggestion = -1)}
-          onmousedown={(event) => event.preventDefault()}
-          onclick={() => chooseSuggestion(suggestion)}
-        >
-          <span class="suggest-icon"><Icon name="search" size={14} /></span>
-          <span class="suggest-text">{suggestion}</span>
-        </button>
-      {/each}
+      <!-- The listbox wraps only the options; focus stays in the combobox. -->
+      <div id="search-suggestions" role="listbox" aria-label="Recent searches">
+        {#each suggestions as suggestion, i (suggestion)}
+          <button
+            id={`search-suggestion-${i}`}
+            type="button"
+            role="option"
+            tabindex="-1"
+            aria-selected={i === activeSuggestion}
+            class:active={i === activeSuggestion}
+            onmouseenter={() => (activeSuggestion = i)}
+            onmouseleave={() => (activeSuggestion = -1)}
+            onmousedown={(event) => event.preventDefault()}
+            onclick={() => chooseSuggestion(suggestion)}
+          >
+            <span class="suggest-icon"><Icon name="search" size={14} /></span>
+            <span class="suggest-text">{suggestion}</span>
+          </button>
+        {/each}
+      </div>
     </div>
   {/if}
 </div>
@@ -357,7 +363,7 @@
   .suggest-clear:hover {
     color: var(--text);
   }
-  .suggest > button {
+  .suggest [role="option"] {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -372,8 +378,8 @@
     flex: 0 0 auto;
     color: var(--text-muted);
   }
-  .suggest > button:hover,
-  .suggest > button.active {
+  .suggest [role="option"]:hover,
+  .suggest [role="option"].active {
     background: var(--surface-2);
   }
   .suggest-text {

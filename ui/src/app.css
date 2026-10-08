@@ -19,6 +19,11 @@ body {
   z-index: 1;
 }
 .app[data-sidebar="rail"] { --sidebar-width: 64px; }
+/* Mini mode wrapper: keeps the dialog registry's `inert` from reaching a
+   portaled modal while still disabling the Mini background. */
+.mini-layer {
+  height: 100%;
+}
 
 /* Now Playing owns the whole window: the sidebar and the docked queue step
    aside while it is open (the floating queue overlay can still appear). */
@@ -56,6 +61,23 @@ body {
 /* position: relative anchors NowPlaying's absolute-positioned close fade. */
 /* Bottom clearance keeps the last content reachable past the floating bar. */
 .main { position: relative; padding: 32px 28px calc(var(--player-height) + 8px); overflow: auto; }
+/* The skip link focuses the scroller itself; a ring around the whole page
+   would be noise, so the landmark opts out of the global focus ring. */
+.main:focus-visible { outline: none; }
+/* Keyboard-reachable skip target: visible only while focused. */
+.skip-link {
+  position: absolute;
+  z-index: 60;
+  top: 8px;
+  left: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-control);
+  background: var(--surface-float);
+  color: var(--text);
+  transform: translateY(-200%);
+  transition: transform var(--dur-state) var(--ease-in);
+}
+.skip-link:focus { transform: none; }
 /* Track-list views: the wrapper owns the main area's height so the track
    table (TrackTable's `fill` prop) grows into the leftover space. */
 .view-fill { display: flex; flex-direction: column; height: 100%; }

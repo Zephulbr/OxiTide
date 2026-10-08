@@ -6,6 +6,7 @@
   import Cover from "../lib/components/Cover.svelte";
   import Icon from "../lib/components/Icon.svelte";
   import PlayPauseGlyph from "../lib/components/PlayPauseGlyph.svelte";
+  import { focusTrap } from "../lib/focusTrap";
   import QueueRail from "../lib/components/QueueRail.svelte";
   import SeekBar from "../lib/components/SeekBar.svelte";
   import VolumeSlider from "../lib/components/VolumeSlider.svelte";
@@ -59,13 +60,19 @@
         class:active={player.state.shuffle}
         onclick={() => player.setShuffle(!player.state.shuffle)}
         aria-label="Shuffle"
+        aria-pressed={player.state.shuffle}
         title="Shuffle the rest of the queue"
       ><Icon name="shuffle" size={18} /></button>
       <button
         class="ibtn"
         class:active={player.state.repeat !== "off"}
         onclick={() => player.setRepeat(nextRepeat(player.state.repeat))}
-        aria-label="Repeat"
+        aria-label={player.state.repeat === "one"
+          ? "Repeat one track"
+          : player.state.repeat === "all"
+            ? "Repeat all"
+            : "Repeat off"}
+        aria-pressed={player.state.repeat !== "off"}
         title={player.state.repeat === "one"
           ? "Repeat one"
           : player.state.repeat === "all"
@@ -97,7 +104,16 @@
 
   {#if mini.queueOpen}
     <div class="sheet-backdrop" onclick={() => mini.toggleQueue()} aria-hidden="true"></div>
-    <div class="queue-sheet">
+    <!-- Escape is routed by App.currentEscapeTarget ("mini-queue"); the trap
+         restores focus to the Queue button on close. -->
+    <div
+      class="queue-sheet"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Queue"
+      tabindex="-1"
+      use:focusTrap
+    >
       <QueueRail {player} />
     </div>
   {/if}

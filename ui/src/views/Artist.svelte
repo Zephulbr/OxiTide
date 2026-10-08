@@ -185,6 +185,7 @@
         mixId: artist?.mixes?.ARTIST_MIX ?? null,
         openMix: (mixId) => nav.goto({ name: "mix", id: mixId }),
       }),
+      event.currentTarget as HTMLElement,
     );
   }
 

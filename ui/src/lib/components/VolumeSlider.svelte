@@ -29,6 +29,7 @@
       oninput={(e) => player.setVolume(Number((e.currentTarget as HTMLInputElement).value))}
       onchange={(e) => player.setVolume(Number((e.currentTarget as HTMLInputElement).value), true)}
       aria-label="Volume"
+      aria-valuetext={`${Math.round(player.state.volume * 100)}%`}
     />
   </div>
 </div>

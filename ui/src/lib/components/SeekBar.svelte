@@ -1,5 +1,6 @@
 <script lang="ts">
   import { appearance } from "../appearance.svelte";
+  import { formatDuration } from "../format";
   import type { Player } from "../player.svelte";
   import { seekByKey, seekRatio } from "../seek";
   import { waveFillPath, wavePath } from "../wave";
@@ -16,6 +17,9 @@
   const position = $derived(dragging ? dragValue : shown);
   const duration = $derived(player.state.duration_ms);
   const progress = $derived((position / Math.max(duration, 1)) * 100);
+  const valueText = $derived(
+    `${formatDuration(position / 1000)} of ${formatDuration(Math.max(duration, 0) / 1000)}`,
+  );
 
   function seekPointer(event: PointerEvent) {
     const el = event.currentTarget as HTMLElement;
@@ -38,7 +42,6 @@
   }
 
   function seekKeydown(event: KeyboardEvent) {
-    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
     const target = seekByKey(event.key, position, duration);
     if (target === null) return;
     player.seek(target);
@@ -59,6 +62,7 @@
     aria-valuemin={0}
     aria-valuemax={Math.max(duration, 1)}
     aria-valuenow={Math.round(position)}
+    aria-valuetext={valueText}
     onpointerdown={seekPointer}
     onkeydown={seekKeydown}
   >
@@ -102,19 +106,21 @@
   }
   /* Edge: the player bar's top edge — the unplayed portion doubles as the
      separator; rests as a straight line, grows on hover/focus/drag. */
+  /* The box is a 24px hit target (AC-5); the visible line/wave stays at its
+     top (`flex-start`) and the rest is transparent. */
   .seek.edge {
     position: absolute;
     left: 0;
     right: 0;
     top: -1px;
-    height: 12px;
+    height: 24px;
     align-items: flex-start;
   }
   /* Wave branch: the wave box hangs above the bar's edge (its dips overlap the
      frosted edge by 1px) so the content behind stays visible above the wave. */
   .seek.edge.wave {
     top: -9px;
-    height: 14px;
+    height: 24px;
   }
   /* Inline (mini): a visible control at rest with a full 24px hit height. */
   .seek.inline {

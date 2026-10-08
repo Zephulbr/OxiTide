@@ -4,17 +4,27 @@ export function seekRatio(clientX: number, left: number, width: number): number 
   return Math.min(1, Math.max(0, (clientX - left) / width));
 }
 
-/// Keyboard seek target for ←/→: ±5 s, clamped to the track bounds when the
-/// duration is known.
-export function seekByKey(
-  key: "ArrowLeft" | "ArrowRight",
-  position: number,
-  duration: number,
-): number | null {
-  if (key === "ArrowLeft") return Math.max(0, position - 5000);
-  if (key === "ArrowRight") {
-    const limit = duration > 0 ? duration : position + 5000;
-    return Math.min(limit, position + 5000);
+/// Keyboard seek target: arrows ±5 s, Page keys ±10 % of the duration (or
+/// ±10 s when the duration is unknown), Home/End to the bounds. Returns null
+/// for keys the control ignores (End is null while the duration is unknown).
+export function seekByKey(key: string, position: number, duration: number): number | null {
+  const known = duration > 0;
+  const clamp = (value: number) => Math.max(0, known ? Math.min(duration, value) : value);
+  const page = known ? Math.round(duration / 10) : 10000;
+  switch (key) {
+    case "ArrowLeft":
+      return clamp(position - 5000);
+    case "ArrowRight":
+      return clamp(position + 5000);
+    case "PageUp":
+      return clamp(position + page);
+    case "PageDown":
+      return clamp(position - page);
+    case "Home":
+      return 0;
+    case "End":
+      return known ? duration : null;
+    default:
+      return null;
   }
-  return null;
 }

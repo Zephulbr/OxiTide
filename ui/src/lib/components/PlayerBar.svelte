@@ -82,6 +82,7 @@
         class:active={player.state.shuffle}
         onclick={() => player.setShuffle(!player.state.shuffle)}
         aria-label="Shuffle"
+        aria-pressed={player.state.shuffle}
         title="Shuffle the rest of the queue"
       ><Icon name="shuffle" size={18} /></button>
       <button class="ibtn" onclick={() => player.prev()} aria-label="Previous"><Icon name="skip-back-solid" size={22} /></button>
@@ -93,7 +94,12 @@
         class="ibtn"
         class:active={player.state.repeat !== "off"}
         onclick={() => player.setRepeat(nextRepeat(player.state.repeat))}
-        aria-label="Repeat"
+        aria-label={player.state.repeat === "one"
+          ? "Repeat one track"
+          : player.state.repeat === "all"
+            ? "Repeat all"
+            : "Repeat off"}
+        aria-pressed={player.state.repeat !== "off"}
         title={player.state.repeat === "one" ? "Repeat one" : player.state.repeat === "all" ? "Repeat all" : "Repeat off"}
       ><Icon name={player.state.repeat === "one" ? "repeat-1" : "repeat"} size={18} /></button>
     </div>

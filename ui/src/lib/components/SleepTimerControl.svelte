@@ -35,7 +35,7 @@
 
   function openMenu(event: MouseEvent) {
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    menu.show(rect.left, rect.bottom + 4, items());
+    menu.show(rect.left, rect.bottom + 4, items(), event.currentTarget as HTMLElement);
   }
 
   function items(): MenuItem[] {

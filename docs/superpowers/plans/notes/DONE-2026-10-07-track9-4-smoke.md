@@ -1,0 +1,128 @@
+# Track 9.4 a11y pass — smoke checklist (2026-10-07)
+
+- **Status:** Passed 2026-10-08 — scripted gates and PM-D1 perf re-runs green; owner signed off
+  the keyboard, NVDA, contrast, and scoped re-run rows
+- **Authority:** `specs/2026-10-05-track9-ui-completion-design.md` §6.4, T9-D7 (AC-1–AC-6), PM-D1
+- **Plan:** `plans/2026-10-07-track9-4-a11y-pass.md`
+- **Build under test:** branch `track9-4-a11y` at `0a218ba`
+
+Human check with a real account. Run `npm --prefix ui run app:dev`. Mark each row
+pass/fail with a note; failures become plan fixes or owner-signed follow-ups.
+
+## Scripted results (2026-10-07, Windows)
+
+- `cargo test --workspace` exit 0; `cargo clippy --workspace -- -D warnings` exit 0 (no Rust changes).
+- `npm --prefix ui run check` 0 errors / 0 warnings; `npm --prefix ui test` 665 passed (80 files).
+- `npx vite build` (in `ui/`) succeeds: the test-only Vite/Svelte config changes do not reach the app build.
+
+## Deviations from the plan (recorded during execution)
+
+- **Test infra (Task 1):** Vitest 2 runs a nested Vite 5, so `svelte.config.js` skips
+  `vitePreprocess` style handling under `VITEST` (component styles are plain CSS) and
+  `vite.config.ts` resolves Svelte's `browser` build under `VITEST`. App builds are unchanged.
+- **Dialog registry (Task 3):** the plan's `count += 1` inside `register()` read and wrote the
+  same state from Modal's `$effect`, looping forever (`effect_update_depth_exceeded`) — every
+  dialog open would have hung the app. Updates are now untracked.
+- **Menu store (Task 4):** `$state.raw` (the menu is replaced whole, never mutated) so item and
+  opener identity survive.
+- **TrackTable tab stop (Task 7):** the plan's `range.first + OVERSCAN` put the tab stop on row 8
+  at the top of the list; it is now the first row in the viewport (`scrollTop / rowHeight`),
+  clamped to the row count, as is a stale focused index.
+- **Queue rows (Task 8):** a tabbable `role="listitem"` with handlers fails svelte-check's a11y
+  rules; each list item now holds sibling **play** (title/cover) and **Remove <title>** buttons,
+  with the drag handle outside the button. VirtualList spacers are `aria-hidden`.
+- **Queue splitter (Task 10):** a focusable `role="separator"` fails svelte-check; the handle is
+  `role="slider"` "Queue width" (value in pixels). Left/Up widen, Right/Down narrow, Home/End
+  jump to the bounds, Shift = larger steps.
+- **Explore (Task 12):** the search input also gets `aria-label="Search TIDAL"` and the options
+  are `tabindex="-1"` (focus stays in the combobox).
+
+## Perf re-runs (PM-D1, unchanged budgets) — owner
+
+TrackTable/VirtualList are the only perf-relevant edits. With no other app instance running:
+
+```powershell
+cargo build -p oxitide-app
+powershell -ExecutionPolicy Bypass -File scripts/perf/run-scenario.ps1 -Scenario S5-instrument -Runs 2
+powershell -ExecutionPolicy Bypass -File scripts/perf/run-scenario.ps1 -Scenario S5-atmosphere -Runs 2
+powershell -ExecutionPolicy Bypass -File scripts/perf/run-scenario.ps1 -Scenario S6 -Runs 2
+powershell -ExecutionPolicy Bypass -File scripts/perf/run-scenario.ps1 -Scenario S7 -Runs 2
+node scripts/perf/check.mjs
+```
+
+S7 replaces the queue with your favorites and starts playback. PASS = `check.mjs` exits 0.
+Record the rows here:
+
+| Scenario | Result |
+|---|---|
+| S5-instrument | PASS — p95 7.2 ms, p99 27.7 ms, long task 65 ms, memory 668 MB (max 690) |
+| S5-atmosphere | PASS on re-adjudication — p95 7.2 ms, p99 20.8 ms; memory 686 / 653 MB vs max 675 (first run over; `main` baseline ×3: 674 / 678 / 665, same edge) |
+| S6 | PASS — p95 13.9 ms, filter 26.5 ms, sort 47.2 ms, album 28.3 ms, memory 714 MB (max 740) |
+| S7 | PASS on re-adjudication — queue build ≤ 118 ms; memory 685 / 642, then ×3 633 / 628 / 627 MB vs max 670 (`main` baseline ×3: 630 / 627 / 651) |
+
+Re-run 2026-10-08 on `track9-4-a11y` at `029cfb7` (Windows, Vite warm, single app).
+`check.mjs` over the whole corpus exits 1, but every failing row other than the two above
+comes from older runs (S2, S3-hit, S4, S9, S5-atmosphere-light — pre-existing, untouched by
+this plan). The two memory breaches are first-run outliers: same-condition `main` runs sit at
+the same edge (S5-atmosphere) or the same range (S7), so they are not a 9.4 regression. Frame,
+interaction, and queue-build rows pass with margin.
+
+## Keyboard-only script (AC-1, AC-2, AC-5, AC-6)
+
+1. Window focused, press Tab once → "Skip to content" appears top-left; Enter → focus lands in
+   the main content (no visible ring around the whole page).
+2. Tab through the sidebar: every control reachable, focus ring visible on each, no traps.
+3. Ctrl+F → Explore; type two letters → suggestions open; ArrowDown/Up move the highlight while
+   focus stays in the input; Enter picks; Escape dismisses.
+4. SortSelect (e.g. Playlists sort): Enter/ArrowDown opens, arrows/Home/End move, Enter applies,
+   Escape and Tab close and return focus to the trigger.
+5. Track list: Tab enters the table once (on the first visible row); Arrow/Page/Home/End move
+   row focus; Enter plays; Shift+F10 opens the row menu; Escape closes it and focus returns to
+   the row. Keys on the row's heart/plus buttons still act on those buttons only.
+6. Queue rail: Tab reaches each row's play button and Remove button (no nested control); Enter
+   plays; dragging by the grip (and by the title area) still reorders; the queue-width slider
+   is reachable, Left/Right resize, and the width is announced.
+7. Player bar: shuffle/repeat announce pressed/not pressed and the repeat mode; seek bar
+   Home/End/PageUp/PageDown seek, value text announced ("1:23 of 4:05"); the top 24px band of
+   the bar seeks on click and does not block clicks on the bar's buttons.
+8. Open a modal (e.g. playlist rename): focus enters, Tab/Shift+Tab cycle inside, Escape and the
+   backdrop close it and focus returns to the opener; the background is not clickable or
+   Tab-reachable while it is open; the dialog sits above the queue/grain and below context
+   menus and toasts.
+9. Now Playing: Up/Down/Home/End move the tabs and the panel follows; arrows do not also
+   seek/step volume; closing returns focus to the player-bar cover button.
+10. Mini player: open the queue sheet, Tab stays inside, Escape closes, focus returns to the
+    Queue button.
+11. The window title follows the page ("Albums · OxiTide", "Now playing · OxiTide").
+
+## NVDA pass (AC-3)
+
+Sliders (position, volume, queue width value text), toggle buttons (pressed), Now Playing
+tabs (tab/tabpanel), track table (sort state, row position, one tab stop), queue (list, item
+position, play/Remove buttons), Explore combobox (expanded, active option), toast
+announcements. Known: the Mini queue sheet relies on `aria-modal` without `inert`.
+
+## Contrast spot check (AC-4)
+
+Both themes × both modes: body text, muted text, disabled text (opacity 0.4 accepted as
+non-content), menu/dialog text over `--surface-float`, focus ring over a dark cover. Static
+token floors are pinned by `themeTokens.test.ts` (dark + light).
+
+## Scoped re-runs (T9-D9)
+
+- `DONE-2026-09-28-track-row-rework-smoke.md`
+- `DONE-2026-09-29-search-suggestions-smoke.md`
+- `DONE-2026-09-29-floating-player-bar-smoke.md` (skip the retired sidebar-header-popover section)
+- `DONE-2026-09-28-sidebar-scale-playing-marker-smoke.md` (skip the retired footer section)
+
+## Verdicts
+
+- **Scripted gates (2026-10-08 re-run):** `cargo test --workspace` 765 passed; clippy clean;
+  svelte-check 0 errors / 0 warnings; vitest 665 passed (80 files).
+- **Perf (PM-D1):** pass — see the table above; no 9.4 regression.
+- **Keyboard-only script (AC-1, AC-2, AC-5, AC-6):** pass (owner, 2026-10-08).
+- **NVDA pass (AC-3):** pass (owner, 2026-10-08); the Mini sheet's `aria-modal` without `inert`
+  stays the documented known limitation.
+- **Contrast spot check (AC-4):** pass (owner, 2026-10-08).
+- **Scoped re-runs (T9-D9):** pass (owner, 2026-10-08).
+- **Follow-ups:** none.

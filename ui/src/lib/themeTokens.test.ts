@@ -55,3 +55,24 @@ describe("light token layer", () => {
     }
   });
 });
+
+describe("static contrast (dark)", () => {
+  it("keeps text and semantic colors at 4.5:1 on the dark room", () => {
+    const bg = hexFor(tokens, "bg");
+    for (const name of ["text", "text-muted", "danger", "success", "warning"]) {
+      const ratio = contrast(hexFor(tokens, name), bg);
+      expect(ratio, `${name} on dark bg`).toBeGreaterThanOrEqual(4.5);
+    }
+    expect(
+      contrast(hexFor(tokens, "on-accent-brand"), hexFor(tokens, "accent-brand")),
+    ).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+describe("static contrast (light brand pair)", () => {
+  it("keeps the light on-accent pair readable", () => {
+    expect(
+      contrast(hexFor(light, "on-accent-brand"), hexFor(light, "accent-brand")),
+    ).toBeGreaterThanOrEqual(4.5);
+  });
+});
