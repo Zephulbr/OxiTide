@@ -20,25 +20,19 @@ pub const BAND_LO_HZ: f32 = 40.0;
 pub const BAND_HI_HZ: f32 = 16_000.0;
 /// Level reported for silent or empty bands, in dBFS.
 pub const FLOOR_DB: f32 = -96.0;
-/// Stereo scope: L/R sample pairs per reading, taken every `SCOPE_STRIDE`
-/// frames from the newest audio (~10 ms at 44.1 kHz).
-pub const SCOPE_POINTS: usize = 160;
-pub const SCOPE_STRIDE: usize = 3;
 
 /// One meter reading. Peaks and RMS are linear (1.0 = full scale); bands are
-/// dBFS relative to a full-scale sine; `scope` holds recent L/R sample pairs
-/// (oldest first) for the stereo audio monitor.
-#[derive(Debug, Clone, PartialEq)]
+/// dBFS relative to a full-scale sine.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LevelFrame {
     pub peak: [f32; 2],
     pub rms: [f32; 2],
     pub bands: [f32; BANDS],
-    pub scope: Vec<[f32; 2]>,
 }
 
 impl LevelFrame {
     pub fn silent() -> Self {
-        Self { peak: [0.0; 2], rms: [0.0; 2], bands: [FLOOR_DB; BANDS], scope: Vec::new() }
+        Self { peak: [0.0; 2], rms: [0.0; 2], bands: [FLOOR_DB; BANDS] }
     }
 }
 
@@ -49,8 +43,6 @@ struct TapState {
     count: u64,
     /// Mono mix of the most recent samples (ring).
     ring: Vec<f32>,
-    /// The same frames as L/R pairs (ring, shares `pos`/`filled`).
-    stereo: Vec<[f32; 2]>,
     pos: usize,
     filled: usize,
 }
@@ -76,7 +68,6 @@ impl LevelTap {
                 sum_sq: [0.0; 2],
                 count: 0,
                 ring: vec![0.0; FFT_SIZE],
-                stereo: vec![[0.0; 2]; FFT_SIZE],
                 pos: 0,
                 filled: 0,
             }),
@@ -122,7 +113,7 @@ impl LevelTap {
     /// Levels since the previous read plus the current spectrum; resets the
     /// level accumulators. Nothing pushed since the last read reads as silence.
     pub fn read(&self) -> LevelFrame {
-        let (peak, rms, window, rate, scope) = {
+        let (peak, rms, window, rate) = {
             let Ok(mut state) = self.state.lock() else {
                 return LevelFrame::silent();
             };
@@ -138,19 +129,12 @@ impl LevelTap {
             for (i, slot) in window.iter_mut().skip(FFT_SIZE - filled).enumerate() {
                 *slot = state.ring[(state.pos + FFT_SIZE - filled + i) % FFT_SIZE];
             }
-            // The newest frames as decimated L/R pairs, oldest first.
-            let span = (SCOPE_POINTS * SCOPE_STRIDE).min(filled);
-            let start = (state.pos + FFT_SIZE - span) % FFT_SIZE;
-            let scope: Vec<[f32; 2]> = (0..span)
-                .step_by(SCOPE_STRIDE)
-                .map(|i| state.stereo[(start + i) % FFT_SIZE])
-                .collect();
             state.peak = [0.0; 2];
             state.sum_sq = [0.0; 2];
             state.count = 0;
-            (peak, rms, window, state.rate, scope)
+            (peak, rms, window, state.rate)
         };
-        LevelFrame { peak, rms, bands: spectrum_bands(&window, rate), scope }
+        LevelFrame { peak, rms, bands: spectrum_bands(&window, rate) }
     }
 }
 
@@ -166,7 +150,6 @@ fn accumulate<T: Copy>(state: &mut TapState, samples: &[T], channels: u16, to_f3
         state.count += 1;
         let pos = state.pos;
         state.ring[pos] = 0.5 * (l + r);
-        state.stereo[pos] = [l, r];
         state.pos = (pos + 1) % FFT_SIZE;
         state.filled = (state.filled + 1).min(FFT_SIZE);
     }
@@ -289,19 +272,6 @@ mod tests {
         let frame = tap.read();
         assert!((frame.peak[0] - 1.0).abs() < 1e-6);
         assert!((frame.peak[1] - 1.0).abs() < 1e-6);
-    }
-
-    #[test]
-    fn scope_returns_the_newest_pairs_decimated_oldest_first() {
-        let tap = enabled_tap();
-        let frames = SCOPE_POINTS * SCOPE_STRIDE + 30;
-        let samples: Vec<f32> = (0..frames).flat_map(|i| [i as f32, -(i as f32)]).collect();
-        tap.push(&PcmBuffer::F32(samples), 2, 44_100);
-        let scope = tap.read().scope;
-        assert_eq!(scope.len(), SCOPE_POINTS);
-        assert_eq!(scope[0], [30.0, -30.0]);
-        assert_eq!(scope[1], [(30 + SCOPE_STRIDE) as f32, -((30 + SCOPE_STRIDE) as f32)]);
-        assert!(tap.read().scope.is_empty(), "no new audio reads as an empty scope");
     }
 
     #[test]

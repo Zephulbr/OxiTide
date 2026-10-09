@@ -82,9 +82,9 @@ describe("rack mode", () => {
   it("auto analyzer never duplicates the amp's spectrum", () => {
     const rack = defaultRackSettings();
     expect(resolveAnalyzer(rack)).toBe("spectrum");
-    expect(resolveAnalyzer({ ...rack, meters: "spectrum" })).toBe("scope");
+    expect(resolveAnalyzer({ ...rack, meters: "spectrum" })).toBe("recorder");
     expect(resolveAnalyzer({ ...rack, meters: "spectrum", analyzer: "spectrum" })).toBe("spectrum");
-    expect(resolveAnalyzer({ ...rack, analyzer: "scope" })).toBe("scope");
+    expect(resolveAnalyzer({ ...rack, analyzer: "recorder" })).toBe("recorder");
   });
 
   it("defaults and clamps", () => {

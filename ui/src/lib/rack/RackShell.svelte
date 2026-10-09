@@ -1,7 +1,7 @@
 <script lang="ts">
   import { api } from "../api";
   import { appearance, resolveAnalyzer } from "../appearance.svelte";
-  import ScopeMeter from "./meters/ScopeMeter.svelte";
+  import LevelRecorder from "./meters/LevelRecorder.svelte";
   import Cover from "../components/Cover.svelte";
   import { formatQuality } from "../quality";
   import { clock, currentIndex, upNext } from "./deck";
@@ -143,19 +143,19 @@
     <DeckUnit {player} {nav} {favorites} face={appearance.rack.deck_face} {expanded} />
     <AmpUnit {player} meters={appearance.rack.meters} {toasts} wide={expanded} />
     {#if expanded}
-      <section class="rk-unit spectrum" aria-label={analyzer === "scope" ? "Stereo monitor" : "Spectrum analyzer"}>
-        <div class="rk-head"><h2 class="rk-name">{analyzer === "scope" ? "Stereo monitor" : "Spectrum analyzer"}</h2>
+      <section class="rk-unit spectrum" aria-label={analyzer === "recorder" ? "Level recorder" : "Spectrum analyzer"}>
+        <div class="rk-head"><h2 class="rk-name">{analyzer === "recorder" ? "Level recorder" : "Spectrum analyzer"}</h2>
           <div class="headkeys">
-            <span class="rk-silk">{analyzer === "scope" ? "Phase · waveform" : "28 band"}</span>
+            <span class="rk-silk">{analyzer === "recorder" ? "Last 60 s" : "28 band"}</span>
             <div class="rk-tray" role="group" aria-label="Analyzer display">
               <button class="rk-key sm" aria-pressed={analyzer === "spectrum"} onclick={() => appearance.setRack({ analyzer: "spectrum" }).catch(() => {})}>Spectrum</button>
-              <button class="rk-key sm" aria-pressed={analyzer === "scope"} onclick={() => appearance.setRack({ analyzer: "scope" }).catch(() => {})}>Scope</button>
+              <button class="rk-key sm" aria-pressed={analyzer === "recorder"} onclick={() => appearance.setRack({ analyzer: "recorder" }).catch(() => {})}>Recorder</button>
             </div>
           </div>
         </div>
         <div class="rk-vfd specwin" aria-hidden="true">
-          {#if analyzer === "scope"}
-            <ScopeMeter buffer={levels.scope} />
+          {#if analyzer === "recorder"}
+            <LevelRecorder history={levels.history} />
           {:else}
             <SpectrumMeter snapshot={levels.snapshot} count={28} />
           {/if}

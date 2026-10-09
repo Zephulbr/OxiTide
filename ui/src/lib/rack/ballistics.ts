@@ -120,23 +120,43 @@ export function bandFraction(db: number): number {
   return Math.min(1, Math.max(0, (db - SPECTRUM_FLOOR_DB) / -SPECTRUM_FLOOR_DB));
 }
 
-/// Stereo scope (goniometer) mapping for one L/R pair: mid (L+R) points up,
-/// side (R−L) points right, so a left-only signal lies on the upper-left
-/// diagonal, right-only on the upper-right, mono on the vertical. Returns
-/// x/y in −1…1 (clamped to the unit circle) at the given gain.
-export function goniometer(l: number, r: number, gain: number): [number, number] {
-  let x = ((r - l) / Math.SQRT2) * gain;
-  let y = ((l + r) / Math.SQRT2) * gain;
-  const len = Math.hypot(x, y);
-  if (len > 1) {
-    x /= len;
-    y /= len;
-  }
-  return [x, y];
+/// Level recorder (chart-recorder strip): one point per channel every 250 ms,
+/// 60 s of history, on a −30…+6 meter-dB scale (0 = reference).
+export const RECORDER_INTERVAL_MS = 250;
+export const RECORDER_POINTS = 240;
+export const RECORDER_MIN_DB = -30;
+export const RECORDER_MAX_DB = 6;
+
+/// Vertical position 0 (bottom) … 1 (top) of a meter-dB value on the strip.
+export function recorderFraction(db: number): number {
+  return Math.min(1, Math.max(0, (db - RECORDER_MIN_DB) / (RECORDER_MAX_DB - RECORDER_MIN_DB)));
 }
 
-/// Scope gain: a −10 dBFS RMS programme fills about half the screen.
-export const SCOPE_GAIN = 1.6;
+/// Mean-power accumulator for one recorder interval.
+export interface RecorderAccumulator {
+  power: [number, number];
+  frames: number;
+}
+
+export function recorderAccumulator(): RecorderAccumulator {
+  return { power: [0, 0], frames: 0 };
+}
+
+export function accumulate(acc: RecorderAccumulator, rms: [number, number]): void {
+  acc.power[0] += rms[0] * rms[0];
+  acc.power[1] += rms[1] * rms[1];
+  acc.frames++;
+}
+
+/// The interval's level per channel in meter dB, or null when it held only
+/// silence (paused or stopped) — the recorder then stands still.
+export function recorderPoint(acc: RecorderAccumulator): [number, number] | null {
+  if (acc.frames === 0 || (acc.power[0] === 0 && acc.power[1] === 0)) return null;
+  return [
+    programmeDb(Math.sqrt(acc.power[0] / acc.frames)),
+    programmeDb(Math.sqrt(acc.power[1] / acc.frames)),
+  ];
+}
 
 /// Fall at `rate` per second; rise instantly, or smoothed by `attackS`.
 export function fallStep(current: number, target: number, rate: number, dt: number, attackS = 0): number {

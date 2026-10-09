@@ -14,7 +14,10 @@ import {
   poolBands,
   programmeDb,
   REFERENCE_DBFS,
-  goniometer,
+  accumulate,
+  recorderAccumulator,
+  recorderFraction,
+  recorderPoint,
   vuPosition,
 } from "./ballistics";
 import { calendar, clock, formatBadge, formatLine, remainingMs, repeatAnnunciator, upNext } from "./deck";
@@ -131,18 +134,21 @@ describe("ballistics", () => {
     s = peakStep(s, null, 1, 2700);
     expect(s.holdDb).toBeLessThan(-6.5);
   });
-  it("goniometer: mono is vertical, L and R on the diagonals, clamped to the circle", () => {
-    const [mx, my] = goniometer(0.5, 0.5, 1);
-    expect(mx).toBeCloseTo(0);
-    expect(my).toBeGreaterThan(0);
-    const [lx, ly] = goniometer(0.5, 0, 1);
-    expect(lx).toBeLessThan(0);
-    expect(lx).toBeCloseTo(-ly);
-    const [rx, ry] = goniometer(0, 0.5, 1);
-    expect(rx).toBeGreaterThan(0);
-    expect(rx).toBeCloseTo(ry);
-    const [ax, ay] = goniometer(1, -1, 10);
-    expect(Math.hypot(ax, ay)).toBeCloseTo(1);
+  it("level recorder: mean-power points per interval, none for silence", () => {
+    const acc = recorderAccumulator();
+    expect(recorderPoint(acc)).toBeNull();
+    accumulate(acc, [0, 0]);
+    expect(recorderPoint(acc)).toBeNull(); // paused: the paper stands still
+    const ref = 10 ** (REFERENCE_DBFS / 20);
+    const loud = recorderAccumulator();
+    accumulate(loud, [ref, ref / 10]);
+    accumulate(loud, [ref, ref / 10]);
+    const [l, r] = recorderPoint(loud)!;
+    expect(l).toBeCloseTo(0, 6);
+    expect(r).toBeCloseTo(-20, 6);
+    expect(recorderFraction(-30)).toBe(0);
+    expect(recorderFraction(6)).toBe(1);
+    expect(recorderFraction(-12)).toBeCloseTo(0.5);
   });
   it("scales, falls, LEDs and pooling", () => {
     expect(dbfs(0)).toBe(-96);

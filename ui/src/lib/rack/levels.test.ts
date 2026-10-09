@@ -79,4 +79,31 @@ describe("levels store", () => {
     expect(h.levels.snapshot.needle[0]).toBeGreaterThan(h.levels.snapshot.needle[1]);
     expect(h.levels.snapshot.holdDb[0]).toBeCloseTo(-10, 0);
   });
+
+  it("records a level point every 250 ms and stands still on silence", async () => {
+    const h = harness();
+    h.levels.use();
+    await flush();
+    h.tick(0);
+    for (let t = 16; t <= 1000; t += 16) {
+      h.emit(loud);
+      h.tick(t);
+    }
+    expect(h.levels.history.left.length).toBeGreaterThanOrEqual(3);
+    expect(h.levels.history.left[0]).toBeCloseTo(-10, 0);
+    expect(h.levels.history.right[0]).toBeCloseTo(-16, 0);
+    const silent: LevelFrame = { peak: [0, 0], rms: [0, 0], bands: Array(28).fill(-96) };
+    let t = 1016;
+    // Let the interval that straddles the pause close first.
+    for (; t <= 1400; t += 16) {
+      h.emit(silent);
+      h.tick(t);
+    }
+    const paused = h.levels.history.left.length;
+    for (; t <= 2600; t += 16) {
+      h.emit(silent);
+      h.tick(t);
+    }
+    expect(h.levels.history.left.length).toBe(paused);
+  });
 });

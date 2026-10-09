@@ -103,17 +103,18 @@ pub enum MeterStyle {
     Spectrum,
 }
 
-/// The expanded deck's analyzer unit. `Auto` shows the stereo scope when the
-/// amp already shows a spectrum, so the two never duplicate.
+/// The expanded deck's analyzer unit. `Auto` shows the level recorder when
+/// the amp already shows a spectrum, so the two never duplicate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AnalyzerStyle {
     #[default]
     Auto,
     Spectrum,
-    /// Stereo audio monitor (goniometer). Briefly shipped as a waterfall.
-    #[serde(alias = "waterfall")]
-    Scope,
+    /// Chart-recorder strip of L/R programme level. Briefly shipped as a
+    /// waterfall, then a stereo scope; both values load as the recorder.
+    #[serde(alias = "waterfall", alias = "scope")]
+    Recorder,
 }
 
 /// Lamp colour (RK-D8): five presets or the cover's hue.
@@ -533,7 +534,7 @@ mod tests {
             rack: RackConfig {
                 deck_face: DeckFace::Cd,
                 meters: MeterStyle::Led,
-                analyzer: AnalyzerStyle::Scope,
+                analyzer: AnalyzerStyle::Recorder,
                 lamp: LampColor::Cover,
                 eq_unit: false,
                 lamp_brightness: 70,
@@ -996,7 +997,7 @@ analyzer = \"waterfall\"
 ").unwrap();
         let config = Config::load_from(&path);
         assert_eq!(config.rack.deck_face, DeckFace::Transport);
-        assert_eq!(config.rack.analyzer, AnalyzerStyle::Scope, "the retired waterfall maps to the scope");
+        assert_eq!(config.rack.analyzer, AnalyzerStyle::Recorder, "retired analyzer values map to the recorder");
         assert_eq!(config.rack.lamp, LampColor::Blue);
         assert_eq!(config.rack.meters, MeterStyle::Needles);
         let _ = fs::remove_dir_all(dir);
