@@ -1,7 +1,8 @@
 # OxiTide — Track 11 Phone Remote
 
-- **Status:** Draft for review — direction and full scope agreed with the owner
-  (2026-10-09); design details are proposals (§3); plans pending
+- **Status:** Accepted 2026-10-09 (owner accepted RM-D3…RM-D13 as written; firewall:
+  Settings guidance only). Plans 11.1–11.5 implemented on `track11-phone-remote`
+  (`plans/2026-10-09-track11-phone-remote.md`, which lists the refinements); 11.6 open
 - **Date:** 2026-10-09
 - **Owner:** V
 - **Parents:** `2026-09-24-oxitide-post-mvp-roadmap.md` (casting / TIDAL Connect, parked in

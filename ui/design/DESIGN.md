@@ -102,3 +102,22 @@ that is not active must cost nothing.
 | Icons | `ui/src/lib/components/Icon.svelte` (inlined Lucide paths, no glyphs) |
 | Covers | `ui/src/lib/components/Cover.svelte`, `ui/src/lib/artwork.ts` |
 | Rack reference mockup | `ui/design/rack/reference-mockup.html` (open via any static server at the repo root) |
+| Phone remote | `ui/remote.html`, `ui/src/remote/` (styles: `remote/remote.css` + component styles) |
+
+## 4. Phone remote (Track 11)
+
+The phone page served by the LAN remote is a separate entry, not a fourth mode.
+
+- **Look:** Atmosphere tokens (`data-mode="atmosphere"`) with the default brand accent. It
+  reads semantic tokens only — never `--dyn-*` (no dynamic colour) and never `--rack-*`.
+- **Theme:** follows the phone's `prefers-color-scheme` (set from `main.ts`; the page CSP
+  forbids inline scripts), so the light/dark recipes in `themes.css` apply unchanged.
+- **Layout:** mobile-first single column, 16px gutter (`--remote-gutter`), fixed bottom dock
+  (mini bar `--remote-minibar` + five-tab bar `--remote-tabbar`) respecting safe-area
+  insets; feeds render as horizontal shelves, track lists as 60px rows.
+- **Touch:** every control is at least 44×44px (`--remote-touch`); row menus open a bottom
+  sheet instead of a context menu; queue reorder uses a drag handle (`touch-action: none`).
+- **Icons:** the shared `Icon.svelte` (Lucide only, no glyphs). Covers load straight from
+  `resources.tidal.com`; a missing cover shows the `music` icon on `--surface-2`.
+- **Motion:** only the sheet rise (`--dur-view`) and colour transitions; reduced motion is
+  honoured through the shared duration tokens.

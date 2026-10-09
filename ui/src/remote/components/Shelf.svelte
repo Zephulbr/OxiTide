@@ -52,6 +52,7 @@
     gap: 12px;
     overflow-x: auto;
     scroll-snap-type: x proximity;
+    scroll-padding-inline: var(--remote-gutter);
     margin: 0 calc(-1 * var(--remote-gutter));
     padding: 0 var(--remote-gutter) 4px;
     scrollbar-width: none;
