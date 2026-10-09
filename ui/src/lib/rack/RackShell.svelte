@@ -179,8 +179,6 @@
               <CassetteDeck
                 progress={player.state.duration_ms > 0 ? (player.pendingSeek ?? player.state.position_ms) / player.state.duration_ms : 0}
                 playing={player.state.playing}
-                title={player.state.current?.title ?? ""}
-                artist={player.state.current?.artist ?? ""}
                 elapsedMs={player.pendingSeek ?? player.state.position_ms}
               />
             {:else if analyzer === "tuner"}
@@ -641,16 +639,29 @@
     overflow: auto;
     padding: 14px 16px;
   }
+  /* Track info: lamp-coloured captions like a VFD's legends, values in screen
+     text, faint rules between rows. */
   .facts {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
-    gap: 9px 14px;
     margin: 0;
   }
+  .facts dt,
+  .facts dd {
+    padding: 7px 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.045);
+  }
+  .facts dt:first-of-type,
+  .facts dd:first-of-type {
+    border-top: 0;
+  }
   .facts dt {
-    font: 600 10.5px/1.4 var(--font-ui);
-    letter-spacing: 0.05em;
-    color: var(--rack-silk-dim);
+    padding-right: 16px;
+    font: 800 9.5px/1.6 var(--font-ui);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--rack-vfd);
+    text-shadow: 0 0 6px color-mix(in srgb, var(--rack-vfd) 55%, transparent);
   }
   .facts dd {
     margin: 0;
@@ -658,6 +669,10 @@
     line-height: 1.4;
     color: var(--rack-screen-text);
     overflow-wrap: anywhere;
+  }
+  .facts dd:first-of-type {
+    font-weight: 700;
+    color: var(--accent);
   }
   .pathlabel {
     margin: 2px 4px 0;

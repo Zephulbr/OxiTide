@@ -423,16 +423,19 @@
   /* The platter takes what the shell leaves: window height minus the
      selector and the deck's own strip, capped by the deck's width. */
   .deck.expanded {
-    --pl: max(260px, min(calc(100vh - 340px), calc(56vw - 160px), 860px));
+    --pl: max(240px, min(calc((100vh - 340px) / 1.15), calc(56vw - 160px), 820px));
     min-height: 0;
   }
+  /* The tonearm's pivot and counterweight stand above the platter's top edge
+     (~9% of the platter), so the turntable reserves that headroom; otherwise
+     the column's edge cuts the arm off on tall windows. */
   .turntable {
     position: relative;
     flex: 1;
-    min-height: calc(var(--pl) + 10px);
+    min-height: calc(var(--pl) * 1.14 + 10px);
     display: grid;
     place-items: center;
-    padding: 0;
+    padding: calc(var(--pl) * 0.12) 0 0;
     border: 0;
     background: none;
     cursor: pointer;
@@ -485,7 +488,9 @@
   .tonearm {
     position: absolute;
     left: 50%;
-    top: 50%;
+    /* Follow the platter's centre, which the headroom padding shifts down. */
+    top: calc(50% + var(--pl) * 0.06);
+    overflow: visible;
     width: calc(var(--pl) * 1.12);
     height: calc(var(--pl) * 1.12);
     transform: translate(-28%, -58%);
