@@ -699,10 +699,14 @@
           <div class="segmented" role="group" aria-label="Now Playing analyzer">
             <button class:active={appearance.rack.analyzer === "auto"} onclick={() => appearance.setRack({ analyzer: "auto" }).catch(apply)}>Auto</button>
             <button class:active={appearance.rack.analyzer === "spectrum"} onclick={() => appearance.setRack({ analyzer: "spectrum" }).catch(apply)}>Spectrum</button>
-            <button class:active={appearance.rack.analyzer === "recorder"} onclick={() => appearance.setRack({ analyzer: "recorder" }).catch(apply)}>Level recorder</button>
+            <button class:active={appearance.rack.analyzer === "recorder"} onclick={() => appearance.setRack({ analyzer: "recorder" }).catch(apply)}>Recorder</button>
+            <button class:active={appearance.rack.analyzer === "cassette"} onclick={() => appearance.setRack({ analyzer: "cassette" }).catch(apply)}>Tape</button>
+            <button class:active={appearance.rack.analyzer === "tuner"} onclick={() => appearance.setRack({ analyzer: "tuner" }).catch(apply)}>Tuner</button>
+            <button class:active={appearance.rack.analyzer === "eq"} onclick={() => appearance.setRack({ analyzer: "eq" }).catch(apply)}>EQ</button>
+            <button class:active={appearance.rack.analyzer === "none"} onclick={() => appearance.setRack({ analyzer: "none" }).catch(apply)}>Off</button>
           </div>
         </div>
-        <p class="muted">Auto shows the level recorder when the amp's meters are already a spectrum.</p>
+        <p class="muted">The extra unit in Now Playing. Auto shows the level recorder when the amp's meters are already a spectrum, otherwise the spectrum.</p>
         <div class="field">
           <span class="field-label">Lamp color:</span>
           <div class="segmented" role="group" aria-label="Lamp color">

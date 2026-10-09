@@ -71,6 +71,28 @@ export function formatLine(stream: StreamMeta | null, outputMode: "shared" | "ex
   return out;
 }
 
+/// Cassette tape packs for a track position 0..1: the left (supply) reel
+/// empties as the right (take-up) reel fills. Pack area is proportional to
+/// tape length, so radii follow the square root. Hub radius 13, full 36.
+export const REEL_HUB = 13;
+export const REEL_FULL = 36;
+export function reelRadii(progress: number): [number, number] {
+  const p = Math.min(1, Math.max(0, Number.isFinite(progress) ? progress : 0));
+  const area = (fill: number) => Math.sqrt(REEL_HUB ** 2 + fill * (REEL_FULL ** 2 - REEL_HUB ** 2));
+  return [area(1 - p), area(p)];
+}
+
+/// Tuner dial: minute ticks across a track's length (every minute, every
+/// two past ten minutes), as fractions 0..1 with their labels.
+export function dialTicks(durationMs: number): { at: number; label: string }[] {
+  const minutes = durationMs / 60000;
+  if (!(minutes > 0)) return [];
+  const step = minutes > 10 ? 2 : 1;
+  const out: { at: number; label: string }[] = [];
+  for (let m = 0; m <= minutes; m += step) out.push({ at: m / minutes, label: String(m) });
+  return out;
+}
+
 /// Short format for the amp's status LED, e.g. "24/96".
 export function formatBadge(stream: StreamMeta | null): string | null {
   if (!stream || stream.bit_depth <= 0 || stream.sample_rate <= 0) return null;

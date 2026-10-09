@@ -1,4 +1,4 @@
-import { api, type RackSettings } from "./api";
+import { api, type AnalyzerStyle, type RackSettings } from "./api";
 import { readThemeMirror, resolveTheme, writeThemeMirror, type ResolvedTheme, type ThemeSetting } from "./theme";
 
 export type UiMode = "instrument" | "atmosphere" | "rack";
@@ -9,8 +9,8 @@ export function defaultRackSettings(): RackSettings {
 
 /// The analyzer unit's effective style: Auto avoids showing a second
 /// spectrum when the amp's meters already are one.
-export function resolveAnalyzer(rack: RackSettings): "spectrum" | "recorder" {
-  if (rack.analyzer === "spectrum" || rack.analyzer === "recorder") return rack.analyzer;
+export function resolveAnalyzer(rack: RackSettings): Exclude<AnalyzerStyle, "auto"> {
+  if (rack.analyzer !== "auto") return rack.analyzer;
   return rack.meters === "spectrum" ? "recorder" : "spectrum";
 }
 

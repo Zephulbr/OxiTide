@@ -103,8 +103,10 @@ pub enum MeterStyle {
     Spectrum,
 }
 
-/// The expanded deck's analyzer unit. `Auto` shows the level recorder when
-/// the amp already shows a spectrum, so the two never duplicate.
+/// The expanded deck's extra unit (between the amp and Now playing). `Auto`
+/// shows the level recorder when the amp already shows a spectrum, otherwise
+/// the spectrum, so the two never duplicate. The owner is comparing every
+/// option live (2026-10-09) before deciding which to keep.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AnalyzerStyle {
@@ -115,6 +117,14 @@ pub enum AnalyzerStyle {
     /// waterfall, then a stereo scope; both values load as the recorder.
     #[serde(alias = "waterfall", alias = "scope")]
     Recorder,
+    /// Cassette deck: reels that wind with the track's progress.
+    Cassette,
+    /// FM-tuner dial whose pointer travels the track's timeline.
+    Tuner,
+    /// The graphic EQ, reachable inside Now Playing.
+    Eq,
+    /// No extra unit; Now playing takes the room.
+    None,
 }
 
 /// Lamp colour (RK-D8): five presets or the cover's hue.
@@ -998,6 +1008,15 @@ analyzer = \"waterfall\"
         let config = Config::load_from(&path);
         assert_eq!(config.rack.deck_face, DeckFace::Transport);
         assert_eq!(config.rack.analyzer, AnalyzerStyle::Recorder, "retired analyzer values map to the recorder");
+        for (text, style) in [
+            ("cassette", AnalyzerStyle::Cassette),
+            ("tuner", AnalyzerStyle::Tuner),
+            ("eq", AnalyzerStyle::Eq),
+            ("none", AnalyzerStyle::None),
+        ] {
+            let rack: RackConfig = toml::from_str(&format!("analyzer = \"{text}\"")).unwrap();
+            assert_eq!(rack.analyzer, style);
+        }
         assert_eq!(config.rack.lamp, LampColor::Blue);
         assert_eq!(config.rack.meters, MeterStyle::Needles);
         let _ = fs::remove_dir_all(dir);

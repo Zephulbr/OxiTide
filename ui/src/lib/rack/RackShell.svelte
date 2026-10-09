@@ -2,6 +2,9 @@
   import { api } from "../api";
   import { appearance, resolveAnalyzer } from "../appearance.svelte";
   import LevelRecorder from "./meters/LevelRecorder.svelte";
+  import CassetteDeck from "./meters/CassetteDeck.svelte";
+  import TunerDial from "./meters/TunerDial.svelte";
+  import type { AnalyzerStyle } from "../api";
   import Cover from "../components/Cover.svelte";
   import { formatQuality } from "../quality";
   import { clock, currentIndex, upNext } from "./deck";
@@ -72,6 +75,23 @@
   ];
   const sleeping = $derived(sleepTimer.mode !== "off");
   const analyzer = $derived(resolveAnalyzer(appearance.rack));
+  /// Now Playing's extra unit: every option is a key so the owner can compare
+  /// them live (2026-10-09) before deciding which to keep.
+  const SLOT_OPTIONS: { id: Exclude<AnalyzerStyle, "auto">; key: string }[] = [
+    { id: "spectrum", key: "Spectrum" },
+    { id: "recorder", key: "Recorder" },
+    { id: "cassette", key: "Tape" },
+    { id: "tuner", key: "Tuner" },
+    { id: "eq", key: "EQ" },
+    { id: "none", key: "Off" },
+  ];
+  const SLOT: Record<Exclude<AnalyzerStyle, "auto" | "none">, { name: string; silk: string }> = {
+    spectrum: { name: "Spectrum analyzer", silk: "28 band" },
+    recorder: { name: "Level recorder", silk: "Last 60 s" },
+    cassette: { name: "Cassette deck", silk: "Auto reverse" },
+    tuner: { name: "FM tuner", silk: "Track dial" },
+    eq: { name: "Graphic equalizer", silk: "10 band" },
+  };
 
   const expanded = $derived(nav.nowPlayingOpen);
   const source = $derived(sourceOf(nav.route));
@@ -143,26 +163,56 @@
     <DeckUnit {player} {nav} {favorites} face={appearance.rack.deck_face} {expanded} />
     <AmpUnit {player} meters={appearance.rack.meters} {toasts} wide={expanded} />
     {#if expanded}
-      <section class="rk-unit spectrum" aria-label={analyzer === "recorder" ? "Level recorder" : "Spectrum analyzer"}>
-        <div class="rk-head"><h2 class="rk-name">{analyzer === "recorder" ? "Level recorder" : "Spectrum analyzer"}</h2>
-          <div class="headkeys">
-            <span class="rk-silk">{analyzer === "recorder" ? "Last 60 s" : "28 band"}</span>
-            <div class="rk-tray" role="group" aria-label="Analyzer display">
-              <button class="rk-key sm" aria-pressed={analyzer === "spectrum"} onclick={() => appearance.setRack({ analyzer: "spectrum" }).catch(() => {})}>Spectrum</button>
-              <button class="rk-key sm" aria-pressed={analyzer === "recorder"} onclick={() => appearance.setRack({ analyzer: "recorder" }).catch(() => {})}>Recorder</button>
+      {#snippet slotKeys()}
+        <div class="rk-tray slotkeys" role="group" aria-label="Extra unit">
+          {#each SLOT_OPTIONS as o (o.id)}
+            <button class="rk-key sm" aria-pressed={analyzer === o.id} onclick={() => appearance.setRack({ analyzer: o.id }).catch(() => {})}>{o.key}</button>
+          {/each}
+        </div>
+      {/snippet}
+      {#if analyzer !== "none"}
+        <section class="rk-unit spectrum slot" aria-label={SLOT[analyzer].name}>
+          <div class="rk-head"><h2 class="rk-name">{SLOT[analyzer].name}</h2>
+            <div class="headkeys">
+              <span class="rk-silk">{SLOT[analyzer].silk}</span>
+              {@render slotKeys()}
             </div>
           </div>
-        </div>
-        <div class="rk-vfd specwin" aria-hidden="true">
-          {#if analyzer === "recorder"}
-            <LevelRecorder history={levels.history} />
-          {:else}
-            <SpectrumMeter snapshot={levels.snapshot} count={28} />
-          {/if}
-        </div>
-      </section>
+          <div class="specwin" class:rk-vfd={analyzer === "spectrum" || analyzer === "recorder"} aria-hidden={analyzer !== "eq"}>
+            {#if analyzer === "recorder"}
+              <LevelRecorder history={levels.history} />
+            {:else if analyzer === "cassette"}
+              <CassetteDeck
+                progress={player.state.duration_ms > 0 ? (player.pendingSeek ?? player.state.position_ms) / player.state.duration_ms : 0}
+                playing={player.state.playing}
+                title={player.state.current?.title ?? ""}
+                artist={player.state.current?.artist ?? ""}
+                elapsedMs={player.pendingSeek ?? player.state.position_ms}
+              />
+            {:else if analyzer === "tuner"}
+              <TunerDial
+                progress={player.state.duration_ms > 0 ? (player.pendingSeek ?? player.state.position_ms) / player.state.duration_ms : 0}
+                durationMs={player.state.duration_ms}
+                positionMs={player.pendingSeek ?? player.state.position_ms}
+                playing={player.state.playing}
+                title={player.state.current?.title ?? ""}
+                artist={player.state.current?.artist ?? ""}
+              />
+            {:else if analyzer === "eq"}
+              <EqUnit {toasts} embedded />
+            {:else}
+              <SpectrumMeter snapshot={levels.snapshot} count={28} />
+            {/if}
+          </div>
+        </section>
+      {/if}
       <section class="rk-unit lyricsunit" aria-label="Now playing">
-        <div class="rk-head"><h2 class="rk-name">Now playing</h2><span class="rk-silk">{lyrics.lyrics?.synced ? "Synced lyrics" : ""}</span></div>
+        <div class="rk-head"><h2 class="rk-name">Now playing</h2>
+          <div class="headkeys">
+            <span class="rk-silk">{lyrics.lyrics?.synced ? "Synced lyrics" : ""}</span>
+            {#if analyzer === "none"}{@render slotKeys()}{/if}
+          </div>
+        </div>
         <div class="np">
         <div class="rk-vfd lyrics">
           {#if lines.length > 0 && active >= 0}
@@ -509,6 +559,23 @@
   .rack.expanded .column > :global(.deck) {
     grid-row: 1 / 5;
   }
+  /* Fixed rows, so turning the extra unit Off leaves Now playing in place. */
+  .rack.expanded .column > :global(.amp) {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .rack.expanded .slot {
+    grid-column: 2;
+    grid-row: 2;
+  }
+  .rack.expanded .lyricsunit {
+    grid-column: 2;
+    grid-row: 3;
+  }
+  .rack.expanded .changer {
+    grid-column: 2;
+    grid-row: 4;
+  }
   /* The wide right column gets full-size meters. */
   .rack.expanded .column :global(.amp .meters) {
     height: 150px;
@@ -517,9 +584,20 @@
     display: flex;
     align-items: center;
     gap: 12px;
+    min-width: 0;
+  }
+  .slotkeys {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .slotkeys .rk-key {
+    min-width: 0;
+    padding-inline: 9px;
   }
   .specwin {
     height: 150px;
+  }
+  .specwin.rk-vfd {
     padding: 10px 12px 6px;
   }
   .lyricsunit {

@@ -6,7 +6,9 @@
 
   /// Graphic EQ unit (spec §6.3): dimple presets + ten faders bound to the
   /// shared DSP store. Moving a fader while EQ is off turns it on.
-  let { toasts }: { toasts: Toasts } = $props();
+  /// `embedded`: just presets and faders, for another unit's slot (Now
+  /// Playing's extra unit) — no faceplate or head of its own.
+  let { toasts, embedded = false }: { toasts: Toasts; embedded?: boolean } = $props();
 
   const PRESETS = [
     { id: "flat", label: "Flat" },
@@ -64,11 +66,13 @@
   }
 </script>
 
-<section class="rk-unit eq" aria-label="Graphic equalizer">
-  <div class="rk-head">
-    <h2 class="rk-name">Graphic equalizer</h2>
-    {#if preset === "custom"}<span class="rk-silk">Custom</span>{/if}
-  </div>
+<section class="eq" class:rk-unit={!embedded} class:embedded aria-label="Graphic equalizer">
+  {#if !embedded}
+    <div class="rk-head">
+      <h2 class="rk-name">Graphic equalizer</h2>
+      {#if preset === "custom"}<span class="rk-silk">Custom</span>{/if}
+    </div>
+  {/if}
   <div class="presets" role="radiogroup" aria-label="EQ preset">
     {#each PRESETS as p (p.id)}
       <button class="preset" role="radio" aria-checked={preset === p.id} disabled={!dsp} onclick={() => setPreset(p.id)}>
@@ -108,6 +112,10 @@
   .eq {
     display: flex;
     flex-direction: column;
+  }
+  .eq.embedded {
+    height: 100%;
+    justify-content: center;
   }
   .presets {
     display: flex;

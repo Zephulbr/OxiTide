@@ -319,6 +319,13 @@ loud passages reach the red).
   switch it directly. History (owner, 2026-10-09): a waterfall read as "too full" and a
   stereo scope as "too distracting"; both briefly shipped values (`waterfall`, `scope`)
   load as `recorder`, and the scope's extra tap data was removed again.
+- **Slot comparison (owner, 2026-10-09: "add all options as buttons and we will decide
+  what to keep")**: the unit is now Now Playing's *extra unit* with six keys — Spectrum,
+  Recorder, Tape (cassette deck winding with progress), Tuner (FM dial whose pointer
+  travels the timeline), EQ (the graphic EQ embedded) and Off (no unit; the keys move to
+  the Now playing head). `[rack] analyzer = auto | spectrum | recorder | cassette |
+  tuner | eq | none`. **Open decision:** the owner picks which options survive; the
+  rest are removed afterwards.
 
 ### 6.8 Accessibility
 

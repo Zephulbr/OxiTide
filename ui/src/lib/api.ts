@@ -294,7 +294,7 @@ export interface Config {
 export type DeckFace = "transport" | "cd" | "display";
 export type MeterStyle = "needles" | "bars" | "led" | "spectrum";
 export type LampColor = "amber" | "blue" | "green" | "red" | "white" | "cover";
-export type AnalyzerStyle = "auto" | "spectrum" | "recorder";
+export type AnalyzerStyle = "auto" | "spectrum" | "recorder" | "cassette" | "tuner" | "eq" | "none";
 /** Hi-Fi Rack options (`[rack]`, Track 9.5). */
 export interface RackSettings {
   deck_face: DeckFace;

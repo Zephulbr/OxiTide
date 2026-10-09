@@ -20,7 +20,7 @@ import {
   recorderPoint,
   vuPosition,
 } from "./ballistics";
-import { calendar, clock, formatBadge, formatLine, remainingMs, repeatAnnunciator, upNext } from "./deck";
+import { calendar, clock, dialTicks, formatBadge, formatLine, reelRadii, remainingMs, repeatAnnunciator, upNext } from "./deck";
 import { libraryKeyOf, sourceOf } from "./sources";
 
 const item = (id: number, secs = 100): QueueItem => ({
@@ -86,6 +86,29 @@ describe("deck helpers", () => {
     expect(formatLine(null, "shared")).toEqual(["SHRD"]);
     expect(formatBadge({ ...stream, sample_rate: 96_000 })).toBe("24/96");
     expect(formatBadge(null)).toBeNull();
+  });
+});
+
+describe("slot helpers", () => {
+  it("reels wind from left to right with the track", () => {
+    const [l0, r0] = reelRadii(0);
+    expect(l0).toBeCloseTo(36);
+    expect(r0).toBeCloseTo(13);
+    const [l1, r1] = reelRadii(1);
+    expect(l1).toBeCloseTo(13);
+    expect(r1).toBeCloseTo(36);
+    const [lm, rm] = reelRadii(0.5);
+    expect(lm).toBeCloseTo(rm);
+    // Equal tape on both reels sits past the radii midpoint (area, not radius).
+    expect(lm).toBeGreaterThan((13 + 36) / 2);
+    expect(reelRadii(Number.NaN)).toEqual(reelRadii(0));
+  });
+  it("dial ticks each minute, every two past ten", () => {
+    const short = dialTicks(4 * 60000);
+    expect(short.map((t) => t.label)).toEqual(["0", "1", "2", "3", "4"]);
+    expect(short[4].at).toBeCloseTo(1);
+    expect(dialTicks(12 * 60000).map((t) => t.label)).toEqual(["0", "2", "4", "6", "8", "10", "12"]);
+    expect(dialTicks(0)).toEqual([]);
   });
 });
 
