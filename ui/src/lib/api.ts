@@ -294,7 +294,7 @@ export interface Config {
 export type DeckFace = "transport" | "cd" | "display";
 export type MeterStyle = "needles" | "bars" | "led" | "spectrum";
 export type LampColor = "amber" | "blue" | "green" | "red" | "white" | "cover";
-export type AnalyzerStyle = "auto" | "spectrum" | "waterfall";
+export type AnalyzerStyle = "auto" | "spectrum" | "scope";
 /** Hi-Fi Rack options (`[rack]`, Track 9.5). */
 export interface RackSettings {
   deck_face: DeckFace;
@@ -305,11 +305,13 @@ export interface RackSettings {
   /** Percent, 40–100. */
   lamp_brightness: number;
 }
-/** One `level_frame` event: linear peaks/RMS (1 = full scale), bands in dBFS. */
+/** One `level_frame` event: linear peaks/RMS (1 = full scale), bands in dBFS,
+ *  and recent stereo sample pairs interleaved L,R as i16 (32767 = full scale). */
 export interface LevelFrame {
   peak: [number, number];
   rms: [number, number];
   bands: number[];
+  scope?: number[];
 }
 export const LEVEL_FRAME_EVENT = "level_frame";
 export type EngineEvent =

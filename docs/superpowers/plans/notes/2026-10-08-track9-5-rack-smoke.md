@@ -30,7 +30,8 @@ Automated gates at hand-off (2026-10-08, branch `track9-5-hifi-rack`): `cargo te
 
 ## Amp and EQ
 - [ ] Meters setting: Needles, Bars (PROGRAM HOLD readout), LED (hold LED stays), Spectrum — all move with the music and fall to rest on pause.
-- [ ] Now Playing analyzer: with amp meters = Spectrum, Auto shows the waterfall; the head keys switch Spectrum/Waterfall and the choice survives a restart; the waterfall follows lamp colour changes.
+- [ ] Now Playing analyzer: with amp meters = Spectrum, Auto shows the Stereo monitor; the head keys switch Spectrum/Scope and the choice survives a restart.
+- [ ] Stereo monitor: a mono track draws a vertical line, wide stereo an open figure; the L/R traces follow the music with a short afterglow, fade out on pause, and follow lamp colour changes.
 - [ ] Meter feel: needles swing smoothly (no jitter), sit mid-scale on a typical track and reach the red only on loud passages; bars/LEDs rise fast and fall slowly; nothing hugs the top.
 - [ ] Now Playing: amp front is symmetric (DSP keys left, meters centred, larger knob right); Now playing unit shows lyrics left and track info + signal path right; Up next reads like a track list.
 - [ ] Meters stop (no CPU/IPC) when the window is minimised or hidden to tray, and resume on restore.

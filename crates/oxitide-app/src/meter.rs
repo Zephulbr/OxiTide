@@ -18,11 +18,20 @@ pub struct LevelFrameDto {
     pub peak: [f32; 2],
     pub rms: [f32; 2],
     pub bands: Vec<f32>,
+    /// Stereo scope pairs, interleaved L,R, scaled to i16 (32767 = full scale)
+    /// so the 30 Hz event stays small.
+    pub scope: Vec<i16>,
 }
 
 impl From<LevelFrame> for LevelFrameDto {
     fn from(frame: LevelFrame) -> Self {
-        Self { peak: frame.peak, rms: frame.rms, bands: frame.bands.to_vec() }
+        let q = |s: f32| (s.clamp(-1.0, 1.0) * 32767.0).round() as i16;
+        Self {
+            peak: frame.peak,
+            rms: frame.rms,
+            bands: frame.bands.to_vec(),
+            scope: frame.scope.iter().flat_map(|[l, r]| [q(*l), q(*r)]).collect(),
+        }
     }
 }
 
@@ -122,5 +131,14 @@ mod tests {
     fn dto_carries_all_bands() {
         let dto = LevelFrameDto::from(LevelFrame::silent());
         assert_eq!(dto.bands.len(), oxitide_audio::meter::BANDS);
+        assert!(dto.scope.is_empty());
+    }
+
+    #[test]
+    fn dto_quantizes_and_interleaves_the_scope() {
+        let mut frame = LevelFrame::silent();
+        frame.scope = vec![[1.0, -1.0], [0.5, 2.0]];
+        let dto = LevelFrameDto::from(frame);
+        assert_eq!(dto.scope, vec![32767, -32767, 16384, 32767]);
     }
 }

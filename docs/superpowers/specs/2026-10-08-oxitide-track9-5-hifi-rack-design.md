@@ -311,10 +311,14 @@ loud passages reach the red).
 - Spectrum: 20 bands (amp) / 28 (expanded) from the tap's 28, −60…0 dB, 50 ms smoothed
   rise, 0.9/s fall, caps 0.25/s.
 - Paused/stopped ⇒ needles return to rest, bars fall.
-- **Analyzer unit (Now Playing)**: `[rack] analyzer = auto | spectrum | waterfall`
-  (default auto). The waterfall scrolls the band history down a VFD canvas. Auto picks
-  the waterfall whenever the amp's meters are a spectrum so the two units never show the
-  same thing (owner, 2026-10-09); two keys in the unit's head switch it directly.
+- **Analyzer unit (Now Playing)**: `[rack] analyzer = auto | spectrum | scope` (default
+  auto; the briefly shipped `waterfall` value loads as `scope`). The scope is a **stereo
+  audio monitor**: goniometer + dual-trace L/R oscilloscope with phosphor afterglow
+  (owner pick, 2026-10-09, after a waterfall read as "too full"). Auto picks the scope
+  whenever the amp's meters are a spectrum so the two units never show the same thing;
+  two keys in the unit's head switch it directly. The tap keeps the newest frames as L/R
+  pairs and each reading carries 160 of them (every 3rd frame, ~10 ms); the event sends
+  them interleaved as i16 to stay small.
 
 ### 6.8 Accessibility
 

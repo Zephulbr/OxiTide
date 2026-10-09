@@ -120,14 +120,23 @@ export function bandFraction(db: number): number {
   return Math.min(1, Math.max(0, (db - SPECTRUM_FLOOR_DB) / -SPECTRUM_FLOOR_DB));
 }
 
-/// Waterfall cell brightness for a band level (0..1 on the −60…0 dB scale).
-/// Only the top ~27 dB light at all, on a steep curve, so the history shows
-/// the music's shape instead of a uniformly lit grid.
-export const WATERFALL_FLOOR = 0.03;
-export function waterfallIntensity(level: number): number {
-  const n = Math.min(1, Math.max(0, (level - 0.55) / 0.45));
-  return WATERFALL_FLOOR + (1 - WATERFALL_FLOOR) * n ** 2.2;
+/// Stereo scope (goniometer) mapping for one L/R pair: mid (L+R) points up,
+/// side (R−L) points right, so a left-only signal lies on the upper-left
+/// diagonal, right-only on the upper-right, mono on the vertical. Returns
+/// x/y in −1…1 (clamped to the unit circle) at the given gain.
+export function goniometer(l: number, r: number, gain: number): [number, number] {
+  let x = ((r - l) / Math.SQRT2) * gain;
+  let y = ((l + r) / Math.SQRT2) * gain;
+  const len = Math.hypot(x, y);
+  if (len > 1) {
+    x /= len;
+    y /= len;
+  }
+  return [x, y];
 }
+
+/// Scope gain: a −10 dBFS RMS programme fills about half the screen.
+export const SCOPE_GAIN = 1.6;
 
 /// Fall at `rate` per second; rise instantly, or smoothed by `attackS`.
 export function fallStep(current: number, target: number, rate: number, dt: number, attackS = 0): number {

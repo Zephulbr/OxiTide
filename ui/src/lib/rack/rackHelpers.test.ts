@@ -14,8 +14,8 @@ import {
   poolBands,
   programmeDb,
   REFERENCE_DBFS,
+  goniometer,
   vuPosition,
-  waterfallIntensity,
 } from "./ballistics";
 import { calendar, clock, formatBadge, formatLine, remainingMs, repeatAnnunciator, upNext } from "./deck";
 import { libraryKeyOf, sourceOf } from "./sources";
@@ -131,13 +131,18 @@ describe("ballistics", () => {
     s = peakStep(s, null, 1, 2700);
     expect(s.holdDb).toBeLessThan(-6.5);
   });
-  it("waterfall lights only the loud part of the spectrum", () => {
-    // Typical music bands (−10…−25 dB) must not all read near full brightness.
-    expect(waterfallIntensity(bandFraction(-25))).toBeLessThan(0.15);
-    expect(waterfallIntensity(bandFraction(-15))).toBeLessThan(0.5);
-    expect(waterfallIntensity(bandFraction(-3))).toBeGreaterThan(0.7);
-    expect(waterfallIntensity(1)).toBeCloseTo(1, 9);
-    expect(waterfallIntensity(0)).toBeCloseTo(0.03);
+  it("goniometer: mono is vertical, L and R on the diagonals, clamped to the circle", () => {
+    const [mx, my] = goniometer(0.5, 0.5, 1);
+    expect(mx).toBeCloseTo(0);
+    expect(my).toBeGreaterThan(0);
+    const [lx, ly] = goniometer(0.5, 0, 1);
+    expect(lx).toBeLessThan(0);
+    expect(lx).toBeCloseTo(-ly);
+    const [rx, ry] = goniometer(0, 0.5, 1);
+    expect(rx).toBeGreaterThan(0);
+    expect(rx).toBeCloseTo(ry);
+    const [ax, ay] = goniometer(1, -1, 10);
+    expect(Math.hypot(ax, ay)).toBeCloseTo(1);
   });
   it("scales, falls, LEDs and pooling", () => {
     expect(dbfs(0)).toBe(-96);

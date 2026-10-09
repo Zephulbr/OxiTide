@@ -9,9 +9,9 @@ export function defaultRackSettings(): RackSettings {
 
 /// The analyzer unit's effective style: Auto avoids showing a second
 /// spectrum when the amp's meters already are one.
-export function resolveAnalyzer(rack: RackSettings): "spectrum" | "waterfall" {
-  if (rack.analyzer !== "auto") return rack.analyzer;
-  return rack.meters === "spectrum" ? "waterfall" : "spectrum";
+export function resolveAnalyzer(rack: RackSettings): "spectrum" | "scope" {
+  if (rack.analyzer === "spectrum" || rack.analyzer === "scope") return rack.analyzer;
+  return rack.meters === "spectrum" ? "scope" : "spectrum";
 }
 
 /// Mirrors `clamp_lamp_brightness` in `config.rs`.
