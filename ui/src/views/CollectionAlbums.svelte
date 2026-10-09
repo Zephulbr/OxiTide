@@ -37,7 +37,7 @@
 {:else if albums.length === 0}
   <EmptyState message="No albums yet." />
 {:else}
-  <div class="grid">
+  <div class="grid pane">
     {#each albums as album (album.id)}
       {@const item: PageItem = {
         id: String(album.id),

@@ -21,7 +21,8 @@ body {
 .app[data-sidebar="rail"] { --sidebar-width: 64px; }
 /* Mini mode wrapper: keeps the dialog registry's `inert` from reaching a
    portaled modal while still disabling the Mini background. */
-.mini-layer {
+.mini-layer,
+.rack-layer {
   height: 100%;
 }
 

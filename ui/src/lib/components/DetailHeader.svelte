@@ -29,7 +29,7 @@
   } = $props();
 </script>
 
-<header class="detail-header">
+<header class="detail-header pane">
   <div class="hero">
     <span class="hero-art">{@render cover()}</span>
     <div class="hero-meta">

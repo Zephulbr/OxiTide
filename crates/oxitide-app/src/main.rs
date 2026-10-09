@@ -9,6 +9,7 @@ mod hotkeys;
 mod lrc;
 mod lyrics;
 mod media_controls;
+mod meter;
 mod palette;
 pub mod perf;
 mod player;
@@ -430,6 +431,8 @@ fn main() {
             commands::set_density,
             commands::set_cover_shape,
             commands::set_dynamic_color,
+            commands::set_rack_settings,
+            commands::set_level_meter,
             commands::set_queue_width,
             commands::set_mini_mode,
             commands::set_start_in_mini,

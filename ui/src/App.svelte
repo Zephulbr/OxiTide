@@ -6,25 +6,10 @@
   import QueueRail from "./lib/components/QueueRail.svelte";
   import Backdrop from "./lib/components/Backdrop.svelte";
   import Login from "./views/Login.svelte";
-  import Home from "./views/Home.svelte";
-  import Album from "./views/Album.svelte";
-  import Playlist from "./views/Playlist.svelte";
-  import Artist from "./views/Artist.svelte";
-  import ArtistAll from "./views/ArtistAll.svelte";
-  import Explore from "./views/Explore.svelte";
-  import Feed from "./views/Feed.svelte";
-  import History from "./views/History.svelte";
-  import CollectionAlbums from "./views/CollectionAlbums.svelte";
-  import CollectionTracks from "./views/CollectionTracks.svelte";
-  import Profiles from "./views/Profiles.svelte";
-  import Playlists from "./views/Playlists.svelte";
-  import Mixes from "./views/Mixes.svelte";
-  import Mix from "./views/Mix.svelte";
-  import Purchases from "./views/Purchases.svelte";
-  import Settings from "./views/Settings.svelte";
-  import NowPlaying from "./views/NowPlaying.svelte";
-  import Section from "./views/Section.svelte";
   import Mini from "./views/Mini.svelte";
+  import RoutedPage from "./lib/RoutedPage.svelte";
+  import RackShell from "./lib/rack/RackShell.svelte";
+  import { createLamp } from "./lib/rack/lamp.svelte";
   import PlaylistPicker from "./lib/components/PlaylistPicker.svelte";
   import TrackInfoHost from "./lib/components/TrackInfoHost.svelte";
   import CollectionDialogs from "./lib/components/CollectionDialogs.svelte";
@@ -82,20 +67,12 @@
     api.fadeAndPause(fadeMs).catch((e) => toasts.show(errorMessage(e), { severity: "error" }));
   });
   createDynamicColor(player);
+  createLamp(player);
   const mini = createMini(toasts);
   const favorites = createFavorites(toasts);
   const playlistActions = createPlaylistActions(toasts);
   const collection = createCollectionTree(toasts);
   const collectionActions = createCollectionActions(collection, toasts);
-
-  // Route identity for the page-enter animation. ArtistAll tab switches are
-  // deliberately excluded: the tab underline is that surface's only motion.
-  const pageKey = $derived.by(() => {
-    const route = nav.route;
-    if (route.name === "section") return `section:${route.source}:${route.title}`;
-    if ("id" in route) return `${route.name}:${route.id}`;
-    return route.name;
-  });
 
   let qualityDisplay = $state<QualityDisplay>("compact");
   let loggedIn = $state(false);
@@ -594,6 +571,28 @@
     <div class="mini-layer" inert={dialogs.count > 0}>
       <Mini {player} {favorites} {mini} />
     </div>
+  {:else if appearance.rackShell}
+    <!-- Hi-Fi Rack: the one sanctioned shell branch (Rack spec RK-D1). -->
+    <div class="rack-layer" inert={dialogs.count > 0}>
+      <RackShell
+        {nav}
+        {player}
+        {favorites}
+        {playlistActions}
+        {collection}
+        {collectionActions}
+        {toasts}
+        {qualityDisplay}
+        {mini}
+        {sleepTimer}
+        {error}
+        {onLogout}
+        onQualityDisplay={(mode) => (qualityDisplay = mode)}
+      />
+      <TrackInfoHost {player} {nav} />
+      <PlaylistPicker actions={playlistActions} onnavigate={(id) => nav.goto({ name: "playlist", id })} />
+      <CollectionDialogs actions={collectionActions} />
+    </div>
   {:else}
   <div class="app" data-sidebar={sidebarRail ? "rail" : "full"} data-now-playing={nav.nowPlayingOpen} inert={dialogs.count > 0}>
     <a class="skip-link" href="#main">Skip to content</a>
@@ -607,29 +606,18 @@
     />
     <main class="main" id="main" tabindex="-1">
       {#if error}<p style="color:var(--danger)">{error}</p>{/if}
-      {#key pageKey}
-        <div class="page">
-          {#if nav.nowPlayingOpen}<NowPlaying {player} {nav} {qualityDisplay} />
-          {:else if nav.route.name === "home"}<Home {nav} {player} {toasts} />
-          {:else if nav.route.name === "explore"}<Explore {nav} {player} {favorites} {playlistActions} {toasts} />
-          {:else if nav.route.name === "feed"}<Feed {nav} />
-          {:else if nav.route.name === "history"}<History {nav} {player} {toasts} tab={nav.route.tab} />
-          {:else if nav.route.name === "albums"}<CollectionAlbums {nav} />
-          {:else if nav.route.name === "tracks"}<CollectionTracks {player} {favorites} {playlistActions} {toasts} />
-          {:else if nav.route.name === "profiles"}<Profiles {nav} />
-          {:else if nav.route.name === "mixes"}<Mixes {nav} {player} {toasts} />
-          {:else if nav.route.name === "purchases"}<Purchases {nav} />
-          {:else if nav.route.name === "playlists"}<Playlists {nav} {playlistActions} actions={collectionActions} />
-          {:else if nav.route.name === "folder"}<Playlists {nav} {playlistActions} actions={collectionActions} folderId={nav.route.id} folderLabel={nav.route.label ?? ""} />
-          {:else if nav.route.name === "section"}<Section source={nav.route.source} title={nav.route.title} {nav} {player} {toasts} />
-          {:else if nav.route.name === "album"}<Album id={nav.route.id} {player} {favorites} {playlistActions} {toasts} />
-          {:else if nav.route.name === "mix"}<Mix id={nav.route.id} {player} {favorites} {playlistActions} {toasts} />
-          {:else if nav.route.name === "playlist"}<Playlist {nav} id={nav.route.id} {player} {favorites} {playlistActions} {toasts} {collection} />
-          {:else if nav.route.name === "artist"}<Artist id={nav.route.id} {nav} {player} {favorites} {playlistActions} {toasts} />
-          {:else if nav.route.name === "artist-all"}{#key nav.route.id}<ArtistAll id={nav.route.id} tab={nav.route.tab} {nav} {player} {favorites} {playlistActions} {toasts} />{/key}
-          {:else if nav.route.name === "settings"}<Settings {player} {toasts} {onLogout} onQualityDisplay={(mode) => (qualityDisplay = mode)} />{/if}
-        </div>
-      {/key}
+      <RoutedPage
+        {nav}
+        {player}
+        {favorites}
+        {playlistActions}
+        {collection}
+        {collectionActions}
+        {toasts}
+        {qualityDisplay}
+        {onLogout}
+        onQualityDisplay={(mode) => (qualityDisplay = mode)}
+      />
     </main>
     {#if nav.queueOpen}
       {#if queueOverlay}

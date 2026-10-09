@@ -21,6 +21,8 @@ pub struct Config {
     pub hotkeys: HotkeysConfig,
     /// Sound processing (Track 7): EQ, ReplayGain, crossfade. All off by default.
     pub dsp: DspSettings,
+    /// Hi-Fi Rack mode options (Track 9.5).
+    pub rack: RackConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -75,6 +77,105 @@ pub enum UiMode {
     Instrument,
     #[default]
     Atmosphere,
+    /// Hi-Fi Rack (Track 9.5): its own shell and custom units.
+    Rack,
+}
+
+/// What the compact Rack deck shows (RK-D5). The expanded deck is always the
+/// turntable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DeckFace {
+    Transport,
+    Cd,
+    #[default]
+    Display,
+}
+
+/// The amplifier's meter style (RK-D6).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MeterStyle {
+    #[default]
+    Needles,
+    Bars,
+    Led,
+    Spectrum,
+}
+
+/// The expanded deck's extra unit (between the amp and Now playing). `Auto`
+/// shows the level recorder when the amp already shows a spectrum, otherwise
+/// the spectrum, so the two never duplicate. Kept after the owner's live
+/// comparison (2026-10-09): spectrum, recorder, tuner, eq.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AnalyzerStyle {
+    /// Briefly offered options that were dropped ("none", "cassette") load as Auto.
+    #[default]
+    #[serde(alias = "none", alias = "cassette")]
+    Auto,
+    Spectrum,
+    /// Chart-recorder strip of L/R programme level. Briefly shipped as a
+    /// waterfall, then a stereo scope; both values load as the recorder.
+    #[serde(alias = "waterfall", alias = "scope")]
+    Recorder,
+    /// FM-tuner dial whose pointer travels the track's timeline.
+    Tuner,
+    /// The graphic EQ, reachable inside Now Playing.
+    Eq,
+}
+
+/// Lamp colour (RK-D8): five presets or the cover's hue.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LampColor {
+    #[default]
+    Amber,
+    Blue,
+    Green,
+    Red,
+    White,
+    Cover,
+}
+
+pub const LAMP_BRIGHTNESS_MIN: u8 = 40;
+pub const LAMP_BRIGHTNESS_MAX: u8 = 100;
+
+pub fn clamp_lamp_brightness(value: u8) -> u8 {
+    value.clamp(LAMP_BRIGHTNESS_MIN, LAMP_BRIGHTNESS_MAX)
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RackConfig {
+    pub deck_face: DeckFace,
+    pub meters: MeterStyle,
+    pub analyzer: AnalyzerStyle,
+    pub lamp: LampColor,
+    /// Show the optional graphic-EQ unit in the rack column.
+    pub eq_unit: bool,
+    /// Percent, 40–100: scales lamp lightness and glow.
+    pub lamp_brightness: u8,
+}
+
+impl Default for RackConfig {
+    fn default() -> Self {
+        Self {
+            deck_face: DeckFace::Display,
+            meters: MeterStyle::Needles,
+            analyzer: AnalyzerStyle::Auto,
+            lamp: LampColor::Amber,
+            eq_unit: true,
+            lamp_brightness: LAMP_BRIGHTNESS_MAX,
+        }
+    }
+}
+
+impl RackConfig {
+    pub fn clamped(mut self) -> Self {
+        self.lamp_brightness = clamp_lamp_brightness(self.lamp_brightness);
+        self
+    }
 }
 
 /// Color theme. Orthogonal to `UiMode`; `System` follows the OS preference.
@@ -437,6 +538,14 @@ mod tests {
                 dsp.replay_gain.preamp_db = -2.0;
                 dsp.crossfade.duration_ms = 6000;
                 dsp
+            },
+            rack: RackConfig {
+                deck_face: DeckFace::Cd,
+                meters: MeterStyle::Led,
+                analyzer: AnalyzerStyle::Recorder,
+                lamp: LampColor::Cover,
+                eq_unit: false,
+                lamp_brightness: 70,
             },
         };
         config.save_to(&path).unwrap();
@@ -865,5 +974,58 @@ duration_ms = 4000
         assert!(text.contains("[hotkeys]"), "{text}");
         assert_eq!(Config::load_from(&path), config);
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn rack_defaults_and_mode_parse() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        fs::write(&path, "[ui]
+mode = \"rack\"
+").unwrap();
+        let config = Config::load_from(&path);
+        assert_eq!(config.ui.mode, UiMode::Rack);
+        assert_eq!(config.rack, RackConfig::default());
+        assert_eq!(config.rack.deck_face, DeckFace::Display);
+        assert_eq!(config.rack.meters, MeterStyle::Needles);
+        assert_eq!(config.rack.analyzer, AnalyzerStyle::Auto);
+        assert_eq!(config.rack.lamp, LampColor::Amber);
+        assert!(config.rack.eq_unit);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn rack_section_parses_partial_values() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        fs::write(&path, "[rack]
+deck_face = \"transport\"
+lamp = \"blue\"
+analyzer = \"waterfall\"
+").unwrap();
+        let config = Config::load_from(&path);
+        assert_eq!(config.rack.deck_face, DeckFace::Transport);
+        assert_eq!(config.rack.analyzer, AnalyzerStyle::Recorder, "retired analyzer values map to the recorder");
+        for (text, style) in [
+            ("cassette", AnalyzerStyle::Auto),
+            ("tuner", AnalyzerStyle::Tuner),
+            ("eq", AnalyzerStyle::Eq),
+            ("none", AnalyzerStyle::Auto),
+        ] {
+            let rack: RackConfig = toml::from_str(&format!("analyzer = \"{text}\"")).unwrap();
+            assert_eq!(rack.analyzer, style);
+        }
+        assert_eq!(config.rack.lamp, LampColor::Blue);
+        assert_eq!(config.rack.meters, MeterStyle::Needles);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn lamp_brightness_is_clamped() {
+        assert_eq!(clamp_lamp_brightness(0), LAMP_BRIGHTNESS_MIN);
+        assert_eq!(clamp_lamp_brightness(255), LAMP_BRIGHTNESS_MAX);
+        assert_eq!(clamp_lamp_brightness(70), 70);
+        let rack = RackConfig { lamp_brightness: 5, ..RackConfig::default() }.clamped();
+        assert_eq!(rack.lamp_brightness, LAMP_BRIGHTNESS_MIN);
     }
 }
