@@ -20,8 +20,9 @@ Hi-Fi Rack as the third UI mode (Settings → Appearance → Mode → Hi-Fi Rack
   annunciators and a segmented seek slider; fixed-size transport and play-mode keys.
 - **Now Playing:** expanded deck with the turntable (headroom for the tonearm), a
   centred VFD/key strip; right column with a symmetric amp front, an extra unit
-  (Spectrum / Recorder / Tape / Tuner / EQ, setting + head keys), a Now playing unit
-  (nine-line lyrics + track info with lamp-coloured captions + signal path) and Up next.
+  (Spectrum / Recorder / Tuner / EQ, setting + head keys), a Now playing unit
+  (nine-line lyrics + track info with white captions and accent values + signal path)
+  and Up next.
 - **Amp:** Needles / Bars / LED / Spectrum meters (setting) calibrated to programme
   level (−10 dBFS RMS = 0), spring-needle VU ballistics, PPM-like bars/LEDs; LED-ring
   volume knob; status LEDs; EQ / ReplayGain / Crossfade keys.
@@ -42,8 +43,8 @@ Recorded in the spec: no light/silver variant (Rack is always dark); playlist tr
 column unit instead of a drawer; no Search key (search lives on Explore); meters
 recalibrated after they "hovered near the top"; the Now Playing extra unit went through
 waterfall ("too full") and stereo scope ("too distracting") before the owner kept
-Spectrum, Recorder, Tape, Tuner and EQ; the tape view was redrawn twice to match the
-owner's deck-door reference.
+Spectrum, Recorder, Tuner and EQ; a tape/cassette view was redrawn three times and then
+dropped as not convincing.
 
 ## Verification
 

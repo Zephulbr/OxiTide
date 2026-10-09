@@ -30,8 +30,9 @@ Automated gates at hand-off (2026-10-08, branch `track9-5-hifi-rack`): `cargo te
 
 ## Amp and EQ
 - [ ] Meters setting: Needles, Bars (PROGRAM HOLD readout), LED (hold LED stays), Spectrum — all move with the music and fall to rest on pause.
-- [ ] Now Playing extra unit: with amp meters = Spectrum, Auto shows the Level recorder; the head keys switch Spectrum / Recorder / Tape / Tuner / EQ and the choice survives a restart.
-- [ ] Tape: a close-up of the cassette's middle through the door window fills the unit; packs wind left → right with the track, hubs turn only while playing (emptier reel faster), counter runs. Tuner: pointer glides along the minute scale, station readout shows time. EQ: faders and presets work and match the column EQ/Settings.
+- [ ] Now Playing extra unit: with amp meters = Spectrum, Auto shows the Level recorder; the head keys switch Spectrum / Recorder / Tuner / EQ and the choice survives a restart.
+- [ ] Tuner: pointer glides along the minute scale, station readout shows time. EQ: faders and presets work and match the column EQ/Settings.
+- [ ] Track info: captions (Title … Quality) white, values in the accent.
 - [ ] Level recorder: L/R traces drift slowly left and show the song's dynamics (verse vs chorus); it stands still on pause and resumes on play; it follows lamp colour changes; nothing about it is distracting.
 - [ ] Meter feel: needles swing smoothly (no jitter), sit mid-scale on a typical track and reach the red only on loud passages; bars/LEDs rise fast and fall slowly; nothing hugs the top.
 - [ ] Now Playing: amp front is symmetric (DSP keys left, meters centred, larger knob right); Now playing unit shows lyrics left and track info + signal path right; Up next reads like a track list.

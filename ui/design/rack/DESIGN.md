@@ -61,8 +61,9 @@ Expanded deck right column: amp (wide: DSP keys stacked left, 150px meters centr
 fading 17% per line, 15px, current 23px with glow — beside a 1fr column: track-info
 glass window with printed labels, then a "Signal path" tray of five lamps TIDAL ·
 Decoder · DSP · Output · Bit-perfect with values printed under them; the info captions
-are lamp-coloured VFD legends — 9.5px 800 uppercase +.14em with glow — over faint row
-rules, and the title value is in the accent) · Up next (glass
+— Title, Artist, Album, Track, Length, Quality — are white printed legends, 9.5px 800
+uppercase +.14em, and the values are lit in the accent with a soft glow, the title bold,
+over faint row rules) · Up next (glass
 window, rows like a track list: VFD-amber number, 30px cover, title/artist, time).
 
 Mini player: unchanged layout with the Rack skin — faceplate, cover in a glass window,
@@ -192,7 +193,6 @@ metal with a lamp-coloured centre line. Settings: horizontal 190×28 groove, tic
 | Bars | VFD; L/R rows of 4px segments with 2px gaps, red past 93% (0 dB on −40…+3), dim track at .1, 3px hold tick; scale −40 −30 −20 −10 −6 −3 0 +3; header "PROGRAM HOLD ±x.x dB". |
 | LED | Black recess; two rows of 20 LEDs (12px tall, radius 2) at −40 −30 −24 −20 −17 −14 −12 −10 −8 −7 −6 −5 −4 −3 −2 −1 0 +1 +2 +3; unlit tinted dark, last three red; lit with glow; peak LED stays lit. |
 | Spectrum | VFD; 20 bars of 3px/2px stacked segments with falling 2px caps; scale 63 250 1k 4k 16k. |
-| Cassette deck (slot option "Tape") | After a classic deck door (owner reference, 2026-10-09): a raised bezel around a recessed stadium-shaped window of smoky glass (600×112 viewBox, centred). Through it: the cassette's clear window (translucent grey plastic), the dark tape packs behind it winding left → right with progress (radius by area, hub 14 → full 50), a centre guide with its sight hole, and translucent six-spoke hubs in their rings turning only while playing at constant tape speed (the emptier reel faster). Diagonal glare on the glass, a dark recess lip. Printed under the window: "AUTO REVERSE · STEREO · HI-FI · DOLBY B NR"; the Play lamp and three-digit counter sit at that row's ends. Rejected first: a whole small cassette, a dark crop of the window, a label-strip close-up. |
 | FM tuner (slot option "Tuner") | Backlit dial glass (lamp-tinted radial glow + glass reflection) with a decorative FM band (88–108 MHz) on top, a tick rail, and the track's real minute scale below; a red pointer glides (600 ms linear) along the timeline. Under it: Stereo and Tuned lamps and a VFD "station" readout (pointer frequency, title · artist, time / length). |
 | Graphic EQ (slot option "EQ") | The EQ unit's presets and faders embedded in the slot (no second faceplate). |
 | Level recorder (Now Playing analyzer) | Chart-recorder strip on a VFD: L (solid, full lamp) and R (dashed, 45%) programme level over the last 60 s, one mean-power point per 250 ms, scrolling left with smooth sub-step glide; it stands still while paused (silent intervals add no point). Scale −30…+6 dB (0 = reference) with grid at −20/−10, a red 0 dB line and a faint red tint above it, 10 s time divisions, labels +3/0/−10/−20 and −60 s/−30 s/now. The analyzer setting is Auto / Spectrum / Recorder; Auto shows the recorder when the amp's meters are already a spectrum. Rejected first (owner, 2026-10-09): a waterfall ("too full") and a stereo scope ("too distracting") — this slot must stay calm. |

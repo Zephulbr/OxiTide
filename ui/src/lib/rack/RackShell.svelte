@@ -2,7 +2,6 @@
   import { api } from "../api";
   import { appearance, resolveAnalyzer } from "../appearance.svelte";
   import LevelRecorder from "./meters/LevelRecorder.svelte";
-  import CassetteDeck from "./meters/CassetteDeck.svelte";
   import TunerDial from "./meters/TunerDial.svelte";
   import type { AnalyzerStyle } from "../api";
   import Cover from "../components/Cover.svelte";
@@ -80,14 +79,12 @@
   const SLOT_OPTIONS: { id: Exclude<AnalyzerStyle, "auto">; key: string }[] = [
     { id: "spectrum", key: "Spectrum" },
     { id: "recorder", key: "Recorder" },
-    { id: "cassette", key: "Tape" },
     { id: "tuner", key: "Tuner" },
     { id: "eq", key: "EQ" },
   ];
   const SLOT: Record<Exclude<AnalyzerStyle, "auto">, { name: string }> = {
     spectrum: { name: "Spectrum analyzer" },
     recorder: { name: "Level recorder" },
-    cassette: { name: "Cassette deck" },
     tuner: { name: "FM tuner" },
     eq: { name: "Graphic equalizer" },
   };
@@ -175,12 +172,6 @@
           <div class="specwin" class:rk-vfd={analyzer === "spectrum" || analyzer === "recorder"} aria-hidden={analyzer !== "eq"}>
             {#if analyzer === "recorder"}
               <LevelRecorder history={levels.history} />
-            {:else if analyzer === "cassette"}
-              <CassetteDeck
-                progress={player.state.duration_ms > 0 ? (player.pendingSeek ?? player.state.position_ms) / player.state.duration_ms : 0}
-                playing={player.state.playing}
-                elapsedMs={player.pendingSeek ?? player.state.position_ms}
-              />
             {:else if analyzer === "tuner"}
               <TunerDial
                 progress={player.state.duration_ms > 0 ? (player.pendingSeek ?? player.state.position_ms) / player.state.duration_ms : 0}
@@ -219,7 +210,7 @@
               <dt>Album</dt><dd>{player.state.current?.album ?? "—"}</dd>
               <dt>Track</dt><dd>{queueIndex >= 0 ? `${queueIndex + 1} of ${player.state.queue.length}` : "—"}</dd>
               <dt>Length</dt><dd class="tnum">{player.state.duration_ms > 0 ? clock(player.state.duration_ms) : "—"}</dd>
-              <dt>Format</dt><dd>{formatQuality(player.state.stream, "detailed", player.state.preferred_quality)}</dd>
+              <dt>Quality</dt><dd>{formatQuality(player.state.stream, "detailed", player.state.preferred_quality)}</dd>
               {#if player.state.stream?.replay_gain_db != null}
                 <dt>ReplayGain</dt><dd class="tnum">{player.state.stream.replay_gain_db > 0 ? "+" : ""}{player.state.stream.replay_gain_db.toFixed(1)} dB</dd>
               {/if}
@@ -639,8 +630,8 @@
     overflow: auto;
     padding: 14px 16px;
   }
-  /* Track info: lamp-coloured captions like a VFD's legends, values in screen
-     text, faint rules between rows. */
+  /* Track info: white printed captions, values lit in the accent, faint rules
+     between rows. */
   .facts {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
@@ -660,19 +651,18 @@
     font: 800 9.5px/1.6 var(--font-ui);
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: var(--rack-vfd);
-    text-shadow: 0 0 6px color-mix(in srgb, var(--rack-vfd) 55%, transparent);
+    color: var(--rack-screen-text);
   }
   .facts dd {
     margin: 0;
     font-size: 13px;
     line-height: 1.4;
-    color: var(--rack-screen-text);
+    color: var(--accent);
+    text-shadow: 0 0 6px color-mix(in srgb, var(--accent) 35%, transparent);
     overflow-wrap: anywhere;
   }
   .facts dd:first-of-type {
     font-weight: 700;
-    color: var(--accent);
   }
   .pathlabel {
     margin: 2px 4px 0;

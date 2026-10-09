@@ -106,21 +106,19 @@ pub enum MeterStyle {
 /// The expanded deck's extra unit (between the amp and Now playing). `Auto`
 /// shows the level recorder when the amp already shows a spectrum, otherwise
 /// the spectrum, so the two never duplicate. Kept after the owner's live
-/// comparison (2026-10-09): spectrum, recorder, cassette, tuner, eq.
+/// comparison (2026-10-09): spectrum, recorder, tuner, eq.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AnalyzerStyle {
-    /// A briefly offered "none" (no unit) loads as Auto.
+    /// Briefly offered options that were dropped ("none", "cassette") load as Auto.
     #[default]
-    #[serde(alias = "none")]
+    #[serde(alias = "none", alias = "cassette")]
     Auto,
     Spectrum,
     /// Chart-recorder strip of L/R programme level. Briefly shipped as a
     /// waterfall, then a stereo scope; both values load as the recorder.
     #[serde(alias = "waterfall", alias = "scope")]
     Recorder,
-    /// Cassette deck: reels that wind with the track's progress.
-    Cassette,
     /// FM-tuner dial whose pointer travels the track's timeline.
     Tuner,
     /// The graphic EQ, reachable inside Now Playing.
@@ -1009,7 +1007,7 @@ analyzer = \"waterfall\"
         assert_eq!(config.rack.deck_face, DeckFace::Transport);
         assert_eq!(config.rack.analyzer, AnalyzerStyle::Recorder, "retired analyzer values map to the recorder");
         for (text, style) in [
-            ("cassette", AnalyzerStyle::Cassette),
+            ("cassette", AnalyzerStyle::Auto),
             ("tuner", AnalyzerStyle::Tuner),
             ("eq", AnalyzerStyle::Eq),
             ("none", AnalyzerStyle::Auto),
