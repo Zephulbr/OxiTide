@@ -76,9 +76,9 @@ export function formatLine(stream: StreamMeta | null, outputMode: "shared" | "ex
 /// tape length, so radii follow the square root. Hub radius 13, full 36.
 export const REEL_HUB = 13;
 export const REEL_FULL = 36;
-export function reelRadii(progress: number): [number, number] {
+export function reelRadii(progress: number, hub = REEL_HUB, full = REEL_FULL): [number, number] {
   const p = Math.min(1, Math.max(0, Number.isFinite(progress) ? progress : 0));
-  const area = (fill: number) => Math.sqrt(REEL_HUB ** 2 + fill * (REEL_FULL ** 2 - REEL_HUB ** 2));
+  const area = (fill: number) => Math.sqrt(hub ** 2 + fill * (full ** 2 - hub ** 2));
   return [area(1 - p), area(p)];
 }
 

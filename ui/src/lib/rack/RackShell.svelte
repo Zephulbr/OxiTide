@@ -75,22 +75,21 @@
   ];
   const sleeping = $derived(sleepTimer.mode !== "off");
   const analyzer = $derived(resolveAnalyzer(appearance.rack));
-  /// Now Playing's extra unit: every option is a key so the owner can compare
-  /// them live (2026-10-09) before deciding which to keep.
+  /// Now Playing's extra unit: the options the owner kept after comparing them
+  /// live (2026-10-09), each on a key.
   const SLOT_OPTIONS: { id: Exclude<AnalyzerStyle, "auto">; key: string }[] = [
     { id: "spectrum", key: "Spectrum" },
     { id: "recorder", key: "Recorder" },
     { id: "cassette", key: "Tape" },
     { id: "tuner", key: "Tuner" },
     { id: "eq", key: "EQ" },
-    { id: "none", key: "Off" },
   ];
-  const SLOT: Record<Exclude<AnalyzerStyle, "auto" | "none">, { name: string; silk: string }> = {
-    spectrum: { name: "Spectrum analyzer", silk: "28 band" },
-    recorder: { name: "Level recorder", silk: "Last 60 s" },
-    cassette: { name: "Cassette deck", silk: "Auto reverse" },
-    tuner: { name: "FM tuner", silk: "Track dial" },
-    eq: { name: "Graphic equalizer", silk: "10 band" },
+  const SLOT: Record<Exclude<AnalyzerStyle, "auto">, { name: string }> = {
+    spectrum: { name: "Spectrum analyzer" },
+    recorder: { name: "Level recorder" },
+    cassette: { name: "Cassette deck" },
+    tuner: { name: "FM tuner" },
+    eq: { name: "Graphic equalizer" },
   };
 
   const expanded = $derived(nav.nowPlayingOpen);
@@ -163,19 +162,14 @@
     <DeckUnit {player} {nav} {favorites} face={appearance.rack.deck_face} {expanded} />
     <AmpUnit {player} meters={appearance.rack.meters} {toasts} wide={expanded} />
     {#if expanded}
-      {#snippet slotKeys()}
-        <div class="rk-tray slotkeys" role="group" aria-label="Extra unit">
-          {#each SLOT_OPTIONS as o (o.id)}
-            <button class="rk-key sm" aria-pressed={analyzer === o.id} onclick={() => appearance.setRack({ analyzer: o.id }).catch(() => {})}>{o.key}</button>
-          {/each}
-        </div>
-      {/snippet}
-      {#if analyzer !== "none"}
         <section class="rk-unit extra" aria-label={SLOT[analyzer].name}>
           <div class="rk-head"><h2 class="rk-name">{SLOT[analyzer].name}</h2>
             <div class="headkeys">
-              <span class="rk-silk">{SLOT[analyzer].silk}</span>
-              {@render slotKeys()}
+              <div class="rk-tray slotkeys" role="group" aria-label="Extra unit">
+                {#each SLOT_OPTIONS as o (o.id)}
+                  <button class="rk-key sm" aria-pressed={analyzer === o.id} onclick={() => appearance.setRack({ analyzer: o.id }).catch(() => {})}>{o.key}</button>
+                {/each}
+              </div>
             </div>
           </div>
           <div class="specwin" class:rk-vfd={analyzer === "spectrum" || analyzer === "recorder"} aria-hidden={analyzer !== "eq"}>
@@ -205,14 +199,8 @@
             {/if}
           </div>
         </section>
-      {/if}
       <section class="rk-unit lyricsunit" aria-label="Now playing">
-        <div class="rk-head"><h2 class="rk-name">Now playing</h2>
-          <div class="headkeys">
-            <span class="rk-silk">{lyrics.lyrics?.synced ? "Synced lyrics" : ""}</span>
-            {#if analyzer === "none"}{@render slotKeys()}{/if}
-          </div>
-        </div>
+        <div class="rk-head"><h2 class="rk-name">Now playing</h2><span class="rk-silk">{lyrics.lyrics?.synced ? "Synced lyrics" : ""}</span></div>
         <div class="np">
         <div class="rk-vfd lyrics">
           {#if lines.length > 0 && active >= 0}
@@ -594,9 +582,6 @@
   .extra .rk-head {
     flex-wrap: wrap;
     row-gap: 8px;
-  }
-  .extra .headkeys .rk-silk {
-    display: none;
   }
   .slotkeys .rk-key {
     min-width: 0;

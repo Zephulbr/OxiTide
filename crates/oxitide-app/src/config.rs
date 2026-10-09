@@ -105,12 +105,14 @@ pub enum MeterStyle {
 
 /// The expanded deck's extra unit (between the amp and Now playing). `Auto`
 /// shows the level recorder when the amp already shows a spectrum, otherwise
-/// the spectrum, so the two never duplicate. The owner is comparing every
-/// option live (2026-10-09) before deciding which to keep.
+/// the spectrum, so the two never duplicate. Kept after the owner's live
+/// comparison (2026-10-09): spectrum, recorder, cassette, tuner, eq.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AnalyzerStyle {
+    /// A briefly offered "none" (no unit) loads as Auto.
     #[default]
+    #[serde(alias = "none")]
     Auto,
     Spectrum,
     /// Chart-recorder strip of L/R programme level. Briefly shipped as a
@@ -123,8 +125,6 @@ pub enum AnalyzerStyle {
     Tuner,
     /// The graphic EQ, reachable inside Now Playing.
     Eq,
-    /// No extra unit; Now playing takes the room.
-    None,
 }
 
 /// Lamp colour (RK-D8): five presets or the cover's hue.
@@ -1012,7 +1012,7 @@ analyzer = \"waterfall\"
             ("cassette", AnalyzerStyle::Cassette),
             ("tuner", AnalyzerStyle::Tuner),
             ("eq", AnalyzerStyle::Eq),
-            ("none", AnalyzerStyle::None),
+            ("none", AnalyzerStyle::Auto),
         ] {
             let rack: RackConfig = toml::from_str(&format!("analyzer = \"{text}\"")).unwrap();
             assert_eq!(rack.analyzer, style);

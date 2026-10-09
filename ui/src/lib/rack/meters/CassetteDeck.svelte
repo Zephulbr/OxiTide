@@ -2,10 +2,12 @@
   import { appearance } from "../../appearance.svelte";
   import { reelRadii } from "../deck";
 
-  /// Cassette deck (DESIGN §5.9 slot): a tape behind a smoked window. The
-  /// packs wind from the left reel to the right as the track plays (a calm,
-  /// physical progress bar); hubs turn only while playing, the emptier reel
-  /// faster, like real tape. A three-digit counter runs with the seconds.
+  /// Cassette deck (DESIGN §5.9 slot): a close-up through the deck's smoked
+  /// door window — only the middle of the cassette is in view, filling the
+  /// unit: the shell's clear window, both tape packs, the hubs. The packs wind
+  /// left → right as the track plays (a physical progress bar); hubs turn only
+  /// while playing, the emptier reel faster. The label edge and the shell's
+  /// bottom run off the window. A three-digit counter runs with the seconds.
   let {
     progress,
     playing,
@@ -14,8 +16,13 @@
     elapsedMs,
   }: { progress: number; playing: boolean; title: string; artist: string; elapsedMs: number } = $props();
 
+  const HUB = 23;
+  const FULL = 74;
+  const LX = 112;
+  const RX = 288;
+  const CY = 66;
   const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
-  const radii = $derived(reelRadii(progress));
+  const radii = $derived(reelRadii(progress, HUB, FULL));
   const counter = $derived(String(Math.floor(elapsedMs / 1000) % 1000).padStart(3, "0"));
   const moving = $derived(playing && !appearance.reducedMotion);
 
@@ -27,12 +34,9 @@
     const step = (t: number) => {
       const dt = last === null ? 0 : Math.min(0.1, (t - last) / 1000);
       last = t;
-      // Constant tape speed: angular speed is inversely proportional to the
+      // Constant tape speed: hub turn rate is inversely proportional to the
       // pack radius (degrees per second at the hub).
-      angles = [
-        (angles[0] + (dt * 2600) / radii[0]) % 360,
-        (angles[1] + (dt * 2600) / radii[1]) % 360,
-      ];
+      angles = [(angles[0] + (dt * 5200) / radii[0]) % 360, (angles[1] + (dt * 5200) / radii[1]) % 360];
       raf = requestAnimationFrame(step);
     };
     raf = requestAnimationFrame(step);
@@ -40,37 +44,54 @@
   });
 
   const TEETH = [0, 60, 120, 180, 240, 300];
+  /// The shell, with its clear centre window and both hub holes cut out.
+  const SHELL =
+    "M0 0H400V132H0Z " +
+    "M76 40 Q76 34 82 34 H318 Q324 34 324 40 V92 Q324 98 318 98 H82 Q76 98 76 92Z " +
+    `M${LX - 26} ${CY}a26 26 0 1 0 52 0a26 26 0 1 0 -52 0Z ` +
+    `M${RX - 26} ${CY}a26 26 0 1 0 52 0a26 26 0 1 0 -52 0Z`;
 </script>
 
 <div class="deck">
-  <div class="rk-win window">
-    <svg viewBox="0 0 300 118" aria-hidden="true">
-      <!-- Shell -->
-      <rect x="6" y="4" width="288" height="110" rx="8" class="shell" />
-      <rect x="22" y="12" width="256" height="26" rx="3" class="label" />
-      <text x="34" y="29" class="side">A</text>
-      <text x="52" y="24" class="title">{clip(title, 44)}</text>
-      <text x="52" y="33" class="artist">{clip(artist, 56)}</text>
-      <!-- Tape path to the head gap -->
-      <path d="M {94 - radii[0] * 0.2} {74 + radii[0]} L 132 108 L 168 108 L {206 + radii[1] * 0.2} {74 + radii[1]}" class="tape" />
-      <!-- Reel windows -->
-      {#each [94, 206] as cx, i (cx)}
-        <circle cx={cx} cy="74" r="38" class="hole" />
-        <circle cx={cx} cy="74" r={radii[i]} class="pack" />
-        <g transform="rotate({angles[i]} {cx} 74)">
-          <circle cx={cx} cy="74" r="11" class="hub" />
+  <div class="door">
+    <svg viewBox="0 0 400 132" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      <defs>
+        <radialGradient id="rk-pack" cx="50%" cy="50%" r="50%">
+          <stop offset="0.3" stop-color="#2a1a0e" />
+          <stop offset="0.92" stop-color="#46301c" />
+          <stop offset="1" stop-color="#1c120a" />
+        </radialGradient>
+      </defs>
+      <!-- Inside the cassette: the dark well, then the tape packs. -->
+      <rect x="0" y="0" width="400" height="132" fill="#060505" />
+      <circle cx={LX} cy={CY} r={radii[0]} fill="url(#rk-pack)" />
+      <circle cx={RX} cy={CY} r={radii[1]} fill="url(#rk-pack)" />
+      <!-- The shell over it, with the window and hub holes cut out. -->
+      <path d={SHELL} fill-rule="evenodd" class="shell" />
+      <path d="M76 40 Q76 34 82 34 H318 Q324 34 324 40 V92 Q324 98 318 98 H82 Q76 98 76 92Z" class="windowrim" />
+      <!-- Label edge at the top and the shell's lower lip at the bottom. -->
+      <rect x="20" y="-6" width="360" height="26" rx="3" class="label" />
+      <text x="34" y="13" class="side">A</text>
+      <text x="52" y="9" class="title">{clip(title, 52)}</text>
+      <text x="52" y="17" class="artist">{clip(artist, 64)}</text>
+      <rect x="150" y="112" width="100" height="20" rx="2" class="lip" />
+      <!-- Hubs, turning. -->
+      {#each [LX, RX] as cx, i (cx)}
+        <g transform="rotate({angles[i]} {cx} {CY})">
+          <circle cx={cx} cy={CY} r="19" class="hub" />
           {#each TEETH as a (a)}
-            <rect x={cx - 1.5} y="63" width="3" height="5" class="tooth" transform="rotate({a} {cx} 74)" />
+            <rect x={cx - 2.5} y={CY - 19} width="5" height="8" class="tooth" transform="rotate({a} {cx} {CY})" />
           {/each}
-          <circle cx={cx} cy="74" r="4.5" class="spindle" />
+          <circle cx={cx} cy={CY} r="7" class="spindle" />
         </g>
       {/each}
-      <rect x="128" y="100" width="44" height="12" rx="2" class="gap" />
     </svg>
+    <!-- The deck's door glass in front. -->
+    <div class="glass"></div>
   </div>
   <div class="bar">
     <span class="rk-led" class:on={playing}>Play</span>
-    <span class="rk-silk">Type II · CrO2</span>
+    <span class="rk-silk">Type II · CrO2 · Dolby B</span>
     <span class="counter" aria-label={`Tape counter ${counter}`}>
       {#each counter.split("") as digit, i (i)}<span>{digit}</span>{/each}
     </span>
@@ -84,64 +105,65 @@
     gap: 6px;
     height: 100%;
   }
-  .window {
+  .door {
+    position: relative;
     flex: 1;
     min-height: 0;
-    display: grid;
-    place-items: center;
-    padding: 4px 10px;
+    overflow: hidden;
+    border-radius: 5px;
+    box-shadow: 0 0 0 1px #000, 0 1px 0 1px rgba(255, 255, 255, 0.07), inset 0 3px 8px rgba(0, 0, 0, 0.95);
   }
   svg {
+    display: block;
+    width: 100%;
     height: 100%;
-    max-width: 100%;
+  }
+  /* Smoked door glass: darkens the cassette and carries the reflection. */
+  .glass {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      linear-gradient(166deg, rgba(255, 255, 255, 0.09) 0, rgba(255, 255, 255, 0.02) 32%, transparent 32.3%),
+      linear-gradient(180deg, rgba(10, 8, 6, 0.35), rgba(10, 8, 6, 0.15) 40%, rgba(10, 8, 6, 0.45));
+    box-shadow: inset 0 0 22px rgba(0, 0, 0, 0.75);
   }
   .shell {
-    fill: #141210;
-    stroke: #2a2724;
-    stroke-width: 1;
+    fill: #1b1917;
+  }
+  .windowrim {
+    fill: rgba(255, 255, 255, 0.025);
+    stroke: #34302c;
+    stroke-width: 1.5;
   }
   .label {
     fill: #d9d0c2;
-    opacity: 0.88;
+    opacity: 0.85;
   }
   .side {
-    font: 800 12px var(--font-ui);
+    font: 800 11px var(--font-ui);
     fill: #8a2f1c;
   }
   .title {
-    font: 700 8px var(--font-ui);
+    font: 700 7px var(--font-ui);
     fill: #241d16;
   }
   .artist {
-    font: 500 6.5px var(--font-ui);
+    font: 500 6px var(--font-ui);
     fill: #5a4f43;
   }
-  .hole {
-    fill: #080706;
+  .lip {
+    fill: #121110;
     stroke: #2a2724;
-  }
-  .pack {
-    fill: #3a2414;
-    stroke: #1c120a;
-    stroke-width: 0.6;
   }
   .hub {
     fill: #d8d2c8;
   }
   .tooth {
-    fill: #080706;
+    fill: #0a0908;
   }
   .spindle {
     fill: #2a2724;
-  }
-  .tape {
-    fill: none;
-    stroke: #3a2414;
-    stroke-width: 1.2;
-  }
-  .gap {
-    fill: #080706;
-    stroke: #2a2724;
   }
   .bar {
     display: flex;

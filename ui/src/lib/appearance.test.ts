@@ -86,7 +86,7 @@ describe("rack mode", () => {
     expect(resolveAnalyzer({ ...rack, meters: "spectrum", analyzer: "spectrum" })).toBe("spectrum");
     expect(resolveAnalyzer({ ...rack, analyzer: "recorder" })).toBe("recorder");
     expect(resolveAnalyzer({ ...rack, analyzer: "cassette" })).toBe("cassette");
-    expect(resolveAnalyzer({ ...rack, meters: "spectrum", analyzer: "none" })).toBe("none");
+    expect(resolveAnalyzer({ ...rack, meters: "spectrum", analyzer: "eq" })).toBe("eq");
   });
 
   it("defaults and clamps", () => {
