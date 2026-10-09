@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { poolBands } from "../ballistics";
+  import { poolBands, waterfallIntensity } from "../ballistics";
   import type { LevelsSnapshot } from "../levels.svelte";
 
   /// VFD waterfall (DESIGN §5.9): the spectrum's recent history scrolling
@@ -50,12 +50,12 @@
       ctx.globalAlpha = 1;
       ctx.drawImage(canvas, 0, 0, w, h - pitch, 0, pitch, w, h - pitch);
       ctx.clearRect(0, 0, w, pitch);
-      const bands = poolBands(snapshot.bands, count);
+      const bands = poolBands(snapshot.raw, count);
       const gap = COL_GAP * s;
       const cw = (w - gap * (count - 1)) / count;
       ctx.fillStyle = color;
       for (let i = 0; i < count; i++) {
-        ctx.globalAlpha = 0.06 + 0.94 * Math.min(1, bands[i] ?? 0) ** 1.4;
+        ctx.globalAlpha = waterfallIntensity(bands[i] ?? 0);
         ctx.fillRect(i * (cw + gap), 0, cw, ROW_H * s);
       }
     };
@@ -86,7 +86,7 @@
     min-height: 0;
     width: 100%;
     color: var(--rack-vfd);
-    filter: drop-shadow(0 0 2px var(--rack-vfd));
+    filter: drop-shadow(0 0 1px var(--rack-vfd));
     /* Older rows fade toward the bottom, like phosphor decaying. */
     mask: linear-gradient(180deg, #000 0%, #000 35%, rgba(0, 0, 0, 0.25) 100%);
   }

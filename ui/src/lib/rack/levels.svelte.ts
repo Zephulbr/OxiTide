@@ -32,6 +32,9 @@ export interface LevelsSnapshot {
   /// Spectrum bars and their falling caps, 0..1.
   bands: number[];
   caps: number[];
+  /// The newest band levels, unsmoothed, 0..1 (the waterfall's input: the
+  /// bars' slow fall would smear its history into stripes).
+  raw: number[];
 }
 
 type Listen = (event: string, handler: (e: { payload: LevelFrame }) => void) => Promise<() => void>;
@@ -64,6 +67,7 @@ export function createLevels(depsFactory: () => Deps = browserDeps) {
     holdDb: [FLOOR_DB, FLOOR_DB],
     bands: Array(BAND_COUNT).fill(0),
     caps: Array(BAND_COUNT).fill(0),
+    raw: Array(BAND_COUNT).fill(0),
   });
 
   let deps: Deps | null = null;
@@ -93,6 +97,7 @@ export function createLevels(depsFactory: () => Deps = browserDeps) {
         vuTarget[ch] = vuPosition(Math.sqrt(power));
       }
       bandTarget = f.bands.map(bandFraction);
+      snapshot.raw = bandTarget;
     }
     for (const ch of [0, 1] as const) {
       needles[ch] = needleStep(needles[ch], vuTarget[ch], dt);

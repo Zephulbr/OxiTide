@@ -15,6 +15,7 @@ import {
   programmeDb,
   REFERENCE_DBFS,
   vuPosition,
+  waterfallIntensity,
 } from "./ballistics";
 import { calendar, clock, formatBadge, formatLine, remainingMs, repeatAnnunciator, upNext } from "./deck";
 import { libraryKeyOf, sourceOf } from "./sources";
@@ -129,6 +130,14 @@ describe("ballistics", () => {
     expect(s.holdDb).toBeGreaterThan(-6.5);
     s = peakStep(s, null, 1, 2700);
     expect(s.holdDb).toBeLessThan(-6.5);
+  });
+  it("waterfall lights only the loud part of the spectrum", () => {
+    // Typical music bands (−10…−25 dB) must not all read near full brightness.
+    expect(waterfallIntensity(bandFraction(-25))).toBeLessThan(0.15);
+    expect(waterfallIntensity(bandFraction(-15))).toBeLessThan(0.5);
+    expect(waterfallIntensity(bandFraction(-3))).toBeGreaterThan(0.7);
+    expect(waterfallIntensity(1)).toBeCloseTo(1, 9);
+    expect(waterfallIntensity(0)).toBeCloseTo(0.03);
   });
   it("scales, falls, LEDs and pooling", () => {
     expect(dbfs(0)).toBe(-96);

@@ -190,7 +190,7 @@ metal with a lamp-coloured centre line. Settings: horizontal 190×28 groove, tic
 | Bars | VFD; L/R rows of 4px segments with 2px gaps, red past 93% (0 dB on −40…+3), dim track at .1, 3px hold tick; scale −40 −30 −20 −10 −6 −3 0 +3; header "PROGRAM HOLD ±x.x dB". |
 | LED | Black recess; two rows of 20 LEDs (12px tall, radius 2) at −40 −30 −24 −20 −17 −14 −12 −10 −8 −7 −6 −5 −4 −3 −2 −1 0 +1 +2 +3; unlit tinted dark, last three red; lit with glow; peak LED stays lit. |
 | Spectrum | VFD; 20 bars of 3px/2px stacked segments with falling 2px caps; scale 63 250 1k 4k 16k. |
-| Waterfall (Now Playing analyzer) | VFD canvas; 28 band columns (3px gaps), a new 3px row every 45 ms scrolling down, cell brightness = level^1.4 over a .06 floor, older rows fading toward the bottom. The analyzer setting is Auto / Spectrum / Waterfall; Auto shows the waterfall when the amp's meters are already a spectrum. |
+| Waterfall (Now Playing analyzer) | VFD canvas; 28 band columns (3px gaps), a new 3px row every 45 ms scrolling down, fed the raw (unsmoothed) band levels; brightness lights only the top ~27 dB on a steep curve (`waterfallIntensity`: −25 dB ≈ .1, −15 dB < .5, −3 dB ≈ .8, floor .03), older rows fading toward the bottom. The analyzer setting is Auto / Spectrum / Waterfall; Auto shows the waterfall when the amp's meters are already a spectrum. |
 
 Calibration: every meter reads programme level against **−10 dBFS RMS = 0 VU / 0 dB**
 (never digital full scale — that pins meters on modern masters).

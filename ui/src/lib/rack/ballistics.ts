@@ -120,6 +120,15 @@ export function bandFraction(db: number): number {
   return Math.min(1, Math.max(0, (db - SPECTRUM_FLOOR_DB) / -SPECTRUM_FLOOR_DB));
 }
 
+/// Waterfall cell brightness for a band level (0..1 on the −60…0 dB scale).
+/// Only the top ~27 dB light at all, on a steep curve, so the history shows
+/// the music's shape instead of a uniformly lit grid.
+export const WATERFALL_FLOOR = 0.03;
+export function waterfallIntensity(level: number): number {
+  const n = Math.min(1, Math.max(0, (level - 0.55) / 0.45));
+  return WATERFALL_FLOOR + (1 - WATERFALL_FLOOR) * n ** 2.2;
+}
+
 /// Fall at `rate` per second; rise instantly, or smoothed by `attackS`.
 export function fallStep(current: number, target: number, rate: number, dt: number, attackS = 0): number {
   if (target >= current) {
