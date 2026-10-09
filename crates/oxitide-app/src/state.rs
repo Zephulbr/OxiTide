@@ -58,6 +58,14 @@ pub struct AppState {
     pub discord: Mutex<Option<crate::discord::DiscordPresence>>,
     /// Hi-Fi Rack level meter emitter; idle unless the UI enables it.
     pub meter: crate::meter::MeterEmitter,
+    /// The phone remote server; `None` while disabled (Track 11).
+    pub remote: Mutex<Option<Arc<crate::remote::RemoteService>>>,
+    /// Why an enabled remote is not listening (bind failure).
+    pub remote_error: Mutex<Option<String>>,
+    /// Serializes remote start/stop.
+    pub remote_lifecycle: tokio::sync::Mutex<()>,
+    /// Paired phones (`remote.json`), loaded on first use.
+    pub remote_devices: std::sync::OnceLock<Arc<crate::remote::pairing::DeviceStore>>,
     session_expired: AtomicBool,
     handle: Mutex<Option<AppHandle>>,
 }
@@ -220,6 +228,10 @@ impl AppState {
         self.discord.lock().unwrap().take()
     }
 
+    pub fn remote(&self) -> Option<Arc<crate::remote::RemoteService>> {
+        self.remote.lock().unwrap().clone()
+    }
+
     /// Remember the app handle so `notify_session_expired` can reach the UI.
     pub fn set_handle(&self, handle: AppHandle) {
         *self.handle.lock().unwrap() = Some(handle);
@@ -240,6 +252,7 @@ impl AppState {
         if let Some(handle) = self.handle.lock().unwrap().as_ref() {
             let _ = handle.emit("session_expired", ());
         }
+        crate::remote::host::session_changed(self, crate::remote::events::SessionKind::Expired);
     }
 
     pub fn clear_session_expired(&self) {
