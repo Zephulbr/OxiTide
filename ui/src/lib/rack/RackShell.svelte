@@ -171,7 +171,7 @@
         </div>
       {/snippet}
       {#if analyzer !== "none"}
-        <section class="rk-unit spectrum slot" aria-label={SLOT[analyzer].name}>
+        <section class="rk-unit extra" aria-label={SLOT[analyzer].name}>
           <div class="rk-head"><h2 class="rk-name">{SLOT[analyzer].name}</h2>
             <div class="headkeys">
               <span class="rk-silk">{SLOT[analyzer].silk}</span>
@@ -564,7 +564,7 @@
     grid-column: 2;
     grid-row: 1;
   }
-  .rack.expanded .slot {
+  .rack.expanded .extra {
     grid-column: 2;
     grid-row: 2;
   }
@@ -586,9 +586,17 @@
     gap: 12px;
     min-width: 0;
   }
+  /* The option keys stay one row; on a narrow column the whole row drops
+     under the unit name rather than breaking up. */
   .slotkeys {
+    flex-wrap: nowrap;
+  }
+  .extra .rk-head {
     flex-wrap: wrap;
-    justify-content: flex-end;
+    row-gap: 8px;
+  }
+  .extra .headkeys .rk-silk {
+    display: none;
   }
   .slotkeys .rk-key {
     min-width: 0;
