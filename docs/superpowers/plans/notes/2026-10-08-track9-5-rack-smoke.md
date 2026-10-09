@@ -13,8 +13,9 @@ Automated gates at hand-off (2026-10-08, branch `track9-5-hifi-rack`): `cargo te
 - [ ] Source keys: the lamp follows the page (Home, Explore, Library for collection/album/artist/mix pages, Playlists for playlists/folders, Setup for Settings). Search jumps to Explore and focuses the search box.
 - [ ] Library shows the sub-source key tray (Albums … Feed) on collection pages only.
 - [ ] Back/forward keys, Alt+←/→ and mouse side buttons navigate.
-- [ ] Drawer key opens the playlist tree over the display; picking a playlist navigates and closes it; the scrim closes it.
-- [ ] Queue key (deck) opens the queue drawer; Esc closes it.
+- [ ] The Playlists unit under the EQ shows the playlist tree, scrolls on its own, and fills the column to the display's bottom edge; picking a playlist navigates. "All" opens the playlists page.
+- [ ] Queue key (deck) opens the queue drawer; its close key and Esc close it.
+- [ ] No unit stretches: the EQ keeps its natural height, keys keep their size, the deck's key row fits without clipping.
 - [ ] Sleep timer and Mini keys behave as in the player bar.
 - [ ] Skip link, Tab order and focus rings work across selector, deck, amp, EQ and the display.
 
@@ -23,7 +24,7 @@ Automated gates at hand-off (2026-10-08, branch `track9-5-hifi-rack`): `cargo te
 - [ ] VFD: title, artist · album, 7-segment elapsed, annunciators (PLAY, BUF, RPT/RPT 1, SHUF, XFADE, TRK nn/nn); errors and the bit-perfect notice show on the sub line.
 - [ ] VFD seek: click/drag seeks; arrows ±5 s, PageUp/PageDown ±10 %, Home/End.
 - [ ] Transport keys, Shuffle, Repeat (off → all → one), ♥ favourite, Queue.
-- [ ] Now Playing (cover click, expand key, existing shortcuts) expands the deck: turntable spins only while playing, tonearm follows progress, spectrum + lyrics VFD on the right; Esc / the collapse key return.
+- [ ] Now Playing (cover click, expand key, existing shortcuts) expands the deck: the platter fills the deck, spins only while playing, tonearm follows progress; amp (meters not clipped), a compact spectrum and the five-line lyrics unit on the right; the VFD and keys form a centred strip; Esc / the collapse key return.
 - [ ] Short window (< 680px tall): face windows hide; VFD and keys stay.
 
 ## Amp and EQ

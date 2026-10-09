@@ -66,6 +66,7 @@
 <style>
   .meter {
     position: relative;
+    flex: 0 1 auto;
     aspect-ratio: 1.55;
     overflow: hidden;
     border-radius: 4px;

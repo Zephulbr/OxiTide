@@ -68,12 +68,13 @@
   const expanded = $derived(nav.nowPlayingOpen);
   const source = $derived(sourceOf(nav.route));
   const libraryKey = $derived(libraryKeyOf(nav.route));
-  let drawerOpen = $state(false);
+  let column: HTMLDivElement;
 
-  // Leaving a page closes the playlist drawer (it is a picker, not a panel).
+  // The compact column can scroll on short windows; the expanded layout must
+  // start at the top or its units render cut off.
   $effect(() => {
-    void nav.route;
-    drawerOpen = false;
+    void expanded;
+    if (column) column.scrollTop = 0;
   });
 
   async function search() {
@@ -121,10 +122,7 @@
       </button>
     </nav>
     <div class="right">
-      <button class="rk-key sm" aria-pressed={drawerOpen} onclick={() => (drawerOpen = !drawerOpen)} disabled={expanded} title="Playlists drawer">
-        <Icon name="list-music" size={12} /> Drawer
-      </button>
-      <span class="sleep"><SleepTimerControl {sleepTimer} /></span>
+      <span class="rk-tray sleep" title="Sleep timer"><SleepTimerControl {sleepTimer} /></span>
       <button class="rk-key sm" onclick={() => void mini.enter()} title="Mini player">Mini</button>
       <button class="src setup" aria-current={source === "settings" && !expanded ? "page" : undefined} onclick={() => go({ name: "settings" })}>
         <span class="lamp"></span><span class="rk-key">Setup</span>
@@ -133,27 +131,42 @@
     </div>
   </header>
 
-  <div class="column">
+  <div class="column" bind:this={column}>
     <DeckUnit {player} {nav} {favorites} face={appearance.rack.deck_face} {expanded} />
     <AmpUnit {player} meters={appearance.rack.meters} {toasts} />
     {#if expanded}
       <section class="rk-unit spectrum" aria-label="Spectrum analyzer">
         <div class="rk-head"><h2 class="rk-name">Spectrum analyzer</h2><span class="rk-silk">28 band</span></div>
         <div class="rk-vfd specwin" aria-hidden="true"><SpectrumMeter snapshot={levels.snapshot} count={28} /></div>
+      </section>
+      <section class="rk-unit lyricsunit" aria-label="Lyrics">
+        <div class="rk-head"><h2 class="rk-name">Lyrics</h2><span class="rk-silk">{lyrics.lyrics?.synced ? "Synced" : ""}</span></div>
         <div class="rk-vfd lyrics">
           {#if lines.length > 0 && active >= 0}
-            <div class="rk-vfd-text sub dim">{lines[active - 1]?.text ?? ""}</div>
-            <div class="rk-vfd-text" aria-live="off">{lines[active].text}</div>
-            <div class="rk-vfd-text sub dim">{lines[active + 1]?.text ?? ""}</div>
+            {#each [-2, -1, 0, 1, 2] as offset (offset)}
+              <div class="rk-vfd-text line" class:now={offset === 0} class:far={Math.abs(offset) === 2}>{lines[active + offset]?.text ?? ""}</div>
+            {/each}
           {:else}
-            <div class="rk-vfd-text sub dim">{lyrics.loading ? "Loading lyrics" : lines.length > 0 ? "" : "No synced lyrics"}</div>
-            <div class="rk-vfd-text">{player.state.current?.title ?? ""}</div>
-            <div class="rk-vfd-text sub dim">{player.state.current?.artist ?? ""}</div>
+            <div class="rk-vfd-text sub line far">{lyrics.loading ? "Loading lyrics" : lines.length > 0 ? "" : "No synced lyrics"}</div>
+            <div class="rk-vfd-text line now">{player.state.current?.title ?? ""}</div>
+            <div class="rk-vfd-text sub line far">{player.state.current?.artist ?? ""}</div>
           {/if}
         </div>
       </section>
-    {:else if appearance.rack.eq_unit}
-      <EqUnit {toasts} />
+    {:else}
+      {#if appearance.rack.eq_unit}<EqUnit {toasts} />{/if}
+      <section class="rk-unit library" aria-label="Playlists">
+        <div class="rk-head"><h2 class="rk-name">Playlists</h2>
+          <button class="rk-key sm" onclick={() => go({ name: "playlists" })} title="All playlists">All</button>
+        </div>
+        <div class="rk-win tree">
+          {#if collection.error}
+            <p class="muted">{collection.error}</p>
+          {:else}
+            <PlaylistTree entries={collection.root} {collection} {nav} actions={collectionActions} />
+          {/if}
+        </div>
+      </section>
     {/if}
   </div>
 
@@ -182,27 +195,22 @@
           {onQualityDisplay}
         />
       </main>
-      {#if drawerOpen}
-        <button class="scrim" aria-label="Close playlists drawer" onclick={() => (drawerOpen = false)}></button>
-        <aside class="drawer left rk-unit" aria-label="Playlists">
-          <div class="rk-head"><h2 class="rk-name">Playlists</h2>
-            <button class="rk-key sm" onclick={() => (drawerOpen = false)} aria-label="Close"><Icon name="x" size={12} /></button>
-          </div>
-          <div class="tree">
-            {#if collection.error}
-              <p class="muted">{collection.error}</p>
-            {:else}
-              <PlaylistTree entries={collection.root} {collection} {nav} actions={collectionActions} />
-            {/if}
-          </div>
-        </aside>
-      {/if}
       {#if nav.queueOpen}
-        <aside class="drawer right rk-unit" aria-label="Queue"><QueueRail {player} /></aside>
+        <aside class="drawer right rk-unit" aria-label="Queue">
+          <div class="rk-head"><h2 class="rk-name">Queue</h2>
+            <button class="rk-key sm" onclick={() => nav.toggleQueue()} aria-label="Close queue" title="Close"><Icon name="x" size={12} /></button>
+          </div>
+          <div class="rk-win drawerwin"><QueueRail {player} /></div>
+        </aside>
       {/if}
     </section>
   {:else if nav.queueOpen}
-    <aside class="drawer right floating rk-unit" aria-label="Queue"><QueueRail {player} /></aside>
+    <aside class="drawer right floating rk-unit" aria-label="Queue">
+      <div class="rk-head"><h2 class="rk-name">Queue</h2>
+        <button class="rk-key sm" onclick={() => nav.toggleQueue()} aria-label="Close queue" title="Close"><Icon name="x" size={12} /></button>
+      </div>
+      <div class="rk-win drawerwin"><QueueRail {player} /></div>
+    </aside>
   {/if}
 </div>
 
@@ -290,9 +298,21 @@
     align-items: center;
     gap: 12px;
   }
+  /* The shared sleep-timer button, seated in a tray as a key. */
   .sleep {
-    display: inline-flex;
     color: var(--rack-key-ink);
+  }
+  .sleep :global(.moon) {
+    width: 34px;
+    height: 28px;
+    border-radius: 3px;
+    background: var(--rack-key);
+    border-top: 1px solid var(--rack-key-edge);
+    box-shadow: 0 0 0 1px #000, 0 2px 4px rgba(0, 0, 0, 0.6);
+    color: var(--rack-key-ink);
+  }
+  .sleep :global(.moon:hover) {
+    color: #b9ad9c;
   }
   .power {
     display: flex;
@@ -316,9 +336,21 @@
     overflow-y: auto;
     scrollbar-width: none;
   }
-  /* The last unit takes the slack so column and display share a bottom edge. */
-  .column > :global(:last-child) {
-    flex: 1 0 auto;
+  /* Units keep their natural height; the Playlists unit takes the slack so
+     the column and the display share a bottom edge. */
+  .library {
+    flex: 1 1 0;
+    min-height: 150px;
+    display: flex;
+    flex-direction: column;
+  }
+  .library .tree {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 6px;
+    scrollbar-width: thin;
+    scrollbar-color: #3a342e transparent;
   }
 
   .display {
@@ -341,15 +373,6 @@
     padding: 8px 14px 28px 6px;
   }
 
-  .scrim {
-    position: absolute;
-    inset: 0;
-    z-index: 6;
-    border: 0;
-    padding: 0;
-    background: rgba(0, 0, 0, 0.45);
-    cursor: default;
-  }
   .drawer {
     position: absolute;
     top: 8px;
@@ -363,8 +386,15 @@
     box-shadow: var(--rack-unit-shadow), 0 20px 40px rgba(0, 0, 0, 0.7);
     animation: rk-drawer var(--dur-view) var(--ease-in);
   }
-  .drawer.left {
-    left: 8px;
+  .drawerwin {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .drawerwin > :global(*) {
+    flex: 1;
+    min-height: 0;
   }
   .drawer.right {
     right: 8px;
@@ -374,11 +404,6 @@
     top: 90px;
     bottom: 16px;
   }
-  .tree {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
-  }
   @keyframes rk-drawer {
     from {
       opacity: 0;
@@ -387,37 +412,57 @@
   }
 
   /* Expanded deck: the column spans the shell (DESIGN §2). */
+  /* Deck on the left; amp, spectrum (fixed height) and lyrics (the slack) on
+     the right, each at its natural size. */
   .rack.expanded .column {
     grid-column: 1 / -1;
     display: grid;
-    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1.4fr) minmax(380px, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
     overflow: hidden;
   }
   .rack.expanded .column > :global(.deck) {
-    grid-row: 1 / 3;
-  }
-  .spectrum {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    min-height: 0;
+    grid-row: 1 / 4;
   }
   .specwin {
-    flex: 1;
-    min-height: 120px;
+    height: 150px;
     padding: 10px 12px 6px;
   }
-  .lyrics {
-    display: grid;
-    gap: 4px;
+  .lyricsunit {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
   }
-  .lyrics .dim {
-    opacity: 0.35;
+  .lyrics {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 10px;
+    min-height: 140px;
+    padding: 16px 18px;
+  }
+  .lyrics .line {
+    white-space: normal;
+    font-size: 13px;
+    opacity: 0.45;
     text-shadow: none;
+  }
+  .lyrics .line.far {
+    opacity: 0.2;
+  }
+  .lyrics .line.now {
+    font-size: 17px;
+    opacity: 1;
+    text-shadow: 0 0 8px var(--rack-vfd), 0 0 1px var(--rack-vfd);
   }
 
   /* Window fit (spec §6.9). */
+  @media (max-height: 760px) {
+    .library {
+      display: none;
+    }
+  }
   @media (max-width: 1000px) {
     .rack:not(.expanded) .column > :global(.eq) {
       display: none;

@@ -166,23 +166,28 @@
       </button>
       <button class="rk-key" onclick={() => player.next()} aria-label="Next" disabled={state.queue.length === 0}><Icon name="skip-forward-solid" size={14} /></button>
     </div>
-    <div class="rk-tray" role="group" aria-label="Play mode">
-      <button class="rk-key sm" aria-pressed={state.shuffle} onclick={() => player.setShuffle(!state.shuffle)} title="Shuffle the rest of the queue">Shuffle</button>
+    <div class="rk-tray modes" role="group" aria-label="Play mode">
+      <button class="rk-key" aria-pressed={state.shuffle} onclick={() => player.setShuffle(!state.shuffle)} aria-label="Shuffle" title="Shuffle the rest of the queue">
+        <Icon name="shuffle" size={13} />
+      </button>
       <button
-        class="rk-key sm"
+        class="rk-key"
         aria-pressed={state.repeat !== "off"}
         onclick={() => player.setRepeat(nextRepeat(state.repeat))}
         aria-label={state.repeat === "one" ? "Repeat one track" : state.repeat === "all" ? "Repeat all" : "Repeat off"}
-      >{state.repeat === "one" ? "Repeat 1" : "Repeat"}</button>
+        title={state.repeat === "one" ? "Repeat one" : state.repeat === "all" ? "Repeat all" : "Repeat off"}
+      ><Icon name={state.repeat === "one" ? "repeat-1" : "repeat"} size={13} /></button>
       <button
-        class="rk-key sm"
+        class="rk-key"
         aria-pressed={fav}
         disabled={!current}
         onclick={() => current && favorites.toggleTrack(current.track_id)}
         aria-label={fav ? "Unfavorite" : "Favorite"}
         title={fav ? "Unfavorite" : "Favorite"}
-      ><Icon name="heart" size={12} /></button>
-      <button class="rk-key sm" aria-pressed={nav.queueOpen} onclick={() => nav.toggleQueue()} title="Queue">Queue</button>
+      ><Icon name="heart" size={13} /></button>
+      <button class="rk-key" aria-pressed={nav.queueOpen} onclick={() => nav.toggleQueue()} aria-label="Queue" title="Queue">
+        <Icon name="list-music" size={13} />
+      </button>
     </div>
   </div>
 </section>
@@ -387,22 +392,38 @@
     opacity: 0.55;
   }
 
+  /* Fixed-size keys: a key is a physical part, it never stretches. The play
+     keys and the mode keys sit at either end of the deck. */
   .deckbar {
     display: flex;
     justify-content: space-between;
-    gap: 10px;
+    align-items: center;
+    gap: 8px;
     margin-top: 10px;
   }
-  .transport-keys {
-    flex: 1;
-  }
   .transport-keys .rk-key {
-    flex: 1;
+    width: 46px;
+    min-width: 0;
+    padding-inline: 0;
+  }
+  .modes .rk-key {
+    width: 38px;
+    min-width: 0;
+    padding-inline: 0;
+  }
+  /* Expanded deck: the VFD and keys form one centred control strip under the
+     platter instead of running the full width of the shell. */
+  .deck.expanded .display,
+  .deck.expanded .deckbar {
+    width: min(100%, 680px);
+    margin-inline: auto;
   }
 
   /* Expanded deck: the turntable (DESIGN §5.10). */
+  /* The platter takes what the shell leaves: window height minus the
+     selector and the deck's own strip, capped by the deck's width. */
   .deck.expanded {
-    --pl: min(440px, 52vh);
+    --pl: max(260px, min(calc(100vh - 340px), calc(56vw - 160px), 860px));
     min-height: 0;
   }
   .turntable {

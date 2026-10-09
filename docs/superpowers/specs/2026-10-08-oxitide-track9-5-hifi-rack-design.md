@@ -88,7 +88,7 @@ tokens are neutral there); a meter that is sample-accurate to the DAC (§6.7).
 | RK-D7 | **Level tap**: read-only, after DSP and crossfade mix, at the output write site; never blocks the audio thread; enabled only while Rack is visible; a 30 Hz app-side emitter publishes peak/RMS per channel + 28 log bands. Identity DSP and bit-perfect stay sample-exact. | Owner: real meters; the tap only reads. |
 | RK-D8 | **Lamp colour is a setting**: Amber (default), Blue, Green, Red, White, Cover. Each preset is an OKLCH hue + chroma; **lightness is fixed per role** so every choice reads as phosphor/lamp. **Cover** takes the hue of the most vivid colour of the existing cover palette at chroma 0.15; covers below chroma 0.05 fall back to amber; changes glide 1.2 s. Red lamps turn the meters' over-zone hot white. | Round 9: owner condition — "only if it looks like a screen glow". |
 | RK-D9 | **Dynamic colour in Rack** is replaced by Lamp colour: the global Dynamic colour setting is ignored in Rack; the palette is fetched only when Lamp = Cover. `--accent` follows the lamp. | Two competing accent systems would fight; the lamp is Rack's accent. |
-| RK-D10 | **Units**: EQ unit optional (setting, default on); the spectrum unit appears in the expanded deck; the queue is a drawer; playlists live on the Playlists source and in a pull-out drawer. | Owner answers; changer deferred. |
+| RK-D10 | **Units**: EQ unit optional (setting, default on); a **Playlists unit** (the playlist tree in a glass window) always sits under the EQ and takes the rest of the column (owner, 2026-10-09, replacing the pull-out drawer); the spectrum and a lyrics unit appear in the expanded deck; the queue is a drawer over the display. | Owner answers; changer deferred. |
 | RK-D11 | **Setup**: Settings opens from a "Setup" key beside the power lamp. In Rack, Settings controls render as hardware through tokens (key trays, faders, VFD readouts); the Appearance tab gains a Rack group (Deck face, Amp meters, Lamp colour, EQ unit, Lamp brightness). | Round 8: owner approved Setup. |
 | RK-D12 | **Rack is always dark**: it ignores `data-theme` and there is no light variant (no silver faceplate is planned). | Owner, 2026-10-08: "we don't need a light mode for the rack UI". |
 | RK-D13 | **Phasing inside 9.5**: (a) mode plumbing + shell + units + panes + Setup + lamp colour; (b) level tap + meters + expanded deck spectrum. Both ship in this track; 9.5c is recorded in §2. | Keeps each step testable; meters need the tap. |
@@ -134,10 +134,11 @@ tokens are neutral there); a meter that is sample-accurate to the DAC (§6.7).
 `ui/src/lib/rack/RackShell.svelte` owns the layout grid (RK-D4):
 
 ```
-┌ selector: brand · ◂ ▸ · Home Explore Library Playlists Search · Drawer · Sleep Mini Setup · power ┐
+┌ selector: brand · ◂ ▸ · Home Explore Library Playlists Search ··· Sleep Mini Setup · power ┐
 ├ column (392px) ───────────┬ display ───────────────────────────────────────────────┤
 │ Deck   (face | turntable) │  <main class="main rack-main"> routed page </main>     │
-│ Amp    (meters, knob, DSP)│  (drawers slide over the display: playlists ⟵, queue ⟶)│
+│ Amp    (meters, knob, DSP)│  (the queue drawer slides over the display ⟶)          │
+│ Playlists (tree, slack)   │                                                         │
 │ EQ     (optional)         │                                                         │
 └───────────────────────────┴─────────────────────────────────────────────────────────┘
 ```
@@ -171,7 +172,7 @@ tokens are neutral there); a meter that is sample-accurate to the DAC (§6.7).
 | `DeckUnit.svelte` + `faces/{Transport,Cd,DisplayFace}.svelte` + `Turntable.svelte` | Deck. |
 | `AmpUnit.svelte` + `meters/{NeedleMeter,BarMeter,LedMeter,SpectrumMeter}.svelte` + `VolumeKnob.svelte` | Amp. |
 | `EqUnit.svelte` | Presets (dimple radios) + ten vertical faders bound to `dspStore`. |
-| `Drawer.svelte` | Pull-out drawer for PlaylistTree / QueueRail. |
+| Playlists unit / queue drawer (in `RackShell`) | PlaylistTree in a glass window under the EQ; QueueRail in a drawer over the display. |
 | `levels.svelte.ts` | Subscribes to `level_frame`, enables the tap while mounted and visible, runs ballistics (VU ~300 ms; peak instant attack, 1.5 s hold, 24 dB/s fall) in one rAF loop shared by all meters. |
 | `lamp.svelte.ts` | Lamp hue/chroma from preset or cover palette; writes `--lamp-h`/`--lamp-c`/`--lamp-dim`. |
 

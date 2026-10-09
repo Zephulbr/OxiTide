@@ -27,12 +27,12 @@ content; widely spaced lowercase labels; app-like flat buttons inside the rack.
 ## 2. Layout
 
 ```
-┌ Selector unit ─ brand · ◂ ▸ · [Home][Explore][Library][Playlists][Search] · [Drawer] ··· [Sleep][Mini][Setup] ● Power ┐
+┌ Selector unit ─ brand · ◂ ▸ · [Home][Explore][Library][Playlists][Search] ··· [Sleep][Mini][Setup] ● Power ┐
 ├ Rack column ─────────────┬ Display unit (open faceplate) ──────────────────────────────┤
 │ Deck (face / turntable)  │  [sub-source keys when in Library]                           │
 │ Amplifier                │  Label ───────────────────                                    │
 │ Graphic EQ (optional)    │  ┌ glass pane ┐  Label ─────  ┌ glass pane ┐                │
-│                          │  …                                                            │
+│ Playlists (tree, slack)  │  …                          (queue drawer slides in ⟶)        │
 └──────────────────────────┴───────────────────────────────────────────────────────────────┘
 ```
 
@@ -42,10 +42,13 @@ content; widely spaced lowercase labels; app-like flat buttons inside the rack.
 | Column width | `clamp(300px, 30vw, 392px)` |
 | Unit padding | 14px 18px; unit radius 5px |
 | Display inner padding | 16px; page padding 22px 26px 34px |
-| Deck face height `--pl` | `clamp(118px, 100vh − 680px, 196px)` |
-| Column and display | share one bottom edge: the last visible unit flexes |
-| Expanded deck | column spans both tracks; deck left (1.25fr), amp + spectrum + lyrics right (1fr); platter `min(440px, 52vh)` |
+| Deck face height `--pl` | `clamp(104px, 100vh − 600px, 196px)` |
+| Column and display | share one bottom edge: units keep their natural height and the Playlists unit takes the slack (never stretch a unit with fixed parts) |
+| Keys | fixed sizes — transport 46×34, play-mode icon keys 38×34; keys never stretch to fill a row |
+| Needle meters | sized from the 96px slot height (1.55:1), never from the unit width |
+| Expanded deck | column spans both tracks; deck left (1.4fr), amp / spectrum (150px VFD) / lyrics (slack, five lines) right (≥ 380px); platter `max(260px, min(100vh − 340px, 56vw − 160px, 860px))`; VFD + keys a centred strip ≤ 680px |
 | Below 1000px wide | EQ unit hidden |
+| Below 760px tall | Playlists unit hidden |
 | Below 680px tall | deck face windows hidden (VFD + keys stay) |
 
 Selector: sources are `SourceKey`s (lamp above a key). Library lights for every

@@ -34,12 +34,18 @@
     min-width: 0;
     height: 96px;
   }
+  /* Meters are sized from the slot's height (a real meter has a fixed face),
+     never stretched by a wide unit; the SVG keeps its proportions inside. */
   .pair {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+    display: flex;
+    justify-content: center;
+    align-items: center;
     gap: 8px;
     height: 100%;
-    align-items: center;
+  }
+  .pair > :global(.meter) {
+    height: 100%;
+    max-width: calc(50% - 4px);
   }
   .fill {
     height: 100%;
