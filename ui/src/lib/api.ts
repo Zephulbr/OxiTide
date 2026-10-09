@@ -290,6 +290,85 @@ export interface Config {
   };
   dsp: DspSettings;
   rack: RackSettings;
+  remote: RemoteSettings;
+}
+/** Phone remote preferences (`[remote]`, Track 11). */
+export interface RemoteSettings {
+  enabled: boolean;
+  port: number;
+  /** QR address override; "" picks automatically. */
+  interface: string;
+  approve_new_devices: boolean;
+}
+export interface RemoteInterface { name: string; ip: string; virtual_adapter: boolean }
+export interface RemotePairRequest { id: string; name: string; ip: string }
+/** `get_remote_status` / the `remote_status` event (`remote/host.rs`). */
+export interface RemoteStatus {
+  enabled: boolean;
+  listening: boolean;
+  port: number | null;
+  address: string | null;
+  url: string | null;
+  error: string | null;
+  connected: number;
+  interfaces: RemoteInterface[];
+  settings: RemoteSettings;
+  pending: RemotePairRequest[];
+  pairing_expires_in_secs: number | null;
+}
+export interface RemotePairing { url: string; qr_svg: string; expires_in_secs: number }
+export interface RemoteDevice {
+  id: string;
+  name: string;
+  created_ms: number;
+  last_seen_ms: number;
+  connected: boolean;
+}
+export const REMOTE_STATUS_EVENT = "remote_status";
+export const REMOTE_PAIR_REQUEST_EVENT = "remote_pair_request";
+
+/* Phone-remote wire types (camelCase; `remote/events.rs`). The phone page
+   imports these type-only. */
+export interface RemoteTrack {
+  trackId: number;
+  title: string;
+  artist: string;
+  album: string;
+  cover?: string | null;
+  durationSecs: number;
+  explicit?: boolean | null;
+  audioQuality?: Quality | null;
+}
+export interface RemoteStream {
+  codec?: string | null;
+  sampleRate: number;
+  bitDepth: number;
+  bitrateKbps?: number | null;
+}
+export interface RemoteState {
+  loggedIn: boolean;
+  playing: boolean;
+  buffering: boolean;
+  current: RemoteTrack | null;
+  currentIndex: number | null;
+  positionMs: number;
+  durationMs: number;
+  volume: number;
+  shuffle: boolean;
+  repeat: RepeatMode;
+  queueLen: number;
+  queueRev: number;
+  stream: RemoteStream | null;
+  bitPerfect: boolean;
+  dspStages: string[];
+}
+export interface RemoteQueuePage {
+  items: QueueItem[];
+  total: number;
+  offset: number;
+  limit: number;
+  currentIndex: number | null;
+  queueRev: number;
 }
 export type DeckFace = "transport" | "cd" | "display";
 export type MeterStyle = "needles" | "bars" | "led" | "spectrum";
@@ -524,4 +603,18 @@ export const api = {
   openLogsFolder: () => invoke<void>("open_logs_folder"),
   analyzeCover: (uuid: string, theme: "dark" | "light") =>
     invoke<CoverPalette>("analyze_cover", { uuid, theme }),
+  getRemoteStatus: () => invoke<RemoteStatus>("get_remote_status"),
+  setRemoteEnabled: (enabled: boolean) => invoke<RemoteStatus>("set_remote_enabled", { enabled }),
+  setRemoteSettings: (port: number, iface: string, approveNewDevices: boolean) =>
+    invoke<RemoteStatus>("set_remote_settings", {
+      port,
+      interface: iface,
+      approveNewDevices,
+    }),
+  beginRemotePairing: () => invoke<RemotePairing>("begin_remote_pairing"),
+  cancelRemotePairing: () => invoke<void>("cancel_remote_pairing"),
+  listRemoteDevices: () => invoke<RemoteDevice[]>("list_remote_devices"),
+  revokeRemoteDevice: (id: string) => invoke<void>("revoke_remote_device", { id }),
+  resolveRemotePairRequest: (id: string, approve: boolean) =>
+    invoke<boolean>("resolve_remote_pair_request", { id, approve }),
 };
