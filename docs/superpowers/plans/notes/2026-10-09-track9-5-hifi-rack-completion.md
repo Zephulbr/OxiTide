@@ -65,5 +65,5 @@ a queue changer unit.
 
 ## Hand-off
 
-Merge `track9-5-hifi-rack` to `main` once the owner confirms (the formal smoke and perf
-rows can follow on `main`, as with earlier tracks).
+Merged `track9-5-hifi-rack` to `main` on 2026-10-09 at the owner's request; the formal
+smoke tick and PM-D1 perf rows follow on `main`, as with earlier tracks.
