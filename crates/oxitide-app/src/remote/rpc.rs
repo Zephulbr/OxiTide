@@ -62,6 +62,7 @@ pub const ALLOWLIST: &[&str] = &[
     "get_album_info",
     "get_playlist",
     "get_playlist_tracks_page",
+    "get_artist",
     "get_artist_page",
     "get_artist_top_tracks_page",
     "get_artist_albums_all",
@@ -118,6 +119,7 @@ pub enum RemoteCommand {
     GetAlbumInfo { id: u64 },
     GetPlaylist { id: String },
     GetPlaylistTracksPage { id: String, offset: u32, limit: u32 },
+    GetArtist { id: u64 },
     GetArtistPage { artist_id: u64 },
     GetArtistTopTracksPage { artist_id: u64, limit: u32, offset: u32 },
     GetArtistAlbumsAll { artist_id: u64, filter: ArtistDiscography },
@@ -281,6 +283,7 @@ pub fn parse(method: &str, params: Value) -> Result<RemoteCommand, RpcError> {
             let (id, offset, limit) = args!(params, { id: String, offset: u32, limit: u32 });
             C::GetPlaylistTracksPage { id, offset, limit: page_limit(limit)? }
         }
+        "get_artist" => C::GetArtist { id: args!(params, { id: u64 }) },
         "get_artist_page" => C::GetArtistPage { artist_id: args!(params, { artist_id: u64 }) },
         "get_artist_top_tracks_page" => {
             let (artist_id, limit, offset) =
@@ -396,6 +399,7 @@ pub async fn execute<R: Runtime>(app: &AppHandle<R>, command: RemoteCommand) -> 
         C::GetPlaylistTracksPage { id, offset, limit } => {
             json(commands::get_playlist_tracks_page(state, id, offset, limit).await)
         }
+        C::GetArtist { id } => json(commands::get_artist(state, id).await),
         C::GetArtistPage { artist_id } => json(commands::get_artist_page(state, artist_id).await),
         C::GetArtistTopTracksPage { artist_id, limit, offset } => {
             json(commands::get_artist_top_tracks_page(state, artist_id, limit, offset).await)
@@ -454,7 +458,6 @@ mod tests {
         "get_keyring_status",
         "get_track_credits",
         "get_playlist_tracks",
-        "get_artist",
         "get_feed",
         "get_artist_profile",
         "get_artist_top_tracks",
@@ -577,7 +580,9 @@ mod tests {
             "get_mix" | "get_playlist" => json!({"id": "abc"}),
             "get_track_radio" => json!({"trackId": 1}),
             "get_artist_radio" | "get_similar_artists" | "get_artist_page" => json!({"artistId": 1}),
-            "get_album" | "get_album_tracks" | "get_album_info" | "get_track" => json!({"id": 7}),
+            "get_album" | "get_album_tracks" | "get_album_info" | "get_track" | "get_artist" => {
+                json!({"id": 7})
+            }
             "get_playlist_tracks_page" => json!({"id": "abc", "offset": 0, "limit": 100}),
             "get_artist_top_tracks_page" => json!({"artistId": 1, "limit": 20, "offset": 0}),
             "get_artist_albums_all" => json!({"artistId": 1, "filter": "eps_and_singles"}),

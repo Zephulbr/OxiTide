@@ -81,22 +81,41 @@ impl<R: Runtime> RemoteSession for TauriSession<R> {
     }
 }
 
-/// Release builds serve the embedded `ui/dist`; a debug build without
-/// embedded assets proxies the Vite dev server (`devUrl`).
+/// Release builds serve the embedded `ui/dist`; a debug build with `devUrl`
+/// proxies the Vite dev server first (Tauri's dev resolver would read a
+/// possibly stale `ui/dist`).
 struct TauriAssets<R: Runtime> {
     app: AppHandle<R>,
     dev: Option<(reqwest::Client, url::Url)>,
 }
 
+/// The remote entry's mount point; anything else answering for
+/// `remote.html` is not our page.
+const REMOTE_MARKER: &str = "id=\"remote\"";
+
+/// Tauri's resolver falls back to `index.html` (the desktop shell) for any
+/// unknown path; only exact hits are served.
+fn embedded_asset<R: Runtime>(app: &AppHandle<R>, file: &str) -> Option<Asset> {
+    let asset = app.asset_resolver().get(file.to_string())?;
+    let mime = asset.mime_type().to_string();
+    let bytes = asset.bytes().to_vec();
+    let is_html = mime.starts_with("text/html");
+    let wants_html = file.ends_with(".html");
+    if is_html != wants_html {
+        return None;
+    }
+    if file == "remote.html" && !String::from_utf8_lossy(&bytes).contains(REMOTE_MARKER) {
+        return None;
+    }
+    Some(Asset { bytes, mime })
+}
+
 impl<R: Runtime> AssetSource for TauriAssets<R> {
     fn get(&self, path: &str) -> BoxFuture<'static, Option<Asset>> {
         let file = path.split(['?', '#']).next().unwrap_or(path).to_string();
-        if let Some(asset) = self.app.asset_resolver().get(file) {
-            let found = Asset { bytes: asset.bytes().to_vec(), mime: asset.mime_type().to_string() };
-            return Box::pin(async move { Some(found) });
-        }
         let Some((client, base)) = self.dev.clone() else {
-            return Box::pin(async { None });
+            let found = embedded_asset(&self.app, &file);
+            return Box::pin(async move { found });
         };
         let path = path.to_string();
         Box::pin(async move {
@@ -111,6 +130,10 @@ impl<R: Runtime> AssetSource for TauriAssets<R> {
                 .and_then(|v| v.to_str().ok())
                 .unwrap_or("application/octet-stream")
                 .to_string();
+            // Vite's SPA fallback answers unknown paths with the shell.
+            if mime.starts_with("text/html") != file.ends_with(".html") {
+                return None;
+            }
             let bytes = response.bytes().await.ok()?.to_vec();
             Some(Asset { bytes, mime })
         })
