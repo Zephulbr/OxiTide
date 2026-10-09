@@ -2,6 +2,7 @@
   import { api } from "../api";
   import { appearance } from "../appearance.svelte";
   import Cover from "../components/Cover.svelte";
+  import { formatQuality } from "../quality";
   import { clock, currentIndex, upNext } from "./deck";
   import type { CollectionTree } from "../collection.svelte";
   import type { CollectionActions } from "../collectionActions.svelte";
@@ -138,14 +139,15 @@
 
   <div class="column" bind:this={column}>
     <DeckUnit {player} {nav} {favorites} face={appearance.rack.deck_face} {expanded} />
-    <AmpUnit {player} meters={appearance.rack.meters} {toasts} />
+    <AmpUnit {player} meters={appearance.rack.meters} {toasts} wide={expanded} />
     {#if expanded}
       <section class="rk-unit spectrum" aria-label="Spectrum analyzer">
         <div class="rk-head"><h2 class="rk-name">Spectrum analyzer</h2><span class="rk-silk">28 band</span></div>
         <div class="rk-vfd specwin" aria-hidden="true"><SpectrumMeter snapshot={levels.snapshot} count={28} /></div>
       </section>
-      <section class="rk-unit lyricsunit" aria-label="Lyrics">
-        <div class="rk-head"><h2 class="rk-name">Lyrics</h2><span class="rk-silk">{lyrics.lyrics?.synced ? "Synced" : ""}</span></div>
+      <section class="rk-unit lyricsunit" aria-label="Now playing">
+        <div class="rk-head"><h2 class="rk-name">Now playing</h2><span class="rk-silk">{lyrics.lyrics?.synced ? "Synced lyrics" : ""}</span></div>
+        <div class="np">
         <div class="rk-vfd lyrics">
           {#if lines.length > 0 && active >= 0}
             {#each LYRIC_OFFSETS as offset (offset)}
@@ -157,17 +159,41 @@
             <div class="rk-vfd-text sub line" style:--fade="0.6">{player.state.current ? `${player.state.current.artist} · ${player.state.current.album}` : ""}</div>
           {/if}
         </div>
+        <div class="info">
+          <div class="rk-win infowin">
+            <dl class="facts">
+              <dt>Title</dt><dd>{player.state.current?.title ?? "—"}</dd>
+              <dt>Artist</dt><dd>{player.state.current?.artist ?? "—"}</dd>
+              <dt>Album</dt><dd>{player.state.current?.album ?? "—"}</dd>
+              <dt>Track</dt><dd>{queueIndex >= 0 ? `${queueIndex + 1} of ${player.state.queue.length}` : "—"}</dd>
+              <dt>Length</dt><dd class="tnum">{player.state.duration_ms > 0 ? clock(player.state.duration_ms) : "—"}</dd>
+              <dt>Format</dt><dd>{formatQuality(player.state.stream, "detailed", player.state.preferred_quality)}</dd>
+              {#if player.state.stream?.replay_gain_db != null}
+                <dt>ReplayGain</dt><dd class="tnum">{player.state.stream.replay_gain_db > 0 ? "+" : ""}{player.state.stream.replay_gain_db.toFixed(1)} dB</dd>
+              {/if}
+            </dl>
+          </div>
+          <div class="pathlabel rk-silk">Signal path</div>
+          <ol class="path" aria-label="Signal path">
+            <li><span class="rk-led on">TIDAL</span><small>{formatQuality(player.state.stream, "compact", player.state.preferred_quality)}</small></li>
+            <li><span class="rk-led" class:on={!!player.state.stream?.codec}>Decoder</span><small>{player.state.stream?.codec?.toUpperCase() ?? "—"}</small></li>
+            <li><span class="rk-led" class:on={player.state.dsp_active}>DSP</span><small>{player.state.dsp_active ? player.state.dsp_stages.join(", ") : "Bypass"}</small></li>
+            <li><span class="rk-led on">Output</span><small>{player.state.output_mode === "exclusive" ? "Exclusive" : "Shared"}</small></li>
+            <li><span class="rk-led" class:on={player.state.bit_perfect} class:green={player.state.bit_perfect}>Bit-perfect</span><small>{player.state.bit_perfect ? "Yes" : "No"}</small></li>
+          </ol>
+        </div>
+        </div>
       </section>
       <section class="rk-unit changer" aria-label="Up next">
         <div class="rk-head"><h2 class="rk-name">Up next</h2>
           <span class="rk-silk">{queueIndex >= 0 ? `Track ${queueIndex + 1} of ${player.state.queue.length}` : ""}</span>
         </div>
-        <ol class="slots">
+        <ol class="rk-win slots">
           {#each upcoming as item, i (item.track_id + ":" + i)}
             <li>
               <button class="slot" onclick={() => api.playTracks(player.state.queue, queueIndex + 1 + i)} title={`Play ${item.title}`}>
-                <span class="rk-win thumb"><Cover uuid={item.cover} size={80} radius={2} alt="" /></span>
-                <span class="num">{queueIndex + 2 + i}</span>
+                <span class="num">{String(queueIndex + 2 + i).padStart(2, "0")}</span>
+                <span class="thumb"><Cover uuid={item.cover} size={80} radius={2} alt="" /></span>
                 <span class="meta"><b>{item.title}</b><i>{item.artist}</i></span>
                 <span class="dur">{clock(item.duration_secs * 1000)}</span>
               </button>
@@ -480,69 +506,159 @@
     flex-direction: column;
     min-height: 0;
   }
-  .lyrics {
+  /* Now playing: lyrics VFD on the left, track info + signal path on the right. */
+  .np {
     flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(220px, 1fr);
+    gap: 12px;
+  }
+  .lyrics {
     display: flex;
     flex-direction: column;
     justify-content: center;
     gap: 12px;
     min-height: 140px;
     overflow: hidden;
-    padding: 18px 22px;
+    padding: 18px 20px;
   }
   .lyrics .line {
     white-space: normal;
-    font-size: 13px;
+    font-size: 15px;
+    line-height: 1.3;
     opacity: calc(var(--fade, 0.5) * 0.6);
     text-shadow: none;
     transition: opacity var(--dur-state);
   }
   .lyrics .line.now {
-    font-size: 19px;
+    font-size: 23px;
     opacity: 1;
     text-shadow: 0 0 8px var(--rack-vfd), 0 0 1px var(--rack-vfd);
   }
-
-  /* Up next: a changer of the next tracks; a slot plays from there. */
-  .slots {
+  .info {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+    min-height: 0;
+  }
+  .infowin {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 14px 16px;
+  }
+  .facts {
     display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 9px 14px;
+    margin: 0;
+  }
+  .facts dt {
+    font: 600 10.5px/1.4 var(--font-ui);
+    letter-spacing: 0.05em;
+    color: var(--rack-silk-dim);
+  }
+  .facts dd {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--rack-screen-text);
+    overflow-wrap: anywhere;
+  }
+  .pathlabel {
+    margin: 2px 4px 0;
+  }
+  /* Signal path: lamps chained left to right, value printed under each. */
+  .path {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 4px;
     margin: 0;
-    padding: 0;
+    padding: 8px 10px;
     list-style: none;
+    border-radius: 6px;
+    background: var(--rack-tray);
+    box-shadow: var(--rack-tray-shadow);
+  }
+  .path li {
+    display: grid;
+    justify-items: center;
+    gap: 5px;
+    min-width: 0;
+    position: relative;
+  }
+  .path li + li::before {
+    content: "";
+    position: absolute;
+    top: 4px;
+    right: calc(50% + 34px);
+    left: calc(-50% + 34px);
+    height: 1px;
+    background: var(--rack-silk-dim);
+    opacity: 0.4;
+  }
+  .path small {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font: 700 9px/1 var(--font-ui);
+    letter-spacing: 0.06em;
+    color: var(--rack-screen-muted);
+  }
+
+  /* Up next: a changer; a glass window of slots like a track list. */
+  .slots {
+    margin: 0;
+    padding: 4px 0;
+    list-style: none;
+  }
+  .slots li + li .slot {
+    border-top: 1px solid rgba(255, 255, 255, 0.045);
   }
   .slot {
     display: grid;
-    grid-template-columns: 34px 22px minmax(0, 1fr) auto;
-    gap: 10px;
+    grid-template-columns: 24px 30px minmax(0, 1fr) auto;
+    gap: 12px;
     align-items: center;
     width: 100%;
-    padding: 4px 6px;
+    padding: 6px 16px;
     border: 0;
-    border-radius: 3px;
     background: none;
     color: var(--rack-screen-text);
     text-align: left;
     cursor: pointer;
   }
   .slot:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: rgba(255, 255, 255, 0.03);
+  }
+  .slot:hover b {
+    color: var(--accent);
   }
   .thumb {
     display: block;
-    width: 34px;
-    height: 34px;
-    padding: 2px;
-    box-sizing: border-box;
+    width: 30px;
+    height: 30px;
+    border-radius: 2px;
+    overflow: hidden;
+    box-shadow: 0 0 0 1px #000;
   }
   .thumb :global(.cover) {
     width: 100%;
     height: 100%;
   }
-  .num,
+  .num {
+    font: 700 11px/1 var(--font-ui);
+    letter-spacing: 0.06em;
+    font-variant-numeric: tabular-nums;
+    color: var(--rack-vfd);
+    text-shadow: 0 0 5px var(--rack-vfd);
+  }
   .dur {
-    font: 700 10px/1 var(--font-ui);
-    color: var(--rack-silk-dim);
+    font: 600 11px/1 var(--font-ui);
+    color: var(--rack-screen-muted);
     font-variant-numeric: tabular-nums;
   }
   .meta {
@@ -565,7 +681,7 @@
     color: var(--rack-screen-muted);
   }
   .end {
-    padding: 6px;
+    padding: 8px 16px;
     color: var(--rack-screen-muted);
   }
 

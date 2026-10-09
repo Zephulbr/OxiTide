@@ -56,9 +56,12 @@ Feed, History, Library (every collection and detail route). Every selector key, 
 and utility keys alike (Sleep, Mini, Setup), is a lamp above a 34px key on one baseline;
 Power uses the same two rows. The Sleep lamp lights while a timer is armed.
 
-Expanded deck right column: amp (150px meters) · spectrum (150px) · lyrics (nine lines,
-fading 17% per line from the current one, which is 19px with glow) · Up next changer
-(four slots: 34px cover window, number, title/artist, time).
+Expanded deck right column: amp (wide: DSP keys stacked left, 150px meters centred,
+1.35× knob right) · spectrum (150px) · Now playing (lyrics VFD 1.25fr — nine lines
+fading 17% per line, 15px, current 23px with glow — beside a 1fr column: track-info
+glass window with printed labels, then a "Signal path" tray of five lamps TIDAL ·
+Decoder · DSP · Output · Bit-perfect with values printed under them) · Up next (glass
+window, rows like a track list: VFD-amber number, 30px cover, title/artist, time).
 
 Mini player: unchanged layout with the Rack skin — faceplate, cover in a glass window,
 title/artist on a VFD, transport and secondary keys as light-bar keys in trays.
@@ -184,12 +187,15 @@ metal with a lamp-coloured centre line. Settings: horizontal 190×28 groove, tic
 | Style | Build |
 |---|---|
 | Needles | Two 1.55:1 meters; face `--rack-meter-face`; arc and ticks in meter ink, red over-zone 0…+3 (5px stroke); scale −20,−10,−7,−5,−3,−2,−1,0,+1,+2,+3 VU; "VU" Manrope 700 17px; needle `--rack-needle` 1.4px pivoting −46°…+46°; glass 160° reflection + bottom glow (screen blend). Position = `(10^(dB/20) − .1)/(10^(3/20) − .1)`. |
-| Bars | VFD; L/R rows of 4px segments with 2px gaps, red past 93% (0 dBFS on −40…+3), dim track at .1, 3px peak-hold tick; scale −40 −30 −20 −10 −6 −3 0 +3; header "PEAK HOLD ±x.x dB". |
+| Bars | VFD; L/R rows of 4px segments with 2px gaps, red past 93% (0 dB on −40…+3), dim track at .1, 3px hold tick; scale −40 −30 −20 −10 −6 −3 0 +3; header "PROGRAM HOLD ±x.x dB". |
 | LED | Black recess; two rows of 20 LEDs (12px tall, radius 2) at −40 −30 −24 −20 −17 −14 −12 −10 −8 −7 −6 −5 −4 −3 −2 −1 0 +1 +2 +3; unlit tinted dark, last three red; lit with glow; peak LED stays lit. |
 | Spectrum | VFD; 20 bars of 3px/2px stacked segments with falling 2px caps; scale 63 250 1k 4k 16k. |
 
-Ballistics: VU 300 ms integration on RMS (0 VU = −18 dBFS); peak meters instant attack,
-1.5 s hold, 24 dB/s fall; spectrum fall 1.4/s, caps .35/s.
+Calibration: every meter reads programme level against **−10 dBFS RMS = 0 VU / 0 dB**
+(never digital full scale — that pins meters on modern masters).
+Ballistics (`ballistics.ts`): needle = damped spring, 2.0 Hz, ζ 0.8 (~300 ms, ~1.5 %
+overshoot, pinned at both ends), fed RMS averaged over ~100 ms; bars/LED = 10 ms rise,
+13 dB/s fall, 1.5 s hold then 10 dB/s; spectrum = 50 ms rise, 0.9/s fall, caps 0.25/s.
 
 ### 5.10 Deck faces (compact deck)
 

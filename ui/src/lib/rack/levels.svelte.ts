@@ -3,23 +3,30 @@ import { api, LEVEL_FRAME_EVENT, type LevelFrame } from "../api";
 import {
   bandFraction,
   CAP_FALL_PER_S,
-  dbfs,
   fallStep,
   FLOOR_DB,
+  needleState,
+  needleStep,
   peakStep,
   peakState,
+  programmeDb,
+  SPECTRUM_ATTACK_S,
   SPECTRUM_FALL_PER_S,
   vuPosition,
-  vuStep,
+  type Needle,
   type PeakState,
 } from "./ballistics";
+
+/// Tap frames averaged (in power) for the VU input: ~100 ms, so the needle
+/// follows programme level rather than every 33 ms reading.
+const VU_WINDOW = 3;
 
 export const BAND_COUNT = 28;
 
 export interface LevelsSnapshot {
   /// Needle positions 0..1 (VU), L/R.
   needle: [number, number];
-  /// Peak level and peak-hold level in dBFS, L/R.
+  /// Programme level and its hold, in meter dB (0 = reference), L/R.
   peakDb: [number, number];
   holdDb: [number, number];
   /// Spectrum bars and their falling caps, 0..1.
@@ -66,9 +73,10 @@ export function createLevels(depsFactory: () => Deps = browserDeps) {
   let rafId: number | null = null;
   let lastT: number | null = null;
   let pending: LevelFrame | null = null;
-  let rmsTarget: [number, number] = [0, 0];
+  let vuTarget: [number, number] = [-0.04, -0.04];
   let bandTarget: number[] = Array(BAND_COUNT).fill(0);
-  const vu: [number, number] = [0, 0];
+  const recent: [number[], number[]] = [[], []];
+  const needles: [Needle, Needle] = [needleState(), needleState()];
   const peaks: [PeakState, PeakState] = [peakState(), peakState()];
 
   function frame(t: number) {
@@ -77,18 +85,24 @@ export function createLevels(depsFactory: () => Deps = browserDeps) {
     const f = pending;
     pending = null;
     if (f) {
-      rmsTarget = [f.rms[0] ?? 0, f.rms[1] ?? 0];
+      for (const ch of [0, 1] as const) {
+        const rms = f.rms[ch] ?? 0;
+        recent[ch].push(rms * rms);
+        if (recent[ch].length > VU_WINDOW) recent[ch].shift();
+        const power = recent[ch].reduce((a, b) => a + b, 0) / recent[ch].length;
+        vuTarget[ch] = vuPosition(Math.sqrt(power));
+      }
       bandTarget = f.bands.map(bandFraction);
     }
     for (const ch of [0, 1] as const) {
-      vu[ch] = vuStep(vu[ch], rmsTarget[ch], dt);
-      snapshot.needle[ch] = vuPosition(vu[ch]);
-      peaks[ch] = peakStep(peaks[ch], f ? dbfs(f.peak[ch] ?? 0) : null, dt, t);
+      needles[ch] = needleStep(needles[ch], vuTarget[ch], dt);
+      snapshot.needle[ch] = needles[ch].x;
+      peaks[ch] = peakStep(peaks[ch], f ? programmeDb(f.rms[ch] ?? 0) : null, dt, t);
       snapshot.peakDb[ch] = peaks[ch].db;
       snapshot.holdDb[ch] = peaks[ch].holdDb;
     }
     for (let i = 0; i < BAND_COUNT; i++) {
-      const bar = fallStep(snapshot.bands[i], bandTarget[i] ?? 0, SPECTRUM_FALL_PER_S, dt);
+      const bar = fallStep(snapshot.bands[i], bandTarget[i] ?? 0, SPECTRUM_FALL_PER_S, dt, SPECTRUM_ATTACK_S);
       snapshot.bands[i] = bar;
       snapshot.caps[i] = fallStep(snapshot.caps[i], bar, CAP_FALL_PER_S, dt);
     }

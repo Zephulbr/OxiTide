@@ -4,7 +4,7 @@
   /// Amp volume knob with a 23-dot LED ring (DESIGN §5.7). A slider: drag up
   /// or down, wheel, arrows ±2 %, Page keys ±10 %, Home/End; double-click
   /// mutes. Live while dragging, persisted on release like the VolumeSlider.
-  let { player }: { player: Player } = $props();
+  let { player, scale = 1 }: { player: Player; scale?: number } = $props();
 
   const RING = 23;
   const SWEEP = 270;
@@ -54,6 +54,7 @@
   }
 </script>
 
+<div class="frame" style:--s={scale}>
 <div class="knobbox">
   <svg class="ring" viewBox="0 0 76 76" aria-hidden="true">
     {#each dots as d, i (i)}
@@ -79,8 +80,18 @@
     ondblclick={() => player.toggleMute()}
   ></div>
 </div>
+</div>
 
 <style>
+  /* A larger knob is the same part scaled; the frame reserves its real size. */
+  .frame {
+    width: calc(76px * var(--s));
+    height: calc(76px * var(--s));
+  }
+  .frame > .knobbox {
+    transform: scale(var(--s));
+    transform-origin: 0 0;
+  }
   .knobbox {
     position: relative;
     display: grid;

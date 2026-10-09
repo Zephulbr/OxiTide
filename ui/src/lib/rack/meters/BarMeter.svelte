@@ -13,7 +13,7 @@
 <div class="bars">
   {#if header}
     <div class="row">
-      <div class="rk-anno"><span class="on">PEAK</span><span class="on">HOLD</span></div>
+      <div class="rk-anno"><span class="on">PROGRAM</span><span class="on">HOLD</span></div>
       <div class="rk-anno"><span class="on">{readout}</span></div>
     </div>
   {/if}

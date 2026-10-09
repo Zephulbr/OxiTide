@@ -153,10 +153,13 @@ tokens are neutral there); a meter that is sample-accurate to the DAC (§6.7).
   "My Collection": Playlists, Albums, Tracks, Mixes & Radio, Profiles, Purchases.
 - Expanded deck (`nav.nowPlayingOpen`): the column spans the shell; the deck becomes the
   turntable (platter + tonearm tracking progress) with a centred VFD/key strip; the right
-  side stacks the amp (150px meters), the spectrum (150px), a lyrics unit (nine lines
-  around the current one, fading with distance; title/artist/album when unsynced) that
-  takes the slack, and an **Up next** changer (next four tracks with covers; a slot plays
-  from there). Esc / the deck's collapse key returns.
+  side stacks the amp (symmetric front, 150px meters), the spectrum (150px), a **Now
+  playing** unit that takes the slack — lyrics VFD on the left (nine lines fading with
+  distance, current line 23px; title/artist/album when unsynced) and on the right a track
+  info window (title, artist, album, track n of N, length, format, ReplayGain) above a
+  **signal path** strip (TIDAL → Decoder → DSP → Output → Bit-perfect lamps with values)
+  — and an **Up next** changer (next four tracks in a glass window like a track list;
+  a slot plays from there). Esc / the deck's collapse key returns.
 - Mini player in Rack keeps its layout and gets the Rack skin: faceplate, cover in a
   glass window, title on a VFD, light-bar keys, the queue sheet as a unit.
 - All PlayerBar duties are covered: transport, seek (VFD seek bar), shuffle, repeat,
@@ -252,7 +255,9 @@ tokens are neutral there); a meter that is sample-accurate to the DAC (§6.7).
 
 ### 6.2 Amp
 
-- Meters per RK-D6; the Bars face also shows "PEAK HOLD ±x.x dB".
+- Meters per RK-D6; the Bars face also shows "PROGRAM HOLD ±x.x dB".
+- In the expanded deck the amp is a symmetric front: DSP keys stacked vertically on the
+  left, meters (150px) centred, a 1.35× knob on the right.
 - Status LEDs: quality (MAX/LOSSLESS/AAC), Bit-perfect (green) or DSP (amber, with the
   stage list as accessible text), format (`24/96`) from `stream`.
 - DSP keys: EQ (toggles `eq.enabled`), ReplayGain (off ↔ last non-off mode, default
@@ -291,11 +296,21 @@ instant under reduced motion). Lamp brightness scales the lit lightness and glow
 
 ### 6.7 Meters
 
-Needles: VU ballistics (~300 ms integration, 99% in 300 ms) on RMS; scale −20…+3 VU,
-0 VU = −18 dBFS RMS (EBU alignment). Bars/LED: sample peak, −40…+3 dBFS, red above 0
-dBFS, instant attack, 1.5 s hold, 24 dB/s fall. Spectrum: 20 bands (amp) / 28 bands
-(expanded) from the 28 tap bands, −60…0 dB, peak caps falling 0.35/s. Paused/stopped ⇒
-needles return to rest, bars fall.
+**Calibration (revised 2026-10-09 after owner smoke: meters "move way too fast and
+always hover near the top").** Real hi-fi meters read programme level against a
+reference, not digital full scale; with 0 VU at −18 dBFS RMS and bars on sample peaks,
+modern masters pinned every meter. All meters now read **programme level relative to
+−10 dBFS RMS** (0 VU = 0 dB = −10 dBFS RMS; a typical −14 dBFS master sits around −4,
+loud passages reach the red).
+
+- Needles: a damped mass-spring movement (2.0 Hz, ζ 0.8: settles in ~300 ms with ~1.5 %
+  overshoot, stops at both pins), driven by RMS averaged over ~100 ms. Scale −20…+3 VU.
+- Bars/LED: PPM-like programme meters on the same reference — 10 ms rise, 13 dB/s fall
+  (20 dB in ~1.5 s), 1.5 s hold then 10 dB/s; scale −40…+3 dB, red above 0. Header
+  "PROGRAM HOLD ±x.x dB".
+- Spectrum: 20 bands (amp) / 28 (expanded) from the tap's 28, −60…0 dB, 50 ms smoothed
+  rise, 0.9/s fall, caps 0.25/s.
+- Paused/stopped ⇒ needles return to rest, bars fall.
 
 ### 6.8 Accessibility
 

@@ -6,12 +6,15 @@ import {
   fallStep,
   ledCount,
   needleAngle,
+  needleState,
+  needleStep,
   peakFraction,
   peakState,
   peakStep,
   poolBands,
+  programmeDb,
+  REFERENCE_DBFS,
   vuPosition,
-  vuStep,
 } from "./ballistics";
 import { calendar, clock, formatBadge, formatLine, remainingMs, repeatAnnunciator, upNext } from "./deck";
 import { libraryKeyOf, sourceOf } from "./sources";
@@ -83,28 +86,49 @@ describe("deck helpers", () => {
 });
 
 describe("ballistics", () => {
-  it("VU integrates to ~99% in 300 ms", () => {
-    let v = 0;
-    for (let t = 0; t < 0.3; t += 1 / 60) v = vuStep(v, 1, 1 / 60);
-    expect(v).toBeGreaterThan(0.98);
+  const settle = (target: number, seconds: number) => {
+    let n = needleState();
+    let peak = n.x;
+    for (let t = 0; t < seconds; t += 1 / 60) {
+      n = needleStep(n, target, 1 / 60);
+      peak = Math.max(peak, n.x);
+    }
+    return { n, peak };
+  };
+  it("the VU needle settles in ~300 ms with a small overshoot, like a real movement", () => {
+    const at = settle(0.7, 0.3).n.x;
+    expect(at).toBeGreaterThan(0.7 * 0.9);
+    const { n, peak } = settle(0.7, 2);
+    expect(n.x).toBeCloseTo(0.7, 3);
+    expect(peak).toBeGreaterThan(0.7);
+    expect(peak).toBeLessThan(0.7 * 1.03);
   });
-  it("0 VU sits at −18 dBFS RMS and the needle spans ±46°", () => {
+  it("the needle never passes its pins", () => {
+    expect(settle(5, 1).peak).toBeLessThanOrEqual(1.04);
+    expect(needleStep({ x: -0.04, v: -3 }, -5, 0.1).x).toBe(-0.04);
+  });
+  it("0 VU and 0 dB sit at the programme reference, not full scale", () => {
     // The 0 VU mark is drawn at (1 − .1)/(10^(3/20) − .1) ≈ .686 of the arc.
-    const zero = vuPosition(10 ** (-18 / 20));
+    const zero = vuPosition(10 ** (REFERENCE_DBFS / 20));
     expect(zero).toBeCloseTo(0.9 / (10 ** (3 / 20) - 0.1), 6);
+    expect(programmeDb(10 ** (REFERENCE_DBFS / 20))).toBeCloseTo(0, 6);
+    // A typical master (short-term RMS −14 dBFS) reads −4 VU: mid-scale, not pinned.
+    expect(vuPosition(10 ** (-14 / 20))).toBeGreaterThan(0.3);
+    expect(vuPosition(10 ** (-14 / 20))).toBeLessThan(0.6);
     expect(vuPosition(0)).toBe(-0.04);
     expect(vuPosition(1)).toBe(1.04);
     expect(needleAngle(0)).toBe(-46);
     expect(needleAngle(1)).toBe(46);
   });
-  it("peaks attack instantly, hold 1.5 s, then fall", () => {
-    let s = peakStep(peakState(), -6, 0.016, 0);
-    expect(s.db).toBe(-6);
-    s = peakStep(s, null, 1, 1000);
-    expect(s.db).toBeCloseTo(-30);
-    expect(s.holdDb).toBe(-6);
-    s = peakStep(s, null, 1, 2600);
-    expect(s.holdDb).toBeLessThan(-6);
+  it("programme meters rise fast, fall at 13 dB/s, and hold 1.5 s", () => {
+    let s = peakState();
+    for (let t = 0; t <= 100; t += 16) s = peakStep(s, -6, 0.016, t);
+    expect(s.db).toBeGreaterThan(-6.5);
+    s = peakStep(s, null, 1, 1100);
+    expect(s.db).toBeCloseTo(-19, 0);
+    expect(s.holdDb).toBeGreaterThan(-6.5);
+    s = peakStep(s, null, 1, 2700);
+    expect(s.holdDb).toBeLessThan(-6.5);
   });
   it("scales, falls, LEDs and pooling", () => {
     expect(dbfs(0)).toBe(-96);
@@ -112,6 +136,7 @@ describe("ballistics", () => {
     expect(peakFraction(-40)).toBe(0);
     expect(bandFraction(-30)).toBeCloseTo(0.5);
     expect(fallStep(0.2, 0.8, 1.4, 0.1)).toBe(0.8);
+    expect(fallStep(0.2, 0.8, 1.4, 0.05, 0.05)).toBeLessThan(0.8);
     expect(fallStep(0.8, 0, 1.4, 0.1)).toBeCloseTo(0.66);
     expect(ledCount(-100)).toBe(0);
     expect(ledCount(0)).toBe(17);

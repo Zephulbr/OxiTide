@@ -69,12 +69,14 @@ describe("levels store", () => {
     h.levels.use();
     await flush();
     h.tick(0);
-    h.emit(loud);
-    h.tick(16);
-    expect(h.levels.snapshot.peakDb[0]).toBeCloseTo(0, 3);
-    expect(h.levels.snapshot.peakDb[1]).toBeCloseTo(-6.02, 1);
-    for (let t = 32; t < 600; t += 16) h.tick(t);
+    for (let t = 16; t < 600; t += 16) {
+      h.emit(loud);
+      h.tick(t);
+    }
+    // Programme level: RMS −20 / −26 dBFS against the −10 dBFS reference.
+    expect(h.levels.snapshot.peakDb[0]).toBeCloseTo(-10, 0);
+    expect(h.levels.snapshot.peakDb[1]).toBeCloseTo(-16, 0);
     expect(h.levels.snapshot.needle[0]).toBeGreaterThan(h.levels.snapshot.needle[1]);
-    expect(h.levels.snapshot.holdDb[0]).toBeCloseTo(0, 3);
+    expect(h.levels.snapshot.holdDb[0]).toBeCloseTo(-10, 0);
   });
 });

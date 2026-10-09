@@ -29,7 +29,9 @@ Automated gates at hand-off (2026-10-08, branch `track9-5-hifi-rack`): `cargo te
 - [ ] Short window (< 680px tall): face windows hide; VFD and keys stay.
 
 ## Amp and EQ
-- [ ] Meters setting: Needles, Bars (PEAK HOLD readout), LED (peak LED holds), Spectrum — all move with the music and fall to rest on pause.
+- [ ] Meters setting: Needles, Bars (PROGRAM HOLD readout), LED (hold LED stays), Spectrum — all move with the music and fall to rest on pause.
+- [ ] Meter feel: needles swing smoothly (no jitter), sit mid-scale on a typical track and reach the red only on loud passages; bars/LEDs rise fast and fall slowly; nothing hugs the top.
+- [ ] Now Playing: amp front is symmetric (DSP keys left, meters centred, larger knob right); Now playing unit shows lyrics left and track info + signal path right; Up next reads like a track list.
 - [ ] Meters stop (no CPU/IPC) when the window is minimised or hidden to tray, and resume on restore.
 - [ ] Volume knob: drag, wheel, arrows, Page keys, Home/End, double-click mute; LED ring follows; volume persists.
 - [ ] Status LEDs: quality, Bit-perfect (green) or DSP, format (24/96).
