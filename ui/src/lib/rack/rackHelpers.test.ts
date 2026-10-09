@@ -28,15 +28,18 @@ describe("sourceOf", () => {
   it("maps routes to the lit source key", () => {
     expect(sourceOf({ name: "home" })).toBe("home");
     expect(sourceOf({ name: "section", source: "explore", title: "x" })).toBe("explore");
-    expect(sourceOf({ name: "playlist", id: "p" })).toBe("playlists");
-    expect(sourceOf({ name: "folder", id: "f" })).toBe("playlists");
+    expect(sourceOf({ name: "playlist", id: "p" })).toBe("library");
+    expect(sourceOf({ name: "folder", id: "f" })).toBe("library");
     expect(sourceOf({ name: "album", id: 1 })).toBe("library");
-    expect(sourceOf({ name: "history", tab: "stats" })).toBe("library");
+    expect(sourceOf({ name: "feed" })).toBe("feed");
+    expect(sourceOf({ name: "history", tab: "stats" })).toBe("history");
     expect(sourceOf({ name: "settings" })).toBe("settings");
   });
   it("shows the library tray only on collection routes", () => {
-    expect(libraryKeyOf({ name: "profiles" })).toBe("Artists");
+    expect(libraryKeyOf({ name: "profiles" })).toBe("Profiles");
+    expect(libraryKeyOf({ name: "folder", id: "f" })).toBe("Playlists");
     expect(libraryKeyOf({ name: "album", id: 1 })).toBeNull();
+    expect(libraryKeyOf({ name: "playlist", id: "p" })).toBeNull();
   });
 });
 

@@ -134,26 +134,31 @@ tokens are neutral there); a meter that is sample-accurate to the DAC (§6.7).
 `ui/src/lib/rack/RackShell.svelte` owns the layout grid (RK-D4):
 
 ```
-┌ selector: brand · ◂ ▸ · Home Explore Library Playlists Search ··· Sleep Mini Setup · power ┐
+┌ selector: brand · ◂ ▸ · Home Explore Feed History Library ··· Sleep Mini Setup · power ┐
 ├ column (392px) ───────────┬ display ───────────────────────────────────────────────┤
 │ Deck   (face | turntable) │  <main class="main rack-main"> routed page </main>     │
 │ Amp    (meters, knob, DSP)│  (the queue drawer slides over the display ⟶)          │
-│ Playlists (tree, slack)   │                                                         │
 │ EQ     (optional)         │                                                         │
+│ Playlists (tree, slack)   │                                                         │
 └───────────────────────────┴─────────────────────────────────────────────────────────┘
 ```
 
-- Library source lights for `albums | tracks | profiles | mixes | purchases | history |
-  feed | album | artist | artist-all | mix`; Playlists for `playlists | folder |
-  playlist`; Explore for `explore | section`; Home for `home`; Setup for `settings`.
-  Search is momentary: it routes to Explore and focuses `#search-input` (same as the
-  global shortcut).
-- In library routes the display shows a sub-source key tray (Albums, Tracks, Artists,
-  Mixes, History, Purchases, Feed) above the page.
+- Source keys mirror the default sidebar (owner, 2026-10-09: no separate Search key —
+  search lives on Explore, Ctrl+F still focuses it): Home `home`; Explore `explore |
+  section`; Feed `feed`; History `history`; Library `playlists | folder | playlist |
+  albums | tracks | profiles | mixes | purchases | album | artist | artist-all | mix`;
+  Setup `settings`. Sleep, Mini and Setup are utility keys of the same shape (lamp
+  above a 34px key, one baseline); the Sleep lamp lights while a timer is armed.
+- In collection routes the display shows a sub-source key tray matching the sidebar's
+  "My Collection": Playlists, Albums, Tracks, Mixes & Radio, Profiles, Purchases.
 - Expanded deck (`nav.nowPlayingOpen`): the column spans the shell; the deck becomes the
-  turntable (platter + tonearm tracking progress) with VFD and transport; the right side
-  shows the spectrum unit and a lyrics VFD (previous / current / next line) using the
-  existing lyrics store; the amp stays. Esc / the deck's Close key collapses.
+  turntable (platter + tonearm tracking progress) with a centred VFD/key strip; the right
+  side stacks the amp (150px meters), the spectrum (150px), a lyrics unit (nine lines
+  around the current one, fading with distance; title/artist/album when unsynced) that
+  takes the slack, and an **Up next** changer (next four tracks with covers; a slot plays
+  from there). Esc / the deck's collapse key returns.
+- Mini player in Rack keeps its layout and gets the Rack skin: faceplate, cover in a
+  glass window, title on a VFD, light-bar keys, the queue sheet as a unit.
 - All PlayerBar duties are covered: transport, seek (VFD seek bar), shuffle, repeat,
   favourite, queue, volume, sleep timer (existing control), mini player, quality/bit-
   perfect/DSP indicators, buffering and error/notice text (VFD message line).

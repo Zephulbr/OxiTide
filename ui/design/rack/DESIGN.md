@@ -27,7 +27,7 @@ content; widely spaced lowercase labels; app-like flat buttons inside the rack.
 ## 2. Layout
 
 ```
-┌ Selector unit ─ brand · ◂ ▸ · [Home][Explore][Library][Playlists][Search] ··· [Sleep][Mini][Setup] ● Power ┐
+┌ Selector unit ─ brand · ◂ ▸ · [Home][Explore][Feed][History][Library] ··· [Sleep][Mini][Setup] ● Power ┐
 ├ Rack column ─────────────┬ Display unit (open faceplate) ──────────────────────────────┤
 │ Deck (face / turntable)  │  [sub-source keys when in Library]                           │
 │ Amplifier                │  Label ───────────────────                                    │
@@ -51,9 +51,17 @@ content; widely spaced lowercase labels; app-like flat buttons inside the rack.
 | Below 760px tall | Playlists unit hidden |
 | Below 680px tall | deck face windows hidden (VFD + keys stay) |
 
-Selector: sources are `SourceKey`s (lamp above a key). Library lights for every
-collection and detail route; Playlists for playlists/folders/playlist; Explore for
-explore/sections; Search is momentary (routes to Explore and focuses search).
+Selector: sources mirror the default sidebar — Home, Explore (search lives there),
+Feed, History, Library (every collection and detail route). Every selector key, sources
+and utility keys alike (Sleep, Mini, Setup), is a lamp above a 34px key on one baseline;
+Power uses the same two rows. The Sleep lamp lights while a timer is armed.
+
+Expanded deck right column: amp (150px meters) · spectrum (150px) · lyrics (nine lines,
+fading 17% per line from the current one, which is 19px with glow) · Up next changer
+(four slots: 34px cover window, number, title/artist, time).
+
+Mini player: unchanged layout with the Rack skin — faceplate, cover in a glass window,
+title/artist on a VFD, transport and secondary keys as light-bar keys in trays.
 
 ## 3. Materials and colour
 

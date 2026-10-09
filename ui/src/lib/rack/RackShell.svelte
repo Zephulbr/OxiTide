@@ -1,6 +1,8 @@
 <script lang="ts">
-  import { tick } from "svelte";
+  import { api } from "../api";
   import { appearance } from "../appearance.svelte";
+  import Cover from "../components/Cover.svelte";
+  import { clock, currentIndex, upNext } from "./deck";
   import type { CollectionTree } from "../collection.svelte";
   import type { CollectionActions } from "../collectionActions.svelte";
   import Icon from "../components/Icon.svelte";
@@ -58,12 +60,15 @@
     onQualityDisplay: (mode: QualityDisplay) => void;
   } = $props();
 
+  /// Mirrors the default sidebar (search lives on Explore).
   const SOURCES: { source: Source; label: string; route: Route }[] = [
     { source: "home", label: "Home", route: { name: "home" } },
     { source: "explore", label: "Explore", route: { name: "explore" } },
-    { source: "library", label: "Library", route: { name: "albums" } },
-    { source: "playlists", label: "Playlists", route: { name: "playlists" } },
+    { source: "feed", label: "Feed", route: { name: "feed" } },
+    { source: "history", label: "History", route: { name: "history", tab: "recent" } },
+    { source: "library", label: "Library", route: { name: "playlists" } },
   ];
+  const sleeping = $derived(sleepTimer.mode !== "off");
 
   const expanded = $derived(nav.nowPlayingOpen);
   const source = $derived(sourceOf(nav.route));
@@ -76,13 +81,6 @@
     void expanded;
     if (column) column.scrollTop = 0;
   });
-
-  async function search() {
-    if (nav.nowPlayingOpen) nav.closeNowPlaying();
-    if (nav.route.name !== "explore") nav.goto({ name: "explore" });
-    await tick();
-    document.getElementById("search-input")?.focus();
-  }
 
   function go(route: Route) {
     if (nav.nowPlayingOpen) nav.closeNowPlaying();
@@ -100,6 +98,10 @@
   $effect(() => {
     if (expanded) return levels.use();
   });
+  /// Nine lyric lines around the current one, fading with distance.
+  const LYRIC_OFFSETS = [-4, -3, -2, -1, 0, 1, 2, 3, 4];
+  const queueIndex = $derived(currentIndex(player.state));
+  const upcoming = $derived(upNext(player.state, 4));
 </script>
 
 <div class="rack" class:expanded>
@@ -117,14 +119,17 @@
           <span class="lamp"></span><span class="rk-key">{s.label}</span>
         </button>
       {/each}
-      <button class="src" onclick={search} title="Search (Ctrl+F)">
-        <span class="lamp off"></span><span class="rk-key">Search</span>
-      </button>
     </nav>
+    <!-- Utility keys: the same key-with-lamp as the sources, on one baseline. -->
     <div class="right">
-      <span class="rk-tray sleep" title="Sleep timer"><SleepTimerControl {sleepTimer} /></span>
-      <button class="rk-key sm" onclick={() => void mini.enter()} title="Mini player">Mini</button>
-      <button class="src setup" aria-current={source === "settings" && !expanded ? "page" : undefined} onclick={() => go({ name: "settings" })}>
+      <div class="src util" class:lit={sleeping}>
+        <span class="lamp"></span>
+        <span class="sleep"><SleepTimerControl {sleepTimer} /></span>
+      </div>
+      <button class="src util" onclick={() => void mini.enter()} title="Mini player">
+        <span class="lamp"></span><span class="rk-key">Mini</span>
+      </button>
+      <button class="src util" aria-current={source === "settings" && !expanded ? "page" : undefined} onclick={() => go({ name: "settings" })}>
         <span class="lamp"></span><span class="rk-key">Setup</span>
       </button>
       <div class="power" aria-hidden="true"><span class="dot"></span><span class="rk-silk">Power</span></div>
@@ -143,15 +148,34 @@
         <div class="rk-head"><h2 class="rk-name">Lyrics</h2><span class="rk-silk">{lyrics.lyrics?.synced ? "Synced" : ""}</span></div>
         <div class="rk-vfd lyrics">
           {#if lines.length > 0 && active >= 0}
-            {#each [-2, -1, 0, 1, 2] as offset (offset)}
-              <div class="rk-vfd-text line" class:now={offset === 0} class:far={Math.abs(offset) === 2}>{lines[active + offset]?.text ?? ""}</div>
+            {#each LYRIC_OFFSETS as offset (offset)}
+              <div class="rk-vfd-text line" class:now={offset === 0} style:--fade={1 - Math.abs(offset) * 0.17}>{lines[active + offset]?.text ?? ""}</div>
             {/each}
           {:else}
-            <div class="rk-vfd-text sub line far">{lyrics.loading ? "Loading lyrics" : lines.length > 0 ? "" : "No synced lyrics"}</div>
+            <div class="rk-vfd-text sub line" style:--fade="0.5">{lyrics.loading ? "Loading lyrics" : lines.length > 0 ? "Waiting for the first line" : "No synced lyrics"}</div>
             <div class="rk-vfd-text line now">{player.state.current?.title ?? ""}</div>
-            <div class="rk-vfd-text sub line far">{player.state.current?.artist ?? ""}</div>
+            <div class="rk-vfd-text sub line" style:--fade="0.6">{player.state.current ? `${player.state.current.artist} · ${player.state.current.album}` : ""}</div>
           {/if}
         </div>
+      </section>
+      <section class="rk-unit changer" aria-label="Up next">
+        <div class="rk-head"><h2 class="rk-name">Up next</h2>
+          <span class="rk-silk">{queueIndex >= 0 ? `Track ${queueIndex + 1} of ${player.state.queue.length}` : ""}</span>
+        </div>
+        <ol class="slots">
+          {#each upcoming as item, i (item.track_id + ":" + i)}
+            <li>
+              <button class="slot" onclick={() => api.playTracks(player.state.queue, queueIndex + 1 + i)} title={`Play ${item.title}`}>
+                <span class="rk-win thumb"><Cover uuid={item.cover} size={80} radius={2} alt="" /></span>
+                <span class="num">{queueIndex + 2 + i}</span>
+                <span class="meta"><b>{item.title}</b><i>{item.artist}</i></span>
+                <span class="dur">{clock(item.duration_secs * 1000)}</span>
+              </button>
+            </li>
+          {:else}
+            <li class="end">End of queue</li>
+          {/each}
+        </ol>
       </section>
     {:else}
       {#if appearance.rack.eq_unit}<EqUnit {toasts} />{/if}
@@ -277,9 +301,6 @@
     box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.7);
     transition: background 350ms, box-shadow 350ms;
   }
-  .lamp.off {
-    visibility: hidden;
-  }
   .src[aria-current] .lamp {
     background: var(--rack-lamp);
     box-shadow: 0 0 8px var(--rack-lamp-glow), 0 0 2px var(--rack-lamp);
@@ -298,27 +319,49 @@
     align-items: center;
     gap: 12px;
   }
-  /* The shared sleep-timer button, seated in a tray as a key. */
+  /* Utility keys share the source keys' shape: lamp above, same key height,
+     same baseline. The shared sleep-timer button is dressed as that key. */
+  .src.util .rk-key {
+    min-width: 58px;
+  }
+  .src.util.lit .lamp {
+    background: var(--rack-lamp);
+    box-shadow: 0 0 8px var(--rack-lamp-glow), 0 0 2px var(--rack-lamp);
+  }
   .sleep {
-    color: var(--rack-key-ink);
+    display: inline-flex;
+    position: relative;
   }
   .sleep :global(.moon) {
-    width: 34px;
-    height: 28px;
+    min-width: 58px;
+    height: 34px;
+    padding: 0 12px;
+    border: 0;
+    border-top: 1px solid var(--rack-key-edge);
     border-radius: 3px;
     background: var(--rack-key);
-    border-top: 1px solid var(--rack-key-edge);
     box-shadow: 0 0 0 1px #000, 0 2px 4px rgba(0, 0, 0, 0.6);
     color: var(--rack-key-ink);
   }
   .sleep :global(.moon:hover) {
     color: #b9ad9c;
+    background: var(--rack-key);
   }
+  .src.util.lit .sleep :global(.moon) {
+    color: var(--rack-key-ink-on);
+  }
+  /* Same two rows as a key (lamp, then a 34px label row) so it lines up. */
   .power {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 4px;
+    gap: 5px;
+    margin-left: 4px;
+  }
+  .power .rk-silk {
+    height: 34px;
+    display: flex;
+    align-items: center;
   }
   .dot {
     width: 6px;
@@ -418,11 +461,15 @@
     grid-column: 1 / -1;
     display: grid;
     grid-template-columns: minmax(0, 1.4fr) minmax(380px, 1fr);
-    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
     overflow: hidden;
   }
   .rack.expanded .column > :global(.deck) {
-    grid-row: 1 / 4;
+    grid-row: 1 / 5;
+  }
+  /* The wide right column gets full-size meters. */
+  .rack.expanded .column :global(.amp .meters) {
+    height: 150px;
   }
   .specwin {
     height: 150px;
@@ -438,23 +485,88 @@
     display: flex;
     flex-direction: column;
     justify-content: center;
-    gap: 10px;
+    gap: 12px;
     min-height: 140px;
-    padding: 16px 18px;
+    overflow: hidden;
+    padding: 18px 22px;
   }
   .lyrics .line {
     white-space: normal;
     font-size: 13px;
-    opacity: 0.45;
+    opacity: calc(var(--fade, 0.5) * 0.6);
     text-shadow: none;
-  }
-  .lyrics .line.far {
-    opacity: 0.2;
+    transition: opacity var(--dur-state);
   }
   .lyrics .line.now {
-    font-size: 17px;
+    font-size: 19px;
     opacity: 1;
     text-shadow: 0 0 8px var(--rack-vfd), 0 0 1px var(--rack-vfd);
+  }
+
+  /* Up next: a changer of the next tracks; a slot plays from there. */
+  .slots {
+    display: grid;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .slot {
+    display: grid;
+    grid-template-columns: 34px 22px minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    width: 100%;
+    padding: 4px 6px;
+    border: 0;
+    border-radius: 3px;
+    background: none;
+    color: var(--rack-screen-text);
+    text-align: left;
+    cursor: pointer;
+  }
+  .slot:hover {
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .thumb {
+    display: block;
+    width: 34px;
+    height: 34px;
+    padding: 2px;
+    box-sizing: border-box;
+  }
+  .thumb :global(.cover) {
+    width: 100%;
+    height: 100%;
+  }
+  .num,
+  .dur {
+    font: 700 10px/1 var(--font-ui);
+    color: var(--rack-silk-dim);
+    font-variant-numeric: tabular-nums;
+  }
+  .meta {
+    display: grid;
+    min-width: 0;
+  }
+  .meta b,
+  .meta i {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .meta b {
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+  .meta i {
+    font-size: 11px;
+    font-style: normal;
+    color: var(--rack-screen-muted);
+  }
+  .end {
+    padding: 6px;
+    color: var(--rack-screen-muted);
   }
 
   /* Window fit (spec §6.9). */

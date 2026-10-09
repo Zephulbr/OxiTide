@@ -10,7 +10,8 @@ Automated gates at hand-off (2026-10-08, branch `track9-5-hifi-rack`): `cargo te
 
 ## Shell and navigation
 - [ ] Switching to Hi-Fi Rack swaps the sidebar + player bar for the rack, live; switching back restores the default shell with no leftovers (lamp colour, dark scheme).
-- [ ] Source keys: the lamp follows the page (Home, Explore, Library for collection/album/artist/mix pages, Playlists for playlists/folders, Setup for Settings). Search jumps to Explore and focuses the search box.
+- [ ] Source keys match the sidebar: Home, Explore, Feed, History, Library (playlists, collection, album/artist/mix pages), Setup. Ctrl+F still focuses Explore's search.
+- [ ] Sleep, Mini, Setup and Power line up with the source keys (lamp row + 34px key row); the Sleep lamp lights while a timer runs.
 - [ ] Library shows the sub-source key tray (Albums … Feed) on collection pages only.
 - [ ] Back/forward keys, Alt+←/→ and mouse side buttons navigate.
 - [ ] The Playlists unit under the EQ shows the playlist tree, scrolls on its own, and fills the column to the display's bottom edge; picking a playlist navigates. "All" opens the playlists page.
@@ -49,7 +50,8 @@ Automated gates at hand-off (2026-10-08, branch `track9-5-hifi-rack`): `cargo te
 
 ## Regression (other modes)
 - [ ] Atmosphere and Instrument look identical to `main` (A/B a few pages: album, home, settings).
-- [ ] Mini player works from Rack and returns to Rack.
+- [ ] Mini player from Rack wears the Rack skin (faceplate, VFD title, light-bar keys, queue sheet as a unit), works, and returns to Rack.
+- [ ] Now Playing's Up next changer lists the next four tracks; clicking one plays from there.
 
 ## Perf (PM-D1)
 - [ ] Default-mode S1 and S5 re-run under unchanged budgets.

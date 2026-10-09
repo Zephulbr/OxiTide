@@ -31,6 +31,7 @@
 
 <style>
   .meters {
+    flex: 1;
     min-width: 0;
     height: 96px;
   }

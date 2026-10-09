@@ -374,6 +374,106 @@
 }
 
 /* ===================================================================
+   Mini player in Rack: a small component — faceplate, cover in a glass
+   window, title on a VFD, light-bar keys (DESIGN §7a).
+   =================================================================== */
+:root[data-mode="rack"] .mini-layer .mini {
+  gap: 10px;
+  background: var(--rack-sheen), var(--rack-grain), linear-gradient(180deg, var(--rack-plate-hi), var(--rack-plate-base));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+:root[data-mode="rack"] .mini-layer .art {
+  padding: 6px;
+  border-radius: 5px;
+  background: var(--rack-glass), linear-gradient(180deg, #040302, #090706 40%, #0b0908);
+  box-shadow: 0 0 0 1px #000, 0 1px 0 1px rgba(255, 255, 255, 0.07), inset 0 3px 8px rgba(0, 0, 0, 0.95);
+}
+:root[data-mode="rack"] .mini-layer .meta {
+  padding: 8px 12px;
+  border-radius: 3px;
+  background: var(--rack-vfd-bg);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.9), inset 0 0 0 1px rgba(0, 0, 0, 0.8), 0 1px 0 rgba(255, 255, 255, 0.07);
+  text-align: left;
+}
+:root[data-mode="rack"] .mini-layer .title,
+:root[data-mode="rack"] .mini-layer .artist {
+  color: var(--rack-vfd);
+  font-family: var(--font-ui);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-shadow: 0 0 6px var(--rack-vfd), 0 0 1px var(--rack-vfd);
+}
+:root[data-mode="rack"] .mini-layer .title {
+  font-size: 13px;
+}
+:root[data-mode="rack"] .mini-layer .artist {
+  font-size: 10.5px;
+  opacity: 0.8;
+}
+:root[data-mode="rack"] .mini-layer .transport,
+:root[data-mode="rack"] .mini-layer .secondary {
+  width: auto;
+  gap: 5px;
+  padding: 4px;
+  border-radius: 6px;
+  background: var(--rack-tray);
+  box-shadow: var(--rack-tray-shadow);
+}
+:root[data-mode="rack"] .mini-layer .ibtn {
+  position: relative;
+  width: 38px;
+  height: 32px;
+  padding-bottom: 6px;
+  border-radius: 3px;
+  border-top: 1px solid var(--rack-key-edge);
+  background: var(--rack-key);
+  color: var(--rack-key-ink);
+  box-shadow: 0 0 0 1px #000, 0 2px 4px rgba(0, 0, 0, 0.6);
+}
+:root[data-mode="rack"] .mini-layer .ibtn.play {
+  width: 54px;
+  height: 36px;
+  color: var(--rack-key-ink-on);
+}
+:root[data-mode="rack"] .mini-layer .ibtn:hover {
+  background: var(--rack-key);
+  color: #b9ad9c;
+}
+:root[data-mode="rack"] .mini-layer .ibtn::after {
+  content: "";
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  bottom: 4px;
+  height: 2px;
+  border-radius: 99px;
+  background: #1a1918;
+  border-top: 1px solid #2f2d2b;
+  transition: background 350ms, box-shadow 350ms;
+}
+:root[data-mode="rack"] .mini-layer .ibtn.active,
+:root[data-mode="rack"] .mini-layer .ibtn.on {
+  color: var(--rack-key-ink-on);
+}
+:root[data-mode="rack"] .mini-layer .ibtn.active::after,
+:root[data-mode="rack"] .mini-layer .ibtn.on::after,
+:root[data-mode="rack"] .mini-layer .ibtn:active::after {
+  background: var(--rack-lamp);
+  border-top-color: transparent;
+  box-shadow: 0 0 8px var(--rack-lamp-glow);
+  transition-duration: 80ms;
+}
+:root[data-mode="rack"] .mini-layer .ibtn:active {
+  transform: perspective(200px) rotateX(-16deg);
+}
+:root[data-mode="rack"] .mini-layer .queue-sheet {
+  background: var(--rack-sheen), linear-gradient(180deg, var(--rack-plate-hi), var(--rack-plate-base));
+  border-top: 0;
+  box-shadow: var(--rack-unit-shadow);
+}
+
+/* ===================================================================
    Rack units (classes used by ui/src/lib/rack/*; DESIGN §3–§5)
    =================================================================== */
 
