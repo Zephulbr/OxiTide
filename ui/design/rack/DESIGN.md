@@ -61,9 +61,9 @@ Expanded deck right column: amp (wide: DSP keys stacked left, 150px meters centr
 fading 17% per line, 15px, current 23px with glow — beside a 1fr column: track-info
 glass window with printed labels, then a "Signal path" tray of five lamps TIDAL ·
 Decoder · DSP · Output · Bit-perfect with values printed under them; the info captions
-— Title, Artist, Album, Track, Length, Quality — are white printed legends, 9.5px 800
-uppercase +.14em, and the values are lit in the accent with a soft glow, the title bold,
-over faint row rules) · Up next (glass
+— Title, Artist, Album, Track, Length, Quality — are 9.5px 800 uppercase +.14em in the
+accent at 70%, and the values are lit in the full accent with a soft glow, the title
+bold, over faint row rules) · Up next (glass
 window, rows like a track list: VFD-amber number, 30px cover, title/artist, time).
 
 Mini player: unchanged layout with the Rack skin — faceplate, cover in a glass window,

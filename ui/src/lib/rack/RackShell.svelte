@@ -630,8 +630,8 @@
     overflow: auto;
     padding: 14px 16px;
   }
-  /* Track info: white printed captions, values lit in the accent, faint rules
-     between rows. */
+  /* Track info: captions and values both lit in the accent (captions a step
+     dimmer), faint rules between rows. */
   .facts {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
@@ -651,7 +651,7 @@
     font: 800 9.5px/1.6 var(--font-ui);
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: var(--rack-screen-text);
+    color: color-mix(in srgb, var(--accent) 70%, transparent);
   }
   .facts dd {
     margin: 0;

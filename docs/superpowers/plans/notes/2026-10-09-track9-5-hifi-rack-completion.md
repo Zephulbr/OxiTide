@@ -21,7 +21,7 @@ Hi-Fi Rack as the third UI mode (Settings → Appearance → Mode → Hi-Fi Rack
 - **Now Playing:** expanded deck with the turntable (headroom for the tonearm), a
   centred VFD/key strip; right column with a symmetric amp front, an extra unit
   (Spectrum / Recorder / Tuner / EQ, setting + head keys), a Now playing unit
-  (nine-line lyrics + track info with white captions and accent values + signal path)
+  (nine-line lyrics + track info in the accent + signal path)
   and Up next.
 - **Amp:** Needles / Bars / LED / Spectrum meters (setting) calibrated to programme
   level (−10 dBFS RMS = 0), spring-needle VU ballistics, PPM-like bars/LEDs; LED-ring
