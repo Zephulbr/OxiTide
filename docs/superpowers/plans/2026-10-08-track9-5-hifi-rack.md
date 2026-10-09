@@ -2,10 +2,9 @@
 
 > **For agentic workers:** execute task by task; steps use checkbox (`- [ ]`) syntax.
 
-**Status (2026-10-08):** Tasks 1–15 implemented on `track9-5-hifi-rack`; all four
-automated gates green (Rust 782 tests incl. 13 new, clippy clean, svelte-check 0/0,
-vitest 85+ files incl. 6 new Rack suites). Task 16's human items (smoke checklist
-`notes/2026-10-08-track9-5-rack-smoke.md`, perf re-runs) are pending the owner.
+**Status (2026-10-09): closed** — Tasks 1–16 done on `track9-5-hifi-rack` plus seven
+owner polish rounds; see `notes/2026-10-09-track9-5-hifi-rack-completion.md`. All four
+automated gates green; the formal smoke tick and PM-D1 perf re-runs are owner items.
 Deviation recorded in the spec §5.4: panes use a `pane` hook class styled only by
 `rack.css` instead of new shared tokens.
 

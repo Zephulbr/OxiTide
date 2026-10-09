@@ -1,7 +1,8 @@
 # OxiTide — Track 9.5 Hi-Fi Rack (third UI mode)
 
-- **Status:** Approved live with the owner (2026-10-08); plan
-  `docs/superpowers/plans/2026-10-08-track9-5-hifi-rack.md`
+- **Status:** Implemented and closed (2026-10-09) after owner polish rounds; plan
+  `docs/superpowers/plans/2026-10-08-track9-5-hifi-rack.md`, completion
+  `docs/superpowers/plans/notes/2026-10-09-track9-5-hifi-rack-completion.md`
 - **Date:** 2026-10-08
 - **Owner:** V
 - **Parents:** `2026-09-25-oxitide-2b-visual-convergence.md` §2 (Rack deferred, "not a
