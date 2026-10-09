@@ -103,6 +103,17 @@ pub enum MeterStyle {
     Spectrum,
 }
 
+/// The expanded deck's analyzer unit. `Auto` shows the waterfall when the amp
+/// already shows a spectrum, so the two never duplicate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AnalyzerStyle {
+    #[default]
+    Auto,
+    Spectrum,
+    Waterfall,
+}
+
 /// Lamp colour (RK-D8): five presets or the cover's hue.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -128,6 +139,7 @@ pub fn clamp_lamp_brightness(value: u8) -> u8 {
 pub struct RackConfig {
     pub deck_face: DeckFace,
     pub meters: MeterStyle,
+    pub analyzer: AnalyzerStyle,
     pub lamp: LampColor,
     /// Show the optional graphic-EQ unit in the rack column.
     pub eq_unit: bool,
@@ -140,6 +152,7 @@ impl Default for RackConfig {
         Self {
             deck_face: DeckFace::Display,
             meters: MeterStyle::Needles,
+            analyzer: AnalyzerStyle::Auto,
             lamp: LampColor::Amber,
             eq_unit: true,
             lamp_brightness: LAMP_BRIGHTNESS_MAX,
@@ -518,6 +531,7 @@ mod tests {
             rack: RackConfig {
                 deck_face: DeckFace::Cd,
                 meters: MeterStyle::Led,
+                analyzer: AnalyzerStyle::Waterfall,
                 lamp: LampColor::Cover,
                 eq_unit: false,
                 lamp_brightness: 70,
@@ -963,6 +977,7 @@ mode = \"rack\"
         assert_eq!(config.rack, RackConfig::default());
         assert_eq!(config.rack.deck_face, DeckFace::Display);
         assert_eq!(config.rack.meters, MeterStyle::Needles);
+        assert_eq!(config.rack.analyzer, AnalyzerStyle::Auto);
         assert_eq!(config.rack.lamp, LampColor::Amber);
         assert!(config.rack.eq_unit);
         let _ = fs::remove_dir_all(dir);

@@ -311,6 +311,10 @@ loud passages reach the red).
 - Spectrum: 20 bands (amp) / 28 (expanded) from the tap's 28, −60…0 dB, 50 ms smoothed
   rise, 0.9/s fall, caps 0.25/s.
 - Paused/stopped ⇒ needles return to rest, bars fall.
+- **Analyzer unit (Now Playing)**: `[rack] analyzer = auto | spectrum | waterfall`
+  (default auto). The waterfall scrolls the band history down a VFD canvas. Auto picks
+  the waterfall whenever the amp's meters are a spectrum so the two units never show the
+  same thing (owner, 2026-10-09); two keys in the unit's head switch it directly.
 
 ### 6.8 Accessibility
 

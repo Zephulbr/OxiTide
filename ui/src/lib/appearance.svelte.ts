@@ -4,7 +4,14 @@ import { readThemeMirror, resolveTheme, writeThemeMirror, type ResolvedTheme, ty
 export type UiMode = "instrument" | "atmosphere" | "rack";
 
 export function defaultRackSettings(): RackSettings {
-  return { deck_face: "display", meters: "needles", lamp: "amber", eq_unit: true, lamp_brightness: 100 };
+  return { deck_face: "display", meters: "needles", analyzer: "auto", lamp: "amber", eq_unit: true, lamp_brightness: 100 };
+}
+
+/// The analyzer unit's effective style: Auto avoids showing a second
+/// spectrum when the amp's meters already are one.
+export function resolveAnalyzer(rack: RackSettings): "spectrum" | "waterfall" {
+  if (rack.analyzer !== "auto") return rack.analyzer;
+  return rack.meters === "spectrum" ? "waterfall" : "spectrum";
 }
 
 /// Mirrors `clamp_lamp_brightness` in `config.rs`.

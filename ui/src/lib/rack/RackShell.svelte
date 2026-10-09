@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api } from "../api";
-  import { appearance } from "../appearance.svelte";
+  import { appearance, resolveAnalyzer } from "../appearance.svelte";
+  import WaterfallMeter from "./meters/WaterfallMeter.svelte";
   import Cover from "../components/Cover.svelte";
   import { formatQuality } from "../quality";
   import { clock, currentIndex, upNext } from "./deck";
@@ -70,6 +71,7 @@
     { source: "library", label: "Library", route: { name: "playlists" } },
   ];
   const sleeping = $derived(sleepTimer.mode !== "off");
+  const analyzer = $derived(resolveAnalyzer(appearance.rack));
 
   const expanded = $derived(nav.nowPlayingOpen);
   const source = $derived(sourceOf(nav.route));
@@ -142,8 +144,22 @@
     <AmpUnit {player} meters={appearance.rack.meters} {toasts} wide={expanded} />
     {#if expanded}
       <section class="rk-unit spectrum" aria-label="Spectrum analyzer">
-        <div class="rk-head"><h2 class="rk-name">Spectrum analyzer</h2><span class="rk-silk">28 band</span></div>
-        <div class="rk-vfd specwin" aria-hidden="true"><SpectrumMeter snapshot={levels.snapshot} count={28} /></div>
+        <div class="rk-head"><h2 class="rk-name">Spectrum analyzer</h2>
+          <div class="headkeys">
+            <span class="rk-silk">28 band</span>
+            <div class="rk-tray" role="group" aria-label="Analyzer display">
+              <button class="rk-key sm" aria-pressed={analyzer === "spectrum"} onclick={() => appearance.setRack({ analyzer: "spectrum" }).catch(() => {})}>Spectrum</button>
+              <button class="rk-key sm" aria-pressed={analyzer === "waterfall"} onclick={() => appearance.setRack({ analyzer: "waterfall" }).catch(() => {})}>Waterfall</button>
+            </div>
+          </div>
+        </div>
+        <div class="rk-vfd specwin" aria-hidden="true">
+          {#if analyzer === "waterfall"}
+            <WaterfallMeter snapshot={levels.snapshot} count={28} />
+          {:else}
+            <SpectrumMeter snapshot={levels.snapshot} count={28} />
+          {/if}
+        </div>
       </section>
       <section class="rk-unit lyricsunit" aria-label="Now playing">
         <div class="rk-head"><h2 class="rk-name">Now playing</h2><span class="rk-silk">{lyrics.lyrics?.synced ? "Synced lyrics" : ""}</span></div>
@@ -496,6 +512,11 @@
   /* The wide right column gets full-size meters. */
   .rack.expanded .column :global(.amp .meters) {
     height: 150px;
+  }
+  .headkeys {
+    display: flex;
+    align-items: center;
+    gap: 12px;
   }
   .specwin {
     height: 150px;

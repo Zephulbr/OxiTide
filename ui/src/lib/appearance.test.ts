@@ -7,6 +7,7 @@ import {
   createAppearance,
   defaultRackSettings,
   fontStack,
+  resolveAnalyzer,
   resolveDynamicColor,
   resolveTypeface,
 } from "./appearance.svelte";
@@ -47,7 +48,8 @@ describe("rack mode", () => {
     await a.init();
     expect(document.documentElement.dataset.mode).toBe("rack");
     expect(a.rackShell).toBe(true);
-    expect(a.rack).toEqual({ deck_face: "cd", meters: "led", lamp: "blue", eq_unit: false, lamp_brightness: 70 });
+    // A config written before a field existed picks up its default.
+    expect(a.rack).toEqual({ deck_face: "cd", meters: "led", analyzer: "auto", lamp: "blue", eq_unit: false, lamp_brightness: 70 });
     // Rack draws its own materials: the Atmosphere effects stay off.
     expect(a.backdropArt).toBe(false);
     expect(a.glassPanels).toBe(false);
@@ -77,8 +79,16 @@ describe("rack mode", () => {
     expect(api.setUiMode).toHaveBeenCalledWith("atmosphere");
   });
 
+  it("auto analyzer never duplicates the amp's spectrum", () => {
+    const rack = defaultRackSettings();
+    expect(resolveAnalyzer(rack)).toBe("spectrum");
+    expect(resolveAnalyzer({ ...rack, meters: "spectrum" })).toBe("waterfall");
+    expect(resolveAnalyzer({ ...rack, meters: "spectrum", analyzer: "spectrum" })).toBe("spectrum");
+    expect(resolveAnalyzer({ ...rack, analyzer: "waterfall" })).toBe("waterfall");
+  });
+
   it("defaults and clamps", () => {
-    expect(defaultRackSettings()).toEqual({ deck_face: "display", meters: "needles", lamp: "amber", eq_unit: true, lamp_brightness: 100 });
+    expect(defaultRackSettings()).toEqual({ deck_face: "display", meters: "needles", analyzer: "auto", lamp: "amber", eq_unit: true, lamp_brightness: 100 });
     expect(clampLampBrightness(10)).toBe(40);
     expect(clampLampBrightness(150)).toBe(100);
     expect(clampLampBrightness(Number.NaN)).toBe(100);

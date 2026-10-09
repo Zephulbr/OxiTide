@@ -294,10 +294,12 @@ export interface Config {
 export type DeckFace = "transport" | "cd" | "display";
 export type MeterStyle = "needles" | "bars" | "led" | "spectrum";
 export type LampColor = "amber" | "blue" | "green" | "red" | "white" | "cover";
+export type AnalyzerStyle = "auto" | "spectrum" | "waterfall";
 /** Hi-Fi Rack options (`[rack]`, Track 9.5). */
 export interface RackSettings {
   deck_face: DeckFace;
   meters: MeterStyle;
+  analyzer: AnalyzerStyle;
   lamp: LampColor;
   eq_unit: boolean;
   /** Percent, 40–100. */

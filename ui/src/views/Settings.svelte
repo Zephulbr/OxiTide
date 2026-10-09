@@ -695,6 +695,15 @@
           </div>
         </div>
         <div class="field">
+          <span class="field-label">Now Playing analyzer:</span>
+          <div class="segmented" role="group" aria-label="Now Playing analyzer">
+            <button class:active={appearance.rack.analyzer === "auto"} onclick={() => appearance.setRack({ analyzer: "auto" }).catch(apply)}>Auto</button>
+            <button class:active={appearance.rack.analyzer === "spectrum"} onclick={() => appearance.setRack({ analyzer: "spectrum" }).catch(apply)}>Spectrum</button>
+            <button class:active={appearance.rack.analyzer === "waterfall"} onclick={() => appearance.setRack({ analyzer: "waterfall" }).catch(apply)}>Waterfall</button>
+          </div>
+        </div>
+        <p class="muted">Auto shows the waterfall when the amp's meters are already a spectrum.</p>
+        <div class="field">
           <span class="field-label">Lamp color:</span>
           <div class="segmented" role="group" aria-label="Lamp color">
             {#each [["amber", "Amber"], ["blue", "Blue"], ["green", "Green"], ["red", "Red"], ["white", "White"], ["cover", "Cover"]] as const as [id, label] (id)}
