@@ -17,10 +17,12 @@ export interface Favorites {
   toggleTrack(id: number): Promise<boolean | null>;
   toggleAlbum(id: number): Promise<boolean | null>;
   toggleArtist(id: number): Promise<boolean | null>;
+  /// A change made elsewhere (a paired phone, or echoed back from this window).
+  applyExternal(kind: Kind, id: number, favorite: boolean): void;
   reset(): void;
 }
 
-type Kind = "track" | "album" | "artist";
+export type Kind = "track" | "album" | "artist";
 
 /// Favorite state for the signed-in account. Hydrated once per session from
 /// `get_favorite_ids`; toggles are optimistic and revert on failure. Failures
@@ -112,6 +114,30 @@ export function createFavorites(toasts: Toasts): Favorites {
     }
   }
 
+  /// An in-flight local toggle owns its key; otherwise the remote value wins
+  /// and is remembered so a stale hydration cannot undo it.
+  function applyExternal(kind: Kind, id: number, favorite: boolean) {
+    const key = `${kind}:${id}`;
+    if (pending.has(key)) return;
+    const set = setOf(kind);
+    if (set.has(id) === favorite) {
+      touched.add(key);
+      return;
+    }
+    if (favorite) set.add(id);
+    else set.delete(id);
+    touched.add(key);
+    if (kind === "track") {
+      if (favorite) {
+        invalidatePager("favorites");
+      } else {
+        removePagerItem("favorites", id);
+        pendingRemovals.add(id);
+        trackRevision += 1;
+      }
+    }
+  }
+
   return {
     get hydrated() { return hydrated; },
     get trackRevision() { return trackRevision; },
@@ -129,6 +155,7 @@ export function createFavorites(toasts: Toasts): Favorites {
     toggleTrack: (id) => toggle("track", id),
     toggleAlbum: (id) => toggle("album", id),
     toggleArtist: (id) => toggle("artist", id),
+    applyExternal,
     reset: () => {
       generation += 1;
       hydratePromise = null;

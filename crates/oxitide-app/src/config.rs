@@ -23,6 +23,41 @@ pub struct Config {
     pub dsp: DspSettings,
     /// Hi-Fi Rack mode options (Track 9.5).
     pub rack: RackConfig,
+    /// Phone remote (Track 11). Off by default.
+    pub remote: RemoteConfig,
+}
+
+pub const REMOTE_DEFAULT_PORT: u16 = 47820;
+
+/// Phone remote preferences (`[remote]`, spec §5.3). Paired devices live in
+/// `remote.json`, never here.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RemoteConfig {
+    pub enabled: bool,
+    /// First port tried; the server falls back through `port + 9`.
+    pub port: u16,
+    /// Address for the pairing QR; empty picks automatically.
+    pub interface: String,
+    /// New phones need a click on the PC before they pair.
+    pub approve_new_devices: bool,
+}
+
+impl Default for RemoteConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            port: REMOTE_DEFAULT_PORT,
+            interface: String::new(),
+            approve_new_devices: true,
+        }
+    }
+}
+
+/// Keep the port out of the privileged range and leave room for the
+/// nine-port fallback.
+pub fn clamp_remote_port(port: u16) -> u16 {
+    port.clamp(1024, u16::MAX - 9)
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -547,6 +582,12 @@ mod tests {
                 eq_unit: false,
                 lamp_brightness: 70,
             },
+            remote: RemoteConfig {
+                enabled: true,
+                port: 50000,
+                interface: "192.168.1.5".into(),
+                approve_new_devices: false,
+            },
         };
         config.save_to(&path).unwrap();
         assert_eq!(Config::load_from(&path), config);
@@ -1018,6 +1059,30 @@ analyzer = \"waterfall\"
         assert_eq!(config.rack.lamp, LampColor::Blue);
         assert_eq!(config.rack.meters, MeterStyle::Needles);
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn remote_defaults_off_and_round_trips() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        let fresh = Config::default();
+        assert!(!fresh.remote.enabled, "the phone remote is opt-in");
+        assert_eq!(fresh.remote.port, REMOTE_DEFAULT_PORT);
+        assert_eq!(fresh.remote.interface, "");
+        assert!(fresh.remote.approve_new_devices);
+        fs::write(&path, "[remote]\nenabled = true\n").unwrap();
+        let partial = Config::load_from(&path);
+        assert!(partial.remote.enabled);
+        assert_eq!(partial.remote.port, REMOTE_DEFAULT_PORT);
+        assert!(partial.remote.approve_new_devices);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn remote_port_is_clamped() {
+        assert_eq!(clamp_remote_port(80), 1024);
+        assert_eq!(clamp_remote_port(47820), 47820);
+        assert_eq!(clamp_remote_port(u16::MAX), u16::MAX - 9);
     }
 
     #[test]

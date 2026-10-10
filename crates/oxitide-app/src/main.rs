@@ -13,6 +13,7 @@ mod meter;
 mod palette;
 pub mod perf;
 mod player;
+mod remote;
 mod scheme;
 mod scrobble;
 mod session;
@@ -314,6 +315,14 @@ fn main() {
             if let Err(e) = spawned {
                 tracing::warn!("startup background thread failed: {e}");
             }
+            // Phone remote (Track 11): only when enabled, after the window is
+            // shown, off the critical path.
+            if app.state::<AppState>().config().remote.enabled {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let _ = remote::host::start(&handle).await;
+                });
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -451,6 +460,15 @@ fn main() {
             commands::perf_submit_ui_metrics,
             commands::perf_queue_build,
             commands::analyze_cover,
+            commands::get_remote_status,
+            commands::set_remote_enabled,
+            commands::set_remote_settings,
+            commands::begin_remote_pairing,
+            commands::cancel_remote_pairing,
+            commands::list_remote_devices,
+            commands::rename_remote_device,
+            commands::revoke_remote_device,
+            commands::resolve_remote_pair_request,
         ])
         .build(tauri::generate_context!())
         .expect("error while building OxiTide")
@@ -470,6 +488,7 @@ fn main() {
             }
             tauri::RunEvent::Exit => {
                 scheme::restore_remembered();
+                remote::host::stop_now(app_handle);
                 let state = app_handle.state::<AppState>();
                 if let Some(saver) = state.session_saver() {
                     saver.flush_now();

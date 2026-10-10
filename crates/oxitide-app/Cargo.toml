@@ -27,8 +27,16 @@ directories.workspace = true
 thiserror.workspace = true
 url.workspace = true
 md-5 = "0.10"
+base64.workspace = true
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 discord-rich-presence = "1.1"
+axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio", "json"] }
+qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
+sha2 = "0.10"
+getrandom = "0.3"
+futures-util = "0.3"
+if-addrs = "0.15.0"
+socket2 = "0.6"
 
 [dev-dependencies]
 wiremock = "0.6"

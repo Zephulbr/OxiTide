@@ -20,6 +20,7 @@
   import ErrorState from "../lib/components/ErrorState.svelte";
   import Icon from "../lib/components/Icon.svelte";
   import KeyringNotice from "../lib/components/KeyringNotice.svelte";
+  import RemoteSettings from "../lib/components/RemoteSettings.svelte";
   import Loading from "../lib/components/Loading.svelte";
   import {
     appearance,
@@ -1135,7 +1136,10 @@
       role="tabpanel"
       aria-labelledby="settings-tab-connections"
     >
-      <p class="muted">Scrobbling, media controls, and Discord Rich Presence are configurable below.</p>
+      <p class="muted">
+        Scrobbling, media controls, Discord Rich Presence, and the phone remote are configurable
+        below.
+      </p>
       <h3>Scrobbling</h3>
       {#if scrobble}
         <div class="scrobble">
@@ -1243,6 +1247,7 @@
           <span class="muted">Hardware media keys and the system media overlay.</span>
         </div>
       </div>
+      <RemoteSettings />
     </div>
   {:else if tab === "storage"}
     <div id="settings-panel-storage" role="tabpanel" aria-labelledby="settings-tab-storage">

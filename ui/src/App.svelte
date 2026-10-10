@@ -47,7 +47,7 @@
   import { playSource } from "./lib/playSource.svelte";
   import { scrobbled } from "./lib/scrobbled.svelte";
   import { trackFlags } from "./lib/trackFlags.svelte";
-  import { api, SCROBBLE_AUTH_ERROR_EVENT, SCROBBLE_SCROBBLED_EVENT, trackToQueueItem, type QueueItem, type RepeatMode, type StreamMeta } from "./lib/api";
+  import { api, FAVORITE_CHANGED_EVENT, SCROBBLE_AUTH_ERROR_EVENT, SCROBBLE_SCROBBLED_EVENT, trackToQueueItem, type FavoriteChange, type QueueItem, type RepeatMode, type StreamMeta } from "./lib/api";
   import type { QualityDisplay } from "./lib/quality";
 
   interface ExpiredSession {
@@ -159,6 +159,18 @@
     sync();
     media.addEventListener("change", sync);
     return () => media.removeEventListener("change", sync);
+  });
+
+  // Hearts toggled on a paired phone (Track 11) — and echoes of our own
+  // toggles, which the store ignores while they are in flight.
+  $effect(() => {
+    const unlisten = listen<FavoriteChange>(FAVORITE_CHANGED_EVENT, (event) => {
+      const { kind, id, favorite } = event.payload;
+      favorites.applyExternal(kind, id, favorite);
+    });
+    return () => {
+      unlisten.then((off) => off());
+    };
   });
 
   $effect(() => {
