@@ -18,6 +18,7 @@
 - **Revised:** 2026-10-08 — Track 9.4 (a11y pass) smoke passed (`plans/notes/DONE-2026-10-07-track9-4-smoke.md`; PM-D1 S5/S6/S7 re-runs show no regression) and merged to `main`. Track 9 closure (plan 9.4 Task 15) waits on the owner confirming the 9.2/9.3 smokes; Hi-Fi Rack runs as its own spec.
 - **Revised:** 2026-10-09 — Track 9.5 (Hi-Fi Rack, third UI mode) implemented on `track9-5-hifi-rack` and closed after owner polish rounds (`plans/notes/2026-10-09-track9-5-hifi-rack-completion.md`); formal smoke tick and PM-D1 re-runs are owner items; 9.5c (narrow fold, Rack mini layout, queue changer) deferred.
 - **Revised:** 2026-10-10 — **Track 11 (Phone Remote)** added: casting/TIDAL Connect research (`plans/notes/2026-10-09-tidal-connect-receiver-spike.md`) showed the TIDAL phone app only accepts TIDAL's own receiver binary, so the owner chose a self-contained LAN web remote instead (spec `2026-10-09-oxitide-track11-phone-remote-design.md`). Plans 11.1–11.5 implemented on `track11-phone-remote`; 11.6 human smoke and PM-D1 re-runs are owner items.
+- **Revised:** 2026-10-11 — Track 11 (Phone Remote) closed: owner smoke passed (Linux item deferred to the batched Linux run), merged to `main` (`plans/notes/2026-10-10-track11-completion.md`).
 - **Owner:** V
 - **Parent:** `2026-09-21-oxitide-design.md` (§9 Phasing)
 - **Supersedes:** the parent's Phase 2–4 ordering. The shipped Phase 1 MVP (v0.2.0) is
@@ -52,7 +53,7 @@ refreshed 2026-10-01.
 | 6 | Track 8 | Linux support: ALSA output backend, MPRIS media controls, Secret Service keyring, deb/AppImage/AUR packaging | Done (2026-10-04) — WSL2-verified; bare-metal checks exempted (`plans/notes/2026-10-04-track8-completion.md`) |
 | 7 | Track 10 | Daily-driver QoL: session/queue persistence, playback history + stats, sleep timer, scrobble love (deferred 2026-10-05), AI/explicit content blocking; Phase 2 tray + global hotkeys | Done (2026-10-05) — merged at `446e054` with follow-up fixes through `70d0bc9`; owner smoke passed; 10.4 deferred |
 | 8 | Track 7 | Advanced audio: DSP/EQ + ReplayGain (opt-in, mutually exclusive with bit-perfect); crossfade/automix; casting/TIDAL Connect; Dolby Atmos; 360 RA (difficulty-gated); optional ASIO output (maybe, see `plans/notes/2026-10-01-asio-spike.md`); **potential post-casting group listen-along** (see `plans/notes/2026-10-02-listen-along-assessment.md`) | DSP core done 2026-10-07 (ReplayGain, EQ, crossfade; owner smoke passed — `plans/notes/2026-10-07-track7-completion.md`); casting/Atmos/360 RA/ASIO/listen-along/automix parked |
-| 9 | Track 11 | Phone remote: opt-in LAN server, QR pairing, a phone web page for playback, queue, search, and library (replaces "control OxiTide from the phone" from Track 7's casting item) | Implemented 2026-10-09 on `track11-phone-remote` (Plans 11.1–11.5, `plans/2026-10-09-track11-phone-remote.md`); real-phone smoke + PM-D1 re-runs open |
+| 9 | Track 11 | Phone remote: opt-in LAN server, QR pairing, a phone web page for playback, queue, search, and library (replaces "control OxiTide from the phone" from Track 7's casting item) | Done (2026-10-11) — owner smoke passed (Linux item deferred), merged to `main`; `plans/notes/2026-10-10-track11-completion.md` |
 
 Track 2b is closed; its remainder (Hi-Fi Rack, light mode, leftover polish) is Track 9,
 which carries a normal completion gate.
@@ -273,9 +274,11 @@ which carries a normal completion gate.
   Tailscale-style VPN addresses are admitted for remote use.
 - **Spec:** `2026-10-09-oxitide-track11-phone-remote-design.md` (RM-D1–RM-D13, all
   owner-accepted 2026-10-09). Plan record: `plans/2026-10-09-track11-phone-remote.md`.
-- **Status:** Plans 11.1–11.5 implemented on `track11-phone-remote` (2026-10-09). Closure
-  (11.6) needs the real-phone smoke (`plans/notes/2026-10-09-track11-phone-remote-smoke.md`)
-  and PM-D1 re-runs with the remote enabled and a phone connected.
+- **Status:** Done (2026-10-11). Plans 11.1–11.6 plus smoke round 1 (favorite sync, device
+  rename, Atmosphere polish, swipe-on-cover volume) and a final security pass; owner smoke
+  passed with the Linux item deferred; PM-D1 shows no remote cost (seven pre-existing
+  breaches reproduce with it off). Merged to `main` — see
+  `plans/notes/2026-10-10-track11-completion.md`.
 
 ## 4. Decisions (post-MVP)
 

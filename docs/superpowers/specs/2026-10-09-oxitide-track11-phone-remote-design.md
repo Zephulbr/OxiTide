@@ -1,8 +1,8 @@
 # OxiTide — Track 11 Phone Remote
 
-- **Status:** Accepted 2026-10-09 (owner accepted RM-D3…RM-D13 as written; firewall:
-  Settings guidance only). Plans 11.1–11.5 implemented on `track11-phone-remote`
-  (`plans/2026-10-09-track11-phone-remote.md`, which lists the refinements); 11.6 open
+- **Status:** **Closed 2026-10-11** — owner smoke passed (Linux item deferred); completion note
+  `plans/notes/2026-10-10-track11-completion.md`; plan record (with refinements and the smoke
+  round 1 changes) `plans/2026-10-09-track11-phone-remote.md`
 - **Date:** 2026-10-09
 - **Owner:** V
 - **Parents:** `2026-09-24-oxitide-post-mvp-roadmap.md` (casting / TIDAL Connect, parked in

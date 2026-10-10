@@ -1,11 +1,44 @@
-# Track 11 (Phone Remote) — completion status (2026-10-10)
+# Track 11 (Phone Remote) — completion note (closed 2026-10-11)
 
 Spec: `specs/2026-10-09-oxitide-track11-phone-remote-design.md`. Plan record:
 `plans/2026-10-09-track11-phone-remote.md`. Branch: `track11-phone-remote` (not merged).
 
-**Status: implementation complete; closure waits on the real-phone smoke** (§7 checklist,
-`notes/2026-10-09-track11-phone-remote-smoke.md`), which needs the owner, a phone, and a
-real account. Everything scriptable is verified below.
+**Status: CLOSED 2026-10-11.** The owner smoke on a real phone passed every section
+(`notes/2026-10-09-track11-phone-remote-smoke.md`); the Linux smoke item is **deferred** to
+the batched Linux test run (the Linux cargo gates pass). Owner feedback was addressed in
+smoke round 1 (`31da50a`), and a final security review hardened the open surface
+(`241f921`). Merged to `main`.
+
+## Verified/exempted split
+
+| Item | Status |
+|---|---|
+| Scripted gates (Windows + WSL2 Linux, at `241f921`) | verified |
+| Release build serving the page over the LAN | verified (2026-10-10 probe) |
+| PM-D1 with remote on + phone connected vs. control | verified — no remote cost |
+| Owner smoke: setup/pairing, Now Playing, queue, discovery, library, resilience | verified (owner, 2026-10-11) |
+| Linux smoke (server reachable, `ufw` hint) | **deferred** to the batched Linux run |
+| Round-1 follow-ups (favorite sync, rename, polish, swipe volume) | verified by tests and build; owner accepted closure without a second phone pass |
+
+## Final review (2026-10-11)
+
+Security pass over the whole branch. Fixed:
+
+- **Phone-supplied covers** (`queue_add`, `play_page_items`) could be any URL; they flow
+  into the Windows media overlay (which fetches them — an outbound request from the PC to
+  any address, LAN included) and Discord presence (published). Now limited to TIDAL image
+  ids / `https://resources.tidal.com/` at the RPC boundary.
+- **Open asset route** (reachable before pairing): percent-encoded traversal, dotfiles,
+  and Vite's `/@fs/` (debug builds proxy the dev server) are refused.
+- A malformed `remote.json` now logs line/column only (serde messages can quote values).
+
+Reviewed and unchanged: LAN-only admission at accept; Host = arrival IP / loopback
+`localhost`; Origin + `X-Oxi-Remote` + JSON on POST; `HttpOnly; SameSite=Strict` cookie;
+single-use 5-minute pairing token with one approval in flight; SHA-256 device hashes with
+constant-time comparison; failure rate limits; allowlist with a `generate_handler!`
+coverage test; no secrets in logs; no `{@html}` beyond inlined icons and the PC-generated
+QR SVG; the phone page CSP forbids inline script. Accepted residual risks stay as in the
+spec (plain HTTP on the LAN, RM-D11; CGNAT/link-local admission, RM-D3).
 
 ## Verified
 
@@ -55,9 +88,7 @@ The disabled case adds one engine subscriber (a mutex read + `None` check per ev
 nothing on the startup path; the multi-page build's shared chunk does not apply to these
 dev-server runs and should be re-checked once on a release build (S1/S2 by hand).
 
-## Open (owner)
+## Follow-ups (not Track 11)
 
-- [ ] Real-phone smoke (`notes/2026-10-09-track11-phone-remote-smoke.md`), including the
-      Windows firewall prompt, approval flow, revoke, sleep/wake, and cellular isolation.
-- [ ] Decide on the pre-existing PM-D1 breaches above (triage separately or renegotiate).
-- [ ] Review the spec refinements in the plan record, then merge `track11-phone-remote`.
+- Linux smoke item, with the next batched Linux run.
+- The seven pre-existing PM-D1 breaches above (triage separately or renegotiate budgets).

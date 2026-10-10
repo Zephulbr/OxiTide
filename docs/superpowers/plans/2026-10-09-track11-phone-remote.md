@@ -3,9 +3,8 @@
 **Goal:** Let a phone on the LAN control a running OxiTide through a QR-paired web page
 (spec `docs/superpowers/specs/2026-10-09-oxitide-track11-phone-remote-design.md`).
 
-**Status:** 11.1–11.5 implemented on branch `track11-phone-remote` (2026-10-09). 11.6
-(human smoke on a real phone, PM-D1 re-runs with the remote enabled, AGENTS.md, completion
-note) is open.
+**Status:** Closed 2026-10-11 — Plans 11.1–11.6, smoke round 1, and a final security pass;
+see `plans/notes/2026-10-10-track11-completion.md`.
 
 **Owner decisions (2026-10-09):** RM-D3…RM-D13 accepted as written; delivery 11.1–11.5 on a
 branch; Windows firewall handled by Settings guidance only (no NSIS rule).
