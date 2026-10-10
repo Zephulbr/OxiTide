@@ -67,5 +67,8 @@ the workspace.
   code.
 - Visual check of the phone page at 390×844 in dark and light against a mock backend
   (Now Playing, Queue windowing, Home shelves, Search + row sheet).
-- **Not yet run:** WSL2 Linux gates, the human smoke
-  (`plans/notes/2026-10-09-track11-phone-remote-smoke.md`), PM-D1 re-runs.
+- 11.6 (2026-10-10): WSL2 Linux gates, release-build LAN probe, and the PM-D1 corpus
+  (enabled + simulated phone vs. a disabled control) are recorded in
+  `plans/notes/2026-10-10-track11-completion.md`; the remote shows no measurable cost, and
+  seven pre-existing budget breaches reproduce with it disabled.
+- **Not yet run:** the human smoke (`plans/notes/2026-10-09-track11-phone-remote-smoke.md`).

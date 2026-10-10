@@ -40,4 +40,4 @@ Record pass/fail and notes inline.
 - [ ] Linux (WSL2 or bare metal) build: server reachable; `ufw` hint shown.
 
 ## Performance (PM-D1)
-- [ ] S1–S3, S5–S7 with the remote **enabled and one phone connected**; record vs. `scripts/perf/budgets.json`.
+- [x] S1–S3, S5–S7 with the remote **enabled and one phone connected** (simulated SSE client), plus a disabled control — 2026-10-10, see `2026-10-10-track11-completion.md`. No remote-attributable regression; seven pre-existing breaches noted there.
