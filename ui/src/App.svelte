@@ -9,6 +9,7 @@
   import Mini from "./views/Mini.svelte";
   import RoutedPage from "./lib/RoutedPage.svelte";
   import RackShell from "./lib/rack/RackShell.svelte";
+  import RackMini from "./lib/rack/RackMini.svelte";
   import { createLamp } from "./lib/rack/lamp.svelte";
   import PlaylistPicker from "./lib/components/PlaylistPicker.svelte";
   import TrackInfoHost from "./lib/components/TrackInfoHost.svelte";
@@ -569,7 +570,12 @@
   <Backdrop {player} />
   {#if mini.active}
     <div class="mini-layer" inert={dialogs.count > 0}>
-      <Mini {player} {favorites} {mini} />
+      <!-- Rack has its own mini player (9.5c); same sanctioned branch (RK-D1). -->
+      {#if appearance.rackShell}
+        <RackMini {player} {favorites} {mini} />
+      {:else}
+        <Mini {player} {favorites} {mini} />
+      {/if}
     </div>
   {:else if appearance.rackShell}
     <!-- Hi-Fi Rack: the one sanctioned shell branch (Rack spec RK-D1). -->

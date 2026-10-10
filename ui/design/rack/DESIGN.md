@@ -47,7 +47,7 @@ content; widely spaced lowercase labels; app-like flat buttons inside the rack.
 | Keys | fixed sizes — transport 46×34, play-mode icon keys 38×34; keys never stretch to fill a row |
 | Needle meters | sized from the 96px slot height (1.55:1), never from the unit width |
 | Expanded deck | column spans both tracks; deck left (1.4fr), amp / spectrum (150px VFD) / lyrics (slack, five lines) right (≥ 380px); platter `max(260px, min(100vh − 340px, 56vw − 160px, 860px))`; VFD + keys a centred strip ≤ 680px |
-| Below 1000px wide | EQ unit hidden |
+| Below 1000px wide | **fold**: no column; display full width, deck strip under it (cover 92px window, VFD, key trays, knob 0.8×); < 860px keys under the VFD; < 760px no cover |
 | Below 760px tall | Playlists unit hidden |
 | Below 680px tall | deck face windows hidden (VFD + keys stay) |
 
@@ -66,8 +66,14 @@ accent at 70%, and the values are lit in the full accent with a soft glow, the t
 bold, over faint row rules) · Up next (glass
 window, rows like a track list: VFD-amber number, 30px cover, title/artist, time).
 
-Mini player: unchanged layout with the Rack skin — faceplate, cover in a glass window,
-title/artist on a VFD, transport and secondary keys as light-bar keys in trays.
+Mini player (`RackMini`, 300×430): a compact deck — head (name, quality silk, Restore
+key), cover glass window taking the slack (hidden under 400px tall), the deck VFD
+(18px segments), transport and play-mode trays — over a compact amp (Bars meter on a VFD
+beside a 0.7× knob). Units 10px 12px padding, 4px gap. The queue is a unit sliding up
+over the stack.
+
+Queue: with the column visible, the Queue key swaps the Playlists unit for the **queue
+changer** (§5.11); folded or in Now Playing it is the drawer over the display.
 
 ## 3. Materials and colour
 
@@ -121,7 +127,9 @@ amber.
 - Silk labels: Manrope 600–700, 9.5–11px, +.05em, `--rack-silk-dim`, `text-shadow 0 1px 0 rgba(255,255,255,.05)`.
 - VFD: Manrope 700 13px +.08em uppercase with `text-shadow 0 0 6px vfd, 0 0 1px vfd`;
   sub line 10.5px; annunciators 8.5px 800 +.12em (unlit at .12 opacity).
-- 7-segment time: SVG digits, 22px tall, skewX(−6°), ghost segments in `--rack-vfd-ghost`.
+- 7-segment readouts: DSEG7 Classic Bold Italic (vendored), font-size = height (22px deck,
+  20px strip/CD REMAIN, 18px mini); a ghost layer of "8"s in `--rack-vfd-ghost` under the
+  lit digits (glow `0 0 6px` vfd 70%).
 - Content titles: Manrope 700 32px −.015em (no serif in Rack); bylines Manrope 500 16px
   `#cfc3b1`.
 
@@ -213,6 +221,13 @@ overshoot, pinned at both ends), fed RMS averaged over ~100 ms; bars/LED = 10 ms
 
 Expanded (any face): "Direct drive deck · 33⅓", plinth + record with the cover as the
 label (spins 1.8 s/rev while playing), SVG tonearm sweeping 0→22° with progress.
+
+### 5.11 Queue changer
+
+"Queue changer" unit in the column's slack slot (min 300px). VFD readout: DISC (20px
+segments) · OF (14px) · REMAIN (14px, right). Below, centred: ◂ page key, a tray of five
+disc keys (lamp 14×4 above a 38×34 numbered key; lamp lit on the current track; empty
+slots dimmed and disabled), ▸ page key. Then the full queue in a glass window.
 
 ## 6. Content (panes)
 

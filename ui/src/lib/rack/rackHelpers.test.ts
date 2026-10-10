@@ -20,7 +20,20 @@ import {
   recorderPoint,
   vuPosition,
 } from "./ballistics";
-import { calendar, clock, dialTicks, formatBadge, formatLine, remainingMs, repeatAnnunciator, upNext } from "./deck";
+import {
+  calendar,
+  changerSlots,
+  changerStart,
+  clampChangerStart,
+  clock,
+  dialTicks,
+  formatBadge,
+  formatLine,
+  remainingMs,
+  repeatAnnunciator,
+  upNext,
+} from "./deck";
+import { segGhost, segLit } from "./segment";
 import { libraryKeyOf, sourceOf } from "./sources";
 
 const item = (id: number, secs = 100): QueueItem => ({
@@ -86,6 +99,33 @@ describe("deck helpers", () => {
     expect(formatLine(null, "shared")).toEqual(["SHRD"]);
     expect(formatBadge({ ...stream, sample_rate: 96_000 })).toBe("24/96");
     expect(formatBadge(null)).toBeNull();
+  });
+});
+
+describe("queue changer", () => {
+  it("pages of five disc keys keep the current track in view", () => {
+    expect(changerStart(-1)).toBe(0);
+    expect(changerStart(3)).toBe(0);
+    expect(changerStart(7)).toBe(5);
+    const slots = changerSlots(7, 6, 5);
+    expect(slots.map((s) => s.index)).toEqual([5, 6, 7, 8, 9]);
+    expect(slots.map((s) => s.state)).toEqual(["loaded", "current", "empty", "empty", "empty"]);
+  });
+  it("paging clamps to whole pages inside the queue", () => {
+    expect(clampChangerStart(-5, 12)).toBe(0);
+    expect(clampChangerStart(15, 12)).toBe(10);
+    expect(clampChangerStart(7, 12)).toBe(5);
+    expect(clampChangerStart(5, 0)).toBe(0);
+    expect(clampChangerStart(5, 5)).toBe(0);
+  });
+});
+
+describe("segment readouts", () => {
+  it("lights digits and colons over a full ghost of every cell", () => {
+    expect(segLit("-1:02")).toBe("-1:02");
+    expect(segGhost("-1:02")).toBe("88:88");
+    expect(segLit(" 7")).toBe("!7");
+    expect(segGhost(" 7")).toBe("88");
   });
 });
 
