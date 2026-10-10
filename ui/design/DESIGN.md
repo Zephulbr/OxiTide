@@ -53,6 +53,19 @@ current system and must be updated in the same change that alters it.
 `rack.css` turns it into a glass window inside the display unit; keep adding `pane` to
 new section containers so they join the Rack's look for free.
 
+**Page header and toolbars** (`app.css`, 2026-10-10 polish). List and collection views
+(Playlists, Profiles, History, Feed) open with `header.page-head`: the `h2` title on the
+left; a muted `.count` and the tools on the right, all 38px tall. Tools come from the field
+family — `.search-input` for search/filter, `SortSelect` for sort, `.tool-btn` (icon +
+label) for actions — never mixed with round icon buttons in the same row. Rack skins
+`.page-head > h2` as a printed label and `.tool-btn` as a light-bar key.
+
+**Collection grids** share one recipe: `repeat(auto-fill, minmax(160–168px, 1fr))`, 12px
+card padding, hover = `--surface-2` (Albums, Mixes, Playlists, Feed releases). Profiles
+draw each artist as a **record** (portrait as the label on a vinyl disc; `--vinyl*`
+material tokens, black in every mode) and, in name order, letter groups as crate
+dividers.
+
 ### 2.2 Type
 
 - Display: **Fraunces** (Atmosphere/Instrument titles). Rack uses **Manrope 700** for

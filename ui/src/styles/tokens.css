@@ -42,6 +42,10 @@
   --edge-lit: linear-gradient(135deg, rgba(255, 240, 225, 0.28), rgba(255, 240, 225, 0.06) 45%, rgba(0, 0, 0, 0.35));
   /* Peak alpha of the sleeve's hover glare (Warm Graphite key light). */
   --glare-alpha: 0.16;
+  /* Vinyl (Profiles records): a material, black in every theme and mode. */
+  --vinyl: #0d0c0b;
+  --vinyl-groove: #161513;
+  --vinyl-sheen: rgba(255, 255, 255, 0.13);
 
   /* Theme-paired room + scrim (Backdrop reads these; themes.css flips them). */
   --room-top: #1d1712;

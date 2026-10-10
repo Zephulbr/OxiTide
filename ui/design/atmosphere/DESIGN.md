@@ -44,6 +44,13 @@ contrast chain (structural scrim minimums + per-cover composite-ceiling clamping
   right (eyebrow, Fraunces title, italic byline, badges, tabs Lyrics / Next / Info).
 - Track rows 46px (Comfortable) / 38px (Compact); cover thumbs in mixed lists; playing
   row = 18% accent tint + accent title; no left bars, no animated equalizers.
+- List views follow the shared page header ([../DESIGN.md](../DESIGN.md) §2.1). History is
+  a play log (clock time gutter · cover · title/artist · album · length; day headers with
+  plays and listening time; partial plays at 60%). Stats: three lit summary cards
+  (Fraunces value, "23 h 43 min" — never clock notation), a lit "Plays per day" panel
+  (accent gradient bars, faint gridlines, date axis) and ranked top lists with a 7% accent
+  share bar per row. Feed: date groups on the timeline rail, each a grid of release
+  covers; unseen releases in "New updates" get an accent "New" pill.
 
 ## 4. Components
 

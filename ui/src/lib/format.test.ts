@@ -1,5 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { formatCount, formatDuration, formatTotalDuration } from "./format";
+import { formatCount, formatDuration, formatListenTime, formatTotalDuration } from "./format";
+
+describe("formatListenTime", () => {
+  it("reads as an amount of time, never a clock", () => {
+    expect(formatListenTime(45_000)).toBe("45 s");
+    expect(formatListenTime(42 * 60_000 + 30_000)).toBe("42 min");
+    expect(formatListenTime((3 * 60 + 5) * 60_000)).toBe("3 h 05 min");
+    expect(formatListenTime((23 * 60 + 43) * 60_000 + 34_000)).toBe("23 h 43 min");
+    expect(formatListenTime(52 * 3_600_000)).toBe("2 d 4 h");
+    expect(formatListenTime(-5)).toBe("0 s");
+  });
+});
 
 describe("formatDuration", () => {
   it("formats minutes and seconds with padding", () => {
