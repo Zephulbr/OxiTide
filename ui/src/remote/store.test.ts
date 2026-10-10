@@ -192,6 +192,17 @@ describe("remote store", () => {
     expect(store.queueItem(0)?.track_id).toBe(1);
   });
 
+  it("forwards favorite events and shows a new volume at once", async () => {
+    const { store } = setup(async () => remoteState());
+    const seen: unknown[] = [];
+    store.onFavorite = (change) => seen.push(change);
+    store.handle("favorite", JSON.stringify({ kind: "track", id: 4, favorite: true }));
+    expect(seen).toEqual([{ kind: "track", id: 4, favorite: true }]);
+    store.applyState(remoteState({ volume: 0.5 }), true);
+    store.noteVolume(0.8);
+    expect(store.state?.volume).toBe(0.8);
+  });
+
   it("notes session changes", () => {
     const { store } = setup(async () => remoteState());
     store.handle("session", JSON.stringify("loggedOut"));

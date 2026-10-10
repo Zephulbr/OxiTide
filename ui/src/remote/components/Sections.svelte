@@ -25,6 +25,7 @@
       {#each rows as row, i (`${row.id}-${i}`)}
         <TrackRow
           track={row}
+          index={i}
           active={row.id === playingId}
           onplay={() => actions.play(rows, i)}
           onmenu={() => actions.openTrack(row)}

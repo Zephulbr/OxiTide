@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
     beginRemotePairing: vi.fn(),
     cancelRemotePairing: vi.fn(async () => {}),
     revokeRemoteDevice: vi.fn(async () => {}),
+    renameRemoteDevice: vi.fn(async () => {}),
     resolveRemotePairRequest: vi.fn(async () => true),
   },
 }));
@@ -56,6 +57,19 @@ describe("Settings → Remote", () => {
     await fireEvent.click(screen.getByRole("button", { name: "Revoke Pixel" }));
     expect(mocks.api.revokeRemoteDevice).toHaveBeenCalledWith("d1");
     await waitFor(() => expect(screen.queryByText("Pixel")).toBeNull());
+  });
+
+  it("renames a phone", async () => {
+    mocks.api.getRemoteStatus.mockResolvedValue(status());
+    mocks.api.listRemoteDevices.mockResolvedValue([
+      { id: "d1", name: "Pixel", created_ms: 0, last_seen_ms: 0, connected: false },
+    ]);
+    render(RemoteSettings);
+    await fireEvent.click(await screen.findByRole("button", { name: "Rename Pixel" }));
+    const input = screen.getByRole("textbox", { name: "Name for Pixel" }) as HTMLInputElement;
+    await fireEvent.input(input, { target: { value: "Living room phone" } });
+    await fireEvent.keyDown(input, { key: "Enter" });
+    expect(mocks.api.renameRemoteDevice).toHaveBeenCalledWith("d1", "Living room phone");
   });
 
   it("turns the remote on", async () => {

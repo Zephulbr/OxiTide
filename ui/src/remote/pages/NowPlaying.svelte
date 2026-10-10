@@ -1,10 +1,11 @@
 <script lang="ts">
   import Icon from "../../lib/components/Icon.svelte";
   import type { Track } from "../../lib/api";
-  import Art from "../components/Art.svelte";
+  import { fade } from "svelte/transition";
+  import CoverStage from "../components/CoverStage.svelte";
   import Lyrics from "../components/Lyrics.svelte";
   import { useRemote } from "../context";
-  import { art } from "../convert";
+  import { motion } from "../motion";
   import { clock, nextRepeat, qualityBadges, REMOTE_FADE_MS } from "../nowPlaying";
   import { hrefFor } from "../routes";
 
@@ -16,7 +17,10 @@
 
   let now = $state(Date.now());
   let seeking = $state<number | null>(null);
+  /// Volume being dragged on the cover (shown before the PC confirms).
   let volume = $state<number | null>(null);
+  /// Level to restore when unmuting from the speaker button.
+  let unmuteTo = 0.5;
   let showLyrics = $state(false);
   let details = $state<Track | null>(null);
 
@@ -49,22 +53,43 @@
   const shownVolume = $derived(volume ?? playback?.volume ?? 1);
   const favorite = $derived(current ? actions.favTracks.has(current.trackId) : false);
 
+  // Live updates while swiping are throttled; the final value always goes.
   let volumeSent = 0;
-  function onVolume(value: number) {
+  function onVolume(value: number, final: boolean) {
     volume = value;
+    store.noteVolume(value);
     const at = Date.now();
-    if (at - volumeSent > 150) {
+    if (final || at - volumeSent > 120) {
       volumeSent = at;
-      void api.setVolume(value).catch((e) => actions.fail(e));
+      void api
+        .setVolume(value)
+        .catch((e) => actions.fail(e))
+        .finally(() => {
+          if (final) volume = null;
+        });
     }
   }
 
-  function commitVolume(value: number) {
-    void api
-      .setVolume(value)
-      .catch((e) => actions.fail(e))
-      .finally(() => (volume = null));
+  function toggleMute() {
+    if (shownVolume > 0) {
+      unmuteTo = shownVolume;
+      onVolume(0, true);
+    } else {
+      onVolume(unmuteTo || 0.5, true);
+    }
   }
+
+  // One-time hint for the swipe (it replaces the old volume bar).
+  $effect(() => {
+    if (!current) return;
+    try {
+      if (localStorage.getItem("oxi.volumeHint")) return;
+      localStorage.setItem("oxi.volumeHint", "1");
+    } catch {
+      return;
+    }
+    actions.notify("Tip: swipe up or down on the artwork to change the volume");
+  });
 
   function commitSeek(value: number) {
     store.noteSeek(value);
@@ -89,13 +114,17 @@
     {#if showLyrics}
       <Lyrics track={current} positionMs={position} />
     {:else}
-      <div class="cover">
-        <Art src={art(current.cover, 640)} size="100%" eager />
-      </div>
+      <CoverStage
+        cover={current.cover ?? null}
+        playing={playback?.playing ?? false}
+        volume={shownVolume}
+        onvolume={onVolume}
+      />
     {/if}
 
     <div class="meta">
-      <div class="titles">
+      {#key current.trackId}
+      <div class="titles" in:fade={{ duration: motion(240) }}>
         <h1 class="ellipsis">{current.title}</h1>
         <p class="ellipsis">
           {#if details?.artists[0]}
@@ -113,6 +142,7 @@
           {/if}
         </p>
       </div>
+      {/key}
       <button
         class="icon-btn fill"
         class:on={favorite}
@@ -191,21 +221,16 @@
       </div>
     {/if}
 
-    <div class="volume">
-      <Icon name={shownVolume === 0 ? "volume-x" : shownVolume < 0.5 ? "volume-1" : "volume-2"} size={20} />
-      <input
-        type="range"
-        min="0"
-        max="1"
-        step="0.01"
-        value={shownVolume}
-        aria-label="Volume"
-        oninput={(e) => onVolume(Number((e.target as HTMLInputElement).value))}
-        onchange={(e) => commitVolume(Number((e.target as HTMLInputElement).value))}
-      />
-    </div>
-
     <div class="extras">
+      <button
+        class="icon-btn level"
+        aria-label={shownVolume === 0 ? "Unmute" : `Mute (volume ${Math.round(shownVolume * 100)}%)`}
+        title="Swipe the artwork to change the volume"
+        onclick={toggleMute}
+      >
+        <Icon name={shownVolume === 0 ? "volume-x" : shownVolume < 0.5 ? "volume-1" : "volume-2"} size={20} />
+        <span class="pct">{Math.round(shownVolume * 100)}</span>
+      </button>
       <button
         class="icon-btn"
         aria-label="Pause with fade"
@@ -267,17 +292,6 @@
     max-width: 560px;
     margin: 0 auto;
   }
-  .cover {
-    width: min(100%, 52vh);
-    aspect-ratio: 1;
-    margin: 0 auto;
-  }
-  .cover :global(.art) {
-    width: 100% !important;
-    height: 100% !important;
-    border-radius: var(--radius-card);
-    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
-  }
   .meta {
     display: flex;
     align-items: center;
@@ -299,8 +313,7 @@
     gap: 6px;
     min-height: 20px;
   }
-  .seek input,
-  .volume input {
+  .seek input {
     width: 100%;
     accent-color: var(--accent);
     height: 28px;
@@ -334,11 +347,24 @@
   .play :global(svg rect) {
     fill: currentColor;
   }
-  .volume {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    color: var(--text-muted);
+  .level {
+    width: auto;
+    min-width: var(--remote-touch);
+    padding: 0 10px;
+    gap: 4px;
+    border-radius: 999px;
+    display: inline-flex;
+  }
+  .pct {
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .play {
+    transition: transform var(--dur-micro) var(--ease-in), box-shadow var(--dur-state) var(--ease-in);
+    box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  .play:active {
+    transform: scale(0.92);
   }
   .extras {
     display: flex;

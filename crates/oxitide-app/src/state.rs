@@ -255,6 +255,18 @@ impl AppState {
         crate::remote::host::session_changed(self, crate::remote::events::SessionKind::Expired);
     }
 
+    /// A favorite changed on any surface: tell the desktop UI (`favorite_changed`)
+    /// and connected phones, so a heart toggled on one shows on the other.
+    pub fn favorite_changed(&self, kind: &'static str, id: u64, favorite: bool) {
+        let change = crate::remote::events::FavoriteChange { kind, id, favorite };
+        if let Some(handle) = self.handle.lock().unwrap().as_ref() {
+            let _ = handle.emit(crate::remote::host::FAVORITE_CHANGED_EVENT, change);
+        }
+        if let Some(remote) = self.remote() {
+            remote.favorite_changed(change);
+        }
+    }
+
     pub fn clear_session_expired(&self) {
         self.session_expired.store(false, Ordering::SeqCst);
     }

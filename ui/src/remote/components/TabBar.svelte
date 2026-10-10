@@ -41,7 +41,37 @@
     font-size: 11px;
     color: var(--text-muted);
   }
+  a {
+    position: relative;
+    transition: color var(--dur-state) var(--ease-in);
+  }
+  /* A soft accent pill grows behind the active tab's icon. */
+  a::before {
+    content: "";
+    position: absolute;
+    top: 7px;
+    width: 52px;
+    height: 30px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    opacity: 0;
+    transform: scaleX(0.4);
+    transition:
+      opacity var(--dur-state) var(--ease-in),
+      transform var(--dur-state) var(--ease-in);
+  }
+  a.active::before {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+  a :global(svg) {
+    position: relative;
+    transition: transform var(--dur-micro) var(--ease-in);
+  }
   a.active {
     color: var(--accent);
+  }
+  a:active :global(svg) {
+    transform: scale(0.88);
   }
 </style>

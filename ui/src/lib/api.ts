@@ -326,6 +326,9 @@ export interface RemoteDevice {
 }
 export const REMOTE_STATUS_EVENT = "remote_status";
 export const REMOTE_PAIR_REQUEST_EVENT = "remote_pair_request";
+/** A favorite changed anywhere (desktop or a paired phone). */
+export interface FavoriteChange { kind: "track" | "album" | "artist"; id: number; favorite: boolean }
+export const FAVORITE_CHANGED_EVENT = "favorite_changed";
 
 /* Phone-remote wire types (camelCase; `remote/events.rs`). The phone page
    imports these type-only. */
@@ -614,6 +617,8 @@ export const api = {
   beginRemotePairing: () => invoke<RemotePairing>("begin_remote_pairing"),
   cancelRemotePairing: () => invoke<void>("cancel_remote_pairing"),
   listRemoteDevices: () => invoke<RemoteDevice[]>("list_remote_devices"),
+  renameRemoteDevice: (id: string, name: string) =>
+    invoke<void>("rename_remote_device", { id, name }),
   revokeRemoteDevice: (id: string) => invoke<void>("revoke_remote_device", { id }),
   resolveRemotePairRequest: (id: string, approve: boolean) =>
     invoke<boolean>("resolve_remote_pair_request", { id, approve }),

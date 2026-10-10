@@ -72,3 +72,22 @@ the workspace.
   `plans/notes/2026-10-10-track11-completion.md`; the remote shows no measurable cost, and
   seven pre-existing budget breaches reproduce with it disabled.
 - **Not yet run:** the human smoke (`plans/notes/2026-10-09-track11-phone-remote-smoke.md`).
+
+## Smoke round 1 follow-ups (2026-10-11)
+
+Owner smoke 2026-10-11: setup, Now Playing, queue, discovery, library, and resilience pass
+(Linux run deferred until the Linux tests are batched). Changes from the feedback:
+
+- **Favorites sync both ways.** `set_favorite_*` now calls `AppState::favorite_changed`,
+  which emits the desktop `favorite_changed` event and a `favorite` SSE event to phones;
+  the desktop store applies outside changes (`applyExternal`, ignoring echoes of its own
+  in-flight toggles) and the phone updates its heart sets.
+- **Rename paired phones** in Settings (`rename_remote_device`; sanitised, ≤ 40 chars).
+- **Polish:** Atmosphere room on the phone (blurred, drifting cover backdrop with accent
+  wash), dynamic colour from the PC's palette analysis (`analyze_cover` allowlisted with a
+  strict TIDAL-image-id check; pure helpers moved to `lib/coverPalette.ts`), page/title/
+  cover/list animations, press feedback, tab indicator.
+- **Infinite scroll** replaces "Load more"; Play/Shuffle on a paged list fetch the rest first
+  (up to the 5,000-track cap).
+- **Volume:** hardware keys are not available to web pages (iOS never; Android keeps them for
+  the phone's media volume), so the owner chose **swipe on the cover**; the big bar is gone.

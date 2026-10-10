@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { PageItem, RemoteState } from "../lib/api";
 import { fromPageItem, fromTrack, toPageInput, toQueueItem } from "./convert";
-import { clock, nextRepeat, qualityBadges } from "./nowPlaying";
+import { clock, nextRepeat, qualityBadges, stepVolume, volumeFromDrag } from "./nowPlaying";
+import { isCoverId } from "./motion";
 import { QUEUE_PAGE, QueueCache } from "./queueCache";
 import { dropIndex, visibleRange } from "./queueDrag";
 import { hrefFor, parseHash, routeForItem, tabFor, type RemoteRoute } from "./routes";
@@ -121,6 +122,22 @@ describe("now playing helpers", () => {
       qualityBadges({ current: { audioQuality: "high" }, stream: { sampleRate: 44100, bitDepth: 0 } } as unknown as RemoteState),
     ).toEqual({ label: "AAC", detail: "44.1 kHz" });
     expect(qualityBadges({ current: null, stream: null } as unknown as RemoteState)).toBeNull();
+  });
+
+  it("maps a swipe on the cover to a volume", () => {
+    expect(volumeFromDrag(0.5, -100, 400)).toBe(0.75);
+    expect(volumeFromDrag(0.5, 100, 400)).toBe(0.25);
+    expect(volumeFromDrag(0.9, -400, 400)).toBe(1);
+    expect(volumeFromDrag(0.1, 400, 400)).toBe(0);
+    expect(volumeFromDrag(0.5, 50, 0)).toBe(0.5);
+    expect(stepVolume(0.98, 1)).toBe(1);
+    expect(stepVolume(0.5, -1)).toBe(0.45);
+  });
+
+  it("only sends TIDAL image ids for palette analysis", () => {
+    expect(isCoverId("660f113b-e63f-4c2b-a021-33350ca6948b")).toBe(true);
+    expect(isCoverId("https://resources.tidal.com/x.jpg")).toBe(false);
+    expect(isCoverId(null)).toBe(false);
   });
 
   it("cycles repeat and formats time", () => {

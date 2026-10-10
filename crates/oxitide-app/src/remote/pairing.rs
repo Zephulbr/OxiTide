@@ -288,6 +288,18 @@ impl DeviceStore {
         Some(devices[index].clone())
     }
 
+    /// Rename a device (the name is sanitised by the caller). `false` when
+    /// the id is unknown.
+    pub fn rename(&self, id: &str, name: String) -> Result<bool, String> {
+        let mut devices = self.devices.lock().unwrap();
+        let Some(device) = devices.iter_mut().find(|d| d.id == id) else {
+            return Ok(false);
+        };
+        device.name = name;
+        self.persist(&devices)?;
+        Ok(true)
+    }
+
     pub fn revoke(&self, id: &str) -> Result<bool, String> {
         let mut devices = self.devices.lock().unwrap();
         let before = devices.len();
@@ -432,6 +444,16 @@ mod tests {
         assert!(store.revoke(&device.id).unwrap());
         assert!(store.authenticate(&token, 3_000).is_none());
         assert!(!store.revoke(&device.id).unwrap());
+    }
+
+    #[test]
+    fn devices_can_be_renamed() {
+        let store = DeviceStore::load(None);
+        let (device, token) = store.create("Phone".into(), 1_000).unwrap();
+        assert!(store.rename(&device.id, "Kitchen tablet".into()).unwrap());
+        assert_eq!(store.list()[0].name, "Kitchen tablet");
+        assert_eq!(store.authenticate(&token, 2_000).unwrap().name, "Kitchen tablet");
+        assert!(!store.rename("missing", "x".into()).unwrap());
     }
 
     #[test]

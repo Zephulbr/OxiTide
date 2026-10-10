@@ -24,6 +24,23 @@ export function qualityBadges(state: RemoteState): { label: string; detail: stri
   return { label, detail };
 }
 
+/// Movement (px) before a touch on the cover counts as a volume swipe, so a
+/// plain tap never changes the volume.
+export const SWIPE_THRESHOLD_PX = 6;
+/// Arrow-key / step size for the cover volume control.
+export const VOLUME_STEP = 0.05;
+
+/// Volume for a vertical drag on the cover: dragging up by the cover's full
+/// height adds 100%. Clamped to 0–1, rounded to whole percent.
+export function volumeFromDrag(start: number, deltaY: number, height: number): number {
+  const change = height > 0 ? -deltaY / height : 0;
+  return Math.round(Math.min(1, Math.max(0, start + change)) * 100) / 100;
+}
+
+export function stepVolume(volume: number, direction: 1 | -1): number {
+  return Math.round(Math.min(1, Math.max(0, volume + direction * VOLUME_STEP)) * 100) / 100;
+}
+
 /// `m:ss` from milliseconds.
 export function clock(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));

@@ -1,6 +1,7 @@
 import type {
   Album,
   Artist,
+  CoverPalette,
   ArtistDiscography,
   CollectionEntry,
   FavoriteIds,
@@ -68,6 +69,8 @@ export function remoteApi(call: Call) {
     getTrack: (id: number) => call<Track>("get_track", { id }),
     getLyrics: (trackId: number, title: string, artist: string, album: string, durationSecs: number) =>
       call<LyricsDto | null>("get_lyrics", { trackId, title, artist, album, durationSecs }),
+    analyzeCover: (uuid: string, theme: "dark" | "light") =>
+      call<CoverPalette>("analyze_cover", { uuid, theme }),
     getFavoriteTracksPage: (offset: number, limit: number) =>
       call<TrackPage>("get_favorite_tracks_page", { offset, limit }),
     getFavoriteAlbums: () => call<Album[]>("get_favorite_albums"),

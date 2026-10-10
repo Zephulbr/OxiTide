@@ -7,12 +7,15 @@
   let {
     track,
     active = false,
+    index = 0,
     number = null,
     onplay,
     onmenu,
   }: {
     track: RowTrack;
     active?: boolean;
+    /// Position in the list: the first rows rise in one after another.
+    index?: number;
     /// Album track number instead of artwork.
     number?: number | null;
     onplay: () => void;
@@ -20,7 +23,7 @@
   } = $props();
 </script>
 
-<div class="row" class:active>
+<div class="row" class:active style:--delay={`${index < 16 ? index * 24 : 0}ms`}>
   <button class="main" onclick={onplay} aria-label={`Play ${track.title} by ${track.artist}`}>
     {#if number !== null}
       <span class="num muted">{number}</span>
@@ -45,10 +48,21 @@
 
 <style>
   .row {
+    animation: row-in var(--dur-view) var(--ease-in) both;
+    animation-delay: var(--delay, 0ms);
     display: flex;
     align-items: center;
     gap: 4px;
     min-height: 60px;
+  }
+  @keyframes row-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
+  .main:active {
+    opacity: 0.7;
   }
   .main {
     flex: 1;

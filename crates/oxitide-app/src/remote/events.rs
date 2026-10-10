@@ -198,12 +198,22 @@ pub enum SessionKind {
     Ok,
 }
 
+/// `favorite` event payload: `kind` is `track`, `album`, or `artist`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct FavoriteChange {
+    pub kind: &'static str,
+    pub id: u64,
+    pub favorite: bool,
+}
+
 #[derive(Debug, Clone)]
 pub enum HubEvent {
     State(Arc<RemoteState>),
     Position { position_ms: u64, duration_ms: u64 },
     Error { code: String, message: String },
     Session(SessionKind),
+    /// A favorite changed on any surface (desktop or a phone).
+    Favorite(FavoriteChange),
     /// `None` = every device (remote disabled); `Some(id)` = one device.
     Revoked(Option<String>),
 }
@@ -374,6 +384,12 @@ impl Hub {
         self.send(HubEvent::State(Arc::new(self.snapshot())));
     }
 
+    pub fn notify_favorite(&self, change: FavoriteChange) {
+        if self.clients() > 0 {
+            self.send(HubEvent::Favorite(change));
+        }
+    }
+
     pub fn revoke(&self, device: Option<String>) {
         self.send(HubEvent::Revoked(device));
     }
@@ -469,6 +485,7 @@ pub fn client_stream<G: Send + 'static>(
                             &serde_json::json!({"code": code, "message": message}),
                         ),
                         Ok(HubEvent::Session(kind)) => s.frame("session", &kind),
+                        Ok(HubEvent::Favorite(change)) => s.frame("favorite", &change),
                         Ok(HubEvent::Revoked(None)) => s.revoked(),
                         Ok(HubEvent::Revoked(Some(id))) if id == s.device_id => s.revoked(),
                         Ok(HubEvent::Revoked(Some(_))) => continue,
@@ -691,6 +708,20 @@ pub(crate) mod tests {
             hub.on_engine_event(&EngineEvent::Error { code: i.to_string(), message: String::new() });
         }
         assert!(stream.next().await.is_none(), "lag ends the stream");
+    }
+
+    #[tokio::test]
+    async fn favorite_changes_reach_connected_phones() {
+        let session = FakeSession::with(playback(vec![item(1)], Some(0)));
+        let hub = Hub::new(session, None);
+        hub.notify_favorite(FavoriteChange { kind: "track", id: 9, favorite: true });
+        let (_tx, shutdown) = watch::channel(false);
+        let mut stream = Box::pin(client_stream(hub.clone(), "d1".into(), shutdown, ()));
+        stream.next().await.unwrap();
+        hub.notify_favorite(FavoriteChange { kind: "album", id: 7, favorite: false });
+        let frame = stream.next().await.unwrap();
+        assert_eq!(frame.event, "favorite");
+        assert_eq!(frame.data, r#"{"kind":"album","id":7,"favorite":false}"#);
     }
 
     #[test]

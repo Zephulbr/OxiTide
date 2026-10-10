@@ -25,7 +25,7 @@ use oxitide_audio::engine::{EngineEvent, PlaybackState};
 use serde_json::Value;
 use tokio::sync::watch;
 
-use events::{Hub, SessionKind};
+use events::{FavoriteChange, Hub, SessionKind};
 use pairing::{DeviceStore, PairRequestDto};
 use rpc::RemoteCommand;
 
@@ -154,6 +154,10 @@ impl RemoteService {
 
     pub fn on_engine_event(&self, event: &EngineEvent) {
         self.ctx.hub.on_engine_event(event);
+    }
+
+    pub fn favorite_changed(&self, change: FavoriteChange) {
+        self.ctx.hub.notify_favorite(change);
     }
 
     pub fn notify_session(&self, kind: SessionKind) {

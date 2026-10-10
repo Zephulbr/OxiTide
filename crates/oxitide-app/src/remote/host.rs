@@ -18,6 +18,8 @@ use crate::state::AppState;
 
 pub const REMOTE_STATUS_EVENT: &str = "remote_status";
 pub const REMOTE_PAIR_REQUEST_EVENT: &str = "remote_pair_request";
+/// Desktop event: a favorite changed (possibly from a phone).
+pub const FAVORITE_CHANGED_EVENT: &str = "favorite_changed";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RemoteStatusDto {
@@ -288,6 +290,15 @@ pub fn list_devices<R: Runtime>(app: &AppHandle<R>) -> Vec<RemoteDeviceDto> {
             last_seen_ms: d.last_seen_ms,
         })
         .collect()
+}
+
+pub fn rename_device<R: Runtime>(app: &AppHandle<R>, id: &str, name: &str) -> Result<(), String> {
+    let name = super::guard::sanitize_device_name(name);
+    if !devices(app).rename(id, name)? {
+        return Err("unknown device".to_string());
+    }
+    emit_status(app);
+    Ok(())
 }
 
 pub fn revoke_device<R: Runtime>(app: &AppHandle<R>, id: &str) -> Result<(), String> {

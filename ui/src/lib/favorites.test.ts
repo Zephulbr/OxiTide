@@ -57,6 +57,37 @@ describe("favorites store", () => {
     vi.mocked(api.setFavoriteArtist).mockResolvedValue(undefined);
   });
 
+  it("applies a change made on a phone and keeps it over a stale hydration", async () => {
+    let resolve!: (ids: FavoriteIds) => void;
+    vi.mocked(api.getFavoriteIds).mockReturnValue(new Promise((r) => (resolve = r)));
+    const favorites = createFavorites(fakeToasts());
+    const hydrating = favorites.hydrate();
+    favorites.applyExternal("track", 5, true);
+    favorites.applyExternal("album", 9, true);
+    expect(favorites.hasTrack(5)).toBe(true);
+    resolve({ tracks: [], albums: [9], artists: [] });
+    await hydrating;
+    expect(favorites.hasTrack(5)).toBe(true);
+    favorites.applyExternal("album", 9, false);
+    expect(favorites.hasAlbum(9)).toBe(false);
+    const before = favorites.trackRevision;
+    favorites.applyExternal("track", 5, false);
+    expect(favorites.hasTrack(5)).toBe(false);
+    expect(favorites.trackRevision).toBe(before + 1);
+  });
+
+  it("ignores the echo of an in-flight local toggle", async () => {
+    let finish!: () => void;
+    vi.mocked(api.setFavoriteTrack).mockReturnValue(new Promise((r) => (finish = () => r(undefined))));
+    const favorites = createFavorites(fakeToasts());
+    const toggling = favorites.toggleTrack(3);
+    favorites.applyExternal("track", 3, false);
+    expect(favorites.hasTrack(3)).toBe(true);
+    finish();
+    await toggling;
+    expect(favorites.hasTrack(3)).toBe(true);
+  });
+
   it("hydrates the three sets from one call", async () => {
     vi.mocked(api.getFavoriteIds).mockResolvedValue({ tracks: [1, 2], albums: [3], artists: [4] });
     const favorites = createFavorites(fakeToasts());

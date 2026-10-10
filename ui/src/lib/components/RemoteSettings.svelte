@@ -127,6 +127,28 @@
     }
   }
 
+  let renaming = $state<{ id: string; name: string } | null>(null);
+
+  async function commitRename() {
+    if (!renaming) return;
+    const { id, name } = renaming;
+    renaming = null;
+    const trimmed = name.trim();
+    const current = devices.find((d) => d.id === id);
+    if (!trimmed || trimmed === current?.name) return;
+    try {
+      await api.renameRemoteDevice(id, trimmed);
+      devices = await api.listRemoteDevices();
+    } catch (e) {
+      error = errorMessage(e);
+    }
+  }
+
+  function focusSelect(node: HTMLInputElement) {
+    node.focus();
+    node.select();
+  }
+
   async function revoke(device: RemoteDevice) {
     try {
       await api.revokeRemoteDevice(device.id);
@@ -226,7 +248,30 @@
     {#each devices as device (device.id)}
       <li>
         <span class="dot" class:on={device.connected} aria-hidden="true"></span>
-        <span class="name">{device.name}</span>
+        {#if renaming?.id === device.id}
+          <input
+            class="rename"
+            maxlength="40"
+            aria-label={`Name for ${device.name}`}
+            bind:value={renaming.name}
+            use:focusSelect
+            onblur={commitRename}
+            onkeydown={(e) => {
+              if (e.key === "Enter") void commitRename();
+              if (e.key === "Escape") renaming = null;
+            }}
+          />
+        {:else}
+          <span class="name">{device.name}</span>
+          <button
+            class="icon"
+            aria-label={`Rename ${device.name}`}
+            title="Rename"
+            onclick={() => (renaming = { id: device.id, name: device.name })}
+          >
+            <Icon name="pencil" size={14} />
+          </button>
+        {/if}
         <span class="muted">
           {device.connected ? "Connected" : `Last seen ${lastSeenLabel(device.last_seen_ms, now)}`}
         </span>
@@ -322,8 +367,26 @@
   .devices .name {
     font-weight: 600;
   }
-  .devices button {
+  .devices button.danger {
     margin-left: auto;
+  }
+  .devices button.icon {
+    display: inline-grid;
+    place-items: center;
+    padding: 4px;
+    border-radius: var(--radius-control);
+    color: var(--text-muted);
+  }
+  .devices button.icon:hover {
+    color: var(--text);
+    background: var(--surface-2);
+  }
+  .rename {
+    width: 18ch;
+    padding: 2px 6px;
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-control);
+    background: var(--surface-2);
   }
   .dot {
     width: 8px;

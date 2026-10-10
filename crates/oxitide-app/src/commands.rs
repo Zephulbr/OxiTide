@@ -970,7 +970,9 @@ pub async fn set_favorite_track(
     require_client(&state)?
         .set_favorite_track(track_id, favorite)
         .await
-        .map_err(|e| state.fail_tidal(e))
+        .map_err(|e| state.fail_tidal(e))?;
+    state.favorite_changed("track", track_id, favorite);
+    Ok(())
 }
 
 #[tauri::command]
@@ -982,7 +984,9 @@ pub async fn set_favorite_album(
     require_client(&state)?
         .set_favorite_album(album_id, favorite)
         .await
-        .map_err(|e| state.fail_tidal(e))
+        .map_err(|e| state.fail_tidal(e))?;
+    state.favorite_changed("album", album_id, favorite);
+    Ok(())
 }
 
 #[tauri::command]
@@ -994,7 +998,9 @@ pub async fn set_favorite_artist(
     require_client(&state)?
         .set_favorite_artist(artist_id, favorite)
         .await
-        .map_err(|e| state.fail_tidal(e))
+        .map_err(|e| state.fail_tidal(e))?;
+    state.favorite_changed("artist", artist_id, favorite);
+    Ok(())
 }
 
 #[tauri::command]
@@ -2342,6 +2348,12 @@ pub fn cancel_remote_pairing(app: tauri::AppHandle, state: State<'_, AppState>) 
 #[tauri::command]
 pub fn list_remote_devices(app: tauri::AppHandle) -> Vec<crate::remote::host::RemoteDeviceDto> {
     crate::remote::host::list_devices(&app)
+}
+
+/// Rename a paired phone (shown in Settings only).
+#[tauri::command]
+pub fn rename_remote_device(app: tauri::AppHandle, id: String, name: String) -> Result<(), String> {
+    crate::remote::host::rename_device(&app, &id, &name)
 }
 
 #[tauri::command]

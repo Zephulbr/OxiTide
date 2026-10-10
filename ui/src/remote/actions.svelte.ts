@@ -1,5 +1,5 @@
 import { SvelteSet } from "svelte/reactivity";
-import type { Playlist } from "../lib/api";
+import type { FavoriteChange, Playlist } from "../lib/api";
 import type { RemoteApi } from "./api";
 import { fromTrack, toPageInput, toQueueItem, type RowTrack } from "./convert";
 import { hrefFor } from "./routes";
@@ -67,6 +67,13 @@ export class RemoteActions {
       else set.add(id);
       this.fail(e);
     }
+  }
+
+  /// Apply a heart changed elsewhere (the PC, another phone, or our own echo).
+  applyFavorite({ kind, id, favorite }: FavoriteChange) {
+    const set = kind === "album" ? this.favAlbums : kind === "artist" ? this.favArtists : this.favTracks;
+    if (favorite) set.add(id);
+    else set.delete(id);
   }
 
   toggleTrack(id: number) {

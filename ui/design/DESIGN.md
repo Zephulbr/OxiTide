@@ -108,16 +108,30 @@ that is not active must cost nothing.
 
 The phone page served by the LAN remote is a separate entry, not a fourth mode.
 
-- **Look:** Atmosphere tokens (`data-mode="atmosphere"`) with the default brand accent. It
-  reads semantic tokens only — never `--dyn-*` (no dynamic colour) and never `--rack-*`.
-- **Theme:** follows the phone's `prefers-color-scheme` (set from `main.ts`; the page CSP
-  forbids inline scripts), so the light/dark recipes in `themes.css` apply unchanged.
+- **Look:** Atmosphere tokens (`data-mode="atmosphere"`) with **Dynamic color (full)**: the PC
+  analyses the current cover (`analyze_cover` over RPC, cached on the PC) and the page
+  applies the same `--dyn-*` tokens as the desktop through `lib/coverPalette.ts`.
+  Components still read semantic tokens only; never `--rack-*`.
+- **Room:** `remote/components/Backdrop.svelte` puts the current cover behind every page,
+  blurred (56px), slowly drifting (38s alternate; off under reduced motion), with an accent
+  wash at the top and the shared scrim (`--scrim-top/--scrim-bottom`) as the legibility
+  floor. Covers crossfade over `--dur-mood` after preloading.
+- **Theme:** follows the phone's `prefers-color-scheme` (`remote/theme.svelte.ts`; the page
+  CSP forbids inline scripts), so `themes.css` applies unchanged and the palette is
+  re-analysed for the active room.
 - **Layout:** mobile-first single column, 16px gutter (`--remote-gutter`), fixed bottom dock
-  (mini bar `--remote-minibar` + five-tab bar `--remote-tabbar`) respecting safe-area
-  insets; feeds render as horizontal shelves, track lists as 60px rows.
-- **Touch:** every control is at least 44×44px (`--remote-touch`); row menus open a bottom
-  sheet instead of a context menu; queue reorder uses a drag handle (`touch-action: none`).
+  (mini bar `--remote-minibar` + five-tab bar `--remote-tabbar` with an accent pill behind
+  the active tab), safe-area insets respected; feeds render as horizontal shelves, track
+  lists as 60px rows. Long lists load the next page as the end scrolls into view.
+- **Volume:** phone hardware keys cannot reach a web page, so Now Playing has no volume bar.
+  Swiping up/down on the artwork changes the PC's volume (full cover height = 100%,
+  6px dead zone so taps never change it) with a level overlay; the artwork is a keyboard /
+  screen-reader slider (arrows step 5%). A small speaker button shows the level and mutes.
+- **Touch:** every control is at least 44×44px (`--remote-touch`); presses scale to 0.92;
+  row menus open a bottom sheet; queue reorder uses a drag handle (`touch-action: none`).
 - **Icons:** the shared `Icon.svelte` (Lucide only, no glyphs). Covers load straight from
   `resources.tidal.com`; a missing cover shows the `music` icon on `--surface-2`.
-- **Motion:** only the sheet rise (`--dur-view`) and colour transitions; reduced motion is
-  honoured through the shared duration tokens.
+- **Motion:** page enter (fly 14px, 260ms), title fade per track, cover settles to 0.9 while
+  paused, rows/tiles rise in with a short stagger (first 16 rows / 10 tiles), sheet rise,
+  toast/mini-bar slide. Durations come from the `--dur-*` tokens or `remote/motion.ts`,
+  so `prefers-reduced-motion` removes them.

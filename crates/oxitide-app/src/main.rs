@@ -466,6 +466,7 @@ fn main() {
             commands::begin_remote_pairing,
             commands::cancel_remote_pairing,
             commands::list_remote_devices,
+            commands::rename_remote_device,
             commands::revoke_remote_device,
             commands::resolve_remote_pair_request,
         ])

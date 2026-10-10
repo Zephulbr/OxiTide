@@ -79,6 +79,7 @@
       {#each tracks as row, i (row.id)}
         <TrackRow
           track={row}
+          index={i}
           active={row.id === playingId}
           onplay={() => actions.play(tracks, i)}
           onmenu={() => actions.openTrack(row)}

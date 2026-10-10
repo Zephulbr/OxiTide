@@ -1,5 +1,9 @@
 <script lang="ts">
+  import { fade, fly } from "svelte/transition";
   import Icon from "../lib/components/Icon.svelte";
+  import Backdrop from "./components/Backdrop.svelte";
+  import { startDynamicColor } from "./dynamic.svelte";
+  import { motion } from "./motion";
   import { RemoteActions } from "./actions.svelte";
   import { remoteApi } from "./api";
   import MiniBar from "./components/MiniBar.svelte";
@@ -19,7 +23,7 @@
   import Playlists from "./pages/Playlists.svelte";
   import Queue from "./pages/Queue.svelte";
   import Search from "./pages/Search.svelte";
-  import { parseHash, tabFor } from "./routes";
+  import { hrefFor, parseHash, tabFor } from "./routes";
   import { createClient, guessDeviceName, pairingToken } from "./rpc";
   import { RemoteStore } from "./store.svelte";
 
@@ -28,6 +32,8 @@
   const store = new RemoteStore({ call: client.call });
   const actions = new RemoteActions(api);
   provideRemote({ api, store, actions });
+  store.onFavorite = (change) => actions.applyFavorite(change);
+  startDynamicColor(api, store);
 
   let route = $state(parseHash(location.hash));
   let pairing = $state<{ token: string; error: string } | null>(null);
@@ -70,9 +76,12 @@
     };
   });
 
+  const routeKey = $derived(hrefFor(route));
   const ready = $derived(store.state !== null && store.phase !== "unpaired");
   const signedOut = $derived(store.state !== null && !store.state.loggedIn);
 </script>
+
+<Backdrop cover={store.state?.current?.cover ?? null} />
 
 {#if pairing}
   <div class="screen">
@@ -121,6 +130,8 @@
       <div class="banner" role="status">{store.session}</div>
     {/if}
     <main>
+      {#key routeKey}
+      <div class="view" in:fly={{ y: 14, duration: motion(260), opacity: 0 }}>
       {#if route.name === "now"}
         <NowPlaying />
       {:else if route.name === "queue"}
@@ -148,14 +159,20 @@
       {:else if route.name === "mix"}
         <Mix id={route.id} />
       {/if}
+      </div>
+      {/key}
     </main>
     <footer class="dock">
-      {#if route.name !== "now"}<MiniBar />{/if}
+      {#if route.name !== "now"}
+        <div transition:fly={{ y: 24, duration: motion(220) }}><MiniBar /></div>
+      {/if}
       <TabBar active={tabFor(route)} />
     </footer>
     <Sheet />
     {#if actions.toast}
-      <div class="toast" role="status">{actions.toast}</div>
+      <div class="toast" role="status" in:fly={{ y: 16, duration: motion(200) }} out:fade={{ duration: motion(160) }}>
+        {actions.toast}
+      </div>
     {/if}
   </div>
 {/if}
@@ -185,6 +202,11 @@
   }
   .small {
     font-size: 13px;
+  }
+  .screen,
+  .shell {
+    position: relative;
+    z-index: 1;
   }
   main {
     padding-top: env(safe-area-inset-top);

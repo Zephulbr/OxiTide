@@ -20,8 +20,8 @@
 
 {#if title}<h2 class="section-title">{title}</h2>{/if}
 <ul class:grid class:scroller={!grid}>
-  {#each tiles as tile (tile.key)}
-    <li>
+  {#each tiles as tile, i (tile.key)}
+    <li style:--delay={`${i < 10 ? i * 40 : 0}ms`}>
       {#if tile.route}
         <a href={hrefFor(tile.route)} class="tile">
           <Art src={tile.image} size="100%" round={tile.round} />
@@ -59,6 +59,22 @@
   }
   .scroller::-webkit-scrollbar {
     display: none;
+  }
+  li {
+    animation: tile-in var(--dur-view) var(--ease-in) both;
+    animation-delay: var(--delay, 0ms);
+  }
+  @keyframes tile-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px) scale(0.98);
+    }
+  }
+  .tile:active :global(.art) {
+    transform: scale(0.96);
+  }
+  .tile :global(.art) {
+    transition: transform var(--dur-micro) var(--ease-in);
   }
   .scroller li {
     scroll-snap-align: start;

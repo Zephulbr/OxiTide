@@ -68,6 +68,7 @@ pub const ALLOWLIST: &[&str] = &[
     "get_artist_albums_all",
     "get_track",
     "get_lyrics",
+    "analyze_cover",
     // Library
     "get_favorite_tracks_page",
     "get_favorite_albums",
@@ -125,6 +126,7 @@ pub enum RemoteCommand {
     GetArtistAlbumsAll { artist_id: u64, filter: ArtistDiscography },
     GetTrack { id: u64 },
     GetLyrics { track_id: u64, title: String, artist: String, album: Option<String>, duration_secs: u64 },
+    AnalyzeCover { uuid: String, theme: crate::palette::Room },
     GetFavoriteTracksPage { offset: u32, limit: u32 },
     GetFavoriteAlbums,
     GetFavoriteArtists,
@@ -219,6 +221,16 @@ fn bounded<T>(items: Vec<T>) -> Result<Vec<T>, RpcError> {
     Ok(items)
 }
 
+/// A TIDAL image id (dashed UUID): the only thing the phone may ask the PC to
+/// fetch and analyse, so it cannot steer the request elsewhere.
+fn is_cover_uuid(uuid: &str) -> bool {
+    uuid.len() == 36
+        && uuid
+            .chars()
+            .enumerate()
+            .all(|(i, ch)| if [8, 13, 18, 23].contains(&i) { ch == '-' } else { ch.is_ascii_hexdigit() })
+}
+
 /// The allowlist: map a wire call to a command or refuse it.
 pub fn parse(method: &str, params: Value) -> Result<RemoteCommand, RpcError> {
     use RemoteCommand as C;
@@ -300,6 +312,13 @@ pub fn parse(method: &str, params: Value) -> Result<RemoteCommand, RpcError> {
                 track_id: u64, title: String, artist: String, album: Option<String>, duration_secs: u64,
             });
             C::GetLyrics { track_id, title, artist, album, duration_secs }
+        }
+        "analyze_cover" => {
+            let (uuid, theme) = args!(params, { uuid: String, theme: crate::palette::Room });
+            if !is_cover_uuid(&uuid) {
+                return Err(RpcError::bad_params("not a cover id"));
+            }
+            C::AnalyzeCover { uuid, theme }
         }
         "get_favorite_tracks_page" => {
             let (offset, limit) = args!(params, { offset: u32, limit: u32 });
@@ -411,6 +430,7 @@ pub async fn execute<R: Runtime>(app: &AppHandle<R>, command: RemoteCommand) -> 
         C::GetLyrics { track_id, title, artist, album, duration_secs } => json(
             commands::get_lyrics(state, track_id, title, artist, album, duration_secs).await,
         ),
+        C::AnalyzeCover { uuid, theme } => json(commands::analyze_cover(state, uuid, theme).await),
         C::GetFavoriteTracksPage { offset, limit } => {
             json(commands::get_favorite_tracks_page(state, offset, limit).await)
         }
@@ -536,7 +556,6 @@ mod tests {
         "get_perf_snapshot",
         "perf_submit_ui_metrics",
         "perf_queue_build",
-        "analyze_cover",
         "get_remote_status",
         "set_remote_enabled",
         "set_remote_settings",
@@ -545,6 +564,7 @@ mod tests {
         "list_remote_devices",
         "revoke_remote_device",
         "resolve_remote_pair_request",
+        "rename_remote_device",
     ];
 
     /// The command names inside `generate_handler![...]` in `main.rs`.
@@ -590,6 +610,7 @@ mod tests {
                 "trackId": 1, "title": "T", "artist": "A", "album": null, "durationSecs": 200
             }),
             "get_collection_items" => json!({"folderId": "root"}),
+            "analyze_cover" => json!({"uuid": "660f113b-e63f-4c2b-a021-33350ca6948b", "theme": "dark"}),
             "set_favorite_track" => json!({"trackId": 1, "favorite": true}),
             "set_favorite_album" => json!({"albumId": 1, "favorite": false}),
             "set_favorite_artist" => json!({"artistId": 1, "favorite": true}),
@@ -659,6 +680,22 @@ mod tests {
         assert_eq!(err.code, "bad_params");
         let ids: Vec<u64> = (0..5000).collect();
         assert!(parse("play_track_ids", json!({"ids": ids, "start": 0})).is_ok());
+    }
+
+    #[test]
+    fn cover_analysis_takes_only_tidal_image_ids() {
+        for bad in [
+            "",
+            "../../etc/passwd",
+            "http://evil.example/x.jpg",
+            "660f113b-e63f-4c2b-a021-33350ca6948",
+            "660f113b/e63f/4c2b/a021/33350ca6948b",
+        ] {
+            let err = parse("analyze_cover", json!({"uuid": bad, "theme": "dark"})).unwrap_err();
+            assert_eq!(err.code, "bad_params", "{bad}");
+        }
+        let sepia = json!({"uuid": "660f113b-e63f-4c2b-a021-33350ca6948b", "theme": "sepia"});
+        assert!(parse("analyze_cover", sepia).is_err());
     }
 
     #[test]

@@ -14,12 +14,13 @@ const SOURCES: Record<string, string> = Object.fromEntries(
 /// Pure shared modules the remote may run.
 const SHARED = new Set([
   "src/lib/artwork.ts",
+  "src/lib/coverPalette.ts",
   "src/lib/format.ts",
   "src/lib/lyrics.ts",
   "src/lib/media.ts",
   "src/lib/components/Icon.svelte",
 ]);
-const BARE = new Set(["svelte", "svelte/reactivity"]);
+const BARE = new Set(["svelte", "svelte/reactivity", "svelte/transition"]);
 
 const IMPORT = /^\s*import\s+(type\s+)?(?:[\w*{}\s,$]+?\s+from\s+)?["']([^"']+)["']/gm;
 

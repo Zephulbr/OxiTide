@@ -1,4 +1,4 @@
-import type { QueueItem, RemoteQueuePage, RemoteState } from "../lib/api";
+import type { FavoriteChange, QueueItem, RemoteQueuePage, RemoteState } from "../lib/api";
 import { QUEUE_PAGE, QueueCache } from "./queueCache";
 import { RemoteError, type Call } from "./rpc";
 
@@ -18,7 +18,7 @@ export interface StoreDeps {
   clearTimer?: (handle: unknown) => void;
 }
 
-const EVENTS = ["snapshot", "state", "position", "error", "session", "revoked"] as const;
+const EVENTS = ["snapshot", "state", "position", "error", "session", "favorite", "revoked"] as const;
 const MAX_BACKOFF_MS = 15_000;
 
 /// The phone's playback state: SSE snapshot + deltas, a paged queue cache
@@ -33,6 +33,8 @@ export class RemoteStore {
   /// Bumps whenever queue rows change, so views re-read the cache.
   queueVersion = $state(0);
   readonly queue = new QueueCache();
+  /// A heart changed on the PC (or echoed from this phone).
+  onFavorite: ((change: FavoriteChange) => void) | null = null;
 
   private deps: Required<StoreDeps>;
   private source: SourceLike | null = null;
@@ -160,6 +162,9 @@ export class RemoteStore {
               : "";
         break;
       }
+      case "favorite":
+        this.onFavorite?.(payload as FavoriteChange);
+        break;
       case "revoked":
         this.closeStream();
         void this.probe();
@@ -192,6 +197,11 @@ export class RemoteStore {
     if (!this.state) return;
     this.state.positionMs = positionMs;
     this.anchor = { positionMs, at: this.deps.now() };
+  }
+
+  /// Show a new volume at once; the PC confirms with the next state event.
+  noteVolume(volume: number) {
+    if (this.state) this.state.volume = volume;
   }
 
   /// The position now, interpolated between 1 Hz position events.
