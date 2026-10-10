@@ -15,7 +15,7 @@ Automated gates at hand-off (2026-10-08, branch `track9-5-hifi-rack`): `cargo te
 - [ ] Library shows the sub-source key tray (Albums … Feed) on collection pages only.
 - [ ] Back/forward keys, Alt+←/→ and mouse side buttons navigate.
 - [ ] The Playlists unit under the EQ shows the playlist tree, scrolls on its own, and fills the column to the display's bottom edge; picking a playlist navigates. "All" opens the playlists page.
-- [ ] Queue key (deck) opens the queue drawer; its close key and Esc close it.
+- [ ] Queue key (deck) opens the queue (9.5c: the queue changer unit in the column; the drawer when folded or in Now Playing); its close key and Esc close it.
 - [ ] No unit stretches: the EQ keeps its natural height, keys keep their size, the deck's key row fits without clipping.
 - [ ] Sleep timer and Mini keys behave as in the player bar.
 - [ ] Skip link, Tab order and focus rings work across selector, deck, amp, EQ and the display.
@@ -40,7 +40,7 @@ Automated gates at hand-off (2026-10-08, branch `track9-5-hifi-rack`): `cargo te
 - [ ] Volume knob: drag, wheel, arrows, Page keys, Home/End, double-click mute; LED ring follows; volume persists.
 - [ ] Status LEDs: quality, Bit-perfect (green) or DSP, format (24/96).
 - [ ] DSP keys toggle EQ / ReplayGain / Crossfade and Settings → Playback shows the same values (and vice versa).
-- [ ] EQ unit: presets select; faders drag/wheel/keys; moving a fader with EQ off turns it on; "Custom" shows when no preset matches. Hidden below 1000px wide and when the setting is off.
+- [ ] EQ unit: presets select; faders drag/wheel/keys; moving a fader with EQ off turns it on; "Custom" shows when no preset matches. Hidden when the setting is off (below 1000px wide the column folds, 9.5c).
 - [ ] Bit-perfect still reports true with EQ/ReplayGain/crossfade off while the meters run (the tap only reads).
 
 ## Pages and Setup
@@ -56,7 +56,7 @@ Automated gates at hand-off (2026-10-08, branch `track9-5-hifi-rack`): `cargo te
 
 ## Regression (other modes)
 - [ ] Atmosphere and Instrument look identical to `main` (A/B a few pages: album, home, settings).
-- [ ] Mini player from Rack wears the Rack skin (faceplate, VFD title, light-bar keys, queue sheet as a unit), works, and returns to Rack.
+- [ ] Mini player from Rack is the Rack mini player (9.5c: compact deck + amp, queue sheet as a unit), works, and returns to Rack.
 - [ ] Now Playing's Up next changer lists the next four tracks; clicking one plays from there.
 
 ## Perf (PM-D1)

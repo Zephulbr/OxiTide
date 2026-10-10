@@ -17,6 +17,7 @@
 - **Revised:** 2026-10-07 — AutoMix spike written (`plans/notes/2026-10-07-automix-spike.md`): recommends a small Phase 1 (silence trim + rate-mismatch overlap) before any beat-aligned work; still research-only until the owner calls it.
 - **Revised:** 2026-10-08 — Track 9.4 (a11y pass) smoke passed (`plans/notes/DONE-2026-10-07-track9-4-smoke.md`; PM-D1 S5/S6/S7 re-runs show no regression) and merged to `main`. Track 9 closure (plan 9.4 Task 15) waits on the owner confirming the 9.2/9.3 smokes; Hi-Fi Rack runs as its own spec.
 - **Revised:** 2026-10-09 — Track 9.5 (Hi-Fi Rack, third UI mode) implemented on `track9-5-hifi-rack` and closed after owner polish rounds (`plans/notes/2026-10-09-track9-5-hifi-rack-completion.md`); formal smoke tick and PM-D1 re-runs are owner items; 9.5c (narrow fold, Rack mini layout, queue changer) deferred.
+- **Revised:** 2026-10-10 — Track 9.5c (narrow-window fold, Rack mini player, queue changer unit, DSEG7 segment font) implemented on `track9-5c-rack` (Rack spec §9, `plans/notes/2026-10-10-track9-5c-rack-completion.md`); owner visual review and smoke pending.
 - **Owner:** V
 - **Parent:** `2026-09-21-oxitide-design.md` (§9 Phasing)
 - **Supersedes:** the parent's Phase 2–4 ordering. The shipped Phase 1 MVP (v0.2.0) is
