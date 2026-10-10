@@ -328,7 +328,8 @@ fn read_devices(path: &Path) -> Vec<DeviceRecord> {
             Vec::new()
         }
         Err(e) => {
-            tracing::warn!("malformed remote.json ({e}); set aside");
+            // Line/column only: serde messages can quote stored values.
+            tracing::warn!("malformed remote.json (line {}, column {}); set aside", e.line(), e.column());
             let _ = fs::rename(path, path.with_extension("json.bak"));
             Vec::new()
         }

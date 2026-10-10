@@ -552,7 +552,19 @@ async fn asset(State(ctx): State<Arc<Ctx>>, method: Method, uri: Uri) -> Respons
         return StatusCode::METHOD_NOT_ALLOWED.into_response();
     }
     let path = uri.path().trim_start_matches('/');
-    if path.starts_with("api/") || path.is_empty() || path == "index.html" || path.contains("..") {
+    // Unpaired peers reach this route: no traversal (raw or percent-encoded),
+    // no dotfiles, and none of Vite's filesystem routes (debug builds proxy
+    // the dev server).
+    let lowered = path.to_ascii_lowercase();
+    let suspicious = lowered.contains("..")
+        || lowered.contains("%2e")
+        || lowered.contains("%2f")
+        || lowered.contains("%5c")
+        || lowered.contains('\\')
+        || lowered.starts_with('.')
+        || lowered.replace("/.vite/", "/").contains("/.")
+        || lowered.starts_with("@fs");
+    if suspicious || path.starts_with("api/") || path.is_empty() || path == "index.html" {
         return StatusCode::NOT_FOUND.into_response();
     }
     let (lookup, is_entry) = match path {
@@ -859,6 +871,10 @@ mod tests {
         assert!(js.headers()[header::CACHE_CONTROL].to_str().unwrap().contains("immutable"));
         let shell = h.http.get(format!("{}/index.html", h.base)).send().await.unwrap();
         assert_eq!(shell.status(), 404);
+        for probe in ["/%2e%2e/secret", "/assets/%2E%2E%2Fx", "/@fs/C:/Users/x.txt", "/.env", "/assets/.git/config"] {
+            let r = h.http.get(format!("{}{probe}", h.base)).send().await.unwrap();
+            assert_eq!(r.status(), 404, "{probe}");
+        }
         h.service.stop();
     }
 

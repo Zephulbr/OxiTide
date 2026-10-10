@@ -231,6 +231,13 @@ fn is_cover_uuid(uuid: &str) -> bool {
             .all(|(i, ch)| if [8, 13, 18, 23].contains(&i) { ch == '-' } else { ch.is_ascii_hexdigit() })
 }
 
+/// Covers a phone sends ride into the desktop queue, the media overlay (which
+/// fetches them), Discord presence (which publishes them), and history. Keep
+/// only TIDAL image ids and TIDAL CDN URLs; anything else is dropped.
+fn trusted_cover(cover: Option<String>) -> Option<String> {
+    cover.filter(|c| is_cover_uuid(c) || c.starts_with("https://resources.tidal.com/"))
+}
+
 /// The allowlist: map a wire call to a command or refuse it.
 pub fn parse(method: &str, params: Value) -> Result<RemoteCommand, RpcError> {
     use RemoteCommand as C;
@@ -261,9 +268,19 @@ pub fn parse(method: &str, params: Value) -> Result<RemoteCommand, RpcError> {
         "play_page_items" => {
             let (items, start, shuffle) =
                 args!(params, { items: Vec<PageTrackDto>, start: usize, shuffle: Option<bool> });
-            C::PlayPageItems { items: bounded(items)?, start, shuffle }
+            let items = bounded(items)?
+                .into_iter()
+                .map(|item| PageTrackDto { cover: trusted_cover(item.cover), ..item })
+                .collect();
+            C::PlayPageItems { items, start, shuffle }
         }
-        "queue_add" => C::QueueAdd { items: bounded(args!(params, { items: Vec<QueueItem> }))? },
+        "queue_add" => {
+            let items = bounded(args!(params, { items: Vec<QueueItem> }))?
+                .into_iter()
+                .map(|item| QueueItem { cover: trusted_cover(item.cover), ..item })
+                .collect();
+            C::QueueAdd { items }
+        }
         "queue_remove" => C::QueueRemove { index: args!(params, { index: usize }) },
         "queue_reorder" => {
             let (from, to) = args!(params, { from: usize, to: usize });
@@ -696,6 +713,30 @@ mod tests {
         }
         let sepia = json!({"uuid": "660f113b-e63f-4c2b-a021-33350ca6948b", "theme": "sepia"});
         assert!(parse("analyze_cover", sepia).is_err());
+    }
+
+    #[test]
+    fn phone_supplied_covers_are_limited_to_tidal_images() {
+        let uuid = "660f113b-e63f-4c2b-a021-33350ca6948b";
+        let cdn = "https://resources.tidal.com/images/a/b/320x320.jpg";
+        let params = json!({"items": [
+            {"track_id": 1, "title": "a", "cover": uuid},
+            {"track_id": 2, "title": "b", "cover": cdn},
+            {"track_id": 3, "title": "c", "cover": "http://192.168.1.1/admin"},
+            {"track_id": 4, "title": "d", "cover": "https://evil.example/x.png"},
+        ]});
+        match parse("queue_add", params).unwrap() {
+            RemoteCommand::QueueAdd { items } => {
+                let covers: Vec<_> = items.iter().map(|i| i.cover.as_deref()).collect();
+                assert_eq!(covers, vec![Some(uuid), Some(cdn), None, None]);
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+        let params = json!({"items": [{"id": 1, "cover": "http://evil.example/x"}], "start": 0});
+        match parse("play_page_items", params).unwrap() {
+            RemoteCommand::PlayPageItems { items, .. } => assert_eq!(items[0].cover, None),
+            other => panic!("unexpected {other:?}"),
+        }
     }
 
     #[test]
