@@ -1,8 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <defs><clipPath id="disc"><circle cx="70" cy="70" r="50"/></clipPath></defs>
-  <g transform="translate(512 512) scale(9.5094) translate(-70 -70)" fill="none" stroke-linecap="round">
+  <g transform="translate(512 512) scale(9.6923) translate(-70 -70)" fill="none" stroke-linecap="round">
     <circle cx="70" cy="70" r="50" fill="#1C2825"/>
-    <path d="M12 82 C 38 58, 58 106, 86 82 C 106 64, 118 82, 132 68" stroke="#C4693E" stroke-width="13" clip-path="url(#disc)"/>
-    <circle cx="70" cy="70" r="50" stroke="#4F8C82" stroke-width="6"/>
+    <circle cx="70" cy="70" r="34" stroke="#4F8C82" stroke-width="4"/>
+    <path d="M12 82 C 38 58, 58 106, 86 82 C 106 64, 118 82, 132 68" stroke="#C4693E" stroke-width="10" clip-path="url(#disc)"/>
+    <circle cx="70" cy="70" r="50" stroke="#4F8C82" stroke-width="4"/>
   </g>
 </svg>
