@@ -113,5 +113,6 @@ that is not active must cost nothing.
 | Dynamic colour | `ui/src/lib/dynamicColor.svelte.ts`, `crates/oxitide-app/src/{artwork,palette}.rs` |
 | Rack shell + units | `ui/src/lib/rack/` |
 | Icons | `ui/src/lib/components/Icon.svelte` (inlined Lucide paths, no glyphs) |
+| App mark | `ui/src/lib/components/Logo.svelte` (inline SVG, fixed brand colours, detail steps down by `size`; shown in Sidebar, Rack header, Login; sources in `crates/oxitide-app/icons/svg/`) |
 | Covers | `ui/src/lib/components/Cover.svelte`, `ui/src/lib/artwork.ts` |
 | Rack reference mockup | `ui/design/rack/reference-mockup.html` (open via any static server at the repo root) |

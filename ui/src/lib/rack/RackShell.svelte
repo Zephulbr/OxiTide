@@ -10,6 +10,7 @@
   import type { CollectionTree } from "../collection.svelte";
   import type { CollectionActions } from "../collectionActions.svelte";
   import Icon from "../components/Icon.svelte";
+  import Logo from "../components/Logo.svelte";
   import PlaylistTree from "../components/PlaylistTree.svelte";
   import QueueRail from "../components/QueueRail.svelte";
   import SleepTimerControl from "../components/SleepTimerControl.svelte";
@@ -142,7 +143,7 @@
   <a class="skip-link" href="#main">Skip to content</a>
 
   <header class="rk-unit selector">
-    <div class="brand"><span class="rk-name wordmark">OxiTide</span><span class="rk-silk">Network audio player</span></div>
+    <div class="brand"><span class="mark"><Logo size={30} /></span><span class="rk-name wordmark">OxiTide</span><span class="rk-silk">Network audio player</span></div>
     <div class="rk-tray history" role="group" aria-label="History">
       <button class="rk-key sm" disabled={!nav.canBack} onclick={() => nav.back()} aria-label="Back" title="Back (Alt+←)"><Icon name="chevron-left" size={12} /></button>
       <button class="rk-key sm" disabled={!nav.canForward} onclick={() => nav.forward()} aria-label="Forward" title="Forward (Alt+→)"><Icon name="chevron-right" size={12} /></button>
@@ -357,6 +358,10 @@
     align-items: baseline;
     gap: 12px;
     white-space: nowrap;
+  }
+  .mark {
+    align-self: center;
+    display: flex;
   }
   .wordmark {
     font-size: 20px;
