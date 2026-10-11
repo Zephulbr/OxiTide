@@ -340,7 +340,9 @@
     grid-template-rows: auto minmax(0, 1fr);
     gap: 6px;
     height: 100%;
-    padding: 10px;
+    /* The room's top gutter grows to the caption band under custom chrome, so
+       the caption buttons sit above the selector unit, not on its keys. */
+    padding: max(10px, var(--titlebar-h)) 10px 10px;
     box-sizing: border-box;
     background: var(--rack-room);
   }

@@ -119,6 +119,9 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
 - **Oneko** (`ui/src/assets/oneko/`) — see `ui/src/assets/oneko/LICENSE` for
   its license terms.
+- **Snap Layouts overlay technique** (`crates/oxitide-app/src/titlebar.rs`) —
+  approach adapted from tauri-plugin-frame
+  (https://github.com/clarifei/tauri-plugin-frame, MIT); not a dependency.
 
 ## Rust dependencies
 

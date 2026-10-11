@@ -113,6 +113,7 @@ that is not active must cost nothing.
 | Dynamic colour | `ui/src/lib/dynamicColor.svelte.ts`, `crates/oxitide-app/src/{artwork,palette}.rs` |
 | Rack shell + units | `ui/src/lib/rack/` |
 | Icons | `ui/src/lib/components/Icon.svelte` (inlined Lucide paths, no glyphs) |
-| App mark | `ui/src/lib/components/Logo.svelte` (inline SVG, fixed brand colours, detail steps down by `size`; shown in Sidebar, Rack header, Login; sources in `crates/oxitide-app/icons/svg/`) |
+| App mark | `ui/src/lib/components/Logo.svelte` (inline SVG; ring = `--accent`, wave = accent hue-rotated −130°, brand colours as fallback; detail steps down by `size`; shown in Sidebar, Rack header, Login; icon-file sources in `crates/oxitide-app/icons/svg/`) |
+| Window chrome (Windows) | Undecorated window: `WindowControls.svelte` caption buttons pinned top-right over every shell, `lib/titlebar.ts` drag band (top `--titlebar-h` = 32px; presses on non-controls drag, double-click maximizes). Shells without a top gutter (Mini, Rack, Rack mini) pad their top to `--titlebar-h`; the queue steps down under it. Close hover uses `--caption-close` (platform red). Snap Layouts: native overlay in `crates/oxitide-app/src/titlebar.rs`. Linux keeps the system frame. |
 | Covers | `ui/src/lib/components/Cover.svelte`, `ui/src/lib/artwork.ts` |
 | Rack reference mockup | `ui/design/rack/reference-mockup.html` (open via any static server at the repo root) |

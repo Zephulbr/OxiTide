@@ -72,7 +72,8 @@
     flex-direction: column;
     gap: 4px;
     height: 100%;
-    padding: 8px;
+    /* The top gutter grows to the caption band under custom chrome. */
+    padding: max(8px, var(--titlebar-h)) 8px 8px;
     box-sizing: border-box;
     background: var(--rack-room);
     overflow: hidden;

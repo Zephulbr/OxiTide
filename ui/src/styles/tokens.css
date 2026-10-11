@@ -95,6 +95,12 @@
   --sidebar-width: 248px;
   --queue-width: 320px;
   --player-height: 80px;
+  /* Custom window chrome (Windows): the caption-button/drag band height; 0
+     when the system frame is in use (set from `data-chrome` in app.css). The
+     close button keeps the platform's red rather than the accent. */
+  --titlebar-h: 0px;
+  --caption-close: #c42b1c;
+  --on-caption-close: #ffffff;
 
   /* Feature flags (spec §4.3) — all off until Plan 11 lights them
      per mode. Components read the JS mirrors in appearance.svelte.ts;

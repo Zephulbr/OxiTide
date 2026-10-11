@@ -19,6 +19,13 @@ body {
   z-index: 1;
 }
 .app[data-sidebar="rail"] { --sidebar-width: 64px; }
+/* Custom window chrome (lib/titlebar.ts): the top band is the title bar, and
+   the caption buttons sit in the top-right corner over every shell. Content
+   that would sit under them (the docked/floating queue, the main scrollbar)
+   steps down; shells without a top gutter add one in their own styles. */
+:root[data-chrome="custom"] { --titlebar-h: 32px; }
+.queue { padding-top: var(--titlebar-h); }
+.main::-webkit-scrollbar-track { margin-top: var(--titlebar-h); }
 /* Mini mode wrapper: keeps the dialog registry's `inert` from reaching a
    portaled modal while still disabling the Mini background. */
 .mini-layer,

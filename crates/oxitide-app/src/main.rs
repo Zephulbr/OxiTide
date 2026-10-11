@@ -17,6 +17,7 @@ mod scheme;
 mod scrobble;
 mod session;
 mod state;
+mod titlebar;
 mod track_flags;
 mod tray;
 mod window;
@@ -266,6 +267,8 @@ fn main() {
                 scrobbler.start();
             }
             if let Some(window) = app.get_webview_window("main") {
+                // Before the first show, so the system frame never flashes.
+                titlebar::install(&window);
                 let config = app.state::<AppState>().config();
                 if let Err(e) = window::apply(&window, &config) {
                     tracing::warn!("failed to apply window geometry: {e}");
@@ -444,6 +447,8 @@ fn main() {
             commands::set_hotkey_capture,
             commands::set_cache_max_size_mb,
             commands::set_cache_clear_on_exit,
+            commands::get_custom_titlebar,
+            commands::set_snap_target,
             commands::get_logs_dir,
             commands::open_logs_folder,
             commands::perf_mark,
