@@ -1,6 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { HotkeyAction } from "./hotkeys";
 
+/// The maximize button's box in CSS px; `right` is measured from the window's
+/// right edge to the button's left edge (mirrors `titlebar::SnapTarget`).
+export interface SnapTarget { right: number; top: number; width: number; height: number }
 export interface ArtistRef { id: number; name: string }
 export interface AlbumRef { id: number; title: string; cover?: string | null }
 export interface Track {
@@ -602,6 +605,8 @@ export const api = {
     invoke<void>("set_cache_clear_on_exit", { enabled }),
   getCacheStatus: () => invoke<CacheStatus>("get_cache_status"),
   clearCache: () => invoke<void>("clear_cache"),
+  getCustomTitlebar: () => invoke<boolean>("get_custom_titlebar"),
+  setSnapTarget: (target: SnapTarget | null) => invoke<void>("set_snap_target", { target }),
   getLogsDir: () => invoke<string>("get_logs_dir"),
   openLogsFolder: () => invoke<void>("open_logs_folder"),
   analyzeCover: (uuid: string, theme: "dark" | "light") =>

@@ -19,6 +19,7 @@
 - **Revised:** 2026-10-09 — Track 9.5 (Hi-Fi Rack, third UI mode) implemented on `track9-5-hifi-rack` and closed after owner polish rounds (`plans/notes/2026-10-09-track9-5-hifi-rack-completion.md`); formal smoke tick and PM-D1 re-runs are owner items; 9.5c (narrow fold, Rack mini layout, queue changer) deferred.
 - **Revised:** 2026-10-10 — **Track 11 (Phone Remote)** added: casting/TIDAL Connect research (`plans/notes/2026-10-09-tidal-connect-receiver-spike.md`) showed the TIDAL phone app only accepts TIDAL's own receiver binary, so the owner chose a self-contained LAN web remote instead (spec `2026-10-09-oxitide-track11-phone-remote-design.md`). Plans 11.1–11.5 implemented on `track11-phone-remote`; 11.6 human smoke and PM-D1 re-runs are owner items.
 - **Revised:** 2026-10-11 — Track 11 (Phone Remote) closed: owner smoke passed (Linux item deferred to the batched Linux run), merged to `main` (`plans/notes/2026-10-10-track11-completion.md`).
+- **Revised:** 2026-10-10 — Track 9.5c (narrow-window fold, Rack mini player, queue changer unit, DSEG7 segment font) implemented on `track9-5c-rack` (Rack spec §9, `plans/notes/2026-10-10-track9-5c-rack-completion.md`); owner visual review and smoke pending.
 - **Owner:** V
 - **Parent:** `2026-09-21-oxitide-design.md` (§9 Phasing)
 - **Supersedes:** the parent's Phase 2–4 ordering. The shipped Phase 1 MVP (v0.2.0) is

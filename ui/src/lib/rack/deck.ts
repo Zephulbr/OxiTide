@@ -34,6 +34,33 @@ export function calendar(length: number, index: number, size = 20): CalendarCell
   });
 }
 
+/// Queue changer: how many disc keys the unit carries.
+export const CHANGER_SLOTS = 5;
+
+/// First queue index of the page of disc keys that holds `index` (0 when
+/// nothing is current).
+export function changerStart(index: number, size = CHANGER_SLOTS): number {
+  return index < 0 ? 0 : Math.floor(index / size) * size;
+}
+
+/// Clamp a page start into the queue, aligned to whole pages.
+export function clampChangerStart(first: number, length: number, size = CHANGER_SLOTS): number {
+  const last = length > 0 ? Math.floor((length - 1) / size) * size : 0;
+  return Math.min(last, Math.max(0, Math.floor(first / size) * size));
+}
+
+export type ChangerSlot = { index: number; state: "current" | "loaded" | "empty" };
+
+/// The disc keys on one page: queue indices from `first`; past the end of the
+/// queue a slot is empty.
+export function changerSlots(length: number, index: number, first: number, size = CHANGER_SLOTS): ChangerSlot[] {
+  return Array.from({ length: size }, (_, i) => {
+    const at = first + i;
+    const state = at === index ? "current" : at < length ? "loaded" : "empty";
+    return { index: at, state };
+  });
+}
+
 /// Time left in the queue from the current position, in ms.
 export function remainingMs(state: DeckState): number {
   const index = currentIndex(state);

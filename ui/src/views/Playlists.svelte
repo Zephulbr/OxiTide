@@ -7,6 +7,7 @@
   import Icon from "../lib/components/Icon.svelte";
   import Loading from "../lib/components/Loading.svelte";
   import PlaylistCover from "../lib/components/PlaylistCover.svelte";
+  import SortSelect from "../lib/components/SortSelect.svelte";
   import type { CollectionActions } from "../lib/collectionActions.svelte";
   import { errorMessage } from "../lib/errors";
   import { menuFor } from "../lib/menu.svelte";
@@ -36,6 +37,13 @@
   let createSeen = untrack(() => playlistActions.revision);
 
   const rows = $derived(sortEntries(entries, sortMode));
+  const summary = $derived.by(() => {
+    const folders = entries.filter((entry) => entry.kind === "folder").length;
+    const playlists = entries.length - folders;
+    const parts = [`${playlists} ${playlists === 1 ? "playlist" : "playlists"}`];
+    if (folders > 0) parts.push(`${folders} ${folders === 1 ? "folder" : "folders"}`);
+    return parts.join(" · ");
+  });
 
   async function load() {
     loading = true;
@@ -71,29 +79,33 @@
     createSeen = revision;
     untrack(() => void load());
   });
-
 </script>
 
-<div class="page-head">
-  <h2>{folderId ? folderLabel || "Folder" : "All playlists"}</h2>
-  <button class="round" onclick={() => playlistActions.openCreate()} title="New playlist" aria-label="New playlist">
-    <Icon name="plus" size={16} />
-  </button>
-  <button class="round" onclick={() => actions.openCreateFolder(folderId ?? "root")} title="New folder" aria-label="New folder">
-    <Icon name="folder-plus" size={16} />
-  </button>
-  <button
-    class="round"
-    onclick={() => (sortMode = sortMode === "name" ? "date" : "name")}
-    title={sortMode === "name" ? "Sort by date added" : "Sort by name"}
-    aria-label="Toggle sort"
-  >
-    <Icon name="arrow-up-down" size={16} />
-  </button>
-</div>
 {#if folderId}
-  <p class="crumbs"><button onclick={() => nav.goto({ name: "playlists" })}>All playlists</button></p>
+  <nav class="crumbs" aria-label="Breadcrumb">
+    <button onclick={() => nav.goto({ name: "playlists" })}>All playlists</button>
+    <Icon name="chevron-right" size={12} />
+  </nav>
 {/if}
+<header class="page-head">
+  <h2>{folderId ? folderLabel || "Folder" : "All playlists"}</h2>
+  {#if !loading && !error && entries.length > 0}<span class="muted count tnum">{summary}</span>{/if}
+  <button class="tool-btn" onclick={() => playlistActions.openCreate()}>
+    <Icon name="plus" size={15} />New playlist
+  </button>
+  <button class="tool-btn" onclick={() => actions.openCreateFolder(folderId ?? "root")}>
+    <Icon name="folder-plus" size={15} />New folder
+  </button>
+  <SortSelect
+    value={sortMode}
+    options={[
+      { value: "date", label: "Recently updated" },
+      { value: "name", label: "Name A–Z" },
+    ]}
+    label="Sort playlists"
+    onchange={(value) => (sortMode = value as CollectionSort)}
+  />
+</header>
 
 {#if loading}
   <Loading />
@@ -102,10 +114,10 @@
 {:else if rows.length === 0}
   <EmptyState message={folderId ? "This folder is empty." : "No playlists yet."} />
 {:else}
-  <div role="list">
+  <div class="grid pane" role="list">
     {#each rows as entry (entry.kind === "folder" ? `f:${entry.id}` : `p:${entry.uuid}`)}
       <div
-        class="row"
+        class="cell"
         role="listitem"
         use:menuFor={() =>
           entry.kind === "folder"
@@ -124,34 +136,32 @@
               })}
       >
         {#if entry.kind === "folder"}
-          <button
-            class="row-main"
-            onclick={() => nav.goto({ name: "folder", id: entry.id, label: entry.name })}
-          >
-            <span class="tile folder"><Icon name="folder" size={20} /></span>
-            <span class="text">
-              <span class="title">{entry.name}</span>
-              <span class="muted sub">
-                {entry.totalNumberOfItems}
-                {entry.totalNumberOfItems === 1 ? "playlist" : "playlists"}
-              </span>
+          <button class="card" onclick={() => nav.goto({ name: "folder", id: entry.id, label: entry.name })}>
+            <span class="art folder"><Icon name="folder" size={40} /></span>
+            <span class="title">{entry.name}</span>
+            <span class="muted sub">
+              Folder · {entry.totalNumberOfItems}
+              {entry.totalNumberOfItems === 1 ? "playlist" : "playlists"}
             </span>
           </button>
         {:else}
-          <button class="row-main" onclick={() => nav.goto({ name: "playlist", id: entry.uuid })}>
-            <span class="tile">
-              <PlaylistCover
-                owned={entry.owned}
-                playlist={entry.uuid}
-                image={entry.squareImage}
-                size={80}
-                radius={6}
-                alt=""
-              />
+          <button class="card" onclick={() => nav.goto({ name: "playlist", id: entry.uuid })}>
+            <span class="art">
+              <span class="clip">
+                <PlaylistCover
+                  owned={entry.owned}
+                  playlist={entry.uuid}
+                  image={entry.squareImage}
+                  size={320}
+                  radius={0}
+                  alt=""
+                />
+              </span>
             </span>
-            <span class="text">
-              <span class="title">{entry.title}</span>
-              <span class="muted sub">{entry.numberOfTracks} items</span>
+            <span class="title">{entry.title}</span>
+            <span class="muted sub tnum">
+              {entry.numberOfTracks}
+              {entry.numberOfTracks === 1 ? "track" : "tracks"}
             </span>
           </button>
         {/if}
@@ -161,30 +171,13 @@
 {/if}
 
 <style>
-  .page-head {
+  .crumbs {
     display: flex;
     align-items: center;
-    gap: 8px;
-  }
-  .page-head h2 {
-    flex: 1;
-    min-width: 0;
-    margin: 0;
-  }
-  .round {
-    display: grid;
-    place-items: center;
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    border: 1px solid var(--line);
+    gap: 4px;
+    margin: 0 0 6px;
     color: var(--text-muted);
-  }
-  .round:hover {
-    color: var(--text);
-  }
-  .crumbs {
-    margin: 4px 0 12px;
+    font-size: 13px;
   }
   .crumbs button {
     color: var(--text-muted);
@@ -192,44 +185,80 @@
   .crumbs button:hover {
     color: var(--text);
   }
-  .row {
-    display: flex;
-    align-items: center;
+  /* Same grid as Albums and Mixes: tiles with the playlist "sheet" behind the
+     cover (MediaCard's playlist shape), folders as a sleeve with an icon. */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 16px;
   }
-  .row-main {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex: 1;
+  .cell {
     min-width: 0;
-    padding: 6px 4px;
-    border-radius: var(--radius-control);
-    text-align: left;
   }
-  .row-main:hover {
+  .card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+    padding: 12px;
+    border-radius: var(--radius-card);
+    text-align: left;
+    color: inherit;
+  }
+  .card:hover {
     background: var(--surface-2);
   }
-  .tile {
-    flex: 0 0 auto;
+  .art {
+    position: relative;
+    isolation: isolate;
+    display: block;
+    aspect-ratio: 1;
+  }
+  .art::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    transform: translate(3px, 3px);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card-sharp);
+    background: var(--surface-3);
+  }
+  .clip {
+    display: block;
+    height: 100%;
+    overflow: hidden;
+    border-radius: var(--radius-card-sharp);
+    background: var(--surface-2);
+  }
+  .clip :global(img) {
+    transition: transform var(--dur-state) var(--ease-in);
+  }
+  .card:hover .clip :global(img) {
+    transform: scale(1.03);
+  }
+  .art.folder {
     display: grid;
     place-items: center;
-    width: 40px;
-    height: 40px;
-    border-radius: 6px;
-    overflow: hidden;
-    background: var(--surface-2);
+    border-radius: var(--radius-card-sharp);
+    background: linear-gradient(135deg, var(--surface-2), var(--surface-3));
     color: var(--text-muted);
   }
-  .text {
-    display: grid;
-    min-width: 0;
+  .card:hover .art.folder {
+    color: var(--text);
   }
   .title {
+    font-weight: 500;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .sub {
-    font-size: 11.5px;
+    margin-top: -6px;
+    font-size: 12.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 </style>

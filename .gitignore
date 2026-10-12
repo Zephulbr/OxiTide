@@ -16,6 +16,9 @@ node_modules/
 .superpowers/
 .worktrees/
 
+# Icon design export (sources live in crates/oxitide-app/icons/svg)
+/Oxitide icons/
+
 # OS / editor
 .DS_Store
 Thumbs.db

@@ -53,6 +53,19 @@ current system and must be updated in the same change that alters it.
 `rack.css` turns it into a glass window inside the display unit; keep adding `pane` to
 new section containers so they join the Rack's look for free.
 
+**Page header and toolbars** (`app.css`, 2026-10-10 polish). List and collection views
+(Playlists, Profiles, History, Feed) open with `header.page-head`: the `h2` title on the
+left; a muted `.count` and the tools on the right, all 38px tall. Tools come from the field
+family — `.search-input` for search/filter, `SortSelect` for sort, `.tool-btn` (icon +
+label) for actions — never mixed with round icon buttons in the same row. Rack skins
+`.page-head > h2` as a printed label and `.tool-btn` as a light-bar key.
+
+**Collection grids** share one recipe: `repeat(auto-fill, minmax(160–168px, 1fr))`, 12px
+card padding, hover = `--surface-2` (Albums, Mixes, Playlists, Feed releases). Profiles
+draw each artist as a **record** (portrait as the label on a vinyl disc; `--vinyl*`
+material tokens, black in every mode) and, in name order, letter groups as crate
+dividers.
+
 ### 2.2 Type
 
 - Display: **Fraunces** (Atmosphere/Instrument titles). Rack uses **Manrope 700** for
@@ -100,6 +113,8 @@ that is not active must cost nothing.
 | Dynamic colour | `ui/src/lib/dynamicColor.svelte.ts`, `crates/oxitide-app/src/{artwork,palette}.rs` |
 | Rack shell + units | `ui/src/lib/rack/` |
 | Icons | `ui/src/lib/components/Icon.svelte` (inlined Lucide paths, no glyphs) |
+| App mark | `ui/src/lib/components/Logo.svelte` (inline SVG; ring = `--accent`, wave = accent hue-rotated −130°, brand colours as fallback; detail steps down by `size`; shown in Sidebar, Rack header, Login; icon-file sources in `crates/oxitide-app/icons/svg/`) |
+| Window chrome (Windows) | Undecorated window: `WindowControls.svelte` caption buttons pinned top-right over every shell, `lib/titlebar.ts` drag band (top `--titlebar-h` = 32px; presses on non-controls drag, double-click maximizes). Shells without a top gutter (Mini, Rack, Rack mini) pad their top to `--titlebar-h`; the queue steps down under it. Close hover uses `--caption-close` (platform red). Snap Layouts: native overlay in `crates/oxitide-app/src/titlebar.rs`. Linux keeps the system frame. |
 | Covers | `ui/src/lib/components/Cover.svelte`, `ui/src/lib/artwork.ts` |
 | Rack reference mockup | `ui/design/rack/reference-mockup.html` (open via any static server at the repo root) |
 | Phone remote | `ui/remote.html`, `ui/src/remote/` (styles: `remote/remote.css` + component styles) |

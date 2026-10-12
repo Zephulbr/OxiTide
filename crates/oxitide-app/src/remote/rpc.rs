@@ -500,6 +500,8 @@ mod tests {
         "get_artist_top_tracks",
         "get_artist_albums",
         "open_external",
+        "get_custom_titlebar",
+        "set_snap_target",
         "get_scrobble_status",
         "lastfm_begin_auth",
         "lastfm_complete_auth",

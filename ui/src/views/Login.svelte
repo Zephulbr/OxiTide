@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api } from "../lib/api";
   import { openUrl } from "@tauri-apps/plugin-opener";
+  import Logo from "../lib/components/Logo.svelte";
   import Loading from "../lib/components/Loading.svelte";
   import KeyringNotice from "../lib/components/KeyringNotice.svelte";
   let {
@@ -58,6 +59,7 @@
 
 <div class="login">
   <div class="card lit">
+    <Logo size={64} />
     <h1>{message || "Sign in to TIDAL"}</h1>
     <p class="intro muted">
       OxiTide opens TIDAL in your browser. Sign in — the app unlocks automatically when you return.

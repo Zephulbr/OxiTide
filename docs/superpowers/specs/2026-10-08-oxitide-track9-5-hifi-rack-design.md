@@ -65,7 +65,7 @@ default mode (Rack off costs nothing) and S1/S5 are recorded once in Rack (PM-D1
 - Level tap (Rust) + 30 Hz `level_frame` events while Rack is visible.
 - Tests, smoke checklist, perf re-runs, AGENTS.md + design docs.
 
-**Deferred (9.5c, recorded, not built now):**
+**Deferred to 9.5c — built 2026-10-10 (`track9-5c-rack`, §9):**
 
 - **Narrow-window fold** into a bottom strip below ~1000px (this track ships a simpler
   narrowing rule, §6.9).
@@ -363,3 +363,18 @@ Column width `clamp(300px, 30vw, 392px)`. Below 1000px wide the EQ unit hides; b
 - **Level emitter while hidden** — the UI disables the tap on `visibilitychange` and
   on unmount; the Rust side also stops when no listener toggles it on.
 - **Meter lead vs audio** — accepted, documented (§5.5).
+
+## 9. 9.5c (2026-10-10)
+
+Built on `track9-5c-rack` from `main`; visual choices below are implementation
+decisions awaiting the owner's look (same screenshot-driven loop as 9.5).
+
+| # | Decision |
+|---|---|
+| RK-D15 | **Narrow fold**: below 1000px wide (`matchMedia`, `RackShell.fold`) the rack column is not rendered; the display spans the width and `RackStrip.svelte` sits under it — cover window, deck VFD, transport + play-mode keys (+ a Now Playing key), volume knob at 0.8×. Under 860px the keys drop under the VFD; under 760px the cover goes. DSP keys, meters and EQ live in Setup while folded. Now Playing while folded stacks its units in one scrolling column. Replaces the §6.9 "EQ hides below 1000px" rule. |
+| RK-D16 | **Rack mini player** (`RackMini.svelte`): a compact deck (head with quality + Restore key, cover window taking the slack, the deck VFD, transport and play-mode trays) over a compact amp (Bars meter on a VFD + knob at 0.7×; Bars regardless of the amp's meter setting, since needles need 96px). The queue sheet is a unit with a focus trap. Mounted from `App.svelte`'s existing Rack branch (`appearance.rackShell`); the old Rack skin over `Mini.svelte` in `rack.css` is removed. |
+| RK-D17 | **Queue changer** (`ChangerUnit.svelte`): with the column visible, Queue opens a column unit in the Playlists unit's place (it takes the slack, min 300px) — a VFD (DISC n · OF N · REMAIN), five disc keys with lamps (one page of the queue; arrow keys page; the page follows the current track until paged), and the full `QueueRail` in a glass window. Folded or in Now Playing, the drawer remains. |
+| RK-D18 | **Segment font**: DSEG7 Classic Bold Italic (OFL, unmodified, 5KB) replaces the SVG digits. `SevenSeg` draws two layers — a ghost of "8"s and the lit text (blanks as DSEG's `!`) — via `segment.ts`. The CD face's REMAIN time and the changer readout use it too. |
+
+The deck's VFD and key trays were extracted (`DeckVfd.svelte`, `DeckKeys.svelte`) so the
+deck, strip and mini player share one implementation.

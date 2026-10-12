@@ -30,7 +30,12 @@
 </script>
 
 <div class="feed-page">
-  <h2>Feed</h2>
+  <header class="page-head">
+    <h2>Feed</h2>
+    {#if !loading && !error && activities.length > 0}
+      <span class="muted count tnum">{activities.length} {activities.length === 1 ? "release" : "releases"}</span>
+    {/if}
+  </header>
   {#if loading}
     <Loading />
   {:else if error}
@@ -44,8 +49,6 @@
 
 <style>
   .feed-page {
-    max-width: 1120px;
-    margin: 0 auto;
     padding-bottom: 32px;
   }
 </style>

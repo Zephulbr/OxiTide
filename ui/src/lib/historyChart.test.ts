@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { barPercents } from "./historyChart";
+import { barPercents, dayTick } from "./historyChart";
+
+describe("dayTick", () => {
+  it("labels a local calendar day without timezone shifts", () => {
+    expect(dayTick("2026-09-11")).toBe("Sep 11");
+    expect(dayTick("2026-01-01")).toBe("Jan 1");
+    expect(dayTick("garbage")).toBe("garbage");
+  });
+});
 
 describe("barPercents", () => {
   it("scales against the tallest day", () => {

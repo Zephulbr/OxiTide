@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { DeckFace, RepeatMode } from "../api";
+  import type { DeckFace } from "../api";
   import { appearance } from "../appearance.svelte";
   import Cover from "../components/Cover.svelte";
   import Icon from "../components/Icon.svelte";
@@ -7,11 +7,12 @@
   import type { Nav } from "../nav.svelte";
   import type { Player } from "../player.svelte";
   import { formatQuality } from "../quality";
-  import { calendar, clock, currentIndex, formatLine, remainingMs, repeatAnnunciator, totalMs, upNext } from "./deck";
+  import { calendar, clock, currentIndex, formatLine, remainingMs, totalMs, upNext } from "./deck";
+  import DeckKeys from "./DeckKeys.svelte";
+  import DeckVfd from "./DeckVfd.svelte";
   import { levels } from "./levels.svelte";
   import BarMeter from "./meters/BarMeter.svelte";
   import SevenSeg from "./SevenSeg.svelte";
-  import VfdSeek from "./VfdSeek.svelte";
 
   /// The deck (spec §6.1): a compact face per the Deck face setting, or the
   /// turntable when expanded (Now Playing in Rack). Every player-bar duty
@@ -29,8 +30,6 @@
   const position = $derived(player.pendingSeek ?? state.position_ms);
   const index = $derived(currentIndex(state));
   const next = $derived(upNext(state, 3));
-  const fav = $derived(current ? favorites.hasTrack(current.track_id) : false);
-  const message = $derived(state.error || (state.bit_perfect_notice ?? ""));
   const progress = $derived(state.duration_ms > 0 ? Math.min(1, position / state.duration_ms) : 0);
   const spinning = $derived(state.playing && !appearance.reducedMotion);
   const quality = $derived(formatQuality(state.stream, "compact", state.preferred_quality));
@@ -39,10 +38,6 @@
   $effect(() => {
     if (face === "display" && !expanded) return levels.use();
   });
-
-  function nextRepeat(mode: RepeatMode): RepeatMode {
-    return mode === "off" ? "all" : mode === "all" ? "one" : "off";
-  }
 </script>
 
 <section class="rk-unit deck" class:expanded aria-label={expanded ? "Turntable" : "Deck"}>
@@ -116,79 +111,29 @@
         </div>
         <div class="remain">
           <div class="rk-anno"><span class="on">REMAIN</span></div>
-          <div class="big">-{clock(remainingMs({ ...state, position_ms: position }))}</div>
+          <SevenSeg value={`-${clock(remainingMs({ ...state, position_ms: position }))}`} height={20} />
           <div class="rk-anno"><span class="on">{state.queue.length} TR</span><span class="on">{clock(totalMs(state.queue))}</span></div>
         </div>
       </div>
     </div>
   {/if}
 
-  <div class="rk-vfd display" class:tall={face === "display" && !expanded}>
-    {#if face === "display" && !expanded}
-      <div class="vfdtop" aria-hidden="true">
-        <div class="row">
-          <div class="rk-anno">{#each formatLine(state.stream, state.output_mode) as tag (tag)}<span class="on">{tag}</span>{/each}</div>
-          <div class="rk-anno"><span class="on">TIDAL {quality}</span></div>
-        </div>
-        <BarMeter snapshot={levels.snapshot} header={false} />
-        <div class="rk-vfd-text sub nextline">
-          <span class="dim">NEXT</span> {next[0]?.title ?? "—"} {#if next[0]}<span class="dim">{clock(next[0].duration_secs * 1000)}</span>{/if}
-        </div>
+  {#snippet displayTop()}
+    <div class="vfdtop" aria-hidden="true">
+      <div class="row">
+        <div class="rk-anno">{#each formatLine(state.stream, state.output_mode) as tag (tag)}<span class="on">{tag}</span>{/each}</div>
+        <div class="rk-anno"><span class="on">TIDAL {quality}</span></div>
       </div>
-    {/if}
-    <div class="row">
-      <div class="titles">
-        <div class="rk-vfd-text title">{current ? current.title : "No disc"}</div>
-        <div class="rk-vfd-text sub" class:warn={message !== ""}>
-          {message !== "" ? message : current ? `${current.artist}, ${current.album}` : "Choose something to play"}
-        </div>
+      <BarMeter snapshot={levels.snapshot} header={false} />
+      <div class="rk-vfd-text sub nextline">
+        <span class="dim">NEXT</span> {next[0]?.title ?? "—"} {#if next[0]}<span class="dim">{clock(next[0].duration_secs * 1000)}</span>{/if}
       </div>
-      <SevenSeg value={clock(position)} />
     </div>
-    <VfdSeek {player} />
-    <div class="row annos" aria-hidden="true">
-      <div class="rk-anno">
-        <span class:on={state.playing}>PLAY</span>
-        <span class:on={state.buffering}>BUF</span>
-        <span class:on={state.repeat !== "off"}>{repeatAnnunciator(state.repeat) ?? "RPT"}</span>
-        <span class:on={state.shuffle}>SHUF</span>
-        <span class:on={state.crossfade_ms > 0}>XFADE</span>
-      </div>
-      <div class="rk-anno"><span>TRK</span><span class:on={index >= 0}>{String(index + 1).padStart(2, "0")}/{String(state.queue.length).padStart(2, "0")}</span></div>
-    </div>
-  </div>
+  {/snippet}
+  <DeckVfd {player} tall={face === "display" && !expanded} top={face === "display" && !expanded ? displayTop : undefined} />
 
   <div class="deckbar">
-    <div class="rk-tray transport-keys" role="group" aria-label="Transport">
-      <button class="rk-key" onclick={() => player.prev()} aria-label="Previous" disabled={state.queue.length === 0}><Icon name="skip-back-solid" size={14} /></button>
-      <button class="rk-key" class:lit={state.playing} onclick={() => player.playPause()} aria-label={state.playing ? "Pause" : "Play"} disabled={!current}>
-        <Icon name={state.playing ? "pause" : "play"} size={14} />
-      </button>
-      <button class="rk-key" onclick={() => player.next()} aria-label="Next" disabled={state.queue.length === 0}><Icon name="skip-forward-solid" size={14} /></button>
-    </div>
-    <div class="rk-tray modes" role="group" aria-label="Play mode">
-      <button class="rk-key" aria-pressed={state.shuffle} onclick={() => player.setShuffle(!state.shuffle)} aria-label="Shuffle" title="Shuffle the rest of the queue">
-        <Icon name="shuffle" size={13} />
-      </button>
-      <button
-        class="rk-key"
-        aria-pressed={state.repeat !== "off"}
-        onclick={() => player.setRepeat(nextRepeat(state.repeat))}
-        aria-label={state.repeat === "one" ? "Repeat one track" : state.repeat === "all" ? "Repeat all" : "Repeat off"}
-        title={state.repeat === "one" ? "Repeat one" : state.repeat === "all" ? "Repeat all" : "Repeat off"}
-      ><Icon name={state.repeat === "one" ? "repeat-1" : "repeat"} size={13} /></button>
-      <button
-        class="rk-key"
-        aria-pressed={fav}
-        disabled={!current}
-        onclick={() => current && favorites.toggleTrack(current.track_id)}
-        aria-label={fav ? "Unfavorite" : "Favorite"}
-        title={fav ? "Unfavorite" : "Favorite"}
-      ><Icon name="heart" size={13} /></button>
-      <button class="rk-key" aria-pressed={nav.queueOpen} onclick={() => nav.toggleQueue()} aria-label="Queue" title="Queue">
-        <Icon name="list-music" size={13} />
-      </button>
-    </div>
+    <DeckKeys {player} {favorites} queueOpen={nav.queueOpen} onQueue={() => nav.toggleQueue()} />
   </div>
 </section>
 
@@ -350,33 +295,12 @@
     justify-items: end;
     gap: 4px;
   }
-  .big {
-    font: 700 20px/1 var(--font-ui);
-    font-variant-numeric: tabular-nums;
-    text-shadow: 0 0 8px var(--rack-vfd), 0 0 1px var(--rack-vfd);
-  }
 
-  .display .row {
+  .vfdtop .row {
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: 10px;
-  }
-  .titles {
-    min-width: 0;
-  }
-  .warn {
-    color: var(--warning);
-    text-shadow: none;
-  }
-  .annos {
-    margin-top: 6px;
-  }
-  .display.tall {
-    padding: 12px 14px 10px;
-  }
-  .display.tall .title {
-    font-size: 16px;
   }
   .vfdtop {
     display: flex;
@@ -401,19 +325,9 @@
     gap: 8px;
     margin-top: 10px;
   }
-  .transport-keys .rk-key {
-    width: 46px;
-    min-width: 0;
-    padding-inline: 0;
-  }
-  .modes .rk-key {
-    width: 38px;
-    min-width: 0;
-    padding-inline: 0;
-  }
   /* Expanded deck: the VFD and keys form one centred control strip under the
      platter instead of running the full width of the shell. */
-  .deck.expanded .display,
+  .deck.expanded :global(.deckvfd),
   .deck.expanded .deckbar {
     width: min(100%, 680px);
     margin-inline: auto;

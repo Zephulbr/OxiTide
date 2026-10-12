@@ -2386,6 +2386,19 @@ pub async fn analyze_cover(
     service.palette(&uuid, theme).await.map(PaletteDto::from)
 }
 
+/// Whether the window runs undecorated with the UI's own caption buttons.
+#[tauri::command]
+pub fn get_custom_titlebar() -> bool {
+    crate::titlebar::custom()
+}
+
+/// Where the UI's maximize button is, for the Snap Layouts overlay; `None`
+/// hides the overlay. A sync command, so it runs on the main thread.
+#[tauri::command]
+pub fn set_snap_target(target: Option<crate::titlebar::SnapTarget>) {
+    crate::titlebar::set_target(target);
+}
+
 #[tauri::command]
 pub fn get_logs_dir() -> String {
     crate::config::logs_dir()

@@ -9,6 +9,7 @@
   import Mini from "./views/Mini.svelte";
   import RoutedPage from "./lib/RoutedPage.svelte";
   import RackShell from "./lib/rack/RackShell.svelte";
+  import RackMini from "./lib/rack/RackMini.svelte";
   import { createLamp } from "./lib/rack/lamp.svelte";
   import PlaylistPicker from "./lib/components/PlaylistPicker.svelte";
   import TrackInfoHost from "./lib/components/TrackInfoHost.svelte";
@@ -18,6 +19,9 @@
   import { dialogs } from "./lib/dialogs.svelte";
   import Neko from "./lib/components/Neko.svelte";
   import PerfHud from "./lib/components/PerfHud.svelte";
+  import WindowControls from "./lib/components/WindowControls.svelte";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { isDragTarget } from "./lib/titlebar";
   import { createNav } from "./lib/nav.svelte";
   import {
     appearance,
@@ -73,6 +77,17 @@
   const playlistActions = createPlaylistActions(toasts);
   const collection = createCollectionTree(toasts);
   const collectionActions = createCollectionActions(collection, toasts);
+
+  // Custom window chrome (Windows): Rust decides; `data-chrome` turns on the
+  // caption band (--titlebar-h) for every shell.
+  let customChrome = $state(false);
+  api
+    .getCustomTitlebar()
+    .then((custom) => {
+      customChrome = custom;
+      if (custom) document.documentElement.dataset.chrome = "custom";
+    })
+    .catch(() => {});
 
   let qualityDisplay = $state<QualityDisplay>("compact");
   let loggedIn = $state(false);
@@ -556,6 +571,21 @@
     runShortcut(action);
   }
 
+  /// The top band is the title bar under custom chrome: a press on anything
+  /// that is not a control drags the window, a double-click maximizes (not in
+  /// the mini player, which has no maximize).
+  function onTitlebarPress(event: MouseEvent) {
+    if (!customChrome || event.button !== 0) return;
+    if (!isDragTarget(event.target, event.clientY)) return;
+    event.preventDefault();
+    const win = getCurrentWindow();
+    if (event.detail === 2) {
+      if (!(loggedIn && mini.active)) void win.toggleMaximize();
+    } else {
+      void win.startDragging();
+    }
+  }
+
   function onSideButton(event: MouseEvent) {
     if (!loggedIn) return;
     if (event.button !== 3 && event.button !== 4) return;
@@ -581,7 +611,12 @@
   <Backdrop {player} />
   {#if mini.active}
     <div class="mini-layer" inert={dialogs.count > 0}>
-      <Mini {player} {favorites} {mini} />
+      <!-- Rack has its own mini player (9.5c); same sanctioned branch (RK-D1). -->
+      {#if appearance.rackShell}
+        <RackMini {player} {favorites} {mini} />
+      {:else}
+        <Mini {player} {favorites} {mini} />
+      {/if}
     </div>
   {:else if appearance.rackShell}
     <!-- Hi-Fi Rack: the one sanctioned shell branch (Rack spec RK-D1). -->
@@ -663,7 +698,15 @@
   {#if appearance.oneko && !appearance.reducedMotion}<Neko />{/if}
 {/if}
 
-<svelte:window onkeydown={onKeydown} onmousedown={onSideButton} onauxclick={onSideButton} />
+<svelte:window
+  onkeydown={onKeydown}
+  onmousedown={(e) => {
+    onSideButton(e);
+    onTitlebarPress(e);
+  }}
+  onauxclick={onSideButton}
+/>
 <ToastHost {toasts} />
+{#if customChrome}<WindowControls maximizable={!(loggedIn && mini.active)} />{/if}
 <ContextMenu {menu} />
 <PerfHud />

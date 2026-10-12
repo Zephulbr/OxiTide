@@ -14,6 +14,13 @@ export function relativeTime(startedAtSecs: number, nowMs: number): string {
   return `${Math.floor(age / DAY)} d ago`;
 }
 
+/// Local clock time of a play, e.g. "14:32" (or "2:32 PM" in 12-hour locales).
+export function clockTime(startedAtSecs: number): string {
+  return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(
+    new Date(startedAtSecs * 1000),
+  );
+}
+
 function startOfLocalDay(ms: number): number {
   const date = new Date(ms);
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();

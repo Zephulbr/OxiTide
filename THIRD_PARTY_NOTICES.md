@@ -24,6 +24,9 @@ The UI vendors the following fonts under the SIL Open Font License 1.1:
   (<https://github.com/googlefonts/manrope>)
 - Inter — Copyright 2020 The Inter Project Authors
   (<https://github.com/rsms/inter>)
+- DSEG7 Classic (Bold Italic, unmodified) — Copyright (c) 2017, keshikan
+  (<http://www.keshikan.net>, <https://github.com/keshikan/DSEG>), with Reserved
+  Font Name "DSEG"
 
 Font files: `ui/src/assets/fonts/`.
 
@@ -116,6 +119,9 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
 - **Oneko** (`ui/src/assets/oneko/`) — see `ui/src/assets/oneko/LICENSE` for
   its license terms.
+- **Snap Layouts overlay technique** (`crates/oxitide-app/src/titlebar.rs`) —
+  approach adapted from tauri-plugin-frame
+  (https://github.com/clarifei/tauri-plugin-frame, MIT); not a dependency.
 
 ## Rust dependencies
 

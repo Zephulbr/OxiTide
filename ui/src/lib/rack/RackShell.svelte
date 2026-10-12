@@ -10,6 +10,7 @@
   import type { CollectionTree } from "../collection.svelte";
   import type { CollectionActions } from "../collectionActions.svelte";
   import Icon from "../components/Icon.svelte";
+  import Logo from "../components/Logo.svelte";
   import PlaylistTree from "../components/PlaylistTree.svelte";
   import QueueRail from "../components/QueueRail.svelte";
   import SleepTimerControl from "../components/SleepTimerControl.svelte";
@@ -29,6 +30,8 @@
   import EqUnit from "./EqUnit.svelte";
   import { levels } from "./levels.svelte";
   import SpectrumMeter from "./meters/SpectrumMeter.svelte";
+  import ChangerUnit from "./ChangerUnit.svelte";
+  import RackStrip from "./RackStrip.svelte";
   import { LIBRARY_KEYS, libraryKeyOf, sourceOf, type Source } from "./sources";
 
   /// The Hi-Fi Rack shell (RK-D1, RK-D4): selector unit across the top, the
@@ -92,7 +95,20 @@
   const expanded = $derived(nav.nowPlayingOpen);
   const source = $derived(sourceOf(nav.route));
   const libraryKey = $derived(libraryKeyOf(nav.route));
-  let column: HTMLDivElement;
+  let column = $state<HTMLDivElement>();
+
+  /// Narrow-window fold (9.5c): below 1000px the rack column folds into a
+  /// strip under the display, and the queue falls back to a drawer.
+  let fold = $state(false);
+  $effect(() => {
+    const media = window.matchMedia("(max-width: 1000px)");
+    const sync = () => (fold = media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  });
+  /// The queue is the changer unit in the column; a drawer where there is none.
+  const queueDrawer = $derived(nav.queueOpen && (fold || expanded));
 
   // The compact column can scroll on short windows; the expanded layout must
   // start at the top or its units render cut off.
@@ -123,11 +139,11 @@
   const upcoming = $derived(upNext(player.state, 4));
 </script>
 
-<div class="rack" class:expanded>
+<div class="rack" class:expanded class:fold>
   <a class="skip-link" href="#main">Skip to content</a>
 
   <header class="rk-unit selector">
-    <div class="brand"><span class="rk-name wordmark">OxiTide</span><span class="rk-silk">Network audio player</span></div>
+    <div class="brand"><span class="mark"><Logo size={30} /></span><span class="rk-name wordmark">OxiTide</span><span class="rk-silk">Network audio player</span></div>
     <div class="rk-tray history" role="group" aria-label="History">
       <button class="rk-key sm" disabled={!nav.canBack} onclick={() => nav.back()} aria-label="Back" title="Back (Alt+←)"><Icon name="chevron-left" size={12} /></button>
       <button class="rk-key sm" disabled={!nav.canForward} onclick={() => nav.forward()} aria-label="Forward" title="Forward (Alt+→)"><Icon name="chevron-right" size={12} /></button>
@@ -155,6 +171,7 @@
     </div>
   </header>
 
+  {#if expanded || !fold}
   <div class="column" bind:this={column}>
     <DeckUnit {player} {nav} {favorites} face={appearance.rack.deck_face} {expanded} />
     <AmpUnit {player} meters={appearance.rack.meters} {toasts} wide={expanded} />
@@ -248,6 +265,9 @@
       </section>
     {:else}
       {#if appearance.rack.eq_unit}<EqUnit {toasts} />{/if}
+      {#if nav.queueOpen}
+        <ChangerUnit {player} onClose={() => nav.toggleQueue()} />
+      {:else}
       <section class="rk-unit library" aria-label="Playlists">
         <div class="rk-head"><h2 class="rk-name">Playlists</h2>
           <button class="rk-key sm" onclick={() => go({ name: "playlists" })} title="All playlists">All</button>
@@ -260,8 +280,10 @@
           {/if}
         </div>
       </section>
+      {/if}
     {/if}
   </div>
+  {/if}
 
   {#if !expanded}
     <section class="rk-unit display" aria-label="Display">
@@ -288,7 +310,7 @@
           {onQualityDisplay}
         />
       </main>
-      {#if nav.queueOpen}
+      {#if queueDrawer}
         <aside class="drawer right rk-unit" aria-label="Queue">
           <div class="rk-head"><h2 class="rk-name">Queue</h2>
             <button class="rk-key sm" onclick={() => nav.toggleQueue()} aria-label="Close queue" title="Close"><Icon name="x" size={12} /></button>
@@ -297,7 +319,8 @@
         </aside>
       {/if}
     </section>
-  {:else if nav.queueOpen}
+    {#if fold}<RackStrip {player} {nav} {favorites} />{/if}
+  {:else if queueDrawer}
     <aside class="drawer right floating rk-unit" aria-label="Queue">
       <div class="rk-head"><h2 class="rk-name">Queue</h2>
         <button class="rk-key sm" onclick={() => nav.toggleQueue()} aria-label="Close queue" title="Close"><Icon name="x" size={12} /></button>
@@ -317,7 +340,9 @@
     grid-template-rows: auto minmax(0, 1fr);
     gap: 6px;
     height: 100%;
-    padding: 10px;
+    /* The room's top gutter grows to the caption band under custom chrome, so
+       the caption buttons sit above the selector unit, not on its keys. */
+    padding: max(10px, var(--titlebar-h)) 10px 10px;
     box-sizing: border-box;
     background: var(--rack-room);
   }
@@ -335,6 +360,10 @@
     align-items: baseline;
     gap: 12px;
     white-space: nowrap;
+  }
+  .mark {
+    align-self: center;
+    display: flex;
   }
   .wordmark {
     font-size: 20px;
@@ -782,6 +811,25 @@
     color: var(--rack-screen-muted);
   }
 
+  /* Narrow-window fold (9.5c): the display takes the full width and the deck
+     strip sits under it. Now Playing stacks its units in one scrolling
+     column instead of the two-column front. */
+  .rack.fold:not(.expanded) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+  .rack.fold.expanded .column {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .rack.fold.expanded .column > :global(*) {
+    flex-shrink: 0;
+  }
+  .rack.fold.expanded .lyricsunit {
+    min-height: 360px;
+  }
+
   /* Window fit (spec §6.9). */
   @media (max-height: 760px) {
     .library {
@@ -789,9 +837,6 @@
     }
   }
   @media (max-width: 1000px) {
-    .rack:not(.expanded) .column > :global(.eq) {
-      display: none;
-    }
     .brand .rk-silk,
     .power {
       display: none;

@@ -126,7 +126,8 @@
     align-items: center;
     gap: 10px;
     height: 100%;
-    padding: 14px;
+    /* The top gutter grows to the caption band under custom chrome. */
+    padding: max(14px, var(--titlebar-h)) 14px 14px;
     position: relative;
     z-index: 1;
     overflow: auto;

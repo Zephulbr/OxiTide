@@ -197,6 +197,12 @@ fn effective_status(inner: &Inner) -> (OutputStatus, Vec<&'static str>) {
     (status, stages)
 }
 
+/// Whether `position_ms` lies within `item` (its end included). An unknown
+/// duration (0) accepts any target.
+fn seek_in_range(item: &QueueItem, position_ms: u64) -> bool {
+    item.duration_secs == 0 || position_ms <= u64::from(item.duration_secs) * 1000
+}
+
 fn build_state(inner: &Inner) -> PlaybackState {
     let (status, dsp_stages) = effective_status(inner);
     let q = inner.queue.lock().unwrap();
@@ -515,6 +521,12 @@ impl Engine {
                     q.restore(items, start, shuffle, repeat);
                     q.current().cloned()
                 });
+                // A saved position past the track's end (an old session written
+                // before seeks were range-checked) restarts the track instead.
+                let position_ms = match item.as_ref() {
+                    Some(i) if seek_in_range(i, position_ms) => position_ms,
+                    _ => 0,
+                };
                 self.inner.paused.store(true, Ordering::SeqCst);
                 self.inner.position_ms.store(
                     if item.is_some() { position_ms } else { 0 },
@@ -588,7 +600,10 @@ impl Engine {
                     let q = self.inner.queue.lock().unwrap();
                     q.current().cloned()
                 };
-                if let Some(item) = current {
+                // A target past the end of the track is ignored, not clamped:
+                // external controllers (SMTC clients) can replay a stale
+                // position, and clamping would turn that into a skip.
+                if let Some(item) = current.filter(|item| seek_in_range(item, ms)) {
                     *self.inner.seek_target.lock().unwrap() = Some(PendingSeek {
                         track_id: item.track_id,
                         position_ms: ms,
@@ -2794,7 +2809,7 @@ mod tests {
             .handle(EngineCmd::RestoreSession {
                 items: vec![item(1), item(2), item(3)],
                 start: 1,
-                position_ms: 4200,
+                position_ms: 1700,
                 shuffle: true,
                 repeat: RepeatMode::All,
             })
@@ -2802,7 +2817,7 @@ mod tests {
         let state = engine.state();
         assert!(!state.playing, "restore must not start playback");
         assert_eq!(state.current_index, Some(1));
-        assert_eq!(state.position_ms, 4200);
+        assert_eq!(state.position_ms, 1700);
         assert!(state.shuffle);
         assert_eq!(state.repeat, RepeatMode::All);
         assert_eq!(
@@ -2812,6 +2827,32 @@ mod tests {
         );
         std::thread::sleep(Duration::from_millis(200));
         assert_eq!(calls.load(Ordering::SeqCst), 0, "restore must not fetch media");
+    }
+
+    /// Regression (2026-10-11): an SMTC client replayed a stale 8:18 on a
+    /// 3:32 track; the engine showed it, saved it, and the display kept
+    /// jumping. Seeks past the end are ignored; saved ones restart the track.
+    #[test]
+    fn seeks_and_restores_past_the_track_end_are_rejected() {
+        let (plan, files) = fixture_plan();
+        let (engine, _output) = engine_with(plan, files);
+        engine
+            .handle(EngineCmd::RestoreSession {
+                items: vec![item(1), item(2)],
+                start: 0,
+                position_ms: 498_690,
+                shuffle: false,
+                repeat: RepeatMode::Off,
+            })
+            .unwrap();
+        assert_eq!(engine.state().position_ms, 0, "a saved position past the end restarts the track");
+
+        engine.handle(EngineCmd::Seek(1500)).unwrap();
+        assert_eq!(engine.state().position_ms, 1500);
+        engine.handle(EngineCmd::Seek(498_690)).unwrap();
+        assert_eq!(engine.state().position_ms, 1500, "a seek past the end must be ignored");
+        engine.handle(EngineCmd::Seek(2000)).unwrap();
+        assert_eq!(engine.state().position_ms, 2000, "seeking to the exact end is allowed");
     }
 
     #[test]
