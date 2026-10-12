@@ -201,7 +201,9 @@ which carries a normal completion gate.
   `plans/notes/2026-10-02-listen-along-assessment.md`.
 - **360 Reality Audio:** currently not relevant or in use; whether it is worth implementing
   is decided by difficulty when Track 7 is scoped.
-- **ASIO output (maybe, not committed):** feature-parity option, assessed by the
+- **ASIO output (called 2026-10-11, Plan 7.3):** implemented on `track7-asio` per
+  `specs/2026-10-11-oxitide-track7-asio-output-design.md` (hand-written IASIO binding, no LLVM);
+  owner smoke `plans/notes/2026-10-11-asio-smoke.md` pending. Original assessment: feature-parity option, assessed by the
   2026-10-01 spike (`plans/notes/2026-10-01-asio-spike.md`). WASAPI-only today; a contained
   `asio-sys` backend is feasible and AGPL-compatible (SDK GPLv3 option), but costs LLVM at
   build time, in-process driver crash risk, software-only volume (breaks bit-perfect below

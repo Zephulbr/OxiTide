@@ -65,13 +65,13 @@ impl StreamResolver for TidalResolver {
     }
 }
 
-/// The real output: a WASAPI device on Windows, an ALSA device on Linux,
-/// silent `NullOutput` elsewhere (keeps the crate building on other dev
-/// machines).
+/// The real output: WASAPI or ASIO (by device id) on Windows, an ALSA device
+/// on Linux, silent `NullOutput` elsewhere (keeps the crate building on other
+/// dev machines).
 pub fn real_output() -> Box<dyn AudioOutput> {
     #[cfg(windows)]
     {
-        Box::new(oxitide_audio::wasapi_output::WasapiOutput::new())
+        Box::new(oxitide_audio::routed_output::RoutedOutput::windows())
     }
     #[cfg(target_os = "linux")]
     {

@@ -1,4 +1,8 @@
 pub mod alsa_output;
+#[cfg(windows)]
+pub mod asio_output;
+#[cfg(windows)]
+pub mod asio_sys;
 pub mod cache;
 pub mod decode;
 pub mod demux;
@@ -13,6 +17,7 @@ pub mod mpd;
 pub mod output;
 pub mod perf;
 pub mod queue;
+pub mod routed_output;
 pub mod seek;
 pub mod source;
 #[cfg(windows)]

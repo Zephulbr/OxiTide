@@ -849,6 +849,12 @@
         />
         Bit-perfect (exclusive mode)
       </label>
+      {#if config.audio.output_device.startsWith("asio:")}
+        <p class="muted">
+          ASIO drivers are always exclusive and bit-perfect at 100% volume; lower volume is applied
+          in software. The buffer size follows the driver's own control panel.
+        </p>
+      {/if}
       <p>
         <label>
           If unsupported:

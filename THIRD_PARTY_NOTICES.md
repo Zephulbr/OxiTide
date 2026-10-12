@@ -176,9 +176,15 @@ cargo metadata --format-version 1 --locked
 cargo about generate about.hbs > THIRD_PARTY_NOTICES.full.md
 ```
 
-## Optional ASIO backend (not currently compiled)
+## ASIO interface (Steinberg)
 
-If the optional ASIO output backend is ever enabled, it links code generated
-from the Steinberg ASIO SDK. Steinberg dual-licenses the SDK (proprietary or
-GPLv3); under the GPLv3 option the combined binary must carry the SDK's license
-and notices. Add them here before shipping such a build.
+ASIO is a trademark and software of Steinberg Media Technologies GmbH.
+
+The Windows build includes an ASIO output backend
+(`crates/oxitide-audio/src/asio_sys.rs`, `asio_output.rs`). No SDK source is
+vendored or generated at build time; the driver interface (the IASIO vtable,
+its structures, and constants) is declared by hand from the Steinberg ASIO SDK.
+Steinberg dual-licenses the SDK (proprietary or GPLv3,
+<https://www.steinberg.net/developers/asiosdk-open/>); OxiTide uses it under the
+GPLv3 option, which is compatible with this project's AGPL-3.0-or-later. ASIO
+drivers themselves are third-party software installed separately by the user.

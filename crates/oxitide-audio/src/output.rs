@@ -50,6 +50,31 @@ pub struct OutputStatus {
     pub notice: Option<String>,
 }
 
+/// Device ids of ASIO drivers carry this prefix before the registry key.
+pub const ASIO_PREFIX: &str = "asio:";
+
+/// Notice shown while an exclusive output scales samples in software.
+pub const SOFTWARE_VOLUME_NOTICE: &str = "volume applied in software; bit-perfect compromised";
+
+/// The ASIO driver key in an `asio:<key>` device id.
+pub fn asio_device_key(device_id: &str) -> Option<&str> {
+    device_id.strip_prefix(ASIO_PREFIX).filter(|key| !key.is_empty())
+}
+
+pub fn is_asio_device(device_id: &str) -> bool {
+    asio_device_key(device_id).is_some()
+}
+
+/// The mode a session runs in: ASIO drivers are always exclusive, so the
+/// engine sends them sample-exact integers whatever the bit-perfect toggle.
+pub fn effective_mode(mode: OutputMode, device_id: Option<&str>) -> OutputMode {
+    if device_id.is_some_and(is_asio_device) {
+        OutputMode::Exclusive
+    } else {
+        mode
+    }
+}
+
 /// A 32-bit container with `valid_bits` significant bits. `valid_bits >= info
 /// bit depth` is safe because symphonia left-aligns integer samples to 32
 /// bits: the same buffer is valid for any larger valid-bits count.
@@ -265,6 +290,7 @@ pub(crate) mod platform {
             let is_default = default_name.as_deref() == Some(name.as_str());
             out.push(OutputDevice { id, name, is_default });
         }
+        out.extend(crate::asio_output::devices());
         Ok(out)
     }
 }
@@ -332,6 +358,19 @@ mod tests {
         );
         assert!(exclusive_formats(&info(16, PcmFormat::F32)).is_empty());
         assert!(sixteen.iter().all(|f| f.store_bits == 32 && f.sample_rate == 44100));
+    }
+
+    #[test]
+    fn asio_ids_force_exclusive() {
+        assert_eq!(asio_device_key("asio:Topping USB"), Some("Topping USB"));
+        assert_eq!(asio_device_key("asio:"), None);
+        assert_eq!(asio_device_key("{0.0.0.00000000}.{abc}"), None);
+        assert_eq!(
+            effective_mode(OutputMode::Shared, Some("asio:Realtek ASIO")),
+            OutputMode::Exclusive
+        );
+        assert_eq!(effective_mode(OutputMode::Shared, Some("wasapi-id")), OutputMode::Shared);
+        assert_eq!(effective_mode(OutputMode::Exclusive, None), OutputMode::Exclusive);
     }
 
     #[cfg(target_os = "linux")]

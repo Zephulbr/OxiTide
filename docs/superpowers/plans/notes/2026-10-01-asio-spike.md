@@ -1,5 +1,9 @@
 # ASIO spike findings (2026-10-01)
 
+> **Status (2026-10-11):** built as Plan 7.3 — see
+> `specs/2026-10-11-oxitide-track7-asio-output-design.md`. It deviates from this note by
+> hand-writing the IASIO binding instead of using `asio-sys` (no LLVM, no feature gate).
+
 Feature-parity assessment (not committed). Question: do we support ASIO output, and what
 would it take? Owner decision: park it as a **maybe down the line** Track 7 candidate —
 nice to have, not necessary now. Read-only spike; no probe code, no dependency added.

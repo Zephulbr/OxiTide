@@ -1721,7 +1721,10 @@ fn worker_main(
         // A seek during playback or pause keeps the current paused flag.
         inner.position_ms.store(seek_ms.unwrap_or(0), Ordering::SeqCst);
         inner.position_track.store(item.track_id, Ordering::SeqCst);
-        let mode = *inner.output_mode.lock().unwrap();
+        let mode = crate::output::effective_mode(
+            *inner.output_mode.lock().unwrap(),
+            inner.device_id.lock().unwrap().as_deref(),
+        );
         let fallback = *inner.exclusive_fallback.lock().unwrap();
 
         let outcome = run_session(
@@ -3182,6 +3185,24 @@ mod tests {
 
         wait_for(|| !specs.lock().unwrap().is_empty());
         assert_eq!(specs.lock().unwrap()[0].device_id.as_deref(), Some("device-x"));
+        assert_eq!(specs.lock().unwrap()[0].mode, OutputMode::Shared);
+    }
+
+    #[test]
+    fn asio_device_always_opens_exclusive() {
+        let (plan, files) = fixture_plan();
+        let specs = Arc::new(Mutex::new(Vec::new()));
+        let engine = build_engine(
+            Arc::new(FakeResolver { plan }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(RecordingOutput { specs: specs.clone() }),
+            Quality::Lossless,
+        );
+        engine.set_output_device(Some("asio:Topping USB Audio Device".into()));
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+
+        wait_for(|| !specs.lock().unwrap().is_empty());
+        assert_eq!(specs.lock().unwrap()[0].mode, OutputMode::Exclusive);
     }
 
     #[test]
