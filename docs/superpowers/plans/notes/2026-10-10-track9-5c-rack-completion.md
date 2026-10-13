@@ -33,7 +33,7 @@
 | `npm --prefix ui test` | green (new: changer paging/slots, segment layers, `ChangerUnit` component contract) |
 | Segment font render | Checked in a static page: ghost and lit layers line up cell for cell at 14–64px |
 | Rust gates | No Rust changes on this branch |
-| Owner visual review + smoke below | **Pending** |
+| Owner visual review + smoke below | **Closed 2026-10-13** - owner accepted with Track 9; rows below were not ticked individually |
 
 ## Smoke checklist (human, real account, Mode = Hi-Fi Rack)
 

@@ -5,7 +5,7 @@
 - **Spec:** `docs/superpowers/specs/2026-10-08-oxitide-track9-5-hifi-rack-design.md`
 - **Plan:** `docs/superpowers/plans/2026-10-08-track9-5-hifi-rack.md`
 - **Design:** `ui/design/DESIGN.md`, `ui/design/rack/DESIGN.md` (+ frozen reference mockup)
-- **Smoke checklist:** `docs/superpowers/plans/notes/2026-10-08-track9-5-rack-smoke.md`
+- **Smoke checklist:** `docs/superpowers/plans/notes/DONE-2026-10-08-track9-5-rack-smoke.md`
 
 ## What shipped
 
@@ -55,8 +55,8 @@ dropped as not convincing.
 | `npm --prefix ui run check` | 0 errors, 0 warnings |
 | `npm --prefix ui test` | 717 passed (Rack: lamp maths + contrast floors, ballistics, levels store, deck/slot helpers, dspStore, appearance, keyboard contracts) |
 | Owner review | Iterative, screenshot-driven through nine design rounds and seven polish rounds; the owner asked to close the track on 2026-10-09. |
-| Smoke checklist (formal pass) | **Pending** — owner to tick `2026-10-08-track9-5-rack-smoke.md`. |
-| PM-D1 perf re-runs (S1/S5 default mode; S1/S5 in Rack) | **Pending** — owner run. Rack off costs nothing by construction (tap disabled, no emitter thread, no Rack CSS paths active). |
+| Smoke checklist (formal pass) | **Closed 2026-10-13** - owner marked it done (`DONE-2026-10-08-track9-5-rack-smoke.md`). |
+| PM-D1 perf re-runs (S1/S5 default mode; S1/S5 in Rack) | **Not recorded** (closed with Track 9, 2026-10-13). Rack off costs nothing by construction (tap disabled, no emitter thread, no Rack CSS paths active). |
 
 ## Deferred (9.5c, recorded in the spec)
 

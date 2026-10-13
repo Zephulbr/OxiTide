@@ -351,7 +351,7 @@ Column width `clamp(300px, 30vw, 392px)`. Below 1000px wide the EQ unit hides; b
   (presets, cover fallback, contrast floors), ballistics (VU, peak hold/fall), deck
   helpers (up-next, calendar window, remaining), source-key mapping, dspStore sync,
   component tests for LightKey/VolumeKnob/VfdSeek/EqUnit keyboard contracts.
-- Smoke: `docs/superpowers/plans/notes/2026-10-08-track9-5-rack-smoke.md` (human).
+- Smoke: `docs/superpowers/plans/notes/DONE-2026-10-08-track9-5-rack-smoke.md` (human).
 - Perf (PM-D1): default-mode S1/S2/S5/S6 unchanged; record S1 + S5 with Rack on.
 
 ## 8. Risks

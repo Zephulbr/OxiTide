@@ -1,5 +1,7 @@
 # Track 9.5 — Hi-Fi Rack smoke checklist
 
+> **Closed 2026-10-13:** owner marked this smoke done and closed Track 9 (`2026-10-13-track9-completion.md`). Individual rows were not ticked one by one; the unticked boxes below are not an open-items list. The PM-D1 Rack re-runs were not recorded.
+
 Human run with a real account: `npm --prefix ui run app:dev`, then Settings →
 Appearance → Mode → **Hi-Fi Rack**. Spec:
 `docs/superpowers/specs/2026-10-08-oxitide-track9-5-hifi-rack-design.md`.

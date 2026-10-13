@@ -19,7 +19,8 @@
 - **Revised:** 2026-10-09 — Track 9.5 (Hi-Fi Rack, third UI mode) implemented on `track9-5-hifi-rack` and closed after owner polish rounds (`plans/notes/2026-10-09-track9-5-hifi-rack-completion.md`); formal smoke tick and PM-D1 re-runs are owner items; 9.5c (narrow fold, Rack mini layout, queue changer) deferred.
 - **Revised:** 2026-10-10 — **Track 11 (Phone Remote)** added: casting/TIDAL Connect research (`plans/notes/2026-10-09-tidal-connect-receiver-spike.md`) showed the TIDAL phone app only accepts TIDAL's own receiver binary, so the owner chose a self-contained LAN web remote instead (spec `2026-10-09-oxitide-track11-phone-remote-design.md`). Plans 11.1–11.5 implemented on `track11-phone-remote`; 11.6 human smoke and PM-D1 re-runs are owner items.
 - **Revised:** 2026-10-11 — Track 11 (Phone Remote) closed: owner smoke passed (Linux item deferred to the batched Linux run), merged to `main` (`plans/notes/2026-10-10-track11-completion.md`).
-- **Revised:** 2026-10-10 — Track 9.5c (narrow-window fold, Rack mini player, queue changer unit, DSEG7 segment font) implemented on `track9-5c-rack` (Rack spec §9, `plans/notes/2026-10-10-track9-5c-rack-completion.md`); owner visual review and smoke pending.
+- **Revised:** 2026-10-10 — Track 9.5c (narrow-window fold, Rack mini player, queue changer unit, DSEG7 segment font) implemented on `track9-5c-rack` (Rack spec §9, `plans/notes/2026-10-10-track9-5c-rack-completion.md`).
+- **Revised:** 2026-10-13 — ASIO output (Plan 7.3) and Track 9.5c merged to `main`; **Track 9 closed** by the owner (9.2/9.3/9.5 smokes marked done; `plans/notes/2026-10-13-track9-completion.md`). A batched Linux bare-metal run is deferred (Windows first). i18n remains an unspecced follow-on track.
 - **Owner:** V
 - **Parent:** `2026-09-21-oxitide-design.md` (§9 Phasing)
 - **Supersedes:** the parent's Phase 2–4 ordering. The shipped Phase 1 MVP (v0.2.0) is
@@ -50,7 +51,7 @@ refreshed 2026-10-01.
 | 2 | Track 5 | Scrobbling: Last.fm and ListenBrainz in parallel, independent toggles; now-playing, offline queue, retry | Done (Last.fm + ListenBrainz; smoke closed 2026-09-29) |
 | 3 | Track 6 | Remaining integrations: Discord RPC; SMTC + hardware media keys | Done (6a SMTC/media keys + 6b Discord Rich Presence) |
 | now | Track 3 | Performance & stability wave: profile and fix startup, time-to-first-sound, UI jank, memory, cache/eviction churn, large-library handling; build a measurement harness | Done — Phases A–D complete 2026-10-02 (`plans/notes/2026-10-02-track3-phase-d.md`) |
-| 5 | Track 9 | UI completion: Hi-Fi Rack mode, light mode, artist/credits/album-info surfaces, a11y pass, i18n, remaining UI polish and bug fixes | Proposed — next after Track 3 (owner call) |
+| 5 | Track 9 | UI completion: Hi-Fi Rack mode, light mode, artist/credits/album-info surfaces, a11y pass, i18n, remaining UI polish and bug fixes | Done (2026-10-13) - 9.0-9.5c all merged; owner closed the 9.2/9.3/9.5 smokes without row-by-row ticks; i18n handed off as its own track; Linux items batched for later (`plans/notes/2026-10-13-track9-completion.md`) |
 | 6 | Track 8 | Linux support: ALSA output backend, MPRIS media controls, Secret Service keyring, deb/AppImage/AUR packaging | Done (2026-10-04) — WSL2-verified; bare-metal checks exempted (`plans/notes/2026-10-04-track8-completion.md`) |
 | 7 | Track 10 | Daily-driver QoL: session/queue persistence, playback history + stats, sleep timer, scrobble love (deferred 2026-10-05), AI/explicit content blocking; Phase 2 tray + global hotkeys | Done (2026-10-05) — merged at `446e054` with follow-up fixes through `70d0bc9`; owner smoke passed; 10.4 deferred |
 | 8 | Track 7 | Advanced audio: DSP/EQ + ReplayGain (opt-in, mutually exclusive with bit-perfect); crossfade/automix; casting/TIDAL Connect; Dolby Atmos; 360 RA (difficulty-gated); optional ASIO output (maybe, see `plans/notes/2026-10-01-asio-spike.md`); **potential post-casting group listen-along** (see `plans/notes/2026-10-02-listen-along-assessment.md`) | DSP core done 2026-10-07 (ReplayGain, EQ, crossfade; owner smoke passed — `plans/notes/2026-10-07-track7-completion.md`); casting/Atmos/360 RA/ASIO/listen-along/automix parked |
@@ -202,7 +203,7 @@ which carries a normal completion gate.
   `plans/notes/2026-10-02-listen-along-assessment.md`.
 - **360 Reality Audio:** currently not relevant or in use; whether it is worth implementing
   is decided by difficulty when Track 7 is scoped.
-- **ASIO output (called 2026-10-11, Plan 7.3):** implemented on `track7-asio` per
+- **ASIO output (called 2026-10-11, Plan 7.3):** implemented and merged to `main` per
   `specs/2026-10-11-oxitide-track7-asio-output-design.md` (hand-written IASIO binding, no LLVM);
   owner smoke `plans/notes/2026-10-11-asio-smoke.md` pending. Original assessment: feature-parity option, assessed by the
   2026-10-01 spike (`plans/notes/2026-10-01-asio-spike.md`). WASAPI-only today; a contained
@@ -249,7 +250,7 @@ which carries a normal completion gate.
   close.
 - **i18n** (owner-confirmed placement): locale infrastructure and string extraction; if it
   outgrows this track it becomes its own track.
-- **Status:** Proposed (2026-10-01); next after Track 3, owner call. Track 3 budgets
+- **Status:** Done (2026-10-13) - see `plans/notes/2026-10-13-track9-completion.md`; i18n was split out and has no spec yet. Track 3 budgets
   (PM-D1) apply to every new surface.
 
 ### Track 10 — Daily-driver QoL

@@ -1,5 +1,7 @@
 # Track 9.3 polish bundle — owner smoke checklist
 
+> **Closed 2026-10-13:** owner marked this smoke done and closed Track 9 (`2026-10-13-track9-completion.md`). Individual rows were not ticked one by one; the unticked boxes below are not an open-items list. The PM-D1 S5/S6/S7 re-run recorded as BLOCKED below was not repeated.
+
 - **Status:** Scripted gates green on 2026-10-06 (exact commands + results below; branch commits through `fa42060`); PM-D1 S5/S6/S7 re-run **BLOCKED** (machine not quiet and port 1420 held by an unrelated dev server — see "Scripted perf results"); owner smoke pending — Windows, real account, browser login required.
 - **Authority:** `docs/superpowers/specs/2026-10-05-track9-ui-completion-design.md` §6.3 (features) and §5.4 (feed enrichment); §8 PM-D1; plan `docs/superpowers/plans/2026-10-06-track9-3-polish-bundle.md` Task 10.
 - **Task 0 decision reference:** `docs/superpowers/plans/notes/2026-10-06-track9-3-api-research.md` — page track items carry all five embedded metadata fields (10/10 live items); collection playlists carry real dates (Task 8 ships genuine added-date sorting; toggle copy stays "Sort by date added"); bio `wimpLink artistId="…"` links are present (Task 7 ships artist navigation).

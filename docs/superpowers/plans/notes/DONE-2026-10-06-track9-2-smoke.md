@@ -1,5 +1,7 @@
 # Track 9.2 credits + album info — owner smoke checklist
 
+> **Closed 2026-10-13:** owner marked this smoke done and closed Track 9 (`2026-10-13-track9-completion.md`). Individual rows were not ticked one by one; the unticked boxes below are not an open-items list.
+
 - **Status:** Scripted gates green on 2026-10-06 (exact commands + results below, Task 1–5 commits through `8896b4d`); owner smoke pending — Windows, real account, browser login required.
 - **Authority:** `docs/superpowers/specs/2026-10-05-track9-ui-completion-design.md` §6.2 (feature) and §5.3 (backend); plan `docs/superpowers/plans/2026-10-06-track9-2-credits-album-info.md` Task 6.
 - **Task 0 decision reference:** `docs/superpowers/plans/notes/2026-10-06-track9-2-api-research.md` — credits are accessible (probed live, `countryCode=GR`); decisions: credits ship, album facts ship without a label, contributor artist ids ship. One recorded caveat: credits are cursor-paginated at 20/page, so the Info tab renders page 1 only (follow-up in that note, no error expected).
