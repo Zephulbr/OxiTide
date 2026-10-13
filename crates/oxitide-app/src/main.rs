@@ -21,6 +21,7 @@ mod state;
 mod titlebar;
 mod track_flags;
 mod tray;
+mod updater;
 mod window;
 
 use std::sync::OnceLock;
@@ -222,6 +223,7 @@ fn main() {
         }))
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(hotkeys::handle)
@@ -326,6 +328,7 @@ fn main() {
                     let _ = remote::host::start(&handle).await;
                 });
             }
+            updater::spawn_startup_check(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -452,6 +455,10 @@ fn main() {
             commands::set_smtc,
             commands::set_discord,
             commands::set_close_to_tray,
+            commands::get_update_support,
+            commands::check_for_update,
+            commands::install_update,
+            commands::set_update_check_on_start,
             commands::set_hotkey,
             commands::set_hotkey_capture,
             commands::set_cache_max_size_mb,
@@ -491,23 +498,27 @@ fn main() {
                     }
                 }
             }
-            tauri::RunEvent::Exit => {
-                scheme::restore_remembered();
-                remote::host::stop_now(app_handle);
-                let state = app_handle.state::<AppState>();
-                if let Some(saver) = state.session_saver() {
-                    saver.flush_now();
-                }
-                if let Some(history) = state.history() {
-                    history.finalize_now();
-                }
-                let config = state.config();
-                if config.cache.clear_on_exit {
-                    if let Some(cache) = state.cache() {
-                        cache.clear();
-                    }
-                }
-            }
+            tauri::RunEvent::Exit => run_exit_work(app_handle),
             _ => {}
         });
+}
+
+/// Shutdown persistence. Runs on `RunEvent::Exit`, and before a Windows update
+/// install, whose installer ends the process without that event.
+fn run_exit_work(app_handle: &tauri::AppHandle) {
+    scheme::restore_remembered();
+    remote::host::stop_now(app_handle);
+    let state = app_handle.state::<AppState>();
+    if let Some(saver) = state.session_saver() {
+        saver.flush_now();
+    }
+    if let Some(history) = state.history() {
+        history.finalize_now();
+    }
+    let config = state.config();
+    if config.cache.clear_on_exit {
+        if let Some(cache) = state.cache() {
+            cache.clear();
+        }
+    }
 }

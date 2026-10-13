@@ -66,6 +66,8 @@ pub struct AppState {
     pub remote_lifecycle: tokio::sync::Mutex<()>,
     /// Paired phones (`remote.json`), loaded on first use.
     pub remote_devices: std::sync::OnceLock<Arc<crate::remote::pairing::DeviceStore>>,
+    /// The release `check_for_update` found, kept for `install_update`.
+    pub pending_update: Mutex<Option<tauri_plugin_updater::Update>>,
     session_expired: AtomicBool,
     handle: Mutex<Option<AppHandle>>,
 }

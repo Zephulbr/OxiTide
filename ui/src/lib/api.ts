@@ -294,7 +294,26 @@ export interface Config {
   dsp: DspSettings;
   rack: RackSettings;
   remote: RemoteSettings;
+  updates: { check_on_start: boolean };
 }
+/** `get_update_support` (`updater.rs`). `reason` explains an unsupported install. */
+export interface UpdateSupport {
+  supported: boolean;
+  reason: string | null;
+  current_version: string;
+  check_on_start: boolean;
+}
+/** A newer release (`check_for_update`, the `update_available` event). */
+export interface UpdateInfo {
+  version: string;
+  current_version: string;
+  notes: string | null;
+  date: string | null;
+}
+/** `update_progress` event while an update downloads. */
+export interface UpdateProgress { downloaded: number; total: number | null }
+export const UPDATE_AVAILABLE_EVENT = "update_available";
+export const UPDATE_PROGRESS_EVENT = "update_progress";
 /** Phone remote preferences (`[remote]`, Track 11). */
 export interface RemoteSettings {
   enabled: boolean;
@@ -611,6 +630,11 @@ export const api = {
   openLogsFolder: () => invoke<void>("open_logs_folder"),
   analyzeCover: (uuid: string, theme: "dark" | "light") =>
     invoke<CoverPalette>("analyze_cover", { uuid, theme }),
+  getUpdateSupport: () => invoke<UpdateSupport>("get_update_support"),
+  checkForUpdate: () => invoke<UpdateInfo | null>("check_for_update"),
+  installUpdate: () => invoke<void>("install_update"),
+  setUpdateCheckOnStart: (enabled: boolean) =>
+    invoke<void>("set_update_check_on_start", { enabled }),
   getRemoteStatus: () => invoke<RemoteStatus>("get_remote_status"),
   setRemoteEnabled: (enabled: boolean) => invoke<RemoteStatus>("set_remote_enabled", { enabled }),
   setRemoteSettings: (port: number, iface: string, approveNewDevices: boolean) =>

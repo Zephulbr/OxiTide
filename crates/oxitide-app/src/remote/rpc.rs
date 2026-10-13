@@ -584,6 +584,10 @@ mod tests {
         "revoke_remote_device",
         "resolve_remote_pair_request",
         "rename_remote_device",
+        "get_update_support",
+        "check_for_update",
+        "install_update",
+        "set_update_check_on_start",
     ];
 
     /// The command names inside `generate_handler![...]` in `main.rs`.

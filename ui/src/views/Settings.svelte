@@ -21,6 +21,7 @@
   import Icon from "../lib/components/Icon.svelte";
   import KeyringNotice from "../lib/components/KeyringNotice.svelte";
   import RemoteSettings from "../lib/components/RemoteSettings.svelte";
+  import UpdatesSection from "../lib/components/UpdatesSection.svelte";
   import Loading from "../lib/components/Loading.svelte";
   import {
     appearance,
@@ -1361,6 +1362,8 @@
           </span>
         </div>
       </div>
+
+      <UpdatesSection />
 
       <h3>Global hotkeys</h3>
       <p class="muted">

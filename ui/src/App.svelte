@@ -51,7 +51,7 @@
   import { playSource } from "./lib/playSource.svelte";
   import { scrobbled } from "./lib/scrobbled.svelte";
   import { trackFlags } from "./lib/trackFlags.svelte";
-  import { api, FAVORITE_CHANGED_EVENT, SCROBBLE_AUTH_ERROR_EVENT, SCROBBLE_SCROBBLED_EVENT, trackToQueueItem, type FavoriteChange, type QueueItem, type RepeatMode, type StreamMeta } from "./lib/api";
+  import { api, FAVORITE_CHANGED_EVENT, SCROBBLE_AUTH_ERROR_EVENT, SCROBBLE_SCROBBLED_EVENT, UPDATE_AVAILABLE_EVENT, trackToQueueItem, type FavoriteChange, type QueueItem, type RepeatMode, type StreamMeta, type UpdateInfo } from "./lib/api";
   import type { QualityDisplay } from "./lib/quality";
 
   interface ExpiredSession {
@@ -225,6 +225,17 @@
     const unlisten = listen<string>(SCROBBLE_AUTH_ERROR_EVENT, (event) => {
       const name = event.payload === "lastfm" ? "Last.fm" : "ListenBrainz";
       toasts.show(`${name} scrobbling needs reconnecting.`, { severity: "error" });
+    });
+    return () => {
+      unlisten.then((off) => off());
+    };
+  });
+
+  $effect(() => {
+    const unlisten = listen<UpdateInfo>(UPDATE_AVAILABLE_EVENT, (event) => {
+      toasts.show(`OxiTide ${event.payload.version} is available.`, {
+        action: { label: "Open Settings", run: () => nav.goto({ name: "settings" }) },
+      });
     });
     return () => {
       unlisten.then((off) => off());

@@ -2400,6 +2400,32 @@ pub fn set_snap_target(target: Option<crate::titlebar::SnapTarget>) {
 }
 
 #[tauri::command]
+pub fn get_update_support(state: State<'_, AppState>) -> crate::updater::UpdateSupport {
+    crate::updater::support(state.config().updates.check_on_start)
+}
+
+#[tauri::command]
+pub async fn check_for_update(
+    app: tauri::AppHandle,
+) -> Result<Option<crate::updater::UpdateInfo>, String> {
+    crate::updater::check(&app).await
+}
+
+#[tauri::command]
+pub async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
+    crate::updater::install(&app).await
+}
+
+#[tauri::command]
+pub fn set_update_check_on_start(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    let mut config = state.config();
+    config.updates.check_on_start = enabled;
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
+#[tauri::command]
 pub fn get_logs_dir() -> String {
     crate::config::logs_dir()
         .map(|dir| dir.display().to_string())

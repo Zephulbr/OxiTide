@@ -25,6 +25,8 @@ pub struct Config {
     pub rack: RackConfig,
     /// Phone remote (Track 11). Off by default.
     pub remote: RemoteConfig,
+    /// Update checks (Track 12). On by default.
+    pub updates: UpdatesConfig,
 }
 
 pub const REMOTE_DEFAULT_PORT: u16 = 47820;
@@ -397,6 +399,20 @@ impl Default for HistoryConfig {
     }
 }
 
+/// Self-update (Track 12): whether to look for a newer release on startup.
+/// Nothing is ever downloaded without an explicit click.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct UpdatesConfig {
+    pub check_on_start: bool,
+}
+
+impl Default for UpdatesConfig {
+    fn default() -> Self {
+        Self { check_on_start: true }
+    }
+}
+
 /// Content blocking (spec §6.5): client-side filters for explicit and
 /// AI-labeled tracks. Both filters default off; content labels default on.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -588,6 +604,7 @@ mod tests {
                 interface: "192.168.1.5".into(),
                 approve_new_devices: false,
             },
+            updates: UpdatesConfig { check_on_start: false },
         };
         config.save_to(&path).unwrap();
         assert_eq!(Config::load_from(&path), config);
@@ -983,6 +1000,21 @@ duration_ms = 4000
         let text = fs::read_to_string(&path).unwrap();
         assert!(text.contains("[content]"));
         assert!(text.contains("show_labels = false"));
+        assert_eq!(Config::load_from(&path), config);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn update_checks_default_on_and_round_trip() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        assert!(Config::default().updates.check_on_start);
+        let mut config = Config::default();
+        config.updates.check_on_start = false;
+        config.save_to(&path).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("[updates]"));
+        assert!(text.contains("check_on_start = false"));
         assert_eq!(Config::load_from(&path), config);
         let _ = fs::remove_dir_all(dir);
     }
