@@ -238,8 +238,8 @@ export interface CrossfadeSettings {
   style: TransitionStyle;
 }
 /** Rust `dsp::TransitionStyle`. */
-export type TransitionStyle = "classic" | "quick" | "blend";
-export type TransitionKind = "crossfade" | "beat_matched" | "fade_out";
+export type TransitionStyle = "classic" | "quick" | "blend" | "auto";
+export type TransitionKind = "crossfade" | "beat_matched" | "fade_out" | "gapless";
 /** What the most recent crossfade did (Rust `automix::TransitionReport`). */
 export interface TransitionReport {
   kind: TransitionKind;
@@ -258,6 +258,10 @@ export interface TransitionReport {
   cut_out_ms: number;
   /** Incoming intro skipped beyond its leading silence. */
   cut_in_ms: number;
+  /** Blend's level ride: dB the incoming track entered under its own level (0 = none). */
+  ride_db?: number;
+  /** Why Auto picked `style` (only when the setting is Auto). */
+  auto_reason?: string | null;
 }
 /** A transition re-rendered by the AutoMix replay lab (`automix_render`). */
 export interface TransitionReplay {

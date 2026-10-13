@@ -141,6 +141,9 @@ pub enum TransitionStyle {
     Quick,
     /// Apple-style: cut the outgoing fade, skip a slow intro, swap the bass.
     Blend,
+    /// Pick per pair from how the outgoing track ends and the next one opens
+    /// (AM-D18).
+    Auto,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -372,6 +375,11 @@ impl TrackDsp {
 
     fn gain(&self) -> f64 {
         self.rg_linear * self.eq_preamp
+    }
+
+    /// The linear ReplayGain factor applied (1 when off).
+    pub fn replay_gain_factor(&self) -> f64 {
+        self.rg_linear
     }
 
     /// The ReplayGain actually applied, in dB, while ReplayGain is on.
@@ -796,6 +804,158 @@ fn resample_planar(input: &[Vec<f64>], from_rate: u32, to_rate: u32) -> Vec<Vec<
         .collect()
 }
 
+/// Streaming rate conversion for a track played through an output left open
+/// at another rate (shared mode, AutoMix), so a rate change never reopens the
+/// device mid-transition. Output is always `f32`; the resampler's delay is
+/// dropped from the front and `flush` returns the rest at the end.
+pub struct StreamResampler {
+    resampler: rubato::FftFixedIn<f64>,
+    channels: usize,
+    from_rate: u32,
+    to_rate: u32,
+    /// Planar input not yet converted (less than one chunk).
+    pending: Vec<Vec<f64>>,
+    /// Output frames still to drop (the resampler's delay).
+    delay_left: usize,
+    frames_in: u64,
+    frames_out: u64,
+}
+
+impl StreamResampler {
+    pub fn new(from_rate: u32, to_rate: u32, channels: usize) -> Option<Self> {
+        use rubato::Resampler;
+        let channels = channels.max(1);
+        let resampler =
+            rubato::FftFixedIn::<f64>::new(from_rate as usize, to_rate as usize, 1024, 2, channels).ok()?;
+        let delay_left = resampler.output_delay();
+        Some(Self {
+            resampler,
+            channels,
+            from_rate,
+            to_rate,
+            pending: vec![Vec::new(); channels],
+            delay_left,
+            frames_in: 0,
+            frames_out: 0,
+        })
+    }
+
+    pub fn to_rate(&self) -> u32 {
+        self.to_rate
+    }
+
+    fn emit(&mut self, chunk: Vec<Vec<f64>>, out: &mut Vec<f32>) {
+        let frames = chunk.first().map_or(0, Vec::len);
+        let skip = self.delay_left.min(frames);
+        self.delay_left -= skip;
+        for i in skip..frames {
+            for plane in &chunk {
+                out.push(plane[i].clamp(-1.0, 1.0) as f32);
+            }
+        }
+        self.frames_out += (frames - skip) as u64;
+    }
+
+    /// Convert one interleaved buffer (any representation) at `from_rate`.
+    pub fn process(&mut self, buf: &PcmBuffer) -> PcmBuffer {
+        use rubato::Resampler;
+        let ch = self.channels;
+        for i in 0..buf.len() {
+            self.pending[i % ch].push(sample_f64(buf, i));
+        }
+        self.frames_in += (buf.len() / ch) as u64;
+        let mut out = Vec::new();
+        while self.pending[0].len() >= self.resampler.input_frames_next() {
+            let n = self.resampler.input_frames_next();
+            let slices: Vec<&[f64]> = self.pending.iter().map(|c| &c[..n]).collect();
+            let Ok(chunk) = self.resampler.process(&slices, None) else {
+                break;
+            };
+            for plane in &mut self.pending {
+                plane.drain(..n);
+            }
+            self.emit(chunk, &mut out);
+        }
+        PcmBuffer::F32(out)
+    }
+
+    /// Everything still inside the resampler, so the converted stream is as
+    /// long as its input (at the new rate).
+    pub fn flush(&mut self) -> PcmBuffer {
+        use rubato::Resampler;
+        let expected =
+            (self.frames_in as f64 * self.to_rate as f64 / self.from_rate.max(1) as f64).round() as u64;
+        let mut out = Vec::new();
+        if !self.pending[0].is_empty() {
+            let pending = std::mem::replace(&mut self.pending, vec![Vec::new(); self.channels]);
+            let slices: Vec<&[f64]> = pending.iter().map(Vec::as_slice).collect();
+            if let Ok(chunk) = self.resampler.process_partial(Some(&slices), None) {
+                self.emit(chunk, &mut out);
+            }
+        }
+        while self.frames_out < expected {
+            match self.resampler.process_partial::<&[f64]>(None, None) {
+                Ok(chunk) if !chunk[0].is_empty() => self.emit(chunk, &mut out),
+                _ => break,
+            }
+        }
+        let excess = self.frames_out.saturating_sub(expected) as usize;
+        out.truncate(out.len() - (excess * self.channels).min(out.len()));
+        self.frames_out -= excess as u64;
+        PcmBuffer::F32(out)
+    }
+}
+
+/// Blend's level ride (AM-D14): the incoming track enters `start_db` under
+/// its own level, matched to where the outgoing track is, and eases back to
+/// unity over `frames` (smoothstep in dB), so it neither jumps above the
+/// outgoing track nor stays quieter than its own body.
+#[derive(Debug, Clone)]
+pub struct GainRide {
+    start_db: f64,
+    frames: usize,
+    pos: usize,
+    channels: usize,
+}
+
+impl GainRide {
+    /// `None` when there is nothing to ride (under 0.5 dB, or no length).
+    pub fn new(start_db: f64, frames: usize, channels: usize) -> Option<Self> {
+        (start_db < -0.5 && frames > 0).then_some(Self { start_db, frames, pos: 0, channels: channels.max(1) })
+    }
+
+    pub fn is_done(&self) -> bool {
+        self.pos >= self.frames
+    }
+
+    pub fn gain_at(&self, frame: usize) -> f64 {
+        let t = (frame as f64 / self.frames as f64).clamp(0.0, 1.0);
+        let eased = t * t * (3.0 - 2.0 * t);
+        db_to_linear(self.start_db * (1.0 - eased))
+    }
+
+    pub fn apply(&mut self, buf: PcmBuffer) -> PcmBuffer {
+        let ch = self.channels;
+        let base = self.pos;
+        let out = match buf {
+            PcmBuffer::F32(mut v) => {
+                for (i, s) in v.iter_mut().enumerate() {
+                    *s = (*s as f64 * self.gain_at(base + i / ch)) as f32;
+                }
+                PcmBuffer::F32(v)
+            }
+            PcmBuffer::I32(mut v) => {
+                for (i, s) in v.iter_mut().enumerate() {
+                    *s = f64_to_i32(*s as f64 / I32_SCALE * self.gain_at(base + i / ch));
+                }
+                PcmBuffer::I32(v)
+            }
+        };
+        self.pos += out.len() / ch;
+        out
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1177,5 +1337,36 @@ mod tests {
             let f = frequency(out.remaining(), 2, to);
             assert!((f - 440.0).abs() < 2.0, "{to}: {f:.1} Hz");
         }
+    }
+
+    /// Fed in odd-sized buffers and flushed, the stream converter keeps the
+    /// length and pitch the offline one gives.
+    #[test]
+    fn stream_resampler_matches_length_and_pitch() {
+        let input: Vec<f32> = sine(48_000, 440.0, 48_000 * 2, 0.5);
+        let mut rs = StreamResampler::new(48_000, 44_100, 2).unwrap();
+        let mut out = Vec::new();
+        for chunk in input.chunks(2 * 937) {
+            extend_normalized(&mut out, &rs.process(&PcmBuffer::F32(chunk.to_vec())));
+        }
+        extend_normalized(&mut out, &rs.flush());
+        assert!((out.len() / 2).abs_diff(88_200) <= 1, "{} frames", out.len() / 2);
+        let f = frequency(&out, 2, 44_100);
+        assert!((f - 440.0).abs() < 2.0, "{f:.1} Hz");
+    }
+
+    #[test]
+    fn gain_ride_eases_from_its_start_to_unity() {
+        assert!(GainRide::new(-0.2, 100, 2).is_none(), "nothing to ride");
+        let mut ride = GainRide::new(-6.0, 100, 2).unwrap();
+        assert!((ride.gain_at(0) - db_to_linear(-6.0)).abs() < 1e-12);
+        assert!((ride.gain_at(100) - 1.0).abs() < 1e-12);
+        assert!(ride.gain_at(30) < ride.gain_at(60));
+        let out = ride.apply(PcmBuffer::F32(vec![1.0; 2 * 150]));
+        let v = out.as_f32().unwrap();
+        assert_eq!(v[0], v[1], "both channels of a frame share the gain");
+        assert!((v[0] as f64 - db_to_linear(-6.0)).abs() < 1e-6);
+        assert_eq!(v[2 * 149], 1.0);
+        assert!(ride.is_done());
     }
 }

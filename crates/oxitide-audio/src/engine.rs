@@ -8,8 +8,8 @@ use crate::cache::{CacheKey, DiskCache};
 use crate::decode::{PcmBuffer, PcmFormat, PcmSink, StreamInfo};
 use crate::automix::{self, Clip, Rendered, TransitionKind, TransitionPlan, TransitionReport};
 use crate::dsp::{
-    extend_normalized, CrossfadeSettings, DspSettings, MixShape, Tail, TrackDsp, TransitionStyle,
-    STAGE_CROSSFADE,
+    extend_normalized, replay_gain_linear, CrossfadeSettings, DspSettings, GainRide, MixShape,
+    StreamResampler, Tail, TrackDsp, TransitionStyle, STAGE_CROSSFADE,
 };
 use crate::error::{Error, Result};
 use crate::fetch::{self, Fetcher, StreamBuffer};
@@ -382,7 +382,8 @@ impl Engine {
     }
 
     /// Replay lab (AM-D12): plan and mix the last AutoMix transition again
-    /// with `settings` (e.g. another style), offline and without DSP. `None`
+    /// with `settings` (e.g. another style), offline, with each track's
+    /// ReplayGain (captured with it) but without EQ. `None`
     /// until a transition ran with AutoMix on and the next track's opening
     /// decoded in time.
     pub fn render_last_transition(&self, settings: &CrossfadeSettings) -> Option<Rendered> {
@@ -805,13 +806,28 @@ impl TrackStream {
         }
     }
 
-    /// The pre-read opening as normalized interleaved samples, for planning.
-    fn head(&self) -> Option<(Vec<f64>, StreamInfo)> {
+    /// The pre-read opening as normalized interleaved samples, for planning,
+    /// scaled by the ReplayGain it will play with under `settings`, so level
+    /// decisions compare what is heard.
+    fn head(&self, settings: &DspSettings) -> Option<(Vec<f64>, StreamInfo)> {
         let info = self.pending_info?;
+        let gain = self
+            .pending
+            .iter()
+            .find_map(|event| match event {
+                Ok(StreamEvent::Info(start)) => Some(replay_gain_linear(&settings.replay_gain, &start.replay_gain)),
+                _ => None,
+            })
+            .unwrap_or(1.0);
         let mut samples = Vec::new();
         for event in &self.pending {
             if let Ok(StreamEvent::Samples(buf)) = event {
                 extend_normalized(&mut samples, buf);
+            }
+        }
+        if (gain - 1.0).abs() > 1e-9 {
+            for s in &mut samples {
+                *s = (*s * gain).clamp(-1.0, 1.0);
             }
         }
         (!samples.is_empty()).then_some((samples, info))
@@ -1295,16 +1311,22 @@ fn publish_dsp_stages(inner: &Inner, dsp: &TrackDsp, crossfading: bool) {
 /// after the preroll, where the next track's overlap starts, and the report.
 struct Handoff {
     tail: Tail,
+    /// The tail's rate: the device rate it was written at (a resampled track
+    /// hands over a converted tail).
     rate: u32,
     /// Incoming frames to skip before the overlap (trimmed silence / beat
     /// alignment), valid only for `head_track`.
     skip_frames: usize,
     head_track: Option<u64>,
+    /// Blend's level ride on the incoming track (dB, frames at its rate).
+    ride_db: f64,
+    ride_frames: usize,
     report: TransitionReport,
 }
 
-/// The pre-DSP held-back tail and pre-read opening of the last AutoMix
-/// transition, kept in memory only (never written to disk, PM-D2).
+/// The held-back tail and pre-read opening of the last AutoMix transition,
+/// with their ReplayGain but before EQ, kept in memory only (never written
+/// to disk, PM-D2).
 struct Capture {
     tail: Vec<f32>,
     tail_channels: usize,
@@ -1320,6 +1342,9 @@ struct PendingPlan {
     /// Tail frames played since the analysis started.
     written: u64,
     head_track: Option<u64>,
+    /// The same style planned without beat matching (cheap, synchronous):
+    /// used once the tail reaches its overlap before the analysis is back.
+    fallback: TransitionPlan,
 }
 
 /// Drop the first `frames` frames of `buf`.
@@ -1338,18 +1363,24 @@ fn upcoming_track(inner: &Inner) -> Option<u64> {
 }
 
 /// Offsets from a plan computed while `written` tail frames kept playing.
-/// A plan whose overlap would have started already degrades to a plain
-/// crossfade over what is left.
+/// A plan whose overlap would have started already falls back to `fallback`
+/// (the style without beat matching) while that is still ahead, else to a
+/// plain crossfade over what is left.
 fn rebase_plan(
     plan: TransitionPlan,
     written: u64,
     remaining: usize,
     base_frames: u64,
     rate: u32,
+    fallback: Option<TransitionPlan>,
 ) -> TransitionPlan {
     let written = written as usize;
     if written <= plan.preroll_frames {
         return TransitionPlan { preroll_frames: plan.preroll_frames - written, ..plan };
+    }
+    if let Some(fallback) = fallback.filter(|f| written <= f.preroll_frames) {
+        let preroll_frames = fallback.preroll_frames - written;
+        return TransitionPlan { preroll_frames, ..late_fallback(fallback) };
     }
     let mut late = plain_plan(
         remaining,
@@ -1358,12 +1389,18 @@ fn rebase_plan(
         plan.report.style,
         "beat analysis finished late; plain crossfade",
     );
-    // Keep what the analysis learned (BPMs, confidences, trims) for the readout.
+    // Keep what the analysis learned (BPMs, confidences) for the readout; the
+    // plain crossfade itself trims, cuts, and rides nothing.
     late.report = TransitionReport {
         kind: late.report.kind,
         overlap_ms: late.report.overlap_ms,
         beats: None,
         note: late.report.note,
+        trimmed_out_ms: 0,
+        trimmed_in_ms: 0,
+        cut_out_ms: 0,
+        cut_in_ms: 0,
+        ride_db: 0.0,
         ..plan.report
     };
     late
@@ -1383,6 +1420,8 @@ fn plain_plan(
         mix_frames: mix,
         incoming_skip_frames: 0,
         shape: MixShape::EqualPower,
+        ride_db: 0.0,
+        ride_frames: 0,
         report: TransitionReport {
             kind: TransitionKind::Crossfade,
             overlap_ms: (mix as f64 * 1000.0 / rate.max(1) as f64).round() as u32,
@@ -1398,8 +1437,72 @@ fn plain_plan(
             style,
             cut_out_ms: 0,
             cut_in_ms: 0,
+            ride_db: 0.0,
+            auto_reason: None,
+            features: None,
         },
     }
+}
+
+/// Plan the crossing from the held-back `tail` (interleaved, normalized) into
+/// the pre-read `head`.
+fn plan_from(
+    tail: &[f64],
+    channels: usize,
+    rate: u32,
+    head: Option<&(Vec<f64>, StreamInfo)>,
+    settings: &CrossfadeSettings,
+) -> TransitionPlan {
+    let tail = Clip { samples: tail, channels, rate };
+    let head = head.map(|(samples, info)| Clip {
+        samples,
+        channels: info.channels as usize,
+        rate: info.sample_rate,
+    });
+    automix::plan_transition(&tail, head.as_ref(), settings)
+}
+
+/// The style's own plan (no beat matching) standing in for a beat analysis
+/// that is not back in time, saying why.
+fn late_fallback(mut fallback: TransitionPlan) -> TransitionPlan {
+    fallback.report.note = Some("beat analysis finished late; no beat match".into());
+    fallback
+}
+
+/// Write `buf` in short slices so a long preroll (up to the AutoMix hold)
+/// stays responsive: a superseded session stops between slices and a pause
+/// holds there. `progress` gets the frames of each slice written. `Ok(false)`
+/// when superseded.
+fn write_responsive(
+    inner: &Inner,
+    output: &mut dyn AudioOutput,
+    buf: &PcmBuffer,
+    channels: u16,
+    gen: u64,
+    progress: &mut dyn FnMut(u64),
+) -> Result<bool> {
+    const SLICE_FRAMES: usize = 2048;
+    let ch = channels.max(1) as usize;
+    let slice = SLICE_FRAMES * ch;
+    let mut start = 0;
+    while start < buf.len() {
+        if inner.generation.load(Ordering::SeqCst) != gen {
+            return Ok(false);
+        }
+        if inner.paused.load(Ordering::SeqCst) {
+            std::thread::sleep(Duration::from_millis(20));
+            continue;
+        }
+        let end = (start + slice).min(buf.len());
+        let part = match buf {
+            PcmBuffer::F32(v) => PcmBuffer::F32(v[start..end].to_vec()),
+            PcmBuffer::I32(v) => PcmBuffer::I32(v[start..end].to_vec()),
+        };
+        output.write(&part)?;
+        progress(((end - start) / ch) as u64);
+        start = end;
+    }
+    Ok(true)
 }
 
 /// How many frames of `current` to hold back for a crossfade into `next`; 0
@@ -1481,6 +1584,9 @@ fn run_session(
     let mut skipped: usize = 0;
     // The previous track's held-back end, waiting to cross into this one.
     let mut pending_handoff: Option<Handoff> = None;
+    // True once this session advanced into the next track on its own (not a
+    // fresh start or seek), so the open device may be kept.
+    let mut advanced = false;
     let mut frames: u64;
     let mut last_emit;
     loop {
@@ -1545,6 +1651,39 @@ fn run_session(
             mode,
             exclusive_fallback: fallback,
         };
+        // Shared mode, AutoMix on, natural advance: keep the open device across
+        // a format change (AM-D16). Windows mixes shared streams anyway, so a
+        // new bit depth needs nothing and a new rate is converted here; a
+        // reopen would drop the queued audio and restart the device in the
+        // middle of the transition (an audible cut and click).
+        let (automix_on, resample) = {
+            let settings = inner.dsp.lock().unwrap();
+            (automix::active(&settings.crossfade), settings.crossfade.resample)
+        };
+        let mut resampler: Option<StreamResampler> = None;
+        let keep_device = advanced
+            && want.mode == OutputMode::Shared
+            && open_spec.as_ref().is_some_and(|open| {
+                let same_rate = open.info.sample_rate == want.info.sample_rate;
+                open.device_id == want.device_id
+                    && open.mode == want.mode
+                    && open.exclusive_fallback == want.exclusive_fallback
+                    && open.info.channels == want.info.channels
+                    && if same_rate { automix_on || resample } else { resample }
+            })
+            && {
+                let open_rate = open_spec.as_ref().map_or(0, |open| open.info.sample_rate);
+                if open_rate == info.sample_rate {
+                    true
+                } else {
+                    resampler = StreamResampler::new(info.sample_rate, open_rate, info.channels as usize);
+                    resampler.is_some()
+                }
+            };
+        let device_rate = match (&open_spec, keep_device) {
+            (Some(open), true) => open.info.sample_rate,
+            _ => info.sample_rate,
+        };
         // The previous track's held-back end overlaps this one when the output
         // stays as it is, or after a reopen once resampled (AutoMix); otherwise
         // it fades out on its own.
@@ -1552,45 +1691,82 @@ fn run_session(
         // Incoming frames to drop before the overlap (trimmed lead silence or
         // beat alignment); they still count toward the position.
         let mut skip_remaining: u64 = 0;
+        // Blend's level ride on this track, from the overlap start.
+        let mut ride: Option<GainRide> = None;
         if let Some(handoff) = pending_handoff.take() {
-            let Handoff { mut tail, rate: tail_rate, skip_frames, head_track, mut report } = handoff;
-            let skip = if head_track == Some(stream.item.track_id) {
-                skip_frames as u64
-            } else {
-                0
-            };
-            let resample = inner.dsp.lock().unwrap().crossfade.resample;
-            if open_spec.as_ref() == Some(&want) {
-                incoming = Some(tail);
-                skip_remaining = skip;
+            let Handoff { mut tail, rate: tail_rate, skip_frames, head_track, ride_db, ride_frames, mut report } =
+                handoff;
+            let planned_for_this = head_track == Some(stream.item.track_id);
+            let overlap = if keep_device {
+                report.resampled = resampler.is_some() || tail_rate != device_rate;
+                Some(if tail_rate == device_rate {
+                    tail
+                } else {
+                    tail.converted(tail_rate, device_rate, info.channels as usize)
+                })
+            } else if open_spec.as_ref() == Some(&want) {
+                Some(tail)
             } else if resample && open_spec.is_some() {
-                incoming = Some(tail.converted(tail_rate, info.sample_rate, info.channels as usize));
-                skip_remaining = skip;
                 report.resampled = true;
-            } else if open_spec.is_some() {
-                report.kind = TransitionKind::FadeOut;
-                if let Err(e) = output.write(&tail.fade_out_remaining()) {
-                    return SessionOutcome::OutputError {
-                        message: e.to_string(),
-                        track_id: stream.item.track_id,
-                    };
+                Some(tail.converted(tail_rate, info.sample_rate, info.channels as usize))
+            } else {
+                if open_spec.is_some() {
+                    report.kind = TransitionKind::FadeOut;
+                    match write_responsive(inner, output, &tail.fade_out_remaining(), info.channels, gen, &mut |_| {}) {
+                        Ok(true) => {}
+                        Ok(false) => return SessionOutcome::Superseded,
+                        Err(e) => {
+                            return SessionOutcome::OutputError {
+                                message: e.to_string(),
+                                track_id: stream.item.track_id,
+                            }
+                        }
+                    }
+                }
+                None
+            };
+            if let Some(overlap) = overlap.filter(|tail| !tail.is_done()) {
+                incoming = Some(overlap);
+                if planned_for_this {
+                    skip_remaining = skip_frames as u64;
+                    ride = GainRide::new(ride_db, ride_frames, info.channels as usize);
                 }
             }
             tracing::info!(
+                style = ?report.style,
                 kind = ?report.kind,
                 overlap_ms = report.overlap_ms,
                 trimmed_out_ms = report.trimmed_out_ms,
                 trimmed_in_ms = report.trimmed_in_ms,
+                cut_out_ms = report.cut_out_ms,
+                cut_in_ms = report.cut_in_ms,
+                ride_db = report.ride_db,
                 resampled = report.resampled,
+                kept_device = keep_device,
                 out_bpm = ?report.out_bpm,
                 in_bpm = ?report.in_bpm,
                 out_confidence = ?report.out_confidence,
                 in_confidence = ?report.in_confidence,
                 beats = ?report.beats,
                 note = ?report.note,
+                auto = ?report.auto_reason,
                 "transition into track {}",
                 stream.item.track_id
             );
+            if let Some(f) = &report.features {
+                tracing::info!(
+                    ending = ?f.ending,
+                    decline_s = format!("{:.2}", f.decline_s),
+                    trailing_silence_s = format!("{:.2}", f.trailing_silence_s),
+                    lead_silence_s = format!("{:.2}", f.lead_silence_s),
+                    cold_open = f.cold_open,
+                    intro_s = format!("{:.2}", f.intro_s),
+                    out_body_db = format!("{:.1}", f.out_body_db),
+                    in_body_db = format!("{:.1}", f.in_body_db),
+                    "transition features into track {}",
+                    stream.item.track_id
+                );
+            }
             *inner.last_transition.lock().unwrap() = Some(report);
         }
         let mut dsp_version = inner.dsp_version.load(Ordering::SeqCst);
@@ -1612,7 +1788,7 @@ fn run_session(
                 .position_ms
                 .store(frames.saturating_mul(1000) / info.sample_rate as u64, Ordering::SeqCst);
         }
-        if open_spec.as_ref() != Some(&want) {
+        if !keep_device && open_spec.as_ref() != Some(&want) {
             if open_spec.is_some() {
                 let _ = output.stop();
             }
@@ -1657,7 +1833,7 @@ fn run_session(
         let mut ended = false;
         // The crossing plan once the tail is final (synchronous for a plain or
         // trimmed crossfade; from a helper thread for beat matching).
-        let mut planned: Option<(TransitionPlan, u64, Option<u64>)> = None;
+        let mut planned: Option<(TransitionPlan, u64, Option<u64>, Option<TransitionPlan>)> = None;
         let mut analysis: Option<PendingPlan> = None;
         let mut base_frames: u64 = 0;
         loop {
@@ -1812,19 +1988,38 @@ fn run_session(
                 // that follows.
                 if let Some(pending) = analysis.as_ref() {
                     if let Ok(plan) = pending.rx.try_recv() {
-                        planned = Some((plan, pending.written, pending.head_track));
+                        let fallback = Some(pending.fallback.clone());
+                        planned = Some((plan, pending.written, pending.head_track, fallback));
                         break;
                     }
-                    // Still analysing: keep playing the tail meanwhile.
+                    // Still analysing: keep playing the tail meanwhile, but not
+                    // past where the style's own plan starts its overlap.
+                    let next_frames = fifo.front().map_or(0, |buf| buf.frames(channels));
+                    if pending.written + next_frames > pending.fallback.preroll_frames as u64 {
+                        if let Some(pending) = analysis.take() {
+                            let plan = late_fallback(pending.fallback);
+                            planned = Some((plan, pending.written, pending.head_track, None));
+                        }
+                        break;
+                    }
                 } else {
                     let head_track = upcoming_track(inner);
+                    let settings = inner.dsp.lock().unwrap().clone();
                     let head = prefetch
                         .as_ref()
                         .filter(|next| Some(next.item.track_id) == head_track)
-                        .and_then(TrackStream::head);
+                        .and_then(|next| next.head(&settings));
+                    // Plan on what is heard: the tail with its ReplayGain, like
+                    // the head (AM-D14 compares their levels).
+                    let gain = dsp.replay_gain_factor();
                     let mut tail_audio = Vec::with_capacity(fifo_frames as usize * channels as usize);
                     for buf in &fifo {
                         extend_normalized(&mut tail_audio, buf);
+                    }
+                    if (gain - 1.0).abs() > 1e-9 {
+                        for s in &mut tail_audio {
+                            *s = (*s * gain).clamp(-1.0, 1.0);
+                        }
                     }
                     if let Some((samples, info)) = head.as_ref().filter(|_| automix::active(&crossfade)) {
                         *inner.last_capture.lock().unwrap() = Some(Arc::new(Capture {
@@ -1836,43 +2031,40 @@ fn run_session(
                             head_rate: info.sample_rate,
                         }));
                     }
-                    let settings = crossfade.clone();
-                    let plan_with = move || {
-                        let tail = Clip { samples: &tail_audio, channels: channels as usize, rate };
-                        let head_clip = head.as_ref().map(|(samples, info)| Clip {
-                            samples,
-                            channels: info.channels as usize,
-                            rate: info.sample_rate,
-                        });
-                        automix::plan_transition(&tail, head_clip.as_ref(), &settings)
-                    };
+                    let ch = channels as usize;
                     if crossfade.beat_match {
+                        // The style without beats is cheap: plan it now as the
+                        // stand-in for a late analysis.
+                        let no_beats = CrossfadeSettings { beat_match: false, ..crossfade.clone() };
+                        let mut fallback = plan_from(&tail_audio, ch, rate, head.as_ref(), &no_beats);
                         // Beat analysis can take longer than the device ring
                         // holds; run it aside while the tail keeps playing.
                         let (tx, rx) = std::sync::mpsc::sync_channel(1);
                         let notify = inner.clone();
+                        let settings = crossfade.clone();
                         let spawned = std::thread::Builder::new()
                             .name("oxitide-automix".into())
                             .spawn(move || {
-                                let _ = tx.send(plan_with());
+                                #[cfg(test)]
+                                std::thread::sleep(Duration::from_millis(
+                                    tests::ANALYSIS_DELAY_MS.load(Ordering::SeqCst),
+                                ));
+                                let _ = tx.send(plan_from(&tail_audio, ch, rate, head.as_ref(), &settings));
                                 notify.notify_worker();
                             });
                         if spawned.is_ok() {
-                            analysis = Some(PendingPlan { rx, written: 0, head_track });
+                            analysis = Some(PendingPlan { rx, written: 0, head_track, fallback });
+                            // Re-check before the next buffer goes out: a short
+                            // tail may leave no room to wait at all.
+                            continue;
                         } else {
-                            let remaining = fifo_frames as usize;
-                            let plan = plain_plan(
-                                remaining,
-                                base,
-                                rate,
-                                crossfade.style,
-                                "beat analysis unavailable",
-                            );
-                            planned = Some((plan, 0, head_track));
+                            fallback.report.note = Some("beat analysis unavailable".into());
+                            planned = Some((fallback, 0, head_track, None));
                             break;
                         }
                     } else {
-                        planned = Some((plan_with(), 0, head_track));
+                        let plan = plan_from(&tail_audio, ch, rate, head.as_ref(), &crossfade);
+                        planned = Some((plan, 0, head_track, None));
                         break;
                     }
                 }
@@ -1897,6 +2089,17 @@ fn run_session(
                 pending.written += buf.frames(channels);
             }
             let mut buf = dsp.process(buf);
+            if let Some(r) = ride.as_mut() {
+                buf = r.apply(buf);
+                if r.is_done() {
+                    ride = None;
+                }
+            }
+            // Position counts the track's own frames, before any conversion.
+            let source_frames = buf.frames(channels);
+            if let Some(rs) = resampler.as_mut() {
+                buf = rs.process(&buf);
+            }
             if let Some(tail) = incoming.as_mut() {
                 buf = tail.mix_into(buf);
                 if tail.is_done() {
@@ -1911,7 +2114,7 @@ fn run_session(
                     track_id: stream.item.track_id,
                 };
             }
-            frames += buf.frames(channels);
+            frames += source_frames;
             if first_write_of_track {
                 first_write_of_track = false;
                 fire_perf(inner, AudioPerfEvent::FirstPcm { track_id });
@@ -1936,40 +2139,83 @@ fn run_session(
             }
             emit_position_if_due(inner, frames, rate, &mut last_emit);
         }
+        // A track converted to the kept device rate ends with whatever is left
+        // inside the converter, unless its end crosses into the next track
+        // (then the converter carries on through the overlap below).
+        if planned.is_none() {
+            if let Some(mut rs) = resampler.take() {
+                match write_responsive(inner, output, &rs.flush(), channels, gen, &mut |_| {}) {
+                    Ok(true) => {}
+                    Ok(false) => return SessionOutcome::Superseded,
+                    Err(e) => return SessionOutcome::OutputError { message: e.to_string(), track_id },
+                }
+            }
+        }
         // A track shorter than the crossfade ends before the previous tail
         // finished; let the rest of that tail fade out on its own.
         if let Some(mut tail) = incoming.take() {
-            if let Err(e) = output.write(&tail.fade_out_remaining()) {
-                return SessionOutcome::OutputError { message: e.to_string(), track_id };
+            match write_responsive(inner, output, &tail.fade_out_remaining(), channels, gen, &mut |_| {}) {
+                Ok(true) => {}
+                Ok(false) => return SessionOutcome::Superseded,
+                Err(e) => return SessionOutcome::OutputError { message: e.to_string(), track_id },
             }
         }
         // Split the held-back tail: the preroll plays now as this track's own
         // audio, the overlap part waits for the next track, the rest (silence
         // or past the beat window) is dropped.
         let mut handoff: Option<Handoff> = None;
-        if let Some((plan, written, head_track)) = planned.take() {
+        if let Some((plan, written, head_track, fallback)) = planned.take() {
             let processed: Vec<PcmBuffer> = fifo.drain(..).map(|buf| dsp.process(buf)).collect();
             let mut tail = Tail::new(&processed, channels);
-            let plan = rebase_plan(plan, written, tail.frames(), base_frames, rate);
-            let preroll = tail.take_front(plan.preroll_frames);
-            if !preroll.is_empty() {
-                if let Err(e) = output.write(&preroll) {
-                    return SessionOutcome::OutputError { message: e.to_string(), track_id };
+            let plan = rebase_plan(plan, written, tail.frames(), base_frames, rate, fallback);
+            let mut preroll = tail.take_front(plan.preroll_frames);
+            let preroll_frames = preroll.frames(channels);
+            tail.truncate(plan.mix_frames);
+            // A converted track hands over at the device rate: the preroll and
+            // the overlap run on through the same converter, then it drains.
+            if let Some(mut rs) = resampler.take() {
+                preroll = rs.process(&preroll);
+                let mut overlap = Vec::new();
+                for part in [rs.process(&tail.take_front(tail.frames())), rs.flush()] {
+                    extend_normalized(&mut overlap, &part);
                 }
-                frames += preroll.frames(channels);
+                let overlap: Vec<f32> = overlap.into_iter().map(|s| s as f32).collect();
+                tail = Tail::new(&[PcmBuffer::F32(overlap)], channels);
+            }
+            if !preroll.is_empty() {
+                // Written in slices so Prev/Next/Pause/Seek still act during a
+                // long preroll; the position follows in source frames.
+                let start = frames;
+                let scale = rate as f64 / device_rate.max(1) as f64;
+                let mut written_out: u64 = 0;
+                let mut progress = |n: u64| {
+                    written_out += n;
+                    let at = start + (written_out as f64 * scale) as u64;
+                    if rate > 0 {
+                        inner.position_ms.store(at.saturating_mul(1000) / rate as u64, Ordering::SeqCst);
+                    }
+                    emit_position_if_due(inner, at, rate, &mut last_emit);
+                };
+                match write_responsive(inner, output, &preroll, channels, gen, &mut progress) {
+                    Ok(true) => {}
+                    Ok(false) => return SessionOutcome::Superseded,
+                    Err(e) => return SessionOutcome::OutputError { message: e.to_string(), track_id },
+                }
+                frames = start + preroll_frames;
                 if rate > 0 {
                     inner
                         .position_ms
                         .store(frames.saturating_mul(1000) / rate as u64, Ordering::SeqCst);
                 }
             }
-            tail.truncate(plan.mix_frames);
-            tail.set_shape(plan.shape, rate);
+            tail.set_shape(plan.shape, device_rate);
             handoff = Some(Handoff {
                 tail,
-                rate,
+                rate: device_rate,
                 skip_frames: plan.incoming_skip_frames,
                 head_track,
+                ride_db: plan.ride_db,
+                ride_frames: plan.ride_frames,
                 report: plan.report,
             });
         }
@@ -1998,15 +2244,20 @@ fn run_session(
                     _ => start_track(inner, &item, mode, gen, None),
                 };
                 prefetch = start_prefetch(inner, mode, gen);
-                pending_handoff = handoff.filter(|h| !h.tail.is_done());
+                // Kept even when nothing is left to overlap (Auto's gapless
+                // pick), so the transition is still reported.
+                pending_handoff = handoff;
+                advanced = true;
             }
             None => {
                 // Nothing follows after all: the held-back end plays as is.
                 if let Some(mut handoff) = handoff {
                     let frames_left = handoff.tail.frames();
                     let rest = handoff.tail.take_front(frames_left);
-                    if let Err(e) = output.write(&rest) {
-                        return SessionOutcome::OutputError { message: e.to_string(), track_id };
+                    match write_responsive(inner, output, &rest, channels, gen, &mut |_| {}) {
+                        Ok(true) => {}
+                        Ok(false) => return SessionOutcome::Superseded,
+                        Err(e) => return SessionOutcome::OutputError { message: e.to_string(), track_id },
                     }
                 }
                 // The queue is over, so the worker is about to go idle. Bump
@@ -5016,10 +5267,9 @@ mod tests {
         assert!(output.samples().len() < 2 * 176_400, "the fallback still overlaps");
     }
 
-    /// With `resample`, a 44.1 kHz tail overlaps a 48 kHz track after the
-    /// reopen instead of fading out on its own.
-    #[test]
-    fn resample_overlaps_across_a_format_change() {
+    /// A 44.1 kHz track followed by a 48 kHz one, with `settings`, on an
+    /// output opened in `mode`.
+    fn play_rate_change(settings: DspSettings, mode: OutputMode) -> (Engine, NullOutput) {
         let tone16 = std::fs::read("tests/fixtures/tone.mp4").unwrap();
         let tone48 = std::fs::read("tests/fixtures/tone48.mp4").unwrap();
         let mut plans = HashMap::new();
@@ -5035,25 +5285,185 @@ mod tests {
             Box::new(ThrottledOutput { inner: output.clone(), delay: Duration::from_millis(3) }),
             Quality::Lossless,
         );
-        engine.set_dsp(automix(1000, false, true, false));
+        engine.set_output_mode(mode);
+        engine.set_dsp(settings);
         engine
             .handle(EngineCmd::PlayTracks {
                 items: vec![album_item(1, "A"), album_item(2, "B")],
                 start: 0,
             })
             .unwrap();
+        (engine, output)
+    }
+
+    /// Shared mode with `resample` (AM-D16): the device opened for the
+    /// 44.1 kHz track stays open, the 48 kHz track is converted into it, and
+    /// the tail overlaps it with no reopen in the middle of the transition.
+    #[test]
+    fn resample_keeps_the_shared_device_across_a_rate_change() {
+        let (engine, output) = play_rate_change(automix(1000, false, true, false), OutputMode::Shared);
         // Track 1 plays its first second alone (88_200 samples at 44.1 kHz);
-        // its last second overlaps the first second of the 48 kHz track.
-        let expected = 88_200 + 192_000;
+        // its last second overlaps track 2, whose 2 s at 48 kHz arrive at
+        // 44.1 kHz (176_400 samples).
+        let expected = 88_200 + 176_400;
         wait_for(|| !engine.state().playing && output.samples().len() >= expected - 2 * 8192);
         std::thread::sleep(Duration::from_millis(50));
         let total = output.samples().len();
-        assert!(total.abs_diff(expected) <= 2 * 8192, "expected ~{expected}, got {total}");
-        assert_eq!(output.opens(), 2);
+        assert!(total.abs_diff(expected) <= 2 * 4096, "expected ~{expected}, got {total}");
+        assert_eq!(output.opens(), 1, "no reopen at the rate change");
+        assert_eq!(output.last_spec().unwrap().info.sample_rate, 44_100);
         let report = engine.state().last_transition.expect("report");
         assert!(report.resampled, "{report:?}");
         assert_eq!(report.kind, TransitionKind::Crossfade);
         assert!(output.samples().iter().all(|s| s.abs() <= 1.0));
+    }
+
+    /// Exclusive output must run at the track's own rate: the tail is
+    /// resampled and overlaps after the reopen.
+    #[test]
+    fn resample_reopens_an_exclusive_device_at_a_rate_change() {
+        let (engine, output) = play_rate_change(automix(1000, false, true, false), OutputMode::Exclusive);
+        wait_for(|| !engine.state().playing && output.opens() >= 2);
+        wait_for(|| !engine.state().playing);
+        assert_eq!(output.opens(), 2);
+        assert_eq!(output.last_spec().unwrap().info.sample_rate, 48_000);
+        let report = engine.state().last_transition.expect("report");
+        assert!(report.resampled, "{report:?}");
+    }
+
+    /// Writes take time in proportion to their length, like a device ring
+    /// that is full: `per_frame` each.
+    struct PacedOutput {
+        inner: NullOutput,
+        per_frame: Duration,
+    }
+
+    impl AudioOutput for PacedOutput {
+        fn open(&mut self, spec: &AudioOutputSpec) -> Result<()> {
+            self.inner.open(spec)
+        }
+        fn start(&mut self) -> Result<()> {
+            self.inner.start()
+        }
+        fn write(&mut self, buf: &PcmBuffer) -> Result<()> {
+            std::thread::sleep(self.per_frame * (buf.len() / 2) as u32);
+            self.inner.write(buf)
+        }
+        fn set_volume(&mut self, volume: f32) -> Result<()> {
+            self.inner.set_volume(volume)
+        }
+        fn flush(&mut self) -> Result<()> {
+            self.inner.flush()
+        }
+        fn stop(&mut self) -> Result<()> {
+            self.inner.stop()
+        }
+        fn status(&self) -> OutputStatus {
+            self.inner.status()
+        }
+    }
+
+    /// Regression (owner smoke 2026-10-13): with AutoMix on, the whole 2 s
+    /// track is held back and its preroll used to go out in one blocking
+    /// write, so Pause/Prev/Next did nothing until it finished. A pause must
+    /// now hold the output within a slice.
+    #[test]
+    fn pause_acts_during_a_long_preroll() {
+        let (plan, files) = fixture_plan();
+        let output = NullOutput::new();
+        let engine = build_engine(
+            Arc::new(FakeResolver { plan }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            // ~0.9 s for the 1 s preroll.
+            Box::new(PacedOutput { inner: output.clone(), per_frame: Duration::from_micros(20) }),
+            Quality::Lossless,
+        );
+        let mut settings = crossfade(1000, false);
+        settings.crossfade.style = TransitionStyle::Blend;
+        engine.set_dsp(settings);
+        engine
+            .handle(EngineCmd::PlayTracks { items: vec![album_item(1, "A"), album_item(2, "B")], start: 0 })
+            .unwrap();
+        wait_for(|| output.samples().len() >= 2 * 20_000);
+        engine.handle(EngineCmd::PlayPause).unwrap();
+        std::thread::sleep(Duration::from_millis(100));
+        let paused_at = output.samples().len();
+        std::thread::sleep(Duration::from_millis(400));
+        let grown = output.samples().len() - paused_at;
+        assert!(grown <= 2 * 2048, "kept writing {grown} samples while paused");
+        assert!(paused_at < 2 * 88_200, "the pause landed after the preroll ({paused_at})");
+        engine.handle(EngineCmd::Clear).unwrap();
+    }
+
+    /// Test-only delay on the beat analysis thread.
+    pub(super) static ANALYSIS_DELAY_MS: AtomicU64 = AtomicU64::new(0);
+
+    /// A beat analysis that is not back before the overlap leaves the
+    /// transition to the style's own plan, never to a plain crossfade.
+    #[test]
+    fn a_late_beat_analysis_keeps_the_style() {
+        // 1 s: a preroll to wait through; 2 s: the whole 2 s tail overlaps
+        // (no preroll), so there is no time to wait at all.
+        for duration_ms in [1000, 2000] {
+            let (plan, files) = fixture_plan();
+            let output = NullOutput::new();
+            let engine = build_engine(
+                Arc::new(FakeResolver { plan }),
+                Arc::new(crate::fetch::MapFetcher { files }),
+                Box::new(PacedOutput { inner: output.clone(), per_frame: Duration::from_micros(10) }),
+                Quality::Lossless,
+            );
+            let mut settings = crossfade(duration_ms, false);
+            settings.crossfade.style = TransitionStyle::Blend;
+            settings.crossfade.beat_match = true;
+            engine.set_dsp(settings);
+            ANALYSIS_DELAY_MS.store(3000, Ordering::SeqCst);
+            engine
+                .handle(EngineCmd::PlayTracks { items: vec![album_item(1, "A"), album_item(2, "B")], start: 0 })
+                .unwrap();
+            wait_for(|| engine.state().last_transition.is_some());
+            ANALYSIS_DELAY_MS.store(0, Ordering::SeqCst);
+            let report = engine.state().last_transition.expect("report");
+            assert_eq!(report.style, TransitionStyle::Blend);
+            assert_eq!(
+                report.note.as_deref(),
+                Some("beat analysis finished late; no beat match"),
+                "{duration_ms} ms: {report:?}"
+            );
+            engine.handle(EngineCmd::Clear).unwrap();
+        }
+    }
+
+    /// Blend rides a louder incoming track in at the outgoing level, and the
+    /// report says how far (AM-D14).
+    #[test]
+    fn blend_reports_its_level_ride() {
+        let tail: Vec<f64> = (0..44_100 * 8)
+            .flat_map(|i| {
+                let s = 0.05 * (i as f64 * 0.05).sin();
+                [s, s]
+            })
+            .collect();
+        let head: Vec<f64> = (0..44_100 * 8)
+            .flat_map(|i| {
+                let s = 0.4 * (i as f64 * 0.07).sin();
+                [s, s]
+            })
+            .collect();
+        let settings = CrossfadeSettings {
+            duration_ms: 4000,
+            style: TransitionStyle::Blend,
+            ..Default::default()
+        };
+        let plan = plan_from(&tail, 2, 44_100, Some(&(head, StreamInfo {
+            sample_rate: 44_100,
+            channels: 2,
+            bits_per_sample: 16,
+            format: PcmFormat::F32,
+        })), &settings);
+        assert!((plan.ride_db + 6.0).abs() < 1e-6, "18 dB louder caps at -6 dB: {plan:?}");
+        assert!(plan.ride_frames > plan.mix_frames, "{plan:?}");
+        assert_eq!(plan.report.ride_db, plan.ride_db as f32);
     }
 
     /// With every AutoMix toggle off the format change still fades out.

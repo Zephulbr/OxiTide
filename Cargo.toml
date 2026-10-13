@@ -33,3 +33,8 @@ opt-level = 3
 
 [profile.dev.package.rubato]
 opt-level = 3
+
+# The analysis itself (onset envelope, beat tracking) lives in oxitide-audio;
+# unoptimized it missed the tail almost every time in `app:dev` (2026-10-13).
+[profile.dev.package.oxitide-audio]
+opt-level = 2

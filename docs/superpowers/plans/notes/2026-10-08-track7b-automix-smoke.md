@@ -83,3 +83,24 @@ Record results below.
 
 - **2026-10-08 (owner, first pass):** transitions are either distracting / not smooth or so faint
   they are not heard. Paused for research: `2026-10-08-automix-transition-quality-research.md`.
+- **2026-10-13 (owner, 7b.2 styles, shared mode, 6 s, ReplayGain track):**
+  - Classic: keep. Quick: keep, may need small tuning (details pending).
+  - Blend: mixed — very good on some pairs, barely different on others, a little jarring on
+    endings with only vocals left; incoming track often too loud against a fading ending; an
+    audible click mid-blend (log: `resampled=true`, a device reopen).
+  - Bug: Prev did nothing near the end of "I Can't Handle Change".
+  - Beat match: nearly every live transition logged "beat analysis finished late"; outgoing
+    confidence mostly 0.00.
+  - Changes in response: AM-D14–D16 and the fixes listed in
+    `plans/2026-10-08-track7b-2-transition-styles.md`. Re-test rows 12a–12e (Blend especially),
+    plus: 12f vocal-only ending into a loud track (readout "sparse ending kept", "Level ride");
+    12g a Lossless ↔ Max pair (no click; log `kept_device=true`); 12h Prev/Pause in the last
+    ~20 s of a track.
+- **2026-10-13 (owner, second pass):** better overall, click gone (log agrees: every transition
+  `kept_device=true`, one across a rate change). Quick "too abrupt, tracks too close" → AM-D17.
+  Auto style added (AM-D18). Next rows:
+  - 12i Quick retuned: fade-out pairs and a hard stop into a loud opening — still abrupt? any
+    dead air now?
+  - 12j Auto over ~20 live transitions of mixed genres: for each, readout "Auto → … · Why: …"
+    and a verdict (right pick / wrong pick, which style would have been better). Note any
+    "continuous recording" gapless pick that was not a live album or mix.

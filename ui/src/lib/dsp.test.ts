@@ -158,6 +158,20 @@ describe("automix readout", () => {
     });
     expect(blend.title).toBe("Blend (beat-matched)");
     expect(blend.details).toContain("Cut: 7.2 s of the ending, 4.0 s of the intro");
+    expect(describeTransition({ ...base, style: "blend", ride_db: -4.25 }).details).toContain(
+      "Level ride: next track came in 4.3 dB lower",
+    );
+    expect(describeTransition({ ...base, ride_db: 0 }).details).toEqual(["6.0 s overlap"]);
+  });
+
+  it("names Auto's pick and why", () => {
+    const quick = describeTransition({ ...base, style: "quick", overlap_ms: 3000, auto_reason: "short fade-out" });
+    expect(quick.title).toBe("Auto → Quick");
+    expect(quick.details).toEqual(["Why: short fade-out", "3.0 s overlap"]);
+    const classic = describeTransition({ ...base, auto_reason: "hard stop into a slow intro" });
+    expect(classic.title).toBe("Auto → Classic");
+    const gapless = describeTransition({ ...base, kind: "gapless", overlap_ms: 0, auto_reason: "continuous recording" });
+    expect(gapless).toEqual({ title: "Auto → Gapless", details: ["Why: continuous recording"] });
     expect(describeTransition({ ...base, style: "blend", kind: "fade_out" }).title).toBe("Fade-out (no overlap)");
   });
 

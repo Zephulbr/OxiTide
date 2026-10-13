@@ -46,6 +46,7 @@ export const TRANSITION_STYLES: { id: TransitionStyle; label: string; hint: stri
     label: "Blend",
     hint: "Apple-style: cuts the fade-out and slow intros, swaps the bass mid-way",
   },
+  { id: "auto", label: "Auto", hint: "Picks a style per pair from how one track ends and the next begins" },
 ];
 
 function styleLabel(style: TransitionStyle): string {
@@ -99,6 +100,7 @@ const KIND_LABELS: Record<TransitionReport["kind"], string> = {
   crossfade: "Crossfade",
   beat_matched: "Beat-matched",
   fade_out: "Fade-out (no overlap)",
+  gapless: "Gapless",
 };
 
 function seconds(ms: number): string {
@@ -107,17 +109,25 @@ function seconds(ms: number): string {
 
 /// The readout headline: the kind for Classic, the style (and whether it was
 /// beat-matched) otherwise.
-function transitionTitle(report: TransitionReport): string {
-  if (report.style === "classic" || report.kind === "fade_out") return KIND_LABELS[report.kind];
+function styleTitle(report: TransitionReport): string {
+  if (report.kind === "fade_out" || report.kind === "gapless") return KIND_LABELS[report.kind];
+  if (report.style === "classic" && !report.auto_reason) return KIND_LABELS[report.kind];
   const style = styleLabel(report.style);
   return report.kind === "beat_matched" ? `${style} (beat-matched)` : style;
+}
+
+/// Auto names the style it picked.
+function transitionTitle(report: TransitionReport): string {
+  const title = styleTitle(report);
+  return report.auto_reason ? `Auto → ${title}` : title;
 }
 
 /// The "Last transition" readout: a headline plus detail lines, for A/B
 /// listening notes.
 export function describeTransition(report: TransitionReport): { title: string; details: string[] } {
   const details: string[] = [];
-  if (report.kind !== "fade_out") {
+  if (report.auto_reason) details.push(`Why: ${report.auto_reason}`);
+  if (report.kind !== "fade_out" && report.kind !== "gapless") {
     details.push(
       report.beats ? `${seconds(report.overlap_ms)} overlap (${report.beats} beats)` : `${seconds(report.overlap_ms)} overlap`,
     );
@@ -127,6 +137,9 @@ export function describeTransition(report: TransitionReport): { title: string; d
   }
   if (report.cut_out_ms > 0 || report.cut_in_ms > 0) {
     details.push(`Cut: ${seconds(report.cut_out_ms)} of the ending, ${seconds(report.cut_in_ms)} of the intro`);
+  }
+  if (report.ride_db && report.ride_db < 0) {
+    details.push(`Level ride: next track came in ${(-report.ride_db).toFixed(1)} dB lower`);
   }
   if (report.resampled) details.push("Resampled across a format change");
   if (report.out_bpm != null || report.in_bpm != null) {

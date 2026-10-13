@@ -1046,7 +1046,7 @@
               checked={config.dsp.crossfade.trim_silence}
               onchange={(e) => setCrossfade({ trim_silence: (e.target as HTMLInputElement).checked })}
             />
-            Skip silence at track edges (Quick and Blend always do)
+            Skip silence at track edges (Quick, Blend and Auto always do)
           </label>
           <label>
             <input
@@ -1101,7 +1101,7 @@
             {:else}
               <p class="muted">
                 Let a track end on its own with AutoMix on, then compare the same pair in each
-                style. Replays pause playback and skip EQ and ReplayGain.
+                style. Replays pause playback and keep ReplayGain but skip EQ.
               </p>
             {/if}
           </div>
