@@ -185,6 +185,9 @@ struct Inner {
     seek_target: Mutex<Option<PendingSeek>>,
     /// Set while playback waits for the network (`PlaybackState.buffering`).
     reconnect: Mutex<Option<Reconnect>>,
+    /// The current track ran out of audio while its download waits for the
+    /// network (also `PlaybackState.buffering`).
+    stream_stalled: AtomicBool,
     /// True while the worker is running a session (used by `PlayPause` to know
     /// whether a resume needs a fresh generation).
     worker_busy: AtomicBool,
@@ -232,7 +235,8 @@ fn build_state(inner: &Inner) -> PlaybackState {
     let q = inner.queue.lock().unwrap();
     PlaybackState {
         playing: q.is_playing(),
-        buffering: inner.reconnect.lock().unwrap().is_some(),
+        buffering: inner.reconnect.lock().unwrap().is_some()
+            || inner.stream_stalled.load(Ordering::SeqCst),
         current: q.current().cloned(),
         current_index: q.current_index(),
         position_ms: inner.position_ms.load(Ordering::SeqCst),
@@ -328,6 +332,7 @@ impl Engine {
             position_track: AtomicU64::new(0),
             seek_target: Mutex::new(None),
             reconnect: Mutex::new(None),
+            stream_stalled: AtomicBool::new(false),
             worker_busy: AtomicBool::new(false),
             wake_lock: Mutex::new(()),
             wake: Condvar::new(),
@@ -1143,10 +1148,27 @@ fn decode_from_network(
             }
         }
     };
+    // New signed links for the same stream, cut like `download_plan`, so a
+    // download that lost the network continues where it stopped.
+    let refresh: fetch::Refresh = {
+        let resolver = inner.resolver.clone();
+        let quality = *inner.quality.lock().unwrap();
+        let track_id = item.track_id;
+        let first_segment = target.as_ref().map(|t| t.segment_index);
+        Arc::new(move || {
+            let plan = resolver.resolve(track_id, quality)?;
+            Ok(match first_segment {
+                Some(index) => plan.from_segment(index),
+                None => plan,
+            })
+        })
+    };
     let fetch_buffer = buffer.clone();
     let fetcher = inner.fetcher.get().expect("fetcher initialized by the worker").clone();
     let downloader = std::thread::spawn(move || match sink {
-        Some(sink) => fetch::download_ahead(fetch_buffer, fetcher, download_plan, sink, ticket),
+        Some(sink) => {
+            fetch::download_ahead(fetch_buffer, fetcher, download_plan, sink, ticket, Some(refresh))
+        }
         None => {
             // A paced stream must not hold the line for run-ahead downloads.
             drop(ticket);
@@ -1407,14 +1429,31 @@ fn wait_for_info(inner: &Arc<Inner>, stream: &mut TrackStream, gen: u64) -> Resu
         match wait_for_stream_event(&inner.wake_lock, &inner.wake, &stream.rx, session_over) {
             StreamWait::Superseded => return Err(Error::Output("playback superseded".into())),
             StreamWait::Shutdown => return Err(Error::Output("engine shut down".into())),
-            StreamWait::Woken => continue,
+            StreamWait::Woken => {
+                publish_stall(inner, stream.buffer.is_stalled());
+                continue;
+            }
             StreamWait::Disconnected => {
                 return Err(Error::Decode("stream ended before any audio".into()))
             }
-            StreamWait::Event(Ok(StreamEvent::Info(start))) => return Ok(start),
+            StreamWait::Event(Ok(StreamEvent::Info(start))) => {
+                publish_stall(inner, false);
+                return Ok(start);
+            }
             StreamWait::Event(Ok(StreamEvent::Samples(_))) => continue,
             StreamWait::Event(Err(e)) => return Err(e),
         }
+    }
+}
+
+/// Publish whether the current track is starved by a download waiting for
+/// the network; emits a state event only on a change.
+fn publish_stall(inner: &Arc<Inner>, stalled: bool) {
+    if inner.stream_stalled.swap(stalled, Ordering::SeqCst) != stalled {
+        if stalled {
+            tracing::warn!("playback is waiting for the network");
+        }
+        emit(inner, EngineEvent::State(build_state(inner)));
     }
 }
 
@@ -2139,6 +2178,7 @@ fn run_session(
                 }
                 match received {
                     Ok(Ok(StreamEvent::Samples(buf))) => {
+                        publish_stall(inner, false);
                         fifo_frames += buf.frames(channels);
                         fifo.push_back(buf);
                     }
@@ -2149,6 +2189,9 @@ fn run_session(
                         return SessionOutcome::StreamError(e);
                     }
                     Err(RecvTimeoutError::Timeout) => {
+                        // Out of audio: if the download is waiting for the
+                        // network, say so; it resumes in place when back.
+                        publish_stall(inner, stream.buffer.is_stalled());
                         emit_position_if_due(inner, frames, rate, &mut last_emit);
                         continue;
                     }
@@ -2551,6 +2594,7 @@ fn worker_main(
         );
         // The session is over; a resume from here must start a new one.
         inner.worker_busy.store(false, Ordering::SeqCst);
+        publish_stall(&inner, false);
         match outcome {
             SessionOutcome::Superseded => {}
             SessionOutcome::QueueEnded => {
@@ -3385,6 +3429,69 @@ mod tests {
         );
     }
 
+    /// Serves `files`, failing `down` with a network error for its first
+    /// `outage` requests.
+    struct OutageFetcher {
+        files: HashMap<String, Vec<u8>>,
+        down: String,
+        outage: AtomicUsize,
+    }
+
+    impl Fetcher for OutageFetcher {
+        fn get(&self, url: &str) -> Result<Vec<u8>> {
+            if url == self.down
+                && self
+                    .outage
+                    .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
+                    .is_ok()
+            {
+                return Err(Error::Fetch("network is unreachable".into()));
+            }
+            self.files.get(url).cloned().ok_or_else(|| Error::Fetch(format!("no fixture for {url}")))
+        }
+    }
+
+    #[test]
+    fn a_mid_track_outage_continues_in_the_same_session() {
+        // The fixture split into four byte ranges served as segments.
+        let (mut plan, files) = fixture_plan();
+        let bytes = files["mem://tone"].clone();
+        let quarter = bytes.len() / 4 + 1;
+        let mut parts = HashMap::new();
+        plan.segments = bytes
+            .chunks(quarter)
+            .enumerate()
+            .map(|(i, chunk)| {
+                let url = format!("mem://part{i}");
+                parts.insert(url.clone(), chunk.to_vec());
+                Segment { url, start_ticks: 0, duration_ticks: 0 }
+            })
+            .collect();
+        let output = NullOutput::new();
+        let engine = build_engine(
+            Arc::new(FakeResolver { plan }),
+            Arc::new(OutageFetcher {
+                files: parts,
+                down: "mem://part2".into(),
+                // More failures than the quick schedule allows: only the
+                // in-place network recovery gets through this.
+                outage: AtomicUsize::new(10),
+            }),
+            Box::new(output.clone()),
+            Quality::Lossless,
+        );
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let seen_ref = seen.clone();
+        engine.subscribe(Arc::new(move |e| seen_ref.lock().unwrap().push(e)));
+
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| !engine.state().playing && output.samples().len() >= 176_400);
+
+        assert_eq!(output.samples().len(), 176_400, "audio was lost across the outage");
+        assert_eq!(output.opens(), 1, "the device was reopened: playback restarted");
+        assert!(!seen.lock().unwrap().iter().any(|e| matches!(e, EngineEvent::Error { .. })));
+    }
+
     #[test]
     fn a_long_network_loss_waits_and_then_resumes() {
         let (plan, files) = fixture_plan();
@@ -3571,7 +3678,11 @@ mod tests {
         wait_for(|| output.samples().len() > 0);
 
         engine.handle(EngineCmd::Seek(1000)).unwrap();
-        wait_for(|| engine.state().position_ms >= 1000);
+        // Past the target, so the seeked session is the one playing: until
+        // the worker switches, the pre-seek session can still publish its
+        // own (early) position over the seek's.
+        wait_for(|| engine.state().position_ms >= 1100);
+        assert!(engine.state().position_ms >= 1100, "the seek never played");
         // Simulate the stop a stream error performs, keeping the position.
         engine.inner.queue.lock().unwrap().stop();
         let before = output.samples().len();

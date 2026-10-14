@@ -15,6 +15,10 @@ pub enum Error {
     /// resolve is not.
     #[error("fetch error: {0}")]
     FetchRejected(String),
+    /// A download rode out a lost network for its whole retry budget
+    /// (`retry::NETWORK_LIMIT`); the engine must not wait all over again.
+    #[error("network unavailable: {0}")]
+    NetworkLost(String),
     #[error("decode error: {0}")]
     Decode(String),
     #[error("{0}")]
@@ -130,5 +134,6 @@ mod tests {
         assert!(!Error::Decode("boom".into()).is_transient());
         assert!(!Error::Manifest("bad".into()).is_transient());
         assert!(!Error::Unavailable("low".into()).is_transient());
+        assert!(!Error::NetworkLost("5 min".into()).is_transient(), "a spent wait must not restart");
     }
 }

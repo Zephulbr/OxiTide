@@ -124,7 +124,10 @@ fn sleep_on(conn: &Connectivity, wait: Duration, hold: bool, cancelled: impl Fn(
         if (now >= deadline && !holding) || now >= recheck {
             return true;
         }
-        conn.wait_change(Duration::from_millis(50));
+        // Park until the deadline (or the recheck while holding), waking on
+        // a network change and at least every 50 ms for `cancelled`.
+        let until = if holding { recheck } else { deadline };
+        conn.wait_change((until - now).min(Duration::from_millis(50)));
     }
 }
 

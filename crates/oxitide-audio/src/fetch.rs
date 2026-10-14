@@ -116,23 +116,33 @@ struct State {
 #[derive(Clone)]
 struct Failure {
     message: String,
-    rejected: bool,
+    kind: FailureKind,
+}
+
+#[derive(Clone, Copy)]
+enum FailureKind {
+    Fetch,
+    Rejected,
+    NetworkLost,
 }
 
 impl Failure {
     fn from_error(e: &Error) -> Self {
-        match e {
-            Error::FetchRejected(message) => Self { message: message.clone(), rejected: true },
-            Error::Fetch(message) => Self { message: message.clone(), rejected: false },
-            other => Self { message: other.to_string(), rejected: false },
-        }
+        let (kind, message) = match e {
+            Error::FetchRejected(message) => (FailureKind::Rejected, message.clone()),
+            Error::NetworkLost(message) => (FailureKind::NetworkLost, message.clone()),
+            Error::Fetch(message) => (FailureKind::Fetch, message.clone()),
+            other => (FailureKind::Fetch, other.to_string()),
+        };
+        Self { message, kind }
     }
 
     fn to_error(&self) -> Error {
-        if self.rejected {
-            Error::FetchRejected(self.message.clone())
-        } else {
-            Error::Fetch(self.message.clone())
+        let message = self.message.clone();
+        match self.kind {
+            FailureKind::Fetch => Error::Fetch(message),
+            FailureKind::Rejected => Error::FetchRejected(message),
+            FailureKind::NetworkLost => Error::NetworkLost(message),
         }
     }
 }
@@ -142,6 +152,8 @@ pub struct StreamBuffer {
     cond: Condvar,
     cancelled: AtomicBool,
     total_pushed: AtomicU64,
+    /// True while the download is waiting out a network failure.
+    stalled: AtomicBool,
 }
 
 impl StreamBuffer {
@@ -151,7 +163,18 @@ impl StreamBuffer {
             cond: Condvar::new(),
             cancelled: AtomicBool::new(false),
             total_pushed: AtomicU64::new(0),
+            stalled: AtomicBool::new(false),
         })
+    }
+
+    /// Whether the download is currently waiting for the network; the
+    /// engine shows this once the decoder runs out of audio.
+    pub fn is_stalled(&self) -> bool {
+        self.stalled.load(Ordering::SeqCst)
+    }
+
+    fn set_stalled(&self, stalled: bool) {
+        self.stalled.store(stalled, Ordering::SeqCst);
     }
 
     pub fn push(&self, bytes: &[u8]) {
@@ -510,17 +533,24 @@ impl Progress {
     }
 }
 
+/// Fetches a fresh plan for the same stream (new signed URLs), cut to the
+/// same first segment as the plan being downloaded.
+pub type Refresh = Arc<dyn Fn() -> Result<StreamPlan> + Send + Sync>;
+
 /// Download `plan` to `sink` as fast as the connection allows (when first in
 /// line at the [`AheadGate`]) while this thread feeds the bytes back into
 /// `buffer` at the decoder's pace. Once a track is on disk a network drop
 /// cannot interrupt it, and a cached track is published before it finishes
-/// playing. Without a readable spill file it falls back to [`download`].
+/// playing. A lost network is ridden out in place (see [`fetch_recovering`]):
+/// the decoder simply waits, then continues. Without a readable spill file
+/// it falls back to [`download`].
 pub fn download_ahead(
     buffer: Arc<StreamBuffer>,
     fetcher: Arc<dyn Fetcher>,
     plan: StreamPlan,
     sink: AheadSink,
     ticket: AheadTicket,
+    refresh: Option<Refresh>,
 ) {
     let reader = match File::open(sink.path()) {
         Ok(reader) => reader,
@@ -534,13 +564,12 @@ pub fn download_ahead(
         }
     };
     let progress = Arc::new(Progress::default());
-    let urls = plan_urls(&plan);
     let network = {
         let buffer = buffer.clone();
         let progress = progress.clone();
-        std::thread::Builder::new()
-            .name("oxitide-fetch".into())
-            .spawn(move || run_network(&buffer, fetcher.as_ref(), urls, sink, ticket, &progress))
+        std::thread::Builder::new().name("oxitide-fetch".into()).spawn(move || {
+            run_network(&buffer, fetcher.as_ref(), &plan, sink, ticket, refresh.as_ref(), &progress)
+        })
     };
     if let Err(e) = network {
         buffer.fail(&Error::Fetch(format!("failed to start the download: {e}")));
@@ -552,13 +581,14 @@ pub fn download_ahead(
 fn run_network(
     buffer: &StreamBuffer,
     fetcher: &dyn Fetcher,
-    urls: Vec<String>,
+    plan: &StreamPlan,
     mut sink: AheadSink,
     ticket: AheadTicket,
+    refresh: Option<&Refresh>,
     progress: &Progress,
 ) {
-    let mut urls = urls.into_iter();
-    while let Some(url) = urls.next() {
+    let mut urls = plan_urls(plan);
+    for index in 0..urls.len() {
         // Run ahead only when first in line; otherwise fetch as the decoder
         // needs it, like a plain stream.
         loop {
@@ -573,7 +603,7 @@ fn run_network(
             }
             drop(progress.cond.wait_timeout(state, AHEAD_POLL).unwrap());
         }
-        let bytes = match get_with_retry(fetcher, &url, buffer) {
+        let bytes = match fetch_recovering(fetcher, &mut urls, index, plan, refresh, buffer) {
             Ok(bytes) => bytes,
             Err(e) => {
                 progress.update(|p| p.end = Some(NetEnd::Failed(Failure::from_error(&e))));
@@ -593,13 +623,80 @@ fn run_network(
             drop(sink);
             drop(ticket);
             buffer.push(&bytes);
-            download_urls(buffer, fetcher, urls.collect(), None);
+            download_urls(buffer, fetcher, urls[index + 1..].to_vec(), None);
             return;
         }
         progress.update(|p| p.downloaded += bytes.len() as u64);
     }
     sink.finish();
     progress.update(|p| p.end = Some(NetEnd::Done));
+}
+
+/// Retries after which a still-failing URL is presumed expired and the plan
+/// is refreshed on every further attempt (about 4 s into an outage).
+const REFRESH_AFTER_ATTEMPTS: usize = 4;
+
+/// Fetch `urls[index]`, riding out a lost network in place: retries follow
+/// [`Backoff::network`] (cut short when the network returns, held while it is
+/// known to be down) and the buffer reads as stalled meanwhile. A rejected
+/// URL, or one still failing after a few attempts, is replaced by refreshing
+/// the plan, so the download continues from the same segment with new
+/// links. `NetworkLost` once the backoff is spent; `FetchRejected` when the
+/// URL is refused and cannot be refreshed, or the stream itself changed.
+fn fetch_recovering(
+    fetcher: &dyn Fetcher,
+    urls: &mut Vec<String>,
+    index: usize,
+    plan: &StreamPlan,
+    refresh: Option<&Refresh>,
+    buffer: &StreamBuffer,
+) -> Result<Vec<u8>> {
+    let mut backoff = Backoff::network();
+    let mut refresh_due = false;
+    let result = loop {
+        if refresh_due {
+            if let Some(refresh) = refresh {
+                match refresh_urls(refresh, plan, urls.len()) {
+                    Ok(fresh) => *urls = fresh,
+                    Err(e @ Error::FetchRejected(_)) => break Err(e),
+                    Err(e) if !e.is_transient() => break Err(e),
+                    Err(e) => tracing::debug!("plan refresh failed ({e}); will retry"),
+                }
+            }
+        }
+        let error = match fetcher.get(&urls[index]) {
+            Ok(bytes) => break Ok(bytes),
+            Err(e) => e,
+        };
+        let rejected = matches!(error, Error::FetchRejected(_));
+        if rejected && refresh.is_none() {
+            break Err(error);
+        }
+        refresh_due = rejected || backoff.attempts() >= REFRESH_AFTER_ATTEMPTS;
+        buffer.set_stalled(true);
+        let Some(wait) = backoff.next_wait() else {
+            break Err(Error::NetworkLost(error.to_string()));
+        };
+        tracing::warn!("segment {index} failed ({error}); retrying in {wait:?}");
+        if !backoff.sleep(wait, || buffer.is_cancelled()) {
+            break Err(error);
+        }
+    };
+    buffer.set_stalled(false);
+    result
+}
+
+/// The fresh plan's URLs, provided it is the same stream (same manifest
+/// identity and segment count); otherwise `FetchRejected`, and the engine
+/// starts the track over at its position.
+fn refresh_urls(refresh: &Refresh, plan: &StreamPlan, expected: usize) -> Result<Vec<String>> {
+    let fresh = refresh()?;
+    let urls = plan_urls(&fresh);
+    if fresh.manifest_hash != plan.manifest_hash || urls.len() != expected {
+        return Err(Error::FetchRejected("the stream changed while it was downloading".into()));
+    }
+    tracing::info!("refreshed the stream's links; continuing the download");
+    Ok(urls)
 }
 
 fn feed(buffer: &StreamBuffer, mut reader: File, progress: &Progress) {
@@ -937,7 +1034,7 @@ mod tests {
         let handle = {
             let (buf, fetcher, ticket) = (buf.clone(), fetcher.clone(), gate.register(true));
             std::thread::spawn(move || {
-                download_ahead(buf, fetcher, chunk_plan(64), AheadSink::Cache(writer), ticket)
+                download_ahead(buf, fetcher, chunk_plan(64), AheadSink::Cache(writer), ticket, None)
             })
         };
 
@@ -961,7 +1058,7 @@ mod tests {
         let handle = {
             let (buf, fetcher, ticket) = (buf.clone(), fetcher.clone(), gate.register(false));
             let sink = AheadSink::Scratch(ScratchFile::create(&dir).unwrap());
-            std::thread::spawn(move || download_ahead(buf, fetcher, chunk_plan(64), sink, ticket))
+            std::thread::spawn(move || download_ahead(buf, fetcher, chunk_plan(64), sink, ticket, None))
         };
 
         std::thread::sleep(Duration::from_millis(300));
@@ -1000,9 +1097,9 @@ mod tests {
         let fetcher = Arc::new(FailAfter { ok: 3, calls: Mutex::new(0) });
         let buf = StreamBuffer::new();
         let sink = AheadSink::Scratch(ScratchFile::create(&dir).unwrap());
-        download_ahead(buf.clone(), fetcher, chunk_plan(6), sink, gate.register(true));
+        download_ahead(buf.clone(), fetcher, chunk_plan(6), sink, gate.register(true), None);
         match drain(&buf) {
-            Err((Error::Fetch(_), read)) => assert_eq!(read, 3 * AHEAD_CHUNK),
+            Err((Error::NetworkLost(_), read)) => assert_eq!(read, 3 * AHEAD_CHUNK),
             other => panic!("expected a fetch error after 3 segments, got {other:?}"),
         }
         let _ = std::fs::remove_dir_all(dir);
@@ -1028,7 +1125,7 @@ mod tests {
         let handle = {
             let (buf, ticket) = (buf.clone(), gate.register(true));
             std::thread::spawn(move || {
-                download_ahead(buf, Arc::new(SlowFetcher), chunk_plan(500), AheadSink::Cache(writer), ticket)
+                download_ahead(buf, Arc::new(SlowFetcher), chunk_plan(500), AheadSink::Cache(writer), ticket, None)
             })
         };
         std::thread::sleep(Duration::from_millis(30));
@@ -1036,6 +1133,111 @@ mod tests {
         handle.join().unwrap();
         assert!(wait_until(|| spill_files(&dir) == 0), "the partial entry was left behind");
         assert!(cache.lookup(&key).is_none(), "a partial download was published");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Serves `s0..sN` and `fresh-s0..` (refreshed links); a URL in `down`
+    /// fails with a network error for its first `outage` attempts, and the
+    /// plain `sK` URLs are rejected (expired) when `expired` is set.
+    struct OutageFetcher {
+        down: String,
+        outage: usize,
+        expired: bool,
+        attempts: Mutex<usize>,
+        stalled_seen: Arc<AtomicBool>,
+        buffer: Mutex<Option<Arc<StreamBuffer>>>,
+    }
+
+    impl Fetcher for OutageFetcher {
+        fn get(&self, url: &str) -> Result<Vec<u8>> {
+            if let Some(buf) = self.buffer.lock().unwrap().as_ref() {
+                if buf.is_stalled() {
+                    self.stalled_seen.store(true, Ordering::SeqCst);
+                }
+            }
+            if self.expired && !url.starts_with("fresh-") {
+                return Err(Error::FetchRejected(format!("status 403 for {url}")));
+            }
+            if url.ends_with(&self.down) {
+                let mut attempts = self.attempts.lock().unwrap();
+                *attempts += 1;
+                if *attempts <= self.outage {
+                    return Err(Error::Fetch("network is unreachable".into()));
+                }
+            }
+            Ok(vec![2u8; AHEAD_CHUNK])
+        }
+    }
+
+    fn outage_fetcher(down: &str, outage: usize, expired: bool) -> Arc<OutageFetcher> {
+        Arc::new(OutageFetcher {
+            down: down.into(),
+            outage,
+            expired,
+            attempts: Mutex::new(0),
+            stalled_seen: Arc::new(AtomicBool::new(false)),
+            buffer: Mutex::new(None),
+        })
+    }
+
+    fn fresh_plan(segments: usize) -> StreamPlan {
+        let mut plan = chunk_plan(segments);
+        for segment in &mut plan.segments {
+            segment.url = format!("fresh-{}", segment.url);
+        }
+        plan
+    }
+
+    #[test]
+    fn a_lost_network_is_ridden_out_in_place() {
+        let dir = temp_dir();
+        let gate = Arc::new(AheadGate::default());
+        let fetcher = outage_fetcher("s3", 3, false);
+        let buf = StreamBuffer::new();
+        *fetcher.buffer.lock().unwrap() = Some(buf.clone());
+        let sink = AheadSink::Scratch(ScratchFile::create(&dir).unwrap());
+        download_ahead(buf.clone(), fetcher.clone(), chunk_plan(6), sink, gate.register(true), None);
+        assert_eq!(drain(&buf).ok(), Some(6 * AHEAD_CHUNK), "the stream did not continue");
+        assert!(fetcher.stalled_seen.load(Ordering::SeqCst), "the stall was not published");
+        assert!(!buf.is_stalled(), "the stall flag stayed on");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn expired_links_are_refreshed_and_the_download_continues() {
+        let dir = temp_dir();
+        let gate = Arc::new(AheadGate::default());
+        let fetcher = outage_fetcher("none", 0, true);
+        let refreshes = Arc::new(AtomicU64::new(0));
+        let refresh: Refresh = {
+            let refreshes = refreshes.clone();
+            Arc::new(move || {
+                refreshes.fetch_add(1, Ordering::SeqCst);
+                Ok(fresh_plan(4))
+            })
+        };
+        let buf = StreamBuffer::new();
+        let sink = AheadSink::Scratch(ScratchFile::create(&dir).unwrap());
+        download_ahead(buf.clone(), fetcher, chunk_plan(4), sink, gate.register(true), Some(refresh));
+        assert_eq!(drain(&buf).ok(), Some(4 * AHEAD_CHUNK));
+        assert_eq!(refreshes.load(Ordering::SeqCst), 1, "one refresh renews every link");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_changed_stream_is_handed_back_to_the_engine() {
+        let dir = temp_dir();
+        let gate = Arc::new(AheadGate::default());
+        let fetcher = outage_fetcher("none", 0, true);
+        // Same track, different segmentation: not safe to splice.
+        let refresh: Refresh = Arc::new(|| Ok(fresh_plan(5)));
+        let buf = StreamBuffer::new();
+        let sink = AheadSink::Scratch(ScratchFile::create(&dir).unwrap());
+        download_ahead(buf.clone(), fetcher, chunk_plan(4), sink, gate.register(true), Some(refresh));
+        match drain(&buf) {
+            Err((e @ Error::FetchRejected(_), _)) => assert!(e.is_transient()),
+            other => panic!("expected a rejected stream, got {other:?}"),
+        }
         let _ = std::fs::remove_dir_all(dir);
     }
 
