@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use crate::cache::CacheWriter;
 use crate::error::{Error, Result};
+use crate::retry::Backoff;
 use crate::source::StreamPlan;
 
 pub trait Fetcher: Send + Sync + 'static {
@@ -18,10 +19,6 @@ pub struct HttpFetcher {
     client: reqwest::blocking::Client,
 }
 
-/// How many times a single `get` is attempted before giving up.
-const MAX_ATTEMPTS: u32 = 3;
-/// Cap on any single retry wait (e.g. a large `Retry-After`).
-const MAX_RETRY_WAIT: Duration = Duration::from_secs(5);
 /// Cap on unconsumed buffered bytes; the downloader waits for the decoder to
 /// catch up before fetching another segment.
 pub const MAX_BUFFERED_BYTES: usize = 2 * 1024 * 1024;
@@ -29,7 +26,8 @@ pub const MAX_BUFFERED_BYTES: usize = 2 * 1024 * 1024;
 impl HttpFetcher {
     pub fn new() -> Result<Self> {
         // Idle sockets are retired before routers/NATs silently drop them
-        // (see `oxitide_tidal::http_client`); `get_with_retry` covers the rest.
+        // (see `oxitide_tidal::http_client`). One `get` is one attempt; the
+        // callers own retries (`retry::Backoff`).
         let client = reqwest::blocking::Client::builder()
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(30))
@@ -40,41 +38,6 @@ impl HttpFetcher {
         Ok(Self { client })
     }
 
-    /// One HTTP attempt. `Ok` carries the body; `Err((error, Some(wait)))` is a
-    /// retryable failure with the wait before the next attempt, and
-    /// `Err((error, None))` is fatal.
-    fn get_once(
-        &self,
-        url: &str,
-        attempt: u32,
-    ) -> std::result::Result<Vec<u8>, (Error, Option<Duration>)> {
-        let resp = self
-            .client
-            .get(url)
-            .send()
-            .map_err(|e| (Error::Fetch(describe(e)), None))?;
-        let status = resp.status();
-        if !status.is_success() {
-            let message = format!("status {status} for {}", url.split('?').next().unwrap_or(url));
-            let retryable = status.as_u16() == 429 || status.is_server_error();
-            if !retryable {
-                return Err((Error::FetchRejected(message), None));
-            }
-            let err = Error::Fetch(message);
-            let wait = resp
-                .headers()
-                .get(reqwest::header::RETRY_AFTER)
-                .and_then(|v| v.to_str().ok())
-                .and_then(|s| s.trim().parse::<u64>().ok())
-                .map(Duration::from_secs)
-                .unwrap_or_else(|| Duration::from_millis(200) * attempt)
-                .min(MAX_RETRY_WAIT);
-            return Err((err, Some(wait)));
-        }
-        resp.bytes()
-            .map(|b| b.to_vec())
-            .map_err(|e| (Error::Fetch(describe(e)), None))
-    }
 }
 
 /// reqwest's message plus each distinct cause, without the URL: segment URLs
@@ -101,21 +64,20 @@ impl Default for HttpFetcher {
 }
 
 impl Fetcher for HttpFetcher {
+    /// One attempt. 429 and 5xx are `Fetch` (worth retrying); any other
+    /// non-success is `FetchRejected` (the URL itself is no good).
     fn get(&self, url: &str) -> Result<Vec<u8>> {
-        let mut last = None;
-        for attempt in 1..=MAX_ATTEMPTS {
-            match self.get_once(url, attempt) {
-                Ok(bytes) => return Ok(bytes),
-                Err((err, wait)) => {
-                    last = Some(err);
-                    match wait {
-                        Some(wait) if attempt < MAX_ATTEMPTS => std::thread::sleep(wait),
-                        _ => break,
-                    }
-                }
-            }
+        let resp = self.client.get(url).send().map_err(|e| Error::Fetch(describe(e)))?;
+        let status = resp.status();
+        if !status.is_success() {
+            let message = format!("status {status} for {}", url.split('?').next().unwrap_or(url));
+            return Err(if status.as_u16() == 429 || status.is_server_error() {
+                Error::Fetch(message)
+            } else {
+                Error::FetchRejected(message)
+            });
         }
-        Err(last.expect("at least one attempt"))
+        resp.bytes().map(|b| b.to_vec()).map_err(|e| Error::Fetch(describe(e)))
     }
 }
 
@@ -248,21 +210,6 @@ impl StreamBuffer {
         self.cancelled.load(Ordering::SeqCst)
     }
 
-    /// Sleep up to `wait`, waking early on cancel; false when cancelled.
-    pub fn sleep_unless_cancelled(&self, wait: Duration) -> bool {
-        let deadline = std::time::Instant::now() + wait;
-        let mut s = self.state.lock().unwrap();
-        loop {
-            if self.is_cancelled() {
-                return false;
-            }
-            let now = std::time::Instant::now();
-            if now >= deadline {
-                return true;
-            }
-            s = self.cond.wait_timeout(s, deadline - now).unwrap().0;
-        }
-    }
 
     pub fn is_done(&self) -> bool {
         self.state.lock().unwrap().done
@@ -334,34 +281,20 @@ impl StreamBuffer {
     }
 }
 
-/// Waits between attempts at one segment: about 16 s in total, so a Wi-Fi
-/// roam or a short outage is ridden out while buffered audio keeps playing.
-/// Longer outages end the stream and the engine waits for the network.
-#[cfg(not(test))]
-const SEGMENT_RETRY_WAITS: [Duration; 6] = [
-    Duration::from_millis(200),
-    Duration::from_millis(500),
-    Duration::from_secs(1),
-    Duration::from_secs(2),
-    Duration::from_secs(4),
-    Duration::from_secs(8),
-];
-#[cfg(test)]
-const SEGMENT_RETRY_WAITS: [Duration; 6] = [Duration::from_millis(1); 6];
-
-/// Fetch `url`, retrying on the `SEGMENT_RETRY_WAITS` schedule. A rejected
-/// URL (4xx) fails at once — only a fresh resolve can fix it — and a cancel
-/// stops the waiting.
+/// Fetch `url` with `Backoff::quick` (~16 s), for the paced fallback stream:
+/// a Wi-Fi roam is ridden out while buffered audio keeps playing; longer
+/// outages end the stream and the engine waits for the network. A rejected
+/// URL (4xx) fails at once — only a fresh resolve can fix it.
 fn get_with_retry(fetcher: &dyn Fetcher, url: &str, buffer: &StreamBuffer) -> Result<Vec<u8>> {
-    let mut waits = SEGMENT_RETRY_WAITS.iter();
+    let mut backoff = Backoff::quick();
     loop {
         match fetcher.get(url) {
             Ok(bytes) => return Ok(bytes),
             Err(e @ Error::FetchRejected(_)) => return Err(e),
             Err(e) => {
-                let Some(&wait) = waits.next() else { return Err(e) };
+                let Some(wait) = backoff.next_wait() else { return Err(e) };
                 tracing::warn!("segment fetch failed ({e}); retrying in {wait:?}");
-                if !buffer.sleep_unless_cancelled(wait) {
+                if !backoff.sleep(wait, || buffer.is_cancelled()) {
                     return Err(e);
                 }
             }
@@ -898,7 +831,9 @@ mod tests {
         let buf = StreamBuffer::new();
         download(buf.clone(), fetcher.clone(), plan, None);
         assert!(matches!(buf.wait_len(0), Err(Error::Fetch(_))));
-        assert_eq!(fetcher.calls(), SEGMENT_RETRY_WAITS.len() + 1);
+        let mut quick = Backoff::quick();
+        let waits = std::iter::from_fn(|| quick.next_wait()).count();
+        assert_eq!(fetcher.calls(), waits + 1);
     }
 
     struct RejectingFetcher {

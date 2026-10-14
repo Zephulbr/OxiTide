@@ -13,6 +13,7 @@ use crate::dsp::{
 };
 use crate::error::{Error, Result};
 use crate::fetch::{self, AheadGate, AheadSink, AheadTicket, Fetcher, ScratchFile, StreamBuffer};
+use crate::retry::{self, Backoff};
 use crate::meter::LevelTap;
 use crate::output::{AudioOutput, AudioOutputSpec, ExclusiveFallback, OutputMode, OutputStatus};
 use crate::perf::{AudioPerfEvent, PerfHook};
@@ -123,36 +124,10 @@ type Listener = Arc<dyn Fn(EngineEvent) + Send + Sync>;
 /// track never buffers in memory without limit.
 const PREFETCH_BUFFERS: usize = 96;
 
-/// Waits before each fresh start of a track whose stream failed transiently
-/// before any audio; its length bounds the attempts. Covers a Wi-Fi roam or
-/// a resume from sleep on top of the TIDAL client's own quick retries.
-#[cfg(not(test))]
-const STREAM_RESTART_BACKOFF: [Duration; 2] = [Duration::from_secs(1), Duration::from_secs(4)];
-#[cfg(test)]
-const STREAM_RESTART_BACKOFF: [Duration; 2] = [Duration::from_millis(10), Duration::from_millis(20)];
-
-/// Waits between attempts to resume after the network was lost; the last
-/// one repeats until `RECONNECT_LIMIT`, after which the error is shown.
-/// Each attempt is one cheap API call, so the cap stays short: playback
-/// resumes within ~15 s of the network returning.
-#[cfg(not(test))]
-const RECONNECT_WAITS: [Duration; 4] = [
-    Duration::from_secs(2),
-    Duration::from_secs(4),
-    Duration::from_secs(8),
-    Duration::from_secs(15),
-];
-#[cfg(not(test))]
-const RECONNECT_LIMIT: Duration = Duration::from_secs(5 * 60);
-#[cfg(test)]
-const RECONNECT_WAITS: [Duration; 2] = [Duration::from_millis(10), Duration::from_millis(20)];
-#[cfg(test)]
-const RECONNECT_LIMIT: Duration = Duration::from_millis(300);
-
-/// Playback lost the network and is waiting to resume the current track.
+/// Playback lost the network and is waiting to resume the current track;
+/// the waits follow `retry::Backoff::network`.
 struct Reconnect {
-    since: Instant,
-    attempts: usize,
+    backoff: Backoff,
 }
 
 /// An in-flight sleep-timer fade: the worker ramps the output volume from
@@ -1444,17 +1419,21 @@ fn wait_for_info(inner: &Arc<Inner>, stream: &mut TrackStream, gen: u64) -> Resu
 }
 
 /// The wait before the next attempt to resume after a network loss, starting
-/// the wait period on the first call; `None` once `RECONNECT_LIMIT` has
-/// passed (the caller then reports the error).
+/// the wait period on the first call; `None` once the backoff is spent (the
+/// caller then reports the error).
 fn next_reconnect_wait(inner: &Inner) -> Option<Duration> {
     let mut reconnect = inner.reconnect.lock().unwrap();
-    let state = reconnect.get_or_insert_with(|| Reconnect { since: Instant::now(), attempts: 0 });
-    if state.since.elapsed() >= RECONNECT_LIMIT {
-        return None;
-    }
-    let wait = RECONNECT_WAITS[state.attempts.min(RECONNECT_WAITS.len() - 1)];
-    state.attempts += 1;
-    Some(wait)
+    let state = reconnect.get_or_insert_with(|| Reconnect { backoff: Backoff::network() });
+    state.backoff.next_wait()
+}
+
+/// Sleep before the next resume attempt (cut short when the network returns,
+/// held while it is known to be down); false when the session was superseded
+/// or the engine shut down.
+fn reconnect_sleep(inner: &Arc<Inner>, gen: u64, wait: Duration) -> bool {
+    retry::network_sleep(wait, || {
+        inner.generation.load(Ordering::SeqCst) != gen || inner.shutdown.load(Ordering::SeqCst)
+    })
 }
 
 /// Remember where the current track stopped, so any later start of it (the
@@ -1483,22 +1462,6 @@ fn resume_after_network_loss(inner: &Arc<Inner>) {
     record_resume_point(inner, true);
     inner.generation.fetch_add(1, Ordering::SeqCst);
     inner.notify_worker();
-}
-
-/// Sleep `wait` in short steps; false as soon as the session is superseded
-/// or the engine shuts down, so transport commands are not held up.
-fn wait_unless_superseded(inner: &Arc<Inner>, gen: u64, wait: Duration) -> bool {
-    let deadline = Instant::now() + wait;
-    loop {
-        if inner.generation.load(Ordering::SeqCst) != gen || inner.shutdown.load(Ordering::SeqCst) {
-            return false;
-        }
-        let now = Instant::now();
-        if now >= deadline {
-            return true;
-        }
-        std::thread::sleep((deadline - now).min(Duration::from_millis(25)));
-    }
 }
 
 fn emit_position_if_due(inner: &Arc<Inner>, frames: u64, rate: u32, last: &mut Instant) {
@@ -1805,8 +1768,6 @@ fn run_session(
     // Unplayable tracks passed over since the last track that started; bounds
     // the skip chain so repeat-all/repeat-one cannot loop forever.
     let mut skipped: usize = 0;
-    // Fresh starts of the current track after a transient failure.
-    let mut restarts: usize = 0;
     // The previous track's held-back end, waiting to cross into this one.
     let mut pending_handoff: Option<Handoff> = None;
     // True once this session advanced into the next track on its own (not a
@@ -1865,35 +1826,12 @@ fn run_session(
                     }
                 }
             }
-            // A network blip while resolving or fetching the track's start.
-            // The next track is prefetched when the current one begins, so
-            // its failure can be minutes old by the time it is needed: start
-            // it again with a fresh resolve instead of stopping the queue.
-            Err(e) if e.is_transient() && restarts < STREAM_RESTART_BACKOFF.len() => {
-                let wait = STREAM_RESTART_BACKOFF[restarts];
-                restarts += 1;
-                tracing::warn!(
-                    "track {} failed to start ({e}); starting it again in {wait:?} ({restarts}/{})",
-                    stream.item.track_id,
-                    STREAM_RESTART_BACKOFF.len()
-                );
-                if !wait_unless_superseded(inner, gen, wait) {
-                    return SessionOutcome::Superseded;
-                }
-                // Only the session's first track carries the requested seek.
-                let item = stream.item.clone();
-                let seek = if !advanced && skipped == 0 && item.track_id == first_item.track_id {
-                    seek_ms
-                } else {
-                    None
-                };
-                stream = start_track(inner, &item, mode, gen, seek);
-                continue;
-            }
+            // A transient failure (network, TIDAL hiccup, or a prefetch whose
+            // failure is minutes old) ends the session; the worker waits for
+            // the network and starts the track again with a fresh resolve.
             Err(e) => return SessionOutcome::StreamError(e),
         };
         skipped = 0;
-        restarts = 0;
         if inner.reconnect.lock().unwrap().take().is_some() {
             tracing::info!("network is back; playback resumed");
             emit(inner, EngineEvent::State(build_state(inner)));
@@ -2676,7 +2614,7 @@ fn worker_main(
                     let _ = output.stop();
                     open_spec = None;
                     emit(&inner, EngineEvent::State(build_state(&inner)));
-                    if wait_unless_superseded(&inner, handled_gen, wait) {
+                    if reconnect_sleep(&inner, handled_gen, wait) {
                         resume_after_network_loss(&inner);
                     } else {
                         // Next/stop/seek took over; that session starts afresh.
@@ -3423,7 +3361,7 @@ mod tests {
         let resolver = Arc::new(FlakyResolver {
             plan,
             calls: AtomicUsize::new(0),
-            failures: STREAM_RESTART_BACKOFF.len(),
+            failures: 2,
             error: network_down,
         });
         let engine = build_engine(
@@ -3440,7 +3378,7 @@ mod tests {
 
         wait_for(|| output.samples().len() > 0);
         assert!(output.samples().len() > 0, "the track never started");
-        assert_eq!(resolver.calls.load(Ordering::SeqCst), STREAM_RESTART_BACKOFF.len() + 1);
+        assert_eq!(resolver.calls.load(Ordering::SeqCst), 3);
         assert!(
             !seen.lock().unwrap().iter().any(|e| matches!(e, EngineEvent::Error { .. })),
             "a recovered blip must not surface an error"
@@ -3456,7 +3394,7 @@ mod tests {
         let resolver = Arc::new(FlakyResolver {
             plan,
             calls: AtomicUsize::new(0),
-            failures: STREAM_RESTART_BACKOFF.len() + 3,
+            failures: 5,
             error: network_down,
         });
         let engine = build_engine(
