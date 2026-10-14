@@ -73,7 +73,7 @@
       >{#key fav}<span class="heart-ico" class:pop={fav}><Icon name="heart" size={18} /></span>{/key}</button>
 
       <span class="muted tnum time">{formatDuration(position / 1000)} / {formatDuration(duration / 1000)}</span>
-      {#if player.state.buffering}<span class="muted buffering">buffering…</span>{/if}
+      {#if player.state.buffering}<span class="muted buffering" role="status">waiting for network…</span>{/if}
     </div>
 
     <div class="zone center">

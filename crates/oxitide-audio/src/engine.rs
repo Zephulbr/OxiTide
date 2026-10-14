@@ -45,6 +45,8 @@ pub struct StreamMeta {
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct PlaybackState {
     pub playing: bool,
+    /// True while playback lost the network and waits to resume the
+    /// current track where it stopped.
     pub buffering: bool,
     pub current: Option<QueueItem>,
     pub current_index: Option<usize>,
@@ -129,6 +131,30 @@ const STREAM_RESTART_BACKOFF: [Duration; 2] = [Duration::from_secs(1), Duration:
 #[cfg(test)]
 const STREAM_RESTART_BACKOFF: [Duration; 2] = [Duration::from_millis(10), Duration::from_millis(20)];
 
+/// Waits between attempts to resume after the network was lost; the last
+/// one repeats until `RECONNECT_LIMIT`, after which the error is shown.
+/// Each attempt is one cheap API call, so the cap stays short: playback
+/// resumes within ~15 s of the network returning.
+#[cfg(not(test))]
+const RECONNECT_WAITS: [Duration; 4] = [
+    Duration::from_secs(2),
+    Duration::from_secs(4),
+    Duration::from_secs(8),
+    Duration::from_secs(15),
+];
+#[cfg(not(test))]
+const RECONNECT_LIMIT: Duration = Duration::from_secs(5 * 60);
+#[cfg(test)]
+const RECONNECT_WAITS: [Duration; 2] = [Duration::from_millis(10), Duration::from_millis(20)];
+#[cfg(test)]
+const RECONNECT_LIMIT: Duration = Duration::from_millis(300);
+
+/// Playback lost the network and is waiting to resume the current track.
+struct Reconnect {
+    since: Instant,
+    attempts: usize,
+}
+
 /// An in-flight sleep-timer fade: the worker ramps the output volume from
 /// `base_volume` to zero over `duration`, then pauses and restores the volume.
 struct FadeState {
@@ -182,6 +208,8 @@ struct Inner {
     position_track: AtomicU64,
     /// Pending seek; consumed by the worker.
     seek_target: Mutex<Option<PendingSeek>>,
+    /// Set while playback waits for the network (`PlaybackState.buffering`).
+    reconnect: Mutex<Option<Reconnect>>,
     /// True while the worker is running a session (used by `PlayPause` to know
     /// whether a resume needs a fresh generation).
     worker_busy: AtomicBool,
@@ -229,7 +257,7 @@ fn build_state(inner: &Inner) -> PlaybackState {
     let q = inner.queue.lock().unwrap();
     PlaybackState {
         playing: q.is_playing(),
-        buffering: false,
+        buffering: inner.reconnect.lock().unwrap().is_some(),
         current: q.current().cloned(),
         current_index: q.current_index(),
         position_ms: inner.position_ms.load(Ordering::SeqCst),
@@ -324,6 +352,7 @@ impl Engine {
             position_ms: AtomicU64::new(0),
             position_track: AtomicU64::new(0),
             seek_target: Mutex::new(None),
+            reconnect: Mutex::new(None),
             worker_busy: AtomicBool::new(false),
             wake_lock: Mutex::new(()),
             wake: Condvar::new(),
@@ -1370,6 +1399,48 @@ fn wait_for_info(inner: &Arc<Inner>, stream: &mut TrackStream, gen: u64) -> Resu
     }
 }
 
+/// The wait before the next attempt to resume after a network loss, starting
+/// the wait period on the first call; `None` once `RECONNECT_LIMIT` has
+/// passed (the caller then reports the error).
+fn next_reconnect_wait(inner: &Inner) -> Option<Duration> {
+    let mut reconnect = inner.reconnect.lock().unwrap();
+    let state = reconnect.get_or_insert_with(|| Reconnect { since: Instant::now(), attempts: 0 });
+    if state.since.elapsed() >= RECONNECT_LIMIT {
+        return None;
+    }
+    let wait = RECONNECT_WAITS[state.attempts.min(RECONNECT_WAITS.len() - 1)];
+    state.attempts += 1;
+    Some(wait)
+}
+
+/// Remember where the current track stopped, so any later start of it (the
+/// automatic resume, or a play press after a pause during the wait) picks
+/// up there. `auto_start` makes the idle worker start it by itself.
+fn record_resume_point(inner: &Inner, auto_start: bool) {
+    let Some(item) = inner.queue.lock().unwrap().current().cloned() else { return };
+    let position_ms = if inner.position_track.load(Ordering::SeqCst) == item.track_id {
+        inner.position_ms.load(Ordering::SeqCst)
+    } else {
+        0
+    };
+    *inner.seek_target.lock().unwrap() =
+        Some(PendingSeek { track_id: item.track_id, position_ms, auto_start });
+}
+
+/// Start the current track again at its last position (the `Retry` path),
+/// unless the user paused while the engine waited; the next play press then
+/// resumes there.
+fn resume_after_network_loss(inner: &Arc<Inner>) {
+    if !inner.queue.lock().unwrap().is_playing() {
+        inner.reconnect.lock().unwrap().take();
+        emit(inner, EngineEvent::State(build_state(inner)));
+        return;
+    }
+    record_resume_point(inner, true);
+    inner.generation.fetch_add(1, Ordering::SeqCst);
+    inner.notify_worker();
+}
+
 /// Sleep `wait` in short steps; false as soon as the session is superseded
 /// or the engine shuts down, so transport commands are not held up.
 fn wait_unless_superseded(inner: &Arc<Inner>, gen: u64, wait: Duration) -> bool {
@@ -1779,6 +1850,10 @@ fn run_session(
         };
         skipped = 0;
         restarts = 0;
+        if inner.reconnect.lock().unwrap().take().is_some() {
+            tracing::info!("network is back; playback resumed");
+            emit(inner, EngineEvent::State(build_state(inner)));
+        }
         let StreamStart { info, start_frames, mut meta, replay_gain } = start;
         fire_perf(inner, AudioPerfEvent::InfoReady { track_id: stream.item.track_id });
         let want = AudioOutputSpec {
@@ -2546,6 +2621,27 @@ fn worker_main(
                 emit(&inner, EngineEvent::State(build_state(&inner)));
             }
             SessionOutcome::StreamError(e) => {
+                let wait = if e.is_transient() { next_reconnect_wait(&inner) } else { None };
+                if let Some(wait) = wait {
+                    // The network went away: keep the queue, release the
+                    // device, and resume where playback stopped once it is
+                    // back.
+                    tracing::warn!("playback lost the network ({e}); resuming in {wait:?}");
+                    record_resume_point(&inner, false);
+                    *inner.stream_meta.lock().unwrap() = None;
+                    let _ = output.stop();
+                    open_spec = None;
+                    emit(&inner, EngineEvent::State(build_state(&inner)));
+                    if wait_unless_superseded(&inner, handled_gen, wait) {
+                        resume_after_network_loss(&inner);
+                    } else {
+                        // Next/stop/seek took over; that session starts afresh.
+                        inner.reconnect.lock().unwrap().take();
+                        emit(&inner, EngineEvent::State(build_state(&inner)));
+                    }
+                    continue;
+                }
+                inner.reconnect.lock().unwrap().take();
                 {
                     let mut q = inner.queue.lock().unwrap();
                     q.stop();
@@ -2598,12 +2694,17 @@ mod tests {
         plan: StreamPlan,
         calls: AtomicUsize,
         failures: usize,
+        error: fn() -> Error,
+    }
+
+    fn network_down() -> Error {
+        Error::Fetch("network down".into())
     }
 
     impl StreamResolver for FlakyResolver {
         fn resolve(&self, _track_id: u64, _quality: Quality) -> Result<StreamPlan> {
             if self.calls.fetch_add(1, Ordering::SeqCst) < self.failures {
-                Err(Error::Fetch("network down".into()))
+                Err((self.error)())
             } else {
                 Ok(self.plan.clone())
             }
@@ -3279,6 +3380,7 @@ mod tests {
             plan,
             calls: AtomicUsize::new(0),
             failures: STREAM_RESTART_BACKOFF.len(),
+            error: network_down,
         });
         let engine = build_engine(
             resolver.clone(),
@@ -3299,6 +3401,101 @@ mod tests {
             !seen.lock().unwrap().iter().any(|e| matches!(e, EngineEvent::Error { .. })),
             "a recovered blip must not surface an error"
         );
+    }
+
+    #[test]
+    fn a_long_network_loss_waits_and_then_resumes() {
+        let (plan, files) = fixture_plan();
+        let output = NullOutput::new();
+        // Outlasts the quick restarts, so the session ends and the worker
+        // has to wait for the network.
+        let resolver = Arc::new(FlakyResolver {
+            plan,
+            calls: AtomicUsize::new(0),
+            failures: STREAM_RESTART_BACKOFF.len() + 3,
+            error: network_down,
+        });
+        let engine = build_engine(
+            resolver.clone(),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(output.clone()),
+            Quality::Lossless,
+        );
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let seen_ref = seen.clone();
+        engine.subscribe(Arc::new(move |e| seen_ref.lock().unwrap().push(e)));
+
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+
+        wait_for(|| output.samples().len() > 0);
+        assert!(output.samples().len() > 0, "playback never resumed");
+        let events = seen.lock().unwrap();
+        assert!(
+            events.iter().any(|e| matches!(e, EngineEvent::State(s) if s.buffering && s.playing)),
+            "the wait was not published as buffering"
+        );
+        assert!(!events.iter().any(|e| matches!(e, EngineEvent::Error { .. })), "an error surfaced");
+        drop(events);
+        assert!(!engine.state().buffering, "buffering stayed on after the resume");
+    }
+
+    #[test]
+    fn a_network_loss_past_the_limit_stops_with_an_error() {
+        let (plan, _) = fixture_plan();
+        let engine = build_engine(
+            Arc::new(FlakyResolver {
+                plan,
+                calls: AtomicUsize::new(0),
+                failures: usize::MAX,
+                error: network_down,
+            }),
+            Arc::new(crate::fetch::MapFetcher::default()),
+            Box::new(NullOutput::new()),
+            Quality::Lossless,
+        );
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let seen_ref = seen.clone();
+        engine.subscribe(Arc::new(move |e| seen_ref.lock().unwrap().push(e)));
+
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+
+        wait_for(|| seen.lock().unwrap().iter().any(|e| matches!(e, EngineEvent::Error { .. })));
+        assert!(seen.lock().unwrap().iter().any(|e| matches!(e, EngineEvent::Error { .. })));
+        assert!(!engine.state().playing);
+        assert!(!engine.state().buffering);
+    }
+
+    #[test]
+    fn pausing_during_a_network_wait_keeps_the_position() {
+        let (plan, files) = fixture_plan();
+        let engine = build_engine(
+            Arc::new(FlakyResolver {
+                plan,
+                calls: AtomicUsize::new(0),
+                failures: usize::MAX,
+                error: network_down,
+            }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(NullOutput::new()),
+            Quality::Lossless,
+        );
+        engine
+            .handle(EngineCmd::RestoreSession {
+                items: vec![item(1)],
+                start: 0,
+                position_ms: 1200,
+                shuffle: false,
+                repeat: RepeatMode::Off,
+            })
+            .unwrap();
+        engine.handle(EngineCmd::PlayPause).unwrap();
+        wait_for(|| engine.state().buffering);
+        assert!(engine.state().buffering, "never entered the network wait");
+
+        engine.handle(EngineCmd::PlayPause).unwrap();
+        wait_for(|| !engine.state().buffering);
+        let target = engine.inner.seek_target.lock().unwrap().as_ref().map(|t| t.position_ms);
+        assert_eq!(target, Some(1200), "the resume point was lost");
     }
 
     #[test]
@@ -3350,11 +3547,12 @@ mod tests {
         let (plan, files) = fixture_plan();
         let output = NullOutput::new();
         let engine = build_engine(
-            // One more failure than the engine's own restarts, so it stops.
+            // A failure the engine does not retry on its own, so it stops.
             Arc::new(FlakyResolver {
                 plan,
                 calls: AtomicUsize::new(0),
-                failures: STREAM_RESTART_BACKOFF.len() + 1,
+                failures: 1,
+                error: || Error::Manifest("bad manifest".into()),
             }),
             Arc::new(crate::fetch::MapFetcher { files }),
             Box::new(output.clone()),
