@@ -16,7 +16,9 @@ installed build:
 Toggle the network with Wi-Fi off/on or by unplugging the cable. The log (`RUST_LOG`
 info) shows `network down` / `network up` when Windows reports a change.
 
-Status: **pending**
+Status: **done** — accepted by the owner on 2026-10-14 without running this checklist;
+issues will be reported as they come up. The items below stay as the reference for
+what to check.
 
 ## Download ahead
 
