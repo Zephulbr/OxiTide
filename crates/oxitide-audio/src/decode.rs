@@ -123,6 +123,43 @@ impl PcmSink for CollectSink {
     }
 }
 
+/// Format details read from a media file's headers (no decoding).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProbedFormat {
+    /// The manifest-style codec name (`flac`, `alac`, `mp4a.40.2`), when known.
+    pub codec: Option<String>,
+    pub sample_rate: Option<u32>,
+    pub bit_depth: Option<u32>,
+}
+
+/// Read the default audio track's format from an MP4 file's headers.
+pub fn probe(source: impl MediaSource + 'static) -> Result<ProbedFormat> {
+    use symphonia::core::codecs::audio::well_known::{CODEC_ID_AAC, CODEC_ID_ALAC, CODEC_ID_FLAC};
+    let mss = MediaSourceStream::new(Box::new(source), Default::default());
+    let mut hint = Hint::new();
+    hint.with_extension("mp4");
+    let reader = symphonia::default::get_probe()
+        .probe(&hint, mss, FormatOptions::default(), MetadataOptions::default())
+        .map_err(|e| Error::Decode(e.to_string()))?;
+    let track = reader
+        .default_track(TrackType::Audio)
+        .ok_or_else(|| Error::Decode("no audio track".into()))?;
+    let Some(CodecParameters::Audio(params)) = track.codec_params.as_ref() else {
+        return Err(Error::Decode("unsupported codec parameters".into()));
+    };
+    let codec = match params.codec {
+        id if id == CODEC_ID_FLAC => Some("flac"),
+        id if id == CODEC_ID_ALAC => Some("alac"),
+        id if id == CODEC_ID_AAC => Some("mp4a.40.2"),
+        _ => None,
+    };
+    Ok(ProbedFormat {
+        codec: codec.map(str::to_string),
+        sample_rate: params.sample_rate,
+        bit_depth: params.bits_per_sample,
+    })
+}
+
 pub fn run(source: impl MediaSource + 'static, ext: &str, sink: &mut dyn PcmSink) -> Result<()> {
     let mss = MediaSourceStream::new(Box::new(source), Default::default());
     let mut hint = Hint::new();

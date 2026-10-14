@@ -1064,8 +1064,9 @@ fn decode_track(
 }
 
 /// Play a cached copy of `item` at `quality` when TIDAL cannot be reached to
-/// resolve it. `None` when there is no usable copy (no entry, no sidecar);
-/// otherwise the decode result.
+/// resolve it. The plan comes from the entry's sidecar, or for an entry
+/// cached before sidecars, from the file's own headers (no ReplayGain).
+/// `None` when there is no usable copy; otherwise the decode result.
 #[allow(clippy::too_many_arguments)]
 fn play_cached_offline(
     inner: &Arc<Inner>,
@@ -1078,14 +1079,40 @@ fn play_cached_offline(
     cache_key_slot: &Arc<Mutex<Option<CacheKey>>>,
 ) -> Option<Result<()>> {
     let (key, path, meta) = inner.cache.find_offline(item.track_id, quality)?;
-    let plan: StreamPlan = serde_json::from_slice(&meta)
-        .map_err(|e| tracing::warn!("cache sidecar for {} is unreadable: {e}", key.file_name()))
-        .ok()?;
+    let from_sidecar = meta.and_then(|meta| {
+        serde_json::from_slice::<StreamPlan>(&meta)
+            .map_err(|e| tracing::warn!("cache sidecar for {} is unreadable: {e}", key.file_name()))
+            .ok()
+    });
+    let plan = match from_sidecar {
+        Some(plan) => plan,
+        None => plan_from_file(&path, key.manifest_hash)
+            .map_err(|e| tracing::warn!("cache entry {} cannot be probed: {e}", key.file_name()))
+            .ok()?,
+    };
     tracing::info!("TIDAL unreachable; playing track {} from the cache", item.track_id);
     *cache_key_slot.lock().unwrap() = Some(key);
     inner.cache.protect(&key);
     fire_perf(inner, AudioPerfEvent::CacheHit { track_id: item.track_id });
     Some(decode_from_file(inner, item, mode, generation, seek_ms, tx, &path, &plan))
+}
+
+/// A whole-file plan for a cached entry without a sidecar: format from the
+/// file's headers; quality and ReplayGain unknown.
+fn plan_from_file(path: &std::path::Path, manifest_hash: u64) -> Result<StreamPlan> {
+    let format = crate::decode::probe(crate::demux::FileSource::open(path)?)?;
+    Ok(StreamPlan {
+        init_url: None,
+        segments: Vec::new(),
+        timescale: 0,
+        codec: format.codec,
+        sample_rate: format.sample_rate,
+        bit_depth: format.bit_depth,
+        bitrate_kbps: None,
+        quality: None,
+        manifest_hash: Some(manifest_hash),
+        replay_gain: ReplayGain::default(),
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2652,8 +2679,7 @@ fn worker_main(
                     // The network went away: keep the queue, release the
                     // device, and resume where playback stopped once it is
                     // back.
-                    tracing::warn!("playback lost the network ({e}); resuming in {wait:?}");
-                    record_resume_point(&inner, false);
+                    tracing::warn!("playback lost the network ({e}); resuming in {wait:?}");                    record_resume_point(&inner, false);
                     *inner.stream_meta.lock().unwrap() = None;
                     let _ = output.stop();
                     open_spec = None;
@@ -3582,6 +3608,7 @@ mod tests {
         assert!(engine.state().buffering, "never entered the network wait");
 
         engine.handle(EngineCmd::PlayPause).unwrap();
+        assert!(!engine.state().playing, "the wait had already ended; the press did not pause");
         wait_for(|| !engine.state().buffering);
         let target = engine.inner.seek_target.lock().unwrap().as_ref().map(|t| t.position_ms);
         assert_eq!(target, Some(1200), "the resume point was lost");
@@ -5166,6 +5193,40 @@ mod tests {
 
         assert_eq!(output.samples().len(), 176_400 * 2, "the cached copy did not play in full");
         assert_eq!(calls.load(Ordering::SeqCst), fetched, "played offline but still fetched");
+        assert!(!seen.lock().unwrap().iter().any(|e| matches!(e, EngineEvent::Error { .. })));
+    }
+
+    #[test]
+    fn a_track_cached_before_sidecars_plays_offline_from_its_headers() {
+        let (_, files) = fixture_plan();
+        let cache = test_cache();
+        let key = CacheKey { track_id: 1, quality: Quality::Lossless, manifest_hash: 0x77 };
+        {
+            // Written the old way: the audio only, no `.meta` sidecar.
+            let mut writer = cache.begin_write(&key).unwrap();
+            writer.write_all(&files["mem://tone"]).unwrap();
+            writer.commit();
+        }
+        let output = NullOutput::new();
+        let engine = Engine::new(
+            Arc::new(SwitchableResolver {
+                plan: cached_plan("mem://tone", 0x77),
+                offline: AtomicBool::new(true),
+            }),
+            move || -> Arc<dyn Fetcher> { Arc::new(crate::fetch::MapFetcher::default()) },
+            Box::new(output.clone()),
+            Quality::Lossless,
+            cache,
+            true,
+        );
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let seen_ref = seen.clone();
+        engine.subscribe(Arc::new(move |e| seen_ref.lock().unwrap().push(e)));
+
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| !engine.state().playing && output.samples().len() >= 176_400);
+
+        assert_eq!(output.samples().len(), 176_400, "the legacy entry did not play");
         assert!(!seen.lock().unwrap().iter().any(|e| matches!(e, EngineEvent::Error { .. })));
     }
 

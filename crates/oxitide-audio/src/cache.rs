@@ -92,9 +92,14 @@ impl DiskCache {
 
     /// Find a committed entry for `track_id` at `quality` without knowing
     /// its manifest hash, for playing offline when `playbackinfo` cannot be
-    /// fetched. Only entries with a stream sidecar qualify; the newest wins.
-    /// Returns the key, the file, and the sidecar bytes; touches the mtime.
-    pub fn find_offline(&self, track_id: u64, quality: Quality) -> Option<(CacheKey, PathBuf, Vec<u8>)> {
+    /// fetched. Entries with a stream sidecar win (they keep ReplayGain),
+    /// then the newest. Returns the key, the file, and the sidecar bytes if
+    /// any (entries cached before sidecars have none); touches the mtime.
+    pub fn find_offline(
+        &self,
+        track_id: u64,
+        quality: Quality,
+    ) -> Option<(CacheKey, PathBuf, Option<Vec<u8>>)> {
         if !self.usable {
             return None;
         }
@@ -107,13 +112,13 @@ impl DiskCache {
                 let hash = name.strip_prefix(&prefix)?.strip_suffix(".fmp4")?;
                 let manifest_hash = u64::from_str_radix(hash, 16).ok()?;
                 let path = entry.path();
-                meta_of(&path).is_file().then_some(())?;
+                let has_meta = meta_of(&path).is_file();
                 let modified = fs::metadata(&path).and_then(|m| m.modified()).ok()?;
-                Some((modified, CacheKey { track_id, quality, manifest_hash }, path))
+                Some(((has_meta, modified), CacheKey { track_id, quality, manifest_hash }, path))
             })
-            .max_by_key(|(modified, ..)| *modified)
+            .max_by_key(|(rank, ..)| *rank)
             .map(|(_, key, path)| (key, path))?;
-        let meta = fs::read(meta_of(&path)).ok()?;
+        let meta = fs::read(meta_of(&path)).ok();
         if let Ok(file) = OpenOptions::new().write(true).open(&path) {
             let _ = file.set_modified(SystemTime::now());
         }
@@ -749,7 +754,7 @@ mod tests {
     }
 
     #[test]
-    fn find_offline_returns_the_newest_entry_with_a_sidecar() {
+    fn find_offline_prefers_a_sidecar_then_the_newest() {
         let dir = temp_dir();
         let cache = DiskCache::new(dir.clone(), 1 << 20);
         let old = CacheKey { track_id: 5, quality: Quality::Lossless, manifest_hash: 1 };
@@ -757,7 +762,7 @@ mod tests {
         let bare = CacheKey { track_id: 5, quality: Quality::Lossless, manifest_hash: 3 };
         write_with_meta(&cache, &old, b"old");
         write_with_meta(&cache, &new, b"new");
-        write_entry(&cache, &bare, b"no sidecar");
+        write_entry(&cache, &bare, b"no sidecar"); // newest, but no sidecar
         let now = SystemTime::now();
         set_mtime(&cache.path_for(&old), now - Duration::from_secs(60));
         set_mtime(&cache.path_for(&new), now - Duration::from_secs(30));
@@ -765,7 +770,14 @@ mod tests {
         let (key, path, meta) = cache.find_offline(5, Quality::Lossless).unwrap();
         assert_eq!(key, new);
         assert_eq!(path, cache.path_for(&new));
-        assert_eq!(meta, b"new");
+        assert_eq!(meta.as_deref(), Some(&b"new"[..]));
+
+        // An entry cached before sidecars is still found, without one.
+        let legacy = CacheKey { track_id: 6, quality: Quality::Lossless, manifest_hash: 9 };
+        write_entry(&cache, &legacy, b"old cache");
+        let (key, _, meta) = cache.find_offline(6, Quality::Lossless).unwrap();
+        assert_eq!(key, legacy);
+        assert!(meta.is_none());
         assert!(cache.find_offline(5, Quality::Max).is_none(), "matched another quality");
         assert!(cache.find_offline(55, Quality::Lossless).is_none(), "matched another track");
         let _ = fs::remove_dir_all(dir);

@@ -28,8 +28,10 @@ const NETWORK_WAITS: [Duration; 2] = [Duration::from_millis(1), Duration::from_m
 /// count: playback waits for it as long as it takes.
 #[cfg(not(test))]
 pub const NETWORK_LIMIT: Duration = Duration::from_secs(5 * 60);
+/// Long enough that a loaded test machine does not hit it by accident while
+/// a test is still driving the wait.
 #[cfg(test)]
-pub const NETWORK_LIMIT: Duration = Duration::from_millis(300);
+pub const NETWORK_LIMIT: Duration = Duration::from_secs(1);
 
 /// Waits for the paced fallback stream (no disk to download ahead to): about
 /// 16 s, then the engine's wait takes over.
