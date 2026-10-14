@@ -336,6 +336,11 @@ impl CacheWriter {
         self.bytes
     }
 
+    /// The temp file being written; readable while the download continues.
+    pub fn part_path(&self) -> &Path {
+        &self.part
+    }
+
     pub fn write_all(&mut self, data: &[u8]) -> io::Result<()> {
         let file = self
             .file

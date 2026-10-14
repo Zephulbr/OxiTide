@@ -12,7 +12,7 @@ use crate::dsp::{
     StreamResampler, Tail, TrackDsp, TransitionStyle, STAGE_CROSSFADE,
 };
 use crate::error::{Error, Result};
-use crate::fetch::{self, Fetcher, StreamBuffer};
+use crate::fetch::{self, AheadGate, AheadSink, AheadTicket, Fetcher, ScratchFile, StreamBuffer};
 use crate::meter::LevelTap;
 use crate::output::{AudioOutput, AudioOutputSpec, ExclusiveFallback, OutputMode, OutputStatus};
 use crate::perf::{AudioPerfEvent, PerfHook};
@@ -142,6 +142,8 @@ struct Inner {
     resolver: Arc<dyn StreamResolver>,
     fetcher: OnceLock<Arc<dyn Fetcher>>,
     cache: Arc<DiskCache>,
+    /// Which download may run ahead of its decoder (see `fetch::AheadGate`).
+    ahead_gate: Arc<AheadGate>,
     quality: Mutex<Quality>,
     /// Whether a lower-than-requested served quality plays or errors.
     allow_fallback: AtomicBool,
@@ -298,6 +300,7 @@ impl Engine {
             resolver,
             fetcher: OnceLock::new(),
             cache,
+            ahead_gate: Arc::new(AheadGate::default()),
             quality: Mutex::new(quality),
             allow_fallback: AtomicBool::new(allow_fallback),
             stream_meta: Mutex::new(None),
@@ -878,6 +881,7 @@ impl Drop for TrackStream {
     }
 }
 
+/// Start the track that is to play now; its download outranks prefetches.
 fn start_track(
     inner: &Arc<Inner>,
     item: &QueueItem,
@@ -885,6 +889,18 @@ fn start_track(
     generation: u64,
     seek_ms: Option<u64>,
 ) -> TrackStream {
+    start_track_ranked(inner, item, mode, generation, seek_ms, true)
+}
+
+fn start_track_ranked(
+    inner: &Arc<Inner>,
+    item: &QueueItem,
+    mode: OutputMode,
+    generation: u64,
+    seek_ms: Option<u64>,
+    priority: bool,
+) -> TrackStream {
+    let ticket = inner.ahead_gate.register(priority);
     let (tx, rx) = std::sync::mpsc::sync_channel::<Result<StreamEvent>>(PREFETCH_BUFFERS);
     let buffer = StreamBuffer::new();
     let cache_key = Arc::new(Mutex::new(None));
@@ -903,7 +919,17 @@ fn start_track(
     let spawned = std::thread::Builder::new()
         .name("oxitide-decode".into())
         .spawn(move || {
-            decode_track(decode_inner, item, mode, generation, seek_ms, tx, buffer, cache_key)
+            decode_track(
+                decode_inner,
+                item,
+                mode,
+                generation,
+                seek_ms,
+                tx,
+                buffer,
+                cache_key,
+                ticket,
+            )
         });
     if let Err(e) = spawned {
         // Dropping `tx` disconnects the channel; the worker treats it as an
@@ -922,7 +948,7 @@ fn start_prefetch(inner: &Arc<Inner>, mode: OutputMode, gen: u64) -> Option<Trac
         let q = inner.queue.lock().unwrap();
         q.peek_next_index().and_then(|i| q.items().get(i).cloned())
     };
-    next.map(|item| start_track(inner, &item, mode, gen, None))
+    next.map(|item| start_track_ranked(inner, &item, mode, gen, None, false))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -935,6 +961,7 @@ fn decode_track(
     tx: SyncSender<Result<StreamEvent>>,
     buffer: Arc<StreamBuffer>,
     cache_key_slot: Arc<Mutex<Option<CacheKey>>>,
+    ticket: AheadTicket,
 ) {
     let quality = *inner.quality.lock().unwrap();
     fire_perf(&inner, AudioPerfEvent::ResolveStart { track_id: item.track_id });
@@ -1012,7 +1039,7 @@ fn decode_track(
         },
         None => fire_perf(&inner, AudioPerfEvent::CacheMiss { track_id: item.track_id }),
     }
-    decode_from_network(inner, item, mode, generation, seek_ms, tx, buffer, plan, cache_key);
+    decode_from_network(inner, item, mode, generation, seek_ms, tx, buffer, plan, cache_key, ticket);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1026,6 +1053,7 @@ fn decode_from_network(
     buffer: Arc<StreamBuffer>,
     plan: StreamPlan,
     cache_key: Option<CacheKey>,
+    ticket: AheadTicket,
 ) {
     // Seek by segment index: media URLs are an ordered list, so restarting
     // at the segment covering the target needs no HTTP Range.
@@ -1047,10 +1075,36 @@ fn decode_from_network(
         (None, Some(key)) => inner.cache.begin_write(&key),
         _ => None,
     };
+    // Download ahead to disk: the cache's temp file for a whole track, else
+    // a scratch file. Only without either does the stream stay paced to
+    // the decoder.
+    let sink = match writer {
+        Some(writer) => Some(AheadSink::Cache(writer)),
+        None => {
+            let dir = if inner.cache.usable() {
+                inner.cache.dir().to_path_buf()
+            } else {
+                std::env::temp_dir()
+            };
+            match ScratchFile::create(&dir) {
+                Ok(scratch) => Some(AheadSink::Scratch(scratch)),
+                Err(e) => {
+                    tracing::warn!("no download-ahead scratch file in {} ({e})", dir.display());
+                    None
+                }
+            }
+        }
+    };
     let fetch_buffer = buffer.clone();
     let fetcher = inner.fetcher.get().expect("fetcher initialized by the worker").clone();
-    let downloader =
-        std::thread::spawn(move || fetch::download(fetch_buffer, fetcher, download_plan, writer));
+    let downloader = std::thread::spawn(move || match sink {
+        Some(sink) => fetch::download_ahead(fetch_buffer, fetcher, download_plan, sink, ticket),
+        None => {
+            // A paced stream must not hold the line for run-ahead downloads.
+            drop(ticket);
+            fetch::download(fetch_buffer, fetcher, download_plan, None)
+        }
+    });
     let source = crate::demux::StreamBufferSource::new(buffer.clone());
     let total_bytes = {
         let buffer = buffer.clone();
@@ -3324,7 +3378,15 @@ mod tests {
     #[test]
     fn retry_resumes_at_the_recorded_position() {
         let (plan, files) = fixture_plan();
-        let (engine, output) = engine_with(plan, files);
+        // Real-time-ish output: with an instant one the last second can play
+        // out before `playing` is observed.
+        let output = NullOutput::new();
+        let engine = build_engine(
+            Arc::new(FakeResolver { plan }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(ThrottledOutput { inner: output.clone(), delay: Duration::from_millis(30) }),
+            Quality::Lossless,
+        );
         engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
         wait_for(|| output.samples().len() > 0);
 
@@ -4817,6 +4879,7 @@ mod tests {
             tx,
             buffer,
             Arc::new(Mutex::new(None)),
+            engine.inner.ahead_gate.register(true),
         );
         assert_eq!(cache.size_bytes(), 0, "a seek plan must not be cached");
     }

@@ -1,4 +1,7 @@
 use std::collections::HashMap;
+use std::fs::{File, OpenOptions};
+use std::io::{self, Read, Write};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
@@ -377,12 +380,26 @@ pub fn download(
     plan: StreamPlan,
     cache_writer: Option<CacheWriter>,
 ) {
-    let mut writer = cache_writer;
+    download_urls(&buffer, fetcher.as_ref(), plan_urls(&plan), cache_writer);
+}
+
+fn plan_urls(plan: &StreamPlan) -> Vec<String> {
     let mut urls = Vec::new();
     if let Some(init) = &plan.init_url {
         urls.push(init.clone());
     }
     urls.extend(plan.segments.iter().map(|s| s.url.clone()));
+    urls
+}
+
+/// `download`'s paced loop over an explicit URL list.
+fn download_urls(
+    buffer: &StreamBuffer,
+    fetcher: &dyn Fetcher,
+    urls: Vec<String>,
+    cache_writer: Option<CacheWriter>,
+) {
+    let mut writer = cache_writer;
     for url in urls {
         if buffer.is_cancelled() {
             if let Some(writer) = writer.take() {
@@ -397,7 +414,7 @@ pub fn download(
             }
             return;
         }
-        match get_with_retry(fetcher.as_ref(), &url, &buffer) {
+        match get_with_retry(fetcher, &url, buffer) {
             Ok(bytes) => {
                 let mut write_failed = false;
                 if let Some(writer) = writer.as_mut() {
@@ -426,6 +443,266 @@ pub fn download(
         writer.commit();
     }
     buffer.finish();
+}
+
+/// Orders run-ahead downloads: only the first in line may download beyond
+/// what its decoder needs, so the playing track never shares the connection
+/// with a prefetch racing ahead. Priority tickets (the playing track,
+/// including seeks and restarts) go before prefetches; ties go by age.
+#[derive(Default)]
+pub struct AheadGate {
+    active: Mutex<std::collections::BTreeSet<(u8, u64)>>,
+    next: AtomicU64,
+}
+
+impl AheadGate {
+    pub fn register(self: &Arc<Self>, priority: bool) -> AheadTicket {
+        let key = (u8::from(!priority), self.next.fetch_add(1, Ordering::SeqCst));
+        self.active.lock().unwrap().insert(key);
+        AheadTicket { gate: self.clone(), key }
+    }
+}
+
+/// A download's place in the [`AheadGate`]; dropping it frees the place.
+pub struct AheadTicket {
+    gate: Arc<AheadGate>,
+    key: (u8, u64),
+}
+
+impl AheadTicket {
+    fn first_in_line(&self) -> bool {
+        self.gate.active.lock().unwrap().first() == Some(&self.key)
+    }
+}
+
+impl Drop for AheadTicket {
+    fn drop(&mut self) {
+        self.gate.active.lock().unwrap().remove(&self.key);
+    }
+}
+
+/// A scratch file for a run-ahead download that is not cached (a seek
+/// truncates the plan; the cache may refuse a second writer). Deleted on
+/// drop; the `.part` suffix lets the cache's startup sweep remove leftovers.
+pub struct ScratchFile {
+    path: PathBuf,
+    file: Option<File>,
+}
+
+impl ScratchFile {
+    pub fn create(dir: &Path) -> io::Result<Self> {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let name =
+            format!("spill-{}-{}.part", std::process::id(), NEXT.fetch_add(1, Ordering::SeqCst));
+        let path = dir.join(name);
+        let file = OpenOptions::new().write(true).create_new(true).open(&path)?;
+        Ok(Self { path, file: Some(file) })
+    }
+}
+
+impl Drop for ScratchFile {
+    fn drop(&mut self) {
+        self.file.take();
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+/// Where a run-ahead download lands before the feeder reads it back.
+pub enum AheadSink {
+    /// The whole track, published to the cache as soon as it is complete.
+    Cache(CacheWriter),
+    Scratch(ScratchFile),
+}
+
+impl AheadSink {
+    fn path(&self) -> &Path {
+        match self {
+            AheadSink::Cache(writer) => writer.part_path(),
+            AheadSink::Scratch(scratch) => &scratch.path,
+        }
+    }
+
+    fn write_all(&mut self, data: &[u8]) -> io::Result<()> {
+        match self {
+            AheadSink::Cache(writer) => writer.write_all(data),
+            AheadSink::Scratch(scratch) => scratch
+                .file
+                .as_mut()
+                .ok_or_else(|| io::Error::other("scratch file closed"))?
+                .write_all(data),
+        }
+    }
+
+    /// The download completed: publish a cache entry; a scratch file stays
+    /// until the feeder has read it (the reader's handle keeps it alive).
+    fn finish(self) {
+        if let AheadSink::Cache(writer) = self {
+            writer.commit();
+        }
+    }
+}
+
+/// Bytes read back from the spill file per push into the stream buffer.
+const FEED_CHUNK: usize = 256 * 1024;
+
+/// How often the waiting network and feeder threads re-check the other side
+/// and cancellation.
+const AHEAD_POLL: Duration = Duration::from_millis(100);
+
+#[derive(Clone)]
+enum NetEnd {
+    Done,
+    Failed(Failure),
+    /// The spill file failed; the network thread now feeds the buffer itself.
+    Direct,
+}
+
+#[derive(Default)]
+struct NetProgress {
+    downloaded: u64,
+    fed: u64,
+    end: Option<NetEnd>,
+}
+
+#[derive(Default)]
+struct Progress {
+    state: Mutex<NetProgress>,
+    cond: Condvar,
+}
+
+impl Progress {
+    fn update(&self, f: impl FnOnce(&mut NetProgress)) {
+        f(&mut self.state.lock().unwrap());
+        self.cond.notify_all();
+    }
+}
+
+/// Download `plan` to `sink` as fast as the connection allows (when first in
+/// line at the [`AheadGate`]) while this thread feeds the bytes back into
+/// `buffer` at the decoder's pace. Once a track is on disk a network drop
+/// cannot interrupt it, and a cached track is published before it finishes
+/// playing. Without a readable spill file it falls back to [`download`].
+pub fn download_ahead(
+    buffer: Arc<StreamBuffer>,
+    fetcher: Arc<dyn Fetcher>,
+    plan: StreamPlan,
+    sink: AheadSink,
+    ticket: AheadTicket,
+) {
+    let reader = match File::open(sink.path()) {
+        Ok(reader) => reader,
+        Err(e) => {
+            tracing::warn!("download-ahead spill unreadable ({e}); streaming directly");
+            let writer = match sink {
+                AheadSink::Cache(writer) => Some(writer),
+                AheadSink::Scratch(_) => None,
+            };
+            return download(buffer, fetcher, plan, writer);
+        }
+    };
+    let progress = Arc::new(Progress::default());
+    let urls = plan_urls(&plan);
+    let network = {
+        let buffer = buffer.clone();
+        let progress = progress.clone();
+        std::thread::Builder::new()
+            .name("oxitide-fetch".into())
+            .spawn(move || run_network(&buffer, fetcher.as_ref(), urls, sink, ticket, &progress))
+    };
+    if let Err(e) = network {
+        buffer.fail(&Error::Fetch(format!("failed to start the download: {e}")));
+        return;
+    }
+    feed(&buffer, reader, &progress);
+}
+
+fn run_network(
+    buffer: &StreamBuffer,
+    fetcher: &dyn Fetcher,
+    urls: Vec<String>,
+    mut sink: AheadSink,
+    ticket: AheadTicket,
+    progress: &Progress,
+) {
+    let mut urls = urls.into_iter();
+    while let Some(url) = urls.next() {
+        // Run ahead only when first in line; otherwise fetch as the decoder
+        // needs it, like a plain stream.
+        loop {
+            if buffer.is_cancelled() {
+                return; // dropping `sink` aborts a partial cache entry
+            }
+            let state = progress.state.lock().unwrap();
+            let needed = state.fed == state.downloaded
+                && buffer.buffered_bytes() < MAX_BUFFERED_BYTES;
+            if needed || ticket.first_in_line() {
+                break;
+            }
+            drop(progress.cond.wait_timeout(state, AHEAD_POLL).unwrap());
+        }
+        let bytes = match get_with_retry(fetcher, &url, buffer) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                progress.update(|p| p.end = Some(NetEnd::Failed(Failure::from_error(&e))));
+                return;
+            }
+        };
+        if let Err(e) = sink.write_all(&bytes) {
+            tracing::warn!("download-ahead write failed ({e}); streaming the rest directly");
+            // Let the feeder drain the file, then take the buffer over.
+            let mut state = progress.state.lock().unwrap();
+            while state.fed < state.downloaded && !buffer.is_cancelled() {
+                state = progress.cond.wait_timeout(state, AHEAD_POLL).unwrap().0;
+            }
+            state.end = Some(NetEnd::Direct);
+            drop(state);
+            progress.cond.notify_all();
+            drop(sink);
+            drop(ticket);
+            buffer.push(&bytes);
+            download_urls(buffer, fetcher, urls.collect(), None);
+            return;
+        }
+        progress.update(|p| p.downloaded += bytes.len() as u64);
+    }
+    sink.finish();
+    progress.update(|p| p.end = Some(NetEnd::Done));
+}
+
+fn feed(buffer: &StreamBuffer, mut reader: File, progress: &Progress) {
+    let mut chunk = vec![0u8; FEED_CHUNK];
+    loop {
+        buffer.wait_room(MAX_BUFFERED_BYTES);
+        if buffer.is_cancelled() {
+            return;
+        }
+        let (available, end) = {
+            let mut state = progress.state.lock().unwrap();
+            while state.downloaded == state.fed && state.end.is_none() && !buffer.is_cancelled() {
+                state = progress.cond.wait_timeout(state, AHEAD_POLL).unwrap().0;
+            }
+            (state.downloaded - state.fed, state.end.clone())
+        };
+        if buffer.is_cancelled() {
+            return;
+        }
+        if available > 0 {
+            let n = (available as usize).min(chunk.len());
+            if let Err(e) = reader.read_exact(&mut chunk[..n]) {
+                buffer.fail(&Error::Fetch(format!("download-ahead read failed: {e}")));
+                return;
+            }
+            buffer.push(&chunk[..n]);
+            progress.update(|p| p.fed += n as u64);
+            continue;
+        }
+        match end {
+            Some(NetEnd::Done) => return buffer.finish(),
+            Some(NetEnd::Failed(failure)) => return buffer.fail(&failure.to_error()),
+            Some(NetEnd::Direct) => return,
+            None => {}
+        }
+    }
 }
 
 #[cfg(test)]
@@ -656,6 +933,175 @@ mod tests {
         assert_eq!(buf.read_at(0, &mut out).unwrap(), 4, "buffered audio was dropped");
         assert_eq!(&out, b"AAAA");
         assert!(matches!(buf.read_at(4, &mut out), Err(Error::Fetch(_))));
+    }
+
+    const AHEAD_CHUNK: usize = 64 * 1024;
+
+    fn chunk_plan(segments: usize) -> StreamPlan {
+        StreamPlan {
+            init_url: None,
+            segments: (0..segments)
+                .map(|i| Segment { url: format!("s{i}"), start_ticks: 0, duration_ticks: 0 })
+                .collect(),
+            timescale: 0,
+            codec: None,
+            sample_rate: None,
+            bit_depth: None,
+            bitrate_kbps: None,
+            quality: None,
+            manifest_hash: None,
+            replay_gain: Default::default(),
+        }
+    }
+
+    fn wait_until(mut ready: impl FnMut() -> bool) -> bool {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while !ready() {
+            if std::time::Instant::now() > deadline {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        true
+    }
+
+    /// Read the stream to its end like the demuxer; the byte count, or the
+    /// error with the count read before it.
+    fn drain(buf: &StreamBuffer) -> std::result::Result<usize, (Error, usize)> {
+        let mut pos = 0;
+        let mut out = vec![0u8; 32 * 1024];
+        loop {
+            match buf.read_at(pos, &mut out) {
+                Ok(0) => return Ok(pos),
+                Ok(n) => {
+                    pos += n;
+                    buf.consume_to(pos);
+                }
+                Err(e) => return Err((e, pos)),
+            }
+        }
+    }
+
+    fn spill_files(dir: &Path) -> usize {
+        std::fs::read_dir(dir)
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".part"))
+            .count()
+    }
+
+    #[test]
+    fn download_ahead_fetches_the_whole_track_without_a_consumer() {
+        let dir = temp_dir();
+        let cache = DiskCache::new(dir.clone(), 1 << 30);
+        let key = cache_key();
+        let writer = cache.begin_write(&key).unwrap();
+        let gate = Arc::new(AheadGate::default());
+        let fetcher = Arc::new(ChunkFetcher { chunk: vec![7u8; AHEAD_CHUNK], calls: Mutex::new(0) });
+        let buf = StreamBuffer::new();
+        let handle = {
+            let (buf, fetcher, ticket) = (buf.clone(), fetcher.clone(), gate.register(true));
+            std::thread::spawn(move || {
+                download_ahead(buf, fetcher, chunk_plan(64), AheadSink::Cache(writer), ticket)
+            })
+        };
+
+        // Nothing reads, yet all 4 MiB arrive and are published to the cache.
+        assert!(wait_until(|| cache.lookup(&key).is_some()), "the entry was never published");
+        assert_eq!(fetcher.calls(), 64);
+        assert!(buf.buffered_bytes() <= MAX_BUFFERED_BYTES + FEED_CHUNK, "memory grew past the cap");
+
+        assert_eq!(drain(&buf).ok(), Some(64 * AHEAD_CHUNK));
+        handle.join().unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_download_behind_the_playing_track_stays_paced_until_it_is_first() {
+        let dir = temp_dir();
+        let gate = Arc::new(AheadGate::default());
+        let playing = gate.register(true);
+        let fetcher = Arc::new(ChunkFetcher { chunk: vec![7u8; AHEAD_CHUNK], calls: Mutex::new(0) });
+        let buf = StreamBuffer::new();
+        let handle = {
+            let (buf, fetcher, ticket) = (buf.clone(), fetcher.clone(), gate.register(false));
+            let sink = AheadSink::Scratch(ScratchFile::create(&dir).unwrap());
+            std::thread::spawn(move || download_ahead(buf, fetcher, chunk_plan(64), sink, ticket))
+        };
+
+        std::thread::sleep(Duration::from_millis(300));
+        let paced = MAX_BUFFERED_BYTES / AHEAD_CHUNK + 2;
+        assert!(fetcher.calls() <= paced, "a prefetch ran ahead: {} fetches", fetcher.calls());
+
+        drop(playing);
+        assert!(wait_until(|| fetcher.calls() == 64), "it never ran ahead once first in line");
+        assert_eq!(drain(&buf).ok(), Some(64 * AHEAD_CHUNK));
+        handle.join().unwrap();
+        assert!(wait_until(|| spill_files(&dir) == 0), "the scratch file was left behind");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    struct FailAfter {
+        ok: usize,
+        calls: Mutex<usize>,
+    }
+
+    impl Fetcher for FailAfter {
+        fn get(&self, _url: &str) -> Result<Vec<u8>> {
+            let mut calls = self.calls.lock().unwrap();
+            *calls += 1;
+            if *calls <= self.ok {
+                Ok(vec![1u8; AHEAD_CHUNK])
+            } else {
+                Err(Error::Fetch("network is unreachable".into()))
+            }
+        }
+    }
+
+    #[test]
+    fn downloaded_audio_plays_out_before_a_network_failure() {
+        let dir = temp_dir();
+        let gate = Arc::new(AheadGate::default());
+        let fetcher = Arc::new(FailAfter { ok: 3, calls: Mutex::new(0) });
+        let buf = StreamBuffer::new();
+        let sink = AheadSink::Scratch(ScratchFile::create(&dir).unwrap());
+        download_ahead(buf.clone(), fetcher, chunk_plan(6), sink, gate.register(true));
+        match drain(&buf) {
+            Err((Error::Fetch(_), read)) => assert_eq!(read, 3 * AHEAD_CHUNK),
+            other => panic!("expected a fetch error after 3 segments, got {other:?}"),
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    struct SlowFetcher;
+
+    impl Fetcher for SlowFetcher {
+        fn get(&self, _url: &str) -> Result<Vec<u8>> {
+            std::thread::sleep(Duration::from_millis(5));
+            Ok(vec![1u8; AHEAD_CHUNK])
+        }
+    }
+
+    #[test]
+    fn a_cancelled_download_ahead_aborts_its_cache_entry() {
+        let dir = temp_dir();
+        let cache = DiskCache::new(dir.clone(), 1 << 30);
+        let key = cache_key();
+        let writer = cache.begin_write(&key).unwrap();
+        let gate = Arc::new(AheadGate::default());
+        let buf = StreamBuffer::new();
+        let handle = {
+            let (buf, ticket) = (buf.clone(), gate.register(true));
+            std::thread::spawn(move || {
+                download_ahead(buf, Arc::new(SlowFetcher), chunk_plan(500), AheadSink::Cache(writer), ticket)
+            })
+        };
+        std::thread::sleep(Duration::from_millis(30));
+        buf.cancel();
+        handle.join().unwrap();
+        assert!(wait_until(|| spill_files(&dir) == 0), "the partial entry was left behind");
+        assert!(cache.lookup(&key).is_none(), "a partial download was published");
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
