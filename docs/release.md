@@ -13,6 +13,10 @@ built by `.github/workflows/release.yml` from a version tag; nothing is uploaded
    - The key has an empty password. Add only the secret `TAURI_SIGNING_PRIVATE_KEY` (the file's
      contents); GitHub does not allow empty secrets, so leave `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
      unset — the workflow passes it through as empty.
+   - Set it with `gh secret set TAURI_SIGNING_PRIVATE_KEY --body "$((Get-Content ~/.tauri/oxitide.key -Raw).Trim())"`
+     (PowerShell). **Do not pipe the file into `gh secret set` from Windows PowerShell 5.1**: it
+     prepends a UTF-8 byte-order mark and the build fails with "failed to decode base64 secret key:
+     Invalid symbol 239".
 2. **Repository slug.** The updater endpoint in `tauri.conf.json` assumes
    `github.com/Zephulbr/OxiTide`. Change it if the repository lives elsewhere.
 3. **Actions permissions.** Settings → Actions → General: workflows may create releases
