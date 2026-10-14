@@ -3465,12 +3465,9 @@ mod tests {
 
     impl Fetcher for OutageFetcher {
         fn get(&self, url: &str) -> Result<Vec<u8>> {
-            if url == self.down
-                && self
-                    .outage
-                    .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
-                    .is_ok()
-            {
+            // One download thread fetches each URL, so load-then-sub is safe.
+            if url == self.down && self.outage.load(Ordering::SeqCst) > 0 {
+                self.outage.fetch_sub(1, Ordering::SeqCst);
                 return Err(Error::Fetch("network is unreachable".into()));
             }
             self.files.get(url).cloned().ok_or_else(|| Error::Fetch(format!("no fixture for {url}")))
