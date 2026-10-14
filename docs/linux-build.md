@@ -55,12 +55,15 @@ rustup show
 `rust-toolchain.toml` pins `stable` with `clippy` + `rustfmt`; `rustup show`
 run from the repo root installs and selects that toolchain.
 
-## 4. Node 20
+## 4. Node 24
+
+The UI tests need Node `^22.22.2 || ^24.15 || >=26` (jsdom 30's engines range); Node 20
+fails with `webidl.util.markAsUncloneable is not a function`. CI uses Node 24.
 
 ```bash
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
 sudo apt install -y nodejs
-node --version   # v20.x
+node --version   # v24.x (>= 24.15)
 ```
 
 Install the UI dependencies **from inside WSL** (rollup/esbuild native binaries

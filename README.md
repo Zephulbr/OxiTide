@@ -130,7 +130,7 @@ macOS is out of scope. ASIO output is merged but its hardware smoke test is stil
 
 ## Build from source
 
-Prerequisites: Rust stable (pinned by `rust-toolchain.toml`), Node 20+, and on Linux the system packages in
+Prerequisites: Rust stable (pinned by `rust-toolchain.toml`), Node 22.22+ or 24.15+ (the UI tests need it), and on Linux the system packages in
 [`docs/linux-build.md`](docs/linux-build.md).
 
 ```bash

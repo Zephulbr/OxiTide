@@ -4,7 +4,7 @@ Unofficial TIDAL desktop client (Tauri 2 + Rust + Svelte 5). Windows-first, pers
 
 ## Commands
 
-Prereqs: Rust stable (`rust-toolchain.toml` pins it, with clippy/rustfmt), Node 20+, and a one-time `npm --prefix ui install` (also installs the Tauri CLI locally).
+Prereqs: Rust stable (`rust-toolchain.toml` pins it, with clippy/rustfmt), Node `^22.22.2 || ^24.15 || >=26` (jsdom 30's range; Node 20 breaks the UI tests; CI uses 24), and a one-time `npm --prefix ui install` (also installs the Tauri CLI locally).
 
 - Dev run: `npm --prefix ui run app:dev` (starts Vite on port 1420, then the Tauri window).
   - `cargo run -p oxitide-app` is a trap: the debug build loads `devUrl` (http://localhost:1420) and fails with "localhost refused to connect" unless Vite is already running.
