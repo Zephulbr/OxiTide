@@ -2,7 +2,7 @@
 
 Owner smoke for the network-resilience commits: TIDAL client retries (`9e9bb29`), buffered
 play-out and segment retries (`f86cffd`), download-ahead (`0a4c36e`), network wait
-(`ea0af3e`), and offline cache playback (step D). Windows, real account, `app:dev` or an
+(`ea0af3e`), and offline cache playback (`b22e63f`). Windows, real account, `app:dev` or an
 installed build. Toggle the network with Wi-Fi off/on or by unplugging the cable.
 
 Status: **pending**
