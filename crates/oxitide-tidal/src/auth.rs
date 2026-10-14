@@ -1,11 +1,11 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::client::decode_json;
 use crate::error::{Error, Result};
 use crate::pkce::{Pkce, PKCE_CLIENT_ID};
 use crate::token_store::TokenSet;
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct SessionInfo {
     #[serde(rename = "sessionId")]
     pub session_id: String,

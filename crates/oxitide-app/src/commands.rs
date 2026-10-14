@@ -168,6 +168,7 @@ pub async fn finish_login(
         .token_store()
         .ok_or_else(|| "token store unavailable".to_string())?;
     store.save(&tokens).map_err(|e| e.to_string())?;
+    save_session(saved_session_path().as_deref(), &session);
     let client = TidalClient::new(http, API_BASE, TOKEN_URL, session.clone(), tokens, store);
     state.set_client(client.clone());
     let config = state.config();
@@ -237,6 +238,9 @@ pub fn auth_logout(state: State<'_, AppState>) -> Result<(), String> {
     if let Some(store) = state.token_store() {
         store.clear().map_err(|e| e.to_string())?;
     }
+    if let Some(path) = saved_session_path() {
+        let _ = std::fs::remove_file(path);
+    }
     if let Some(history) = state.history() {
         history.finalize_now();
     }
@@ -259,19 +263,63 @@ pub fn get_keyring_status(state: State<'_, AppState>) -> Result<KeyringStatus, S
 ///
 /// Returns `Ok(None)` when there is no stored token or it can no longer be
 /// used, so the UI can fall back to the login screen without a hard error.
+/// `config\tidal_session.json`: the account's country and user id from the
+/// last online sign-in or restore (no secrets; tokens stay in the keyring),
+/// so the app can start offline and play cached tracks.
+fn saved_session_path() -> Option<std::path::PathBuf> {
+    crate::config::config_path().map(|path| path.with_file_name("tidal_session.json"))
+}
+
+fn load_saved_session(path: Option<&std::path::Path>) -> Option<SessionInfo> {
+    let text = std::fs::read_to_string(path?).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
+fn save_session(path: Option<&std::path::Path>, session: &SessionInfo) {
+    let Some(path) = path else { return };
+    match serde_json::to_vec(session) {
+        Ok(bytes) => {
+            if let Err(e) = std::fs::write(path, bytes) {
+                tracing::warn!("could not save the session info: {e}");
+            }
+        }
+        Err(e) => tracing::warn!("could not encode the session info: {e}"),
+    }
+}
+
+/// How a stored login was restored.
+#[derive(Debug, PartialEq)]
+enum Restored {
+    Online(SessionInfo, TokenSet),
+    /// TIDAL was unreachable: the saved session info with the stored
+    /// tokens. The client refreshes them on its first 401 once online.
+    Offline(SessionInfo, TokenSet),
+}
+
 async fn restore_tokens(
     http: &reqwest::Client,
     base_url: &str,
     token_url: &str,
     store: &dyn TokenStore,
-) -> Result<Option<(SessionInfo, TokenSet)>, String> {
+    saved: Option<SessionInfo>,
+) -> Result<Option<Restored>, String> {
     let tokens = match store.load() {
         Ok(Some(tokens)) => tokens,
         Ok(None) => return Ok(None),
         Err(e) => return Err(e.to_string()),
     };
+    // Only a network failure falls back to the saved session; a rejected
+    // login must still lead to the sign-in screen.
+    let offline = |e: &Error, tokens: TokenSet| {
+        if e.is_transient() || matches!(e, Error::Io(_)) {
+            tracing::warn!("TIDAL unreachable at startup ({e}); starting offline");
+            saved.clone().map(|session| Restored::Offline(session, tokens))
+        } else {
+            None
+        }
+    };
     match auth::fetch_session(http, base_url, &tokens.access_token).await {
-        Ok(session) => Ok(Some((session, tokens))),
+        Ok(session) => Ok(Some(Restored::Online(session, tokens))),
         Err(Error::Unauthorized) => {
             let refresh_token = match tokens.refresh_token.clone() {
                 Some(rt) => rt,
@@ -286,15 +334,15 @@ async fn restore_tokens(
             .await
             {
                 Ok(refreshed) => refreshed,
-                Err(_) => return Ok(None),
+                Err(e) => return Ok(offline(&e, tokens)),
             };
             store.save(&refreshed).map_err(|e| e.to_string())?;
             match auth::fetch_session(http, base_url, &refreshed.access_token).await {
-                Ok(session) => Ok(Some((session, refreshed))),
-                Err(_) => Ok(None),
+                Ok(session) => Ok(Some(Restored::Online(session, refreshed))),
+                Err(e) => Ok(offline(&e, refreshed)),
             }
         }
-        Err(_) => Ok(None),
+        Err(e) => Ok(offline(&e, tokens)),
     }
 }
 
@@ -307,26 +355,30 @@ pub async fn auth_restore(
     let store = state
         .token_store()
         .ok_or_else(|| "token store unavailable".to_string())?;
-    let restored = restore_tokens(&http, API_BASE, TOKEN_URL, store.as_ref()).await?;
-    match restored {
-        None => Ok(None),
-        Some((session, tokens)) => {
-            let client =
-                TidalClient::new(http, API_BASE, TOKEN_URL, session.clone(), tokens, store);
-            state.set_client(client.clone());
-            let config = state.config();
-            let cache = state
-                .cache()
-                .unwrap_or_else(|| crate::player::build_cache(&config));
-            state.set_player(replace_player(&app, &state, client, &config, cache)?);
-            crate::remote::host::session_changed(&state, crate::remote::events::SessionKind::Ok);
-            crate::perf::mark("auth_restored");
-            Ok(Some(SessionInfoDto {
-                country_code: session.country_code,
-                user_id: session.user_id,
-            }))
+    let saved_path = saved_session_path();
+    let saved = load_saved_session(saved_path.as_deref());
+    let restored = restore_tokens(&http, API_BASE, TOKEN_URL, store.as_ref(), saved).await?;
+    let (session, tokens) = match restored {
+        None => return Ok(None),
+        Some(Restored::Online(session, tokens)) => {
+            save_session(saved_path.as_deref(), &session);
+            (session, tokens)
         }
-    }
+        Some(Restored::Offline(session, tokens)) => (session, tokens),
+    };
+    let client = TidalClient::new(http, API_BASE, TOKEN_URL, session.clone(), tokens, store);
+    state.set_client(client.clone());
+    let config = state.config();
+    let cache = state
+        .cache()
+        .unwrap_or_else(|| crate::player::build_cache(&config));
+    state.set_player(replace_player(&app, &state, client, &config, cache)?);
+    crate::remote::host::session_changed(&state, crate::remote::events::SessionKind::Ok);
+    crate::perf::mark("auth_restored");
+    Ok(Some(SessionInfoDto {
+        country_code: session.country_code,
+        user_id: session.user_id,
+    }))
 }
 
 fn require_client(state: &State<'_, AppState>) -> Result<TidalClient, String> {
@@ -2673,13 +2725,105 @@ mod tests {
         assert_eq!(value["user_id"], 42);
     }
 
+    fn online(restored: Restored) -> (SessionInfo, TokenSet) {
+        match restored {
+            Restored::Online(session, tokens) => (session, tokens),
+            other => panic!("expected an online restore, got {other:?}"),
+        }
+    }
+
+    fn saved_session() -> SessionInfo {
+        SessionInfo { session_id: "saved".into(), country_code: "GR".into(), user_id: 42 }
+    }
+
+    /// A base URL nothing listens on: every request fails to connect.
+    fn unreachable_base() -> String {
+        let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+        format!("http://127.0.0.1:{port}/")
+    }
+
+    #[tokio::test]
+    async fn an_unreachable_tidal_restores_the_saved_session_offline() {
+        let store = MemoryStore::default();
+        store.save(&sample_tokens("good", Some("rt"))).unwrap();
+        let base = unreachable_base();
+        let restored = restore_tokens(
+            &reqwest::Client::new(),
+            &base,
+            &format!("{base}token"),
+            &store,
+            Some(saved_session()),
+        )
+        .await
+        .unwrap();
+        match restored {
+            Some(Restored::Offline(session, tokens)) => {
+                assert_eq!(session.user_id, 42);
+                assert_eq!(tokens.access_token, "good");
+            }
+            other => panic!("expected an offline restore, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn an_unreachable_tidal_without_a_saved_session_restores_nothing() {
+        let store = MemoryStore::default();
+        store.save(&sample_tokens("good", Some("rt"))).unwrap();
+        let base = unreachable_base();
+        let restored =
+            restore_tokens(&reqwest::Client::new(), &base, &format!("{base}token"), &store, None)
+                .await
+                .unwrap();
+        assert!(restored.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_revoked_login_never_starts_offline() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/sessions"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .respond_with(ResponseTemplate::new(400).set_body_string("invalid_grant"))
+            .mount(&server)
+            .await;
+        let store = MemoryStore::default();
+        store.save(&sample_tokens("stale", Some("revoked"))).unwrap();
+        let base = format!("{}/", server.uri());
+        let restored = restore_tokens(
+            &reqwest::Client::new(),
+            &base,
+            &format!("{}/token", server.uri()),
+            &store,
+            Some(saved_session()),
+        )
+        .await
+        .unwrap();
+        assert!(restored.is_none(), "a revoked login must lead to sign-in");
+    }
+
+    #[test]
+    fn the_saved_session_round_trips() {
+        let dir = std::env::temp_dir().join(format!("oxitide-saved-session-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("tidal_session.json");
+        save_session(Some(&path), &saved_session());
+        assert_eq!(load_saved_session(Some(&path)), Some(saved_session()));
+        std::fs::write(&path, b"not json").unwrap();
+        assert_eq!(load_saved_session(Some(&path)), None);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     #[tokio::test]
     async fn restore_tokens_returns_none_without_stored_token() {
         let server = MockServer::start().await;
         let store = MemoryStore::default();
         let http = reqwest::Client::new();
         let base = format!("{}/", server.uri());
-        let restored = restore_tokens(&http, &base, &format!("{}/token", server.uri()), &store)
+        let restored = restore_tokens(&http, &base, &format!("{}/token", server.uri()), &store, None)
             .await
             .unwrap();
         assert!(restored.is_none());
@@ -2700,9 +2844,10 @@ mod tests {
         store.save(&sample_tokens("good", Some("rt"))).unwrap();
         let http = reqwest::Client::new();
         let base = format!("{}/", server.uri());
-        let restored = restore_tokens(&http, &base, &format!("{}/token", server.uri()), &store)
+        let restored = restore_tokens(&http, &base, &format!("{}/token", server.uri()), &store, None)
             .await
             .unwrap()
+            .map(online)
             .unwrap();
         assert_eq!(restored.0.user_id, 7);
         assert_eq!(restored.1.access_token, "good");
@@ -2736,9 +2881,10 @@ mod tests {
         store.save(&sample_tokens("stale", Some("old-rt"))).unwrap();
         let http = reqwest::Client::new();
         let base = format!("{}/", server.uri());
-        let restored = restore_tokens(&http, &base, &format!("{}/token", server.uri()), &store)
+        let restored = restore_tokens(&http, &base, &format!("{}/token", server.uri()), &store, None)
             .await
             .unwrap()
+            .map(online)
             .unwrap();
         assert_eq!(restored.0.user_id, 9);
         assert_eq!(restored.1.access_token, "fresh");
@@ -2765,7 +2911,7 @@ mod tests {
         store.save(&sample_tokens("stale", Some("bad-rt"))).unwrap();
         let http = reqwest::Client::new();
         let base = format!("{}/", server.uri());
-        let restored = restore_tokens(&http, &base, &format!("{}/token", server.uri()), &store)
+        let restored = restore_tokens(&http, &base, &format!("{}/token", server.uri()), &store, None)
             .await
             .unwrap();
         assert!(restored.is_none());
