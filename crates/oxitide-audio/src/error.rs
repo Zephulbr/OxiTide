@@ -10,6 +10,11 @@ pub enum Error {
     Mpd(String),
     #[error("fetch error: {0}")]
     Fetch(String),
+    /// The CDN refused a media URL (a 4xx other than 429, typically an
+    /// expired signed URL). Retrying the same URL is pointless; a fresh
+    /// resolve is not.
+    #[error("fetch error: {0}")]
+    FetchRejected(String),
     #[error("decode error: {0}")]
     Decode(String),
     #[error("{0}")]
@@ -42,7 +47,7 @@ impl Error {
     pub fn is_transient(&self) -> bool {
         match self {
             Error::Tidal(e) => e.is_transient(),
-            Error::Fetch(_) => true,
+            Error::Fetch(_) | Error::FetchRejected(_) => true,
             _ => false,
         }
     }
@@ -114,6 +119,7 @@ mod tests {
     #[test]
     fn network_failures_are_transient() {
         assert!(Error::Fetch("reset".into()).is_transient());
+        assert!(Error::FetchRejected("status 403".into()).is_transient());
         assert!(Error::Tidal(oxitide_tidal::Error::RateLimited).is_transient());
     }
 

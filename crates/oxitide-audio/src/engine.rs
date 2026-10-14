@@ -1070,6 +1070,9 @@ fn decode_from_network(
     );
     let _ = downloader.join();
     if let Err(e) = result {
+        // The demuxer reports a failed download as a generic read error; send
+        // the network failure itself so the worker can treat it as transient.
+        let e = buffer.failure().unwrap_or(e);
         let _ = tx.send(Err(e));
         inner.notify_worker();
     }

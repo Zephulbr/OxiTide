@@ -52,14 +52,12 @@ impl HttpFetcher {
             .map_err(|e| (Error::Fetch(describe(e)), None))?;
         let status = resp.status();
         if !status.is_success() {
-            let err = Error::Fetch(format!(
-                "status {status} for {}",
-                url.split('?').next().unwrap_or(url)
-            ));
+            let message = format!("status {status} for {}", url.split('?').next().unwrap_or(url));
             let retryable = status.as_u16() == 429 || status.is_server_error();
             if !retryable {
-                return Err((err, None));
+                return Err((Error::FetchRejected(message), None));
             }
+            let err = Error::Fetch(message);
             let wait = resp
                 .headers()
                 .get(reqwest::header::RETRY_AFTER)
@@ -145,7 +143,33 @@ struct State {
     /// Absolute offset of `data[0]`; grows as consumed bytes are released.
     start: usize,
     done: bool,
-    error: Option<String>,
+    error: Option<Failure>,
+}
+
+/// Why the download stopped, kept so the decoder's error can be reported as
+/// the network failure it was rather than a generic demux error.
+#[derive(Clone)]
+struct Failure {
+    message: String,
+    rejected: bool,
+}
+
+impl Failure {
+    fn from_error(e: &Error) -> Self {
+        match e {
+            Error::FetchRejected(message) => Self { message: message.clone(), rejected: true },
+            Error::Fetch(message) => Self { message: message.clone(), rejected: false },
+            other => Self { message: other.to_string(), rejected: false },
+        }
+    }
+
+    fn to_error(&self) -> Error {
+        if self.rejected {
+            Error::FetchRejected(self.message.clone())
+        } else {
+            Error::Fetch(self.message.clone())
+        }
+    }
 }
 
 pub struct StreamBuffer {
@@ -189,13 +213,23 @@ impl StreamBuffer {
         self.cond.notify_all();
     }
 
-    pub fn fail(&self, message: String) {
+    /// End the stream with a download failure. Bytes already buffered are
+    /// still served; readers see the error only once they reach the end.
+    pub fn fail(&self, error: &Error) {
         let mut s = self.state.lock().unwrap();
         if s.error.is_none() {
-            s.error = Some(message);
+            s.error = Some(Failure::from_error(error));
         }
         s.done = true;
         self.cond.notify_all();
+    }
+
+    /// The download failure, if the stream ended with one (not a cancel).
+    pub fn failure(&self) -> Option<Error> {
+        if self.is_cancelled() {
+            return None;
+        }
+        self.state.lock().unwrap().error.as_ref().map(Failure::to_error)
     }
 
     /// Cancel the stream: blocked readers/downloaders wake and exit. Used when
@@ -203,15 +237,28 @@ impl StreamBuffer {
     pub fn cancel(&self) {
         self.cancelled.store(true, Ordering::SeqCst);
         let mut s = self.state.lock().unwrap();
-        if s.error.is_none() {
-            s.error = Some("cancelled".into());
-        }
         s.done = true;
         self.cond.notify_all();
     }
 
     pub fn is_cancelled(&self) -> bool {
         self.cancelled.load(Ordering::SeqCst)
+    }
+
+    /// Sleep up to `wait`, waking early on cancel; false when cancelled.
+    pub fn sleep_unless_cancelled(&self, wait: Duration) -> bool {
+        let deadline = std::time::Instant::now() + wait;
+        let mut s = self.state.lock().unwrap();
+        loop {
+            if self.is_cancelled() {
+                return false;
+            }
+            let now = std::time::Instant::now();
+            if now >= deadline {
+                return true;
+            }
+            s = self.cond.wait_timeout(s, deadline - now).unwrap().0;
+        }
     }
 
     pub fn is_done(&self) -> bool {
@@ -246,16 +293,23 @@ impl StreamBuffer {
     }
 
     /// Block until `pos` is buffered or the stream ends. Returns the absolute
-    /// end offset of the buffered range, or a typed error if the download
-    /// failed or was cancelled.
+    /// end offset of the buffered range. A cancel errors at once; a download
+    /// failure errors only when `pos` is past the buffered audio, so what
+    /// already arrived still plays.
     pub fn wait_len(&self, pos: usize) -> Result<usize> {
         let mut s = self.state.lock().unwrap();
         loop {
-            if let Some(err) = &s.error {
-                return Err(Error::Fetch(err.clone()));
+            if self.cancelled.load(Ordering::SeqCst) {
+                return Err(Error::Fetch("cancelled".into()));
             }
             let end = s.start + s.data.len();
-            if pos < end || s.done {
+            if pos < end {
+                return Ok(end);
+            }
+            if let Some(failure) = &s.error {
+                return Err(failure.to_error());
+            }
+            if s.done {
                 return Ok(end);
             }
             s = self.cond.wait(s).unwrap();
@@ -277,22 +331,39 @@ impl StreamBuffer {
     }
 }
 
-/// Fetch `url`, retrying a bounded number of times with a short backoff. A
-/// transient CDN hiccup on one segment should not fail the whole buffer.
-fn get_with_retry(fetcher: &dyn Fetcher, url: &str) -> Result<Vec<u8>> {
-    let mut last = None;
-    for attempt in 1..=MAX_ATTEMPTS {
+/// Waits between attempts at one segment: about 16 s in total, so a Wi-Fi
+/// roam or a short outage is ridden out while buffered audio keeps playing.
+/// Longer outages end the stream and the engine waits for the network.
+#[cfg(not(test))]
+const SEGMENT_RETRY_WAITS: [Duration; 6] = [
+    Duration::from_millis(200),
+    Duration::from_millis(500),
+    Duration::from_secs(1),
+    Duration::from_secs(2),
+    Duration::from_secs(4),
+    Duration::from_secs(8),
+];
+#[cfg(test)]
+const SEGMENT_RETRY_WAITS: [Duration; 6] = [Duration::from_millis(1); 6];
+
+/// Fetch `url`, retrying on the `SEGMENT_RETRY_WAITS` schedule. A rejected
+/// URL (4xx) fails at once — only a fresh resolve can fix it — and a cancel
+/// stops the waiting.
+fn get_with_retry(fetcher: &dyn Fetcher, url: &str, buffer: &StreamBuffer) -> Result<Vec<u8>> {
+    let mut waits = SEGMENT_RETRY_WAITS.iter();
+    loop {
         match fetcher.get(url) {
             Ok(bytes) => return Ok(bytes),
+            Err(e @ Error::FetchRejected(_)) => return Err(e),
             Err(e) => {
-                last = Some(e);
-                if attempt < MAX_ATTEMPTS {
-                    std::thread::sleep(Duration::from_millis(200) * attempt);
+                let Some(&wait) = waits.next() else { return Err(e) };
+                tracing::warn!("segment fetch failed ({e}); retrying in {wait:?}");
+                if !buffer.sleep_unless_cancelled(wait) {
+                    return Err(e);
                 }
             }
         }
     }
-    Err(last.expect("at least one attempt"))
 }
 
 /// Download every part of `plan` in order into `buffer`, waiting for the
@@ -326,7 +397,7 @@ pub fn download(
             }
             return;
         }
-        match get_with_retry(fetcher.as_ref(), &url) {
+        match get_with_retry(fetcher.as_ref(), &url, &buffer) {
             Ok(bytes) => {
                 let mut write_failed = false;
                 if let Some(writer) = writer.as_mut() {
@@ -343,7 +414,7 @@ pub fn download(
                 buffer.push(&bytes);
             }
             Err(e) => {
-                buffer.fail(e.to_string());
+                buffer.fail(&e);
                 if let Some(writer) = writer.take() {
                     writer.abort();
                 }
@@ -550,7 +621,51 @@ mod tests {
         let buf = StreamBuffer::new();
         download(buf.clone(), fetcher.clone(), plan, None);
         assert!(matches!(buf.wait_len(0), Err(Error::Fetch(_))));
-        assert_eq!(fetcher.calls(), MAX_ATTEMPTS as usize);
+        assert_eq!(fetcher.calls(), SEGMENT_RETRY_WAITS.len() + 1);
+    }
+
+    struct RejectingFetcher {
+        calls: Mutex<usize>,
+    }
+
+    impl Fetcher for RejectingFetcher {
+        fn get(&self, _url: &str) -> Result<Vec<u8>> {
+            *self.calls.lock().unwrap() += 1;
+            Err(Error::FetchRejected("status 403 Forbidden for a".into()))
+        }
+    }
+
+    #[test]
+    fn a_rejected_url_is_not_retried() {
+        let fetcher = Arc::new(RejectingFetcher { calls: Mutex::new(0) });
+        let mut plan = small_plan();
+        plan.init_url = None;
+        let buf = StreamBuffer::new();
+        download(buf.clone(), fetcher.clone(), plan, None);
+        assert!(matches!(buf.wait_len(0), Err(Error::FetchRejected(_))));
+        assert_eq!(*fetcher.calls.lock().unwrap(), 1);
+        assert!(matches!(buf.failure(), Some(Error::FetchRejected(_))));
+    }
+
+    #[test]
+    fn buffered_bytes_play_out_before_a_failure_is_reported() {
+        let buf = StreamBuffer::new();
+        buf.push(b"AAAA");
+        buf.fail(&Error::Fetch("connection reset".into()));
+        let mut out = [0u8; 4];
+        assert_eq!(buf.read_at(0, &mut out).unwrap(), 4, "buffered audio was dropped");
+        assert_eq!(&out, b"AAAA");
+        assert!(matches!(buf.read_at(4, &mut out), Err(Error::Fetch(_))));
+    }
+
+    #[test]
+    fn a_cancelled_stream_reports_no_failure() {
+        let buf = StreamBuffer::new();
+        buf.push(b"AAAA");
+        buf.cancel();
+        assert!(buf.failure().is_none());
+        let mut out = [0u8; 4];
+        assert!(buf.read_at(0, &mut out).is_err(), "a cancel must stop readers at once");
     }
 
     #[test]
