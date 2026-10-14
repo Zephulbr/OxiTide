@@ -90,6 +90,36 @@ impl DiskCache {
         self.dir.join(format!("{}.part", key.file_name()))
     }
 
+    /// Find a committed entry for `track_id` at `quality` without knowing
+    /// its manifest hash, for playing offline when `playbackinfo` cannot be
+    /// fetched. Only entries with a stream sidecar qualify; the newest wins.
+    /// Returns the key, the file, and the sidecar bytes; touches the mtime.
+    pub fn find_offline(&self, track_id: u64, quality: Quality) -> Option<(CacheKey, PathBuf, Vec<u8>)> {
+        if !self.usable {
+            return None;
+        }
+        let prefix = format!("{track_id}-{}-", quality.label());
+        let (key, path) = fs::read_dir(&self.dir)
+            .ok()?
+            .flatten()
+            .filter_map(|entry| {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                let hash = name.strip_prefix(&prefix)?.strip_suffix(".fmp4")?;
+                let manifest_hash = u64::from_str_radix(hash, 16).ok()?;
+                let path = entry.path();
+                meta_of(&path).is_file().then_some(())?;
+                let modified = fs::metadata(&path).and_then(|m| m.modified()).ok()?;
+                Some((modified, CacheKey { track_id, quality, manifest_hash }, path))
+            })
+            .max_by_key(|(modified, ..)| *modified)
+            .map(|(_, key, path)| (key, path))?;
+        let meta = fs::read(meta_of(&path)).ok()?;
+        if let Ok(file) = OpenOptions::new().write(true).open(&path) {
+            let _ = file.set_modified(SystemTime::now());
+        }
+        Some((key, path, meta))
+    }
+
     /// True when the entry exists; touches mtime for LRU.
     pub fn lookup(&self, key: &CacheKey) -> Option<PathBuf> {
         if !self.usable {
@@ -124,6 +154,7 @@ impl DiskCache {
                 part,
                 file: Some(file),
                 bytes: 0,
+                meta: None,
                 finished: false,
             }),
             Err(e) => {
@@ -170,6 +201,7 @@ impl DiskCache {
 
     pub fn remove(&self, key: &CacheKey) {
         let path = self.path_for(key);
+        let _ = fs::remove_file(meta_of(&path));
         if let Ok(meta) = fs::metadata(&path) {
             let size = meta.len();
             if fs::remove_file(&path).is_ok() {
@@ -203,7 +235,7 @@ impl DiskCache {
         for entry in read.flatten() {
             let name = entry.file_name();
             let name = name.to_string_lossy();
-            if name.ends_with(".fmp4") || name.ends_with(".part") {
+            if name.ends_with(".fmp4") || name.ends_with(".part") || name.ends_with(META_SUFFIX) {
                 let _ = fs::remove_file(entry.path());
             }
         }
@@ -234,7 +266,15 @@ impl DiskCache {
         let Ok(read) = fs::read_dir(&self.dir) else { return };
         for entry in read.flatten() {
             let name = entry.file_name();
-            if !name.to_string_lossy().ends_with(".part") {
+            let name = name.to_string_lossy();
+            if let Some(entry_name) = name.strip_suffix(".meta") {
+                // A sidecar whose entry is gone (evicted before a crash).
+                if name.ends_with(META_SUFFIX) && !self.dir.join(entry_name).is_file() {
+                    let _ = fs::remove_file(entry.path());
+                }
+                continue;
+            }
+            if !name.ends_with(".part") {
                 continue;
             }
             let stale = entry
@@ -298,6 +338,7 @@ impl DiskCache {
                 continue;
             }
             if fs::remove_file(&entry.path).is_ok() {
+                let _ = fs::remove_file(meta_of(&entry.path));
                 total = total.saturating_sub(entry.size);
             }
         }
@@ -305,6 +346,16 @@ impl DiskCache {
         // path re-arms even if files were added or removed behind our back.
         self.on_disk_bytes.store(total, Ordering::SeqCst);
     }
+}
+
+/// Sidecar of a committed entry: `{entry}.fmp4.meta`, the stream plan (no
+/// URLs) needed to play the entry when `playbackinfo` is unreachable.
+const META_SUFFIX: &str = ".fmp4.meta";
+
+fn meta_of(entry: &Path) -> PathBuf {
+    let mut name = entry.as_os_str().to_owned();
+    name.push(".meta");
+    PathBuf::from(name)
 }
 
 /// True when a file can be created in `dir` (and cleaned up): an existing
@@ -327,10 +378,17 @@ pub struct CacheWriter {
     part: PathBuf,
     file: Option<File>,
     bytes: u64,
+    /// Sidecar bytes written next to the entry when it is published.
+    meta: Option<Vec<u8>>,
     finished: bool,
 }
 
 impl CacheWriter {
+    /// Publish `meta` as the entry's sidecar alongside the entry.
+    pub fn set_meta(&mut self, meta: Vec<u8>) {
+        self.meta = Some(meta);
+    }
+
     /// Bytes written so far.
     pub fn bytes(&self) -> u64 {
         self.bytes
@@ -378,6 +436,7 @@ impl CacheWriter {
         // as committed and then get `published` added on top of it.
         self.cache.seed_on_disk();
         let final_path = self.cache.path_for(&self.key);
+        let _ = fs::remove_file(meta_of(&final_path));
         if final_path.exists() {
             let _ = fs::remove_file(&final_path);
         }
@@ -392,6 +451,11 @@ impl CacheWriter {
             return;
         }
         DiskCache::add_saturating(&self.cache.on_disk_bytes, published);
+        if let Some(meta) = self.meta.take() {
+            if let Err(e) = fs::write(meta_of(&final_path), meta) {
+                tracing::warn!("cache sidecar for {} failed: {e}", self.key.file_name());
+            }
+        }
         if let Ok(file) = OpenOptions::new().write(true).open(&final_path) {
             let _ = file.set_modified(SystemTime::now());
         }
@@ -674,6 +738,77 @@ mod tests {
         writer.commit();
         assert_eq!(cache.pending_bytes(), 0);
         assert_eq!(cache.size_bytes(), 10);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    fn write_with_meta(cache: &Arc<DiskCache>, key: &CacheKey, meta: &[u8]) {
+        let mut writer = cache.begin_write(key).unwrap();
+        writer.write_all(b"audio").unwrap();
+        writer.set_meta(meta.to_vec());
+        writer.commit();
+    }
+
+    #[test]
+    fn find_offline_returns_the_newest_entry_with_a_sidecar() {
+        let dir = temp_dir();
+        let cache = DiskCache::new(dir.clone(), 1 << 20);
+        let old = CacheKey { track_id: 5, quality: Quality::Lossless, manifest_hash: 1 };
+        let new = CacheKey { track_id: 5, quality: Quality::Lossless, manifest_hash: 2 };
+        let bare = CacheKey { track_id: 5, quality: Quality::Lossless, manifest_hash: 3 };
+        write_with_meta(&cache, &old, b"old");
+        write_with_meta(&cache, &new, b"new");
+        write_entry(&cache, &bare, b"no sidecar");
+        let now = SystemTime::now();
+        set_mtime(&cache.path_for(&old), now - Duration::from_secs(60));
+        set_mtime(&cache.path_for(&new), now - Duration::from_secs(30));
+
+        let (key, path, meta) = cache.find_offline(5, Quality::Lossless).unwrap();
+        assert_eq!(key, new);
+        assert_eq!(path, cache.path_for(&new));
+        assert_eq!(meta, b"new");
+        assert!(cache.find_offline(5, Quality::Max).is_none(), "matched another quality");
+        assert!(cache.find_offline(55, Quality::Lossless).is_none(), "matched another track");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn sidecars_leave_with_their_entries() {
+        let dir = temp_dir();
+        let cache = DiskCache::new(dir.clone(), 1 << 20);
+        let (a, b, c) = (key(1), key(2), key(3));
+        for k in [&a, &b, &c] {
+            write_with_meta(&cache, k, b"meta");
+        }
+        let meta = |k: &CacheKey| meta_of(&cache.path_for(k));
+        assert!(meta(&a).is_file());
+
+        cache.remove(&a);
+        assert!(!meta(&a).exists(), "remove left the sidecar");
+
+        set_mtime(&cache.path_for(&b), SystemTime::now() - Duration::from_secs(3600));
+        cache.set_max_bytes(5);
+        assert!(cache.lookup(&b).is_none());
+        assert!(!meta(&b).exists(), "eviction left the sidecar");
+
+        cache.clear();
+        assert!(!meta(&c).exists(), "clear left the sidecar");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cleanup_removes_orphan_sidecars_only() {
+        let dir = temp_dir();
+        let cache = DiskCache::new(dir.clone(), 1 << 20);
+        write_with_meta(&cache, &key(1), b"kept");
+        let orphan = meta_of(&cache.path_for(&key(2)));
+        fs::write(&orphan, b"orphan").unwrap();
+        let unrelated = dir.join("palettes.json");
+        fs::write(&unrelated, b"{}").unwrap();
+
+        cache.cleanup();
+        assert!(!orphan.exists(), "an orphan sidecar survived");
+        assert!(meta_of(&cache.path_for(&key(1))).is_file(), "a live sidecar was removed");
+        assert!(unrelated.is_file(), "cleanup touched an unrelated file");
         let _ = fs::remove_dir_all(dir);
     }
 

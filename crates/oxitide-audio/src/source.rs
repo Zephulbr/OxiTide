@@ -7,14 +7,14 @@ pub const DASH_MIME: &str = "application/dash+xml";
 pub const BTS_MIME: &str = "application/vnd.tidal.bts";
 
 /// One media segment of a stream plan.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Segment {
     pub url: String,
     pub start_ticks: u64,
     pub duration_ticks: u64,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StreamPlan {
     pub init_url: Option<String>,
     pub segments: Vec<Segment>,
@@ -56,6 +56,18 @@ impl StreamPlan {
             manifest_hash: None,
             replay_gain: ReplayGain::default(),
         }
+    }
+
+    /// The plan with every URL removed: what a cached file needs to be
+    /// decoded and described without the network. Signed CDN URLs must not
+    /// be written to disk.
+    pub fn without_urls(&self) -> StreamPlan {
+        let mut plan = self.clone();
+        plan.init_url = None;
+        for segment in &mut plan.segments {
+            segment.url.clear();
+        }
+        plan
     }
 
     /// The same plan starting at media segment `index`; the init segment is

@@ -997,6 +997,18 @@ fn decode_track(
     let plan = match inner.resolver.resolve(item.track_id, quality) {
         Ok(plan) => plan,
         Err(e) => {
+            let e = if e.is_transient() {
+                match play_cached_offline(&inner, &item, quality, mode, generation, seek_ms, &tx, &cache_key_slot) {
+                    Some(Ok(())) => return,
+                    Some(Err(cache_error)) => {
+                        tracing::warn!("offline copy of track {} failed ({cache_error})", item.track_id);
+                        e
+                    }
+                    None => e,
+                }
+            } else {
+                e
+            };
             let _ = tx.send(Err(e));
             inner.notify_worker();
             return;
@@ -1071,6 +1083,31 @@ fn decode_track(
     decode_from_network(inner, item, mode, generation, seek_ms, tx, buffer, plan, cache_key, ticket);
 }
 
+/// Play a cached copy of `item` at `quality` when TIDAL cannot be reached to
+/// resolve it. `None` when there is no usable copy (no entry, no sidecar);
+/// otherwise the decode result.
+#[allow(clippy::too_many_arguments)]
+fn play_cached_offline(
+    inner: &Arc<Inner>,
+    item: &QueueItem,
+    quality: Quality,
+    mode: OutputMode,
+    generation: u64,
+    seek_ms: Option<u64>,
+    tx: &SyncSender<Result<StreamEvent>>,
+    cache_key_slot: &Arc<Mutex<Option<CacheKey>>>,
+) -> Option<Result<()>> {
+    let (key, path, meta) = inner.cache.find_offline(item.track_id, quality)?;
+    let plan: StreamPlan = serde_json::from_slice(&meta)
+        .map_err(|e| tracing::warn!("cache sidecar for {} is unreadable: {e}", key.file_name()))
+        .ok()?;
+    tracing::info!("TIDAL unreachable; playing track {} from the cache", item.track_id);
+    *cache_key_slot.lock().unwrap() = Some(key);
+    inner.cache.protect(&key);
+    fire_perf(inner, AudioPerfEvent::CacheHit { track_id: item.track_id });
+    Some(decode_from_file(inner, item, mode, generation, seek_ms, tx, &path, &plan))
+}
+
 #[allow(clippy::too_many_arguments)]
 fn decode_from_network(
     inner: Arc<Inner>,
@@ -1101,7 +1138,14 @@ fn decode_from_network(
     // Only full-track plans are cached; a seek-truncated plan is a partial
     // track and would poison replays.
     let writer = match (seek_ms, cache_key) {
-        (None, Some(key)) => inner.cache.begin_write(&key),
+        (None, Some(key)) => inner.cache.begin_write(&key).map(|mut writer| {
+            // The sidecar lets the entry play when `playbackinfo` is
+            // unreachable (see `play_cached_offline`).
+            if let Ok(meta) = serde_json::to_vec(&plan.without_urls()) {
+                writer.set_meta(meta);
+            }
+            writer
+        }),
         _ => None,
     };
     // Download ahead to disk: the cache's temp file for a whole track, else
@@ -5019,6 +5063,61 @@ mod tests {
             176_400 * 2,
             "a boundary settings change must not discard the next track"
         );
+    }
+
+    /// Resolves normally until switched offline, then fails like a dropped
+    /// network.
+    struct SwitchableResolver {
+        plan: StreamPlan,
+        offline: AtomicBool,
+    }
+
+    impl StreamResolver for SwitchableResolver {
+        fn resolve(&self, _track_id: u64, _quality: Quality) -> Result<StreamPlan> {
+            if self.offline.load(Ordering::SeqCst) {
+                Err(Error::Tidal(oxitide_tidal::Error::RateLimited))
+            } else {
+                Ok(self.plan.clone())
+            }
+        }
+    }
+
+    #[test]
+    fn a_cached_track_plays_when_tidal_is_unreachable() {
+        let (_, files) = fixture_plan();
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let output = NullOutput::new();
+        let cache = test_cache();
+        let resolver = Arc::new(SwitchableResolver {
+            plan: cached_plan("mem://tone", 0xabcd),
+            offline: AtomicBool::new(false),
+        });
+        let engine = Engine::new(
+            resolver.clone(),
+            {
+                let calls = calls.clone();
+                move || -> Arc<dyn Fetcher> { Arc::new(CountingFetcher { files, calls }) }
+            },
+            Box::new(output.clone()),
+            Quality::Lossless,
+            cache.clone(),
+            true,
+        );
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let seen_ref = seen.clone();
+        engine.subscribe(Arc::new(move |e| seen_ref.lock().unwrap().push(e)));
+
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| !engine.state().playing && output.samples().len() >= 176_400);
+        let fetched = calls.load(Ordering::SeqCst);
+
+        resolver.offline.store(true, Ordering::SeqCst);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| !engine.state().playing && output.samples().len() >= 176_400 * 2);
+
+        assert_eq!(output.samples().len(), 176_400 * 2, "the cached copy did not play in full");
+        assert_eq!(calls.load(Ordering::SeqCst), fetched, "played offline but still fetched");
+        assert!(!seen.lock().unwrap().iter().any(|e| matches!(e, EngineEvent::Error { .. })));
     }
 
     #[test]
