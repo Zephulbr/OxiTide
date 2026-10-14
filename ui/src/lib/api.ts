@@ -1,6 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { HotkeyAction } from "./hotkeys";
 
+/// The maximize button's box in CSS px; `right` is measured from the window's
+/// right edge to the button's left edge (mirrors `titlebar::SnapTarget`).
+export interface SnapTarget { right: number; top: number; width: number; height: number }
 export interface ArtistRef { id: number; name: string }
 export interface AlbumRef { id: number; title: string; cover?: string | null }
 export interface Track {
@@ -293,7 +296,7 @@ export interface Config {
   streaming: { quality: Quality; allow_fallback: boolean };
   ui: {
     quality_display: "compact" | "detailed";
-    mode: "instrument" | "atmosphere";
+    mode: "instrument" | "atmosphere" | "rack";
     theme: "dark" | "light" | "system";
     typeface: "auto" | "manrope" | "inter" | "system" | "custom";
     custom_typeface: string;
@@ -332,7 +335,130 @@ export interface Config {
     show_hide: string;
   };
   dsp: DspSettings;
+  rack: RackSettings;
+  remote: RemoteSettings;
+  updates: { check_on_start: boolean };
 }
+/** `get_update_support` (`updater.rs`). `reason` explains an unsupported install. */
+export interface UpdateSupport {
+  supported: boolean;
+  reason: string | null;
+  current_version: string;
+  check_on_start: boolean;
+}
+/** A newer release (`check_for_update`, the `update_available` event). */
+export interface UpdateInfo {
+  version: string;
+  current_version: string;
+  notes: string | null;
+  date: string | null;
+}
+/** `update_progress` event while an update downloads. */
+export interface UpdateProgress { downloaded: number; total: number | null }
+export const UPDATE_AVAILABLE_EVENT = "update_available";
+export const UPDATE_PROGRESS_EVENT = "update_progress";
+/** Phone remote preferences (`[remote]`, Track 11). */
+export interface RemoteSettings {
+  enabled: boolean;
+  port: number;
+  /** QR address override; "" picks automatically. */
+  interface: string;
+  approve_new_devices: boolean;
+}
+export interface RemoteInterface { name: string; ip: string; virtual_adapter: boolean }
+export interface RemotePairRequest { id: string; name: string; ip: string }
+/** `get_remote_status` / the `remote_status` event (`remote/host.rs`). */
+export interface RemoteStatus {
+  enabled: boolean;
+  listening: boolean;
+  port: number | null;
+  address: string | null;
+  url: string | null;
+  error: string | null;
+  connected: number;
+  interfaces: RemoteInterface[];
+  settings: RemoteSettings;
+  pending: RemotePairRequest[];
+  pairing_expires_in_secs: number | null;
+}
+export interface RemotePairing { url: string; qr_svg: string; expires_in_secs: number }
+export interface RemoteDevice {
+  id: string;
+  name: string;
+  created_ms: number;
+  last_seen_ms: number;
+  connected: boolean;
+}
+export const REMOTE_STATUS_EVENT = "remote_status";
+export const REMOTE_PAIR_REQUEST_EVENT = "remote_pair_request";
+/** A favorite changed anywhere (desktop or a paired phone). */
+export interface FavoriteChange { kind: "track" | "album" | "artist"; id: number; favorite: boolean }
+export const FAVORITE_CHANGED_EVENT = "favorite_changed";
+
+/* Phone-remote wire types (camelCase; `remote/events.rs`). The phone page
+   imports these type-only. */
+export interface RemoteTrack {
+  trackId: number;
+  title: string;
+  artist: string;
+  album: string;
+  cover?: string | null;
+  durationSecs: number;
+  explicit?: boolean | null;
+  audioQuality?: Quality | null;
+}
+export interface RemoteStream {
+  codec?: string | null;
+  sampleRate: number;
+  bitDepth: number;
+  bitrateKbps?: number | null;
+}
+export interface RemoteState {
+  loggedIn: boolean;
+  playing: boolean;
+  buffering: boolean;
+  current: RemoteTrack | null;
+  currentIndex: number | null;
+  positionMs: number;
+  durationMs: number;
+  volume: number;
+  shuffle: boolean;
+  repeat: RepeatMode;
+  queueLen: number;
+  queueRev: number;
+  stream: RemoteStream | null;
+  bitPerfect: boolean;
+  dspStages: string[];
+}
+export interface RemoteQueuePage {
+  items: QueueItem[];
+  total: number;
+  offset: number;
+  limit: number;
+  currentIndex: number | null;
+  queueRev: number;
+}
+export type DeckFace = "transport" | "cd" | "display";
+export type MeterStyle = "needles" | "bars" | "led" | "spectrum";
+export type LampColor = "amber" | "blue" | "green" | "red" | "white" | "cover";
+export type AnalyzerStyle = "auto" | "spectrum" | "recorder" | "tuner" | "eq";
+/** Hi-Fi Rack options (`[rack]`, Track 9.5). */
+export interface RackSettings {
+  deck_face: DeckFace;
+  meters: MeterStyle;
+  analyzer: AnalyzerStyle;
+  lamp: LampColor;
+  eq_unit: boolean;
+  /** Percent, 40–100. */
+  lamp_brightness: number;
+}
+/** One `level_frame` event: linear peaks/RMS (1 = full scale), bands in dBFS. */
+export interface LevelFrame {
+  peak: [number, number];
+  rms: [number, number];
+  bands: number[];
+}
+export const LEVEL_FRAME_EVENT = "level_frame";
 export type EngineEvent =
   | ({ type: "state" } & PlaybackState)
   | { type: "now_playing"; [k: string]: unknown }
@@ -528,7 +654,10 @@ export const api = {
   setAllowFallback: (enabled: boolean) => invoke<void>("set_allow_fallback", { enabled }),
   setQualityDisplay: (mode: "compact" | "detailed") =>
     invoke<void>("set_quality_display", { mode }),
-  setUiMode: (mode: "instrument" | "atmosphere") => invoke<void>("set_ui_mode", { mode }),
+  setUiMode: (mode: "instrument" | "atmosphere" | "rack") => invoke<void>("set_ui_mode", { mode }),
+  setRackSettings: (settings: RackSettings) =>
+    invoke<RackSettings>("set_rack_settings", { settings }),
+  setLevelMeter: (enabled: boolean) => invoke<void>("set_level_meter", { enabled }),
   setTheme: (theme: "dark" | "light" | "system") => invoke<void>("set_theme", { theme }),
   setTypeface: (typeface: "auto" | "manrope" | "inter" | "system" | "custom") =>
     invoke<void>("set_typeface", { typeface }),
@@ -552,8 +681,31 @@ export const api = {
     invoke<void>("set_cache_clear_on_exit", { enabled }),
   getCacheStatus: () => invoke<CacheStatus>("get_cache_status"),
   clearCache: () => invoke<void>("clear_cache"),
+  getCustomTitlebar: () => invoke<boolean>("get_custom_titlebar"),
+  setSnapTarget: (target: SnapTarget | null) => invoke<void>("set_snap_target", { target }),
   getLogsDir: () => invoke<string>("get_logs_dir"),
   openLogsFolder: () => invoke<void>("open_logs_folder"),
   analyzeCover: (uuid: string, theme: "dark" | "light") =>
     invoke<CoverPalette>("analyze_cover", { uuid, theme }),
+  getUpdateSupport: () => invoke<UpdateSupport>("get_update_support"),
+  checkForUpdate: () => invoke<UpdateInfo | null>("check_for_update"),
+  installUpdate: () => invoke<void>("install_update"),
+  setUpdateCheckOnStart: (enabled: boolean) =>
+    invoke<void>("set_update_check_on_start", { enabled }),
+  getRemoteStatus: () => invoke<RemoteStatus>("get_remote_status"),
+  setRemoteEnabled: (enabled: boolean) => invoke<RemoteStatus>("set_remote_enabled", { enabled }),
+  setRemoteSettings: (port: number, iface: string, approveNewDevices: boolean) =>
+    invoke<RemoteStatus>("set_remote_settings", {
+      port,
+      interface: iface,
+      approveNewDevices,
+    }),
+  beginRemotePairing: () => invoke<RemotePairing>("begin_remote_pairing"),
+  cancelRemotePairing: () => invoke<void>("cancel_remote_pairing"),
+  listRemoteDevices: () => invoke<RemoteDevice[]>("list_remote_devices"),
+  renameRemoteDevice: (id: string, name: string) =>
+    invoke<void>("rename_remote_device", { id, name }),
+  revokeRemoteDevice: (id: string) => invoke<void>("revoke_remote_device", { id }),
+  resolveRemotePairRequest: (id: string, approve: boolean) =>
+    invoke<boolean>("resolve_remote_pair_request", { id, approve }),
 };

@@ -19,6 +19,19 @@ body {
   z-index: 1;
 }
 .app[data-sidebar="rail"] { --sidebar-width: 64px; }
+/* Custom window chrome (lib/titlebar.ts): the top band is the title bar, and
+   the caption buttons sit in the top-right corner over every shell. Content
+   that would sit under them (the docked/floating queue, the main scrollbar)
+   steps down; shells without a top gutter add one in their own styles. */
+:root[data-chrome="custom"] { --titlebar-h: 32px; }
+.queue { padding-top: var(--titlebar-h); }
+.main::-webkit-scrollbar-track { margin-top: var(--titlebar-h); }
+/* Mini mode wrapper: keeps the dialog registry's `inert` from reaching a
+   portaled modal while still disabling the Mini background. */
+.mini-layer,
+.rack-layer {
+  height: 100%;
+}
 
 /* Now Playing owns the whole window: the sidebar and the docked queue step
    aside while it is open (the floating queue overlay can still appear). */
@@ -56,6 +69,23 @@ body {
 /* position: relative anchors NowPlaying's absolute-positioned close fade. */
 /* Bottom clearance keeps the last content reachable past the floating bar. */
 .main { position: relative; padding: 32px 28px calc(var(--player-height) + 8px); overflow: auto; }
+/* The skip link focuses the scroller itself; a ring around the whole page
+   would be noise, so the landmark opts out of the global focus ring. */
+.main:focus-visible { outline: none; }
+/* Keyboard-reachable skip target: visible only while focused. */
+.skip-link {
+  position: absolute;
+  z-index: 60;
+  top: 8px;
+  left: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-control);
+  background: var(--surface-float);
+  color: var(--text);
+  transform: translateY(-200%);
+  transition: transform var(--dur-state) var(--ease-in);
+}
+.skip-link:focus { transform: none; }
 /* Track-list views: the wrapper owns the main area's height so the track
    table (TrackTable's `fill` prop) grows into the leftover space. */
 .view-fill { display: flex; flex-direction: column; height: 100%; }
@@ -186,6 +216,56 @@ body {
   border-color: color-mix(in srgb, var(--accent) 28%, var(--line));
   background: color-mix(in srgb, var(--accent) 8%, var(--surface-2));
   box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+/* Tool buttons: the field recipe above as a button (icon + label), so page
+   toolbars read as one row of the same objects as their search and sort
+   fields. */
+.tool-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition:
+    background var(--dur-state) var(--ease-in),
+    transform var(--dur-micro) var(--ease-in);
+}
+.tool-btn svg {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+}
+.tool-btn:hover:not(:disabled) {
+  background: var(--surface-3);
+}
+
+/* Page header for list/collection views (Playlists, Profiles, History,
+   Feed): title on the left; meta and tools on the right, all one height. */
+.page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 24px;
+}
+.page-head > h2 {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+}
+.page-head > :is(.search-input, .tool-btn),
+.page-head .select {
+  height: 38px;
+}
+.page-head > .count {
+  margin-right: 6px;
+  font-size: 13px;
 }
 
 /* View titles use the Fraunces display face (spec §6); section headings stay

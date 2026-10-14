@@ -9,6 +9,7 @@
   import { playlistView } from "../playlistView.svelte";
   import { playlistViewMenuItems } from "../playlistViewMenu";
   import Icon from "./Icon.svelte";
+  import Logo from "./Logo.svelte";
   import PlaylistTree from "./PlaylistTree.svelte";
 
   let {
@@ -34,7 +35,7 @@
 
   function showAtButton(event: MouseEvent, items: MenuItem[]) {
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    menu.show(rect.left, rect.bottom + 4, items);
+    menu.show(rect.left, rect.bottom + 4, items, event.currentTarget as HTMLElement);
   }
 
   function openViewMenu(event: MouseEvent) {
@@ -98,7 +99,9 @@
 <nav class="sidebar" class:rail>
   <div class="scroll">
     <div class="top">
-      <h1 class="wordmark">{rail ? "O" : "OxiTide"}</h1>
+      <h1 class="wordmark" aria-label="OxiTide">
+        <Logo size={rail ? 28 : 26} />{#if !rail}OxiTide{/if}
+      </h1>
       <div class="top-actions">
         <button
           class="collapse"
@@ -237,6 +240,9 @@
     gap: 4px;
   }
   .wordmark {
+    display: flex;
+    align-items: center;
+    gap: 9px;
     font-family: var(--font-display);
     font-size: 22px;
     font-weight: 640;

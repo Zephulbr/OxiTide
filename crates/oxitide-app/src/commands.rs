@@ -19,8 +19,8 @@ use tauri::{Manager, State};
 
 use crate::artwork::PaletteDto;
 use crate::config::{
-    clamp_queue_width, Config, CoverShape, Density, DynamicColor, QualityDisplay, Theme, Typeface,
-    UiMode,
+    clamp_queue_width, Config, CoverShape, Density, DynamicColor, QualityDisplay, RackConfig, Theme,
+    Typeface, UiMode,
 };
 use crate::lyrics::{LyricsDto, LyricsRequest};
 use crate::player::{devices, OutputDeviceDto, QualityDto};
@@ -175,6 +175,7 @@ pub async fn finish_login(
         .cache()
         .unwrap_or_else(|| crate::player::build_cache(&config));
     state.set_player(replace_player(app, state, client, &config, cache)?);
+    crate::remote::host::session_changed(state, crate::remote::events::SessionKind::Ok);
     Ok(SessionInfoDto {
         country_code: session.country_code,
         user_id: session.user_id,
@@ -243,6 +244,8 @@ pub fn auth_logout(state: State<'_, AppState>) -> Result<(), String> {
     if let Some(saver) = state.session_saver() {
         saver.clear();
     }
+    // The remote keeps running so a phone shows "Sign in on the PC".
+    crate::remote::host::session_changed(&state, crate::remote::events::SessionKind::LoggedOut);
     Ok(())
 }
 
@@ -316,6 +319,7 @@ pub async fn auth_restore(
                 .cache()
                 .unwrap_or_else(|| crate::player::build_cache(&config));
             state.set_player(replace_player(&app, &state, client, &config, cache)?);
+            crate::remote::host::session_changed(&state, crate::remote::events::SessionKind::Ok);
             crate::perf::mark("auth_restored");
             Ok(Some(SessionInfoDto {
                 country_code: session.country_code,
@@ -485,6 +489,14 @@ fn build_player(
     engine.subscribe(Arc::new(move |event| {
         if let Some(history) = history_handle.state::<AppState>().history() {
             history.record(&event);
+        }
+    }));
+    // Phone remote (Track 11): a no-op unless the remote is on and a phone
+    // is connected.
+    let remote_handle = app.clone();
+    engine.subscribe(Arc::new(move |event| {
+        if let Some(remote) = remote_handle.state::<AppState>().remote() {
+            remote.on_engine_event(&event);
         }
     }));
     engine.set_perf_hook(std::sync::Arc::new(crate::perf::audio_event));
@@ -958,7 +970,9 @@ pub async fn set_favorite_track(
     require_client(&state)?
         .set_favorite_track(track_id, favorite)
         .await
-        .map_err(|e| state.fail_tidal(e))
+        .map_err(|e| state.fail_tidal(e))?;
+    state.favorite_changed("track", track_id, favorite);
+    Ok(())
 }
 
 #[tauri::command]
@@ -970,7 +984,9 @@ pub async fn set_favorite_album(
     require_client(&state)?
         .set_favorite_album(album_id, favorite)
         .await
-        .map_err(|e| state.fail_tidal(e))
+        .map_err(|e| state.fail_tidal(e))?;
+    state.favorite_changed("album", album_id, favorite);
+    Ok(())
 }
 
 #[tauri::command]
@@ -982,7 +998,9 @@ pub async fn set_favorite_artist(
     require_client(&state)?
         .set_favorite_artist(artist_id, favorite)
         .await
-        .map_err(|e| state.fail_tidal(e))
+        .map_err(|e| state.fail_tidal(e))?;
+    state.favorite_changed("artist", artist_id, favorite);
+    Ok(())
 }
 
 #[tauri::command]
@@ -2101,6 +2119,54 @@ pub fn set_dynamic_color(state: State<'_, AppState>, mode: DynamicColor) -> Resu
     Ok(())
 }
 
+/// Hi-Fi Rack options (Track 9.5). The whole section is written at once; the
+/// stored (clamped) value is returned so the UI can reconcile.
+#[tauri::command]
+pub fn set_rack_settings(
+    state: State<'_, AppState>,
+    settings: RackConfig,
+) -> Result<RackConfig, String> {
+    let mut config = state.config();
+    config.rack = settings.clamped();
+    let stored = config.rack.clone();
+    config.save()?;
+    state.set_config(config);
+    Ok(stored)
+}
+
+/// Start or stop the Rack level meters (RK-D7). While enabled, the current
+/// engine's tap measures written audio and `level_frame` is emitted ~30 Hz.
+/// The tap is re-enabled every tick so an engine rebuilt after re-login is
+/// picked up.
+#[tauri::command]
+pub fn set_level_meter(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    enabled: bool,
+) -> Result<(), String> {
+    use tauri::{Emitter, Manager};
+    if enabled {
+        state.meter.start(move || {
+            let state = app.state::<AppState>();
+            let Some(player) = state.player() else {
+                return;
+            };
+            let tap = player.engine.level_tap();
+            if !tap.is_enabled() {
+                tap.set_enabled(true);
+            }
+            let frame = crate::meter::LevelFrameDto::from(tap.read());
+            let _ = app.emit(crate::meter::LEVEL_FRAME_EVENT, frame);
+        });
+    } else {
+        state.meter.stop();
+        if let Some(player) = state.player() {
+            player.engine.level_tap().set_enabled(false);
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn set_queue_width(state: State<'_, AppState>, px: u32) -> Result<(), String> {
     let mut config = state.config();
@@ -2262,6 +2328,103 @@ pub fn set_cache_clear_on_exit(state: State<'_, AppState>, enabled: bool) -> Res
     Ok(())
 }
 
+#[tauri::command]
+pub fn get_remote_status(app: tauri::AppHandle) -> crate::remote::host::RemoteStatusDto {
+    crate::remote::host::status(&app)
+}
+
+/// Turn the phone remote on or off (persisted). Enabling reports a bind
+/// failure through the status rather than an error.
+#[tauri::command]
+pub async fn set_remote_enabled(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    enabled: bool,
+) -> Result<crate::remote::host::RemoteStatusDto, String> {
+    let mut config = state.config();
+    config.remote.enabled = enabled;
+    config.save()?;
+    state.set_config(config);
+    if enabled {
+        let _ = crate::remote::host::start(&app).await;
+    } else {
+        crate::remote::host::stop(&app).await;
+    }
+    Ok(crate::remote::host::status(&app))
+}
+
+/// Port, QR interface, and the approval switch. A port change restarts a
+/// running server.
+#[tauri::command]
+pub async fn set_remote_settings(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    port: u16,
+    interface: String,
+    approve_new_devices: bool,
+) -> Result<crate::remote::host::RemoteStatusDto, String> {
+    let mut config = state.config();
+    let port = crate::config::clamp_remote_port(port);
+    let restart = config.remote.port != port && state.remote().is_some();
+    config.remote.port = port;
+    config.remote.interface = interface.trim().to_string();
+    config.remote.approve_new_devices = approve_new_devices;
+    config.save()?;
+    state.set_config(config);
+    if let Some(service) = state.remote() {
+        service.set_approve_new_devices(approve_new_devices);
+    }
+    if restart {
+        crate::remote::host::stop(&app).await;
+        let _ = crate::remote::host::start(&app).await;
+    }
+    let status = crate::remote::host::status(&app);
+    crate::remote::host::emit_status(&app);
+    Ok(status)
+}
+
+#[tauri::command]
+pub fn begin_remote_pairing(app: tauri::AppHandle) -> Result<crate::remote::host::PairingDto, String> {
+    let pairing = crate::remote::host::begin_pairing(&app)?;
+    crate::remote::host::emit_status(&app);
+    Ok(pairing)
+}
+
+#[tauri::command]
+pub fn cancel_remote_pairing(app: tauri::AppHandle, state: State<'_, AppState>) {
+    if let Some(service) = state.remote() {
+        service.cancel_pairing();
+    }
+    crate::remote::host::emit_status(&app);
+}
+
+#[tauri::command]
+pub fn list_remote_devices(app: tauri::AppHandle) -> Vec<crate::remote::host::RemoteDeviceDto> {
+    crate::remote::host::list_devices(&app)
+}
+
+/// Rename a paired phone (shown in Settings only).
+#[tauri::command]
+pub fn rename_remote_device(app: tauri::AppHandle, id: String, name: String) -> Result<(), String> {
+    crate::remote::host::rename_device(&app, &id, &name)
+}
+
+#[tauri::command]
+pub fn revoke_remote_device(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    crate::remote::host::revoke_device(&app, &id)
+}
+
+/// Approve or decline a waiting phone. `false` when the request is gone.
+#[tauri::command]
+pub fn resolve_remote_pair_request(
+    state: State<'_, AppState>,
+    id: String,
+    approve: bool,
+) -> Result<bool, String> {
+    let service = state.remote().ok_or_else(|| "the phone remote is off".to_string())?;
+    Ok(service.resolve_pair_request(&id, approve))
+}
+
 /// Failures propagate so the UI keeps its current colors instead of resetting
 /// to brand teal (spec §5.2).
 #[tauri::command]
@@ -2274,6 +2437,45 @@ pub async fn analyze_cover(
         return Err("artwork service unavailable".into());
     };
     service.palette(&uuid, theme).await.map(PaletteDto::from)
+}
+
+/// Whether the window runs undecorated with the UI's own caption buttons.
+#[tauri::command]
+pub fn get_custom_titlebar() -> bool {
+    crate::titlebar::custom()
+}
+
+/// Where the UI's maximize button is, for the Snap Layouts overlay; `None`
+/// hides the overlay. A sync command, so it runs on the main thread.
+#[tauri::command]
+pub fn set_snap_target(target: Option<crate::titlebar::SnapTarget>) {
+    crate::titlebar::set_target(target);
+}
+
+#[tauri::command]
+pub fn get_update_support(state: State<'_, AppState>) -> crate::updater::UpdateSupport {
+    crate::updater::support(state.config().updates.check_on_start)
+}
+
+#[tauri::command]
+pub async fn check_for_update(
+    app: tauri::AppHandle,
+) -> Result<Option<crate::updater::UpdateInfo>, String> {
+    crate::updater::check(&app).await
+}
+
+#[tauri::command]
+pub async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
+    crate::updater::install(&app).await
+}
+
+#[tauri::command]
+pub fn set_update_check_on_start(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    let mut config = state.config();
+    config.updates.check_on_start = enabled;
+    config.save()?;
+    state.set_config(config);
+    Ok(())
 }
 
 #[tauri::command]

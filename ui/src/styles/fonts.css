@@ -23,6 +23,15 @@
   font-style: normal;
   font-display: swap;
 }
+/* Hi-Fi Rack 7-segment readouts (Track 9.5c): DSEG7 Classic Bold Italic,
+   unmodified (Reserved Font Name "DSEG"), 5KB. Source: dseg@0.46.0 (npm). */
+@font-face {
+  font-family: "DSEG7 Classic";
+  src: url("../assets/fonts/dseg7-classic-bold-italic.woff2") format("woff2");
+  font-weight: 700;
+  font-style: italic;
+  font-display: block;
+}
 @font-face {
   font-family: "Inter";
   src: url("../assets/fonts/inter-latin-wght-normal.woff2") format("woff2");

@@ -48,24 +48,28 @@
   });
 </script>
 
-{#snippet cards(list: Artist[])}
+<!-- Each artist is a record: the portrait is the label on a vinyl disc. In
+     name order the letters are crate dividers. -->
+{#snippet records(list: Artist[])}
   {#each list as artist (artist.id)}
     <button class="card" onclick={() => nav.goto({ name: "artist", id: artist.id })}>
-      <span class="art"><Cover uuid={artist.picture} size={320} radius={160} alt="" /></span>
+      <span class="record" aria-hidden="true">
+        <span class="label"><Cover uuid={artist.picture} size={320} radius={160} alt="" /></span>
+      </span>
       <span class="title">{artist.name}</span>
     </button>
   {/each}
 {/snippet}
 
 <div class="profiles">
-  <div class="page-head" class:scrolled bind:this={headEl}>
+  <header class="page-head" class:scrolled bind:this={headEl}>
     <div class="head-frost" aria-hidden="true">
       <div class="head-ramp">
-        <EdgeBlur layers={10} height={170} strength={1.3} tint="var(--glass-veil)" tintStrength={75} />
+        <EdgeBlur layers={10} height={140} strength={1.3} tint="var(--glass-veil)" tintStrength={75} />
       </div>
     </div>
     <h2>Profiles</h2>
-    <span class="muted count">{artists.length} {artists.length === 1 ? "artist" : "artists"}</span>
+    <span class="muted count tnum">{artists.length} {artists.length === 1 ? "artist" : "artists"}</span>
     <input
       class="search-input filter"
       placeholder="Search artists"
@@ -83,7 +87,7 @@
       label="Sort artists"
       onchange={(value) => (sortMode = value as ArtistSort)}
     />
-  </div>
+  </header>
 
   {#if loading}
     <Loading />
@@ -94,30 +98,30 @@
   {:else if shown.length === 0}
     <p class="muted empty">No artists match “{query.trim()}”.</p>
   {:else if groups}
-    <div class="groups">
-      {#each groups as group (group.letter)}
-        <h3 class="letter">{group.letter}</h3>
-        <div class="grid">{@render cards(group.artists)}</div>
-      {/each}
-    </div>
+    {#each groups as group (group.letter)}
+      <h3 class="divider">
+        <span class="tab">{group.letter}</span>
+        <span class="muted n tnum">{group.artists.length}</span>
+      </h3>
+      <div class="grid pane">{@render records(group.artists)}</div>
+    {/each}
   {:else}
-    <div class="grid">{@render cards(shown)}</div>
+    <div class="grid pane">{@render records(shown)}</div>
   {/if}
 </div>
 
 <style>
   .profiles {
-    padding: 32px 48px 0;
+    padding-bottom: 32px;
   }
+  /* The shared page head, made sticky with a frost ramp once the page scrolls
+     (the main scroller's top padding is dropped for this view, app.css). */
   .page-head {
     position: sticky;
     top: 0;
     z-index: 5;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin: 0 -48px;
-    padding: 40px 48px 0;
+    margin: 0 0 8px;
+    padding: 32px 0 16px;
   }
   .head-frost {
     position: absolute;
@@ -128,113 +132,156 @@
   .head-ramp {
     position: absolute;
     top: 0;
-    right: 0;
-    left: 0;
+    right: -12px;
+    left: -12px;
     visibility: hidden;
   }
   .page-head.scrolled .head-ramp {
     visibility: visible;
   }
-  .page-head h2 {
-    flex: 1;
-    min-width: 0;
-    margin: 0;
-  }
-  .count {
-    font-size: 13px;
-  }
   .filter {
     flex: 0 1 240px;
+    min-width: 140px;
   }
   .empty {
-    margin-top: 72px;
+    margin-top: 48px;
   }
   .grid {
     display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-    gap: 56px 16px;
-    margin-top: 72px;
+    grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+    gap: 28px 20px;
+    margin-top: 16px;
   }
-  .groups {
-    margin-top: 72px;
+
+  /* Crate dividers: a tab with the letter standing up from a rule. */
+  .divider {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    margin: 36px 0 0;
+    border-bottom: 1px solid var(--line);
   }
-  .groups .grid {
-    margin-top: 12px;
-    padding: 0;
+  .divider:first-of-type {
+    margin-top: 8px;
   }
-  .letter {
-    margin: 48px 0 0;
-    font-size: 13px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    color: var(--text-muted);
+  .tab {
+    min-width: 40px;
+    margin-bottom: -1px;
+    padding: 6px 12px 5px;
+    border: 1px solid var(--line);
+    border-bottom-color: transparent;
+    border-radius: var(--radius-control) var(--radius-control) 0 0;
+    background: linear-gradient(var(--surface-3), var(--surface-1));
+    font-family: var(--font-display);
+    font-size: 18px;
+    font-weight: 640;
+    text-align: center;
   }
-  .groups .letter:first-child {
-    margin-top: 0;
+  .n {
+    padding-bottom: 7px;
+    font-size: 12px;
+    font-weight: 500;
   }
+
   .card {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 10px;
-    text-align: center;
-    padding: 4px;
+    gap: 12px;
+    min-width: 0;
+    padding: 6px;
     border-radius: var(--radius-card);
+    text-align: center;
     color: inherit;
-    transition: transform var(--dur-state) var(--ease-in);
-  }
-  .card:hover {
-    transform: translateY(-2px);
   }
   .card:focus-visible {
     outline: none;
   }
-  .card:focus-visible .art {
+  .card:focus-visible .record {
     box-shadow:
-      0 0 9px color-mix(in srgb, var(--accent) 80%, transparent),
-      0 18px 34px -18px rgba(0, 0, 0, 0.7);
+      0 0 0 2px var(--bg),
+      0 0 0 4px var(--accent),
+      0 16px 30px -18px rgba(0, 0, 0, 0.8);
   }
-  .art {
+  /* The disc: fine grooves, a lead-in ring, a light sheen that turns on hover
+     and the portrait as the label around the spindle. */
+  .record {
     position: relative;
     display: block;
     width: 100%;
-    overflow: hidden;
-    border: 1px solid transparent;
+    aspect-ratio: 1;
     border-radius: 50%;
     background:
-      linear-gradient(var(--surface-2), var(--surface-2)) padding-box,
-      var(--edge-lit) border-box;
-    box-shadow: 0 14px 30px -22px rgba(0, 0, 0, 0.75);
-    transition: box-shadow var(--dur-state) var(--ease-in);
+      radial-gradient(circle, transparent 0 66%, rgba(255, 255, 255, 0.05) 66.4% 66.8%, transparent 67.2%),
+      repeating-radial-gradient(circle, var(--vinyl) 0 1px, var(--vinyl-groove) 1px 2px);
+    box-shadow:
+      0 16px 30px -18px rgba(0, 0, 0, 0.8),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+    transition:
+      transform var(--dur-state) var(--ease-in),
+      box-shadow var(--dur-state) var(--ease-in);
   }
-  .art::after {
+  .record::before {
     content: "";
     position: absolute;
     inset: 0;
     border-radius: 50%;
-    background: linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--text) 16%, transparent),
-      transparent 42%,
-      rgba(0, 0, 0, 0.25)
+    background: conic-gradient(
+      from 20deg,
+      transparent 0deg,
+      var(--vinyl-sheen) 30deg,
+      transparent 64deg,
+      transparent 180deg,
+      var(--vinyl-sheen) 210deg,
+      transparent 244deg
     );
     pointer-events: none;
+    transition: transform var(--dur-view) var(--ease-in);
   }
-  .art :global(img) {
-    transition: transform var(--dur-state) var(--ease-in);
-  }
-  .card:hover .art {
+  .label {
+    position: absolute;
+    inset: 17%;
+    overflow: hidden;
+    border-radius: 50%;
+    background: linear-gradient(var(--surface-3), var(--surface-3)), var(--vinyl);
     box-shadow:
-      0 0 0 5px color-mix(in srgb, var(--accent) 12%, transparent),
-      0 18px 34px -18px rgba(0, 0, 0, 0.7);
+      0 0 0 3px var(--vinyl),
+      0 0 0 4px rgba(255, 255, 255, 0.06);
   }
-  .card:hover .art :global(img) {
-    transform: scale(1.04);
+  .label :global(.cover) {
+    width: 100%;
+    height: 100%;
+  }
+  .label :global(img) {
+    transition: transform var(--dur-view) var(--ease-in);
+  }
+  /* Spindle hole. */
+  .record::after {
+    content: "";
+    position: absolute;
+    inset: calc(50% - 4px);
+    border-radius: 50%;
+    background: var(--vinyl);
+    box-shadow:
+      inset 0 1px 1px rgba(0, 0, 0, 0.8),
+      0 0 0 1px rgba(255, 255, 255, 0.18);
+  }
+  .card:hover .record {
+    transform: translateY(-3px);
+    box-shadow:
+      0 0 0 5px color-mix(in srgb, var(--accent) 14%, transparent),
+      0 20px 34px -18px rgba(0, 0, 0, 0.85);
+  }
+  .card:hover .record::before {
+    transform: rotate(48deg);
+  }
+  .card:hover .label :global(img) {
+    transform: scale(1.05);
   }
   .title {
-    font-size: 15px;
-    font-weight: 500;
     max-width: 100%;
+    font-size: 14.5px;
+    font-weight: 500;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

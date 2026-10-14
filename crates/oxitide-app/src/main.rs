@@ -9,15 +9,19 @@ mod hotkeys;
 mod lrc;
 mod lyrics;
 mod media_controls;
+mod meter;
 mod palette;
 pub mod perf;
 mod player;
+mod remote;
 mod scheme;
 mod scrobble;
 mod session;
 mod state;
+mod titlebar;
 mod track_flags;
 mod tray;
+mod updater;
 mod window;
 
 use std::sync::OnceLock;
@@ -219,6 +223,7 @@ fn main() {
         }))
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(hotkeys::handle)
@@ -265,6 +270,8 @@ fn main() {
                 scrobbler.start();
             }
             if let Some(window) = app.get_webview_window("main") {
+                // Before the first show, so the system frame never flashes.
+                titlebar::install(&window);
                 let config = app.state::<AppState>().config();
                 if let Err(e) = window::apply(&window, &config) {
                     tracing::warn!("failed to apply window geometry: {e}");
@@ -313,6 +320,15 @@ fn main() {
             if let Err(e) = spawned {
                 tracing::warn!("startup background thread failed: {e}");
             }
+            // Phone remote (Track 11): only when enabled, after the window is
+            // shown, off the critical path.
+            if app.state::<AppState>().config().remote.enabled {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let _ = remote::host::start(&handle).await;
+                });
+            }
+            updater::spawn_startup_check(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -431,6 +447,8 @@ fn main() {
             commands::set_density,
             commands::set_cover_shape,
             commands::set_dynamic_color,
+            commands::set_rack_settings,
+            commands::set_level_meter,
             commands::set_queue_width,
             commands::set_mini_mode,
             commands::set_start_in_mini,
@@ -438,10 +456,16 @@ fn main() {
             commands::set_smtc,
             commands::set_discord,
             commands::set_close_to_tray,
+            commands::get_update_support,
+            commands::check_for_update,
+            commands::install_update,
+            commands::set_update_check_on_start,
             commands::set_hotkey,
             commands::set_hotkey_capture,
             commands::set_cache_max_size_mb,
             commands::set_cache_clear_on_exit,
+            commands::get_custom_titlebar,
+            commands::set_snap_target,
             commands::get_logs_dir,
             commands::open_logs_folder,
             commands::perf_mark,
@@ -449,6 +473,15 @@ fn main() {
             commands::perf_submit_ui_metrics,
             commands::perf_queue_build,
             commands::analyze_cover,
+            commands::get_remote_status,
+            commands::set_remote_enabled,
+            commands::set_remote_settings,
+            commands::begin_remote_pairing,
+            commands::cancel_remote_pairing,
+            commands::list_remote_devices,
+            commands::rename_remote_device,
+            commands::revoke_remote_device,
+            commands::resolve_remote_pair_request,
         ])
         .build(tauri::generate_context!())
         .expect("error while building OxiTide")
@@ -466,22 +499,27 @@ fn main() {
                     }
                 }
             }
-            tauri::RunEvent::Exit => {
-                scheme::restore_remembered();
-                let state = app_handle.state::<AppState>();
-                if let Some(saver) = state.session_saver() {
-                    saver.flush_now();
-                }
-                if let Some(history) = state.history() {
-                    history.finalize_now();
-                }
-                let config = state.config();
-                if config.cache.clear_on_exit {
-                    if let Some(cache) = state.cache() {
-                        cache.clear();
-                    }
-                }
-            }
+            tauri::RunEvent::Exit => run_exit_work(app_handle),
             _ => {}
         });
+}
+
+/// Shutdown persistence. Runs on `RunEvent::Exit`, and before a Windows update
+/// install, whose installer ends the process without that event.
+fn run_exit_work(app_handle: &tauri::AppHandle) {
+    scheme::restore_remembered();
+    remote::host::stop_now(app_handle);
+    let state = app_handle.state::<AppState>();
+    if let Some(saver) = state.session_saver() {
+        saver.flush_now();
+    }
+    if let Some(history) = state.history() {
+        history.finalize_now();
+    }
+    let config = state.config();
+    if config.cache.clear_on_exit {
+        if let Some(cache) = state.cache() {
+            cache.clear();
+        }
+    }
 }

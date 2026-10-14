@@ -1,6 +1,6 @@
 # OxiTide — Track 9 UI Completion (minus Hi-Fi Rack)
 
-- **Status:** Draft for review — design approved live with the owner (2026-10-05); plans pending
+- **Status:** Shipped 2026-10-13 (closed by the owner; `plans/notes/2026-10-13-track9-completion.md`). i18n and the Rack (done as 9.5) were handed off as separate tracks.
 - **Date:** 2026-10-05
 - **Owner:** V
 - **Parents:** `2026-09-24-oxitide-post-mvp-roadmap.md` (Track 9; PM-D1–PM-D6);

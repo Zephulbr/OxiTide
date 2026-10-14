@@ -42,6 +42,11 @@
   "plugins": {
     "deep-link": {
       "desktop": { "schemes": ["tidal"] }
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IENEMzU3MkY5NzdFN0I2N0UKUldSK3R1ZDMrWEkxelp3K2tXQ0NxaStaYU4rVVlIa1lyVXVXSGtIN1VoaFRKNGtlbTJhTkVoUHgK",
+      "endpoints": ["https://github.com/Zephulbr/OxiTide/releases/latest/download/latest.json"],
+      "windows": { "installMode": "passive" }
     }
   },
   "bundle": {

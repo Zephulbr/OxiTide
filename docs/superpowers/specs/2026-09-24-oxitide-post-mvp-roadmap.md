@@ -14,7 +14,15 @@
 - **Revised:** 2026-10-04 — Track 8 (Plans 8.1–8.5) implemented and WSL2-verified; closed by owner exemption for the deferred bare-metal checks (`plans/notes/2026-10-04-track8-completion.md`).
 - **Revised:** 2026-10-05 — Track 10 (QoL) implemented, merged to `main` at `446e054` (follow-up fixes through `70d0bc9`), and closed with owner smoke passed; 10.4 scrobble love deferred (`plans/notes/2026-10-05-track10-completion.md`).
 - **Revised:** 2026-10-07 — Track 7 called by the owner with the **DSP core** scope (ReplayGain, 10-band EQ, crossfade); spec `2026-10-07-oxitide-track7-advanced-audio-design.md`, Plans 7.1–7.2 implemented on `track7-dsp`; owner smoke passed and Track 7 (DSP core) closed the same day. Casting/TIDAL Connect, Atmos, 360 RA, ASIO, listen-along, and automix stay parked. Track 9.4 (a11y) resumes after Track 7.
+- **Revised:** 2026-10-07 — AutoMix spike written (`plans/notes/2026-10-07-automix-spike.md`): recommends a small Phase 1 (silence trim + rate-mismatch overlap) before any beat-aligned work; still research-only until the owner calls it.
+- **Revised:** 2026-10-08 — Track 9.4 (a11y pass) smoke passed (`plans/notes/DONE-2026-10-07-track9-4-smoke.md`; PM-D1 S5/S6/S7 re-runs show no regression) and merged to `main`. Track 9 closure (plan 9.4 Task 15) waits on the owner confirming the 9.2/9.3 smokes; Hi-Fi Rack runs as its own spec.
 - **Revised:** 2026-10-08 — Track 7b (AutoMix Phases 1–2: silence trim, cross-format overlap, beat matching; individually toggleable for A/B) implemented on `track7b-automix` per `2026-10-08-oxitide-track7b-automix-design.md`; owner A/B smoke pending. Phase 3 (pure-Rust tempo stretch) researched in `plans/notes/2026-10-08-tempo-stretch-research.md`.
+- **Revised:** 2026-10-09 — Track 9.5 (Hi-Fi Rack, third UI mode) implemented on `track9-5-hifi-rack` and closed after owner polish rounds (`plans/notes/2026-10-09-track9-5-hifi-rack-completion.md`); formal smoke tick and PM-D1 re-runs are owner items; 9.5c (narrow fold, Rack mini layout, queue changer) deferred.
+- **Revised:** 2026-10-10 — **Track 11 (Phone Remote)** added: casting/TIDAL Connect research (`plans/notes/2026-10-09-tidal-connect-receiver-spike.md`) showed the TIDAL phone app only accepts TIDAL's own receiver binary, so the owner chose a self-contained LAN web remote instead (spec `2026-10-09-oxitide-track11-phone-remote-design.md`). Plans 11.1–11.5 implemented on `track11-phone-remote`; 11.6 human smoke and PM-D1 re-runs are owner items.
+- **Revised:** 2026-10-11 — Track 11 (Phone Remote) closed: owner smoke passed (Linux item deferred to the batched Linux run), merged to `main` (`plans/notes/2026-10-10-track11-completion.md`).
+- **Revised:** 2026-10-10 — Track 9.5c (narrow-window fold, Rack mini player, queue changer unit, DSEG7 segment font) implemented on `track9-5c-rack` (Rack spec §9, `plans/notes/2026-10-10-track9-5c-rack-completion.md`).
+- **Revised:** 2026-10-13 — ASIO output (Plan 7.3) and Track 9.5c merged to `main`; **Track 9 closed** by the owner (9.2/9.3/9.5 smokes marked done; `plans/notes/2026-10-13-track9-completion.md`). A batched Linux bare-metal run is deferred (Windows first). i18n remains an unspecced follow-on track.
+- **Revised:** 2026-10-14 — Track 7b (AutoMix: silence trim, cross-format overlap, beat matching; 7b.2 Classic / Quick / Blend styles, the replay lab, and the Auto style) merged to `main` after two owner A/B passes (`plans/2026-10-08-track7b-2-transition-styles.md`, AM-D8–D18). Owner listening continues on the smoke checklist (rows 12i–12j); beat-grid confidence still needs tuning before beat matching is judged.
 - **Owner:** V
 - **Parent:** `2026-09-21-oxitide-design.md` (§9 Phasing)
 - **Supersedes:** the parent's Phase 2–4 ordering. The shipped Phase 1 MVP (v0.2.0) is
@@ -45,10 +53,12 @@ refreshed 2026-10-01.
 | 2 | Track 5 | Scrobbling: Last.fm and ListenBrainz in parallel, independent toggles; now-playing, offline queue, retry | Done (Last.fm + ListenBrainz; smoke closed 2026-09-29) |
 | 3 | Track 6 | Remaining integrations: Discord RPC; SMTC + hardware media keys | Done (6a SMTC/media keys + 6b Discord Rich Presence) |
 | now | Track 3 | Performance & stability wave: profile and fix startup, time-to-first-sound, UI jank, memory, cache/eviction churn, large-library handling; build a measurement harness | Done — Phases A–D complete 2026-10-02 (`plans/notes/2026-10-02-track3-phase-d.md`) |
-| 5 | Track 9 | UI completion: Hi-Fi Rack mode, light mode, artist/credits/album-info surfaces, a11y pass, i18n, remaining UI polish and bug fixes | Proposed — next after Track 3 (owner call) |
+| 5 | Track 9 | UI completion: Hi-Fi Rack mode, light mode, artist/credits/album-info surfaces, a11y pass, i18n, remaining UI polish and bug fixes | Done (2026-10-13) - 9.0-9.5c all merged; owner closed the 9.2/9.3/9.5 smokes without row-by-row ticks; i18n handed off as its own track; Linux items batched for later (`plans/notes/2026-10-13-track9-completion.md`) |
 | 6 | Track 8 | Linux support: ALSA output backend, MPRIS media controls, Secret Service keyring, deb/AppImage/AUR packaging | Done (2026-10-04) — WSL2-verified; bare-metal checks exempted (`plans/notes/2026-10-04-track8-completion.md`) |
 | 7 | Track 10 | Daily-driver QoL: session/queue persistence, playback history + stats, sleep timer, scrobble love (deferred 2026-10-05), AI/explicit content blocking; Phase 2 tray + global hotkeys | Done (2026-10-05) — merged at `446e054` with follow-up fixes through `70d0bc9`; owner smoke passed; 10.4 deferred |
 | 8 | Track 7 | Advanced audio: DSP/EQ + ReplayGain (opt-in, mutually exclusive with bit-perfect); crossfade/automix; casting/TIDAL Connect; Dolby Atmos; 360 RA (difficulty-gated); optional ASIO output (maybe, see `plans/notes/2026-10-01-asio-spike.md`); **potential post-casting group listen-along** (see `plans/notes/2026-10-02-listen-along-assessment.md`) | DSP core done 2026-10-07 (ReplayGain, EQ, crossfade; owner smoke passed — `plans/notes/2026-10-07-track7-completion.md`); casting/Atmos/360 RA/ASIO/listen-along/automix parked |
+| 9 | Track 11 | Phone remote: opt-in LAN server, QR pairing, a phone web page for playback, queue, search, and library (replaces "control OxiTide from the phone" from Track 7's casting item) | Done (2026-10-11) — owner smoke passed (Linux item deferred), merged to `main`; `plans/notes/2026-10-10-track11-completion.md` |
+| 10 | Track 12 | Distribution: GitHub Actions CI, tag-driven draft releases, in-app auto-update (minisign); Windows code signing deferred | Implemented (2026-10-13), unmerged workflows unproven on GitHub — `plans/notes/2026-10-13-track12-completion.md` |
 
 Track 2b is closed; its remainder (Hi-Fi Rack, light mode, leftover polish) is Track 9,
 which carries a normal completion gate.
@@ -180,7 +190,11 @@ which carries a normal completion gate.
   AutoMix-style beat/time-aligned mixer is research only, not committed. The exact scope is
   fixed in the Track 7 spec.
 - Casting / TIDAL Connect (protocol research first) and Dolby Atmos (Phase 0-style DRM
-  spike before any commitment).
+  spike before any commitment). **2026-10-09:** the Connect spike
+  (`plans/notes/2026-10-09-tidal-connect-receiver-spike.md`) found that appearing in the
+  TIDAL phone app requires TIDAL's own receiver binary (the phone verifies a TIDAL-issued
+  certificate). Phone control moved to **Track 11** (own web remote); a Connect sidecar
+  stays parked here and could reuse Track 11's `RemoteSession` seam.
 - **Listen Along / group listening (potential, not committed):** synchronize playback across
   two or more accounts so people listen together, optionally launched from Discord. No audio
   is streamed — each participant plays from their own account and only transport state (track,
@@ -192,7 +206,9 @@ which carries a normal completion gate.
   `plans/notes/2026-10-02-listen-along-assessment.md`.
 - **360 Reality Audio:** currently not relevant or in use; whether it is worth implementing
   is decided by difficulty when Track 7 is scoped.
-- **ASIO output (maybe, not committed):** feature-parity option, assessed by the
+- **ASIO output (called 2026-10-11, Plan 7.3):** implemented and merged to `main` per
+  `specs/2026-10-11-oxitide-track7-asio-output-design.md` (hand-written IASIO binding, no LLVM);
+  owner smoke `plans/notes/2026-10-11-asio-smoke.md` pending. Original assessment: feature-parity option, assessed by the
   2026-10-01 spike (`plans/notes/2026-10-01-asio-spike.md`). WASAPI-only today; a contained
   `asio-sys` backend is feasible and AGPL-compatible (SDK GPLv3 option), but costs LLVM at
   build time, in-process driver crash risk, software-only volume (breaks bit-perfect below
@@ -237,7 +253,7 @@ which carries a normal completion gate.
   close.
 - **i18n** (owner-confirmed placement): locale infrastructure and string extraction; if it
   outgrows this track it becomes its own track.
-- **Status:** Proposed (2026-10-01); next after Track 3, owner call. Track 3 budgets
+- **Status:** Done (2026-10-13) - see `plans/notes/2026-10-13-track9-completion.md`; i18n was split out and has no spec yet. Track 3 budgets
   (PM-D1) apply to every new surface.
 
 ### Track 10 — Daily-driver QoL
@@ -255,6 +271,21 @@ which carries a normal completion gate.
   playback-history and credits endpoints; ListenBrainz feedback support; history/stats
   data source and retention.
 - **Status:** Done (2026-10-05) — merged at `446e054` with follow-up fixes and enhancements through `70d0bc9`; owner smoke passed (`plans/notes/2026-10-05-track10-completion.md`); 10.4 (scrobble love) deferred 2026-10-05.
+
+### Track 11 — Phone remote
+
+- **Outcome:** control a running OxiTide from a phone on the same network with nothing to
+  install: an opt-in server (off by default), QR pairing with per-device tokens and desktop
+  approval, and a mobile web page for Now Playing, the queue, search, Home/Explore, the
+  library, and detail pages. No cloud relay, no account, no TIDAL software involved;
+  Tailscale-style VPN addresses are admitted for remote use.
+- **Spec:** `2026-10-09-oxitide-track11-phone-remote-design.md` (RM-D1–RM-D13, all
+  owner-accepted 2026-10-09). Plan record: `plans/2026-10-09-track11-phone-remote.md`.
+- **Status:** Done (2026-10-11). Plans 11.1–11.6 plus smoke round 1 (favorite sync, device
+  rename, Atmosphere polish, swipe-on-cover volume) and a final security pass; owner smoke
+  passed with the Linux item deferred; PM-D1 shows no remote cost (seven pre-existing
+  breaches reproduce with it off). Merged to `main` — see
+  `plans/notes/2026-10-10-track11-completion.md`.
 
 ## 4. Decisions (post-MVP)
 

@@ -15,6 +15,18 @@ export function formatTotalDuration(seconds: number): string {
   return `${h}:${m.toString().padStart(2, "0")}:${r.toString().padStart(2, "0")}`;
 }
 
+/// Listening time for History and Stats: "45 s", "42 min", "3 h 05 min",
+/// "2 d 4 h". Unlike formatTotalDuration this never reads as a clock time.
+export function formatListenTime(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return `${s} s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  if (h < 48) return `${h} h ${String(m % 60).padStart(2, "0")} min`;
+  return `${Math.floor(h / 24)} d ${h % 24} h`;
+}
+
 /// Compact fan/listener counts: 999, 9.7K, 12K, 1.1M, 1B.
 export function formatCount(n: number): string {
   const value = Math.max(0, Math.floor(n));

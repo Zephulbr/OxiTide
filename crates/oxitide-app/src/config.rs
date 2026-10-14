@@ -21,6 +21,45 @@ pub struct Config {
     pub hotkeys: HotkeysConfig,
     /// Sound processing (Track 7): EQ, ReplayGain, crossfade. All off by default.
     pub dsp: DspSettings,
+    /// Hi-Fi Rack mode options (Track 9.5).
+    pub rack: RackConfig,
+    /// Phone remote (Track 11). Off by default.
+    pub remote: RemoteConfig,
+    /// Update checks (Track 12). On by default.
+    pub updates: UpdatesConfig,
+}
+
+pub const REMOTE_DEFAULT_PORT: u16 = 47820;
+
+/// Phone remote preferences (`[remote]`, spec §5.3). Paired devices live in
+/// `remote.json`, never here.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RemoteConfig {
+    pub enabled: bool,
+    /// First port tried; the server falls back through `port + 9`.
+    pub port: u16,
+    /// Address for the pairing QR; empty picks automatically.
+    pub interface: String,
+    /// New phones need a click on the PC before they pair.
+    pub approve_new_devices: bool,
+}
+
+impl Default for RemoteConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            port: REMOTE_DEFAULT_PORT,
+            interface: String::new(),
+            approve_new_devices: true,
+        }
+    }
+}
+
+/// Keep the port out of the privileged range and leave room for the
+/// nine-port fallback.
+pub fn clamp_remote_port(port: u16) -> u16 {
+    port.clamp(1024, u16::MAX - 9)
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -75,6 +114,105 @@ pub enum UiMode {
     Instrument,
     #[default]
     Atmosphere,
+    /// Hi-Fi Rack (Track 9.5): its own shell and custom units.
+    Rack,
+}
+
+/// What the compact Rack deck shows (RK-D5). The expanded deck is always the
+/// turntable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DeckFace {
+    Transport,
+    Cd,
+    #[default]
+    Display,
+}
+
+/// The amplifier's meter style (RK-D6).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MeterStyle {
+    #[default]
+    Needles,
+    Bars,
+    Led,
+    Spectrum,
+}
+
+/// The expanded deck's extra unit (between the amp and Now playing). `Auto`
+/// shows the level recorder when the amp already shows a spectrum, otherwise
+/// the spectrum, so the two never duplicate. Kept after the owner's live
+/// comparison (2026-10-09): spectrum, recorder, tuner, eq.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AnalyzerStyle {
+    /// Briefly offered options that were dropped ("none", "cassette") load as Auto.
+    #[default]
+    #[serde(alias = "none", alias = "cassette")]
+    Auto,
+    Spectrum,
+    /// Chart-recorder strip of L/R programme level. Briefly shipped as a
+    /// waterfall, then a stereo scope; both values load as the recorder.
+    #[serde(alias = "waterfall", alias = "scope")]
+    Recorder,
+    /// FM-tuner dial whose pointer travels the track's timeline.
+    Tuner,
+    /// The graphic EQ, reachable inside Now Playing.
+    Eq,
+}
+
+/// Lamp colour (RK-D8): five presets or the cover's hue.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LampColor {
+    #[default]
+    Amber,
+    Blue,
+    Green,
+    Red,
+    White,
+    Cover,
+}
+
+pub const LAMP_BRIGHTNESS_MIN: u8 = 40;
+pub const LAMP_BRIGHTNESS_MAX: u8 = 100;
+
+pub fn clamp_lamp_brightness(value: u8) -> u8 {
+    value.clamp(LAMP_BRIGHTNESS_MIN, LAMP_BRIGHTNESS_MAX)
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RackConfig {
+    pub deck_face: DeckFace,
+    pub meters: MeterStyle,
+    pub analyzer: AnalyzerStyle,
+    pub lamp: LampColor,
+    /// Show the optional graphic-EQ unit in the rack column.
+    pub eq_unit: bool,
+    /// Percent, 40–100: scales lamp lightness and glow.
+    pub lamp_brightness: u8,
+}
+
+impl Default for RackConfig {
+    fn default() -> Self {
+        Self {
+            deck_face: DeckFace::Display,
+            meters: MeterStyle::Needles,
+            analyzer: AnalyzerStyle::Auto,
+            lamp: LampColor::Amber,
+            eq_unit: true,
+            lamp_brightness: LAMP_BRIGHTNESS_MAX,
+        }
+    }
+}
+
+impl RackConfig {
+    pub fn clamped(mut self) -> Self {
+        self.lamp_brightness = clamp_lamp_brightness(self.lamp_brightness);
+        self
+    }
 }
 
 /// Color theme. Orthogonal to `UiMode`; `System` follows the OS preference.
@@ -261,6 +399,20 @@ impl Default for HistoryConfig {
     }
 }
 
+/// Self-update (Track 12): whether to look for a newer release on startup.
+/// Nothing is ever downloaded without an explicit click.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct UpdatesConfig {
+    pub check_on_start: bool,
+}
+
+impl Default for UpdatesConfig {
+    fn default() -> Self {
+        Self { check_on_start: true }
+    }
+}
+
 /// Content blocking (spec §6.5): client-side filters for explicit and
 /// AI-labeled tracks. Both filters default off; content labels default on.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -438,6 +590,21 @@ mod tests {
                 dsp.crossfade.duration_ms = 6000;
                 dsp
             },
+            rack: RackConfig {
+                deck_face: DeckFace::Cd,
+                meters: MeterStyle::Led,
+                analyzer: AnalyzerStyle::Recorder,
+                lamp: LampColor::Cover,
+                eq_unit: false,
+                lamp_brightness: 70,
+            },
+            remote: RemoteConfig {
+                enabled: true,
+                port: 50000,
+                interface: "192.168.1.5".into(),
+                approve_new_devices: false,
+            },
+            updates: UpdatesConfig { check_on_start: false },
         };
         config.save_to(&path).unwrap();
         assert_eq!(Config::load_from(&path), config);
@@ -838,6 +1005,21 @@ duration_ms = 4000
     }
 
     #[test]
+    fn update_checks_default_on_and_round_trip() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        assert!(Config::default().updates.check_on_start);
+        let mut config = Config::default();
+        config.updates.check_on_start = false;
+        config.save_to(&path).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("[updates]"));
+        assert!(text.contains("check_on_start = false"));
+        assert_eq!(Config::load_from(&path), config);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn close_to_tray_defaults_true_and_round_trips() {
         let dir = temp_dir();
         let path = dir.join("config.toml");
@@ -865,5 +1047,82 @@ duration_ms = 4000
         assert!(text.contains("[hotkeys]"), "{text}");
         assert_eq!(Config::load_from(&path), config);
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn rack_defaults_and_mode_parse() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        fs::write(&path, "[ui]
+mode = \"rack\"
+").unwrap();
+        let config = Config::load_from(&path);
+        assert_eq!(config.ui.mode, UiMode::Rack);
+        assert_eq!(config.rack, RackConfig::default());
+        assert_eq!(config.rack.deck_face, DeckFace::Display);
+        assert_eq!(config.rack.meters, MeterStyle::Needles);
+        assert_eq!(config.rack.analyzer, AnalyzerStyle::Auto);
+        assert_eq!(config.rack.lamp, LampColor::Amber);
+        assert!(config.rack.eq_unit);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn rack_section_parses_partial_values() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        fs::write(&path, "[rack]
+deck_face = \"transport\"
+lamp = \"blue\"
+analyzer = \"waterfall\"
+").unwrap();
+        let config = Config::load_from(&path);
+        assert_eq!(config.rack.deck_face, DeckFace::Transport);
+        assert_eq!(config.rack.analyzer, AnalyzerStyle::Recorder, "retired analyzer values map to the recorder");
+        for (text, style) in [
+            ("cassette", AnalyzerStyle::Auto),
+            ("tuner", AnalyzerStyle::Tuner),
+            ("eq", AnalyzerStyle::Eq),
+            ("none", AnalyzerStyle::Auto),
+        ] {
+            let rack: RackConfig = toml::from_str(&format!("analyzer = \"{text}\"")).unwrap();
+            assert_eq!(rack.analyzer, style);
+        }
+        assert_eq!(config.rack.lamp, LampColor::Blue);
+        assert_eq!(config.rack.meters, MeterStyle::Needles);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn remote_defaults_off_and_round_trips() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        let fresh = Config::default();
+        assert!(!fresh.remote.enabled, "the phone remote is opt-in");
+        assert_eq!(fresh.remote.port, REMOTE_DEFAULT_PORT);
+        assert_eq!(fresh.remote.interface, "");
+        assert!(fresh.remote.approve_new_devices);
+        fs::write(&path, "[remote]\nenabled = true\n").unwrap();
+        let partial = Config::load_from(&path);
+        assert!(partial.remote.enabled);
+        assert_eq!(partial.remote.port, REMOTE_DEFAULT_PORT);
+        assert!(partial.remote.approve_new_devices);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn remote_port_is_clamped() {
+        assert_eq!(clamp_remote_port(80), 1024);
+        assert_eq!(clamp_remote_port(47820), 47820);
+        assert_eq!(clamp_remote_port(u16::MAX), u16::MAX - 9);
+    }
+
+    #[test]
+    fn lamp_brightness_is_clamped() {
+        assert_eq!(clamp_lamp_brightness(0), LAMP_BRIGHTNESS_MIN);
+        assert_eq!(clamp_lamp_brightness(255), LAMP_BRIGHTNESS_MAX);
+        assert_eq!(clamp_lamp_brightness(70), 70);
+        let rack = RackConfig { lamp_brightness: 5, ..RackConfig::default() }.clamped();
+        assert_eq!(rack.lamp_brightness, LAMP_BRIGHTNESS_MIN);
     }
 }

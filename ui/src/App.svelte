@@ -6,34 +6,30 @@
   import QueueRail from "./lib/components/QueueRail.svelte";
   import Backdrop from "./lib/components/Backdrop.svelte";
   import Login from "./views/Login.svelte";
-  import Home from "./views/Home.svelte";
-  import Album from "./views/Album.svelte";
-  import Playlist from "./views/Playlist.svelte";
-  import Artist from "./views/Artist.svelte";
-  import ArtistAll from "./views/ArtistAll.svelte";
-  import Explore from "./views/Explore.svelte";
-  import Feed from "./views/Feed.svelte";
-  import History from "./views/History.svelte";
-  import CollectionAlbums from "./views/CollectionAlbums.svelte";
-  import CollectionTracks from "./views/CollectionTracks.svelte";
-  import Profiles from "./views/Profiles.svelte";
-  import Playlists from "./views/Playlists.svelte";
-  import Mixes from "./views/Mixes.svelte";
-  import Mix from "./views/Mix.svelte";
-  import Purchases from "./views/Purchases.svelte";
-  import Settings from "./views/Settings.svelte";
-  import NowPlaying from "./views/NowPlaying.svelte";
-  import Section from "./views/Section.svelte";
   import Mini from "./views/Mini.svelte";
+  import RoutedPage from "./lib/RoutedPage.svelte";
+  import RackShell from "./lib/rack/RackShell.svelte";
+  import RackMini from "./lib/rack/RackMini.svelte";
+  import { createLamp } from "./lib/rack/lamp.svelte";
   import PlaylistPicker from "./lib/components/PlaylistPicker.svelte";
   import TrackInfoHost from "./lib/components/TrackInfoHost.svelte";
   import CollectionDialogs from "./lib/components/CollectionDialogs.svelte";
   import ToastHost from "./lib/components/ToastHost.svelte";
   import ContextMenu from "./lib/components/ContextMenu.svelte";
+  import { dialogs } from "./lib/dialogs.svelte";
   import Neko from "./lib/components/Neko.svelte";
   import PerfHud from "./lib/components/PerfHud.svelte";
+  import WindowControls from "./lib/components/WindowControls.svelte";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { isDragTarget } from "./lib/titlebar";
   import { createNav } from "./lib/nav.svelte";
-  import { appearance, clampQueueWidth } from "./lib/appearance.svelte";
+  import {
+    appearance,
+    clampQueueWidth,
+    QUEUE_WIDTH_MAX,
+    QUEUE_WIDTH_MIN,
+  } from "./lib/appearance.svelte";
+  import { routeTitle } from "./lib/titles";
   import { perf } from "./lib/perf.svelte";
   import { perfHooks } from "./lib/perfHooks";
   import { makeSyntheticTracks } from "./lib/perfFixture";
@@ -55,7 +51,7 @@
   import { playSource } from "./lib/playSource.svelte";
   import { scrobbled } from "./lib/scrobbled.svelte";
   import { trackFlags } from "./lib/trackFlags.svelte";
-  import { api, SCROBBLE_AUTH_ERROR_EVENT, SCROBBLE_SCROBBLED_EVENT, trackToQueueItem, type QueueItem, type RepeatMode, type StreamMeta } from "./lib/api";
+  import { api, FAVORITE_CHANGED_EVENT, SCROBBLE_AUTH_ERROR_EVENT, SCROBBLE_SCROBBLED_EVENT, UPDATE_AVAILABLE_EVENT, trackToQueueItem, type FavoriteChange, type QueueItem, type RepeatMode, type StreamMeta, type UpdateInfo } from "./lib/api";
   import type { QualityDisplay } from "./lib/quality";
 
   interface ExpiredSession {
@@ -75,20 +71,23 @@
     api.fadeAndPause(fadeMs).catch((e) => toasts.show(errorMessage(e), { severity: "error" }));
   });
   createDynamicColor(player);
+  createLamp(player);
   const mini = createMini(toasts);
   const favorites = createFavorites(toasts);
   const playlistActions = createPlaylistActions(toasts);
   const collection = createCollectionTree(toasts);
   const collectionActions = createCollectionActions(collection, toasts);
 
-  // Route identity for the page-enter animation. ArtistAll tab switches are
-  // deliberately excluded: the tab underline is that surface's only motion.
-  const pageKey = $derived.by(() => {
-    const route = nav.route;
-    if (route.name === "section") return `section:${route.source}:${route.title}`;
-    if ("id" in route) return `${route.name}:${route.id}`;
-    return route.name;
-  });
+  // Custom window chrome (Windows): Rust decides; `data-chrome` turns on the
+  // caption band (--titlebar-h) for every shell.
+  let customChrome = $state(false);
+  api
+    .getCustomTitlebar()
+    .then((custom) => {
+      customChrome = custom;
+      if (custom) document.documentElement.dataset.chrome = "custom";
+    })
+    .catch(() => {});
 
   let qualityDisplay = $state<QualityDisplay>("compact");
   let loggedIn = $state(false);
@@ -131,6 +130,42 @@
     target.addEventListener("pointerup", onUp);
   }
 
+  /// Keyboard resize for the queue splitter (a slider over the rail width).
+  /// Left/Right follow the handle, which sits on the rail's left edge, so
+  /// ArrowLeft widens; Up/Down follow the value. Shift takes bigger steps.
+  function onQueueResizeKeydown(event: KeyboardEvent) {
+    const step = event.shiftKey ? 48 : 16;
+    let width: number | null = null;
+    if (event.key === "ArrowLeft" || event.key === "ArrowUp") width = appearance.queueWidth + step;
+    else if (event.key === "ArrowRight" || event.key === "ArrowDown") width = appearance.queueWidth - step;
+    else if (event.key === "Home") width = QUEUE_WIDTH_MIN;
+    else if (event.key === "End") width = QUEUE_WIDTH_MAX;
+    if (width === null) return;
+    event.preventDefault();
+    void appearance.setQueueWidth(width).catch(() => {});
+  }
+
+  $effect(() => {
+    document.title = routeTitle(nav.route, nav.nowPlayingOpen);
+  });
+
+  // Restore focus to whatever opened Now Playing / the floating queue overlay
+  // once it closes (both swap content out from under the focused element).
+  let restoreTarget: HTMLElement | null = null;
+  $effect(() => {
+    const open = nav.nowPlayingOpen || (queueOverlay && nav.queueOpen);
+    if (open) {
+      const active = document.activeElement;
+      if (restoreTarget === null && active instanceof HTMLElement && active !== document.body) {
+        restoreTarget = active;
+      }
+    } else if (restoreTarget !== null) {
+      const target = restoreTarget;
+      restoreTarget = null;
+      if (target.isConnected) target.focus();
+    }
+  });
+
   $effect(() => {
     const media = window.matchMedia("(max-width: 1080px)");
     const sync = () => {
@@ -139,6 +174,18 @@
     sync();
     media.addEventListener("change", sync);
     return () => media.removeEventListener("change", sync);
+  });
+
+  // Hearts toggled on a paired phone (Track 11) — and echoes of our own
+  // toggles, which the store ignores while they are in flight.
+  $effect(() => {
+    const unlisten = listen<FavoriteChange>(FAVORITE_CHANGED_EVENT, (event) => {
+      const { kind, id, favorite } = event.payload;
+      favorites.applyExternal(kind, id, favorite);
+    });
+    return () => {
+      unlisten.then((off) => off());
+    };
   });
 
   $effect(() => {
@@ -178,6 +225,17 @@
     const unlisten = listen<string>(SCROBBLE_AUTH_ERROR_EVENT, (event) => {
       const name = event.payload === "lastfm" ? "Last.fm" : "ListenBrainz";
       toasts.show(`${name} scrobbling needs reconnecting.`, { severity: "error" });
+    });
+    return () => {
+      unlisten.then((off) => off());
+    };
+  });
+
+  $effect(() => {
+    const unlisten = listen<UpdateInfo>(UPDATE_AVAILABLE_EVENT, (event) => {
+      toasts.show(`OxiTide ${event.payload.version} is available.`, {
+        action: { label: "Open Settings", run: () => nav.goto({ name: "settings" }) },
+      });
     });
     return () => {
       unlisten.then((off) => off());
@@ -500,7 +558,10 @@
 
   function onKeydown(event: KeyboardEvent) {
     if (!loggedIn) return;
-    const overlayOpen = document.querySelector('[role="dialog"]') !== null;
+    // A component already handled this key (slider, tabs, menu, row focus):
+    // acting on it globally too would double-seek or double-step.
+    if (event.defaultPrevented) return;
+    const overlayOpen = dialogs.count > 0;
     const action = matchShortcut(event, { overlayOpen });
     if (!action) {
       // A held Space is ignored as a toggle, but it must not scroll the page
@@ -519,6 +580,21 @@
     }
     event.preventDefault();
     runShortcut(action);
+  }
+
+  /// The top band is the title bar under custom chrome: a press on anything
+  /// that is not a control drags the window, a double-click maximizes (not in
+  /// the mini player, which has no maximize).
+  function onTitlebarPress(event: MouseEvent) {
+    if (!customChrome || event.button !== 0) return;
+    if (!isDragTarget(event.target, event.clientY)) return;
+    event.preventDefault();
+    const win = getCurrentWindow();
+    if (event.detail === 2) {
+      if (!(loggedIn && mini.active)) void win.toggleMaximize();
+    } else {
+      void win.startDragging();
+    }
   }
 
   function onSideButton(event: MouseEvent) {
@@ -545,9 +621,39 @@
 {:else}
   <Backdrop {player} />
   {#if mini.active}
-    <Mini {player} {favorites} {mini} />
+    <div class="mini-layer" inert={dialogs.count > 0}>
+      <!-- Rack has its own mini player (9.5c); same sanctioned branch (RK-D1). -->
+      {#if appearance.rackShell}
+        <RackMini {player} {favorites} {mini} />
+      {:else}
+        <Mini {player} {favorites} {mini} />
+      {/if}
+    </div>
+  {:else if appearance.rackShell}
+    <!-- Hi-Fi Rack: the one sanctioned shell branch (Rack spec RK-D1). -->
+    <div class="rack-layer" inert={dialogs.count > 0}>
+      <RackShell
+        {nav}
+        {player}
+        {favorites}
+        {playlistActions}
+        {collection}
+        {collectionActions}
+        {toasts}
+        {qualityDisplay}
+        {mini}
+        {sleepTimer}
+        {error}
+        {onLogout}
+        onQualityDisplay={(mode) => (qualityDisplay = mode)}
+      />
+      <TrackInfoHost {player} {nav} />
+      <PlaylistPicker actions={playlistActions} onnavigate={(id) => nav.goto({ name: "playlist", id })} />
+      <CollectionDialogs actions={collectionActions} />
+    </div>
   {:else}
-  <div class="app" data-sidebar={sidebarRail ? "rail" : "full"} data-now-playing={nav.nowPlayingOpen}>
+  <div class="app" data-sidebar={sidebarRail ? "rail" : "full"} data-now-playing={nav.nowPlayingOpen} inert={dialogs.count > 0}>
+    <a class="skip-link" href="#main">Skip to content</a>
     <Sidebar
       {nav}
       rail={sidebarRail}
@@ -556,31 +662,20 @@
       {playlistActions}
       actions={collectionActions}
     />
-    <main class="main">
+    <main class="main" id="main" tabindex="-1">
       {#if error}<p style="color:var(--danger)">{error}</p>{/if}
-      {#key pageKey}
-        <div class="page">
-          {#if nav.nowPlayingOpen}<NowPlaying {player} {nav} {qualityDisplay} />
-          {:else if nav.route.name === "home"}<Home {nav} {player} {toasts} />
-          {:else if nav.route.name === "explore"}<Explore {nav} {player} {favorites} {playlistActions} {toasts} />
-          {:else if nav.route.name === "feed"}<Feed {nav} />
-          {:else if nav.route.name === "history"}<History {nav} {player} {toasts} tab={nav.route.tab} />
-          {:else if nav.route.name === "albums"}<CollectionAlbums {nav} />
-          {:else if nav.route.name === "tracks"}<CollectionTracks {player} {favorites} {playlistActions} {toasts} />
-          {:else if nav.route.name === "profiles"}<Profiles {nav} />
-          {:else if nav.route.name === "mixes"}<Mixes {nav} {player} {toasts} />
-          {:else if nav.route.name === "purchases"}<Purchases {nav} />
-          {:else if nav.route.name === "playlists"}<Playlists {nav} {playlistActions} actions={collectionActions} />
-          {:else if nav.route.name === "folder"}<Playlists {nav} {playlistActions} actions={collectionActions} folderId={nav.route.id} folderLabel={nav.route.label ?? ""} />
-          {:else if nav.route.name === "section"}<Section source={nav.route.source} title={nav.route.title} {nav} {player} {toasts} />
-          {:else if nav.route.name === "album"}<Album id={nav.route.id} {player} {favorites} {playlistActions} {toasts} />
-          {:else if nav.route.name === "mix"}<Mix id={nav.route.id} {player} {favorites} {playlistActions} {toasts} />
-          {:else if nav.route.name === "playlist"}<Playlist {nav} id={nav.route.id} {player} {favorites} {playlistActions} {toasts} {collection} />
-          {:else if nav.route.name === "artist"}<Artist id={nav.route.id} {nav} {player} {favorites} {playlistActions} {toasts} />
-          {:else if nav.route.name === "artist-all"}{#key nav.route.id}<ArtistAll id={nav.route.id} tab={nav.route.tab} {nav} {player} {favorites} {playlistActions} {toasts} />{/key}
-          {:else if nav.route.name === "settings"}<Settings {player} {toasts} {onLogout} onQualityDisplay={(mode) => (qualityDisplay = mode)} />{/if}
-        </div>
-      {/key}
+      <RoutedPage
+        {nav}
+        {player}
+        {favorites}
+        {playlistActions}
+        {collection}
+        {collectionActions}
+        {toasts}
+        {qualityDisplay}
+        {onLogout}
+        onQualityDisplay={(mode) => (qualityDisplay = mode)}
+      />
     </main>
     {#if nav.queueOpen}
       {#if queueOverlay}
@@ -588,7 +683,18 @@
         <aside class="queue floating"><QueueRail {player} /></aside>
       {:else}
         <aside class="queue">
-          <div class="queue-resize" onpointerdown={startQueueDrag} role="separator" aria-orientation="vertical" aria-label="Resize queue"></div>
+          <div
+            class="queue-resize"
+            onpointerdown={startQueueDrag}
+            onkeydown={onQueueResizeKeydown}
+            tabindex="0"
+            role="slider"
+            aria-label="Queue width"
+            aria-valuemin={QUEUE_WIDTH_MIN}
+            aria-valuemax={QUEUE_WIDTH_MAX}
+            aria-valuenow={appearance.queueWidth}
+            aria-valuetext={`${appearance.queueWidth} pixels`}
+          ></div>
           <QueueRail {player} />
         </aside>
       {/if}
@@ -603,7 +709,15 @@
   {#if appearance.oneko && !appearance.reducedMotion}<Neko />{/if}
 {/if}
 
-<svelte:window onkeydown={onKeydown} onmousedown={onSideButton} onauxclick={onSideButton} />
+<svelte:window
+  onkeydown={onKeydown}
+  onmousedown={(e) => {
+    onSideButton(e);
+    onTitlebarPress(e);
+  }}
+  onauxclick={onSideButton}
+/>
 <ToastHost {toasts} />
+{#if customChrome}<WindowControls maximizable={!(loggedIn && mini.active)} />{/if}
 <ContextMenu {menu} />
 <PerfHud />

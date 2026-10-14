@@ -57,7 +57,7 @@
     {@render controls?.()}
   </div>
 </div>
-<div class="row" bind:this={el} onscroll={sync} role="region" aria-label={title}>
+<div class="row pane" bind:this={el} onscroll={sync} role="region" aria-label={title}>
   {@render children()}
 </div>
 

@@ -1,0 +1,594 @@
+/* Hi-Fi Rack (Track 9.5). Every rule here is scoped to [data-mode="rack"], so
+   Atmosphere and Instrument are untouched by construction. Two layers:
+
+   1. Tokens: Rack's private material tokens (--rack-*, read only by
+      ui/src/lib/rack/*) and the shared semantic tokens rewritten for Rack.
+   2. Skin: shared pages render inside the display unit (.rack-main); their
+      hook classes (.pane) and standard elements (section headings, segmented
+      groups, tabs, ranges, inputs) are restyled as hardware. Skin selectors
+      start with :root so they outrank components' scoped styles regardless
+      of stylesheet order.
+
+   Values come from ui/design/rack/DESIGN.md. Every glow derives from
+   --rack-lamp; never hard-code amber. */
+
+@property --lamp-h { syntax: "<number>"; inherits: true; initial-value: 64; }
+@property --lamp-c { syntax: "<number>"; inherits: true; initial-value: 0.16; }
+
+[data-mode="rack"] {
+  /* Lamp colour inputs (lamp.svelte.ts writes them inline on <html>). */
+  --lamp-h: 64;
+  --lamp-c: 0.16;
+  --lamp-dim: 1;
+  transition:
+    --lamp-h var(--dur-mood) ease,
+    --lamp-c var(--dur-mood) ease;
+  color-scheme: dark;
+
+  /* ---- Private material tokens ---- */
+  --rack-room: #050505;
+  --rack-plate-base: #0d0c0b;
+  --rack-plate-hi: #1a1816;
+  --rack-sheen: linear-gradient(160deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.02) 30%, transparent 31%);
+  --rack-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+  --rack-unit-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.45),
+    inset 1px 0 0 rgba(255, 255, 255, 0.04),
+    0 2px 0 #000,
+    0 10px 24px rgba(0, 0, 0, 0.55);
+  --rack-name: #d6cbbb;
+  --rack-silk: #b8ab98;
+  --rack-silk-dim: #6f665a;
+  --rack-key: #222120;
+  --rack-key-edge: #353331;
+  --rack-key-ink: #8d8478;
+  --rack-key-ink-on: #f0e2cb;
+  --rack-tray: #000;
+  --rack-tray-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.9), 0 1px 0 rgba(255, 255, 255, 0.05);
+  --rack-screen-text: #e8ddcb;
+  --rack-screen-muted: #8a7f70;
+  --rack-meter-red: #ff5a3a;
+
+  /* Brightness pulls lit lightness down by at most 0.2 (lamp.ts vfdLightness)
+     so dimmed text keeps 4.5:1; the glow alpha carries most of the dimming. */
+  --rack-lamp: oklch(calc(0.58 + (var(--lamp-dim) - 0.4) / 3) var(--lamp-c) var(--lamp-h));
+  --rack-lamp-glow: oklch(0.72 calc(var(--lamp-c) * 1.05) var(--lamp-h) / calc(0.6 * var(--lamp-dim)));
+  --rack-vfd: oklch(calc(0.6 + (var(--lamp-dim) - 0.4) / 3) var(--lamp-c) var(--lamp-h));
+  --rack-vfd-ghost: oklch(0.8 var(--lamp-c) var(--lamp-h) / 0.06);
+  --rack-vfd-bg: oklch(0.115 calc(var(--lamp-c) * 0.1) var(--lamp-h));
+  --rack-meter-face: radial-gradient(
+    130% 150% at 50% 115%,
+    oklch(0.31 calc(var(--lamp-c) * 0.55) var(--lamp-h)) 0%,
+    oklch(0.18 calc(var(--lamp-c) * 0.32) var(--lamp-h)) 45%,
+    oklch(0.1 calc(var(--lamp-c) * 0.12) var(--lamp-h)) 100%
+  );
+  --rack-meter-ink: oklch(0.83 calc(var(--lamp-c) * 0.85) var(--lamp-h));
+  --rack-needle: oklch(0.9 calc(var(--lamp-c) * 0.5) var(--lamp-h));
+  --rack-pane-bg:
+    radial-gradient(110% 70% at 50% 125%, color-mix(in srgb, var(--rack-lamp) 5%, transparent), transparent 62%),
+    linear-gradient(180deg, #040302, #090706 40%, #0b0908);
+  --rack-pane-cut:
+    0 0 0 1px #000,
+    0 1px 0 1px rgba(255, 255, 255, 0.075),
+    0 -1px 0 1px rgba(0, 0, 0, 0.55),
+    inset 0 3px 8px rgba(0, 0, 0, 0.95),
+    inset 0 0 18px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+  --rack-glass: linear-gradient(166deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.022) 34%, rgba(255, 255, 255, 0) 34.3%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0) 12px);
+
+  /* ---- Shared semantic tokens, rewritten for Rack (always dark, RK-D12) ---- */
+  --bg: var(--rack-room);
+  --text: var(--rack-screen-text);
+  --text-muted: var(--rack-screen-muted);
+  --accent: oklch(0.79 var(--lamp-c) var(--lamp-h));
+  --on-accent: #140c04;
+  --danger: #ff8a7a;
+  --success: #5fd68a;
+  --warning: #e0a030;
+  --surface-1: rgba(255, 255, 255, 0.03);
+  --surface-2: rgba(255, 255, 255, 0.05);
+  --surface-3: rgba(255, 255, 255, 0.08);
+  --surface-float: #141210;
+  --line: rgba(255, 255, 255, 0.07);
+  --edge-lit: linear-gradient(135deg, var(--line), var(--line));
+  --glare-alpha: 0.08;
+  --room-top: #050505;
+  --scrim-top: transparent;
+  --scrim-bottom: transparent;
+  --grain-alpha: 0;
+  --glass-blur: 0px;
+  --glass-veil: transparent;
+  --overlay-blur: 0px;
+  --radius-control: 3px;
+  --radius-card: 4px;
+  --radius-card-sharp: 3px;
+  --radius-sheet: 6px;
+  --player-height: 0px;
+  --flag-backdrop-art: 0;
+  --flag-glass-blur: 0;
+  --flag-grain: 0;
+  --flag-disc-spin: 0;
+  --flag-wave-seek: 0;
+  --flag-dynamic-color: 0;
+  --flag-ambient-motion: 0;
+}
+
+/* ===================================================================
+   Skin for shared pages inside the display unit
+   =================================================================== */
+
+/* Glass windows (DESIGN §5.5). Background-layered so the reflection stays put
+   over scrolling content (table panes scroll inside themselves). */
+:root[data-mode="rack"] .rack-main .pane,
+:root[data-mode="rack"] .rack-main [role="tabpanel"] {
+  position: relative;
+  border-radius: 7px;
+  padding: 20px 22px;
+  background: var(--rack-glass), var(--rack-pane-bg);
+  box-shadow: var(--rack-pane-cut);
+}
+:root[data-mode="rack"] .rack-main .pane.pane-flush {
+  padding: 6px 0 8px;
+}
+
+/* Printed section labels with an engraved rule (DESIGN §5.6). */
+:root[data-mode="rack"] .rack-main .page > h2,
+:root[data-mode="rack"] .rack-main .page-head > h2,
+:root[data-mode="rack"] .rack-main h3 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 26px 2px 10px;
+  font: 600 11px/1.2 var(--font-ui);
+  letter-spacing: 0.05em;
+  text-transform: none;
+  color: var(--rack-silk-dim);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+:root[data-mode="rack"] .rack-main [role="tabpanel"] > h3:first-child {
+  margin-top: 0;
+}
+:root[data-mode="rack"] .rack-main .page > h2,
+:root[data-mode="rack"] .rack-main .page-head > h2 {
+  margin-top: 0;
+  font-size: 12px;
+  color: var(--rack-silk);
+}
+:root[data-mode="rack"] .rack-main .page > h2::after,
+:root[data-mode="rack"] .rack-main .page-head > h2::after,
+:root[data-mode="rack"] .rack-main h3::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0));
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.045);
+}
+
+/* Detail headers: the whole header is one pane; hardware type, no serif. */
+:root[data-mode="rack"] .rack-main .detail-header {
+  --hero-size: 168px;
+  margin-bottom: 8px;
+}
+:root[data-mode="rack"] .rack-main .detail-header h2 {
+  font: 700 clamp(24px, 2.4vw, 32px) / 1.1 var(--font-ui);
+  letter-spacing: -0.015em;
+}
+:root[data-mode="rack"] .rack-main .detail-header .kicker {
+  color: var(--rack-silk-dim);
+  letter-spacing: 0.08em;
+}
+:root[data-mode="rack"] .rack-main .detail-header .hero {
+  gap: 26px;
+}
+
+/* ---- Light-bar keys for page buttons (DESIGN §5.1) ---- */
+:root[data-mode="rack"] .rack-main .detail-header .transport,
+:root[data-mode="rack"] .rack-main .segmented,
+:root[data-mode="rack"] .rack-main [role="tablist"] {
+  display: inline-flex;
+  gap: 5px;
+  width: max-content;
+  min-width: 0;
+  padding: 4px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--rack-tray);
+  box-shadow: var(--rack-tray-shadow);
+}
+:root[data-mode="rack"] .rack-main .detail-header .transport > button,
+:root[data-mode="rack"] .rack-main .tool-btn,
+:root[data-mode="rack"] .rack-main .segmented button,
+:root[data-mode="rack"] .rack-main [role="tablist"] [role="tab"] {
+  position: relative;
+  flex: 0 0 auto;
+  height: 34px;
+  min-width: 74px;
+  margin: 0;
+  padding: 0 14px 7px;
+  border: 0;
+  border-top: 1px solid var(--rack-key-edge);
+  border-radius: 3px;
+  background: var(--rack-key);
+  color: var(--rack-key-ink);
+  font: 700 11px/1 var(--font-ui);
+  letter-spacing: 0.05em;
+  box-shadow: 0 0 0 1px #000, 0 2px 4px rgba(0, 0, 0, 0.6);
+  filter: none;
+  transition: transform 80ms linear, color var(--dur-micro);
+}
+:root[data-mode="rack"] .rack-main .detail-header .transport > button svg {
+  width: 13px;
+  height: 13px;
+}
+:root[data-mode="rack"] .rack-main .detail-header .transport > button::after,
+:root[data-mode="rack"] .rack-main .tool-btn::after,
+:root[data-mode="rack"] .rack-main .segmented button::after,
+:root[data-mode="rack"] .rack-main [role="tablist"] [role="tab"]::after {
+  content: "";
+  position: absolute;
+  left: 15%;
+  right: 15%;
+  bottom: 5px;
+  height: 3px;
+  border-radius: 99px;
+  background: #1a1918;
+  border-top: 1px solid #2f2d2b;
+  transition: background 350ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 350ms;
+}
+:root[data-mode="rack"] .rack-main .detail-header .transport > button:hover,
+:root[data-mode="rack"] .rack-main .tool-btn:hover,
+:root[data-mode="rack"] .rack-main .segmented button:hover,
+:root[data-mode="rack"] .rack-main [role="tablist"] [role="tab"]:hover {
+  color: #b9ad9c;
+  background: var(--rack-key);
+}
+:root[data-mode="rack"] .rack-main .detail-header .btn-play,
+:root[data-mode="rack"] .rack-main .segmented button.active,
+:root[data-mode="rack"] .rack-main .segmented button[aria-pressed="true"],
+:root[data-mode="rack"] .rack-main [role="tablist"] [role="tab"][aria-selected="true"] {
+  color: var(--rack-key-ink-on);
+  background: var(--rack-key);
+}
+:root[data-mode="rack"] .rack-main .detail-header .btn-play::after,
+:root[data-mode="rack"] .rack-main .segmented button.active::after,
+:root[data-mode="rack"] .rack-main .segmented button[aria-pressed="true"]::after,
+:root[data-mode="rack"] .rack-main [role="tablist"] [role="tab"][aria-selected="true"]::after,
+:root[data-mode="rack"] .rack-main .detail-header .transport > button:active::after,
+:root[data-mode="rack"] .rack-main .tool-btn:active::after,
+:root[data-mode="rack"] .rack-main .segmented button:active::after {
+  background: var(--rack-lamp);
+  border-top-color: transparent;
+  box-shadow: 0 0 8px var(--rack-lamp-glow);
+  transition-duration: 80ms;
+}
+:root[data-mode="rack"] .rack-main .detail-header .transport > button:active:not(:disabled),
+:root[data-mode="rack"] .rack-main .tool-btn:active:not(:disabled),
+:root[data-mode="rack"] .rack-main .segmented button:active,
+:root[data-mode="rack"] .rack-main [role="tablist"] [role="tab"]:active {
+  transform: perspective(200px) rotateX(-16deg);
+  transform-origin: 50% 40%;
+  box-shadow: inset 0 -14px 10px rgba(0, 0, 0, 0.5), 0 0 0 1px #000;
+}
+:root[data-mode="rack"] .rack-main [role="tablist"] {
+  margin: 4px 0 20px;
+}
+
+/* ---- Readouts: text inputs and selects read as VFDs ---- */
+:root[data-mode="rack"] .rack-main select,
+:root[data-mode="rack"] .rack-main .search-input.select,
+:root[data-mode="rack"] .rack-main input:not([type]),
+:root[data-mode="rack"] .rack-main input[type="text"],
+:root[data-mode="rack"] .rack-main input[type="search"],
+:root[data-mode="rack"] .rack-main input[type="number"] {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 3px;
+  background: var(--rack-vfd-bg);
+  color: var(--rack-vfd);
+  font: 700 12px/1 var(--font-ui);
+  letter-spacing: 0.06em;
+  text-shadow: 0 0 6px color-mix(in srgb, var(--rack-vfd) 70%, transparent);
+  caret-color: var(--rack-vfd);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.9), inset 0 0 0 1px rgba(0, 0, 0, 0.8), 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+:root[data-mode="rack"] .rack-main select option {
+  background: #141210;
+  color: var(--rack-screen-text);
+  text-shadow: none;
+}
+:root[data-mode="rack"] .rack-main input::placeholder {
+  color: var(--rack-vfd);
+  opacity: 0.3;
+  text-shadow: none;
+}
+
+/* ---- Toggles: square indicator lamps ---- */
+:root[data-mode="rack"] .rack-main input[type="checkbox"] {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin: 0 6px 0 0;
+  vertical-align: -2px;
+  border-radius: 3px;
+  background: #1a1918;
+  border-top: 1px solid #2f2d2b;
+  box-shadow: 0 0 0 1px #000;
+  cursor: pointer;
+  transition: background 350ms, box-shadow 350ms;
+}
+:root[data-mode="rack"] .rack-main input[type="checkbox"]:checked {
+  background: var(--rack-lamp);
+  border-top-color: transparent;
+  box-shadow: 0 0 0 1px #000, 0 0 8px var(--rack-lamp-glow);
+  transition-duration: 80ms;
+}
+
+/* ---- Ranges: horizontal faders (DESIGN §5.8) ---- */
+:root[data-mode="rack"] .rack-main input[type="range"] {
+  appearance: none;
+  height: 26px;
+  background: transparent;
+  cursor: ew-resize;
+}
+:root[data-mode="rack"] .rack-main input[type="range"]::-webkit-slider-runnable-track {
+  height: 5px;
+  border-radius: 2px;
+  background: #000;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+:root[data-mode="rack"] .rack-main input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 13px;
+  height: 22px;
+  margin-top: -9px;
+  border-radius: 2px;
+  border: 1px solid #0a0a0a;
+  background: linear-gradient(to right, #3a3a3a 0%, #575757 38%, #1a1a1a 44%, var(--rack-lamp) 47%, var(--rack-lamp) 53%, #1a1a1a 56%, #575757 62%, #3a3a3a 100%);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.75), inset 0 1px 1px rgba(255, 255, 255, 0.18);
+}
+:root[data-mode="rack"] .rack-main input[type="range"]::-moz-range-track {
+  height: 5px;
+  border-radius: 2px;
+  background: #000;
+}
+:root[data-mode="rack"] .rack-main input[type="range"]::-moz-range-thumb {
+  width: 13px;
+  height: 22px;
+  border-radius: 2px;
+  border: 1px solid #0a0a0a;
+  background: linear-gradient(to right, #3a3a3a 0%, #575757 38%, #1a1a1a 44%, var(--rack-lamp) 47%, var(--rack-lamp) 53%, #1a1a1a 56%, #575757 62%, #3a3a3a 100%);
+}
+:root[data-mode="rack"] .rack-main output {
+  color: var(--rack-vfd);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 6px color-mix(in srgb, var(--rack-vfd) 50%, transparent);
+}
+
+/* ---- Track tables inside panes ---- */
+:root[data-mode="rack"] .rack-main .table-scroll.pane th {
+  font: 600 10.5px/1 var(--font-ui);
+  letter-spacing: 0.05em;
+  color: var(--rack-silk-dim);
+}
+
+/* ---- Display scrollbar: an engraved groove ---- */
+:root[data-mode="rack"] .rack-main,
+:root[data-mode="rack"] .rack-main .table-scroll {
+  scrollbar-color: #3a342e transparent;
+  scrollbar-width: thin;
+}
+
+/* ===================================================================
+   Rack units (classes used by ui/src/lib/rack/*; DESIGN §3–§5)
+   =================================================================== */
+
+[data-mode="rack"] .rk-unit {
+  position: relative;
+  border-radius: 5px;
+  padding: 14px 18px;
+  background: var(--rack-sheen), var(--rack-grain), linear-gradient(180deg, var(--rack-plate-hi), var(--rack-plate-base));
+  box-shadow: var(--rack-unit-shadow);
+  color: var(--rack-screen-text);
+}
+[data-mode="rack"] .rk-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin: 0 4px 10px;
+  min-height: 18px;
+}
+[data-mode="rack"] .rk-name {
+  font: 500 14px/1.2 var(--font-ui);
+  letter-spacing: 0.01em;
+  color: var(--rack-name);
+  margin: 0;
+}
+[data-mode="rack"] .rk-silk {
+  font: 700 9.5px/1 var(--font-ui);
+  letter-spacing: 0.06em;
+  color: var(--rack-silk-dim);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* Key tray + light-bar key (DESIGN §5.1). */
+[data-mode="rack"] .rk-tray {
+  display: inline-flex;
+  gap: 5px;
+  padding: 4px;
+  border-radius: 6px;
+  background: var(--rack-tray);
+  box-shadow: var(--rack-tray-shadow);
+}
+[data-mode="rack"] .rk-key {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 46px;
+  height: 34px;
+  padding: 0 12px 7px;
+  border: 0;
+  border-top: 1px solid var(--rack-key-edge);
+  border-radius: 3px;
+  background: var(--rack-key);
+  color: var(--rack-key-ink);
+  font: 700 10.5px/1 var(--font-ui);
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  box-shadow: 0 0 0 1px #000, 0 2px 4px rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+  transition: transform 80ms linear, color var(--dur-micro);
+}
+[data-mode="rack"] .rk-key.sm {
+  min-width: 0;
+  height: 28px;
+  padding: 0 10px 6px;
+  font-size: 9.5px;
+}
+[data-mode="rack"] .rk-key svg {
+  width: 14px;
+  height: 14px;
+}
+[data-mode="rack"] .rk-key::after {
+  content: "";
+  position: absolute;
+  left: 15%;
+  right: 15%;
+  bottom: 5px;
+  height: 3px;
+  border-radius: 99px;
+  background: #1a1918;
+  border-top: 1px solid #2f2d2b;
+  box-shadow: 0 0 3px #111;
+  transition: background 350ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 350ms;
+}
+[data-mode="rack"] .rk-key.sm::after {
+  bottom: 4px;
+  height: 2px;
+}
+[data-mode="rack"] .rk-key:hover {
+  color: #b9ad9c;
+}
+[data-mode="rack"] .rk-key[aria-pressed="true"],
+[data-mode="rack"] .rk-key[aria-current],
+[data-mode="rack"] .rk-key.lit {
+  color: var(--rack-key-ink-on);
+}
+[data-mode="rack"] .rk-key[aria-pressed="true"]::after,
+[data-mode="rack"] .rk-key[aria-current]::after,
+[data-mode="rack"] .rk-key.lit::after,
+[data-mode="rack"] .rk-key:active:not(:disabled)::after {
+  background: var(--rack-lamp);
+  border-top-color: transparent;
+  box-shadow: 0 0 8px var(--rack-lamp-glow);
+  transition-duration: 80ms;
+}
+[data-mode="rack"] .rk-key:active:not(:disabled) {
+  transform: perspective(200px) rotateX(-16deg);
+  transform-origin: 50% 40%;
+  box-shadow: inset 0 -14px 10px rgba(0, 0, 0, 0.5), 0 0 0 1px #000;
+  border-top-color: color-mix(in srgb, var(--rack-lamp) 35%, transparent);
+}
+[data-mode="rack"] .rk-key:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* VFD (DESIGN §5.4). */
+[data-mode="rack"] .rk-vfd {
+  position: relative;
+  overflow: hidden;
+  border-radius: 3px;
+  padding: 8px 12px;
+  background: var(--rack-vfd-bg);
+  color: var(--rack-vfd);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.9), inset 0 0 0 1px rgba(0, 0, 0, 0.8), 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+[data-mode="rack"] .rk-vfd::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(170deg, rgba(255, 255, 255, 0.07), transparent 40%),
+    radial-gradient(circle, transparent 0.6px, rgba(0, 0, 0, 0.35) 1.1px) 0 0 / 2.5px 2.5px;
+}
+[data-mode="rack"] .rk-vfd-text {
+  font: 700 13px/1.25 var(--font-ui);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 0 6px var(--rack-vfd), 0 0 1px var(--rack-vfd);
+}
+[data-mode="rack"] .rk-vfd-text.sub {
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  opacity: 0.8;
+}
+[data-mode="rack"] .rk-anno {
+  display: flex;
+  gap: 8px;
+  font: 800 8.5px/1 var(--font-ui);
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+}
+[data-mode="rack"] .rk-anno > span {
+  opacity: 0.12;
+}
+[data-mode="rack"] .rk-anno > span.on {
+  opacity: 1;
+  text-shadow: 0 0 6px var(--rack-vfd);
+}
+
+/* Glass window (DESIGN §5.5, deck windows). */
+[data-mode="rack"] .rk-win {
+  position: relative;
+  overflow: hidden;
+  border-radius: 5px;
+  background: var(--rack-glass), linear-gradient(180deg, #040302, #090706 40%, #0b0908);
+  box-shadow: 0 0 0 1px #000, 0 1px 0 1px rgba(255, 255, 255, 0.07), inset 0 3px 8px rgba(0, 0, 0, 0.95);
+}
+
+/* Status LEDs. */
+[data-mode="rack"] .rk-led {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 700 9.5px/1 var(--font-ui);
+  letter-spacing: 0.08em;
+  color: var(--rack-silk-dim);
+  white-space: nowrap;
+}
+[data-mode="rack"] .rk-led::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #2a1606;
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.8);
+}
+[data-mode="rack"] .rk-led.on {
+  color: var(--rack-silk);
+}
+[data-mode="rack"] .rk-led.on::before {
+  background: var(--rack-lamp);
+  box-shadow: 0 0 6px var(--rack-lamp-glow);
+}
+[data-mode="rack"] .rk-led.on.green::before {
+  background: #4dff7a;
+  box-shadow: 0 0 6px rgba(77, 255, 122, 0.6);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-mode="rack"] {
+    transition: none;
+  }
+}

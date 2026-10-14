@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from "svelte";
   import type { Track } from "../api";
   import {
     volumeDisplayRows,
@@ -210,6 +211,73 @@
       onEndReached?.();
     }
   }
+
+  let focusedIndex = $state<number | null>(null);
+  let scrollEl = $state<HTMLDivElement | null>(null);
+
+  /// Single tab stop: the focused row, else the first row in the viewport.
+  /// Both are clamped so a shrinking/filtered list never points past its end.
+  const tabbableIndex = $derived(
+    Math.max(
+      0,
+      Math.min(
+        focusedIndex ?? Math.floor(scrollTop / Math.max(rowHeight, 1)),
+        rows.length - 1,
+      ),
+    ),
+  );
+
+  /// Move the roving focus, scrolling the target into the rendered window
+  /// first so a Page jump can land on a row that was not mounted yet.
+  async function focusRow(index: number) {
+    const target = Math.min(Math.max(0, index), Math.max(0, rows.length - 1));
+    focusedIndex = target;
+    const scroll = scrollEl;
+    if (scroll && (target < range.first || target >= range.last)) {
+      scroll.scrollTop = Math.max(0, target * rowHeight - scroll.clientHeight / 2);
+      scrollTop = scroll.scrollTop;
+    }
+    await tick();
+    scroll?.querySelector<HTMLElement>(`tr[data-row-index="${target}"]`)?.focus();
+  }
+
+  function onRowKeydown(event: KeyboardEvent, index: number) {
+    // Keys on the row's own buttons keep their native behavior.
+    if (event.target !== event.currentTarget) return;
+    const page = Math.max(1, Math.floor(viewport / rowHeight) - 1);
+    let target: number | null = null;
+    switch (event.key) {
+      case "ArrowDown":
+        target = index + 1;
+        break;
+      case "ArrowUp":
+        target = index - 1;
+        break;
+      case "Home":
+        target = 0;
+        break;
+      case "End":
+        target = rows.length - 1;
+        break;
+      case "PageDown":
+        target = index + page;
+        break;
+      case "PageUp":
+        target = index - page;
+        break;
+    }
+    if (target !== null) {
+      event.preventDefault();
+      event.stopPropagation();
+      void focusRow(target);
+      return;
+    }
+    if ((event.key === "Enter" || event.key === " ") && !loadingAll) {
+      event.preventDefault();
+      event.stopPropagation();
+      void play(index);
+    }
+  }
 </script>
 
 {#if showFilter}
@@ -217,9 +285,10 @@
 {/if}
 
 <div
-  class="table-scroll"
+  class="table-scroll pane pane-flush"
   class:fill
   class:scrolled
+  bind:this={scrollEl}
   style:max-height={fill ? "none" : maxHeight}
   bind:clientHeight={viewport}
   onscroll={onScroll}
@@ -231,27 +300,35 @@
     aria-hidden="true"
     style="height:{theadHeight}px;margin-bottom:-{theadHeight}px"
   ></div>
-  <table>
+  <table aria-label="Tracks" aria-rowcount={grouping ? undefined : rows.length + 1}>
     <thead bind:clientHeight={theadHeight}>
       <tr>
-        <th style="text-align:right">
+        <th scope="col" style="text-align:right">
           <button class="sort" title="Original order" onclick={() => view.clearSort()}>#</button>
         </th>
-        <th class="thumb-head"></th>
-        <th style="text-align:left">
+        <th scope="col" class="thumb-head"></th>
+        <th
+          scope="col"
+          style="text-align:left"
+          aria-sort={view.sort === "title" ? (view.direction === "asc" ? "ascending" : "descending") : undefined}
+        >
           <button class="sort" disabled={view.preparing} onclick={() => view.toggleSort("title")}>
-            Title {indicator("title")}
+            Title <span aria-hidden="true">{indicator("title")}</span>
           </button>
         </th>
-        <th style="text-align:left">Artist</th>
-        {#if showAlbum}<th style="text-align:left">Album</th>{/if}
-        <th style="text-align:right">
+        <th scope="col" style="text-align:left">Artist</th>
+        {#if showAlbum}<th scope="col" style="text-align:left">Album</th>{/if}
+        <th
+          scope="col"
+          style="text-align:right"
+          aria-sort={view.sort === "duration" ? (view.direction === "asc" ? "ascending" : "descending") : undefined}
+        >
           <button class="sort" disabled={view.preparing} onclick={() => view.toggleSort("duration")}>
-            Time {indicator("duration")}
+            Time <span aria-hidden="true">{indicator("duration")}</span>
           </button>
         </th>
-        <th style="text-align:left">Quality</th>
-        <th class="actions-head"></th>
+        <th scope="col" style="text-align:left">Quality</th>
+        <th scope="col" class="actions-head"></th>
       </tr>
     </thead>
     <tbody>
@@ -261,7 +338,7 @@
       {#each displayRows as row (row.key)}
         {#if row.label !== null}
           <tr class="section-row">
-            <th colspan={columns}>{row.label}</th>
+            <th scope="colgroup" colspan={columns}>{row.label}</th>
           </tr>
         {:else if row.track !== undefined}
           {@const t = row.track}
@@ -278,6 +355,11 @@
             class:playing={playingTrackId !== null && t.id === playingTrackId}
             draggable={canDrag}
             data-drag-index={canDrag ? index : undefined}
+            data-row-index={index}
+            tabindex={tabbableIndex === index ? 0 : -1}
+            aria-rowindex={grouping ? undefined : index + 2}
+            onfocus={() => (focusedIndex = index)}
+            onkeydown={(event) => onRowKeydown(event, index)}
             ondblclick={(event) => onRowDoubleClick(event, index)}
             use:menuFor={() =>
               trackMenuItems({

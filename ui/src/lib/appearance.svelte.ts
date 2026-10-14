@@ -1,7 +1,24 @@
-import { api } from "./api";
+import { api, type AnalyzerStyle, type RackSettings } from "./api";
 import { readThemeMirror, resolveTheme, writeThemeMirror, type ResolvedTheme, type ThemeSetting } from "./theme";
 
-export type UiMode = "instrument" | "atmosphere";
+export type UiMode = "instrument" | "atmosphere" | "rack";
+
+export function defaultRackSettings(): RackSettings {
+  return { deck_face: "display", meters: "needles", analyzer: "auto", lamp: "amber", eq_unit: true, lamp_brightness: 100 };
+}
+
+/// The analyzer unit's effective style: Auto avoids showing a second
+/// spectrum when the amp's meters already are one.
+export function resolveAnalyzer(rack: RackSettings): Exclude<AnalyzerStyle, "auto"> {
+  if (rack.analyzer !== "auto") return rack.analyzer;
+  return rack.meters === "spectrum" ? "recorder" : "spectrum";
+}
+
+/// Mirrors `clamp_lamp_brightness` in `config.rs`.
+export function clampLampBrightness(value: number): number {
+  if (!Number.isFinite(value)) return 100;
+  return Math.min(100, Math.max(40, Math.round(value)));
+}
 export type Typeface = "manrope" | "inter" | "system" | "custom";
 export type TypefaceSetting = "auto" | Typeface;
 export type DynamicColorSetting = "auto" | "full" | "accent" | "off";
@@ -26,14 +43,17 @@ export function clampQueueWidth(px: number): number {
   return Math.min(QUEUE_WIDTH_MAX, Math.max(QUEUE_WIDTH_MIN, Math.round(px)));
 }
 
-/// Mode defaults: Manrope in Atmosphere, Inter in Instrument (spec §4/§6).
+/// Mode defaults: Manrope in Atmosphere and Rack, Inter in Instrument (spec §4/§6).
 export function resolveTypeface(t: TypefaceSetting, mode: UiMode): Typeface {
   if (t !== "auto") return t;
-  return mode === "atmosphere" ? "manrope" : "inter";
+  return mode === "instrument" ? "inter" : "manrope";
 }
 
-/// `Auto` is Full in Atmosphere and Off in Instrument (spec §5.4).
+/// `Auto` is Full in Atmosphere and Off in Instrument (spec §5.4). Rack
+/// replaces dynamic colour with its lamp colour, so it is always off there
+/// (Rack spec RK-D9).
 export function resolveDynamicColor(s: DynamicColorSetting, mode: UiMode): DynamicColorMode {
+  if (mode === "rack") return "off";
   if (s !== "auto") return s;
   return mode === "atmosphere" ? "full" : "off";
 }
@@ -72,7 +92,11 @@ export interface Appearance {
   readonly discSpin: boolean;
   readonly waveSeek: boolean;
   readonly ambientMotion: boolean;
+  /// Hi-Fi Rack: App mounts `RackShell` instead of the default shell (RK-D1).
+  readonly rackShell: boolean;
+  readonly rack: RackSettings;
   init(): Promise<void>;
+  setRack(patch: Partial<RackSettings>): Promise<void>;
   setMode(mode: UiMode): Promise<void>;
   setTheme(theme: ThemeSetting): Promise<void>;
   setTypeface(typeface: TypefaceSetting): Promise<void>;
@@ -96,13 +120,15 @@ export function createAppearance(): Appearance {
   let queueWidth = $state(320);
   let reducedMotion = $state(false);
   let oneko = $state(false);
+  let rack = $state<RackSettings>(defaultRackSettings());
 
   function apply() {
     const root = document.documentElement;
     const resolved = resolveTheme(theme, prefersDark);
     root.dataset.mode = mode;
     root.dataset.theme = resolved;
-    root.style.colorScheme = resolved;
+    // Rack is always dark; it has no light variant (RK-D12).
+    root.style.colorScheme = mode === "rack" ? "dark" : resolved;
     root.dataset.density = density;
     root.style.setProperty("--font-ui", fontStack(resolveTypeface(typefaceSetting, mode), customTypeface));
     root.style.setProperty("--queue-width", `${queueWidth}px`);
@@ -130,6 +156,7 @@ export function createAppearance(): Appearance {
       dynamicColorSetting = config.ui.dynamic_color;
       queueWidth = config.ui.queue_width;
       oneko = config.ui.oneko;
+      if (config.rack) rack = { ...defaultRackSettings(), ...config.rack };
     } catch {
       // Defaults are fine; a config failure must not block boot.
     }
@@ -156,6 +183,22 @@ export function createAppearance(): Appearance {
     }
   }
 
+  /// Local-first; a failed persist reverts so the UI never disagrees with the
+  /// stored config. The stored (clamped) value wins on success.
+  async function setRack(patch: Partial<RackSettings>): Promise<void> {
+    const previous = rack;
+    const next = { ...rack, ...patch };
+    next.lamp_brightness = clampLampBrightness(next.lamp_brightness);
+    rack = next;
+    try {
+      const stored = await api.setRackSettings(next);
+      if (stored) rack = { ...defaultRackSettings(), ...stored };
+    } catch (error) {
+      rack = previous;
+      throw error;
+    }
+  }
+
   return {
     get mode() { return mode; },
     get theme() { return theme; },
@@ -174,7 +217,10 @@ export function createAppearance(): Appearance {
     get discSpin() { return mode === "atmosphere" && !reducedMotion; },
     get waveSeek() { return mode === "atmosphere"; },
     get ambientMotion() { return mode === "atmosphere" && !reducedMotion; },
+    get rackShell() { return mode === "rack"; },
+    get rack() { return rack; },
     init,
+    setRack,
     setMode: (m) => { mode = m; return persist(() => api.setUiMode(m)); },
     setTheme: (t) => { theme = t; writeThemeMirror(themeStorage(), t); return persist(() => api.setTheme(t)); },
     setTypeface: (t) => { typefaceSetting = t; return persist(() => api.setTypeface(t)); },

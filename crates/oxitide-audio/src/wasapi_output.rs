@@ -13,7 +13,7 @@ use crate::endpoint_volume;
 use crate::error::{Error, Result};
 use crate::output::{
     exclusive_formats, platform, AudioOutput, AudioOutputSpec, ExclusiveFallback, OutputMode,
-    OutputStatus,
+    OutputStatus, SOFTWARE_VOLUME_NOTICE,
 };
 
 /// Floor for the ring so tiny formats still leave room for the device period.
@@ -223,9 +223,7 @@ impl AudioOutput for WasapiOutput {
             if endpoint_volume::set_master_volume(target, volume).is_ok() {
                 self.software_volume = false;
                 let mut status = self.status.lock().unwrap();
-                if status.notice.as_deref()
-                    == Some("volume applied in software; bit-perfect compromised")
-                {
+                if status.notice.as_deref() == Some(SOFTWARE_VOLUME_NOTICE) {
                     status.notice = None;
                     status.bit_perfect = status.mode == OutputMode::Exclusive;
                 }
@@ -234,7 +232,7 @@ impl AudioOutput for WasapiOutput {
             self.software_volume = true;
             let mut status = self.status.lock().unwrap();
             status.bit_perfect = false;
-            status.notice = Some("volume applied in software; bit-perfect compromised".into());
+            status.notice = Some(SOFTWARE_VOLUME_NOTICE.into());
         } else {
             self.software_volume = true;
         }
@@ -505,7 +503,7 @@ fn setup_device(
 
 /// Push one sample word, waiting briefly if the ring is full but giving up if
 /// the device stalled so playback cannot hang forever.
-fn push_word(producer: &mut Producer<u32>, word: u32) -> Result<()> {
+pub(crate) fn push_word(producer: &mut Producer<u32>, word: u32) -> Result<()> {
     let mut pending = word;
     let deadline = std::time::Instant::now() + Duration::from_secs(2);
     loop {

@@ -24,6 +24,9 @@ The UI vendors the following fonts under the SIL Open Font License 1.1:
   (<https://github.com/googlefonts/manrope>)
 - Inter — Copyright 2020 The Inter Project Authors
   (<https://github.com/rsms/inter>)
+- DSEG7 Classic (Bold Italic, unmodified) — Copyright (c) 2017, keshikan
+  (<http://www.keshikan.net>, <https://github.com/keshikan/DSEG>), with Reserved
+  Font Name "DSEG"
 
 Font files: `ui/src/assets/fonts/`.
 
@@ -116,6 +119,9 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
 - **Oneko** (`ui/src/assets/oneko/`) — see `ui/src/assets/oneko/LICENSE` for
   its license terms.
+- **Snap Layouts overlay technique** (`crates/oxitide-app/src/titlebar.rs`) —
+  approach adapted from tauri-plugin-frame
+  (https://github.com/clarifei/tauri-plugin-frame, MIT); not a dependency.
 
 ## Rust dependencies
 
@@ -178,9 +184,15 @@ cargo metadata --format-version 1 --locked
 cargo about generate about.hbs > THIRD_PARTY_NOTICES.full.md
 ```
 
-## Optional ASIO backend (not currently compiled)
+## ASIO interface (Steinberg)
 
-If the optional ASIO output backend is ever enabled, it links code generated
-from the Steinberg ASIO SDK. Steinberg dual-licenses the SDK (proprietary or
-GPLv3); under the GPLv3 option the combined binary must carry the SDK's license
-and notices. Add them here before shipping such a build.
+ASIO is a trademark and software of Steinberg Media Technologies GmbH.
+
+The Windows build includes an ASIO output backend
+(`crates/oxitide-audio/src/asio_sys.rs`, `asio_output.rs`). No SDK source is
+vendored or generated at build time; the driver interface (the IASIO vtable,
+its structures, and constants) is declared by hand from the Steinberg ASIO SDK.
+Steinberg dual-licenses the SDK (proprietary or GPLv3,
+<https://www.steinberg.net/developers/asiosdk-open/>); OxiTide uses it under the
+GPLv3 option, which is compatible with this project's AGPL-3.0-or-later. ASIO
+drivers themselves are third-party software installed separately by the user.

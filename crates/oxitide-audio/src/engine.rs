@@ -13,6 +13,7 @@ use crate::dsp::{
 };
 use crate::error::{Error, Result};
 use crate::fetch::{self, Fetcher, StreamBuffer};
+use crate::meter::LevelTap;
 use crate::output::{AudioOutput, AudioOutputSpec, ExclusiveFallback, OutputMode, OutputStatus};
 use crate::perf::{AudioPerfEvent, PerfHook};
 use crate::queue::{Queue, QueueItem, RepeatMode};
@@ -154,6 +155,8 @@ struct Inner {
     last_capture: Mutex<Option<Arc<Capture>>>,
     listeners: Mutex<Vec<Listener>>,
     perf_hook: Mutex<Option<PerfHook>>,
+    /// Read-only meter tap (Hi-Fi Rack): every written buffer is offered to it.
+    level_tap: Arc<LevelTap>,
     /// Serializes queue mutation against the worker's advance decision.
     /// Lock ordering: always take `playback_lock` before `queue`.
     playback_lock: Mutex<()>,
@@ -203,6 +206,12 @@ fn effective_status(inner: &Inner) -> (OutputStatus, Vec<&'static str>) {
         status.bit_perfect = false;
     }
     (status, stages)
+}
+
+/// Whether `position_ms` lies within `item` (its end included). An unknown
+/// duration (0) accepts any target.
+fn seek_in_range(item: &QueueItem, position_ms: u64) -> bool {
+    item.duration_secs == 0 || position_ms <= u64::from(item.duration_secs) * 1000
 }
 
 fn build_state(inner: &Inner) -> PlaybackState {
@@ -295,6 +304,7 @@ impl Engine {
             last_capture: Mutex::new(None),
             listeners: Mutex::new(Vec::new()),
             perf_hook: Mutex::new(None),
+            level_tap: Arc::new(LevelTap::new()),
             playback_lock: Mutex::new(()),
             generation: AtomicU64::new(0),
             paused: AtomicBool::new(false),
@@ -358,6 +368,11 @@ impl Engine {
 
     /// The mode/bit-perfect state the output last reported, with active DSP
     /// folded in.
+    /// The meter tap; enable it while a level display is visible.
+    pub fn level_tap(&self) -> Arc<LevelTap> {
+        self.inner.level_tap.clone()
+    }
+
     pub fn audio_status(&self) -> OutputStatus {
         effective_status(&self.inner).0
     }
@@ -541,6 +556,12 @@ impl Engine {
                     q.restore(items, start, shuffle, repeat);
                     q.current().cloned()
                 });
+                // A saved position past the track's end (an old session written
+                // before seeks were range-checked) restarts the track instead.
+                let position_ms = match item.as_ref() {
+                    Some(i) if seek_in_range(i, position_ms) => position_ms,
+                    _ => 0,
+                };
                 self.inner.paused.store(true, Ordering::SeqCst);
                 self.inner.position_ms.store(
                     if item.is_some() { position_ms } else { 0 },
@@ -614,7 +635,10 @@ impl Engine {
                     let q = self.inner.queue.lock().unwrap();
                     q.current().cloned()
                 };
-                if let Some(item) = current {
+                // A target past the end of the track is ignored, not clamped:
+                // external controllers (SMTC clients) can replay a stale
+                // position, and clamping would turn that into a skip.
+                if let Some(item) = current.filter(|item| seek_in_range(item, ms)) {
                     *self.inner.seek_target.lock().unwrap() = Some(PendingSeek {
                         track_id: item.track_id,
                         position_ms: ms,
@@ -1471,13 +1495,15 @@ fn late_fallback(mut fallback: TransitionPlan) -> TransitionPlan {
 
 /// Write `buf` in short slices so a long preroll (up to the AutoMix hold)
 /// stays responsive: a superseded session stops between slices and a pause
-/// holds there. `progress` gets the frames of each slice written. `Ok(false)`
-/// when superseded.
+/// holds there. Each slice feeds the level meter at `rate` (the device's).
+/// `progress` gets the frames of each slice written. `Ok(false)` when
+/// superseded.
 fn write_responsive(
     inner: &Inner,
     output: &mut dyn AudioOutput,
     buf: &PcmBuffer,
     channels: u16,
+    rate: u32,
     gen: u64,
     progress: &mut dyn FnMut(u64),
 ) -> Result<bool> {
@@ -1499,6 +1525,7 @@ fn write_responsive(
             PcmBuffer::I32(v) => PcmBuffer::I32(v[start..end].to_vec()),
         };
         output.write(&part)?;
+        inner.level_tap.push(&part, channels, rate);
         progress(((end - start) / ch) as u64);
         start = end;
     }
@@ -1710,9 +1737,11 @@ fn run_session(
                 report.resampled = true;
                 Some(tail.converted(tail_rate, info.sample_rate, info.channels as usize))
             } else {
-                if open_spec.is_some() {
+                if let Some(previous) = open_spec.as_ref() {
+                    // Still the previous track's output: its layout and rate.
                     report.kind = TransitionKind::FadeOut;
-                    match write_responsive(inner, output, &tail.fade_out_remaining(), info.channels, gen, &mut |_| {}) {
+                    let (ch, rate) = (previous.info.channels, previous.info.sample_rate);
+                    match write_responsive(inner, output, &tail.fade_out_remaining(), ch, rate, gen, &mut |_| {}) {
                         Ok(true) => {}
                         Ok(false) => return SessionOutcome::Superseded,
                         Err(e) => {
@@ -2114,6 +2143,8 @@ fn run_session(
                     track_id: stream.item.track_id,
                 };
             }
+            // The meter sees what the device plays (converted, when kept).
+            inner.level_tap.push(&buf, channels, device_rate);
             frames += source_frames;
             if first_write_of_track {
                 first_write_of_track = false;
@@ -2144,7 +2175,7 @@ fn run_session(
         // (then the converter carries on through the overlap below).
         if planned.is_none() {
             if let Some(mut rs) = resampler.take() {
-                match write_responsive(inner, output, &rs.flush(), channels, gen, &mut |_| {}) {
+                match write_responsive(inner, output, &rs.flush(), channels, device_rate, gen, &mut |_| {}) {
                     Ok(true) => {}
                     Ok(false) => return SessionOutcome::Superseded,
                     Err(e) => return SessionOutcome::OutputError { message: e.to_string(), track_id },
@@ -2154,7 +2185,7 @@ fn run_session(
         // A track shorter than the crossfade ends before the previous tail
         // finished; let the rest of that tail fade out on its own.
         if let Some(mut tail) = incoming.take() {
-            match write_responsive(inner, output, &tail.fade_out_remaining(), channels, gen, &mut |_| {}) {
+            match write_responsive(inner, output, &tail.fade_out_remaining(), channels, device_rate, gen, &mut |_| {}) {
                 Ok(true) => {}
                 Ok(false) => return SessionOutcome::Superseded,
                 Err(e) => return SessionOutcome::OutputError { message: e.to_string(), track_id },
@@ -2196,7 +2227,7 @@ fn run_session(
                     }
                     emit_position_if_due(inner, at, rate, &mut last_emit);
                 };
-                match write_responsive(inner, output, &preroll, channels, gen, &mut progress) {
+                match write_responsive(inner, output, &preroll, channels, device_rate, gen, &mut progress) {
                     Ok(true) => {}
                     Ok(false) => return SessionOutcome::Superseded,
                     Err(e) => return SessionOutcome::OutputError { message: e.to_string(), track_id },
@@ -2254,7 +2285,7 @@ fn run_session(
                 if let Some(mut handoff) = handoff {
                     let frames_left = handoff.tail.frames();
                     let rest = handoff.tail.take_front(frames_left);
-                    match write_responsive(inner, output, &rest, channels, gen, &mut |_| {}) {
+                    match write_responsive(inner, output, &rest, channels, device_rate, gen, &mut |_| {}) {
                         Ok(true) => {}
                         Ok(false) => return SessionOutcome::Superseded,
                         Err(e) => return SessionOutcome::OutputError { message: e.to_string(), track_id },
@@ -2336,7 +2367,10 @@ fn worker_main(
         // A seek during playback or pause keeps the current paused flag.
         inner.position_ms.store(seek_ms.unwrap_or(0), Ordering::SeqCst);
         inner.position_track.store(item.track_id, Ordering::SeqCst);
-        let mode = *inner.output_mode.lock().unwrap();
+        let mode = crate::output::effective_mode(
+            *inner.output_mode.lock().unwrap(),
+            inner.device_id.lock().unwrap().as_deref(),
+        );
         let fallback = *inner.exclusive_fallback.lock().unwrap();
 
         let outcome = run_session(
@@ -2857,6 +2891,25 @@ mod tests {
         assert_eq!(state.current.map(|i| i.track_id), Some(1));
         assert!(state.playing);
         assert_eq!(output.opens(), opens, "enqueue must not restart the session");
+    }
+
+    #[test]
+    fn level_tap_measures_written_audio_only_while_enabled() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        let tap = engine.level_tap();
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| !output.samples().is_empty());
+        assert_eq!(tap.read(), crate::meter::LevelFrame::silent(), "disabled tap must stay silent");
+
+        tap.set_enabled(true);
+        let mut peak = 0.0f32;
+        let started = std::time::Instant::now();
+        while peak <= 0.0 && started.elapsed() < std::time::Duration::from_secs(5) {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            peak = tap.read().peak[0];
+        }
+        assert!(peak > 0.0, "an enabled tap must see the tone");
     }
 
     #[test]
@@ -3387,7 +3440,7 @@ mod tests {
             .handle(EngineCmd::RestoreSession {
                 items: vec![item(1), item(2), item(3)],
                 start: 1,
-                position_ms: 4200,
+                position_ms: 1700,
                 shuffle: true,
                 repeat: RepeatMode::All,
             })
@@ -3395,7 +3448,7 @@ mod tests {
         let state = engine.state();
         assert!(!state.playing, "restore must not start playback");
         assert_eq!(state.current_index, Some(1));
-        assert_eq!(state.position_ms, 4200);
+        assert_eq!(state.position_ms, 1700);
         assert!(state.shuffle);
         assert_eq!(state.repeat, RepeatMode::All);
         assert_eq!(
@@ -3405,6 +3458,32 @@ mod tests {
         );
         std::thread::sleep(Duration::from_millis(200));
         assert_eq!(calls.load(Ordering::SeqCst), 0, "restore must not fetch media");
+    }
+
+    /// Regression (2026-10-11): an SMTC client replayed a stale 8:18 on a
+    /// 3:32 track; the engine showed it, saved it, and the display kept
+    /// jumping. Seeks past the end are ignored; saved ones restart the track.
+    #[test]
+    fn seeks_and_restores_past_the_track_end_are_rejected() {
+        let (plan, files) = fixture_plan();
+        let (engine, _output) = engine_with(plan, files);
+        engine
+            .handle(EngineCmd::RestoreSession {
+                items: vec![item(1), item(2)],
+                start: 0,
+                position_ms: 498_690,
+                shuffle: false,
+                repeat: RepeatMode::Off,
+            })
+            .unwrap();
+        assert_eq!(engine.state().position_ms, 0, "a saved position past the end restarts the track");
+
+        engine.handle(EngineCmd::Seek(1500)).unwrap();
+        assert_eq!(engine.state().position_ms, 1500);
+        engine.handle(EngineCmd::Seek(498_690)).unwrap();
+        assert_eq!(engine.state().position_ms, 1500, "a seek past the end must be ignored");
+        engine.handle(EngineCmd::Seek(2000)).unwrap();
+        assert_eq!(engine.state().position_ms, 2000, "seeking to the exact end is allowed");
     }
 
     #[test]
@@ -3778,6 +3857,24 @@ mod tests {
 
         wait_for(|| !specs.lock().unwrap().is_empty());
         assert_eq!(specs.lock().unwrap()[0].device_id.as_deref(), Some("device-x"));
+        assert_eq!(specs.lock().unwrap()[0].mode, OutputMode::Shared);
+    }
+
+    #[test]
+    fn asio_device_always_opens_exclusive() {
+        let (plan, files) = fixture_plan();
+        let specs = Arc::new(Mutex::new(Vec::new()));
+        let engine = build_engine(
+            Arc::new(FakeResolver { plan }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(RecordingOutput { specs: specs.clone() }),
+            Quality::Lossless,
+        );
+        engine.set_output_device(Some("asio:Topping USB Audio Device".into()));
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+
+        wait_for(|| !specs.lock().unwrap().is_empty());
+        assert_eq!(specs.lock().unwrap()[0].mode, OutputMode::Exclusive);
     }
 
     #[test]

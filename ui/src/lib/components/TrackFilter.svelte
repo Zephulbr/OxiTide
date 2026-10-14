@@ -10,6 +10,7 @@
   <input
     class="filter search-input"
     placeholder="Filter tracks"
+    aria-label="Filter tracks"
     data-perf-filter
     value={view.filter}
     oninput={(event) => view.setFilter(event.currentTarget.value)}

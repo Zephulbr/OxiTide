@@ -32,4 +32,21 @@ describe("seekByKey", () => {
   it("steps past the end when the duration is unknown", () => {
     expect(seekByKey("ArrowRight", 10000, 0)).toBe(15000);
   });
+
+  it("jumps to the start and end", () => {
+    expect(seekByKey("Home", 30000, 60000)).toBe(0);
+    expect(seekByKey("End", 30000, 60000)).toBe(60000);
+    expect(seekByKey("End", 30000, 0)).toBeNull();
+  });
+
+  it("steps by a tenth of the duration on Page keys", () => {
+    expect(seekByKey("PageUp", 30000, 60000)).toBe(36000);
+    expect(seekByKey("PageDown", 30000, 60000)).toBe(24000);
+    expect(seekByKey("PageUp", 30000, 0)).toBe(40000);
+  });
+
+  it("ignores other keys", () => {
+    expect(seekByKey("Home", 30000, 0)).toBe(0);
+    expect(seekByKey("x", 30000, 60000)).toBeNull();
+  });
 });
