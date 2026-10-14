@@ -1,7 +1,8 @@
 # Listen Along / group listening — assessment (2026-10-02)
 
-Potential, **not committed**. Revisit only **after** casting / TIDAL Connect (Track 7) lands,
-because both would need the same playback-session/transport primitive.
+**Shelved 2026-10-13** (owner decision; see "Re-assessment" at the end). Originally: potential,
+not committed; revisit only after casting / TIDAL Connect, because both need the same
+playback-session/transport primitive.
 
 ## What it is
 
@@ -59,3 +60,30 @@ host-broadcast, invite link) before any Discord SDK work.
   "Listening to" activity type.
 - Feasibility and overlap only — no design or scope committed. A spec would be its own
   spec → plan cycle once the shared transport exists.
+
+## Re-assessment (2026-10-13) — shelved
+
+Re-checked after Track 11 (phone remote) closed. Decision: **not building**; effort is not
+justified for a personal-use app with no known second OxiTide user. Findings kept for a revival:
+
+- **What Track 11 provides:** the slim `RemoteState` + SSE hub (`remote/events.rs`), axum
+  server, QR/token pairing, LAN-only peer filter (already admits Tailscale `100.64/10`), and the
+  `RemoteSession` seam (RM-D12). Roughly a third of the work, not most of it.
+- **What it does not:** the direction is inverted (listen-along needs a *follower controller*
+  that consumes a host's state and issues its own `EngineCmd`s); the host side should be a
+  narrower read-only stream, not the RPC allowlist, with its own guest tokens; internet/relay/
+  NAT traversal are explicit Track 11 non-goals (plain HTTP, home network only); listeners must
+  run OxiTide (a web page cannot play TIDAL audio).
+- **Wire format:** model Spotify Jam / Connect — state is an *anchor* (position at a host
+  timestamp + play state), re-sent on seek/pause/track change; followers compute
+  `position = anchor + (now - anchor_time)` after an NTP-style clock-offset handshake. The
+  remote's 1 s position events carry no timestamp and would not suffice. Spotify-grade sync
+  (~1 s) is acceptable; a ±100–250 ms target is realistic. The engine has no varispeed, so
+  drift correction is thresholded seeks (>~300 ms). Engine seek latency is **unmeasured** and is
+  the first thing to spike.
+- **Other risks:** followers need the next track ID for gapless prefetch (not in the slim
+  state); crossfade shifts boundaries per client; per-account region/quality availability needs
+  a skip policy; smoke testing likely needs a second TIDAL account (unverified).
+- **Smallest slice if revived:** LAN or Tailscale, invite link/QR, host-only control, follow by
+  track (not queue), followers can detach. A hosted room relay (the analogue of Spotify's cloud)
+  is the only way to reach friends off-LAN without Tailscale; Discord SDK work stays last.

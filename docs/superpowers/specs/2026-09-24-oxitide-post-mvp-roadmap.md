@@ -203,7 +203,9 @@ which carries a normal completion gate.
   only **after** casting / TIDAL Connect lands; the DSP/Atmos/ASIO parts of this track do not
   overlap. Discord's "Listen Along" is Spotify-exclusive and TIDAL's "Live" is host-broadcast
   and mobile-only, so this would be OxiTide's own protocol. See
-  `plans/notes/2026-10-02-listen-along-assessment.md`.
+  `plans/notes/2026-10-02-listen-along-assessment.md`. **2026-10-13:** re-assessed after
+  Track 11 and **shelved by the owner** (effort not justified; no known second OxiTide user).
+  The assessment note records the findings and the smallest slice if it is ever revived.
 - **360 Reality Audio:** currently not relevant or in use; whether it is worth implementing
   is decided by difficulty when Track 7 is scoped.
 - **ASIO output (called 2026-10-11, Plan 7.3):** implemented and merged to `main` per
