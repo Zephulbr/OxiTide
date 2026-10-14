@@ -1,15 +1,42 @@
 use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
 use serde::de::DeserializeOwned;
 use tokio::sync::Mutex;
 
 use crate::auth::{self, SessionInfo};
-use crate::error::{Error, Result};
+use crate::error::{display_chain, is_transport, Error, Result};
 use crate::models::ItemPage;
 use crate::token_store::{TokenSet, TokenStore};
 
 /// Default page size used when transparently walking paginated endpoints.
 pub const DEFAULT_PAGE_SIZE: u32 = 100;
+
+/// Attempts for one GET when the network fails before a response arrives or
+/// a gateway answers 502/503/504. GETs are idempotent, so this is safe.
+const GET_ATTEMPTS: u32 = 3;
+
+/// The HTTP client for TIDAL API calls.
+///
+/// Playback leaves the API idle for a whole track, and routers/NATs and
+/// TIDAL's edge silently drop idle keep-alive connections; reusing one fails
+/// with "error sending request". Idle sockets are therefore retired after
+/// 30 s, TCP keepalive holds NAT entries open for the ones in use, and every
+/// request has a deadline so a dead socket cannot stall the stream resolver.
+pub fn http_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(30))
+        .pool_idle_timeout(Duration::from_secs(30))
+        .tcp_keepalive(Duration::from_secs(30))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new())
+}
+
+/// Wait before GET attempt `attempt + 1`: 250 ms, then 750 ms.
+fn get_backoff(attempt: u32) -> Duration {
+    Duration::from_millis(250 * 3u64.pow(attempt.saturating_sub(1)))
+}
 
 /// Decode a JSON response body, keeping serde's field/line detail on failure.
 /// reqwest's own decode error only says "error decoding response body", which
@@ -311,13 +338,32 @@ impl TidalClient {
             base.trim_end_matches('/'),
             path.trim_start_matches('/')
         );
-        Ok(self
-            .http
-            .get(url)
-            .bearer_auth(token)
-            .query(&query)
-            .send()
-            .await?)
+        let mut attempt = 1;
+        loop {
+            let result = self
+                .http
+                .get(&url)
+                .bearer_auth(token)
+                .query(&query)
+                .send()
+                .await;
+            let reason = match &result {
+                Err(e) if is_transport(e) => display_chain(e),
+                Ok(resp) if matches!(resp.status().as_u16(), 502..=504) => {
+                    format!("status {}", resp.status())
+                }
+                _ => return Ok(result?),
+            };
+            if attempt >= GET_ATTEMPTS {
+                return Ok(result?);
+            }
+            let wait = get_backoff(attempt);
+            tracing::warn!(
+                "GET {path} failed ({reason}); retrying in {wait:?} ({attempt}/{GET_ATTEMPTS})"
+            );
+            tokio::time::sleep(wait).await;
+            attempt += 1;
+        }
     }
 
     /// GET on the v2 API base (no `countryCode`), sharing `get`'s refresh-on-401.
@@ -451,18 +497,34 @@ impl TidalClient {
             base.trim_end_matches('/'),
             path.trim_start_matches('/')
         );
-        let mut request = self
-            .http
-            .request(method.clone(), url)
-            .bearer_auth(token)
-            .query(&query);
-        if !form.is_empty() {
-            request = request.form(form);
+        let send = || {
+            let mut request = self
+                .http
+                .request(method.clone(), &url)
+                .bearer_auth(token)
+                .query(&query);
+            if !form.is_empty() {
+                request = request.form(form);
+            }
+            if let Some(value) = etag {
+                request = request.header(reqwest::header::IF_NONE_MATCH, value);
+            }
+            request.send()
+        };
+        match send().await {
+            // Writes are not idempotent: retry only when the connection never
+            // opened, so the server cannot have seen the request.
+            Err(e) if e.is_connect() => {
+                let wait = get_backoff(1);
+                tracing::warn!(
+                    "{method} {path} could not connect ({}); retrying in {wait:?}",
+                    display_chain(&e)
+                );
+                tokio::time::sleep(wait).await;
+                Ok(send().await?)
+            }
+            result => Ok(result?),
         }
-        if let Some(value) = etag {
-            request = request.header(reqwest::header::IF_NONE_MATCH, value);
-        }
-        Ok(request.send().await?)
     }
 
     /// `Retry-After` in whole seconds, capped at 5s; a missing or HTTP-date
@@ -1306,5 +1368,120 @@ mod tests {
             .put_v2("folders/rename", &[("name", "New".to_string())])
             .await
             .unwrap();
+    }
+
+    fn client_at(base: String) -> TidalClient {
+        TidalClient::new(
+            http_client(),
+            base.clone(),
+            format!("{base}/token"),
+            session(),
+            tokens(),
+            Arc::new(MemoryStore::default()),
+        )
+    }
+
+    /// A raw HTTP server that hangs up on the first `drops` connections after
+    /// reading their request (as a stale keep-alive socket or a reset does),
+    /// then answers `{"value": 5}`. Returns its base URL and a count of
+    /// accepted connections.
+    fn flaky_server(drops: usize) -> (String, Arc<std::sync::atomic::AtomicUsize>) {
+        use std::io::{Read, Write};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let accepted = Arc::new(AtomicUsize::new(0));
+        let count = accepted.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { return };
+                let n = count.fetch_add(1, Ordering::SeqCst);
+                let mut request = Vec::new();
+                let mut buf = [0u8; 1024];
+                while !request.windows(4).any(|w| w == b"\r\n\r\n") {
+                    match stream.read(&mut buf) {
+                        Ok(0) | Err(_) => break,
+                        Ok(read) => request.extend_from_slice(&buf[..read]),
+                    }
+                }
+                if n < drops {
+                    continue; // dropping `stream` closes it without a response
+                }
+                let body = r#"{"value": 5}"#;
+                let _ = write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+            }
+        });
+        (base, accepted)
+    }
+
+    #[tokio::test]
+    async fn get_retries_a_connection_dropped_before_the_response() {
+        let (base, accepted) = flaky_server(2);
+        let t: Thing = client_at(base)
+            .get("tracks/1/playbackinfo", &[])
+            .await
+            .unwrap();
+        assert_eq!(t.value, 5);
+        assert_eq!(accepted.load(std::sync::atomic::Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    async fn get_gives_up_after_three_dropped_connections() {
+        let (base, accepted) = flaky_server(usize::MAX);
+        let err = client_at(base)
+            .get::<Thing>("tracks/1", &[])
+            .await
+            .unwrap_err();
+        assert!(err.is_transient(), "got {err:?}");
+        assert_eq!(accepted.load(std::sync::atomic::Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    async fn get_retries_a_gateway_error() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/tracks/1"))
+            .respond_with(ResponseTemplate::new(503))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/tracks/1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"value": 4})))
+            .mount(&server)
+            .await;
+        let t: Thing = client_at(server.uri()).get("tracks/1", &[]).await.unwrap();
+        assert_eq!(t.value, 4);
+    }
+
+    #[tokio::test]
+    async fn get_does_not_retry_a_plain_server_error() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/tracks/1"))
+            .respond_with(ResponseTemplate::new(500))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let err = client_at(server.uri())
+            .get::<Thing>("tracks/1", &[])
+            .await
+            .unwrap_err();
+        assert!(matches!(err, Error::Api { status: 500, .. }), "got {err:?}");
+    }
+
+    #[tokio::test]
+    async fn a_write_is_not_resent_after_the_request_went_out() {
+        let (base, accepted) = flaky_server(usize::MAX);
+        let err = client_at(base)
+            .post_form("users/1/favorites/tracks", &[("trackIds", "7".to_string())])
+            .await
+            .unwrap_err();
+        assert!(matches!(err, Error::Http(_)), "got {err:?}");
+        assert_eq!(accepted.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 }

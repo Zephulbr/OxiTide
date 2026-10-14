@@ -25,10 +25,15 @@ pub const MAX_BUFFERED_BYTES: usize = 2 * 1024 * 1024;
 
 impl HttpFetcher {
     pub fn new() -> Result<Self> {
+        // Idle sockets are retired before routers/NATs silently drop them
+        // (see `oxitide_tidal::http_client`); `get_with_retry` covers the rest.
         let client = reqwest::blocking::Client::builder()
+            .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(30))
+            .pool_idle_timeout(Duration::from_secs(30))
+            .tcp_keepalive(Duration::from_secs(30))
             .build()
-            .map_err(|e| Error::Fetch(e.to_string()))?;
+            .map_err(|e| Error::Fetch(describe(e)))?;
         Ok(Self { client })
     }
 
@@ -44,10 +49,13 @@ impl HttpFetcher {
             .client
             .get(url)
             .send()
-            .map_err(|e| (Error::Fetch(e.to_string()), None))?;
+            .map_err(|e| (Error::Fetch(describe(e)), None))?;
         let status = resp.status();
         if !status.is_success() {
-            let err = Error::Fetch(format!("status {status} for {url}"));
+            let err = Error::Fetch(format!(
+                "status {status} for {}",
+                url.split('?').next().unwrap_or(url)
+            ));
             let retryable = status.as_u16() == 429 || status.is_server_error();
             if !retryable {
                 return Err((err, None));
@@ -64,8 +72,25 @@ impl HttpFetcher {
         }
         resp.bytes()
             .map(|b| b.to_vec())
-            .map_err(|e| (Error::Fetch(e.to_string()), None))
+            .map_err(|e| (Error::Fetch(describe(e)), None))
     }
+}
+
+/// reqwest's message plus each distinct cause, without the URL: segment URLs
+/// carry signed CDN tokens, and this text reaches logs and the UI.
+fn describe(e: reqwest::Error) -> String {
+    let e = e.without_url();
+    let mut out = e.to_string();
+    let mut source = std::error::Error::source(&e);
+    while let Some(cause) = source {
+        let text = cause.to_string();
+        if !out.contains(&text) {
+            out.push_str(": ");
+            out.push_str(&text);
+        }
+        source = cause.source();
+    }
+    out
 }
 
 impl Default for HttpFetcher {

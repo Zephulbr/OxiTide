@@ -34,6 +34,18 @@ impl Error {
                 | Error::Unsupported(_)
         )
     }
+
+    /// Whether starting the track again could succeed: a network or TIDAL
+    /// hiccup while resolving, or a failed segment fetch (a fresh resolve
+    /// also replaces signed CDN URLs that may have expired while the track
+    /// waited as the prefetch).
+    pub fn is_transient(&self) -> bool {
+        match self {
+            Error::Tidal(e) => e.is_transient(),
+            Error::Fetch(_) => true,
+            _ => false,
+        }
+    }
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -97,5 +109,20 @@ mod tests {
         assert!(!Error::Decode("boom".into()).is_track_unavailable());
         assert!(!Error::Manifest("bad".into()).is_track_unavailable());
         assert!(!Error::Unavailable("low".into()).is_track_unavailable());
+    }
+
+    #[test]
+    fn network_failures_are_transient() {
+        assert!(Error::Fetch("reset".into()).is_transient());
+        assert!(Error::Tidal(oxitide_tidal::Error::RateLimited).is_transient());
+    }
+
+    #[test]
+    fn auth_policy_and_decode_failures_are_not_transient() {
+        assert!(!Error::Tidal(oxitide_tidal::Error::Unauthorized).is_transient());
+        assert!(!Error::Tidal(oxitide_tidal::Error::Forbidden).is_transient());
+        assert!(!Error::Decode("boom".into()).is_transient());
+        assert!(!Error::Manifest("bad".into()).is_transient());
+        assert!(!Error::Unavailable("low".into()).is_transient());
     }
 }

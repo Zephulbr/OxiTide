@@ -121,6 +121,14 @@ type Listener = Arc<dyn Fn(EngineEvent) + Send + Sync>;
 /// track never buffers in memory without limit.
 const PREFETCH_BUFFERS: usize = 96;
 
+/// Waits before each fresh start of a track whose stream failed transiently
+/// before any audio; its length bounds the attempts. Covers a Wi-Fi roam or
+/// a resume from sleep on top of the TIDAL client's own quick retries.
+#[cfg(not(test))]
+const STREAM_RESTART_BACKOFF: [Duration; 2] = [Duration::from_secs(1), Duration::from_secs(4)];
+#[cfg(test)]
+const STREAM_RESTART_BACKOFF: [Duration; 2] = [Duration::from_millis(10), Duration::from_millis(20)];
+
 /// An in-flight sleep-timer fade: the worker ramps the output volume from
 /// `base_volume` to zero over `duration`, then pauses and restores the volume.
 struct FadeState {
@@ -1305,6 +1313,22 @@ fn wait_for_info(inner: &Arc<Inner>, stream: &mut TrackStream, gen: u64) -> Resu
     }
 }
 
+/// Sleep `wait` in short steps; false as soon as the session is superseded
+/// or the engine shuts down, so transport commands are not held up.
+fn wait_unless_superseded(inner: &Arc<Inner>, gen: u64, wait: Duration) -> bool {
+    let deadline = Instant::now() + wait;
+    loop {
+        if inner.generation.load(Ordering::SeqCst) != gen || inner.shutdown.load(Ordering::SeqCst) {
+            return false;
+        }
+        let now = Instant::now();
+        if now >= deadline {
+            return true;
+        }
+        std::thread::sleep((deadline - now).min(Duration::from_millis(25)));
+    }
+}
+
 fn emit_position_if_due(inner: &Arc<Inner>, frames: u64, rate: u32, last: &mut Instant) {
     if last.elapsed() < Duration::from_millis(500) {
         return;
@@ -1609,6 +1633,8 @@ fn run_session(
     // Unplayable tracks passed over since the last track that started; bounds
     // the skip chain so repeat-all/repeat-one cannot loop forever.
     let mut skipped: usize = 0;
+    // Fresh starts of the current track after a transient failure.
+    let mut restarts: usize = 0;
     // The previous track's held-back end, waiting to cross into this one.
     let mut pending_handoff: Option<Handoff> = None;
     // True once this session advanced into the next track on its own (not a
@@ -1667,9 +1693,35 @@ fn run_session(
                     }
                 }
             }
+            // A network blip while resolving or fetching the track's start.
+            // The next track is prefetched when the current one begins, so
+            // its failure can be minutes old by the time it is needed: start
+            // it again with a fresh resolve instead of stopping the queue.
+            Err(e) if e.is_transient() && restarts < STREAM_RESTART_BACKOFF.len() => {
+                let wait = STREAM_RESTART_BACKOFF[restarts];
+                restarts += 1;
+                tracing::warn!(
+                    "track {} failed to start ({e}); starting it again in {wait:?} ({restarts}/{})",
+                    stream.item.track_id,
+                    STREAM_RESTART_BACKOFF.len()
+                );
+                if !wait_unless_superseded(inner, gen, wait) {
+                    return SessionOutcome::Superseded;
+                }
+                // Only the session's first track carries the requested seek.
+                let item = stream.item.clone();
+                let seek = if !advanced && skipped == 0 && item.track_id == first_item.track_id {
+                    seek_ms
+                } else {
+                    None
+                };
+                stream = start_track(inner, &item, mode, gen, seek);
+                continue;
+            }
             Err(e) => return SessionOutcome::StreamError(e),
         };
         skipped = 0;
+        restarts = 0;
         let StreamStart { info, start_frames, mut meta, replay_gain } = start;
         fire_perf(inner, AudioPerfEvent::InfoReady { track_id: stream.item.track_id });
         let want = AudioOutputSpec {
@@ -2483,16 +2535,17 @@ mod tests {
         }
     }
 
-    /// Fails the first resolve, then succeeds; simulates a transient network
-    /// failure that a Retry recovers from.
+    /// Fails the first `failures` resolves, then succeeds; simulates a
+    /// transient network failure.
     struct FlakyResolver {
         plan: StreamPlan,
         calls: AtomicUsize,
+        failures: usize,
     }
 
     impl StreamResolver for FlakyResolver {
         fn resolve(&self, _track_id: u64, _quality: Quality) -> Result<StreamPlan> {
-            if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+            if self.calls.fetch_add(1, Ordering::SeqCst) < self.failures {
                 Err(Error::Fetch("network down".into()))
             } else {
                 Ok(self.plan.clone())
@@ -3162,11 +3215,90 @@ mod tests {
     }
 
     #[test]
+    fn a_transient_start_failure_is_retried_without_stopping() {
+        let (plan, files) = fixture_plan();
+        let output = NullOutput::new();
+        let resolver = Arc::new(FlakyResolver {
+            plan,
+            calls: AtomicUsize::new(0),
+            failures: STREAM_RESTART_BACKOFF.len(),
+        });
+        let engine = build_engine(
+            resolver.clone(),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(output.clone()),
+            Quality::Lossless,
+        );
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let seen_ref = seen.clone();
+        engine.subscribe(Arc::new(move |e| seen_ref.lock().unwrap().push(e)));
+
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+
+        wait_for(|| output.samples().len() > 0);
+        assert!(output.samples().len() > 0, "the track never started");
+        assert_eq!(resolver.calls.load(Ordering::SeqCst), STREAM_RESTART_BACKOFF.len() + 1);
+        assert!(
+            !seen.lock().unwrap().iter().any(|e| matches!(e, EngineEvent::Error { .. })),
+            "a recovered blip must not surface an error"
+        );
+    }
+
+    #[test]
+    fn a_prefetch_that_failed_transiently_is_resolved_again() {
+        /// Fails track 2's first resolve (the prefetch) with a network error.
+        struct PrefetchBlip {
+            plan: StreamPlan,
+            failed: AtomicBool,
+            calls: Mutex<Vec<u64>>,
+        }
+        impl StreamResolver for PrefetchBlip {
+            fn resolve(&self, track_id: u64, _quality: Quality) -> Result<StreamPlan> {
+                self.calls.lock().unwrap().push(track_id);
+                if track_id == 2 && !self.failed.swap(true, Ordering::SeqCst) {
+                    return Err(Error::Fetch("connection reset".into()));
+                }
+                Ok(self.plan.clone())
+            }
+        }
+        let (plan, files) = fixture_plan();
+        let resolver =
+            Arc::new(PrefetchBlip { plan, failed: AtomicBool::new(false), calls: Mutex::new(Vec::new()) });
+        let output = NullOutput::new();
+        let engine = build_engine(
+            resolver.clone(),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(output.clone()),
+            Quality::Lossless,
+        );
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let seen_ref = seen.clone();
+        engine.subscribe(Arc::new(move |e| seen_ref.lock().unwrap().push(e)));
+
+        engine
+            .handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 })
+            .unwrap();
+
+        wait_for(|| !engine.state().playing && output.samples().len() >= 176_400 * 2);
+        assert_eq!(output.samples().len(), 176_400 * 2, "track 2 did not play in full");
+        // Track 1 and the prefetch resolve concurrently, so compare counts.
+        let calls = resolver.calls.lock().unwrap().clone();
+        assert_eq!(calls.iter().filter(|&&t| t == 1).count(), 1, "{calls:?}");
+        assert_eq!(calls.iter().filter(|&&t| t == 2).count(), 2, "{calls:?}");
+        assert!(!seen.lock().unwrap().iter().any(|e| matches!(e, EngineEvent::Error { .. })));
+    }
+
+    #[test]
     fn retry_after_a_stream_error_restarts_the_current_track() {
         let (plan, files) = fixture_plan();
         let output = NullOutput::new();
         let engine = build_engine(
-            Arc::new(FlakyResolver { plan, calls: AtomicUsize::new(0) }),
+            // One more failure than the engine's own restarts, so it stops.
+            Arc::new(FlakyResolver {
+                plan,
+                calls: AtomicUsize::new(0),
+                failures: STREAM_RESTART_BACKOFF.len() + 1,
+            }),
             Arc::new(crate::fetch::MapFetcher { files }),
             Box::new(output.clone()),
             Quality::Lossless,

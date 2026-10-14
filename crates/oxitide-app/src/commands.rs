@@ -151,7 +151,7 @@ pub async fn finish_login(
     redirect_url: String,
 ) -> Result<SessionInfoDto, String> {
     let (login, _redirect) = take_and_validate(state, &redirect_url)?;
-    let http = reqwest::Client::new();
+    let http = oxitide_tidal::http_client();
     let tokens = auth::exchange_code(
         &http,
         TOKEN_URL,
@@ -303,7 +303,7 @@ pub async fn auth_restore(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Option<SessionInfoDto>, String> {
-    let http = reqwest::Client::new();
+    let http = oxitide_tidal::http_client();
     let store = state
         .token_store()
         .ok_or_else(|| "token store unavailable".to_string())?;

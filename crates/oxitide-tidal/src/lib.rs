@@ -17,5 +17,5 @@ pub mod search;
 pub mod stream;
 pub mod token_store;
 
-pub use client::TidalClient;
+pub use client::{http_client, TidalClient};
 pub use error::{Error, Result};
