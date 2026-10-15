@@ -39,6 +39,7 @@ pub const ALLOWLIST: &[&str] = &[
     "play_page_items",
     // Queue
     "queue_add",
+    "queue_play_next",
     "queue_remove",
     "queue_reorder",
     "queue_clear",
@@ -100,6 +101,7 @@ pub enum RemoteCommand {
     PlayTrackIds { ids: Vec<u64>, start: usize, shuffle: Option<bool> },
     PlayPageItems { items: Vec<PageTrackDto>, start: usize, shuffle: Option<bool> },
     QueueAdd { items: Vec<QueueItem> },
+    QueuePlayNext { items: Vec<QueueItem> },
     QueueRemove { index: usize },
     QueueReorder { from: usize, to: usize },
     QueueClear,
@@ -274,12 +276,16 @@ pub fn parse(method: &str, params: Value) -> Result<RemoteCommand, RpcError> {
                 .collect();
             C::PlayPageItems { items, start, shuffle }
         }
-        "queue_add" => {
+        "queue_add" | "queue_play_next" => {
             let items = bounded(args!(params, { items: Vec<QueueItem> }))?
                 .into_iter()
                 .map(|item| QueueItem { cover: trusted_cover(item.cover), ..item })
                 .collect();
-            C::QueueAdd { items }
+            if method == "queue_add" {
+                C::QueueAdd { items }
+            } else {
+                C::QueuePlayNext { items }
+            }
         }
         "queue_remove" => C::QueueRemove { index: args!(params, { index: usize }) },
         "queue_reorder" => {
@@ -401,6 +407,7 @@ pub async fn execute<R: Runtime>(app: &AppHandle<R>, command: RemoteCommand) -> 
             json(commands::play_page_items(state, items, start, shuffle).await)
         }
         C::QueueAdd { items } => json(commands::queue_add(state, items)),
+        C::QueuePlayNext { items } => json(commands::queue_play_next(state, items)),
         C::QueueRemove { index } => json(commands::queue_remove(state, index)),
         C::QueueReorder { from, to } => json(commands::queue_reorder(state, from, to)),
         C::QueueClear => json(commands::queue_clear(state)),
@@ -615,7 +622,7 @@ mod tests {
             "fade_and_pause" => json!({"durationMs": 3000}),
             "play_track_ids" => json!({"ids": [1, 2], "start": 0}),
             "play_page_items" => json!({"items": [{"id": 1}], "start": 0, "shuffle": true}),
-            "queue_add" => json!({"items": [{"track_id": 1, "title": "T"}]}),
+            "queue_add" | "queue_play_next" => json!({"items": [{"track_id": 1, "title": "T"}]}),
             "queue_remove" | "queue_jump" => json!({"index": 2}),
             "queue_reorder" => json!({"from": 1, "to": 3}),
             "get_queue_page" | "get_history_page" | "get_favorite_tracks_page" => {

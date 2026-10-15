@@ -270,6 +270,19 @@ impl Queue {
         self.items.extend(items);
     }
 
+    /// Insert items right after the current track ("Play next"), keeping
+    /// their order; with no current track they append. The current track and
+    /// the playing state are untouched.
+    pub fn insert_next(&mut self, items: Vec<QueueItem>) {
+        match self.current {
+            Some(cur) => {
+                let at = (cur + 1).min(self.items.len());
+                self.items.splice(at..at, items);
+            }
+            None => self.items.extend(items),
+        }
+    }
+
     /// Stop playback without clearing the queue (e.g. after a playback error).
     pub fn stop(&mut self) {
         self.playing = false;
@@ -473,6 +486,26 @@ mod tests {
         assert!(q.reorder(0, 2));
         assert_eq!(q.current().unwrap().track_id, 2);
         assert_eq!(q.items()[2].track_id, 1);
+    }
+
+    #[test]
+    fn insert_next_lands_after_current_in_order() {
+        let mut q = queue(3);
+        q.next(); // current track 2 at index 1
+        q.insert_next(vec![item(8), item(9)]);
+        let ids: Vec<_> = q.items().iter().map(|i| i.track_id).collect();
+        assert_eq!(ids, vec![1, 2, 8, 9, 3]);
+        assert_eq!(q.current_index(), Some(1));
+        assert!(q.is_playing());
+    }
+
+    #[test]
+    fn insert_next_without_current_appends() {
+        let mut q = Queue::default();
+        q.insert_next(vec![item(1), item(2)]);
+        let ids: Vec<_> = q.items().iter().map(|i| i.track_id).collect();
+        assert_eq!(ids, vec![1, 2]);
+        assert_eq!(q.current_index(), None);
     }
 
     #[test]

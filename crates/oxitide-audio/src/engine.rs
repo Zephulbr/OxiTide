@@ -108,6 +108,9 @@ pub enum EngineCmd {
     Reorder { from: usize, to: usize },
     Remove(usize),
     Enqueue { items: Vec<QueueItem> },
+    /// Insert right after the current track ("Play next"). A prefetched next
+    /// track that is no longer next is dropped at the advance, like a reorder.
+    EnqueueNext { items: Vec<QueueItem> },
     Clear,
     /// Fade the output to silence over `duration_ms`, then pause at the current
     /// position. The pre-fade volume is restored for the next play; a
@@ -702,6 +705,12 @@ impl Engine {
             EngineCmd::Enqueue { items } => {
                 if !items.is_empty() {
                     self.inner.queue.lock().unwrap().push(items);
+                    self.emit(EngineEvent::State(self.state()));
+                }
+            }
+            EngineCmd::EnqueueNext { items } => {
+                if !items.is_empty() {
+                    self.inner.queue.lock().unwrap().insert_next(items);
                     self.emit(EngineEvent::State(self.state()));
                 }
             }
@@ -3154,6 +3163,24 @@ mod tests {
         assert_eq!(state.current.map(|i| i.track_id), Some(1));
         assert!(state.playing);
         assert_eq!(output.opens(), opens, "enqueue must not restart the session");
+    }
+
+    #[test]
+    fn enqueue_next_inserts_after_current_without_restarting_playback() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 }).unwrap();
+        wait_for(|| !output.samples().is_empty());
+        let opens = output.opens();
+
+        engine.handle(EngineCmd::EnqueueNext { items: vec![item(3)] }).unwrap();
+
+        let state = engine.state();
+        let ids: Vec<_> = state.queue.iter().map(|i| i.track_id).collect();
+        assert_eq!(ids, vec![1, 3, 2]);
+        assert_eq!(state.current_index, Some(0));
+        assert!(state.playing);
+        assert_eq!(output.opens(), opens, "play next must not restart the session");
     }
 
     #[test]

@@ -1795,6 +1795,16 @@ pub fn queue_add(state: State<'_, AppState>, items: Vec<QueueItem>) -> Result<()
         .map_err(|e| e.to_string())
 }
 
+/// "Play next": insert right after the current track.
+#[tauri::command]
+pub fn queue_play_next(state: State<'_, AppState>, items: Vec<QueueItem>) -> Result<(), String> {
+    let player = state.player().ok_or_else(|| "not logged in".to_string())?;
+    player
+        .engine
+        .handle(EngineCmd::EnqueueNext { items })
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn get_playback_state(state: State<'_, AppState>) -> Result<PlaybackState, String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
