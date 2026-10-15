@@ -355,9 +355,17 @@ impl Engine {
         self.inner.listeners.lock().unwrap().push(listener);
     }
 
-    /// Stop the playback worker and release the output. Called on logout.
+    /// Stop the playback worker and release the output. Called on logout and
+    /// whenever the app replaces the engine (re-login, `auth_restore` after a
+    /// webview reload).
     pub fn shutdown(&self) {
         self.inner.shutdown.store(true, Ordering::SeqCst);
+        // A live session (playing or paused) only watches the generation;
+        // without the bump it outlived the shutdown and kept emitting its
+        // stale position next to the replacement engine's.
+        self.inner.generation.fetch_add(1, Ordering::SeqCst);
+        // Nothing from a retired engine may reach the UI or the integrations.
+        self.inner.listeners.lock().unwrap().clear();
         self.inner.notify_worker();
     }
 
@@ -3342,6 +3350,36 @@ mod tests {
         let before = positions();
         std::thread::sleep(Duration::from_millis(1200));
         assert_eq!(positions(), before, "position events kept coming after the queue ended");
+    }
+
+    /// Regression: a session paused (or playing) when the engine is shut down
+    /// must end. It used to keep ticking `Position` at its paused spot, and
+    /// after `auth_restore` replaced the engine the UI showed both engines'
+    /// positions alternately.
+    #[test]
+    fn shutdown_ends_a_live_paused_session() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        let positions = Arc::new(AtomicUsize::new(0));
+        let counter = positions.clone();
+        engine.subscribe(Arc::new(move |e| {
+            if matches!(e, EngineEvent::Position { .. }) {
+                counter.fetch_add(1, Ordering::SeqCst);
+            }
+        }));
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| !output.samples().is_empty());
+        engine.handle(EngineCmd::PlayPause).unwrap();
+        assert!(!engine.state().playing);
+        let stops_before = output.stops();
+
+        engine.shutdown();
+        wait_for(|| output.stops() > stops_before);
+        assert!(output.stops() > stops_before, "the paused session survived shutdown");
+
+        let after = positions.load(Ordering::SeqCst);
+        std::thread::sleep(Duration::from_millis(1200));
+        assert_eq!(positions.load(Ordering::SeqCst), after, "position events kept coming after shutdown");
     }
 
     struct Gate {
