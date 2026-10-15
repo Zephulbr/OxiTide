@@ -126,11 +126,18 @@
       </div>
       {#if bioSegments.some((segment) => segment.text.trim() !== "")}
         <p class="bio" bind:this={bioEl}><BioText segments={bioSegments} onArtist={onOpenArtist} /></p>
-        {#if canExpand}
-          <button class="more" aria-haspopup="dialog" onclick={() => (bioModal = true)}>
-            Read more
-          </button>
-        {/if}
+        <!-- Always laid out; the measurement only toggles visibility. The
+             overflow is measured a frame after a width change, so letting it
+             add or remove the button would change the hero's height late and
+             jump everything below (AR-9: width-driven layout must be CSS). -->
+        <button
+          class="more"
+          class:unneeded={!canExpand}
+          aria-haspopup="dialog"
+          onclick={() => (bioModal = true)}
+        >
+          Read more
+        </button>
       {/if}
       {#if links.length > 0}
         <div class="socials">
@@ -339,6 +346,10 @@
   }
   .more:hover {
     color: var(--text);
+  }
+  /* Keeps its space; hidden from pointer, Tab and screen readers. */
+  .more.unneeded {
+    visibility: hidden;
   }
   .socials {
     display: flex;
