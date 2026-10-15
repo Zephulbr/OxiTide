@@ -75,7 +75,7 @@
 </script>
 
 <SettingRow
-  label="Transition style"
+  id="automix-style" label="Transition style"
   description={styleHint}
   {disabled}
   stacked
@@ -89,21 +89,21 @@
   />
 </SettingRow>
 <ToggleRow
-  label="Skip silence at track edges"
+  id="automix-trim" label="Skip silence at track edges"
   description="Quick, Blend and Auto always do this."
   {disabled}
   checked={crossfade.trim_silence}
   onchange={(trim_silence) => onchange({ trim_silence })}
 />
 <ToggleRow
-  label="Overlap across sample-rate changes"
+  id="automix-resample" label="Overlap across sample-rate changes"
   description="Otherwise the track fades out first."
   {disabled}
   checked={crossfade.resample}
   onchange={(resample) => onchange({ resample })}
 />
 <ToggleRow
-  label="Beat-match when tempos fit"
+  id="automix-beat" label="Beat-match when tempos fit"
   description="Aligns beats; no tempo stretching yet."
   {disabled}
   checked={crossfade.beat_match}
@@ -141,7 +141,7 @@
 {/if}
 
 <SettingRow
-  label="Replay last transition as"
+  id="automix-replay" label="Replay last transition as"
   description="Let a track end on its own with AutoMix on, then compare the same pair in each style. Replays pause playback and keep ReplayGain but skip EQ."
   {disabled}
   stacked

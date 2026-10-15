@@ -203,7 +203,7 @@
   icon="smartphone"
 >
   <ToggleRow
-    label="Control OxiTide from your phone"
+    id="remote-enable" label="Control OxiTide from your phone"
     description={summary}
     checked={status?.enabled ?? false}
     disabled={busy || !status}
@@ -217,7 +217,7 @@
   </ToggleRow>
 
   {#if status?.listening}
-    <SettingRow label="Pair a phone" description="Scan a QR code with the phone's camera.">
+    <SettingRow id="remote-pair" label="Pair a phone" description="Scan a QR code with the phone's camera.">
       <Button variant="primary" icon="smartphone" onclick={beginPairing}>Pair a phone</Button>
     </SettingRow>
   {/if}
@@ -228,7 +228,7 @@
 
   {#if status}
     <SettingRow
-      label="Address in the QR code"
+      id="remote-address" label="Address in the QR code"
       description="Which of this PC's network addresses the phone connects to."
     >
       <Select
@@ -240,7 +240,7 @@
       />
     </SettingRow>
     <SettingRow
-      label="Port"
+      id="remote-port" label="Port"
       description={status.port && status.port !== status.settings.port
         ? `In use; listening on ${status.port}.`
         : "Between 1024 and 65526."}
@@ -254,14 +254,14 @@
       />
     </SettingRow>
     <ToggleRow
-      label="Approve new phones on this PC"
+      id="remote-approve" label="Approve new phones on this PC"
       description="A new phone must be allowed here before it can connect."
       checked={status.settings.approve_new_devices}
       onchange={(approve) => saveSettings({ approve })}
     />
   {/if}
 
-  <SettingRow label="Paired phones" stacked>
+  <SettingRow id="remote-devices" label="Paired phones" stacked>
     {#if devices.length === 0}
       <p class="muted none">No phones paired yet.</p>
     {:else}

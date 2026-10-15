@@ -67,7 +67,13 @@ stacks (`.col`; two where 520px each fit, about 1060px of content, else one; `.w
 both). Stacks keep a constant height: controls that do not apply are disabled, not removed
 (EQ bands, ReplayGain sliders, AutoMix). The shorter stack's cards share the leftover height
 evenly, each spreading it across its rows, so both columns always end on one line — when
-adding a card, put it in the shorter stack. Switching tabs animates with transform and
+adding a card, put it in the shorter stack. The page header carries a settings search
+(`SettingsSearch`, a combobox over `lib/settingsIndex.ts`): results name the tab and card, and
+choosing one opens the tab, scrolls the row to the middle, rings it briefly and focuses its
+control. Every searchable row carries `id="…"` (rendered as `data-setting`); **a new setting
+needs an `SETTINGS_INDEX` entry with that id** — a test fails if an entry's id is missing from
+the page sources, and entries for controls not currently shown (Rack options, the
+exclusive-mode fallback) are hidden from results. Switching tabs animates with transform and
 opacity only: the nav highlight is one pill that glides between tabs (`--dur-view`,
 `--ease-in-out`; first placement instant; hidden in Rack, whose keys light their own lamp), and
 the new tab's cards rise in (10px, `--dur-view`) staggered 45ms down the page; reduced motion

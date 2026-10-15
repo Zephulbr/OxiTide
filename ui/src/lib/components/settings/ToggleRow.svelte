@@ -5,6 +5,7 @@
 
   /// A `SettingRow` whose control is a switch; the whole row toggles it.
   let {
+    id,
     label,
     description,
     checked,
@@ -12,6 +13,7 @@
     onchange,
     below,
   }: {
+    id?: string;
     label: string;
     description?: string;
     checked: boolean;
@@ -21,6 +23,6 @@
   } = $props();
 </script>
 
-<SettingRow {label} {description} {disabled} tag="label" {below}>
+<SettingRow {id} {label} {description} {disabled} tag="label" {below}>
   <Toggle {checked} {label} {disabled} {onchange} />
 </SettingRow>

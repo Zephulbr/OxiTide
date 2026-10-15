@@ -9,6 +9,7 @@
   /// `tag="label"` makes the whole row the click target of the single
   /// control inside it (toggle rows).
   let {
+    id,
     label,
     description,
     stacked = false,
@@ -17,6 +18,8 @@
     children,
     below,
   }: {
+    /// Search target: the settings search scrolls to [data-setting=id].
+    id?: string;
     label: string;
     description?: string;
     stacked?: boolean;
@@ -27,7 +30,7 @@
   } = $props();
 </script>
 
-<svelte:element this={tag} class="row set-row" class:stacked class:disabled>
+<svelte:element this={tag} class="row set-row" class:stacked class:disabled data-setting={id}>
   <div class="text">
     <span class="label">{label}</span>
     {#if description}<span class="help">{description}</span>{/if}
@@ -38,6 +41,7 @@
 
 <style>
   .row {
+    position: relative;
     display: flex;
     flex-wrap: wrap;
     align-content: center;
@@ -87,6 +91,25 @@
   }
   .row.stacked .control {
     flex: 1 1 100%;
+  }
+  /* The settings search marks the row it jumped to with a ring that fades. */
+  .row:global([data-found])::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 2px var(--accent);
+    pointer-events: none;
+    animation: found 1.6s var(--ease-enter) forwards;
+  }
+  @keyframes found {
+    0%,
+    35% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
   }
   .row.disabled .text {
     opacity: 0.5;

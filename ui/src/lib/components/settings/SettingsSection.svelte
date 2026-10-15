@@ -6,12 +6,15 @@
   /// separated by hairlines; `actions` sits at the header's right edge (a
   /// master switch, a reset button).
   let {
+    id,
     title,
     description,
     icon,
     actions,
     children,
   }: {
+    /// Search target for a whole card (no single row to point at).
+    id?: string;
     title: string;
     description?: string;
     icon?: IconName;
@@ -22,7 +25,7 @@
   const headingId = $props.id();
 </script>
 
-<section class="set-section" aria-labelledby={headingId}>
+<section class="set-section" aria-labelledby={headingId} data-setting={id}>
   <header>
     {#if icon}
       <span class="chip" aria-hidden="true"><Icon name={icon} size={16} /></span>
@@ -41,6 +44,7 @@
      bottom edge: the body grows and its rows share the extra height evenly
      (see `.body > :global(.set-row)`), so there is never a blank strip. */
   .set-section {
+    position: relative;
     display: flex;
     flex-direction: column;
     margin: 0 0 20px;
@@ -86,6 +90,24 @@
     flex: none;
     align-items: center;
     gap: 8px;
+  }
+  .set-section:global([data-found])::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 2px var(--accent);
+    pointer-events: none;
+    animation: found 1.6s var(--ease-enter) forwards;
+  }
+  @keyframes found {
+    0%,
+    35% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
   }
   .body {
     display: flex;

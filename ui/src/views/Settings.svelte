@@ -1,6 +1,7 @@
 <script lang="ts">
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { listen } from "@tauri-apps/api/event";
+  import { tick } from "svelte";
   import {
     api,
     SCROBBLE_STATUS_EVENT,
@@ -37,6 +38,7 @@
   import Select from "../lib/components/settings/Select.svelte";
   import SettingRow from "../lib/components/settings/SettingRow.svelte";
   import SettingsSection from "../lib/components/settings/SettingsSection.svelte";
+  import SettingsSearch from "../lib/components/settings/SettingsSearch.svelte";
   import Slider from "../lib/components/settings/Slider.svelte";
   import Toggle from "../lib/components/settings/Toggle.svelte";
   import ToggleRow from "../lib/components/settings/ToggleRow.svelte";
@@ -70,6 +72,7 @@
   import { errorMessage } from "../lib/errors";
   import { optimistic } from "../lib/optimistic";
   import type { QualityDisplay } from "../lib/quality";
+  import type { SettingEntry } from "../lib/settingsIndex";
   import { SETTINGS_TABS, nextTab, type SettingsTab } from "../lib/settingsTabs";
   import { TAB_META, formatSize, usageFraction } from "../lib/settingsView";
   import type { Toasts } from "../lib/toasts.svelte";
@@ -322,6 +325,25 @@
     event.stopPropagation();
     tab = target;
     document.getElementById(`settings-tab-${target}`)?.focus();
+  }
+
+  /// Jump from a search result: open its tab, scroll the row to the middle of
+  /// the page, ring it briefly and put focus on its control. When the tab
+  /// changes the cards are still rising in, so the scroll waits for them.
+  async function jumpTo(entry: SettingEntry) {
+    const changed = tab !== entry.tab;
+    tab = entry.tab;
+    await tick();
+    setTimeout(() => {
+      const el = document.querySelector<HTMLElement>(`[data-setting="${entry.id}"]`);
+      if (!el) return;
+      el.scrollIntoView({ block: "center", behavior: appearance.reducedMotion ? "auto" : "smooth" });
+      el.removeAttribute("data-found");
+      void el.offsetWidth; // restart the ring if it is already showing
+      el.setAttribute("data-found", "");
+      setTimeout(() => el.removeAttribute("data-found"), 1700);
+      el.querySelector<HTMLElement>("input, button, select, [role=slider]")?.focus({ preventScroll: true });
+    }, changed ? 140 : 0);
   }
 
   // The active-tab highlight is one element that glides between tabs. It is
@@ -750,6 +772,15 @@
 <div class="settings">
   <header class="page-head">
     <h2>Settings</h2>
+    {#if config}
+      <SettingsSearch
+        scope={{
+          rack: appearance.mode === "rack",
+          exclusive: config.audio.exclusive || config.audio.output_device.startsWith("asio:"),
+        }}
+        onselect={jumpTo}
+      />
+    {/if}
   </header>
 
   {#if !config}
@@ -800,7 +831,7 @@
             <div class="col">
             <SettingsSection title="Look & feel" icon="palette">
               <SettingRow
-                label="Theme"
+                id="theme" label="Theme"
                 description={appearance.theme === "system"
                   ? "Follows the operating system's app theme."
                   : "Light or dark surfaces."}
@@ -812,7 +843,7 @@
                   onchange={(value) => appearance.setTheme(value).catch(apply)}
                 />
               </SettingRow>
-              <SettingRow label="Mode" description={MODE_HELP[appearance.mode]}>
+              <SettingRow id="mode" label="Mode" description={MODE_HELP[appearance.mode]}>
                 <Segmented
                   label="Mode"
                   value={appearance.mode}
@@ -822,7 +853,7 @@
               </SettingRow>
               {#if appearance.mode !== "rack"}
                 <SettingRow
-                  label="Dynamic color"
+                  id="dynamic-color" label="Dynamic color"
                   description="Tints the interface with the colors of the album art. Default follows the mode."
                 >
                   <Segmented
@@ -845,7 +876,7 @@
                 icon="audio-lines"
               >
                 <SettingRow
-                  label="Deck face"
+                  id="rack-deck" label="Deck face"
                   description="What the compact deck shows. Now Playing always opens the turntable."
                 >
                   <Segmented
@@ -855,7 +886,7 @@
                     onchange={(deck_face) => appearance.setRack({ deck_face }).catch(apply)}
                   />
                 </SettingRow>
-                <SettingRow label="Amp meters">
+                <SettingRow id="rack-meters" label="Amp meters">
                   <Segmented
                     label="Amp meters"
                     value={appearance.rack.meters}
@@ -864,7 +895,7 @@
                   />
                 </SettingRow>
                 <SettingRow
-                  label="Now Playing analyzer"
+                  id="rack-analyzer" label="Now Playing analyzer"
                   description="The extra unit in Now Playing. Auto shows the level recorder when the amp's meters are already a spectrum, otherwise the spectrum."
                 >
                   <Segmented
@@ -875,7 +906,7 @@
                   />
                 </SettingRow>
                 <SettingRow
-                  label="Lamp color"
+                  id="rack-lamp" label="Lamp color"
                   description="Cover takes the hue of the album art but keeps the brightness of a lit screen; grey covers fall back to amber."
                 >
                   <Segmented
@@ -885,7 +916,7 @@
                     onchange={(lamp) => appearance.setRack({ lamp }).catch(apply)}
                   />
                 </SettingRow>
-                <SettingRow label="Lamp brightness">
+                <SettingRow id="rack-brightness" label="Lamp brightness">
                   <Slider
                     label="Lamp brightness"
                     min={40}
@@ -897,7 +928,7 @@
                   />
                 </SettingRow>
                 <ToggleRow
-                  label="Show the graphic EQ unit"
+                  id="rack-eq" label="Show the graphic EQ unit"
                   checked={appearance.rack.eq_unit}
                   onchange={(eq_unit) => appearance.setRack({ eq_unit }).catch(apply)}
                 />
@@ -907,7 +938,7 @@
 
             <div class="col" style="order: 2">
             <SettingsSection title="Typography & layout" icon="type">
-              <SettingRow label="Typeface" description="The font used across the interface.">
+              <SettingRow id="typeface" label="Typeface" description="The font used across the interface.">
                 <Select
                   label="Typeface"
                   value={appearance.typeface}
@@ -940,7 +971,7 @@
                   {#if customNote}<p class="muted note">{customNote}</p>{/if}
                 </SettingRow>
               {/if}
-              <SettingRow label="Density" description="How tightly lists and rows are spaced.">
+              <SettingRow id="density" label="Density" description="How tightly lists and rows are spaced.">
                 <Segmented
                   label="Density"
                   value={appearance.density}
@@ -948,7 +979,7 @@
                   onchange={(value) => appearance.setDensity(value).catch(apply)}
                 />
               </SettingRow>
-              <SettingRow label="Cover shape" description="How artwork is drawn on Now Playing.">
+              <SettingRow id="cover-shape" label="Cover shape" description="How artwork is drawn on Now Playing.">
                 <Segmented
                   label="Cover shape"
                   value={appearance.coverShape}
@@ -962,7 +993,7 @@
             <div class="col wide" style="order: 4">
             <SettingsSection title="Extras" icon="sparkles">
               <ToggleRow
-                label="Cat"
+                id="cat" label="Cat"
                 description={appearance.reducedMotion
                   ? "A little cat that follows your cursor. Paused while your system's reduced-motion setting is on."
                   : "A little cat that follows your cursor around the window."}
@@ -997,7 +1028,7 @@
             <div class="cols">
             <div class="col">
             <SettingsSection title="Streaming" icon="radio">
-              <SettingRow label="Streaming quality" description="The quality OxiTide asks TIDAL for.">
+              <SettingRow id="quality" label="Streaming quality" description="The quality OxiTide asks TIDAL for.">
                 <Select
                   label="Streaming quality"
                   value={config.streaming.quality}
@@ -1006,13 +1037,13 @@
                 />
               </SettingRow>
               <ToggleRow
-                label="Use the best available quality"
+                id="allow-fallback" label="Use the best available quality"
                 description="When a track isn't offered at the quality you chose, play the best available and report it."
                 checked={config.streaming.allow_fallback}
                 onchange={setAllowFallback}
               />
               <SettingRow
-                label="Quality badge"
+                id="quality-badge" label="Quality badge"
                 description="Compact shows MAX / LOSSLESS / AAC; Detailed shows bit depth, sample rate and bitrate."
               >
                 <Segmented
@@ -1025,7 +1056,7 @@
             </SettingsSection>
 
             <SettingsSection title="Output" icon="headphones">
-              <SettingRow label="Audio device" description="Where OxiTide plays.">
+              <SettingRow id="device" label="Audio device" description="Where OxiTide plays.">
                 <Select
                   label="Audio output"
                   width={300}
@@ -1035,14 +1066,14 @@
                 />
               </SettingRow>
               <ToggleRow
-                label="Bit-perfect output (exclusive mode)"
+                id="exclusive" label="Bit-perfect output (exclusive mode)"
                 description="Bypasses the system mixer so samples reach the device unchanged. Other apps cannot use the device while it plays."
                 checked={config.audio.exclusive}
                 onchange={setExclusive}
               />
               {#if config.audio.exclusive || config.audio.output_device.startsWith("asio:")}
                 <SettingRow
-                  label="If unsupported"
+                  id="exclusive-fallback" label="If unsupported"
                   description="What to do when the device refuses exclusive mode."
                 >
                   <Segmented
@@ -1069,7 +1100,7 @@
               icon="volume-2"
             >
               <SettingRow
-                label="ReplayGain"
+                id="replaygain" label="ReplayGain"
                 description={dsp.replay_gain.mode === "album"
                   ? "Album keeps the dynamics between tracks of one album and falls back to the track gain."
                   : "Off by default; any leveling changes the samples."}
@@ -1082,7 +1113,7 @@
                 />
               </SettingRow>
               <SettingRow
-                label="Preamp"
+                id="rg-preamp" label="Preamp"
                 description="Raises or lowers every track after leveling."
                 disabled={dsp.replay_gain.mode === "off"}
               >
@@ -1099,7 +1130,7 @@
                 />
               </SettingRow>
               <SettingRow
-                label="Tracks without data"
+                id="rg-untagged" label="Tracks without data"
                 description="The gain applied to tracks TIDAL has no ReplayGain data for."
                 disabled={dsp.replay_gain.mode === "off"}
               >
@@ -1116,7 +1147,7 @@
                 />
               </SettingRow>
               <ToggleRow
-                label="Prevent clipping"
+                id="rg-clipping" label="Prevent clipping"
                 description={player.state.stream?.replay_gain_db != null && dsp.replay_gain.mode !== "off"
                   ? `Never raise a track past its peak. Current track: ${formatDb(Math.round(player.state.stream.replay_gain_db * 10) / 10)}.`
                   : "Never raise a track past its peak."}
@@ -1128,7 +1159,7 @@
 
             <SettingsSection title="Crossfade" icon="waves">
               <SettingRow
-                label="Crossfade"
+                id="crossfade" label="Crossfade"
                 description="Crossfades when a track ends on its own; skipping and seeking cut straight over."
               >
                 <Slider
@@ -1142,7 +1173,7 @@
                 />
               </SettingRow>
               <ToggleRow
-                label="Keep albums gapless"
+                id="gapless" label="Keep albums gapless"
                 description="No crossfade between consecutive tracks of one album."
                 disabled={dsp.crossfade.duration_ms === 0}
                 checked={dsp.crossfade.skip_same_album}
@@ -1159,7 +1190,7 @@
               {#snippet actions()}
                 <Toggle label="Equalizer" checked={dsp.eq.enabled} onchange={(enabled) => setEq({ enabled })} />
               {/snippet}
-              <SettingRow label="Preset" disabled={!dsp.eq.enabled}>
+              <SettingRow id="eq-preset" label="Preset" disabled={!dsp.eq.enabled}>
                 <Select
                   label="Equalizer preset"
                   disabled={!dsp.eq.enabled}
@@ -1174,17 +1205,17 @@
                   onclick={() => setPreset("flat")}
                 >Reset</Button>
               </SettingRow>
-              <SettingRow label="Bands" disabled={!dsp.eq.enabled} stacked>
+              <SettingRow id="eq-bands" label="Bands" disabled={!dsp.eq.enabled} stacked>
                 <EqBands bands={dsp.eq.bands_db} disabled={!dsp.eq.enabled} onband={setBand} />
               </SettingRow>
               <ToggleRow
-                label="Automatic preamp"
+                id="eq-auto-preamp" label="Automatic preamp"
                 description="Lowers the level by the largest boost so it cannot clip."
                 disabled={!dsp.eq.enabled}
                 checked={dsp.eq.auto_preamp}
                 onchange={(auto_preamp) => setEq({ auto_preamp })}
               />
-              <SettingRow label="Preamp" disabled={!dsp.eq.enabled}>
+              <SettingRow id="eq-preamp" label="Preamp" disabled={!dsp.eq.enabled}>
                 {#if dsp.eq.auto_preamp}
                   <span class="readout">{formatDb(effectivePreamp(dsp.eq))}</span>
                 {:else}
@@ -1229,19 +1260,19 @@
             </Notice>
             <SettingsSection title="Filters & labels" icon="shield-check">
               <ToggleRow
-                label="Block explicit content"
+                id="block-explicit" label="Block explicit content"
                 description="Hides explicit tracks and blocks them from playing. Enabling clears the current queue, matching the official app."
                 checked={config.content.block_explicit}
                 onchange={setBlockExplicit}
               />
               <ToggleRow
-                label="Block AI-generated content"
+                id="block-ai" label="Block AI-generated content"
                 description="Hides tracks TIDAL labels as AI-generated and removes them from the queue. Labels may be missing for some tracks or regions; those play normally."
                 checked={config.content.block_ai}
                 onchange={setBlockAi}
               />
               <ToggleRow
-                label="Show content labels"
+                id="show-labels" label="Show content labels"
                 description="Tags explicit tracks with E and AI-generated tracks with AI, even when not blocking them. Turning this off stops the background label lookups too."
                 checked={config.content.show_labels}
                 onchange={setShowLabels}
@@ -1271,7 +1302,7 @@
             >
               {#if scrobble}
                 <SettingRow
-                  label="Last.fm"
+                  id="lastfm" label="Last.fm"
                   description={[
                     serviceLabel(scrobble.lastfm),
                     queuedLabel(scrobble.lastfm.queued),
@@ -1302,7 +1333,7 @@
                   {/if}
                 </SettingRow>
                 <SettingRow
-                  label="ListenBrainz"
+                  id="listenbrainz" label="ListenBrainz"
                   description={[
                     serviceLabel(scrobble.listenbrainz),
                     queuedLabel(scrobble.listenbrainz.queued),
@@ -1354,13 +1385,13 @@
 
             <SettingsSection title="Presence & controls" icon="radio">
               <ToggleRow
-                label="Discord Rich Presence"
+                id="discord" label="Discord Rich Presence"
                 description="Shows the current track on your Discord profile. Requires the Discord desktop client."
                 checked={config.integrations.discord}
                 onchange={setDiscord}
               />
               <ToggleRow
-                label="Media controls"
+                id="media-controls" label="Media controls"
                 description="Hardware media keys and the system media overlay."
                 checked={config.integrations.smtc}
                 onchange={setSmtc}
@@ -1399,7 +1430,7 @@
                     </Notice>
                   </div>
                 {/if}
-                <SettingRow label="Disk usage" stacked>
+                <SettingRow id="cache-usage" label="Disk usage" stacked>
                   <div class="usage">
                     <div
                       class="meter"
@@ -1418,7 +1449,7 @@
                     </span>
                   </div>
                 </SettingRow>
-                <SettingRow label="Maximum size" description="The oldest tracks are removed when the cache grows past this.">
+                <SettingRow id="cache-max" label="Maximum size" description="The oldest tracks are removed when the cache grows past this.">
                   <NumberField
                     label="Maximum cache size"
                     min={0}
@@ -1428,12 +1459,12 @@
                   />
                 </SettingRow>
                 <ToggleRow
-                  label="Clear cache on exit"
+                  id="cache-clear-exit" label="Clear cache on exit"
                   checked={config.cache.clear_on_exit}
                   onchange={setClearOnExit}
                 />
                 <SettingRow
-                  label="Location"
+                  id="cache-location" label="Location"
                   description="To move the cache, edit cache.dir in config.toml."
                   stacked
                 >
@@ -1451,11 +1482,11 @@
               icon="history"
             >
               <ToggleRow
-                label="Record listening history"
+                id="history-record" label="Record listening history"
                 checked={config.history.enabled}
                 onchange={setHistoryEnabled}
               />
-              <SettingRow label="Maximum entries" description="Older plays are dropped beyond this.">
+              <SettingRow id="history-max" label="Maximum entries" description="Older plays are dropped beyond this.">
                 <NumberField
                   label="Maximum history entries"
                   min={100}
@@ -1465,7 +1496,7 @@
                   onchange={setHistoryMaxEntries}
                 />
               </SettingRow>
-              <SettingRow label="Clear history" description="Permanently deletes your local play history and stats.">
+              <SettingRow id="history-clear" label="Clear history" description="Permanently deletes your local play history and stats.">
                 <Button variant="danger" icon="trash-2" onclick={() => (confirmingHistoryClear = true)}>
                   Clear history
                 </Button>
@@ -1490,13 +1521,13 @@
             <div class="col">
             <SettingsSection title="Window & startup" icon="app-window">
               <ToggleRow
-                label="Close to tray"
+                id="close-to-tray" label="Close to tray"
                 description="Closing the window hides it and keeps playback running; Quit lives in the tray menu."
                 checked={config.ui.close_to_tray}
                 onchange={setCloseToTray}
               />
               <ToggleRow
-                label="Start in mini player"
+                id="start-mini" label="Start in mini player"
                 description="Open as the compact mini player instead of the full window."
                 checked={config.ui.start_in_mini}
                 onchange={setStartInMini}
@@ -1509,7 +1540,7 @@
               icon="keyboard"
             >
               {#each HOTKEY_ACTIONS as entry (entry.id)}
-                <SettingRow label={entry.label}>
+                <SettingRow id={`hotkey-${entry.id}`} label={entry.label}>
                   <kbd class:unset={!config.hotkeys[entry.id]}>
                     {capture.recording === entry.id
                       ? "Press keys…"
@@ -1541,6 +1572,7 @@
             <UpdatesSection />
 
             <SettingsSection
+              id="shortcuts"
               title="Keyboard shortcuts"
               description="Available while OxiTide is focused."
               icon="keyboard"
@@ -1553,7 +1585,7 @@
             </SettingsSection>
 
             <SettingsSection title="Troubleshooting" icon="file-text">
-              <SettingRow label="Logs" description={logsDir || "Directory unavailable"}>
+              <SettingRow id="logs" label="Logs" description={logsDir || "Directory unavailable"}>
                 <Button icon="folder" onclick={() => api.openLogsFolder().catch(apply)}>
                   Open logs folder
                 </Button>
@@ -1561,7 +1593,7 @@
             </SettingsSection>
 
             <SettingsSection title="Account" icon="user">
-              <SettingRow label="Log out" description="Signs out of TIDAL on this device. Your settings are kept.">
+              <SettingRow id="logout" label="Log out" description="Signs out of TIDAL on this device. Your settings are kept.">
                 <Button variant="danger" icon="log-out" onclick={onLogout}>Log out</Button>
               </SettingRow>
             </SettingsSection>
@@ -1579,6 +1611,15 @@
      much room the page really has. */
   .settings {
     container: settings / inline-size;
+  }
+  /* The header shares the page's two-column grid, so the search sits centred
+     over the cards (not the whole window); it stacks under the title when the
+     page is narrow. */
+  .settings > .page-head {
+    display: grid;
+    grid-template-columns: 200px minmax(0, 1320px);
+    column-gap: 36px;
+    align-items: center;
   }
   .layout {
     display: grid;
@@ -1704,6 +1745,10 @@
     }
   }
   @container settings (max-width: 760px) {
+    .settings > .page-head {
+      grid-template-columns: minmax(0, 1fr);
+      row-gap: 12px;
+    }
     .layout {
       grid-template-columns: minmax(0, 1fr);
       gap: 16px;

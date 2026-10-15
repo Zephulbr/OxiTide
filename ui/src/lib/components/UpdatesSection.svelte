@@ -88,7 +88,7 @@
 
 <SettingsSection title="Updates" icon="download">
   {#if support}
-    <SettingRow label={`OxiTide ${support.current_version}`} description={message}>
+    <SettingRow id="updates-check" label={`OxiTide ${support.current_version}`} description={message}>
       {#if support.supported}
         {#if phase === "available"}
           <Button variant="primary" icon="download" onclick={install}>Download and install</Button>
@@ -114,7 +114,7 @@
     </SettingRow>
     {#if support.supported}
       <ToggleRow
-        label="Check for updates when OxiTide starts"
+        id="updates-start" label="Check for updates when OxiTide starts"
         checked={support.check_on_start}
         onchange={setCheckOnStart}
       />
