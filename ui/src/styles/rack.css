@@ -404,6 +404,11 @@
 :root[data-mode="rack"] .rack-main [role="tablist"][aria-orientation="vertical"] {
   margin: 0;
 }
+/* The readout rule above resets input padding; the settings search keeps room
+   for its magnifier and clear button. */
+:root[data-mode="rack"] .rack-main .settings-search input {
+  padding: 0 34px 0 36px;
+}
 /* The settings nav's gliding highlight is a soft pill; Rack's keys light
    their own lamp instead. */
 :root[data-mode="rack"] .rack-main .tab-indicator {

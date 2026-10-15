@@ -28,6 +28,10 @@
 </button>
 
 <style>
+  /* Centred so the label stays centred when a skin sets a minimum width (Rack keys). */
+  button {
+    justify-content: center;
+  }
   button.compact {
     padding: 6px 12px;
     font-size: 13px;

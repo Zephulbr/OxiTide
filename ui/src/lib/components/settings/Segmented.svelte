@@ -65,6 +65,7 @@
   button {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
     padding: 5px 12px;
     border-radius: calc(var(--radius-control) - 3px);
