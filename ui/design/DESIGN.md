@@ -46,7 +46,13 @@ current system and must be updated in the same change that alters it.
 | Accent + text on accent | `--accent`, `--on-accent` | Atmosphere: dynamic; Instrument: brand; Rack: lamp |
 | Surfaces | `--surface-1..3`, `--surface-float` | Raised layers; float = menus/popovers |
 | Hairlines | `--line`, `--edge-lit` | |
+| Resting depth | `--shadow-panel`, `--shadow-cover` | Neutral dark drop shadows (warm-ink and softer in light); never accent-coloured, so never a glow |
 | Semantic | `--danger`, `--success`, `--warning` | Fixed, never cover-derived |
+
+**Panel edges.** `.lit` (app.css) is the key-lit panel: `--surface-2` fill with the
+`--edge-lit` rim, bright top-left to dark bottom-right. `.lit-tint` is the accent-tinted
+variant (a 7% accent wash and an even 30% → 14% accent hairline, no highlight); Home's
+containers use it.
 
 **Section hook class.** Shared components mark their section body with `pane`
 (plus `pane-flush` for edge-to-edge tables). No mode styles it except Rack, whose
@@ -94,7 +100,18 @@ color not in Rack, AutoMix needs a crossfade). Rack skins the switch as a square
 `rack.css`.
 
 **Collection grids** share one recipe: `repeat(auto-fill, minmax(160–168px, 1fr))`, 12px
-card padding, hover = `--surface-2` (Albums, Mixes, Playlists, Feed releases). Profiles
+card padding (Albums, Mixes, Playlists, Feed releases).
+
+**Media cards** (`MediaCard.svelte`: Home, Explore/For You sections, Mixes, Playlists,
+Albums, Artist, Purchases) share one card. Variants: `tile`, `carousel` (210px), `mini`
+(148px), `row`. Every cover carries a 1px `--line` ring and `--shadow-cover`. Playlist
+covers keep sharp corners, and the old offset "stacked sleeve" box behind them is gone.
+Hover: the card's own cover colour (`--card-tint`, a registered colour, from
+`lib/coverTint.ts` → `analyze_cover`, prefetched as cards scroll into view) spreads from
+the cover and blends into whatever the card sits on; the cover lifts 3px with a deeper
+shadow; tracks and cards that start playback (`playButton`) show an accent play button at
+the cover's bottom-right. Feed releases keep their own card (`FeedTimeline`), whose
+hover is still `--surface-2`. Profiles
 draw each artist as a **record** (portrait as the label on a vinyl disc; `--vinyl*`
 material tokens, black in every mode) and, in name order, letter groups as crate
 dividers.
@@ -124,7 +141,13 @@ Only `transform` and `opacity` animate (plus registered colour/number properties
 two recorded exceptions (addendum `2026-10-15-oxitide-atmosphere-rules-addendum.md`):
 hover/press washes (`background-color`, `color`, `border-color`) ease over `--dur-micro` —
 the global `button` rule in `app.css` carries them, and track rows do the same — and the
-docked queue's open/close width glide (AR-5). Any other layout animation needs a ruling.
+docked queue's open/close glide (AR-5 as amended by AR-9). The rail animates its width
+(380 ms, `--ease-in-out`). The page is held at its final width, and its single layout change
+is FLIP-animated in step with the rail by `lib/queueTransition.ts`:
+- positions travel, and cards with a visible box animate their width;
+- hidden or clipped elements leave a fading inert copy, and revealed ones fade in.
+
+Any other layout animation needs a ruling.
 `backdrop-filter` surfaces are a fixed set and never nest. Menus mark the selected
 option with the accent, not a second background.
 Ambient motion only while playing. `prefers-reduced-motion` is a hard floor in every

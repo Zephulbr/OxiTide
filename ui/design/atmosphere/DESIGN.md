@@ -4,7 +4,8 @@ Shared foundation: [../DESIGN.md](../DESIGN.md). Decision record:
 `docs/superpowers/specs/2026-09-25-oxitide-2b-visual-foundation-atmosphere-design.md`
 (+ convergence `2026-09-25-oxitide-2b-visual-convergence.md`, light theme
 `2026-10-05-track9-ui-completion-design.md` §6.1, rules addendum
-`2026-10-15-oxitide-atmosphere-rules-addendum.md` — AR-1…AR-8, wins over the record).
+`2026-10-15-oxitide-atmosphere-rules-addendum.md` — AR-1…AR-10, wins over the record;
+Home redesign `2026-10-15-oxitide-home-redesign-design.md`).
 
 ## 1. Personality
 
@@ -102,7 +103,8 @@ contrast chain (structural scrim minimums + per-cover composite-ceiling clamping
 
 ## 4. Components
 
-Radii: controls 8 · cards 12 · sheets 16 · play button round. Hover = surface brighten;
+Radii: controls 8 · cards 12 · sheets 16 · play button round. Hover = surface brighten
+(media cards: cover-colour tint, below);
 press = scale .98; disabled 40%. Buttons: primary accent fill, ghost glass, danger red
 ghost. Badges: bordered chips (MAX Tertiary-outlined). Toasts: glass + severity glyph,
 slide-in with slight overshoot. Loading: disc spinner. Scrollbar: 8px warm translucent
@@ -125,7 +127,8 @@ side, blending with the accent wash the card already carries; the cover lifts 3p
 deeper shadow layer fading in, and the cover image still zooms 3%; an accent play button
 (40px, 30px on rows, with the AR-1 transport glow) rises from the cover's bottom-right
 corner on tracks and on cards that start playback (`playButton`, e.g. Home's radios).
-Only transform and opacity animate.
+Collage playlists (no artwork of their own) take the tint from the collage's first cover.
+Only transform and opacity animate, plus the registered `--card-tint` colour (AR-10).
 
 **Micro-interactions (AR-2):** toast overshoot; heart pop on favourite; player-bar icon
 buttons lift 1px on hover and squash to 0.92 on press. Nothing breathes or idles.
@@ -140,4 +143,5 @@ headers, nav, badges, toasts); never stacked; never animated on its own. Small c
 
 Backdrop + dynamic-colour crossfade 1200 ms; disc spin ~12 s/rev (now-playing mark
 2 s/rev), eases to stop in ~600 ms on pause; queue dock width glide 380 ms on `--ease-in-out`
-(AR-5; the page's card widths follow it for the length of the glide — see §3); everything else per foundation §2.3.
+(AR-5 as amended by AR-9; the page's card widths follow it for the length of the glide —
+see §3); everything else per foundation §2.3.

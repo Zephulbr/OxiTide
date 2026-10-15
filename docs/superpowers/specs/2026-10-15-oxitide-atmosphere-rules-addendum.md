@@ -7,7 +7,10 @@
   `ui/design/DESIGN.md` and `ui/design/atmosphere/DESIGN.md`, updated in the same change.
 - **Context:** an owner walkthrough of the Atmosphere UI (polish pass, queue overhaul,
   now-playing mark) re-reviewed the 2b rules that the shipped UI had outgrown or that
-  had drifted from the code. All eight items below were accepted.
+  had drifted from the code. All eight items below were accepted. AR-9 and AR-10 were
+  added the same day during the Home redesign
+  (`2026-10-15-oxitide-home-redesign-design.md`), each approved by the owner after
+  review in the running app.
 
 ## AR-1 Glow is allowed — as light from the music, not decoration
 
@@ -101,3 +104,52 @@ current state):
   Info), so the "reserved slot" is filled.
 - **Queue rail slide (§9 `--dur-view`):** the dock now glides by width (AR-5).
 - **Micro-interactions, glow, cover ring:** see AR-1 to AR-3.
+
+## AR-9 Queue glide v2: slower rail, page content moves with it
+
+Amends AR-5. The owner found the 260 ms cubic-in-out dock "too fast/snappy". The main
+column also re-flowed every frame during the glide (auto-fill grids jumping, covers
+resizing), which read as jitter.
+
+- **Rail:** 380 ms on `--ease-in-out` (`cubic-bezier(.4, 0, .2, 1)`). The floating queue
+  and its backdrop fade use the same duration and curve.
+- **Page:** held at its final width for the glide, so it lays out once. That one change is
+  FLIP-animated with the rail's duration and curve (`lib/queueTransition.ts`):
+  - every on-screen element travels from its old box to its new one (transform);
+  - elements with a visible box (cards, panels) also animate their **width**, so their
+    edges glide. This is the new layout animation the rule required a ruling for. It
+    lasts only for the glide.
+  - elements the new width hides (`display: none`) or clips (carousel cards past the
+    row's new edge) leave an inert, `aria-hidden` copy at the old spot that fades out over
+    60% of the glide. Elements it reveals fade in.
+- **Sync:** opening snapshots the page before the rail enters the DOM and parks the
+  glide on its first frame until the rail's `introstart`, so both start on the same
+  frame. Svelte starts a transition's real animation one frame after insertion.
+- **Reduced motion:** no glide. The page changes width once, and the rail keeps its
+  120 ms fade.
+- **Width-driven layout must be CSS, not measured.** A JS count from a ResizeObserver
+  lands a frame after the glide measures, and the page jumps mid-glide. Use container
+  queries (Home's Jump back in does).
+- **Perf:** AR-5's pending check (open/close over a 10k-row table, S6 conditions) now also
+  covers the FLIP pass. Up to 2000 on-screen elements are measured twice per toggle.
+
+## AR-10 Card hover and resting depth
+
+Narrows principle 2 ("depth from blur and light, not drop shadows") for resting depth.
+Extends AR-1's play-button allowance to the card play button.
+
+- **Resting depth:** neutral dark drop shadows are allowed: `--shadow-panel` on panels,
+  `--shadow-cover` with a 1px `--line` ring on every media-card cover. They are never
+  accent-coloured, so they are not glows. Light uses softer warm-ink shadows. The offset
+  "stacked sleeve" box behind playlist covers is retired.
+- **Tinted panels:** `.lit-tint` (accent wash plus even accent hairline) may replace
+  `.lit`'s bright-to-dark rim where a panel should take the music's colour (Home).
+- **Media-card hover:**
+  - the card's own cover colour spreads from the cover and blends into the card's
+    surface. It wipes in with transform plus opacity, and the registered `--card-tint`
+    glides from the accent when the palette arrives.
+  - the cover lifts 3px, and a deeper shadow layer fades in.
+  - tracks and cards that start playback show a 40px accent play button (30px on rows).
+    It carries the AR-1 transport glow (≤ 10px blur, steady) and rises 8px into place.
+- **Still vetoed:** glows on the card itself, idle motion, and a hover ring on non-current
+  covers (AR-3 stays limited to the current track).
