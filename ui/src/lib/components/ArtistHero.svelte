@@ -5,6 +5,7 @@
   import { isHttpUrl, linkLabel } from "../artistLinks";
   import { ARTIST_PICTURE_SIZE, coverUrl } from "../artwork";
   import { formatCount } from "../format";
+  import { heroScrim } from "../heroScrim";
   import BioText from "./BioText.svelte";
   import Cover from "./Cover.svelte";
   import Icon from "./Icon.svelte";
@@ -41,10 +42,13 @@
   const backdrop = $derived(
     artist.picture ? coverUrl(artist.picture, ARTIST_PICTURE_SIZE) : "",
   );
+  const scrim = $derived(
+    heroScrim(tint ? [tint.primary, tint.secondary, tint.tertiary] : null, appearance.resolvedTheme),
+  );
   const heroStyle = $derived(
-    tint
-      ? `--hero-primary:${tint.primary};--hero-secondary:${tint.secondary};--hero-tertiary:${tint.tertiary}`
-      : undefined,
+    (tint
+      ? `--hero-primary:${tint.primary};--hero-secondary:${tint.secondary};--hero-tertiary:${tint.tertiary};`
+      : "") + `--scrim:${scrim.toFixed(3)}`,
   );
 
   // Local palette only: the hero must not repaint the app-wide --dyn-* mood.
@@ -206,20 +210,22 @@
   }
   /* The palette roles are tuned as *text* colours against the room (light in
      the dark theme), so painted as a background they can be as light as the
-     hero's own text. The scrim pulls everything back toward the room colour —
-     darker in the dark theme, paper-lighter in the light one — strongest behind
-     the portrait and copy, lighter toward the right so the colour still shows. */
+     hero's own text. The scrim pulls toward the room colour — darker in the
+     dark theme, paper-lighter in the light one — light at the top, where the
+     big name only needs 3:1, and deepest at the bottom behind the small bio
+     and links. `--scrim` (lib/heroScrim.ts) scales it by how pale the palette
+     is; with dynamic colour off the tint is not painted, so only the floor
+     (for the blurred photo) remains. */
   .scrim {
+    --s: max(0.3, calc(var(--scrim, 0.6) * var(--flag-dynamic-color)));
     position: absolute;
     inset: 0;
-    background:
-      linear-gradient(
-        90deg,
-        color-mix(in oklab, var(--bg) 62%, transparent),
-        color-mix(in oklab, var(--bg) 50%, transparent) 55%,
-        color-mix(in oklab, var(--bg) 42%, transparent)
-      ),
-      linear-gradient(180deg, transparent 40%, color-mix(in oklab, var(--bg) 25%, transparent));
+    background: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--bg) calc(var(--s) * 20%), transparent),
+      color-mix(in oklab, var(--bg) calc(var(--s) * 50%), transparent) 45%,
+      color-mix(in oklab, var(--bg) calc(var(--s) * 66%), transparent)
+    );
   }
   .content {
     position: relative;
@@ -244,7 +250,8 @@
     font-weight: 700;
     letter-spacing: 0.16em;
     text-transform: uppercase;
-    color: var(--text-muted);
+    /* Small type on the lightest band of the scrim: stronger than muted. */
+    color: color-mix(in oklab, var(--text) 82%, transparent);
   }
   .name-row {
     display: flex;
@@ -263,7 +270,7 @@
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--text-muted);
+    color: color-mix(in oklab, var(--text) 82%, transparent);
   }
   .controls {
     display: flex;

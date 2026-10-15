@@ -36,8 +36,12 @@ art, now-playing mark — AR-4), artwork reactivity. Do not add a fifth.
 Dynamic colour: three roles (Primary, Secondary, Tertiary) + backdrop wash, guarded by a
 contrast chain (structural scrim minimums + per-cover composite-ceiling clamping).
 `Auto` = Full here. The roles are tuned as *text* colours against the room, so a
-surface painted with them (the artist hero's local palette) needs a `--bg` scrim
-(62% → 42% left to right in `ArtistHero.svelte`) to keep its own text readable.
+surface painted with them (the artist hero's local palette) needs a `--bg` scrim to keep
+its own text readable. `ArtistHero.svelte` runs it top to bottom (20% → 50% → 66%: light
+behind the big name, deepest behind the small bio and links), scaled by `--scrim` from
+`lib/heroScrim.ts` — the palette's worst-case OKLCH lightness, so deep palettes keep
+only a 0.3 floor (for the blurred photo) and pale ones get the full scrim. The small
+kicker and fan count use `--text` at 82% rather than muted.
 
 ## 3. Layout
 
