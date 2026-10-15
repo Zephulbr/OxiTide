@@ -254,6 +254,7 @@
       onPlay={playFrom}
       onAddToPlaylist={(t) => playlistActions.openPicker([t])}
       playingTrackId={player.state.current?.track_id ?? null}
+      playbackRunning={player.state.playing}
     />
     <h3>Albums</h3>
     <ul class="results">

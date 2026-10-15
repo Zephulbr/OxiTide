@@ -8,6 +8,7 @@
   } from "../albumVolumes";
   import { api, trackToQueueItem } from "../api";
   import { copyText } from "../clipboard";
+  import { errorMessage } from "../errors";
   import { formatDuration } from "../format";
   import { menuFor } from "../menu.svelte";
   import { trackMenuItems } from "../menus";
@@ -24,6 +25,7 @@
   import { trackDrag, type DragParams } from "../drag";
   import Icon from "./Icon.svelte";
   import Cover from "./Cover.svelte";
+  import NowPlayingMark from "./NowPlayingMark.svelte";
   import TrackFilter from "./TrackFilter.svelte";
   let {
     view,
@@ -42,6 +44,7 @@
     /// headings reset the row number per volume.
     sections,
     playingTrackId = null,
+    playbackRunning = false,
   }: {
     view: TrackView;
     favorites: Favorites;
@@ -74,6 +77,8 @@
     sections?: VolumeSection[];
     /// Highlights the playing row (accent tint + title, ringed thumb).
     playingTrackId?: number | null;
+    /// Playback is running: the playing row's mark spins (still when paused).
+    playbackRunning?: boolean;
   } = $props();
 
   /// Row height follows the density setting (spec §7.4): 46 / 38 px,
@@ -166,12 +171,17 @@
     );
   }
 
-  function queueOne(t: Track) {
+  /// Add to the end of the queue, or (`next`) right after the playing track.
+  function queueOne(t: Track, next = false) {
     if (trackFlags.isBlocked(t)) {
       blockedNotice(t.title);
       return;
     }
-    void api.queueAdd([trackToQueueItem(t)]);
+    const items = [trackToQueueItem(t)];
+    (next ? api.queuePlayNext(items) : api.queueAdd(items)).then(
+      () => toasts.show(next ? `"${t.title}" plays next` : `Added "${t.title}" to the queue`),
+      (e) => toasts.show(errorMessage(e), { severity: "error" }),
+    );
   }
 
   async function play(index: number) {
@@ -370,6 +380,7 @@
                 blocked: reasons.length > 0,
                 play: () => play(index),
                 startRadio: () => void playTrackRadio(t.id, toasts),
+                playNext: () => queueOne(t, true),
                 addToQueue: () => queueOne(t),
                 addToPlaylist: () => onAddToPlaylist?.(t),
                 copyTitle: () => void copyText(t.title),
@@ -377,7 +388,13 @@
                 playlist: playlistActions && { ...playlistActions, canMove: !view.engaged },
               })}
           >
-            <td class="muted tnum num-cell">{row.number ?? index + 1}</td>
+            <td class="muted tnum num-cell">
+              {#if playingTrackId !== null && t.id === playingTrackId}
+                <span class="num-mark"><NowPlayingMark playing={playbackRunning} size={16} label={playbackRunning ? "Now playing" : "Paused"} /></span>
+              {:else}
+                {row.number ?? index + 1}
+              {/if}
+            </td>
             <td class="thumb-cell">
               <button class="thumb" onclick={() => play(index)} disabled={loadingAll} aria-label="Play" title="Play">
                 <Cover uuid={t.album?.cover} size={80} radius={0} alt="" />
@@ -532,6 +549,7 @@
     height: var(--row-height);
     border-bottom: 1px solid var(--line);
     user-select: none;
+    transition: background-color var(--dur-micro);
   }
   .row:hover {
     background: var(--surface-2);
@@ -585,6 +603,12 @@
   .num-cell,
   .time-cell {
     text-align: right;
+  }
+  /* The playing row's number gives way to the spinning mark, right-aligned
+     with the digits. */
+  .num-mark {
+    display: inline-flex;
+    vertical-align: middle;
   }
   .title-text,
   .cell-text {

@@ -41,9 +41,29 @@ contrast chain (structural scrim minimums + per-cover composite-ceiling clamping
   rail 260–420px (overlay below 760px), floating 80px glass player bar with the seek as
   its top edge.
 - Now Playing "Editorial Split": artwork left (Disc default / Sleeve), metadata column
-  right (eyebrow, Fraunces title, italic byline, badges, tabs Lyrics / Next / Info).
+  right (eyebrow, Fraunces title, italic byline, badges, tabs Lyrics / Next / Info). The
+  sidebar steps aside; the queue rail can stay docked beside it (Now Playing narrows).
+- Queue rail (`QueueRail.svelte`, shared with Mini and the Rack drawers): header with a
+  Fraunces "Queue" title, "N up next · 1 h 32 min left", locate-current and clear icon
+  buttons (circle-dot = "go to current", shared with lyrics). Full-bleed rows (hover and
+the current tint run edge to edge) 58px / 48px (compact): cover, title over muted artist, duration on the
+  right (swapped for × on hover/focus); a grip fades in at the left edge on hover. The
+  current row takes the 18% accent tint, accent title and the now-playing mark over its
+  cover, with 12px of air above and below it (gaps close during a drag); played rows sit
+  at 50%. The docked rail glides open/closed by width (260 ms, rows clipped, not
+  reflowed); the floating one slides in from the right. It opens scrolled to the current track and follows track
+  changes only while the old current row was in view. Drag is pointer-based: the row
+  lifts into a glass ghost that follows the pointer, rows between glide apart, and the
+  landing slot shows as a dashed accent outline; the list auto-scrolls near its edges and
+  Escape cancels. Keyboard: ↑/↓ move between rows, Alt+↑/↓ reorder, Delete removes.
 - Track rows 46px (Comfortable) / 38px (Compact); cover thumbs in mixed lists; playing
-  row = 18% accent tint + accent title; no left bars, no animated equalizers.
+  row = 18% accent tint + accent title, and its number gives way to the now-playing mark;
+  no left bars, no animated equalizers.
+- Now-playing mark (`NowPlayingMark.svelte`): a glyph-size accent record (grooves, centre
+  label, one white sheen arc) — the disc motif, not a new element. It spins at one turn
+  per 2 s while playback runs and eases to a stop on pause; still without ambient motion.
+  Used on the playing track-table row (# column), the queue's current cover and the
+  sidebar's playing playlist (both over a 55% `--bg` scrim).
 - List views follow the shared page header ([../DESIGN.md](../DESIGN.md) §2.1). History is
   a play log (clock time gutter · cover · title/artist · album · length; day headers with
   plays and listening time; partial plays at 60%). Stats: three lit summary cards

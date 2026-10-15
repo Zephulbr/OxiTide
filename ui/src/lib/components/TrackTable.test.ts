@@ -8,7 +8,7 @@ import type { Track } from "../api";
 import TrackTable from "./TrackTable.svelte";
 
 vi.mock("../api", () => ({
-  api: { playTracks: vi.fn(), queueAdd: vi.fn(), getTrackFlags: vi.fn(async () => []) },
+  api: { playTracks: vi.fn(), queueAdd: vi.fn(async () => {}), queuePlayNext: vi.fn(async () => {}),getTrackFlags: vi.fn(async () => []) },
   trackToQueueItem: (t: Track) => t,
 }));
 
@@ -68,6 +68,21 @@ describe("TrackTable semantics", () => {
     const title = document.querySelector('th[aria-sort="ascending"]');
     expect(title?.textContent).toContain("Title");
     expect(document.querySelectorAll('thead th[scope="col"]').length).toBeGreaterThan(5);
+  });
+
+  it("swaps the playing row's number for the now-playing mark", () => {
+    const view = {
+      filter: "", sort: "title", direction: "asc", engaged: true, preparing: false, error: "",
+      items: [track(1), track(2)], setFilter: vi.fn(), toggleSort: vi.fn(), clearSort: vi.fn(),
+      retry: vi.fn(), sourceIndex: (index: number) => index,
+    } as unknown as TrackView;
+    const favorites = { hasTrack: () => false, toggleTrack: vi.fn() } as unknown as Favorites;
+    const toasts = { show: vi.fn() } as unknown as Toasts;
+    render(TrackTable, { view, favorites, toasts, onPlay: vi.fn(), playingTrackId: 2, playbackRunning: true });
+
+    const cells = document.querySelectorAll("tbody tr.row td.num-cell");
+    expect(cells[0].textContent?.trim()).toBe("1");
+    expect(cells[1].querySelector('[role="img"]')?.getAttribute("aria-label")).toBe("Now playing");
   });
 
   it("labels virtualized rows with their index in the full list", () => {

@@ -232,8 +232,12 @@
     right: 0;
     bottom: 0;
     z-index: 11;
-    max-height: 85vh;
-    overflow: auto;
+    /* A definite height: the queue's virtual list sizes to it and scrolls
+       inside (an auto-height sheet would render every row). */
+    display: flex;
+    flex-direction: column;
+    height: 85vh;
+    overflow: hidden;
     background: var(--surface-1);
     backdrop-filter: blur(var(--glass-blur));
     border-top: 1px solid var(--line);

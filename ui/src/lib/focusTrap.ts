@@ -11,7 +11,10 @@ export function focusables(root: HTMLElement): HTMLElement[] {
 /// destroy (guarded so an unmounted opener is not resurrected).
 export function focusTrap(node: HTMLElement, options: { restore?: boolean } = {}) {
   const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-  (focusables(node)[0] ?? node).focus();
+  // preventScroll: a Modal focuses before `portal` lifts it to <body>, while
+  // still inside its opener; a scrolling focus would drag that opener's
+  // (overflow-hidden) ancestors along and leave the layout shifted.
+  (focusables(node)[0] ?? node).focus({ preventScroll: true });
 
   function onKeydown(event: KeyboardEvent) {
     if (event.key !== "Tab") return;

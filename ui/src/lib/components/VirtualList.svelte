@@ -11,6 +11,7 @@
     drag,
     bottomPadding = "0px",
     role = undefined,
+    scroller = $bindable(null),
     children,
   }: {
     total: number;
@@ -21,6 +22,8 @@
     bottomPadding?: string;
     /// ARIA role for the scroller; rows then carry the matching item role.
     role?: "list";
+    /// The scrolling element, for hosts that drive scrollTop themselves.
+    scroller?: HTMLElement | null;
     children: Snippet<[number]>;
   } = $props();
 
@@ -48,6 +51,7 @@
   class="scroll"
   {role}
   style="max-height:{maxHeight};padding-bottom:{bottomPadding}"
+  bind:this={scroller}
   bind:clientHeight={viewport}
   onscroll={onScroll}
   use:trackDrag={drag ?? NO_DRAG}

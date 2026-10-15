@@ -130,7 +130,7 @@
   </div>
   {#if dto.synced && !following}
     <button class="jump" onclick={() => (following = true)} aria-label="Jump to current line">
-      <Icon name="locate-fixed" size={16} />
+      <Icon name="circle-dot" size={16} />
     </button>
   {/if}
 </div>

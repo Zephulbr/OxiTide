@@ -11,6 +11,7 @@
   import { playSource, playlistRowState } from "../playSource.svelte";
   import Icon from "./Icon.svelte";
   import Loading from "./Loading.svelte";
+  import NowPlayingMark from "./NowPlayingMark.svelte";
   import PlaylistCover from "./PlaylistCover.svelte";
   import PlaylistTree from "./PlaylistTree.svelte";
 
@@ -20,12 +21,15 @@
     nav,
     actions,
     rail = false,
+    playing = false,
   }: {
     entries: readonly CollectionEntry[];
     collection: CollectionTree;
     nav: Nav;
     actions: CollectionActions;
     rail?: boolean;
+    /// Playback is running: the playing source's mark spins.
+    playing?: boolean;
   } = $props();
 
   const recency = playlistRecency();
@@ -85,6 +89,7 @@
             {nav}
             {actions}
             {rail}
+            {playing}
           />
         </div>
       {/if}
@@ -118,7 +123,7 @@
           alt=""
         />
         {#if rowState === "source" || rowState === "source-active"}
-          <span class="playing-mark" aria-hidden="true"><Icon name="play" size={12} /></span>
+          <span class="playing-mark" aria-hidden="true"><NowPlayingMark {playing} size={16} /></span>
         {/if}
       </span>
       {#if !rail}<span class="label">{entry.title}</span>{/if}
@@ -167,8 +172,7 @@
     inset: 0;
     display: grid;
     place-items: center;
-    background: rgba(0, 0, 0, 0.45);
-    color: var(--text);
+    background: color-mix(in srgb, var(--bg) 55%, transparent);
   }
   .label {
     flex: 1;

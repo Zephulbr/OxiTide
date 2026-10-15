@@ -611,6 +611,7 @@ export const api = {
   queueReorder: (from: number, to: number) => invoke<void>("queue_reorder", { from, to }),
   queueRemove: (index: number) => invoke<void>("queue_remove", { index }),
   queueAdd: (items: QueueItem[]) => invoke<void>("queue_add", { items }),
+  queuePlayNext: (items: QueueItem[]) => invoke<void>("queue_play_next", { items }),
   queueClear: () => invoke<void>("queue_clear"),
   getPlaybackState: () => invoke<PlaybackState>("get_playback_state"),
   getRestoredSession: () => invoke<RestoredSession | null>("get_restored_session"),

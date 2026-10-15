@@ -85,11 +85,16 @@
         aria-pressed={player.state.shuffle}
         title="Shuffle the rest of the queue"
       ><Icon name="shuffle" size={18} /></button>
-      <button class="ibtn" onclick={() => player.prev()} aria-label="Previous"><Icon name="skip-back-solid" size={22} /></button>
-      <button class="ibtn play" onclick={() => player.playPause()} aria-label="Play/Pause">
+      <button class="ibtn" onclick={() => player.prev()} aria-label="Previous" title="Previous"><Icon name="skip-back-solid" size={22} /></button>
+      <button
+        class="ibtn play"
+        onclick={() => player.playPause()}
+        aria-label={player.state.playing ? "Pause" : "Play"}
+        title={player.state.playing ? "Pause" : "Play"}
+      >
         <PlayPauseGlyph playing={player.state.playing} size={32} />
       </button>
-      <button class="ibtn" onclick={() => player.next()} aria-label="Next"><Icon name="skip-forward-solid" size={22} /></button>
+      <button class="ibtn" onclick={() => player.next()} aria-label="Next" title="Next"><Icon name="skip-forward-solid" size={22} /></button>
       <button
         class="ibtn"
         class:active={player.state.repeat !== "off"}
@@ -131,11 +136,18 @@
       ><Icon name="minimize-2" size={18} /></button>
 
       {#if player.state.bit_perfect_notice && !player.state.error}
-        <span style="color:var(--warning)">{player.state.bit_perfect_notice}</span>
+        <!-- Output notices can be a sentence long: an icon with the text as
+             its tooltip keeps the right zone from reflowing. -->
+        <span
+          class="notice"
+          role="img"
+          aria-label={player.state.bit_perfect_notice}
+          title={player.state.bit_perfect_notice}
+        ><Icon name="alert-triangle" size={16} /></span>
       {/if}
     </div>
   {:else}
-    <span class="muted">Nothing playing</span>
+    <span class="idle muted"><Icon name="music" size={16} /> Nothing playing</span>
   {/if}
 </div>
 
@@ -307,5 +319,20 @@
   }
   @media (max-width: 900px) {
     .badge.bp { display: none; }
+  }
+  .notice {
+    display: inline-grid;
+    place-items: center;
+    color: var(--warning);
+    cursor: help;
+  }
+  /* Empty bar: a quiet centered line across all three zones. */
+  .idle {
+    grid-column: 1 / -1;
+    justify-self: center;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
   }
 </style>

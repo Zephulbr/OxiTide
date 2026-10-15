@@ -13,7 +13,9 @@ body {
   /* Single full-height row: the columns run to the window bottom and the
      player bar floats over them (see .player), so lists scroll behind its
      glass instead of stopping above it. */
-  grid-template-rows: 1fr;
+  /* minmax(0, …): a tall column (the queue) must never stretch the row past
+     the window — that would push Now Playing's centered content off-screen. */
+  grid-template-rows: minmax(0, 1fr);
   height: 100%;
   position: relative;
   z-index: 1;
@@ -33,17 +35,14 @@ body {
   height: 100%;
 }
 
-/* Now Playing owns the whole window: the sidebar and the docked queue step
-   aside while it is open (the floating queue overlay can still appear). */
+/* Now Playing owns the window: the sidebar steps aside while it is open. The
+   queue stays available — docked beside it (Now Playing narrows), or as the
+   floating overlay on narrow windows. */
 .app[data-now-playing="true"] {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
 }
-.app[data-now-playing="true"] .sidebar,
-.app[data-now-playing="true"] .queue:not(.floating) {
+.app[data-now-playing="true"] .sidebar {
   display: none;
-}
-.app[data-now-playing="true"] .main {
-  grid-column: 1 / -1;
 }
 
 /* Film grain: one static feTurbulence tile at a fixed ~4.5% (spec §10.1 —
@@ -134,8 +133,19 @@ body {
   border-left: 1px solid var(--line);
   width: var(--queue-width);
 }
-/* No overflow clipping here: the resize handle straddles the left edge. */
-.queue { position: relative; }
+/* No overflow clipping here: the resize handle straddles the left edge. The
+   column is a flex box so the queue rail fills it and scrolls inside. */
+.queue {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+/* The rail keeps its full width while the column glides open/closed
+   (lib/queueTransition.ts), so its rows are clipped rather than reflowed. */
+.queue > .queue-rail {
+  min-width: calc(var(--queue-width) - 1px);
+}
 .queue-resize {
   position: absolute;
   left: -3px;
@@ -293,8 +303,17 @@ h3 {
 :focus:not(:focus-visible) { outline: none; }
 ::selection { background: var(--accent); color: var(--on-accent); }
 
-/* Component states (spec §8): press scale, disabled fade. */
-button { transition: transform var(--dur-micro) var(--ease-in), opacity var(--dur-micro); }
+/* Component states (spec §8): press scale, disabled fade, and hover washes
+   that ease in rather than snap. Components that set their own `transition`
+   replace this list, so they must name the properties they animate. */
+button {
+  transition:
+    transform var(--dur-micro) var(--ease-in),
+    opacity var(--dur-micro),
+    background-color var(--dur-micro),
+    color var(--dur-micro),
+    border-color var(--dur-micro);
+}
 button:not(:disabled):active { transform: scale(0.98); }
 button:disabled { opacity: 0.4; cursor: default; }
 

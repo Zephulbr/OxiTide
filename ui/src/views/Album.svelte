@@ -197,6 +197,7 @@
       sections={volumes ?? undefined}
       onPlay={playFrom}
       playingTrackId={player.state.current?.track_id ?? null}
+      playbackRunning={player.state.playing}
       onAddToPlaylist={(t) => playlistActions.openPicker([t])}
     />
   </div>

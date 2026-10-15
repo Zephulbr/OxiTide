@@ -110,7 +110,7 @@
     background: color-mix(in srgb, var(--accent) 14%, transparent);
   }
   .media.playing:not(.inert):hover {
-    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    background: color-mix(in srgb, var(--accent) 20%, transparent);
   }
   .media.playing .title {
     color: var(--accent);

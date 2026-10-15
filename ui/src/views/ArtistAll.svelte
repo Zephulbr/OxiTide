@@ -250,6 +250,7 @@
       onEndReached={() => void pager.loadMore()}
       onAddToPlaylist={(t) => playlistActions.openPicker([t])}
       playingTrackId={player.state.current?.track_id ?? null}
+      playbackRunning={player.state.playing}
     />
   {/if}
 {:else if activeAlbumKind}

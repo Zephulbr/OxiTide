@@ -163,6 +163,7 @@
     onEndReached={() => void favoritesPager.loadMore()}
     onAddToPlaylist={(t) => playlistActions.openPicker([t])}
     playingTrackId={player.state.current?.track_id ?? null}
+    playbackRunning={player.state.playing}
   />
   {#if favoritesPager.error}
     <ErrorState message={favoritesPager.error} onRetry={() => favoritesPager.loadMore()} />

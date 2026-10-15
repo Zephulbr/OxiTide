@@ -10,6 +10,8 @@ export interface TrackMenuContext {
   play(): void | Promise<void>;
   /// Starts a TIDAL track radio, replacing the queue.
   startRadio(): void;
+  /// Inserts the track right after the playing one.
+  playNext(): void;
   addToQueue(): void;
   addToPlaylist(): void;
   copyTitle(): void;
@@ -39,6 +41,12 @@ export function trackMenuItems(ctx: TrackMenuContext): MenuItem[] {
       label: "Track Radio",
       disabled: playbackBlocked,
       run: () => ctx.startRadio(),
+    },
+    {
+      id: "play-next",
+      label: "Play next",
+      disabled: playbackBlocked,
+      run: () => ctx.playNext(),
     },
     {
       id: "add-queue",
@@ -81,14 +89,20 @@ export function trackMenuItems(ctx: TrackMenuContext): MenuItem[] {
 export function queueMenuItems(ctx: {
   index: number;
   playNow(): void;
+  /// Move the row to right after the current track; absent when it is the
+  /// current or already the next track.
+  playNext?: () => void;
   copyTitle(): void;
   remove(): void;
 }): MenuItem[] {
-  return [
-    { id: "play-now", label: "Play now", run: () => ctx.playNow() },
+  const items: MenuItem[] = [{ id: "play-now", label: "Play now", run: () => ctx.playNow() }];
+  const playNext = ctx.playNext;
+  if (playNext) items.push({ id: "play-next", label: "Play next", run: () => playNext() });
+  items.push(
     { id: "copy-title", label: "Copy title", run: () => ctx.copyTitle() },
     { id: "remove", label: "Remove", run: () => ctx.remove() },
-  ];
+  );
+  return items;
 }
 
 /// The artist-page overflow ("More") menu: Share always, the artist mix when

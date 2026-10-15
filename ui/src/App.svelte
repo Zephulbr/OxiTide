@@ -4,6 +4,8 @@
   import Sidebar from "./lib/components/Sidebar.svelte";
   import PlayerBar from "./lib/components/PlayerBar.svelte";
   import QueueRail from "./lib/components/QueueRail.svelte";
+  import { fade } from "svelte/transition";
+  import { queueDock, queueFloat } from "./lib/queueTransition";
   import Backdrop from "./lib/components/Backdrop.svelte";
   import Login from "./views/Login.svelte";
   import Mini from "./views/Mini.svelte";
@@ -661,6 +663,7 @@
       {collection}
       {playlistActions}
       actions={collectionActions}
+      playing={player.state.playing}
     />
     <main class="main" id="main" tabindex="-1">
       {#if error}<p style="color:var(--danger)">{error}</p>{/if}
@@ -679,10 +682,17 @@
     </main>
     {#if nav.queueOpen}
       {#if queueOverlay}
-        <div class="queue-backdrop" onclick={() => nav.toggleQueue()} aria-hidden="true"></div>
-        <aside class="queue floating"><QueueRail {player} /></aside>
+        <div
+          class="queue-backdrop"
+          onclick={() => nav.toggleQueue()}
+          aria-hidden="true"
+          transition:fade={{ duration: appearance.reducedMotion ? 120 : 260 }}
+        ></div>
+        <aside class="queue floating" transition:queueFloat={{ reduced: appearance.reducedMotion }}>
+          <QueueRail {player} />
+        </aside>
       {:else}
-        <aside class="queue">
+        <aside class="queue" transition:queueDock={{ reduced: appearance.reducedMotion }}>
           <div
             class="queue-resize"
             onpointerdown={startQueueDrag}

@@ -59,7 +59,7 @@
       <div class="rk-head"><h2 class="rk-name">Queue</h2>
         <button class="rk-key sm" onclick={() => mini.toggleQueue()} aria-label="Close queue" title="Close"><Icon name="x" size={12} /></button>
       </div>
-      <div class="rk-win queuewin"><QueueRail {player} /></div>
+      <div class="rk-win queuewin"><QueueRail {player} title={false} /></div>
     </div>
   {/if}
 </div>

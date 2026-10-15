@@ -6,3 +6,10 @@ import type { Density } from "./appearance.svelte";
 export function rowHeightFor(density: Density): number {
   return density === "compact" ? 38 : 46;
 }
+
+/// Queue rows stack title over artist beside a larger cover, so they run
+/// taller than track-table rows. Pure JS (no CSS token): QueueRail sets the
+/// row height inline from this value.
+export function queueRowHeightFor(density: Density): number {
+  return density === "compact" ? 48 : 58;
+}

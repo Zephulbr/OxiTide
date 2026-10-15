@@ -249,6 +249,7 @@
         {toasts}
         onPlay={playFrom}
         playingTrackId={player.state.current?.track_id ?? null}
+        playbackRunning={player.state.playing}
         onAddToPlaylist={(track) => playlistActions.openPicker([track])}
       />
     </section>

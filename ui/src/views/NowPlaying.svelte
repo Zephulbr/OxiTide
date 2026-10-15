@@ -53,8 +53,10 @@
   const nextUp = $derived.by(() => {
     const current = track;
     if (!current) return [];
-    const index = player.state.queue.findIndex((item) => item.track_id === current.track_id);
-    if (index < 0) return [];
+    // The engine's position, not a track-id search: a track queued twice
+    // must not make Next up restart from its first copy.
+    const index = player.state.current_index ?? -1;
+    if (index < 0 || player.state.queue[index]?.track_id !== current.track_id) return [];
     return player.state.queue.slice(index + 1, index + 4);
   });
 

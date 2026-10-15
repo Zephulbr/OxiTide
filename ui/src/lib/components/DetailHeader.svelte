@@ -161,7 +161,11 @@
     padding: 0 24px;
     border-radius: var(--radius-control);
     font-weight: 600;
-    transition: background var(--dur-micro) var(--ease-in), color var(--dur-micro) var(--ease-in);
+    transition:
+      background var(--dur-micro) var(--ease-in),
+      color var(--dur-micro) var(--ease-in),
+      filter var(--dur-micro) var(--ease-in),
+      transform var(--dur-micro) var(--ease-in);
   }
   .btn-play {
     background: var(--accent);

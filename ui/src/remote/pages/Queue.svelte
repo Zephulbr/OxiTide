@@ -79,7 +79,7 @@
     <h1>Queue</h1>
     {#if currentIndex !== null}
       <button class="icon-btn" aria-label="Show current track" onclick={jumpToCurrent}>
-        <Icon name="locate-fixed" size={20} />
+        <Icon name="circle-dot" size={20} />
       </button>
     {/if}
     <button class="pill" disabled={total === 0} onclick={confirmClear}>Clear</button>

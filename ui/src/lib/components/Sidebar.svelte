@@ -19,9 +19,12 @@
     collection,
     playlistActions,
     actions,
+    playing = false,
   }: {
     nav: Nav;
     rail: boolean;
+    /// Playback is running (spins the playing playlist's mark).
+    playing?: boolean;
     onToggleRail: () => void;
     collection: CollectionTree;
     playlistActions: PlaylistActions;
@@ -200,7 +203,7 @@
       {#if collection.error}
         <p class="muted tree-error">{collection.error}</p>
       {:else}
-        <PlaylistTree entries={collection.root} {collection} {nav} {actions} {rail} />
+        <PlaylistTree entries={collection.root} {collection} {nav} {actions} {rail} {playing} />
       {/if}
     </div>
   </div>

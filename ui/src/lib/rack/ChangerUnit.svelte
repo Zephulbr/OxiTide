@@ -66,7 +66,7 @@
     </div>
     <button class="rk-key sm page" onclick={() => (browse = first + CHANGER_SLOTS)} disabled={first + CHANGER_SLOTS >= length} aria-label="Next discs"><Icon name="chevron-right" size={12} /></button>
   </div>
-  <div class="rk-win queuewin"><QueueRail {player} /></div>
+  <div class="rk-win queuewin"><QueueRail {player} title={false} /></div>
 </section>
 
 <style>

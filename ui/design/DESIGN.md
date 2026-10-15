@@ -84,7 +84,10 @@ dividers.
 | `--dur-view` | 240 ms | panes, drawers, overlays |
 | `--dur-mood` | 1200 ms | colour glides on track change |
 
-Only `transform` and `opacity` animate (plus registered colour/number properties).
+Only `transform` and `opacity` animate (plus registered colour/number properties), with
+one exception: hover/press washes (`background-color`, `color`, `border-color`) ease over
+`--dur-micro` — the global `button` rule in `app.css` carries them, and track rows do the
+same. Menus mark the selected option with the accent, not a second background.
 Ambient motion only while playing. `prefers-reduced-motion` is a hard floor in every
 mode: ambient off, glides instant, slides become 120 ms fades.
 

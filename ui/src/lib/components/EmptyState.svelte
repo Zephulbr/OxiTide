@@ -7,7 +7,7 @@
 
 <div class="empty-state">
   <h2 class="empty-title">{message}</h2>
-  {#if action}<button onclick={action.run}>{action.label}</button>{/if}
+  {#if action}<button class="tool-btn" onclick={action.run}>{action.label}</button>{/if}
 </div>
 
 <style>

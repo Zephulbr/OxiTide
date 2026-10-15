@@ -197,10 +197,14 @@
   .menu button.active:not(:disabled) {
     background: var(--surface-2);
   }
+  /* Selected (the current sort/filter) is told apart from the hover wash by
+     the accent, not a second background. */
   .menu button.selected {
-    background: var(--surface-2);
-    color: var(--text);
+    color: var(--accent);
     font-weight: 600;
+  }
+  .menu button.selected :global(svg) {
+    color: var(--accent);
   }
   .menu button.danger {
     color: var(--danger);

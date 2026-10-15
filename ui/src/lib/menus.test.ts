@@ -58,6 +58,7 @@ function baseCtx(overrides: Partial<TrackMenuContext> = {}): TrackMenuContext {
     favorites: favorites(false),
     play: vi.fn(),
     startRadio: vi.fn(),
+    playNext: vi.fn(),
     addToQueue: vi.fn(),
     addToPlaylist: vi.fn(),
     copyTitle: vi.fn(),
@@ -67,10 +68,11 @@ function baseCtx(overrides: Partial<TrackMenuContext> = {}): TrackMenuContext {
 }
 
 describe("trackMenuItems", () => {
-  it("lists the seven base actions", () => {
+  it("lists the eight base actions", () => {
     expect(trackMenuItems(baseCtx()).map((i) => i.id)).toEqual([
       "play",
       "radio",
+      "play-next",
       "add-queue",
       "add-playlist",
       "favorite",
@@ -88,8 +90,10 @@ describe("trackMenuItems", () => {
   });
 
   it("labels favorite according to state", () => {
-    expect(trackMenuItems(baseCtx({ favorites: favorites(true) }))[4].label).toBe("Unfavorite");
-    expect(trackMenuItems(baseCtx({ favorites: favorites(false) }))[4].label).toBe("Favorite");
+    const favorite = (fav: boolean) =>
+      trackMenuItems(baseCtx({ favorites: favorites(fav) })).find((i) => i.id === "favorite");
+    expect(favorite(true)?.label).toBe("Unfavorite");
+    expect(favorite(false)?.label).toBe("Favorite");
   });
 
   it("disables playback actions for a blocked track but keeps the rest", () => {
@@ -98,6 +102,7 @@ describe("trackMenuItems", () => {
     expect(byId.get("play")?.disabled).toBe(true);
     expect(byId.get("radio")?.disabled).toBe(true);
     expect(byId.get("add-queue")?.disabled).toBe(true);
+    expect(byId.get("play-next")?.disabled).toBe(true);
     expect(byId.get("favorite")?.disabled).toBeFalsy();
     expect(byId.get("copy-title")?.disabled).toBeFalsy();
     expect(byId.get("add-playlist")?.disabled).toBeFalsy();
@@ -109,6 +114,7 @@ describe("trackMenuItems", () => {
 
     expect(vi.mocked(ctx.play)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(ctx.startRadio)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(ctx.playNext)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(ctx.addToQueue)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(ctx.addToPlaylist)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(ctx.copyTitle)).toHaveBeenCalledTimes(1);
@@ -123,6 +129,7 @@ describe("trackMenuItems", () => {
     expect(items.map((i) => i.id)).toEqual([
       "play",
       "radio",
+      "play-next",
       "add-queue",
       "add-playlist",
       "favorite",
@@ -160,6 +167,7 @@ describe("trackMenuItems", () => {
     expect(items.map((i) => i.id)).toEqual([
       "play",
       "radio",
+      "play-next",
       "add-queue",
       "add-playlist",
       "favorite",
@@ -198,6 +206,14 @@ describe("queueMenuItems", () => {
     expect(playNow).toHaveBeenCalledTimes(1);
     expect(copyTitle).toHaveBeenCalledTimes(1);
     expect(remove).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers play next only when given", () => {
+    const playNext = vi.fn();
+    const items = queueMenuItems({ index: 3, playNow: vi.fn(), playNext, copyTitle: vi.fn(), remove: vi.fn() });
+    expect(items.map((i) => i.id)).toEqual(["play-now", "play-next", "copy-title", "remove"]);
+    items[1].run();
+    expect(playNext).toHaveBeenCalledTimes(1);
   });
 });
 

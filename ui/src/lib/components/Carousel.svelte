@@ -29,7 +29,9 @@
   function step(direction: -1 | 1) {
     if (!el) return;
     const card = el.querySelector<HTMLElement>(".media");
-    const amount = card ? card.offsetWidth + 16 : el.clientWidth * 0.8;
+    // Step by one card plus the row's real gap so repeated clicks stay aligned.
+    const gap = parseFloat(getComputedStyle(el).columnGap) || 0;
+    const amount = card ? card.offsetWidth + gap : el.clientWidth * 0.8;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     el.scrollBy({ left: direction * amount, behavior: reduced ? "auto" : "smooth" });
   }
