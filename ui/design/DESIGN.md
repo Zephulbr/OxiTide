@@ -60,6 +60,33 @@ family — `.search-input` for search/filter, `SortSelect` for sort, `.tool-btn`
 label) for actions — never mixed with round icon buttons in the same row. Rack skins
 `.page-head > h2` as a printed label and `.tool-btn` as a light-bar key.
 
+**Settings page** (`views/Settings.svelte`, 2026-10-15 overhaul). A left category nav
+(`role="tablist"`, vertical, Lucide icon + label; a scrolling strip below 760px of page width)
+beside a content column capped at 1320px. Each tab is a `.cols` grid of hand-balanced column
+stacks (`.col`; two where 520px each fit, about 1060px of content, else one; `.wide` stacks span
+both). Stacks keep a constant height: controls that do not apply are disabled, not removed
+(EQ bands, ReplayGain sliders, AutoMix). The shorter stack's cards share the leftover height
+evenly, each spreading it across its rows, so both columns always end on one line — when
+adding a card, put it in the shorter stack. Switching tabs animates with transform and
+opacity only: the nav highlight is one pill that glides between tabs (`--dur-view`,
+`--ease-in-out`; first placement instant; hidden in Rack, whose keys light their own lamp), and
+the new tab's cards rise in (10px, `--dur-view`) staggered 45ms down the page; reduced motion
+drops the lift and the glide, leaving a quick fade. Each category is a stack of `SettingsSection` cards
+(`lib/components/settings/`: icon chip, 15/650 title, optional description and header action)
+holding hairline-separated `SettingRow`s — label and help text left, control right, stacked
+for wide controls; a row wraps by its own width (flex-wrap), so the same row works full-width,
+in a half-width column card, or in a narrow window. The page-level nav switch uses a
+container query on `.settings`, not a viewport one. Controls are one family: `Toggle`/`ToggleRow` (native checkbox over a drawn switch; the
+whole row toggles), `Segmented` (2–4 short choices; keeps the `.segmented`/`.active` hooks),
+`Select` (longer lists or options with a hint line; the `SortSelect` panel recipe, flips
+upward near the window bottom), `Slider` (filled track, `origin="center"` for gains, vertical
+for the EQ bank), `NumberField` (clamps and writes back), `Button` (the `.tool-btn` recipe plus
+primary/danger), `Notice` (info/warning/success callout). Order within a tab is by how often a
+setting is touched: Playback runs Streaming → Output → Volume leveling → Equalizer → Crossfade
+→ AutoMix. Sections hide controls that do not apply (fallback only with exclusive/ASIO, Dynamic
+color not in Rack, AutoMix needs a crossfade). Rack skins the switch as a square lamp key in
+`rack.css`.
+
 **Collection grids** share one recipe: `repeat(auto-fill, minmax(160–168px, 1fr))`, 12px
 card padding, hover = `--surface-2` (Albums, Mixes, Playlists, Feed releases). Profiles
 draw each artist as a **record** (portrait as the label on a vinyl disc; `--vinyl*`

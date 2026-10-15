@@ -11,6 +11,12 @@
   import { countdownLabel, firewallHint, lastSeenLabel, parsePort } from "../remoteSettings";
   import Icon from "./Icon.svelte";
   import Modal from "./Modal.svelte";
+  import Button from "./settings/Button.svelte";
+  import Notice from "./settings/Notice.svelte";
+  import Select from "./settings/Select.svelte";
+  import SettingRow from "./settings/SettingRow.svelte";
+  import SettingsSection from "./settings/SettingsSection.svelte";
+  import ToggleRow from "./settings/ToggleRow.svelte";
 
   let status = $state<RemoteStatus | null>(null);
   let devices = $state<RemoteDevice[]>([]);
@@ -159,6 +165,24 @@
   }
 
   const hint = $derived(firewallHint(navigator.userAgent, status?.port ?? status?.settings.port ?? 47820));
+
+  const summary = $derived.by(() => {
+    if (status?.listening && status.url) {
+      return `Listening on ${status.url} · ${
+        status.connected === 1 ? "1 phone connected" : `${status.connected} phones connected`
+      }`;
+    }
+    if (status?.enabled && status.error) return "";
+    return "Off. A phone on the same network opens a remote page — nothing to install.";
+  });
+
+  const interfaceOptions = $derived([
+    { value: "", label: `Automatic${status?.address ? ` (${status.address})` : ""}` },
+    ...(status?.interfaces ?? []).map((iface) => ({
+      value: iface.ip,
+      label: `${iface.ip} — ${iface.name}`,
+    })),
+  ]);
 </script>
 
 {#snippet approvals()}
@@ -166,129 +190,132 @@
     <div class="approval" role="alert">
       <span>Pair <strong>{request.name}</strong> from {request.ip}?</span>
       <span class="actions">
-        <button class="secondary" onclick={() => resolve(request.id, false)}>Decline</button>
-        <button class="primary" onclick={() => resolve(request.id, true)}>Allow</button>
+        <Button onclick={() => resolve(request.id, false)}>Decline</Button>
+        <Button variant="primary" onclick={() => resolve(request.id, true)}>Allow</Button>
       </span>
     </div>
   {/each}
 {/snippet}
 
-<h3>Phone remote</h3>
-<div class="row">
-  <div class="main">
-    <label class="head">
-      <input
-        type="checkbox"
-        checked={status?.enabled ?? false}
-        disabled={busy || !status}
-        onchange={(e) => setEnabled((e.target as HTMLInputElement).checked)}
-      />
-      <span>Control OxiTide from your phone</span>
-    </label>
-    {#if status?.listening && status.url}
-      <span class="muted">
-        Listening on {status.url} ·
-        {status.connected === 1 ? "1 phone connected" : `${status.connected} phones connected`}
-      </span>
-    {:else if status?.enabled && status.error}
-      <span class="warn">Not listening: {status.error}</span>
-    {:else}
-      <span class="muted">Off. A phone on the same network opens a remote page — nothing to install.</span>
-    {/if}
-  </div>
+<SettingsSection
+  title="Phone remote"
+  description="Control playback from a phone on the same network. Nothing to install on the phone."
+  icon="smartphone"
+>
+  <ToggleRow
+    label="Control OxiTide from your phone"
+    description={summary}
+    checked={status?.enabled ?? false}
+    disabled={busy || !status}
+    onchange={setEnabled}
+  >
+    {#snippet below()}
+      {#if status?.enabled && status.error && !status.listening}
+        <Notice kind="warning">Not listening: {status.error}</Notice>
+      {/if}
+    {/snippet}
+  </ToggleRow>
+
   {#if status?.listening}
-    <button class="primary" onclick={beginPairing}>Pair a phone</button>
+    <SettingRow label="Pair a phone" description="Scan a QR code with the phone's camera.">
+      <Button variant="primary" icon="smartphone" onclick={beginPairing}>Pair a phone</Button>
+    </SettingRow>
   {/if}
-</div>
 
-{@render approvals()}
+  {#if (status?.pending.length ?? 0) > 0}
+    <div class="approvals">{@render approvals()}</div>
+  {/if}
 
-{#if status}
-  <div class="field">
-    <label class="field-label" for="remote-interface">Address in the QR code</label>
-    <select
-      id="remote-interface"
-      value={status.settings.interface}
-      onchange={(e) => saveSettings({ iface: (e.target as HTMLSelectElement).value })}
+  {#if status}
+    <SettingRow
+      label="Address in the QR code"
+      description="Which of this PC's network addresses the phone connects to."
     >
-      <option value="">Automatic{status.address ? ` (${status.address})` : ""}</option>
-      {#each status.interfaces as iface (iface.ip)}
-        <option value={iface.ip}>{iface.ip} — {iface.name}</option>
-      {/each}
-    </select>
-  </div>
-  <div class="field">
-    <label class="field-label" for="remote-port">Port</label>
-    <input
-      id="remote-port"
-      class="port"
-      inputmode="numeric"
-      bind:value={portText}
-      onchange={commitPort}
-    />
-    {#if status.port && status.port !== status.settings.port}
-      <span class="muted">(in use; listening on {status.port})</span>
-    {/if}
-  </div>
-  <label class="field">
-    <input
-      type="checkbox"
+      <Select
+        label="Address in the QR code"
+        width={280}
+        value={status.settings.interface}
+        options={interfaceOptions}
+        onchange={(iface) => saveSettings({ iface })}
+      />
+    </SettingRow>
+    <SettingRow
+      label="Port"
+      description={status.port && status.port !== status.settings.port
+        ? `In use; listening on ${status.port}.`
+        : "Between 1024 and 65526."}
+    >
+      <input
+        class="search-input port"
+        inputmode="numeric"
+        aria-label="Port"
+        bind:value={portText}
+        onchange={commitPort}
+      />
+    </SettingRow>
+    <ToggleRow
+      label="Approve new phones on this PC"
+      description="A new phone must be allowed here before it can connect."
       checked={status.settings.approve_new_devices}
-      onchange={(e) => saveSettings({ approve: (e.target as HTMLInputElement).checked })}
+      onchange={(approve) => saveSettings({ approve })}
     />
-    <span>Approve new phones on this PC</span>
-  </label>
-{/if}
+  {/if}
 
-<h4>Paired phones</h4>
-{#if devices.length === 0}
-  <p class="muted">No phones paired yet.</p>
-{:else}
-  <ul class="devices">
-    {#each devices as device (device.id)}
-      <li>
-        <span class="dot" class:on={device.connected} aria-hidden="true"></span>
-        {#if renaming?.id === device.id}
-          <input
-            class="rename"
-            maxlength="40"
-            aria-label={`Name for ${device.name}`}
-            bind:value={renaming.name}
-            use:focusSelect
-            onblur={commitRename}
-            onkeydown={(e) => {
-              if (e.key === "Enter") void commitRename();
-              if (e.key === "Escape") renaming = null;
-            }}
-          />
-        {:else}
-          <span class="name">{device.name}</span>
-          <button
-            class="icon"
-            aria-label={`Rename ${device.name}`}
-            title="Rename"
-            onclick={() => (renaming = { id: device.id, name: device.name })}
-          >
-            <Icon name="pencil" size={14} />
-          </button>
-        {/if}
-        <span class="muted">
-          {device.connected ? "Connected" : `Last seen ${lastSeenLabel(device.last_seen_ms, now)}`}
-        </span>
-        <button class="danger" onclick={() => revoke(device)} aria-label={`Revoke ${device.name}`}>
-          Revoke
-        </button>
-      </li>
-    {/each}
-  </ul>
-{/if}
+  <SettingRow label="Paired phones" stacked>
+    {#if devices.length === 0}
+      <p class="muted none">No phones paired yet.</p>
+    {:else}
+      <ul class="devices">
+        {#each devices as device (device.id)}
+          <li>
+            <span class="dot" class:on={device.connected} aria-hidden="true"></span>
+            {#if renaming?.id === device.id}
+              <input
+                class="search-input rename"
+                maxlength="40"
+                aria-label={`Name for ${device.name}`}
+                bind:value={renaming.name}
+                use:focusSelect
+                onblur={commitRename}
+                onkeydown={(e) => {
+                  if (e.key === "Enter") void commitRename();
+                  if (e.key === "Escape") renaming = null;
+                }}
+              />
+            {:else}
+              <span class="name">{device.name}</span>
+              <button
+                class="icon"
+                aria-label={`Rename ${device.name}`}
+                title="Rename"
+                onclick={() => (renaming = { id: device.id, name: device.name })}
+              >
+                <Icon name="pencil" size={14} />
+              </button>
+            {/if}
+            <span class="muted seen">
+              {device.connected ? "Connected" : `Last seen ${lastSeenLabel(device.last_seen_ms, now)}`}
+            </span>
+            <Button variant="danger" aria-label={`Revoke ${device.name}`} onclick={() => revoke(device)}>
+              Revoke
+            </Button>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+  </SettingRow>
 
-{#if error}<p class="warn">{error}</p>{/if}
-<p class="muted">{hint}</p>
-<p class="muted">
-  The remote works on your home network only. Artwork loads from TIDAL's servers, so the phone
-  needs internet access. Keep the phone screen on while you use it.
-</p>
+  {#if error}
+    <div class="inset"><Notice kind="warning">{error}</Notice></div>
+  {/if}
+  <div class="foot muted">
+    <p>{hint}</p>
+    <p>
+      The remote works on your home network only. Artwork loads from TIDAL's servers, so the phone
+      needs internet access. Keep the phone screen on while you use it.
+    </p>
+  </div>
+</SettingsSection>
 
 {#if pairing}
   <Modal title="Pair a phone" onclose={closePairing}>
@@ -302,101 +329,23 @@
       </p>
       {@render approvals()}
       <p class="actions">
-        <button class="secondary" onclick={closePairing}>Cancel</button>
+        <Button onclick={closePairing}>Cancel</Button>
       </p>
     </div>
   </Modal>
 {/if}
 
 <style>
-  .row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin: 8px 0;
-    padding: 10px 12px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius-control);
-    background: var(--surface-1);
-  }
-  .main {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 0;
-  }
-  .head {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .field {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 8px 0;
-  }
-  .field-label {
-    color: var(--text-muted);
-  }
   .port {
-    width: 7ch;
+    width: 8ch;
+    padding: 7px 10px;
+    text-align: right;
   }
-  .warn {
-    color: var(--warning);
-  }
-  h4 {
-    margin: 16px 0 4px;
-    font-size: 13px;
-    color: var(--text-muted);
-    font-weight: 600;
-  }
-  .devices {
-    list-style: none;
+  .none {
     margin: 0;
-    padding: 0;
   }
-  .devices li {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 12px;
-    border-bottom: 1px solid var(--line);
-  }
-  .devices .name {
-    font-weight: 600;
-  }
-  .devices button.danger {
-    margin-left: auto;
-  }
-  .devices button.icon {
-    display: inline-grid;
-    place-items: center;
-    padding: 4px;
-    border-radius: var(--radius-control);
-    color: var(--text-muted);
-  }
-  .devices button.icon:hover {
-    color: var(--text);
-    background: var(--surface-2);
-  }
-  .rename {
-    width: 18ch;
-    padding: 2px 6px;
-    border: 1px solid var(--accent);
-    border-radius: var(--radius-control);
-    background: var(--surface-2);
-  }
-  .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--line);
-    flex: none;
-  }
-  .dot.on {
-    background: var(--success);
+  .approvals {
+    padding: 10px 18px 0;
   }
   .approval {
     display: flex;
@@ -404,7 +353,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    margin: 8px 0;
+    margin: 0 0 8px;
     padding: 10px 12px;
     border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
     border-radius: var(--radius-control);
@@ -416,25 +365,68 @@
     gap: 8px;
     margin: 0;
   }
-  button.primary,
-  button.secondary,
-  button.danger {
-    padding: 6px 14px;
+  .devices {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border: 1px solid var(--line);
     border-radius: var(--radius-control);
+  }
+  .devices li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+  }
+  .devices li + li {
+    border-top: 1px solid var(--line);
+  }
+  .devices .name {
     font-weight: 600;
   }
-  button.primary {
-    background: var(--accent);
-    color: var(--on-accent);
+  .seen {
+    margin-left: auto;
+    font-size: 12.5px;
   }
-  button.secondary {
-    border: 1px solid var(--line);
-    background: var(--surface-2);
+  .devices button.icon {
+    display: inline-grid;
+    place-items: center;
+    padding: 4px;
+    border-radius: var(--radius-control);
     color: var(--text-muted);
   }
-  button.danger {
-    border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
-    color: var(--danger);
+  .devices button.icon:hover {
+    background: var(--surface-2);
+    color: var(--text);
+  }
+  .rename {
+    width: 18ch;
+    padding: 4px 8px;
+  }
+  .dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--text) 25%, transparent);
+  }
+  .dot.on {
+    background: var(--success);
+  }
+  .inset {
+    padding: 14px 18px 0;
+  }
+  .foot {
+    padding: 12px 18px 14px;
+    border-top: 1px solid var(--line);
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+  .foot p {
+    margin: 0;
+  }
+  .foot p + p {
+    margin-top: 6px;
   }
   .pairing {
     display: flex;

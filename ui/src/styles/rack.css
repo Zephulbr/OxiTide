@@ -368,6 +368,48 @@
   text-shadow: 0 0 6px color-mix(in srgb, var(--rack-vfd) 50%, transparent);
 }
 
+/* ---- Settings controls (lib/components/settings/*) ----
+   The switch keeps its native checkbox invisible over a drawn track; Rack's
+   checkbox lamp rule above would shrink that input, so it is pinned full-size
+   again, and the drawn track becomes a square lamp key. */
+:root[data-mode="rack"] .rack-main .switch input[type="checkbox"] {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+:root[data-mode="rack"] .rack-main .switch .track {
+  border: 0;
+  border-radius: 3px;
+  background: #1a1918;
+  box-shadow: 0 0 0 1px #000;
+}
+:root[data-mode="rack"] .rack-main .switch.on .track {
+  background: var(--rack-lamp);
+  box-shadow: 0 0 0 1px #000, 0 0 8px var(--rack-lamp-glow);
+}
+:root[data-mode="rack"] .rack-main .switch .knob {
+  border-radius: 2px;
+  background: #3a3836;
+  box-shadow: none;
+}
+:root[data-mode="rack"] .rack-main .switch.on .knob {
+  background: #0b0a09;
+}
+:root[data-mode="rack"] .rack-main .set-section h3 {
+  margin: 0;
+}
+:root[data-mode="rack"] .rack-main .set-section {
+  background: rgba(0, 0, 0, 0.25);
+}
+:root[data-mode="rack"] .rack-main [role="tablist"][aria-orientation="vertical"] {
+  margin: 0;
+}
+/* The settings nav's gliding highlight is a soft pill; Rack's keys light
+   their own lamp instead. */
+:root[data-mode="rack"] .rack-main .tab-indicator {
+  display: none;
+}
+
 /* ---- Track tables inside panes ---- */
 :root[data-mode="rack"] .rack-main .table-scroll.pane th {
   font: 600 10.5px/1 var(--font-ui);

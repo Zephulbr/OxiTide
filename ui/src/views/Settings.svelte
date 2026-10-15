@@ -4,17 +4,20 @@
   import {
     api,
     SCROBBLE_STATUS_EVENT,
+    type AnalyzerStyle,
     type CacheStatus,
     type Config,
     type CrossfadeSettings,
+    type DeckFace,
     type DspSettings,
     type EqSettings,
+    type LampColor,
+    type MeterStyle,
     type OutputDevice,
+    type Quality,
     type ReplayGainSettings,
     type ScrobbleServiceId,
     type ScrobbleStatusDto,
-    type TransitionReplay,
-    type TransitionStyle,
   } from "../lib/api";
   import { canToggle, queuedLabel, serviceLabel } from "../lib/scrobble";
   import ConfirmDialog from "../lib/components/ConfirmDialog.svelte";
@@ -25,30 +28,41 @@
   import RemoteSettings from "../lib/components/RemoteSettings.svelte";
   import UpdatesSection from "../lib/components/UpdatesSection.svelte";
   import Loading from "../lib/components/Loading.svelte";
+  import AutoMixPanel from "../lib/components/settings/AutoMixPanel.svelte";
+  import Button from "../lib/components/settings/Button.svelte";
+  import EqBands from "../lib/components/settings/EqBands.svelte";
+  import NumberField from "../lib/components/settings/NumberField.svelte";
+  import Notice from "../lib/components/settings/Notice.svelte";
+  import Segmented from "../lib/components/settings/Segmented.svelte";
+  import Select from "../lib/components/settings/Select.svelte";
+  import SettingRow from "../lib/components/settings/SettingRow.svelte";
+  import SettingsSection from "../lib/components/settings/SettingsSection.svelte";
+  import Slider from "../lib/components/settings/Slider.svelte";
+  import Toggle from "../lib/components/settings/Toggle.svelte";
+  import ToggleRow from "../lib/components/settings/ToggleRow.svelte";
   import {
     appearance,
+    clampLampBrightness,
     fontStack,
+    type Density,
     type DynamicColorSetting,
+    type CoverShape,
     type TypefaceSetting,
+    type UiMode,
   } from "../lib/appearance.svelte";
+  import type { ThemeSetting } from "../lib/theme";
   import {
     CROSSFADE_MAX_MS,
     DB_STEP,
-    EQ_BANDS_HZ,
     EQ_MAX_DB,
     EQ_PRESETS,
     REPLAY_GAIN_MAX_DB,
-    TRANSITION_STYLES,
-    bandLabel,
     clampDb,
     defaultDspSettings,
     effectivePreamp,
     formatCrossfade,
-    formatReplayTime,
-    describeTransition,
     formatDb,
     matchPreset,
-    nearEndTarget,
     presetBands,
     withBand,
   } from "../lib/dsp";
@@ -57,6 +71,7 @@
   import { optimistic } from "../lib/optimistic";
   import type { QualityDisplay } from "../lib/quality";
   import { SETTINGS_TABS, nextTab, type SettingsTab } from "../lib/settingsTabs";
+  import { TAB_META, formatSize, usageFraction } from "../lib/settingsView";
   import type { Toasts } from "../lib/toasts.svelte";
   import type { Player } from "../lib/player.svelte";
   import { SHORTCUTS } from "../lib/shortcuts";
@@ -105,6 +120,98 @@
     save: saveHotkey,
     report: apply,
   });
+
+  // Option lists. Typed here so each control's value type is the setting's own
+  // union rather than a widened string.
+  const THEME_OPTIONS: { value: ThemeSetting; label: string; icon: "moon" | "sun" | "monitor" }[] = [
+    { value: "dark", label: "Dark", icon: "moon" },
+    { value: "light", label: "Light", icon: "sun" },
+    { value: "system", label: "System", icon: "monitor" },
+  ];
+  const MODE_OPTIONS: { value: UiMode; label: string }[] = [
+    { value: "atmosphere", label: "Atmosphere" },
+    { value: "instrument", label: "Instrument" },
+    { value: "rack", label: "Hi-Fi Rack" },
+  ];
+  const MODE_HELP: Record<UiMode, string> = {
+    atmosphere: "Glass over the album art, with motion that follows the music.",
+    instrument: "Minimal animation and visual effects.",
+    rack: "Swaps the sidebar and player bar for a component stack. Always dark, whatever the theme.",
+  };
+  const DYNAMIC_OPTIONS: { value: DynamicColorSetting; label: string }[] = [
+    { value: "auto", label: "Default" },
+    { value: "full", label: "Full" },
+    { value: "accent", label: "Accent-only" },
+    { value: "off", label: "Off" },
+  ];
+  const TYPEFACE_OPTIONS: { value: TypefaceSetting; label: string; hint?: string }[] = [
+    { value: "auto", label: "Default", hint: "Chosen by the mode" },
+    { value: "manrope", label: "Manrope" },
+    { value: "inter", label: "Inter" },
+    { value: "system", label: "System", hint: "Your operating system's UI font" },
+    { value: "custom", label: "Custom…", hint: "Any installed font" },
+  ];
+  const DENSITY_OPTIONS: { value: Density; label: string }[] = [
+    { value: "comfortable", label: "Comfortable" },
+    { value: "compact", label: "Compact" },
+  ];
+  const COVER_OPTIONS: { value: CoverShape; label: string }[] = [
+    { value: "disc", label: "Disc" },
+    { value: "sleeve", label: "Sleeve" },
+  ];
+  const DECK_OPTIONS: { value: DeckFace; label: string }[] = [
+    { value: "transport", label: "Transport" },
+    { value: "cd", label: "CD player" },
+    { value: "display", label: "Display" },
+  ];
+  const METER_OPTIONS: { value: MeterStyle; label: string }[] = [
+    { value: "needles", label: "Needles" },
+    { value: "bars", label: "Bars" },
+    { value: "led", label: "LED" },
+    { value: "spectrum", label: "Spectrum" },
+  ];
+  const ANALYZER_OPTIONS: { value: AnalyzerStyle; label: string }[] = [
+    { value: "auto", label: "Auto" },
+    { value: "spectrum", label: "Spectrum" },
+    { value: "recorder", label: "Recorder" },
+    { value: "tuner", label: "Tuner" },
+    { value: "eq", label: "EQ" },
+  ];
+  const LAMP_OPTIONS: { value: LampColor; label: string }[] = [
+    { value: "amber", label: "Amber" },
+    { value: "blue", label: "Blue" },
+    { value: "green", label: "Green" },
+    { value: "red", label: "Red" },
+    { value: "white", label: "White" },
+    { value: "cover", label: "Cover" },
+  ];
+  const QUALITY_OPTIONS: { value: Quality; label: string; hint: string }[] = [
+    { value: "high", label: "High", hint: "AAC 320 kbps" },
+    { value: "lossless", label: "Lossless", hint: "CD quality" },
+    { value: "max", label: "Max (Hi-Res)", hint: "Highest available, up to 24-bit" },
+  ];
+  const QUALITY_DISPLAY_OPTIONS: { value: QualityDisplay; label: string }[] = [
+    { value: "compact", label: "Compact" },
+    { value: "detailed", label: "Detailed" },
+  ];
+  const REPLAY_GAIN_OPTIONS: { value: ReplayGainSettings["mode"]; label: string }[] = [
+    { value: "off", label: "Off" },
+    { value: "track", label: "Track" },
+    { value: "album", label: "Album" },
+  ];
+  const FALLBACK_OPTIONS: { value: Config["audio"]["exclusive_fallback"]; label: string }[] = [
+    { value: "shared", label: "Use shared output" },
+    { value: "warn_only", label: "Stop with a message" },
+  ];
+
+  const deviceOptions = $derived([
+    { value: "", label: "System default" },
+    ...devices.map((d) => ({ value: d.id, label: `${d.name}${d.is_default ? " (default)" : ""}` })),
+  ]);
+  const presetOptions = $derived([
+    ...EQ_PRESETS.map((p) => ({ value: p.id, label: p.label })),
+    { value: "custom", label: "Custom", disabled: true },
+  ]);
 
   async function refreshScrobble() {
     try {
@@ -201,26 +308,47 @@
     api.listenbrainzDisconnect().then(refreshScrobble).catch(apply);
   }
 
-  const TAB_LABELS: Record<SettingsTab, string> = {
-    appearance: "Appearance",
-    playback: "Playback",
-    content: "Content",
-    connections: "Connections",
-    storage: "Storage",
-    system: "System",
-  };
-
+  /// A vertical tab list: Up/Down (and Left/Right, for the stacked narrow
+  /// layout) move between categories. Handled keys never reach the global
+  /// transport shortcuts, which would otherwise seek or change the volume.
   function onTabKeydown(event: KeyboardEvent, id: SettingsTab) {
     let target: SettingsTab | null = null;
-    if (event.key === "ArrowRight") target = nextTab(id, 1);
-    else if (event.key === "ArrowLeft") target = nextTab(id, -1);
+    if (event.key === "ArrowDown" || event.key === "ArrowRight") target = nextTab(id, 1);
+    else if (event.key === "ArrowUp" || event.key === "ArrowLeft") target = nextTab(id, -1);
     else if (event.key === "Home") target = SETTINGS_TABS[0];
     else if (event.key === "End") target = SETTINGS_TABS[SETTINGS_TABS.length - 1];
     if (!target) return;
     event.preventDefault();
+    event.stopPropagation();
     tab = target;
     document.getElementById(`settings-tab-${target}`)?.focus();
   }
+
+  // The active-tab highlight is one element that glides between tabs. It is
+  // measured from the active tab's box (so it also fits the wrapped/scrolling
+  // narrow nav) and only its transform animates; the first placement is
+  // instant so it never swoops in from the corner.
+  let nav = $state<HTMLDivElement | null>(null);
+  let pill = $state({ x: 0, y: 0, w: 0, h: 0 });
+  let pillReady = $state(false);
+
+  function placePill() {
+    const el = document.getElementById(`settings-tab-${tab}`);
+    if (!el) return;
+    pill = { x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight };
+  }
+
+  $effect(() => {
+    if (!nav) return;
+    placePill();
+    const frame = requestAnimationFrame(() => (pillReady = true));
+    const observer = new ResizeObserver(placePill);
+    observer.observe(nav);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  });
 
   // Keep the editable draft in sync when the stored value loads/changes.
   $effect(() => {
@@ -371,53 +499,6 @@
     if (config) {
       setDsp({ ...dsp, crossfade: { ...dsp.crossfade, ...patch } });
     }
-  }
-
-  // AutoMix replay lab: the last transition re-rendered in a chosen style,
-  // played through the webview while the player is paused.
-  let replay = $state<{ style: TransitionStyle; result: TransitionReplay } | null>(null);
-  let replayPlaying = $state<TransitionStyle | null>(null);
-  let replayBusy = $state(false);
-  let replayError = $state("");
-  let replayAudio: HTMLAudioElement | null = null;
-  let replayUrl = "";
-
-  function stopReplay() {
-    replayAudio?.pause();
-    replayAudio = null;
-    replayPlaying = null;
-    if (replayUrl) URL.revokeObjectURL(replayUrl);
-    replayUrl = "";
-  }
-
-  async function playReplay(style: TransitionStyle) {
-    replayBusy = true;
-    replayError = "";
-    try {
-      const result = await api.automixRender(style);
-      stopReplay();
-      if (player.state.playing) await player.playPause();
-      replay = { style, result };
-      replayUrl = URL.createObjectURL(result.wav);
-      const audio = new Audio(replayUrl);
-      audio.onended = () => {
-        if (replayAudio === audio) replayPlaying = null;
-      };
-      replayAudio = audio;
-      replayPlaying = style;
-      await audio.play();
-    } catch (e) {
-      replayError = errorMessage(e);
-      stopReplay();
-    } finally {
-      replayBusy = false;
-    }
-  }
-
-  $effect(() => stopReplay);
-
-  function rangeValue(event: Event): number {
-    return Number((event.target as HTMLInputElement).value);
   }
 
   function setDevice(deviceId: string) {
@@ -651,9 +732,8 @@
     api.setShowLabels(enabled).catch(apply);
   }
 
-  function setHistoryMaxEntries(value: number) {
+  function setHistoryMaxEntries(max_entries: number) {
     if (!config) return;
-    const max_entries = Math.min(100_000, Math.max(100, Math.round(value)));
     config = { ...config, history: { ...config.history, max_entries } };
     api.setHistoryMaxEntries(max_entries).catch(apply);
   }
@@ -663,1100 +743,1088 @@
     api.clearHistory().catch(apply);
   }
 
-  function formatMb(bytes: number): string {
-    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  }
+  const cacheUsed = $derived(cacheStatus ? cacheStatus.used_bytes : 0);
+  const cacheFraction = $derived(cacheStatus ? usageFraction(cacheUsed, cacheStatus.max_bytes) : 0);
 </script>
 
-<h2>Settings</h2>
-{#if !config}
-  {#if error}
-    <ErrorState message={error} onRetry={load} />
+<div class="settings">
+  <header class="page-head">
+    <h2>Settings</h2>
+  </header>
+
+  {#if !config}
+    {#if error}
+      <ErrorState message={error} onRetry={load} />
+    {:else}
+      <Loading />
+    {/if}
   {:else}
-    <Loading />
-  {/if}
-{:else}
-  <div class="tabs" role="tablist" aria-label="Settings categories">
-    {#each SETTINGS_TABS as id (id)}
-      <button
-        class="tab"
-        class:active={tab === id}
-        id={`settings-tab-${id}`}
-        role="tab"
-        aria-selected={tab === id}
-        aria-controls={`settings-panel-${id}`}
-        tabindex={tab === id ? 0 : -1}
-        onclick={() => (tab = id)}
-        onkeydown={(event) => onTabKeydown(event, id)}
-      >{TAB_LABELS[id]}</button>
-    {/each}
-  </div>
-
-  {#if tab === "appearance"}
-    <div
-      id="settings-panel-appearance"
-      role="tabpanel"
-      aria-labelledby="settings-tab-appearance"
-    >
-      <h3>Appearance</h3>
-      <div class="field">
-        <span class="field-label">Theme:</span>
-        <div class="segmented" role="group" aria-label="Theme">
-          <button class:active={appearance.theme === "dark"} onclick={() => appearance.setTheme("dark").catch(apply)}>Dark</button>
-          <button class:active={appearance.theme === "light"} onclick={() => appearance.setTheme("light").catch(apply)}>Light</button>
-          <button class:active={appearance.theme === "system"} onclick={() => appearance.setTheme("system").catch(apply)}>System</button>
-        </div>
-      </div>
-      {#if appearance.theme === "system"}
-        <p class="muted">Follows the operating system's app theme.</p>
-      {/if}
-
-      <div class="field">
-        <span class="field-label">Mode:</span>
-        <div class="segmented" role="group" aria-label="Mode">
-          <button class:active={appearance.mode === "atmosphere"} onclick={() => appearance.setMode("atmosphere").catch(apply)}>Atmosphere</button>
-          <button class:active={appearance.mode === "instrument"} onclick={() => appearance.setMode("instrument").catch(apply)}>Instrument</button>
-          <button class:active={appearance.mode === "rack"} onclick={() => appearance.setMode("rack").catch(apply)}>Hi-Fi Rack</button>
-        </div>
-      </div>
-      {#if appearance.mode === "instrument"}
-        <p class="muted">Instrument minimizes animation and visual effects.</p>
-      {:else if appearance.mode === "rack"}
-        <p class="muted">Hi-Fi Rack swaps the sidebar and player bar for a component stack. It is always dark, whatever the theme.</p>
-      {/if}
-
-      {#if appearance.mode === "rack"}
-        <h3>Rack</h3>
-        <div class="field">
-          <span class="field-label">Deck face:</span>
-          <div class="segmented" role="group" aria-label="Deck face">
-            <button class:active={appearance.rack.deck_face === "transport"} onclick={() => appearance.setRack({ deck_face: "transport" }).catch(apply)}>Transport</button>
-            <button class:active={appearance.rack.deck_face === "cd"} onclick={() => appearance.setRack({ deck_face: "cd" }).catch(apply)}>CD player</button>
-            <button class:active={appearance.rack.deck_face === "display"} onclick={() => appearance.setRack({ deck_face: "display" }).catch(apply)}>Display</button>
-          </div>
-        </div>
-        <p class="muted">What the compact deck shows. Now Playing always opens the turntable.</p>
-        <div class="field">
-          <span class="field-label">Amp meters:</span>
-          <div class="segmented" role="group" aria-label="Amp meters">
-            <button class:active={appearance.rack.meters === "needles"} onclick={() => appearance.setRack({ meters: "needles" }).catch(apply)}>Needles</button>
-            <button class:active={appearance.rack.meters === "bars"} onclick={() => appearance.setRack({ meters: "bars" }).catch(apply)}>Bars</button>
-            <button class:active={appearance.rack.meters === "led"} onclick={() => appearance.setRack({ meters: "led" }).catch(apply)}>LED</button>
-            <button class:active={appearance.rack.meters === "spectrum"} onclick={() => appearance.setRack({ meters: "spectrum" }).catch(apply)}>Spectrum</button>
-          </div>
-        </div>
-        <div class="field">
-          <span class="field-label">Now Playing analyzer:</span>
-          <div class="segmented" role="group" aria-label="Now Playing analyzer">
-            <button class:active={appearance.rack.analyzer === "auto"} onclick={() => appearance.setRack({ analyzer: "auto" }).catch(apply)}>Auto</button>
-            <button class:active={appearance.rack.analyzer === "spectrum"} onclick={() => appearance.setRack({ analyzer: "spectrum" }).catch(apply)}>Spectrum</button>
-            <button class:active={appearance.rack.analyzer === "recorder"} onclick={() => appearance.setRack({ analyzer: "recorder" }).catch(apply)}>Recorder</button>
-            <button class:active={appearance.rack.analyzer === "tuner"} onclick={() => appearance.setRack({ analyzer: "tuner" }).catch(apply)}>Tuner</button>
-            <button class:active={appearance.rack.analyzer === "eq"} onclick={() => appearance.setRack({ analyzer: "eq" }).catch(apply)}>EQ</button>
-          </div>
-        </div>
-        <p class="muted">The extra unit in Now Playing. Auto shows the level recorder when the amp's meters are already a spectrum, otherwise the spectrum.</p>
-        <div class="field">
-          <span class="field-label">Lamp color:</span>
-          <div class="segmented" role="group" aria-label="Lamp color">
-            {#each [["amber", "Amber"], ["blue", "Blue"], ["green", "Green"], ["red", "Red"], ["white", "White"], ["cover", "Cover"]] as const as [id, label] (id)}
-              <button class:active={appearance.rack.lamp === id} onclick={() => appearance.setRack({ lamp: id }).catch(apply)}>{label}</button>
-            {/each}
-          </div>
-        </div>
-        <p class="muted">Cover takes the hue of the album art but keeps the brightness of a lit screen; grey covers fall back to amber.</p>
-        <div class="field">
-          <label>
-            <input
-              type="checkbox"
-              checked={appearance.rack.eq_unit}
-              onchange={(e) => appearance.setRack({ eq_unit: (e.target as HTMLInputElement).checked }).catch(apply)}
-            />
-            Show the graphic EQ unit
-          </label>
-        </div>
-        <label class="db-row">
-          <span>Lamp brightness</span>
-          <input
-            type="range"
-            min="40"
-            max="100"
-            step="5"
-            value={appearance.rack.lamp_brightness}
-            aria-valuetext={`${appearance.rack.lamp_brightness} percent`}
-            onchange={(e) => appearance.setRack({ lamp_brightness: Number((e.target as HTMLInputElement).value) }).catch(apply)}
-          />
-          <output>{appearance.rack.lamp_brightness}%</output>
-        </label>
-      {/if}
-
-      <div class="field">
-        <span class="field-label">Dynamic color:</span>
-        <div class="segmented" role="group" aria-label="Dynamic color">
-          <button class:active={config.ui.dynamic_color === "auto"} onclick={() => setDynamicColor("auto")}>Default</button>
-          <button class:active={config.ui.dynamic_color === "full"} onclick={() => setDynamicColor("full")}>Full</button>
-          <button class:active={config.ui.dynamic_color === "accent"} onclick={() => setDynamicColor("accent")}>Accent-only</button>
-          <button class:active={config.ui.dynamic_color === "off"} onclick={() => setDynamicColor("off")}>Off</button>
-        </div>
-      </div>
-
-      <p>
-        <label>
-          Typeface:
-          <select value={appearance.typeface} onchange={(e) => setTypeface((e.target as HTMLSelectElement).value as TypefaceSetting)}>
-            <option value="auto">Default (per mode)</option>
-            <option value="manrope">Manrope</option>
-            <option value="inter">Inter</option>
-            <option value="system">System</option>
-            <option value="custom">Custom…</option>
-          </select>
-        </label>
-      </p>
-      {#if appearance.typeface === "custom"}
-        <div class="custom-font">
-          <input list="font-choices" placeholder="Font family name" bind:value={customDraft} oninput={() => validateFont(customDraft)} />
-          <datalist id="font-choices">
-            {#each fontChoices as family (family)}<option value={family}></option>{/each}
-          </datalist>
-          {#if queryLocalFonts}
-            <button onclick={browseFonts}>Browse installed fonts…</button>
-          {/if}
-          <button onclick={applyCustomFont}>Apply</button>
-          <p style:font-family={fontStack("custom", customDraft)} class="font-preview">
-            The quick brown fox — 0123456789
-          </p>
-          {#if customNote}<p class="muted">{customNote}</p>{/if}
-        </div>
-      {/if}
-
-      <div class="field">
-        <span class="field-label">Density:</span>
-        <div class="segmented" role="group" aria-label="Density">
-          <button class:active={appearance.density === "comfortable"} onclick={() => appearance.setDensity("comfortable").catch(apply)}>Comfortable</button>
-          <button class:active={appearance.density === "compact"} onclick={() => appearance.setDensity("compact").catch(apply)}>Compact</button>
-        </div>
-      </div>
-
-      <div class="field">
-        <span class="field-label">Cover shape:</span>
-        <div class="segmented" role="group" aria-label="Cover shape">
-          <button class:active={appearance.coverShape === "disc"} onclick={() => appearance.setCoverShape("disc").catch(apply)}>Disc</button>
-          <button class:active={appearance.coverShape === "sleeve"} onclick={() => appearance.setCoverShape("sleeve").catch(apply)}>Sleeve</button>
-        </div>
-      </div>
-
-      <div class="field">
-        <span class="field-label">Mini player:</span>
-        <label>
-          <input
-            type="checkbox"
-            checked={config.ui.start_in_mini}
-            onchange={(e) => setStartInMini((e.target as HTMLInputElement).checked)}
-          />
-          Start in mini player
-        </label>
-      </div>
-
-      <div class="field">
-        <label>
-          <input
-            type="checkbox"
-            checked={config.ui.oneko}
-            onchange={(e) => setOneko((e.target as HTMLInputElement).checked)}
-          />
-          Cat
-        </label>
-      </div>
-      {#if appearance.reducedMotion}
-        <p class="muted">Paused while your system's reduced-motion setting is on.</p>
-      {/if}
-      <p class="muted">
-        Credits:
-        <button class="link" type="button" onclick={() => openCredit("https://github.com/adryd325/oneko.js")}>oneko.js by adryd325</button>
-        &amp;
-        <button class="link" type="button" onclick={() => openCredit("https://github.com/kyrie25/spicetify-oneko")}>spicetify-oneko by kyrie25</button>
-      </p>
-    </div>
-  {:else if tab === "playback"}
-    <div id="settings-panel-playback" role="tabpanel" aria-labelledby="settings-tab-playback">
-      <h3>Audio output</h3>
-      <select
-        value={config.audio.output_device}
-        onchange={(e) => setDevice((e.target as HTMLSelectElement).value)}
+    <div class="layout">
+      <div
+        bind:this={nav}
+        class="nav"
+        role="tablist"
+        aria-orientation="vertical"
+        aria-label="Settings categories"
       >
-        <option value="">System default</option>
-        {#each devices as d (d.id)}
-          <option value={d.id}>{d.name}{d.is_default ? " (default)" : ""}</option>
-        {/each}
-      </select>
-
-      <h3>Bit-perfect output</h3>
-      <label>
-        <input
-          type="checkbox"
-          checked={config.audio.exclusive}
-          onchange={(e) => setExclusive((e.target as HTMLInputElement).checked)}
-        />
-        Bit-perfect (exclusive mode)
-      </label>
-      {#if config.audio.output_device.startsWith("asio:")}
-        <p class="muted">
-          ASIO drivers are always exclusive and bit-perfect at 100% volume; lower volume is applied
-          in software. The buffer size follows the driver's own control panel.
-        </p>
-      {/if}
-      <p>
-        <label>
-          If unsupported:
-          <select
-            value={config.audio.exclusive_fallback}
-            onchange={(e) =>
-              setFallback((e.target as HTMLSelectElement).value as "shared" | "warn_only")}
-          >
-            <option value="shared">Fall back to shared output</option>
-            <option value="warn_only">Stop with a message</option>
-          </select>
-        </label>
-      </p>
-      {#if player.state.bit_perfect_notice}
-        <p style="color:var(--warning)">{player.state.bit_perfect_notice}</p>
-      {/if}
-
-      <h3>Sound</h3>
-      <p class="muted">
-        Off by default. Any active processing changes the samples, so bit-perfect output is
-        off while it is in effect{config.audio.exclusive
-          ? "; exclusive mode keeps the device to itself"
-          : ""}. Settings that leave the sound untouched keep bit-perfect.
-      </p>
-      {#if player.state.dsp_active}
-        <p class="muted">Active now: {player.state.dsp_stages.join(", ")}</p>
-      {/if}
-
-      <div class="field">
-        <span class="field-label">ReplayGain:</span>
-        <div class="segmented" role="group" aria-label="ReplayGain">
-          <button aria-pressed={dsp.replay_gain.mode === "off"} class:active={dsp.replay_gain.mode === "off"} onclick={() => setReplayGain({ mode: "off" })}>Off</button>
-          <button aria-pressed={dsp.replay_gain.mode === "track"} class:active={dsp.replay_gain.mode === "track"} onclick={() => setReplayGain({ mode: "track" })}>Track</button>
-          <button aria-pressed={dsp.replay_gain.mode === "album"} class:active={dsp.replay_gain.mode === "album"} onclick={() => setReplayGain({ mode: "album" })}>Album</button>
-        </div>
-      </div>
-      {#if dsp.replay_gain.mode !== "off"}
-        <p class="muted">
-          Levels loudness with TIDAL's ReplayGain data. Album mode keeps the dynamics between
-          tracks of one album and falls back to the track gain.
-        </p>
-        <label class="db-row">
-          <span>Preamp</span>
-          <input
-            type="range"
-            min={-REPLAY_GAIN_MAX_DB}
-            max={REPLAY_GAIN_MAX_DB}
-            step={DB_STEP}
-            value={dsp.replay_gain.preamp_db}
-            aria-valuetext={formatDb(dsp.replay_gain.preamp_db)}
-            oninput={(e) => setReplayGain({ preamp_db: clampDb(rangeValue(e), REPLAY_GAIN_MAX_DB) })}
-          />
-          <output>{formatDb(dsp.replay_gain.preamp_db)}</output>
-        </label>
-        <label class="db-row">
-          <span>Tracks without data</span>
-          <input
-            type="range"
-            min={-REPLAY_GAIN_MAX_DB}
-            max={REPLAY_GAIN_MAX_DB}
-            step={DB_STEP}
-            value={dsp.replay_gain.untagged_db}
-            aria-valuetext={formatDb(dsp.replay_gain.untagged_db)}
-            oninput={(e) => setReplayGain({ untagged_db: clampDb(rangeValue(e), REPLAY_GAIN_MAX_DB) })}
-          />
-          <output>{formatDb(dsp.replay_gain.untagged_db)}</output>
-        </label>
-        <p>
-          <label>
-            <input
-              type="checkbox"
-              checked={dsp.replay_gain.prevent_clipping}
-              onchange={(e) => setReplayGain({ prevent_clipping: (e.target as HTMLInputElement).checked })}
-            />
-            Prevent clipping (never raise a track past its peak)
-          </label>
-        </p>
-        {#if player.state.stream?.replay_gain_db != null}
-          <p class="muted">Current track: {formatDb(Math.round(player.state.stream.replay_gain_db * 10) / 10)}</p>
-        {/if}
-      {/if}
-
-      <p>
-        <label>
-          <input
-            type="checkbox"
-            checked={dsp.eq.enabled}
-            onchange={(e) => setEq({ enabled: (e.target as HTMLInputElement).checked })}
-          />
-          Equalizer
-        </label>
-      </p>
-      {#if dsp.eq.enabled}
-        <div class="field">
-          <label>
-            Preset:
-            <select
-              value={matchPreset(dsp.eq.bands_db)}
-              onchange={(e) => setPreset((e.target as HTMLSelectElement).value)}
-            >
-              {#each EQ_PRESETS as preset (preset.id)}
-                <option value={preset.id}>{preset.label}</option>
-              {/each}
-              <option value="custom" disabled>Custom</option>
-            </select>
-          </label>
-        </div>
-        <div class="eq" role="group" aria-label="Equalizer bands">
-          {#each EQ_BANDS_HZ as hz, index (hz)}
-            <label class="db-row">
-              <span>{bandLabel(hz)} Hz</span>
-              <input
-                type="range"
-                min={-EQ_MAX_DB}
-                max={EQ_MAX_DB}
-                step={DB_STEP}
-                value={dsp.eq.bands_db[index] ?? 0}
-                aria-valuetext={formatDb(dsp.eq.bands_db[index] ?? 0)}
-                oninput={(e) => setBand(index, rangeValue(e))}
-              />
-              <output>{formatDb(dsp.eq.bands_db[index] ?? 0)}</output>
-            </label>
-          {/each}
-        </div>
-        <p>
-          <label>
-            <input
-              type="checkbox"
-              checked={dsp.eq.auto_preamp}
-              onchange={(e) => setEq({ auto_preamp: (e.target as HTMLInputElement).checked })}
-            />
-            Automatic preamp (lowers the level by the largest boost so it cannot clip)
-          </label>
-        </p>
-        {#if dsp.eq.auto_preamp}
-          <p class="muted">Preamp: {formatDb(effectivePreamp(dsp.eq))}</p>
-        {:else}
-          <label class="db-row">
-            <span>Preamp</span>
-            <input
-              type="range"
-              min={-EQ_MAX_DB}
-              max={EQ_MAX_DB}
-              step={DB_STEP}
-              value={dsp.eq.preamp_db}
-              aria-valuetext={formatDb(dsp.eq.preamp_db)}
-              oninput={(e) => setEq({ preamp_db: clampDb(rangeValue(e), EQ_MAX_DB) })}
-            />
-            <output>{formatDb(dsp.eq.preamp_db)}</output>
-          </label>
-        {/if}
-      {/if}
-
-      <label class="db-row">
-        <span>Crossfade</span>
-        <input
-          type="range"
-          min="0"
-          max={CROSSFADE_MAX_MS}
-          step="500"
-          value={dsp.crossfade.duration_ms}
-          aria-valuetext={formatCrossfade(dsp.crossfade.duration_ms)}
-          oninput={(e) => setCrossfade({ duration_ms: rangeValue(e) })}
-        />
-        <output>{formatCrossfade(dsp.crossfade.duration_ms)}</output>
-      </label>
-      {#if dsp.crossfade.duration_ms > 0}
-        <p>
-          <label>
-            <input
-              type="checkbox"
-              checked={dsp.crossfade.skip_same_album}
-              onchange={(e) => setCrossfade({ skip_same_album: (e.target as HTMLInputElement).checked })}
-            />
-            Keep albums gapless (no crossfade between consecutive tracks of one album)
-          </label>
-        </p>
-        <p class="muted">
-          Crossfades when a track ends on its own; skipping and seeking cut straight over.
-        </p>
-
-        <div class="automix">
-          <strong>AutoMix (experimental)</strong>
-          <p class="muted">
-            Each option works on its own so you can A/B them. Transitions that do not fit
-            fall back to the plain crossfade and say why below.
-          </p>
-          <fieldset class="styles">
-            <legend>Transition style</legend>
-            {#each TRANSITION_STYLES as option (option.id)}
-              <label>
-                <input
-                  type="radio"
-                  name="transition-style"
-                  value={option.id}
-                  checked={config.dsp.crossfade.style === option.id}
-                  onchange={() => setCrossfade({ style: option.id })}
-                />
-                {option.label} <span class="muted">— {option.hint}</span>
-              </label>
-            {/each}
-          </fieldset>
-          <label>
-            <input
-              type="checkbox"
-              checked={config.dsp.crossfade.trim_silence}
-              onchange={(e) => setCrossfade({ trim_silence: (e.target as HTMLInputElement).checked })}
-            />
-            Skip silence at track edges (Quick, Blend and Auto always do)
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={config.dsp.crossfade.resample}
-              onchange={(e) => setCrossfade({ resample: (e.target as HTMLInputElement).checked })}
-            />
-            Overlap across sample-rate changes (otherwise the track fades out first)
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={config.dsp.crossfade.beat_match}
-              onchange={(e) => setCrossfade({ beat_match: (e.target as HTMLInputElement).checked })}
-            />
-            Beat-match when tempos fit (aligns beats; no tempo stretching yet)
-          </label>
-          {#if player.state.current && player.state.duration_ms > 0}
-            <button
-              type="button"
-              class="jump"
-              onclick={() => player.seek(nearEndTarget(player.state.duration_ms))}
-            >Jump near the end of this track</button>
-          {/if}
-          {#if player.state.last_transition}
-            {@const summary = describeTransition(player.state.last_transition)}
-            <div class="report" aria-live="polite">
-              <span class="field-label">Last transition:</span> <strong>{summary.title}</strong>
-              <ul>
-                {#each summary.details as line (line)}<li class="muted">{line}</li>{/each}
-              </ul>
-            </div>
-          {/if}
-          <div class="replay" role="group" aria-label="Replay the last transition">
-            <span class="field-label">Replay last transition as:</span>
-            {#each TRANSITION_STYLES as option (option.id)}
-              <button
-                type="button"
-                disabled={replayBusy}
-                aria-pressed={replayPlaying === option.id}
-                onclick={() => (replayPlaying === option.id ? stopReplay() : playReplay(option.id))}
-              >{replayPlaying === option.id ? `Stop ${option.label}` : option.label}</button>
-            {/each}
-            {#if replayError}
-              <p class="muted" role="alert">{replayError}</p>
-            {:else if replay}
-              {@const summary = describeTransition(replay.result.report)}
-              <p class="muted" aria-live="polite">
-                {summary.title}: overlap {formatReplayTime(replay.result.overlap_start_ms)}–{formatReplayTime(replay.result.overlap_end_ms)}
-                · {summary.details.join(" · ")}
-              </p>
-            {:else}
-              <p class="muted">
-                Let a track end on its own with AutoMix on, then compare the same pair in each
-                style. Replays pause playback and keep ReplayGain but skip EQ.
-              </p>
-            {/if}
-          </div>
-        </div>
-      {/if}
-
-      <h3>Streaming quality</h3>
-      <select
-        value={config.streaming.quality}
-        onchange={(e) =>
-          setQuality((e.target as HTMLSelectElement).value as Config["streaming"]["quality"])}
-      >
-        <option value="high">High (AAC 320 kbps)</option>
-        <option value="lossless">Lossless</option>
-        <option value="max">Max (Hi-Res)</option>
-      </select>
-
-      <p>
-        <label>
-          <input
-            type="checkbox"
-            checked={config.streaming.allow_fallback}
-            onchange={(e) => setAllowFallback((e.target as HTMLInputElement).checked)}
-          />
-          Play the best available quality and report it
-        </label>
-      </p>
-
-      <h3>Quality display</h3>
-      <select
-        aria-label="Quality display"
-        value={config.ui.quality_display}
-        onchange={(e) => setDisplay((e.target as HTMLSelectElement).value as QualityDisplay)}
-      >
-        <option value="compact">Compact (MAX / LOSSLESS / AAC)</option>
-        <option value="detailed">Detailed (bit depth / rate / bitrate)</option>
-      </select>
-    </div>
-  {:else if tab === "content"}
-    <div id="settings-panel-content" role="tabpanel" aria-labelledby="settings-tab-content">
-      <h3>Content filters</h3>
-      <p class="muted">
-        OxiTide enforces these client-side: TIDAL does not expose its own filters to
-        third-party clients, and blocked tracks can still appear in TIDAL recommendations.
-        Flagged rows are grayed out and skipped; unknown flags always play.
-      </p>
-      <div class="planned">
-        <div class="planned-main">
-          <label class="planned-head">
-            <input
-              type="checkbox"
-              checked={config.content.block_explicit}
-              onchange={(e) => setBlockExplicit((e.target as HTMLInputElement).checked)}
-            />
-            <span>Block explicit content</span>
-          </label>
-          <span class="muted">
-            Hides explicit tracks and blocks them from playing. Enabling clears the current
-            queue, matching the official app.
-          </span>
-        </div>
-      </div>
-      <div class="planned">
-        <div class="planned-main">
-          <label class="planned-head">
-            <input
-              type="checkbox"
-              checked={config.content.block_ai}
-              onchange={(e) => setBlockAi((e.target as HTMLInputElement).checked)}
-            />
-            <span>Block AI-generated content</span>
-          </label>
-          <span class="muted">
-            Hides tracks TIDAL labels as AI-generated and removes them from the queue.
-            Labels may be missing for some tracks or regions; those play normally.
-          </span>
-        </div>
-      </div>
-      <div class="planned">
-        <div class="planned-main">
-          <label class="planned-head">
-            <input
-              type="checkbox"
-              checked={config.content.show_labels}
-              onchange={(e) => setShowLabels((e.target as HTMLInputElement).checked)}
-            />
-            <span>Show content labels</span>
-          </label>
-          <span class="muted">
-            Tags explicit tracks with <strong>E</strong> and AI-generated tracks with
-            <strong>AI</strong>, even when not blocking them. Turning this off stops the
-            background label lookups too.
-          </span>
-        </div>
-      </div>
-      {#if confirmingBlockExplicit}
-        <ConfirmDialog
-          title="Block explicit content"
-          message="This clears the current queue, matching the TIDAL app. Playback will stop."
-          onconfirm={() => applyBlockExplicit(true)}
-          oncancel={() => (confirmingBlockExplicit = false)}
-        />
-      {/if}
-    </div>
-  {:else if tab === "connections"}
-    <div
-      id="settings-panel-connections"
-      role="tabpanel"
-      aria-labelledby="settings-tab-connections"
-    >
-      <p class="muted">
-        Scrobbling, media controls, Discord Rich Presence, and the phone remote are configurable
-        below.
-      </p>
-      <h3>Scrobbling</h3>
-      {#if scrobble}
-        <div class="scrobble">
-          <div class="scrobble-main">
-            <label class="scrobble-head">
-              <input
-                type="checkbox"
-                checked={scrobble.lastfm.enabled}
-                disabled={!canToggle(scrobble.lastfm)}
-                onchange={(e) => toggleService("lastfm", (e.target as HTMLInputElement).checked)}
-              />
-              <span>Last.fm</span>
-            </label>
-            <span class="muted">{serviceLabel(scrobble.lastfm)}</span>
-            {#if queuedLabel(scrobble.lastfm.queued)}
-              <span class="muted">{queuedLabel(scrobble.lastfm.queued)}</span>
-            {/if}
-            {#if scrobble.lastfm.last_error}
-              <span class="muted">{scrobble.lastfm.last_error}</span>
-            {/if}
-            {#if lastfmAuthNote}<span class="muted">{lastfmAuthNote}</span>{/if}
-          </div>
-          {#if lastfmAuth === "waiting"}
-            <div class="scrobble-actions">
-              <Loading label="Waiting for authorization in your browser…" />
-              <button onclick={() => void pollLastfm()}>I've authorized</button>
-              <button onclick={cancelLastfm}>Cancel</button>
-            </div>
-          {:else if scrobble.lastfm.connected}
-            <button onclick={disconnectLastfm}>Disconnect</button>
-          {:else}
-            <button disabled={!scrobble.lastfm.configured} onclick={() => void connectLastfm()}>
-              Connect
-            </button>
-          {/if}
-        </div>
-
-        <div class="scrobble">
-          <div class="scrobble-main">
-            <label class="scrobble-head">
-              <input
-                type="checkbox"
-                checked={scrobble.listenbrainz.enabled}
-                disabled={!canToggle(scrobble.listenbrainz)}
-                onchange={(e) =>
-                  toggleService("listenbrainz", (e.target as HTMLInputElement).checked)}
-              />
-              <span>ListenBrainz</span>
-            </label>
-            <span class="muted">{serviceLabel(scrobble.listenbrainz)}</span>
-            {#if queuedLabel(scrobble.listenbrainz.queued)}
-              <span class="muted">{queuedLabel(scrobble.listenbrainz.queued)}</span>
-            {/if}
-            {#if scrobble.listenbrainz.last_error}
-              <span class="muted">{scrobble.listenbrainz.last_error}</span>
-            {/if}
-            {#if lbError}<span class="muted">{lbError}</span>{/if}
-          </div>
-          {#if scrobble.listenbrainz.connected}
-            <button onclick={disconnectListenbrainz}>Disconnect</button>
-          {:else}
-            <input type="password" placeholder="ListenBrainz token" bind:value={lbToken} />
-            <button disabled={lbBusy || !lbToken.trim()} onclick={() => void connectListenbrainz()}>
-              Connect
-            </button>
-          {/if}
-        </div>
-      {:else}
-        <p class="muted">Loading scrobbling status…</p>
-      {/if}
-      <p class="muted">
-        Get a ListenBrainz token from
-        <button
-          class="link"
-          type="button"
-          onclick={() => openCredit("https://listenbrainz.org/profile/")}
-        >your profile</button>.
-      </p>
-      <h3>Presence & controls</h3>
-      <div class="planned">
-        <div class="planned-main">
-          <label class="planned-head">
-            <input
-              type="checkbox"
-              checked={config.integrations.discord}
-              onchange={(e) => setDiscord((e.target as HTMLInputElement).checked)}
-            />
-            <span>Discord Rich Presence</span>
-          </label>
-          <span class="muted">
-            Shows the current track on your Discord profile. Requires the Discord desktop client.
-          </span>
-        </div>
-      </div>
-      <div class="planned">
-        <div class="planned-main">
-          <label class="planned-head">
-            <input
-              type="checkbox"
-              checked={config.integrations.smtc}
-              onchange={(e) => setSmtc((e.target as HTMLInputElement).checked)}
-            />
-            <span>Media controls</span>
-          </label>
-          <span class="muted">Hardware media keys and the system media overlay.</span>
-        </div>
-      </div>
-      <RemoteSettings />
-    </div>
-  {:else if tab === "storage"}
-    <div id="settings-panel-storage" role="tabpanel" aria-labelledby="settings-tab-storage">
-      <h3>Cache</h3>
-      {#if cacheStatus}
-        {#if !cacheStatus.usable}
-          <p style="color:var(--warning)">
-            Cache is disabled: the directory is not writable. Streaming is unaffected.
-          </p>
-        {:else if cacheStatus.configured_dir && cacheStatus.dir !== cacheStatus.configured_dir}
-          <p style="color:var(--warning)">
-            The configured cache directory is unusable; using {cacheStatus.dir}.
-          </p>
-        {/if}
-        <p class="muted">
-          {formatMb(cacheStatus.used_bytes)} used{#if cacheStatus.pending_bytes > 0}
-            (+{formatMb(cacheStatus.pending_bytes)} downloading){/if}
-          of {formatMb(cacheStatus.max_bytes)}
-        </p>
-        <p>
-          <label>
-            Max size (MB):
-            <input
-              type="number"
-              min="0"
-              value={config.cache.max_size_mb}
-              onchange={(e) => setCacheMaxMb(Number((e.target as HTMLInputElement).value))}
-            />
-          </label>
-        </p>
-        <p>
-          <label>
-            <input
-              type="checkbox"
-              checked={config.cache.clear_on_exit}
-              onchange={(e) => setClearOnExit((e.target as HTMLInputElement).checked)}
-            />
-            Clear cache on exit
-          </label>
-        </p>
-        <p>
-          <button onclick={refreshCacheStatus}>Refresh</button>
-          <button onclick={clearCache}>Clear cache</button>
-        </p>
-        <p class="muted">Directory: {cacheStatus.dir} (edit cache.dir in config.toml)</p>
-      {/if}
-      <h3>Listening history</h3>
-      <p class="muted">Recorded locally in history.jsonl and used by the History view and stats.</p>
-      <p>
-        <label>
-          <input
-            type="checkbox"
-            checked={config.history.enabled}
-            onchange={(e) => setHistoryEnabled((e.target as HTMLInputElement).checked)}
-          />
-          Record listening history
-        </label>
-      </p>
-      <p>
-        <label>
-          Max entries:
-          <input
-            type="number"
-            min="100"
-            max="100000"
-            value={config.history.max_entries}
-            onchange={(e) => setHistoryMaxEntries(Number((e.target as HTMLInputElement).value))}
-          />
-        </label>
-      </p>
-      <p><button onclick={() => (confirmingHistoryClear = true)}>Clear history</button></p>
-      {#if confirmingHistoryClear}
-        <ConfirmDialog
-          title="Clear listening history"
-          message="This permanently deletes your local play history and stats."
-          onconfirm={clearHistory}
-          oncancel={() => (confirmingHistoryClear = false)}
-        />
-      {/if}
-    </div>
-  {:else}
-    <div id="settings-panel-system" role="tabpanel" aria-labelledby="settings-tab-system">
-      <h3>Account</h3>
-      <KeyringNotice />
-      <p>
-        <button class="logout" onclick={onLogout}>
-          <Icon name="log-out" size={16} />
-          Log out
-        </button>
-      </p>
-      <h3>Desktop</h3>
-      <div class="planned">
-        <div class="planned-main">
-          <label class="planned-head">
-            <input
-              type="checkbox"
-              checked={config.ui.close_to_tray}
-              onchange={(e) => setCloseToTray((e.target as HTMLInputElement).checked)}
-            />
-            <span>Close to tray</span>
-          </label>
-          <span class="muted">
-            Closing the window hides it and keeps playback running; Quit lives in
-            the tray menu.
-          </span>
-        </div>
-      </div>
-
-      <UpdatesSection />
-
-      <h3>Global hotkeys</h3>
-      <p class="muted">
-        Work while OxiTide is in the background. Record a shortcut, or press
-        Backspace/Delete while recording to clear it. A shortcut already used by
-        another action asks whether to reassign it; one another app owns shows a
-        message and keeps the old binding.
-      </p>
-      {#each HOTKEY_ACTIONS as entry (entry.id)}
-        <div class="hotkey-row">
-          <span class="hotkey-label">{entry.label}</span>
-          <kbd>{displayAccelerator(config.hotkeys[entry.id]) || "Not set"}</kbd>
+        <span
+          class="tab-indicator"
+          class:ready={pillReady}
+          aria-hidden="true"
+          style:width="{pill.w}px"
+          style:height="{pill.h}px"
+          style:transform="translate({pill.x}px, {pill.y}px)"
+        ></span>
+        {#each SETTINGS_TABS as id (id)}
           <button
-            id={`hotkey-${entry.id}`}
-            class:recording={capture.recording === entry.id}
-            onclick={() => void capture.start(entry.id)}
-          >{capture.recording === entry.id ? "Press keys…" : "Record"}</button>
-          {#if config.hotkeys[entry.id]}
-            <button onclick={() => void saveHotkey(entry.id, "")}>Clear</button>
-          {/if}
-        </div>
-      {/each}
-      {#if hotkeyConflict}
-        <ConfirmDialog
-          title="Shortcut already in use"
-          message={`"${displayAccelerator(hotkeyConflict.accelerator)}" is already used by "${actionLabel(hotkeyConflict.other)}". Reassign it to "${actionLabel(hotkeyConflict.action)}"?`}
-          confirmLabel="Reassign"
-          onconfirm={confirmReassign}
-          oncancel={cancelReassign}
-        />
-      {/if}
-      <h3>Keyboard shortcuts</h3>
-      <ul>
-        {#each SHORTCUTS as shortcut (shortcut.keys)}
-          <li><kbd>{shortcut.keys}</kbd> <span class="muted">{shortcut.description}</span></li>
+            class="tab"
+            class:active={tab === id}
+            id={`settings-tab-${id}`}
+            role="tab"
+            aria-selected={tab === id}
+            aria-controls={`settings-panel-${id}`}
+            tabindex={tab === id ? 0 : -1}
+            onclick={() => (tab = id)}
+            onkeydown={(event) => onTabKeydown(event, id)}
+          >
+            <Icon name={TAB_META[id].icon} size={17} />
+            <span>{TAB_META[id].label}</span>
+          </button>
         {/each}
-      </ul>
-      <h3>Logs</h3>
-      <p class="muted">Directory: {logsDir || "unavailable"}</p>
-      <p><button onclick={() => api.openLogsFolder().catch(apply)}>Open logs folder</button></p>
+      </div>
+
+      <div class="content">
+        {#if tab === "appearance"}
+          <div id="settings-panel-appearance" role="tabpanel" aria-labelledby="settings-tab-appearance">
+            <div class="cols">
+            <div class="col">
+            <SettingsSection title="Look & feel" icon="palette">
+              <SettingRow
+                label="Theme"
+                description={appearance.theme === "system"
+                  ? "Follows the operating system's app theme."
+                  : "Light or dark surfaces."}
+              >
+                <Segmented
+                  label="Theme"
+                  value={appearance.theme}
+                  options={THEME_OPTIONS}
+                  onchange={(value) => appearance.setTheme(value).catch(apply)}
+                />
+              </SettingRow>
+              <SettingRow label="Mode" description={MODE_HELP[appearance.mode]}>
+                <Segmented
+                  label="Mode"
+                  value={appearance.mode}
+                  options={MODE_OPTIONS}
+                  onchange={(value) => appearance.setMode(value).catch(apply)}
+                />
+              </SettingRow>
+              {#if appearance.mode !== "rack"}
+                <SettingRow
+                  label="Dynamic color"
+                  description="Tints the interface with the colors of the album art. Default follows the mode."
+                >
+                  <Segmented
+                    label="Dynamic color"
+                    value={config.ui.dynamic_color}
+                    options={DYNAMIC_OPTIONS}
+                    onchange={setDynamicColor}
+                  />
+                </SettingRow>
+              {/if}
+            </SettingsSection>
+
+            </div>
+
+            {#if appearance.mode === "rack"}
+              <div class="col wide" style="order: 3">
+              <SettingsSection
+                title="Hi-Fi Rack"
+                description="The component stack's units, meters and lamp."
+                icon="audio-lines"
+              >
+                <SettingRow
+                  label="Deck face"
+                  description="What the compact deck shows. Now Playing always opens the turntable."
+                >
+                  <Segmented
+                    label="Deck face"
+                    value={appearance.rack.deck_face}
+                    options={DECK_OPTIONS}
+                    onchange={(deck_face) => appearance.setRack({ deck_face }).catch(apply)}
+                  />
+                </SettingRow>
+                <SettingRow label="Amp meters">
+                  <Segmented
+                    label="Amp meters"
+                    value={appearance.rack.meters}
+                    options={METER_OPTIONS}
+                    onchange={(meters) => appearance.setRack({ meters }).catch(apply)}
+                  />
+                </SettingRow>
+                <SettingRow
+                  label="Now Playing analyzer"
+                  description="The extra unit in Now Playing. Auto shows the level recorder when the amp's meters are already a spectrum, otherwise the spectrum."
+                >
+                  <Segmented
+                    label="Now Playing analyzer"
+                    value={appearance.rack.analyzer}
+                    options={ANALYZER_OPTIONS}
+                    onchange={(analyzer) => appearance.setRack({ analyzer }).catch(apply)}
+                  />
+                </SettingRow>
+                <SettingRow
+                  label="Lamp color"
+                  description="Cover takes the hue of the album art but keeps the brightness of a lit screen; grey covers fall back to amber."
+                >
+                  <Segmented
+                    label="Lamp color"
+                    value={appearance.rack.lamp}
+                    options={LAMP_OPTIONS}
+                    onchange={(lamp) => appearance.setRack({ lamp }).catch(apply)}
+                  />
+                </SettingRow>
+                <SettingRow label="Lamp brightness">
+                  <Slider
+                    label="Lamp brightness"
+                    min={40}
+                    max={100}
+                    step={5}
+                    value={appearance.rack.lamp_brightness}
+                    format={(v) => `${v}%`}
+                    oncommit={(v) => appearance.setRack({ lamp_brightness: clampLampBrightness(v) }).catch(apply)}
+                  />
+                </SettingRow>
+                <ToggleRow
+                  label="Show the graphic EQ unit"
+                  checked={appearance.rack.eq_unit}
+                  onchange={(eq_unit) => appearance.setRack({ eq_unit }).catch(apply)}
+                />
+              </SettingsSection>
+              </div>
+            {/if}
+
+            <div class="col" style="order: 2">
+            <SettingsSection title="Typography & layout" icon="type">
+              <SettingRow label="Typeface" description="The font used across the interface.">
+                <Select
+                  label="Typeface"
+                  value={appearance.typeface}
+                  options={TYPEFACE_OPTIONS}
+                  onchange={setTypeface}
+                />
+              </SettingRow>
+              {#if appearance.typeface === "custom"}
+                <SettingRow label="Custom font" description="Type an installed font family name." stacked>
+                  <div class="custom-font">
+                    <input
+                      class="search-input"
+                      list="font-choices"
+                      placeholder="Font family name"
+                      aria-label="Custom font family"
+                      bind:value={customDraft}
+                      oninput={() => validateFont(customDraft)}
+                    />
+                    <datalist id="font-choices">
+                      {#each fontChoices as family (family)}<option value={family}></option>{/each}
+                    </datalist>
+                    {#if queryLocalFonts}
+                      <Button onclick={browseFonts}>Browse installed fonts…</Button>
+                    {/if}
+                    <Button variant="primary" onclick={applyCustomFont}>Apply</Button>
+                  </div>
+                  <p style:font-family={fontStack("custom", customDraft)} class="font-preview">
+                    The quick brown fox — 0123456789
+                  </p>
+                  {#if customNote}<p class="muted note">{customNote}</p>{/if}
+                </SettingRow>
+              {/if}
+              <SettingRow label="Density" description="How tightly lists and rows are spaced.">
+                <Segmented
+                  label="Density"
+                  value={appearance.density}
+                  options={DENSITY_OPTIONS}
+                  onchange={(value) => appearance.setDensity(value).catch(apply)}
+                />
+              </SettingRow>
+              <SettingRow label="Cover shape" description="How artwork is drawn on Now Playing.">
+                <Segmented
+                  label="Cover shape"
+                  value={appearance.coverShape}
+                  options={COVER_OPTIONS}
+                  onchange={(value) => appearance.setCoverShape(value).catch(apply)}
+                />
+              </SettingRow>
+            </SettingsSection>
+            </div>
+
+            <div class="col wide" style="order: 4">
+            <SettingsSection title="Extras" icon="sparkles">
+              <ToggleRow
+                label="Cat"
+                description={appearance.reducedMotion
+                  ? "A little cat that follows your cursor. Paused while your system's reduced-motion setting is on."
+                  : "A little cat that follows your cursor around the window."}
+                checked={config.ui.oneko}
+                onchange={setOneko}
+              />
+              <SettingRow label="Credits" stacked>
+                <span class="muted credits">
+                  <button class="link" type="button" onclick={() => openCredit("https://github.com/adryd325/oneko.js")}>oneko.js by adryd325</button>
+                  &amp;
+                  <button class="link" type="button" onclick={() => openCredit("https://github.com/kyrie25/spicetify-oneko")}>spicetify-oneko by kyrie25</button>
+                </span>
+              </SettingRow>
+            </SettingsSection>
+            </div>
+            </div>
+          </div>
+        {:else if tab === "playback"}
+          <div id="settings-panel-playback" role="tabpanel" aria-labelledby="settings-tab-playback">
+            {#if player.state.bit_perfect_notice}
+              <Notice kind="warning">{player.state.bit_perfect_notice}</Notice>
+            {/if}
+            {#if player.state.dsp_active}
+              <Notice kind="info">
+                Sound processing is active ({player.state.dsp_stages.join(", ")}), so bit-perfect
+                output is off{config.audio.exclusive
+                  ? "; exclusive mode still keeps the device to itself"
+                  : ""}.
+              </Notice>
+            {/if}
+
+            <div class="cols">
+            <div class="col">
+            <SettingsSection title="Streaming" icon="radio">
+              <SettingRow label="Streaming quality" description="The quality OxiTide asks TIDAL for.">
+                <Select
+                  label="Streaming quality"
+                  value={config.streaming.quality}
+                  options={QUALITY_OPTIONS}
+                  onchange={setQuality}
+                />
+              </SettingRow>
+              <ToggleRow
+                label="Use the best available quality"
+                description="When a track isn't offered at the quality you chose, play the best available and report it."
+                checked={config.streaming.allow_fallback}
+                onchange={setAllowFallback}
+              />
+              <SettingRow
+                label="Quality badge"
+                description="Compact shows MAX / LOSSLESS / AAC; Detailed shows bit depth, sample rate and bitrate."
+              >
+                <Segmented
+                  label="Quality display"
+                  value={config.ui.quality_display}
+                  options={QUALITY_DISPLAY_OPTIONS}
+                  onchange={setDisplay}
+                />
+              </SettingRow>
+            </SettingsSection>
+
+            <SettingsSection title="Output" icon="headphones">
+              <SettingRow label="Audio device" description="Where OxiTide plays.">
+                <Select
+                  label="Audio output"
+                  width={300}
+                  value={config.audio.output_device}
+                  options={deviceOptions}
+                  onchange={setDevice}
+                />
+              </SettingRow>
+              <ToggleRow
+                label="Bit-perfect output (exclusive mode)"
+                description="Bypasses the system mixer so samples reach the device unchanged. Other apps cannot use the device while it plays."
+                checked={config.audio.exclusive}
+                onchange={setExclusive}
+              />
+              {#if config.audio.exclusive || config.audio.output_device.startsWith("asio:")}
+                <SettingRow
+                  label="If unsupported"
+                  description="What to do when the device refuses exclusive mode."
+                >
+                  <Segmented
+                    label="If unsupported"
+                    value={config.audio.exclusive_fallback}
+                    options={FALLBACK_OPTIONS}
+                    onchange={setFallback}
+                  />
+                </SettingRow>
+              {/if}
+              {#if config.audio.output_device.startsWith("asio:")}
+                <SettingRow label="ASIO driver" stacked>
+                  <Notice kind="info">
+                    ASIO drivers are always exclusive and bit-perfect at 100% volume; lower volume is
+                    applied in software. The buffer size follows the driver's own control panel.
+                  </Notice>
+                </SettingRow>
+              {/if}
+            </SettingsSection>
+
+            <SettingsSection
+              title="Volume leveling"
+              description="ReplayGain evens out loudness between tracks using TIDAL's gain data."
+              icon="volume-2"
+            >
+              <SettingRow
+                label="ReplayGain"
+                description={dsp.replay_gain.mode === "album"
+                  ? "Album keeps the dynamics between tracks of one album and falls back to the track gain."
+                  : "Off by default; any leveling changes the samples."}
+              >
+                <Segmented
+                  label="ReplayGain"
+                  value={dsp.replay_gain.mode}
+                  options={REPLAY_GAIN_OPTIONS}
+                  onchange={(mode) => setReplayGain({ mode })}
+                />
+              </SettingRow>
+              <SettingRow
+                label="Preamp"
+                description="Raises or lowers every track after leveling."
+                disabled={dsp.replay_gain.mode === "off"}
+              >
+                <Slider
+                  label="Preamp"
+                  origin="center"
+                  disabled={dsp.replay_gain.mode === "off"}
+                  min={-REPLAY_GAIN_MAX_DB}
+                  max={REPLAY_GAIN_MAX_DB}
+                  step={DB_STEP}
+                  value={dsp.replay_gain.preamp_db}
+                  format={formatDb}
+                  oninput={(v) => setReplayGain({ preamp_db: clampDb(v, REPLAY_GAIN_MAX_DB) })}
+                />
+              </SettingRow>
+              <SettingRow
+                label="Tracks without data"
+                description="The gain applied to tracks TIDAL has no ReplayGain data for."
+                disabled={dsp.replay_gain.mode === "off"}
+              >
+                <Slider
+                  label="Tracks without data"
+                  origin="center"
+                  disabled={dsp.replay_gain.mode === "off"}
+                  min={-REPLAY_GAIN_MAX_DB}
+                  max={REPLAY_GAIN_MAX_DB}
+                  step={DB_STEP}
+                  value={dsp.replay_gain.untagged_db}
+                  format={formatDb}
+                  oninput={(v) => setReplayGain({ untagged_db: clampDb(v, REPLAY_GAIN_MAX_DB) })}
+                />
+              </SettingRow>
+              <ToggleRow
+                label="Prevent clipping"
+                description={player.state.stream?.replay_gain_db != null && dsp.replay_gain.mode !== "off"
+                  ? `Never raise a track past its peak. Current track: ${formatDb(Math.round(player.state.stream.replay_gain_db * 10) / 10)}.`
+                  : "Never raise a track past its peak."}
+                disabled={dsp.replay_gain.mode === "off"}
+                checked={dsp.replay_gain.prevent_clipping}
+                onchange={(prevent_clipping) => setReplayGain({ prevent_clipping })}
+              />
+            </SettingsSection>
+
+            <SettingsSection title="Crossfade" icon="waves">
+              <SettingRow
+                label="Crossfade"
+                description="Crossfades when a track ends on its own; skipping and seeking cut straight over."
+              >
+                <Slider
+                  label="Crossfade"
+                  min={0}
+                  max={CROSSFADE_MAX_MS}
+                  step={500}
+                  value={dsp.crossfade.duration_ms}
+                  format={formatCrossfade}
+                  oninput={(duration_ms) => setCrossfade({ duration_ms })}
+                />
+              </SettingRow>
+              <ToggleRow
+                label="Keep albums gapless"
+                description="No crossfade between consecutive tracks of one album."
+                disabled={dsp.crossfade.duration_ms === 0}
+                checked={dsp.crossfade.skip_same_album}
+                onchange={(skip_same_album) => setCrossfade({ skip_same_album })}
+              />
+            </SettingsSection>
+            </div>
+            <div class="col">
+            <SettingsSection
+              title="Equalizer"
+              description="Ten bands. Active processing turns bit-perfect off."
+              icon="sliders-vertical"
+            >
+              {#snippet actions()}
+                <Toggle label="Equalizer" checked={dsp.eq.enabled} onchange={(enabled) => setEq({ enabled })} />
+              {/snippet}
+              <SettingRow label="Preset" disabled={!dsp.eq.enabled}>
+                <Select
+                  label="Equalizer preset"
+                  disabled={!dsp.eq.enabled}
+                  value={matchPreset(dsp.eq.bands_db)}
+                  options={presetOptions}
+                  width={180}
+                  onchange={setPreset}
+                />
+                <Button
+                  icon="undo-2"
+                  disabled={!dsp.eq.enabled || matchPreset(dsp.eq.bands_db) === "flat"}
+                  onclick={() => setPreset("flat")}
+                >Reset</Button>
+              </SettingRow>
+              <SettingRow label="Bands" disabled={!dsp.eq.enabled} stacked>
+                <EqBands bands={dsp.eq.bands_db} disabled={!dsp.eq.enabled} onband={setBand} />
+              </SettingRow>
+              <ToggleRow
+                label="Automatic preamp"
+                description="Lowers the level by the largest boost so it cannot clip."
+                disabled={!dsp.eq.enabled}
+                checked={dsp.eq.auto_preamp}
+                onchange={(auto_preamp) => setEq({ auto_preamp })}
+              />
+              <SettingRow label="Preamp" disabled={!dsp.eq.enabled}>
+                {#if dsp.eq.auto_preamp}
+                  <span class="readout">{formatDb(effectivePreamp(dsp.eq))}</span>
+                {:else}
+                  <Slider
+                    label="Equalizer preamp"
+                    origin="center"
+                    disabled={!dsp.eq.enabled}
+                    min={-EQ_MAX_DB}
+                    max={EQ_MAX_DB}
+                    step={DB_STEP}
+                    value={dsp.eq.preamp_db}
+                    format={formatDb}
+                    oninput={(v) => setEq({ preamp_db: clampDb(v, EQ_MAX_DB) })}
+                  />
+                {/if}
+              </SettingRow>
+            </SettingsSection>
+
+            <SettingsSection
+              title="AutoMix (experimental)"
+              description={dsp.crossfade.duration_ms > 0
+                ? "Smarter transitions on top of the crossfade. Each option works on its own so you can A/B them."
+                : "Smarter transitions on top of the crossfade. Set a crossfade length to use it."}
+              icon="sparkles"
+            >
+              <AutoMixPanel
+                crossfade={dsp.crossfade}
+                {player}
+                disabled={dsp.crossfade.duration_ms === 0}
+                onchange={setCrossfade}
+              />
+            </SettingsSection>
+            </div>
+            </div>
+          </div>
+        {:else if tab === "content"}
+          <div id="settings-panel-content" role="tabpanel" aria-labelledby="settings-tab-content">
+            <Notice kind="info">
+              OxiTide enforces these client-side: TIDAL does not expose its own filters to
+              third-party clients, and blocked tracks can still appear in TIDAL recommendations.
+              Flagged rows are grayed out and skipped; unknown flags always play.
+            </Notice>
+            <SettingsSection title="Filters & labels" icon="shield-check">
+              <ToggleRow
+                label="Block explicit content"
+                description="Hides explicit tracks and blocks them from playing. Enabling clears the current queue, matching the official app."
+                checked={config.content.block_explicit}
+                onchange={setBlockExplicit}
+              />
+              <ToggleRow
+                label="Block AI-generated content"
+                description="Hides tracks TIDAL labels as AI-generated and removes them from the queue. Labels may be missing for some tracks or regions; those play normally."
+                checked={config.content.block_ai}
+                onchange={setBlockAi}
+              />
+              <ToggleRow
+                label="Show content labels"
+                description="Tags explicit tracks with E and AI-generated tracks with AI, even when not blocking them. Turning this off stops the background label lookups too."
+                checked={config.content.show_labels}
+                onchange={setShowLabels}
+              />
+            </SettingsSection>
+            {#if confirmingBlockExplicit}
+              <ConfirmDialog
+                title="Block explicit content"
+                message="This clears the current queue, matching the TIDAL app. Playback will stop."
+                onconfirm={() => applyBlockExplicit(true)}
+                oncancel={() => (confirmingBlockExplicit = false)}
+              />
+            {/if}
+          </div>
+        {:else if tab === "connections"}
+          <div
+            id="settings-panel-connections"
+            role="tabpanel"
+            aria-labelledby="settings-tab-connections"
+          >
+            <div class="cols">
+            <div class="col">
+            <SettingsSection
+              title="Scrobbling"
+              description="Send what you play to your listening profile."
+              icon="audio-lines"
+            >
+              {#if scrobble}
+                <SettingRow
+                  label="Last.fm"
+                  description={[
+                    serviceLabel(scrobble.lastfm),
+                    queuedLabel(scrobble.lastfm.queued),
+                    scrobble.lastfm.last_error ?? "",
+                    lastfmAuthNote,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                >
+                  {#if lastfmAuth === "waiting"}
+                    <Loading label="Waiting for authorization in your browser…" />
+                    <Button variant="primary" onclick={() => void pollLastfm()}>I've authorized</Button>
+                    <Button onclick={cancelLastfm}>Cancel</Button>
+                  {:else if scrobble.lastfm.connected}
+                    <Toggle
+                      label="Scrobble to Last.fm"
+                      checked={scrobble.lastfm.enabled}
+                      disabled={!canToggle(scrobble.lastfm)}
+                      onchange={(enabled) => toggleService("lastfm", enabled)}
+                    />
+                    <Button onclick={disconnectLastfm}>Disconnect</Button>
+                  {:else}
+                    <Button
+                      variant="primary"
+                      disabled={!scrobble.lastfm.configured}
+                      onclick={() => void connectLastfm()}
+                    >Connect</Button>
+                  {/if}
+                </SettingRow>
+                <SettingRow
+                  label="ListenBrainz"
+                  description={[
+                    serviceLabel(scrobble.listenbrainz),
+                    queuedLabel(scrobble.listenbrainz.queued),
+                    scrobble.listenbrainz.last_error ?? "",
+                    lbError,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                >
+                  {#if scrobble.listenbrainz.connected}
+                    <Toggle
+                      label="Scrobble to ListenBrainz"
+                      checked={scrobble.listenbrainz.enabled}
+                      disabled={!canToggle(scrobble.listenbrainz)}
+                      onchange={(enabled) => toggleService("listenbrainz", enabled)}
+                    />
+                    <Button onclick={disconnectListenbrainz}>Disconnect</Button>
+                  {:else}
+                    <input
+                      class="search-input token"
+                      type="password"
+                      placeholder="ListenBrainz token"
+                      aria-label="ListenBrainz token"
+                      bind:value={lbToken}
+                    />
+                    <Button
+                      variant="primary"
+                      disabled={lbBusy || !lbToken.trim()}
+                      onclick={() => void connectListenbrainz()}
+                    >Connect</Button>
+                  {/if}
+                  {#snippet below()}
+                    {#if !scrobble?.listenbrainz.connected}
+                      <span class="muted help-line">
+                        Get a token from
+                        <button
+                          class="link"
+                          type="button"
+                          onclick={() => openCredit("https://listenbrainz.org/profile/")}
+                        >your ListenBrainz profile</button>.
+                      </span>
+                    {/if}
+                  {/snippet}
+                </SettingRow>
+              {:else}
+                <SettingRow label="Loading scrobbling status…" />
+              {/if}
+            </SettingsSection>
+
+            <SettingsSection title="Presence & controls" icon="radio">
+              <ToggleRow
+                label="Discord Rich Presence"
+                description="Shows the current track on your Discord profile. Requires the Discord desktop client."
+                checked={config.integrations.discord}
+                onchange={setDiscord}
+              />
+              <ToggleRow
+                label="Media controls"
+                description="Hardware media keys and the system media overlay."
+                checked={config.integrations.smtc}
+                onchange={setSmtc}
+              />
+            </SettingsSection>
+            </div>
+            <div class="col">
+              <RemoteSettings />
+            </div>
+            </div>
+          </div>
+        {:else if tab === "storage"}
+          <div id="settings-panel-storage" role="tabpanel" aria-labelledby="settings-tab-storage">
+            <div class="cols">
+            <div class="col">
+            <SettingsSection
+              title="Cache"
+              description="Downloaded audio kept on disk so replays and offline playback start instantly."
+              icon="database"
+            >
+              {#snippet actions()}
+                <Button icon="refresh-cw" onclick={refreshCacheStatus}>Refresh</Button>
+                <Button variant="danger" icon="trash-2" onclick={clearCache}>Clear cache</Button>
+              {/snippet}
+              {#if cacheStatus}
+                {#if !cacheStatus.usable}
+                  <div class="inset">
+                    <Notice kind="warning">
+                      Cache is disabled: the directory is not writable. Streaming is unaffected.
+                    </Notice>
+                  </div>
+                {:else if cacheStatus.configured_dir && cacheStatus.dir !== cacheStatus.configured_dir}
+                  <div class="inset">
+                    <Notice kind="warning">
+                      The configured cache directory is unusable; using {cacheStatus.dir}.
+                    </Notice>
+                  </div>
+                {/if}
+                <SettingRow label="Disk usage" stacked>
+                  <div class="usage">
+                    <div
+                      class="meter"
+                      role="meter"
+                      aria-label="Cache usage"
+                      aria-valuemin="0"
+                      aria-valuemax="100"
+                      aria-valuenow={Math.round(cacheFraction * 100)}
+                    >
+                      <span class="fill" class:full={cacheFraction > 0.9} style:width="{cacheFraction * 100}%"></span>
+                    </div>
+                    <span class="muted">
+                      {formatSize(cacheStatus.used_bytes)} used{#if cacheStatus.pending_bytes > 0}
+                        (+{formatSize(cacheStatus.pending_bytes)} downloading){/if}
+                      of {formatSize(cacheStatus.max_bytes)}
+                    </span>
+                  </div>
+                </SettingRow>
+                <SettingRow label="Maximum size" description="The oldest tracks are removed when the cache grows past this.">
+                  <NumberField
+                    label="Maximum cache size"
+                    min={0}
+                    unit="MB"
+                    value={config.cache.max_size_mb}
+                    onchange={setCacheMaxMb}
+                  />
+                </SettingRow>
+                <ToggleRow
+                  label="Clear cache on exit"
+                  checked={config.cache.clear_on_exit}
+                  onchange={setClearOnExit}
+                />
+                <SettingRow
+                  label="Location"
+                  description="To move the cache, edit cache.dir in config.toml."
+                  stacked
+                >
+                  <code class="path">{cacheStatus.dir}</code>
+                </SettingRow>
+              {:else}
+                <SettingRow label="Cache status unavailable" />
+              {/if}
+            </SettingsSection>
+            </div>
+            <div class="col">
+            <SettingsSection
+              title="Listening history"
+              description="Recorded locally in history.jsonl and used by the History view and stats."
+              icon="history"
+            >
+              <ToggleRow
+                label="Record listening history"
+                checked={config.history.enabled}
+                onchange={setHistoryEnabled}
+              />
+              <SettingRow label="Maximum entries" description="Older plays are dropped beyond this.">
+                <NumberField
+                  label="Maximum history entries"
+                  min={100}
+                  max={100000}
+                  unit="plays"
+                  value={config.history.max_entries}
+                  onchange={setHistoryMaxEntries}
+                />
+              </SettingRow>
+              <SettingRow label="Clear history" description="Permanently deletes your local play history and stats.">
+                <Button variant="danger" icon="trash-2" onclick={() => (confirmingHistoryClear = true)}>
+                  Clear history
+                </Button>
+              </SettingRow>
+            </SettingsSection>
+            </div>
+            </div>
+            {#if confirmingHistoryClear}
+              <ConfirmDialog
+                title="Clear listening history"
+                message="This permanently deletes your local play history and stats."
+                onconfirm={clearHistory}
+                oncancel={() => (confirmingHistoryClear = false)}
+              />
+            {/if}
+          </div>
+        {:else}
+          <div id="settings-panel-system" role="tabpanel" aria-labelledby="settings-tab-system">
+            <KeyringNotice />
+
+            <div class="cols">
+            <div class="col">
+            <SettingsSection title="Window & startup" icon="app-window">
+              <ToggleRow
+                label="Close to tray"
+                description="Closing the window hides it and keeps playback running; Quit lives in the tray menu."
+                checked={config.ui.close_to_tray}
+                onchange={setCloseToTray}
+              />
+              <ToggleRow
+                label="Start in mini player"
+                description="Open as the compact mini player instead of the full window."
+                checked={config.ui.start_in_mini}
+                onchange={setStartInMini}
+              />
+            </SettingsSection>
+
+            <SettingsSection
+              title="Global hotkeys"
+              description="Work while OxiTide is in the background. Press Backspace or Delete while recording to clear one; a shortcut already used by another action asks before reassigning, and one another app owns keeps the old binding."
+              icon="keyboard"
+            >
+              {#each HOTKEY_ACTIONS as entry (entry.id)}
+                <SettingRow label={entry.label}>
+                  <kbd class:unset={!config.hotkeys[entry.id]}>
+                    {capture.recording === entry.id
+                      ? "Press keys…"
+                      : displayAccelerator(config.hotkeys[entry.id]) || "Not set"}
+                  </kbd>
+                  <Button
+                    id={`hotkey-${entry.id}`}
+                    variant={capture.recording === entry.id ? "primary" : "secondary"}
+                    onclick={() => void capture.start(entry.id)}
+                  >{capture.recording === entry.id ? "Recording…" : "Record"}</Button>
+                  <Button
+                    disabled={!config.hotkeys[entry.id]}
+                    onclick={() => void saveHotkey(entry.id, "")}
+                  >Clear</Button>
+                </SettingRow>
+              {/each}
+            </SettingsSection>
+            {#if hotkeyConflict}
+              <ConfirmDialog
+                title="Shortcut already in use"
+                message={`"${displayAccelerator(hotkeyConflict.accelerator)}" is already used by "${actionLabel(hotkeyConflict.other)}". Reassign it to "${actionLabel(hotkeyConflict.action)}"?`}
+                confirmLabel="Reassign"
+                onconfirm={confirmReassign}
+                oncancel={cancelReassign}
+              />
+            {/if}
+            </div>
+            <div class="col">
+            <UpdatesSection />
+
+            <SettingsSection
+              title="Keyboard shortcuts"
+              description="Available while OxiTide is focused."
+              icon="keyboard"
+            >
+              <ul class="shortcuts">
+                {#each SHORTCUTS as shortcut (shortcut.keys)}
+                  <li><kbd>{shortcut.keys}</kbd> <span>{shortcut.description}</span></li>
+                {/each}
+              </ul>
+            </SettingsSection>
+
+            <SettingsSection title="Troubleshooting" icon="file-text">
+              <SettingRow label="Logs" description={logsDir || "Directory unavailable"}>
+                <Button icon="folder" onclick={() => api.openLogsFolder().catch(apply)}>
+                  Open logs folder
+                </Button>
+              </SettingRow>
+            </SettingsSection>
+
+            <SettingsSection title="Account" icon="user">
+              <SettingRow label="Log out" description="Signs out of TIDAL on this device. Your settings are kept.">
+                <Button variant="danger" icon="log-out" onclick={onLogout}>Log out</Button>
+              </SettingRow>
+            </SettingsSection>
+            </div>
+            </div>
+          </div>
+        {/if}
+      </div>
     </div>
   {/if}
-{/if}
+</div>
 
 <style>
-  .tabs {
+  /* Container queries (not viewport ones): the sidebar and queue change how
+     much room the page really has. */
+  .settings {
+    container: settings / inline-size;
+  }
+  .layout {
+    display: grid;
+    grid-template-columns: 200px minmax(0, 1320px);
+    gap: 36px;
+    align-items: start;
+  }
+  .nav {
+    position: sticky;
+    top: calc(var(--titlebar-h) + 4px);
     display: flex;
-    gap: 4px;
-    border-bottom: 1px solid var(--line);
-    margin: 8px 0 16px;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .tab-indicator {
+    position: absolute;
+    top: 0;
+    left: 0;
+    border-radius: var(--radius-control);
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    pointer-events: none;
+  }
+  .tab-indicator.ready {
+    transition: transform var(--dur-view) var(--ease-in-out);
   }
   .tab {
-    margin-bottom: -1px;
-    padding: 8px 12px;
-    border-bottom: 2px solid transparent;
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 12px;
+    border-radius: var(--radius-control);
     color: var(--text-muted);
+    font-weight: 550;
+    text-align: left;
+    white-space: nowrap;
   }
-  .tab:hover,
-  .tab.active {
+  .tab :global(svg) {
+    flex: none;
+  }
+  .tab:hover {
+    background: var(--surface-2);
     color: var(--text);
   }
   .tab.active {
-    border-bottom-color: var(--accent);
-  }
-  .segmented {
-    display: inline-flex;
-    gap: 2px;
-    padding: 2px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius-control);
-    background: var(--surface-1);
-  }
-  .field {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 8px 0;
-  }
-  .field-label {
-    color: var(--text-muted);
-  }
-  .segmented button {
-    padding: 4px 10px;
-    border-radius: calc(var(--radius-control) - 3px);
-    color: var(--text-muted);
-  }
-  .segmented button.active {
-    background: var(--surface-3);
     color: var(--text);
   }
-  .planned {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin: 8px 0;
-    padding: 10px 12px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius-control);
-    background: var(--surface-1);
+  .tab.active :global(svg) {
+    color: var(--accent);
   }
-  .planned-main {
+  .content {
+    min-width: 0;
+  }
+  /* Each tab is a grid of column stacks: two where 520px each fit (about
+     1060px of content), one below that. The stacks are balanced by hand per
+     tab and kept at a constant height (controls that do not apply are
+     disabled, not removed). The shorter stack's cards share the leftover
+     height evenly, each spreading it across its rows, so both columns
+     always end on the same line. `.wide` stacks span every column. */
+  .cols {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(520px, 100%), 1fr));
+    gap: 20px;
+    align-items: stretch;
+    margin-bottom: 20px;
+  }
+  .col {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 20px;
+    min-width: 0;
   }
-  .planned-head {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: var(--text-muted);
+  .col.wide {
+    grid-column: 1 / -1;
   }
-  .scrobble {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin: 8px 0;
-    padding: 10px 12px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius-control);
-    background: var(--surface-1);
+  .col > :global(.set-section) {
+    margin: 0;
   }
-  .scrobble-main {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
+  .col > :global(.set-section) {
+    flex: 1 1 auto;
   }
-  .scrobble-head {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+
+  /* Switching tabs remounts the panel, so each card rises in (opacity + a
+     10px lift) with a short stagger down the page: the first card of each
+     stack leads, later ones follow by 45ms steps. `backwards` fill keeps the
+     finished card transform-free (dropdowns and dialogs anchor normally). */
+  .content :global(.set-section) {
+    animation: card-in var(--dur-view) var(--ease-enter) backwards;
+    animation-delay: calc(var(--n, 0) * 45ms);
   }
-  .scrobble-actions {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 12px;
+  .col:nth-child(2) > :global(.set-section:nth-child(1)) { --n: 1; }
+  .col > :global(.set-section:nth-child(2)) { --n: 1; }
+  .col:nth-child(2) > :global(.set-section:nth-child(2)) { --n: 2; }
+  .col > :global(.set-section:nth-child(3)) { --n: 2; }
+  .col:nth-child(2) > :global(.set-section:nth-child(3)) { --n: 3; }
+  .col > :global(.set-section:nth-child(n + 4)) { --n: 3; }
+  @keyframes card-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  /* Reduced motion is a hard floor: no movement, only a quick fade. */
+  @media (prefers-reduced-motion: reduce) {
+    .content :global(.set-section) {
+      animation-name: card-fade;
+      animation-delay: 0ms;
+    }
+    .tab-indicator.ready {
+      transition: none;
+    }
+    @keyframes card-fade {
+      from {
+        opacity: 0;
+      }
+      to {
+        opacity: 1;
+      }
+    }
+  }
+  @container settings (max-width: 760px) {
+    .layout {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 16px;
+    }
+    .nav {
+      position: relative;
+      flex-direction: row;
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+  }
+
+  .link {
+    padding: 0;
+    color: var(--accent);
+    text-decoration: underline;
+  }
+  .credits,
+  .help-line {
+    font-size: 12.5px;
+  }
+  .note {
+    margin: 4px 0 0;
+    font-size: 12.5px;
   }
   .custom-font {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 8px;
-    margin: 4px 0 12px;
+  }
+  .custom-font input {
+    flex: 1 1 220px;
+    min-width: 0;
+    padding: 8px 12px;
   }
   .font-preview {
-    flex-basis: 100%;
+    margin: 10px 0 0;
     font-size: 18px;
-    margin: 4px 0 0;
   }
-  .link {
-    padding: 0;
-    color: var(--accent);
-    text-decoration: underline;
+  .token {
+    width: 220px;
+    max-width: 100%;
+    padding: 8px 12px;
   }
-  .logout {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 9px 18px;
-    border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
-    border-radius: var(--radius-control);
-    background: color-mix(in srgb, var(--danger) 8%, transparent);
-    color: var(--danger);
-    font-weight: 600;
-    transition:
-      background var(--dur-state) var(--ease-enter),
-      border-color var(--dur-state) var(--ease-enter),
-      box-shadow var(--dur-state) var(--ease-enter),
-      transform var(--dur-micro) var(--ease-enter);
-  }
-  .logout:hover {
-    background: color-mix(in srgb, var(--danger) 18%, transparent);
-    border-color: var(--danger);
-    box-shadow: 0 0 9px color-mix(in srgb, var(--danger) 80%, transparent);
-  }
-  .logout:active {
-    transform: scale(0.97);
-  }
-  .db-row {
-    display: grid;
-    grid-template-columns: 150px minmax(120px, 280px) 72px;
-    align-items: center;
-    gap: 12px;
-    margin: 4px 0;
-  }
-  .db-row output {
+  .readout {
     color: var(--text-muted);
     font-variant-numeric: tabular-nums;
-    text-align: right;
   }
-  .automix {
+  .inset {
+    padding: 14px 18px 0;
+  }
+  .usage {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    margin: 8px 0 12px;
-    padding: 10px 12px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius-control);
-    background: var(--surface-1);
+    gap: 8px;
+    width: 100%;
   }
-  .automix p {
-    margin: 0;
+  .meter {
+    height: 8px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--text) 14%, transparent);
   }
-  .automix .jump {
-    align-self: flex-start;
+  .fill {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: var(--accent);
   }
-  .report ul {
-    margin: 4px 0 0;
-    padding-left: 18px;
+  .fill.full {
+    background: var(--warning);
   }
-  .automix .styles {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    margin: 0;
-    padding: 6px 0;
-    border: 0;
-  }
-  .automix .styles legend {
-    padding: 0;
-    font-weight: 600;
-  }
-  .automix .replay {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
-    padding-top: 6px;
-    border-top: 1px solid var(--line);
-  }
-  .automix .replay p {
-    flex-basis: 100%;
-  }
-  .eq {
-    margin: 4px 0 8px;
+  .path {
+    display: block;
     padding: 8px 12px;
     border: 1px solid var(--line);
     border-radius: var(--radius-control);
     background: var(--surface-1);
+    color: var(--text-muted);
+    font-size: 12.5px;
+    overflow-wrap: anywhere;
+    user-select: all;
   }
-  .hotkey-row {
+  kbd {
+    display: inline-block;
+    min-width: 14ch;
+    padding: 4px 10px;
+    border: 1px solid var(--line);
+    border-bottom-width: 2px;
+    border-radius: 6px;
+    background: var(--surface-2);
+    color: var(--text);
+    font: 600 12.5px/1.3 var(--font-ui);
+    text-align: center;
+  }
+  kbd.unset {
+    color: var(--text-muted);
+    font-weight: 500;
+  }
+  .shortcuts {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 2px 24px;
+    margin: 0;
+    padding: 10px 18px 14px;
+    list-style: none;
+  }
+  .shortcuts li {
     display: flex;
     align-items: center;
     gap: 12px;
-    margin: 6px 0;
+    padding: 6px 0;
   }
-  .hotkey-label {
-    min-width: 150px;
+  .shortcuts kbd {
+    flex: none;
+    min-width: 9ch;
+    padding: 4px 8px;
   }
-  .hotkey-row kbd {
-    min-width: 140px;
+  .shortcuts span {
     color: var(--text-muted);
-  }
-  .hotkey-row button.recording {
-    border: 1px solid var(--accent);
-    color: var(--accent);
+    font-size: 13px;
   }
 </style>

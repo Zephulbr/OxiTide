@@ -92,6 +92,12 @@ export function formatDb(db: number): string {
   return `${db > 0 ? "+" : "−"}${Math.abs(db).toFixed(1)} dB`;
 }
 
+/// Compact gain for a fader label: "+3", "−2.5", "0".
+export function formatDbShort(db: number): string {
+  if (db === 0) return "0";
+  return `${db > 0 ? "+" : "−"}${Math.abs(db)}`;
+}
+
 export function formatCrossfade(ms: number): string {
   return ms <= 0 ? "Off" : `${(ms / 1000).toFixed(ms % 1000 === 0 ? 0 : 1)} s`;
 }
