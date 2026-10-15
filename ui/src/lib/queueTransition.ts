@@ -182,15 +182,35 @@ function flipCandidates(main: HTMLElement, page: HTMLElement): HTMLElement[] {
   return out;
 }
 
-/// Cards and panels: something you can see the edges of.
-function hasVisibleBox(el: HTMLElement): boolean {
-  if (el.matches(".media")) return true;
-  const style = getComputedStyle(el);
+/// Paint of the element's own box: fill, shadow or border.
+function paintsOwnBox(style: CSSStyleDeclaration): boolean {
+  const border =
+    parseFloat(style.borderTopWidth) > 0 &&
+    !/rgba\(0, 0, 0, 0\)|transparent/.test(style.borderTopColor);
   return (
     style.backgroundImage !== "none" ||
     style.boxShadow !== "none" ||
+    border ||
     !/rgba\(0, 0, 0, 0\)|transparent/.test(style.backgroundColor)
   );
+}
+
+/// Boxes that must resize with the glide rather than snap: cards and panels
+/// you can see the edges of, and clipping boxes whose edge is the clip.
+///
+/// A clipping box whose content fits its width (a vertical scroller such as
+/// TrackTable's `.table-scroll`, or ArtistHero's `overflow: hidden` header
+/// painted by absolute layers) resizes, and its contents follow by layout.
+/// Left to snap, its in-flight children would overflow it: a horizontal
+/// scrollbar appears and the right-hand columns are cut off mid-glide.
+/// A box that already overflows sideways (a carousel row) keeps its snap: its
+/// cards are handled by the clipped-card fade in `flip`.
+function hasVisibleBox(el: HTMLElement): boolean {
+  if (el.matches(".media")) return true;
+  const style = getComputedStyle(el);
+  if (paintsOwnBox(style)) return true;
+  if (style.overflowX === "visible" && style.overflowY === "visible") return false;
+  return el.scrollWidth <= el.clientWidth + 1;
 }
 
 /// A non-interactive, screen-reader-hidden copy of `el` placed over its old

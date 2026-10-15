@@ -144,7 +144,10 @@ the global `button` rule in `app.css` carries them, and track rows do the same â
 docked queue's open/close glide (AR-5 as amended by AR-9). The rail animates its width
 (380 ms, `--ease-in-out`). The page is held at its final width, and its single layout change
 is FLIP-animated in step with the rail by `lib/queueTransition.ts`:
-- positions travel, and cards with a visible box animate their width;
+- positions travel, and cards with a visible box animate their width. So do clipping
+  boxes whose content fits their width, such as a track table's scroller or a hero
+  painted by absolute layers; their contents follow by layout. A carousel row that
+  already overflows sideways is excluded, and its cards use the clipped-card fade.
 - hidden or clipped elements leave a fading inert copy, and revealed ones fade in.
 
 Any other layout animation needs a ruling.
