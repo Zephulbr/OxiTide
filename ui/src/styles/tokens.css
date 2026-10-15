@@ -9,6 +9,9 @@
 /* Blurred-cover wash behind the player bar's scrim + tint (seek cap). The
    initial value is the no-art room gradient's mean. */
 @property --dyn-backdrop { syntax: "<color>"; inherits: true; initial-value: #1a1510; }
+/* MediaCard hover tint: registered so the swap from the accent to the card's
+   own cover colour (which arrives after the first hover) glides, not snaps. */
+@property --card-tint { syntax: "<color>"; inherits: false; initial-value: transparent; }
 /* Now Playing artwork size (Track 4a layout): registered so the lyrics-mode
    switch can glide the cover size — unregistered custom properties snap. */
 @property --np-cover { syntax: "<length>"; inherits: true; initial-value: 0px; }
@@ -40,6 +43,11 @@
   --surface-float: rgba(23, 18, 14, 0.82);
   --line: rgba(255, 240, 225, 0.10);
   --edge-lit: linear-gradient(135deg, rgba(255, 240, 225, 0.28), rgba(255, 240, 225, 0.06) 45%, rgba(0, 0, 0, 0.35));
+  /* Resting depth, not light: plain dark drop shadows (never accent-coloured,
+     so they are not AR-1 glows). `panel` lifts cards/panels off the backdrop;
+     `cover` seats artwork on it. */
+  --shadow-panel: 0 1px 2px rgb(0 0 0 / 0.16), 0 8px 22px rgb(0 0 0 / 0.17);
+  --shadow-cover: 0 1px 3px rgb(0 0 0 / 0.35), 0 8px 18px rgb(0 0 0 / 0.3);
   /* Peak alpha of the sleeve's hover glare (Warm Graphite key light). */
   --glare-alpha: 0.16;
   /* Vinyl (Profiles records): a material, black in every theme and mode. */
