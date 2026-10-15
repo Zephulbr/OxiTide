@@ -360,7 +360,7 @@
     font-variant-numeric: tabular-nums;
   }
   .play {
-    transition: transform var(--dur-micro) var(--ease-in), box-shadow var(--dur-state) var(--ease-in);
+    transition: transform var(--dur-micro) var(--ease-enter), box-shadow var(--dur-state) var(--ease-enter);
     box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 35%, transparent);
   }
   .play:active {

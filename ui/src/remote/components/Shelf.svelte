@@ -61,7 +61,7 @@
     display: none;
   }
   li {
-    animation: tile-in var(--dur-view) var(--ease-in) both;
+    animation: tile-in var(--dur-view) var(--ease-enter) both;
     animation-delay: var(--delay, 0ms);
   }
   @keyframes tile-in {
@@ -74,7 +74,7 @@
     transform: scale(0.96);
   }
   .tile :global(.art) {
-    transition: transform var(--dur-micro) var(--ease-in);
+    transition: transform var(--dur-micro) var(--ease-enter);
   }
   .scroller li {
     scroll-snap-align: start;

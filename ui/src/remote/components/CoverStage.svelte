@@ -167,7 +167,7 @@
       0 2px 6px rgba(0, 0, 0, 0.25);
     transform: scale(1);
     transition:
-      transform var(--dur-view) var(--ease-in),
+      transform var(--dur-view) var(--ease-enter),
       box-shadow var(--dur-mood) linear;
   }
   .paused .frame {
@@ -206,7 +206,7 @@
     backdrop-filter: blur(var(--overlay-blur));
     -webkit-backdrop-filter: blur(var(--overlay-blur));
     transform: translate(-50%, -50%);
-    animation: pop var(--dur-state) var(--ease-in);
+    animation: pop var(--dur-state) var(--ease-enter);
   }
   .bar {
     position: relative;

@@ -82,7 +82,7 @@ body {
   background: var(--surface-float);
   color: var(--text);
   transform: translateY(-200%);
-  transition: transform var(--dur-state) var(--ease-in);
+  transition: transform var(--dur-state) var(--ease-enter);
 }
 .skip-link:focus { transform: none; }
 /* Track-list views: the wrapper owns the main area's height so the track
@@ -212,9 +212,9 @@ body {
   background: var(--surface-2);
   color: var(--text);
   transition:
-    background var(--dur-state) var(--ease-in),
-    border-color var(--dur-state) var(--ease-in),
-    box-shadow var(--dur-state) var(--ease-in);
+    background var(--dur-state) var(--ease-enter),
+    border-color var(--dur-state) var(--ease-enter),
+    box-shadow var(--dur-state) var(--ease-enter);
 }
 .search-input::placeholder {
   color: var(--text-muted);
@@ -244,8 +244,8 @@ body {
   font-weight: 500;
   white-space: nowrap;
   transition:
-    background var(--dur-state) var(--ease-in),
-    transform var(--dur-micro) var(--ease-in);
+    background var(--dur-state) var(--ease-enter),
+    transform var(--dur-micro) var(--ease-enter);
 }
 .tool-btn svg {
   flex: 0 0 auto;
@@ -308,7 +308,7 @@ h3 {
    replace this list, so they must name the properties they animate. */
 button {
   transition:
-    transform var(--dur-micro) var(--ease-in),
+    transform var(--dur-micro) var(--ease-enter),
     opacity var(--dur-micro),
     background-color var(--dur-micro),
     color var(--dur-micro),

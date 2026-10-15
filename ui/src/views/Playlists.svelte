@@ -233,7 +233,7 @@
     background: var(--surface-2);
   }
   .clip :global(img) {
-    transition: transform var(--dur-state) var(--ease-in);
+    transition: transform var(--dur-state) var(--ease-enter);
   }
   .card:hover .clip :global(img) {
     transform: scale(1.03);

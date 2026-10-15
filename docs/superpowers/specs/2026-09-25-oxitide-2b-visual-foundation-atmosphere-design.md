@@ -1,6 +1,7 @@
 # OxiTide — Track 2b Visual Identity: Foundation + Atmosphere Mode
 
 - **Status:** Draft for review
+- **Amended by:** `2026-10-15-oxitide-atmosphere-rules-addendum.md` (glow, micro-interactions, lit current cover, now-playing mark, queue glide, easing token names, superseded text) — it wins where they disagree.
 - **Date:** 2026-09-25
 - **Owner:** V
 - **Parent:** `2026-09-24-oxitide-post-mvp-roadmap.md` (Track 2b: visual identity + layout/IA)

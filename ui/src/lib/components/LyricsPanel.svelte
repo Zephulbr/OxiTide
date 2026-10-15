@@ -229,7 +229,7 @@
   }
   /* Karaoke fill: each word flips to the accent as it is sung. */
   .line span {
-    transition: color var(--dur-micro) var(--ease-in);
+    transition: color var(--dur-micro) var(--ease-enter);
   }
   .line span.sung {
     color: var(--accent);

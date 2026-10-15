@@ -45,8 +45,8 @@
     font-size: 12px;
     font-weight: 600;
     transition:
-      color var(--dur-micro) var(--ease-in),
-      background var(--dur-micro) var(--ease-in);
+      color var(--dur-micro) var(--ease-enter),
+      background var(--dur-micro) var(--ease-enter);
   }
   .action:hover:not(:disabled) {
     color: var(--text);

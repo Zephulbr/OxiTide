@@ -428,7 +428,7 @@
       max-width var(--np-glide) var(--ease-in-out);
     /* Entrance: the view rises, the artwork scales up, then the meta column
        staggers in. Mount-only; closing is the npOut fade. */
-    animation: np-in var(--dur-view) var(--ease-in) both;
+    animation: np-in var(--dur-view) var(--ease-enter) both;
   }
   @keyframes np-in {
     from { opacity: 0; transform: translateY(16px); }
@@ -439,7 +439,7 @@
     flex: 0 1 auto;
     width: min(100%, var(--np-cover));
     min-width: 0;
-    animation: np-art var(--dur-view) var(--ease-in) 60ms both;
+    animation: np-art var(--dur-view) var(--ease-enter) 60ms both;
   }
   @keyframes np-art {
     from { opacity: 0; transform: scale(0.95) translateY(8px); }
@@ -502,11 +502,11 @@
     box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
     --tilt-scale: 1;
     /* The leave settle: slower than the hover tracking, decelerating into
-       flat (var(--ease-in)'s fast-start curve) so the return never snaps. */
+       flat (var(--ease-enter)'s fast-start curve) so the return never snaps. */
     --tilt-return: 480ms;
     transform: rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) scale(var(--tilt-scale));
     transition-duration: var(--tilt-return);
-    transition-timing-function: var(--ease-in);
+    transition-timing-function: var(--ease-enter);
     will-change: transform;
   }
   .art-sleeve.hovering {
@@ -518,7 +518,7 @@
      tight tracking above. Declared after .hovering so it wins while active. */
   .art-sleeve.entering {
     transition-duration: var(--tilt-return);
-    transition-timing-function: var(--ease-in);
+    transition-timing-function: var(--ease-enter);
   }
   .art-sleeve:not(:disabled):active {
     --tilt-scale: 0.99;
@@ -536,9 +536,9 @@
     );
     mix-blend-mode: screen;
     transition:
-      --tilt-gx var(--tilt-return) var(--ease-in),
-      --tilt-gy var(--tilt-return) var(--ease-in),
-      opacity var(--tilt-return) var(--ease-in);
+      --tilt-gx var(--tilt-return) var(--ease-enter),
+      --tilt-gy var(--tilt-return) var(--ease-enter),
+      opacity var(--tilt-return) var(--ease-enter);
   }
   .art-sleeve.hovering .art-glare {
     transition-duration: var(--dur-micro);
@@ -546,7 +546,7 @@
   }
   .art-sleeve.entering .art-glare {
     transition-duration: var(--tilt-return);
-    transition-timing-function: var(--ease-in);
+    transition-timing-function: var(--ease-enter);
   }
   .art-empty {
     width: min(60%, 320px);
@@ -737,7 +737,7 @@
     transition:
       color var(--dur-state) var(--ease-in-out),
       border-color var(--dur-state) var(--ease-in-out),
-      transform var(--dur-micro) var(--ease-in);
+      transform var(--dur-micro) var(--ease-enter);
   }
   .spine button.active {
     color: var(--text);

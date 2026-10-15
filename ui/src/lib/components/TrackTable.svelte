@@ -505,7 +505,7 @@
     z-index: 1;
     pointer-events: none;
     backdrop-filter: blur(var(--glass-blur));
-    transition: box-shadow var(--dur-state) var(--ease-in);
+    transition: box-shadow var(--dur-state) var(--ease-enter);
   }
   .table-scroll.scrolled .head-frost {
     box-shadow: 0 14px 18px -14px rgba(0, 0, 0, 0.55);
@@ -519,7 +519,7 @@
     height: 12px;
     background: linear-gradient(to bottom, var(--glass-veil), transparent);
     opacity: 0;
-    transition: opacity var(--dur-state) var(--ease-in);
+    transition: opacity var(--dur-state) var(--ease-enter);
   }
   .table-scroll.scrolled .head-frost::after {
     opacity: 1;
@@ -529,7 +529,7 @@
     top: 0;
     z-index: 2;
     background: transparent;
-    transition: background-color var(--dur-state) var(--ease-in);
+    transition: background-color var(--dur-state) var(--ease-enter);
     padding: 8px 12px 8px 0;
   }
   .table-scroll.scrolled thead th {

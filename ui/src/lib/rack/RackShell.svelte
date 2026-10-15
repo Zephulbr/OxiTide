@@ -525,7 +525,7 @@
     min-height: 0;
     padding: 12px;
     box-shadow: var(--rack-unit-shadow), 0 20px 40px rgba(0, 0, 0, 0.7);
-    animation: rk-drawer var(--dur-view) var(--ease-in);
+    animation: rk-drawer var(--dur-view) var(--ease-enter);
   }
   .drawerwin {
     flex: 1;

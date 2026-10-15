@@ -91,9 +91,9 @@ h3 {
   border-radius: 50%;
   color: var(--text-muted);
   transition:
-    color var(--dur-micro) var(--ease-in),
-    background var(--dur-micro) var(--ease-in),
-    transform var(--dur-micro) var(--ease-in);
+    color var(--dur-micro) var(--ease-enter),
+    background var(--dur-micro) var(--ease-enter),
+    transform var(--dur-micro) var(--ease-enter);
 }
 
 .icon-btn:active,
@@ -126,8 +126,8 @@ h3 {
   background: var(--surface-2);
   font-weight: 600;
   transition:
-    transform var(--dur-micro) var(--ease-in),
-    background var(--dur-state) var(--ease-in);
+    transform var(--dur-micro) var(--ease-enter),
+    background var(--dur-state) var(--ease-enter);
 }
 
 .pill.primary {

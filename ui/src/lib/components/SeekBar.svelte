@@ -132,7 +132,7 @@
     width: 100%;
     height: 4px;
     background: var(--line);
-    transition: height var(--dur-micro) var(--ease-in);
+    transition: height var(--dur-micro) var(--ease-enter);
   }
   .seek.edge .seek-line {
     height: 3px;
@@ -150,7 +150,7 @@
     border-radius: 50%;
     background: var(--accent);
     transform: translate(-50%, -50%) scale(0);
-    transition: transform var(--dur-micro) var(--ease-in);
+    transition: transform var(--dur-micro) var(--ease-enter);
   }
   .seek.edge:hover .seek-line,
   .seek.edge:focus-visible .seek-line,
@@ -173,7 +173,7 @@
     top: 8px;
     height: 2px;
     background: var(--line);
-    transition: opacity var(--dur-reveal) var(--ease-in);
+    transition: opacity var(--dur-reveal) var(--ease-enter);
   }
   .seek.edge:hover .seek-flat,
   .seek.edge:focus-visible .seek-flat,
@@ -205,7 +205,7 @@
     backdrop-filter: blur(var(--glass-blur));
     clip-path: url(#seek-cap-clip);
     transform-origin: bottom;
-    transition: transform var(--dur-reveal) var(--ease-in);
+    transition: transform var(--dur-reveal) var(--ease-enter);
   }
   .seek.edge .seek-cap {
     transform: scaleY(0);
@@ -226,8 +226,8 @@
     height: 10px;
     transform-origin: top;
     transition:
-      opacity var(--dur-reveal) var(--ease-in),
-      transform var(--dur-reveal) var(--ease-in);
+      opacity var(--dur-reveal) var(--ease-enter),
+      transform var(--dur-reveal) var(--ease-enter);
   }
   .seek-wave svg {
     display: block;

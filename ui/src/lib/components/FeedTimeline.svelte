@@ -128,7 +128,7 @@
     height: 100%;
   }
   .art :global(img) {
-    transition: transform var(--dur-state) var(--ease-in);
+    transition: transform var(--dur-state) var(--ease-enter);
   }
   .card:hover .art :global(img) {
     transform: scale(1.03);

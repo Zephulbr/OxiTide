@@ -181,7 +181,7 @@
     padding: 0;
     border-radius: 6px;
     overflow: hidden;
-    transition: transform var(--dur-micro) var(--ease-in);
+    transition: transform var(--dur-micro) var(--ease-enter);
   }
   .thumb:hover {
     transform: scale(1.04);
@@ -235,7 +235,7 @@
     transition:
       color var(--dur-micro),
       background-color var(--dur-micro),
-      transform var(--dur-micro) var(--ease-in);
+      transform var(--dur-micro) var(--ease-enter);
   }
   .ibtn:hover {
     background: var(--surface-3);
@@ -255,7 +255,7 @@
     border-radius: 50%;
     background: var(--accent);
     transform: translateX(-50%) scale(0);
-    transition: transform var(--dur-micro) var(--ease-in);
+    transition: transform var(--dur-micro) var(--ease-enter);
   }
   .ibtn.active {
     color: var(--accent);
@@ -276,7 +276,7 @@
     place-items: center;
   }
   .heart-ico.pop {
-    animation: heart-pop var(--dur-state) var(--ease-in);
+    animation: heart-pop var(--dur-state) var(--ease-enter);
   }
   @keyframes heart-pop {
     0% { transform: scale(1); }

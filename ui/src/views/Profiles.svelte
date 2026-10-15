@@ -218,8 +218,8 @@
       0 16px 30px -18px rgba(0, 0, 0, 0.8),
       inset 0 0 0 1px rgba(255, 255, 255, 0.05);
     transition:
-      transform var(--dur-state) var(--ease-in),
-      box-shadow var(--dur-state) var(--ease-in);
+      transform var(--dur-state) var(--ease-enter),
+      box-shadow var(--dur-state) var(--ease-enter);
   }
   .record::before {
     content: "";
@@ -236,7 +236,7 @@
       transparent 244deg
     );
     pointer-events: none;
-    transition: transform var(--dur-view) var(--ease-in);
+    transition: transform var(--dur-view) var(--ease-enter);
   }
   .label {
     position: absolute;
@@ -253,7 +253,7 @@
     height: 100%;
   }
   .label :global(img) {
-    transition: transform var(--dur-view) var(--ease-in);
+    transition: transform var(--dur-view) var(--ease-enter);
   }
   /* Spindle hole. */
   .record::after {

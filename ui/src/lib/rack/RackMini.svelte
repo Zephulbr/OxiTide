@@ -151,7 +151,7 @@
     max-height: 85vh;
     min-height: 50vh;
     box-shadow: var(--rack-unit-shadow), 0 -12px 30px rgba(0, 0, 0, 0.7);
-    animation: rk-sheet var(--dur-view) var(--ease-in) both;
+    animation: rk-sheet var(--dur-view) var(--ease-enter) both;
   }
   .queuewin {
     flex: 1;

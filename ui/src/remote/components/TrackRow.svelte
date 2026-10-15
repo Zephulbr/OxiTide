@@ -48,7 +48,7 @@
 
 <style>
   .row {
-    animation: row-in var(--dur-view) var(--ease-in) both;
+    animation: row-in var(--dur-view) var(--ease-enter) both;
     animation-delay: var(--delay, 0ms);
     display: flex;
     align-items: center;

@@ -74,7 +74,7 @@
   }
   .synced li {
     color: var(--text-muted);
-    transition: color var(--dur-state) var(--ease-in);
+    transition: color var(--dur-state) var(--ease-enter);
   }
   .synced li.past {
     opacity: 0.6;

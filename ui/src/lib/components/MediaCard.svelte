@@ -162,7 +162,7 @@
     transform: translate(2px, 2px);
   }
   .art-clip :global(img) {
-    transition: transform var(--dur-state) var(--ease-in);
+    transition: transform var(--dur-state) var(--ease-enter);
   }
   .media:not(.inert):hover .art-clip :global(img) {
     transform: scale(1.03);
@@ -192,7 +192,7 @@
     color: var(--text);
     background: color-mix(in srgb, var(--surface-float) 65%, transparent);
     opacity: 0;
-    transition: opacity var(--dur-state) var(--ease-in);
+    transition: opacity var(--dur-state) var(--ease-enter);
   }
   .shape-artist .play-glyph {
     border-radius: 50%;

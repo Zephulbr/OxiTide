@@ -113,8 +113,8 @@
     border-radius: 0;
     color: var(--text-muted);
     transition:
-      background var(--dur-micro) var(--ease-in),
-      color var(--dur-micro) var(--ease-in);
+      background var(--dur-micro) var(--ease-enter),
+      color var(--dur-micro) var(--ease-enter);
   }
   /* Caption buttons do not do the global press-scale. */
   .cap:not(:disabled):active {

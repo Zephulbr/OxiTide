@@ -1,5 +1,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
+  import { cubicOut } from "svelte/easing";
+  import { fade, type TransitionConfig } from "svelte/transition";
   import { api, type QueueItem } from "../api";
   import { copyText } from "../clipboard";
   import ConfirmDialog from "./ConfirmDialog.svelte";
@@ -107,7 +109,7 @@
   /// rows from the current one down are shifted visually (rowTransform), and
   /// the list's bottom padding holds the extra 2 × GAP. Gaps close while a
   /// drag runs so the drop math stays uniform.
-  const GAP = 12;
+  const GAP = 28;
   /// Bottom padding beyond the player-bar overlap: 12px tail + the gaps.
   const TAIL = 12 + 2 * GAP;
 
@@ -333,20 +335,27 @@
     }
   }
 
+  /// The disc arrives as the row's content slides aside: it starts a beat
+  /// late, small and a quarter-turn back, and rolls into place.
+  function discIn(_node: Element, { reduced }: { reduced: boolean }): TransitionConfig {
+    if (reduced) return { duration: 120, css: (t) => `opacity: ${t}` };
+    return {
+      delay: 90,
+      duration: 320,
+      easing: cubicOut,
+      css: (t) => `opacity: ${t}; transform: scale(${0.55 + 0.45 * t}) rotate(${(t - 1) * 90}deg)`,
+    };
+  }
+
   function onRowClick(index: number) {
     if (swallowClick) return;
     jump(index);
   }
 </script>
 
-{#snippet rowBody(item: QueueItem, index: number)}
+{#snippet rowBody(item: QueueItem)}
   <span class="thumb">
     <Cover uuid={item.cover} size={80} radius={6} alt="" />
-    {#if index === currentIndex}
-      <span class="now-mark" aria-hidden="true">
-        <NowPlayingMark playing={player.state.playing} size={20} />
-      </span>
-    {/if}
   </span>
   <span class="text">
     <span class="title">{item.title}</span>
@@ -439,7 +448,19 @@
                 onfocus={() => (focusIndex = index)}
                 onkeydown={(event) => onRowKey(event, index)}
                 onclick={() => onRowClick(index)}
-              >{@render rowBody(item, index)}</button>
+              >
+                <!-- The playing row's cover + text slide right to reveal the
+                     spinning disc beside the cover. -->
+                {#if index === currentIndex}
+                  <span
+                    class="np-disc"
+                    aria-hidden="true"
+                    in:discIn={{ reduced: appearance.reducedMotion }}
+                    out:fade={{ duration: appearance.reducedMotion ? 0 : 140 }}
+                  ><NowPlayingMark playing={player.state.playing} size={22} /></span>
+                {/if}
+                <span class="slide">{@render rowBody(item)}</span>
+              </button>
               <span class="dur tnum">{formatDuration(item.duration_secs)}</span>
               <button
                 class="remove"
@@ -465,7 +486,7 @@
       style:left="{press.left}px"
       style:width="{press.width}px"
     >
-      <span class="ghost-main">{@render rowBody(items[drag.from], drag.from)}</span>
+      <span class="ghost-main">{@render rowBody(items[drag.from])}</span>
       <span class="dur tnum">{formatDuration(items[drag.from].duration_secs)}</span>
     </div>
   {/if}
@@ -634,7 +655,8 @@
   }
 
   .row-main,
-  .ghost-main {
+  .ghost-main,
+  .slide {
     display: flex;
     flex: 1;
     align-items: center;
@@ -644,20 +666,32 @@
     padding: 0;
     text-align: left;
   }
+  .row-main {
+    position: relative;
+  }
+  /* Current row: cover + text glide right (transform only) to uncover the
+     disc. The matching right padding is applied at once so the text's
+     ellipsis edge stays put instead of sliding under the duration. */
+  .slide {
+    --disc-shift: 34px;
+    transition: transform var(--dur-view) var(--ease-enter);
+  }
+  .q-row.current .slide {
+    padding-right: var(--disc-shift);
+    transform: translateX(var(--disc-shift));
+  }
+  .np-disc {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    display: grid;
+    margin-top: -11px;
+  }
   .thumb {
     position: relative;
     flex: 0 0 auto;
     width: var(--q-thumb);
     height: var(--q-thumb);
-  }
-  .now-mark {
-    position: absolute;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    border-radius: 6px;
-    color: var(--accent);
-    background: color-mix(in srgb, var(--bg) 55%, transparent);
   }
   .text {
     display: flex;
@@ -732,7 +766,9 @@
     background:
       linear-gradient(var(--surface-float), var(--surface-float)) padding-box,
       var(--edge-lit) border-box;
-    backdrop-filter: blur(var(--overlay-blur));
+    /* No backdrop-filter: the ghost lives inside the queue's glass, and nested
+       glass is dropped by Chromium (and barred by the motion rules); the
+       opaque float veil carries it. */
     box-shadow: 0 14px 32px rgb(0 0 0 / 0.45);
     transform: scale(1.02);
     pointer-events: none;

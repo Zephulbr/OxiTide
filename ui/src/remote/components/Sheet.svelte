@@ -59,7 +59,7 @@
     background: var(--surface-float);
     backdrop-filter: blur(var(--overlay-blur));
     -webkit-backdrop-filter: blur(var(--overlay-blur));
-    animation: rise var(--dur-view) var(--ease-in);
+    animation: rise var(--dur-view) var(--ease-enter);
   }
   @keyframes rise {
     from {

@@ -43,7 +43,7 @@
   }
   a {
     position: relative;
-    transition: color var(--dur-state) var(--ease-in);
+    transition: color var(--dur-state) var(--ease-enter);
   }
   /* A soft accent pill grows behind the active tab's icon. */
   a::before {
@@ -57,8 +57,8 @@
     opacity: 0;
     transform: scaleX(0.4);
     transition:
-      opacity var(--dur-state) var(--ease-in),
-      transform var(--dur-state) var(--ease-in);
+      opacity var(--dur-state) var(--ease-enter),
+      transform var(--dur-state) var(--ease-enter);
   }
   a.active::before {
     opacity: 1;
@@ -66,7 +66,7 @@
   }
   a :global(svg) {
     position: relative;
-    transition: transform var(--dur-micro) var(--ease-in);
+    transition: transform var(--dur-micro) var(--ease-enter);
   }
   a.active {
     color: var(--accent);

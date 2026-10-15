@@ -1667,10 +1667,10 @@
     color: var(--danger);
     font-weight: 600;
     transition:
-      background var(--dur-state) var(--ease-in),
-      border-color var(--dur-state) var(--ease-in),
-      box-shadow var(--dur-state) var(--ease-in),
-      transform var(--dur-micro) var(--ease-in);
+      background var(--dur-state) var(--ease-enter),
+      border-color var(--dur-state) var(--ease-enter),
+      box-shadow var(--dur-state) var(--ease-enter),
+      transform var(--dur-micro) var(--ease-enter);
   }
   .logout:hover {
     background: color-mix(in srgb, var(--danger) 18%, transparent);

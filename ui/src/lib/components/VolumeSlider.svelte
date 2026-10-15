@@ -52,7 +52,7 @@
     transition:
       color var(--dur-micro),
       background-color var(--dur-micro),
-      transform var(--dur-micro) var(--ease-in);
+      transform var(--dur-micro) var(--ease-enter);
   }
   .mute:hover {
     background: var(--surface-3);
@@ -79,7 +79,7 @@
       var(--accent) var(--level, 100%),
       var(--line) var(--level, 100%)
     );
-    transition: box-shadow var(--dur-state) var(--ease-in);
+    transition: box-shadow var(--dur-state) var(--ease-enter);
   }
   .track:hover {
     box-shadow: 0 0 9px color-mix(in srgb, var(--accent) 80%, transparent);

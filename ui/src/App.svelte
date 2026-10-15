@@ -686,13 +686,13 @@
           class="queue-backdrop"
           onclick={() => nav.toggleQueue()}
           aria-hidden="true"
-          transition:fade={{ duration: appearance.reducedMotion ? 120 : 260 }}
+          transition:fade|global={{ duration: appearance.reducedMotion ? 120 : 260 }}
         ></div>
-        <aside class="queue floating" transition:queueFloat={{ reduced: appearance.reducedMotion }}>
+        <aside class="queue floating" transition:queueFloat|global={{ reduced: appearance.reducedMotion }}>
           <QueueRail {player} />
         </aside>
       {:else}
-        <aside class="queue" transition:queueDock={{ reduced: appearance.reducedMotion }}>
+        <aside class="queue" transition:queueDock|global={{ reduced: appearance.reducedMotion }}>
           <div
             class="queue-resize"
             onpointerdown={startQueueDrag}

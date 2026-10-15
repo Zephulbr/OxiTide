@@ -103,9 +103,9 @@
     background: var(--surface-2);
     transition:
       width var(--dur-state) var(--ease-in-out),
-      background var(--dur-state) var(--ease-in),
-      border-color var(--dur-state) var(--ease-in),
-      box-shadow var(--dur-state) var(--ease-in);
+      background var(--dur-state) var(--ease-enter),
+      border-color var(--dur-state) var(--ease-enter),
+      box-shadow var(--dur-state) var(--ease-enter);
   }
   .track-search.open {
     width: min(240px, 26vw);
@@ -122,7 +122,7 @@
     border: 0;
     background: transparent;
     color: var(--text-muted);
-    transition: color var(--dur-micro) var(--ease-in);
+    transition: color var(--dur-micro) var(--ease-enter);
   }
   .toggle:hover,
   .track-search.open .toggle {
@@ -139,7 +139,7 @@
     color: var(--text);
     font: inherit;
     opacity: 0;
-    transition: opacity var(--dur-state) var(--ease-in);
+    transition: opacity var(--dur-state) var(--ease-enter);
   }
   .field::placeholder {
     color: var(--text-muted);

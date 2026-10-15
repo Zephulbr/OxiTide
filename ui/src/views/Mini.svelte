@@ -193,7 +193,7 @@
     transition:
       color var(--dur-micro),
       background-color var(--dur-micro),
-      transform var(--dur-micro) var(--ease-in);
+      transform var(--dur-micro) var(--ease-enter);
   }
   .ibtn:hover {
     background: var(--surface-3);
@@ -242,7 +242,7 @@
     backdrop-filter: blur(var(--glass-blur));
     border-top: 1px solid var(--line);
     border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
-    animation: sheet-in var(--dur-view) var(--ease-in) both;
+    animation: sheet-in var(--dur-view) var(--ease-enter) both;
   }
   @keyframes sheet-in {
     from {

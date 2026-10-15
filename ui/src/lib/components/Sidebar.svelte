@@ -251,7 +251,7 @@
     font-weight: 640;
     margin: 0;
     letter-spacing: -0.02em;
-    transition: opacity var(--dur-micro) var(--ease-in);
+    transition: opacity var(--dur-micro) var(--ease-enter);
   }
   .history {
     display: flex;

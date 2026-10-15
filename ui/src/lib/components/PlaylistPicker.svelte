@@ -403,7 +403,7 @@
     border-radius: 999px;
     background: var(--surface-3);
     cursor: pointer;
-    transition: background var(--dur-micro) var(--ease-in);
+    transition: background var(--dur-micro) var(--ease-enter);
   }
   .switch .knob {
     position: absolute;
@@ -415,7 +415,7 @@
     background: var(--text-muted);
     transition:
       transform var(--dur-micro) var(--ease-in-out),
-      background var(--dur-micro) var(--ease-in);
+      background var(--dur-micro) var(--ease-enter);
   }
   .switch.on {
     background: var(--accent);
