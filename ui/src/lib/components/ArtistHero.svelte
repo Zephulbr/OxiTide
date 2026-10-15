@@ -197,14 +197,22 @@
     transform: scale(1.1);
     opacity: calc(0.45 * var(--flag-backdrop-art));
   }
+  /* The palette roles are tuned as *text* colours against the room (light in
+     the dark theme), so painted as a background they can be as light as the
+     hero's own text. The scrim pulls everything back toward the room colour —
+     darker in the dark theme, paper-lighter in the light one — strongest behind
+     the portrait and copy, lighter toward the right so the colour still shows. */
   .scrim {
     position: absolute;
     inset: 0;
-    background: linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--surface-1) 25%, transparent),
-      color-mix(in srgb, var(--surface-1) 72%, transparent)
-    );
+    background:
+      linear-gradient(
+        90deg,
+        color-mix(in oklab, var(--bg) 62%, transparent),
+        color-mix(in oklab, var(--bg) 50%, transparent) 55%,
+        color-mix(in oklab, var(--bg) 42%, transparent)
+      ),
+      linear-gradient(180deg, transparent 40%, color-mix(in oklab, var(--bg) 25%, transparent));
   }
   .content {
     position: relative;

@@ -35,7 +35,9 @@ art, now-playing mark — AR-4), artwork reactivity. Do not add a fifth.
 
 Dynamic colour: three roles (Primary, Secondary, Tertiary) + backdrop wash, guarded by a
 contrast chain (structural scrim minimums + per-cover composite-ceiling clamping).
-`Auto` = Full here.
+`Auto` = Full here. The roles are tuned as *text* colours against the room, so a
+surface painted with them (the artist hero's local palette) needs a `--bg` scrim
+(62% → 42% left to right in `ArtistHero.svelte`) to keep its own text readable.
 
 ## 3. Layout
 
