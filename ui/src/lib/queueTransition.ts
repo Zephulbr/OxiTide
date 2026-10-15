@@ -128,6 +128,19 @@ export function startPendingGlide() {
   }
 }
 
+/// Synchronous re-placement hooks for anything a page positions from its own
+/// measurements (e.g. the Settings tab pill). A ResizeObserver reacts a frame
+/// after the glide measures the final layout, so such elements would glide to
+/// a stale spot and then jump; a hook runs right after the page takes its
+/// final width and before that measurement. Hooks must write the DOM directly:
+/// Svelte state is not flushed in between. Returns the unregister function.
+const pageResizeHooks = new Set<() => void>();
+
+export function onPageResize(hook: () => void): () => void {
+  pageResizeHooks.add(hook);
+  return () => pageResizeHooks.delete(hook);
+}
+
 function applyHold(
   main: HTMLElement,
   page: HTMLElement,
@@ -139,6 +152,7 @@ function applyHold(
   page.style.width = `${width}px`;
   main.style.overflowX = "hidden";
   main.scrollLeft = 0;
+  for (const hook of pageResizeHooks) hook();
 
   const ghosts: HTMLElement[] = [];
   const animations =

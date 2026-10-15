@@ -87,6 +87,7 @@
     type HotkeyAction,
   } from "../lib/hotkeys";
   import { createHotkeyCapture } from "../lib/hotkeyCapture.svelte";
+  import { onPageResize } from "../lib/queueTransition";
   let {
     player,
     toasts,
@@ -351,6 +352,7 @@
   // narrow nav) and only its transform animates; the first placement is
   // instant so it never swoops in from the corner.
   let nav = $state<HTMLDivElement | null>(null);
+  let indicator = $state<HTMLSpanElement | null>(null);
   let pill = $state({ x: 0, y: 0, w: 0, h: 0 });
   let pillReady = $state(false);
 
@@ -359,6 +361,26 @@
     if (!el) return;
     pill = { x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight };
   }
+
+  // The docked queue's glide measures the final layout before the
+  // ResizeObserver below fires, so re-place the pill synchronously when the
+  // page takes its new width (the nav may flip to the narrow strip). Written
+  // straight to the element, with the pill's own transition suspended, so the
+  // glide alone carries it there; the state follows for the next render.
+  $effect(() =>
+    onPageResize(() => {
+      const el = document.getElementById(`settings-tab-${tab}`);
+      if (!el || !indicator) return;
+      const next = { x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight };
+      const node = indicator;
+      node.style.transition = "none";
+      node.style.width = `${next.w}px`;
+      node.style.height = `${next.h}px`;
+      node.style.transform = `translate(${next.x}px, ${next.y}px)`;
+      pill = next;
+      requestAnimationFrame(() => requestAnimationFrame(() => (node.style.transition = "")));
+    }),
+  );
 
   $effect(() => {
     if (!nav) return;
@@ -799,6 +821,7 @@
         aria-label="Settings categories"
       >
         <span
+          bind:this={indicator}
           class="tab-indicator"
           class:ready={pillReady}
           aria-hidden="true"
