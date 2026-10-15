@@ -39,7 +39,8 @@
 <style>
   .toast-host {
     position: fixed;
-    top: 12px;
+    /* Below the custom caption band (window buttons), never over it. */
+    top: calc(var(--titlebar-h) + 8px);
     right: 12px;
     z-index: 30;
     display: flex;
