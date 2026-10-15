@@ -40,10 +40,9 @@ function favorites(has: boolean): Favorites {
   } as unknown as Favorites;
 }
 
-function playlistCtx(overrides: { busy?: boolean; disabled?: boolean; canMove?: boolean } = {}) {
+function playlistCtx(overrides: { busy?: boolean; disabled?: boolean } = {}) {
   return {
     onRemove: vi.fn(),
-    onMove: vi.fn(),
     busy: false,
     disabled: false,
     ...overrides,
@@ -54,7 +53,6 @@ function baseCtx(overrides: Partial<TrackMenuContext> = {}): TrackMenuContext {
   return {
     track: track(1),
     index: 0,
-    trackCount: 1,
     favorites: favorites(false),
     play: vi.fn(),
     startRadio: vi.fn(),
@@ -93,7 +91,9 @@ describe("trackMenuItems", () => {
     const favorite = (fav: boolean) =>
       trackMenuItems(baseCtx({ favorites: favorites(fav) })).find((i) => i.id === "favorite");
     expect(favorite(true)?.label).toBe("Unfavorite");
+    expect(favorite(true)?.icon).toBe("heart-crack");
     expect(favorite(false)?.label).toBe("Favorite");
+    expect(favorite(false)?.icon).toBe("heart");
   });
 
   it("disables playback actions for a blocked track but keeps the rest", () => {
@@ -122,9 +122,7 @@ describe("trackMenuItems", () => {
   });
 
   it("appends playlist editing when the context is editable", () => {
-    const items = trackMenuItems(
-      baseCtx({ index: 1, trackCount: 3, playlist: playlistCtx() }),
-    );
+    const items = trackMenuItems(baseCtx({ index: 1, playlist: playlistCtx() }));
 
     expect(items.map((i) => i.id)).toEqual([
       "play",
@@ -135,20 +133,20 @@ describe("trackMenuItems", () => {
       "favorite",
       "copy-title",
       "track-info",
-      "move-up",
-      "move-down",
       "remove",
     ]);
+    expect(items.find((i) => i.id === "remove")?.danger).toBe(true);
   });
 
-  it("disables move up at the first row and move down at the last", () => {
-    const first = trackMenuItems(baseCtx({ index: 0, trackCount: 3, playlist: playlistCtx() }));
-    const last = trackMenuItems(baseCtx({ index: 2, trackCount: 3, playlist: playlistCtx() }));
+  it("gives every track row an icon and groups them with dividers", () => {
+    const items = trackMenuItems(baseCtx({ playlist: playlistCtx() }));
 
-    expect(first.find((i) => i.id === "move-up")?.disabled).toBe(true);
-    expect(first.find((i) => i.id === "move-down")?.disabled).toBe(false);
-    expect(last.find((i) => i.id === "move-down")?.disabled).toBe(true);
-    expect(last.find((i) => i.id === "move-up")?.disabled).toBe(false);
+    expect(items.every((i) => i.icon)).toBe(true);
+    expect(items.filter((i) => i.divider).map((i) => i.id)).toEqual([
+      "add-playlist",
+      "copy-title",
+      "remove",
+    ]);
   });
 
   it("omits editing items while busy or disabled", () => {
@@ -159,36 +157,12 @@ describe("trackMenuItems", () => {
     expect(disabled.map((i) => i.id)).not.toContain("remove");
   });
 
-  it("keeps remove and favorite but omits the moves while canMove is false", () => {
-    const items = trackMenuItems(
-      baseCtx({ index: 1, trackCount: 3, playlist: playlistCtx({ canMove: false }) }),
-    );
-
-    expect(items.map((i) => i.id)).toEqual([
-      "play",
-      "radio",
-      "play-next",
-      "add-queue",
-      "add-playlist",
-      "favorite",
-      "copy-title",
-      "track-info",
-      "remove",
-    ]);
-  });
-
-  it("calls onMove and onRemove with the row index", () => {
+  it("calls onRemove with the row index", () => {
     const playlistActions = playlistCtx();
-    const items = trackMenuItems(
-      baseCtx({ index: 2, trackCount: 3, playlist: playlistActions }),
-    );
+    const items = trackMenuItems(baseCtx({ index: 2, playlist: playlistActions }));
 
-    items.find((i) => i.id === "move-up")?.run();
-    items.find((i) => i.id === "move-down")?.run();
     items.find((i) => i.id === "remove")?.run();
 
-    expect(playlistActions.onMove).toHaveBeenCalledWith(2, -1);
-    expect(playlistActions.onMove).toHaveBeenCalledWith(2, 1);
     expect(playlistActions.onRemove).toHaveBeenCalledWith(2);
   });
 });

@@ -56,11 +56,13 @@
       {
         id: "new-playlist",
         label: "New Playlist",
+        icon: "list-plus",
         run: () => playlistActions.openCreate(),
       },
       {
         id: "new-folder",
         label: "New Folder",
+        icon: "folder-plus",
         run: () => actions.openCreateFolder("root"),
       },
     ]);

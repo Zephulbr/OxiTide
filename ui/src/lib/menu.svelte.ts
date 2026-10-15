@@ -10,8 +10,13 @@ export interface MenuItem {
   section?: string;
   /// Filled treatment for the active option (radio-style).
   selected?: boolean;
+  /// Icon rendered before the label.
+  icon?: IconName;
   /// Small icon rendered at the trailing edge, e.g. the sort direction arrow.
   trailing?: IconName;
+  /// Draws a hairline divider above this row, grouping it apart from the
+  /// rows before it (ignored on the first row and under a section heading).
+  divider?: boolean;
   run(): void;
 }
 

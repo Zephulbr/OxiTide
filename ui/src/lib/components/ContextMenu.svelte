@@ -8,6 +8,9 @@
   let left = $state(0);
   let top = $state(0);
   let active = $state(-1);
+  // Menus where only some rows carry an icon (the sort/filter check) keep the
+  // labels aligned with a spacer.
+  let hasLeadIcons = $derived(menu.open?.items.some((item) => item.icon) ?? false);
 
   function enabledIndexes(items: MenuItem[]): number[] {
     return items.map((item, index) => (item.disabled ? -1 : index)).filter((i) => i >= 0);
@@ -129,11 +132,17 @@
         class:active={active === i}
         class:selected={item.selected}
         class:danger={item.danger}
+        class:divided={item.divider && i > 0 && !item.section}
         disabled={item.disabled}
         onmouseenter={() => (active = i)}
         onmouseleave={() => (active = -1)}
         onclick={() => run(item)}
       >
+        {#if item.icon}
+          <Icon name={item.icon} size={16} />
+        {:else if hasLeadIcons}
+          <span class="lead-spacer" aria-hidden="true"></span>
+        {/if}
         <span class="label">{item.label}</span>
         {#if item.trailing}<Icon name={item.trailing} size={14} />{/if}
       </button>
@@ -148,16 +157,26 @@
     z-index: 50;
     display: flex;
     flex-direction: column;
-    min-width: 170px;
-    padding: 4px;
+    min-width: 196px;
+    padding: 6px;
     border: 1px solid transparent;
-    border-radius: var(--radius-control);
+    border-radius: var(--radius-card);
     background:
       linear-gradient(var(--menu-fill), var(--menu-fill)) padding-box,
       var(--edge-lit) border-box;
     backdrop-filter: blur(var(--glass-blur));
-    box-shadow: 0 6px 18px rgb(0 0 0 / 0.4);
+    box-shadow:
+      0 16px 40px rgb(0 0 0 / 0.45),
+      0 2px 6px rgb(0 0 0 / 0.3);
     outline: none;
+    transform-origin: top left;
+    animation: menu-in var(--dur-state) var(--ease-enter);
+  }
+  @keyframes menu-in {
+    from {
+      opacity: 0;
+      transform: translateY(-4px) scale(0.97);
+    }
   }
   .section {
     margin: 0;
@@ -177,14 +196,40 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 10px;
+    gap: 11px;
     text-align: left;
-    padding: 6px 10px;
+    padding: 8px 11px;
     border: 0;
-    border-radius: 4px;
+    border-radius: var(--radius-control);
     background: transparent;
     color: inherit;
+    font-size: 14px;
     cursor: pointer;
+    transition:
+      background-color var(--dur-micro) var(--ease-in-out),
+      color var(--dur-micro) var(--ease-in-out);
+  }
+  /* A hairline between groups: the gap is the button margin so the divider
+     sits centered in it and the hover wash never touches it. */
+  .menu button.divided {
+    position: relative;
+    margin-top: 7px;
+  }
+  .menu button.divided::before {
+    content: "";
+    position: absolute;
+    left: 6px;
+    right: 6px;
+    top: -4px;
+    height: 1px;
+    background: var(--line);
+  }
+  .menu button + button {
+    margin-top: 1px;
+  }
+  .lead-spacer {
+    flex: 0 0 16px;
+    width: 16px;
   }
   .menu button .label {
     flex: 1;
@@ -193,9 +238,13 @@
   .menu button :global(svg) {
     flex: 0 0 auto;
     color: var(--text-muted);
+    transition: color var(--dur-micro) var(--ease-in-out);
   }
   .menu button.active:not(:disabled) {
     background: var(--surface-2);
+  }
+  .menu button.active:not(:disabled) :global(svg) {
+    color: var(--accent);
   }
   /* Selected (the current sort/filter) is told apart from the hover wash by
      the accent, not a second background. */
@@ -206,8 +255,15 @@
   .menu button.selected :global(svg) {
     color: var(--accent);
   }
-  .menu button.danger {
+  .menu button.danger,
+  .menu button.danger :global(svg) {
     color: var(--danger);
+  }
+  .menu button.danger.active:not(:disabled) {
+    background: color-mix(in srgb, var(--danger) 14%, transparent);
+  }
+  .menu button:disabled :global(svg) {
+    opacity: 0.5;
   }
   .menu button:disabled {
     color: var(--text-muted);

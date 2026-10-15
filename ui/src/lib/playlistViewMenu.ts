@@ -34,6 +34,7 @@ export function playlistViewMenuItems(
       label,
       section: "Sort",
       selected,
+      icon: selected ? "check" : undefined,
       trailing: selected ? (prefs.dir === "desc" ? "arrow-down" : "arrow-up") : undefined,
       run: () => handlers.setSort(key),
     };
@@ -44,6 +45,7 @@ export function playlistViewMenuItems(
       label,
       section: "Filter",
       selected: prefs.filter === key,
+      icon: prefs.filter === key ? "check" : undefined,
       run: () => handlers.setFilter(key),
     }),
   );

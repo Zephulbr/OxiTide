@@ -173,6 +173,7 @@
       {
         id: "refresh",
         label: "Refresh",
+        icon: "rotate-cw",
         run: () => {
           invalidatePlaylistCovers(id);
           void pager.refresh();
@@ -183,7 +184,9 @@
       items.push({
         id: "delete",
         label: "Delete playlist",
+        icon: "trash-2",
         danger: true,
+        divider: true,
         run: () => (confirmingDelete = true),
       });
     }
@@ -233,10 +236,6 @@
     } finally {
       busy = false;
     }
-  }
-
-  function moveAt(index: number, delta: -1 | 1) {
-    return moveTrack(index, index + delta);
   }
 
   async function playFrom(index: number) {
@@ -363,7 +362,7 @@
       playingTrackId={player.state.current?.track_id ?? null}
       playbackRunning={player.state.playing}
       playlistActions={playlist?.owned
-        ? { onRemove: removeAt, onMove: moveAt, busy, disabled: !pager.done, onDrop: moveTrack }
+        ? { onRemove: removeAt, busy, disabled: !pager.done, onDrop: moveTrack }
         : undefined}
     />
     {#if pager.error}

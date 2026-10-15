@@ -60,7 +60,6 @@
     /// `onDrop` receives absolute source-order indices from drag-and-drop.
     playlistActions?: {
       onRemove(index: number): void;
-      onMove(index: number, delta: -1 | 1): void;
       busy: boolean;
       disabled: boolean;
       onDrop?(from: number, to: number): void;
@@ -375,7 +374,6 @@
               trackMenuItems({
                 track: t,
                 index,
-                trackCount: rows.length,
                 favorites,
                 blocked: reasons.length > 0,
                 play: () => play(index),
@@ -385,7 +383,7 @@
                 addToPlaylist: () => onAddToPlaylist?.(t),
                 copyTitle: () => void copyText(t.title),
                 trackInfo: () => trackInfo.open(t),
-                playlist: playlistActions && { ...playlistActions, canMove: !view.engaged },
+                playlist: playlistActions,
               })}
           >
             <td class="muted tnum num-cell">

@@ -5,7 +5,6 @@ import type { MenuItem } from "./menu.svelte";
 export interface TrackMenuContext {
   track: Track;
   index: number;
-  trackCount: number;
   favorites: Favorites;
   play(): void | Promise<void>;
   /// Starts a TIDAL track radio, replacing the queue.
@@ -22,66 +21,78 @@ export interface TrackMenuContext {
   blocked?: boolean;
   playlist?: {
     onRemove(index: number): void;
-    onMove(index: number, delta: -1 | 1): void;
     busy: boolean;
     disabled: boolean;
-    /// false omits move-up/move-down but keeps Remove (sorted/filtered views).
-    canMove?: boolean;
   };
 }
 
-/// Track row items. The playlist block is present only while the list is
-/// editable; edge moves are disabled instead of hidden so the menu is stable.
+/// Track row items, grouped playback / library / utility with the playlist
+/// Remove last. The playlist block is present only while the list is editable
+/// (reordering is drag-and-drop only).
 export function trackMenuItems(ctx: TrackMenuContext): MenuItem[] {
   const playbackBlocked = ctx.blocked === true;
+  const favorited = ctx.favorites.hasTrack(ctx.track.id);
   const items: MenuItem[] = [
-    { id: "play", label: "Play", disabled: playbackBlocked, run: () => void ctx.play() },
+    {
+      id: "play",
+      label: "Play",
+      icon: "play",
+      disabled: playbackBlocked,
+      run: () => void ctx.play(),
+    },
     {
       id: "radio",
       label: "Track Radio",
+      icon: "radio",
       disabled: playbackBlocked,
       run: () => ctx.startRadio(),
     },
     {
       id: "play-next",
       label: "Play next",
+      icon: "skip-forward",
       disabled: playbackBlocked,
       run: () => ctx.playNext(),
     },
     {
       id: "add-queue",
       label: "Add to queue",
+      icon: "plus",
       disabled: playbackBlocked,
       run: () => ctx.addToQueue(),
     },
-    { id: "add-playlist", label: "Add to playlist", run: () => ctx.addToPlaylist() },
+    {
+      id: "add-playlist",
+      label: "Add to playlist",
+      icon: "list-plus",
+      divider: true,
+      run: () => ctx.addToPlaylist(),
+    },
     {
       id: "favorite",
-      label: ctx.favorites.hasTrack(ctx.track.id) ? "Unfavorite" : "Favorite",
+      label: favorited ? "Unfavorite" : "Favorite",
+      icon: favorited ? "heart-crack" : "heart",
       run: () => void ctx.favorites.toggleTrack(ctx.track.id),
     },
-    { id: "copy-title", label: "Copy title", run: () => ctx.copyTitle() },
-    { id: "track-info", label: "Track info", run: () => ctx.trackInfo() },
+    {
+      id: "copy-title",
+      label: "Copy title",
+      icon: "copy",
+      divider: true,
+      run: () => ctx.copyTitle(),
+    },
+    { id: "track-info", label: "Track info", icon: "info", run: () => ctx.trackInfo() },
   ];
   const playlist = ctx.playlist;
   if (playlist && !playlist.busy && !playlist.disabled) {
-    if (playlist.canMove !== false) {
-      items.push(
-        {
-          id: "move-up",
-          label: "Move up",
-          disabled: ctx.index === 0,
-          run: () => playlist.onMove(ctx.index, -1),
-        },
-        {
-          id: "move-down",
-          label: "Move down",
-          disabled: ctx.index === ctx.trackCount - 1,
-          run: () => playlist.onMove(ctx.index, 1),
-        },
-      );
-    }
-    items.push({ id: "remove", label: "Remove", run: () => playlist.onRemove(ctx.index) });
+    items.push({
+      id: "remove",
+      label: "Remove",
+      icon: "trash-2",
+      danger: true,
+      divider: true,
+      run: () => playlist.onRemove(ctx.index),
+    });
   }
   return items;
 }
@@ -95,12 +106,16 @@ export function queueMenuItems(ctx: {
   copyTitle(): void;
   remove(): void;
 }): MenuItem[] {
-  const items: MenuItem[] = [{ id: "play-now", label: "Play now", run: () => ctx.playNow() }];
+  const items: MenuItem[] = [
+    { id: "play-now", label: "Play now", icon: "play", run: () => ctx.playNow() },
+  ];
   const playNext = ctx.playNext;
-  if (playNext) items.push({ id: "play-next", label: "Play next", run: () => playNext() });
+  if (playNext) {
+    items.push({ id: "play-next", label: "Play next", icon: "skip-forward", run: () => playNext() });
+  }
   items.push(
-    { id: "copy-title", label: "Copy title", run: () => ctx.copyTitle() },
-    { id: "remove", label: "Remove", run: () => ctx.remove() },
+    { id: "copy-title", label: "Copy title", icon: "copy", divider: true, run: () => ctx.copyTitle() },
+    { id: "remove", label: "Remove", icon: "trash-2", danger: true, divider: true, run: () => ctx.remove() },
   );
   return items;
 }
@@ -112,10 +127,10 @@ export function artistMoreItems(ctx: {
   mixId?: string | null;
   openMix(id: string): void;
 }): MenuItem[] {
-  const items: MenuItem[] = [{ id: "share", label: "Share", run: () => ctx.share() }];
+  const items: MenuItem[] = [{ id: "share", label: "Share", icon: "share-2", run: () => ctx.share() }];
   if (ctx.mixId) {
     const mixId = ctx.mixId;
-    items.push({ id: "artist-mix", label: "Artist mix", run: () => ctx.openMix(mixId) });
+    items.push({ id: "artist-mix", label: "Artist mix", icon: "radio", run: () => ctx.openMix(mixId) });
   }
   return items;
 }
@@ -127,11 +142,13 @@ export function libraryPlaylistMenuItems(ctx: {
   rename(): void;
   remove(): void;
 }): MenuItem[] {
-  const items: MenuItem[] = [{ id: "open", label: "Open", run: () => ctx.open() }];
+  const items: MenuItem[] = [
+    { id: "open", label: "Open", icon: "external-link", run: () => ctx.open() },
+  ];
   if (ctx.editable) {
     items.push(
-      { id: "rename", label: "Rename", run: () => ctx.rename() },
-      { id: "delete", label: "Delete", danger: true, run: () => ctx.remove() },
+      { id: "rename", label: "Rename", icon: "pencil", run: () => ctx.rename() },
+      { id: "delete", label: "Delete", icon: "trash-2", danger: true, divider: true, run: () => ctx.remove() },
     );
   }
   return items;
@@ -144,9 +161,9 @@ export function collectionFolderMenuItems(ctx: {
   remove(): void;
 }): MenuItem[] {
   return [
-    { id: "open", label: "Open", run: () => ctx.open() },
-    { id: "rename", label: "Rename", run: () => ctx.rename() },
-    { id: "remove", label: "Remove", danger: true, run: () => ctx.remove() },
+    { id: "open", label: "Open", icon: "external-link", run: () => ctx.open() },
+    { id: "rename", label: "Rename", icon: "pencil", run: () => ctx.rename() },
+    { id: "remove", label: "Remove", icon: "trash-2", danger: true, divider: true, run: () => ctx.remove() },
   ];
 }
 
@@ -158,19 +175,21 @@ export function collectionPlaylistMenuItems(ctx: {
   move(): void;
 }): MenuItem[] {
   const items: MenuItem[] = [
-    { id: "open", label: "Open", run: () => ctx.open() },
-    { id: "move", label: "Move to folder…", run: () => ctx.move() },
+    { id: "open", label: "Open", icon: "external-link", run: () => ctx.open() },
+    { id: "move", label: "Move to folder…", icon: "folder", run: () => ctx.move() },
   ];
   if (ctx.playlist.owned) {
     items.push(
-      { id: "rename", label: "Rename", run: () => ctx.rename() },
-      { id: "delete", label: "Delete", danger: true, run: () => ctx.remove() },
+      { id: "rename", label: "Rename", icon: "pencil", run: () => ctx.rename() },
+      { id: "delete", label: "Delete", icon: "trash-2", danger: true, divider: true, run: () => ctx.remove() },
     );
   } else {
     items.push({
       id: "remove",
       label: "Remove from collection",
+      icon: "trash-2",
       danger: true,
+      divider: true,
       run: () => ctx.remove(),
     });
   }
