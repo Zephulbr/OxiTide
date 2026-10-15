@@ -5,7 +5,16 @@
   import PlayerBar from "./lib/components/PlayerBar.svelte";
   import QueueRail from "./lib/components/QueueRail.svelte";
   import { fade } from "svelte/transition";
-  import { queueDock, queueFloat } from "./lib/queueTransition";
+  import {
+    commitOpenGlide,
+    GLIDE_MS,
+    holdPage,
+    prepareOpenGlide,
+    queueDock,
+    queueFloat,
+    releasePageHold,
+    startPendingGlide,
+  } from "./lib/queueTransition";
   import Backdrop from "./lib/components/Backdrop.svelte";
   import Login from "./views/Login.svelte";
   import Mini from "./views/Mini.svelte";
@@ -411,6 +420,23 @@
     return () => gate.dispose();
   });
 
+  // Docked queue opening: snapshot the page before the rail enters the DOM,
+  // then hold + glide it right after the update (lib/queueTransition.ts).
+  // Closing is handled by the rail's outro start, when it is still laid out.
+  let queueWasOpen = false;
+  $effect.pre(() => {
+    if (nav.queueOpen && !queueWasOpen && !queueOverlay) {
+      prepareOpenGlide(document.getElementById("main"), { glide: !appearance.reducedMotion });
+    }
+  });
+  $effect(() => {
+    const open = nav.queueOpen;
+    if (open && !queueWasOpen && !queueOverlay) {
+      commitOpenGlide(document.getElementById("main"), appearance.queueWidth);
+    }
+    queueWasOpen = open;
+  });
+
   async function restoreSavedSession() {
     try {
       const session = await api.getRestoredSession();
@@ -686,13 +712,23 @@
           class="queue-backdrop"
           onclick={() => nav.toggleQueue()}
           aria-hidden="true"
-          transition:fade|global={{ duration: appearance.reducedMotion ? 120 : 260 }}
+          transition:fade|global={{ duration: appearance.reducedMotion ? 120 : GLIDE_MS }}
         ></div>
         <aside class="queue floating" transition:queueFloat|global={{ reduced: appearance.reducedMotion }}>
           <QueueRail {player} />
         </aside>
       {:else}
-        <aside class="queue" transition:queueDock|global={{ reduced: appearance.reducedMotion }}>
+        <aside
+          class="queue"
+          transition:queueDock|global={{ reduced: appearance.reducedMotion }}
+          onintrostart={startPendingGlide}
+          onoutrostart={(e) =>
+            holdPage(document.getElementById("main"), e.currentTarget, 0, {
+              glide: !appearance.reducedMotion,
+            })}
+          onintroend={releasePageHold}
+          onoutroend={releasePageHold}
+        >
           <div
             class="queue-resize"
             onpointerdown={startQueueDrag}
