@@ -2,7 +2,7 @@
 //! background writer, and stats derived on read (spec §5.1, §6.3; QoL-D9).
 //! No network, no engine changes: it rides the same event feed as scrobbling.
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -438,6 +438,19 @@ pub struct Stats {
     pub top_tracks: Vec<TopTrack>,
     pub top_albums: Vec<TopEntry>,
     pub daily: Vec<DailyEntry>,
+    /// All-time plays by local hour of day (24 entries, 0 = midnight).
+    pub hourly: Vec<u64>,
+    /// All-time plays by local weekday (7 entries, Monday first).
+    pub weekdays: Vec<u64>,
+    pub distinct_tracks: u64,
+    pub distinct_artists: u64,
+    pub distinct_albums: u64,
+    /// Plays that reached the end (`HistoryRecord::completed`).
+    pub completed_plays: u64,
+    /// Consecutive local days with a play, ending today (or yesterday, so a
+    /// streak is not broken before today's first play).
+    pub current_streak_days: u32,
+    pub longest_streak_days: u32,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
@@ -445,6 +458,10 @@ pub struct TopEntry {
     pub name: String,
     pub plays: u64,
     pub listened_ms: u64,
+    /// The newest play's track and cover: history keeps names only, so the
+    /// UI resolves album/artist ids (and the artist picture) through it.
+    pub track_id: u64,
+    pub cover: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
@@ -452,7 +469,10 @@ pub struct TopTrack {
     pub track_id: u64,
     pub title: String,
     pub artist: String,
+    pub album: String,
+    pub cover: Option<String>,
     pub plays: u64,
+    pub listened_ms: u64,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
@@ -475,11 +495,23 @@ pub fn compute_stats(records: &VecDeque<HistoryRecord>, now: i64, offset_minutes
     let shift = offset_minutes as i64 * 60;
     let today = (now - shift).div_euclid(86_400);
 
-    let mut artists: std::collections::HashMap<String, (u64, u64)> = std::collections::HashMap::new();
-    let mut albums: std::collections::HashMap<String, (u64, u64)> = std::collections::HashMap::new();
-    let mut tracks: std::collections::HashMap<u64, TopTrack> = std::collections::HashMap::new();
+    let mut artists: HashMap<String, Tally> = HashMap::new();
+    let mut albums: HashMap<String, Tally> = HashMap::new();
+    let mut tracks: HashMap<u64, (TopTrack, i64)> = HashMap::new();
+    let mut active_days: HashSet<i64> = HashSet::new();
+    stats.hourly = vec![0; 24];
+    stats.weekdays = vec![0; 7];
 
     for record in records {
+        let local = record.started_at - shift;
+        let day = local.div_euclid(86_400);
+        active_days.insert(day);
+        stats.hourly[(local.rem_euclid(86_400) / 3600) as usize] += 1;
+        // 1970-01-01 was a Thursday (index 3 with Monday first).
+        stats.weekdays[(day + 3).rem_euclid(7) as usize] += 1;
+        if record.completed {
+            stats.completed_plays += 1;
+        }
         stats.total_listened_ms += record.listened_ms;
         stats.total_plays += 1;
         if record.started_at >= week_cutoff {
@@ -491,30 +523,38 @@ pub fn compute_stats(records: &VecDeque<HistoryRecord>, now: i64, offset_minutes
             stats.plays_30d += 1;
         }
         if !record.artist.is_empty() {
-            let entry = artists.entry(record.artist.clone()).or_insert((0, 0));
-            entry.0 += 1;
-            entry.1 += record.listened_ms;
+            artists.entry(record.artist.clone()).or_default().add(record);
         }
         if !record.album.is_empty() {
-            let entry = albums.entry(record.album.clone()).or_insert((0, 0));
-            entry.0 += 1;
-            entry.1 += record.listened_ms;
+            albums.entry(record.album.clone()).or_default().add(record);
         }
-        let track = tracks.entry(record.track_id).or_insert_with(|| TopTrack {
-            track_id: record.track_id,
-            title: record.title.clone(),
-            artist: record.artist.clone(),
-            plays: 0,
+        let (track, newest) = tracks.entry(record.track_id).or_insert_with(|| {
+            let track = TopTrack { track_id: record.track_id, ..TopTrack::default() };
+            (track, i64::MIN)
         });
         track.plays += 1;
+        track.listened_ms += record.listened_ms;
+        if record.started_at >= *newest {
+            *newest = record.started_at;
+            track.title = record.title.clone();
+            track.artist = record.artist.clone();
+            track.album = record.album.clone();
+            if record.cover.is_some() {
+                track.cover = record.cover.clone();
+            }
+        }
     }
 
+    stats.distinct_tracks = tracks.len() as u64;
+    stats.distinct_artists = artists.len() as u64;
+    stats.distinct_albums = albums.len() as u64;
     stats.top_artists = top_entries(artists);
     stats.top_albums = top_entries(albums);
-    let mut top_tracks: Vec<TopTrack> = tracks.into_values().collect();
+    let mut top_tracks: Vec<TopTrack> = tracks.into_values().map(|(track, _)| track).collect();
     top_tracks.sort_by(|a, b| b.plays.cmp(&a.plays).then_with(|| a.title.cmp(&b.title)));
     top_tracks.truncate(TOP_LIMIT);
     stats.top_tracks = top_tracks;
+    (stats.current_streak_days, stats.longest_streak_days) = streaks(&active_days, today);
 
     stats.daily = (0..DAILY_DAYS)
         .map(|i| {
@@ -533,10 +573,62 @@ pub fn compute_stats(records: &VecDeque<HistoryRecord>, now: i64, offset_minutes
     stats
 }
 
-fn top_entries(map: std::collections::HashMap<String, (u64, u64)>) -> Vec<TopEntry> {
+/// Per-name accumulator for the artist/album top lists.
+#[derive(Default)]
+struct Tally {
+    plays: u64,
+    listened_ms: u64,
+    newest: Option<i64>,
+    track_id: u64,
+    cover: Option<String>,
+}
+
+impl Tally {
+    fn add(&mut self, record: &HistoryRecord) {
+        self.plays += 1;
+        self.listened_ms += record.listened_ms;
+        if self.newest.is_none_or(|newest| record.started_at >= newest) {
+            self.newest = Some(record.started_at);
+            self.track_id = record.track_id;
+            if record.cover.is_some() {
+                self.cover = record.cover.clone();
+            }
+        }
+    }
+}
+
+/// (current, longest) runs of consecutive active days. The current run may end
+/// yesterday: today without a play yet does not break it.
+fn streaks(days: &HashSet<i64>, today: i64) -> (u32, u32) {
+    let mut longest = 0;
+    for &day in days {
+        if days.contains(&(day - 1)) {
+            continue;
+        }
+        let mut len = 1;
+        while days.contains(&(day + len)) {
+            len += 1;
+        }
+        longest = longest.max(len as u32);
+    }
+    let end = if days.contains(&today) { today } else { today - 1 };
+    let mut current = 0;
+    while days.contains(&(end - current)) {
+        current += 1;
+    }
+    (current as u32, longest)
+}
+
+fn top_entries(map: HashMap<String, Tally>) -> Vec<TopEntry> {
     let mut entries: Vec<TopEntry> = map
         .into_iter()
-        .map(|(name, (plays, listened_ms))| TopEntry { name, plays, listened_ms })
+        .map(|(name, tally)| TopEntry {
+            name,
+            plays: tally.plays,
+            listened_ms: tally.listened_ms,
+            track_id: tally.track_id,
+            cover: tally.cover,
+        })
         .collect();
     entries.sort_by(|a, b| {
         b.plays
@@ -1110,6 +1202,53 @@ mod tests {
         let ahead = stats_of(vec![late], now, -60);
         assert_eq!(ahead.daily.last().unwrap().date, "2026-10-04");
         assert_eq!(ahead.daily.last().unwrap().plays, 1);
+    }
+
+    #[test]
+    fn hours_weekdays_and_distinct_counts() {
+        // 2026-10-04T12:00:00Z, a Sunday.
+        let now = 1_791_115_200;
+        let mut early = record(1, "A", "X", now - 12 * 3600 + 1800, 60_000); // 00:30Z
+        early.completed = false;
+        let stats = stats_of(
+            vec![record(2, "B", "Y", now, 60_000), record(2, "B", "Y", now - 86_400, 60_000), early],
+            now,
+            -60,
+        );
+        // UTC+1: 13:00 twice, 01:30 once.
+        assert_eq!(stats.hourly[13], 2);
+        assert_eq!(stats.hourly[1], 1);
+        assert_eq!(stats.hourly.iter().sum::<u64>(), 3);
+        // Sunday (index 6) twice, Saturday once.
+        assert_eq!(stats.weekdays, vec![0, 0, 0, 0, 0, 1, 2]);
+        assert_eq!((stats.distinct_tracks, stats.distinct_artists, stats.distinct_albums), (2, 2, 2));
+        assert_eq!(stats.completed_plays, 2);
+    }
+
+    #[test]
+    fn top_entries_carry_the_newest_play() {
+        let now = 2_000_000_000;
+        let mut old = record(1, "A", "X", now - 100, 10_000);
+        old.cover = Some("old".into());
+        let mut new = record(2, "A", "X", now, 10_000);
+        new.cover = Some("new".into());
+        let stats = stats_of(vec![new, old], now, 0);
+        assert_eq!(stats.top_artists[0].track_id, 2);
+        assert_eq!(stats.top_albums[0].cover.as_deref(), Some("new"));
+        let track = stats.top_tracks.iter().find(|t| t.track_id == 1).unwrap();
+        assert_eq!((track.album.as_str(), track.cover.as_deref()), ("X", Some("old")));
+    }
+
+    #[test]
+    fn streaks_tolerate_a_quiet_today() {
+        let today = 20_000;
+        let days: HashSet<i64> = [today - 1, today - 2, today - 3, today - 10, today - 11].into();
+        assert_eq!(streaks(&days, today), (3, 3));
+        let days: HashSet<i64> = [today - 2, today - 3].into();
+        assert_eq!(streaks(&days, today), (0, 2));
+        let days: HashSet<i64> = (0..5).map(|i| today - i).collect();
+        assert_eq!(streaks(&days, today), (5, 5));
+        assert_eq!(streaks(&HashSet::new(), today), (0, 0));
     }
 
     #[test]

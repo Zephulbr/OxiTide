@@ -89,7 +89,8 @@ export function clearSuggestCache() {
   trackCache.clear();
 }
 
-function resolveTrack(id: number, getTrack: SuggestApi["getTrack"]): Promise<Track> {
+/// Session-cached `getTrack`; History's stats resolve their ids through it too.
+export function resolveTrack(id: number, getTrack: SuggestApi["getTrack"]): Promise<Track> {
   let hit = trackCache.get(id);
   if (!hit) {
     hit = getTrack(id);

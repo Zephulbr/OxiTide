@@ -90,14 +90,25 @@ export interface HistoryEntry {
   started_at: number; listened_ms: number; completed: boolean;
 }
 export interface HistoryPage { items: HistoryEntry[]; total: number; offset: number; limit: number }
-export interface StatsTopEntry { name: string; plays: number; listened_ms: number }
-export interface StatsTopTrack { track_id: number; title: string; artist: string; plays: number }
+/// `track_id`/`cover` come from the entry's newest play (ids resolve through it).
+export interface StatsTopEntry {
+  name: string; plays: number; listened_ms: number; track_id: number; cover?: string | null;
+}
+export interface StatsTopTrack {
+  track_id: number; title: string; artist: string; album: string; cover?: string | null;
+  plays: number; listened_ms: number;
+}
 export interface StatsDaily { date: string; plays: number; listened_ms: number }
 export interface Stats {
   total_listened_ms: number; listened_ms_7d: number; listened_ms_30d: number;
   total_plays: number; plays_7d: number; plays_30d: number;
   top_artists: StatsTopEntry[]; top_tracks: StatsTopTrack[]; top_albums: StatsTopEntry[];
   daily: StatsDaily[];
+  /// All-time plays by local hour (24) and weekday (7, Monday first).
+  hourly: number[]; weekdays: number[];
+  distinct_tracks: number; distinct_artists: number; distinct_albums: number;
+  completed_plays: number;
+  current_streak_days: number; longest_streak_days: number;
 }
 export interface SessionInfoDto { country_code: string; user_id: number }
 export interface KeyringStatus { persistent: boolean; reason?: string | null }

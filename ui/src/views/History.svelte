@@ -167,7 +167,7 @@
       {:else if !stats}
         <Loading />
       {:else}
-        <HistoryStats {stats} />
+        <HistoryStats {stats} {nav} {toasts} />
       {/if}
     </div>
   {/if}
@@ -210,7 +210,9 @@
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
-    padding: 8px 4px 24px 0;
+    /* .main drops its bottom padding for .view-fill pages, so this scroller
+       clears the floating player bar itself (as TrackTable's fill mode does). */
+    padding: 8px 4px calc(var(--player-height) + 24px) 0;
   }
   .dayhead {
     display: flex;

@@ -95,10 +95,21 @@ contrast chain (structural scrim minimums + per-cover composite-ceiling clamping
   resolved through `getTrack`, cached for the session).
 - List views follow the shared page header ([../DESIGN.md](../DESIGN.md) §2.1). History is
   a play log (clock time gutter · cover · title/artist · album · length; day headers with
-  plays and listening time; partial plays at 60%). Stats: three lit summary cards
-  (Fraunces value, "23 h 43 min" — never clock notation), a lit "Plays per day" panel
-  (accent gradient bars, faint gridlines, date axis) and ranked top lists with a 7% accent
-  share bar per row. Feed: date groups on the timeline rail, each a grid of release
+  plays and listening time; partial plays at 60%). Stats (`HistoryStats.svelte`): a
+  `.lit-tint` masthead with the all-time total in 56px Fraunces ("23 h 43 min" — never
+  clock notation), the distinct track/artist/album counts, four hairline-divided figures
+  (last 7 / 30 days with the daily average, day streak with the best, share played
+  through) and the top five album sleeves fanned on the right (#1 in front, later ones
+  smaller and dimmer; hidden below 900px). Then a "Last 30 days" panel (Time/Plays
+  segmented toggle, accent gradient bars with today's at full strength, a dashed average
+  line, hover dims the other days and shows a float-veil tip) beside "When you listen"
+  (24 hourly bars and Monday-first weekday meters, the peak in solid accent, with a
+  "Mostly in the evening · peak around 20:00" line). Last, three ranked columns (artists,
+  tracks, albums): each opens with its #1 as a feature card (104px art — round artist
+  picture — eyebrow, Fraunces name, plays and time), then rows 2–10 with 36px art and a
+  small share meter before the count. Artist/album rows open their pages once the
+  entry's newest play resolves to ids (`lib/statsResolve.ts`); track rows play the top
+  ten from that row. Feed: date groups on the timeline rail, each a grid of release
   covers; unseen releases in "New updates" get an accent "New" pill.
 
 ## 4. Components
