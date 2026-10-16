@@ -1046,23 +1046,41 @@ fn decode_track(
         Some(key) => match inner.cache.lookup(&key) {
             Some(path) => {
                 fire_perf(&inner, AudioPerfEvent::CacheHit { track_id: item.track_id });
-                let result =
-                    decode_from_file(&inner, &item, mode, generation, seek_ms, &tx, &path, &plan);
+                let result = decode_from_file(
+                    &inner,
+                    &item,
+                    mode,
+                    generation,
+                    seek_ms,
+                    &tx,
+                    &path,
+                    &plan,
+                    plan.needs_he_aac(),
+                );
                 match result {
                     Ok(()) => return,
                     Err((e, emitted_pcm)) => {
-                        // Refetching after PCM reached the worker would replay
-                        // the prefix and turn a terminal error into a retry.
-                        if emitted_pcm || inner.generation.load(Ordering::SeqCst) != generation {
+                        // Sink errors mean playback was cancelled, not that
+                        // the cached audio is corrupt.
+                        if inner.generation.load(Ordering::SeqCst) != generation
+                            || matches!(e, Error::Output(_))
+                        {
                             let _ = tx.send(Err(e));
                             inner.notify_worker();
                             return;
                         }
                         tracing::warn!(
-                            "cache entry {} failed to decode ({e}); refetching",
+                            "cache entry {} failed to decode ({e}); evicting",
                             key.file_name()
                         );
                         inner.cache.remove(&key);
+                        // Evict even after PCM was emitted, but only refetch
+                        // before any PCM: otherwise the prefix would replay.
+                        if emitted_pcm {
+                            let _ = tx.send(Err(e));
+                            inner.notify_worker();
+                            return;
+                        }
                         fire_perf(&inner, AudioPerfEvent::CacheMiss { track_id: item.track_id });
                     }
                 }
@@ -1095,6 +1113,9 @@ fn play_cached_offline(
             .map_err(|e| tracing::warn!("cache sidecar for {} is unreadable: {e}", key.file_name()))
             .ok()
     });
+    // A legacy Low entry has no served-quality metadata. Use its key only
+    // as a decoder hint, without inventing a displayed quality or profile.
+    let legacy_low = from_sidecar.is_none() && key.quality == Quality::Low;
     let plan = match from_sidecar {
         Some(plan) => plan,
         None => plan_from_file(&path, key.manifest_hash)
@@ -1105,7 +1126,27 @@ fn play_cached_offline(
     *cache_key_slot.lock().unwrap() = Some(key);
     inner.cache.protect(&key);
     fire_perf(inner, AudioPerfEvent::CacheHit { track_id: item.track_id });
-    Some(decode_from_file(inner, item, mode, generation, seek_ms, tx, &path, &plan))
+    let result = decode_from_file(
+        inner,
+        item,
+        mode,
+        generation,
+        seek_ms,
+        tx,
+        &path,
+        &plan,
+        legacy_low || plan.needs_he_aac(),
+    );
+    if let Err((e, _)) = &result {
+        if inner.generation.load(Ordering::SeqCst) == generation && !matches!(e, Error::Output(_)) {
+            tracing::warn!(
+                "offline cache entry {} failed to decode ({e}); evicting",
+                key.file_name()
+            );
+            inner.cache.remove(&key);
+        }
+    }
+    Some(result)
 }
 
 /// A whole-file plan for a cached entry without a sidecar: format from the
@@ -1214,6 +1255,7 @@ fn decode_from_network(
         let buffer = buffer.clone();
         Arc::new(move || buffer.total_pushed()) as Arc<dyn Fn() -> u64 + Send + Sync>
     };
+    let he_aac = plan.needs_he_aac();
     let result = decode_source(
         inner.clone(),
         &item,
@@ -1224,6 +1266,7 @@ fn decode_from_network(
         &tx,
         source,
         plan,
+        he_aac,
         total_bytes,
     );
     // Preserve a real network failure before cancellation hides it. If decode
@@ -1249,6 +1292,7 @@ fn decode_from_file(
     tx: &SyncSender<Result<StreamEvent>>,
     path: &std::path::Path,
     plan: &StreamPlan,
+    he_aac: bool,
 ) -> std::result::Result<(), (Error, bool)> {
     let len = std::fs::metadata(path).map(|meta| meta.len()).unwrap_or(0);
     let source = crate::demux::FileSource::open(path).map_err(|e| (e.into(), false))?;
@@ -1263,6 +1307,7 @@ fn decode_from_file(
         tx,
         source,
         plan.clone(),
+        he_aac,
         total_bytes,
     )
 }
@@ -1278,6 +1323,7 @@ fn decode_source(
     tx: &SyncSender<Result<StreamEvent>>,
     source: impl symphonia::core::io::MediaSource + 'static,
     plan: StreamPlan,
+    he_aac: bool,
     total_bytes: Arc<dyn Fn() -> u64 + Send + Sync>,
 ) -> std::result::Result<(), (Error, bool)> {
     let mut sink = ChannelSink {
@@ -1296,7 +1342,8 @@ fn decode_source(
         total_bytes,
         emitted_pcm: false,
     };
-    crate::decode::run(source, "mp4", &mut sink).map_err(|e| (e, sink.emitted_pcm))
+    crate::decode::run_with_aac_hint(source, "mp4", he_aac, &mut sink)
+        .map_err(|e| (e, sink.emitted_pcm))
 }
 
 struct ChannelSink {
@@ -2900,7 +2947,13 @@ mod tests {
             bytes.extend_from_slice(&files[&segment.url]);
         }
         let mut sink = crate::decode::CollectSink::new();
-        crate::decode::run(crate::demux::BytesSource::new(bytes), "mp4", &mut sink).unwrap();
+        crate::decode::run_with_aac_hint(
+            crate::demux::BytesSource::new(bytes),
+            "mp4",
+            plan.needs_he_aac(),
+            &mut sink,
+        )
+        .unwrap();
         sink
     }
 
@@ -3074,7 +3127,6 @@ mod tests {
         (start.expect("no stream info"), samples)
     }
 
-
     #[test]
     fn he_aac_network_plays_all_signaling_variants_at_the_output_rate() {
         for version in [1, 2] {
@@ -3085,9 +3137,10 @@ mod tests {
                 ))
                 .unwrap();
                 let mut reference = crate::decode::CollectSink::new();
-                crate::decode::run(
+                crate::decode::run_with_aac_hint(
                     crate::demux::BytesSource::new(original),
                     "mp4",
+                    plan.needs_he_aac(),
                     &mut reference,
                 )
                 .unwrap();
@@ -3310,9 +3363,12 @@ mod tests {
 
     #[test]
     fn he_aac_cached_decode_error_stops_track_and_next_starts_clean() {
-        for offline in [false, true] {
-            check_he_aac_decode_error_stops_track_and_next_starts_clean(true, offline);
-        }
+        check_he_aac_decode_error_stops_track_and_next_starts_clean(true, false);
+    }
+
+    #[test]
+    fn he_aac_offline_cached_decode_error_stops_track_and_next_starts_clean() {
+        check_he_aac_decode_error_stops_track_and_next_starts_clean(true, true);
     }
 
     fn check_he_aac_decode_error_stops_track_and_next_starts_clean(cached: bool, offline: bool) {
@@ -3360,8 +3416,10 @@ mod tests {
                 writer.commit();
             }
         }
+        let offline_resolver =
+            Arc::new(SwitchableResolver { plan: plan.clone(), offline: AtomicBool::new(true) });
         let resolver: Arc<dyn StreamResolver> = if offline {
-            Arc::new(SwitchableResolver { plan, offline: AtomicBool::new(true) })
+            offline_resolver.clone()
         } else {
             Arc::new(PerTrackResolver {
                 plans: HashMap::from([(1, plan), (2, next_plan)]),
@@ -3381,7 +3439,7 @@ mod tests {
             move || fetcher,
             Box::new(output.clone()),
             Quality::Low,
-            cache,
+            cache.clone(),
             true,
         );
         let seen = Arc::new(Mutex::new(Vec::new()));
@@ -3406,6 +3464,12 @@ mod tests {
         assert_eq!(engine.state().current.unwrap().track_id, 1);
         if cached {
             assert_eq!(calls.load(Ordering::SeqCst), 0, "a mid-track cache error must not fetch");
+            let key = CacheKey { track_id: 1, quality: Quality::Low, manifest_hash: 0x96 };
+            assert!(cache.lookup(&key).is_none(), "the corrupt entry must be evicted");
+            assert!(
+                !cache.dir().join(format!("{}.meta", key.file_name())).exists(),
+                "the corrupt entry's sidecar must be evicted"
+            );
         }
         assert_eq!(
             output.samples().len(),
@@ -3427,6 +3491,152 @@ mod tests {
         );
         if cached {
             assert_eq!(calls.load(Ordering::SeqCst), 0, "both tracks must stay cache-only");
+            offline_resolver.offline.store(false, Ordering::SeqCst);
+            let before = output.samples().len();
+            engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+            wait_for(|| {
+                !engine.state().playing && output.samples().len() >= before + reference.len()
+            });
+            assert_eq!(output.samples().len(), before + reference.len());
+            assert!(output.samples()[before..] == reference, "the later play must start clean");
+            assert_eq!(calls.load(Ordering::SeqCst), 1, "only a later play may refetch");
+            let key = CacheKey { track_id: 1, quality: Quality::Low, manifest_hash: 0x96 };
+            assert!(cache.lookup(&key).is_some(), "the clean refetch must be cached");
+            assert!(cache.dir().join(format!("{}.meta", key.file_name())).is_file());
+            let (_, replay) = collect_track(&engine, None);
+            assert!(replay == reference, "the repaired entry must replay cleanly");
+            assert_eq!(calls.load(Ordering::SeqCst), 1, "the repaired entry must not refetch");
+            assert_eq!(
+                seen.lock()
+                    .unwrap()
+                    .iter()
+                    .filter(|e| matches!(e, EngineEvent::Error { .. }))
+                    .count(),
+                1,
+                "later plays must not repeat the cached decode error"
+            );
+        }
+    }
+
+    #[test]
+    fn he_aac_cancelled_cached_decode_keeps_entry_and_sidecar() {
+        check_he_aac_cancelled_cached_decode_keeps_entry_and_sidecar(false);
+    }
+
+    #[test]
+    fn he_aac_cancelled_offline_cached_decode_keeps_entry_and_sidecar() {
+        check_he_aac_cancelled_cached_decode_keeps_entry_and_sidecar(true);
+    }
+
+    fn check_he_aac_cancelled_cached_decode_keeps_entry_and_sidecar(offline: bool) {
+        let (plan, files) = he_aac_fixture(1, "hierarchical");
+        let reference = decoded_plan(&plan, &files).samples;
+        let cache = test_cache();
+        let key = CacheKey { track_id: 1, quality: Quality::Low, manifest_hash: 0x96 };
+        let meta = serde_json::to_vec(&plan.without_urls()).unwrap();
+        let clean = [
+            files["mem://init"].clone(),
+            files["mem://head"].clone(),
+            files["mem://tail"].clone(),
+        ]
+        .concat();
+        let mut writer = cache.begin_write(&key).unwrap();
+        writer.set_meta(meta.clone());
+        writer.write_all(&clean).unwrap();
+        writer.commit();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let fetcher: Arc<dyn Fetcher> = Arc::new(CountingFetcher { files, calls: calls.clone() });
+        let engine = Engine::new(
+            Arc::new(SwitchableResolver { plan, offline: AtomicBool::new(offline) }),
+            move || fetcher,
+            Box::new(NullOutput::new()),
+            Quality::Low,
+            cache.clone(),
+            true,
+        );
+        wait_for(|| engine.inner.fetcher.get().is_some());
+        for after_pcm in [false, true] {
+            for superseded in [false, true] {
+                let generation = engine.inner.generation.load(Ordering::SeqCst);
+                // A rendezvous channel stops this short fixture from finishing
+                // before cancellation can interrupt it.
+                let (tx, rx) = std::sync::mpsc::sync_channel(0);
+                let rx = if !after_pcm && !superseded {
+                    drop(rx);
+                    None
+                } else {
+                    Some(rx)
+                };
+                if !after_pcm && superseded {
+                    engine.inner.generation.fetch_add(1, Ordering::SeqCst);
+                }
+                let inner = engine.inner.clone();
+                let producer = std::thread::spawn(move || {
+                    let ticket = inner.ahead_gate.register(true);
+                    decode_track(
+                        inner,
+                        item(1),
+                        OutputMode::Shared,
+                        generation,
+                        None,
+                        tx,
+                        StreamBuffer::new(),
+                        Arc::new(Mutex::new(None)),
+                        ticket,
+                    );
+                });
+                if let Some(rx) = rx {
+                    if after_pcm {
+                        assert!(matches!(
+                            rx.recv_timeout(Duration::from_secs(3)),
+                            Ok(Ok(StreamEvent::Info(_)))
+                        ));
+                        assert!(matches!(
+                            rx.recv_timeout(Duration::from_secs(3)),
+                            Ok(Ok(StreamEvent::Samples(_)))
+                        ));
+                    }
+                    if superseded {
+                        if after_pcm {
+                            engine.inner.generation.fetch_add(1, Ordering::SeqCst);
+                        }
+                        loop {
+                            match rx.recv_timeout(Duration::from_secs(3)) {
+                                Ok(Ok(_)) => continue,
+                                Ok(Err(e)) if offline && !after_pcm => {
+                                    // Before PCM, offline playback preserves
+                                    // the original resolver error.
+                                    assert!(matches!(
+                                        e,
+                                        Error::Tidal(oxitide_tidal::Error::RateLimited)
+                                    ));
+                                    break;
+                                }
+                                Ok(Err(Error::Output(message))) => {
+                                    assert_eq!(message, "playback superseded");
+                                    break;
+                                }
+                                Ok(Err(e)) => panic!("expected superseded playback, got {e}"),
+                                Err(e) => panic!("expected superseded playback, got {e}"),
+                            }
+                        }
+                    }
+                    drop(rx);
+                }
+                wait_for(|| producer.is_finished());
+                assert!(producer.is_finished(), "cancelled cached decode did not finish");
+                producer.join().unwrap();
+                cache.unprotect(&key);
+                let path = cache.lookup(&key).expect("cancellation must keep the healthy entry");
+                assert_eq!(std::fs::read(path).unwrap(), clean);
+                assert_eq!(
+                    std::fs::read(cache.dir().join(format!("{}.meta", key.file_name()))).unwrap(),
+                    meta
+                );
+                let (_, replay) = collect_track(&engine, None);
+                assert!(replay == reference, "cancellation must leave a clean replay");
+                assert_eq!(calls.load(Ordering::SeqCst), 0, "cancellation must not refetch");
+            }
         }
     }
 

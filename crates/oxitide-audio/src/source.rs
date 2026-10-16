@@ -42,6 +42,12 @@ impl StreamPlan {
         self.segments.iter().map(|s| s.url.as_str()).collect()
     }
 
+    /// Low may hide implicit SBR/PS behind an AAC-LC codec string. Otherwise
+    /// leave AAC-LC on Symphonia unless HE-AAC is explicitly signaled.
+    pub fn needs_he_aac(&self) -> bool {
+        self.quality == Some(Quality::Low) || self.codec.as_deref().is_some_and(is_he_aac)
+    }
+
     /// A single-file source with no segment timing (BTS manifests, tests).
     pub fn single(url: String) -> Self {
         Self {
@@ -427,6 +433,27 @@ mod tests {
                     plan_from_info(&explicit).unwrap().quality,
                     Some(Quality::High)
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn he_aac_decoder_hint_preserves_high_and_unknown_aac_lc() {
+        let mut plan = StreamPlan::single("mem://aac".into());
+        for codec in [None, Some("mp4a"), Some("mp4a.40.2")] {
+            plan.codec = codec.map(str::to_string);
+            for quality in [None, Some(Quality::High), Some(Quality::Lossless), Some(Quality::Max)] {
+                plan.quality = quality;
+                assert!(!plan.needs_he_aac(), "{codec:?}/{quality:?}");
+            }
+            plan.quality = Some(Quality::Low);
+            assert!(plan.needs_he_aac(), "{codec:?}");
+        }
+        for codec in ["mp4a.40.5", "mp4a.40.29", "MP4A.40.05", "mp4a.40.029"] {
+            plan.codec = Some(codec.into());
+            for quality in [None, Some(Quality::Low), Some(Quality::High)] {
+                plan.quality = quality;
+                assert!(plan.needs_he_aac(), "{codec}/{quality:?}");
             }
         }
     }

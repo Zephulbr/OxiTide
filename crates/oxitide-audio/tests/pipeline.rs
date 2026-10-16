@@ -9,7 +9,6 @@ use oxitide_tidal::stream::{PlaybackInfo, Quality};
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-
 #[tokio::test(flavor = "multi_thread")]
 async fn resolve_plan_fetch_demux_decode_pipeline() {
     let bytes = std::fs::read("tests/fixtures/tone.mp4").unwrap();
@@ -103,9 +102,16 @@ async fn he_aac_http_pipeline_decodes_all_six_generated_fixtures() {
             let sink = tokio::task::spawn_blocking(move || {
                 let buffer = fetch::StreamBuffer::new();
                 let fetcher = Arc::new(fetch::HttpFetcher::new().unwrap());
+                let he_aac = plan.needs_he_aac();
                 fetch::download(buffer.clone(), fetcher, plan, None);
                 let mut sink = decode::CollectSink::new();
-                decode::run(demux::StreamBufferSource::new(buffer), "mp4", &mut sink).unwrap();
+                decode::run_with_aac_hint(
+                    demux::StreamBufferSource::new(buffer),
+                    "mp4",
+                    he_aac,
+                    &mut sink,
+                )
+                .unwrap();
                 sink
             })
             .await

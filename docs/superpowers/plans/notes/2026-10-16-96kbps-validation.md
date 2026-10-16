@@ -9,10 +9,12 @@ the owner's subsequently advanced main checkout.
 
 - Restore Low / HE-AAC 96 kbps in the existing Settings selector and preserve
   saved `low`; Lossless remains the default. No new IPC or DTO/schema changes.
-- Keep Symphonia demuxing; decode AAC-LC and HE-AAC with pinned `rusty_aac 1.1.0`
-  using raw AudioSpecificConfig. All AAC uses this path because implicit SBR/PS
-  cannot be selected reliably from an LC-looking header. Non-AAC decoding and
-  the integer/sample-exact FLAC path remain unchanged.
+- Keep Symphonia demuxing; decode HE-AAC with pinned `rusty_aac 1.1.0` using raw
+  AudioSpecificConfig. Implicit SBR/PS cannot be read from an LC-looking header,
+  so `rusty_aac` runs when the plan is Low, its codec string is HE-AAC, or the
+  ASC signals SBR/PS (`StreamPlan::needs_he_aac`, legacy Low cache entries too).
+  High (AAC-LC 320) stays on Symphonia and keeps its skip-bad-packet recovery.
+  Non-AAC decoding and the integer/sample-exact FLAC path remain unchanged.
 - Derive actual PCM rate/channels from decoded packets, keep lossy audio F32,
   reject invalid PCM and unsupported mid-stream format changes. Known explicit
   HE profiles can be probed; an implicit header is conservatively `mp4a`, not
@@ -22,8 +24,10 @@ the owner's subsequently advanced main checkout.
   boundaries are compared on the manifest timeline.
 - Any AAC packet error terminates the track. A fresh decoder is constructed for
   the next track. Cached errors after emitting PCM are not silently refetched
-  into the same channel (which would repeat the prefix); failures before PCM
-  still permit corrupt-cache removal/refetch. Failed network decoding cancels
+  into the same channel (which would repeat the prefix), but the corrupt entry
+  and its sidecar are evicted (online and offline) so a later play refetches;
+  failures before PCM still remove and refetch at once. Cancellation (a newer
+  generation or a closed sink) never evicts. Failed network decoding cancels
   the feeder before joining, preserving the original network error first.
 - No output-backend, DSP, cache-format/migration, badge, or phone-remote redesign.
 

@@ -33,8 +33,9 @@ migration, external-player processes, transcoding, or an audio plugin framework.
 ## Decoder acceptance and error policy
 
 Candidate: `rusty_aac = 1.1.0` (Apache-2.0, no runtime dependencies), pinned because
-this exact implementation is being evaluated. Decode all AAC through the local
-adapter to cover implicit SBR/PS; keep the AAC-LC fixture as a mandatory regression.
+this exact implementation is being evaluated. Decode Low and signaled HE-AAC
+through the local adapter to cover implicit SBR/PS; High AAC-LC stays on Symphonia
+(review follow-up). Keep the AAC-LC fixture as a mandatory regression.
 No Symphonia feature enables full HE-AAC.
 
 The acceptance spike found excellent agreement with independent FFmpeg decoding

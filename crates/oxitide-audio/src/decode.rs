@@ -183,6 +183,17 @@ pub fn probe(source: impl MediaSource + 'static) -> Result<ProbedFormat> {
 }
 
 pub fn run(source: impl MediaSource + 'static, ext: &str, sink: &mut dyn PcmSink) -> Result<()> {
+    run_with_aac_hint(source, ext, false, sink)
+}
+
+/// Keep AAC-LC on Symphonia unless the plan indicates HE-AAC. The raw ASC
+/// can also select the HE decoder; implicit SBR/PS needs the plan's hint.
+pub fn run_with_aac_hint(
+    source: impl MediaSource + 'static,
+    ext: &str,
+    he_aac: bool,
+    sink: &mut dyn PcmSink,
+) -> Result<()> {
     let mss = MediaSourceStream::new(Box::new(source), Default::default());
     let mut hint = Hint::new();
     hint.with_extension(ext);
@@ -204,9 +215,7 @@ pub fn run(source: impl MediaSource + 'static, ext: &str, sink: &mut dyn PcmSink
             Some(CodecParameters::Audio(audio)) => audio,
             _ => return Err(Error::Decode("unsupported codec parameters".into())),
         };
-        if params.codec == CODEC_ID_AAC {
-            // Raw ASC preserves explicit SBR/PS. Use this path for every AAC
-            // track because an LC-looking header can also carry implicit SBR.
+        if params.codec == CODEC_ID_AAC && use_he_aac(he_aac, params.extra_data.as_deref()) {
             let asc = params
                 .extra_data
                 .as_deref()
@@ -269,6 +278,12 @@ pub fn run(source: impl MediaSource + 'static, ext: &str, sink: &mut dyn PcmSink
         }
     }
     Ok(())
+}
+
+fn use_he_aac(hint: bool, asc: Option<&[u8]>) -> bool {
+    hint || asc
+        .and_then(|asc| rusty_aac::sbr::parse_sbr_config(asc).ok())
+        .is_some_and(|config| config.sbr_present || config.ps_present)
 }
 
 fn run_aac(
@@ -476,7 +491,9 @@ mod tests {
         for (version, frames, checkpoints) in references {
             for signaling in ["hierarchical", "sync", "implicit"] {
                 let name = format!("he_aac_v{version}_96k_{signaling}.mp4");
-                let sink = decode_fixture_f32(&name, "mp4");
+                let mut sink = CollectSink::new();
+                let bytes = fs::read(format!("tests/fixtures/{name}")).unwrap();
+                run_with_aac_hint(BytesSource::new(bytes), "mp4", true, &mut sink).unwrap();
                 let info = sink.info.unwrap();
                 assert_eq!(info.sample_rate, 48000, "{name}");
                 assert_eq!(info.channels, 2, "{name}");
@@ -495,6 +512,83 @@ mod tests {
                 }
             }
         }
+    }
+
+    fn fixture_reader(bytes: Vec<u8>) -> Box<dyn FormatReader> {
+        let mss = MediaSourceStream::new(Box::new(BytesSource::new(bytes)), Default::default());
+        let mut hint = Hint::new();
+        hint.with_extension("mp4");
+        symphonia::default::get_probe()
+            .probe(
+                &hint,
+                mss,
+                FormatOptions::default(),
+                MetadataOptions::default(),
+            )
+            .unwrap()
+    }
+
+    #[test]
+    fn he_aac_decoder_is_selected_only_by_the_hint_or_explicit_config() {
+        let mut names = vec![("tone_aac.mp4".to_string(), false)];
+        for version in [1, 2] {
+            for signaling in ["hierarchical", "sync", "implicit"] {
+                names.push((
+                    format!("he_aac_v{version}_96k_{signaling}.mp4"),
+                    signaling != "implicit",
+                ));
+            }
+        }
+        for (name, explicit_he) in names {
+            let reader = fixture_reader(fs::read(format!("tests/fixtures/{name}")).unwrap());
+            let track = reader.default_track(TrackType::Audio).unwrap();
+            let Some(CodecParameters::Audio(params)) = track.codec_params.as_ref() else {
+                panic!("no audio parameters for {name}");
+            };
+            assert_eq!(params.codec, CODEC_ID_AAC);
+            assert_eq!(
+                use_he_aac(false, params.extra_data.as_deref()),
+                explicit_he,
+                "{name}"
+            );
+            assert!(use_he_aac(true, params.extra_data.as_deref()), "{name}");
+            if explicit_he {
+                let sink = decode_fixture_f32(&name, "mp4");
+                assert_eq!(sink.info.unwrap().sample_rate, 48000, "{name}");
+                assert_eq!(sink.info.unwrap().channels, 2, "{name}");
+            }
+        }
+        assert!(!use_he_aac(false, None));
+        assert!(!use_he_aac(false, Some(&[0xff])));
+    }
+
+    #[test]
+    fn aac_lc_keeps_symphonia_packet_error_recovery() {
+        let mut bytes = fs::read("tests/fixtures/tone_aac.mp4").unwrap();
+        let mut reader = fixture_reader(bytes.clone());
+        let mut packet = reader.next_packet().unwrap().unwrap();
+        for _ in 0..8 {
+            packet = reader.next_packet().unwrap().unwrap();
+        }
+        let offset = bytes
+            .windows(packet.data.len())
+            .position(|b| b == packet.data.as_ref())
+            .unwrap();
+        // CPE with a common window and the reserved ICS bit set: a packet
+        // DecodeError (not an unsupported-feature error) in Symphonia.
+        bytes[offset..offset + 6].copy_from_slice(&[0x21, 0x80, 0, 0, 0, 0]);
+        let mut recovered = CollectSink::new();
+        run(BytesSource::new(bytes.clone()), "mp4", &mut recovered).unwrap();
+        let clean = decode_fixture_f32("tone_aac.mp4", "mp4");
+        assert_eq!(recovered.samples.len() + 1024 * 2, clean.samples.len());
+        assert!(recovered.samples.iter().all(|s| s.is_finite()));
+        assert_eq!(recovered.info.unwrap().sample_rate, 44100);
+        assert!(!recovered.info.unwrap().is_bit_perfect_candidate());
+
+        let mut terminal = CollectSink::new();
+        assert!(run_with_aac_hint(BytesSource::new(bytes), "mp4", true, &mut terminal).is_err());
+        assert_eq!(terminal.samples.len(), 8 * 1024 * 2);
+        assert!(recovered.samples.len() > terminal.samples.len());
     }
 
     #[test]
