@@ -534,7 +534,7 @@ fn build_player(
                 }
             }
         }
-        let _ = tauri::Emitter::emit(&handle, "playback_event", crate::player::to_dto(event));
+        crate::perf::emit_counted(&handle, "playback_event", crate::player::to_dto(event));
     }));
     let scrobble_handle = app.clone();
     engine.subscribe(Arc::new(move |event| {
@@ -1924,6 +1924,17 @@ pub fn clear_session(state: State<'_, AppState>) -> Result<(), String> {
 #[tauri::command]
 pub fn perf_mark(name: String) {
     crate::perf::mark(&name);
+}
+
+/// Perf runs end through the normal exit path (session flush, history
+/// finalize) instead of a forced kill. A no-op outside a perf session.
+#[tauri::command]
+pub fn perf_quit(app: tauri::AppHandle) -> Result<(), String> {
+    if crate::perf::session().is_none() {
+        return Err("no perf session".into());
+    }
+    app.exit(0);
+    Ok(())
 }
 
 #[tauri::command]

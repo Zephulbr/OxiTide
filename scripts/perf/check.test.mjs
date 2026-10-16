@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { aggregate, evaluate, metricsFor, readRuns, unmatchedScenarios } from "./check.mjs";
+import { aggregate, cpuPercent, evaluate, metricsFor, perMinute, readRuns, unmatchedScenarios } from "./check.mjs";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -356,4 +356,50 @@ test("app-only drift is required and unmeasured without per-process rows", () =>
   });
   assert.equal(results[0].status, "fail");
   assert.equal(ok, false);
+});
+
+test("cpuPercent sums per-process deltas by group over the window", () => {
+  const rows = [
+    { pid: 1, self: true, cpu_ms: 100, t_ms: 0 },
+    { pid: 2, self: false, cpu_ms: 1000, t_ms: 0 },
+    { pid: 1, self: true, cpu_ms: 300, t_ms: 10_000 },
+    { pid: 2, self: false, cpu_ms: 1500, t_ms: 10_000 },
+    // Seen once (started mid-run): contributes nothing.
+    { pid: 3, self: false, cpu_ms: 9000, t_ms: 10_000 },
+  ];
+  const cpu = cpuPercent(rows);
+  assert.equal(cpu.app, 2); // 200 ms over 10 s
+  assert.equal(cpu.webview, 5); // 500 ms over 10 s
+  assert.equal(cpuPercent([]), null);
+  assert.equal(cpuPercent([{ pid: 1, self: true, cpu_ms: 1, t_ms: 5 }]), null);
+});
+
+test("perMinute rates a cumulative counter", () => {
+  const rows = [
+    { events: 10, t_ms: 0 },
+    { events: 40, t_ms: 30_000 },
+  ];
+  assert.equal(perMinute(rows, "events"), 60);
+  assert.equal(perMinute(rows.slice(0, 1), "events"), null);
+});
+
+test("metricsFor derives cpu, private and ipc rates from the measure_start mark", () => {
+  const file = runFile([
+    { kind: "session", run_id: "S11-1", scenario: "S11" },
+    { kind: "memory", mb: 500, private_mb: 300, t_ms: 0 },
+    { kind: "memory_process", pid: 1, self: true, cpu_ms: 5000, mb: 50, t_ms: 0 },
+    { kind: "ipc", events: 100, bytes: 1_000_000, t_ms: 0 },
+    { kind: "mark", name: "measure_start", t_ms: 1000, unix_ms: 1 },
+    { kind: "memory", mb: 510, private_mb: 320, t_ms: 2000 },
+    { kind: "memory_process", pid: 1, self: true, cpu_ms: 5100, mb: 50, t_ms: 2000 },
+    { kind: "ipc", events: 100, bytes: 1_000_000, t_ms: 2000 },
+    { kind: "memory_process", pid: 1, self: true, cpu_ms: 5300, mb: 50, t_ms: 62_000 },
+    { kind: "ipc", events: 220, bytes: 1_102_400, t_ms: 62_000 },
+  ]);
+  const metrics = metricsFor(readRuns([file])[0]);
+  assert.equal(metrics.private_max_mb, 320);
+  // Start-up CPU before the mark is excluded: 200 ms over 60 s.
+  assert.ok(Math.abs(metrics.cpu_app_pct - 200 / 60_000 * 100) < 1e-9);
+  assert.equal(metrics.ipc_events_per_min, 120);
+  assert.equal(metrics.ipc_kb_per_min, 100);
 });

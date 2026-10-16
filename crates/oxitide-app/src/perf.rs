@@ -60,6 +60,14 @@ pub struct PerfSession {
     marks: Mutex<Vec<PerfMark>>,
     counters: Mutex<Counters>,
     play_pending: Mutex<Option<Instant>>,
+    /// Cumulative desktop `playback_event` traffic, written with each sample.
+    ipc: Mutex<IpcCounters>,
+}
+
+#[derive(Default, Clone, Copy)]
+struct IpcCounters {
+    events: u64,
+    bytes: u64,
 }
 
 impl PerfSession {
@@ -90,6 +98,7 @@ impl PerfSession {
             marks: Mutex::new(Vec::new()),
             counters: Mutex::new(Counters::default()),
             play_pending: Mutex::new(None),
+            ipc: Mutex::new(IpcCounters::default()),
         });
         session.write(serde_json::json!({
             "kind": "session",
@@ -193,22 +202,41 @@ impl PerfSession {
         if rows.is_empty() {
             return;
         }
-        let total: u64 = rows.iter().map(|(_, mb, _)| mb).sum();
+        let total: u64 = rows.iter().map(|row| row.mb).sum();
+        let private: Option<u64> = rows.iter().map(|row| row.private_mb).sum();
         let t_ms = self.elapsed_ms();
         self.write(serde_json::json!({
             "kind": "memory",
             "mb": total,
+            "private_mb": private,
             "t_ms": t_ms,
         }));
-        for (name, mb, is_self) in rows {
+        for row in rows {
             self.write(serde_json::json!({
                 "kind": "memory_process",
-                "name": name,
-                "mb": mb,
-                "self": is_self,
+                "pid": row.pid,
+                "name": row.name,
+                "mb": row.mb,
+                "private_mb": row.private_mb,
+                "cpu_ms": row.cpu_ms,
+                "self": row.is_self,
                 "t_ms": t_ms,
             }));
         }
+        let ipc = *self.ipc.lock().unwrap();
+        self.write(serde_json::json!({
+            "kind": "ipc",
+            "events": ipc.events,
+            "bytes": ipc.bytes,
+            "t_ms": t_ms,
+        }));
+    }
+
+    /// One `playback_event` sent to the desktop UI, with its serialized size.
+    pub fn note_ipc_event(&self, bytes: usize) {
+        let mut ipc = self.ipc.lock().unwrap();
+        ipc.events += 1;
+        ipc.bytes += bytes as u64;
     }
 
     pub fn snapshot(&self) -> PerfSnapshot {
@@ -280,6 +308,24 @@ pub fn note_play_command() {
 pub fn audio_event(event: AudioPerfEvent) {
     if let Some(session) = session() {
         session.audio_event(event);
+    }
+}
+
+/// Emit a desktop event; in a perf session it is serialized once here so its
+/// size can be counted (the emit then forwards the raw JSON unchanged).
+pub fn emit_counted<S: Serialize + Clone>(app: &tauri::AppHandle, event: &str, payload: S) {
+    let Some(session) = session() else {
+        let _ = tauri::Emitter::emit(app, event, payload);
+        return;
+    };
+    match serde_json::value::to_raw_value(&payload) {
+        Ok(raw) => {
+            session.note_ipc_event(raw.get().len());
+            let _ = tauri::Emitter::emit(app, event, raw);
+        }
+        Err(_) => {
+            let _ = tauri::Emitter::emit(app, event, payload);
+        }
     }
 }
 
@@ -486,20 +532,41 @@ fn process_creation_unix_ms() -> Option<u128> {
     None
 }
 
-/// Working set of this process plus all descendant processes (the WebView2
-/// helpers), in MiB, one row per process: (name, mb, is_the_app_itself).
+/// One process of the app's tree at one sample.
+#[derive(Debug, Clone, PartialEq)]
+struct ProcessSample {
+    pid: u32,
+    name: String,
+    /// Working set (Windows) / resident set (Linux), MiB.
+    mb: u64,
+    /// Private commit (Windows `PrivateUsage`), MiB; `None` where unavailable.
+    private_mb: Option<u64>,
+    /// Kernel + user CPU time consumed so far, ms (cumulative).
+    cpu_ms: Option<u64>,
+    is_self: bool,
+}
+
+/// FILETIME as a 100 ns count.
 #[cfg(windows)]
-fn process_memory_rows() -> Vec<(String, u64, bool)> {
+fn filetime_ticks(time: &windows::Win32::Foundation::FILETIME) -> u64 {
+    ((time.dwHighDateTime as u64) << 32) | time.dwLowDateTime as u64
+}
+
+/// Working set of this process plus all descendant processes (the WebView2
+/// helpers), in MiB, one row per process.
+#[cfg(windows)]
+fn process_memory_rows() -> Vec<ProcessSample> {
     use windows::Win32::Foundation::{CloseHandle, HANDLE};
     use windows::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
         TH32CS_SNAPPROCESS,
     };
+    use windows::Win32::Foundation::FILETIME;
     use windows::Win32::System::ProcessStatus::{
-        GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS,
+        GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS, PROCESS_MEMORY_COUNTERS_EX,
     };
     use windows::Win32::System::Threading::{
-        OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ,
+        GetProcessTimes, OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ,
     };
 
     let self_pid = std::process::id();
@@ -547,21 +614,29 @@ fn process_memory_rows() -> Vec<(String, u64, bool)> {
                 Ok(handle) => handle,
                 Err(_) => continue,
             };
-        let mut counters = PROCESS_MEMORY_COUNTERS::default();
+        let mut counters = PROCESS_MEMORY_COUNTERS_EX::default();
         let ok = unsafe {
             GetProcessMemoryInfo(
                 handle,
-                &mut counters,
-                std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32,
+                &mut counters as *mut PROCESS_MEMORY_COUNTERS_EX as *mut PROCESS_MEMORY_COUNTERS,
+                std::mem::size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32,
             )
         };
+        let (mut creation, mut exit, mut kernel, mut user) =
+            (FILETIME::default(), FILETIME::default(), FILETIME::default(), FILETIME::default());
+        let cpu_ms = unsafe { GetProcessTimes(handle, &mut creation, &mut exit, &mut kernel, &mut user) }
+            .ok()
+            .map(|()| (filetime_ticks(&kernel) + filetime_ticks(&user)) / 10_000);
         let _ = unsafe { CloseHandle(handle) };
         if ok.is_ok() {
-            rows.push((
-                name.clone(),
-                counters.WorkingSetSize as u64 / (1024 * 1024),
-                pid == self_pid,
-            ));
+            rows.push(ProcessSample {
+                pid,
+                name: name.clone(),
+                mb: counters.WorkingSetSize as u64 / (1024 * 1024),
+                private_mb: Some(counters.PrivateUsage as u64 / (1024 * 1024)),
+                cpu_ms,
+                is_self: pid == self_pid,
+            });
         }
     }
     rows
@@ -687,10 +762,17 @@ fn read_process_memory_mb(pid: u32) -> Option<u64> {
     resident_kb_to_mb(kb)
 }
 
-/// Linux: resident memory of this process and every descendant, by walking
-/// `/proc/<pid>/task/*/children`; one row per process: (name, mb, is_self).
+/// Linux: utime + stime of a process in ms.
 #[cfg(target_os = "linux")]
-fn process_memory_rows() -> Vec<(String, u64, bool)> {
+fn read_process_cpu_ms(pid: u32) -> Option<u64> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    cpu_ms_from_ticks(parse_stat_cpu_ticks(&stat)?, clock_ticks_per_sec()?)
+}
+
+/// Linux: resident memory of this process and every descendant, by walking
+/// `/proc/<pid>/task/*/children`; one row per process.
+#[cfg(target_os = "linux")]
+fn process_memory_rows() -> Vec<ProcessSample> {
     use std::collections::{BTreeSet, VecDeque};
 
     let self_pid = std::process::id();
@@ -710,14 +792,37 @@ fn process_memory_rows() -> Vec<(String, u64, bool)> {
         let Some(mb) = read_process_memory_mb(pid) else {
             continue;
         };
-        rows.push((name, mb, pid == self_pid));
+        rows.push(ProcessSample {
+            pid,
+            name,
+            mb,
+            private_mb: None,
+            cpu_ms: read_process_cpu_ms(pid),
+            is_self: pid == self_pid,
+        });
     }
     rows
 }
 
 #[cfg(not(any(windows, target_os = "linux")))]
-fn process_memory_rows() -> Vec<(String, u64, bool)> {
+fn process_memory_rows() -> Vec<ProcessSample> {
     Vec::new()
+}
+
+/// `utime + stime` (fields 14 and 15) from a `/proc/<pid>/stat` body, in
+/// clock ticks.
+#[cfg(any(target_os = "linux", test))]
+fn parse_stat_cpu_ticks(stat: &str) -> Option<u64> {
+    let after_comm = stat.get(stat.rfind(')')? + 1..)?;
+    let mut fields = after_comm.split_whitespace().skip(11);
+    let utime: u64 = fields.next()?.parse().ok()?;
+    let stime: u64 = fields.next()?.parse().ok()?;
+    Some(utime + stime)
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn cpu_ms_from_ticks(ticks: u64, ticks_per_sec: u64) -> Option<u64> {
+    (ticks_per_sec > 0).then(|| ticks.saturating_mul(1000) / ticks_per_sec)
 }
 
 /// Working set of this process plus all descendant processes, in MiB.
@@ -726,7 +831,7 @@ fn process_tree_memory_mb() -> Option<u64> {
     if rows.is_empty() {
         return None;
     }
-    Some(rows.iter().map(|(_, mb, _)| mb).sum())
+    Some(rows.iter().map(|row| row.mb).sum())
 }
 
 #[cfg(test)]
@@ -898,6 +1003,37 @@ mod tests {
         let sampled = std::collections::BTreeSet::from([10u32]);
         let fresh = new_child_pids(&sampled, &[vec![20, 30], vec![30, 10, 40]]);
         assert_eq!(fresh, vec![20, 30, 40], "a pid must be queued at most once");
+    }
+
+    #[test]
+    fn stat_cpu_ticks_sum_utime_and_stime() {
+        let stat = "123 (my (weird) app) S 1 2 3 4 5 6 7 8 9 10 250 50 13 14 15 16 17 18 987654";
+        assert_eq!(parse_stat_cpu_ticks(stat), Some(300));
+        assert_eq!(parse_stat_cpu_ticks("123 (proc) S 1 2 3"), None);
+        assert_eq!(cpu_ms_from_ticks(300, 100), Some(3000));
+        assert_eq!(cpu_ms_from_ticks(300, 0), None);
+    }
+
+    #[test]
+    fn samples_carry_ipc_counters_and_cpu() {
+        let session = PerfSession::create_in(&temp_dir("ipc"), "S11").unwrap();
+        session.note_ipc_event(100);
+        session.note_ipc_event(50);
+        session.write_memory_sample();
+        let text = std::fs::read_to_string(session.jsonl_path()).unwrap();
+        let lines: Vec<serde_json::Value> =
+            text.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+        let ipc = lines.iter().find(|l| l["kind"] == "ipc").expect("ipc row");
+        assert_eq!(ipc["events"], 2);
+        assert_eq!(ipc["bytes"], 150);
+        if cfg!(any(windows, target_os = "linux")) {
+            let own = lines
+                .iter()
+                .find(|l| l["kind"] == "memory_process" && l["self"] == true)
+                .expect("own process row");
+            assert!(own["cpu_ms"].as_u64().is_some(), "cpu time missing: {own}");
+            assert!(own["pid"].as_u64().is_some());
+        }
     }
 
     #[test]

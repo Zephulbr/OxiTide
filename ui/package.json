@@ -11,7 +11,8 @@
     "test": "vitest run",
     "perf:check": "node ../scripts/perf/check.mjs",
     "app:dev": "cd .. && tauri dev",
-    "app:build": "cd .. && tauri build"
+    "app:build": "cd .. && tauri build",
+    "app:build:perf": "cd .. && tauri build --no-bundle"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

@@ -473,6 +473,7 @@ fn main() {
             commands::get_logs_dir,
             commands::open_logs_folder,
             commands::perf_mark,
+            commands::perf_quit,
             commands::get_perf_snapshot,
             commands::perf_submit_ui_metrics,
             commands::perf_queue_build,

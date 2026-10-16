@@ -582,6 +582,7 @@ mod tests {
         "get_logs_dir",
         "open_logs_folder",
         "perf_mark",
+        "perf_quit",
         "get_perf_snapshot",
         "perf_submit_ui_metrics",
         "perf_queue_build",

@@ -66,6 +66,45 @@ export function settledDrift(samples) {
   return median(tail.map((m) => m.mb)) - median(baseline.map((m) => m.mb));
 }
 
+/// CPU use per process group as a percentage of one core over the sampled
+/// window. `rows` are `memory_process` rows with cumulative `cpu_ms`; each
+/// process contributes its own last - first (a process seen once adds 0, so
+/// WebView2 helpers starting or exiting mid-run cannot fake a spike).
+export function cpuPercent(rows) {
+  const timed = rows.filter((r) => typeof r.cpu_ms === "number" && typeof r.pid === "number");
+  if (timed.length === 0) return null;
+  const span = Math.max(...timed.map((r) => r.t_ms)) - Math.min(...timed.map((r) => r.t_ms));
+  if (span <= 0) return null;
+  const byPid = new Map();
+  for (const row of timed) {
+    const seen = byPid.get(row.pid);
+    if (!seen) {
+      byPid.set(row.pid, { self: row.self, first: row, last: row });
+    } else {
+      if (row.t_ms < seen.first.t_ms) seen.first = row;
+      if (row.t_ms > seen.last.t_ms) seen.last = row;
+    }
+  }
+  let app = 0;
+  let webview = 0;
+  for (const { self, first, last } of byPid.values()) {
+    const used = Math.max(0, last.cpu_ms - first.cpu_ms);
+    if (self) app += used;
+    else webview += used;
+  }
+  return { app: (app / span) * 100, webview: (webview / span) * 100 };
+}
+
+/// Cumulative counter rate per minute between the first and last sample.
+export function perMinute(samples, key) {
+  if (samples.length < 2) return null;
+  const first = samples[0];
+  const last = samples[samples.length - 1];
+  const minutes = (last.t_ms - first.t_ms) / 60_000;
+  if (minutes <= 0) return null;
+  return (last[key] - first[key]) / minutes;
+}
+
 export function metricsFor(run) {
   const metrics = { scenario: run.scenario, cache_hits: 0, cache_misses: 0 };
   const frames = new Map(); // mode -> number[]
@@ -73,14 +112,22 @@ export function metricsFor(run) {
   const memories = []; // {t_ms, mb}
   const appMemories = []; // {t_ms, mb} from the self process rows
   const cacheDecisions = []; // 1 = hit, 0 = miss, in event order
+  const processRows = []; // memory_process rows (cpu_ms, pid)
+  const ipcRows = []; // cumulative playback_event counters
+  const privates = []; // all-process private MiB
   let advanceMax = 0;
   for (const line of run.lines) {
     if (line.kind === "mark") metrics[`${line.name}_ms`] = line.t_ms;
     if (line.kind === "ttfs") metrics.ttfs_ms = line.ms;
-    if (line.kind === "memory") memories.push({ t: line.t_ms, mb: line.mb });
+    if (line.kind === "memory") {
+      memories.push({ t: line.t_ms, mb: line.mb });
+      if (typeof line.private_mb === "number") privates.push(line.private_mb);
+    }
     if (line.kind === "memory_process" && line.self) {
       appMemories.push({ t: line.t_ms, mb: line.mb });
     }
+    if (line.kind === "memory_process") processRows.push(line);
+    if (line.kind === "ipc") ipcRows.push(line);
     if (line.kind === "audio") {
       if (line.event === "cache_hit") {
         metrics.cache_hits += 1;
@@ -151,6 +198,20 @@ export function metricsFor(run) {
   if (appMemories.length > 0) {
     metrics.memory_drift_app_mb = settledDrift(appMemories);
   }
+  if (privates.length > 0) metrics.private_max_mb = Math.max(...privates);
+  // Rates cover the steady window: from the driver's `measure_start` mark
+  // when it set one (idle scenarios skip start-up), else the whole run.
+  const from = metrics.measure_start_ms ?? -Infinity;
+  const cpu = cpuPercent(processRows.filter((r) => r.t_ms >= from));
+  if (cpu) {
+    metrics.cpu_app_pct = cpu.app;
+    metrics.cpu_webview_pct = cpu.webview;
+  }
+  const ipcWindow = ipcRows.filter((r) => r.t_ms >= from);
+  const events = perMinute(ipcWindow, "events");
+  if (events !== null) metrics.ipc_events_per_min = events;
+  const bytes = perMinute(ipcWindow, "bytes");
+  if (bytes !== null) metrics.ipc_kb_per_min = bytes / 1024;
   for (const [mode, samples] of frames) {
     metrics[`frame_p95_ms:${mode}`] = Math.max(...samples.map((s) => s.p95));
     const p99s = samples.map((s) => s.p99).filter((v) => typeof v === "number");

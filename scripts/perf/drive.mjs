@@ -163,12 +163,20 @@ const awaitWarmCache = async (beforeBytes, label = "cache write", maxMs = 300000
   throw new Error(`timed out waiting for ${label}`);
 };
 
+/// `--minutes` for the timed idle scenarios, else the scenario's default.
+const minutesFlag = (fallback) => {
+  const raw = Number(flag("--minutes", String(fallback)));
+  return Number.isFinite(raw) && raw > 0 ? raw : fallback;
+};
+
 const scenarioFallback = async (id) => {
-  const targetMode = id.startsWith("S5-atmosphere")
+  const targetMode = id.startsWith("S5-atmosphere") || id === "S14"
     ? "atmosphere"
     : id.startsWith("S5") || id.startsWith("S6")
       ? "instrument"
-      : null;
+      : id === "S13"
+        ? "rack"
+        : null;
   let originalMode = null;
   let modeApplied = false;
   /// Runs after login and `__perf` are up. The config read must happen here,
@@ -267,10 +275,73 @@ const scenarioFallback = async (id) => {
       await playItems(items);
       console.log(`S7 invoked play_tracks for ${items.length} tracks`);
       console.log(`S7 command round-trip: ${Date.now() - started} ms`);
-      const built = await evaluate("window.__perf.buildSyntheticQueue(10000)");
-      if (!built) throw new Error("S7: synthetic queue build unavailable");
-      await delay(1000);
+      await until("!!window.__perf", "__perf bridge");
+      // End to end: command + engine state broadcast + IPC + UI reducer.
+      for (let i = 0; i < 3; i++) {
+        const loaded = await evaluate("window.__perf.measureQueueLoad(10000)");
+        if (!loaded) throw new Error("S7: queue load measurement unavailable");
+        await delay(1000);
+      }
+      await invoke("queue_clear");
       await delay(5000);
+    } else if (id === "S11") {
+      // Idle while paused: a track loaded and paused, nothing else happening.
+      await awaitLoggedIn();
+      const first = requireTracks(await getFavoriteTracks(), 1)[0];
+      await playItems([trackToQueueItem(first)]);
+      await awaitPlaying("S11 playback");
+      await delay(3000);
+      await invoke("play_pause");
+      await delay(10000);
+      await invoke("perf_mark", { name: "measure_start" });
+      await delay(minutesFlag(5) * 60_000);
+    } else if (id === "S12") {
+      // Playing while hidden to the tray (close_to_tray on). The owner closes
+      // the window when prompted; measurement starts 20 s later.
+      await awaitLoggedIn();
+      const items = requireTracks(await getFavoriteTracks(), 10).slice(0, 10).map(trackToQueueItem);
+      await invoke("set_repeat", { mode: "all" });
+      await playItems(items);
+      await awaitPlaying("S12 playback");
+      console.log("S12: close the window to the tray now");
+      await delay(20_000);
+      await invoke("perf_mark", { name: "measure_start" });
+      await delay(minutesFlag(10) * 60_000);
+      await invoke("set_repeat", { mode: "off" });
+    } else if (id === "S13") {
+      // Rack with its meters running while playing; S5-style scroll first.
+      await awaitLoggedIn();
+      await until("!!window.__perf", "__perf bridge");
+      await applyScenarioMode();
+      const first = requireTracks(await getFavoriteTracks(), 1)[0];
+      await playItems([trackToQueueItem(first)]);
+      await awaitPlaying("S13 playback");
+      await evaluate('window.__perf.goto("tracks")');
+      await until('!!document.querySelector("[data-perf-scroll]")', "track table");
+      await delay(3000);
+      await invoke("perf_mark", { name: "measure_start" });
+      for (let i = 0; i < 12; i++) {
+        await evaluate("window.__perf.scrollTracks(1200)");
+        await delay(600);
+      }
+      await delay(minutesFlag(2) * 60_000);
+    } else if (id === "S14") {
+      // Volume drag with a 10k queue loaded (paused, nothing fetched).
+      await awaitLoggedIn();
+      await until("!!window.__perf", "__perf bridge");
+      await applyScenarioMode();
+      const loaded = await evaluate("window.__perf.measureQueueLoad(10000)");
+      if (!loaded) throw new Error("S14: queue load unavailable");
+      await until('!!document.querySelector("[data-perf-volume]")', "volume slider");
+      await delay(3000);
+      await invoke("perf_mark", { name: "measure_start" });
+      for (let i = 0; i < 3; i++) {
+        const swept = await evaluate("window.__perf.sweepVolume(120)");
+        if (!swept) throw new Error("S14: volume slider unavailable");
+        await delay(1000);
+      }
+      await delay(6000); // let the CPU/IPC samples cover the sweep
+      await invoke("queue_clear");
     } else if (id.startsWith("S3-miss")) {
       await awaitLoggedIn();
       await invoke("clear_cache");
@@ -415,4 +486,10 @@ await scenarioFallback(scenario).catch((e) => {
   console.error(`driver failed: ${e.message}`);
   process.exitCode = 1;
 });
+// End through the normal exit path (session flush, history finalize); the
+// runner force-kills only if the app is still up afterwards.
+if (!args.includes("--no-quit")) {
+  // The page goes away mid-call, so the reply may never come.
+  await Promise.race([invoke("perf_quit").catch(() => {}), delay(3000)]);
+}
 ws.close();
