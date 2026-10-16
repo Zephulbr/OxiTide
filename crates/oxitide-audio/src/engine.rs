@@ -1401,6 +1401,15 @@ impl ChannelSink {
     }
 }
 
+/// `v[offset..offset + len]` without a new allocation.
+fn keep_range<T>(mut v: Vec<T>, offset: usize, len: usize) -> Vec<T> {
+    v.truncate(offset + len);
+    if offset > 0 {
+        v.drain(..offset);
+    }
+    v
+}
+
 impl PcmSink for ChannelSink {
     fn preferred_format(&self) -> PcmFormat {
         self.out_format
@@ -1437,24 +1446,26 @@ impl PcmSink for ChannelSink {
         })))
     }
 
-    fn on_samples(&mut self, buf: &PcmBuffer) -> Result<()> {
+    fn on_samples(&mut self, buf: PcmBuffer) -> Result<()> {
         if self.inner.generation.load(Ordering::SeqCst) != self.generation {
             return Err(Error::Output("playback superseded".into()));
         }
+        // The decoder's buffer is forwarded as is; only a seek discard trims
+        // it, in place.
         let buf = match buf {
             PcmBuffer::F32(v) => {
                 let (offset, len) = self.discarder.apply(v.len(), self.channels);
                 if len == 0 {
                     return Ok(());
                 }
-                PcmBuffer::F32(v[offset..offset + len].to_vec())
+                PcmBuffer::F32(keep_range(v, offset, len))
             }
             PcmBuffer::I32(v) => {
                 let (offset, len) = self.discarder.apply(v.len(), self.channels);
                 if len == 0 {
                     return Ok(());
                 }
-                PcmBuffer::I32(v[offset..offset + len].to_vec())
+                PcmBuffer::I32(keep_range(v, offset, len))
             }
         };
         self.send(Ok(StreamEvent::Samples(buf)))?;
@@ -6364,6 +6375,16 @@ mod tests {
             after - before
         );
     }
+    #[test]
+    fn keep_range_trims_in_place() {
+        let v = vec![1, 2, 3, 4, 5, 6];
+        let ptr = v.as_ptr();
+        let whole = keep_range(v, 0, 6);
+        assert_eq!(whole.as_ptr(), ptr, "an untrimmed buffer must not be copied");
+        assert_eq!(keep_range(whole.clone(), 2, 3), vec![3, 4, 5]);
+        assert_eq!(keep_range(whole, 0, 2), vec![1, 2]);
+    }
+
     /// Collects decoded samples as left-aligned `i32`, exactly as the
     /// exclusive path receives them.
     struct ReferenceI32Sink(Vec<i32>);
@@ -6375,7 +6396,7 @@ mod tests {
         fn on_stream_info(&mut self, _info: &StreamInfo) -> Result<()> {
             Ok(())
         }
-        fn on_samples(&mut self, buf: &PcmBuffer) -> Result<()> {
+        fn on_samples(&mut self, buf: PcmBuffer) -> Result<()> {
             self.0.extend_from_slice(buf.as_i32().expect("i32 samples"));
             Ok(())
         }

@@ -15,6 +15,7 @@ use crate::output::{
     exclusive_formats, platform, AudioOutput, AudioOutputSpec, ExclusiveFallback, OutputMode,
     OutputStatus, SOFTWARE_VOLUME_NOTICE,
 };
+use crate::ring::{pop_frames_le, push_samples};
 
 /// Floor for the ring so tiny formats still leave room for the device period.
 const MIN_RING_SAMPLES: usize = 4096;
@@ -61,6 +62,8 @@ pub struct WasapiOutput {
     device_id: Option<String>,
     resolved_device_id: Option<String>,
     producer: Option<Producer<u32>>,
+    /// Rate × channels of the open stream; paces waits on a full ring.
+    samples_per_sec: usize,
     worker: Option<JoinHandle<()>>,
     stop: Arc<AtomicBool>,
     flush: Option<Arc<FlushSignal>>,
@@ -78,6 +81,7 @@ impl WasapiOutput {
             device_id: None,
             resolved_device_id: None,
             producer: None,
+            samples_per_sec: 0,
             worker: None,
             stop: Arc::new(AtomicBool::new(false)),
             flush: None,
@@ -115,6 +119,7 @@ impl AudioOutput for WasapiOutput {
 
         let sample_rate = spec.info.sample_rate;
         let channels = spec.info.channels;
+        self.samples_per_sec = sample_rate as usize * channels as usize;
         let frames = (sample_rate as usize * channels as usize) / 5;
         let (producer, mut consumer) = RingBuffer::<u32>::new(frames.max(MIN_RING_SAMPLES));
 
@@ -180,38 +185,34 @@ impl AudioOutput for WasapiOutput {
         // The requested mode can differ from the mode that actually opened
         // (exclusive -> shared fallback), so convert to what the device accepts.
         let actual_mode = self.status.lock().unwrap().mode;
+        let rate = self.samples_per_sec;
         let producer = self
             .producer
             .as_mut()
             .ok_or_else(|| Error::Output("output not open".into()))?;
         match buf {
-            PcmBuffer::F32(v) => {
-                for &sample in v {
-                    let scaled = if software { sample * volume } else { sample };
-                    push_word(producer, scaled.to_bits())?;
-                }
-            }
+            PcmBuffer::F32(v) => push_samples(producer, v, rate, |sample| {
+                let scaled = if software { sample * volume } else { sample };
+                scaled.to_bits()
+            }),
             PcmBuffer::I32(v) if actual_mode == OutputMode::Exclusive => {
-                for &sample in v {
+                push_samples(producer, v, rate, |sample| {
                     let scaled = if software {
                         (sample as f64 * volume as f64) as i32
                     } else {
                         sample
                     };
-                    push_word(producer, scaled as u32)?;
-                }
+                    scaled as u32
+                })
             }
-            PcmBuffer::I32(v) => {
-                // Shared output fell back from exclusive: the device wants
-                // float samples. Left-aligned i32 -> f32 is a pure divide.
-                for &sample in v {
-                    let float = sample as f32 / 2_147_483_648.0;
-                    let scaled = if software { float * volume } else { float };
-                    push_word(producer, scaled.to_bits())?;
-                }
-            }
+            // Shared output fell back from exclusive: the device wants float
+            // samples. Left-aligned i32 -> f32 is a pure divide.
+            PcmBuffer::I32(v) => push_samples(producer, v, rate, |sample| {
+                let float = sample as f32 / 2_147_483_648.0;
+                let scaled = if software { float * volume } else { float };
+                scaled.to_bits()
+            }),
         }
-        Ok(())
     }
 
     fn set_volume(&mut self, volume: f32) -> Result<()> {
@@ -281,6 +282,8 @@ struct DeviceSession {
     render: wasapi::AudioRenderClient,
     event: Option<wasapi::Handle>,
     channels: usize,
+    /// One device period of bytes, reused (was one allocation per period).
+    scratch: Vec<u8>,
     // Kept alive so device-change notifications keep firing.
     _registration: Option<wasapi::DeviceEventRegistration>,
 }
@@ -293,7 +296,7 @@ impl DeviceSession {
         flush: &FlushSignal,
     ) -> Result<()> {
         // Prime the buffer before starting.
-        write_frames(&self.client, &self.render, consumer, self.channels)?;
+        write_frames(&self.client, &self.render, consumer, self.channels, &mut self.scratch)?;
         self.client.start_stream().map_err(to_error)?;
         while !stop.load(Ordering::SeqCst) {
             if flush.pending() {
@@ -312,7 +315,7 @@ impl DeviceSession {
                 // Polling exclusive: no event handle, just poll.
                 None => std::thread::sleep(Duration::from_millis(5)),
             }
-            write_frames(&self.client, &self.render, consumer, self.channels)?;
+            write_frames(&self.client, &self.render, consumer, self.channels, &mut self.scratch)?;
         }
         let _ = self.client.stop_stream();
         Ok(())
@@ -323,10 +326,13 @@ impl DeviceSession {
     /// released and exclusive-mode DACs do not re-lock.
     fn flush_stream(&mut self, consumer: &mut rtrb::Consumer<u32>) -> Result<()> {
         self.client.stop_stream().map_err(to_error)?;
-        while consumer.pop().is_ok() {}
+        let queued = consumer.slots();
+        if let Ok(chunk) = consumer.read_chunk(queued) {
+            chunk.commit_all();
+        }
         // Shared mode only; in exclusive mode Stop already discards the buffer.
         let _ = self.client.reset_stream();
-        write_frames(&self.client, &self.render, consumer, self.channels)?;
+        write_frames(&self.client, &self.render, consumer, self.channels, &mut self.scratch)?;
         self.client.start_stream().map_err(to_error)
     }
 }
@@ -496,37 +502,21 @@ fn setup_device(
         render,
         event,
         channels: spec.info.channels as usize,
+        scratch: Vec::new(),
         _registration: registration,
     };
     Ok((session, DeviceReady { device_id: resolved_id, status }))
 }
 
-/// Push one sample word, waiting briefly if the ring is full but giving up if
-/// the device stalled so playback cannot hang forever.
-pub(crate) fn push_word(producer: &mut Producer<u32>, word: u32) -> Result<()> {
-    let mut pending = word;
-    let deadline = std::time::Instant::now() + Duration::from_secs(2);
-    loop {
-        match producer.push(pending) {
-            Ok(()) => return Ok(()),
-            Err(rtrb::PushError::Full(sample)) => {
-                if std::time::Instant::now() > deadline {
-                    return Err(Error::Output(
-                        "Audio device has been disconnected or stalled".into(),
-                    ));
-                }
-                pending = sample;
-                std::thread::sleep(Duration::from_millis(2));
-            }
-        }
-    }
-}
-
+/// Hand the device everything it has room for, from the ring; silence for
+/// what the ring cannot cover (an underrun pads whole frames, see
+/// `ring::pop_frames_le`). `scratch` is reused across periods.
 fn write_frames(
     client: &wasapi::AudioClient,
     render: &wasapi::AudioRenderClient,
     consumer: &mut rtrb::Consumer<u32>,
     channels: usize,
+    scratch: &mut Vec<u8>,
 ) -> Result<()> {
     let frames = client
         .get_available_space_in_frames()
@@ -534,13 +524,10 @@ fn write_frames(
     if frames == 0 {
         return Ok(());
     }
-    let mut buf = vec![0u8; frames * channels * 4];
-    for chunk in buf.chunks_mut(4) {
-        let word = consumer.pop().unwrap_or(0); // silence on underrun (0.0f32 / i32 0)
-        chunk.copy_from_slice(&word.to_le_bytes());
-    }
+    scratch.resize(frames * channels * 4, 0);
+    pop_frames_le(consumer, channels, scratch);
     render
-        .write_to_device(frames, &buf, None)
+        .write_to_device(frames, scratch, None)
         .map_err(to_error)
 }
 
