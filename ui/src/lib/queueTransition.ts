@@ -54,6 +54,10 @@ export function queueFloat(_node: HTMLElement, { reduced }: { reduced: boolean }
 // created *paused* at its first frame, and `startPendingGlide` (the rail's
 // `introstart`) plays it, in step with the rail.
 
+/// What the glide holds: Now Playing when it covers the routed page (it comes
+/// first in .main), else the visible routed page.
+const PAGE = ":scope > .now-playing, :scope > .page:not(.covered)";
+
 interface Hold {
   animations: Animation[];
   release: () => void;
@@ -79,7 +83,7 @@ export function holdPage(
   { glide = true }: { glide?: boolean } = {},
 ) {
   releasePageHold();
-  const page = main?.querySelector<HTMLElement>(".page");
+  const page = main?.querySelector<HTMLElement>(PAGE);
   if (!main || !page) return;
   // From the rail's *current* width, not an assumed one: the event may fire
   // with the rail anywhere between zero and full width.
@@ -95,7 +99,7 @@ let snapshot: { page: HTMLElement; width: number; movers: HTMLElement[]; rects: 
 /// Opening, step 1 (before the rail is inserted): remember the page.
 export function prepareOpenGlide(main: HTMLElement | null, { glide = true }: { glide?: boolean } = {}) {
   snapshot = null;
-  const page = main?.querySelector<HTMLElement>(".page");
+  const page = main?.querySelector<HTMLElement>(PAGE);
   if (!main || !page) return;
   const movers = glide ? flipCandidates(main, page) : [];
   snapshot = {

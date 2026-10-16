@@ -65,6 +65,33 @@ describe("nav history", () => {
     expect(nav.route).toEqual({ name: "settings" });
   });
 
+  it("gives each pushed entry its own identity, revisited by back/forward", () => {
+    const nav = createNav();
+    const home = nav.entry;
+    nav.goto({ name: "explore" });
+    const explore = nav.entry;
+    expect(explore).not.toBe(home);
+
+    nav.back();
+    expect(nav.entry).toBe(home);
+    nav.forward();
+    expect(nav.entry).toBe(explore);
+
+    // A new navigation after going back is a new entry, even for the same route.
+    nav.back();
+    nav.goto({ name: "explore" });
+    expect(nav.entry).not.toBe(explore);
+    expect(nav.entry).not.toBe(home);
+  });
+
+  it("keeps the entry identity across replace", () => {
+    const nav = createNav();
+    nav.goto({ name: "artist-all", id: 1, tab: "albums" });
+    const entry = nav.entry;
+    nav.replace({ name: "artist-all", id: 1, tab: "eps" });
+    expect(nav.entry).toBe(entry);
+  });
+
   it("clamps back and forward at the ends", () => {
     const nav = createNav();
     nav.goto({ name: "explore" });

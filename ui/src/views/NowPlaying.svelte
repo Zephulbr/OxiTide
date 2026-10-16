@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import { flip } from "svelte/animate";
   import { cubicInOut, cubicOut } from "svelte/easing";
   import { fade, fly, scale, slide, type TransitionConfig } from "svelte/transition";
@@ -20,23 +21,74 @@
   import type { Player } from "../lib/player.svelte";
   import { tiltFromPointer } from "../lib/tilt";
 
-  /// Outro pins the closing view absolutely over the incoming route, so the
-  /// swap dissolves in place instead of reflowing .main mid-fade. The settle
-  /// (slight sink + shrink) keeps the close from reading as a hard cut.
+  /// Cover morph (open and close): the artwork travels between the player
+  /// bar's thumbnail and the stage, so Now Playing reads as the bar's cover
+  /// opening up rather than a page swap. Same curve both ways.
+  const MORPH_OPEN_MS = 480;
+  const MORPH_CLOSE_MS = 360;
+  const MORPH_EASE = "cubic-bezier(0.2, 0, 0, 1)";
+
+  function thumbRect(): DOMRect | null {
+    const rect = document.querySelector<HTMLElement>(".player .thumb")?.getBoundingClientRect();
+    return rect && rect.width > 0 ? rect : null;
+  }
+
+  /// The transform that lays `art` (at rest) over `thumb`.
+  function towardThumb(art: DOMRect, thumb: DOMRect): string {
+    const dx = thumb.left + thumb.width / 2 - (art.left + art.width / 2);
+    const dy = thumb.top + thumb.height / 2 - (art.top + art.height / 2);
+    return `translate(${dx}px, ${dy}px) scale(${thumb.width / art.width})`;
+  }
+
+  /// Outro pins the closing view (fixed, at its on-screen box) over the
+  /// revealed route, so the swap dissolves in place instead of reflowing
+  /// .main mid-fade; fixed rather than absolute because the route underneath
+  /// gets its scroll offset back in this same update. The artwork flies back
+  /// into the bar's thumbnail while the text columns sink and fade.
   function npOut(node: HTMLElement): TransitionConfig {
-    node.style.position = "absolute";
-    // matches .main padding in app.css (bottom clears the floating player bar)
-    node.style.inset = "16px 20px calc(var(--player-height) + 8px) 20px";
-    node.style.zIndex = "1";
-    node.style.pointerEvents = "none";
+    const box = node.getBoundingClientRect();
+    const art = node.querySelector<HTMLElement>(".art");
+    const artBox = art?.getBoundingClientRect();
+    Object.assign(node.style, {
+      position: "fixed",
+      left: `${box.left}px`,
+      top: `${box.top}px`,
+      width: `${box.width}px`,
+      height: `${box.height}px`,
+      margin: "0",
+      zIndex: "1",
+      pointerEvents: "none",
+    });
     if (appearance.reducedMotion) {
       return { duration: 150, css: (t) => `opacity: ${t}` };
     }
-    return {
-      duration: 220,
-      easing: cubicOut,
-      css: (t) => `opacity: ${t}; transform: translateY(${(1 - t) * 10}px) scale(${0.99 + 0.01 * t})`,
-    };
+    const thumb = thumbRect();
+    if (!art || !artBox || artBox.width === 0 || !thumb) {
+      return {
+        duration: 220,
+        easing: cubicOut,
+        css: (t) => `opacity: ${t}; transform: translateY(${(1 - t) * 10}px) scale(${0.99 + 0.01 * t})`,
+      };
+    }
+    art.animate(
+      [
+        { transform: "none", opacity: 1 },
+        { opacity: 1, offset: 0.7 },
+        { transform: towardThumb(artBox, thumb), opacity: 0 },
+      ],
+      { duration: MORPH_CLOSE_MS, easing: MORPH_EASE, fill: "forwards" },
+    );
+    for (const el of node.querySelectorAll<HTMLElement>(".spine, .stage-details, .meta")) {
+      el.animate(
+        [
+          { opacity: 1, transform: "none" },
+          { opacity: 0, transform: "translateY(10px)" },
+        ],
+        { duration: 200, easing: "cubic-bezier(0.4, 0, 1, 1)", fill: "forwards" },
+      );
+    }
+    // No css: the pieces animate themselves; this only times the removal.
+    return { duration: MORPH_CLOSE_MS };
   }
 
   let {
@@ -105,6 +157,28 @@
 
   /// Transition duration that collapses to 0 when reduced motion is requested.
   const dur = (ms: number) => (appearance.reducedMotion ? 0 : ms);
+
+  /// Entrance: the artwork morphs up out of the bar's thumbnail (or, with no
+  /// thumbnail to come from, scales in), then the tabs and the details/list
+  /// rise in after it. `entering` scopes the stagger to the mount, so later
+  /// tab and track swaps keep their own transitions.
+  // svelte-ignore state_referenced_locally
+  const morph = !appearance.reducedMotion && player.state.current !== null && thumbRect() !== null;
+  let entering = $state(!appearance.reducedMotion);
+  let artEl = $state<HTMLElement | null>(null);
+  $effect(() => {
+    const timer = setTimeout(() => (entering = false), 900);
+    untrack(() => {
+      const thumb = thumbRect();
+      const box = artEl?.getBoundingClientRect();
+      if (!morph || !artEl || !thumb || !box || box.width === 0) return;
+      artEl.animate([{ transform: towardThumb(box, thumb) }, { transform: "none" }], {
+        duration: MORPH_OPEN_MS,
+        easing: MORPH_EASE,
+      });
+    });
+    return () => clearTimeout(timer);
+  });
 
   /// Sleeve hover tilt (max degrees) and whether the pointer is on it. The
   /// pointer geometry is written straight to the art wrapper's custom
@@ -215,6 +289,8 @@
   class="now-playing"
   class:with-lyrics={wide}
   class:has-lyrics={hasLyrics}
+  class:morph
+  class:entering
   out:npOut
 >
   <div class="stage">
@@ -222,6 +298,7 @@
       <div class="stage-row">
         <div
           class="art"
+          bind:this={artEl}
           role="presentation"
           onpointerenter={sleeveEnter}
           onpointermove={sleeveMove}
@@ -415,9 +492,14 @@
     transition:
       gap var(--np-glide) var(--ease-in-out),
       max-width var(--np-glide) var(--ease-in-out);
-    /* Entrance: the view rises, the artwork scales up, then the meta column
-       staggers in. Mount-only; closing is the npOut fade. */
+    /* Entrance: the view rises, the artwork scales up, then the tabs and
+       details stagger in (`.entering`). With the cover morph the artwork
+       flies in from the bar instead and the view itself holds still, since
+       fading it would fade the morphing cover too. Closing is npOut. */
     animation: np-in var(--dur-view) var(--ease-enter) both;
+  }
+  .now-playing.morph {
+    animation: none;
   }
   @keyframes np-in {
     from { opacity: 0; transform: translateY(16px); }
@@ -428,10 +510,31 @@
     flex: 0 1 auto;
     width: min(100%, var(--np-cover));
     min-width: 0;
+    /* Over the player bar and the fading sidebar: the morph starts and ends
+       on the bar's thumbnail. */
+    position: relative;
+    z-index: 1;
     animation: np-art var(--dur-view) var(--ease-enter) 60ms both;
+  }
+  .now-playing.morph .art {
+    animation: none;
   }
   @keyframes np-art {
     from { opacity: 0; transform: scale(0.95) translateY(8px); }
+  }
+  /* Mount stagger, after the cover: tabs, details, rule, then the Next up
+     rows one by one (or the lyrics column). */
+  .now-playing.entering :is(.spine, .stage-details, .lyrics-slot, .meta-details, hr, .next-up li, .meta > .eyebrow, .meta > p) {
+    animation: np-rise 380ms var(--ease-enter) backwards;
+    animation-delay: 140ms;
+  }
+  .now-playing.entering .spine { animation-delay: 220ms; }
+  .now-playing.entering hr { animation-delay: 180ms; }
+  .now-playing.entering .next-up li:nth-child(1) { animation-delay: 220ms; }
+  .now-playing.entering .next-up li:nth-child(2) { animation-delay: 260ms; }
+  .now-playing.entering .next-up li:nth-child(3) { animation-delay: 300ms; }
+  @keyframes np-rise {
+    from { opacity: 0; transform: translateY(calc(var(--rise) * 1.2)); }
   }
   /* Track-change crossfade: key swaps stack in the same grid cell so the
      outgoing art fades under the incoming instead of reflowing the stage. */

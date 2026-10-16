@@ -74,6 +74,17 @@
     }
   }
 
+  /// Shelves reveal together once the personal sources have settled (or after
+  /// REVEAL_CAP_MS, whatever has arrived by then). Shown on arrival, a late
+  /// shelf (suggestions resolve in a second round) inserted itself above ones
+  /// already on screen and shoved the rest of Home down. TIDAL's editorial
+  /// rows sit below them all, so they wait too.
+  const REVEAL_CAP_MS = 2500;
+  let personalSettled = $state(false);
+  let suggestionsSettled = $state(false);
+  let capped = $state(false);
+  const ready = $derived((personalSettled && suggestionsSettled) || capped);
+
   /// Every personal shelf loads on its own and stays hidden when its source
   /// fails or is empty, so a new account or a flaky endpoint never blanks Home.
   async function loadPersonal() {
@@ -92,17 +103,31 @@
         : [];
     shortcuts = shortcutEntries(owned, favMixes.status === "fulfilled" ? favMixes.value : [], 8);
     if (history.status === "fulfilled") {
-      void buildSuggestions(history.value.items, api).then((built) => (suggestions = built));
+      void buildSuggestions(history.value.items, api)
+        .then((built) => (suggestions = built))
+        .catch(() => {})
+        .finally(() => (suggestionsSettled = true));
+    } else {
+      suggestionsSettled = true;
     }
     if (forYou.status === "fulfilled") mixes = madeForYou(forYou.value);
     if (feed.status === "fulfilled") releases = feed.value;
     if (statistics.status === "fulfilled") stats = statistics.value;
+    personalSettled = true;
   }
 
   $effect(() => {
     void load();
     void loadPersonal();
+    const timer = setTimeout(() => (capped = true), REVEAL_CAP_MS);
+    return () => clearTimeout(timer);
   });
+  /// A shelf that throws while rendering drops out like one whose source
+  /// failed. The shelves reveal in one update, so without a boundary each,
+  /// one bad shelf would abort the reveal and leave Home on its spinner.
+  function shelfFailed(error: unknown) {
+    console.error("Home shelf failed to render", error);
+  }
 
   function open(item: PageItem): (() => void) | undefined {
     const route = routeForPageItem(item);
@@ -131,6 +156,10 @@
 <div class="home">
   <HomeHero {player} go={(route) => nav.goto(route)} onerror={(e) => toasts.show(errorMessage(e), { severity: "error" })} />
 
+  {#if !ready}
+    <div class="pending"><Loading /></div>
+  {:else}
+  <svelte:boundary onerror={shelfFailed}>
   {#if shortcuts.length > 0}
     <section class="block" aria-labelledby="home-jump">
       <h3 id="home-jump">Jump back in</h3>
@@ -149,7 +178,9 @@
       </div>
     </section>
   {/if}
+  </svelte:boundary>
 
+  <svelte:boundary onerror={shelfFailed}>
   {#if albumItems.length > 0}
     <section class="block">
       <Carousel title="Recently played">
@@ -164,7 +195,9 @@
       </Carousel>
     </section>
   {/if}
+  </svelte:boundary>
 
+  <svelte:boundary onerror={shelfFailed}>
   {#if mixes.length > 0}
     <section class="block">
       <Carousel title="Made for you">
@@ -177,7 +210,9 @@
       </Carousel>
     </section>
   {/if}
+  </svelte:boundary>
 
+  <svelte:boundary onerror={shelfFailed}>
   {#if releaseItems.length > 0}
     <section class="block">
       <Carousel title={unseen > 0 ? `New from artists you follow · ${unseen} new` : "New from artists you follow"}>
@@ -190,7 +225,9 @@
       </Carousel>
     </section>
   {/if}
+  </svelte:boundary>
 
+  <svelte:boundary onerror={shelfFailed}>
   {#if radios.length > 0}
     <section class="block" aria-labelledby="home-explore">
       <h3 id="home-explore">Keep exploring</h3>
@@ -210,7 +247,9 @@
       </div>
     </section>
   {/if}
+  </svelte:boundary>
 
+  <svelte:boundary onerror={shelfFailed}>
   {#if suggestions?.similarTo && similar.length > 0}
     <section class="block">
       <Carousel title={`Because you listen to ${suggestions.similarTo.name}`}>
@@ -220,13 +259,16 @@
       </Carousel>
     </section>
   {/if}
+  </svelte:boundary>
 
+  <svelte:boundary onerror={shelfFailed}>
   {#if stats && stats.total_plays > 0}
     <section class="block">
       <h3>Your listening</h3>
       <HomeListening {stats} {nav} {toasts} />
     </section>
   {/if}
+  </svelte:boundary>
 
   <section class="block editorial">
     {#if loading}
@@ -234,10 +276,13 @@
     {:else if error}
       <ErrorState message={error} onRetry={load} />
     {:else if trimmed.length > 0}
-      <p class="eyebrow">From TIDAL</p>
-      <PageSections sections={trimmed} {nav} {player} {toasts} source="home" />
+      <div class="editorial-body">
+        <p class="eyebrow">From TIDAL</p>
+        <PageSections sections={trimmed} {nav} {player} {toasts} source="home" />
+      </div>
     {/if}
   </section>
+  {/if}
 </div>
 
 <style>
@@ -247,6 +292,29 @@
     padding-bottom: 16px;
   }
   .block {
+    margin-bottom: 18px;
+    /* Shelves rise in as one sequence when Home reveals them (`ready`). */
+    animation: shelf-in var(--dur-view) var(--ease-enter) backwards;
+  }
+  .block:nth-child(3) { animation-delay: 40ms; }
+  .block:nth-child(4) { animation-delay: 80ms; }
+  .block:nth-child(5) { animation-delay: 120ms; }
+  .block:nth-child(n + 6) { animation-delay: 160ms; }
+  /* The editorial rows rise on their own body instead, whether they are
+     ready at the reveal or finish loading after it. */
+  .block.editorial {
+    animation: none;
+  }
+  .editorial-body {
+    animation: shelf-in var(--dur-view) var(--ease-enter) 160ms backwards;
+  }
+  @keyframes shelf-in {
+    from {
+      opacity: 0;
+      transform: translateY(var(--rise));
+    }
+  }
+  .pending {
     margin-bottom: 18px;
   }
   .block > h3 {

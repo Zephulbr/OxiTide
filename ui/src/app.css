@@ -41,8 +41,27 @@ body {
 .app[data-now-playing="true"] {
   grid-template-columns: minmax(0, 1fr) auto;
 }
+/* The sidebar leaves the grid at once (so Now Playing lays out at its final
+   width) but stays painted over the left edge, fading out as Now Playing rises
+   in; closing fades it back in place under Now Playing's closing fade. */
+.sidebar {
+  transition:
+    opacity var(--dur-view) var(--ease-in-out),
+    visibility 0s;
+}
 .app[data-now-playing="true"] .sidebar {
-  display: none;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: var(--sidebar-width);
+  z-index: 1;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity var(--dur-state) var(--ease-exit),
+    visibility 0s var(--dur-state);
 }
 
 /* Film grain: one static feTurbulence tile at a fixed ~4.5% (spec §10.1 —
@@ -91,23 +110,39 @@ body {
 /* Fill views scroll internally (TrackTable), so the main scroller must not
    inset them from the floating bar; the list carries its own bottom
    clearance instead. */
-.main:has(.view-fill) { padding-bottom: 0; }
-.main:has(.profiles) { padding-top: 0; }
+/* `> .page:not(.covered)`: a page hidden under Now Playing must not reshape
+   .main around Now Playing. */
+.main:has(> .page:not(.covered) .view-fill) { padding-bottom: 0; }
+.main:has(> .page:not(.covered) .profiles) { padding-top: 0; }
 /* Route enter: the incoming page settles in (opacity + 8px rise) while the
    outgoing one is replaced immediately, so there is no dual-layout crossfade.
    `height: 100%` preserves the `.view-fill` height contract. */
 .page {
   height: 100%;
-  /* `backwards` (not `both`): after the 180ms enter finishes the animation
-     stops applying, so the page stops being a containing block for
-     position:fixed children (modals must anchor to the viewport). */
-  animation: page-in var(--dur-state) var(--ease-in-out) backwards;
+  /* `backwards` (not `both`): after the enter finishes the animation stops
+     applying, so the page stops being a containing block for position:fixed
+     children (modals must anchor to the viewport). */
+  animation: page-in var(--dur-view) var(--ease-enter) backwards;
+}
+/* Ready-gated enter: while a view shows only its loading state the rise is
+   held back, and it plays when the content replaces it (the animation starts
+   the moment this rule stops matching). A spinner rising in, then the real
+   page snapping in under it, read as two cuts. `:only-child`: a page whose
+   header is already up beside its spinner (Explore) rises at mount; holding
+   it would replay the rise over the whole page, header included, when the
+   spinner goes. */
+.page:has(> .loading:only-child) {
+  animation: none;
+}
+/* Now Playing covers the page: hidden, still mounted (RoutedPage). */
+.page.covered {
+  display: none;
 }
 /* Scrolling pages size to their content so .main's bottom padding lands after
    the last row; a 100%-tall page would consume that padding beneath its
-   overflowing content. Fill views and Now Playing keep the definite height
-   their layouts rely on. */
-.main:not(:has(.view-fill)):not(:has(.now-playing)) .page {
+   overflowing content. Fill views keep the definite height their layouts
+   rely on. */
+.page:not(:has(.view-fill)) {
   height: auto;
   min-height: 100%;
 }

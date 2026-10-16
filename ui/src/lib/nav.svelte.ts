@@ -61,6 +61,10 @@ export interface Nav {
   readonly nowPlayingOpen: boolean;
   readonly canBack: boolean;
   readonly canForward: boolean;
+  /// Identity of the current history entry: unique per pushed entry for the
+  /// app run (not persisted), kept by `replace`, revisited by back/forward.
+  /// Keys per-entry view state such as the restored scroll position.
+  readonly entry: number;
   goto(next: Route): void;
   /// Swap the current history entry without pushing a new one (tab switches).
   replace(next: Route): void;
@@ -239,8 +243,11 @@ function load(storage: NavStorage): StoredNav | null {
 /// `reset` clears them (logout). Without it the nav stays in memory.
 export function createNav(storage?: NavStorage): Nav {
   const stored = storage ? load(storage) : null;
-  let history = $state<Route[]>(stored ? stored.history : [{ name: "home" }]);
+  const initial: Route[] = stored ? stored.history : [{ name: "home" }];
+  let history = $state<Route[]>(initial);
   let index = $state(stored ? stored.index : 0);
+  let entries = $state<number[]>(initial.map((_, i) => i));
+  let nextEntry = initial.length;
   let queueOpen = $state(false);
   let nowPlayingOpen = $state(false);
 
@@ -255,6 +262,7 @@ export function createNav(storage?: NavStorage): Nav {
   function goto(next: Route) {
     if (sameRoute(history[index], next)) return;
     history = [...history.slice(0, index + 1), next];
+    entries = [...entries.slice(0, index + 1), nextEntry++];
     index = history.length - 1;
     persist();
   }
@@ -281,6 +289,7 @@ export function createNav(storage?: NavStorage): Nav {
 
   function reset() {
     history = [{ name: "home" }];
+    entries = [nextEntry++];
     index = 0;
     try {
       storage?.removeItem(NAV_KEY);
@@ -304,6 +313,9 @@ export function createNav(storage?: NavStorage): Nav {
     },
     get canForward() {
       return index < history.length - 1;
+    },
+    get entry() {
+      return entries[index];
     },
     goto,
     replace,

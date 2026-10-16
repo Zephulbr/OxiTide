@@ -73,10 +73,14 @@
         <span class="thumb-hint" aria-hidden="true"><Icon name="chevron-up" size={16} /></span>
       </button>
 
-      <div class="now">
-        <strong class="title"><NameLink label={current.title} onOpen={() => void openAlbum(current)} /></strong>
-        <span class="muted artist"><QueueArtistLinks item={current} {go} /></span>
-      </div>
+      <!-- Keyed on the track so a track change fades the new title in rather
+           than snapping it (the backdrop crossfades behind it). -->
+      {#key current.track_id}
+        <div class="now">
+          <strong class="title"><NameLink label={current.title} onOpen={() => void openAlbum(current)} /></strong>
+          <span class="muted artist"><QueueArtistLinks item={current} {go} /></span>
+        </div>
+      {/key}
 
       <button
         class="ibtn icon-heart"
@@ -221,6 +225,13 @@
     flex-direction: column;
     min-width: 120px;
     max-width: 260px;
+    animation: now-in var(--dur-view) var(--ease-enter) backwards;
+  }
+  @keyframes now-in {
+    from {
+      opacity: 0;
+      transform: translateY(calc(var(--rise) * 0.4));
+    }
   }
   .title {
     font-size: 15px;

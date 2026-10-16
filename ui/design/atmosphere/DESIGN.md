@@ -162,3 +162,13 @@ Backdrop + dynamic-colour crossfade 1200 ms; disc spin ~12 s/rev (now-playing ma
 2 s/rev), eases to stop in ~600 ms on pause; queue dock width glide 380 ms on `--ease-in-out`
 (AR-5 as amended by AR-9; the page's card widths follow it for the length of the glide —
 see §3); everything else per foundation §2.3.
+
+Now Playing open/close: the artwork morphs out of the player bar's thumbnail into the
+stage (transform only, 480 ms, `cubic-bezier(0.2, 0, 0, 1)`, drawn over the bar), then
+the tabs, details, rule and Next up rows rise in (`--rise` × 1.2, 380 ms, 140–300 ms
+stagger). The sidebar fades out over it (`--dur-state`, `--ease-exit`) and fades back on
+close. Closing reverses the morph into the thumbnail (360 ms, fading in its last 30%)
+while the text columns sink and fade (200 ms); the view is pinned (fixed) at its
+on-screen box so the revealed page underneath never shifts. With no thumbnail, or under
+reduced motion, the view falls back to its rise/scale entrance and a plain fade out.
+The player bar's title/artist fade in on a track change.

@@ -94,6 +94,9 @@
   --ease-enter: cubic-bezier(0.2, 0.7, 0.3, 1);
   --ease-exit: cubic-bezier(0.5, 0, 0.75, 0);
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  /* Entrance rise for content arriving in place (shelves, Now Playing's
+     columns); reduced motion turns it into a plain fade. */
+  --rise: 10px;
 
   /* Type (spec §6) */
   --font-display: "Fraunces", Georgia, serif;
@@ -157,5 +160,6 @@
     --dur-state: 120ms;
     --dur-view: 120ms;
     --dur-mood: 0ms;
+    --rise: 0px;
   }
 }

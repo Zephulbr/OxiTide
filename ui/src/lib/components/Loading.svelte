@@ -13,6 +13,13 @@
     align-items: center;
     gap: 8px;
     color: var(--text-muted);
+    /* Held back, then faded in: a quick load never flashes a spinner. */
+    animation: loading-in var(--dur-view) var(--ease-in-out) 320ms backwards;
+  }
+  @keyframes loading-in {
+    from {
+      opacity: 0;
+    }
   }
   /* Disc spinner (spec §8/§10.2): a small record with an accent tick. */
   .disc {

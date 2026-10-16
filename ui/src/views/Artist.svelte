@@ -70,6 +70,22 @@
     sectionErrors = next;
   }
 
+  /// Sections reveal in page order: one shows once it and every section above
+  /// it have settled (loaded, empty or failed). They load in parallel and
+  /// answer in any order, so showing each on arrival inserted shelves above
+  /// ones already on screen and shoved them down.
+  const SECTION_ORDER: SectionKey[] = ["tracks", "albums", "eps", "comps", "similar"];
+  const unsettled = () => ({ tracks: false, albums: false, eps: false, comps: false, similar: false });
+  let settled = $state<Record<SectionKey, boolean>>(unsettled());
+  const shown = $derived.by(() => {
+    const out = unsettled();
+    for (const key of SECTION_ORDER) {
+      if (!settled[key]) break;
+      out[key] = true;
+    }
+    return out;
+  });
+
   function loadSection<T>(key: SectionKey, run: () => Promise<T>, assign: (value: T) => void) {
     const token = loadToken;
     run()
@@ -81,6 +97,9 @@
       .catch((error) => {
         if (token !== loadToken) return;
         setSectionError(key, error);
+      })
+      .finally(() => {
+        if (token === loadToken) settled[key] = true;
       });
   }
 
@@ -119,6 +138,7 @@
     loading = true;
     error = "";
     sectionErrors = {};
+    settled = unsettled();
     topTracks = [];
     albums = [];
     eps = [];
@@ -147,7 +167,6 @@
     loadSection("comps", () => api.getArtistAlbums(id, "compilations", 50, 0), (list) => (comps = list));
     loadSection("similar", () => api.getSimilarArtists(id), (list) => (similar = list));
   }
-
   async function queueTop(startIndex: number, shuffle = false) {
     if (topTracks.length === 0) return;
     const prepared = await trackFlags.filterPlayable(topTracks, startIndex);
@@ -173,7 +192,6 @@
       severity: copied ? "success" : "error",
     });
   }
-
 
   async function openLink(url: string) {
     try {
@@ -227,7 +245,7 @@
     {/snippet}
   </ArtistHero>
 
-  {#if topTracks.length > 0}
+  {#if shown.tracks && topTracks.length > 0}
     <section class="shelf">
       <div class="shelf-head">
         <h3>Top tracks</h3>
@@ -246,14 +264,14 @@
         onAddToPlaylist={(track) => playlistActions.openPicker([track])}
       />
     </section>
-  {:else if sectionErrors.tracks}
+  {:else if shown.tracks && sectionErrors.tracks}
     <section class="shelf">
       <div class="shelf-head"><h3>Top tracks</h3></div>
       <ErrorState message={sectionErrors.tracks} onRetry={() => retrySection("tracks")} />
     </section>
   {/if}
 
-  {#if albums.length > 0}
+  {#if shown.albums && albums.length > 0}
     <section class="shelf">
       <Carousel title="Albums">
         {#snippet controls()}
@@ -270,14 +288,14 @@
         {/each}
       </Carousel>
     </section>
-  {:else if sectionErrors.albums}
+  {:else if shown.albums && sectionErrors.albums}
     <section class="shelf">
       <div class="shelf-head"><h3>Albums</h3></div>
       <ErrorState message={sectionErrors.albums} onRetry={() => retrySection("albums")} />
     </section>
   {/if}
 
-  {#if eps.length > 0}
+  {#if shown.eps && eps.length > 0}
     <section class="shelf">
       <Carousel title="Singles & EPs">
         {#snippet controls()}
@@ -294,14 +312,14 @@
         {/each}
       </Carousel>
     </section>
-  {:else if sectionErrors.eps}
+  {:else if shown.eps && sectionErrors.eps}
     <section class="shelf">
       <div class="shelf-head"><h3>Singles & EPs</h3></div>
       <ErrorState message={sectionErrors.eps} onRetry={() => retrySection("eps")} />
     </section>
   {/if}
 
-  {#if comps.length > 0}
+  {#if shown.comps && comps.length > 0}
     <section class="shelf">
       <Carousel title="Appears on">
         {#snippet controls()}
@@ -318,14 +336,14 @@
         {/each}
       </Carousel>
     </section>
-  {:else if sectionErrors.comps}
+  {:else if shown.comps && sectionErrors.comps}
     <section class="shelf">
       <div class="shelf-head"><h3>Appears on</h3></div>
       <ErrorState message={sectionErrors.comps} onRetry={() => retrySection("comps")} />
     </section>
   {/if}
 
-  {#if similar.length > 0}
+  {#if shown.similar && similar.length > 0}
     <section class="shelf">
       <Carousel title="Similar artists">
         {#each similar as s (s.id)}
@@ -337,7 +355,7 @@
         {/each}
       </Carousel>
     </section>
-  {:else if sectionErrors.similar}
+  {:else if shown.similar && sectionErrors.similar}
     <section class="shelf">
       <div class="shelf-head"><h3>Similar artists</h3></div>
       <ErrorState message={sectionErrors.similar} onRetry={() => retrySection("similar")} />
@@ -350,6 +368,14 @@
 <style>
   .shelf {
     margin-bottom: 28px;
+    /* Rises in as it is revealed (see shown). */
+    animation: shelf-in var(--dur-view) var(--ease-enter) backwards;
+  }
+  @keyframes shelf-in {
+    from {
+      opacity: 0;
+      transform: translateY(var(--rise));
+    }
   }
   .shelf-head {
     display: flex;

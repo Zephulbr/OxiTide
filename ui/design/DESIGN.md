@@ -163,7 +163,31 @@ fixed height. Untitled quick-link rows (New, Top, HiRes, …) follow "New to you
 | `--dur-mood` | 1200 ms | colour glides on track change |
 
 Easings: `--ease-enter` (entrances, hover/state changes), `--ease-exit` (exits),
-`--ease-in-out` (two-way glides); linear only for spins.
+`--ease-in-out` (two-way glides); linear only for spins. `--rise` (10px, 0 under reduced
+motion) is the entrance travel for content arriving in place.
+
+**Arrival rules (page changes).** Content enters once, when it is ready, in page order:
+- Route enter: the page rises (8px, `--dur-view`, `--ease-enter`). While a view shows
+  only its loading state (`.page > .loading:only-child`) the rise is held and plays when
+  the content replaces it, so a spinner never rises in ahead of a page that then snaps
+  in. A page with anything beside its spinner (a header) rises at mount instead.
+- Explore holds its chips, "New to you" and TIDAL's rows until both its history-based
+  parts and the explore rows settle (2.5 s cap), then they rise in together; the title
+  and search field stay put.
+- `Loading` appears only after 320 ms (then fades in): quick loads show no spinner.
+- Covers do not fade on load. WebView2 defers load events for lazy images, so a cover can
+  paint before its `load` fires; a load-driven fade then hides a visible cover and fades
+  it back in.
+- Independently loaded shelves never insert above content already on screen. Artist
+  reveals a section once it and every section above it have settled; Home holds its
+  shelves and editorial rows until the personal sources settle (2.5 s cap), then they
+  rise in with a 40 ms stagger. Each shelf rises by `--rise`. Each Home shelf sits in
+  its own error boundary: revealed together, one throwing shelf would otherwise abort
+  the whole reveal.
+- Scroll: a new history entry starts at the top; back/forward restores the entry's
+  offset once the page is tall enough, abandoned on user input or after 4 s
+  (`lib/scrollMemory.ts`). Now Playing covers the routed page (kept mounted, hidden)
+  rather than replacing it, so closing it reveals the page as it was.
 
 Only `transform` and `opacity` animate (plus registered colour/number properties), with
 two recorded exceptions (addendum `2026-10-15-oxitide-atmosphere-rules-addendum.md`):

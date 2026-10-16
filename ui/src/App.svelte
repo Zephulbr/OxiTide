@@ -708,6 +708,7 @@
         {collectionActions}
         {toasts}
         {qualityDisplay}
+        scroller={() => document.getElementById("main")}
         {onLogout}
         onQualityDisplay={(mode) => (qualityDisplay = mode)}
       />

@@ -76,19 +76,29 @@
   async function loadPersonal() {
     try {
       listened = (await api.getHistoryPage(0, 200)).items;
-    } catch {
-      return;
-    }
-    try {
       newToYou = await buildNewToYou(listened, api, (id) => favorites.hasArtist(id));
     } catch {
       newToYou = [];
+    } finally {
+      personalSettled = true;
     }
   }
+
+  /// The body (chips, New to you, TIDAL's rows) reveals in one go once the
+  /// personal parts and the explore rows have settled, or after REVEAL_CAP_MS.
+  /// They answer in any order, so shown on arrival New to you could land
+  /// above rows already on screen and shove them down. The title and search
+  /// field never wait.
+  const REVEAL_CAP_MS = 2500;
+  let personalSettled = $state(false);
+  let capped = $state(false);
+  const ready = $derived((!exploreLoading && personalSettled) || capped);
 
   $effect(() => {
     loadExplore();
     void loadPersonal();
+    const timer = setTimeout(() => (capped = true), REVEAL_CAP_MS);
+    return () => clearTimeout(timer);
   });
 
   /// Enough to fill the row under the search field; the row clips whatever
@@ -286,7 +296,7 @@
     </div>
   {/if}
 </div>
-{#if !searching && chips.length > 0}
+{#if ready && !searching && chips.length > 0}
   <div class="chips" role="group" aria-label="Search suggestions">
     {#each chips as chip (chip.value)}
       <button
@@ -376,9 +386,11 @@
       {/each}
     </ul>
   {/if}
+{:else if !ready}
+  <div class="pending"><Loading /></div>
 {:else}
   {#if newItems.length > 0}
-    <section class="shelf">
+    <section class="shelf reveal">
       <Carousel title="New to you">
         {#each newItems as item (item.id)}
           <MediaCard {item} variant="carousel" onclick={open(item)} />
@@ -387,13 +399,15 @@
     </section>
   {/if}
   {#if exploreLoading}
-    <Loading />
+    <div class="pending"><Loading /></div>
   {:else if exploreError}
     <ErrorState message={exploreError} onRetry={loadExplore} />
   {:else if arranged.quick.length + arranged.rest.length === 0}
     <EmptyState message="Nothing to explore yet." />
   {:else}
-    <PageSections sections={[...arranged.quick, ...arranged.rest]} {nav} {player} {toasts} source="explore" />
+    <div class="reveal later">
+      <PageSections sections={[...arranged.quick, ...arranged.rest]} {nav} {player} {toasts} source="explore" />
+    </div>
   {/if}
 {/if}
 
@@ -545,6 +559,20 @@
   }
   .shelf {
     margin-bottom: 10px;
+  }
+  /* The body's reveal (see `ready`): chips, New to you, then TIDAL's rows. */
+  .reveal,
+  .chips {
+    animation: explore-in var(--dur-view) var(--ease-enter) backwards;
+  }
+  .reveal.later {
+    animation-delay: 60ms;
+  }
+  @keyframes explore-in {
+    from {
+      opacity: 0;
+      transform: translateY(var(--rise));
+    }
   }
   .list-head {
     display: flex;
