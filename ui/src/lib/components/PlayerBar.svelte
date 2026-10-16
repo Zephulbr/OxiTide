@@ -2,10 +2,13 @@
   import { dspBadgeTitle } from "../dsp";
   import { formatDuration } from "../format";
   import { formatQuality, type QualityDisplay } from "../quality";
-  import type { RepeatMode } from "../api";
+  import { api, type QueueItem, type RepeatMode } from "../api";
   import type { Favorites } from "../favorites.svelte";
   import type { Player } from "../player.svelte";
-  import type { Nav } from "../nav.svelte";
+  import type { Nav, Route } from "../nav.svelte";
+  import { albumRoute } from "../queueLinks";
+  import NameLink from "./NameLink.svelte";
+  import QueueArtistLinks from "./QueueArtistLinks.svelte";
   import type { Mini } from "../mini.svelte";
   import Cover from "./Cover.svelte";
   import Icon from "./Icon.svelte";
@@ -40,6 +43,17 @@
     formatQuality(player.state.stream, "compact", player.state.preferred_quality) === "MAX",
   );
 
+  /// Name links leave Now Playing so the page they open is visible.
+  function go(route: Route) {
+    nav.closeNowPlaying();
+    nav.goto(route);
+  }
+
+  async function openAlbum(item: QueueItem) {
+    const route = await albumRoute(item, api.getTrack);
+    if (route) go(route);
+  }
+
   function nextRepeat(mode: RepeatMode): RepeatMode {
     if (mode === "off") return "all";
     if (mode === "all") return "one";
@@ -60,8 +74,8 @@
       </button>
 
       <div class="now">
-        <strong class="title">{current.title}</strong>
-        <span class="muted artist">{current.artist}</span>
+        <strong class="title"><NameLink label={current.title} onOpen={() => void openAlbum(current)} /></strong>
+        <span class="muted artist"><QueueArtistLinks item={current} {go} /></span>
       </div>
 
       <button
@@ -219,6 +233,9 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .artist :global(.name-link:hover) {
+    color: var(--text);
   }
   button {
     display: inline-grid;

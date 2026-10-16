@@ -33,7 +33,7 @@
   import WindowControls from "./lib/components/WindowControls.svelte";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { isDragTarget } from "./lib/titlebar";
-  import { createNav } from "./lib/nav.svelte";
+  import { createNav, type Route } from "./lib/nav.svelte";
   import {
     appearance,
     clampQueueWidth,
@@ -76,6 +76,12 @@
   }
 
   const nav = createNav(window.localStorage);
+  /// Name links in the shell chrome (queue rail) leave Now Playing so the page
+  /// they open is visible.
+  function goFromChrome(route: Route) {
+    nav.closeNowPlaying();
+    nav.goto(route);
+  }
   const toasts = createToasts();
   const player = createPlayer(toasts);
   const sleepTimer = createSleepTimer((fadeMs) => {
@@ -715,7 +721,7 @@
           transition:fade|global={{ duration: appearance.reducedMotion ? 120 : GLIDE_MS }}
         ></div>
         <aside class="queue floating" transition:queueFloat|global={{ reduced: appearance.reducedMotion }}>
-          <QueueRail {player} />
+          <QueueRail {player} go={(route) => { nav.toggleQueue(); goFromChrome(route); }} />
         </aside>
       {:else}
         <aside
@@ -741,7 +747,7 @@
             aria-valuenow={appearance.queueWidth}
             aria-valuetext={`${appearance.queueWidth} pixels`}
           ></div>
-          <QueueRail {player} />
+          <QueueRail {player} go={goFromChrome} />
         </aside>
       {/if}
     {/if}

@@ -17,6 +17,11 @@ export interface TrackMenuContext {
   /// Opens the Info surface: the playing track routes to Now Playing's Info
   /// tab, any other row opens the modal (host decides).
   trackInfo(): void;
+  /// Opens the track's album; absent when it has none or it is the current
+  /// page (name-links spec NL-D6).
+  goToAlbum?: () => void;
+  /// Artists to offer "Go to" entries for, already filtered (`menuArtists`).
+  goToArtists?: { name: string; open(): void }[];
   /// True when the active content filters hide this track.
   blocked?: boolean;
   playlist?: {
@@ -74,6 +79,7 @@ export function trackMenuItems(ctx: TrackMenuContext): MenuItem[] {
       icon: favorited ? "heart-crack" : "heart",
       run: () => void ctx.favorites.toggleTrack(ctx.track.id),
     },
+    ...goToItems(ctx),
     {
       id: "copy-title",
       label: "Copy title",
@@ -97,7 +103,33 @@ export function trackMenuItems(ctx: TrackMenuContext): MenuItem[] {
   return items;
 }
 
-export function queueMenuItems(ctx: {
+interface GoToTargets {
+  goToAlbum?: () => void;
+  goToArtists?: { name: string; open(): void }[];
+}
+
+/// The navigation group: album, then one "Go to artist" or a "Go to {name}"
+/// per artist when there are several.
+function goToItems(ctx: GoToTargets): MenuItem[] {
+  const items: MenuItem[] = [];
+  const goToAlbum = ctx.goToAlbum;
+  if (goToAlbum) items.push({ id: "go-album", label: "Go to album", icon: "disc-3", run: () => goToAlbum() });
+  const artists = ctx.goToArtists ?? [];
+  artists.forEach((artist, i) => {
+    items.push({
+      id: artists.length === 1 ? "go-artist" : `go-artist-${i}`,
+      label: artists.length === 1 ? "Go to artist" : `Go to ${artist.name}`,
+      icon: "user",
+      run: () => artist.open(),
+    });
+  });
+  if (items.length > 0) items[0].divider = true;
+  return items;
+}
+
+/// Queue rows. The "Go to" group is the keyboard path to the row's nested
+/// name links (name-links spec NL-D10).
+export function queueMenuItems(ctx: GoToTargets & {
   index: number;
   playNow(): void;
   /// Move the row to right after the current track; absent when it is the
@@ -113,6 +145,7 @@ export function queueMenuItems(ctx: {
   if (playNext) {
     items.push({ id: "play-next", label: "Play next", icon: "skip-forward", run: () => playNext() });
   }
+  items.push(...goToItems(ctx));
   items.push(
     { id: "copy-title", label: "Copy title", icon: "copy", divider: true, run: () => ctx.copyTitle() },
     { id: "remove", label: "Remove", icon: "trash-2", danger: true, divider: true, run: () => ctx.remove() },
@@ -133,6 +166,12 @@ export function artistMoreItems(ctx: {
     items.push({ id: "artist-mix", label: "Artist mix", icon: "radio", run: () => ctx.openMix(mixId) });
   }
   return items;
+}
+
+/// History rows: play plus the "Go to" group, the keyboard path to the row's
+/// nested name links (name-links spec NL-D10).
+export function historyMenuItems(ctx: GoToTargets & { play(): void }): MenuItem[] {
+  return [{ id: "play", label: "Play", icon: "play", run: () => ctx.play() }, ...goToItems(ctx)];
 }
 
 export function libraryPlaylistMenuItems(ctx: {

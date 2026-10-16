@@ -517,6 +517,8 @@ pub(crate) mod tests {
             album: "B".into(),
             duration_secs: 200,
             cover: Some("c".into()),
+            artist_refs: Vec::new(),
+            album_id: None,
         }
     }
 

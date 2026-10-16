@@ -7,6 +7,7 @@
     title,
     subtitle = "",
     stats = "",
+    byline,
     cover,
     actions,
     tools,
@@ -18,6 +19,8 @@
     title: string;
     subtitle?: string;
     stats?: string;
+    /// Rich subtitle (e.g. linked artists); replaces `subtitle` when given.
+    byline?: Snippet;
     cover: Snippet;
     actions?: Snippet;
     /// Optional extra control in the transport row after Shuffle (playlist's
@@ -35,7 +38,8 @@
     <div class="hero-meta">
       <span class="kicker">{kicker}</span>
       <h2><span class="title-track">{title}</span></h2>
-      {#if subtitle}<p class="subtitle">{subtitle}</p>{/if}
+      {#if byline}<p class="subtitle">{@render byline()}</p>
+      {:else if subtitle}<p class="subtitle">{subtitle}</p>{/if}
       {#if stats}<p class="stats tnum">{stats}</p>{/if}
     </div>
   </div>
@@ -121,6 +125,9 @@
     font-size: 15px;
     color: var(--text-muted);
     overflow-wrap: anywhere;
+  }
+  .subtitle :global(.name-link:hover) {
+    color: var(--text);
   }
   .stats {
     margin: 0;

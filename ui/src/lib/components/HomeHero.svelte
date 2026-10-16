@@ -1,8 +1,12 @@
 <script lang="ts">
-  import { api } from "../api";
+  import { api, type QueueItem } from "../api";
   import { formatDuration } from "../format";
   import { greeting } from "../homeData";
+  import type { Route } from "../nav.svelte";
   import type { Player } from "../player.svelte";
+  import { albumRoute } from "../queueLinks";
+  import NameLink from "./NameLink.svelte";
+  import QueueArtistLinks from "./QueueArtistLinks.svelte";
   import Cover from "./Cover.svelte";
   import Icon from "./Icon.svelte";
   import PlayPauseGlyph from "./PlayPauseGlyph.svelte";
@@ -10,7 +14,21 @@
   /// Home's masthead: a time-of-day greeting and, when there is a current
   /// (or restored) track, a "Continue listening" card tinted by its cover with
   /// the next few queued tracks in an inset panel on the right.
-  let { player, onerror }: { player: Player; onerror?: (e: unknown) => void } = $props();
+  let {
+    player,
+    onerror,
+    go,
+  }: {
+    player: Player;
+    onerror?: (e: unknown) => void;
+    /// Makes the current track's title, artist and album links (name-links spec).
+    go?: (route: Route) => void;
+  } = $props();
+
+  async function openAlbum(item: QueueItem, open: (route: Route) => void) {
+    const route = await albumRoute(item, api.getTrack);
+    if (route) open(route);
+  }
 
   const UP_NEXT = 4;
 
@@ -48,11 +66,20 @@
     </div>
     <div class="meta">
       <span class="eyebrow">{playing ? "Now playing" : "Continue listening"}</span>
-      <h3 class="title">{current.title}</h3>
-      <p class="by">
-        <span>{current.artist}</span>
-        {#if current.album}<span class="muted"> · {current.album}</span>{/if}
-      </p>
+      {#if go}
+        {@const open = go}
+        <h3 class="title"><NameLink label={current.title} onOpen={() => void openAlbum(current, open)} /></h3>
+        <p class="by">
+          <span><QueueArtistLinks item={current} go={open} /></span>
+          {#if current.album}<span class="muted"> · <NameLink label={current.album} onOpen={() => void openAlbum(current, open)} /></span>{/if}
+        </p>
+      {:else}
+        <h3 class="title">{current.title}</h3>
+        <p class="by">
+          <span>{current.artist}</span>
+          {#if current.album}<span class="muted"> · {current.album}</span>{/if}
+        </p>
+      {/if}
       <div class="progress">
         <div
           class="track"
@@ -194,6 +221,9 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .by .muted :global(.name-link:hover) {
+    color: var(--text);
   }
   .progress {
     display: flex;

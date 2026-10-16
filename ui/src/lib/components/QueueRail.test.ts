@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/svelte";
 import { fakePlayer, queueItem } from "../test/fakes";
 import QueueRail from "./QueueRail.svelte";
@@ -17,6 +17,7 @@ globalThis.ResizeObserver ??= class {
 } as unknown as typeof ResizeObserver;
 
 afterEach(cleanup);
+beforeEach(() => vi.clearAllMocks());
 
 describe("QueueRail", () => {
   it("renders the queue as a labelled list with set positions", () => {
@@ -62,6 +63,25 @@ describe("QueueRail", () => {
     render(QueueRail, { player: fakePlayer({ queue, current_index: 0 }) });
 
     expect(screen.getByText("2 up next · 7 min left")).toBeTruthy();
+  });
+
+  it("opens a row's artist and album from its names without playing it", async () => {
+    const item = { ...queueItem(2), artist_refs: [{ id: 7, name: "Artist" }], album_id: 9 };
+    const go = vi.fn();
+    render(QueueRail, { player: fakePlayer({ queue: [queueItem(1), item] }), go });
+
+    await fireEvent.click(screen.getAllByText("Artist")[1]);
+    expect(go).toHaveBeenCalledWith({ name: "artist", id: 7 });
+    await fireEvent.click(screen.getByText("Track 2"));
+    await vi.waitFor(() => expect(go).toHaveBeenLastCalledWith({ name: "album", id: 9 }));
+    expect(api.playTracks).not.toHaveBeenCalled();
+    // Nested in the play button: pointer-only spans, never a link role.
+    expect(screen.queryAllByRole("link")).toHaveLength(0);
+  });
+
+  it("keeps names as plain text without a go handler", () => {
+    render(QueueRail, { player: fakePlayer({ queue: [queueItem(1)] }) });
+    expect(document.querySelector(".name-link")).toBeNull();
   });
 
   it("can hide its heading for hosts that draw their own", () => {

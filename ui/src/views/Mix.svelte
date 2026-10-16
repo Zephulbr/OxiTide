@@ -17,14 +17,16 @@
   import type { PlaylistActions } from "../lib/playlists.svelte";
   import type { Player } from "../lib/player.svelte";
   import type { Toasts } from "../lib/toasts.svelte";
+  import type { Nav } from "../lib/nav.svelte";
 
   let {
     id,
+    nav,
     player,
     favorites,
     playlistActions,
     toasts,
-  }: { id: string; player: Player; favorites: Favorites; playlistActions: PlaylistActions; toasts: Toasts } = $props();
+  }: { id: string; nav: Nav; player: Player; favorites: Favorites; playlistActions: PlaylistActions; toasts: Toasts } = $props();
 
   let mix = $state<MixDetail | null>(null);
   let loading = $state(true);
@@ -128,6 +130,7 @@
     </DetailHeader>
     <TrackTable
       {view}
+      {nav}
       {favorites}
       {toasts}
       fill

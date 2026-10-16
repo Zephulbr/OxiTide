@@ -2,7 +2,12 @@
   import { api, historyToQueueItem, type HistoryEntry, type Stats } from "../lib/api";
   import { clockTime, groupByDay, mergeHistoryEntries, relativeTime } from "../lib/historyTime";
   import { formatDuration, formatListenTime } from "../lib/format";
-  import type { HistoryTab, Nav } from "../lib/nav.svelte";
+  import type { HistoryTab, Nav, Route } from "../lib/nav.svelte";
+  import { menuFor } from "../lib/menu.svelte";
+  import { historyMenuItems } from "../lib/menus";
+  import { albumRoute, goToTargets } from "../lib/queueLinks";
+  import NameLink from "../lib/components/NameLink.svelte";
+  import QueueArtistLinks from "../lib/components/QueueArtistLinks.svelte";
   import type { Player } from "../lib/player.svelte";
   import type { Toasts } from "../lib/toasts.svelte";
   import { playSource } from "../lib/playSource.svelte";
@@ -91,6 +96,15 @@
       });
   }
 
+  function go(route: Route) {
+    nav.goto(route);
+  }
+
+  async function openAlbum(entry: HistoryEntry) {
+    const route = await albumRoute(entry, api.getTrack);
+    if (route) go(route);
+  }
+
   function selectTab(next: HistoryTab) {
     nav.replace({ name: "history", tab: next });
   }
@@ -139,14 +153,17 @@
                   class:partial={!playing && !entry.completed && entry.listened_ms < entry.duration_secs * 500}
                   onclick={() => playEntry(entry)}
                   title={`Play ${entry.title} (${relativeTime(entry.started_at, Date.now())})`}
+                  use:menuFor={() =>
+                    historyMenuItems({ play: () => void playEntry(entry), ...goToTargets(entry, go, api.getTrack) })}
                 >
                   <span class="muted tnum when">{clockTime(entry.started_at)}</span>
                   <span class="thumb"><Cover uuid={entry.cover} size={160} radius={4} alt="" /></span>
+                  <!-- Nested links: the row is the play button (name-links spec NL-D10). -->
                   <span class="meta">
-                    <strong>{entry.title}</strong>
-                    <span class="muted">{entry.artist}</span>
+                    <strong><NameLink label={entry.title} onOpen={() => void openAlbum(entry)} nested /></strong>
+                    <span class="muted"><QueueArtistLinks item={entry} {go} nested /></span>
                   </span>
-                  <span class="muted album">{entry.album}</span>
+                  <span class="muted album">{#if entry.album}<NameLink label={entry.album} onOpen={() => void openAlbum(entry)} nested />{/if}</span>
                   <span class="muted tnum len">{formatDuration(entry.duration_secs)}</span>
                 </button>
               {/each}
@@ -287,6 +304,10 @@
   .album,
   .len {
     font-size: 12.5px;
+  }
+  .meta .muted :global(.name-link:hover),
+  .album :global(.name-link:hover) {
+    color: var(--text);
   }
   .len {
     text-align: right;

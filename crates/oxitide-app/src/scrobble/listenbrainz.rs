@@ -167,6 +167,8 @@ mod tests {
             album: "Record".into(),
             duration_secs: 210,
             cover: None,
+            artist_refs: Vec::new(),
+            album_id: None,
         }
     }
 

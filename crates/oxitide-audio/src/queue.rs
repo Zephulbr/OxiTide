@@ -14,6 +14,19 @@ pub struct QueueItem {
     pub duration_secs: u32,
     #[serde(default)]
     pub cover: Option<String>,
+    /// The credited artists with ids, for the UI's name links. Empty when the
+    /// source carried names only (page-feed tracks, older sessions); `artist`
+    /// stays the display string either way.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub artist_refs: Vec<ArtistRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub album_id: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtistRef {
+    pub id: u64,
+    pub name: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -329,7 +342,7 @@ mod tests {
     use super::*;
 
     fn item(id: u64) -> QueueItem {
-        QueueItem { track_id: id, title: format!("T{id}"), artist: String::new(), album: String::new(), duration_secs: 1, cover: None }
+        QueueItem { track_id: id, title: format!("T{id}"), artist: String::new(), album: String::new(), duration_secs: 1, cover: None, artist_refs: Vec::new(), album_id: None }
     }
 
     fn queue(n: u64) -> Queue {

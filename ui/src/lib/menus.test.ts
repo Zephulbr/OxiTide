@@ -3,6 +3,7 @@ import type { Playlist, Track } from "./api";
 import type { Favorites } from "./favorites.svelte";
 import {
   artistMoreItems,
+  historyMenuItems,
   libraryPlaylistMenuItems,
   queueMenuItems,
   trackMenuItems,
@@ -149,6 +150,40 @@ describe("trackMenuItems", () => {
     ]);
   });
 
+  it("adds a divided navigation group before copy title", () => {
+    const goToAlbum = vi.fn();
+    const open = vi.fn();
+    const items = trackMenuItems(baseCtx({ goToAlbum, goToArtists: [{ name: "A", open }] }));
+
+    expect(items.map((i) => i.id)).toEqual([
+      "play",
+      "radio",
+      "play-next",
+      "add-queue",
+      "add-playlist",
+      "favorite",
+      "go-album",
+      "go-artist",
+      "copy-title",
+      "track-info",
+    ]);
+    expect(items.find((i) => i.id === "go-album")?.divider).toBe(true);
+    expect(items.find((i) => i.id === "go-artist")?.label).toBe("Go to artist");
+    items.find((i) => i.id === "go-album")?.run();
+    items.find((i) => i.id === "go-artist")?.run();
+    expect(goToAlbum).toHaveBeenCalledTimes(1);
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  it("names each artist when there are several, dividing the first entry", () => {
+    const items = trackMenuItems(
+      baseCtx({ goToArtists: [{ name: "A", open: vi.fn() }, { name: "B", open: vi.fn() }] }),
+    );
+    const go = items.filter((i) => i.id.startsWith("go-"));
+    expect(go.map((i) => i.label)).toEqual(["Go to A", "Go to B"]);
+    expect(go.map((i) => i.divider ?? false)).toEqual([true, false]);
+  });
+
   it("omits editing items while busy or disabled", () => {
     const busy = trackMenuItems(baseCtx({ playlist: playlistCtx({ busy: true }) }));
     const disabled = trackMenuItems(baseCtx({ playlist: playlistCtx({ disabled: true }) }));
@@ -182,12 +217,34 @@ describe("queueMenuItems", () => {
     expect(remove).toHaveBeenCalledTimes(1);
   });
 
+  it("adds the go-to group between play actions and copy title", () => {
+    const items = queueMenuItems({
+      index: 0,
+      playNow: vi.fn(),
+      copyTitle: vi.fn(),
+      remove: vi.fn(),
+      goToAlbum: vi.fn(),
+      goToArtists: [{ name: "A", open: vi.fn() }],
+    });
+    expect(items.map((i) => i.id)).toEqual(["play-now", "go-album", "go-artist", "copy-title", "remove"]);
+  });
+
   it("offers play next only when given", () => {
     const playNext = vi.fn();
     const items = queueMenuItems({ index: 3, playNow: vi.fn(), playNext, copyTitle: vi.fn(), remove: vi.fn() });
     expect(items.map((i) => i.id)).toEqual(["play-now", "play-next", "copy-title", "remove"]);
     items[1].run();
     expect(playNext).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("historyMenuItems", () => {
+  it("lists play then the go-to group", () => {
+    const play = vi.fn();
+    const items = historyMenuItems({ play, goToAlbum: vi.fn(), goToArtists: [] });
+    expect(items.map((i) => i.id)).toEqual(["play", "go-album"]);
+    items[0].run();
+    expect(play).toHaveBeenCalledTimes(1);
   });
 });
 

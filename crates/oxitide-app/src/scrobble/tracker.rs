@@ -120,6 +120,8 @@ mod tests {
             album: "Album".into(),
             duration_secs: secs,
             cover: None,
+            artist_refs: Vec::new(),
+            album_id: None,
         }
     }
 

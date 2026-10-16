@@ -2,7 +2,10 @@
   import { flip } from "svelte/animate";
   import { cubicInOut, cubicOut } from "svelte/easing";
   import { fade, fly, scale, slide, type TransitionConfig } from "svelte/transition";
-  import type { QueueItem } from "../lib/api";
+  import { api, type QueueItem } from "../lib/api";
+  import NameLink from "../lib/components/NameLink.svelte";
+  import QueueArtistLinks from "../lib/components/QueueArtistLinks.svelte";
+  import { albumRoute } from "../lib/queueLinks";
   import { appearance } from "../lib/appearance.svelte";
   import Cover from "../lib/components/Cover.svelte";
   import DiscArt from "../lib/components/DiscArt.svelte";
@@ -14,7 +17,7 @@
   import { lyrics } from "../lib/lyrics.svelte";
   import { formatQuality, type QualityDisplay } from "../lib/quality";
   import { scrobbled } from "../lib/scrobbled.svelte";
-  import type { Nav } from "../lib/nav.svelte";
+  import type { Nav, Route } from "../lib/nav.svelte";
   import type { Player } from "../lib/player.svelte";
   import { tiltFromPointer } from "../lib/tilt";
 
@@ -185,12 +188,23 @@
   $effect(() => {
     void lyrics.open(track);
   });
+
+  /// Name links close Now Playing so the page they open is visible.
+  function go(route: Route) {
+    nav.closeNowPlaying();
+    nav.goto(route);
+  }
+
+  async function openAlbum(item: QueueItem) {
+    const route = await albumRoute(item, api.getTrack);
+    if (route) go(route);
+  }
 </script>
 
 {#snippet details(t: QueueItem)}
   <span class="eyebrow">Now playing</span>
   <h2 class="title">{t.title}</h2>
-  <p class="byline">{t.artist}{t.album ? ` — ${t.album}` : ""}</p>
+  <p class="byline"><QueueArtistLinks item={t} {go} />{#if t.album}{" — "}<NameLink label={t.album} onOpen={() => void openAlbum(t)} />{/if}</p>
   <div class="badges">
     {#if quality}<span class="badge" class:max={quality === "MAX"}>{quality}</span>{/if}
     {#if player.state.bit_perfect}<span class="badge">Bit-perfect</span>{:else if player.state.dsp_active}<span class="badge" title={dspBadgeTitle(player.state.dsp_stages)}>DSP</span>{/if}
@@ -391,8 +405,8 @@
                     animate:flip={{ duration: dur(240), easing: cubicOut }}
                   >
                     <span class="thumb"><Cover uuid={item.cover} size={80} radius={6} alt="" /></span>
-                    <span class="next-title">{item.title}</span>
-                    <span class="muted next-artist">{item.artist}</span>
+                    <span class="next-title"><NameLink label={item.title} onOpen={() => void openAlbum(item)} /></span>
+                    <span class="muted next-artist"><QueueArtistLinks {item} {go} /></span>
                     <span class="muted tnum">{formatDuration(item.duration_secs)}</span>
                   </li>
                 {/each}
@@ -639,6 +653,10 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .byline :global(.name-link:hover),
+  .next-artist :global(.name-link:hover) {
+    color: var(--text);
   }
   .next-up .tnum {
     grid-column: 3;

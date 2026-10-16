@@ -5,6 +5,7 @@ import type { Favorites } from "../favorites.svelte";
 import type { Toasts } from "../toasts.svelte";
 import type { TrackView } from "../trackView.svelte";
 import type { Track } from "../api";
+import type { Nav } from "../nav.svelte";
 import TrackTable from "./TrackTable.svelte";
 
 vi.mock("../api", () => ({
@@ -122,5 +123,50 @@ describe("TrackTable semantics", () => {
     const heart = rows[2].querySelector<HTMLButtonElement>('[aria-label="Favorite"]')!;
     await fireEvent.keyDown(heart, { key: "Enter" });
     expect(onPlay).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("TrackTable name links", () => {
+  function renderWithNav(route: Nav["route"]) {
+    const view = {
+      filter: "", sort: null, direction: "asc", engaged: false, preparing: false, error: "",
+      items: [track(1)], setFilter: vi.fn(), toggleSort: vi.fn(), clearSort: vi.fn(),
+      retry: vi.fn(), sourceIndex: (index: number) => index,
+    } as unknown as TrackView;
+    const favorites = { hasTrack: () => false, toggleTrack: vi.fn() } as unknown as Favorites;
+    const toasts = { show: vi.fn() } as unknown as Toasts;
+    const nav = { route, goto: vi.fn() } as unknown as Nav;
+    const onPlay = vi.fn();
+    render(TrackTable, { view, favorites, toasts, onPlay, nav });
+    const links = [...document.querySelectorAll<HTMLElement>('tbody [role="link"]')];
+    return { nav, onPlay, links };
+  }
+
+  it("links title and album to the album and the artist to the artist", async () => {
+    const { nav, links } = renderWithNav({ name: "playlist", id: "p" });
+    expect(links.map((l) => l.textContent)).toEqual(["Track 1", "Artist", "Album"]);
+    expect(links.every((l) => l.tabIndex === -1)).toBe(true);
+
+    await fireEvent.click(links[1]);
+    expect(nav.goto).toHaveBeenCalledWith({ name: "artist", id: 10 });
+    await fireEvent.click(links[0]);
+    expect(nav.goto).toHaveBeenLastCalledWith({ name: "album", id: 20 });
+  });
+
+  it("does not link the page's own album or artist", () => {
+    expect(renderWithNav({ name: "album", id: 20 }).links.map((l) => l.textContent)).toEqual(["Artist"]);
+    cleanup();
+    expect(renderWithNav({ name: "artist", id: 10 }).links.map((l) => l.textContent)).toEqual(["Track 1", "Album"]);
+  });
+
+  it("does not play the row when a name is double-clicked", async () => {
+    const { onPlay, links } = renderWithNav({ name: "playlist", id: "p" });
+    await fireEvent.dblClick(links[1]);
+    expect(onPlay).not.toHaveBeenCalled();
+  });
+
+  it("renders plain text without nav", () => {
+    setup();
+    expect(document.querySelectorAll('tbody [role="link"]')).toHaveLength(0);
   });
 });

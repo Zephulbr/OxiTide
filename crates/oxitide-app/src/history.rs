@@ -13,7 +13,7 @@ use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use oxitide_audio::engine::EngineEvent;
-use oxitide_audio::queue::QueueItem;
+use oxitide_audio::queue::{ArtistRef, QueueItem};
 use serde::{Deserialize, Serialize};
 
 /// A play is recorded at 30 s listened, or half the track under a minute.
@@ -39,6 +39,12 @@ pub struct HistoryRecord {
     pub started_at: i64,
     pub listened_ms: u64,
     pub completed: bool,
+    /// Name-link ids (see `QueueItem`); absent on records written before them
+    /// and on plays whose source carried names only.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub artist_refs: Vec<ArtistRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub album_id: Option<u64>,
 }
 
 /// The play currently accumulating, if playback has started.
@@ -181,6 +187,8 @@ fn record_from(item: &QueueItem, started_at: i64, listened_ms: u64, completed: b
         started_at,
         listened_ms,
         completed,
+        artist_refs: item.artist_refs.clone(),
+        album_id: item.album_id,
     }
 }
 
@@ -670,6 +678,8 @@ mod tests {
             album: "B".into(),
             duration_secs,
             cover: None,
+            artist_refs: Vec::new(),
+            album_id: None,
         }
     }
 
@@ -1138,6 +1148,8 @@ mod tests {
             started_at,
             listened_ms,
             completed: true,
+            artist_refs: Vec::new(),
+            album_id: None,
         }
     }
 

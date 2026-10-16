@@ -243,6 +243,7 @@
   {:else}
     <TrackTable
       {view}
+      {nav}
       {favorites}
       {toasts}
       fill

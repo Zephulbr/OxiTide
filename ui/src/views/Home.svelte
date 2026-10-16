@@ -128,7 +128,7 @@
 </script>
 
 <div class="home">
-  <HomeHero {player} onerror={(e) => toasts.show(errorMessage(e), { severity: "error" })} />
+  <HomeHero {player} go={(route) => nav.goto(route)} onerror={(e) => toasts.show(errorMessage(e), { severity: "error" })} />
 
   {#if shortcuts.length > 0}
     <section class="block" aria-labelledby="home-jump">

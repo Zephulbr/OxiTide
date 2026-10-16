@@ -245,6 +245,7 @@
       </div>
       <TrackTable
         {view}
+        {nav}
         {favorites}
         {toasts}
         onPlay={playFrom}

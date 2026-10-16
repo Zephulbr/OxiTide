@@ -23,6 +23,10 @@
   import type { Favorites } from "../favorites.svelte";
   import type { TrackView } from "../trackView.svelte";
   import { trackDrag, type DragParams } from "../drag";
+  import { hereTargets, menuArtists } from "../nameLinks";
+  import type { Nav } from "../nav.svelte";
+  import ArtistLinks from "./ArtistLinks.svelte";
+  import NameLink from "./NameLink.svelte";
   import Icon from "./Icon.svelte";
   import Cover from "./Cover.svelte";
   import NowPlayingMark from "./NowPlayingMark.svelte";
@@ -45,6 +49,7 @@
     sections,
     playingTrackId = null,
     playbackRunning = false,
+    nav,
   }: {
     view: TrackView;
     favorites: Favorites;
@@ -78,7 +83,23 @@
     playingTrackId?: number | null;
     /// Playback is running: the playing row's mark spins (still when paused).
     playbackRunning?: boolean;
+    /// Makes titles, artists and albums links (name-links spec); without it
+    /// they stay plain text.
+    nav?: Nav;
   } = $props();
+
+  /// The page's own album/artist render unlinked (NL-D4).
+  const here = $derived(nav ? hereTargets(nav.route) : null);
+
+  function albumOpener(t: Track): (() => void) | undefined {
+    const album = t.album;
+    if (!nav || !album || album.id === here?.albumId) return undefined;
+    return () => nav.goto({ name: "album", id: album.id });
+  }
+
+  function openArtist(id: number) {
+    nav?.goto({ name: "artist", id });
+  }
 
   /// Row height follows the density setting (spec §7.4): 46 / 38 px,
   /// mirrored from --row-height via rowHeightFor (guarded by rowHeight.test.ts).
@@ -209,7 +230,7 @@
   function onRowDoubleClick(event: MouseEvent, index: number) {
     if (loadingAll) return;
     const target = event.target;
-    if (target instanceof Element && target.closest("button, a, input, select, textarea")) return;
+    if (target instanceof Element && target.closest("button, a, input, select, textarea, [role='link']")) return;
     void play(index);
   }
 
@@ -357,6 +378,7 @@
           {@const tags = trackFlags.showLabels
             ? [...new Set([...reasons, ...trackFlags.labels(t)])]
             : reasons}
+          {@const openAlbum = albumOpener(t)}
           <tr
             class="row"
             class:blocked={reasons.length > 0}
@@ -383,6 +405,10 @@
                 addToPlaylist: () => onAddToPlaylist?.(t),
                 copyTitle: () => void copyText(t.title),
                 trackInfo: () => trackInfo.open(t),
+                goToAlbum: openAlbum,
+                goToArtists: nav
+                  ? menuArtists(t.artists, here).map((a) => ({ name: a.name, open: () => openArtist(a.id) }))
+                  : undefined,
                 playlist: playlistActions,
               })}
           >
@@ -400,7 +426,7 @@
               </button>
             </td>
             <td class="title-cell"><div class="title-text">
-              {t.title}
+              <NameLink label={t.title} onOpen={openAlbum} focusable={false} />
               {#each tags as tag (tag)}
                 <span
                   class="badge"
@@ -412,9 +438,18 @@
                 >{tag === "explicit" ? "E" : "AI"}</span>
               {/each}
             </div></td>
-            <td class="text-cell muted"><div class="cell-text">{t.artists.map((a) => a.name).join(", ")}</div></td>
+            <td class="text-cell muted"><div class="cell-text">
+              <ArtistLinks
+                artists={t.artists}
+                onOpen={nav ? openArtist : undefined}
+                current={here?.artistId}
+                focusable={false}
+              />
+            </div></td>
             {#if showAlbum}
-              <td class="text-cell muted"><div class="cell-text">{t.album?.title ?? ""}</div></td>
+              <td class="text-cell muted"><div class="cell-text">
+                <NameLink label={t.album?.title ?? ""} onOpen={openAlbum} focusable={false} />
+              </div></td>
             {/if}
             <td class="muted tnum nowrap-cell time-cell">{formatDuration(t.duration)}</td>
             <td class="nowrap-cell">
@@ -616,6 +651,9 @@
   }
   .nowrap-cell {
     white-space: nowrap;
+  }
+  .text-cell :global(.name-link:hover) {
+    color: var(--text);
   }
   .actions-cell {
     padding: 0;

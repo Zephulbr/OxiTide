@@ -2832,6 +2832,8 @@ mod tests {
             album: "B".into(),
             duration_secs: 2,
             cover: None,
+            artist_refs: Vec::new(),
+            album_id: None,
         }
     }
 

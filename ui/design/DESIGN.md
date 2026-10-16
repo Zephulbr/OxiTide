@@ -165,6 +165,13 @@ mode: ambient off, glides instant, slides become 120 ms fades.
   (slider: value text + keys; tabs: roving + panels; menus: active descendant).
 - Decorative motion and meters are `aria-hidden`; their information is available as text.
 - `document.title` follows the route; a skip link reaches `#main`.
+- Clickable names (track → album, album, artist) use `NameLink` / `ArtistLinks`: they keep
+  the surrounding text's colour and weight, underline on hover (muted list cells also lift
+  to `--text`), and carry the name as a tooltip. They are `role="link"` spans so ellipsis
+  still truncates them. In rows they take no Tab stop; the track menu's "Go to" items are
+  the keyboard path. Names for the current page stay plain text. Inside rows that are
+  themselves play buttons (queue, History) names are pointer-only nested links and the
+  row menu carries the "Go to" items (spec `2026-10-15-oxitide-name-links-design.md`).
 
 ### 2.5 Performance (PM-D1)
 

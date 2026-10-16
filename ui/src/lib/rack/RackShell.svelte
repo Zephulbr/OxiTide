@@ -266,7 +266,7 @@
     {:else}
       {#if appearance.rack.eq_unit}<EqUnit {toasts} />{/if}
       {#if nav.queueOpen}
-        <ChangerUnit {player} onClose={() => nav.toggleQueue()} />
+        <ChangerUnit {player} onClose={() => nav.toggleQueue()} {go} />
       {:else}
       <section class="rk-unit library" aria-label="Playlists">
         <div class="rk-head"><h2 class="rk-name">Playlists</h2>
@@ -315,7 +315,7 @@
           <div class="rk-head"><h2 class="rk-name">Queue</h2>
             <button class="rk-key sm" onclick={() => nav.toggleQueue()} aria-label="Close queue" title="Close"><Icon name="x" size={12} /></button>
           </div>
-          <div class="rk-win drawerwin"><QueueRail {player} title={false} /></div>
+          <div class="rk-win drawerwin"><QueueRail {player} title={false} {go} /></div>
         </aside>
       {/if}
     </section>
@@ -325,7 +325,7 @@
       <div class="rk-head"><h2 class="rk-name">Queue</h2>
         <button class="rk-key sm" onclick={() => nav.toggleQueue()} aria-label="Close queue" title="Close"><Icon name="x" size={12} /></button>
       </div>
-      <div class="rk-win drawerwin"><QueueRail {player} title={false} /></div>
+      <div class="rk-win drawerwin"><QueueRail {player} title={false} {go} /></div>
     </aside>
   {/if}
 </div>

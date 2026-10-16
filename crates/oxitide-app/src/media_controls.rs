@@ -283,6 +283,8 @@ mod tests {
             album: "Album".into(),
             duration_secs: 200,
             cover: cover.map(str::to_string),
+            artist_refs: Vec::new(),
+            album_id: None,
         }
     }
 

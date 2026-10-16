@@ -3,6 +3,7 @@
   import Icon from "../components/Icon.svelte";
   import QueueRail from "../components/QueueRail.svelte";
   import type { Player } from "../player.svelte";
+  import type { Route } from "../nav.svelte";
   import { changerSlots, changerStart, clampChangerStart, clock, currentIndex, remainingMs, CHANGER_SLOTS } from "./deck";
   import SevenSeg from "./SevenSeg.svelte";
 
@@ -10,7 +11,7 @@
   /// drawer. A disc changer front — a VFD with the disc number and the queue's
   /// remaining time, five disc keys with lamps (a page of the queue, paged by
   /// the arrow keys) — over the full queue in a glass window.
-  let { player, onClose }: { player: Player; onClose: () => void } = $props();
+  let { player, onClose, go }: { player: Player; onClose: () => void; go?: (route: Route) => void } = $props();
 
   const ps = $derived(player.state);
   const length = $derived(ps.queue.length);
@@ -66,7 +67,7 @@
     </div>
     <button class="rk-key sm page" onclick={() => (browse = first + CHANGER_SLOTS)} disabled={first + CHANGER_SLOTS >= length} aria-label="Next discs"><Icon name="chevron-right" size={12} /></button>
   </div>
-  <div class="rk-win queuewin"><QueueRail {player} title={false} /></div>
+  <div class="rk-win queuewin"><QueueRail {player} title={false} {go} /></div>
 </section>
 
 <style>

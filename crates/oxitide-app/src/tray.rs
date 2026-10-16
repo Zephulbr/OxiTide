@@ -144,6 +144,8 @@ mod tests {
             album: String::new(),
             duration_secs: 200,
             cover: None,
+            artist_refs: Vec::new(),
+            album_id: None,
         }
     }
 

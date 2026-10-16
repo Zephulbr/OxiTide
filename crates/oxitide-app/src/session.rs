@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use oxitide_audio::engine::StreamMeta;
-use oxitide_audio::queue::{QueueItem, RepeatMode};
+use oxitide_audio::queue::{ArtistRef, QueueItem, RepeatMode};
 use serde::{Deserialize, Serialize};
 
 pub const SESSION_VERSION: u32 = 1;
@@ -22,6 +22,11 @@ pub struct SessionItem {
     pub explicit: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ai: Option<bool>,
+    /// Name-link ids (see `QueueItem`); absent in sessions saved before them.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub artist_refs: Vec<ArtistRef>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub album_id: Option<u64>,
 }
 
 impl From<&QueueItem> for SessionItem {
@@ -35,6 +40,8 @@ impl From<&QueueItem> for SessionItem {
             cover: item.cover.clone(),
             explicit: None,
             ai: None,
+            artist_refs: item.artist_refs.clone(),
+            album_id: item.album_id,
         }
     }
 }
@@ -48,6 +55,8 @@ impl From<SessionItem> for QueueItem {
             album: item.album,
             duration_secs: item.duration_secs,
             cover: item.cover,
+            artist_refs: item.artist_refs,
+            album_id: item.album_id,
         }
     }
 }
@@ -422,6 +431,8 @@ mod tests {
             cover: None,
             explicit: None,
             ai: None,
+            artist_refs: Vec::new(),
+            album_id: None,
         }
     }
 
@@ -487,6 +498,23 @@ mod tests {
     }
 
     #[test]
+    fn name_link_ids_survive_a_save_and_old_items_load_without_them() {
+        let queued = QueueItem {
+            artist_refs: vec![ArtistRef { id: 7, name: "A".into() }],
+            album_id: Some(8),
+            ..QueueItem::from(item(1))
+        };
+        let restored = QueueItem::from(SessionItem::from(&queued));
+        assert_eq!(restored, queued);
+
+        let legacy: SessionItem =
+            serde_json::from_str(r#"{"track_id":1,"title":"T","artist":"A","album":"B","duration_secs":3}"#)
+                .unwrap();
+        assert!(legacy.artist_refs.is_empty());
+        assert_eq!(legacy.album_id, None);
+    }
+
+    #[test]
     fn missing_file_is_none() {
         let dir = temp_dir();
         assert_eq!(load(&dir.join("session.json")), None);
@@ -547,6 +575,8 @@ mod tests {
                 album: "B".into(),
                 duration_secs: 3,
                 cover: None,
+                artist_refs: Vec::new(),
+                album_id: None,
             })
             .collect();
         PlaybackState {

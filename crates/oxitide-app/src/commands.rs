@@ -5,7 +5,7 @@ use oxitide_audio::dsp::{DspSettings, TransitionStyle};
 use oxitide_audio::engine::{Engine, EngineCmd, EngineEvent, PlaybackState};
 use oxitide_audio::fetch::HttpFetcher;
 use oxitide_audio::output::{ExclusiveFallback, OutputMode};
-use oxitide_audio::queue::{QueueItem, RepeatMode};
+use oxitide_audio::queue::{ArtistRef, QueueItem, RepeatMode};
 use oxitide_tidal::auth::{self, SessionInfo};
 use oxitide_tidal::client::TidalClient;
 use oxitide_tidal::library::FavoriteIds;
@@ -1229,6 +1229,8 @@ impl PageTrackDto {
             album: self.album.clone().unwrap_or_default(),
             duration_secs: duration,
             cover: self.cover.clone(),
+            artist_refs: Vec::new(),
+            album_id: None,
         })
     }
 }
@@ -1284,6 +1286,15 @@ fn queue_item_from_track(track: &Track) -> QueueItem {
             .unwrap_or_default(),
         duration_secs: track.duration,
         cover: track.album.as_ref().and_then(|a| a.cover.clone()),
+        artist_refs: track
+            .artists
+            .iter()
+            .map(|a| ArtistRef {
+                id: a.id,
+                name: a.name.clone(),
+            })
+            .collect(),
+        album_id: track.album.as_ref().map(|a| a.id),
     }
 }
 
@@ -2582,6 +2593,38 @@ mod tests {
         assert_eq!(data, vec![0, i16::MAX, -i16::MAX, 16_384]);
     }
 
+    #[test]
+    fn queue_item_from_track_carries_name_link_ids() {
+        let track: Track = serde_json::from_value(serde_json::json!({
+            "id": 5,
+            "title": "Song",
+            "duration": 200,
+            "artists": [{ "id": 1, "name": "Crosby, Stills" }, { "id": 2, "name": "Nash" }],
+            "album": { "id": 9, "title": "LP", "cover": "c" }
+        }))
+        .unwrap();
+        let item = queue_item_from_track(&track);
+        assert_eq!(item.artist, "Crosby, Stills, Nash");
+        assert_eq!(
+            item.artist_refs,
+            vec![
+                ArtistRef { id: 1, name: "Crosby, Stills".into() },
+                ArtistRef { id: 2, name: "Nash".into() },
+            ]
+        );
+        assert_eq!(item.album_id, Some(9));
+    }
+
+    #[test]
+    fn queue_item_ids_are_optional_on_the_wire() {
+        let item: QueueItem =
+            serde_json::from_value(serde_json::json!({ "track_id": 1, "title": "T" })).unwrap();
+        assert!(item.artist_refs.is_empty());
+        assert_eq!(item.album_id, None);
+        let value = serde_json::to_value(&item).unwrap();
+        assert!(value.get("artist_refs").is_none() && value.get("album_id").is_none());
+    }
+
     fn outcome(state: Option<&str>) -> auth::RedirectOutcome {
         auth::RedirectOutcome {
             code: "c".into(),
@@ -2986,6 +3029,8 @@ mod tests {
             album: "B".into(),
             duration_secs: 1,
             cover: None,
+            artist_refs: Vec::new(),
+            album_id: None,
         }];
         let result = perf_queue_build_items(items, 0);
         assert!(result.is_err(), "the perf command must not run outside a session");
@@ -3228,6 +3273,8 @@ mod tests {
             album: "B".into(),
             duration_secs: 200,
             cover: None,
+            artist_refs: Vec::new(),
+            album_id: None,
         }
     }
 

@@ -90,6 +90,22 @@ describe("NowPlaying tabs", () => {
     expect(document.getElementById("np-tab-lyrics")!.getAttribute("aria-selected")).toBe("true");
   });
 
+  it("byline links close Now Playing and open the artist and album", async () => {
+    const current = { ...fakePlayer().state.current!, artist_refs: [{ id: 7, name: "Artist" }], album_id: 9 };
+    const navigation = nav();
+    render(NowPlaying, { player: fakePlayer({ current }), nav: navigation, qualityDisplay: "compact" });
+
+    const byline = document.querySelector(".byline")!;
+    const [artist, album] = [...byline.querySelectorAll<HTMLElement>('[role="link"]')];
+    expect([artist.textContent, album.textContent]).toEqual(["Artist", "Album"]);
+
+    await fireEvent.click(artist);
+    expect(navigation.closeNowPlaying).toHaveBeenCalled();
+    expect(navigation.goto).toHaveBeenCalledWith({ name: "artist", id: 7 });
+    await fireEvent.keyDown(album, { key: "Enter" });
+    await waitFor(() => expect(navigation.goto).toHaveBeenLastCalledWith({ name: "album", id: 9 }));
+  });
+
   it("marks handled key events so the global shortcut handler can ignore them", async () => {
     await renderView();
     const event = new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true });

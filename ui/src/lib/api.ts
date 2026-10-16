@@ -88,6 +88,9 @@ export interface HistoryEntry {
   track_id: number; title: string; artist: string; album: string;
   duration_secs: number; cover?: string | null;
   started_at: number; listened_ms: number; completed: boolean;
+  /// Name-link ids; absent on plays recorded before them.
+  artist_refs?: ArtistRef[];
+  album_id?: number | null;
 }
 export interface HistoryPage { items: HistoryEntry[]; total: number; offset: number; limit: number }
 /// `track_id`/`cover` come from the entry's newest play (ids resolve through it).
@@ -169,6 +172,10 @@ export interface CoverPalette {
 export interface QueueItem {
   track_id: number; title: string; artist: string; album: string;
   duration_secs: number; cover?: string | null;
+  /// Name-link ids; absent when the source carried names only (page-feed
+  /// tracks, sessions saved before them). `artist` stays the display string.
+  artist_refs?: ArtistRef[];
+  album_id?: number | null;
 }
 export interface PageTrackInput {
   id: number;
@@ -490,6 +497,8 @@ export function trackToQueueItem(t: Track): QueueItem {
     album: t.album?.title ?? "",
     duration_secs: t.duration,
     cover: t.album?.cover ?? null,
+    artist_refs: t.artists.map((a) => ({ id: a.id, name: a.name })),
+    album_id: t.album?.id ?? null,
   };
 }
 
@@ -501,6 +510,8 @@ export function historyToQueueItem(entry: HistoryEntry): QueueItem {
     album: entry.album,
     duration_secs: entry.duration_secs,
     cover: entry.cover ?? null,
+    artist_refs: entry.artist_refs,
+    album_id: entry.album_id ?? null,
   };
 }
 

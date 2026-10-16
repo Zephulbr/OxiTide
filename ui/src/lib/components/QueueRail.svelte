@@ -17,15 +17,34 @@
   import { menuFor } from "../menu.svelte";
   import { queueMenuItems } from "../menus";
   import type { Player } from "../player.svelte";
+  import type { Route } from "../nav.svelte";
+  import { albumRoute, goToTargets } from "../queueLinks";
+  import NameLink from "./NameLink.svelte";
+  import QueueArtistLinks from "./QueueArtistLinks.svelte";
 
   let {
     player,
     title = true,
+    go,
   }: {
     player: Player;
     /// Rack shells draw their own unit heading; they pass false.
     title?: boolean;
+    /// Opens a page from a row's names (name-links spec); without it the names
+    /// stay plain text (mini players).
+    go?: (route: Route) => void;
   } = $props();
+
+  /// A name click right after a drag release must not navigate, just as the
+  /// row's play click is swallowed.
+  function openFromRow(route: Route) {
+    if (!swallowClick) go?.(route);
+  }
+
+  async function openAlbum(item: QueueItem) {
+    const route = await albumRoute(item, api.getTrack);
+    if (route) openFromRow(route);
+  }
 
   let confirmingClear = $state(false);
   let scroller = $state<HTMLElement | null>(null);
@@ -353,13 +372,19 @@
   }
 </script>
 
-{#snippet rowBody(item: QueueItem)}
+{#snippet rowBody(item: QueueItem, links: boolean)}
   <span class="thumb">
     <Cover uuid={item.cover} size={80} radius={6} alt="" />
   </span>
   <span class="text">
-    <span class="title">{item.title}</span>
-    <span class="artist">{item.artist}</span>
+    {#if links && go}
+      <!-- Nested links: the row is the play button (name-links spec NL-D10). -->
+      <span class="title"><NameLink label={item.title} onOpen={() => void openAlbum(item)} nested /></span>
+      <span class="artist"><QueueArtistLinks {item} go={openFromRow} nested /></span>
+    {:else}
+      <span class="title">{item.title}</span>
+      <span class="artist">{item.artist}</span>
+    {/if}
   </span>
 {/snippet}
 
@@ -443,6 +468,7 @@
                     playNext: to === null ? undefined : () => reorder(index, to),
                     copyTitle: () => void copyText(item.title),
                     remove: () => player.remove(index),
+                    ...(go ? goToTargets(item, go, api.getTrack) : {}),
                   });
                 }}
                 onfocus={() => (focusIndex = index)}
@@ -459,7 +485,7 @@
                     out:fade={{ duration: appearance.reducedMotion ? 0 : 140 }}
                   ><NowPlayingMark playing={player.state.playing} size={22} /></span>
                 {/if}
-                <span class="slide">{@render rowBody(item)}</span>
+                <span class="slide">{@render rowBody(item, true)}</span>
               </button>
               <span class="dur tnum">{formatDuration(item.duration_secs)}</span>
               <button
@@ -486,7 +512,7 @@
       style:left="{press.left}px"
       style:width="{press.width}px"
     >
-      <span class="ghost-main">{@render rowBody(items[drag.from])}</span>
+      <span class="ghost-main">{@render rowBody(items[drag.from], false)}</span>
       <span class="dur tnum">{formatDuration(items[drag.from].duration_secs)}</span>
     </div>
   {/if}
@@ -711,6 +737,9 @@
   .artist {
     color: var(--text-muted);
     font-size: 12.5px;
+  }
+  .artist :global(.name-link:hover) {
+    color: var(--text);
   }
   .q-row.current .title {
     color: var(--accent);

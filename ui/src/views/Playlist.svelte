@@ -352,6 +352,7 @@
     {/if}
     <TrackTable
       {view}
+      {nav}
       {favorites}
       {toasts}
       fill

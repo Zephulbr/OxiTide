@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api, trackToQueueItem, type Album as AlbumT, type AlbumInfo, type Track } from "../lib/api";
+  import ArtistLinks from "../lib/components/ArtistLinks.svelte";
   import Cover from "../lib/components/Cover.svelte";
   import DetailAction from "../lib/components/DetailAction.svelte";
   import DetailHeader from "../lib/components/DetailHeader.svelte";
@@ -21,13 +22,15 @@
   import type { PlaylistActions } from "../lib/playlists.svelte";
   import type { Player } from "../lib/player.svelte";
   import type { Toasts } from "../lib/toasts.svelte";
+  import type { Nav } from "../lib/nav.svelte";
   let {
     id,
+    nav,
     player,
     favorites,
     playlistActions,
     toasts,
-  }: { id: number; player: Player; favorites: Favorites; playlistActions: PlaylistActions; toasts: Toasts } = $props();
+  }: { id: number; nav: Nav; player: Player; favorites: Favorites; playlistActions: PlaylistActions; toasts: Toasts } = $props();
   let album = $state<AlbumT | null>(null);
   let tracks = $state<Track[]>([]);
   let info = $state<AlbumInfo | null>(null);
@@ -152,12 +155,14 @@
     <DetailHeader
       kicker="Album"
       title={data.title}
-      subtitle={data.artists.map((a) => a.name).join(", ")}
       {stats}
       onPlay={playAll}
       onShuffle={shuffleAll}
       disabled={view.items.length === 0}
     >
+      {#snippet byline()}
+        <ArtistLinks artists={data.artists} onOpen={(artistId) => nav.goto({ name: "artist", id: artistId })} />
+      {/snippet}
       {#snippet cover()}
         <Cover uuid={data.cover} size={640} radius={12} alt={`${data.title} cover`} />
       {/snippet}
@@ -190,6 +195,7 @@
     {/if}
     <TrackTable
       {view}
+      {nav}
       {favorites}
       {toasts}
       fill
