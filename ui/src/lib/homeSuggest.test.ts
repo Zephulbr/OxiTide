@@ -58,6 +58,16 @@ describe("resolveGroups", () => {
     expect(out[0]).toMatchObject({ albumId: 101, artistId: 7, artistName: "Seven", cover: "cover-101" });
   });
 
+  it("merges groups that resolve to the same album (multi-artist soundtracks)", async () => {
+    // Same album name, tracks credited to different artists: two groups, one album.
+    const getTrack = vi.fn(async (id: number) => track(id, 500, id === 1 ? 7 : 8, "Ost"));
+    const groups = groupRecentAlbums([entry(1, "OST", "x"), entry(2, "OST", "y"), entry(3, "OST", "y")]);
+    expect(groups).toHaveLength(2);
+    const out = await resolveGroups(groups, getTrack);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ albumId: 500, artistId: 7, plays: 3 });
+  });
+
   it("caches resolved tracks across calls", async () => {
     const getTrack = vi.fn(async (id: number) => track(id, 1, 1, "A"));
     const groups = groupRecentAlbums([entry(1, "A", "x")]);

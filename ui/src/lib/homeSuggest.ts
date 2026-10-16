@@ -101,7 +101,11 @@ export function resolveTrack(id: number, getTrack: SuggestApi["getTrack"]): Prom
   return hit;
 }
 
-/// Groups whose representative track resolved to an album and an artist.
+/// Groups whose representative track resolved to an album and an artist, one
+/// per album: groups are keyed by album name and track artist, so an album
+/// whose tracks credit different artists (a soundtrack, a compilation) forms
+/// several groups that resolve to the same album. Those merge into the first
+/// (newest), adding up their plays.
 export async function resolveGroups(
   groups: RecentGroup[],
   getTrack: SuggestApi["getTrack"],
@@ -110,17 +114,25 @@ export async function resolveGroups(
     groups.map((group) => resolveTrack(group.sample.track_id, getTrack)),
   );
   const out: ResolvedGroup[] = [];
+  const byAlbum = new Map<number, ResolvedGroup>();
   settled.forEach((result, i) => {
     if (result.status !== "fulfilled") return;
     const { album, artists } = result.value;
     if (!album || artists.length === 0) return;
-    out.push({
+    const existing = byAlbum.get(album.id);
+    if (existing) {
+      existing.plays += groups[i].plays;
+      return;
+    }
+    const resolved: ResolvedGroup = {
       ...groups[i],
       albumId: album.id,
       cover: album.cover ?? groups[i].cover,
       artistId: artists[0].id,
       artistName: artists[0].name,
-    });
+    };
+    byAlbum.set(album.id, resolved);
+    out.push(resolved);
   });
   return out;
 }
