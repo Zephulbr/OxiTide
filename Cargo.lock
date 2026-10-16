@@ -3154,6 +3154,7 @@ name = "oxitide-tidal"
 version = "0.3.0"
 dependencies = [
  "base64 0.22.1",
+ "futures-util",
  "keyring",
  "rand 0.8.8",
  "reqwest 0.12.28",
