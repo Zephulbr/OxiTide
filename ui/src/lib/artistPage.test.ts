@@ -21,14 +21,21 @@ function item(item_type: string, id: string): PageItem {
 
 describe("albumCard", () => {
   it("uses the release year as subtitle", () => {
-    const card = albumCard(album({ id: 7, title: "Neon Golden", releaseDate: "2002-01-14" }));
+    const card = albumCard(
+      album({ id: 7, title: "Neon Golden", releaseDate: "2002-01-14", type: "ALBUM" }),
+    );
     expect(card).toEqual({
       id: "7",
       title: "Neon Golden",
       subtitle: "2002",
       item_type: "ALBUM",
       artwork: "cover-1",
+      release_type: "ALBUM",
     });
+  });
+
+  it("leaves the release type null when the album has none", () => {
+    expect(albumCard(album({})).release_type).toBeNull();
   });
 
   it("drops a missing or malformed release date", () => {

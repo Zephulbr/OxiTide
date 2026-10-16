@@ -67,6 +67,9 @@ pub struct Album {
     pub release_date: Option<String>,
     #[serde(default, rename = "audioQuality")]
     pub audio_quality: Option<String>,
+    /// Release type: `ALBUM`, `EP` or `SINGLE`.
+    #[serde(default, rename = "type")]
+    pub album_type: Option<String>,
 }
 
 /// Public v2 album facts (spec §5.3). Absent attributes stay `None` and the

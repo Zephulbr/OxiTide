@@ -22,6 +22,8 @@ export interface Album {
   id: number; title: string; artists: ArtistRef[]; cover?: string | null;
   numberOfTracks: number; duration: number; releaseDate?: string | null;
   audioQuality?: string | null;
+  /// Release type: `ALBUM` / `EP` / `SINGLE`.
+  type?: string | null;
 }
 export interface AlbumInfo {
   releaseDate?: string | null;
@@ -65,6 +67,8 @@ export interface PageItem {
   explicit?: boolean | null;
   audio_quality?: string | null;
   album_title?: string | null;
+  /// Album release type (`ALBUM` / `EP` / `SINGLE`) when known.
+  release_type?: string | null;
 }
 export interface PageSection { title: string; items: PageItem[]; kind: string }
 /// One release activity from an artist the user follows (v2 feed).
@@ -77,6 +81,8 @@ export interface FeedActivity {
   hires: boolean;
   occurredAt: string;
   seen: boolean;
+  /// `ALBUM` / `EP` / `SINGLE`; empty when TIDAL omits it.
+  releaseType: string;
 }
 export interface SearchGroup<T> { items: T[] }
 export interface SearchResults {

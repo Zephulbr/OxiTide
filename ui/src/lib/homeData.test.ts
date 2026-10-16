@@ -49,12 +49,15 @@ describe("madeForYou", () => {
 describe("feed helpers", () => {
   const activity = (id: number, seen: boolean): FeedActivity => ({
     id, title: `r${id}`, subtitle: "Album · X", artwork: "u", explicit: false,
-    hires: false, occurredAt: "2026-10-01T00:00:00Z", seen,
+    hires: false, occurredAt: "2026-10-01T00:00:00Z", seen, releaseType: "SINGLE",
   });
 
   it("maps releases to album cards", () => {
     const [first] = feedAlbumItems([activity(7, false)]);
-    expect(first).toMatchObject({ id: "7", item_type: "ALBUM", title: "r7", artwork: "u" });
+    expect(first).toMatchObject({
+      id: "7", item_type: "ALBUM", title: "r7", artwork: "u", release_type: "SINGLE",
+    });
+    expect(feedAlbumItems([{ ...activity(8, false), releaseType: "" }])[0].release_type).toBeNull();
   });
 
   it("counts unseen releases", () => {

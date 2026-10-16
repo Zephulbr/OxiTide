@@ -106,6 +106,9 @@ card padding (Albums, Mixes, Playlists, Feed releases).
 Albums, Artist, Purchases) share one card. Variants: `tile`, `carousel` (210px), `mini`
 (148px), `row`. Every cover carries a 1px `--line` ring and `--shadow-cover`. Playlist
 covers keep sharp corners, and the old offset "stacked sleeve" box behind them is gone.
+Full-length albums (release type `ALBUM`, `media.isAlbumRelease`) have fully square covers
+(radius 0) everywhere they show as albums: cards, the album page header, search rows. EPs,
+singles and albums of unknown type keep the card radius.
 Hover: the card's own cover colour (`--card-tint`, a registered colour, from
 `lib/coverTint.ts` → `analyze_cover`, prefetched as cards scroll into view) spreads from
 the cover and blends into whatever the card sits on; the cover lifts 3px with a deeper

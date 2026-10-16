@@ -11,6 +11,7 @@ export function albumCard(album: Album): PageItem {
     subtitle: /^\d{4}$/.test(year) ? year : null,
     item_type: "ALBUM",
     artwork: album.cover,
+    release_type: album.type ?? null,
   };
 }
 

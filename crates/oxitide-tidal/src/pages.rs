@@ -28,10 +28,23 @@ pub struct PageItem {
     pub audio_quality: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub album_title: Option<String>,
+    /// Album release type (`ALBUM` / `EP` / `SINGLE`) when the payload says.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub release_type: Option<String>,
 }
 
 fn default_kind() -> String {
     "unknown".into()
+}
+
+/// An album payload's own `type` is its release type, not a page kind: fold
+/// `EP` / `SINGLE` into the `ALBUM` kind (so routing and card shapes treat
+/// them as albums) and keep the release type alongside.
+fn split_release_type(item_type: String) -> (String, Option<String>) {
+    match item_type.to_ascii_uppercase().as_str() {
+        release @ ("ALBUM" | "EP" | "SINGLE") => ("ALBUM".into(), Some(release.to_string())),
+        _ => (item_type, None),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -267,6 +280,7 @@ fn page_item_from_raw(module_type: &str, mut raw: RawItem) -> PageItem {
     } else {
         raw.item_type
     };
+    let (item_type, release_type) = split_release_type(item_type);
     let artists: Vec<String> = raw
         .artists
         .iter()
@@ -303,6 +317,7 @@ fn page_item_from_raw(module_type: &str, mut raw: RawItem) -> PageItem {
         explicit: raw.explicit,
         audio_quality: raw.audio_quality,
         album_title,
+        release_type,
     }
 }
 
@@ -325,11 +340,12 @@ pub fn page_item_from_value(value: &serde_json::Value) -> Option<PageItem> {
         .or_else(|| item.get("name").and_then(serde_json::Value::as_str))
         .unwrap_or_default()
         .to_string();
-    let item_type = item
-        .get("type")
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or("unknown")
-        .to_string();
+    let (item_type, release_type) = split_release_type(
+        item.get("type")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("unknown")
+            .to_string(),
+    );
     let artwork = ["cover", "squareImage", "image", "picture"]
         .iter()
         .find_map(|key| item.get(*key).and_then(serde_json::Value::as_str))
@@ -345,6 +361,7 @@ pub fn page_item_from_value(value: &serde_json::Value) -> Option<PageItem> {
         explicit: None,
         audio_quality: None,
         album_title: None,
+        release_type,
     })
 }
 
@@ -672,6 +689,38 @@ mod tests {
         assert_eq!(item.title, "Release");
         assert_eq!(item.artwork.as_deref(), Some("c-7"));
         assert_eq!(item.item_type, "ALBUM");
+    }
+
+    /// An album payload's own `SINGLE` / `EP` type stays an `ALBUM` item and
+    /// surfaces as the release type.
+    #[tokio::test]
+    async fn album_release_types_fold_into_the_album_kind() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/pages/home"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "rows": [{"modules": [{"type": "ALBUM_LIST", "title": "New", "pagedList": {"items": [
+                    {"id": 1, "title": "LP", "type": "ALBUM"},
+                    {"id": 2, "title": "One", "type": "SINGLE"},
+                    {"type": "ALBUM", "item": {"id": 3, "title": "Short", "type": "EP"}}
+                ]}}]}]
+            })))
+            .mount(&server)
+            .await;
+        let sections = client(&server).home_page().await.unwrap();
+        let kinds: Vec<_> = sections[0]
+            .items
+            .iter()
+            .map(|item| (item.item_type.as_str(), item.release_type.as_deref()))
+            .collect();
+        assert_eq!(
+            kinds,
+            [
+                ("ALBUM", Some("ALBUM")),
+                ("ALBUM", Some("SINGLE")),
+                ("ALBUM", Some("EP"))
+            ]
+        );
     }
 
     /// `PAGE_LINKS`-style rows carry their artwork in `imageId`.

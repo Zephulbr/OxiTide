@@ -36,6 +36,7 @@ export function feedAlbumItems(activities: FeedActivity[], cap = 12): PageItem[]
     item_type: "ALBUM",
     artwork: activity.artwork ?? null,
     explicit: activity.explicit,
+    release_type: activity.releaseType || null,
   }));
 }
 

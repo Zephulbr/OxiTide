@@ -8,6 +8,7 @@
   import PageSections from "../lib/components/PageSections.svelte";
   import PlaylistCover from "../lib/components/PlaylistCover.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
+  import { isAlbumRelease } from "../lib/media";
   import { playSource } from "../lib/playSource.svelte";
   import { trackFlags } from "../lib/trackFlags.svelte";
   import { createSearch } from "../lib/search.svelte";
@@ -261,7 +262,7 @@
     <ul class="results">
       {#each search.results.albums.items as a (a.id)}
         <li>
-          <span class="res-thumb"><Cover uuid={a.cover} size={80} radius={6} alt="" /></span>
+          <span class="res-thumb"><Cover uuid={a.cover} size={80} radius={isAlbumRelease(a.type) ? 0 : 6} alt="" /></span>
           <button onclick={() => nav.goto({ name: "album", id: a.id })}>{a.title}</button>
         </li>
       {/each}

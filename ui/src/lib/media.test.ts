@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Mix, PageItem, Playlist } from "./api";
 import {
   classifySection,
+  isFullAlbum,
   isPlayableTrack,
   pageTrackInput,
   playableTrackIds,
@@ -30,6 +31,17 @@ describe("shapeForItemType", () => {
     expect(shapeForItemType("")).toBe("plain");
     expect(shapeForItemType("MIXED_TYPES_LIST")).toBe("plain");
     expect(shapeForItemType("SOMETHING_ELSE")).toBe("plain");
+  });
+});
+
+describe("isFullAlbum", () => {
+  it("is true only for albums whose release type is ALBUM", () => {
+    expect(isFullAlbum({ ...item("ALBUM"), release_type: "ALBUM" })).toBe(true);
+    expect(isFullAlbum({ ...item("ALBUM"), release_type: "album" })).toBe(true);
+    expect(isFullAlbum({ ...item("ALBUM"), release_type: "SINGLE" })).toBe(false);
+    expect(isFullAlbum({ ...item("ALBUM"), release_type: "EP" })).toBe(false);
+    expect(isFullAlbum(item("ALBUM"))).toBe(false);
+    expect(isFullAlbum({ ...item("PLAYLIST_LIST"), release_type: "ALBUM" })).toBe(false);
   });
 });
 

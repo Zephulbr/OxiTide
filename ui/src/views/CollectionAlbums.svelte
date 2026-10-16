@@ -45,6 +45,7 @@
         subtitle: album.artists.map((a) => a.name).join(", "),
         item_type: "ALBUM",
         artwork: album.cover ?? null,
+        release_type: album.type ?? null,
       }}
       <MediaCard {item} variant="tile" onclick={() => nav.goto({ name: "album", id: album.id })} />
     {/each}

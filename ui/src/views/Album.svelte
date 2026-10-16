@@ -11,6 +11,7 @@
   import { volumeSections } from "../lib/albumVolumes";
   import { copyText } from "../lib/clipboard";
   import { formatTotalDuration } from "../lib/format";
+  import { isAlbumRelease } from "../lib/media";
   import { perf } from "../lib/perf.svelte";
   import { makeSyntheticAlbum } from "../lib/perfFixture";
   import { perfHooks } from "../lib/perfHooks";
@@ -164,7 +165,12 @@
         <ArtistLinks artists={data.artists} onOpen={(artistId) => nav.goto({ name: "artist", id: artistId })} />
       {/snippet}
       {#snippet cover()}
-        <Cover uuid={data.cover} size={640} radius={12} alt={`${data.title} cover`} />
+        <Cover
+          uuid={data.cover}
+          size={640}
+          radius={isAlbumRelease(data.type) ? 0 : 12}
+          alt={`${data.title} cover`}
+        />
       {/snippet}
       {#snippet actions()}
         <DetailAction

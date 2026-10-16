@@ -16,6 +16,16 @@ export function shapeForItemType(itemType: string): CardShape {
   return "plain";
 }
 
+/// Full-length albums (not EPs or singles) get square-cornered covers. An
+/// unknown release type is not assumed to be one.
+export function isAlbumRelease(releaseType: string | null | undefined): boolean {
+  return upper(releaseType ?? "") === "ALBUM";
+}
+
+export function isFullAlbum(item: PageItem): boolean {
+  return shapeForItemType(item.item_type) === "album" && isAlbumRelease(item.release_type);
+}
+
 function isTrackish(type: string): boolean {
   return type.includes("TRACK") || type.includes("VIDEO");
 }

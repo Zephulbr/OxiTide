@@ -2,7 +2,7 @@
   import type { PageItem } from "../api";
   import { appearance } from "../appearance.svelte";
   import { coverTint } from "../coverTint";
-  import { isPlayableTrack, shapeForItemType } from "../media";
+  import { isFullAlbum, isPlayableTrack, shapeForItemType } from "../media";
   import { playlistCovers } from "../playlistArt.svelte";
   import Cover from "./Cover.svelte";
   import Icon from "./Icon.svelte";
@@ -35,6 +35,7 @@
   } = $props();
 
   const shape = $derived(shapeForItemType(item.item_type));
+  const fullAlbum = $derived(isFullAlbum(item));
   const playable = $derived(isPlayableTrack(item));
   const showPlay = $derived(playable || playButton);
 
@@ -113,6 +114,7 @@
   <button
     type="button"
     class="media {variant} shape-{shape}"
+    class:full-album={fullAlbum}
     class:playing
     class:blocked
     style:--card-tint={tint ?? undefined}
@@ -123,7 +125,7 @@
     aria-label={showPlay ? `Play ${item.title}` : undefined}
   >{@render body()}</button>
 {:else}
-  <div class="media {variant} shape-{shape} inert" class:playing class:blocked>{@render body()}</div>
+  <div class="media {variant} shape-{shape} inert" class:full-album={fullAlbum} class:playing class:blocked>{@render body()}</div>
 {/if}
 
 <style>
@@ -148,6 +150,11 @@
   }
   .shape-playlist {
     --art-radius: var(--radius-card-sharp);
+  }
+  /* Full-length albums read as record sleeves: square corners. EPs, singles
+     and albums of unknown type keep the card radius. */
+  .full-album {
+    --art-radius: 0;
   }
   .tile,
   .carousel {

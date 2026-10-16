@@ -22,6 +22,9 @@ pub struct FeedActivity {
     /// RFC 3339 timestamp the activity occurred at.
     pub occurred_at: String,
     pub seen: bool,
+    /// Release type: `ALBUM`, `EP` or `SINGLE` (empty when absent).
+    #[serde(default)]
+    pub release_type: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -113,6 +116,7 @@ fn activity_from_raw(raw: RawActivity) -> Option<FeedActivity> {
         hires: album.audio_quality.as_deref() == Some("HI_RES_LOSSLESS"),
         occurred_at: follow.occurred_at,
         seen: raw.seen,
+        release_type: album.album_type,
     })
 }
 

@@ -14,6 +14,7 @@ function activity(occurredAt: string, title = occurredAt): FeedActivity {
     hires: false,
     occurredAt,
     seen: true,
+    releaseType: "ALBUM",
   };
 }
 
