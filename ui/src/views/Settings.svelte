@@ -190,6 +190,7 @@
     { value: "cover", label: "Cover" },
   ];
   const QUALITY_OPTIONS: { value: Quality; label: string; hint: string }[] = [
+    { value: "low", label: "Low", hint: "HE-AAC 96 kbps" },
     { value: "high", label: "High", hint: "AAC 320 kbps" },
     { value: "lossless", label: "Lossless", hint: "CD quality" },
     { value: "max", label: "Max (Hi-Res)", hint: "Highest available, up to 24-bit" },

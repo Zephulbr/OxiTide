@@ -18,8 +18,8 @@ use crate::meter::LevelTap;
 use crate::output::{AudioOutput, AudioOutputSpec, ExclusiveFallback, OutputMode, OutputStatus};
 use crate::perf::{AudioPerfEvent, PerfHook};
 use crate::queue::{Queue, QueueItem, RepeatMode};
-use crate::seek::{self, Discarder};
-use crate::source::{is_he_aac, StreamPlan};
+use crate::seek::{self, Discarder, SourceStart};
+use crate::source::StreamPlan;
 use oxitide_tidal::stream::{Quality, ReplayGain};
 
 pub trait StreamResolver: Send + Sync + 'static {
@@ -997,9 +997,9 @@ fn decode_track(
             let e = if e.is_transient() {
                 match play_cached_offline(&inner, &item, quality, mode, generation, seek_ms, &tx, &cache_key_slot) {
                     Some(Ok(())) => return,
-                    Some(Err(cache_error)) => {
+                    Some(Err((cache_error, emitted_pcm))) => {
                         tracing::warn!("offline copy of track {} failed ({cache_error})", item.track_id);
-                        e
+                        if emitted_pcm { cache_error } else { e }
                     }
                     None => e,
                 }
@@ -1032,14 +1032,6 @@ fn decode_track(
             return;
         }
     }
-    if plan.codec.as_deref().is_some_and(is_he_aac) {
-        let _ = tx.send(Err(Error::Unsupported(
-            "this track is only offered in HE-AAC (TIDAL Low), which the built-in decoder cannot play"
-                .into(),
-        )));
-        inner.notify_worker();
-        return;
-    }
     fire_perf(&inner, AudioPerfEvent::DecodeStart { track_id: item.track_id });
     let cache_key = plan.manifest_hash.map(|manifest_hash| CacheKey {
         track_id: item.track_id,
@@ -1054,21 +1046,41 @@ fn decode_track(
         Some(key) => match inner.cache.lookup(&key) {
             Some(path) => {
                 fire_perf(&inner, AudioPerfEvent::CacheHit { track_id: item.track_id });
-                let result =
-                    decode_from_file(&inner, &item, mode, generation, seek_ms, &tx, &path, &plan);
+                let result = decode_from_file(
+                    &inner,
+                    &item,
+                    mode,
+                    generation,
+                    seek_ms,
+                    &tx,
+                    &path,
+                    &plan,
+                    plan.needs_he_aac(),
+                );
                 match result {
                     Ok(()) => return,
-                    Err(e) => {
-                        if inner.generation.load(Ordering::SeqCst) != generation {
+                    Err((e, emitted_pcm)) => {
+                        // Sink errors mean playback was cancelled, not that
+                        // the cached audio is corrupt.
+                        if inner.generation.load(Ordering::SeqCst) != generation
+                            || matches!(e, Error::Output(_))
+                        {
                             let _ = tx.send(Err(e));
                             inner.notify_worker();
                             return;
                         }
                         tracing::warn!(
-                            "cache entry {} failed to decode ({e}); refetching",
+                            "cache entry {} failed to decode ({e}); evicting",
                             key.file_name()
                         );
                         inner.cache.remove(&key);
+                        // Evict even after PCM was emitted, but only refetch
+                        // before any PCM: otherwise the prefix would replay.
+                        if emitted_pcm {
+                            let _ = tx.send(Err(e));
+                            inner.notify_worker();
+                            return;
+                        }
                         fire_perf(&inner, AudioPerfEvent::CacheMiss { track_id: item.track_id });
                     }
                 }
@@ -1094,13 +1106,16 @@ fn play_cached_offline(
     seek_ms: Option<u64>,
     tx: &SyncSender<Result<StreamEvent>>,
     cache_key_slot: &Arc<Mutex<Option<CacheKey>>>,
-) -> Option<Result<()>> {
+) -> Option<std::result::Result<(), (Error, bool)>> {
     let (key, path, meta) = inner.cache.find_offline(item.track_id, quality)?;
     let from_sidecar = meta.and_then(|meta| {
         serde_json::from_slice::<StreamPlan>(&meta)
             .map_err(|e| tracing::warn!("cache sidecar for {} is unreadable: {e}", key.file_name()))
             .ok()
     });
+    // A legacy Low entry has no served-quality metadata. Use its key only
+    // as a decoder hint, without inventing a displayed quality or profile.
+    let legacy_low = from_sidecar.is_none() && key.quality == Quality::Low;
     let plan = match from_sidecar {
         Some(plan) => plan,
         None => plan_from_file(&path, key.manifest_hash)
@@ -1111,7 +1126,27 @@ fn play_cached_offline(
     *cache_key_slot.lock().unwrap() = Some(key);
     inner.cache.protect(&key);
     fire_perf(inner, AudioPerfEvent::CacheHit { track_id: item.track_id });
-    Some(decode_from_file(inner, item, mode, generation, seek_ms, tx, &path, &plan))
+    let result = decode_from_file(
+        inner,
+        item,
+        mode,
+        generation,
+        seek_ms,
+        tx,
+        &path,
+        &plan,
+        legacy_low || plan.needs_he_aac(),
+    );
+    if let Err((e, _)) = &result {
+        if inner.generation.load(Ordering::SeqCst) == generation && !matches!(e, Error::Output(_)) {
+            tracing::warn!(
+                "offline cache entry {} failed to decode ({e}); evicting",
+                key.file_name()
+            );
+            inner.cache.remove(&key);
+        }
+    }
+    Some(result)
 }
 
 /// A whole-file plan for a cached entry without a sidecar: format from the
@@ -1147,18 +1182,14 @@ fn decode_from_network(
 ) {
     // Seek by segment index: media URLs are an ordered list, so restarting
     // at the segment covering the target needs no HTTP Range.
-    let target = match seek_ms {
-        Some(ms) if plan.sample_rate.is_some() => {
-            Some(seek::target_segment(&plan, ms, plan.sample_rate.unwrap()))
-        }
-        _ => None,
-    };
+    // Only the segment index is needed here, not a frame position. Use the
+    // manifest timeline even when no sample rate is declared.
+    let target = seek_ms.map(|ms| seek::target_segment(&plan, ms, 1000));
     let download_plan = match &target {
         Some(target) => plan.from_segment(target.segment_index),
         None => plan.clone(),
     };
-    let source_start =
-        target.as_ref().map(|t| t.position_frames - t.discard_frames).unwrap_or(0);
+    let source_start = SourceStart::from_plan(&download_plan);
     // Only full-track plans are cached; a seek-truncated plan is a partial
     // track and would poison replays.
     let writer = match (seek_ms, cache_key) {
@@ -1224,6 +1255,7 @@ fn decode_from_network(
         let buffer = buffer.clone();
         Arc::new(move || buffer.total_pushed()) as Arc<dyn Fn() -> u64 + Send + Sync>
     };
+    let he_aac = plan.needs_he_aac();
     let result = decode_source(
         inner.clone(),
         &item,
@@ -1234,13 +1266,17 @@ fn decode_from_network(
         &tx,
         source,
         plan,
+        he_aac,
         total_bytes,
     );
+    // Preserve a real network failure before cancellation hides it. If decode
+    // failed early, the feeder may be waiting for room that will never be freed.
+    let result = result.map_err(|(e, _)| buffer.failure().unwrap_or(e));
+    if result.is_err() {
+        buffer.cancel();
+    }
     let _ = downloader.join();
     if let Err(e) = result {
-        // The demuxer reports a failed download as a generic read error; send
-        // the network failure itself so the worker can treat it as transient.
-        let e = buffer.failure().unwrap_or(e);
         let _ = tx.send(Err(e));
         inner.notify_worker();
     }
@@ -1256,9 +1292,10 @@ fn decode_from_file(
     tx: &SyncSender<Result<StreamEvent>>,
     path: &std::path::Path,
     plan: &StreamPlan,
-) -> Result<()> {
+    he_aac: bool,
+) -> std::result::Result<(), (Error, bool)> {
     let len = std::fs::metadata(path).map(|meta| meta.len()).unwrap_or(0);
-    let source = crate::demux::FileSource::open(path)?;
+    let source = crate::demux::FileSource::open(path).map_err(|e| (e.into(), false))?;
     let total_bytes = Arc::new(move || len) as Arc<dyn Fn() -> u64 + Send + Sync>;
     decode_source(
         inner.clone(),
@@ -1266,10 +1303,11 @@ fn decode_from_file(
         mode,
         generation,
         seek_ms,
-        seek::source_start_frames(plan),
+        SourceStart::from_plan(plan),
         tx,
         source,
         plan.clone(),
+        he_aac,
         total_bytes,
     )
 }
@@ -1281,12 +1319,13 @@ fn decode_source(
     mode: OutputMode,
     generation: u64,
     seek_ms: Option<u64>,
-    source_start_frames: u64,
+    source_start: SourceStart,
     tx: &SyncSender<Result<StreamEvent>>,
     source: impl symphonia::core::io::MediaSource + 'static,
     plan: StreamPlan,
+    he_aac: bool,
     total_bytes: Arc<dyn Fn() -> u64 + Send + Sync>,
-) -> Result<()> {
+) -> std::result::Result<(), (Error, bool)> {
     let mut sink = ChannelSink {
         inner,
         generation,
@@ -1296,13 +1335,15 @@ fn decode_source(
         channels: 2,
         plan,
         seek_ms,
-        source_start_frames,
+        source_start,
         discarder: Discarder::default(),
         start_frames: 0,
         duration_secs: item.duration_secs,
         total_bytes,
+        emitted_pcm: false,
     };
-    crate::decode::run(source, "mp4", &mut sink)
+    crate::decode::run_with_aac_hint(source, "mp4", he_aac, &mut sink)
+        .map_err(|e| (e, sink.emitted_pcm))
 }
 
 struct ChannelSink {
@@ -1315,9 +1356,9 @@ struct ChannelSink {
     /// The original (untruncated) plan, for seek discard math.
     plan: StreamPlan,
     seek_ms: Option<u64>,
-    /// The track frame the decoded stream actually begins at (0 for a cached
-    /// file, the target segment's start for a seeked network stream).
-    source_start_frames: u64,
+    /// The source's timeline start, converted only once the decoder reports
+    /// its actual sample rate (which may differ from the manifest's core rate).
+    source_start: SourceStart,
     discarder: Discarder,
     start_frames: u64,
     /// The queue item's duration, for the bitrate fallback.
@@ -1325,6 +1366,7 @@ struct ChannelSink {
     /// Total source bytes fetched so far (buffer for network, file length for a
     /// cache hit).
     total_bytes: Arc<dyn Fn() -> u64 + Send + Sync>,
+    emitted_pcm: bool,
 }
 
 impl ChannelSink {
@@ -1364,8 +1406,10 @@ impl PcmSink for ChannelSink {
         self.channels = info.channels;
         if let Some(ms) = self.seek_ms {
             let target = seek::target_segment(&self.plan, ms, info.sample_rate);
-            self.discarder =
-                Discarder::new(seek::discard_frames_for(&target, self.source_start_frames));
+            self.discarder = Discarder::new(seek::discard_frames_for(
+                &target,
+                self.source_start.frames(info.sample_rate),
+            ));
             self.start_frames = target.position_frames;
         }
         let meta = StreamMeta {
@@ -1405,7 +1449,9 @@ impl PcmSink for ChannelSink {
                 PcmBuffer::I32(v[offset..offset + len].to_vec())
             }
         };
-        self.send(Ok(StreamEvent::Samples(buf)))
+        self.send(Ok(StreamEvent::Samples(buf)))?;
+        self.emitted_pcm = true;
+        Ok(())
     }
 }
 
@@ -2824,6 +2870,93 @@ mod tests {
         (plan, files)
     }
 
+    // Split the streamable fixtures at top-level moof atoms; never rewrite
+    // their ASC, packet tables, or payloads. The generated atoms use u32 sizes.
+    fn he_aac_fixture(version: u8, signaling: &str) -> (StreamPlan, HashMap<String, Vec<u8>>) {
+        let bytes = std::fs::read(format!(
+            "tests/fixtures/he_aac_v{version}_96k_{signaling}.mp4"
+        ))
+        .unwrap();
+        let mut atoms = Vec::new();
+        let mut fragments = Vec::new();
+        let mut offset = 0;
+        while offset < bytes.len() {
+            let len = u32::from_be_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize;
+            assert!(len >= 8 && len <= bytes.len() - offset);
+            let kind = &bytes[offset + 4..offset + 8];
+            atoms.push(kind);
+            if kind == b"moof" {
+                fragments.push(offset);
+            }
+            offset += len;
+        }
+        assert_eq!(atoms, [b"ftyp", b"moov", b"moof", b"mdat", b"moof", b"mdat"]);
+        let count = if version == 1 { 73 } else { 74 };
+        let plan = StreamPlan {
+            init_url: Some("mem://init".into()),
+            segments: vec![
+                Segment {
+                    url: "mem://head".into(),
+                    start_ticks: 0,
+                    duration_ticks: 24576,
+                },
+                Segment {
+                    url: "mem://tail".into(),
+                    start_ticks: 24576,
+                    duration_ticks: (count as u64 - 24) * 1024,
+                },
+            ],
+            timescale: 24000,
+            codec: Some(
+                if signaling == "hierarchical" {
+                    if version == 1 {
+                        "mp4a.40.5"
+                    } else {
+                        "mp4a.40.29"
+                    }
+                } else {
+                    "mp4a.40.2"
+                }
+                .into(),
+            ),
+            sample_rate: Some(24000),
+            bit_depth: None,
+            bitrate_kbps: Some(96),
+            quality: Some(Quality::Low),
+            manifest_hash: Some(0x96),
+            replay_gain: Default::default(),
+        };
+        let files = HashMap::from([
+            ("mem://init".into(), bytes[..fragments[0]].to_vec()),
+            ("mem://head".into(), bytes[fragments[0]..fragments[1]].to_vec()),
+            ("mem://tail".into(), bytes[fragments[1]..].to_vec()),
+        ]);
+        (plan, files)
+    }
+
+    fn decoded_plan(
+        plan: &StreamPlan,
+        files: &HashMap<String, Vec<u8>>,
+    ) -> crate::decode::CollectSink {
+        let mut bytes = plan
+            .init_url
+            .iter()
+            .flat_map(|url| files[url].clone())
+            .collect::<Vec<_>>();
+        for segment in &plan.segments {
+            bytes.extend_from_slice(&files[&segment.url]);
+        }
+        let mut sink = crate::decode::CollectSink::new();
+        crate::decode::run_with_aac_hint(
+            crate::demux::BytesSource::new(bytes),
+            "mp4",
+            plan.needs_he_aac(),
+            &mut sink,
+        )
+        .unwrap();
+        sink
+    }
+
     fn item(id: u64) -> QueueItem {
         QueueItem {
             track_id: id,
@@ -2967,83 +3100,544 @@ mod tests {
         assert_eq!(meta.codec.as_deref(), Some("flac"));
     }
 
-    #[test]
-    fn he_aac_streams_error_clearly_without_fetching() {
-        let (mut plan, files) = fixture_plan();
-        plan.codec = Some("mp4a.40.5".into());
-        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let output = NullOutput::new();
-        let engine = Engine::new(
-            Arc::new(FakeResolver { plan }),
-            {
-                let calls = calls.clone();
-                let files = files.clone();
-                move || -> Arc<dyn Fetcher> { Arc::new(CountingFetcher { files, calls }) }
-            },
-            Box::new(output.clone()),
-            Quality::High,
-            test_cache(),
-            true,
+    fn collect_track(engine: &Engine, seek_ms: Option<u64>) -> (StreamStart, Vec<f32>) {
+        wait_for(|| engine.inner.fetcher.get().is_some());
+        let generation = engine.inner.generation.load(Ordering::SeqCst);
+        let stream = start_track(
+            &engine.inner,
+            &item(1),
+            OutputMode::Exclusive,
+            generation,
+            seek_ms,
         );
-        let seen = Arc::new(Mutex::new(Vec::new()));
-        let seen_ref = seen.clone();
-        engine.subscribe(Arc::new(move |e| seen_ref.lock().unwrap().push(e)));
-
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
-
-        wait_for(|| seen.lock().unwrap().iter().any(|e| matches!(e, EngineEvent::Error { .. })));
-        let message = seen
-            .lock()
-            .unwrap()
-            .iter()
-            .find_map(|e| match e {
-                EngineEvent::Error { message, .. } => Some(message.clone()),
-                _ => None,
-            })
-            .expect("no error event");
-        assert!(message.contains("HE-AAC"), "unexpected message: {message}");
-        assert_eq!(calls.load(Ordering::SeqCst), 0, "an unsupported stream must not be fetched");
-        assert!(output.samples().is_empty());
-        assert_eq!(engine.state().queue.len(), 1, "the queue must be kept");
+        let mut start = None;
+        let mut samples = Vec::new();
+        loop {
+            match stream.rx.recv_timeout(Duration::from_secs(3)) {
+                Ok(Ok(StreamEvent::Info(info))) => start = Some(info),
+                Ok(Ok(StreamEvent::Samples(buf))) => samples.extend_from_slice(
+                    buf.as_f32()
+                        .expect("HE-AAC must remain F32 even in exclusive mode"),
+                ),
+                Ok(Err(e)) => panic!("track failed: {e}"),
+                Err(RecvTimeoutError::Disconnected) => break,
+                Err(e) => panic!("track did not finish: {e}"),
+            }
+        }
+        (start.expect("no stream info"), samples)
     }
 
     #[test]
-    fn he_aac_guard_precedes_the_cache_lookup() {
-        let (mut plan, files) = fixture_plan();
-        plan.codec = Some("mp4a.40.5".into());
-        plan.manifest_hash = Some(0xabcd);
-        let tone = files["mem://tone"].clone();
-        let cache = test_cache();
-        let key = CacheKey { track_id: 1, quality: Quality::High, manifest_hash: 0xabcd };
-        {
-            let mut writer = cache.begin_write(&key).unwrap();
-            writer.write_all(&tone).unwrap();
-            writer.commit();
+    fn he_aac_network_plays_all_signaling_variants_at_the_output_rate() {
+        for version in [1, 2] {
+            for signaling in ["hierarchical", "implicit", "sync"] {
+                let (plan, files) = he_aac_fixture(version, signaling);
+                let original = std::fs::read(format!(
+                    "tests/fixtures/he_aac_v{version}_96k_{signaling}.mp4"
+                ))
+                .unwrap();
+                let mut reference = crate::decode::CollectSink::new();
+                crate::decode::run_with_aac_hint(
+                    crate::demux::BytesSource::new(original),
+                    "mp4",
+                    plan.needs_he_aac(),
+                    &mut reference,
+                )
+                .unwrap();
+                assert_eq!(
+                    reference.samples.len(),
+                    if version == 1 { 149504 * 2 } else { 151552 * 2 }
+                );
+                let (engine, output) = engine_with(plan.clone(), files);
+                engine
+                    .handle(EngineCmd::PlayTracks {
+                        items: vec![item(1)],
+                        start: 0,
+                    })
+                    .unwrap();
+                wait_for(|| {
+                    !engine.state().playing && output.samples().len() >= reference.samples.len()
+                });
+                assert_eq!(
+                    output.samples().len(),
+                    reference.samples.len(),
+                    "v{version}/{signaling}"
+                );
+                assert!(
+                    output.samples() == reference.samples,
+                    "PCM differs for v{version}/{signaling}"
+                );
+                let state = engine.state();
+                let meta = state.stream.unwrap();
+                assert_eq!(meta.quality, Some(Quality::Low));
+                assert_eq!(meta.codec, plan.codec);
+                assert_eq!(meta.sample_rate, 48000);
+                assert_eq!(meta.channels, 2);
+                assert_eq!(meta.bitrate_kbps, Some(96));
+                assert!(!state.bit_perfect);
+                assert!(!output.last_spec().unwrap().info.is_bit_perfect_candidate());
+                assert!(output.i32_samples().is_empty());
+            }
         }
-        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let output = NullOutput::new();
+    }
+
+    #[test]
+    fn he_aac_cache_hit_and_offline_sidecar_replay_without_fetching() {
+        let (plan, files) = he_aac_fixture(2, "implicit");
+        let reference = decoded_plan(&plan, &files);
+        let resolver = Arc::new(SwitchableResolver {
+            plan,
+            offline: AtomicBool::new(false),
+        });
+        let calls = Arc::new(AtomicUsize::new(0));
+        let fetcher = Arc::new(CountingFetcher {
+            files,
+            calls: calls.clone(),
+        });
+        let engine = build_engine(
+            resolver.clone(),
+            fetcher,
+            Box::new(NullOutput::new()),
+            Quality::Low,
+        );
+        engine.set_allow_fallback(false);
+        let (start, samples) = collect_track(&engine, None);
+        assert!(samples == reference.samples);
+        assert_eq!(start.info.sample_rate, 48000);
+        assert!(!start.info.is_bit_perfect_candidate());
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+        for offline in [false, true] {
+            resolver.offline.store(offline, Ordering::SeqCst);
+            let (start, samples) = collect_track(&engine, None);
+            assert!(samples == reference.samples);
+            assert_eq!(start.meta.quality, Some(Quality::Low));
+            assert_eq!(start.meta.sample_rate, 48000);
+            assert_eq!(start.meta.channels, 2);
+            assert_eq!(
+                calls.load(Ordering::SeqCst),
+                3,
+                "cache replay fetched (offline={offline})"
+            );
+        }
+    }
+
+    #[test]
+    fn he_aac_legacy_cache_plays_offline_without_claiming_aac_lc() {
+        for signaling in ["hierarchical", "implicit"] {
+            let (plan, files) = he_aac_fixture(2, signaling);
+            let reference = decoded_plan(&plan, &files);
+            let cache = test_cache();
+            let key = CacheKey {
+                track_id: 1,
+                quality: Quality::Low,
+                manifest_hash: 0x96,
+            };
+            let mut writer = cache.begin_write(&key).unwrap();
+            writer.write_all(&files["mem://init"]).unwrap();
+            writer.write_all(&files["mem://head"]).unwrap();
+            writer.write_all(&files["mem://tail"]).unwrap();
+            writer.commit();
+            let fetcher: Arc<dyn Fetcher> = Arc::new(crate::fetch::MapFetcher::default());
+            let engine = Engine::new(
+                Arc::new(SwitchableResolver {
+                    plan,
+                    offline: AtomicBool::new(true),
+                }),
+                move || fetcher,
+                Box::new(NullOutput::new()),
+                Quality::Low,
+                cache,
+                false,
+            );
+            let (start, samples) = collect_track(&engine, None);
+            assert!(samples == reference.samples);
+            assert_eq!(
+                start.meta.quality, None,
+                "requested quality is not served-quality evidence"
+            );
+            assert_ne!(start.meta.codec.as_deref(), Some("mp4a.40.2"));
+            assert_eq!(start.meta.sample_rate, 48000);
+            assert_eq!(start.meta.channels, 2);
+        }
+    }
+
+    #[test]
+    fn he_aac_seek_uses_output_frames_for_network_and_cached_sources() {
+        for version in [1, 2] {
+            for rate in [Some(24000), Some(48000), None] {
+                let (mut plan, files) = he_aac_fixture(version, "hierarchical");
+                plan.sample_rate = rate;
+                let full = decoded_plan(&plan, &files);
+                let tail = decoded_plan(&plan.from_segment(1), &files);
+                let (engine, _) = engine_with(plan.clone(), files);
+                let (start, samples) = collect_track(&engine, Some(1500));
+                assert_eq!(start.start_frames, 72000);
+                assert_eq!(start.info.sample_rate, 48000);
+                // Segment 2 starts at 1024 ms, leaving 476 ms to discard.
+                assert_eq!(samples.len(), tail.samples.len() - 22848 * 2);
+                assert!(
+                    samples == tail.samples[22848 * 2..],
+                    "network seek v{version}, rate={rate:?}"
+                );
+                assert_eq!(
+                    engine.inner.cache.size_bytes(),
+                    0,
+                    "a seek must not cache a partial track"
+                );
+                collect_track(&engine, None); // populate a complete cache entry
+                let (start, samples) = collect_track(&engine, Some(1500));
+                assert_eq!(start.start_frames, 72000);
+                assert_eq!(samples.len(), full.samples.len() - 72000 * 2);
+                assert!(
+                    samples == full.samples[72000 * 2..],
+                    "cached seek v{version}, rate={rate:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn he_aac_fallback_policy_still_rejects_before_fetching() {
+        let (plan, files) = he_aac_fixture(1, "hierarchical");
+        // A populated cache must not bypass the online fallback policy either.
+        let cache = test_cache();
+        let key = CacheKey { track_id: 1, quality: Quality::High, manifest_hash: 0x96 };
+        let mut writer = cache.begin_write(&key).unwrap();
+        for url in plan.init_url.iter().chain(plan.segments.iter().map(|s| &s.url)) {
+            writer.write_all(&files[url]).unwrap();
+        }
+        writer.commit();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let fetcher: Arc<dyn Fetcher> = Arc::new(CountingFetcher { files, calls: calls.clone() });
         let engine = Engine::new(
             Arc::new(FakeResolver { plan }),
-            {
-                let calls = calls.clone();
-                let files = files.clone();
-                move || -> Arc<dyn Fetcher> { Arc::new(CountingFetcher { files, calls }) }
-            },
-            Box::new(output.clone()),
+            move || fetcher,
+            Box::new(NullOutput::new()),
             Quality::High,
+            cache.clone(),
+            false,
+        );
+        wait_for(|| engine.inner.fetcher.get().is_some());
+        let generation = engine.inner.generation.load(Ordering::SeqCst);
+        let stream = start_track(
+            &engine.inner,
+            &item(1),
+            OutputMode::Shared,
+            generation,
+            None,
+        );
+        assert!(matches!(
+            stream.rx.recv_timeout(Duration::from_secs(2)),
+            Ok(Err(Error::Unavailable(_)))
+        ));
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        assert!(cache.lookup(&key).is_some(), "rejection must not remove the cache entry");
+    }
+
+    #[test]
+    fn he_aac_prefetch_uses_a_fresh_decoder_for_each_track() {
+        let (plan, files) = he_aac_fixture(2, "sync");
+        let reference = decoded_plan(&plan, &files).samples;
+        assert_eq!(reference.len(), 151552 * 2);
+        let (engine, output) = engine_with(plan, files);
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1), item(2)],
+                start: 0,
+            })
+            .unwrap();
+        wait_for(|| !engine.state().playing && output.samples().len() >= reference.len() * 2);
+        assert_eq!(output.samples().len(), reference.len() * 2);
+        assert!(output.samples() == [reference.clone(), reference].concat());
+        assert_eq!(
+            output.opens(),
+            1,
+            "matching decoded formats should chain gaplessly"
+        );
+    }
+
+    #[test]
+    fn he_aac_decode_error_stops_track_and_next_starts_clean() {
+        check_he_aac_decode_error_stops_track_and_next_starts_clean(false, false);
+    }
+
+    #[test]
+    fn he_aac_cached_decode_error_stops_track_and_next_starts_clean() {
+        check_he_aac_decode_error_stops_track_and_next_starts_clean(true, false);
+    }
+
+    #[test]
+    fn he_aac_offline_cached_decode_error_stops_track_and_next_starts_clean() {
+        check_he_aac_decode_error_stops_track_and_next_starts_clean(true, true);
+    }
+
+    fn check_he_aac_decode_error_stops_track_and_next_starts_clean(cached: bool, offline: bool) {
+        let (mut plan, files) = he_aac_fixture(1, "hierarchical");
+        let reference = decoded_plan(&plan, &files).samples;
+        let clean = [
+            files["mem://init"].clone(),
+            files["mem://head"].clone(),
+            files["mem://tail"].clone(),
+        ]
+        .concat();
+        let mut corrupt = clean.clone();
+        let mdat = corrupt.windows(4).position(|b| b == b"mdat").unwrap();
+        let trun = corrupt.windows(4).position(|b| b == b"trun").unwrap();
+        // The fixtures declare only data_offset and sample_size in each trun;
+        // sample duration comes from trex, not an interleaved duration column.
+        assert_eq!(&corrupt[trun + 4..trun + 8], &[0, 0, 2, 1]);
+        let preceding_bytes: usize = (0..8)
+            .map(|i| {
+                let size = trun + 16 + i * 4;
+                u32::from_be_bytes(corrupt[size..size + 4].try_into().unwrap()) as usize
+            })
+            .sum();
+        // A known rejected empty-PCE packet after eight clean access units:
+        // never submit the remaining packets to this now-poisoned decoder.
+        let bad_packet = mdat + 4 + preceding_bytes;
+        corrupt[bad_packet..bad_packet + 6].copy_from_slice(&[0xa0, 0, 0, 0, 0, 0]);
+        plan.init_url = None;
+        plan.timescale = 0;
+        plan.manifest_hash = cached.then_some(0x96);
+        plan.segments = vec![Segment {
+            url: "mem://bad".into(),
+            start_ticks: 0,
+            duration_ticks: 0,
+        }];
+        let mut next_plan = plan.clone();
+        next_plan.segments[0].url = "mem://good".into();
+        let cache = test_cache();
+        if cached {
+            for (track_id, bytes) in [(1, &corrupt), (2, &clean)] {
+                let key = CacheKey { track_id, quality: Quality::Low, manifest_hash: 0x96 };
+                let mut writer = cache.begin_write(&key).unwrap();
+                writer.set_meta(serde_json::to_vec(&plan.without_urls()).unwrap());
+                writer.write_all(bytes).unwrap();
+                writer.commit();
+            }
+        }
+        let offline_resolver =
+            Arc::new(SwitchableResolver { plan: plan.clone(), offline: AtomicBool::new(true) });
+        let resolver: Arc<dyn StreamResolver> = if offline {
+            offline_resolver.clone()
+        } else {
+            Arc::new(PerTrackResolver {
+                plans: HashMap::from([(1, plan), (2, next_plan)]),
+                order: Arc::new(Mutex::new(Vec::new())),
+            })
+        };
+        let calls = Arc::new(AtomicUsize::new(0));
+        // A cached failure must not retry even when a clean network copy exists.
+        let network_bad = if cached { clean.clone() } else { corrupt };
+        let fetcher: Arc<dyn Fetcher> = Arc::new(CountingFetcher {
+            files: HashMap::from([("mem://bad".into(), network_bad), ("mem://good".into(), clean)]),
+            calls: calls.clone(),
+        });
+        let output = NullOutput::new();
+        let engine = Engine::new(
+            resolver,
+            move || fetcher,
+            Box::new(output.clone()),
+            Quality::Low,
             cache.clone(),
             true,
         );
         let seen = Arc::new(Mutex::new(Vec::new()));
         let seen_ref = seen.clone();
-        engine.subscribe(Arc::new(move |e| seen_ref.lock().unwrap().push(e)));
+        engine.subscribe(Arc::new(move |event| seen_ref.lock().unwrap().push(event)));
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1), item(2)],
+                start: 0,
+            })
+            .unwrap();
+        wait_for(|| {
+            seen.lock()
+                .unwrap()
+                .iter()
+                .any(|e| matches!(e, EngineEvent::Error { .. }))
+        });
+        assert!(
+            !engine.state().playing,
+            "AAC errors must terminate the current track, not be skipped"
+        );
+        assert_eq!(engine.state().current.unwrap().track_id, 1);
+        if cached {
+            assert_eq!(calls.load(Ordering::SeqCst), 0, "a mid-track cache error must not fetch");
+            let key = CacheKey { track_id: 1, quality: Quality::Low, manifest_hash: 0x96 };
+            assert!(cache.lookup(&key).is_none(), "the corrupt entry must be evicted");
+            assert!(
+                !cache.dir().join(format!("{}.meta", key.file_name())).exists(),
+                "the corrupt entry's sidecar must be evicted"
+            );
+        }
+        assert_eq!(
+            output.samples().len(),
+            8 * 2048 * 2,
+            "AAC error was skipped instead of ending the track"
+        );
+        assert!(output.samples() == reference[..8 * 2048 * 2]);
+        assert!(seen.lock().unwrap().iter().any(
+            |e| matches!(e, EngineEvent::Error { message, .. } if message.contains("decode error"))
+        ));
+        let before = output.samples().len();
+        engine.handle(EngineCmd::Next).unwrap();
+        wait_for(|| !engine.state().playing && output.samples().len() >= before + reference.len());
+        assert_eq!(engine.state().current.unwrap().track_id, 2);
+        assert_eq!(output.samples().len(), before + reference.len());
+        assert!(
+            output.samples()[before..] == reference,
+            "the failed track's decoder state leaked into the next track"
+        );
+        if cached {
+            assert_eq!(calls.load(Ordering::SeqCst), 0, "both tracks must stay cache-only");
+            offline_resolver.offline.store(false, Ordering::SeqCst);
+            let before = output.samples().len();
+            engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+            wait_for(|| {
+                !engine.state().playing && output.samples().len() >= before + reference.len()
+            });
+            assert_eq!(output.samples().len(), before + reference.len());
+            assert!(output.samples()[before..] == reference, "the later play must start clean");
+            assert_eq!(calls.load(Ordering::SeqCst), 1, "only a later play may refetch");
+            let key = CacheKey { track_id: 1, quality: Quality::Low, manifest_hash: 0x96 };
+            assert!(cache.lookup(&key).is_some(), "the clean refetch must be cached");
+            assert!(cache.dir().join(format!("{}.meta", key.file_name())).is_file());
+            let (_, replay) = collect_track(&engine, None);
+            assert!(replay == reference, "the repaired entry must replay cleanly");
+            assert_eq!(calls.load(Ordering::SeqCst), 1, "the repaired entry must not refetch");
+            assert_eq!(
+                seen.lock()
+                    .unwrap()
+                    .iter()
+                    .filter(|e| matches!(e, EngineEvent::Error { .. }))
+                    .count(),
+                1,
+                "later plays must not repeat the cached decode error"
+            );
+        }
+    }
 
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+    #[test]
+    fn he_aac_cancelled_cached_decode_keeps_entry_and_sidecar() {
+        check_he_aac_cancelled_cached_decode_keeps_entry_and_sidecar(false);
+    }
 
-        wait_for(|| seen.lock().unwrap().iter().any(|e| matches!(e, EngineEvent::Error { .. })));
-        assert!(output.samples().is_empty(), "the cached entry must not be decoded");
-        assert!(cache.lookup(&key).is_some(), "the guard must not touch the cache");
-        assert_eq!(calls.load(Ordering::SeqCst), 0);
+    #[test]
+    fn he_aac_cancelled_offline_cached_decode_keeps_entry_and_sidecar() {
+        check_he_aac_cancelled_cached_decode_keeps_entry_and_sidecar(true);
+    }
+
+    fn check_he_aac_cancelled_cached_decode_keeps_entry_and_sidecar(offline: bool) {
+        let (plan, files) = he_aac_fixture(1, "hierarchical");
+        let reference = decoded_plan(&plan, &files).samples;
+        let cache = test_cache();
+        let key = CacheKey { track_id: 1, quality: Quality::Low, manifest_hash: 0x96 };
+        let meta = serde_json::to_vec(&plan.without_urls()).unwrap();
+        let clean = [
+            files["mem://init"].clone(),
+            files["mem://head"].clone(),
+            files["mem://tail"].clone(),
+        ]
+        .concat();
+        let mut writer = cache.begin_write(&key).unwrap();
+        writer.set_meta(meta.clone());
+        writer.write_all(&clean).unwrap();
+        writer.commit();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let fetcher: Arc<dyn Fetcher> = Arc::new(CountingFetcher { files, calls: calls.clone() });
+        let engine = Engine::new(
+            Arc::new(SwitchableResolver { plan, offline: AtomicBool::new(offline) }),
+            move || fetcher,
+            Box::new(NullOutput::new()),
+            Quality::Low,
+            cache.clone(),
+            true,
+        );
+        wait_for(|| engine.inner.fetcher.get().is_some());
+        for after_pcm in [false, true] {
+            for superseded in [false, true] {
+                let generation = engine.inner.generation.load(Ordering::SeqCst);
+                // A rendezvous channel stops this short fixture from finishing
+                // before cancellation can interrupt it.
+                let (tx, rx) = std::sync::mpsc::sync_channel(0);
+                let rx = if !after_pcm && !superseded {
+                    drop(rx);
+                    None
+                } else {
+                    Some(rx)
+                };
+                if !after_pcm && superseded {
+                    engine.inner.generation.fetch_add(1, Ordering::SeqCst);
+                }
+                let inner = engine.inner.clone();
+                let producer = std::thread::spawn(move || {
+                    let ticket = inner.ahead_gate.register(true);
+                    decode_track(
+                        inner,
+                        item(1),
+                        OutputMode::Shared,
+                        generation,
+                        None,
+                        tx,
+                        StreamBuffer::new(),
+                        Arc::new(Mutex::new(None)),
+                        ticket,
+                    );
+                });
+                if let Some(rx) = rx {
+                    if after_pcm {
+                        assert!(matches!(
+                            rx.recv_timeout(Duration::from_secs(3)),
+                            Ok(Ok(StreamEvent::Info(_)))
+                        ));
+                        assert!(matches!(
+                            rx.recv_timeout(Duration::from_secs(3)),
+                            Ok(Ok(StreamEvent::Samples(_)))
+                        ));
+                    }
+                    if superseded {
+                        if after_pcm {
+                            engine.inner.generation.fetch_add(1, Ordering::SeqCst);
+                        }
+                        loop {
+                            match rx.recv_timeout(Duration::from_secs(3)) {
+                                Ok(Ok(_)) => continue,
+                                Ok(Err(e)) if offline && !after_pcm => {
+                                    // Before PCM, offline playback preserves
+                                    // the original resolver error.
+                                    assert!(matches!(
+                                        e,
+                                        Error::Tidal(oxitide_tidal::Error::RateLimited)
+                                    ));
+                                    break;
+                                }
+                                Ok(Err(Error::Output(message))) => {
+                                    assert_eq!(message, "playback superseded");
+                                    break;
+                                }
+                                Ok(Err(e)) => panic!("expected superseded playback, got {e}"),
+                                Err(e) => panic!("expected superseded playback, got {e}"),
+                            }
+                        }
+                    }
+                    drop(rx);
+                }
+                wait_for(|| producer.is_finished());
+                assert!(producer.is_finished(), "cancelled cached decode did not finish");
+                producer.join().unwrap();
+                cache.unprotect(&key);
+                let path = cache.lookup(&key).expect("cancellation must keep the healthy entry");
+                assert_eq!(std::fs::read(path).unwrap(), clean);
+                assert_eq!(
+                    std::fs::read(cache.dir().join(format!("{}.meta", key.file_name()))).unwrap(),
+                    meta
+                );
+                let (_, replay) = collect_track(&engine, None);
+                assert!(replay == reference, "cancellation must leave a clean replay");
+                assert_eq!(calls.load(Ordering::SeqCst), 0, "cancellation must not refetch");
+            }
+        }
     }
 
     #[test]
@@ -3056,6 +3650,96 @@ mod tests {
         wait_for(|| !engine.state().playing && output.samples().len() >= 176_400);
         assert_eq!(output.samples().len(), 176_400);
         assert_eq!(engine.state().stream.and_then(|m| m.quality), None);
+    }
+
+    #[test]
+    fn early_decode_failure_releases_download_ahead() {
+        let (plan, mut files) = he_aac_fixture(1, "hierarchical");
+        let bytes = files.get_mut("mem://head").unwrap();
+        let mdat = bytes.windows(4).position(|s| s == b"mdat").unwrap();
+        bytes[mdat + 4..mdat + 10].copy_from_slice(&[0xa0, 0, 0, 0, 0, 0]);
+        // More than the feeder's 2 MiB cap remains after the rejected AAC packet.
+        files
+            .get_mut("mem://tail")
+            .unwrap()
+            .resize(fetch::MAX_BUFFERED_BYTES * 4, 0);
+        let (engine, _) = engine_with(plan.clone(), files);
+        wait_for(|| engine.inner.fetcher.get().is_some());
+        let inner = engine.inner.clone();
+        let buffer = StreamBuffer::new();
+        let decode_buffer = buffer.clone();
+        let (tx, rx) = std::sync::mpsc::sync_channel(512);
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let producer = std::thread::spawn(move || {
+            let ticket = inner.ahead_gate.register(true);
+            let generation = inner.generation.load(Ordering::SeqCst);
+            decode_from_network(
+                inner,
+                item(1),
+                OutputMode::Shared,
+                generation,
+                None,
+                tx,
+                decode_buffer,
+                plan,
+                None,
+                ticket,
+            );
+            done_tx.send(()).unwrap();
+        });
+        let completed = done_rx.recv_timeout(Duration::from_secs(5)).is_ok();
+        // Bound the regression even on a broken implementation: release the
+        // stranded feeder before asserting, rather than leak a blocked thread.
+        buffer.cancel();
+        if !completed {
+            done_rx.recv_timeout(Duration::from_secs(5)).expect("cancel did not release the feeder");
+        }
+        producer.join().unwrap();
+        assert!(
+            completed,
+            "decode failed early but its downloader join was stranded"
+        );
+        assert!(matches!(rx.try_recv(), Ok(Err(Error::Decode(_)))));
+    }
+
+    #[test]
+    fn decode_cleanup_preserves_the_original_buffer_network_error() {
+        let (plan, files) = fixture_plan();
+        let (engine, _) = engine_with(plan.clone(), files);
+        wait_for(|| engine.inner.fetcher.get().is_some());
+        for error in [
+            Error::Fetch("original transport error".into()),
+            Error::FetchRejected("original rejection".into()),
+            Error::NetworkLost("original exhausted backoff".into()),
+        ] {
+            let expected = error.to_string();
+            let buffer = StreamBuffer::new();
+            buffer.fail(&error);
+            let (tx, rx) = std::sync::mpsc::sync_channel(512);
+            let generation = engine.inner.generation.load(Ordering::SeqCst);
+            decode_from_network(
+                engine.inner.clone(),
+                item(1),
+                OutputMode::Shared,
+                generation,
+                None,
+                tx,
+                buffer.clone(),
+                plan.clone(),
+                None,
+                engine.inner.ahead_gate.register(true),
+            );
+            let error = match rx.try_recv() {
+                Ok(Err(error)) => error,
+                _ => panic!("original network failure was not delivered"),
+            };
+            assert_eq!(error.to_string(), expected);
+            assert_eq!(
+                error.is_transient(),
+                !matches!(error, Error::NetworkLost(_))
+            );
+            assert!(buffer.is_cancelled(), "cleanup must also wake the feeder");
+        }
     }
 
     #[test]

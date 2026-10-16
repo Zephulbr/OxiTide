@@ -99,6 +99,11 @@ setting is touched: Playback runs Streaming → Output → Volume leveling → E
 color not in Rack, AutoMix needs a crossfade). Rack skins the switch as a square lamp key in
 `rack.css`.
 
+Streaming quality restores **Low** with the hint **HE-AAC 96 kbps** in the existing
+Select, alongside High, Lossless (still the default), and Max. Saved `low` preferences
+are preserved on load. Compact badges stay **AAC** for served Low streams; detailed
+readouts show the served bitrate. No new styling, animation, or background work.
+
 **Collection grids** share one recipe: `repeat(auto-fill, minmax(160–168px, 1fr))`, 12px
 card padding (Albums, Mixes, Playlists, Feed releases).
 
