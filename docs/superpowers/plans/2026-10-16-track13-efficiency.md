@@ -6,15 +6,16 @@ Spec: `docs/superpowers/specs/2026-10-16-oxitide-track13-efficiency-design.md`. 
 
 ## Phase 0 — measurement (lands first, so the baseline is taken before any fix)
 
-- [ ] 0.1 `perf.rs`: private bytes beside the working set in `memory_process` rows; a 2 s CPU
-      sample per process group (`cpu` rows: app / webview, kernel+user ms).
-- [ ] 0.2 IPC counters: the desktop engine subscriber records `playback_event` count and
+- [x] 0.1 `perf.rs`: `memory_process` rows carry pid, private bytes and cumulative kernel+user
+      CPU ms beside the working set (sampled every 2 s).
+- [x] 0.2 IPC counters: the desktop engine subscriber records `playback_event` count and
       serialized bytes into the perf session (`ipc` rows, flushed with the memory sample).
-- [ ] 0.3 `check.mjs`: `cpu_app_pct`, `cpu_webview_pct`, `private_max_mb`, `ipc_events_per_min`,
-      `ipc_bytes_per_min` metrics; tests in `check.test.mjs`.
-- [ ] 0.4 `run-scenario.ps1 -Release` (release exe, no Vite) and graceful close through a
+- [x] 0.3 `check.mjs`: `cpu_app_pct`, `cpu_webview_pct`, `private_max_mb`, `ipc_events_per_min`,
+      `ipc_kb_per_min` metrics (from the `measure_start` mark when set); tests in
+      `check.test.mjs`.
+- [x] 0.4 `run-scenario.ps1 -Release` (release exe, no Vite) and graceful close through a
       `perf_quit` command (perf sessions only; `NOT_EXPOSED` to the remote), `/F` fallback.
-- [ ] 0.5 Bridge: `setMode("rack")`; S7 end to end (`play_tracks` 10 k → state applied in the
+- [x] 0.5 Bridge: `setMode("rack")`; S7 end to end (`play_tracks` 10 k → state applied in the
       UI); scenarios S11 idle paused, S12 playing hidden (manual), S13 Rack meters, S14 volume
       drag on a 10 k queue.
 - [ ] 0.6 **Owner:** release-build baseline of S1–S8, S11–S14 at the Phase 0 commit; record it
@@ -22,19 +23,20 @@ Spec: `docs/superpowers/specs/2026-10-16-oxitide-track13-efficiency-design.md`. 
 
 ## Phase 1 — quick wins (F1, F2, F3 UI side, F15)
 
-- [ ] 1.1 Queue revision (EF-D1): `Arc<Vec>` items + `rev` in `Queue`; `PlaybackState.queue_rev`;
+- [x] 1.1 Queue revision (EF-D1): `Arc<Vec>` items + `rev` in `Queue`; `PlaybackState.queue_rev`;
       desktop subscriber omits an unchanged queue; `api.ts` `queue?`/`queue_rev`;
-      `applyEvent` keeps the queue when absent; queue in `$state.raw`. Tests: payload without
-      queue on volume change; UI reducer keeps the queue.
-- [ ] 1.2 Volume coalescing (EF-D2) in `VolumeSlider`, `VolumeKnob`, phone excluded (already
+      `applyEvent` keeps the queue when absent (assigned only on change, so no `$state.raw`
+      needed). Tests: payload without queue on volume change (< 4 KB at 10 k items); UI
+      reducer keeps the queue.
+- [x] 1.2 Volume coalescing (EF-D2) in `VolumeSlider`, `VolumeKnob`, phone excluded (already
       throttled). Tests for the coalescer.
-- [ ] 1.3 Session saver (EF-D3): compact JSON, `queue_rev` comparison, 30 s position cadence.
-- [ ] 1.4 Paused worker (EF-D4, engine half): park on the condvar, no `Position` while paused.
+- [x] 1.3 Session saver (EF-D3): compact JSON, `queue_rev` comparison, 30 s position cadence.
+- [x] 1.4 Paused worker (EF-D4, engine half): park on the condvar, no `Position` while paused.
       Test: no position events during a paused window.
-- [ ] 1.5 UI loops: DiscArt stops its loop at rest; LevelRecorder draws only on new points or
+- [x] 1.5 UI loops: DiscArt stops its loop at rest; LevelRecorder draws only on new points or
       while gliding; levels feed idles on silence.
-- [ ] 1.6 Meter: no `level_frame` while the tap reports silence twice in a row; reuse the FFT
-      window buffers.
+- [x] 1.6 Meter: no `level_frame` once the tap has reported silence twice in a row, and a 10 Hz
+      tick while quiet. (FFT buffer reuse dropped: ~30 small allocations/s, not worth it.)
 
 ## Phase 2 — audio write path (F4, EF-D5; F3 output half)
 

@@ -16,13 +16,17 @@
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     let raf = 0;
+    let idle: ReturnType<typeof setTimeout> | null = null;
     let color = "";
     let colorAt = 0;
+    /// What the canvas shows; a frame with the same inputs is skipped.
+    let drawn = { serial: -1, offset: -1, color: "" };
     const dpr = () => window.devicePixelRatio || 1;
     const fit = () => {
       const box = canvas.getBoundingClientRect();
       canvas.width = Math.max(1, Math.round(box.width * dpr()));
       canvas.height = Math.max(1, Math.round(box.height * dpr()));
+      drawn = { serial: -1, offset: -1, color: "" }; // resizing clears the canvas
     };
     fit();
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(fit);
@@ -55,7 +59,6 @@
     };
 
     const draw = (t: number) => {
-      raf = requestAnimationFrame(draw);
       if (t - colorAt > 500 || !color) {
         color = getComputedStyle(canvas).color;
         colorAt = t;
@@ -64,13 +67,28 @@
       // stop (paused), so the paper does not run on silence.
       const since = performance.now() - history.lastAt;
       const offset = since < RECORDER_INTERVAL_MS * 2 ? Math.min(1, since / RECORDER_INTERVAL_MS) : 0;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      trace(history.right, offset, 0.45, [4, 3]);
-      trace(history.left, offset, 1, []);
+      const frozen = offset === 0 && drawn.offset === 0 && drawn.serial === history.serial;
+      if (!frozen || drawn.color !== color) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        trace(history.right, offset, 0.45, [4, 3]);
+        trace(history.left, offset, 1, []);
+        drawn = { serial: history.serial, offset, color };
+      }
+      // Track 13 (EF-D4): a frozen strip is checked once per recorder
+      // interval instead of every frame; a new point resumes the glide.
+      if (frozen) {
+        idle = setTimeout(() => {
+          idle = null;
+          raf = requestAnimationFrame(draw);
+        }, RECORDER_INTERVAL_MS);
+      } else {
+        raf = requestAnimationFrame(draw);
+      }
     };
     raf = requestAnimationFrame(draw);
     return () => {
       cancelAnimationFrame(raf);
+      if (idle !== null) clearTimeout(idle);
       observer?.disconnect();
     };
   });

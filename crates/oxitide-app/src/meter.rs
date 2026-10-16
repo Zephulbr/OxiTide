@@ -12,6 +12,36 @@ use serde::Serialize;
 
 pub const LEVEL_FRAME_EVENT: &str = "level_frame";
 pub const TICK: Duration = Duration::from_millis(33);
+/// Tick while the tap is silent (paused, between tracks): resuming audio
+/// reaches the meters within this, at a third of the wake-ups.
+pub const IDLE_TICK: Duration = Duration::from_millis(100);
+/// Silent frames still sent after audio stops, so the UI's needles and bars
+/// see the drop and settle (it stops animating once at rest).
+const SILENT_FRAMES_SENT: u32 = 2;
+
+/// Track 13 (EF-D4): decides which frames are worth an event.
+#[derive(Debug, Default)]
+pub struct SilenceGate {
+    silent_run: u32,
+}
+
+impl SilenceGate {
+    /// Whether to emit this frame.
+    pub fn admit(&mut self, frame: &LevelFrame) -> bool {
+        let silent = frame.peak == [0.0, 0.0] && frame.rms == [0.0, 0.0];
+        if !silent {
+            self.silent_run = 0;
+            return true;
+        }
+        self.silent_run = self.silent_run.saturating_add(1);
+        self.silent_run <= SILENT_FRAMES_SENT
+    }
+
+    /// True while frames are being suppressed.
+    pub fn idle(&self) -> bool {
+        self.silent_run > SILENT_FRAMES_SENT
+    }
+}
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct LevelFrameDto {
@@ -44,8 +74,9 @@ impl MeterEmitter {
         self.running.lock().unwrap().is_some()
     }
 
-    /// Runs `tick` every [`TICK`] until [`stop`](Self::stop).
-    pub fn start(&self, mut tick: impl FnMut() + Send + 'static) {
+    /// Runs `tick` until [`stop`](Self::stop), sleeping [`TICK`] after an
+    /// active tick and [`IDLE_TICK`] after one that reports idle (`false`).
+    pub fn start(&self, mut tick: impl FnMut() -> bool + Send + 'static) {
         let mut running = self.running.lock().unwrap();
         if running.is_some() {
             return;
@@ -55,12 +86,13 @@ impl MeterEmitter {
         let handle = std::thread::Builder::new()
             .name("oxitide-meter".into())
             .spawn(move || {
+                let mut sleep = TICK;
                 while !flag.load(Ordering::SeqCst) {
-                    std::thread::sleep(TICK);
+                    std::thread::sleep(sleep);
                     if flag.load(Ordering::SeqCst) {
                         break;
                     }
-                    tick();
+                    sleep = if tick() { TICK } else { IDLE_TICK };
                 }
             })
             .expect("spawn meter thread");
@@ -88,6 +120,7 @@ mod tests {
         let counter = ticks.clone();
         emitter.start(move || {
             counter.fetch_add(1, Ordering::SeqCst);
+            true
         });
         assert!(emitter.is_running());
         std::thread::sleep(TICK * 5);
@@ -108,14 +141,34 @@ mod tests {
         let b = ticks.clone();
         emitter.start(move || {
             a.fetch_add(1, Ordering::SeqCst);
+            true
         });
         emitter.start(move || {
             b.fetch_add(100, Ordering::SeqCst);
+            true
         });
         std::thread::sleep(TICK * 4);
         emitter.stop();
         emitter.stop();
         assert!(ticks.load(Ordering::SeqCst) < 100, "second start must not spawn a thread");
+    }
+
+    #[test]
+    fn the_gate_sends_two_silent_frames_then_idles_until_audio() {
+        let mut gate = SilenceGate::default();
+        let silent = LevelFrame::silent();
+        let mut loud = LevelFrame::silent();
+        loud.peak = [0.5, 0.4];
+        loud.rms = [0.2, 0.1];
+        assert!(gate.admit(&loud));
+        assert!(gate.admit(&silent), "first silent frame lets the meters fall");
+        assert!(gate.admit(&silent));
+        assert!(!gate.idle());
+        assert!(!gate.admit(&silent));
+        assert!(gate.idle());
+        assert!(!gate.admit(&silent));
+        assert!(gate.admit(&loud), "audio resumes at once");
+        assert!(!gate.idle());
     }
 
     #[test]

@@ -43,8 +43,7 @@ phone remote relies on must not change.
   becomes `Arc<Vec<QueueItem>>`, so a snapshot is a pointer copy. The desktop subscriber
   serializes the queue only when `queue_rev` differs from the last one it sent (`queue` is
   omitted otherwise); `get_playback_state` always includes it. The UI keeps its queue when a
-  state event has none, and holds it in `$state.raw` (items are replaced, never mutated in
-  place). The phone remote keeps its own fingerprint/paging unchanged.
+  state event has none, so the list is replaced (and re-proxied) only when it changed. The phone remote keeps its own fingerprint/paging unchanged.
 - **EF-D2 Volume coalescing.** The UI sends at most one `set_volume` per animation frame while
   dragging and persists once on release (wheel/keys persist through a short debounce).
 - **EF-D3 Session saver.** Compact JSON; queue changes compare `queue_rev`; position-only

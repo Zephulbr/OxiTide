@@ -2260,17 +2260,22 @@ pub fn set_level_meter(
 ) -> Result<(), String> {
     use tauri::{Emitter, Manager};
     if enabled {
+        let mut gate = crate::meter::SilenceGate::default();
         state.meter.start(move || {
             let state = app.state::<AppState>();
             let Some(player) = state.player() else {
-                return;
+                return false;
             };
             let tap = player.engine.level_tap();
             if !tap.is_enabled() {
                 tap.set_enabled(true);
             }
-            let frame = crate::meter::LevelFrameDto::from(tap.read());
-            let _ = app.emit(crate::meter::LEVEL_FRAME_EVENT, frame);
+            let frame = tap.read();
+            if gate.admit(&frame) {
+                let dto = crate::meter::LevelFrameDto::from(frame);
+                let _ = app.emit(crate::meter::LEVEL_FRAME_EVENT, dto);
+            }
+            !gate.idle()
         });
     } else {
         state.meter.stop();
