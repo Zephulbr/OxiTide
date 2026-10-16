@@ -419,7 +419,8 @@ pub async fn execute<R: Runtime>(app: &AppHandle<R>, command: RemoteCommand) -> 
             if index >= queue.len() {
                 return Err("queue index out of range".to_string());
             }
-            json(commands::play_tracks(state, queue, index, None))
+            let items = std::sync::Arc::try_unwrap(queue).unwrap_or_else(|shared| (*shared).clone());
+            json(commands::play_tracks(state, items, index, None))
         }
         C::GetQueuePage { .. } | C::GetRemoteState => {
             Err("answered by the event hub".to_string())

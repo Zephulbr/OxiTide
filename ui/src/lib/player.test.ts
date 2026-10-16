@@ -9,7 +9,7 @@ describe("player reducer", () => {
       repeat: "off", preferred_quality: "lossless",
       output_mode: "shared", bit_perfect: false, bit_perfect_notice: null,
       dsp_active: false, dsp_stages: [], crossfade_ms: 0,
-      queue: [],
+      queue_rev: 0, queue: [],
       stream: null,
     });
     expect(next.playing).toBe(true);
@@ -23,7 +23,7 @@ describe("player reducer", () => {
       repeat: "off", preferred_quality: "lossless",
       output_mode: "shared", bit_perfect: false, bit_perfect_notice: null,
       dsp_active: false, dsp_stages: [], crossfade_ms: 0,
-      queue: [],
+      queue_rev: 0, queue: [],
       stream: { quality: "lossless", codec: "flac", sample_rate: 44100, bit_depth: 16, channels: 2, bitrate_kbps: 1000 },
     });
     expect(next.stream?.sample_rate).toBe(44100);
@@ -97,7 +97,7 @@ describe("seek reconciliation", () => {
         repeat: "off", preferred_quality: "lossless",
         output_mode: "shared", bit_perfect: false, bit_perfect_notice: null,
         dsp_active: false, dsp_stages: [], crossfade_ms: 0,
-        queue: [], stream: null,
+        queue_rev: 0, queue: [], stream: null,
       }),
     ).toBe(1000);
   });
@@ -125,7 +125,7 @@ describe("player event application", () => {
       repeat: "off", preferred_quality: "lossless",
       output_mode: "shared", bit_perfect: false, bit_perfect_notice: null,
       dsp_active: false, dsp_stages: [], crossfade_ms: 0,
-      queue: [],
+      queue_rev: 0, queue: [],
       stream: null,
     });
     expect(result).toBe(state);
@@ -133,6 +133,29 @@ describe("player event application", () => {
     expect(state.volume).toBe(0.5);
     expect(state.queue).toEqual([]);
     expect(state.error).toBe("stale");
+  });
+
+  it("keeps its queue when a state event omits it", () => {
+    const state = { ...positioned, queue_rev: 3 };
+    const queue = state.queue;
+    applyEvent(state, {
+      type: "state", playing: false, buffering: false, current: null,
+      position_ms: 0, duration_ms: 0, volume: 0.2, shuffle: false,
+      repeat: "off", preferred_quality: "lossless",
+      output_mode: "shared", bit_perfect: false, dsp_active: false, dsp_stages: [],
+      crossfade_ms: 0, queue_rev: 3,
+    });
+    expect(state.queue).toBe(queue);
+    expect(state.volume).toBe(0.2);
+    applyEvent(state, {
+      type: "state", playing: false, buffering: false, current: null,
+      position_ms: 0, duration_ms: 0, volume: 0.2, shuffle: false,
+      repeat: "off", preferred_quality: "lossless",
+      output_mode: "shared", bit_perfect: false, dsp_active: false, dsp_stages: [],
+      crossfade_ms: 0, queue_rev: 4, queue: [],
+    });
+    expect(state.queue).toEqual([]);
+    expect(state.queue_rev).toBe(4);
   });
 
   it("clears the error on now_playing and captures it on error", () => {
@@ -154,7 +177,7 @@ describe("player event application", () => {
       repeat: "off", preferred_quality: "lossless",
       output_mode: "shared", bit_perfect: false, bit_perfect_notice: null,
       dsp_active: false, dsp_stages: [], crossfade_ms: 0,
-      queue: [{ track_id: 1, title: "T", artist: "A", album: "", duration_secs: 10, cover: null }],
+      queue_rev: 0, queue: [{ track_id: 1, title: "T", artist: "A", album: "", duration_secs: 10, cover: null }],
       stream: null,
     });
     applyEvent(state, { type: "position", position_ms: 2000, duration_ms: 10000 });

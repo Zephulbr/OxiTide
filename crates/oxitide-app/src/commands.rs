@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use oxitide_audio::cache::DiskCache;
 use oxitide_audio::dsp::{DspSettings, TransitionStyle};
-use oxitide_audio::engine::{Engine, EngineCmd, EngineEvent, PlaybackState};
+use oxitide_audio::engine::{Engine, EngineCmd, EngineEvent};
 use oxitide_audio::fetch::HttpFetcher;
 use oxitide_audio::output::{ExclusiveFallback, OutputMode};
 use oxitide_audio::queue::{ArtistRef, QueueItem, RepeatMode};
@@ -495,6 +495,18 @@ fn build_player(
 
     let handle = app.clone();
     let last_track = std::sync::Mutex::new(None);
+    let queue_gate = crate::player::QueueGate::default();
+    // The tray tooltip only names the track; skip the shell call for state
+    // events that keep it (volume, seek, flags).
+    let tooltip_track: std::sync::Mutex<Option<Option<u64>>> = std::sync::Mutex::new(None);
+    let set_tooltip = move |handle: &tauri::AppHandle, item: Option<&oxitide_audio::queue::QueueItem>| {
+        let id = item.map(|i| i.track_id);
+        let mut last = tooltip_track.lock().unwrap();
+        if *last != Some(id) {
+            *last = Some(id);
+            crate::tray::update_tooltip(handle, item);
+        }
+    };
     engine.subscribe(Arc::new(move |event| {
         let app_state = handle.state::<AppState>();
         if app_state.player().is_some() {
@@ -509,10 +521,10 @@ fn build_player(
         }
         match &event {
             EngineEvent::NowPlaying(item) => {
-                crate::tray::update_tooltip(&handle, item.as_ref());
+                set_tooltip(&handle, item.as_ref());
             }
             EngineEvent::State(snapshot) => {
-                crate::tray::update_tooltip(&handle, snapshot.current.as_ref());
+                set_tooltip(&handle, snapshot.current.as_ref());
                 let view = crate::thumbbar::View {
                     playing: snapshot.playing,
                     has_track: snapshot.current.is_some(),
@@ -534,7 +546,7 @@ fn build_player(
                 }
             }
         }
-        crate::perf::emit_counted(&handle, "playback_event", crate::player::to_dto(event));
+        crate::perf::emit_counted(&handle, "playback_event", queue_gate.dto(event));
     }));
     let scrobble_handle = app.clone();
     engine.subscribe(Arc::new(move |event| {
@@ -1835,9 +1847,9 @@ pub fn queue_play_next(state: State<'_, AppState>, items: Vec<QueueItem>) -> Res
 }
 
 #[tauri::command]
-pub fn get_playback_state(state: State<'_, AppState>) -> Result<PlaybackState, String> {
+pub fn get_playback_state(state: State<'_, AppState>) -> Result<crate::player::StateDto, String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
-    Ok(player.engine.state())
+    Ok(crate::player::StateDto::full(player.engine.state()))
 }
 
 /// One track's cached flags as the UI enrichment store expects them.

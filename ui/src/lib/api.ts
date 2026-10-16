@@ -227,9 +227,15 @@ export interface PlaybackState {
   crossfade_ms: number;
   /** The most recent crossfade's report (AutoMix A/B readout). */
   last_transition?: TransitionReport | null;
+  /** Always present from `get_playback_state`; see `StateEvent` for events. */
   queue: QueueItem[];
+  /** Revision of `queue`; moves whenever its items change. */
+  queue_rev: number;
   stream?: StreamMeta | null;
 }
+/** A `state` event: `queue` is omitted when `queue_rev` did not move since the
+ *  previous event, and the UI keeps the copy it has. */
+export type StateEvent = Omit<PlaybackState, "queue"> & { queue?: QueueItem[] };
 export interface RestoredSession {
   queue: QueueItem[];
   current_index: number;
@@ -490,7 +496,7 @@ export interface LevelFrame {
 }
 export const LEVEL_FRAME_EVENT = "level_frame";
 export type EngineEvent =
-  | ({ type: "state" } & PlaybackState)
+  | ({ type: "state" } & StateEvent)
   | { type: "now_playing"; [k: string]: unknown }
   | { type: "position"; position_ms: number; duration_ms: number }
   | { type: "error"; code: string; message: string };

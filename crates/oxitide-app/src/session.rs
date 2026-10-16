@@ -125,9 +125,10 @@ pub fn load(path: &Path) -> Option<Session> {
     }
 }
 
-/// Atomic write (temp file + rename), the `config.rs` pattern.
+/// Atomic write (temp file + rename), the `config.rs` pattern. Compact JSON:
+/// the file holds the whole queue and is rewritten while playing.
 pub fn save(path: &Path, session: &Session) -> Result<(), String> {
-    let text = serde_json::to_string_pretty(session).map_err(|e| e.to_string())?;
+    let text = serde_json::to_string(session).map_err(|e| e.to_string())?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -164,7 +165,9 @@ use crate::track_flags::{is_blocked, TrackFlagsStore};
 /// Caps how often position-only updates are written. State changes (track,
 /// queue, pause, shuffle, repeat) are urgent and flush on the next saver wake
 /// (the loop polls at most every 100 ms); this window only paces position ticks.
-pub const SESSION_DEBOUNCE: Duration = Duration::from_secs(3);
+/// Track 13 (EF-D3): 30 s, so a long play no longer rewrites the whole queue
+/// every 3 s; a crash loses at most 30 s of position, never the queue.
+pub const SESSION_DEBOUNCE: Duration = Duration::from_secs(30);
 
 #[allow(clippy::large_enum_variant)]
 enum SaverMsg {
@@ -325,7 +328,7 @@ fn saver_main(
                 let session_changed = match snapshot.as_ref() {
                     None => true,
                     Some(prev) => {
-                        prev.queue != state.queue
+                        prev.queue_rev != state.queue_rev
                             || prev.current_index != state.current_index
                             || prev.shuffle != state.shuffle
                             || prev.repeat != state.repeat
@@ -597,7 +600,8 @@ mod tests {
             dsp_stages: Vec::new(),
             crossfade_ms: 0,
             last_transition: None,
-            queue: items,
+            queue_rev: ids.len() as u64,
+            queue: std::sync::Arc::new(items),
             stream: None,
         }
     }

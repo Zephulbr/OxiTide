@@ -10,7 +10,7 @@ license = "AGPL-3.0-or-later"
 [workspace.dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time", "net"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking"] }
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 thiserror = "2"
 tracing = "0.1"

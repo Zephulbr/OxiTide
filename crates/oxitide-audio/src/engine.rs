@@ -71,7 +71,12 @@ pub struct PlaybackState {
     /// What the most recent crossfade did (AutoMix A/B readout). Boxed so the
     /// state event stays small.
     pub last_transition: Option<Box<TransitionReport>>,
-    pub queue: Vec<QueueItem>,
+    /// Shared with the engine's queue (a pointer copy per snapshot). Not
+    /// serialized here: the desktop DTO adds it only when `queue_rev` moved.
+    #[serde(skip)]
+    pub queue: Arc<Vec<QueueItem>>,
+    /// Revision of `queue`; changes whenever its items do.
+    pub queue_rev: u64,
     pub stream: Option<StreamMeta>,
 }
 
@@ -255,7 +260,8 @@ fn build_state(inner: &Inner) -> PlaybackState {
         dsp_stages,
         crossfade_ms: inner.dsp.lock().unwrap().crossfade.duration_ms,
         last_transition: inner.last_transition.lock().unwrap().clone().map(Box::new),
-        queue: q.items().to_vec(),
+        queue: q.shared_items(),
+        queue_rev: q.rev(),
         stream: inner.stream_meta.lock().unwrap().clone(),
     }
 }
@@ -692,6 +698,8 @@ impl Engine {
                     q.volume()
                 };
                 self.inner.volume.store(clamped.to_bits(), Ordering::SeqCst);
+                // A paused worker is parked; wake it to apply the volume.
+                self.inner.notify_worker();
                 self.emit(EngineEvent::State(self.state()));
             }
             EngineCmd::SetShuffle(on) => {
@@ -1781,6 +1789,24 @@ fn late_fallback(mut fallback: TransitionPlan) -> TransitionPlan {
     fallback
 }
 
+/// Block while playback is paused, until a command wakes the worker (resume,
+/// a new generation, shutdown, a DSP or volume change). Track 13 (EF-D4):
+/// replaces a 20 ms sleep loop, so a paused app no longer wakes 50 times a
+/// second. The predicate is checked under `wake_lock`, like
+/// `wait_for_stream_event`, so a notify cannot slip in between; the timeout
+/// is only a safety net. Returns after any wake so the caller re-runs its
+/// per-iteration checks (DSP version, volume) before parking again.
+fn park_while_paused(inner: &Inner, gen: u64) {
+    let guard = inner.wake_lock.lock().unwrap();
+    if !inner.paused.load(Ordering::SeqCst)
+        || inner.generation.load(Ordering::SeqCst) != gen
+        || inner.shutdown.load(Ordering::SeqCst)
+    {
+        return;
+    }
+    let _ = inner.wake.wait_timeout(guard, Duration::from_secs(1)).unwrap();
+}
+
 /// Write `buf` in short slices so a long preroll (up to the AutoMix hold)
 /// stays responsive: a superseded session stops between slices and a pause
 /// holds there. Each slice feeds the level meter at `rate` (the device's).
@@ -1804,7 +1830,7 @@ fn write_responsive(
             return Ok(false);
         }
         if inner.paused.load(Ordering::SeqCst) {
-            std::thread::sleep(Duration::from_millis(20));
+            park_while_paused(inner, gen);
             continue;
         }
         let end = (start + slice).min(buf.len());
@@ -2225,11 +2251,12 @@ fn run_session(
                 }
             }
             if inner.paused.load(Ordering::SeqCst) {
-                std::thread::sleep(Duration::from_millis(20));
+                // The position cannot move while paused, so nothing is
+                // emitted; the worker sleeps until a command wakes it.
+                park_while_paused(inner, gen);
                 if inner.generation.load(Ordering::SeqCst) != gen {
                     return SessionOutcome::Superseded;
                 }
-                emit_position_if_due(inner, frames, rate, &mut last_emit);
                 continue;
             }
             // A sleep fade ends the session on this track; never cross into
@@ -4066,6 +4093,35 @@ mod tests {
         let after = positions.load(Ordering::SeqCst);
         std::thread::sleep(Duration::from_millis(1200));
         assert_eq!(positions.load(Ordering::SeqCst), after, "position events kept coming after shutdown");
+    }
+
+    /// Track 13 (EF-D4): a paused session is idle. It emits no `Position`
+    /// (the position cannot move) and still resumes to the end of the track.
+    #[test]
+    fn a_paused_session_is_silent_and_resumes() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        let positions = Arc::new(AtomicUsize::new(0));
+        let counter = positions.clone();
+        engine.subscribe(Arc::new(move |e| {
+            if matches!(e, EngineEvent::Position { .. }) {
+                counter.fetch_add(1, Ordering::SeqCst);
+            }
+        }));
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| !output.samples().is_empty());
+        engine.handle(EngineCmd::PlayPause).unwrap();
+        assert!(!engine.state().playing);
+        std::thread::sleep(Duration::from_millis(300));
+        let paused_at = positions.load(Ordering::SeqCst);
+        let written = output.samples().len();
+        std::thread::sleep(Duration::from_millis(1200));
+        assert_eq!(positions.load(Ordering::SeqCst), paused_at, "position events while paused");
+        assert_eq!(output.samples().len(), written, "audio was written while paused");
+
+        engine.handle(EngineCmd::PlayPause).unwrap();
+        wait_for(|| output.samples().len() >= 176_400);
+        assert_eq!(output.samples().len(), 176_400, "resume did not finish the track");
     }
 
     struct Gate {

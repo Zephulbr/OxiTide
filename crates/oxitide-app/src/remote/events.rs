@@ -294,7 +294,7 @@ impl Hub {
         let playback = self.session.playback();
         let (queue, current_index) = match playback {
             Some(p) => (p.queue, p.current_index),
-            None => (Vec::new(), None),
+            None => (Default::default(), None),
         };
         let rev = self.inner.lock().unwrap().rev.observe(fingerprint(&queue));
         let items = queue.iter().skip(offset).take(limit).cloned().collect();
@@ -541,7 +541,8 @@ pub(crate) mod tests {
             dsp_stages: vec!["EQ"],
             crossfade_ms: 0,
             last_transition: None,
-            queue,
+            queue: Arc::new(queue),
+            queue_rev: 1,
             stream: None,
         }
     }
