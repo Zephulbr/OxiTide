@@ -513,6 +513,11 @@ fn build_player(
             }
             EngineEvent::State(snapshot) => {
                 crate::tray::update_tooltip(&handle, snapshot.current.as_ref());
+                let view = crate::thumbbar::View {
+                    playing: snapshot.playing,
+                    has_track: snapshot.current.is_some(),
+                };
+                crate::thumbbar::set_view(&handle, view);
             }
             _ => {}
         }

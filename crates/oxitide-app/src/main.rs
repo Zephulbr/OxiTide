@@ -18,6 +18,7 @@ mod scheme;
 mod scrobble;
 mod session;
 mod state;
+mod thumbbar;
 mod titlebar;
 mod track_flags;
 mod tray;
@@ -272,6 +273,7 @@ fn main() {
             if let Some(window) = app.get_webview_window("main") {
                 // Before the first show, so the system frame never flashes.
                 titlebar::install(&window);
+                thumbbar::install(&window);
                 let config = app.state::<AppState>().config();
                 if let Err(e) = window::apply(&window, &config) {
                     tracing::warn!("failed to apply window geometry: {e}");
