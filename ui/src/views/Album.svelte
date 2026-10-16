@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api, trackToQueueItem, type Album as AlbumT, type AlbumInfo, type Track } from "../lib/api";
+  import { api, trackToQueueItem, type Album as AlbumT, type Track } from "../lib/api";
   import ArtistLinks from "../lib/components/ArtistLinks.svelte";
   import Cover from "../lib/components/Cover.svelte";
   import DetailAction from "../lib/components/DetailAction.svelte";
@@ -10,7 +10,7 @@
   import TrackTable from "../lib/components/TrackTable.svelte";
   import { volumeSections } from "../lib/albumVolumes";
   import { copyText } from "../lib/clipboard";
-  import { formatTotalDuration } from "../lib/format";
+  import { formatReleaseDate, formatTotalDuration } from "../lib/format";
   import { isAlbumRelease } from "../lib/media";
   import { perf } from "../lib/perf.svelte";
   import { makeSyntheticAlbum } from "../lib/perfFixture";
@@ -34,32 +34,22 @@
   }: { id: number; nav: Nav; player: Player; favorites: Favorites; playlistActions: PlaylistActions; toasts: Toasts } = $props();
   let album = $state<AlbumT | null>(null);
   let tracks = $state<Track[]>([]);
-  let info = $state<AlbumInfo | null>(null);
   let loading = $state(true);
   let error = $state("");
 
   const view = createTrackView(() => tracks);
 
-  // "12 TRACKS (43:21)" — album totals with loaded-item fallback.
+  // "FEB 11, 2014 · 12 TRACKS (43:21)" — release date (when known), then album
+  // totals with loaded-item fallback. The stats line is the only place the
+  // release date shows; copyright/UPC were dropped as noise.
   const stats = $derived.by(() => {
     if (!album) return "";
     const count = album.numberOfTracks || tracks.length;
     const seconds = album.duration || tracks.reduce((sum, t) => sum + t.duration, 0);
     const label = `${count} ${count === 1 ? "TRACK" : "TRACKS"}`;
-    return seconds > 0 ? `${label} (${formatTotalDuration(seconds)})` : label;
-  });
-
-  // Release facts from the public v2 album; the public payload has no label,
-  // so the row shows what exists and omits the rest (spec §6.2).
-  const facts = $derived.by(() => {
-    const rows: { label: string; value: string }[] = [];
-    if (info?.releaseDate) rows.push({ label: "Released", value: info.releaseDate });
-    if (info?.copyright) rows.push({ label: "Copyright", value: info.copyright });
-    if (info?.barcodeId) rows.push({ label: "UPC", value: info.barcodeId });
-    if (info && info.numberOfVolumes && info.numberOfVolumes > 1) {
-      rows.push({ label: "Volumes", value: String(info.numberOfVolumes) });
-    }
-    return rows;
+    const totals = seconds > 0 ? `${label} (${formatTotalDuration(seconds)})` : label;
+    const released = formatReleaseDate(album.releaseDate);
+    return released ? `${released} · ${totals}` : totals;
   });
   const volumes = $derived(volumeSections(tracks));
 
@@ -67,14 +57,12 @@
     loading = true;
     error = "";
     try {
-      const [loadedAlbum, loadedTracks, loadedInfo] = await Promise.all([
+      const [loadedAlbum, loadedTracks] = await Promise.all([
         api.getAlbum(id),
         api.getAlbumTracks(id),
-        api.getAlbumInfo(id).catch(() => null),
       ]);
       album = loadedAlbum;
       tracks = loadedTracks;
-      info = loadedInfo;
     } catch (e) {
       error = String(e);
     } finally {
@@ -93,7 +81,6 @@
       const data = makeSyntheticAlbum(count);
       album = data.album;
       tracks = data.tracks;
-      info = null;
       error = "";
       loading = false;
       requestAnimationFrame(() =>
@@ -189,16 +176,6 @@
         <DetailAction icon="share-2" label="Share" title="Copy link" onclick={share} />
       {/snippet}
     </DetailHeader>
-    {#if facts.length > 0}
-      <dl class="facts">
-        {#each facts as fact (fact.label)}
-          <div>
-            <dt>{fact.label}</dt>
-            <dd>{fact.value}</dd>
-          </div>
-        {/each}
-      </dl>
-    {/if}
     <TrackTable
       {view}
       {nav}
@@ -216,25 +193,3 @@
 {:else}
   <EmptyState message="Album not found." />
 {/if}
-
-<style>
-  .facts {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px 28px;
-    margin: -24px 0 24px;
-    padding: 0;
-  }
-  .facts dt {
-    font-size: 10.5px;
-    font-weight: 700;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--text-muted);
-  }
-  .facts dd {
-    margin: 2px 0 0;
-    font-size: 13.5px;
-    overflow-wrap: anywhere;
-  }
-</style>

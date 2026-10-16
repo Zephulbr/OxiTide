@@ -71,6 +71,8 @@ export interface PageItem {
   release_type?: string | null;
   /// Page links: the TIDAL page they open (`pages/…`), validated in Rust.
   api_path?: string | null;
+  /// Artists with ids, so cards can link them; absent when none carry an id.
+  artist_refs?: ArtistRef[] | null;
 }
 export interface PageSection { title: string; items: PageItem[]; kind: string }
 /// One release activity from an artist the user follows (v2 feed).
@@ -85,6 +87,8 @@ export interface FeedActivity {
   seen: boolean;
   /// `ALBUM` / `EP` / `SINGLE`; empty when TIDAL omits it.
   releaseType: string;
+  /// Credited artists with ids (main artists when present).
+  artists: ArtistRef[];
 }
 export interface SearchGroup<T> { items: T[] }
 export interface SearchResults {

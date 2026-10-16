@@ -48,6 +48,7 @@
       subtitle: group.artistName,
       item_type: "ALBUM",
       artwork: group.cover,
+      artist_refs: [{ id: group.artistId, name: group.artistName }],
     })),
   );
   const radios = $derived(suggestions?.radios ?? []);

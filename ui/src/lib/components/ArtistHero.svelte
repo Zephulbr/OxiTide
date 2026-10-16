@@ -2,12 +2,14 @@
   import type { Snippet } from "svelte";
   import { api, type Artist, type ArtistProfile } from "../api";
   import { appearance } from "../appearance.svelte";
-  import { isHttpUrl, linkLabel } from "../artistLinks";
+  import { isHttpUrl, linkBrand, linkLabel } from "../artistLinks";
   import { ARTIST_PICTURE_SIZE, coverUrl } from "../artwork";
   import { formatCount } from "../format";
   import { heroScrim } from "../heroScrim";
   import BioText from "./BioText.svelte";
+  import BrandIcon from "./BrandIcon.svelte";
   import Cover from "./Cover.svelte";
+  import DetailAction from "./DetailAction.svelte";
   import Icon from "./Icon.svelte";
   import Modal from "./Modal.svelte";
 
@@ -15,6 +17,7 @@
     artist,
     profile,
     disabled = false,
+    favorite,
     onPlay,
     onShuffle,
     onOpenLink,
@@ -24,6 +27,7 @@
     artist: Artist;
     profile: ArtistProfile | null;
     disabled?: boolean;
+    favorite?: { active: boolean; onToggle: () => void };
     onPlay: () => void;
     onShuffle: () => void;
     onOpenLink: (url: string) => void;
@@ -33,6 +37,15 @@
 
   let tint = $state<{ primary: string; secondary: string; tertiary: string } | null>(null);
   let bioModal = $state(false);
+  let linksModal = $state(false);
+
+  function linkHost(url: string): string {
+    try {
+      return new URL(url).hostname.replace(/^www\./, "");
+    } catch {
+      return url;
+    }
+  }
   let canExpand = $state(false);
   let bioEl = $state<HTMLParagraphElement | null>(null);
 
@@ -115,19 +128,6 @@
           <p class="stats tnum">{formatCount(fans)} {fans === 1 ? "fan" : "fans"}</p>
         {/if}
       </div>
-      <div class="controls">
-        <div class="transport">
-          <button class="btn-play" onclick={onPlay} {disabled}>
-            <Icon name="play" size={20} /> Play
-          </button>
-          <button class="btn-shuffle" onclick={onShuffle} {disabled}>
-            <Icon name="shuffle" size={20} /> Shuffle
-          </button>
-        </div>
-        {#if actions}
-          <div class="actions">{@render actions()}</div>
-        {/if}
-      </div>
       {#if bioSegments.some((segment) => segment.text.trim() !== "")}
         <p class="bio" bind:this={bioEl}><BioText segments={bioSegments} onArtist={onOpenArtist} /></p>
         <!-- Always laid out; the measurement only toggles visibility. The
@@ -143,23 +143,77 @@
           Read more
         </button>
       {/if}
-      {#if links.length > 0}
-        <div class="socials">
-          {#each links as link (link.url)}
+      <!-- One bottom row: transport and Favorite, with the secondary actions
+           (Links last) pushed to the far edge. It wraps in CSS only (AR-9). -->
+      <div class="controls">
+        <div class="transport">
+          <button class="btn-play" onclick={onPlay} {disabled}>
+            <Icon name="play" size={22} /> Play
+          </button>
+          <button class="btn-shuffle" onclick={onShuffle} {disabled}>
+            <Icon name="shuffle" size={22} /> Shuffle
+          </button>
+          {#if favorite}
             <button
-              class="social"
-              title={link.url}
-              aria-label={`Open ${linkLabel(link.site, link.url)}`}
-              onclick={() => onOpenLink(link.url)}
+              class="btn-favorite"
+              class:on={favorite.active}
+              aria-pressed={favorite.active}
+              aria-label={favorite.active ? "Unfavorite artist" : "Favorite artist"}
+              title={favorite.active ? "Unfavorite artist" : "Favorite artist"}
+              onclick={favorite.onToggle}
             >
-              <Icon name="external-link" size={14} />
-              <span>{linkLabel(link.site, link.url)}</span>
+              <Icon name="heart" size={22} />
             </button>
-          {/each}
+          {/if}
         </div>
-      {/if}
+        {#if actions || links.length > 0}
+          <div class="actions">
+            {@render actions?.()}
+            {#if links.length > 0}
+              <DetailAction
+                icon="link"
+                label="Links"
+                title="Artist links"
+                onclick={() => (linksModal = true)}
+              />
+            {/if}
+          </div>
+        {/if}
+      </div>
     </div>
   </div>
+  {#if linksModal && links.length > 0}
+    <Modal title={`${artist.name} elsewhere`} onclose={() => (linksModal = false)}>
+      <ul class="links">
+        {#each links as link (link.url)}
+          {@const brand = linkBrand(link.site, link.url)}
+          <li>
+            <button
+              class="link"
+              title={link.url}
+              onclick={() => {
+                linksModal = false;
+                onOpenLink(link.url);
+              }}
+            >
+              <span class="logo">
+                {#if brand}
+                  <BrandIcon {brand} size={18} />
+                {:else}
+                  <Icon name="globe" size={18} />
+                {/if}
+              </span>
+              <span class="link-text">
+                <span class="link-label">{linkLabel(link.site, link.url)}</span>
+                <span class="link-host">{linkHost(link.url)}</span>
+              </span>
+              <Icon name="external-link" size={14} />
+            </button>
+          </li>
+        {/each}
+      </ul>
+    </Modal>
+  {/if}
   {#if bioModal && bioSegments.length > 0}
     <Modal title={`About ${artist.name}`} onclose={() => (bioModal = false)}>
       <div class="bio-full">
@@ -275,10 +329,9 @@
   .controls {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     flex-wrap: wrap;
     gap: 12px 16px;
-    margin-top: 12px;
+    margin-top: 8px;
   }
   .transport {
     display: flex;
@@ -289,10 +342,11 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 9px;
-    height: 44px;
-    padding: 0 22px;
+    gap: 10px;
+    height: 52px;
+    padding: 0 30px;
     border-radius: var(--radius-control);
+    font-size: 16px;
     font-weight: 600;
     transition:
       background var(--dur-micro) var(--ease-enter),
@@ -320,10 +374,29 @@
   .transport > button:disabled {
     opacity: 0.5;
   }
+  .transport > .btn-favorite {
+    width: 52px;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--surface-float) 70%, transparent);
+    color: var(--text-muted);
+  }
+  .btn-favorite:hover {
+    color: var(--text);
+    background: var(--surface-2);
+  }
+  .btn-favorite.on {
+    color: var(--accent);
+  }
+  .btn-favorite.on :global(svg) {
+    fill: currentColor;
+  }
   .actions {
     display: flex;
     align-items: center;
     gap: 4px;
+    margin-left: auto;
   }
   .bio {
     display: -webkit-box;
@@ -358,28 +431,53 @@
   .more.unneeded {
     visibility: hidden;
   }
-  .socials {
+  .links {
     display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 4px;
+    flex-direction: column;
+    gap: 2px;
+    min-width: min(360px, 80vw);
+    margin: 0;
+    padding: 0;
+    list-style: none;
   }
-  .social {
-    display: inline-flex;
+  .link {
+    display: flex;
     align-items: center;
-    gap: 6px;
-    height: 30px;
-    padding: 0 12px;
-    border: 1px solid var(--line);
-    border-radius: var(--card-badge);
-    background: color-mix(in srgb, var(--surface-float) 60%, transparent);
-    backdrop-filter: blur(var(--glass-blur));
+    gap: 12px;
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: var(--radius-control);
     color: var(--text-muted);
-    font-size: 12.5px;
-    font-weight: 600;
+    text-align: left;
   }
-  .social:hover {
+  .link:hover {
     color: var(--text);
     background: var(--surface-2);
+  }
+  .logo {
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    background: var(--surface-3);
+    color: var(--text);
+  }
+  .link-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .link-label {
+    color: var(--text);
+    font-weight: 600;
+  }
+  .link-host {
+    overflow: hidden;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 </style>

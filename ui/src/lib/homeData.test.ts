@@ -50,12 +50,14 @@ describe("feed helpers", () => {
   const activity = (id: number, seen: boolean): FeedActivity => ({
     id, title: `r${id}`, subtitle: "Album · X", artwork: "u", explicit: false,
     hires: false, occurredAt: "2026-10-01T00:00:00Z", seen, releaseType: "SINGLE",
+    artists: [{ id: 3, name: "X" }],
   });
 
   it("maps releases to album cards", () => {
     const [first] = feedAlbumItems([activity(7, false)]);
     expect(first).toMatchObject({
       id: "7", item_type: "ALBUM", title: "r7", artwork: "u", release_type: "SINGLE",
+      artist_refs: [{ id: 3, name: "X" }],
     });
     expect(feedAlbumItems([{ ...activity(8, false), releaseType: "" }])[0].release_type).toBeNull();
   });

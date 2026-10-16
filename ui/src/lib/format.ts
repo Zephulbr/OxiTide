@@ -41,6 +41,19 @@ export function formatCount(n: number): string {
   return compact(thousands, "K");
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/// TIDAL release dates (`2014-02-11`, sometimes just a year) as `Feb 11, 2014`.
+/// Anything unparseable yields "" so callers can omit it.
+export function formatReleaseDate(date: string | null | undefined): string {
+  const match = /^(\d{4})(?:-(\d{2})-(\d{2}))?/.exec(date ?? "");
+  if (!match) return "";
+  const [, year, month, day] = match;
+  const name = month ? MONTHS[Number(month) - 1] : undefined;
+  if (!name || !day) return year;
+  return `${name} ${Number(day)}, ${year}`;
+}
+
 function compact(scaled: number, suffix: string): string {
   const rounded = scaled >= 100 ? Math.round(scaled) : Math.round(scaled * 10) / 10;
   return `${rounded}${suffix}`;

@@ -113,7 +113,14 @@ Hover: the card's own cover colour (`--card-tint`, a registered colour, from
 `lib/coverTint.ts` → `analyze_cover`, prefetched as cards scroll into view) spreads from
 the cover and blends into whatever the card sits on; the cover lifts 3px with a deeper
 shadow; tracks and cards that start playback (`playButton`) show an accent play button at
-the cover's bottom-right. Feed releases keep their own card (`FeedTimeline`), whose
+the cover's bottom-right. **Collection cards** (albums, playlists, mixes, inside a routed
+page that provides `lib/cardActions.ts`) split into separate targets: the cover (the tab
+stop) and the title open the page, the artist names link to their pages (`ArtistLinks`,
+from `artist_refs`; otherwise the plain subtitle), the accent button at the bottom-right is
+a real button that plays the collection, and right-click / Shift+F10 opens a menu (Play,
+Shuffle, Play next, Add to queue, Add to playlist, Favorite for albums, Go to artist, Copy
+link). Tracks, artists and action cards (`playButton`, e.g. Home's radios) stay one
+button. Feed releases keep their own card (`FeedTimeline`), whose
 hover is still `--surface-2`. Profiles
 draw each artist as a **record** (portrait as the label on a vinyl disc; `--vinyl*`
 material tokens, black in every mode) and, in name order, letter groups as crate

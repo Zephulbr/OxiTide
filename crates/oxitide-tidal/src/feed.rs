@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::client::TidalClient;
 use crate::error::Result;
+use crate::models::ArtistRef;
 
 /// One entry in the signed-in user's feed: a release activity from an artist
 /// they follow (`GET /v2/feed/activities`). History-mix activities are not
@@ -25,6 +26,9 @@ pub struct FeedActivity {
     /// Release type: `ALBUM`, `EP` or `SINGLE` (empty when absent).
     #[serde(default)]
     pub release_type: String,
+    /// Credited artists with ids (main artists when present), for links.
+    #[serde(default)]
+    pub artists: Vec<ArtistRef>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -74,6 +78,8 @@ struct RawFeedAlbum {
 #[derive(Debug, Deserialize)]
 struct RawFeedArtist {
     #[serde(default)]
+    id: Option<u64>,
+    #[serde(default)]
     name: String,
 }
 
@@ -83,20 +89,26 @@ fn activity_from_raw(raw: RawActivity) -> Option<FeedActivity> {
         return None;
     }
     let album = follow.album?;
-    let artists: Vec<String> = if album.main_artists.is_empty() {
-        album
-            .artists
-            .into_iter()
-            .map(|artist| artist.name)
-            .collect()
+    let credited = if album.main_artists.is_empty() {
+        album.artists
     } else {
-        album
-            .main_artists
-            .into_iter()
-            .map(|artist| artist.name)
-            .collect()
+        album.main_artists
     };
-    let artists = artists.join(", ");
+    let artist_refs: Vec<ArtistRef> = credited
+        .iter()
+        .filter(|artist| !artist.name.is_empty())
+        .filter_map(|artist| {
+            artist.id.filter(|id| *id > 0).map(|id| ArtistRef {
+                id,
+                name: artist.name.clone(),
+            })
+        })
+        .collect();
+    let artists = credited
+        .into_iter()
+        .map(|artist| artist.name)
+        .collect::<Vec<_>>()
+        .join(", ");
     let (label, separator) = match album.album_type.as_str() {
         "SINGLE" => ("Single", " by "),
         "EP" => ("EP", " by "),
@@ -117,6 +129,7 @@ fn activity_from_raw(raw: RawActivity) -> Option<FeedActivity> {
         occurred_at: follow.occurred_at,
         seen: raw.seen,
         release_type: album.album_type,
+        artists: artist_refs,
     })
 }
 
@@ -238,6 +251,13 @@ mod tests {
             .await;
         let activities = client(&server).feed_activities().await.unwrap();
         assert_eq!(activities[0].subtitle, "Single by Queen");
+        assert_eq!(
+            activities[0].artists,
+            [ArtistRef {
+                id: 1,
+                name: "Queen".into()
+            }]
+        );
         assert!(activities[0].explicit);
         assert!(activities[0].hires);
         assert!(activities[0].seen);

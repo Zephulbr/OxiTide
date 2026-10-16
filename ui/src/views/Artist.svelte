@@ -18,8 +18,6 @@
   import Loading from "../lib/components/Loading.svelte";
   import MediaCard from "../lib/components/MediaCard.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
-  import { menu } from "../lib/menu.svelte";
-  import { artistMoreItems } from "../lib/menus";
   import { playSource } from "../lib/playSource.svelte";
   import { trackFlags } from "../lib/trackFlags.svelte";
   import { playArtistRadio } from "../lib/radio";
@@ -176,18 +174,6 @@
     });
   }
 
-  function openMenu(event: MouseEvent) {
-    menu.show(
-      event.clientX,
-      event.clientY,
-      artistMoreItems({
-        share: () => void share(),
-        mixId: artist?.mixes?.ARTIST_MIX ?? null,
-        openMix: (mixId) => nav.goto({ name: "mix", id: mixId }),
-      }),
-      event.currentTarget as HTMLElement,
-    );
-  }
 
   async function openLink(url: string) {
     try {
@@ -208,10 +194,15 @@
   <ErrorState message={error} onRetry={load} />
 {:else if artist}
   {@const artistId = artist.id}
+  {@const mixId = artist.mixes?.ARTIST_MIX ?? null}
   <ArtistHero
     {artist}
     {profile}
     disabled={topTracks.length === 0}
+    favorite={{
+      active: favorites.hasArtist(artistId),
+      onToggle: () => favorites.toggleArtist(artistId),
+    }}
     onPlay={() => queueTop(0)}
     onShuffle={() => queueTop(0, true)}
     onOpenLink={openLink}
@@ -224,14 +215,15 @@
         title="Start artist radio"
         onclick={() => void playArtistRadio(artistId, toasts)}
       />
-      <DetailAction
-        icon="heart"
-        label={favorites.hasArtist(artistId) ? "Favorited" : "Favorite"}
-        active={favorites.hasArtist(artistId)}
-        title={favorites.hasArtist(artistId) ? "Unfavorite artist" : "Favorite artist"}
-        onclick={() => favorites.toggleArtist(artistId)}
-      />
-      <DetailAction icon="ellipsis" label="More" title="More options" onclick={openMenu} />
+      <DetailAction icon="share-2" label="Share" title="Copy artist link" onclick={() => void share()} />
+      {#if mixId}
+        <DetailAction
+          icon="disc-3"
+          label="Artist mix"
+          title="Open artist mix"
+          onclick={() => nav.goto({ name: "mix", id: mixId })}
+        />
+      {/if}
     {/snippet}
   </ArtistHero>
 

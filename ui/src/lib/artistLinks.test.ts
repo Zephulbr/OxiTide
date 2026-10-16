@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isHttpUrl, linkLabel } from "./artistLinks";
+import { isHttpUrl, linkBrand, linkLabel } from "./artistLinks";
 
 describe("linkLabel", () => {
   it("maps known site keys", () => {
@@ -12,6 +12,22 @@ describe("linkLabel", () => {
   });
   it("falls back to the site key for unparseable urls", () => {
     expect(linkLabel("MYSTERY", "not a url")).toBe("MYSTERY");
+  });
+});
+
+describe("linkBrand", () => {
+  it("maps known site keys", () => {
+    expect(linkBrand("TWITTER", "https://twitter.com/acdc")).toBe("x");
+    expect(linkBrand("instagram", "https://instagram.com/acdc")).toBe("instagram");
+  });
+  it("falls back to the host, including subdomains", () => {
+    expect(linkBrand("SOMETHING_NEW", "https://en.wikipedia.org/wiki/AC/DC")).toBe("wikipedia");
+    expect(linkBrand("", "https://acdc.bandcamp.com")).toBe("bandcamp");
+  });
+  it("returns null for unknown hosts and junk", () => {
+    expect(linkBrand("OFFICIAL_HOMEPAGE", "https://acdc.com")).toBeNull();
+    expect(linkBrand("", "https://notx.com")).toBeNull();
+    expect(linkBrand("", "not a url")).toBeNull();
   });
 });
 

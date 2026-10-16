@@ -681,7 +681,7 @@
         {onLogout}
         onQualityDisplay={(mode) => (qualityDisplay = mode)}
       />
-      <TrackInfoHost {player} {nav} />
+      <TrackInfoHost {nav} />
       <PlaylistPicker actions={playlistActions} onnavigate={(id) => nav.goto({ name: "playlist", id })} />
       <CollectionDialogs actions={collectionActions} />
     </div>
@@ -752,7 +752,7 @@
       {/if}
     {/if}
     <PlayerBar {player} {qualityDisplay} {favorites} {nav} {mini} {sleepTimer} />
-    <TrackInfoHost {player} {nav} />
+    <TrackInfoHost {nav} />
     <PlaylistPicker actions={playlistActions} onnavigate={(id) => nav.goto({ name: "playlist", id })} />
     <CollectionDialogs actions={collectionActions} />
   </div>

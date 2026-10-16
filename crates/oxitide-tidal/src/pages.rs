@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::client::TidalClient;
 use crate::error::{Error, Result};
+use crate::models::ArtistRef;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PageItem {
@@ -35,6 +36,10 @@ pub struct PageItem {
     /// `pages/genre_hip_hop`. Only paths `is_page_path` accepts are kept.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_path: Option<String>,
+    /// The payload's artists with their ids, for linking album cards to
+    /// artist pages; entries without an id are left out.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub artist_refs: Vec<ArtistRef>,
 }
 
 /// A page path the client may fetch: `pages/` followed by `/`-separated
@@ -161,6 +166,8 @@ struct RawItem {
 
 #[derive(Debug, Deserialize)]
 struct RawArtist {
+    #[serde(default)]
+    pub id: Option<u64>,
     #[serde(default)]
     pub name: String,
 }
@@ -323,6 +330,17 @@ fn page_item_from_raw(module_type: &str, mut raw: RawItem) -> PageItem {
         .map(|artist| artist.name.clone())
         .filter(|name| !name.is_empty())
         .collect();
+    let artist_refs: Vec<ArtistRef> = raw
+        .artists
+        .iter()
+        .filter(|artist| !artist.name.is_empty())
+        .filter_map(|artist| {
+            artist.id.filter(|id| *id > 0).map(|id| ArtistRef {
+                id,
+                name: artist.name.clone(),
+            })
+        })
+        .collect();
     let subtitle = raw.subtitle.or(raw.description).or_else(|| {
         if item_type.to_uppercase().contains("TRACK") {
             (!artists.is_empty()).then(|| artists.join(", "))
@@ -356,6 +374,7 @@ fn page_item_from_raw(module_type: &str, mut raw: RawItem) -> PageItem {
         album_title,
         release_type,
         api_path,
+        artist_refs,
     }
 }
 
@@ -401,6 +420,7 @@ pub fn page_item_from_value(value: &serde_json::Value) -> Option<PageItem> {
         album_title: None,
         release_type,
         api_path: None,
+        artist_refs: Vec::new(),
     })
 }
 
@@ -739,7 +759,8 @@ mod tests {
             .and(path("/pages/home"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "rows": [{"modules": [{"type": "ALBUM_LIST", "title": "New", "pagedList": {"items": [
-                    {"id": 1, "title": "LP", "type": "ALBUM"},
+                    {"id": 1, "title": "LP", "type": "ALBUM",
+                     "artists": [{"id": 9, "name": "A"}, {"name": "No id"}]},
                     {"id": 2, "title": "One", "type": "SINGLE"},
                     {"type": "ALBUM", "item": {"id": 3, "title": "Short", "type": "EP"}}
                 ]}}]}]
@@ -760,6 +781,16 @@ mod tests {
                 ("ALBUM", Some("EP"))
             ]
         );
+        // Linkable artists keep their ids; the name-only one stays in `artists`.
+        let first = &sections[0].items[0];
+        assert_eq!(
+            first.artist_refs,
+            [ArtistRef {
+                id: 9,
+                name: "A".into()
+            }]
+        );
+        assert_eq!(first.artists, ["A", "No id"]);
     }
 
     /// `PAGE_LINKS`-style rows carry their artwork in `imageId`.

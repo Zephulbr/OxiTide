@@ -10,7 +10,6 @@
   import Cover from "../lib/components/Cover.svelte";
   import DiscArt from "../lib/components/DiscArt.svelte";
   import Icon from "../lib/components/Icon.svelte";
-  import InfoPanel from "../lib/components/InfoPanel.svelte";
   import LyricsPanel from "../lib/components/LyricsPanel.svelte";
   import { dspBadgeTitle } from "../lib/dsp";
   import { formatDuration } from "../lib/format";
@@ -78,9 +77,8 @@
   /// miss (trackId matches, no lyrics, not loading) falls back to Next Up.
   const showLyrics = $derived(lyrics.tab === "lyrics" && (awaitingLyrics || currentLyrics !== null));
   const hasLyrics = $derived(awaitingLyrics || currentLyrics !== null);
-  const showInfo = $derived(lyrics.tab === "info" && track !== null);
-  /// The spine layout (cover + side column) is shared by lyrics and info.
-  const wide = $derived(showLyrics || showInfo);
+  /// The spine layout (cover + side column) belongs to lyrics.
+  const wide = $derived(showLyrics);
   /// Display-only tab: a settled no-lyrics miss shows the Next up fallback, so
   /// the Lyrics tab must not claim selection over an absent panel. The store
   /// keeps the user's choice, so a track with lyrics snaps back to Lyrics.
@@ -88,7 +86,7 @@
     track !== null && lyrics.tab === "lyrics" && !hasLyrics ? "next" : lyrics.tab,
   );
 
-  const NP_TABS = ["lyrics", "next", "info"] as const;
+  const NP_TABS = ["lyrics", "next"] as const;
 
   /// Vertical tablist keyboard pattern (spec §6.2): roving focus with
   /// Up/Down (wrapping) and Home/End; activation follows focus.
@@ -291,18 +289,6 @@
             >
               Next up
             </button>
-            <button
-              id="np-tab-info"
-              role="tab"
-              tabindex={effectiveTab === "info" ? 0 : -1}
-              aria-selected={effectiveTab === "info"}
-              aria-controls="np-panel-info"
-              class:active={effectiveTab === "info"}
-              onclick={() => lyrics.setTab("info")}
-              onkeydown={(event) => onTabKeydown(event, "info")}
-            >
-              Info
-            </button>
           </div>
         {/if}
       </div>
@@ -351,17 +337,6 @@
           {:else}
             <p class="muted loading">Loading lyrics…</p>
           {/if}
-        </div>
-      {:else if showInfo}
-        <div
-          class="lyrics-slot"
-          role="tabpanel"
-          id="np-panel-info"
-          aria-labelledby="np-tab-info"
-          in:fly={{ y: 8, duration: dur(320), delay: dur(80), easing: cubicOut }}
-          out:fly={{ y: 12, duration: dur(280), easing: cubicInOut }}
-        >
-          <InfoPanel trackId={track.track_id} {nav} onNavigate={() => nav.closeNowPlaying()} />
         </div>
       {:else}
         <div

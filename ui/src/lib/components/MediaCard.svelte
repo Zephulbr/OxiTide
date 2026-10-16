@@ -1,11 +1,15 @@
 <script lang="ts">
   import type { PageItem } from "../api";
   import { appearance } from "../appearance.svelte";
+  import { cardTarget, getCardActions } from "../cardActions";
   import { coverTint } from "../coverTint";
   import { isFullAlbum, isPlayableTrack, shapeForItemType } from "../media";
+  import { menuFor } from "../menu.svelte";
   import { playlistCovers } from "../playlistArt.svelte";
+  import ArtistLinks from "./ArtistLinks.svelte";
   import Cover from "./Cover.svelte";
   import Icon from "./Icon.svelte";
+  import NameLink from "./NameLink.svelte";
   import PlaylistCover from "./PlaylistCover.svelte";
 
   let {
@@ -38,6 +42,14 @@
   const fullAlbum = $derived(isFullAlbum(item));
   const playable = $derived(isPlayableTrack(item));
   const showPlay = $derived(playable || playButton);
+
+  /// Collection cards (albums, playlists, mixes) split into separate targets:
+  /// the cover and title open the page, the artists open theirs, the play
+  /// button plays it, and a context menu offers the rest. Without a provider
+  /// (or for action cards like Home's radios) the card stays one button.
+  const actions = getCardActions();
+  const target = $derived(actions && onclick && !playButton ? cardTarget(item) : null);
+  const artists = $derived(item.artist_refs ?? []);
 
   /// The card's own cover colour. Until it arrives (or when the cover cannot be
   /// analysed) the hover tint is the accent. It is prefetched when the card
@@ -79,27 +91,32 @@
   $effect(() => {
     if (visible) warm(false);
   });
+
 </script>
+
+{#snippet artwork()}
+  <span class="art-clip">
+    {#if collage}
+      <PlaylistCover
+        owned
+        playlist={item.id}
+        image={item.artwork}
+        size={variant === "row" ? 160 : 320}
+        radius={0}
+        alt=""
+      />
+    {:else}
+      <Cover uuid={item.artwork} size={variant === "row" ? 160 : 320} radius={0} alt="" />
+    {/if}
+  </span>
+  {#if shape === "mix"}
+    <span class="badge" aria-hidden="true"><Icon name="radio" size={12} /></span>
+  {/if}
+{/snippet}
 
 {#snippet body()}
   <span class="art" style:--thumb="{thumb}px">
-    <span class="art-clip">
-      {#if collage}
-        <PlaylistCover
-          owned
-          playlist={item.id}
-          image={item.artwork}
-          size={variant === "row" ? 160 : 320}
-          radius={0}
-          alt=""
-        />
-      {:else}
-        <Cover uuid={item.artwork} size={variant === "row" ? 160 : 320} radius={0} alt="" />
-      {/if}
-    </span>
-    {#if shape === "mix"}
-      <span class="badge" aria-hidden="true"><Icon name="radio" size={12} /></span>
-    {/if}
+    {@render artwork()}
     {#if showPlay}
       <span class="play-glyph" aria-hidden="true"><Icon name="play" size={variant === "row" ? 14 : 18} /></span>
     {/if}
@@ -110,7 +127,48 @@
   </span>
 {/snippet}
 
-{#if onclick}
+{#if target && actions && onclick}
+  {@const open = onclick}
+  {@const collection = target}
+  <div
+    class="media {variant} shape-{shape} split"
+    role="group"
+    aria-label={item.title}
+    class:full-album={fullAlbum}
+    class:playing
+    class:blocked
+    style:--card-tint={tint ?? undefined}
+    bind:this={el}
+    onpointerenter={() => warm(true)}
+    onfocusin={() => warm(true)}
+    use:menuFor={() => actions.menu(item, collection)}
+  >
+    <span class="art" style:--thumb="{thumb}px">
+      <!-- The cover is the card's tab stop; the title repeats its target, so
+           it stays out of the tab order. -->
+      <button type="button" class="cover-hit" aria-label={`Open ${item.title}`} onclick={open}>
+        {@render artwork()}
+      </button>
+      <button
+        type="button"
+        class="play-glyph"
+        aria-label={`Play ${item.title}`}
+        title="Play"
+        onclick={() => void actions.play(collection)}
+      >
+        <Icon name="play" size={variant === "row" ? 14 : 18} />
+      </button>
+    </span>
+    <span class="text">
+      <span class="title"><NameLink label={item.title} onOpen={open} focusable={false} /></span>
+      {#if artists.length > 0}
+        <span class="sub muted"><ArtistLinks {artists} onOpen={actions.openArtist} /></span>
+      {:else if item.subtitle}
+        <span class="sub muted">{item.subtitle}</span>
+      {/if}
+    </span>
+  </div>
+{:else if onclick}
   <button
     type="button"
     class="media {variant} shape-{shape}"
@@ -215,7 +273,8 @@
     transform-origin: left;
   }
   .media:not(.inert):hover::before,
-  .media:not(.inert):focus-visible::before {
+  .media:not(.inert):focus-visible::before,
+  .media.split:focus-within::before {
     opacity: 1;
     transform: none;
   }
@@ -248,7 +307,8 @@
     transition: transform var(--dur-state) var(--ease-enter);
   }
   .media:not(.inert):hover .art,
-  .media:not(.inert):focus-visible .art {
+  .media:not(.inert):focus-visible .art,
+  .media.split:focus-within .art {
     transform: translateY(-3px);
   }
   .row .art {
@@ -277,7 +337,8 @@
     transition: opacity var(--dur-state) var(--ease-enter);
   }
   .media:not(.inert):hover .art::before,
-  .media:not(.inert):focus-visible .art::before {
+  .media:not(.inert):focus-visible .art::before,
+  .media.split:focus-within .art::before {
     opacity: 1;
   }
   .art-clip :global(img) {
@@ -329,9 +390,40 @@
     height: 30px;
   }
   .media:hover .play-glyph,
-  .media:focus-visible .play-glyph {
+  .media:focus-visible .play-glyph,
+  .media.split:focus-within .play-glyph {
     opacity: 1;
     transform: none;
+  }
+  /* Split cards: the cover is its own button, and the play glyph is a real
+     button over it rather than decoration. */
+  .cover-hit {
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    border-radius: var(--art-radius);
+    background: none;
+    color: inherit;
+    cursor: pointer;
+  }
+  .cover-hit:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  button.play-glyph {
+    cursor: pointer;
+  }
+  .split button.play-glyph:hover {
+    filter: brightness(1.08);
+    transform: scale(1.06);
+  }
+  .split button.play-glyph:focus-visible {
+    outline: 2px solid var(--text);
+    outline-offset: 2px;
+  }
+  .split .text :global(.name-link:hover) {
+    color: var(--text);
   }
   .text {
     display: flex;

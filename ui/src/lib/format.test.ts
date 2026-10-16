@@ -1,5 +1,24 @@
 import { describe, it, expect } from "vitest";
-import { formatCount, formatDuration, formatListenTime, formatTotalDuration } from "./format";
+import {
+  formatCount,
+  formatDuration,
+  formatListenTime,
+  formatReleaseDate,
+  formatTotalDuration,
+} from "./format";
+
+describe("formatReleaseDate", () => {
+  it("formats full dates and bare years", () => {
+    expect(formatReleaseDate("2014-02-11")).toBe("Feb 11, 2014");
+    expect(formatReleaseDate("2002-12-01T00:00:00.000+0000")).toBe("Dec 1, 2002");
+    expect(formatReleaseDate("1999")).toBe("1999");
+  });
+  it("returns empty for missing or malformed dates", () => {
+    expect(formatReleaseDate(null)).toBe("");
+    expect(formatReleaseDate("soon")).toBe("");
+    expect(formatReleaseDate("2014-13-01")).toBe("2014");
+  });
+});
 
 describe("formatListenTime", () => {
   it("reads as an amount of time, never a clock", () => {

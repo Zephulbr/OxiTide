@@ -46,6 +46,7 @@
         item_type: "ALBUM",
         artwork: album.cover ?? null,
         release_type: album.type ?? null,
+        artist_refs: album.artists,
       }}
       <MediaCard {item} variant="tile" onclick={() => nav.goto({ name: "album", id: album.id })} />
     {/each}

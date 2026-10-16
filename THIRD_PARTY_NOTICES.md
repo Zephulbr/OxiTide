@@ -122,6 +122,9 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 - **Snap Layouts overlay technique** (`crates/oxitide-app/src/titlebar.rs`) —
   approach adapted from tauri-plugin-frame
   (https://github.com/clarifei/tauri-plugin-frame, MIT); not a dependency.
+- **Simple Icons** brand paths (`ui/src/lib/components/BrandIcon.svelte`) —
+  copied from simple-icons 16.35.0 (https://simpleicons.org, CC0-1.0). The
+  logos themselves remain trademarks of their respective owners.
 
 ## Rust dependencies
 

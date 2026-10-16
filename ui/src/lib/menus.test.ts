@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Playlist, Track } from "./api";
 import type { Favorites } from "./favorites.svelte";
 import {
-  artistMoreItems,
+  collectionCardMenuItems,
   historyMenuItems,
   libraryPlaylistMenuItems,
   queueMenuItems,
@@ -291,15 +291,52 @@ describe("libraryPlaylistMenuItems", () => {
   });
 });
 
-describe("artistMoreItems", () => {
-  it("artistMoreItems adds the mix action only when a mix exists", () => {
-    const openMix = vi.fn();
-    const without = artistMoreItems({ share: vi.fn(), mixId: null, openMix });
-    expect(without.map((item) => item.id)).toEqual(["share"]);
+describe("collectionCardMenuItems", () => {
+  function ctx(extra: Partial<Parameters<typeof collectionCardMenuItems>[0]> = {}) {
+    return {
+      play: vi.fn(),
+      shuffle: vi.fn(),
+      playNext: vi.fn(),
+      addToQueue: vi.fn(),
+      addToPlaylist: vi.fn(),
+      copyLink: vi.fn(),
+      ...extra,
+    };
+  }
 
-    const withMix = artistMoreItems({ share: vi.fn(), mixId: "m-1", openMix });
-    expect(withMix.map((item) => item.id)).toEqual(["share", "artist-mix"]);
-    withMix[1].run();
-    expect(openMix).toHaveBeenCalledWith("m-1");
+  it("lists playback, library and link actions", () => {
+    const items = collectionCardMenuItems(ctx());
+    expect(items.map((item) => item.id)).toEqual([
+      "play",
+      "shuffle",
+      "play-next",
+      "add-queue",
+      "add-playlist",
+      "copy-link",
+    ]);
+  });
+
+  it("adds the favorite toggle and artist links when given", () => {
+    const toggle = vi.fn();
+    const open = vi.fn();
+    const items = collectionCardMenuItems(
+      ctx({ favorite: { active: true, toggle }, goToArtists: [{ name: "A", open }] }),
+    );
+    const favorite = items.find((item) => item.id === "favorite")!;
+    expect(favorite.label).toBe("Unfavorite");
+    favorite.run();
+    expect(toggle).toHaveBeenCalledTimes(1);
+    const artist = items.find((item) => item.id === "go-artist")!;
+    expect(artist.divider).toBe(true);
+    artist.run();
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes each item to its callback", () => {
+    const c = ctx();
+    for (const item of collectionCardMenuItems(c)) item.run();
+    for (const fn of [c.play, c.shuffle, c.playNext, c.addToQueue, c.addToPlaylist, c.copyLink]) {
+      expect(fn).toHaveBeenCalledTimes(1);
+    }
   });
 });

@@ -58,7 +58,7 @@ describe("NowPlaying tabs", () => {
   it("wires tabs to panels with roving tabindex", async () => {
     await renderView();
     const tabs = screen.getAllByRole("tab");
-    expect(tabs.map((tab) => tab.id)).toEqual(["np-tab-lyrics", "np-tab-next", "np-tab-info"]);
+    expect(tabs.map((tab) => tab.id)).toEqual(["np-tab-lyrics", "np-tab-next"]);
 
     for (const tab of tabs) {
       expect(tab.getAttribute("aria-controls")).toMatch(/^np-panel-/);
@@ -81,11 +81,15 @@ describe("NowPlaying tabs", () => {
     expect(document.activeElement).toBe(document.getElementById("np-tab-next"));
     expect(document.getElementById("np-tab-next")!.getAttribute("aria-selected")).toBe("true");
 
-    await fireEvent.keyDown(document.getElementById("np-tab-next")!, { key: "End" });
-    expect(document.activeElement).toBe(document.getElementById("np-tab-info"));
-    expect(document.getElementById("np-tab-info")!.getAttribute("aria-selected")).toBe("true");
+    await fireEvent.keyDown(document.getElementById("np-tab-next")!, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(document.getElementById("np-tab-lyrics"));
+    expect(document.getElementById("np-tab-lyrics")!.getAttribute("aria-selected")).toBe("true");
 
-    await fireEvent.keyDown(document.getElementById("np-tab-info")!, { key: "Home" });
+    await fireEvent.keyDown(document.getElementById("np-tab-lyrics")!, { key: "End" });
+    expect(document.activeElement).toBe(document.getElementById("np-tab-next"));
+    expect(document.getElementById("np-tab-next")!.getAttribute("aria-selected")).toBe("true");
+
+    await fireEvent.keyDown(document.getElementById("np-tab-next")!, { key: "Home" });
     expect(document.activeElement).toBe(document.getElementById("np-tab-lyrics"));
     expect(document.getElementById("np-tab-lyrics")!.getAttribute("aria-selected")).toBe("true");
   });

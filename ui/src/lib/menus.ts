@@ -14,8 +14,7 @@ export interface TrackMenuContext {
   addToQueue(): void;
   addToPlaylist(): void;
   copyTitle(): void;
-  /// Opens the Info surface: the playing track routes to Now Playing's Info
-  /// tab, any other row opens the modal (host decides).
+  /// Opens the track info modal.
   trackInfo(): void;
   /// Opens the track's album; absent when it has none or it is the current
   /// page (name-links spec NL-D6).
@@ -153,18 +152,44 @@ export function queueMenuItems(ctx: GoToTargets & {
   return items;
 }
 
-/// The artist-page overflow ("More") menu: Share always, the artist mix when
-/// the parsed v1 payload exposes one (spec §6.3).
-export function artistMoreItems(ctx: {
-  share(): void;
-  mixId?: string | null;
-  openMix(id: string): void;
+/// Album / playlist / mix cards: playback, then library, the artists, and
+/// the link. Favorite is present for albums only (playlists and mixes have no
+/// favorite toggle here).
+export function collectionCardMenuItems(ctx: GoToTargets & {
+  play(): void;
+  shuffle(): void;
+  playNext(): void;
+  addToQueue(): void;
+  addToPlaylist(): void;
+  favorite?: { active: boolean; toggle(): void };
+  copyLink(): void;
 }): MenuItem[] {
-  const items: MenuItem[] = [{ id: "share", label: "Share", icon: "share-2", run: () => ctx.share() }];
-  if (ctx.mixId) {
-    const mixId = ctx.mixId;
-    items.push({ id: "artist-mix", label: "Artist mix", icon: "radio", run: () => ctx.openMix(mixId) });
+  const items: MenuItem[] = [
+    { id: "play", label: "Play", icon: "play", run: () => ctx.play() },
+    { id: "shuffle", label: "Shuffle", icon: "shuffle", run: () => ctx.shuffle() },
+    { id: "play-next", label: "Play next", icon: "skip-forward", run: () => ctx.playNext() },
+    { id: "add-queue", label: "Add to queue", icon: "plus", run: () => ctx.addToQueue() },
+    {
+      id: "add-playlist",
+      label: "Add to playlist",
+      icon: "list-plus",
+      divider: true,
+      run: () => ctx.addToPlaylist(),
+    },
+  ];
+  const favorite = ctx.favorite;
+  if (favorite) {
+    items.push({
+      id: "favorite",
+      label: favorite.active ? "Unfavorite" : "Favorite",
+      icon: favorite.active ? "heart-crack" : "heart",
+      run: () => favorite.toggle(),
+    });
   }
+  items.push(
+    ...goToItems(ctx),
+    { id: "copy-link", label: "Copy link", icon: "link", divider: true, run: () => ctx.copyLink() },
+  );
   return items;
 }
 

@@ -18,6 +18,7 @@
   import NowPlaying from "../views/NowPlaying.svelte";
   import Section from "../views/Section.svelte";
   import TidalPage from "../views/TidalPage.svelte";
+  import { createCardActions, setCardActions } from "./cardActions";
   import type { Nav } from "./nav.svelte";
   import type { Player } from "./player.svelte";
   import type { Favorites } from "./favorites.svelte";
@@ -54,6 +55,11 @@
     onLogout: () => void;
     onQualityDisplay: (mode: QualityDisplay) => void;
   } = $props();
+
+  // Every page's album/playlist/mix cards share one play/queue/menu behaviour.
+  // The deps are app-lifetime singletons, so reading them once is enough.
+  // svelte-ignore state_referenced_locally
+  setCardActions(createCardActions({ nav, toasts, favorites, playlistActions }));
 
   // Route identity for the page-enter animation. ArtistAll tab switches are
   // deliberately excluded: the tab underline is that surface's only motion.
