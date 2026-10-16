@@ -1800,6 +1800,15 @@ fn late_fallback(mut fallback: TransitionPlan) -> TransitionPlan {
     fallback
 }
 
+/// How long a paused session keeps the output open. A short pause resumes
+/// instantly on the open stream; after this the stream is stopped (no more
+/// silence pumped through the audio engine, the endpoint is free) and resume
+/// reopens it.
+#[cfg(not(test))]
+const PAUSE_RELEASE: Duration = Duration::from_secs(30);
+#[cfg(test)]
+const PAUSE_RELEASE: Duration = Duration::from_millis(300);
+
 /// Block while playback is paused, until a command wakes the worker (resume,
 /// a new generation, shutdown, a DSP or volume change). Track 13 (EF-D4):
 /// replaces a 20 ms sleep loop, so a paused app no longer wakes 50 times a
@@ -2263,10 +2272,56 @@ fn run_session(
             }
             if inner.paused.load(Ordering::SeqCst) {
                 // The position cannot move while paused, so nothing is
-                // emitted; the worker sleeps until a command wakes it.
-                park_while_paused(inner, gen);
+                // emitted; the worker sleeps until a command wakes it. A
+                // long pause also releases the device (EF-D4), so the audio
+                // engine and an exclusive endpoint can idle; resume reopens
+                // the same spec. DSP changes made meanwhile apply at the top
+                // of the loop, before the next write.
+                let parked = Instant::now();
+                let mut released: Option<AudioOutputSpec> = None;
+                while inner.paused.load(Ordering::SeqCst)
+                    && inner.generation.load(Ordering::SeqCst) == gen
+                    && !inner.shutdown.load(Ordering::SeqCst)
+                {
+                    // Volume still reaches an open output while paused: an
+                    // exclusive endpoint shows it, and a completed sleep fade
+                    // restores the user's volume here.
+                    let (volume, _) = current_volume(inner);
+                    if released.is_none() && (volume - last_volume).abs() >= f32::EPSILON {
+                        if let Err(e) = output.set_volume(volume) {
+                            return SessionOutcome::OutputError {
+                                message: e.to_string(),
+                                track_id: stream.item.track_id,
+                            };
+                        }
+                        last_volume = volume;
+                        *inner.output_status.lock().unwrap() = output.status();
+                    }
+                    park_while_paused(inner, gen);
+                    if released.is_none() && open_spec.is_some() && parked.elapsed() >= PAUSE_RELEASE {
+                        let _ = output.stop();
+                        released = open_spec.take();
+                        tracing::debug!("paused for {PAUSE_RELEASE:?}: output released");
+                    }
+                }
                 if inner.generation.load(Ordering::SeqCst) != gen {
                     return SessionOutcome::Superseded;
+                }
+                if let Some(spec) = released {
+                    let reopened = output
+                        .open(&spec)
+                        .and_then(|()| output.start())
+                        .and_then(|()| output.set_volume(current_volume(inner).0));
+                    if let Err(e) = reopened {
+                        return SessionOutcome::OutputError {
+                            message: e.to_string(),
+                            track_id: stream.item.track_id,
+                        };
+                    }
+                    last_volume = current_volume(inner).0;
+                    *inner.output_status.lock().unwrap() = output.status();
+                    *open_spec = Some(spec);
+                    emit(inner, EngineEvent::State(build_state(inner)));
                 }
                 continue;
             }
@@ -4133,6 +4188,29 @@ mod tests {
         engine.handle(EngineCmd::PlayPause).unwrap();
         wait_for(|| output.samples().len() >= 176_400);
         assert_eq!(output.samples().len(), 176_400, "resume did not finish the track");
+    }
+
+    /// Track 13 (EF-D4): a long pause stops the output; resume reopens the
+    /// same spec at the current volume and plays the rest of the track.
+    #[test]
+    fn a_long_pause_releases_the_output_and_resume_reopens_it() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| !output.samples().is_empty());
+        engine.handle(EngineCmd::PlayPause).unwrap();
+        let (opens, stops) = (output.opens(), output.stops());
+        std::thread::sleep(PAUSE_RELEASE / 2);
+        assert_eq!(output.stops(), stops, "a short pause must keep the output open");
+        wait_for(|| output.stops() > stops);
+        assert!(output.stops() > stops, "the output was not released");
+        engine.handle(EngineCmd::SetVolume(0.5)).unwrap();
+
+        engine.handle(EngineCmd::PlayPause).unwrap();
+        wait_for(|| output.samples().len() >= 176_400);
+        assert_eq!(output.opens(), opens + 1, "resume must reopen the output once");
+        assert_eq!(output.samples().len(), 176_400, "audio was lost across the release");
+        assert_eq!(output.volumes().last(), Some(&0.5), "the reopened output lost the volume");
     }
 
     struct Gate {

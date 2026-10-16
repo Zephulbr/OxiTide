@@ -40,9 +40,14 @@ Spec: `docs/superpowers/specs/2026-10-16-oxitide-track13-efficiency-design.md`. 
 
 ## Phase 2 — audio write path (F4, EF-D5; F3 output half)
 
-- [ ] 2.1 Bulk ring writes and a blocking wait (WASAPI + ASIO), reusable device buffer.
-- [ ] 2.2 Owned `PcmBuffer` through `PcmSink`; wake the worker only when it waits.
-- [ ] 2.3 Release the output stream after `PAUSE_RELEASE` paused; restart on resume.
+- [x] 2.1 Chunked ring writes with a wait sized to the room needed (1–20 ms, was a 2 ms poll and
+      a clock read per sample), WASAPI + ASIO via `ring.rs`; reusable WASAPI period buffer;
+      underruns pad whole frames (fixes a latent channel swap after a mid-frame underrun).
+- [x] 2.2 Owned `PcmBuffer` through `PcmSink` (no per-packet copy). The "wake the worker only
+      when it waits" half was dropped: one uncontended lock + notify per packet, not worth the
+      extra state.
+- [x] 2.3 Release the output stream after `PAUSE_RELEASE` (30 s) paused; resume reopens the
+      same spec at the current volume. Volume still reaches an open output while paused.
 - [ ] 2.4 Owner smoke: shared, exclusive (bit-perfect readout), ASIO, crossfade/AutoMix, S4.
 
 ## Phase 3 — threads, network, start-up (F5, F6, F10, F11, F13)

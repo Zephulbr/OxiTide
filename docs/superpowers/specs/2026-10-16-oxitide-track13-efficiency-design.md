@@ -54,9 +54,10 @@ phone remote relies on must not change.
   period (`PAUSE_RELEASE`, 30 s) the output stops its stream; resume restarts it on the same
   spec. UI animation loops stop once settled (DiscArt at speed 0, recorder frozen); the meter
   feed sends nothing while the tap is silent.
-- **EF-D5 Output write path.** Bulk ring writes (rtrb chunks), a deadline computed only when
-  the ring is full, a reusable device buffer, owned buffers through `PcmSink`, and producer
-  wake-ups only when the worker waits. Exclusive `i32` output stays sample-exact.
+- **EF-D5 Output write path.** Chunked ring writes (`ring.rs`), a stall deadline computed only
+  when the ring is full and a wait sized to the room needed, a reusable device buffer,
+  whole-frame underrun padding, and owned buffers through `PcmSink`. Exclusive `i32` output
+  stays sample-exact (the word conversions are unchanged). Producer wake-ups stay per packet.
 - **EF-D6 Main thread.** Commands that touch disk, COM, the engine queue or do CPU work become
   `#[tauri::command(async)]`; a test lists the commands allowed to stay sync.
 - **EF-D7..** F6–F15 are planned in Phases 3–4; each gets its own decision when it starts.
