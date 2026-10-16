@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import { api, trackToQueueItem, type Album as AlbumT, type Track } from "../lib/api";
   import ArtistLinks from "../lib/components/ArtistLinks.svelte";
   import Cover from "../lib/components/Cover.svelte";
@@ -19,6 +20,8 @@
   import { playSource } from "../lib/playSource.svelte";
   import { trackFlags } from "../lib/trackFlags.svelte";
   import { shareUrl } from "../lib/share";
+  import { load as loadCached, peek } from "../lib/viewCache";
+  import { albumSource } from "../lib/viewData";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { PlaylistActions } from "../lib/playlists.svelte";
   import type { Player } from "../lib/player.svelte";
@@ -32,9 +35,13 @@
     playlistActions,
     toasts,
   }: { id: number; nav: Nav; player: Player; favorites: Favorites; playlistActions: PlaylistActions; toasts: Toasts } = $props();
-  let album = $state<AlbumT | null>(null);
-  let tracks = $state<Track[]>([]);
-  let loading = $state(true);
+  // A cached visit renders on the first frame (lib/viewCache.ts).
+  // svelte-ignore state_referenced_locally
+  const source = albumSource(id);
+  const cached = peek(source);
+  let album = $state<AlbumT | null>(cached?.[0] ?? null);
+  let tracks = $state<Track[]>(cached?.[1] ?? []);
+  let loading = $state(cached === undefined);
   let error = $state("");
 
   const view = createTrackView(() => tracks);
@@ -54,15 +61,13 @@
   const volumes = $derived(volumeSections(tracks));
 
   async function load() {
-    loading = true;
+    if (peek(source) === undefined) loading = true;
     error = "";
     try {
-      const [loadedAlbum, loadedTracks] = await Promise.all([
-        api.getAlbum(id),
-        api.getAlbumTracks(id),
-      ]);
-      album = loadedAlbum;
-      tracks = loadedTracks;
+      await loadCached(source, ([loadedAlbum, loadedTracks]) => {
+        album = loadedAlbum;
+        tracks = loadedTracks;
+      });
     } catch (e) {
       error = String(e);
     } finally {
@@ -71,7 +76,9 @@
   }
 
   $effect(() => {
-    load();
+    // Untracked: a cached load applies synchronously, and its reads must not
+    // make this mount effect re-run on its own writes (an endless loop).
+    untrack(load);
   });
 
   $effect(() => {

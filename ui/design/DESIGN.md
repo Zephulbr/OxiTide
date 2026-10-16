@@ -175,6 +175,14 @@ motion) is the entrance travel for content arriving in place.
   parts and the explore rows settle (2.5 s cap), then they rise in together; the title
   and search field stay put.
 - `Loading` appears only after 320 ms (then fades in): quick loads show no spinner.
+- A page whose data is cached (`lib/viewCache.ts`; revisits, or a card or sidebar link
+  hovered before the click) renders complete on its first frame and plays the same rise;
+  a background refresh that changes something updates in place.
+- Library lists under an already-risen header (Feed, Albums, Playlists, Mixes, Profiles)
+  bring their content and header count in together with `.arrive` (app.css: `--rise`,
+  `--dur-view`) when they had to load. A count's space is held while loading (no "0"
+  flash). Re-sorting Playlists keeps the grid up and FLIP-glides the cards to their new
+  places (320 ms) instead of swapping the grid for a spinner.
 - Covers do not fade on load. WebView2 defers load events for lazy images, so a cover can
   paint before its `load` fires; a load-driven fade then hides a visible cover and fades
   it back in.

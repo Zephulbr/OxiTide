@@ -1,5 +1,8 @@
 <script lang="ts">
-  import { api, type Artist } from "../lib/api";
+  import { untrack } from "svelte";
+  import type { Artist } from "../lib/api";
+  import { load as loadCached, peek } from "../lib/viewCache";
+  import { favoriteArtistsSource } from "../lib/viewData";
   import { groupArtists, visibleArtists, type ArtistSort } from "../lib/artistSort";
   import Cover from "../lib/components/Cover.svelte";
   import EdgeBlur from "../lib/components/EdgeBlur.svelte";
@@ -11,8 +14,13 @@
 
   let { nav }: { nav: Nav } = $props();
 
-  let artists = $state<Artist[]>([]);
-  let loading = $state(true);
+  // Cached visits render complete on the first frame; a list that had to load
+  // rises in (`.arrive`) with its count instead of snapping in.
+  const source = favoriteArtistsSource();
+  const cached = peek(source);
+  const arrive = cached === undefined;
+  let artists = $state<Artist[]>(cached ?? []);
+  let loading = $state(cached === undefined);
   let error = $state("");
   let query = $state("");
   let sortMode = $state<ArtistSort>("date");
@@ -23,10 +31,10 @@
   const groups = $derived(sortMode === "date" ? null : groupArtists(shown));
 
   async function load() {
-    loading = true;
+    if (peek(source) === undefined) loading = true;
     error = "";
     try {
-      artists = await api.getFavoriteArtists();
+      await loadCached(source, (list) => (artists = list));
     } catch (e) {
       error = String(e);
     } finally {
@@ -35,7 +43,7 @@
   }
 
   $effect(() => {
-    void load();
+    untrack(() => void load());
   });
 
   $effect(() => {
@@ -69,7 +77,12 @@
       </div>
     </div>
     <h2>Profiles</h2>
-    <span class="muted count tnum">{artists.length} {artists.length === 1 ? "artist" : "artists"}</span>
+    <!-- Space held while loading (no "0 artists" flash, no header reflow). -->
+    <span
+      class="muted count tnum"
+      class:arrive={arrive && !loading}
+      style:visibility={loading || error ? "hidden" : undefined}
+    >{artists.length} {artists.length === 1 ? "artist" : "artists"}</span>
     <input
       class="search-input filter"
       placeholder="Search artists"
@@ -99,14 +112,14 @@
     <p class="muted empty">No artists match “{query.trim()}”.</p>
   {:else if groups}
     {#each groups as group (group.letter)}
-      <h3 class="divider">
+      <h3 class="divider" class:arrive>
         <span class="tab">{group.letter}</span>
         <span class="muted n tnum">{group.artists.length}</span>
       </h3>
-      <div class="grid pane">{@render records(group.artists)}</div>
+      <div class="grid pane" class:arrive>{@render records(group.artists)}</div>
     {/each}
   {:else}
-    <div class="grid pane">{@render records(shown)}</div>
+    <div class="grid pane" class:arrive>{@render records(shown)}</div>
   {/if}
 </div>
 

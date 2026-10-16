@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { prefetchIntent } from "../viewData";
   import { untrack } from "svelte";
   import type { Route } from "../nav.svelte";
   import type { Nav } from "../nav.svelte";
@@ -130,7 +131,7 @@
     <button class="nav-item" class:active={nav.route.name === "explore"} aria-current={nav.route.name === "explore" ? "page" : undefined} onclick={() => nav.goto({ name: "explore" })} title="Explore" aria-label="Explore">
       <Icon name="globe" />{#if !rail}<span>Explore</span>{/if}
     </button>
-    <button class="nav-item" class:active={nav.route.name === "feed"} aria-current={nav.route.name === "feed" ? "page" : undefined} onclick={() => nav.goto({ name: "feed" })} title="Feed" aria-label="Feed">
+    <button class="nav-item" class:active={nav.route.name === "feed"} aria-current={nav.route.name === "feed" ? "page" : undefined} onclick={() => nav.goto({ name: "feed" })} use:prefetchIntent={{ name: "feed" }} title="Feed" aria-label="Feed">
       <Icon name="bell" />{#if !rail}<span>Feed</span>{/if}
     </button>
     <button class="nav-item" class:active={nav.route.name === "history"} aria-current={nav.route.name === "history" ? "page" : undefined} onclick={() => nav.goto({ name: "history", tab: "recent" })} title="History" aria-label="History">
@@ -143,7 +144,7 @@
     <div class="divider" role="separator"></div>
 
     {#if rail}
-      <button class="nav-item" class:active={isActive("playlists")} aria-current={isActive("playlists") ? "page" : undefined} onclick={() => nav.goto({ name: "playlists" })} title="My Collection" aria-label="My Collection">
+      <button class="nav-item" class:active={isActive("playlists")} aria-current={isActive("playlists") ? "page" : undefined} onclick={() => nav.goto({ name: "playlists" })} use:prefetchIntent={{ name: "playlists" }} title="My Collection" aria-label="My Collection">
         <Icon name="library" />
       </button>
     {:else}
@@ -155,7 +156,7 @@
 
     {#if collectionOpen || rail}
       {#each collectionItems as item (item.label)}
-        <button class="nav-item" class:active={isActive(item.route.name)} aria-current={isActive(item.route.name) ? "page" : undefined} onclick={() => nav.goto(item.route)} title={item.label} aria-label={item.label}>
+        <button class="nav-item" class:active={isActive(item.route.name)} aria-current={isActive(item.route.name) ? "page" : undefined} onclick={() => nav.goto(item.route)} use:prefetchIntent={item.route} title={item.label} aria-label={item.label}>
           <Icon name={item.icon} />{#if !rail}<span>{item.label}</span>{/if}
         </button>
       {/each}
@@ -171,7 +172,7 @@
       {/if}
       {#if showMore}
         {#each moreItems as item (item.label)}
-          <button class="nav-item" class:active={isActive(item.route.name)} aria-current={isActive(item.route.name) ? "page" : undefined} onclick={() => nav.goto(item.route)} title={item.label} aria-label={item.label}>
+          <button class="nav-item" class:active={isActive(item.route.name)} aria-current={isActive(item.route.name) ? "page" : undefined} onclick={() => nav.goto(item.route)} use:prefetchIntent={item.route} title={item.label} aria-label={item.label}>
             <Icon name={item.icon} />{#if !rail}<span>{item.label}</span>{/if}
           </button>
         {/each}

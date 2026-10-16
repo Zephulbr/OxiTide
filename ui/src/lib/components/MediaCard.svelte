@@ -5,6 +5,8 @@
   import { coverTint } from "../coverTint";
   import { isFullAlbum, isPlayableTrack, shapeForItemType } from "../media";
   import { menuFor } from "../menu.svelte";
+  import { routeForPageItem } from "../nav.svelte";
+  import { PREFETCH_DWELL_MS, prefetchRoute } from "../viewData";
   import { playlistCovers } from "../playlistArt.svelte";
   import ArtistLinks from "./ArtistLinks.svelte";
   import Cover from "./Cover.svelte";
@@ -92,6 +94,21 @@
     if (visible) warm(false);
   });
 
+  /// Page prefetch (lib/viewData.ts): a pointer that rests on a card that opens
+  /// a page warms that page's data, so the click usually lands on a cache hit.
+  /// The dwell keeps a sweep across a carousel from firing a request per card;
+  /// action cards (radios) and tracks open no page and never prefetch.
+  let dwell: ReturnType<typeof setTimeout> | undefined;
+  function intentStart() {
+    warm(true);
+    if (!onclick || playButton || playable) return;
+    clearTimeout(dwell);
+    dwell = setTimeout(() => prefetchRoute(routeForPageItem(item)), PREFETCH_DWELL_MS);
+  }
+  function intentEnd() {
+    clearTimeout(dwell);
+  }
+  $effect(() => () => clearTimeout(dwell));
 </script>
 
 {#snippet artwork()}
@@ -139,8 +156,9 @@
     class:blocked
     style:--card-tint={tint ?? undefined}
     bind:this={el}
-    onpointerenter={() => warm(true)}
-    onfocusin={() => warm(true)}
+    onpointerenter={intentStart}
+    onpointerleave={intentEnd}
+    onfocusin={intentStart}
     use:menuFor={() => actions.menu(item, collection)}
   >
     <span class="art" style:--thumb="{thumb}px">
@@ -178,8 +196,9 @@
     style:--card-tint={tint ?? undefined}
     bind:this={el}
     onclick={onclick}
-    onpointerenter={() => warm(true)}
-    onfocus={() => warm(true)}
+    onpointerenter={intentStart}
+    onpointerleave={intentEnd}
+    onfocus={intentStart}
     aria-label={showPlay ? `Play ${item.title}` : undefined}
   >{@render body()}</button>
 {:else}

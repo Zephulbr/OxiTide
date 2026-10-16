@@ -134,6 +134,19 @@ body {
 .page:has(> .loading:only-child) {
   animation: none;
 }
+/* Content arriving under a page header that is already up (library lists,
+   Feed, Mixes): it rises in as one piece instead of snapping in under the
+   spinner. Views apply it only when the content had to load; a cached visit
+   renders complete and rides the page's own enter. */
+.arrive {
+  animation: arrive var(--dur-view) var(--ease-enter) backwards;
+}
+@keyframes arrive {
+  from {
+    opacity: 0;
+    transform: translateY(var(--rise));
+  }
+}
 /* Now Playing covers the page: hidden, still mounted (RoutedPage). */
 .page.covered {
   display: none;

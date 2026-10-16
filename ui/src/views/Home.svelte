@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import {
     api,
     type Artist,
@@ -16,6 +17,8 @@
   import type { Player } from "../lib/player.svelte";
   import { playArtistRadio, playTrackRadio } from "../lib/radio";
   import type { Toasts } from "../lib/toasts.svelte";
+  import { load as loadCached, peek, type Source } from "../lib/viewCache";
+  import { feedSource, forYouSource } from "../lib/viewData";
   import Carousel from "../lib/components/Carousel.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
   import HomeHero from "../lib/components/HomeHero.svelte";
@@ -26,8 +29,37 @@
 
   let { nav, player, toasts }: { nav: Nav; player: Player; toasts: Toasts } = $props();
 
-  let editorial = $state<PageSection[]>([]);
-  let loading = $state(true);
+  // Every source reads through the page cache (lib/viewCache.ts). The
+  // personal ones change with each play, so they always revalidate in the
+  // background (`freshMs: 0`); the cache only removes the wait.
+  const tz = new Date().getTimezoneOffset();
+  const sources = {
+    editorial: { key: "home:editorial", fetch: () => api.getHome() },
+    shortcuts: {
+      key: "home:shortcuts",
+      fetch: async () => {
+        const [playlists, mixes] = await Promise.allSettled([api.getUserPlaylists(), api.getFavoriteMixes()]);
+        return {
+          playlists: playlists.status === "fulfilled" ? playlists.value : [],
+          mixes: mixes.status === "fulfilled" ? mixes.value : [],
+        };
+      },
+      freshMs: 0,
+    },
+    // Shared with the Mixes and Feed pages (lib/viewData.ts).
+    forYou: forYouSource(),
+    feed: feedSource(),
+    stats: { key: "home:stats", fetch: () => api.getStats(tz), freshMs: 0 },
+    suggestions: {
+      key: "home:suggestions",
+      fetch: async () => buildSuggestions((await api.getHistoryPage(0, 60)).items, api),
+      freshMs: 0,
+    },
+  } satisfies Record<string, Source<unknown>>;
+
+  const cachedEditorial = peek(sources.editorial);
+  let editorial = $state<PageSection[]>(cachedEditorial ?? []);
+  let loading = $state(cachedEditorial === undefined);
   let error = $state("");
 
   let shortcuts = $state<ShortcutEntry[]>([]);
@@ -63,10 +95,10 @@
   );
 
   async function load() {
-    loading = true;
+    if (peek(sources.editorial) === undefined) loading = true;
     error = "";
     try {
-      editorial = await api.getHome();
+      await loadCached(sources.editorial, (sections) => (editorial = sections));
     } catch (e) {
       error = String(e);
     } finally {
@@ -78,47 +110,51 @@
   /// REVEAL_CAP_MS, whatever has arrived by then). Shown on arrival, a late
   /// shelf (suggestions resolve in a second round) inserted itself above ones
   /// already on screen and shoved the rest of Home down. TIDAL's editorial
-  /// rows sit below them all, so they wait too.
+  /// rows sit below them all, so they wait too. A revisit with every personal
+  /// source cached reveals at once.
   const REVEAL_CAP_MS = 2500;
+  const personalSources = [sources.shortcuts, sources.forYou, sources.feed, sources.stats, sources.suggestions];
   let personalSettled = $state(false);
-  let suggestionsSettled = $state(false);
-  let capped = $state(false);
-  const ready = $derived((personalSettled && suggestionsSettled) || capped);
+  let capped = $state(personalSources.every((source) => peek(source as Source<unknown>) !== undefined));
+  const ready = $derived(personalSettled || capped);
+
+  /// One personal source: settles on its first value (cached or fetched) or
+  /// on failure; a failed source leaves its shelf hidden.
+  function part<T>(source: Source<T>, apply: (value: T) => void): Promise<void> {
+    return new Promise((resolve) => {
+      loadCached(source, (value) => {
+        apply(value);
+        resolve();
+      })
+        .catch(() => {})
+        .finally(resolve);
+    });
+  }
 
   /// Every personal shelf loads on its own and stays hidden when its source
   /// fails or is empty, so a new account or a flaky endpoint never blanks Home.
   async function loadPersonal() {
     const recency = playlistRecency();
-    const [playlists, favMixes, history, forYou, feed, statistics] = await Promise.allSettled([
-      api.getUserPlaylists(),
-      api.getFavoriteMixes(),
-      api.getHistoryPage(0, 60),
-      api.getForYou(),
-      api.getFeed(),
-      api.getStats(new Date().getTimezoneOffset()),
+    await Promise.all([
+      part(sources.shortcuts, ({ playlists, mixes: favMixes }) => {
+        const owned = [...playlists].sort((a, b) => recency.rank(b.uuid) - recency.rank(a.uuid));
+        shortcuts = shortcutEntries(owned, favMixes, 8);
+      }),
+      part(sources.forYou, (sections) => (mixes = madeForYou(sections))),
+      part(sources.feed, (feed) => (releases = feed)),
+      part(sources.stats, (value) => (stats = value)),
+      part(sources.suggestions, (built) => (suggestions = built)),
     ]);
-    const owned =
-      playlists.status === "fulfilled"
-        ? [...playlists.value].sort((a, b) => recency.rank(b.uuid) - recency.rank(a.uuid))
-        : [];
-    shortcuts = shortcutEntries(owned, favMixes.status === "fulfilled" ? favMixes.value : [], 8);
-    if (history.status === "fulfilled") {
-      void buildSuggestions(history.value.items, api)
-        .then((built) => (suggestions = built))
-        .catch(() => {})
-        .finally(() => (suggestionsSettled = true));
-    } else {
-      suggestionsSettled = true;
-    }
-    if (forYou.status === "fulfilled") mixes = madeForYou(forYou.value);
-    if (feed.status === "fulfilled") releases = feed.value;
-    if (statistics.status === "fulfilled") stats = statistics.value;
     personalSettled = true;
   }
 
   $effect(() => {
-    void load();
-    void loadPersonal();
+    // Untracked: cached sources apply synchronously; their reads must not
+    // make this mount effect re-run on its own writes.
+    untrack(() => {
+      void load();
+      void loadPersonal();
+    });
     const timer = setTimeout(() => (capped = true), REVEAL_CAP_MS);
     return () => clearTimeout(timer);
   });

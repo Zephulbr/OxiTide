@@ -19,6 +19,8 @@
   import { invalidatePlaylistCovers } from "../lib/playlistArt.svelte";
   import { shareUrl } from "../lib/share";
   import { createTrackView, visibleIndexOf, warmTrackSearch } from "../lib/trackView.svelte";
+  import { invalidate, load as loadCached, peek } from "../lib/viewCache";
+  import { playlistSource } from "../lib/viewData";
   import type { CollectionTree } from "../lib/collection.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { Nav } from "../lib/nav.svelte";
@@ -44,15 +46,20 @@
     collection: CollectionTree;
   } = $props();
 
-  let playlist = $state<PlaylistT | null>(null);
-  let loading = $state(true);
+  // A cached visit renders on the first frame and revalidates in the
+  // background (lib/viewCache.ts); the track list has its own pager cache.
+  // svelte-ignore state_referenced_locally
+  const source = playlistSource(id);
+  const cached = peek(source);
+  let playlist = $state<PlaylistT | null>(cached ?? null);
+  let loading = $state(cached === undefined);
   let error = $state("");
   let renaming = $state(false);
   let renameTitle = $state("");
   let renameDescription = $state("");
   let confirmingDelete = $state(false);
   let busy = $state(false);
-  let publicState = $state<boolean | null>(null);
+  let publicState = $state<boolean | null>(cached?.publicPlaylist ?? null);
   let publicBusy = $state(false);
 
   // `$derived` so navigating to another playlist rebuilds the pager; the new
@@ -90,11 +97,13 @@
   });
 
   async function load() {
-    loading = true;
+    if (peek(source) === undefined) loading = true;
     error = "";
     try {
-      playlist = await api.getPlaylist(id);
-      publicState = playlist.publicPlaylist ?? null;
+      await loadCached(source, (loaded) => {
+        playlist = loaded;
+        publicState = loaded.publicPlaylist ?? null;
+      });
     } catch (e) {
       error = String(e);
     } finally {
@@ -103,7 +112,7 @@
   }
 
   $effect(() => {
-    load();
+    untrack(load);
   });
 
   $effect(() => {
@@ -130,6 +139,7 @@
     if (!title) return;
     try {
       await api.renamePlaylist(id, title, renameDescription.trim());
+      invalidate(source.key);
       if (playlist) {
         playlist.title = title;
         playlist.description = renameDescription.trim() || null;
@@ -148,6 +158,7 @@
     publicState = next;
     try {
       await api.setPlaylistPublic(id, next);
+      invalidate(source.key);
       if (playlist) playlist.publicPlaylist = next;
       toasts.show(next ? "Playlist is now public" : "Playlist is now private", {
         severity: "success",
@@ -176,6 +187,7 @@
         icon: "rotate-cw",
         run: () => {
           invalidatePlaylistCovers(id);
+          invalidate(source.key);
           void pager.refresh();
         },
       },
@@ -197,6 +209,7 @@
     confirmingDelete = false;
     try {
       await api.deletePlaylist(id);
+      invalidate(source.key);
       invalidatePlaylistCovers(id);
       await collection.refresh();
       toasts.show("Playlist deleted", { severity: "success" });

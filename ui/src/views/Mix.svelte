@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import { api, trackToQueueItem, type MixDetail } from "../lib/api";
   import Cover from "../lib/components/Cover.svelte";
   import DetailAction from "../lib/components/DetailAction.svelte";
@@ -13,6 +14,8 @@
   import { trackFlags } from "../lib/trackFlags.svelte";
   import { shareUrl } from "../lib/share";
   import { createTrackView } from "../lib/trackView.svelte";
+  import { load as loadCached, peek } from "../lib/viewCache";
+  import { mixSource } from "../lib/viewData";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { PlaylistActions } from "../lib/playlists.svelte";
   import type { Player } from "../lib/player.svelte";
@@ -28,8 +31,12 @@
     toasts,
   }: { id: string; nav: Nav; player: Player; favorites: Favorites; playlistActions: PlaylistActions; toasts: Toasts } = $props();
 
-  let mix = $state<MixDetail | null>(null);
-  let loading = $state(true);
+  // A cached visit renders on the first frame (lib/viewCache.ts).
+  // svelte-ignore state_referenced_locally
+  const source = mixSource(id);
+  const cached = peek(source);
+  let mix = $state<MixDetail | null>(cached ?? null);
+  let loading = $state(cached === undefined);
   let error = $state("");
 
   const view = createTrackView(() => mix?.tracks ?? []);
@@ -45,10 +52,10 @@
   });
 
   async function load() {
-    loading = true;
+    if (peek(source) === undefined) loading = true;
     error = "";
     try {
-      mix = await api.getMix(id);
+      await loadCached(source, (loaded) => (mix = loaded));
     } catch (e) {
       error = String(e);
     } finally {
@@ -57,7 +64,7 @@
   }
 
   $effect(() => {
-    load();
+    untrack(load);
   });
 
   async function playAll() {

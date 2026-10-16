@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import { api, trackToQueueItem, type HistoryEntry, type PageItem, type PageSection } from "../lib/api";
   import Carousel from "../lib/components/Carousel.svelte";
   import Cover from "../lib/components/Cover.svelte";
@@ -19,6 +20,7 @@
   import { createSearch } from "../lib/search.svelte";
   import { searchHistory } from "../lib/searchHistory.svelte";
   import { createTrackView } from "../lib/trackView.svelte";
+  import { load as loadCached, peek } from "../lib/viewCache";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { Nav } from "../lib/nav.svelte";
   import type { PlaylistActions } from "../lib/playlists.svelte";
@@ -52,15 +54,30 @@
   );
   const resultsView = createTrackView(() => search.results?.tracks.items ?? []);
 
-  let sections = $state<PageSection[]>([]);
-  let exploreLoading = $state(true);
+  // Both parts read through the page cache (lib/viewCache.ts); the personal
+  // one changes with each play, so it always revalidates in the background.
+  const exploreSource = { key: "explore:rows", fetch: () => api.getExplore() };
+  const personalSource = {
+    key: "explore:personal",
+    fetch: async () => {
+      const listened = (await api.getHistoryPage(0, 200)).items;
+      const fresh = await buildNewToYou(listened, api, (id) => favorites.hasArtist(id)).catch(() => []);
+      return { listened, newToYou: fresh };
+    },
+    freshMs: 0,
+  };
+  const cachedRows = peek(exploreSource);
+  const cachedPersonal = peek(personalSource);
+
+  let sections = $state<PageSection[]>(cachedRows ?? []);
+  let exploreLoading = $state(cachedRows === undefined);
   let exploreError = $state("");
 
   async function loadExplore() {
-    exploreLoading = true;
+    if (peek(exploreSource) === undefined) exploreLoading = true;
     exploreError = "";
     try {
-      sections = await api.getExplore();
+      await loadCached(exploreSource, (rows) => (sections = rows));
     } catch (e) {
       exploreError = String(e);
     } finally {
@@ -70,13 +87,16 @@
 
   /// Personal parts (chips, New to you) load on their own and stay hidden on
   /// failure or an empty history, like Home's shelves.
-  let listened = $state<HistoryEntry[]>([]);
-  let newToYou = $state<NewArtist[]>([]);
+  let listened = $state<HistoryEntry[]>(cachedPersonal?.listened ?? []);
+  let newToYou = $state<NewArtist[]>(cachedPersonal?.newToYou ?? []);
 
   async function loadPersonal() {
     try {
-      listened = (await api.getHistoryPage(0, 200)).items;
-      newToYou = await buildNewToYou(listened, api, (id) => favorites.hasArtist(id));
+      await loadCached(personalSource, (value) => {
+        listened = value.listened;
+        newToYou = value.newToYou;
+        personalSettled = true;
+      });
     } catch {
       newToYou = [];
     } finally {
@@ -90,13 +110,17 @@
   /// above rows already on screen and shove them down. The title and search
   /// field never wait.
   const REVEAL_CAP_MS = 2500;
-  let personalSettled = $state(false);
+  let personalSettled = $state(cachedPersonal !== undefined);
   let capped = $state(false);
   const ready = $derived((!exploreLoading && personalSettled) || capped);
 
   $effect(() => {
-    loadExplore();
-    void loadPersonal();
+    // Untracked: cached sources apply synchronously; their reads must not
+    // make this mount effect re-run on its own writes.
+    untrack(() => {
+      loadExplore();
+      void loadPersonal();
+    });
     const timer = setTimeout(() => (capped = true), REVEAL_CAP_MS);
     return () => clearTimeout(timer);
   });

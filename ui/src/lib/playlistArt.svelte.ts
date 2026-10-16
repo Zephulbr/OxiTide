@@ -2,6 +2,7 @@ import { SvelteMap } from "svelte/reactivity";
 import { api } from "./api";
 import { collageCovers } from "./artwork";
 import { cachedPagerItems } from "./pager.svelte";
+import { invalidate } from "./viewCache";
 
 /// Rows fetched per playlist to find the first four distinct albums; the
 /// pager session cache is preferred when that playlist was already opened.
@@ -65,6 +66,9 @@ function pump(): void {
 export function invalidatePlaylistCovers(uuid: string): void {
   covers.delete(uuid);
   epochs.set(uuid, (epochs.get(uuid) ?? 0) + 1);
+  // Every playlist edit lands here; its cached header (track count, duration)
+  // is stale with it.
+  invalidate(`playlist:${uuid}`);
 }
 
 /// Drop everything; used when the signed-in account changes.

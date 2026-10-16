@@ -1,22 +1,30 @@
 <script lang="ts">
-  import { api, type Album, type PageItem } from "../lib/api";
+  import { untrack } from "svelte";
+  import type { Album, PageItem } from "../lib/api";
   import MediaCard from "../lib/components/MediaCard.svelte";
   import EmptyState from "../lib/components/EmptyState.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
   import Loading from "../lib/components/Loading.svelte";
   import type { Nav } from "../lib/nav.svelte";
+  import { load as loadCached, peek } from "../lib/viewCache";
+  import { favoriteAlbumsSource } from "../lib/viewData";
 
   let { nav }: { nav: Nav } = $props();
 
-  let albums = $state<Album[]>([]);
-  let loading = $state(true);
+  // Cached visits render complete on the first frame; a grid that had to
+  // load rises in (`.arrive`) instead of snapping in.
+  const source = favoriteAlbumsSource();
+  const cached = peek(source);
+  const arrive = cached === undefined;
+  let albums = $state<Album[]>(cached ?? []);
+  let loading = $state(cached === undefined);
   let error = $state("");
 
   async function load() {
-    loading = true;
+    if (peek(source) === undefined) loading = true;
     error = "";
     try {
-      albums = await api.getFavoriteAlbums();
+      await loadCached(source, (list) => (albums = list));
     } catch (e) {
       error = String(e);
     } finally {
@@ -25,7 +33,7 @@
   }
 
   $effect(() => {
-    void load();
+    untrack(load);
   });
 </script>
 
@@ -37,7 +45,7 @@
 {:else if albums.length === 0}
   <EmptyState message="No albums yet." />
 {:else}
-  <div class="grid pane">
+  <div class="grid pane" class:arrive>
     {#each albums as album (album.id)}
       {@const item: PageItem = {
         id: String(album.id),

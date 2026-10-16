@@ -1,6 +1,11 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import { api, type CollectionEntry } from "../lib/api";
+  import { flip } from "svelte/animate";
+  import { cubicOut } from "svelte/easing";
+  import type { CollectionEntry } from "../lib/api";
+  import { appearance } from "../lib/appearance.svelte";
+  import { fetchShared, load as loadCached, peek } from "../lib/viewCache";
+  import { collectionSource } from "../lib/viewData";
   import { sortEntries, type CollectionSort } from "../lib/collectionSort";
   import EmptyState from "../lib/components/EmptyState.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
@@ -29,10 +34,16 @@
     folderLabel?: string;
   } = $props();
 
-  let entries = $state<CollectionEntry[]>([]);
-  let loading = $state(true);
-  let error = $state("");
   let sortMode = $state<CollectionSort>("date");
+  // svelte-ignore state_referenced_locally
+  const sourceFor = () => collectionSource(folderId ?? "root", sortMode === "name" ? "NAME" : undefined);
+  // Cached visits render complete on the first frame; a grid that had to
+  // load rises in (`.arrive`) instead of snapping in.
+  const cached = peek(sourceFor());
+  const arrive = cached === undefined;
+  let entries = $state<CollectionEntry[]>(cached ?? []);
+  let loading = $state(cached === undefined);
+  let error = $state("");
   let actionsSeen = untrack(() => actions.revision);
   let createSeen = untrack(() => playlistActions.revision);
 
@@ -45,14 +56,17 @@
     return parts.join(" · ");
   });
 
-  async function load() {
-    loading = true;
+  /// A sort change or a refresh after an edit (`force`: fetch now, skip the
+  /// cache) keeps the current grid on screen until the new list is in; the
+  /// cards then glide to their new places (`animate:flip`). Only an empty
+  /// page shows the spinner.
+  async function load(force = false) {
+    const source = sourceFor();
+    if (entries.length === 0 && peek(source) === undefined) loading = true;
     error = "";
     try {
-      entries = await api.getCollectionItems(
-        folderId ?? "root",
-        sortMode === "name" ? "NAME" : undefined,
-      );
+      if (force) entries = await fetchShared(source);
+      else await loadCached(source, (list) => (entries = list));
     } catch (e) {
       error = errorMessage(e);
     } finally {
@@ -63,21 +77,21 @@
   $effect(() => {
     folderId;
     sortMode;
-    void load();
+    untrack(() => void load());
   });
 
   $effect(() => {
     const revision = actions.revision;
     if (revision === actionsSeen) return;
     actionsSeen = revision;
-    untrack(() => void load());
+    untrack(() => void load(true));
   });
 
   $effect(() => {
     const revision = playlistActions.revision;
     if (revision === createSeen) return;
     createSeen = revision;
-    untrack(() => void load());
+    untrack(() => void load(true));
   });
 </script>
 
@@ -114,11 +128,12 @@
 {:else if rows.length === 0}
   <EmptyState message={folderId ? "This folder is empty." : "No playlists yet."} />
 {:else}
-  <div class="grid pane" role="list">
+  <div class="grid pane" class:arrive role="list">
     {#each rows as entry (entry.kind === "folder" ? `f:${entry.id}` : `p:${entry.uuid}`)}
       <div
         class="cell"
         role="listitem"
+        animate:flip={{ duration: appearance.reducedMotion ? 0 : 320, easing: cubicOut }}
         use:menuFor={() =>
           entry.kind === "folder"
             ? collectionFolderMenuItems({

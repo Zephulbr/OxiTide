@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import {
     api,
     trackToQueueItem,
@@ -23,6 +24,8 @@
   import { playArtistRadio } from "../lib/radio";
   import { shareUrl } from "../lib/share";
   import { createTrackView } from "../lib/trackView.svelte";
+  import { load as loadCached, peek, type Source } from "../lib/viewCache";
+  import { artistAlbumsSource, artistSource, artistTopTracksSource, similarArtistsSource } from "../lib/viewData";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { Nav } from "../lib/nav.svelte";
   import type { PlaylistActions } from "../lib/playlists.svelte";
@@ -45,18 +48,33 @@
     toasts: Toasts;
   } = $props();
 
-  let artist = $state<ArtistT | null>(null);
-  let profile = $state<ArtistProfile | null>(null);
-  let topTracks = $state<Track[]>([]);
-  let albums = $state<AlbumT[]>([]);
-  let eps = $state<AlbumT[]>([]);
-  let comps = $state<AlbumT[]>([]);
-  let similar = $state<ArtistT[]>([]);
-  let loading = $state(true);
+  type SectionKey = "tracks" | "albums" | "eps" | "comps" | "similar";
+
+  // Every part reads through the page cache (lib/viewCache.ts): a cached
+  // visit renders hero and shelves on the first frame.
+  // svelte-ignore state_referenced_locally
+  const heroSource = artistSource(id);
+  // svelte-ignore state_referenced_locally
+  const sources = {
+    tracks: artistTopTracksSource(id),
+    albums: artistAlbumsSource(id, "albums"),
+    eps: artistAlbumsSource(id, "eps_and_singles"),
+    comps: artistAlbumsSource(id, "compilations"),
+    similar: similarArtistsSource(id),
+  };
+  const cachedHero = peek(heroSource);
+
+  let artist = $state<ArtistT | null>(cachedHero?.[0] ?? null);
+  let profile = $state<ArtistProfile | null>(cachedHero?.[1] ?? null);
+  let topTracks = $state<Track[]>(peek(sources.tracks) ?? []);
+  let albums = $state<AlbumT[]>(peek(sources.albums) ?? []);
+  let eps = $state<AlbumT[]>(peek(sources.eps) ?? []);
+  let comps = $state<AlbumT[]>(peek(sources.comps) ?? []);
+  let similar = $state<ArtistT[]>(peek(sources.similar) ?? []);
+  let loading = $state(cachedHero === undefined);
   let error = $state("");
   let loadToken = 0;
 
-  type SectionKey = "tracks" | "albums" | "eps" | "comps" | "similar";
   let sectionErrors = $state<Partial<Record<SectionKey, string>>>({});
 
   function setSectionError(key: SectionKey, error: unknown) {
@@ -73,12 +91,18 @@
   /// Sections reveal in page order: one shows once it and every section above
   /// it have settled (loaded, empty or failed). They load in parallel and
   /// answer in any order, so showing each on arrival inserted shelves above
-  /// ones already on screen and shoved them down.
+  /// ones already on screen and shoved them down. Cached sections start settled.
   const SECTION_ORDER: SectionKey[] = ["tracks", "albums", "eps", "comps", "similar"];
-  const unsettled = () => ({ tracks: false, albums: false, eps: false, comps: false, similar: false });
-  let settled = $state<Record<SectionKey, boolean>>(unsettled());
+  const settledFromCache = () => ({
+    tracks: peek(sources.tracks) !== undefined,
+    albums: peek(sources.albums) !== undefined,
+    eps: peek(sources.eps) !== undefined,
+    comps: peek(sources.comps) !== undefined,
+    similar: peek(sources.similar) !== undefined,
+  });
+  let settled = $state<Record<SectionKey, boolean>>(settledFromCache());
   const shown = $derived.by(() => {
-    const out = unsettled();
+    const out = { tracks: false, albums: false, eps: false, comps: false, similar: false };
     for (const key of SECTION_ORDER) {
       if (!settled[key]) break;
       out[key] = true;
@@ -86,14 +110,22 @@
     return out;
   });
 
-  function loadSection<T>(key: SectionKey, run: () => Promise<T>, assign: (value: T) => void) {
+  const assign: { [K in SectionKey]: (value: never) => void } = {
+    tracks: (list: Track[]) => (topTracks = list),
+    albums: (list: AlbumT[]) => (albums = list),
+    eps: (list: AlbumT[]) => (eps = list),
+    comps: (list: AlbumT[]) => (comps = list),
+    similar: (list: ArtistT[]) => (similar = list),
+  };
+
+  function loadSection(key: SectionKey) {
     const token = loadToken;
-    run()
-      .then((value) => {
-        if (token !== loadToken) return;
-        clearSectionError(key);
-        assign(value);
-      })
+    const source = sources[key] as Source<never>;
+    loadCached(source, (value) => {
+      if (token !== loadToken) return;
+      clearSectionError(key);
+      assign[key](value);
+    })
       .catch((error) => {
         if (token !== loadToken) return;
         setSectionError(key, error);
@@ -104,69 +136,33 @@
   }
 
   function retrySection(key: SectionKey) {
-    switch (key) {
-      case "tracks":
-        loadSection("tracks", () => api.getArtistTopTracks(id, 20), (list) => (topTracks = list));
-        break;
-      case "albums":
-        loadSection("albums", () => api.getArtistAlbums(id, "albums", 50, 0), (list) => (albums = list));
-        break;
-      case "eps":
-        loadSection(
-          "eps",
-          () => api.getArtistAlbums(id, "eps_and_singles", 50, 0),
-          (list) => (eps = list),
-        );
-        break;
-      case "comps":
-        loadSection(
-          "comps",
-          () => api.getArtistAlbums(id, "compilations", 50, 0),
-          (list) => (comps = list),
-        );
-        break;
-      case "similar":
-        loadSection("similar", () => api.getSimilarArtists(id), (list) => (similar = list));
-        break;
-    }
+    loadSection(key);
   }
 
   const view = createTrackView(() => topTracks);
 
   async function load() {
     const token = ++loadToken;
-    loading = true;
+    if (peek(heroSource) === undefined) loading = true;
     error = "";
     sectionErrors = {};
-    settled = unsettled();
-    topTracks = [];
-    albums = [];
-    eps = [];
-    comps = [];
-    similar = [];
+    settled = settledFromCache();
+    // Sections load alongside the hero; they only show once it has.
+    for (const key of SECTION_ORDER) loadSection(key);
     try {
-      const [loadedArtist, loadedProfile] = await Promise.all([
-        api.getArtist(id),
-        api.getArtistProfile(id).catch(() => null),
-      ]);
-      if (token !== loadToken) return;
-      artist = loadedArtist;
-      profile = loadedProfile;
+      await loadCached(heroSource, ([loadedArtist, loadedProfile]) => {
+        if (token !== loadToken) return;
+        artist = loadedArtist;
+        profile = loadedProfile;
+      });
     } catch (e) {
       if (token !== loadToken) return;
       error = String(e);
-      loading = false;
-      return;
+    } finally {
+      if (token === loadToken) loading = false;
     }
-    loading = false;
-    // Sections load independently: one slow or failed shelf never blocks
-    // the hero or its neighbours, and stale responses are dropped.
-    loadSection("tracks", () => api.getArtistTopTracks(id, 20), (list) => (topTracks = list));
-    loadSection("albums", () => api.getArtistAlbums(id, "albums", 50, 0), (list) => (albums = list));
-    loadSection("eps", () => api.getArtistAlbums(id, "eps_and_singles", 50, 0), (list) => (eps = list));
-    loadSection("comps", () => api.getArtistAlbums(id, "compilations", 50, 0), (list) => (comps = list));
-    loadSection("similar", () => api.getSimilarArtists(id), (list) => (similar = list));
   }
+
   async function queueTop(startIndex: number, shuffle = false) {
     if (topTracks.length === 0) return;
     const prepared = await trackFlags.filterPlayable(topTracks, startIndex);
@@ -202,7 +198,10 @@
   }
 
   $effect(() => {
-    load();
+    // Untracked: a cached load applies synchronously (sections read and write
+    // their error/settled state), so tracked reads made this mount effect
+    // re-run on its own writes forever.
+    untrack(load);
   });
 </script>
 

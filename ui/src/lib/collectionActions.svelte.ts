@@ -2,6 +2,7 @@ import { api, type CollectionEntry, type CollectionFolder, type Playlist } from 
 import { errorMessage } from "./errors";
 import type { CollectionTree } from "./collection.svelte";
 import type { Toasts } from "./toasts.svelte";
+import { invalidate } from "./viewCache";
 
 export type RenameTarget =
   | { kind: "playlist"; playlist: Playlist }
@@ -127,6 +128,7 @@ export function createCollectionActions(
     try {
       if (target.kind === "playlist") {
         await api.renamePlaylist(target.playlist.uuid, name, target.playlist.description ?? "");
+        invalidate(`playlist:${target.playlist.uuid}`);
         toasts.show("Playlist renamed", { severity: "success" });
       } else {
         await api.renameFolder(target.folder.id, name);
@@ -152,6 +154,7 @@ export function createCollectionActions(
         toasts.show(`Removed ${target.name}`, { severity: "success" });
       } else if (target.owned) {
         await api.deletePlaylist(target.uuid);
+        invalidate(`playlist:${target.uuid}`);
         toasts.show(`Deleted ${target.title}`, { severity: "success" });
       } else {
         await api.removeCollectionEntry("playlist", target.uuid);

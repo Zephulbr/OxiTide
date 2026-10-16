@@ -58,6 +58,7 @@
   import { createCollectionTree } from "./lib/collection.svelte";
   import { createCollectionActions } from "./lib/collectionActions.svelte";
   import { clearPagerCache } from "./lib/pager.svelte";
+  import { clearViewCache } from "./lib/viewCache";
   import { clearPlaylistCovers } from "./lib/playlistArt.svelte";
   import { playSource } from "./lib/playSource.svelte";
   import { scrobbled } from "./lib/scrobbled.svelte";
@@ -468,6 +469,7 @@
   async function onLogin() {
     authError = "";
     clearPagerCache();
+    clearViewCache();
     clearPlaylistCovers();
     error = "";
     const restore = expired;
@@ -499,6 +501,7 @@
       toasts.show(errorMessage(e), { severity: "error" });
     }
     clearPagerCache();
+    clearViewCache();
     clearPlaylistCovers();
     favorites.reset();
     playlistActions.reset();
