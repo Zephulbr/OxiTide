@@ -42,6 +42,12 @@ impl StreamPlan {
         self.segments.iter().map(|s| s.url.as_str()).collect()
     }
 
+    /// Low may hide implicit SBR/PS behind an AAC-LC codec string. Otherwise
+    /// leave AAC-LC on Symphonia unless HE-AAC is explicitly signaled.
+    pub fn needs_he_aac(&self) -> bool {
+        self.quality == Some(Quality::Low) || self.codec.as_deref().is_some_and(is_he_aac)
+    }
+
     /// A single-file source with no segment timing (BTS manifests, tests).
     pub fn single(url: String) -> Self {
         Self {
@@ -137,6 +143,8 @@ fn derive_quality(
     if codec.contains("flac") || codec.contains("alac") {
         let hi_res = bit_depth.unwrap_or(0) >= 24 || sample_rate.unwrap_or(0) > 48_000;
         Some(if hi_res { Quality::Max } else { Quality::Lossless })
+    } else if is_he_aac(&codec) {
+        Some(Quality::Low)
     } else if codec.contains("mp4a") || codec.contains("aac") {
         Some(if bandwidth.is_some_and(|b| b < 192_000) { Quality::Low } else { Quality::High })
     } else {
@@ -144,8 +152,8 @@ fn derive_quality(
     }
 }
 
-/// True for HE-AAC codec strings (AAC + SBR/PS). The built-in symphonia
-/// decoder implements AAC-LC only and rejects these streams at init.
+/// True for explicit HE-AAC codec strings (AAC + SBR/PS). Implicit SBR/PS
+/// cannot be identified from an AAC-LC manifest codec string alone.
 pub fn is_he_aac(codec: &str) -> bool {
     let codec = codec.to_ascii_lowercase();
     codec.contains("mp4a.40.5")
@@ -407,6 +415,58 @@ mod tests {
             plan_from_info(&info(DASH_MIME, aac_high.as_bytes())).unwrap().quality,
             Some(Quality::High)
         );
+    }
+
+    #[test]
+    fn he_aac_derives_low_without_overriding_api_quality() {
+        for codec in ["mp4a.40.5", "mp4a.40.05", "mp4a.40.29", "mp4a.40.029"] {
+            let dash = flac_mpd(codec, 24000, 16);
+            let bts =
+                serde_json::json!({ "codecs": codec, "urls": ["https://cdn/a.mp4"] }).to_string();
+            for (mime, body) in [(DASH_MIME, dash.as_bytes()), (BTS_MIME, bts.as_bytes())] {
+                assert_eq!(
+                    plan_from_info(&info(mime, body)).unwrap().quality,
+                    Some(Quality::Low)
+                );
+                let explicit = info_with_quality(mime, body, Some(Quality::High));
+                assert_eq!(
+                    plan_from_info(&explicit).unwrap().quality,
+                    Some(Quality::High)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn he_aac_decoder_hint_preserves_high_and_unknown_aac_lc() {
+        let mut plan = StreamPlan::single("mem://aac".into());
+        for codec in [None, Some("mp4a"), Some("mp4a.40.2")] {
+            plan.codec = codec.map(str::to_string);
+            for quality in [None, Some(Quality::High), Some(Quality::Lossless), Some(Quality::Max)] {
+                plan.quality = quality;
+                assert!(!plan.needs_he_aac(), "{codec:?}/{quality:?}");
+            }
+            plan.quality = Some(Quality::Low);
+            assert!(plan.needs_he_aac(), "{codec:?}");
+        }
+        for codec in ["mp4a.40.5", "mp4a.40.29", "MP4A.40.05", "mp4a.40.029"] {
+            plan.codec = Some(codec.into());
+            for quality in [None, Some(Quality::Low), Some(Quality::High)] {
+                plan.quality = quality;
+                assert!(plan.needs_he_aac(), "{codec}/{quality:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn requested_low_is_not_evidence_of_served_quality() {
+        for (codec, expected) in [("mp4a.40.2", Some(Quality::High)), ("unknown", None)] {
+            let bts =
+                serde_json::json!({ "codecs": codec, "urls": ["https://cdn/a.mp4"] }).to_string();
+            let mut requested_low = info(BTS_MIME, bts.as_bytes());
+            requested_low.quality = Quality::Low;
+            assert_eq!(plan_from_info(&requested_low).unwrap().quality, expected);
+        }
     }
 
     #[test]

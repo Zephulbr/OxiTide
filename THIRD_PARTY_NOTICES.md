@@ -168,7 +168,14 @@ in `Cargo.lock` (counts as of 2026-10-01):
 | Unlicense/MIT | 2 (same-file, walkdir) |
 | (MIT OR Apache-2.0) AND Unicode-3.0 | 1 (unicode-ident) |
 
-Added since: `realfft` and `rubato` (MIT, 2026-10-08, Track 7b AutoMix resampling).
+Added since: `realfft` and `rubato` (MIT, 2026-10-08, Track 7b AutoMix resampling),
+and `rusty_aac` 1.1.0 (Apache-2.0, 2026-10-16, AAC-LC / HE-AAC packet decoding).
+The latter is pure Rust and adds no native codec library or runtime dependency.
+Source and license: <https://crates.io/crates/rusty_aac/1.1.0>.
+
+HE-AAC test media is self-generated mathematical audio; provenance and encoder
+regeneration instructions are in `crates/oxitide-audio/tests/fixtures/README.md`.
+The fixture encoder is a development tool only, not bundled with OxiTide.
 
 Notice-sensitive items worth calling out:
 
