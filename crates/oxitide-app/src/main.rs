@@ -352,6 +352,7 @@ fn main() {
             commands::get_artist,
             commands::search,
             commands::get_explore,
+            commands::get_page,
             commands::get_feed,
             commands::get_favorite_mixes,
             commands::get_mix,

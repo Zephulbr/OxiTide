@@ -54,6 +54,11 @@
   --vinyl: #0d0c0b;
   --vinyl-groove: #161513;
   --vinyl-sheen: rgba(255, 255, 255, 0.13);
+  /* Page-link tiles (Explore genres/moods/decades): an OKLCH wash whose hue
+     comes from the link's name; these knobs keep it in the theme's register. */
+  --link-wash-l: 0.5;
+  --link-wash-c: 0.11;
+  --link-wash-a: 0.5;
 
   /* Theme-paired room + scrim (Backdrop reads these; themes.css flips them). */
   --room-top: #1d1712;

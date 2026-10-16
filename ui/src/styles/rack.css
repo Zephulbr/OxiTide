@@ -94,6 +94,10 @@
   --line: rgba(255, 255, 255, 0.07);
   --edge-lit: linear-gradient(135deg, var(--line), var(--line));
   --glare-alpha: 0.08;
+  /* Page-link tiles: dim, near-neutral plates rather than coloured posters. */
+  --link-wash-l: 0.42;
+  --link-wash-c: 0.035;
+  --link-wash-a: 0.45;
   --room-top: #050505;
   --scrim-top: transparent;
   --scrim-bottom: transparent;

@@ -31,6 +31,10 @@
   --shadow-panel: 0 1px 2px rgb(42 33 26 / 0.1), 0 8px 22px rgb(42 33 26 / 0.12);
   --shadow-cover: 0 1px 3px rgb(42 33 26 / 0.2), 0 8px 18px rgb(42 33 26 / 0.16);
 
+  --link-wash-l: 0.86;
+  --link-wash-c: 0.07;
+  --link-wash-a: 0.8;
+
   --room-top: #efe9e0;
   --scrim-top: rgba(246, 241, 234, 0.55);
   --scrim-bottom: rgba(246, 241, 234, 0.78);

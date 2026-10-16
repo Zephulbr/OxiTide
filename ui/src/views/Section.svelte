@@ -4,7 +4,7 @@
   import ErrorState from "../lib/components/ErrorState.svelte";
   import Loading from "../lib/components/Loading.svelte";
   import PageSections from "../lib/components/PageSections.svelte";
-  import type { Nav } from "../lib/nav.svelte";
+  import type { Nav, SectionSource } from "../lib/nav.svelte";
   import type { Player } from "../lib/player.svelte";
   import type { Toasts } from "../lib/toasts.svelte";
 
@@ -15,7 +15,7 @@
     player,
     toasts,
   }: {
-    source: "home" | "explore" | "forYou";
+    source: SectionSource;
     title: string;
     nav: Nav;
     player: Player;
@@ -35,7 +35,9 @@
           ? await api.getHome()
           : source === "explore"
             ? await api.getExplore()
-            : await api.getForYou();
+            : source === "forYou"
+              ? await api.getForYou()
+              : await api.getPage(source);
       section = sections.find((s) => s.title === title) ?? null;
     } catch (e) {
       error = String(e);

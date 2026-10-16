@@ -585,6 +585,19 @@ pub async fn get_explore(state: State<'_, AppState>) -> Result<Vec<PageSection>,
         .map_err(|e| state.fail_tidal(e))
 }
 
+/// A page a page link opens (Explore's genres, moods, decades). The path is
+/// re-checked here: it comes back from the webview, not straight from TIDAL.
+#[tauri::command]
+pub async fn get_page(state: State<'_, AppState>, path: String) -> Result<Vec<PageSection>, String> {
+    if !oxitide_tidal::pages::is_page_path(&path) {
+        return Err("invalid page path".into());
+    }
+    require_client(&state)?
+        .page(&path)
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
 #[tauri::command]
 pub async fn get_feed(state: State<'_, AppState>) -> Result<Vec<FeedActivity>, String> {
     require_client(&state)?

@@ -77,6 +77,20 @@ describe("classifySection", () => {
   it("falls back to carousel for unknown kinds", () => {
     expect(classifySection("PAGE_LINKS_CLOUD", [item("SOMETHING")])).toBe("carousel");
   });
+
+  it("uses links for page links, with or without an image id", () => {
+    const link = (title: string, artwork: string | null = null): PageItem => ({
+      id: "",
+      title,
+      item_type: "PAGE_LINKS_CLOUD",
+      artwork,
+      api_path: `pages/${title}`,
+    });
+    expect(classifySection("PAGE_LINKS_CLOUD", [link("jazz"), link("pop")])).toBe("links");
+    expect(classifySection("PAGE_LINKS", [{ ...item("PAGE_LINKS", ""), id: "" }])).toBe("links");
+    expect(classifySection("PAGE_LINKS_CLOUD", [link("rising", "img-1")])).toBe("links");
+    expect(classifySection("ALBUM_LIST", [item("ALBUM"), item("ALBUM"), link("x")])).toBe("carousel");
+  });
 });
 
 describe("track playback predicates", () => {

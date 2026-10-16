@@ -503,6 +503,7 @@ mod tests {
         "get_track_credits",
         "get_playlist_tracks",
         "get_feed",
+        "get_page",
         "get_artist_profile",
         "get_artist_top_tracks",
         "get_artist_albums",

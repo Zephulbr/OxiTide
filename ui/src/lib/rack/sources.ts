@@ -16,6 +16,7 @@ export function sourceOf(route: Route): Source | null {
       return "home";
     case "explore":
     case "section":
+    case "page":
       return "explore";
     case "feed":
       return "feed";

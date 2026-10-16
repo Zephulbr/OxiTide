@@ -119,6 +119,24 @@ draw each artist as a **record** (portrait as the label on a vinyl disc; `--viny
 material tokens, black in every mode) and, in name order, letter groups as crate
 dividers.
 
+**Page-link tiles** (`PageLinkGrid.svelte`: Explore's genres, moods and decades, and the
+same rows on linked pages). TIDAL sends these without artwork, so they are not cards: a
+wrapping grid (`minmax(176px, 1fr)`, 12px gap) of 2.2:1 tiles. Each tile is a two-stop
+OKLCH wash over `--surface-2` inside the lit edge, with the hues hashed from the name
+(`lib/pageLinks.ts`, so a genre keeps its colour) and lightness/chroma/alpha from the
+`--link-wash-l/-c/-a` tokens (dark default; lighter and paler in light theme; thinner in
+Instrument; dim and near-neutral in Rack). A record's edge rises from the bottom-right
+corner in the same two hues; on hover the tile lifts 2px and the record shifts in. Names
+sit bottom-left at 15/700; a row made only of decades sets them as 30px display numerals,
+centred. Every page-link row uses tiles, even when it carries image ids (they are not
+square covers).
+
+**Explore header**: the title keeps the page-title step; under it the search field is
+the page's centred hero (48px, `min(680px, 100%)`, panel shadow), then one centred row of
+pill chips the same width (recent searches with the history icon, top artists from
+listening history with the user icon); chips that would wrap are clipped by the row's
+fixed height. Untitled quick-link rows (New, Top, HiRes, …) follow "New to you".
+
 ### 2.2 Type
 
 - Display: **Fraunces** (Atmosphere/Instrument titles). Rack uses **Manrope 700** for

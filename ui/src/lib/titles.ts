@@ -37,6 +37,7 @@ export function routeTitle(route: Route, nowPlaying = false): string {
     case "mix":
       return "Mix · OxiTide";
     case "section":
+    case "page":
       return `${route.title} · OxiTide`;
     case "settings":
       return "Settings · OxiTide";

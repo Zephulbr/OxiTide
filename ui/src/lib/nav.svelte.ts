@@ -19,6 +19,21 @@ const ARTIST_TABS: readonly ArtistTab[] = [
 export type HistoryTab = "recent" | "stats";
 const HISTORY_TABS: readonly HistoryTab[] = ["recent", "stats"];
 
+/// A TIDAL page a page link opens (`pages/genre_jazz`); Rust re-validates it.
+export type PagePath = `pages/${string}`;
+const PAGE_PATH = /^pages\/[A-Za-z0-9_-]+(\/[A-Za-z0-9_-]+)*$/;
+
+export function isPagePath(value: unknown): value is PagePath {
+  return typeof value === "string" && value.length <= 166 && PAGE_PATH.test(value);
+}
+
+/// Where a section's "View all" reloads it from: a fixed feed or a linked page.
+export type SectionSource = "home" | "explore" | "forYou" | PagePath;
+
+function isSectionSource(value: unknown): value is SectionSource {
+  return value === "home" || value === "explore" || value === "forYou" || isPagePath(value);
+}
+
 export type Route =
   | { name: "home" }
   | { name: "explore" }
@@ -36,7 +51,8 @@ export type Route =
   | { name: "artist"; id: number }
   | { name: "artist-all"; id: number; tab: ArtistTab }
   | { name: "mix"; id: string }
-  | { name: "section"; source: "home" | "explore" | "forYou"; title: string }
+  | { name: "section"; source: SectionSource; title: string }
+  | { name: "page"; path: PagePath; title: string }
   | { name: "settings" };
 
 export interface Nav {
@@ -62,6 +78,7 @@ function sameRoute(a: Route, b: Route): boolean {
   if (a.name === "section" && b.name === "section") {
     return a.source === b.source && a.title === b.title;
   }
+  if (a.name === "page" && b.name === "page") return a.path === b.path;
   if (a.name === "artist-all" && b.name === "artist-all") {
     return a.id === b.id && a.tab === b.tab;
   }
@@ -75,8 +92,12 @@ function sameRoute(a: Route, b: Route): boolean {
 const NUMERIC_ID = /^\d+$/;
 
 /// Map a page-feed item to a route only when the type and id shape agree.
-/// Mix items open the mix page; tracks, videos, and unknown types stay inert.
+/// Mix items open the mix page; page links open their TIDAL page; tracks,
+/// videos, and unknown types stay inert.
 export function routeForPageItem(item: PageItem): Route | null {
+  if (isPagePath(item.api_path)) {
+    return { name: "page", path: item.api_path, title: item.title || "Explore" };
+  }
   if (item.id.length === 0) return null;
   const type = item.item_type.toUpperCase();
   if (type === "MIX" || type === "MIX_LIST") {
@@ -140,7 +161,7 @@ function parseRoute(value: unknown): Route | null {
         : null;
     case "section": {
       const source = record.source;
-      if (source === "home" || source === "explore" || source === "forYou") {
+      if (isSectionSource(source)) {
         const title = record.title;
         if (typeof title === "string" && title.length > 0) {
           return { name: "section", source, title };
@@ -148,6 +169,10 @@ function parseRoute(value: unknown): Route | null {
       }
       return null;
     }
+    case "page":
+      return isPagePath(record.path) && typeof record.title === "string" && record.title.length > 0
+        ? { name: "page", path: record.path, title: record.title }
+        : null;
     case "album":
       return typeof record.id === "number" && Number.isInteger(record.id) && record.id > 0
         ? { name: "album", id: record.id }

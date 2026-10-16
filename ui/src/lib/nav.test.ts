@@ -295,6 +295,50 @@ describe("section routes", () => {
   });
 });
 
+describe("page routes", () => {
+  const link = (api_path: string, title = "Jazz"): PageItem => ({
+    id: "",
+    title,
+    item_type: "PAGE_LINKS_CLOUD",
+    api_path,
+  });
+
+  it("routes page links by their api path", () => {
+    expect(routeForPageItem(link("pages/genre_jazz"))).toEqual({
+      name: "page",
+      path: "pages/genre_jazz",
+      title: "Jazz",
+    });
+    expect(routeForPageItem(link("pages/genre_jazz", ""))?.name).toBe("page");
+    expect(routeForPageItem(link("pages/../x"))).toBeNull();
+    expect(routeForPageItem(link("https://x/pages/y"))).toBeNull();
+  });
+
+  it("round-trips page routes and page-sourced sections, dedupes by path", () => {
+    const storage = fakeStorage();
+    const nav = createNav(storage);
+    nav.goto({ name: "page", path: "pages/genre_jazz", title: "Jazz" });
+    nav.goto({ name: "page", path: "pages/genre_jazz", title: "Renamed" });
+    nav.goto({ name: "section", source: "pages/genre_jazz", title: "Essentials" });
+    const restored = createNav(storage);
+    expect(restored.route).toEqual({ name: "section", source: "pages/genre_jazz", title: "Essentials" });
+    restored.back();
+    expect(restored.route).toEqual({ name: "page", path: "pages/genre_jazz", title: "Jazz" });
+  });
+
+  it("rejects stored pages with a bad path", () => {
+    const cases = [
+      '{"history":[{"name":"page","path":"albums/1","title":"A"}],"index":0}',
+      '{"history":[{"name":"page","path":"pages/x?y","title":"A"}],"index":0}',
+      '{"history":[{"name":"page","path":"pages/x","title":""}],"index":0}',
+      '{"history":[{"name":"section","source":"pages/../x","title":"A"}],"index":0}',
+    ];
+    for (const raw of cases) {
+      expect(createNav(fakeStorage(raw)).route, raw).toEqual({ name: "home" });
+    }
+  });
+});
+
 describe("routeForPageItem artists", () => {
   it("routes artist items with a numeric id", () => {
     expect(routeForPageItem(pageItem("ARTIST", "42"))).toEqual({ name: "artist", id: 42 });

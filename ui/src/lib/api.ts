@@ -69,6 +69,8 @@ export interface PageItem {
   album_title?: string | null;
   /// Album release type (`ALBUM` / `EP` / `SINGLE`) when known.
   release_type?: string | null;
+  /// Page links: the TIDAL page they open (`pages/…`), validated in Rust.
+  api_path?: string | null;
 }
 export interface PageSection { title: string; items: PageItem[]; kind: string }
 /// One release activity from an artist the user follows (v2 feed).
@@ -544,6 +546,7 @@ export const api = {
   getKeyringStatus: () => invoke<KeyringStatus>("get_keyring_status"),
   getHome: () => invoke<PageSection[]>("get_home"),
   getExplore: () => invoke<PageSection[]>("get_explore"),
+  getPage: (path: string) => invoke<PageSection[]>("get_page", { path }),
   getFeed: () => invoke<FeedActivity[]>("get_feed"),
   getFavoriteMixes: () => invoke<Mix[]>("get_favorite_mixes"),
   getMix: (id: string) => invoke<MixDetail>("get_mix", { id }),

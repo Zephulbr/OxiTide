@@ -1,7 +1,7 @@
 import type { Mix, PageItem, PageTrackInput, Playlist } from "./api";
 
 export type CardShape = "artist" | "album" | "playlist" | "mix" | "plain";
-export type SectionTreatment = "tiles" | "carousel" | "list";
+export type SectionTreatment = "tiles" | "carousel" | "list" | "links";
 
 const NUMERIC_ID = /^\d+$/;
 const upper = (value: string) => value.toUpperCase();
@@ -30,10 +30,18 @@ function isTrackish(type: string): boolean {
   return type.includes("TRACK") || type.includes("VIDEO");
 }
 
+/// Page links (Explore's genres, moods, decades) open a TIDAL page.
+export function isPageLink(item: PageItem): boolean {
+  return Boolean(item.api_path) || upper(item.item_type).includes("PAGE_LINK");
+}
+
 /// Section treatment from the TIDAL module kind plus item-type composition.
 /// Unknown kinds fall back to carousel so new feed rows never break Home.
+/// Rows of page links get name tiles: most send no artwork, and the image ids
+/// some do send are not square covers (they fail as cards).
 export function classifySection(kind: string, items: PageItem[]): SectionTreatment {
   if (items.length === 0) return "carousel";
+  if (items.filter(isPageLink).length * 2 > items.length) return "links";
   const k = upper(kind);
   const types = items.map((item) => upper(item.item_type));
   const trackish = types.filter(isTrackish).length;

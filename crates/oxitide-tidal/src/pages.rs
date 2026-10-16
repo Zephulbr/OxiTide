@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::client::TidalClient;
-use crate::error::Result;
+use crate::error::{Error, Result};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PageItem {
@@ -31,6 +31,27 @@ pub struct PageItem {
     /// Album release type (`ALBUM` / `EP` / `SINGLE`) when the payload says.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub release_type: Option<String>,
+    /// Page links (`PAGE_LINKS*` rows): the TIDAL page they open, e.g.
+    /// `pages/genre_hip_hop`. Only paths `is_page_path` accepts are kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_path: Option<String>,
+}
+
+/// A page path the client may fetch: `pages/` followed by `/`-separated
+/// segments of ASCII letters, digits, `_` and `-`. Page links come from TIDAL's
+/// payload, so this keeps them from steering a request anywhere else.
+pub fn is_page_path(path: &str) -> bool {
+    let Some(rest) = path.strip_prefix("pages/") else {
+        return false;
+    };
+    !rest.is_empty()
+        && rest.len() <= 160
+        && rest.split('/').all(|segment| {
+            !segment.is_empty()
+                && segment
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        })
 }
 
 fn default_kind() -> String {
@@ -117,6 +138,9 @@ struct RawItem {
     /// Page links (editorial rows) carry their artwork here.
     #[serde(default, rename = "imageId")]
     pub image_id: Option<String>,
+    /// Page links: the page they open (`pages/…`).
+    #[serde(default, rename = "apiPath")]
+    pub api_path: Option<String>,
     /// Mix artwork: absolute CDN urls under `images.{SMALL,MEDIUM,LARGE}.url`.
     #[serde(default)]
     pub images: Option<RawImages>,
@@ -196,6 +220,18 @@ impl TidalClient {
     /// Fetch the explore page (same rows/modules shape as home).
     pub async fn explore_page(&self) -> Result<Vec<PageSection>> {
         self.page_sections_at("pages/explore", &[]).await
+    }
+
+    /// Any rows/modules page a page link points at (`PageItem::api_path`).
+    /// Paths outside `is_page_path` are refused without a request.
+    pub async fn page(&self, path: &str) -> Result<Vec<PageSection>> {
+        if !is_page_path(path) {
+            return Err(Error::Api {
+                status: 400,
+                message: "invalid page path".into(),
+            });
+        }
+        self.page_sections_at(path, &[]).await
     }
 
     /// The discovery mix feed; same rows/modules shape as home and explore.
@@ -295,6 +331,7 @@ fn page_item_from_raw(module_type: &str, mut raw: RawItem) -> PageItem {
         }
     });
     let album_title = raw.album.as_ref().and_then(|album| album.title.clone());
+    let api_path = raw.api_path.filter(|path| is_page_path(path));
     PageItem {
         id,
         title: raw.title,
@@ -318,6 +355,7 @@ fn page_item_from_raw(module_type: &str, mut raw: RawItem) -> PageItem {
         audio_quality: raw.audio_quality,
         album_title,
         release_type,
+        api_path,
     }
 }
 
@@ -362,6 +400,7 @@ pub fn page_item_from_value(value: &serde_json::Value) -> Option<PageItem> {
         audio_quality: None,
         album_title: None,
         release_type,
+        api_path: None,
     })
 }
 
@@ -738,6 +777,67 @@ mod tests {
             .await;
         let sections = client(&server).home_page().await.unwrap();
         assert_eq!(sections[0].items[0].artwork.as_deref(), Some("img-1"));
+        assert_eq!(sections[0].items[0].api_path.as_deref(), Some("pages/rising"));
+    }
+
+    /// Explore's genre/mood links carry no artwork; their `apiPath` is kept
+    /// only when it is a plain page path.
+    #[tokio::test]
+    async fn page_links_keep_only_valid_api_paths() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/pages/explore"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "rows": [{"modules": [{"type": "PAGE_LINKS_CLOUD", "title": "Genres", "pagedList": {"items": [
+                    {"title": "Hip-Hop", "icon": "genre_hiphop", "imageId": null, "apiPath": "pages/genre_hip_hop"},
+                    {"title": "Odd", "apiPath": "https://example.com/pages/x"},
+                    {"title": "Climb", "apiPath": "pages/../oauth2/token"},
+                    {"title": "Query", "apiPath": "pages/x?y=1"}
+                ]}}]}]
+            })))
+            .mount(&server)
+            .await;
+        let sections = client(&server).explore_page().await.unwrap();
+        let paths: Vec<_> = sections[0]
+            .items
+            .iter()
+            .map(|item| item.api_path.as_deref())
+            .collect();
+        assert_eq!(paths, vec![Some("pages/genre_hip_hop"), None, None, None]);
+        assert_eq!(sections[0].items[0].artwork, None);
+        assert_eq!(sections[0].items[0].item_type, "PAGE_LINKS_CLOUD");
+    }
+
+    #[test]
+    fn page_paths_are_plain_segments_under_pages() {
+        assert!(is_page_path("pages/genre_hip_hop"));
+        assert!(is_page_path("pages/single-module-page/abc-1/4/77/1"));
+        assert!(!is_page_path("pages/"));
+        assert!(!is_page_path("pages//x"));
+        assert!(!is_page_path("pages/../x"));
+        assert!(!is_page_path("pages/x?y=1"));
+        assert!(!is_page_path("/pages/x"));
+        assert!(!is_page_path("albums/1"));
+    }
+
+    #[tokio::test]
+    async fn page_fetches_a_link_path_and_refuses_others() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/pages/genre_jazz"))
+            .and(query_param("deviceType", "BROWSER"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "rows": [{"modules": [{"type": "PLAYLIST_LIST", "title": "Jazz Essentials", "items": [
+                    {"uuid": "p-9", "title": "Cool"}
+                ]}]}]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let c = client(&server);
+        let sections = c.page("pages/genre_jazz").await.unwrap();
+        assert_eq!(sections[0].title, "Jazz Essentials");
+        assert!(c.page("tracks/1").await.is_err());
     }
 
     #[tokio::test]

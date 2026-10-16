@@ -17,6 +17,7 @@
   import Settings from "../views/Settings.svelte";
   import NowPlaying from "../views/NowPlaying.svelte";
   import Section from "../views/Section.svelte";
+  import TidalPage from "../views/TidalPage.svelte";
   import type { Nav } from "./nav.svelte";
   import type { Player } from "./player.svelte";
   import type { Favorites } from "./favorites.svelte";
@@ -59,6 +60,7 @@
   const pageKey = $derived.by(() => {
     const route = nav.route;
     if (route.name === "section") return `section:${route.source}:${route.title}`;
+    if (route.name === "page") return `page:${route.path}`;
     if ("id" in route) return `${route.name}:${route.id}`;
     return route.name;
   });
@@ -79,6 +81,7 @@
     {:else if nav.route.name === "playlists"}<Playlists {nav} {playlistActions} actions={collectionActions} />
     {:else if nav.route.name === "folder"}<Playlists {nav} {playlistActions} actions={collectionActions} folderId={nav.route.id} folderLabel={nav.route.label ?? ""} />
     {:else if nav.route.name === "section"}<Section source={nav.route.source} title={nav.route.title} {nav} {player} {toasts} />
+    {:else if nav.route.name === "page"}<TidalPage path={nav.route.path} title={nav.route.title} {nav} {player} {toasts} />
     {:else if nav.route.name === "album"}<Album id={nav.route.id} {nav} {player} {favorites} {playlistActions} {toasts} />
     {:else if nav.route.name === "mix"}<Mix id={nav.route.id} {nav} {player} {favorites} {playlistActions} {toasts} />
     {:else if nav.route.name === "playlist"}<Playlist {nav} id={nav.route.id} {player} {favorites} {playlistActions} {toasts} {collection} />

@@ -2,7 +2,7 @@
   import { api, type PageItem, type PageSection } from "../api";
   import { errorMessage } from "../errors";
   import { classifySection, isPlayableTrack, pageTrackInput } from "../media";
-  import { routeForPageItem, type Nav } from "../nav.svelte";
+  import { routeForPageItem, type Nav, type SectionSource } from "../nav.svelte";
   import { playSource } from "../playSource.svelte";
   import type { Player } from "../player.svelte";
   import { trackFlags } from "../trackFlags.svelte";
@@ -10,6 +10,7 @@
   import Carousel from "./Carousel.svelte";
   import Icon from "./Icon.svelte";
   import MediaCard from "./MediaCard.svelte";
+  import PageLinkGrid from "./PageLinkGrid.svelte";
 
   let {
     sections,
@@ -23,7 +24,7 @@
     sections: PageSection[];
     nav: Nav;
     toasts: Toasts;
-    source: "home" | "explore" | "forYou";
+    source: SectionSource;
     player?: Player | null;
     uncapped?: boolean;
     showTitle?: boolean;
@@ -113,7 +114,12 @@
   {@const shown = uncapped ? section.items : section.items.slice(0, cap)}
   {@const tracks = effective === "list" ? feedTracks(section.items) : []}
   {@const capped = !uncapped && section.items.length > cap}
-  {#if effective === "carousel"}
+  {#if effective === "links"}
+    {#if showTitle && section.title.trim()}
+      <div class="head"><h3>{section.title}</h3></div>
+    {/if}
+    <PageLinkGrid items={section.items} label={section.title || "Explore"} open={activate} />
+  {:else if effective === "carousel"}
     <Carousel title={section.title}>
       {#each section.items as item, i (item.id || `${item.title}-${i}`)}
         {@const onclick = activate(item)}

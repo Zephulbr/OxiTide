@@ -1,6 +1,11 @@
 <script lang="ts">
-  import { api, trackToQueueItem, type PageSection } from "../lib/api";
+  import { api, trackToQueueItem, type HistoryEntry, type PageItem, type PageSection } from "../lib/api";
+  import Carousel from "../lib/components/Carousel.svelte";
   import Cover from "../lib/components/Cover.svelte";
+  import MediaCard from "../lib/components/MediaCard.svelte";
+  import { buildNewToYou, topArtistNames, type NewArtist } from "../lib/exploreSuggest";
+  import { routeForPageItem } from "../lib/nav.svelte";
+  import { splitQuickLinks, withoutVideoLinks } from "../lib/pageLinks";
   import EmptyState from "../lib/components/EmptyState.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
   import Icon from "../lib/components/Icon.svelte";
@@ -63,9 +68,66 @@
     }
   }
 
+  /// Personal parts (chips, New to you) load on their own and stay hidden on
+  /// failure or an empty history, like Home's shelves.
+  let listened = $state<HistoryEntry[]>([]);
+  let newToYou = $state<NewArtist[]>([]);
+
+  async function loadPersonal() {
+    try {
+      listened = (await api.getHistoryPage(0, 200)).items;
+    } catch {
+      return;
+    }
+    try {
+      newToYou = await buildNewToYou(listened, api, (id) => favorites.hasArtist(id));
+    } catch {
+      newToYou = [];
+    }
+  }
+
   $effect(() => {
     loadExplore();
+    void loadPersonal();
   });
+
+  /// Enough to fill the row under the search field; the row clips whatever
+  /// does not fit (CSS), so the count is a ceiling, not a layout input.
+  const CHIP_CAP = 16;
+
+  /// Recent searches first, then top artists from history not already there.
+  const chips = $derived.by(() => {
+    const out: { value: string; recent: boolean }[] = [];
+    const taken = new Set<string>();
+    const add = (value: string, recent: boolean) => {
+      const key = value.trim().toLowerCase();
+      if (!key || taken.has(key) || out.length >= CHIP_CAP) return;
+      taken.add(key);
+      out.push({ value, recent });
+    };
+    for (const entry of history.entries.slice(0, 5)) add(entry, true);
+    for (const name of topArtistNames(listened, CHIP_CAP)) add(name, false);
+    return out;
+  });
+
+  const newItems = $derived<PageItem[]>(
+    newToYou.map(({ artist, seed }) => ({
+      id: String(artist.id),
+      title: artist.name,
+      subtitle: `Like ${seed}`,
+      item_type: "ARTIST",
+      artwork: artist.picture ?? null,
+    })),
+  );
+
+  /// Untitled link rows (New, Top, HiRes, …) sit under "New to you"; video
+  /// links are dropped everywhere (OxiTide does not play videos).
+  const arranged = $derived(splitQuickLinks(withoutVideoLinks(sections)));
+
+  function open(item: PageItem): (() => void) | undefined {
+    const route = routeForPageItem(item);
+    return route ? () => nav.goto(route) : undefined;
+  }
 
   const searching = $derived(search.query.trim().length > 0);
 
@@ -153,7 +215,9 @@
   }
 </script>
 
+<header class="page-head explore-head">
 <h2>Explore</h2>
+<div class="search-block">
 <div class="search-bar">
   <span class="search-icon" aria-hidden="true"><Icon name="search" size={16} /></span>
   <input
@@ -222,6 +286,23 @@
     </div>
   {/if}
 </div>
+{#if !searching && chips.length > 0}
+  <div class="chips" role="group" aria-label="Search suggestions">
+    {#each chips as chip (chip.value)}
+      <button
+        type="button"
+        class="chip"
+        onclick={() => chooseSuggestion(chip.value)}
+        title={chip.recent ? `Search again for “${chip.value}”` : `Search for ${chip.value}`}
+      >
+        <Icon name={chip.recent ? "history" : "user"} size={13} />
+        <span>{chip.value}</span>
+      </button>
+    {/each}
+  </div>
+{/if}
+</div>
+</header>
 
 {#if searching}
   {#if search.loading && !search.results && !search.error}
@@ -295,32 +376,63 @@
       {/each}
     </ul>
   {/if}
-{:else if exploreLoading}
-  <Loading />
-{:else if exploreError}
-  <ErrorState message={exploreError} onRetry={loadExplore} />
-{:else if sections.length === 0}
-  <EmptyState message="Nothing to explore yet." />
 {:else}
-  <PageSections {sections} {nav} {player} {toasts} source="explore" />
+  {#if newItems.length > 0}
+    <section class="shelf">
+      <Carousel title="New to you">
+        {#each newItems as item (item.id)}
+          <MediaCard {item} variant="carousel" onclick={open(item)} />
+        {/each}
+      </Carousel>
+    </section>
+  {/if}
+  {#if exploreLoading}
+    <Loading />
+  {:else if exploreError}
+    <ErrorState message={exploreError} onRetry={loadExplore} />
+  {:else if arranged.quick.length + arranged.rest.length === 0}
+    <EmptyState message="Nothing to explore yet." />
+  {:else}
+    <PageSections sections={[...arranged.quick, ...arranged.rest]} {nav} {player} {toasts} source="explore" />
+  {/if}
 {/if}
 
 <style>
+  /* Explore's header is its search: the title keeps every page's h2 step,
+     the field below it is the page's hero (spec 2026-10-16 Explore). */
+  .explore-head {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 12px;
+    margin-bottom: 26px;
+  }
+  /* The search is the page's centrepiece: centred, with its chips clipped to
+     one row of the same width. */
+  .search-block {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: min(680px, 100%);
+    margin-inline: auto;
+  }
   .search-bar {
     position: relative;
     display: flex;
     align-items: center;
     gap: 8px;
-    max-width: 560px;
   }
   .search-bar-input {
     flex: 1;
     min-width: 0;
-    padding-left: 36px;
+    height: 48px;
+    padding-left: 44px;
+    font-size: 15px;
+    box-shadow: var(--shadow-panel);
   }
   .search-icon {
     position: absolute;
-    left: 12px;
+    left: 16px;
     display: grid;
     place-items: center;
     color: var(--text-muted);
@@ -391,6 +503,48 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  /* One row: chips that would wrap are clipped (CSS, not a measured count,
+     so the queue glide sees the final layout). Centred under the field. */
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    /* 30px chips plus room for the focus ring; a wrapped row starts below. */
+    height: 34px;
+    padding: 2px;
+    overflow: hidden;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 240px;
+    height: 30px;
+    padding: 0 12px 0 10px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--surface-1);
+    color: var(--text-muted);
+    font-size: 13px;
+    transition:
+      background var(--dur-state) var(--ease-enter),
+      color var(--dur-state) var(--ease-enter);
+  }
+  .chip span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .chip:hover,
+  .chip:focus-visible {
+    background: var(--surface-3);
+    color: var(--text);
+  }
+  .shelf {
+    margin-bottom: 10px;
   }
   .list-head {
     display: flex;
