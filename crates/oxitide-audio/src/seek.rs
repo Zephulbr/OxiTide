@@ -24,9 +24,8 @@ pub fn target_segment(plan: &StreamPlan, position_ms: u64, sample_rate: u32) -> 
     let mut index = 0;
     let mut start = 0u64;
     for (i, segment) in plan.segments.iter().enumerate() {
-        let segment_start =
-            segment.start_ticks.saturating_mul(sample_rate as u64) / plan.timescale;
-        if segment_start <= frames {
+        let segment_start = segment.start_ticks.saturating_mul(sample_rate as u64) / plan.timescale;
+        if segment.start_ticks as u128 * 1000 <= position_ms as u128 * plan.timescale as u128 {
             index = i;
             start = segment_start;
         } else {
@@ -36,20 +35,30 @@ pub fn target_segment(plan: &StreamPlan, position_ms: u64, sample_rate: u32) -> 
     SeekTarget { segment_index: index, discard_frames: frames - start, position_frames: frames }
 }
 
-/// The track frame where a source begins decoding. A cached file contains the
-/// track from its first segment; a network stream truncated by a seek begins
-/// at the target segment.
-pub fn source_start_frames(plan: &StreamPlan) -> u64 {
-    if plan.timescale == 0 {
-        return 0;
+/// Where a source begins on the track timeline. Keep manifest ticks until
+/// decoding reveals the output rate: HE-AAC may declare only its core rate.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SourceStart {
+    ticks: u64,
+    timescale: u64,
+}
+
+impl SourceStart {
+    /// A cached file begins at its first segment; a seek-truncated network
+    /// source begins at the first segment of the truncated plan.
+    pub fn from_plan(plan: &StreamPlan) -> Self {
+        Self {
+            ticks: plan.segments.first().map_or(0, |s| s.start_ticks),
+            timescale: plan.timescale,
+        }
     }
-    plan.sample_rate
-        .and_then(|rate| {
-            plan.segments
-                .first()
-                .map(|s| s.start_ticks.saturating_mul(rate as u64) / plan.timescale)
-        })
-        .unwrap_or(0)
+
+    pub fn frames(self, sample_rate: u32) -> u64 {
+        if self.timescale == 0 {
+            return 0;
+        }
+        self.ticks.saturating_mul(sample_rate as u64) / self.timescale
+    }
 }
 
 /// How much of the decoded stream to drop before playback: everything between
@@ -163,6 +172,20 @@ mod tests {
     }
 
     #[test]
+    fn segment_selection_does_not_round_a_future_start_down() {
+        let plan = plan_with_segments(24000, &[(0, 24012), (24012, 24000)]);
+        // Selection is timeline-based, even at the network path's 1 kHz
+        // placeholder rate or when a boundary falls between output frames.
+        for rate in [1000, 24000, 44100, 48000] {
+            assert_eq!(target_segment(&plan, 1000, rate).segment_index, 0);
+            assert_eq!(target_segment(&plan, 1001, rate).segment_index, 1);
+        }
+        let exact = plan_with_segments(24000, &[(0, 24576), (24576, 24000)]);
+        assert_eq!(target_segment(&exact, 1023, 1000).segment_index, 0);
+        assert_eq!(target_segment(&exact, 1024, 1000).segment_index, 1);
+    }
+
+    #[test]
     fn single_file_source_discards_from_the_start() {
         let plan = StreamPlan::single("file".into());
         let target = target_segment(&plan, 1000, 44100);
@@ -184,11 +207,34 @@ mod tests {
     #[test]
     fn source_start_frames_is_the_first_segment_start() {
         let timed = plan_with_segments(44100, &[(88_200, 88_200), (176_400, 88_200)]);
-        assert_eq!(source_start_frames(&timed), 88_200);
+        assert_eq!(SourceStart::from_plan(&timed).frames(44100), 88_200);
         let untimed = plan_with_segments(0, &[(0, 0)]);
-        assert_eq!(source_start_frames(&untimed), 0);
+        assert_eq!(SourceStart::from_plan(&untimed).frames(44100), 0);
         let empty = plan_with_segments(1, &[]);
-        assert_eq!(source_start_frames(&empty), 0);
+        assert_eq!(SourceStart::from_plan(&empty).frames(44100), 0);
+    }
+
+    #[test]
+    fn he_aac_source_start_uses_the_decoded_rate_not_the_core_rate() {
+        let mut plan = plan_with_segments(24000, &[(0, 24000), (24000, 24000)]);
+        plan.sample_rate = Some(24000);
+        let source_start = SourceStart::from_plan(&plan.from_segment(1));
+        let target = target_segment(&plan, 1500, 48000);
+        assert_eq!(target.segment_index, 1);
+        assert_eq!(source_start.frames(48000), 48000);
+        assert_eq!(
+            discard_frames_for(&target, source_start.frames(48000)),
+            24000
+        );
+        plan.sample_rate = None;
+        assert_eq!(
+            SourceStart::from_plan(&plan.from_segment(1)).frames(48000),
+            48000
+        );
+        assert_eq!(
+            discard_frames_for(&target, SourceStart::from_plan(&plan).frames(48000)),
+            72000
+        );
     }
 
     #[test]
@@ -201,6 +247,9 @@ mod tests {
         // Network path: the source begins at the target segment.
         assert_eq!(discard_frames_for(&target, 2000), 500);
         // Cached path: the source begins at the track's first frame.
-        assert_eq!(discard_frames_for(&target, source_start_frames(&plan)), 2500);
+        assert_eq!(
+            discard_frames_for(&target, SourceStart::from_plan(&plan).frames(1000)),
+            2500
+        );
     }
 }

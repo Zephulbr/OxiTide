@@ -25,6 +25,8 @@ describe("formatQuality compact", () => {
   it("falls back to the preferred quality before streaming starts", () => {
     expect(formatQuality(null, "compact", "max")).toBe("MAX");
     expect(formatQuality(undefined, "compact", "high")).toBe("HIGH");
+    expect(formatQuality(null, "compact", "low")).toBe("LOW");
+    expect(formatQuality(undefined, "compact", "low")).toBe("LOW");
     expect(formatQuality(meta({ quality: null }), "compact", "lossless")).toBe("LOSSLESS");
   });
 });
@@ -36,6 +38,16 @@ describe("formatQuality detailed", () => {
     ).toBe("24-bit / 96 kHz / 2304 kbps");
   });
 
+  it("shows the served Low bitrate without inventing a bit depth", () => {
+    expect(
+      formatQuality(
+        meta({ quality: "low", codec: "aac", bit_depth: 0, bitrate_kbps: 96 }),
+        "detailed",
+        "max",
+      ),
+    ).toBe("— / 44.1 kHz / 96 kbps");
+  });
+
   it("dashes missing segments", () => {
     expect(formatQuality(meta({ bitrate_kbps: null }), "detailed", "max")).toBe(
       "16-bit / 44.1 kHz / —",
@@ -44,6 +56,8 @@ describe("formatQuality detailed", () => {
 
   it("falls back to the preferred quality without stream metadata", () => {
     expect(formatQuality(null, "detailed", "lossless")).toBe("LOSSLESS");
+    expect(formatQuality(null, "detailed", "low")).toBe("LOW");
+    expect(formatQuality(undefined, "detailed", "low")).toBe("LOW");
   });
 });
 

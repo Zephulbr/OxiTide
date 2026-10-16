@@ -1,9 +1,9 @@
 use symphonia::core::audio::GenericAudioBufferRef;
-use symphonia::core::codecs::audio::AudioDecoderOptions;
+use symphonia::core::codecs::audio::{well_known::CODEC_ID_AAC, AudioDecoderOptions};
 use symphonia::core::codecs::CodecParameters;
 use symphonia::core::errors::Error as SymError;
 use symphonia::core::formats::probe::Hint;
-use symphonia::core::formats::{FormatOptions, TrackType};
+use symphonia::core::formats::{FormatOptions, FormatReader, TrackType};
 use symphonia::core::io::{MediaSource, MediaSourceStream};
 use symphonia::core::meta::MetadataOptions;
 
@@ -16,7 +16,9 @@ pub enum PcmFormat {
     /// Signed integers in a 32-bit container, left-aligned to the container.
     /// This is the layout WASAPI expects for 16/24 valid bits in a 32-bit
     /// container, and symphonia's FLAC decoder already produces it.
-    I32 { bits: u16 },
+    I32 {
+        bits: u16,
+    },
 }
 
 /// Format of a decoded audio stream.
@@ -91,7 +93,10 @@ pub struct CollectSink {
 
 impl CollectSink {
     pub fn new() -> Self {
-        Self { info: None, samples: Vec::new() }
+        Self {
+            info: None,
+            samples: Vec::new(),
+        }
     }
 }
 
@@ -116,7 +121,8 @@ impl PcmSink for CollectSink {
                 Ok(())
             }
             PcmBuffer::I32(v) => {
-                self.samples.extend(v.iter().map(|&s| s as f32 / 2_147_483_648.0));
+                self.samples
+                    .extend(v.iter().map(|&s| s as f32 / 2_147_483_648.0));
                 Ok(())
             }
         }
@@ -126,7 +132,8 @@ impl PcmSink for CollectSink {
 /// Format details read from a media file's headers (no decoding).
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProbedFormat {
-    /// The manifest-style codec name (`flac`, `alac`, `mp4a.40.2`), when known.
+    /// The manifest-style codec name, when known. Bare `mp4a` does not
+    /// claim an AAC profile that may only be discoverable in-band.
     pub codec: Option<String>,
     pub sample_rate: Option<u32>,
     pub bit_depth: Option<u32>,
@@ -139,7 +146,12 @@ pub fn probe(source: impl MediaSource + 'static) -> Result<ProbedFormat> {
     let mut hint = Hint::new();
     hint.with_extension("mp4");
     let reader = symphonia::default::get_probe()
-        .probe(&hint, mss, FormatOptions::default(), MetadataOptions::default())
+        .probe(
+            &hint,
+            mss,
+            FormatOptions::default(),
+            MetadataOptions::default(),
+        )
         .map_err(|e| Error::Decode(e.to_string()))?;
     let track = reader
         .default_track(TrackType::Audio)
@@ -150,7 +162,17 @@ pub fn probe(source: impl MediaSource + 'static) -> Result<ProbedFormat> {
     let codec = match params.codec {
         id if id == CODEC_ID_FLAC => Some("flac"),
         id if id == CODEC_ID_ALAC => Some("alac"),
-        id if id == CODEC_ID_AAC => Some("mp4a.40.2"),
+        id if id == CODEC_ID_AAC => Some(
+            match params
+                .extra_data
+                .as_deref()
+                .and_then(|asc| rusty_aac::sbr::parse_sbr_config(asc).ok())
+            {
+                Some(config) if config.ps_present => "mp4a.40.29",
+                Some(config) if config.sbr_present => "mp4a.40.5",
+                _ => "mp4a",
+            },
+        ),
         _ => None,
     };
     Ok(ProbedFormat {
@@ -166,7 +188,12 @@ pub fn run(source: impl MediaSource + 'static, ext: &str, sink: &mut dyn PcmSink
     hint.with_extension(ext);
 
     let mut reader = symphonia::default::get_probe()
-        .probe(&hint, mss, FormatOptions::default(), MetadataOptions::default())
+        .probe(
+            &hint,
+            mss,
+            FormatOptions::default(),
+            MetadataOptions::default(),
+        )
         .map_err(|e| Error::Decode(e.to_string()))?;
 
     let (track_id, mut decoder, bits_hint) = {
@@ -177,6 +204,18 @@ pub fn run(source: impl MediaSource + 'static, ext: &str, sink: &mut dyn PcmSink
             Some(CodecParameters::Audio(audio)) => audio,
             _ => return Err(Error::Decode("unsupported codec parameters".into())),
         };
+        if params.codec == CODEC_ID_AAC {
+            // Raw ASC preserves explicit SBR/PS. Use this path for every AAC
+            // track because an LC-looking header can also carry implicit SBR.
+            let asc = params
+                .extra_data
+                .as_deref()
+                .ok_or_else(|| Error::Decode("AAC stream has no AudioSpecificConfig".into()))?;
+            let decoder = rusty_aac::AacDecoder::with_config_bytes(asc)
+                .map_err(|e| Error::Decode(e.to_string()))?;
+            let track_id = track.id;
+            return run_aac(reader.as_mut(), track_id, decoder, sink);
+        }
         let decoder = symphonia::default::get_codecs()
             .make_audio_decoder(params, &AudioDecoderOptions::default())
             .map_err(|e| Error::Decode(e.to_string()))?;
@@ -232,6 +271,71 @@ pub fn run(source: impl MediaSource + 'static, ext: &str, sink: &mut dyn PcmSink
     Ok(())
 }
 
+fn run_aac(
+    reader: &mut dyn FormatReader,
+    track_id: u32,
+    mut decoder: rusty_aac::AacDecoder,
+    sink: &mut dyn PcmSink,
+) -> Result<()> {
+    let mut stream_info = None;
+    let mut out_format = PcmFormat::F32;
+    while let Some(packet) = reader
+        .next_packet()
+        .map_err(|e| Error::Decode(e.to_string()))?
+    {
+        if packet.track_id != track_id {
+            continue;
+        }
+        // A rejected packet can leave this decoder's channel layout poisoned.
+        // Terminate the track; a new run always constructs a fresh decoder.
+        let decoded = decoder
+            .decode(&packet.data, Some(packet.pts.get()))
+            .map_err(|e| Error::Decode(e.to_string()))?;
+        if decoded.sample_rate == 0
+            || decoded.channels == 0
+            || decoded.samples.len() % decoded.channels as usize != 0
+            || decoded.samples.iter().any(|sample| !sample.is_finite())
+        {
+            return Err(Error::Decode("AAC decoder returned invalid PCM".into()));
+        }
+        if decoded.samples.is_empty() {
+            continue;
+        }
+        let info = StreamInfo {
+            sample_rate: decoded.sample_rate,
+            channels: decoded.channels,
+            bits_per_sample: 16,
+            format: PcmFormat::F32,
+        };
+        match stream_info {
+            None => {
+                sink.on_stream_info(&info)?;
+                out_format = sink.preferred_format();
+                stream_info = Some(info);
+            }
+            Some(previous) if previous != info => {
+                return Err(Error::Decode("AAC format changed during playback".into()));
+            }
+            _ => {}
+        }
+        let samples = match out_format {
+            PcmFormat::F32 => PcmBuffer::F32(decoded.samples),
+            PcmFormat::I32 { .. } => PcmBuffer::I32(
+                decoded
+                    .samples
+                    .iter()
+                    .map(|sample| (sample * 2_147_483_648.0) as i32)
+                    .collect(),
+            ),
+        };
+        sink.on_samples(&samples)?;
+    }
+    if stream_info.is_none() {
+        return Err(Error::Decode("AAC stream contains no audio".into()));
+    }
+    Ok(())
+}
+
 /// Clamp a source bit depth to what the exclusive container supports.
 fn normalize_bits(bits: Option<u32>) -> u16 {
     match bits {
@@ -247,7 +351,9 @@ fn normalize_bits(bits: Option<u32>) -> u16 {
 fn source_format(decoded: &GenericAudioBufferRef<'_>, bits: Option<u32>) -> PcmFormat {
     match decoded {
         GenericAudioBufferRef::F32(_) | GenericAudioBufferRef::F64(_) => PcmFormat::F32,
-        _ => PcmFormat::I32 { bits: normalize_bits(bits) },
+        _ => PcmFormat::I32 {
+            bits: normalize_bits(bits),
+        },
     }
 }
 
@@ -266,7 +372,10 @@ mod tests {
 
     impl I32Sink {
         fn new() -> Self {
-            Self { info: None, samples: Vec::new() }
+            Self {
+                info: None,
+                samples: Vec::new(),
+            }
         }
     }
 
@@ -339,6 +448,83 @@ mod tests {
     }
 
     #[test]
+    fn he_aac_reconstructs_sbr_and_stereo_like_the_independent_decoder() {
+        // FFmpeg 9.0.2 native AAC, untrimmed f32le; see fixtures/README.md.
+        // Check PCM, not just plausible metadata or an upsampled LC core.
+        let references = [
+            (
+                1,
+                149504,
+                [
+                    (8191, [-0.33381212, 0.06831797]),
+                    (24000, [-0.16039744, -0.08140720]),
+                    (72000, [-0.16802303, -0.07372804]),
+                    (140000, [-0.12361196, -0.01172292]),
+                ],
+            ),
+            (
+                2,
+                151552,
+                [
+                    (8191, [-0.20273273, -0.12402325]),
+                    (24000, [-0.16285948, 0.09551252]),
+                    (72000, [-0.30055341, 0.07540117]),
+                    (140000, [0.09424540, 0.11844872]),
+                ],
+            ),
+        ];
+        for (version, frames, checkpoints) in references {
+            for signaling in ["hierarchical", "sync", "implicit"] {
+                let name = format!("he_aac_v{version}_96k_{signaling}.mp4");
+                let sink = decode_fixture_f32(&name, "mp4");
+                let info = sink.info.unwrap();
+                assert_eq!(info.sample_rate, 48000, "{name}");
+                assert_eq!(info.channels, 2, "{name}");
+                assert_eq!(info.format, PcmFormat::F32);
+                assert!(!info.is_bit_perfect_candidate());
+                assert_eq!(sink.samples.len(), frames * 2, "{name}");
+                assert!(sink.samples.iter().all(|s| s.is_finite()));
+                for (frame, expected) in checkpoints {
+                    for (channel, expected) in expected.into_iter().enumerate() {
+                        let actual = sink.samples[frame * 2 + channel];
+                        assert!(
+                            (f64::from(actual) - expected).abs() < 0.0001,
+                            "{name}, frame {frame}, channel {channel}: {actual} != {expected}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn probe_does_not_claim_implicit_he_aac_is_lc() {
+        for version in [1, 2] {
+            for signaling in ["hierarchical", "sync", "implicit"] {
+                let name = format!("tests/fixtures/he_aac_v{version}_96k_{signaling}.mp4");
+                let format = probe(BytesSource::new(fs::read(name).unwrap())).unwrap();
+                let expected = match (version, signaling) {
+                    (_, "implicit") => "mp4a",
+                    (1, _) => "mp4a.40.5",
+                    _ => "mp4a.40.29",
+                };
+                assert_eq!(format.codec.as_deref(), Some(expected));
+            }
+        }
+    }
+
+    #[test]
+    fn aac_integer_sink_conversion_does_not_make_the_source_bit_perfect() {
+        let float = decode_fixture_f32("tone_aac.mp4", "mp4");
+        let integer = decode_fixture_i32("tone_aac.mp4", "mp4");
+        assert!(!integer.info.unwrap().is_bit_perfect_candidate());
+        assert_eq!(float.samples.len(), integer.samples.len());
+        for (float, integer) in float.samples.iter().zip(integer.samples) {
+            assert_eq!((float * 2_147_483_648.0) as i32, integer);
+        }
+    }
+
+    #[test]
     fn decodes_bare_flac() {
         let sink = decode_fixture_f32("tone.flac", "flac");
         assert_eq!(sink.samples.len(), 176_400);
@@ -352,8 +538,11 @@ mod tests {
         assert_eq!(info.bits_per_sample, 16);
         assert_eq!(info.format, PcmFormat::I32 { bits: 16 });
         assert_eq!(i32_sink.samples.len(), 176_400);
-        for (index, (&int, &float)) in
-            i32_sink.samples.iter().zip(f32_sink.samples.iter()).enumerate()
+        for (index, (&int, &float)) in i32_sink
+            .samples
+            .iter()
+            .zip(f32_sink.samples.iter())
+            .enumerate()
         {
             // Symphonia left-aligns integer samples to 32 bits, and i32 -> f32
             // divides by 2^31, so this round-trip must be exact for every sample.
@@ -374,8 +563,11 @@ mod tests {
         assert_eq!(info.bits_per_sample, 24);
         assert_eq!(info.format, PcmFormat::I32 { bits: 24 });
         assert_eq!(i32_sink.samples.len(), 176_400);
-        for (index, (&int, &float)) in
-            i32_sink.samples.iter().zip(f32_sink.samples.iter()).enumerate()
+        for (index, (&int, &float)) in i32_sink
+            .samples
+            .iter()
+            .zip(f32_sink.samples.iter())
+            .enumerate()
         {
             assert_eq!(
                 int,

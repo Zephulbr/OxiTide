@@ -1,0 +1,414 @@
+{
+  "source": {
+    "generator": "crates/oxitide-audio/tests/fixtures/generate_he_aac.py",
+    "generator_sha256": "eca36b340172733273cc9c9a2867787bdfce3aa0d4a04ae23f69eb14c090cf2b",
+    "sha256": "54f2858ae60124f30fd37c77058582450d9c35d15ceaa808202df87e87f65726",
+    "sample_rate": 48000,
+    "channels": 2,
+    "frames": 144000,
+    "seed": "0x12345678"
+  },
+  "encoder": {
+    "reference_build": "fdkaac 1.0.5 / FDK AAC 2.0.2 (per RareWares)",
+    "download_url": "https://www.rarewares.org/files/aac/fdkaac-1.0.5-x64.zip",
+    "archive_sha256": "2717cf55c641326cd7551f337ca5b2220764ce21aea609b24dd3d52755f32d4a",
+    "exe_sha256": "f8831e22a8e42e71f24353397d6ed3fd9311dc975d66a696832be9463eacfb22"
+  },
+  "container": {
+    "format": "fragmented MP4",
+    "top_level_boxes": [
+      "ftyp",
+      "moov",
+      "moof",
+      "mdat",
+      "moof",
+      "mdat"
+    ],
+    "track_id": 1,
+    "time_base": "1/24000",
+    "default_sample_duration_ticks": 1024,
+    "split_after_packets": 24,
+    "edit_list": false,
+    "gapless_trimming": false
+  },
+  "fixtures": [
+    {
+      "path": "crates/oxitide-audio/tests/fixtures/he_aac_v1_96k_hierarchical.mp4",
+      "sha256": "04b53009a154f1a1166fb78b7c4ae91b77840740eeff667f671f39314884ece9",
+      "bytes": 37953,
+      "profile": 5,
+      "signaling": "hierarchical",
+      "asc_hex": "2b118800",
+      "core_rate": 24000,
+      "core_channels": 2,
+      "output_rate": 48000,
+      "output_channels": 2,
+      "packets": 73,
+      "decoded_frames": 149504,
+      "access_units_sha256": "13af5b16761ca7554f9c8ce239e56a563217a4e6cbf5a283c623fadfc48229cf",
+      "packet_payload_sha256": "7d93ae36796fbb478fa6d1b1e6482dcfa2b6c6f01e2b2304ff5cbcaa69d66d6b",
+      "payload_bitrate": 94690.06849315068,
+      "encoder_args": [
+        "-p",
+        "5",
+        "-b",
+        "96000",
+        "-s",
+        "2",
+        "-f",
+        "2",
+        "--no-timestamp"
+      ],
+      "layout": {
+        "init": {
+          "offset": 0,
+          "bytes": 603,
+          "end_exclusive": 603
+        },
+        "fragments": [
+          {
+            "sequence": 1,
+            "offset": 603,
+            "bytes": 12313,
+            "end_exclusive": 12916,
+            "moof_bytes": 184,
+            "mdat_offset": 787,
+            "first_packet": 0,
+            "packets": 24,
+            "decode_time_ticks": 0,
+            "duration_ticks": 24576,
+            "decoded_frames": 49152
+          },
+          {
+            "sequence": 2,
+            "offset": 12916,
+            "bytes": 25037,
+            "end_exclusive": 37953,
+            "moof_bytes": 284,
+            "mdat_offset": 13200,
+            "first_packet": 24,
+            "packets": 49,
+            "decode_time_ticks": 24576,
+            "duration_ticks": 50176,
+            "decoded_frames": 100352
+          }
+        ]
+      }
+    },
+    {
+      "path": "crates/oxitide-audio/tests/fixtures/he_aac_v1_96k_sync.mp4",
+      "sha256": "9b6998a706360efbecc823246f9e639704a757a29087efa7b379aa0171d06f25",
+      "bytes": 37954,
+      "profile": 5,
+      "signaling": "sync",
+      "asc_hex": "131056e598",
+      "core_rate": 24000,
+      "core_channels": 2,
+      "output_rate": 48000,
+      "output_channels": 2,
+      "packets": 73,
+      "decoded_frames": 149504,
+      "access_units_sha256": "13af5b16761ca7554f9c8ce239e56a563217a4e6cbf5a283c623fadfc48229cf",
+      "packet_payload_sha256": "7d93ae36796fbb478fa6d1b1e6482dcfa2b6c6f01e2b2304ff5cbcaa69d66d6b",
+      "payload_bitrate": 94690.06849315068,
+      "encoder_args": [
+        "-p",
+        "5",
+        "-b",
+        "96000",
+        "-s",
+        "2",
+        "-f",
+        "2",
+        "--no-timestamp"
+      ],
+      "layout": {
+        "init": {
+          "offset": 0,
+          "bytes": 604,
+          "end_exclusive": 604
+        },
+        "fragments": [
+          {
+            "sequence": 1,
+            "offset": 604,
+            "bytes": 12313,
+            "end_exclusive": 12917,
+            "moof_bytes": 184,
+            "mdat_offset": 788,
+            "first_packet": 0,
+            "packets": 24,
+            "decode_time_ticks": 0,
+            "duration_ticks": 24576,
+            "decoded_frames": 49152
+          },
+          {
+            "sequence": 2,
+            "offset": 12917,
+            "bytes": 25037,
+            "end_exclusive": 37954,
+            "moof_bytes": 284,
+            "mdat_offset": 13201,
+            "first_packet": 24,
+            "packets": 49,
+            "decode_time_ticks": 24576,
+            "duration_ticks": 50176,
+            "decoded_frames": 100352
+          }
+        ]
+      }
+    },
+    {
+      "path": "crates/oxitide-audio/tests/fixtures/he_aac_v1_96k_implicit.mp4",
+      "sha256": "b52e04f41bada8930ecf03b460659073cf1a5d485f93bfa8f26d12f1c5b2e27a",
+      "bytes": 37951,
+      "profile": 5,
+      "signaling": "implicit",
+      "asc_hex": "1310",
+      "core_rate": 24000,
+      "core_channels": 2,
+      "output_rate": 48000,
+      "output_channels": 2,
+      "packets": 73,
+      "decoded_frames": 149504,
+      "access_units_sha256": "13af5b16761ca7554f9c8ce239e56a563217a4e6cbf5a283c623fadfc48229cf",
+      "packet_payload_sha256": "7d93ae36796fbb478fa6d1b1e6482dcfa2b6c6f01e2b2304ff5cbcaa69d66d6b",
+      "payload_bitrate": 94690.06849315068,
+      "encoder_args": [
+        "-p",
+        "5",
+        "-b",
+        "96000",
+        "-s",
+        "2",
+        "-f",
+        "2",
+        "--no-timestamp"
+      ],
+      "layout": {
+        "init": {
+          "offset": 0,
+          "bytes": 601,
+          "end_exclusive": 601
+        },
+        "fragments": [
+          {
+            "sequence": 1,
+            "offset": 601,
+            "bytes": 12313,
+            "end_exclusive": 12914,
+            "moof_bytes": 184,
+            "mdat_offset": 785,
+            "first_packet": 0,
+            "packets": 24,
+            "decode_time_ticks": 0,
+            "duration_ticks": 24576,
+            "decoded_frames": 49152
+          },
+          {
+            "sequence": 2,
+            "offset": 12914,
+            "bytes": 25037,
+            "end_exclusive": 37951,
+            "moof_bytes": 284,
+            "mdat_offset": 13198,
+            "first_packet": 24,
+            "packets": 49,
+            "decode_time_ticks": 24576,
+            "duration_ticks": 50176,
+            "decoded_frames": 100352
+          }
+        ]
+      }
+    },
+    {
+      "path": "crates/oxitide-audio/tests/fixtures/he_aac_v2_96k_hierarchical.mp4",
+      "sha256": "b037007079cb276cc9e695f292beae3c8a38ca9a99b7b02671829120febe2b2d",
+      "bytes": 38461,
+      "profile": 29,
+      "signaling": "hierarchical",
+      "asc_hex": "eb098800",
+      "core_rate": 24000,
+      "core_channels": 1,
+      "output_rate": 48000,
+      "output_channels": 2,
+      "packets": 74,
+      "decoded_frames": 151552,
+      "access_units_sha256": "5c6f1754ca72bcf793bff1fcb873c31cd31aaf7db9925c8ffe9e3828c3d3fb1b",
+      "packet_payload_sha256": "0190d2e0ff33189f5991dd6f336ec88c29f2ad91d06f7964bb9c4a3d1554f5b0",
+      "payload_bitrate": 94687.5,
+      "encoder_args": [
+        "-p",
+        "29",
+        "-b",
+        "96000",
+        "-s",
+        "2",
+        "-f",
+        "2",
+        "--no-timestamp"
+      ],
+      "layout": {
+        "init": {
+          "offset": 0,
+          "bytes": 603,
+          "end_exclusive": 603
+        },
+        "fragments": [
+          {
+            "sequence": 1,
+            "offset": 603,
+            "bytes": 12312,
+            "end_exclusive": 12915,
+            "moof_bytes": 184,
+            "mdat_offset": 787,
+            "first_packet": 0,
+            "packets": 24,
+            "decode_time_ticks": 0,
+            "duration_ticks": 24576,
+            "decoded_frames": 49152
+          },
+          {
+            "sequence": 2,
+            "offset": 12915,
+            "bytes": 25546,
+            "end_exclusive": 38461,
+            "moof_bytes": 288,
+            "mdat_offset": 13203,
+            "first_packet": 24,
+            "packets": 50,
+            "decode_time_ticks": 24576,
+            "duration_ticks": 51200,
+            "decoded_frames": 102400
+          }
+        ]
+      }
+    },
+    {
+      "path": "crates/oxitide-audio/tests/fixtures/he_aac_v2_96k_sync.mp4",
+      "sha256": "41cbbb0153a424c4b1c24e31828b77535a5efc62712a1e107bd9b85e3a34d97b",
+      "bytes": 38464,
+      "profile": 29,
+      "signaling": "sync",
+      "asc_hex": "130856e59d4880",
+      "core_rate": 24000,
+      "core_channels": 1,
+      "output_rate": 48000,
+      "output_channels": 2,
+      "packets": 74,
+      "decoded_frames": 151552,
+      "access_units_sha256": "5c6f1754ca72bcf793bff1fcb873c31cd31aaf7db9925c8ffe9e3828c3d3fb1b",
+      "packet_payload_sha256": "0190d2e0ff33189f5991dd6f336ec88c29f2ad91d06f7964bb9c4a3d1554f5b0",
+      "payload_bitrate": 94687.5,
+      "encoder_args": [
+        "-p",
+        "29",
+        "-b",
+        "96000",
+        "-s",
+        "2",
+        "-f",
+        "2",
+        "--no-timestamp"
+      ],
+      "layout": {
+        "init": {
+          "offset": 0,
+          "bytes": 606,
+          "end_exclusive": 606
+        },
+        "fragments": [
+          {
+            "sequence": 1,
+            "offset": 606,
+            "bytes": 12312,
+            "end_exclusive": 12918,
+            "moof_bytes": 184,
+            "mdat_offset": 790,
+            "first_packet": 0,
+            "packets": 24,
+            "decode_time_ticks": 0,
+            "duration_ticks": 24576,
+            "decoded_frames": 49152
+          },
+          {
+            "sequence": 2,
+            "offset": 12918,
+            "bytes": 25546,
+            "end_exclusive": 38464,
+            "moof_bytes": 288,
+            "mdat_offset": 13206,
+            "first_packet": 24,
+            "packets": 50,
+            "decode_time_ticks": 24576,
+            "duration_ticks": 51200,
+            "decoded_frames": 102400
+          }
+        ]
+      }
+    },
+    {
+      "path": "crates/oxitide-audio/tests/fixtures/he_aac_v2_96k_implicit.mp4",
+      "sha256": "4720949821d1828f0aef036d5773e98f1e344829fe60afc4d8686bb0d82c6055",
+      "bytes": 38459,
+      "profile": 29,
+      "signaling": "implicit",
+      "asc_hex": "1308",
+      "core_rate": 24000,
+      "core_channels": 1,
+      "output_rate": 48000,
+      "output_channels": 2,
+      "packets": 74,
+      "decoded_frames": 151552,
+      "access_units_sha256": "5c6f1754ca72bcf793bff1fcb873c31cd31aaf7db9925c8ffe9e3828c3d3fb1b",
+      "packet_payload_sha256": "0190d2e0ff33189f5991dd6f336ec88c29f2ad91d06f7964bb9c4a3d1554f5b0",
+      "payload_bitrate": 94687.5,
+      "encoder_args": [
+        "-p",
+        "29",
+        "-b",
+        "96000",
+        "-s",
+        "2",
+        "-f",
+        "2",
+        "--no-timestamp"
+      ],
+      "layout": {
+        "init": {
+          "offset": 0,
+          "bytes": 601,
+          "end_exclusive": 601
+        },
+        "fragments": [
+          {
+            "sequence": 1,
+            "offset": 601,
+            "bytes": 12312,
+            "end_exclusive": 12913,
+            "moof_bytes": 184,
+            "mdat_offset": 785,
+            "first_packet": 0,
+            "packets": 24,
+            "decode_time_ticks": 0,
+            "duration_ticks": 24576,
+            "decoded_frames": 49152
+          },
+          {
+            "sequence": 2,
+            "offset": 12913,
+            "bytes": 25546,
+            "end_exclusive": 38459,
+            "moof_bytes": 288,
+            "mdat_offset": 13201,
+            "first_packet": 24,
+            "packets": 50,
+            "decode_time_ticks": 24576,
+            "duration_ticks": 51200,
+            "decoded_frames": 102400
+          }
+        ]
+      }
+    }
+  ]
+}
