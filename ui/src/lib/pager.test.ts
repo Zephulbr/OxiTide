@@ -5,6 +5,7 @@ import {
   clearPagerCache,
   createTrackPager,
   invalidatePager,
+  MAX_CACHED_LISTS,
   removePagerItem,
 } from "./pager.svelte";
 
@@ -828,5 +829,24 @@ describe("pager in-place updates", () => {
     expect(ids(pager.items)).toEqual(range(1, total));
     expect(pager.items).toHaveLength(total);
     expect(pager.done).toBe(true);
+  });
+});
+
+describe("pager cache bound", () => {
+  it("keeps the most recently used lists and drops the oldest", async () => {
+    clearPagerCache();
+    const load = (offset: number, limit: number) =>
+      Promise.resolve(page([track(offset + 1)], offset, limit, 1));
+    for (let i = 0; i < MAX_CACHED_LISTS; i++) {
+      await createTrackPager(`playlist:${i}`, load, { prefetch: false }).loadMore();
+    }
+    // Re-opening playlist:0 marks it used, so playlist:1 is now the oldest.
+    createTrackPager("playlist:0", load, { prefetch: false });
+    await createTrackPager("extra", load, { prefetch: false }).loadMore();
+    expect(cachedPagerItems("playlist:0")).not.toBeNull();
+    expect(cachedPagerItems("playlist:1")).toBeNull();
+    expect(cachedPagerItems("playlist:2")).not.toBeNull();
+    expect(cachedPagerItems("extra")).not.toBeNull();
+    clearPagerCache();
   });
 });
