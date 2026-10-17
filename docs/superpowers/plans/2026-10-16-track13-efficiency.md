@@ -52,21 +52,36 @@ Spec: `docs/superpowers/specs/2026-10-16-oxitide-track13-efficiency-design.md`. 
 
 ## Phase 3 — threads, network, start-up (F5, F6, F10, F11, F13)
 
-- [ ] 3.1 Heavy commands → `#[tauri::command(async)]`; sync allowlist test.
-- [ ] 3.2 Streaming `Fetcher` (body chunks into the ahead file) keeping `fetch_recovering`
-      semantics; Range resume for single-file plans.
-- [ ] 3.3 One shared `reqwest::Client` for artwork/lyrics/scrobble; resolver on the Tauri
-      runtime.
-- [ ] 3.4 Parallel `get_all_pages` after the first page (bounded, ordered).
-- [ ] 3.5 History/track-flags/session loads off the pre-window path.
+- [x] 3.1 Blocking, order-independent commands → `#[tauri::command(async)]` (`automix_render`,
+      `get_stats`, `get_history_page`, `clear_history`, `get_restored_session`,
+      `get_playback_state`, `get_output_devices`, `clear_cache`). Transport/queue commands and
+      config writers stay sync: sync commands run in arrival order, and settings
+      read-modify-write the whole config. `SYNC_COMMANDS` test guards new ones.
+- [ ] 3.2 **Deferred, measure first.** Streaming `Fetcher` for single-file (BTS) plans. A
+      streamed body that fails mid-way cannot be retried whole once the feeder consumed part of
+      it, so it needs Range resume inside `fetch_recovering`. Baseline S3-miss at *Lossless*
+      first to size the delay.
+- [x] 3.3 One shared `reqwest::Client` for artwork/lyrics/scrobble (artwork had no timeout).
+      The resolver's own runtime stays (it is the blocking bridge for the worker thread).
+- [x] 3.4 `get_all_pages` fetches known windows 4 at a time, in offset order.
+- [x] 3.5 History loads on its writer thread. Track flags were already lazy; the session saver
+      only spawns a thread.
 
 ## Phase 4 — WebView, rendering, build (F7, F8, F9, F12, F14)
 
-- [ ] 4.1 WebView2 `MemoryUsageTargetLevel::Low` + controller hidden while hidden/minimized.
-- [ ] 4.2 Backdrop from a small cover with a small blur; drop per-badge backdrop filters.
-- [ ] 4.3 `[profile.release]` LTO, `codegen-units = 1`, `strip`; dedupe `rand`.
-- [ ] 4.4 Lazy routes (Settings, Rack shell, History, Profiles, Lyrics).
-- [ ] 4.5 Pager cache LRU; `$state.raw` for large track lists.
+- [x] 4.1 `webview_idle.rs`: controller `IsVisible` + memory target Low while minimized or
+      hidden to the tray (wry never updated either).
+- [ ] 4.2 **Deferred, measure first.** The backdrop is a static, composited layer (its blur
+      is paid on cover change, and Chromium downsamples large radii); S5-atmosphere frames
+      already pass at p95 7 ms. Revisit only if the S13/S5 baseline shows backdrop cost; any
+      change is visual and needs DESIGN.md.
+- [x] 4.3 `[profile.release]` LTO fat, `codegen-units = 1`, `strip = "debuginfo"`; PKCE uses
+      `getrandom` 0.3 (already in the tree) so rand 0.8 leaves the Windows build (Linux keeps
+      it through keyring's secret-service/zbus). Release build: 6 min 07 s, 25.0 MB exe.
+- [ ] 4.4 **Deferred, measure first.** Lazy routes: the main chunk is ~470 KB, but a route
+      that renders a frame late can upset the queue-glide FLIP measurement (AR-9). Worth it
+      only if the release S1 baseline shows script parse in the start-up path.
+- [x] 4.5 Pager cache LRU (12 lists). `$state.raw` not needed: lists are appended in place.
 
 ## Close-out
 

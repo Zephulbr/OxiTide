@@ -67,26 +67,25 @@ fn urlencode(s: &str) -> String {
     url::form_urlencoded::byte_serialize(s.as_bytes()).collect()
 }
 
+/// `N` bytes from the OS random source. Like `rand`'s `OsRng`, which this
+/// replaced, an unavailable source is fatal: PKCE must not run on weak bytes.
+fn os_random<const N: usize>() -> [u8; N] {
+    let mut bytes = [0u8; N];
+    getrandom::fill(&mut bytes).expect("OS random source unavailable");
+    bytes
+}
+
 fn random_verifier() -> String {
-    use rand::RngCore;
-    let mut bytes = [0u8; 32];
-    rand::rngs::OsRng.fill_bytes(&mut bytes);
-    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(os_random::<32>())
 }
 
 fn random_unique_key() -> String {
-    use rand::RngCore;
-    let mut bytes = [0u8; 8];
-    rand::rngs::OsRng.fill_bytes(&mut bytes);
-    format!("{:016x}", u64::from_be_bytes(bytes))
+    format!("{:016x}", u64::from_be_bytes(os_random::<8>()))
 }
 
 /// A URL-safe anti-forgery `state` value (16 random bytes, hex).
 pub fn random_state() -> String {
-    use rand::RngCore;
-    let mut bytes = [0u8; 16];
-    rand::rngs::OsRng.fill_bytes(&mut bytes);
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+    os_random::<16>().iter().map(|b| format!("{b:02x}")).collect()
 }
 
 #[cfg(test)]
