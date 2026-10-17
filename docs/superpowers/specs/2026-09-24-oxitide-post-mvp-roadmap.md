@@ -23,6 +23,8 @@
 - **Revised:** 2026-10-10 — Track 9.5c (narrow-window fold, Rack mini player, queue changer unit, DSEG7 segment font) implemented on `track9-5c-rack` (Rack spec §9, `plans/notes/2026-10-10-track9-5c-rack-completion.md`).
 - **Revised:** 2026-10-13 — ASIO output (Plan 7.3) and Track 9.5c merged to `main`; **Track 9 closed** by the owner (9.2/9.3/9.5 smokes marked done; `plans/notes/2026-10-13-track9-completion.md`). A batched Linux bare-metal run is deferred (Windows first). i18n remains an unspecced follow-on track.
 - **Revised:** 2026-10-14 — Track 7b (AutoMix: silence trim, cross-format overlap, beat matching; 7b.2 Classic / Quick / Blend styles, the replay lab, and the Auto style) merged to `main` after two owner A/B passes (`plans/2026-10-08-track7b-2-transition-styles.md`, AM-D8–D18). Owner listening continues on the smoke checklist (rows 12i–12j); beat-grid confidence still needs tuning before beat matching is judged.
+- **Revised:** 2026-10-17 — v1.0 release gate set by the owner: Track 13 + perf debt → UI pass → gaps/deferred items → final perf run → remaining smokes → Linux bare-metal run → tag (`plans/notes/2026-10-17-v1-release-gate.md`). Then deferred features, then V2 (modular sources).
+- **Revised:** 2026-10-17 — V2.0 scope drafted with the owner: architecture + Local files (internal/USB drives) on Windows + Linux; Jellyfin first 2.x source, Qobuz research-gated; `release/1.x` keeps 1.x alive until parity (spec `2026-10-17-oxitide-v2-modular-sources-design.md`, research `plans/notes/2026-10-17-v2-source-research.md`).
 - **Owner:** V
 - **Parent:** `2026-09-21-oxitide-design.md` (§9 Phasing)
 - **Supersedes:** the parent's Phase 2–4 ordering. The shipped Phase 1 MVP (v0.2.0) is
