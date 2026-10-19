@@ -89,7 +89,10 @@ Spec: `docs/superpowers/specs/2026-10-16-oxitide-track13-efficiency-design.md`. 
       its own layer over a face painted once, and the tuner pointer moves by a transform (its
       `left` transition re-laid out the dial every frame). `level_frame` is now counted in the
       perf `ipc` rows.
-- [ ] 4.7 **Owner:** re-run S13 ×5 on a release build of 4.6.
+- [x] 4.7 **Owner:** re-run S13 ×5 on a release build of 4.6 — 124 % → 11.8 % WebView2 at
+      `32f291c` (the `416ef0d` runs were silent; see the results note).
+- [x] 4.8 S11–S14 budgets: median + 15 % via `"of": "median"` in `check.mjs` (owner, 2026-10-19).
+      Results and budgets: `notes/2026-10-19-track13-perf-results.md`.
 
 ## Close-out
 

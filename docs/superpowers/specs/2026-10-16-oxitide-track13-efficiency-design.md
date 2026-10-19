@@ -85,7 +85,9 @@ phone remote relies on must not change.
 - Runs end with a graceful close (`perf_quit` command → normal exit work), falling back to
   `taskkill /F` after 10 s.
 - Budgets for the new rows are set from the Phase 0 baseline (median + 15 %, owner-approved),
-  then tightened as phases land; existing rows are re-baselined on the release build.
+  then tightened as phases land; existing rows are re-baselined on the release build. CPU and
+  IPC rate rows are checked on the median run (`"of": "median"`), since CPU swings between runs;
+  set 2026-10-19 from the final Track 13 corpus (`notes/2026-10-19-track13-perf-results.md`).
 
 ## Deterministic tests (CI)
 

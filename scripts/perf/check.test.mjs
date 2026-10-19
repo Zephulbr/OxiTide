@@ -148,6 +148,20 @@ test("min budgets use the minimum across runs while max budgets keep the p95", (
   assert.equal(maxPass.results[0].status, "pass");
 });
 
+test("median budgets check the median run, so one noisy run does not fail them", () => {
+  const files = [1, 1, 2, 2, 9].map((hits, i) => hitFile(`S8-${i}`, hits, 0));
+  const aggregated = [...aggregate(readRuns(files)).values()].map((m) => ({ scenario: m.scenario, metrics: m }));
+  const median = evaluate(aggregated, { S8: [{ metric: "cache_hits", max: 2, of: "median" }] });
+  assert.equal(median.results[0].value, 2);
+  assert.equal(median.results[0].status, "pass");
+  assert.equal(median.results[0].bound, "median max");
+  const worst = evaluate(aggregated, { S8: [{ metric: "cache_hits", max: 2 }] });
+  assert.equal(worst.results[0].value, 9);
+  assert.equal(worst.results[0].status, "fail");
+  const regressed = evaluate(aggregated, { S8: [{ metric: "cache_hits", max: 1, of: "median" }] });
+  assert.equal(regressed.results[0].status, "fail");
+});
+
 test("ui interaction metrics aggregate S6 filter and sort maxima", () => {
   const file = runFile([
     { kind: "session", run_id: "S6-1", scenario: "S6" },

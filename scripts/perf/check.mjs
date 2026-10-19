@@ -262,6 +262,7 @@ export function aggregate(runs) {
       out[key] = p95(values);
       out[`${key}_mean`] = values.reduce((a, b) => a + b, 0) / values.length;
       out[`${key}_min`] = Math.min(...values);
+      out[`${key}_median`] = median(values);
     }
     aggregated.set(scenario, out);
   }
@@ -275,9 +276,14 @@ export function evaluate(aggregatedRuns, config) {
     if (!budgets) continue;
     for (const budget of budgets) {
       const useMin = budget.min !== undefined;
-      const value = useMin
-        ? (run.metrics[`${budget.metric}_min`] ?? run.metrics[budget.metric])
-        : run.metrics[budget.metric];
+      // `"of": "median"` (Track 13) checks the median run instead: CPU rates
+      // swing between runs, so a worst-run gate would fail on noise alone.
+      const useMedian = budget.of === "median";
+      const value = useMedian
+        ? (run.metrics[`${budget.metric}_median`] ?? run.metrics[budget.metric])
+        : useMin
+          ? (run.metrics[`${budget.metric}_min`] ?? run.metrics[budget.metric])
+          : run.metrics[budget.metric];
       const maxOk = budget.max === undefined || (value !== undefined && value <= budget.max);
       const minOk = budget.min === undefined || (value !== undefined && value >= budget.min);
       const status =
@@ -293,7 +299,7 @@ export function evaluate(aggregatedRuns, config) {
         metric: budget.metric,
         value,
         max: budget.max ?? budget.min,
-        bound: useMin ? "min" : "max",
+        bound: `${useMedian ? "median " : ""}${useMin ? "min" : "max"}`,
         status,
       });
     }
