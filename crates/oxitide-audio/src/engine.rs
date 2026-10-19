@@ -574,6 +574,11 @@ impl Engine {
             mutate(q);
             q.current().cloned()
         });
+        // A new context plays from the start. A pending seek (a restored
+        // session's paused resume point) on the same track would otherwise
+        // be taken by the new session, which then keeps the paused flag and
+        // sits silent with the output open.
+        *self.inner.seek_target.lock().unwrap() = None;
         self.inner.notify_worker();
         self.emit(EngineEvent::NowPlaying(item.clone()));
         self.emit(EngineEvent::State(self.state()));
@@ -4188,6 +4193,28 @@ mod tests {
         engine.handle(EngineCmd::PlayPause).unwrap();
         wait_for(|| output.samples().len() >= 176_400);
         assert_eq!(output.samples().len(), 176_400, "resume did not finish the track");
+    }
+
+    /// Regression (found by the Track 13 S13 runs): a restored session leaves
+    /// a paused resume-seek on its current track. Starting a new context whose
+    /// first track is that same track must play it from the start, not
+    /// inherit the stale seek and sit paused with the output open.
+    #[test]
+    fn playing_the_restored_track_from_a_new_context_starts_playing() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        engine
+            .handle(EngineCmd::RestoreSession {
+                items: vec![item(1), item(2)],
+                start: 0,
+                position_ms: 1500,
+                shuffle: false,
+                repeat: RepeatMode::Off,
+            })
+            .unwrap();
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| output.samples().len() >= 176_400);
+        assert_eq!(output.samples().len(), 176_400, "the track did not play from its start");
     }
 
     /// Track 13 (EF-D4): a long pause stops the output; resume reopens the
