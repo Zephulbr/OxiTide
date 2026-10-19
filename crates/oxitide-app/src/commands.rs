@@ -1626,6 +1626,35 @@ pub fn set_history_max_entries(state: State<'_, AppState>, max_entries: usize) -
     Ok(())
 }
 
+/// Local play counts for track sorting; every requested id is answered (0
+/// when unplayed or when history is unavailable).
+#[tauri::command(async)]
+pub fn get_play_counts(state: State<'_, AppState>, ids: Vec<u64>) -> Result<Vec<PlayCountDto>, String> {
+    let counts = state.history().map(|store| store.play_counts(&ids)).unwrap_or_default();
+    Ok(ids
+        .into_iter()
+        .map(|track_id| PlayCountDto { track_id, plays: counts.get(&track_id).copied().unwrap_or(0) })
+        .collect())
+}
+
+/// Album release dates for track sorting, cached on disk; unknown ids are
+/// omitted (fail open). Offline or signed out, only cached dates answer.
+#[tauri::command]
+pub async fn get_album_release_dates(
+    state: State<'_, AppState>,
+    ids: Vec<u64>,
+) -> Result<Vec<AlbumDateDto>, String> {
+    let store = state.album_dates();
+    let dates = match require_client(&state) {
+        Ok(client) => store.enrich(&client, &ids).await.map_err(|e| state.fail_tidal(e))?,
+        Err(_) => store.known(&ids),
+    };
+    Ok(dates
+        .into_iter()
+        .map(|(album_id, release_date)| AlbumDateDto { album_id, release_date })
+        .collect())
+}
+
 #[tauri::command]
 pub async fn get_track_flags(
     state: State<'_, AppState>,
@@ -1858,6 +1887,20 @@ pub struct TrackFlagDto {
     pub track_id: u64,
     pub explicit: Option<bool>,
     pub ai: Option<bool>,
+}
+
+/// Local play count for one track (track sorting, multi-sort spec §4).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PlayCountDto {
+    pub track_id: u64,
+    pub plays: u32,
+}
+
+/// An album's release date (`YYYY-MM-DD`), `None` when TIDAL has none.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AlbumDateDto {
+    pub album_id: u64,
+    pub release_date: Option<String>,
 }
 
 /// The persisted session as the UI should apply it, or `None` when no usable

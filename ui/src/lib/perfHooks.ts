@@ -3,7 +3,7 @@
 /// and cleared when the view unmounts, so normal runs cannot reach the fixture.
 export interface PerfHooks {
   loadSyntheticTracks?: (count: number) => void;
-  toggleViewSort?: (key: "title" | "duration") => void;
+  toggleViewSort?: (key: import("./trackSort").SortKey) => void;
   measureAlbumOpen?: (count: number) => void;
 }
 

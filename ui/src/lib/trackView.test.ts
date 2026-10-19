@@ -29,7 +29,7 @@ describe("track view sort", () => {
   it("stays in source order until engaged", () => {
     const view = createTrackView(() => SOURCE);
 
-    expect(view.sort).toBe("original");
+    expect(view.levels).toEqual([]);
     expect(view.engaged).toBe(false);
     expect(ids(view.items)).toEqual([1, 2, 3]);
   });
@@ -44,7 +44,7 @@ describe("track view sort", () => {
     expect(ids(view.items)).toEqual([1, 3, 2]);
 
     view.toggleSort("title");
-    expect(view.sort).toBe("original");
+    expect(view.levels).toEqual([]);
     expect(ids(view.items)).toEqual([1, 2, 3]);
   });
 
@@ -74,8 +74,75 @@ describe("track view sort", () => {
 
     view.clearSort();
 
-    expect(view.sort).toBe("original");
+    expect(view.levels).toEqual([]);
     expect(view.filter).toBe("a");
+  });
+
+  it("sorts by a secondary level and keeps it when the primary flips", () => {
+    const list = [
+      track(1, "b", 200, "Muse"),
+      track(2, "a", 300, "Muse"),
+      track(3, "c", 100, "Air"),
+    ];
+    const view = createTrackView(() => list);
+
+    view.toggleSort("artist");
+    view.addSort("title");
+    expect(ids(view.items)).toEqual([3, 2, 1]);
+
+    view.toggleSort("artist");
+    expect(view.levels.map((l) => l.key)).toEqual(["artist", "title"]);
+    expect(ids(view.items)).toEqual([2, 1, 3]);
+
+    view.removeSort(0);
+    expect(ids(view.items)).toEqual([2, 1, 3]);
+    view.moveSort(0, 0);
+    view.flipSort(0);
+    expect(ids(view.items)).toEqual([3, 1, 2]);
+  });
+});
+
+describe("track view sort data and memory", () => {
+  it("keeps the previous order while sort data loads, then applies it", async () => {
+    let release: () => void = () => {};
+    const ensure = vi.fn(() => new Promise<void>((resolve) => (release = resolve)));
+    const plays = new Map([
+      [1, 9],
+      [2, 1],
+      [3, 4],
+    ]);
+    const data = { context: { plays, releaseDates: new Map() }, ensure };
+    const view = createTrackView(() => SOURCE, undefined, { data });
+
+    view.toggleSort("title");
+    view.toggleSort("plays");
+    expect(view.preparing).toBe(true);
+    expect(ids(view.items)).toEqual([2, 3, 1]);
+    expect(ensure).toHaveBeenCalledWith(["plays"], SOURCE, true);
+
+    release();
+    await vi.waitFor(() => expect(view.preparing).toBe(false));
+    expect(ids(view.items)).toEqual([1, 3, 2]);
+  });
+
+  it("restores a remembered sort and records changes", async () => {
+    const saved = new Map<string, { key: "title"; dir: "desc" }[]>([
+      ["favorites", [{ key: "title", dir: "desc" }]],
+    ]);
+    const memory = {
+      mode: "session" as const,
+      setMode: vi.fn(),
+      get: (key: string) => saved.get(key),
+      set: vi.fn(),
+    };
+    const view = createTrackView(() => SOURCE, undefined, { memoryKey: "favorites", memory });
+
+    expect(view.levels).toEqual([{ key: "title", dir: "desc" }]);
+    await Promise.resolve();
+    expect(ids(view.items)).toEqual([1, 3, 2]);
+
+    view.clearSort();
+    expect(memory.set).toHaveBeenCalledWith("favorites", []);
   });
 });
 

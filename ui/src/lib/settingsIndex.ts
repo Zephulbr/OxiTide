@@ -37,6 +37,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   e("typeface", "appearance", "Typography & layout", "Typeface", "font text manrope inter system custom"),
   e("density", "appearance", "Typography & layout", "Density", "compact comfortable spacing rows size"),
   e("cover-shape", "appearance", "Typography & layout", "Cover shape", "disc sleeve artwork album art now playing"),
+  e("track-sort-memory", "appearance", "Typography & layout", "Remember track sorting", "sort order playlist favorites columns reset"),
   e("rack-deck", "appearance", "Hi-Fi Rack", "Deck face", "transport cd player display", "rack"),
   e("rack-meters", "appearance", "Hi-Fi Rack", "Amp meters", "needles bars led spectrum vu", "rack"),
   e("rack-analyzer", "appearance", "Hi-Fi Rack", "Now Playing analyzer", "spectrum recorder tuner eq", "rack"),

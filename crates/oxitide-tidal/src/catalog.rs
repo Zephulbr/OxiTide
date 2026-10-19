@@ -51,6 +51,27 @@ impl TidalClient {
             .unwrap_or_default())
     }
 
+    /// Release dates for a caller-chosen batch of album ids through one public
+    /// OpenAPI `albums?filter[id]=` call. Ids the API omits or that fail to
+    /// parse are left out; an album without a date maps to `None`.
+    pub async fn album_release_dates(&self, ids: &[u64]) -> Result<Vec<(u64, Option<String>)>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut params: Vec<(&str, String)> =
+            vec![("countryCode", self.session().country_code.clone())];
+        params.extend(ids.iter().map(|id| ("filter[id]", id.to_string())));
+        let raw: OpenApiAlbumList = self.get_openapi("albums", &params).await?;
+        Ok(raw
+            .data
+            .into_iter()
+            .filter_map(|item| {
+                let id = item.id.parse::<u64>().ok()?;
+                Some((id, item.attributes.and_then(|a| a.release_date)))
+            })
+            .collect())
+    }
+
     /// Role-grouped credits from the public v2 track document. An empty
     /// `roles` list means the API exposed no credits for this track.
     pub async fn track_credits(&self, id: u64) -> Result<TrackCredits> {
@@ -366,6 +387,26 @@ struct OpenApiAlbumInfoAttributes {
 }
 
 #[derive(Debug, Deserialize)]
+struct OpenApiAlbumList {
+    #[serde(default)]
+    data: Vec<OpenApiAlbumListItem>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenApiAlbumListItem {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    attributes: Option<OpenApiAlbumDate>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenApiAlbumDate {
+    #[serde(default, rename = "releaseDate")]
+    release_date: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct OpenApiCopyright {
     #[serde(default)]
     text: Option<String>,
@@ -664,6 +705,35 @@ mod tests {
         assert_eq!(info.barcode_id.as_deref(), Some("00881377068540"));
         assert_eq!(info.number_of_volumes, Some(2));
         assert_eq!(info.number_of_items, Some(24));
+    }
+
+    #[tokio::test]
+    async fn album_release_dates_batches_ids_and_skips_bad_rows() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/openapi/v2/albums"))
+            .and(query_param("countryCode", "GR"))
+            .respond_with(|req: &wiremock::Request| {
+                let ids: Vec<String> = req
+                    .url
+                    .query_pairs()
+                    .filter(|(key, _)| key == "filter[id]")
+                    .map(|(_, value)| value.into_owned())
+                    .collect();
+                assert_eq!(ids, ["1", "2", "3"]);
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "data": [
+                        {"id": "1", "type": "albums", "attributes": {"releaseDate": "1992-09-21"}},
+                        {"id": "2", "type": "albums", "attributes": {}},
+                        {"id": "nope", "type": "albums", "attributes": {"releaseDate": "2000-01-01"}}
+                    ]
+                }))
+            })
+            .mount(&server)
+            .await;
+        let dates = client(&server).album_release_dates(&[1, 2, 3]).await.unwrap();
+        assert_eq!(dates, vec![(1, Some("1992-09-21".to_string())), (2, None)]);
+        assert!(client(&server).album_release_dates(&[]).await.unwrap().is_empty());
     }
 
     #[tokio::test]

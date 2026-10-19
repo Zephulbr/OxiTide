@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from "svelte";
+  import { tick, untrack } from "svelte";
   import type { Track } from "../api";
   import {
     volumeDisplayRows,
@@ -9,8 +9,8 @@
   import { api, trackToQueueItem } from "../api";
   import { copyText } from "../clipboard";
   import { errorMessage } from "../errors";
-  import { formatDuration } from "../format";
-  import { menuFor } from "../menu.svelte";
+  import { formatDuration, formatReleaseDate } from "../format";
+  import { menuFor, type MenuItem } from "../menu.svelte";
   import { trackMenuItems } from "../menus";
   import { trackQualityLabel } from "../quality";
   import { playTrackRadio } from "../radio";
@@ -22,6 +22,9 @@
   import { rowHeightFor } from "../rowHeight";
   import type { Favorites } from "../favorites.svelte";
   import type { TrackView } from "../trackView.svelte";
+  import { sortData } from "../sortData.svelte";
+  import { trackColumns, type OptionalColumn } from "../trackColumns.svelte";
+  import { keysFor, releaseDateOf, SORT_LABELS, type SortKey, type TableKind } from "../trackSort";
   import { trackDrag, type DragParams } from "../drag";
   import { hereTargets, menuArtists } from "../nameLinks";
   import type { Nav } from "../nav.svelte";
@@ -31,6 +34,7 @@
   import Cover from "./Cover.svelte";
   import NowPlayingMark from "./NowPlayingMark.svelte";
   import TrackFilter from "./TrackFilter.svelte";
+  import SortBar from "./SortBar.svelte";
   let {
     view,
     favorites,
@@ -50,6 +54,7 @@
     playingTrackId = null,
     playbackRunning = false,
     nav,
+    kind = "search",
   }: {
     view: TrackView;
     favorites: Favorites;
@@ -86,7 +91,63 @@
     /// Makes titles, artists and albums links (name-links spec); without it
     /// they stay plain text.
     nav?: Nav;
+    /// Which table this is; decides the sort keys and optional columns it
+    /// offers (multi-sort MS-D11/D12).
+    kind?: TableKind;
   } = $props();
+
+  const sortKeys = $derived(keysFor(kind));
+  const columnStore = trackColumns();
+  /// Chosen optional columns plus any the sort uses (MS-D12).
+  const shownColumns = $derived.by<OptionalColumn[]>(() => {
+    const chosen = columnStore.chosen(kind);
+    return columnStore
+      .available(kind)
+      .filter((column) => chosen.includes(column) || view.levels.some((level) => level.key === column));
+  });
+
+  const COLUMN_TITLES: Record<OptionalColumn, string> = {
+    added: "When this track was added",
+    released: "The album's release date",
+    popularity: "Popularity on TIDAL (0–100), not your own listening",
+    plays: "Your plays recorded in listening history on this PC",
+  };
+
+  function columnMenu(): MenuItem[] {
+    const chosen = columnStore.chosen(kind);
+    return columnStore.available(kind).map((column) => ({
+      id: `column-${column}`,
+      label: SORT_LABELS[column],
+      section: "Columns",
+      selected: chosen.includes(column),
+      icon: chosen.includes(column) ? "check" : undefined,
+      run: () => columnStore.toggle(kind, column),
+    }));
+  }
+
+  function columnText(t: Track, column: OptionalColumn): string {
+    switch (column) {
+      case "added":
+        return formatReleaseDate(t.dateAdded);
+      case "released":
+        return formatReleaseDate(releaseDateOf(t, sortData.context));
+      case "popularity":
+        return t.popularity === undefined ? "" : String(t.popularity);
+      case "plays":
+        return String(sortData.context.plays.get(t.id) ?? "");
+    }
+  }
+
+  function onSortClick(event: MouseEvent, key: SortKey) {
+    if (event.shiftKey) view.addSort(key);
+    else view.toggleSort(key);
+  }
+
+  function ariaSort(key: SortKey): "ascending" | "descending" | undefined {
+    const primary = view.levels[0];
+    if (primary?.key !== key) return undefined;
+    return primary.dir === "asc" ? "ascending" : "descending";
+  }
 
   /// The page's own album/artist render unlinked (NL-D4).
   const here = $derived(nav ? hereTargets(nav.route) : null);
@@ -146,13 +207,22 @@
     }
     return volumeDisplayRows(grouping, rowSourceIndex);
   });
-  const columns = $derived(showAlbum ? 8 : 7);
+  const columns = $derived((showAlbum ? 8 : 7) + shownColumns.length);
 
   // Rows render immediately; flags land asynchronously when the AI filter or
   // content labels are on (the store's `ensure` is a no-op when both are off).
   $effect(() => {
     trackFlags.recordTracks(slice);
     void trackFlags.ensure(slice.map((t) => t.id));
+  });
+
+  // Plays / release-date columns fill in for the rendered rows; `ensure`
+  // skips anything already known. Untracked: it reads the maps it writes.
+  $effect(() => {
+    const keys = shownColumns.filter((column) => column === "plays" || column === "released");
+    if (keys.length === 0) return;
+    const visible = slice;
+    untrack(() => void sortData.ensure(keys, visible));
   });
 
   let dragFrom = $state<number | null>(null);
@@ -178,11 +248,6 @@
     },
     onDrop: (from, to) => playlistActions?.onDrop?.(from, to),
   });
-
-  function indicator(key: "title" | "duration"): string {
-    if (view.sort !== key) return "";
-    return view.direction === "asc" ? "▲" : "▼";
-  }
 
   function blockedNotice(title: string) {
     toasts.show(
@@ -310,9 +375,52 @@
   }
 </script>
 
-{#if showFilter}
-  <div class="table-tools"><TrackFilter {view} /></div>
-{/if}
+{#snippet sortHead(key: SortKey, label: string, align: "left" | "right", extraClass = "")}
+  {@const rank = view.levels.findIndex((level) => level.key === key)}
+  {#if sortKeys.includes(key)}
+    <th
+      scope="col"
+      class="sort-head {extraClass}"
+      class:active={rank >= 0}
+      style="text-align:{align}"
+      aria-sort={ariaSort(key)}
+      title={key in COLUMN_TITLES ? COLUMN_TITLES[key as OptionalColumn] : undefined}
+    >
+      <span class="head-inner" class:end={align === "right"}>
+        <button
+          class="sort"
+          disabled={view.preparing}
+          title="Sort by {label} (Shift+click to add as the next level)"
+          onclick={(event) => onSortClick(event, key)}
+        >
+          {label}
+          {#if rank >= 0}
+            <span class="rank-mark" aria-hidden="true">
+              {#if view.levels.length > 1}<span class="rank">{rank + 1}</span>{/if}
+              <Icon name={view.levels[rank].dir === "asc" ? "arrow-up" : "arrow-down"} size={12} />
+            </span>
+          {/if}
+        </button>
+        {#if view.levels.length > 0 && rank < 0}
+          <button
+            class="add-level"
+            disabled={view.preparing}
+            aria-label="Then sort by {label}"
+            title="Then sort by {label}"
+            onclick={() => view.addSort(key)}
+          ><Icon name="plus" size={12} /></button>
+        {/if}
+      </span>
+    </th>
+  {:else}
+    <th scope="col" class={extraClass} style="text-align:{align}">{label}</th>
+  {/if}
+{/snippet}
+
+<div class="table-tools">
+  {#if showFilter}<TrackFilter {view} />{/if}
+  <SortBar {view} keys={sortKeys} />
+</div>
 
 <div
   class="table-scroll pane pane-flush"
@@ -332,32 +440,19 @@
   ></div>
   <table aria-label="Tracks" aria-rowcount={grouping ? undefined : rows.length + 1}>
     <thead bind:clientHeight={theadHeight}>
-      <tr>
+      <tr use:menuFor={columnMenu}>
         <th scope="col" style="text-align:right">
           <button class="sort" title="Original order" onclick={() => view.clearSort()}>#</button>
         </th>
         <th scope="col" class="thumb-head"></th>
-        <th
-          scope="col"
-          style="text-align:left"
-          aria-sort={view.sort === "title" ? (view.direction === "asc" ? "ascending" : "descending") : undefined}
-        >
-          <button class="sort" disabled={view.preparing} onclick={() => view.toggleSort("title")}>
-            Title <span aria-hidden="true">{indicator("title")}</span>
-          </button>
-        </th>
-        <th scope="col" style="text-align:left">Artist</th>
-        {#if showAlbum}<th scope="col" style="text-align:left">Album</th>{/if}
-        <th
-          scope="col"
-          style="text-align:right"
-          aria-sort={view.sort === "duration" ? (view.direction === "asc" ? "ascending" : "descending") : undefined}
-        >
-          <button class="sort" disabled={view.preparing} onclick={() => view.toggleSort("duration")}>
-            Time <span aria-hidden="true">{indicator("duration")}</span>
-          </button>
-        </th>
-        <th scope="col" style="text-align:left">Quality</th>
+        {@render sortHead("title", "Title", "left")}
+        {@render sortHead("artist", "Artist", "left")}
+        {#if showAlbum}{@render sortHead("album", "Album", "left")}{/if}
+        {#each shownColumns as column (column)}
+          {@render sortHead(column, SORT_LABELS[column], column === "added" || column === "released" ? "left" : "right", "opt-col")}
+        {/each}
+        {@render sortHead("duration", "Time", "right")}
+        {@render sortHead("quality", "Quality", "left")}
         <th scope="col" class="actions-head"></th>
       </tr>
     </thead>
@@ -451,6 +546,13 @@
                 <NameLink label={t.album?.title ?? ""} onOpen={openAlbum} focusable={false} />
               </div></td>
             {/if}
+            {#each shownColumns as column (column)}
+              <td
+                class="muted nowrap-cell opt-col"
+                class:tnum={column === "popularity" || column === "plays"}
+                class:num-col={column === "popularity" || column === "plays"}
+              >{columnText(t, column)}</td>
+            {/each}
             <td class="muted tnum nowrap-cell time-cell">{formatDuration(t.duration)}</td>
             <td class="nowrap-cell">
               {#if quality}<span class="badge" class:max={quality === "MAX"}>{quality}</span>{/if}
@@ -495,11 +597,23 @@
 
 <style>
   .table-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 14px;
     margin-bottom: 6px;
   }
+  /* A container, so the optional columns drop out on narrow widths in CSS
+     (the queue glide needs width-driven layout in CSS, not JS counts). */
   .table-scroll {
     overflow: auto;
     position: relative;
+    container-type: inline-size;
+  }
+  @container (max-width: 760px) {
+    .opt-col {
+      display: none;
+    }
   }
   /* fill mode: own the .view-fill parent's leftover height and scroll
      internally; keep a floor so a tall header can't collapse it to zero. */
@@ -572,11 +686,67 @@
     padding: 0;
   }
   .sort {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     background: transparent;
     border: 0;
     color: inherit;
     padding: 0;
     cursor: pointer;
+    white-space: nowrap;
+  }
+  .head-inner {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .head-inner.end {
+    flex-direction: row-reverse;
+  }
+  .sort-head.active .sort {
+    color: var(--accent);
+  }
+  .rank-mark {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .rank {
+    display: inline-grid;
+    place-items: center;
+    min-width: 14px;
+    height: 14px;
+    border-radius: 7px;
+    background: var(--accent);
+    color: var(--on-accent);
+    font-size: 9px;
+    font-weight: 700;
+  }
+  /* "Then sort by": shown on header hover or keyboard focus only. */
+  .add-level {
+    display: inline-grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    background: var(--surface-2);
+    color: var(--text-muted);
+    opacity: 0;
+    transition: opacity var(--dur-micro);
+  }
+  .sort-head:hover .add-level,
+  .add-level:focus-visible {
+    opacity: 1;
+  }
+  .add-level:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+  .num-col {
+    text-align: right;
   }
   .row {
     height: var(--row-height);

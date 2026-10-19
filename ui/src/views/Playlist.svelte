@@ -76,10 +76,14 @@
   // `pager` here makes that reactive (the closures alone would not).
   const view = $derived.by(() => {
     const p = pager;
-    return createTrackView(() => p.items, async () => {
-      await p.ensureAll();
-      if (p.error) throw p.error;
-    });
+    return createTrackView(
+      () => p.items,
+      async () => {
+        await p.ensureAll();
+        if (p.error) throw p.error;
+      },
+      { memoryKey: `playlist:${id}` },
+    );
   });
 
   // "180 TRACKS (10:16:08) • 1 FAN" — server totals with loaded-item fallback.
@@ -369,6 +373,7 @@
       {favorites}
       {toasts}
       fill
+      kind="playlist"
       showFilter={false}
       onPlay={playFrom}
       onEndReached={() => void pager.loadMore()}

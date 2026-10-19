@@ -12,6 +12,10 @@ pub struct AlbumRef {
     pub title: String,
     #[serde(default)]
     pub cover: Option<String>,
+    /// Embedded only in playlist track payloads (multi-sort probe); other
+    /// lists resolve it through the album release-date store.
+    #[serde(default, rename = "releaseDate", skip_serializing_if = "Option::is_none")]
+    pub release_date: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -40,6 +44,13 @@ pub struct Track {
     pub explicit: bool,
     #[serde(default, rename = "mediaMetadata")]
     pub media_metadata: Option<MediaMetadata>,
+    /// When the track joined this playlist (playlist payloads) or the
+    /// favorites (copied from the favorites wrapper's `created`).
+    #[serde(default, rename = "dateAdded", skip_serializing_if = "Option::is_none")]
+    pub date_added: Option<String>,
+    /// TIDAL's global popularity, 0–100.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub popularity: Option<u32>,
 }
 
 impl Track {
@@ -374,6 +385,27 @@ mod tests {
         assert!(t.album.is_none());
         assert!(t.audio_quality.is_none());
         assert!(!t.is_hi_res());
+        let value = serde_json::to_value(&t).unwrap();
+        assert!(value.get("dateAdded").is_none());
+        assert!(value.get("popularity").is_none());
+    }
+
+    #[test]
+    fn playlist_track_sort_fields_round_trip() {
+        // Shape from the 2026-10-19 multi-sort probe (playlists/{uuid}/tracks).
+        let raw = r#"{
+            "id": 9, "title": "T", "popularity": 71,
+            "dateAdded": "2025-08-06T17:50:35.372+0000",
+            "album": {"id": 3, "title": "A", "cover": null, "releaseDate": "1992-09-21"}
+        }"#;
+        let t: Track = serde_json::from_str(raw).unwrap();
+        assert_eq!(t.popularity, Some(71));
+        assert_eq!(t.date_added.as_deref(), Some("2025-08-06T17:50:35.372+0000"));
+        assert_eq!(t.album.as_ref().unwrap().release_date.as_deref(), Some("1992-09-21"));
+        let value = serde_json::to_value(&t).unwrap();
+        assert_eq!(value["dateAdded"], "2025-08-06T17:50:35.372+0000");
+        assert_eq!(value["popularity"], 71);
+        assert_eq!(value["album"]["releaseDate"], "1992-09-21");
     }
 
     #[test]

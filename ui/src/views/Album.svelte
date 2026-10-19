@@ -44,7 +44,8 @@
   let loading = $state(cached === undefined);
   let error = $state("");
 
-  const view = createTrackView(() => tracks);
+  // svelte-ignore state_referenced_locally
+  const view = createTrackView(() => tracks, undefined, { memoryKey: `album:${id}` });
 
   // "FEB 11, 2014 · 12 TRACKS (43:21)" — release date (when known), then album
   // totals with loaded-item fallback. The stats line is the only place the
@@ -190,6 +191,7 @@
       {toasts}
       fill
       showAlbum={false}
+      kind="album"
       sections={volumes ?? undefined}
       onPlay={playFrom}
       playingTrackId={player.state.current?.track_id ?? null}

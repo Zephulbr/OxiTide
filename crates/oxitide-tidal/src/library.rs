@@ -7,7 +7,18 @@ use crate::models::{Album, Artist, ItemPage, Mix, Track};
 /// Favorites endpoints wrap each entry as `{ "created": ..., "item": {...} }`.
 #[derive(Debug, Deserialize)]
 struct Favorited<T> {
+    #[serde(default)]
+    created: Option<String>,
     item: T,
+}
+
+/// A favorite track carries when it was favorited as its `date_added`.
+fn favorited_track(fav: Favorited<Track>) -> Track {
+    let mut track = fav.item;
+    if track.date_added.is_none() {
+        track.date_added = fav.created;
+    }
+    track
 }
 
 /// Window used when hydrating favorite ids; the favorites endpoint is known to
@@ -39,7 +50,7 @@ impl TidalClient {
             )
             .await?;
         Ok((
-            p.items.into_iter().map(|f| f.item).collect(),
+            p.items.into_iter().map(favorited_track).collect(),
             p.total_number_of_items,
         ))
     }
@@ -73,7 +84,7 @@ impl TidalClient {
                 DEFAULT_PAGE_SIZE,
             )
             .await?;
-        Ok(favs.into_iter().map(|f| f.item).collect())
+        Ok(favs.into_iter().map(favorited_track).collect())
     }
 
     /// Walk every page of the user's favorite albums.
@@ -284,6 +295,11 @@ mod tests {
             .unwrap();
         assert_eq!(tracks[0].id, 7);
         assert_eq!(total, 201);
+        assert_eq!(
+            tracks[0].date_added.as_deref(),
+            Some("2025-01-01T00:00:00.000+0000"),
+            "the favorites wrapper's `created` becomes the track's date added"
+        );
     }
 
     #[tokio::test]

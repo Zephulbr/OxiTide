@@ -1,22 +1,40 @@
+import { untrack } from "svelte";
 import type { Track } from "./api";
-
-export type TrackSort = "original" | "title" | "duration";
-export type SortDirection = "asc" | "desc";
+import { sortData as appSortData, type SortData } from "./sortData.svelte";
+import { sortMemory, type SortMemory } from "./sortMemory.svelte";
+import {
+  addLevel,
+  flipLevel,
+  moveLevel,
+  needsData,
+  removeLevel,
+  setPrimary,
+  sortTracks,
+  type SortKey,
+  type SortLevel,
+} from "./trackSort";
 
 export interface TrackView {
   readonly filter: string;
-  readonly sort: TrackSort;
-  readonly direction: SortDirection;
-  /// sort != "original" or filter non-empty
+  /// The sort the controls show, primary first; empty = source order.
+  readonly levels: readonly SortLevel[];
+  /// levels non-empty or filter non-empty
   readonly engaged: boolean;
-  /// ensureAll in flight; items still show source order
+  /// ensureAll (or sort data) in flight; items keep their previous order
   readonly preparing: boolean;
   /// engage failed; items stay in source order until retry()
   readonly error: string;
   /// visible rows: source order until ready, then sorted/filtered
   readonly items: Track[];
   setFilter(query: string): void;
-  toggleSort(key: Exclude<TrackSort, "original">): void;
+  /// Header click: only this key (cycles default → flipped → off), or flip
+  /// it in place when it is one of several levels (MS-D6).
+  toggleSort(key: SortKey): void;
+  /// "+" / Shift+click: append as the next level (MS-D5/D6).
+  addSort(key: SortKey): void;
+  flipSort(index: number): void;
+  removeSort(index: number): void;
+  moveSort(from: number, to: number): void;
   /// Back to original order for the sort only; the filter is untouched.
   clearSort(): void;
   retry(): void;
@@ -25,13 +43,17 @@ export interface TrackView {
   sourceIndex(visibleIndex: number): number;
 }
 
-const collator = new Intl.Collator(undefined, { sensitivity: "base" });
+export interface TrackViewOptions {
+  /// Page key for the remembered sort (MS-D13); omit to never remember.
+  memoryKey?: string;
+  memory?: SortMemory | null;
+  data?: SortData;
+}
 
-/// Per-track lower-cased title/artist parts and title collation keys. Track
-/// objects are stable while a list is mounted, so a keystroke or sort reuses
-/// them instead of lower-casing every row again.
+/// Per-track lower-cased title/artist parts. Track objects are stable while a
+/// list is mounted, so a keystroke reuses them instead of lower-casing every
+/// row again.
 const searchParts = new WeakMap<Track, string[]>();
-const titleKeys = new WeakMap<Track, string>();
 
 function searchable(track: Track): string[] {
   let parts = searchParts.get(track);
@@ -44,24 +66,15 @@ function searchable(track: Track): string[] {
   return parts;
 }
 
-function titleKey(track: Track): string {
-  let key = titleKeys.get(track);
-  if (key === undefined) {
-    key = track.title.toLocaleLowerCase();
-    titleKeys.set(track, key);
-  }
-  return key;
-}
-
 function matches(track: Track, needle: string): boolean {
   return searchable(track).some((part) => part.includes(needle));
 }
 
-/// Fill the per-track search and sort caches in small macrotask chunks so the
-/// first filter or sort over a large list does not pay the whole build on the
-/// keystroke (measured ~80 ms cold for 10k rows). Cached rows are skipped, so
-/// repeated calls after pager appends are cheap. Returns a cancel function and
-/// a promise that resolves when the walk finishes or is cancelled.
+/// Fill the per-track search cache in small macrotask chunks so the first
+/// filter over a large list does not pay the whole build on the keystroke
+/// (measured ~80 ms cold for 10k rows). Cached rows are skipped, so repeated
+/// calls after pager appends are cheap. Returns a cancel function and a
+/// promise that resolves when the walk finishes or is cancelled.
 export function warmTrackSearch(
   tracks: Track[],
   chunkSize = 500,
@@ -77,39 +90,13 @@ export function warmTrackSearch(
     const step = () => {
       if (cancelled) return;
       const end = Math.min(index + chunkSize, tracks.length);
-      for (; index < end; index++) {
-        searchable(tracks[index]);
-        titleKey(tracks[index]);
-      }
+      for (; index < end; index++) searchable(tracks[index]);
       if (index < tracks.length) setTimeout(step, 0);
       else resolve();
     };
     setTimeout(step, 0);
   });
   return { cancel, done };
-}
-
-function applyView(
-  list: Track[],
-  filter: string,
-  sort: TrackSort,
-  direction: SortDirection,
-): Track[] {
-  const needle = filter.trim().toLowerCase();
-  const filtered =
-    needle === "" ? list : list.filter((track) => matches(track, needle));
-  if (sort === "original") return filtered;
-  const factor = direction === "asc" ? 1 : -1;
-  return filtered
-    .map((track, index) => ({ track, index, key: sort === "title" ? titleKey(track) : "" }))
-    .sort((a, b) => {
-      const cmp =
-        sort === "title"
-          ? collator.compare(a.key, b.key)
-          : a.track.duration - b.track.duration;
-      return cmp !== 0 ? cmp * factor : a.index - b.index;
-    })
-    .map((entry) => entry.track);
 }
 
 /// Resolve the queue start index for a row captured before an async load;
@@ -123,27 +110,38 @@ export function visibleIndexOf(
   return items.indexOf(captured);
 }
 
-/// Sort/filter state over a track source. Engaging a non-original order (or a
-/// filter) first awaits `ensureAll` so the operation covers the complete list;
-/// until it resolves the view reports `preparing` and serves source order.
+/// Sort/filter state over a track source. Engaging a sort (or a filter) first
+/// awaits `ensureAll` so the operation covers the complete list, then any data
+/// the sort keys need (plays, release dates); until then the view reports
+/// `preparing` and keeps serving its previous order.
 export function createTrackView(
   source: () => Track[],
   ensureAll?: () => Promise<void>,
+  options: TrackViewOptions = {},
 ): TrackView {
+  const data = options.data ?? appSortData;
+  const memoryKey = options.memoryKey;
+  const memory = memoryKey ? untrack(() => options.memory ?? sortMemory()) : null;
+  const remembered = memoryKey && memory ? untrack(() => memory.get(memoryKey)) : undefined;
+
   let filter = $state("");
-  let sort = $state<TrackSort>("original");
-  let direction = $state<SortDirection>("asc");
+  let levels = $state.raw<SortLevel[]>(remembered ?? []);
+  /// What `items` sorts by: trails `levels` while their data loads.
+  let applied = $state.raw<SortLevel[]>([]);
   let preparing = $state(false);
   let error = $state("");
-  let ready = $state(false);
+  /// The complete list is loaded (ensureAll resolved) since engaging.
+  let full = $state(false);
   let engageToken = 0;
 
-  const engaged = $derived(filter.trim() !== "" || sort !== "original");
+  const engaged = $derived(filter.trim() !== "" || levels.length > 0);
 
   const items = $derived.by(() => {
     const list = source();
-    if (!engaged || !ready) return list;
-    return applyView(list, filter, sort, direction);
+    if (!engaged || !full) return list;
+    const needle = filter.trim().toLowerCase();
+    const filtered = needle === "" ? list : list.filter((track) => matches(track, needle));
+    return applied.length === 0 ? filtered : sortTracks(filtered, applied, data.context);
   });
 
   /// Identity map for `sourceIndex`: O(1) per call instead of an O(n) scan;
@@ -157,18 +155,23 @@ export function createTrackView(
   });
 
   async function prepare() {
-    if (ready) return;
-    if (!ensureAll) {
-      ready = true;
-      return;
-    }
     const token = ++engageToken;
     preparing = true;
     error = "";
     try {
-      await ensureAll();
+      if (!full && ensureAll) await ensureAll();
       if (token !== engageToken) return;
-      ready = true;
+      full = true;
+      const target = levels;
+      if (needsData(target)) {
+        await data.ensure(
+          target.map((level) => level.key),
+          source(),
+          true,
+        );
+        if (token !== engageToken) return;
+      }
+      applied = levels;
     } catch (e) {
       if (token !== engageToken) return;
       error = String(e);
@@ -177,53 +180,58 @@ export function createTrackView(
     }
   }
 
+  function disengage() {
+    engageToken += 1;
+    full = false;
+    applied = [];
+    preparing = false;
+    error = "";
+  }
+
+  /// Apply the current levels/filter: synchronously when the list is complete
+  /// and no data is missing, else through `prepare`.
   function engage() {
-    if (engaged) void prepare();
-  }
-
-  function disengageIfIdle() {
-    if (filter.trim() === "" && sort === "original") {
-      engageToken += 1;
-      ready = false;
-      preparing = false;
-      error = "";
+    if (!engaged) {
+      disengage();
+      return;
     }
+    if (!ensureAll) full = true;
+    if (full && !needsData(levels)) {
+      if (preparing) {
+        engageToken += 1;
+        preparing = false;
+      }
+      applied = levels;
+      return;
+    }
+    void prepare();
   }
 
+  function commit(next: SortLevel[]) {
+    levels = next;
+    if (memoryKey) memory?.set(memoryKey, next);
+    engage();
+  }
+
+  if (remembered && remembered.length > 0) {
+    // A remembered sort engages after construction: views may be built inside
+    // a `$derived` (Playlist), where state writes are not allowed.
+    queueMicrotask(() => {
+      if (levels.length > 0 && applied.length === 0 && !preparing) engage();
+    });
+  }
+
+  /// The filter applies through `items` once the list is complete; only the
+  /// first engagement has to load it.
   function setFilter(query: string) {
     filter = query;
-    if (filter.trim() === "" && sort === "original") {
-      disengageIfIdle();
-      return;
-    }
-    engage();
-  }
-
-  function toggleSort(key: Exclude<TrackSort, "original">) {
-    if (sort !== key) {
-      sort = key;
-      direction = "asc";
-    } else if (direction === "asc") {
-      direction = "desc";
-    } else {
-      sort = "original";
-      direction = "asc";
-    }
-    if (sort === "original" && filter.trim() === "") {
-      disengageIfIdle();
-      return;
-    }
-    engage();
-  }
-
-  function clearSort() {
-    sort = "original";
-    direction = "asc";
-    if (filter.trim() === "") disengageIfIdle();
+    if (!engaged) disengage();
+    else if (!ensureAll) full = true;
+    else if (!full && !preparing) void prepare();
   }
 
   function retry() {
-    ready = false;
+    full = false;
     error = "";
     void prepare();
   }
@@ -238,11 +246,8 @@ export function createTrackView(
     get filter() {
       return filter;
     },
-    get sort() {
-      return sort;
-    },
-    get direction() {
-      return direction;
+    get levels() {
+      return levels;
     },
     get engaged() {
       return engaged;
@@ -257,8 +262,12 @@ export function createTrackView(
       return items;
     },
     setFilter,
-    toggleSort,
-    clearSort,
+    toggleSort: (key) => commit(setPrimary(levels, key)),
+    addSort: (key) => commit(addLevel(levels, key)),
+    flipSort: (index) => commit(flipLevel(levels, index)),
+    removeSort: (index) => commit(removeLevel(levels, index)),
+    moveSort: (from, to) => commit(moveLevel(levels, from, to)),
+    clearSort: () => commit([]),
     retry,
     sourceIndex,
   };

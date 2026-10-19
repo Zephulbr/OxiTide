@@ -139,7 +139,8 @@
     loadSection(key);
   }
 
-  const view = createTrackView(() => topTracks);
+  // svelte-ignore state_referenced_locally
+  const view = createTrackView(() => topTracks, undefined, { memoryKey: `artist:${id}` });
 
   async function load() {
     const token = ++loadToken;
@@ -254,6 +255,7 @@
       </div>
       <TrackTable
         {view}
+        kind="artist"
         {nav}
         {favorites}
         {toasts}

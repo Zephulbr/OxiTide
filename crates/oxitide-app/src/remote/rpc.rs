@@ -537,6 +537,8 @@ mod tests {
         "set_history_enabled",
         "set_history_max_entries",
         "get_track_flags",
+        "get_play_counts",
+        "get_album_release_dates",
         "set_block_explicit",
         "set_block_ai",
         "set_show_labels",

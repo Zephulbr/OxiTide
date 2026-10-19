@@ -40,10 +40,14 @@
     if (favoritesPager.error) throw favoritesPager.error;
   }
 
-  const view = createTrackView(() => rows, async () => {
-    if (synthetic) return; // the synthetic fixture is already complete
-    await ensureAllFavorites();
-  });
+  const view = createTrackView(
+    () => rows,
+    async () => {
+      if (synthetic) return; // the synthetic fixture is already complete
+      await ensureAllFavorites();
+    },
+    { memoryKey: "favorites" },
+  );
 
   // Warm the filter/sort caches in idle chunks: a first keystroke over a 10k
   // list must not pay the whole build (~80 ms measured).
@@ -162,6 +166,7 @@
     {favorites}
     {toasts}
     fill
+    kind="favorites"
     onPlay={playFrom}
     onEndReached={() => void favoritesPager.loadMore()}
     onAddToPlaylist={(t) => playlistActions.openPicker([t])}

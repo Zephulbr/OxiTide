@@ -66,6 +66,21 @@ family — `.search-input` for search/filter, `SortSelect` for sort, `.tool-btn`
 label) for actions — never mixed with round icon buttons in the same row. Rack skins
 `.page-head > h2` as a printed label and `.tool-btn` as a light-bar key.
 
+**Track table sorting** (`TrackTable.svelte` + `SortBar.svelte`, 2026-10-19 multi-sort spec).
+Sortable headers are text buttons. A plain click sorts by that column alone; Shift+click, or the
+round `+` that appears on another header's hover/focus once a sort is on, adds it as the next
+level (three at most). Active headers take `--accent` and show a direction arrow (Lucide
+`arrow-up`/`arrow-down`, never glyphs). When more than one level is active they also show a
+small filled rank dot (`--accent` / `--on-accent`). `aria-sort` marks only the primary. Above the
+table, beside the filter, the sort bar shows one chip per level:
+- chips use an accent-tinted `--surface-2` fill, with the primary chip tinted more strongly;
+- clicking a chip flips its direction, × removes it, and Alt+←/→ reorders;
+- a quiet "Add sort" opens the shared `ContextMenu`;
+- with no sort the bar is a single quiet "Sort" button.
+
+The optional columns (Date added, Release date, Popularity, Plays) are toggled from a "Columns"
+menu on the header row. They hide under a 760px container query on the table scroller.
+
 **Settings page** (`views/Settings.svelte`, 2026-10-15 overhaul). A left category nav
 (`role="tablist"`, vertical, Lucide icon + label; a scrolling strip below 760px of page width)
 beside a content column capped at 1320px. Each tab is a `.cols` grid of hand-balanced column

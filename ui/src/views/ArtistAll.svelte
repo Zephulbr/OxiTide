@@ -78,10 +78,16 @@
       api.getArtistTopTracksPage(id, offset, limit),
     ),
   );
-  const view = createTrackView(() => pager.items, async () => {
-    await pager.ensureAll();
-    if (pager.error) throw pager.error;
-  });
+  const view = untrack(() =>
+    createTrackView(
+      () => pager.items,
+      async () => {
+        await pager.ensureAll();
+        if (pager.error) throw pager.error;
+      },
+      { memoryKey: `artist-all:${id}` },
+    ),
+  );
 
   const activeAlbumKind = $derived<AlbumTab | null>(
     tab === "albums" || tab === "eps" || tab === "appears" ? tab : null,
@@ -243,6 +249,7 @@
   {:else}
     <TrackTable
       {view}
+      kind="artist"
       {nav}
       {favorites}
       {toasts}

@@ -39,7 +39,8 @@
   let loading = $state(cached === undefined);
   let error = $state("");
 
-  const view = createTrackView(() => mix?.tracks ?? []);
+  // svelte-ignore state_referenced_locally
+  const view = createTrackView(() => mix?.tracks ?? [], undefined, { memoryKey: `mix:${id}` });
   const artwork = $derived(mix?.artwork ?? mix?.tracks[0]?.album?.cover ?? null);
 
   // "50 TRACKS (3:12:44)" — mixes carry no metadata totals, so sum the tracks.
@@ -142,6 +143,7 @@
       {toasts}
       fill
       showAlbum={false}
+      kind="mix"
       onPlay={playFrom}
       playingTrackId={player.state.current?.track_id ?? null}
       playbackRunning={player.state.playing}

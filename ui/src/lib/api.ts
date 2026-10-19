@@ -5,14 +5,24 @@ import type { HotkeyAction } from "./hotkeys";
 /// right edge to the button's left edge (mirrors `titlebar::SnapTarget`).
 export interface SnapTarget { right: number; top: number; width: number; height: number }
 export interface ArtistRef { id: number; name: string }
-export interface AlbumRef { id: number; title: string; cover?: string | null }
+export interface AlbumRef {
+  id: number; title: string; cover?: string | null;
+  /// `YYYY-MM-DD`; embedded only in playlist track payloads.
+  releaseDate?: string;
+}
 export interface Track {
   id: number; title: string; duration: number;
   artists: ArtistRef[]; album?: AlbumRef | null;
   audioQuality?: string | null; trackNumber: number; volumeNumber: number;
   explicit: boolean;
   mediaMetadata?: { tags: string[] } | null;
+  /// When the track joined the playlist / favorites (TIDAL timestamp).
+  dateAdded?: string;
+  /// TIDAL's global popularity, 0–100.
+  popularity?: number;
 }
+export interface PlayCount { track_id: number; plays: number }
+export interface AlbumDate { album_id: number; release_date: string | null }
 export interface TrackFlag {
   track_id: number;
   explicit: boolean | null;
@@ -672,6 +682,9 @@ export const api = {
   setHistoryMaxEntries: (maxEntries: number) =>
     invoke<void>("set_history_max_entries", { maxEntries }),
   getTrackFlags: (ids: number[]) => invoke<TrackFlag[]>("get_track_flags", { ids }),
+  getPlayCounts: (ids: number[]) => invoke<PlayCount[]>("get_play_counts", { ids }),
+  getAlbumReleaseDates: (ids: number[]) =>
+    invoke<AlbumDate[]>("get_album_release_dates", { ids }),
   setBlockExplicit: (enabled: boolean) => invoke<void>("set_block_explicit", { enabled }),
   setBlockAi: (enabled: boolean) => invoke<void>("set_block_ai", { enabled }),
   setShowLabels: (enabled: boolean) => invoke<void>("set_show_labels", { enabled }),

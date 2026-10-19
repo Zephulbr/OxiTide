@@ -319,6 +319,14 @@ impl HistoryStore {
         compute_stats(&records, now_epoch(), offset_minutes)
     }
 
+    /// Recorded plays per requested track id (the in-flight play excluded, as
+    /// for stats). Every requested id is present; unplayed ids count 0.
+    pub fn play_counts(&self, ids: &[u64]) -> HashMap<u64, u32> {
+        self.flush();
+        let records = self.records.lock().unwrap();
+        count_plays(&records, ids)
+    }
+
     /// Empty the log and remove the file, including the in-flight play.
     pub fn clear(&self) {
         self.tracker.lock().unwrap().reset();
@@ -326,6 +334,16 @@ impl HistoryStore {
             self.flush();
         }
     }
+}
+
+fn count_plays(records: &VecDeque<HistoryRecord>, ids: &[u64]) -> HashMap<u64, u32> {
+    let mut counts: HashMap<u64, u32> = ids.iter().map(|id| (*id, 0)).collect();
+    for record in records {
+        if let Some(count) = counts.get_mut(&record.track_id) {
+            *count += 1;
+        }
+    }
+    counts
 }
 
 /// Read the log into memory (newest first); malformed lines are skipped so one
@@ -1159,6 +1177,19 @@ mod tests {
 
     fn stats_of(records: Vec<HistoryRecord>, now: i64, offset_minutes: i32) -> Stats {
         compute_stats(&VecDeque::from(records), now, offset_minutes)
+    }
+
+    #[test]
+    fn count_plays_counts_requested_ids_only() {
+        let records = VecDeque::from(vec![
+            record(1, "A", "X", 10, 60_000),
+            record(2, "A", "X", 20, 60_000),
+            record(1, "A", "X", 30, 60_000),
+        ]);
+        let counts = count_plays(&records, &[1, 3]);
+        assert_eq!(counts.len(), 2);
+        assert_eq!(counts[&1], 2);
+        assert_eq!(counts[&3], 0, "an unplayed id counts zero");
     }
 
     #[test]

@@ -35,6 +35,7 @@
   import NumberField from "../lib/components/settings/NumberField.svelte";
   import Notice from "../lib/components/settings/Notice.svelte";
   import Segmented from "../lib/components/settings/Segmented.svelte";
+  import { sortMemory, type SortMemoryMode } from "../lib/sortMemory.svelte";
   import Select from "../lib/components/settings/Select.svelte";
   import SettingRow from "../lib/components/settings/SettingRow.svelte";
   import SettingsSection from "../lib/components/settings/SettingsSection.svelte";
@@ -159,6 +160,17 @@
     { value: "comfortable", label: "Comfortable" },
     { value: "compact", label: "Compact" },
   ];
+  const SORT_MEMORY_OPTIONS: { value: SortMemoryMode; label: string }[] = [
+    { value: "page", label: "Until I leave" },
+    { value: "session", label: "Until restart" },
+    { value: "always", label: "Always" },
+  ];
+  const SORT_MEMORY_HELP: Record<SortMemoryMode, string> = {
+    page: "Track lists open in their original order every time.",
+    session: "Each page keeps its track sort until OxiTide closes.",
+    always: "Each page keeps its track sort, even after a restart.",
+  };
+  const sortMemoryStore = sortMemory();
   const COVER_OPTIONS: { value: CoverShape; label: string }[] = [
     { value: "disc", label: "Disc" },
     { value: "sleeve", label: "Sleeve" },
@@ -1011,6 +1023,20 @@
                   onchange={(value) => appearance.setCoverShape(value).catch(apply)}
                 />
               </SettingRow>
+              {#if sortMemoryStore}
+                <SettingRow
+                  id="track-sort-memory"
+                  label="Remember track sorting"
+                  description={SORT_MEMORY_HELP[sortMemoryStore.mode]}
+                >
+                  <Segmented
+                    label="Remember track sorting"
+                    value={sortMemoryStore.mode}
+                    options={SORT_MEMORY_OPTIONS}
+                    onchange={(value) => sortMemoryStore.setMode(value)}
+                  />
+                </SettingRow>
+              {/if}
             </SettingsSection>
             </div>
 

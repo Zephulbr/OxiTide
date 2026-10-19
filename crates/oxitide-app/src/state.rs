@@ -68,6 +68,8 @@ pub struct AppState {
     pub remote_devices: std::sync::OnceLock<Arc<crate::remote::pairing::DeviceStore>>,
     /// The release `check_for_update` found, kept for `install_update`.
     pub pending_update: Mutex<Option<tauri_plugin_updater::Update>>,
+    /// Album release dates for track sorting, opened on first use.
+    album_dates: std::sync::OnceLock<Arc<crate::album_dates::AlbumDatesStore>>,
     session_expired: AtomicBool,
     handle: Mutex<Option<AppHandle>>,
 }
@@ -183,6 +185,16 @@ impl AppState {
 
     pub fn track_flags(&self) -> Option<Arc<crate::track_flags::TrackFlagsStore>> {
         self.track_flags.lock().unwrap().clone()
+    }
+
+    pub fn album_dates(&self) -> Arc<crate::album_dates::AlbumDatesStore> {
+        self.album_dates
+            .get_or_init(|| {
+                Arc::new(crate::album_dates::AlbumDatesStore::start(
+                    crate::album_dates::album_dates_path(),
+                ))
+            })
+            .clone()
     }
 
     pub fn set_tray(&self, tray: tauri::tray::TrayIcon) {

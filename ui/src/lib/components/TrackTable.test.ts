@@ -39,14 +39,17 @@ function setup(overrides: Partial<TrackView> = {}) {
   const rows = [track(1), track(2), track(3)];
   const view = {
     filter: "",
-    sort: "title",
-    direction: "asc",
+    levels: [{ key: "title", dir: "asc" }],
     engaged: true,
     preparing: false,
     error: "",
     items: rows,
     setFilter: vi.fn(),
     toggleSort: vi.fn(),
+    addSort: vi.fn(),
+    flipSort: vi.fn(),
+    removeSort: vi.fn(),
+    moveSort: vi.fn(),
     clearSort: vi.fn(),
     retry: vi.fn(),
     sourceIndex: (index: number) => index,
@@ -55,9 +58,15 @@ function setup(overrides: Partial<TrackView> = {}) {
   const favorites = { hasTrack: () => false, toggleTrack: vi.fn() } as unknown as Favorites;
   const toasts = { show: vi.fn() } as unknown as Toasts;
   const onPlay = vi.fn();
-  render(TrackTable, { view, favorites, toasts, onPlay });
-  return { rows, onPlay };
+  render(TrackTable, { view, favorites, toasts, onPlay, kind });
+  return { rows, onPlay, view };
 }
+
+let kind: "favorites" | "playlist" | "album" | "artist" | "mix" | "search" = "search";
+
+beforeEach(() => {
+  kind = "search";
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -73,7 +82,7 @@ describe("TrackTable semantics", () => {
 
   it("swaps the playing row's number for the now-playing mark", () => {
     const view = {
-      filter: "", sort: "title", direction: "asc", engaged: true, preparing: false, error: "",
+      filter: "", levels: [{ key: "title", dir: "asc" }], engaged: true, preparing: false, error: "",
       items: [track(1), track(2)], setFilter: vi.fn(), toggleSort: vi.fn(), clearSort: vi.fn(),
       retry: vi.fn(), sourceIndex: (index: number) => index,
     } as unknown as TrackView;
@@ -129,7 +138,7 @@ describe("TrackTable semantics", () => {
 describe("TrackTable name links", () => {
   function renderWithNav(route: Nav["route"]) {
     const view = {
-      filter: "", sort: null, direction: "asc", engaged: false, preparing: false, error: "",
+      filter: "", levels: [], engaged: false, preparing: false, error: "",
       items: [track(1)], setFilter: vi.fn(), toggleSort: vi.fn(), clearSort: vi.fn(),
       retry: vi.fn(), sourceIndex: (index: number) => index,
     } as unknown as TrackView;
@@ -168,5 +177,77 @@ describe("TrackTable name links", () => {
   it("renders plain text without nav", () => {
     setup();
     expect(document.querySelectorAll('tbody [role="link"]')).toHaveLength(0);
+  });
+});
+
+describe("TrackTable multi-level sorting", () => {
+  const header = (label: string) =>
+    [...document.querySelectorAll<HTMLElement>("thead th")].find((th) =>
+      th.querySelector("button.sort")?.textContent?.includes(label),
+    )!;
+
+  it("offers 'then sort by' on other headers and adds the level", async () => {
+    const { view } = setup();
+    const artist = header("Artist");
+    const plus = artist.querySelector<HTMLButtonElement>('button[aria-label="Then sort by Artist"]')!;
+    await fireEvent.click(plus);
+    expect(view.addSort).toHaveBeenCalledWith("artist");
+    expect(header("Title").querySelector('[aria-label="Then sort by Title"]')).toBeNull();
+  });
+
+  it("adds a level on Shift+click and replaces on a plain click", async () => {
+    const { view } = setup();
+    const albumButton = header("Album").querySelector<HTMLButtonElement>("button.sort")!;
+    await fireEvent.click(albumButton, { shiftKey: true });
+    expect(view.addSort).toHaveBeenCalledWith("album");
+    await fireEvent.click(albumButton);
+    expect(view.toggleSort).toHaveBeenCalledWith("album");
+  });
+
+  it("shows rank badges and chips for every level", async () => {
+    const { view } = setup({
+      levels: [
+        { key: "artist", dir: "asc" },
+        { key: "title", dir: "desc" },
+      ],
+    });
+    expect(header("Artist").querySelector(".rank")?.textContent).toBe("1");
+    expect(header("Title").querySelector(".rank")?.textContent).toBe("2");
+    expect(header("Artist").getAttribute("aria-sort")).toBe("ascending");
+    expect(header("Title").getAttribute("aria-sort")).toBeNull();
+
+    const chips = document.querySelectorAll<HTMLButtonElement>(".sort-bar .chip-main");
+    expect([...chips].map((chip) => chip.textContent?.replace(/\s+/g, " ").trim())).toEqual([
+      "1 Artist",
+      "2 Title",
+    ]);
+    await fireEvent.click(chips[1]);
+    expect(view.flipSort).toHaveBeenCalledWith(1);
+    await fireEvent.keyDown(chips[1], { key: "ArrowLeft", altKey: true });
+    expect(view.moveSort).toHaveBeenCalledWith(1, 0);
+    await fireEvent.click(document.querySelector<HTMLButtonElement>('[aria-label="Remove Artist sort"]')!);
+    expect(view.removeSort).toHaveBeenCalledWith(0);
+  });
+
+  it("shows date added in favorites, and a sorted optional column", () => {
+    kind = "favorites";
+    const rows = [
+      { ...track(1), dateAdded: "2025-08-06T17:50:35.372+0000", popularity: 71 },
+    ] as Track[];
+    setup({ items: rows, levels: [{ key: "popularity", dir: "desc" }] });
+    const heads = [...document.querySelectorAll("thead th")].map((th) => th.textContent?.trim());
+    expect(heads).toContain("Date added");
+    expect(heads.some((text) => text?.startsWith("Popularity"))).toBe(true);
+    expect(heads).not.toContain("Plays");
+    const cells = [...document.querySelectorAll("tbody td.opt-col")].map((td) => td.textContent);
+    expect(cells).toEqual(["Aug 6, 2025", "71"]);
+  });
+
+  it("does not offer date added outside favorites and playlists", () => {
+    setup();
+    expect(document.querySelector('[aria-label="Then sort by Date added"]')).toBeNull();
+    expect([...document.querySelectorAll("thead th")].map((th) => th.textContent?.trim())).not.toContain(
+      "Date added",
+    );
   });
 });

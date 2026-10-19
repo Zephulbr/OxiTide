@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod album_dates;
 mod artwork;
 mod commands;
 mod config;
@@ -419,6 +420,8 @@ fn main() {
             commands::set_history_enabled,
             commands::set_history_max_entries,
             commands::get_track_flags,
+            commands::get_play_counts,
+            commands::get_album_release_dates,
             commands::set_block_explicit,
             commands::set_block_ai,
             commands::set_show_labels,
