@@ -225,14 +225,16 @@ pub struct HistoryStore {
 impl HistoryStore {
     pub fn start(path: PathBuf, max_entries: usize, enabled: bool) -> Self {
         let max_entries = Arc::new(AtomicUsize::new(max_entries.max(1)));
-        let (loaded, trimmed) = load_records(&path, max_entries.load(Ordering::SeqCst));
-        let records = Arc::new(Mutex::new(loaded));
+        // The log is read by the writer thread, off the start-up path (Track
+        // 13); every read goes through `flush`, which the writer answers only
+        // after loading, so no page or stats call sees a half-loaded log.
+        let records = Arc::new(Mutex::new(VecDeque::new()));
         let (tx, rx) = std::sync::mpsc::channel();
         let writer_records = records.clone();
         let writer_max = max_entries.clone();
         thread::Builder::new()
             .name("oxitide-history".into())
-            .spawn(move || writer_main(path, writer_records, writer_max, trimmed, rx))
+            .spawn(move || writer_main(path, writer_records, writer_max, rx))
             .expect("spawn history writer");
         Self {
             tracker: Mutex::new(HistoryTracker::default()),
@@ -355,9 +357,10 @@ fn writer_main(
     path: PathBuf,
     records: Arc<Mutex<VecDeque<HistoryRecord>>>,
     max_entries: Arc<AtomicUsize>,
-    trimmed: bool,
     rx: Receiver<WriterMsg>,
 ) {
+    let (loaded, trimmed) = load_records(&path, max_entries.load(Ordering::SeqCst));
+    *records.lock().unwrap() = loaded;
     if trimmed {
         let snapshot = records.lock().unwrap().clone();
         rewrite(&path, &snapshot);
@@ -702,7 +705,8 @@ mod tests {
             dsp_stages: Vec::new(),
             crossfade_ms: 0,
             last_transition: None,
-            queue: Vec::new(),
+            queue: Default::default(),
+            queue_rev: 0,
             stream: None,
         }
     }

@@ -25,7 +25,7 @@
   ><Icon name={icon} size={iconSize} /></button>
   <div class="track" style:--level={level}>
     <input
-      type="range" min="0" max="1" step="0.01" value={player.state.volume}
+      type="range" min="0" max="1" step="0.01" value={player.state.volume} data-perf-volume
       oninput={(e) => player.setVolume(Number((e.currentTarget as HTMLInputElement).value))}
       onchange={(e) => player.setVolume(Number((e.currentTarget as HTMLInputElement).value), true)}
       aria-label="Volume"

@@ -307,7 +307,8 @@ mod tests {
             dsp_stages: Vec::new(),
             crossfade_ms: 0,
             last_transition: None,
-            queue: Vec::new(),
+            queue: Default::default(),
+            queue_rev: 0,
             stream: None,
         })
     }

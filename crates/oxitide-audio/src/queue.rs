@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use rand::seq::SliceRandom;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -39,7 +41,12 @@ pub enum RepeatMode {
 
 #[derive(Debug, Clone)]
 pub struct Queue {
-    items: Vec<QueueItem>,
+    /// Copy-on-write: a state snapshot shares the list instead of copying it,
+    /// and the next edit clones it only while a snapshot still holds it.
+    items: Arc<Vec<QueueItem>>,
+    /// Bumped on every change to the items (not to the current index or the
+    /// flags), so listeners can skip re-sending an unchanged list.
+    rev: u64,
     current: Option<usize>,
     playing: bool,
     shuffle: bool,
@@ -50,7 +57,8 @@ pub struct Queue {
 impl Default for Queue {
     fn default() -> Self {
         Self {
-            items: Vec::new(),
+            items: Arc::new(Vec::new()),
+            rev: 0,
             current: None,
             playing: false,
             shuffle: false,
@@ -63,6 +71,23 @@ impl Default for Queue {
 impl Queue {
     pub fn items(&self) -> &[QueueItem] {
         &self.items
+    }
+    /// The items as a shared list (a pointer copy).
+    pub fn shared_items(&self) -> Arc<Vec<QueueItem>> {
+        Arc::clone(&self.items)
+    }
+    /// Revision of the item list; changes whenever the items do.
+    pub fn rev(&self) -> u64 {
+        self.rev
+    }
+    /// The items for an edit; marks the list changed.
+    fn items_mut(&mut self) -> &mut Vec<QueueItem> {
+        self.rev += 1;
+        Arc::make_mut(&mut self.items)
+    }
+    fn replace_items(&mut self, items: Vec<QueueItem>) {
+        self.rev += 1;
+        self.items = Arc::new(items);
     }
     pub fn current_index(&self) -> Option<usize> {
         self.current
@@ -84,7 +109,7 @@ impl Queue {
     }
 
     pub fn play_context(&mut self, items: Vec<QueueItem>, start: usize) {
-        self.items = items;
+        self.replace_items(items);
         if self.items.is_empty() {
             self.current = None;
             self.playing = false;
@@ -102,9 +127,9 @@ impl Queue {
     }
 
     /// One Fisher–Yates shuffle of the whole list. Seeded by tests via `StdRng`.
-    fn play_context_shuffled_with<R: Rng + ?Sized>(&mut self, items: Vec<QueueItem>, rng: &mut R) {
-        self.items = items;
-        self.items.shuffle(rng);
+    fn play_context_shuffled_with<R: Rng + ?Sized>(&mut self, mut items: Vec<QueueItem>, rng: &mut R) {
+        items.shuffle(rng);
+        self.replace_items(items);
         self.shuffle = true;
         if self.items.is_empty() {
             self.current = None;
@@ -125,7 +150,7 @@ impl Queue {
         shuffle: bool,
         repeat: RepeatMode,
     ) {
-        self.items = items;
+        self.replace_items(items);
         self.shuffle = shuffle;
         self.repeat = repeat;
         if self.items.is_empty() {
@@ -237,8 +262,9 @@ impl Queue {
         if from >= self.items.len() || to >= self.items.len() || from == to {
             return false;
         }
-        let item = self.items.remove(from);
-        self.items.insert(to, item);
+        let items = self.items_mut();
+        let item = items.remove(from);
+        items.insert(to, item);
         if let Some(cur) = self.current {
             if cur == from {
                 self.current = Some(to);
@@ -255,7 +281,7 @@ impl Queue {
         if index >= self.items.len() {
             return false;
         }
-        self.items.remove(index);
+        self.items_mut().remove(index);
         match self.current {
             None => {}
             Some(cur) if index < cur => self.current = Some(cur - 1),
@@ -273,14 +299,14 @@ impl Queue {
     }
 
     pub fn clear(&mut self) {
-        self.items.clear();
+        self.replace_items(Vec::new());
         self.current = None;
         self.playing = false;
     }
 
     /// Append items without touching the current track or the playing state.
     pub fn push(&mut self, items: Vec<QueueItem>) {
-        self.items.extend(items);
+        self.items_mut().extend(items);
     }
 
     /// Insert items right after the current track ("Play next"), keeping
@@ -290,9 +316,9 @@ impl Queue {
         match self.current {
             Some(cur) => {
                 let at = (cur + 1).min(self.items.len());
-                self.items.splice(at..at, items);
+                self.items_mut().splice(at..at, items);
             }
-            None => self.items.extend(items),
+            None => self.items_mut().extend(items),
         }
     }
 
@@ -325,10 +351,10 @@ impl Queue {
     fn shuffle_tail_with<R: Rng + ?Sized>(&mut self, rng: &mut R) {
         match self.current {
             Some(current) if current + 1 < self.items.len() => {
-                self.items[current + 1..].shuffle(rng);
+                self.items_mut()[current + 1..].shuffle(rng);
             }
             Some(_) => {}
-            None => self.items.shuffle(rng),
+            None => self.items_mut().shuffle(rng),
         }
     }
 
@@ -349,6 +375,48 @@ mod tests {
         let mut q = Queue::default();
         q.play_context((1..=n).map(item).collect(), 0);
         q
+    }
+
+    #[test]
+    fn rev_moves_with_item_edits_only() {
+        let mut q = queue(4);
+        let rev = q.rev();
+        q.next();
+        q.prev();
+        q.set_repeat(RepeatMode::All);
+        q.set_volume(0.5);
+        q.toggle_play_pause();
+        q.stop();
+        q.resume();
+        q.set_shuffle(false);
+        assert_eq!(q.rev(), rev, "navigation and flags must not change the revision");
+        for edit in [
+            |q: &mut Queue| q.push(vec![item(9)]),
+            |q: &mut Queue| q.insert_next(vec![item(8)]),
+            |q: &mut Queue| {
+                q.reorder(0, 1);
+            },
+            |q: &mut Queue| {
+                q.remove(0);
+            },
+            |q: &mut Queue| q.set_shuffle(true),
+            |q: &mut Queue| q.play_context(vec![item(1)], 0),
+            |q: &mut Queue| q.clear(),
+        ] {
+            let before = q.rev();
+            edit(&mut q);
+            assert!(q.rev() > before, "an item edit kept the revision");
+        }
+    }
+
+    #[test]
+    fn a_shared_snapshot_is_unaffected_by_later_edits() {
+        let mut q = queue(3);
+        let snapshot = q.shared_items();
+        assert!(Arc::ptr_eq(&snapshot, &q.shared_items()), "a snapshot must not copy");
+        q.push(vec![item(4)]);
+        assert_eq!(snapshot.len(), 3);
+        assert_eq!(q.items().len(), 4);
     }
 
     #[test]

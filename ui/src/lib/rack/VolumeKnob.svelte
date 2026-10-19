@@ -10,7 +10,13 @@
   const SWEEP = 270;
 
   let dragVolume = $state<number | null>(null);
-  const volume = $derived(dragVolume ?? player.state.volume);
+  /// Wheel/key steps land faster than the engine confirms them (sends are
+  /// coalesced per frame); step from the last requested value until it does.
+  let stepVolume = $state<number | null>(null);
+  $effect(() => {
+    if (stepVolume !== null && player.state.volume === stepVolume) stepVolume = null;
+  });
+  const volume = $derived(dragVolume ?? stepVolume ?? player.state.volume);
   const angle = $derived(-SWEEP / 2 + volume * SWEEP);
   const lit = $derived(Math.round(volume * (RING - 1)));
   const dots = Array.from({ length: RING }, (_, i) => {
@@ -25,7 +31,8 @@
   function onPointerDown(event: PointerEvent) {
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
     startY = event.clientY;
-    startVolume = player.state.volume;
+    startVolume = volume;
+    stepVolume = null;
     dragVolume = startVolume;
   }
   function onPointerMove(event: PointerEvent) {
@@ -46,11 +53,16 @@
     else if (event.key === "End") next = 1;
     if (next === null) return;
     event.preventDefault();
-    void player.setVolume(next, true);
+    stepTo(next);
   }
   function onWheel(event: WheelEvent) {
     event.preventDefault();
-    void player.setVolume(clamp(volume - Math.sign(event.deltaY) * 0.02), true);
+    stepTo(clamp(volume - Math.sign(event.deltaY) * 0.02));
+  }
+  /// Live now, persisted once the steps stop.
+  function stepTo(next: number) {
+    stepVolume = next;
+    void player.setVolume(next, true, true);
   }
 </script>
 

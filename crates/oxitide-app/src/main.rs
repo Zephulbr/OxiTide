@@ -23,6 +23,7 @@ mod titlebar;
 mod track_flags;
 mod tray;
 mod updater;
+mod webview_idle;
 mod window;
 
 use std::sync::OnceLock;
@@ -158,27 +159,29 @@ fn main() {
     state.set_keyring_status(keyring_status.clone());
     state.set_cache(player::build_cache(&config));
     perf::mark("cache_ready");
+    // One client (one connection pool and TLS setup) for the side services:
+    // cover palettes, lyrics and scrobbling (Track 13). Clones share it.
+    let services_http = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(15))
+        .pool_idle_timeout(std::time::Duration::from_secs(30))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
     state.set_artwork(artwork::ArtworkService::new(
-        reqwest::Client::new(),
+        services_http.clone(),
         "https://resources.tidal.com/images".into(),
         config::default_cache_dir()
             .unwrap_or_default()
             .join("palettes.json"),
     ));
     state.set_lyrics(lyrics::LyricsService::new(
-        reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(15))
-            .build()
-            .unwrap_or_else(|_| reqwest::Client::new()),
+        services_http.clone(),
         "https://lrclib.net",
         config::default_cache_dir()
             .unwrap_or_default()
             .join("lyrics.json"),
     ));
-    let scrobble_http = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .unwrap_or_else(|_| reqwest::Client::new());
+    let scrobble_http = services_http;
     let (lastfm_key, lastfm_secret) = config.scrobbling.lastfm_credentials();
     let scrobbler = scrobble::ScrobblerService::new(
         scrobble_http,
@@ -273,6 +276,7 @@ fn main() {
             if let Some(window) = app.get_webview_window("main") {
                 // Before the first show, so the system frame never flashes.
                 titlebar::install(&window);
+                webview_idle::install(&window);
                 thumbbar::install(&window);
                 let config = app.state::<AppState>().config();
                 if let Err(e) = window::apply(&window, &config) {
@@ -473,6 +477,7 @@ fn main() {
             commands::get_logs_dir,
             commands::open_logs_folder,
             commands::perf_mark,
+            commands::perf_quit,
             commands::get_perf_snapshot,
             commands::perf_submit_ui_metrics,
             commands::perf_queue_build,

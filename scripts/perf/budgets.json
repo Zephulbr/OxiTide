@@ -67,5 +67,39 @@
     { "metric": "memory_drift_mb", "max": 50 },
     { "metric": "memory_drift_app_mb", "max": 25, "required": true },
     { "metric": "memory_max_mb", "max": 755 }
+  ],
+  "S11": [
+    { "metric": "cpu_app_pct", "max": 1.2, "of": "median" },
+    { "metric": "cpu_webview_pct", "max": 4.3, "of": "median" },
+    { "metric": "ipc_events_per_min", "max": 0, "required": true },
+    { "metric": "long_task_max_ms", "max": 100 },
+    { "metric": "memory_max_mb", "max": 718 }
+  ],
+  "S12": [
+    { "metric": "cpu_app_pct", "max": 0.9, "of": "median" },
+    { "metric": "cpu_webview_pct", "max": 0.6, "of": "median" },
+    { "metric": "ipc_events_per_min", "max": 0, "required": true },
+    { "metric": "long_task_max_ms", "max": 100 },
+    { "metric": "memory_max_mb", "max": 690 }
+  ],
+  "S13": [
+    { "metric": "cpu_app_pct", "max": 2.4, "of": "median" },
+    { "metric": "cpu_webview_pct", "max": 13.6, "of": "median" },
+    { "metric": "ipc_events_per_min", "max": 2191, "of": "median" },
+    { "metric": "ipc_kb_per_min", "max": 546, "of": "median" },
+    { "metric": "frame_p95_ms:rack", "max": 16.7 },
+    { "metric": "frame_p99_ms:rack", "max": 33 },
+    { "metric": "long_task_max_ms", "max": 100 },
+    { "metric": "memory_max_mb", "max": 707 }
+  ],
+  "S14": [
+    { "metric": "cpu_app_pct", "max": 2.6, "of": "median" },
+    { "metric": "cpu_webview_pct", "max": 18.1, "of": "median" },
+    { "metric": "ipc_events_per_min", "max": 1706, "of": "median" },
+    { "metric": "ipc_kb_per_min", "max": 930, "of": "median" },
+    { "metric": "frame_p95_ms:atmosphere", "max": 20 },
+    { "metric": "frame_p99_ms:atmosphere", "max": 33 },
+    { "metric": "long_task_max_ms", "max": 100 },
+    { "metric": "memory_max_mb", "max": 693 }
   ]
 }

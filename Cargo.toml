@@ -10,7 +10,7 @@ license = "AGPL-3.0-or-later"
 [workspace.dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time", "net"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking"] }
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 thiserror = "2"
 tracing = "0.1"
@@ -22,6 +22,14 @@ base64 = "0.22"
 toml = "1"
 directories = "6"
 rand = "0.10"
+
+# Track 13 (F9): whole-program optimization for the shipped binary. Symbols
+# stay (panic backtraces keep their function names); only debuginfo is
+# stripped. Unwinding stays on: worker threads rely on it to fail alone.
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = "debuginfo"
 
 # Track 7b: AutoMix analysis runs at track boundaries; keep the FFT/resampling
 # crates fast in dev builds so `app:dev` does not underrun during a transition.

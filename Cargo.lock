@@ -3120,6 +3120,7 @@ dependencies = [
  "tracing-appender",
  "tracing-subscriber",
  "url",
+ "webview2-com",
  "windows 0.62.2",
  "wiremock",
 ]
@@ -3154,8 +3155,9 @@ name = "oxitide-tidal"
 version = "0.3.0"
 dependencies = [
  "base64 0.22.1",
+ "futures-util",
+ "getrandom 0.3.4",
  "keyring",
- "rand 0.8.8",
  "reqwest 0.12.28",
  "serde",
  "serde_json",

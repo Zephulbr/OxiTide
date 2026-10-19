@@ -28,11 +28,14 @@
     gap: 5px;
     height: 100%;
   }
+  /* One glow for the whole group (Track 13): a filter per bar and a shadow
+     per cap were re-rendered for every bar on every meter frame. */
   .bars {
     flex: 1;
     display: grid;
     gap: 3px;
     min-height: 0;
+    filter: drop-shadow(0 0 3px var(--rack-vfd));
   }
   .bar {
     position: relative;
@@ -45,7 +48,6 @@
     bottom: 0;
     height: var(--h);
     background: repeating-linear-gradient(0deg, var(--rack-vfd) 0 3px, transparent 3px 5px);
-    filter: drop-shadow(0 0 3px var(--rack-vfd));
   }
   i {
     position: absolute;
@@ -54,7 +56,6 @@
     height: 2px;
     bottom: var(--cap);
     background: var(--rack-vfd);
-    box-shadow: 0 0 4px var(--rack-vfd);
   }
   .scale {
     display: flex;

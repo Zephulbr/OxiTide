@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use oxitide_audio::cache::DiskCache;
 use oxitide_audio::dsp::{DspSettings, TransitionStyle};
-use oxitide_audio::engine::{Engine, EngineCmd, EngineEvent, PlaybackState};
+use oxitide_audio::engine::{Engine, EngineCmd, EngineEvent};
 use oxitide_audio::fetch::HttpFetcher;
 use oxitide_audio::output::{ExclusiveFallback, OutputMode};
 use oxitide_audio::queue::{ArtistRef, QueueItem, RepeatMode};
@@ -495,6 +495,18 @@ fn build_player(
 
     let handle = app.clone();
     let last_track = std::sync::Mutex::new(None);
+    let queue_gate = crate::player::QueueGate::default();
+    // The tray tooltip only names the track; skip the shell call for state
+    // events that keep it (volume, seek, flags).
+    let tooltip_track: std::sync::Mutex<Option<Option<u64>>> = std::sync::Mutex::new(None);
+    let set_tooltip = move |handle: &tauri::AppHandle, item: Option<&oxitide_audio::queue::QueueItem>| {
+        let id = item.map(|i| i.track_id);
+        let mut last = tooltip_track.lock().unwrap();
+        if *last != Some(id) {
+            *last = Some(id);
+            crate::tray::update_tooltip(handle, item);
+        }
+    };
     engine.subscribe(Arc::new(move |event| {
         let app_state = handle.state::<AppState>();
         if app_state.player().is_some() {
@@ -509,10 +521,10 @@ fn build_player(
         }
         match &event {
             EngineEvent::NowPlaying(item) => {
-                crate::tray::update_tooltip(&handle, item.as_ref());
+                set_tooltip(&handle, item.as_ref());
             }
             EngineEvent::State(snapshot) => {
-                crate::tray::update_tooltip(&handle, snapshot.current.as_ref());
+                set_tooltip(&handle, snapshot.current.as_ref());
                 let view = crate::thumbbar::View {
                     playing: snapshot.playing,
                     has_track: snapshot.current.is_some(),
@@ -534,7 +546,7 @@ fn build_player(
                 }
             }
         }
-        let _ = tauri::Emitter::emit(&handle, "playback_event", crate::player::to_dto(event));
+        crate::perf::emit_counted(&handle, "playback_event", queue_gate.dto(event));
     }));
     let scrobble_handle = app.clone();
     engine.subscribe(Arc::new(move |event| {
@@ -1559,7 +1571,7 @@ pub struct HistoryPageDto {
     pub limit: usize,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_history_page(
     state: State<'_, AppState>,
     offset: usize,
@@ -1573,7 +1585,7 @@ pub fn get_history_page(
     Ok(HistoryPageDto { items, total, offset, limit })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_stats(state: State<'_, AppState>, offset_minutes: i32) -> Result<crate::history::Stats, String> {
     Ok(match state.history() {
         Some(store) => store.stats(offset_minutes),
@@ -1581,7 +1593,7 @@ pub fn get_stats(state: State<'_, AppState>, offset_minutes: i32) -> Result<crat
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn clear_history(state: State<'_, AppState>) -> Result<(), String> {
     if let Some(store) = state.history() {
         store.clear();
@@ -1834,10 +1846,10 @@ pub fn queue_play_next(state: State<'_, AppState>, items: Vec<QueueItem>) -> Res
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-pub fn get_playback_state(state: State<'_, AppState>) -> Result<PlaybackState, String> {
+#[tauri::command(async)]
+pub fn get_playback_state(state: State<'_, AppState>) -> Result<crate::player::StateDto, String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
-    Ok(player.engine.state())
+    Ok(crate::player::StateDto::full(player.engine.state()))
 }
 
 /// One track's cached flags as the UI enrichment store expects them.
@@ -1863,7 +1875,7 @@ pub struct RestoredSessionDto {
     pub stream: Option<oxitide_audio::engine::StreamMeta>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_restored_session(state: State<'_, AppState>) -> Result<Option<RestoredSessionDto>, String> {
     let Some(path) = crate::session::session_path() else {
         return Ok(None);
@@ -1926,6 +1938,17 @@ pub fn perf_mark(name: String) {
     crate::perf::mark(&name);
 }
 
+/// Perf runs end through the normal exit path (session flush, history
+/// finalize) instead of a forced kill. A no-op outside a perf session.
+#[tauri::command]
+pub fn perf_quit(app: tauri::AppHandle) -> Result<(), String> {
+    if crate::perf::session().is_none() {
+        return Err("no perf session".into());
+    }
+    app.exit(0);
+    Ok(())
+}
+
 #[tauri::command]
 pub fn get_perf_snapshot() -> crate::perf::PerfSnapshot {
     crate::perf::snapshot()
@@ -1953,7 +1976,7 @@ fn perf_queue_build_items(items: Vec<QueueItem>, start: usize) -> Result<(), Str
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_output_devices() -> Vec<OutputDeviceDto> {
     devices()
 }
@@ -2039,7 +2062,7 @@ pub fn set_dsp_settings(
 /// with the current crossfade settings, rendered in memory (never written to
 /// disk). The payload is `[u32 LE header length][JSON header][16-bit WAV]`;
 /// the header holds the report and where the overlap sits in the audio.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn automix_render(
     state: State<'_, AppState>,
     style: TransitionStyle,
@@ -2121,7 +2144,7 @@ pub fn get_cache_status(state: State<'_, AppState>) -> Result<CacheStatusDto, St
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn clear_cache(state: State<'_, AppState>) -> Result<(), String> {
     require_cache(&state)?.clear();
     Ok(())
@@ -2235,19 +2258,24 @@ pub fn set_level_meter(
     state: State<'_, AppState>,
     enabled: bool,
 ) -> Result<(), String> {
-    use tauri::{Emitter, Manager};
+    use tauri::Manager;
     if enabled {
+        let mut gate = crate::meter::SilenceGate::default();
         state.meter.start(move || {
             let state = app.state::<AppState>();
             let Some(player) = state.player() else {
-                return;
+                return false;
             };
             let tap = player.engine.level_tap();
             if !tap.is_enabled() {
                 tap.set_enabled(true);
             }
-            let frame = crate::meter::LevelFrameDto::from(tap.read());
-            let _ = app.emit(crate::meter::LEVEL_FRAME_EVENT, frame);
+            let frame = tap.read();
+            if gate.admit(&frame) {
+                let dto = crate::meter::LevelFrameDto::from(frame);
+                crate::perf::emit_counted(&app, crate::meter::LEVEL_FRAME_EVENT, dto);
+            }
+            !gate.idle()
         });
     } else {
         state.meter.stop();
@@ -2592,6 +2620,77 @@ mod tests {
     use oxitide_tidal::token_store::MemoryStore;
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    /// Commands allowed to run on the main thread (Track 13, EF-D6). A plain
+    /// `#[tauri::command] pub fn` blocks the window's message loop while it
+    /// runs; these stay sync on purpose, because sync commands run in arrival
+    /// order:
+    /// - transport and queue edits (play, add, reorder, volume…) must apply
+    ///   in the order the user made them;
+    /// - settings do a read-modify-write of the whole config, so two
+    ///   concurrent saves could drop one of them;
+    /// - window/titlebar, auth-flow and perf hooks are trivial or main-thread
+    ///   by nature.
+    /// Anything that blocks (disk scans, device enumeration, CPU work, long
+    /// waits) and does not depend on ordering belongs in `async` instead.
+    const SYNC_COMMANDS: &[&str] = &[
+        "auth_begin", "auth_take_result", "auth_status", "auth_logout", "get_keyring_status",
+        "get_scrobble_status", "lastfm_cancel_auth", "lastfm_disconnect", "listenbrainz_disconnect",
+        "set_scrobble_enabled", "open_external", "play_tracks", "play_pause", "next", "prev", "seek",
+        "set_volume", "fade_and_pause", "set_history_enabled", "set_history_max_entries",
+        "set_block_explicit", "set_block_ai", "set_show_labels", "set_shuffle", "set_repeat",
+        "queue_reorder", "queue_remove", "queue_clear", "retry", "queue_add", "queue_play_next",
+        "restore_session", "set_play_source", "clear_session", "perf_mark", "perf_quit",
+        "get_perf_snapshot", "perf_submit_ui_metrics", "perf_queue_build", "set_output_device",
+        "set_preferred_quality", "set_exclusive", "set_exclusive_fallback", "set_dsp_settings",
+        "get_config", "get_audio_status", "get_cache_status", "set_allow_fallback",
+        "set_quality_display", "set_ui_mode", "set_theme", "set_typeface", "set_custom_typeface",
+        "set_density", "set_cover_shape", "set_dynamic_color", "set_rack_settings",
+        "set_level_meter", "set_queue_width", "set_mini_mode", "set_start_in_mini", "set_oneko",
+        "set_smtc", "set_discord", "set_close_to_tray", "set_cache_max_size_mb",
+        "set_cache_clear_on_exit", "get_remote_status", "begin_remote_pairing",
+        "cancel_remote_pairing", "list_remote_devices", "rename_remote_device",
+        "revoke_remote_device", "resolve_remote_pair_request", "get_custom_titlebar",
+        "set_snap_target", "get_update_support", "set_update_check_on_start", "get_logs_dir",
+        "open_logs_folder",
+    ];
+
+    /// Names of the plain (main-thread) `#[tauri::command] pub fn`s in `source`.
+    fn sync_commands(source: &str) -> Vec<String> {
+        let lines: Vec<&str> = source.lines().map(str::trim).collect();
+        let mut names = Vec::new();
+        for (i, line) in lines.iter().enumerate() {
+            if *line != "#[tauri::command]" {
+                continue;
+            }
+            let next = lines[i + 1..]
+                .iter()
+                .find(|l| !l.starts_with("#[") && !l.starts_with("///") && !l.is_empty());
+            if let Some(name) = next.and_then(|l| l.strip_prefix("pub fn ")) {
+                names.push(name.split(['(', '<']).next().unwrap_or("").to_string());
+            }
+        }
+        names
+    }
+
+    #[test]
+    fn every_main_thread_command_is_deliberate() {
+        let found = sync_commands(include_str!("commands.rs"));
+        let unexpected: Vec<&String> =
+            found.iter().filter(|n| !SYNC_COMMANDS.contains(&n.as_str())).collect();
+        assert!(
+            unexpected.is_empty(),
+            "new main-thread commands {unexpected:?}: make them #[tauri::command(async)] or add them to SYNC_COMMANDS with a reason"
+        );
+        let stale: Vec<&&str> = SYNC_COMMANDS.iter().filter(|n| !found.iter().any(|f| f == *n)).collect();
+        assert!(stale.is_empty(), "SYNC_COMMANDS lists commands that are no longer sync: {stale:?}");
+    }
+
+    #[test]
+    fn sync_command_parsing_skips_async_and_attributes() {
+        let source = "#[tauri::command]\npub fn a(x: u8) {}\n#[tauri::command(async)]\npub fn b() {}\n#[tauri::command]\npub async fn c() {}\n#[tauri::command]\n#[allow(dead_code)]\npub fn d<T>() {}\n";
+        assert_eq!(sync_commands(source), vec!["a", "d"]);
+    }
 
     #[test]
     fn replay_wav_has_a_canonical_pcm16_header() {

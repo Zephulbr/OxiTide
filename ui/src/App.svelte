@@ -381,7 +381,36 @@
         perfHooks.measureAlbumOpen(count);
         return true;
       },
-      setMode: (mode: "instrument" | "atmosphere") => appearance.setMode(mode),
+      /// Load a synthetic queue the way a restored session does (paused, no
+      /// fetch) and time it until the UI has applied the resulting state: the
+      /// command, the engine's state broadcast, IPC and the reducer.
+      measureQueueLoad: async (count: number) => {
+        const items = makeSyntheticTracks(count).map(trackToQueueItem);
+        const started = performance.now();
+        await api.restoreSession(items, 0, 0, false, "off");
+        while (player.state.queue.length !== count) {
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        }
+        perf.recordInteraction("queue", performance.now() - started);
+        return true;
+      },
+      /// Drag the volume slider through `steps` input events, one per frame,
+      /// ending with a change (release), then restore the starting volume.
+      sweepVolume: async (steps: number) => {
+        const input = document.querySelector<HTMLInputElement>("[data-perf-volume]");
+        if (!input) return false;
+        const start = player.state.volume;
+        for (let i = 0; i <= steps; i++) {
+          input.value = String(Math.abs(Math.sin((i / steps) * Math.PI * 2)));
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        }
+        input.value = String(start);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+        return true;
+      },
+      setMode: (mode: "instrument" | "atmosphere" | "rack") => appearance.setMode(mode),
       setTheme: (theme: "dark" | "light" | "system") => appearance.setTheme(theme),
     };
     (window as unknown as { __perf?: typeof bridge }).__perf = bridge;

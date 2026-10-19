@@ -5,33 +5,42 @@
   let { uuid, playing }: { uuid: string | null | undefined; playing: boolean } = $props();
   let disc: HTMLDivElement | undefined;
 
-  // One transform-only rAF loop while mounted; speed eases toward the target
-  // (~30°/s ≈ 12s/rev, a design value per spec §7.2) with a ~150ms time
-  // constant, so pause settles in about 600ms instead of stopping dead. The
-  // loop is gated on ambient motion: reduced-motion / Instrument never start
-  // it. `playing` is read inside the tick (not tracked) so resuming does not
-  // restart the disc from a fresh angle.
+  // A transform-only rAF loop; speed eases toward the target (~30°/s ≈
+  // 12s/rev, a design value per spec §7.2) with a ~150ms time constant, so
+  // pause settles in about 600ms instead of stopping dead. The loop is gated
+  // on ambient motion: reduced-motion / Instrument never start it. Track 13
+  // (EF-D4): once a paused disc has come to rest the loop ends instead of
+  // ticking every frame; play starts it again from the same angle.
+  let raf = 0;
+  let last = 0;
+  let angle = 0;
+  let speed = 0;
+  const tick = (now: number) => {
+    const dt = Math.min((now - last) / 1000, 0.1);
+    last = now;
+    const target = playing ? 30 : 0;
+    speed += (target - speed) * Math.min(1, dt / 0.15);
+    if (Math.abs(speed) < 0.001) speed = 0;
+    angle = (angle + speed * dt) % 360;
+    if (disc) disc.style.transform = `rotate(${angle}deg)`;
+    raf = !playing && speed === 0 ? 0 : requestAnimationFrame(tick);
+  };
+
   $effect(() => {
     if (!appearance.ambientMotion) {
       if (disc) disc.style.transform = "rotate(0deg)";
       return;
     }
-    let raf = 0;
-    let last = performance.now();
-    let angle = 0;
-    let speed = 0;
-    const tick = (now: number) => {
-      const dt = Math.min((now - last) / 1000, 0.1);
-      last = now;
-      const target = playing ? 30 : 0;
-      speed += (target - speed) * Math.min(1, dt / 0.15);
-      if (Math.abs(speed) < 0.001) speed = 0;
-      angle = (angle + speed * dt) % 360;
-      if (disc) disc.style.transform = `rotate(${angle}deg)`;
-      raf = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(raf);
+      raf = 0;
     };
+  });
+
+  $effect(() => {
+    if (!appearance.ambientMotion || !playing || raf !== 0) return;
+    last = performance.now();
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
   });
 </script>
 

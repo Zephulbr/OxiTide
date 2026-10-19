@@ -82,7 +82,9 @@ pub trait PcmSink {
     /// after `on_stream_info`, so a sink can decide from the source info.
     fn preferred_format(&self) -> PcmFormat;
     fn on_stream_info(&mut self, info: &StreamInfo) -> Result<()>;
-    fn on_samples(&mut self, buf: &PcmBuffer) -> Result<()>;
+    /// Takes the decoded buffer by value, so a sink that forwards it (the
+    /// playback channel) does not copy every packet (Track 13, EF-D5).
+    fn on_samples(&mut self, buf: PcmBuffer) -> Result<()>;
 }
 
 /// Collects the source info and every sample as `f32`.
@@ -114,8 +116,8 @@ impl PcmSink for CollectSink {
         self.info = Some(*info);
         Ok(())
     }
-    fn on_samples(&mut self, buf: &PcmBuffer) -> Result<()> {
-        match buf {
+    fn on_samples(&mut self, buf: PcmBuffer) -> Result<()> {
+        match &buf {
             PcmBuffer::F32(v) => {
                 self.samples.extend_from_slice(v);
                 Ok(())
@@ -261,12 +263,12 @@ pub fn run_with_aac_hint(
                     PcmFormat::F32 => {
                         let mut buf = vec![0f32; n];
                         decoded.copy_to_slice_interleaved(&mut buf);
-                        sink.on_samples(&PcmBuffer::F32(buf))?;
+                        sink.on_samples(PcmBuffer::F32(buf))?;
                     }
                     PcmFormat::I32 { .. } => {
                         let mut buf = vec![0i32; n];
                         decoded.copy_to_slice_interleaved(&mut buf);
-                        sink.on_samples(&PcmBuffer::I32(buf))?;
+                        sink.on_samples(PcmBuffer::I32(buf))?;
                     }
                 }
             }
@@ -343,7 +345,7 @@ fn run_aac(
                     .collect(),
             ),
         };
-        sink.on_samples(&samples)?;
+        sink.on_samples(samples)?;
     }
     if stream_info.is_none() {
         return Err(Error::Decode("AAC stream contains no audio".into()));
@@ -402,8 +404,8 @@ mod tests {
             self.info = Some(*info);
             Ok(())
         }
-        fn on_samples(&mut self, buf: &PcmBuffer) -> Result<()> {
-            match buf {
+        fn on_samples(&mut self, buf: PcmBuffer) -> Result<()> {
+            match &buf {
                 PcmBuffer::I32(v) => {
                     self.samples.extend_from_slice(v);
                     Ok(())

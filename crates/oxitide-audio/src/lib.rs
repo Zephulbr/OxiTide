@@ -20,6 +20,8 @@ pub mod output;
 pub mod perf;
 pub mod queue;
 pub mod retry;
+#[cfg(any(windows, test))]
+pub(crate) mod ring;
 pub mod routed_output;
 pub mod seek;
 pub mod source;

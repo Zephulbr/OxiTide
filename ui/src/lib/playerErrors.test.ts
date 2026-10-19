@@ -42,7 +42,7 @@ function snapshot(overrides: Record<string, unknown> = {}) {
     dsp_active: false,
     dsp_stages: [],
     crossfade_ms: 0,
-    queue: [],
+    queue_rev: 0, queue: [],
     stream: null,
     ...overrides,
   };

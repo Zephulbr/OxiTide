@@ -26,7 +26,7 @@ use crate::output::{
     asio_device_key, AudioOutput, AudioOutputSpec, OutputDevice, OutputMode, OutputStatus,
     ASIO_PREFIX, SOFTWARE_VOLUME_NOTICE,
 };
-use crate::wasapi_output::push_word;
+use crate::ring::push_samples;
 
 /// Floor for the ring so tiny formats still leave room for the driver buffer.
 const MIN_RING_SAMPLES: usize = 4096;
@@ -316,6 +316,8 @@ unsafe impl Send for FlushHandle {}
 
 pub struct AsioOutput {
     producer: Option<Producer<u32>>,
+    /// Rate × channels of the open stream; paces waits on a full ring.
+    samples_per_sec: usize,
     worker: Option<JoinHandle<()>>,
     stop: Arc<AtomicBool>,
     lost: Arc<AtomicBool>,
@@ -330,6 +332,7 @@ impl AsioOutput {
     pub fn new() -> Self {
         Self {
             producer: None,
+            samples_per_sec: 0,
             worker: None,
             stop: Arc::new(AtomicBool::new(false)),
             lost: Arc::new(AtomicBool::new(false)),
@@ -393,6 +396,7 @@ impl AudioOutput for AsioOutput {
         let (stop_thread, lost_thread) = (stop.clone(), lost.clone());
         let rate = spec.info.sample_rate;
         let channels = spec.info.channels as usize;
+        self.samples_per_sec = rate as usize * channels;
         let handle = std::thread::Builder::new()
             .name("oxitide-asio".into())
             .spawn(move || owner_main(clsid, rate, channels, ready_tx, &stop_thread, &lost_thread))
@@ -433,23 +437,19 @@ impl AudioOutput for AsioOutput {
         }
         let float_target = self.format.is_some_and(AsioFormat::is_float);
         let volume = ((self.volume - 1.0).abs() >= f32::EPSILON).then_some(self.volume);
+        let rate = self.samples_per_sec;
         let producer = self
             .producer
             .as_mut()
             .ok_or_else(|| Error::Output("output not open".into()))?;
         match buf {
             PcmBuffer::F32(v) => {
-                for &sample in v {
-                    push_word(producer, f32_word(sample, float_target, volume))?;
-                }
+                push_samples(producer, v, rate, |sample| f32_word(sample, float_target, volume))
             }
             PcmBuffer::I32(v) => {
-                for &sample in v {
-                    push_word(producer, i32_word(sample, float_target, volume))?;
-                }
+                push_samples(producer, v, rate, |sample| i32_word(sample, float_target, volume))
             }
         }
-        Ok(())
     }
 
     /// ASIO has no endpoint volume: anything below 100% is software.

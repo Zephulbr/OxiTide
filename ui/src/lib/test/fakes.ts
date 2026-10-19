@@ -33,6 +33,7 @@ export function fakePlayer(state: Partial<PlaybackState> = {}): Player {
     dsp_stages: [],
     crossfade_ms: 0,
     queue: [],
+    queue_rev: 0,
     stream: null,
   };
   return {

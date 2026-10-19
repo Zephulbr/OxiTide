@@ -45,8 +45,28 @@ interface CacheEntry {
 }
 
 /// Session cache: revisiting a view within one app run hydrates from here
-/// instead of refetching. `refresh()` clears the key's entry.
+/// instead of refetching. `refresh()` clears the key's entry. Bounded (LRU):
+/// a list can hold 10k tracks, and every playlist visited used to stay in
+/// memory for the rest of the session (Track 13).
 const cache = new Map<string, CacheEntry>();
+export const MAX_CACHED_LISTS = 12;
+
+/// Store `entry` as the most recently used list, dropping the oldest others.
+function remember(key: string, entry: CacheEntry) {
+  cache.delete(key);
+  cache.set(key, entry);
+  for (const oldest of cache.keys()) {
+    if (cache.size <= MAX_CACHED_LISTS) break;
+    if (oldest !== key) cache.delete(oldest);
+  }
+}
+
+/// A cached list, marked as just used.
+function recall(key: string): CacheEntry | undefined {
+  const entry = cache.get(key);
+  if (entry) remember(key, entry);
+  return entry;
+}
 
 /// Drop every cached page; called when the signed-in account changes.
 export function clearPagerCache() {
@@ -95,7 +115,7 @@ export function createTrackPager(
   const prefetchMaxTotal = options.prefetchMaxTotal ?? 10_000;
   const concurrency = options.concurrency ?? 4;
 
-  const cached = cache.get(key);
+  const cached = recall(key);
   let items = $state<Track[]>(cached ? [...cached.items] : []);
   let total = $state(cached?.total ?? 0);
   let done = $state(cached?.done ?? false);
@@ -117,7 +137,7 @@ export function createTrackPager(
   function publish() {
     // The cache entry deliberately shares the live array: every mutation
     // publishes immediately, and a rehydrating pager copies on mount.
-    cache.set(key, { items, total, nextOffset, done });
+    remember(key, { items, total, nextOffset, done });
   }
 
   /// Append a fetched window in place and advance past it.

@@ -71,7 +71,12 @@ pub struct PlaybackState {
     /// What the most recent crossfade did (AutoMix A/B readout). Boxed so the
     /// state event stays small.
     pub last_transition: Option<Box<TransitionReport>>,
-    pub queue: Vec<QueueItem>,
+    /// Shared with the engine's queue (a pointer copy per snapshot). Not
+    /// serialized here: the desktop DTO adds it only when `queue_rev` moved.
+    #[serde(skip)]
+    pub queue: Arc<Vec<QueueItem>>,
+    /// Revision of `queue`; changes whenever its items do.
+    pub queue_rev: u64,
     pub stream: Option<StreamMeta>,
 }
 
@@ -255,7 +260,8 @@ fn build_state(inner: &Inner) -> PlaybackState {
         dsp_stages,
         crossfade_ms: inner.dsp.lock().unwrap().crossfade.duration_ms,
         last_transition: inner.last_transition.lock().unwrap().clone().map(Box::new),
-        queue: q.items().to_vec(),
+        queue: q.shared_items(),
+        queue_rev: q.rev(),
         stream: inner.stream_meta.lock().unwrap().clone(),
     }
 }
@@ -566,6 +572,15 @@ impl Engine {
         *self.inner.stream_meta.lock().unwrap() = None;
         let item = self.mutate_playing_queue(|q| {
             mutate(q);
+            // A new context plays from the start, unpaused. Both are set
+            // here (under the playback lock the worker reads them with), not
+            // left to the worker: a restored session leaves `paused` set and
+            // a resume point pending, and a seek that lands before the worker
+            // starts (an SMTC client replaying the restored position) made
+            // the session keep the paused flag and sit silent with the output
+            // open.
+            *self.inner.seek_target.lock().unwrap() = None;
+            self.inner.paused.store(false, Ordering::SeqCst);
             q.current().cloned()
         });
         self.inner.notify_worker();
@@ -692,6 +707,8 @@ impl Engine {
                     q.volume()
                 };
                 self.inner.volume.store(clamped.to_bits(), Ordering::SeqCst);
+                // A paused worker is parked; wake it to apply the volume.
+                self.inner.notify_worker();
                 self.emit(EngineEvent::State(self.state()));
             }
             EngineCmd::SetShuffle(on) => {
@@ -1393,6 +1410,15 @@ impl ChannelSink {
     }
 }
 
+/// `v[offset..offset + len]` without a new allocation.
+fn keep_range<T>(mut v: Vec<T>, offset: usize, len: usize) -> Vec<T> {
+    v.truncate(offset + len);
+    if offset > 0 {
+        v.drain(..offset);
+    }
+    v
+}
+
 impl PcmSink for ChannelSink {
     fn preferred_format(&self) -> PcmFormat {
         self.out_format
@@ -1429,24 +1455,26 @@ impl PcmSink for ChannelSink {
         })))
     }
 
-    fn on_samples(&mut self, buf: &PcmBuffer) -> Result<()> {
+    fn on_samples(&mut self, buf: PcmBuffer) -> Result<()> {
         if self.inner.generation.load(Ordering::SeqCst) != self.generation {
             return Err(Error::Output("playback superseded".into()));
         }
+        // The decoder's buffer is forwarded as is; only a seek discard trims
+        // it, in place.
         let buf = match buf {
             PcmBuffer::F32(v) => {
                 let (offset, len) = self.discarder.apply(v.len(), self.channels);
                 if len == 0 {
                     return Ok(());
                 }
-                PcmBuffer::F32(v[offset..offset + len].to_vec())
+                PcmBuffer::F32(keep_range(v, offset, len))
             }
             PcmBuffer::I32(v) => {
                 let (offset, len) = self.discarder.apply(v.len(), self.channels);
                 if len == 0 {
                     return Ok(());
                 }
-                PcmBuffer::I32(v[offset..offset + len].to_vec())
+                PcmBuffer::I32(keep_range(v, offset, len))
             }
         };
         self.send(Ok(StreamEvent::Samples(buf)))?;
@@ -1781,6 +1809,33 @@ fn late_fallback(mut fallback: TransitionPlan) -> TransitionPlan {
     fallback
 }
 
+/// How long a paused session keeps the output open. A short pause resumes
+/// instantly on the open stream; after this the stream is stopped (no more
+/// silence pumped through the audio engine, the endpoint is free) and resume
+/// reopens it.
+#[cfg(not(test))]
+const PAUSE_RELEASE: Duration = Duration::from_secs(30);
+#[cfg(test)]
+const PAUSE_RELEASE: Duration = Duration::from_millis(300);
+
+/// Block while playback is paused, until a command wakes the worker (resume,
+/// a new generation, shutdown, a DSP or volume change). Track 13 (EF-D4):
+/// replaces a 20 ms sleep loop, so a paused app no longer wakes 50 times a
+/// second. The predicate is checked under `wake_lock`, like
+/// `wait_for_stream_event`, so a notify cannot slip in between; the timeout
+/// is only a safety net. Returns after any wake so the caller re-runs its
+/// per-iteration checks (DSP version, volume) before parking again.
+fn park_while_paused(inner: &Inner, gen: u64) {
+    let guard = inner.wake_lock.lock().unwrap();
+    if !inner.paused.load(Ordering::SeqCst)
+        || inner.generation.load(Ordering::SeqCst) != gen
+        || inner.shutdown.load(Ordering::SeqCst)
+    {
+        return;
+    }
+    let _ = inner.wake.wait_timeout(guard, Duration::from_secs(1)).unwrap();
+}
+
 /// Write `buf` in short slices so a long preroll (up to the AutoMix hold)
 /// stays responsive: a superseded session stops between slices and a pause
 /// holds there. Each slice feeds the level meter at `rate` (the device's).
@@ -1804,7 +1859,7 @@ fn write_responsive(
             return Ok(false);
         }
         if inner.paused.load(Ordering::SeqCst) {
-            std::thread::sleep(Duration::from_millis(20));
+            park_while_paused(inner, gen);
             continue;
         }
         let end = (start + slice).min(buf.len());
@@ -2225,11 +2280,58 @@ fn run_session(
                 }
             }
             if inner.paused.load(Ordering::SeqCst) {
-                std::thread::sleep(Duration::from_millis(20));
+                // The position cannot move while paused, so nothing is
+                // emitted; the worker sleeps until a command wakes it. A
+                // long pause also releases the device (EF-D4), so the audio
+                // engine and an exclusive endpoint can idle; resume reopens
+                // the same spec. DSP changes made meanwhile apply at the top
+                // of the loop, before the next write.
+                let parked = Instant::now();
+                let mut released: Option<AudioOutputSpec> = None;
+                while inner.paused.load(Ordering::SeqCst)
+                    && inner.generation.load(Ordering::SeqCst) == gen
+                    && !inner.shutdown.load(Ordering::SeqCst)
+                {
+                    // Volume still reaches an open output while paused: an
+                    // exclusive endpoint shows it, and a completed sleep fade
+                    // restores the user's volume here.
+                    let (volume, _) = current_volume(inner);
+                    if released.is_none() && (volume - last_volume).abs() >= f32::EPSILON {
+                        if let Err(e) = output.set_volume(volume) {
+                            return SessionOutcome::OutputError {
+                                message: e.to_string(),
+                                track_id: stream.item.track_id,
+                            };
+                        }
+                        last_volume = volume;
+                        *inner.output_status.lock().unwrap() = output.status();
+                    }
+                    park_while_paused(inner, gen);
+                    if released.is_none() && open_spec.is_some() && parked.elapsed() >= PAUSE_RELEASE {
+                        let _ = output.stop();
+                        released = open_spec.take();
+                        tracing::debug!("paused for {PAUSE_RELEASE:?}: output released");
+                    }
+                }
                 if inner.generation.load(Ordering::SeqCst) != gen {
                     return SessionOutcome::Superseded;
                 }
-                emit_position_if_due(inner, frames, rate, &mut last_emit);
+                if let Some(spec) = released {
+                    let reopened = output
+                        .open(&spec)
+                        .and_then(|()| output.start())
+                        .and_then(|()| output.set_volume(current_volume(inner).0));
+                    if let Err(e) = reopened {
+                        return SessionOutcome::OutputError {
+                            message: e.to_string(),
+                            track_id: stream.item.track_id,
+                        };
+                    }
+                    last_volume = current_volume(inner).0;
+                    *inner.output_status.lock().unwrap() = output.status();
+                    *open_spec = Some(spec);
+                    emit(inner, EngineEvent::State(build_state(inner)));
+                }
                 continue;
             }
             // A sleep fade ends the session on this track; never cross into
@@ -4066,6 +4168,104 @@ mod tests {
         let after = positions.load(Ordering::SeqCst);
         std::thread::sleep(Duration::from_millis(1200));
         assert_eq!(positions.load(Ordering::SeqCst), after, "position events kept coming after shutdown");
+    }
+
+    /// Track 13 (EF-D4): a paused session is idle. It emits no `Position`
+    /// (the position cannot move) and still resumes to the end of the track.
+    #[test]
+    fn a_paused_session_is_silent_and_resumes() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        let positions = Arc::new(AtomicUsize::new(0));
+        let counter = positions.clone();
+        engine.subscribe(Arc::new(move |e| {
+            if matches!(e, EngineEvent::Position { .. }) {
+                counter.fetch_add(1, Ordering::SeqCst);
+            }
+        }));
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| !output.samples().is_empty());
+        engine.handle(EngineCmd::PlayPause).unwrap();
+        assert!(!engine.state().playing);
+        std::thread::sleep(Duration::from_millis(300));
+        let paused_at = positions.load(Ordering::SeqCst);
+        let written = output.samples().len();
+        std::thread::sleep(Duration::from_millis(1200));
+        assert_eq!(positions.load(Ordering::SeqCst), paused_at, "position events while paused");
+        assert_eq!(output.samples().len(), written, "audio was written while paused");
+
+        engine.handle(EngineCmd::PlayPause).unwrap();
+        wait_for(|| output.samples().len() >= 176_400);
+        assert_eq!(output.samples().len(), 176_400, "resume did not finish the track");
+    }
+
+    /// Regression (found by the Track 13 S13 runs): a restored session leaves
+    /// a paused resume-seek on its current track. Starting a new context whose
+    /// first track is that same track must play it from the start, not
+    /// inherit the stale seek and sit paused with the output open.
+    #[test]
+    fn playing_the_restored_track_from_a_new_context_starts_playing() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        engine
+            .handle(EngineCmd::RestoreSession {
+                items: vec![item(1), item(2)],
+                start: 0,
+                position_ms: 1500,
+                shuffle: false,
+                repeat: RepeatMode::Off,
+            })
+            .unwrap();
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| output.samples().len() >= 176_400);
+        assert_eq!(output.samples().len(), 176_400, "the track did not play from its start");
+    }
+
+    /// A seek that reaches the engine right after a new context, before the
+    /// worker has started it (an SMTC client replaying the restored
+    /// position), must not inherit the restore's paused flag.
+    #[test]
+    fn a_seek_right_after_playing_a_restored_track_still_plays() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        engine
+            .handle(EngineCmd::RestoreSession {
+                items: vec![item(1)],
+                start: 0,
+                position_ms: 1500,
+                shuffle: false,
+                repeat: RepeatMode::Off,
+            })
+            .unwrap();
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        // Cleared by the command itself, not later by the worker.
+        assert!(!engine.inner.paused.load(Ordering::SeqCst), "a new context must clear the pause");
+        engine.handle(EngineCmd::Seek(500)).unwrap();
+        wait_for(|| !output.samples().is_empty());
+        assert!(!output.samples().is_empty(), "the seek left the new session paused");
+    }
+
+    /// Track 13 (EF-D4): a long pause stops the output; resume reopens the
+    /// same spec at the current volume and plays the rest of the track.
+    #[test]
+    fn a_long_pause_releases_the_output_and_resume_reopens_it() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| !output.samples().is_empty());
+        engine.handle(EngineCmd::PlayPause).unwrap();
+        let (opens, stops) = (output.opens(), output.stops());
+        std::thread::sleep(PAUSE_RELEASE / 2);
+        assert_eq!(output.stops(), stops, "a short pause must keep the output open");
+        wait_for(|| output.stops() > stops);
+        assert!(output.stops() > stops, "the output was not released");
+        engine.handle(EngineCmd::SetVolume(0.5)).unwrap();
+
+        engine.handle(EngineCmd::PlayPause).unwrap();
+        wait_for(|| output.samples().len() >= 176_400);
+        assert_eq!(output.opens(), opens + 1, "resume must reopen the output once");
+        assert_eq!(output.samples().len(), 176_400, "audio was lost across the release");
+        assert_eq!(output.volumes().last(), Some(&0.5), "the reopened output lost the volume");
     }
 
     struct Gate {
@@ -6308,6 +6508,16 @@ mod tests {
             after - before
         );
     }
+    #[test]
+    fn keep_range_trims_in_place() {
+        let v = vec![1, 2, 3, 4, 5, 6];
+        let ptr = v.as_ptr();
+        let whole = keep_range(v, 0, 6);
+        assert_eq!(whole.as_ptr(), ptr, "an untrimmed buffer must not be copied");
+        assert_eq!(keep_range(whole.clone(), 2, 3), vec![3, 4, 5]);
+        assert_eq!(keep_range(whole, 0, 2), vec![1, 2]);
+    }
+
     /// Collects decoded samples as left-aligned `i32`, exactly as the
     /// exclusive path receives them.
     struct ReferenceI32Sink(Vec<i32>);
@@ -6319,7 +6529,7 @@ mod tests {
         fn on_stream_info(&mut self, _info: &StreamInfo) -> Result<()> {
             Ok(())
         }
-        fn on_samples(&mut self, buf: &PcmBuffer) -> Result<()> {
+        fn on_samples(&mut self, buf: PcmBuffer) -> Result<()> {
             self.0.extend_from_slice(buf.as_i32().expect("i32 samples"));
             Ok(())
         }

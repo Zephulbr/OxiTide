@@ -29,13 +29,24 @@ describe("VolumeKnob", () => {
     const event = new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true, cancelable: true });
     knob.dispatchEvent(event);
     expect(event.defaultPrevented).toBe(true);
-    expect(player.setVolume).toHaveBeenLastCalledWith(0.52, true);
+    // Steps persist debounced (third argument) and chain from the last
+    // requested value until the engine confirms it.
+    expect(player.setVolume).toHaveBeenLastCalledWith(0.52, true, true);
     await fireEvent.keyDown(knob, { key: "PageDown" });
-    expect(player.setVolume).toHaveBeenLastCalledWith(0.4, true);
+    expect(player.setVolume).toHaveBeenLastCalledWith(0.42, true, true);
     await fireEvent.keyDown(knob, { key: "End" });
-    expect(player.setVolume).toHaveBeenLastCalledWith(1, true);
+    expect(player.setVolume).toHaveBeenLastCalledWith(1, true, true);
     await fireEvent.keyDown(knob, { key: "Home" });
-    expect(player.setVolume).toHaveBeenLastCalledWith(0, true);
+    expect(player.setVolume).toHaveBeenLastCalledWith(0, true, true);
+  });
+
+  it("does not lose quick wheel steps before the engine confirms", async () => {
+    const player = fakePlayer({ volume: 0.5 });
+    render(VolumeKnob, { player });
+    const knob = screen.getByRole("slider", { name: "Volume" });
+    await fireEvent.wheel(knob, { deltaY: -1 });
+    await fireEvent.wheel(knob, { deltaY: -1 });
+    expect(player.setVolume).toHaveBeenLastCalledWith(0.54, true, true);
   });
 
   it("reports mute", () => {

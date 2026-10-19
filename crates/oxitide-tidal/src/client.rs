@@ -12,6 +12,10 @@ use crate::token_store::{TokenSet, TokenStore};
 /// Default page size used when transparently walking paginated endpoints.
 pub const DEFAULT_PAGE_SIZE: u32 = 100;
 
+/// Windows of a paginated walk in flight at once once the total is known
+/// (the UI pager uses the same bound against the same API).
+pub const PAGE_CONCURRENCY: usize = 4;
+
 /// Attempts for one GET when the network fails before a response arrives or
 /// a gateway answers 502/503/504. GETs are idempotent, so this is safe.
 const GET_ATTEMPTS: u32 = 3;
@@ -280,34 +284,59 @@ impl TidalClient {
     /// request advances by its requested window size. Advancing by the received
     /// count would re-scan the tail of the previous window and return
     /// duplicates.
+    ///
+    /// Once the first page reports a total, the remaining windows are known
+    /// and are fetched [`PAGE_CONCURRENCY`] at a time, appended in offset
+    /// order (Track 13: a 2 000-track playlist is 20 round trips, no longer
+    /// 20 sequential ones). Without a total the walk stays sequential.
     pub async fn get_all_pages<T: DeserializeOwned>(
         &self,
         path: &str,
         base_params: &[(&str, String)],
         page_size: u32,
     ) -> Result<Vec<T>> {
-        let mut all: Vec<T> = Vec::new();
-        let mut offset: u32 = 0;
-        loop {
+        let fetch = |offset: u32| {
             let mut params: Vec<(&str, String)> = base_params.to_vec();
             params.push(("limit", page_size.to_string()));
             params.push(("offset", offset.to_string()));
-            let page: ItemPage<T> = self.get(path, &params).await?;
-            let received = page.items.len() as u32;
-            let total = page.total_number_of_items;
-            all.extend(page.items);
-            offset = offset.saturating_add(page_size);
-            if received == 0 {
-                break;
-            }
-            if total > 0 {
-                if offset >= total {
+            async move { self.get::<ItemPage<T>>(path, &params).await }
+        };
+        let first = fetch(0).await?;
+        let received = first.items.len() as u32;
+        let total = first.total_number_of_items;
+        let mut all: Vec<T> = first.items;
+        if received == 0 {
+            return Ok(all);
+        }
+        if total > 0 {
+            let offsets: Vec<u32> = (1..)
+                .map(|i: u32| i.saturating_mul(page_size))
+                .take_while(|offset| *offset < total)
+                .collect();
+            for group in offsets.chunks(PAGE_CONCURRENCY) {
+                let pages =
+                    futures_util::future::try_join_all(group.iter().map(|&offset| fetch(offset))).await?;
+                let mut empty = false;
+                for page in pages {
+                    empty |= page.items.is_empty();
+                    all.extend(page.items);
+                }
+                // Same stop rule as the sequential walk: an empty window
+                // means the server has nothing further.
+                if empty {
                     break;
                 }
-            } else if received < page_size {
-                // No total reported: stop once the server returns a short page.
-                break;
             }
+            return Ok(all);
+        }
+        // No total reported: walk until a short page.
+        let mut offset = page_size;
+        let mut last = received;
+        while last == page_size {
+            let page = fetch(offset).await?;
+            last = page.items.len() as u32;
+            all.extend(page.items);
+            offset = offset.saturating_add(page_size);
         }
         Ok(all)
     }
@@ -1243,6 +1272,70 @@ mod tests {
         assert_eq!(things[0].value, 1);
         assert_eq!(things[1].value, 2);
         assert_eq!(things[2].value, 3);
+    }
+
+    /// Track 13: windows after the first run concurrently (later ones answer
+    /// first here) yet land in offset order, and each is requested once.
+    #[tokio::test]
+    async fn get_all_pages_fetches_known_windows_concurrently_in_order() {
+        let server = MockServer::start().await;
+        for page in 0..5u64 {
+            let offset = page * 2;
+            let items: Vec<_> = (offset..(offset + 2).min(9))
+                .map(|v| serde_json::json!({ "value": v }))
+                .collect();
+            Mock::given(method("GET"))
+                .and(path("/things"))
+                .and(query_param("offset", offset.to_string()))
+                .respond_with(
+                    ResponseTemplate::new(200)
+                        .set_delay(std::time::Duration::from_millis(80 - page * 15))
+                        .set_body_json(serde_json::json!({
+                            "items": items, "totalNumberOfItems": 9, "limit": 2, "offset": offset
+                        })),
+                )
+                .expect(1)
+                .mount(&server)
+                .await;
+        }
+        let client = TidalClient::new(
+            reqwest::Client::new(),
+            server.uri(),
+            format!("{}/token", server.uri()),
+            session(),
+            tokens(),
+            Arc::new(MemoryStore::default()),
+        );
+        let things: Vec<Thing> = client.get_all_pages("things", &[], 2).await.unwrap();
+        let values: Vec<u64> = things.iter().map(|t| t.value as u64).collect();
+        assert_eq!(values, (0..9).collect::<Vec<_>>());
+    }
+
+    #[tokio::test]
+    async fn get_all_pages_without_a_total_walks_to_a_short_page() {
+        let server = MockServer::start().await;
+        for (offset, items) in [(0, vec![1, 2]), (2, vec![3, 4]), (4, vec![5])] {
+            let items: Vec<_> = items.into_iter().map(|v| serde_json::json!({ "value": v })).collect();
+            Mock::given(method("GET"))
+                .and(path("/things"))
+                .and(query_param("offset", offset.to_string()))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "items": items, "totalNumberOfItems": 0, "limit": 2, "offset": offset
+                })))
+                .expect(1)
+                .mount(&server)
+                .await;
+        }
+        let client = TidalClient::new(
+            reqwest::Client::new(),
+            server.uri(),
+            format!("{}/token", server.uri()),
+            session(),
+            tokens(),
+            Arc::new(MemoryStore::default()),
+        );
+        let things: Vec<Thing> = client.get_all_pages("things", &[], 2).await.unwrap();
+        assert_eq!(things.iter().map(|t| t.value).collect::<Vec<_>>(), vec![1, 2, 3, 4, 5]);
     }
 
     #[tokio::test]

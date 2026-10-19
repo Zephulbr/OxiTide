@@ -14,7 +14,8 @@ tracing.workspace = true
 url.workspace = true
 base64 = "0.22"
 sha2 = "0.10"
-rand = "0.8"
+getrandom = "0.3"
+futures-util = "0.3"
 
 [dev-dependencies]
 wiremock = "0.6"

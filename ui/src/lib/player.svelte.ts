@@ -1,6 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { api, type EngineEvent, type PlaybackState, type Quality, type QueueItem, type RepeatMode, type StreamMeta, type TransitionReport } from "./api";
 import type { Toasts } from "./toasts.svelte";
+import { latestPerFrame } from "./latestPerFrame";
 
 export interface PlayerState {
   playing: boolean;
@@ -21,6 +22,7 @@ export interface PlayerState {
   crossfade_ms: number;
   last_transition?: TransitionReport | null;
   queue: QueueItem[];
+  queue_rev: number;
   stream: StreamMeta | null;
   error: string;
   /// Engine error code ("output", "playback", "auth"); drives how the error
@@ -32,7 +34,7 @@ export function emptyState(): PlayerState {
   return {
     playing: false, buffering: false, current: null, current_index: null, position_ms: 0,
     duration_ms: 0, volume: 1, shuffle: false, repeat: "off",
-    preferred_quality: "lossless", queue: [], stream: null, error: "",
+    preferred_quality: "lossless", queue: [], queue_rev: 0, stream: null, error: "",
     error_code: "", output_mode: "shared", bit_perfect: false, bit_perfect_notice: null,
     dsp_active: false, dsp_stages: [], crossfade_ms: 0,
   };
@@ -44,8 +46,11 @@ export function emptyState(): PlayerState {
 export function applyEvent(state: PlayerState, event: EngineEvent): PlayerState {
   switch (event.type) {
     case "state": {
-      const { type, ...rest } = event;
+      // `queue` arrives only when its revision moved (Track 13, EF-D1): a
+      // volume or pause event must not replace (and re-proxy) a 10k list.
+      const { type, queue, ...rest } = event;
       Object.assign(state, rest);
+      if (queue !== undefined) state.queue = queue;
       return state;
     }
     case "position":
@@ -96,6 +101,9 @@ export function createPlayer(toasts?: Toasts) {
   let pendingSeek = $state<number | null>(null);
   let lastVolume = 0.5;
   let errorToastId: number | null = null;
+  // Drags send at most one volume per frame; a persisting call goes at once.
+  const liveVolume = latestPerFrame<number>((v) => void api.setVolume(v, false));
+  let persistTimer: ReturnType<typeof setTimeout> | null = null;
 
   function dismissErrorToast() {
     if (toasts !== undefined && errorToastId !== null) {
@@ -176,9 +184,25 @@ export function createPlayer(toasts?: Toasts) {
     applyEvent(state, { type: "state", ...snapshot, stream: stream ?? snapshot.stream });
   }
 
-  function setVolume(v: number, persist = false) {
+  /// `persist` writes the config. A drag sends live values per frame and
+  /// persists once on release; `debounce` (wheel ticks) persists once the
+  /// steps stop instead of rewriting the config per tick.
+  function setVolume(v: number, persist = false, debounce = false) {
     if (v > 0) lastVolume = v;
-    return api.setVolume(v, persist);
+    if (persistTimer !== null) clearTimeout(persistTimer);
+    persistTimer = null;
+    if (persist && !debounce) {
+      liveVolume.flush(v);
+      return api.setVolume(v, true);
+    }
+    liveVolume.push(v);
+    if (persist) {
+      persistTimer = setTimeout(() => {
+        persistTimer = null;
+        void api.setVolume(v, true);
+      }, 400);
+    }
+    return Promise.resolve();
   }
 
   function toggleMute() {
