@@ -48,6 +48,11 @@
     {/each}
     <text x="100" y="92" font-size="17" font-weight="700" text-anchor="middle" class="ink-fill">VU</text>
     <text x="22" y="118" font-size="9" font-weight="700" class="ink-fill" opacity=".75">{channel}</text>
+  </svg>
+  <!-- Track 13: the needle is drawn on its own layer, so a meter frame
+       repaints one line; the face before it and the shroud after it are
+       painted once. -->
+  <svg class="needle-layer" viewBox="0 0 200 129">
     <line
       class="needle"
       x1={PIV.x}
@@ -57,6 +62,8 @@
       stroke-width="1.4"
       transform="rotate({angle} {PIV.x} {PIV.y})"
     />
+  </svg>
+  <svg viewBox="0 0 200 129">
     <rect x="0" y="124" width="200" height="5" fill="rgba(0,0,0,.5)" />
     <ellipse cx="100" cy="146" rx="26" ry="18" fill="#141210" />
   </svg>
@@ -94,6 +101,9 @@
   }
   .needle {
     stroke: var(--rack-needle);
+  }
+  .needle-layer {
+    will-change: transform;
   }
   .glass {
     position: absolute;

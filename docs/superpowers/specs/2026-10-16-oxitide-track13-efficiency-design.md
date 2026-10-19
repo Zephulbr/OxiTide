@@ -61,6 +61,10 @@ phone remote relies on must not change.
 - **EF-D6 Main thread.** Commands that touch disk, COM, the engine queue or do CPU work become
   `#[tauri::command(async)]`; a test lists the commands allowed to stay sync.
 - **EF-D7..** F6–F15 are planned in Phases 3–4; each gets its own decision when it starts.
+- **EF-D8 Meter rendering.** Rack meters update no faster than ~60 Hz (tap frames arrive at
+  ~30 Hz), and the recorder redraws at ~30 Hz. Per-frame work is kept to what moves: one glow
+  filter per spectrum, the VU needle on its own layer, and transforms rather than layout
+  properties for anything that animates while playing. The look is unchanged.
 
 ## Measurement (Phase 0)
 
@@ -70,7 +74,7 @@ phone remote relies on must not change.
   times, per process group: app / WebView2) is written every 2 s, and the checker derives
   `cpu_app_pct` / `cpu_webview_pct` means.
 - The desktop event subscriber counts `playback_event`s and their serialized bytes in perf
-  runs (`ipc_events`, `ipc_bytes` rows).
+  runs (`ipc_events`, `ipc_bytes` rows); the Rack's `level_frame`s are counted with them.
 - New scenarios: **S11** idle paused (track loaded, paused, 5 min), **S12** playing hidden
   (window hidden to tray, 10 min, human starts playback), **S13** Rack with meters
   (`S5`-style scroll plus 2 min playing), **S14** volume drag on a 10 k queue (scripted

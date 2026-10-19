@@ -28,6 +28,12 @@ const VU_WINDOW = 3;
 
 export const BAND_COUNT = 28;
 
+/// Track 13: the shortest step between meter updates. Tap frames arrive at
+/// ~30 Hz, so redrawing faster only adds frames to paint: a 144 Hz display
+/// updates the meters every third frame (~48 Hz), a 60 Hz one every frame.
+/// The 1 ms slack keeps 60 Hz frames that land a little early.
+export const MIN_STEP_MS = 1000 / 60 - 1;
+
 export interface LevelsSnapshot {
   /// Needle positions 0..1 (VU), L/R.
   needle: [number, number];
@@ -99,6 +105,11 @@ export function createLevels(depsFactory: () => Deps = browserDeps) {
   const peaks: [PeakState, PeakState] = [peakState(), peakState()];
 
   function frame(t: number) {
+    if (lastT !== null && t - lastT < MIN_STEP_MS) {
+      // Too soon: skip this display frame (a pending tap frame waits).
+      rafId = deps!.raf(frame);
+      return;
+    }
     const dt = lastT === null ? 0 : Math.min(0.1, (t - lastT) / 1000);
     lastT = t;
     const f = pending;

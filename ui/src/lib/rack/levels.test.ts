@@ -80,6 +80,24 @@ describe("levels store", () => {
     expect(h.levels.snapshot.holdDb[0]).toBeCloseTo(-10, 0);
   });
 
+  it("updates at most ~60 times a second on a faster display", async () => {
+    const h = harness();
+    h.levels.use();
+    await flush();
+    h.tick(0);
+    h.emit(loud);
+    h.tick(16.7);
+    const applied = h.levels.snapshot.needle[0];
+    // A 144 Hz frame 6.9 ms later is skipped and keeps the tap frame waiting.
+    h.emit(loud);
+    h.tick(23.6);
+    expect(h.levels.snapshot.needle[0]).toBe(applied);
+    h.tick(30.5);
+    expect(h.levels.snapshot.needle[0]).toBe(applied);
+    h.tick(37.4);
+    expect(h.levels.snapshot.needle[0]).not.toBe(applied);
+  });
+
   it("records a level point every 250 ms and stands still on silence", async () => {
     const h = harness();
     h.levels.use();

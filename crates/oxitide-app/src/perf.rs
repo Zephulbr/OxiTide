@@ -232,7 +232,8 @@ impl PerfSession {
         }));
     }
 
-    /// One `playback_event` sent to the desktop UI, with its serialized size.
+    /// One counted event (`playback_event` or the Rack's `level_frame`) sent
+    /// to the desktop UI, with its serialized size.
     pub fn note_ipc_event(&self, bytes: usize) {
         let mut ipc = self.ipc.lock().unwrap();
         ipc.events += 1;

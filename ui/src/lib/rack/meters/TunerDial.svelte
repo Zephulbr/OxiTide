@@ -36,7 +36,7 @@
       {/each}
       <em>min</em>
     </div>
-    <div class="pointer" style:left="{p * 100}%" aria-hidden="true"></div>
+    <div class="rail" style:transform="translateX({p * 100}%)" aria-hidden="true"><div class="pointer"></div></div>
   </div>
   <div class="bar">
     <span class="rk-led" class:on={playing}>Stereo</span>
@@ -110,18 +110,30 @@
       linear-gradient(color-mix(in srgb, var(--rack-lamp) 55%, transparent), color-mix(in srgb, var(--rack-lamp) 55%, transparent)) 0 50% / 100% 1px no-repeat,
       repeating-linear-gradient(90deg, color-mix(in srgb, var(--rack-lamp) 45%, transparent) 0 1px, transparent 1px 2%);
   }
-  .pointer {
+  /* The pointer rides a rail as wide as the scale; the rail moves by a
+     transform (Track 13), which the compositor animates. Transitioning
+     `left` re-laid out and repainted the dial on every display frame for as
+     long as the track played. */
+  .rail {
     position: absolute;
+    left: 22px;
+    right: 22px;
     top: 8%;
     bottom: 8%;
+    will-change: transform;
+  }
+  .pointer {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -1px;
     width: 2px;
-    margin-left: 21px;
     border-radius: 1px;
     background: #ff3b24;
     box-shadow: 0 0 6px rgba(255, 59, 36, 0.8);
   }
-  .glide .pointer {
-    transition: left 600ms linear;
+  .glide .rail {
+    transition: transform 600ms linear;
   }
   .bar {
     display: flex;

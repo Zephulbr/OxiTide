@@ -82,6 +82,14 @@ Spec: `docs/superpowers/specs/2026-10-16-oxitide-track13-efficiency-design.md`. 
       that renders a frame late can upset the queue-glide FLIP measurement (AR-9). Worth it
       only if the release S1 baseline shows script parse in the start-up path.
 - [x] 4.5 Pager cache LRU (12 lists). `$state.raw` not needed: lists are appended in place.
+- [x] 4.6 Rack meters while playing (EF-D8; found by the first S13 run that played): WebView2
+      held 124 % of a core. The shared levels loop updates at most every ~16 ms (48 Hz on a
+      144 Hz display), the recorder redraws at ~30 Hz while gliding, the spectrum has one glow
+      for the group instead of a filter per bar and a shadow per cap, the VU needle is drawn on
+      its own layer over a face painted once, and the tuner pointer moves by a transform (its
+      `left` transition re-laid out the dial every frame). `level_frame` is now counted in the
+      perf `ipc` rows.
+- [ ] 4.7 **Owner:** re-run S13 ×5 on a release build of 4.6.
 
 ## Close-out
 

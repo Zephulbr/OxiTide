@@ -8,6 +8,8 @@
   let { history }: { history: RecorderHistory } = $props();
 
   const GRID = [-20, -10, 0];
+  /// Shortest step between redraws while the paper glides (~30 Hz).
+  const DRAW_STEP_MS = 1000 / 30 - 1;
   const LABELS = [3, 0, -10, -20];
 
   let canvas: HTMLCanvasElement;
@@ -19,6 +21,7 @@
     let idle: ReturnType<typeof setTimeout> | null = null;
     let color = "";
     let colorAt = 0;
+    let drawnAt = -Infinity;
     /// What the canvas shows; a frame with the same inputs is skipped.
     let drawn = { serial: -1, offset: -1, color: "" };
     const dpr = () => window.devicePixelRatio || 1;
@@ -59,6 +62,13 @@
     };
 
     const draw = (t: number) => {
+      // Track 13: the paper crosses its width once a minute (a few px a
+      // second), so ~30 redraws a second glide as smoothly as one per frame.
+      if (t - drawnAt < DRAW_STEP_MS) {
+        raf = requestAnimationFrame(draw);
+        return;
+      }
+      drawnAt = t;
       if (t - colorAt > 500 || !color) {
         color = getComputedStyle(canvas).color;
         colorAt = t;

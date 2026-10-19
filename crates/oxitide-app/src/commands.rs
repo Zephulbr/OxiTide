@@ -2258,7 +2258,7 @@ pub fn set_level_meter(
     state: State<'_, AppState>,
     enabled: bool,
 ) -> Result<(), String> {
-    use tauri::{Emitter, Manager};
+    use tauri::Manager;
     if enabled {
         let mut gate = crate::meter::SilenceGate::default();
         state.meter.start(move || {
@@ -2273,7 +2273,7 @@ pub fn set_level_meter(
             let frame = tap.read();
             if gate.admit(&frame) {
                 let dto = crate::meter::LevelFrameDto::from(frame);
-                let _ = app.emit(crate::meter::LEVEL_FRAME_EVENT, dto);
+                crate::perf::emit_counted(&app, crate::meter::LEVEL_FRAME_EVENT, dto);
             }
             !gate.idle()
         });
