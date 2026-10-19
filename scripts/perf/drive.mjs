@@ -130,9 +130,19 @@ const getFavoriteTracks = () => invoke("get_favorite_tracks");
 
 const playItems = (items, args = {}) => invoke("play_tracks", { items, start: 0, shuffle: false, ...args });
 
+/// Playing means the position moves. `playing && position_ms > 0` alone also
+/// held for a session stuck paused at a restored position, so silent runs
+/// were measured as if they played.
 const awaitPlaying = (label = "playback", maxMs = 30000) =>
   until(
-    '(async () => { const s = await window.__TAURI_INTERNALS__.invoke("get_playback_state"); return s.playing && s.position_ms > 0; })()',
+    `(async () => {
+      const get = () => window.__TAURI_INTERNALS__.invoke("get_playback_state");
+      const a = await get();
+      if (!a.playing) return false;
+      await new Promise((r) => setTimeout(r, 700));
+      const b = await get();
+      return b.playing && b.current?.track_id === a.current?.track_id && b.position_ms > a.position_ms;
+    })()`,
     label,
     maxMs,
   );
@@ -314,6 +324,8 @@ const scenarioFallback = async (id) => {
       await until("!!window.__perf", "__perf bridge");
       await applyScenarioMode();
       const first = requireTracks(await getFavoriteTracks(), 1)[0];
+      // Repeat, so a short track cannot end inside the window.
+      await invoke("set_repeat", { mode: "all" });
       await playItems([trackToQueueItem(first)]);
       await awaitPlaying("S13 playback");
       await evaluate('window.__perf.goto("tracks")');
@@ -325,6 +337,9 @@ const scenarioFallback = async (id) => {
         await delay(600);
       }
       await delay(minutesFlag(2) * 60_000);
+      // A run that went quiet measured idle meters, not Rack playing.
+      await awaitPlaying("S13 still playing at the end", 3000);
+      await invoke("set_repeat", { mode: "off" });
     } else if (id === "S14") {
       // Volume drag with a 10k queue loaded (paused, nothing fetched).
       await awaitLoggedIn();

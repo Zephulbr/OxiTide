@@ -572,13 +572,17 @@ impl Engine {
         *self.inner.stream_meta.lock().unwrap() = None;
         let item = self.mutate_playing_queue(|q| {
             mutate(q);
+            // A new context plays from the start, unpaused. Both are set
+            // here (under the playback lock the worker reads them with), not
+            // left to the worker: a restored session leaves `paused` set and
+            // a resume point pending, and a seek that lands before the worker
+            // starts (an SMTC client replaying the restored position) made
+            // the session keep the paused flag and sit silent with the output
+            // open.
+            *self.inner.seek_target.lock().unwrap() = None;
+            self.inner.paused.store(false, Ordering::SeqCst);
             q.current().cloned()
         });
-        // A new context plays from the start. A pending seek (a restored
-        // session's paused resume point) on the same track would otherwise
-        // be taken by the new session, which then keeps the paused flag and
-        // sits silent with the output open.
-        *self.inner.seek_target.lock().unwrap() = None;
         self.inner.notify_worker();
         self.emit(EngineEvent::NowPlaying(item.clone()));
         self.emit(EngineEvent::State(self.state()));
@@ -4215,6 +4219,30 @@ mod tests {
         engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
         wait_for(|| output.samples().len() >= 176_400);
         assert_eq!(output.samples().len(), 176_400, "the track did not play from its start");
+    }
+
+    /// A seek that reaches the engine right after a new context, before the
+    /// worker has started it (an SMTC client replaying the restored
+    /// position), must not inherit the restore's paused flag.
+    #[test]
+    fn a_seek_right_after_playing_a_restored_track_still_plays() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        engine
+            .handle(EngineCmd::RestoreSession {
+                items: vec![item(1)],
+                start: 0,
+                position_ms: 1500,
+                shuffle: false,
+                repeat: RepeatMode::Off,
+            })
+            .unwrap();
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        // Cleared by the command itself, not later by the worker.
+        assert!(!engine.inner.paused.load(Ordering::SeqCst), "a new context must clear the pause");
+        engine.handle(EngineCmd::Seek(500)).unwrap();
+        wait_for(|| !output.samples().is_empty());
+        assert!(!output.samples().is_empty(), "the seek left the new session paused");
     }
 
     /// Track 13 (EF-D4): a long pause stops the output; resume reopens the
