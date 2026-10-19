@@ -1,6 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { aggregate, cpuPercent, evaluate, metricsFor, perMinute, readRuns, unmatchedScenarios } from "./check.mjs";
+import {
+  aggregate,
+  cpuPercent,
+  evaluate,
+  metricsFor,
+  metricsTable,
+  pageMetrics,
+  perMinute,
+  readRuns,
+  unmatchedScenarios,
+} from "./check.mjs";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -416,4 +426,54 @@ test("metricsFor derives cpu, private and ipc rates from the measure_start mark"
   assert.ok(Math.abs(metrics.cpu_app_pct - 200 / 60_000 * 100) < 1e-9);
   assert.equal(metrics.ipc_events_per_min, 120);
   assert.equal(metrics.ipc_kb_per_min, 100);
+});
+test("page counter rows become per-minute rates from the measure_start mark", () => {
+  const page = (t_ms, label, n, animations) => ({
+    kind: "ui_metrics",
+    t_ms,
+    metrics: {
+      page: {
+        label,
+        style_recalcs: 100 + n,
+        layouts: 50 + n / 2,
+        script_s: 1 + n / 1000,
+        task_s: 2 + n / 100,
+        js_heap_bytes: (40 + n / 10) * 1048576,
+        animations,
+      },
+    },
+  });
+  const file = runFile([
+    { kind: "session", run_id: "S11-1", scenario: "S11" },
+    page(0, "start", 0, []),
+    { kind: "mark", name: "measure_start", t_ms: 10_000, unix_ms: 1 },
+    page(10_000, "measure_start", 20, []),
+    page(130_000, "end", 260, ["spin img.disc"]),
+  ]);
+  const metrics = metricsFor(readRuns([file])[0]);
+  // 240 recalcs over the 2 min after the mark; the start row is outside it.
+  assert.equal(metrics.page_style_per_min, 120);
+  assert.equal(metrics.page_layouts_per_min, 60);
+  assert.ok(Math.abs(metrics.page_script_ms_per_min - 120) < 1e-9);
+  assert.ok(Math.abs(metrics.page_task_ms_per_min - 1200) < 1e-9);
+  assert.equal(metrics.js_heap_max_mb, 66);
+  assert.equal(metrics.animations_max, 1);
+  // No rows (an older driver): nothing measured, nothing fabricated.
+  assert.deepEqual(pageMetrics([]), {});
+});
+
+test("metricsTable lists median and worst per metric", () => {
+  const runs = [1, 3, 2].map((v, i) => ({
+    id: `S11-${i}`,
+    scenario: "S11",
+    lines: [
+      { kind: "memory", mb: 500 + v * 10, t_ms: 0 },
+      { kind: "memory", mb: 500, t_ms: 1000 },
+    ],
+  }));
+  const aggregated = [...aggregate(runs).values()].map((m) => ({ scenario: m.scenario, metrics: m }));
+  const lines = metricsTable(aggregated);
+  assert.equal(lines[0], "S11 (3 run(s))  median / worst");
+  assert.ok(lines.some((l) => /^\s+memory_max_mb\s+520 \/ 530$/.test(l)), lines.join("\n"));
+  assert.ok(!lines.some((l) => l.includes("_median ")), "no derived keys");
 });

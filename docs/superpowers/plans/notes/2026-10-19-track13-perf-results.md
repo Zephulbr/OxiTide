@@ -44,13 +44,24 @@ both sides). Re-baselining S1–S9 on the release build is a close-out item.
   IPC figure (e.g. S11 read 9,918 events/min; the real rate is 118). `check.mjs` was always
   right. `level_frame` is now counted too, so S13 shows ~1,900 events/min (30 Hz meter frames).
 
-## Not yet trustworthy
+## Not yet trustworthy (harness fixes 2026-10-20, branch `perf-harness-gaps`; re-run to confirm)
 
 - S3-hit's 0-cache-hit FAIL: the first run follows S3-miss's cache clear, and `awaitWarmCache`'s
-  `!sawPending` shortcut can go on before the file is committed (harness).
-- S4's first-transition gap of ~18 s on every run, both sides; the real gaps are 37–44 ms.
+  `!sawPending` shortcut can go on before the file is committed (harness). **Fixed:** a first
+  play that hit goes straight on; one that missed waits for the committed entry, with no shortcut.
+- S4's first-transition gap of ~18 s on every run, both sides. The pair crosses albums, so the
+  crossfade's held-back tail went out through `write_responsive`, which never moved the gap
+  timer: the "gap" was the faded tail plus the format-change reopen. The same-album pair reads
+  37–44 ms. **Fixed:** every output write moves the timer (engine test
+  `the_advance_gap_starts_after_the_faded_tail`: 891 ms before, under 400 after).
 - `ui_metrics` frame counts cap at 5000, so whether a paused window still repaints is unknown
-  (S11's 3.7 % WebView2 CPU suggests something does).
+  (S11's 3.7 % WebView2 CPU suggests something does). Worse, the frame sampler is a rAF loop
+  itself, so no perf run was ever idle. **Fixed:** S11/S12 turn the sampler off
+  (`__perf.sampleFrames(false)`), and every scenario logs Chromium's page counters
+  (`Performance.getMetrics`) and the running animations at `measure_start` and the end; the
+  checker reports `page_style_per_min`, `page_layouts_per_min`, `page_script_ms_per_min`,
+  `page_task_ms_per_min`, `js_heap_max_mb` and `animations_max` (informational, no budgets yet).
+  S11 needs a re-run: its 3.7 % included the sampler, so its CPU budget may tighten.
 
 ## S11–S14 budgets (`budgets.json`)
 
@@ -66,4 +77,5 @@ and IPC rates, with CPU at least +0.5 pt; memory on the worst run (median + 15 %
 1. Default-mode playback (S4/S8 ~8–10 % WebView2): profile the spinning cover and seek bar at
    144 Hz, the pattern EF-D8 fixed in Rack.
 2. Rack meters at 30 Hz (tap rate) would take S13 to roughly 8 % — a visual call.
-3. The three harness items above, then re-baseline S1–S9 on the release build.
+3. The three harness items above (fixed 2026-10-20), then re-baseline S1–S9 on the release
+   build: `node scripts/perf/check.mjs --metrics` prints every metric's median / worst run.
