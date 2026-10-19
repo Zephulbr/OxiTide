@@ -464,6 +464,7 @@ fn main() {
             commands::set_mini_mode,
             commands::set_start_in_mini,
             commands::set_oneko,
+            commands::set_hover_panels,
             commands::set_smtc,
             commands::set_discord,
             commands::set_close_to_tray,

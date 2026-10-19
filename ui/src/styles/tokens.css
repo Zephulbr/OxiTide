@@ -108,7 +108,10 @@
   --font-body-size: 14px;
 
   /* Layout (spec §7.1) */
-  --sidebar-width: 248px;
+  /* The full sidebar; --sidebar-width drops to the rail when collapsed, and
+     a hover-expanded rail (ui.hover_panels) overlays at this width. */
+  --sidebar-expanded-width: 248px;
+  --sidebar-width: var(--sidebar-expanded-width);
   --queue-width: 320px;
   --player-height: 80px;
   /* Custom window chrome (Windows): the caption-button/drag band height; 0

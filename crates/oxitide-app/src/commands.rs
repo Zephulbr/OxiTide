@@ -2392,6 +2392,15 @@ pub fn set_oneko(state: State<'_, AppState>, enabled: bool) -> Result<(), String
 }
 
 #[tauri::command]
+pub fn set_hover_panels(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    let mut config = state.config();
+    config.ui.hover_panels = enabled;
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
+#[tauri::command]
 pub fn set_smtc(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
     let mut config = state.config();
     config.integrations.smtc = enabled;
@@ -2690,7 +2699,7 @@ mod tests {
         "set_quality_display", "set_ui_mode", "set_theme", "set_typeface", "set_custom_typeface",
         "set_density", "set_cover_shape", "set_dynamic_color", "set_rack_settings",
         "set_level_meter", "set_queue_width", "set_mini_mode", "set_start_in_mini", "set_oneko",
-        "set_smtc", "set_discord", "set_close_to_tray", "set_cache_max_size_mb",
+        "set_hover_panels", "set_smtc", "set_discord", "set_close_to_tray", "set_cache_max_size_mb",
         "set_cache_clear_on_exit", "get_remote_status", "begin_remote_pairing",
         "cancel_remote_pairing", "list_remote_devices", "rename_remote_device",
         "revoke_remote_device", "resolve_remote_pair_request", "get_custom_titlebar",

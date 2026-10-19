@@ -1,6 +1,8 @@
 <script lang="ts">
   import { prefetchIntent } from "../viewData";
   import { untrack } from "svelte";
+  import { appearance } from "../appearance.svelte";
+  import { createHoverIntent } from "../hoverIntent.svelte";
   import type { Route } from "../nav.svelte";
   import type { Nav } from "../nav.svelte";
   import type { CollectionActions } from "../collectionActions.svelte";
@@ -15,7 +17,8 @@
 
   let {
     nav,
-    rail,
+    rail: collapsed,
+    hoverExpand = false,
     onToggleRail,
     collection,
     playlistActions,
@@ -23,7 +26,10 @@
     playing = false,
   }: {
     nav: Nav;
+    /// Collapsed to the icon rail (the user's choice or a narrow window).
     rail: boolean;
+    /// ui.hover_panels: hovering the collapsed rail expands it as an overlay.
+    hoverExpand?: boolean;
     /// Playback is running (spins the playing playlist's mark).
     playing?: boolean;
     onToggleRail: () => void;
@@ -31,6 +37,41 @@
     playlistActions: PlaylistActions;
     actions: CollectionActions;
   } = $props();
+
+  // Hover-expand: the rail opens to full width over the page (its grid column
+  // stays rail-wide, so nothing reflows) and plays a short reverse on close.
+  // A context menu opened from it holds it open until the menu closes.
+  const PEEK_OUT_MS = 140;
+  const peekIntent = createHoverIntent({ isHeld: () => menu.open !== null });
+  const canPeek = $derived(collapsed && hoverExpand);
+  let closing = $state(false);
+  const peek = $derived(canPeek && (peekIntent.open || closing));
+  const rail = $derived(collapsed && !peek);
+
+  $effect(() => {
+    if (!canPeek) untrack(() => peekIntent.reset());
+  });
+
+  // Pre-DOM, so the close starts in the same update that drops the open
+  // state; never a rail frame (its collapse button over the logo) in between.
+  let wasOpen = false;
+  $effect.pre(() => {
+    const open = peekIntent.open;
+    const animate = wasOpen && !open && canPeek && !appearance.reducedMotion;
+    wasOpen = open;
+    if (!animate) return;
+    closing = true;
+    const timer = setTimeout(() => (closing = false), PEEK_OUT_MS);
+    return () => {
+      clearTimeout(timer);
+      closing = false;
+    };
+  });
+
+  function onPointerEnter() {
+    // Back in mid-close: reopen at once rather than snapping to the rail first.
+    if (canPeek) peekIntent.enter(closing);
+  }
 
   let collectionOpen = $state(true);
   let showMore = $state(false);
@@ -102,19 +143,28 @@
   }
 </script>
 
-<nav class="sidebar" class:rail>
+<nav
+  class="sidebar"
+  class:rail
+  class:peek
+  class:closing
+  onpointerenter={onPointerEnter}
+  onpointerleave={() => peekIntent.leave()}
+>
   <div class="scroll">
     <div class="top">
       <h1 class="wordmark" aria-label="OxiTide">
-        <Logo size={rail ? 28 : 26} />{#if !rail}OxiTide{/if}
+        <Logo size={28} />{#if !rail}OxiTide{/if}
       </h1>
       <div class="top-actions">
+        <!-- Labelled from the collapsed state: on a hover-expanded rail it pins
+             the sidebar open. -->
         <button
           class="collapse"
           onclick={onToggleRail}
-          aria-label={rail ? "Expand sidebar" : "Collapse sidebar"}
-          title={rail ? "Expand sidebar" : "Collapse sidebar"}
-        ><Icon name={rail ? "panel-left-open" : "panel-left-close"} size={18} /></button>
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={collapsed ? "Expand sidebar (Ctrl+B)" : "Collapse sidebar (Ctrl+B)"}
+        ><Icon name={collapsed ? "panel-left-open" : "panel-left-close"} size={18} /></button>
       </div>
     </div>
 
@@ -253,6 +303,12 @@
     font-size: 22px;
     font-weight: 640;
     margin: 0;
+    /* As tall as the mark, with or without the name beside it, so the mark
+       never moves vertically as the sidebar collapses or expands. */
+    line-height: 28px;
+    /* The rail's centred spot for the mark ((40px - 28px) / 2), so it never
+       moves as the sidebar collapses, expands or peeks. */
+    padding-left: 6px;
     letter-spacing: -0.02em;
     transition: opacity var(--dur-micro) var(--ease-enter);
   }
@@ -351,6 +407,9 @@
     position: relative;
     justify-content: center;
   }
+  .rail .wordmark {
+    padding-left: 0;
+  }
   .rail .collapse {
     position: absolute;
     inset: 0;
@@ -359,16 +418,63 @@
     justify-content: center;
     opacity: 0;
     color: var(--text-muted);
+    /* Hides at once: the button lands here visible when the sidebar collapses
+       (Ctrl+B, the button, a hover close), and app.css's opacity fade would
+       show it over the logo. Only revealing it fades. */
+    transition: none;
   }
   .rail .collapse:hover,
   .rail .collapse:focus-visible {
     opacity: 1;
     color: var(--text);
+    transition:
+      opacity var(--dur-micro),
+      color var(--dur-micro);
   }
   .rail .top:has(.collapse:hover, .collapse:focus-visible) .wordmark {
     opacity: 0;
   }
   .rail .tree :global(.row) {
     justify-content: center;
+  }
+  /* Hover-expanded rail: wider than its grid track, so it overlays the page.
+     It stops at the player bar (like the floating queue) instead of covering
+     the bar's left end. The rail itself widens from its 64px (app.css) to
+     full width; its contents are laid out once at the full width and clipped
+     by the moving edge (the shell's overflow: hidden), so only the shell's
+     own box changes per frame and labels never wrap mid-glide. */
+  .sidebar.peek {
+    position: relative;
+    z-index: 15;
+    width: var(--sidebar-expanded-width);
+    height: calc(100% - var(--player-height));
+    align-self: start;
+    box-shadow: 12px 0 32px rgba(0, 0, 0, 0.45);
+    animation: peek-in var(--dur-state) var(--ease-enter);
+  }
+  .sidebar.peek.closing {
+    animation: peek-out 140ms var(--ease-exit) forwards;
+  }
+  .sidebar.peek .scroll {
+    /* The stretched width of an expanded sidebar's scroll area (less the
+       shell's 1px border), held while the shell is narrower. */
+    width: calc(var(--sidebar-expanded-width) - 1px);
+    padding-bottom: 12px;
+  }
+  @keyframes peek-in {
+    from {
+      width: 64px;
+    }
+  }
+  @keyframes peek-out {
+    to {
+      width: 64px;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .sidebar.peek,
+    .sidebar.peek.closing {
+      animation: none;
+    }
   }
 </style>

@@ -85,6 +85,8 @@ export interface Appearance {
   readonly queueWidth: number;
   readonly reducedMotion: boolean;
   readonly oneko: boolean;
+  /// The collapsed sidebar and the closed queue expand as overlays on hover.
+  readonly hoverPanels: boolean;
   readonly dynamicColor: DynamicColorMode;
   readonly backdropArt: boolean;
   readonly glassPanels: boolean;
@@ -106,6 +108,7 @@ export interface Appearance {
   setDynamicColor(setting: DynamicColorSetting): Promise<void>;
   setQueueWidth(px: number): Promise<void>;
   setOneko(enabled: boolean): Promise<void>;
+  setHoverPanels(enabled: boolean): Promise<void>;
 }
 
 export function createAppearance(): Appearance {
@@ -120,6 +123,7 @@ export function createAppearance(): Appearance {
   let queueWidth = $state(320);
   let reducedMotion = $state(false);
   let oneko = $state(false);
+  let hoverPanels = $state(false);
   let rack = $state<RackSettings>(defaultRackSettings());
 
   function apply() {
@@ -156,6 +160,7 @@ export function createAppearance(): Appearance {
       dynamicColorSetting = config.ui.dynamic_color;
       queueWidth = config.ui.queue_width;
       oneko = config.ui.oneko;
+      hoverPanels = config.ui.hover_panels ?? false;
       if (config.rack) rack = { ...defaultRackSettings(), ...config.rack };
     } catch {
       // Defaults are fine; a config failure must not block boot.
@@ -179,6 +184,17 @@ export function createAppearance(): Appearance {
       await api.setOneko(enabled);
     } catch (error) {
       oneko = previous;
+      throw error;
+    }
+  }
+
+  async function setHoverPanels(enabled: boolean): Promise<void> {
+    const previous = hoverPanels;
+    hoverPanels = enabled;
+    try {
+      await api.setHoverPanels(enabled);
+    } catch (error) {
+      hoverPanels = previous;
       throw error;
     }
   }
@@ -210,6 +226,7 @@ export function createAppearance(): Appearance {
     get queueWidth() { return queueWidth; },
     get reducedMotion() { return reducedMotion; },
     get oneko() { return oneko; },
+    get hoverPanels() { return hoverPanels; },
     get dynamicColor() { return resolveDynamicColor(dynamicColorSetting, mode); },
     get backdropArt() { return mode === "atmosphere"; },
     get glassPanels() { return mode === "atmosphere"; },
@@ -230,6 +247,7 @@ export function createAppearance(): Appearance {
     setDynamicColor: (s) => { dynamicColorSetting = s; return persist(() => api.setDynamicColor(s)); },
     setQueueWidth: (px) => { queueWidth = clampQueueWidth(px); return persist(() => api.setQueueWidth(queueWidth)); },
     setOneko,
+    setHoverPanels,
   };
 }
 

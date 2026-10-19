@@ -35,7 +35,20 @@ describe("matchShortcut", () => {
     expect(matchShortcut(keyEvent("/"), app)).toBe("focus-search");
     expect(matchShortcut(keyEvent("ArrowLeft", { altKey: true }), app)).toBe("history-back");
     expect(matchShortcut(keyEvent("ArrowRight", { altKey: true }), app)).toBe("history-forward");
+    expect(matchShortcut(keyEvent("b", { ctrlKey: true }), app)).toBe("toggle-sidebar");
+    expect(matchShortcut(keyEvent("q"), app)).toBe("toggle-queue");
+    expect(matchShortcut(keyEvent("Q"), app)).toBe("toggle-queue");
     expect(matchShortcut(keyEvent("Escape"), app)).toBe("escape");
+  });
+
+  it("only takes the panel keys without extra modifiers or while not typing", () => {
+    expect(matchShortcut(keyEvent("b"), app)).toBeNull();
+    expect(matchShortcut(keyEvent("b", { ctrlKey: true, shiftKey: true }), app)).toBeNull();
+    expect(matchShortcut(keyEvent("q", { ctrlKey: true }), app)).toBeNull();
+    expect(matchShortcut(keyEvent("q", { target: target("INPUT") }), app)).toBeNull();
+    expect(
+      matchShortcut(keyEvent("b", { ctrlKey: true, target: target("INPUT") }), app),
+    ).toBeNull();
   });
 
   it("ignores shortcuts while typing except Esc and Ctrl+F", () => {
@@ -83,8 +96,8 @@ describe("isTypingTarget", () => {
 });
 
 describe("SHORTCUTS", () => {
-  it("documents the eight rows shown in Settings", () => {
-    expect(SHORTCUTS).toHaveLength(8);
+  it("documents the ten rows shown in Settings", () => {
+    expect(SHORTCUTS).toHaveLength(10);
     for (const hint of SHORTCUTS) {
       expect(hint.keys.length).toBeGreaterThan(0);
       expect(hint.description.length).toBeGreaterThan(0);
@@ -119,10 +132,17 @@ describe("isShortcutHandled", () => {
       "focus-search",
       "history-back",
       "history-forward",
+      "toggle-sidebar",
+      "toggle-queue",
       "escape",
     ] as const) {
       expect(isShortcutHandled(action, idle)).toBe(true);
     }
+  });
+
+  it("leaves Ctrl+B alone where there is no sidebar", () => {
+    const idle = { hasCurrent: false, hasQueue: false, hasSidebar: false };
+    expect(isShortcutHandled("toggle-sidebar", idle)).toBe(false);
   });
 });
 

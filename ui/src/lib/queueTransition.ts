@@ -21,11 +21,15 @@ export function queueDock(node: HTMLElement, { reduced }: { reduced: boolean }):
   };
 }
 
-/// Floating queue (narrow windows): slides in over the content from the right.
-export function queueFloat(_node: HTMLElement, { reduced }: { reduced: boolean }): TransitionConfig {
+/// Floating queue (narrow windows, hover peek): slides in over the content
+/// from the right.
+export function queueFloat(
+  _node: HTMLElement,
+  { reduced, duration = GLIDE_MS }: { reduced: boolean; duration?: number },
+): TransitionConfig {
   if (reduced) return { duration: 120, css: (t) => `opacity: ${t}` };
   return {
-    duration: GLIDE_MS,
+    duration,
     easing: glideEasing,
     css: (t) => `transform: translateX(${(1 - t) * 100}%)`,
   };

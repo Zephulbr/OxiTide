@@ -133,7 +133,7 @@
         class:active={nav.queueOpen}
         onclick={() => nav.toggleQueue()}
         aria-label="Queue"
-        title="Queue"
+        title="Queue (Q)"
         aria-pressed={nav.queueOpen}
       ><Icon name="list-music" size={18} /></button>
 

@@ -285,6 +285,8 @@ pub struct UiConfig {
     /// Launch the window in the mini player (spec MP-D7); default off.
     pub start_in_mini: bool,
     pub oneko: bool,
+    /// The collapsed sidebar and the closed queue expand as overlays on hover.
+    pub hover_panels: bool,
     /// Close hides the window to the tray instead of exiting (QoL-D3).
     pub close_to_tray: bool,
     pub window_width: u32,
@@ -310,6 +312,7 @@ impl Default for UiConfig {
             queue_width: 320,
             start_in_mini: false,
             oneko: false,
+            hover_panels: false,
             close_to_tray: true,
             window_width: 1200,
             window_height: 800,
@@ -556,6 +559,7 @@ mod tests {
                 queue_width: 320,
                 start_in_mini: false,
                 oneko: true,
+                hover_panels: true,
                 close_to_tray: true,
                 window_width: 1280,
                 window_height: 720,
@@ -864,6 +868,19 @@ duration_ms = 4000
         config.save_to(&path).unwrap();
         assert!(fs::read_to_string(&path).unwrap().contains("oneko = true"));
         assert!(Config::load_from(&path).ui.oneko);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn hover_panels_defaults_false_and_round_trips() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        assert!(!Config::default().ui.hover_panels);
+        let mut config = Config::default();
+        config.ui.hover_panels = true;
+        config.save_to(&path).unwrap();
+        assert!(fs::read_to_string(&path).unwrap().contains("hover_panels = true"));
+        assert!(Config::load_from(&path).ui.hover_panels);
         let _ = fs::remove_dir_all(dir);
     }
 

@@ -575,6 +575,7 @@ mod tests {
         "set_mini_mode",
         "set_start_in_mini",
         "set_oneko",
+        "set_hover_panels",
         "set_smtc",
         "set_discord",
         "set_close_to_tray",

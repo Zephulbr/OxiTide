@@ -47,6 +47,14 @@
   import { errorMessage } from "./lib/errors";
   import { menu } from "./lib/menu.svelte";
   import { escapeTarget, isShortcutHandled, matchShortcut, type ShortcutAction } from "./lib/shortcuts";
+  import {
+    atQueueEdge,
+    createHoverIntent,
+    QUEUE_PEEK_CLOSE_MS,
+    QUEUE_PEEK_EDGE_PX,
+    QUEUE_PEEK_OPEN_MS,
+    QUEUE_PEEK_SLIDE_MS,
+  } from "./lib/hoverIntent.svelte";
   import { createToasts } from "./lib/toasts.svelte";
   import { createMini } from "./lib/mini.svelte";
   import { createPlayer } from "./lib/player.svelte";
@@ -192,6 +200,57 @@
     sync();
     media.addEventListener("change", sync);
     return () => media.removeEventListener("change", sync);
+  });
+
+  function toggleSidebarRail() {
+    railTouched = true;
+    sidebarRail = !sidebarRail;
+  }
+
+  // Hover-expand queue (ui.hover_panels): resting the pointer on the window's
+  // right edge slides the closed queue in as the floating overlay; it leaves
+  // once the pointer is out of its box. Tracked from window pointer moves
+  // against the overlay's known box rather than its enter/leave events, which
+  // a panel sliding in under a still pointer may never fire.
+  const queuePeek = createHoverIntent({
+    openMs: QUEUE_PEEK_OPEN_MS,
+    closeMs: QUEUE_PEEK_CLOSE_MS,
+    isHeld: () => menu.open !== null,
+  });
+  const queuePeekEnabled = $derived(
+    loggedIn && appearance.hoverPanels && !appearance.rackShell && !mini.active && !nav.queueOpen,
+  );
+  $effect(() => {
+    if (!queuePeekEnabled) untrack(() => queuePeek.reset());
+  });
+  $effect(() => {
+    if (!queuePeekEnabled) return;
+    const onMove = (event: PointerEvent) => {
+      const width = window.innerWidth;
+      const reach = queuePeek.open ? appearance.queueWidth : QUEUE_PEEK_EDGE_PX;
+      if (event.clientX < width - reach) {
+        queuePeek.leave();
+        return;
+      }
+      const root = getComputedStyle(document.documentElement);
+      const view = {
+        width,
+        height: window.innerHeight,
+        top: queuePeek.open ? 0 : parseFloat(root.getPropertyValue("--titlebar-h")) || 0,
+        bottom: parseFloat(root.getPropertyValue("--player-height")) || 0,
+      };
+      // A held button is a drag (the page scrollbar sits on this edge).
+      const blocked = !queuePeek.open && (event.buttons !== 0 || dialogs.count > 0);
+      if (!blocked && atQueueEdge(event.clientX, event.clientY, view, reach)) queuePeek.enter();
+      else queuePeek.leave();
+    };
+    const onLeaveWindow = () => queuePeek.leave();
+    window.addEventListener("pointermove", onMove, { passive: true });
+    document.documentElement.addEventListener("mouseleave", onLeaveWindow);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      document.documentElement.removeEventListener("mouseleave", onLeaveWindow);
+    };
   });
 
   // Hearts toggled on a paired phone (Track 11) — and echoes of our own
@@ -600,6 +659,13 @@
       case "history-forward":
         nav.forward();
         break;
+      case "toggle-sidebar":
+        toggleSidebarRail();
+        break;
+      case "toggle-queue":
+        if (mini.active) mini.toggleQueue();
+        else nav.toggleQueue();
+        break;
       case "escape":
         switch (currentEscapeTarget()) {
           case "menu":
@@ -640,6 +706,7 @@
       !isShortcutHandled(action, {
         hasCurrent: player.state.current !== null,
         hasQueue: player.state.queue.length > 0,
+        hasSidebar: !mini.active && !appearance.rackShell,
       })
     ) {
       return;
@@ -723,7 +790,8 @@
     <Sidebar
       {nav}
       rail={sidebarRail}
-      onToggleRail={() => { railTouched = true; sidebarRail = !sidebarRail; }}
+      hoverExpand={appearance.hoverPanels}
+      onToggleRail={toggleSidebarRail}
       {collection}
       {playlistActions}
       actions={collectionActions}
@@ -783,6 +851,13 @@
           <QueueRail {player} go={goFromChrome} />
         </aside>
       {/if}
+    {:else if queuePeek.open}
+      <aside
+        class="queue floating"
+        transition:queueFloat|global={{ reduced: appearance.reducedMotion, duration: QUEUE_PEEK_SLIDE_MS }}
+      >
+        <QueueRail {player} go={(route) => { queuePeek.reset(); goFromChrome(route); }} />
+      </aside>
     {/if}
     <PlayerBar {player} {qualityDisplay} {favorites} {nav} {mini} {sleepTimer} />
     <TrackInfoHost {nav} />

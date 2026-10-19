@@ -10,6 +10,8 @@ export type ShortcutAction =
   | "focus-search"
   | "history-back"
   | "history-forward"
+  | "toggle-sidebar"
+  | "toggle-queue"
   | "escape";
 
 export type EscapeTarget = "menu" | "mini-queue" | "exit-mini" | "now-playing" | "queue" | null;
@@ -46,6 +48,8 @@ export const SHORTCUTS: ShortcutHint[] = [
   { keys: "M", description: "Mute / unmute" },
   { keys: "Ctrl+F or /", description: "Focus search" },
   { keys: "Alt+← / Alt+→", description: "History back / forward" },
+  { keys: "Ctrl+B", description: "Collapse / expand the sidebar" },
+  { keys: "Q", description: "Show / hide the queue" },
   { keys: "Esc", description: "Close the menu, mini queue, mini player, now playing, or queue" },
 ];
 
@@ -71,9 +75,12 @@ function isButtonLike(target: EventTarget | null): boolean {
 /// (scrolling) instead of being swallowed by preventDefault.
 export function isShortcutHandled(
   action: ShortcutAction,
-  opts: { hasCurrent: boolean; hasQueue: boolean },
+  opts: { hasCurrent: boolean; hasQueue: boolean; hasSidebar?: boolean },
 ): boolean {
   switch (action) {
+    // Rack and the mini player have no collapsible sidebar.
+    case "toggle-sidebar":
+      return opts.hasSidebar ?? true;
     case "play-pause":
     case "seek-back":
     case "seek-forward":
@@ -103,6 +110,9 @@ export function matchShortcut(
     if (event.repeat || isButtonLike(event.target)) return null;
     return "play-pause";
   }
+  if ((key === "b" || key === "B") && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey) {
+    return "toggle-sidebar";
+  }
   if (event.altKey && key === "ArrowLeft") return "history-back";
   if (event.altKey && key === "ArrowRight") return "history-forward";
   if (event.shiftKey && key === "ArrowLeft") return "prev-track";
@@ -113,6 +123,7 @@ export function matchShortcut(
     if (key === "ArrowUp") return "volume-up";
     if (key === "ArrowDown") return "volume-down";
     if (key.toLowerCase() === "m") return "toggle-mute";
+    if (key.toLowerCase() === "q") return "toggle-queue";
   }
   if (key === "/" && !event.altKey && !event.ctrlKey && !event.metaKey) return "focus-search";
   return null;

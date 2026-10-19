@@ -38,6 +38,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   e("density", "appearance", "Typography & layout", "Density", "compact comfortable spacing rows size"),
   e("cover-shape", "appearance", "Typography & layout", "Cover shape", "disc sleeve artwork album art now playing"),
   e("track-sort-memory", "appearance", "Typography & layout", "Remember track sorting", "sort order playlist favorites columns reset"),
+  e("hover-panels", "appearance", "Typography & layout", "Expand panels on hover", "sidebar queue rail peek mouse collapse auto", "notRack"),
   e("rack-deck", "appearance", "Hi-Fi Rack", "Deck face", "transport cd player display", "rack"),
   e("rack-meters", "appearance", "Hi-Fi Rack", "Amp meters", "needles bars led spectrum vu", "rack"),
   e("rack-analyzer", "appearance", "Hi-Fi Rack", "Now Playing analyzer", "spectrum recorder tuner eq", "rack"),
@@ -98,7 +99,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   ...HOTKEY_ACTIONS.map((a) =>
     e(`hotkey-${a.id}`, "system", "Global hotkeys", `Hotkey: ${a.label}`, "global shortcut keybinding record"),
   ),
-  e("shortcuts", "system", "Keyboard shortcuts", "Keyboard shortcuts", "keys bindings reference seek volume mute"),
+  e("shortcuts", "system", "Keyboard shortcuts", "Keyboard shortcuts", "keys bindings reference seek volume mute sidebar queue"),
   e("logs", "system", "Troubleshooting", "Logs", "debug folder diagnostics"),
   e("logout", "system", "Account", "Log out", "sign out account tidal"),
 ];

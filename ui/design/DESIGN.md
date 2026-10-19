@@ -231,6 +231,15 @@ is FLIP-animated in step with the rail by `lib/queueTransition.ts`:
 - hidden or clipped elements leave a fading inert copy, and revealed ones fade in.
 
 Any other layout animation needs a ruling.
+Hover-expand panels (Settings → "Expand panels on hover", `ui.hover_panels`; not in Rack)
+never reflow the page, and they stay open while a context menu opened from them is up
+(`lib/hoverIntent.svelte.ts`). The collapsed rail opens after a 140 ms dwell and closes
+260 ms after the pointer leaves; the rail itself widens over the page to
+`--sidebar-expanded-width` (`--dur-state`, `--ease-enter`; 140 ms back on close), its
+contents laid out at full width and clipped by the moving edge, and it stops at the player
+bar. The closed queue arrives as the floating overlay (`queueFloat`, 320 ms here) when the
+pointer rests 100 ms on the window's right 8 px, between the title bar and the player bar,
+and leaves 280 ms after the pointer does. Shortcuts: `Ctrl+B` sidebar, `Q` queue.
 `backdrop-filter` surfaces are a fixed set and never nest. Menus mark the selected
 option with the accent, not a second background.
 Ambient motion only while playing. `prefers-reduced-motion` is a hard floor in every

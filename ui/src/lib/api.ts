@@ -352,6 +352,7 @@ export interface Config {
     queue_width: number;
     start_in_mini: boolean;
     oneko: boolean;
+    hover_panels: boolean;
     close_to_tray: boolean;
     window_width: number;
     window_height: number;
@@ -725,6 +726,7 @@ export const api = {
   setMiniMode: (active: boolean) => invoke<void>("set_mini_mode", { active }),
   setStartInMini: (enabled: boolean) => invoke<void>("set_start_in_mini", { enabled }),
   setOneko: (enabled: boolean) => invoke<void>("set_oneko", { enabled }),
+  setHoverPanels: (enabled: boolean) => invoke<void>("set_hover_panels", { enabled }),
   setSmtc: (enabled: boolean) => invoke<void>("set_smtc", { enabled }),
   setCloseToTray: (enabled: boolean) => invoke<void>("set_close_to_tray", { enabled }),
   setHotkey: (action: HotkeyAction, accelerator: string, replace: HotkeyAction | null = null) =>

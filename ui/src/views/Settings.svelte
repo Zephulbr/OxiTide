@@ -608,6 +608,16 @@
     });
   }
 
+  function setHoverPanels(enabled: boolean) {
+    if (!config) return;
+    const previous = config.ui.hover_panels;
+    config = { ...config, ui: { ...config.ui, hover_panels: enabled } };
+    appearance.setHoverPanels(enabled).catch((e) => {
+      if (config) config = { ...config, ui: { ...config.ui, hover_panels: previous } };
+      apply(e);
+    });
+  }
+
   function setSmtc(enabled: boolean) {
     if (!config) return;
     void optimistic(
@@ -1036,6 +1046,14 @@
                     onchange={(value) => sortMemoryStore.setMode(value)}
                   />
                 </SettingRow>
+              {/if}
+              {#if appearance.mode !== "rack"}
+                <ToggleRow
+                  id="hover-panels" label="Expand panels on hover"
+                  description="Hovering the collapsed sidebar opens it over the page, and resting the pointer on the window's right edge slides the queue in. Both close when the pointer leaves."
+                  checked={config.ui.hover_panels}
+                  onchange={setHoverPanels}
+                />
               {/if}
             </SettingsSection>
             </div>
