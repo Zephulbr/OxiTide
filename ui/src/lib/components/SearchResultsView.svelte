@@ -9,6 +9,7 @@
   import {
     albumCard,
     artistCard,
+    artistRow,
     pickTopHit,
     playlistCard,
     shelfOrder,
@@ -62,7 +63,7 @@
   const shelves = $derived(shelfOrder(top));
   const SHELF_TITLES: Record<ShelfKind, string> = { artists: "Artists", albums: "Albums", playlists: "Playlists" };
   const cards = $derived({
-    artists: results.artists.items.map(artistCard),
+    artists: artistRow(results.artists.items).map(artistCard),
     albums: results.albums.items.map(albumCard),
     playlists: results.playlists.items.map(playlistCard),
   });
@@ -116,6 +117,7 @@
   {/if}
 {/snippet}
 
+<div class="results">
 {#if kind === "all"}
   <div class="overview-frame">
   <div class="overview" class:with-top={top !== null}>
@@ -140,7 +142,7 @@
           {favorites}
           {toasts}
           maxHeight="none"
-          showFilter={false}
+          compact
           onPlay={(index) => playFrom(preview.items[index])}
           onAddToPlaylist={(t) => playlistActions.openPicker([t])}
           playingTrackId={playing}
@@ -204,8 +206,15 @@
     {@render more(kind)}
   {/if}
 {/if}
+</div>
 
 <style>
+  /* Capped and centred under the search field, so a wide window doesn't
+     pull the columns apart. */
+  .results {
+    max-width: 1680px;
+    margin-inline: auto;
+  }
   /* The top result and the first tracks side by side; stacked once the
      column is too narrow for both. A container query on the frame (an
      element cannot query itself), so the queue glide sees the final layout. */
@@ -216,29 +225,25 @@
   .overview {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: 24px;
+    gap: 8px 48px;
   }
   .overview > * {
     min-width: 0;
   }
   @container (min-width: 820px) {
     .overview.with-top {
-      grid-template-columns: minmax(300px, 2fr) minmax(0, 5fr);
+      grid-template-columns: 380px minmax(0, 1fr);
     }
   }
   .top {
     display: flex;
     flex-direction: column;
   }
-  /* Centred over the top result, which sits centred in its column. */
-  .top h3 {
-    text-align: center;
-  }
   .top :global(.top-hit) {
     flex: 1;
   }
   .block {
-    margin-bottom: 18px;
+    margin-bottom: 24px;
   }
   .list-head {
     display: flex;
@@ -246,8 +251,10 @@
     gap: 6px;
   }
   .list-head h3 {
-    flex: 1;
     min-width: 0;
+  }
+  .list-head h3 + .list-action {
+    margin-left: auto;
   }
   .list-action {
     display: grid;
@@ -260,6 +267,11 @@
   }
   .list-action:hover {
     color: var(--text);
+  }
+  /* "Show all" follows the heading; the play buttons close the row. */
+  .list-head .view-all {
+    margin-right: auto;
+    margin-left: 8px;
   }
   .view-all {
     margin-right: 6px;

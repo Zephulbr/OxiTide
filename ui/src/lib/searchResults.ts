@@ -34,7 +34,15 @@ export function playlistCard(playlist: Playlist): PageItem {
   };
 }
 
-const fold = (text: string) =>
+/// The overview's Artists row: TIDAL's order, except that artists with no
+/// image at all (bare credit-only profiles, often a name variant of a real
+/// one) move to the end.
+export function artistRow(artists: Artist[]): Artist[] {
+  const imaged = (a: Artist) => Boolean(a.picture ?? a.cover_fallback);
+  return [...artists.filter(imaged), ...artists.filter((a) => !imaged(a))];
+}
+
+const fold =(text: string) =>
   text
     .normalize("NFKD")
     .replace(/[̀-ͯ]/g, "")

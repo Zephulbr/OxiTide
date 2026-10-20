@@ -1,8 +1,20 @@
 import { describe, expect, it } from "vitest";
 import type { Artist, SearchResults } from "./api";
-import { kindsWithResults, pickTopHit, playlistCard, shelfOrder, totalOf } from "./searchResults";
+import { artistRow, kindsWithResults, pickTopHit, playlistCard, shelfOrder, totalOf } from "./searchResults";
 
 const artist = (id: number, name: string): Artist => ({ id, name });
+
+describe("artistRow", () => {
+  it("keeps TIDAL's order but moves imageless artists to the end", () => {
+    const row = artistRow([
+      { id: 1, name: "a", picture: "p" },
+      { id: 2, name: "b" },
+      { id: 3, name: "c", cover_fallback: "c" },
+      { id: 4, name: "d" },
+    ]);
+    expect(row.map((a) => a.id)).toEqual([1, 3, 2, 4]);
+  });
+});
 
 function results(partial: Partial<SearchResults> = {}): SearchResults {
   return {

@@ -186,20 +186,27 @@ fixed height. Untitled quick-link rows (New, Top, HiRes, …) follow "New to you
 **Search results** (`SearchResultsView.svelte`) replace the old all-in-one lists. While a
 search shows results, the suggestion chips give way to type chips (All · Tracks · Albums ·
 Artists · Playlists, only types that have results; the chosen one is accent-filled). The
-**All** overview has three parts:
+**All** overview has three parts. All results are capped at 1680px and centred under the
+search field, and the header's bottom margin drops to 4px while searching, so the
+results' own heading margins set the gap under the chips.
 - A **Top result** card (`SearchTopHit.svelte`): TIDAL's `topHit`, or else an artist whose
-  name equals the query once case, accents and punctuation are ignored. It has no panel: a
-  row of cover and text, centred in its column under a centred "Top result" heading. The
-  152px cover (round for artists) lifts 3px on hover. To its right, 24px away and
-  left-aligned, sit a 30px display-face title clamped to two lines and, under it, a kind
-  pill with the artists and a year, album or track count. The 56px accent Play button grows in on
-  the centre of the cover on hover. Play plays an artist's top tracks.
-- **Tracks** beside the card: five rows without a filter bar (eight when there is no top
-  result), with "Show all", Shuffle and Play all. A container query on the overview
-  stacks the card above the tracks below 820px. A play from the preview queues every
-  loaded result track.
+  name equals the query once case, accents and punctuation are ignored. It sits in a fixed
+  380px column, 48px from the tracks, stretched to the height of the track preview. The card is a soft panel
+  (`--text` at 4%, 7% on hover, 20px padding), with everything left-aligned under a
+  left-aligned heading, like "Tracks". It holds a 132px cover (round for artists) that
+  lifts 3px on hover, then a 28px display-face title clamped to two lines, then a kind
+  pill with the artists and a year, album or track count. The 56px accent Play button
+  rises into the card's bottom-right corner on hover. Play plays an artist's top tracks.
+- **Tracks** beside the card: a compact `TrackTable` (`compact`). It has no toolbar,
+  header, number, album or quality column, and no rules between rows. Rows are 10px
+  taller than `--row-height`, with an inset cover rounded to 4px. The artists sit
+  under the title. It shows five rows (eight when there is no top result). "Show all"
+  follows the heading; Shuffle and Play all close the row. A container query on the
+  overview stacks the card above the tracks below 820px. A play from the preview queues
+  every loaded result track.
 - One `Carousel` row each for Artists, Albums and Playlists (`MediaCard` carousel cards,
-  "See all"), with the top result's own type leading.
+  "See all"), with the top result's own type leading and 24px between rows. The Artists
+  row moves artists with no image at all (bare credit-only profiles) to its end.
 
 A single type shows its full table, or a `minmax(168px, 1fr)` tile grid, and pages in
 50 more per "Load more" (`search_type`).

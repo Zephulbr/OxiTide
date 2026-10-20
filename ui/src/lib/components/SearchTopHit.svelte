@@ -88,23 +88,17 @@
      under the rest), the artists open theirs, and Play plays. -->
 <div class="top-hit" class:round={hit.kind === "artist"}>
   <button type="button" class="open" aria-label={`Open ${view.title}`} onclick={open} disabled={!view.route}></button>
-  <span class="art-wrap">
-    <span class="art" aria-hidden="true">
-      {#if hit.kind === "artist"}
-        <Cover uuid={hit.item.picture ?? hit.item.cover_fallback} size={320} radius={999} alt="" />
-      {:else if hit.kind === "album"}
-        <Cover uuid={hit.item.cover} size={320} radius={isAlbumRelease(hit.item.type) ? 0 : 6} alt="" />
-      {:else if hit.kind === "track"}
-        <Cover uuid={hit.item.album?.cover} size={320} radius={6} alt="" />
-      {:else}
-        <PlaylistCover owned={hit.item.owned} playlist={hit.item.uuid} image={hit.item.squareImage} size={320} radius={6} alt="" />
-      {/if}
-    </span>
-    <button type="button" class="play" aria-label={`Play ${view.title}`} title="Play" onclick={play}>
-      <Icon name="play" size={22} />
-    </button>
+  <span class="art" aria-hidden="true">
+    {#if hit.kind === "artist"}
+      <Cover uuid={hit.item.picture ?? hit.item.cover_fallback} size={320} radius={999} alt="" />
+    {:else if hit.kind === "album"}
+      <Cover uuid={hit.item.cover} size={320} radius={isAlbumRelease(hit.item.type) ? 0 : 6} alt="" />
+    {:else if hit.kind === "track"}
+      <Cover uuid={hit.item.album?.cover} size={320} radius={6} alt="" />
+    {:else}
+      <PlaylistCover owned={hit.item.owned} playlist={hit.item.uuid} image={hit.item.squareImage} size={320} radius={6} alt="" />
+    {/if}
   </span>
-  <span class="text">
   <span class="title">{view.title}</span>
   <span class="meta">
     <span class="label">{view.label}</span>
@@ -113,31 +107,31 @@
     {/if}
     {#if view.detail}<span class="detail">{view.detail}</span>{/if}
   </span>
-  </span>
+  <button type="button" class="play" aria-label={`Play ${view.title}`} title="Play" onclick={play}>
+    <Icon name="play" size={22} />
+  </button>
 </div>
 
 <style>
-  /* No panel: the cover with the name and label beside it, as one group
-     centred in the column next to the tracks. */
+  /* A soft card as tall as the track preview beside it: cover on top, then
+     the name and its label, all left-aligned with the section headings. */
   .top-hit {
     position: relative;
     isolation: isolate;
     display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 24px;
-    height: 100%;
-    min-width: 0;
-    padding: 12px;
-    border-radius: var(--radius-card);
-  }
-  .text {
-    display: flex;
-    flex: 0 1 auto;
     flex-direction: column;
     align-items: flex-start;
     gap: 8px;
+    height: 100%;
     min-width: 0;
+    padding: 20px;
+    border-radius: var(--radius-card);
+    background: color-mix(in srgb, var(--text) 4%, transparent);
+    transition: background-color var(--dur-state) var(--ease-enter);
+  }
+  .top-hit:hover,
+  .top-hit:focus-within {
+    background: color-mix(in srgb, var(--text) 7%, transparent);
   }
   /* The whole card opens the page; links and Play sit above it. */
   .open {
@@ -151,16 +145,12 @@
     outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
-  .art-wrap {
-    position: relative;
-    display: grid;
-    flex: 0 0 auto;
-    place-items: center;
-    pointer-events: none;
-  }
   .art {
     display: block;
-    width: 152px;
+    flex: 0 0 auto;
+    width: 132px;
+    margin-bottom: 8px;
+    pointer-events: none;
     aspect-ratio: 1;
     overflow: hidden;
     border-radius: var(--radius-card-sharp);
@@ -183,7 +173,7 @@
     -webkit-line-clamp: 2;
     line-clamp: 2;
     font-family: var(--font-display);
-    font-size: 30px;
+    font-size: 28px;
     font-weight: var(--display-weight);
     letter-spacing: var(--display-tracking);
     line-height: 1.1;
@@ -194,7 +184,8 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 4px 10px;
-    max-width: 100%;
+    /* Clear of the Play button in the corner. */
+    max-width: calc(100% - 64px);
     color: color-mix(in srgb, var(--text) 62%, transparent);
     font-size: 13px;
   }
@@ -215,10 +206,12 @@
   .detail {
     pointer-events: none;
   }
-  /* Play sits on the centre of the cover, growing in on hover or keyboard
-     focus (it lifts with the cover). */
+  /* Play sits in the card's bottom-right corner, rising in on hover or
+     keyboard focus. */
   .play {
     position: absolute;
+    right: 20px;
+    bottom: 20px;
     z-index: 2;
     display: grid;
     place-items: center;
@@ -231,8 +224,7 @@
       0 0 14px color-mix(in srgb, var(--accent) 45%, transparent),
       0 4px 14px rgb(0 0 0 / 0.35);
     opacity: 0;
-    transform: scale(0.85);
-    pointer-events: auto;
+    transform: translateY(6px);
     transition:
       opacity var(--dur-state) var(--ease-enter),
       transform var(--dur-state) var(--ease-enter),
@@ -241,7 +233,7 @@
   .top-hit:hover .play,
   .top-hit:focus-within .play {
     opacity: 1;
-    transform: translateY(-3px);
+    transform: none;
   }
   .play:hover {
     filter: brightness(1.08);

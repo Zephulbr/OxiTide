@@ -84,6 +84,8 @@ describe("SearchResultsView overview", () => {
     expect(screen.getByRole("button", { name: "Open Back In Black" })).toBeTruthy();
     expect(screen.getByText("Song 5")).toBeTruthy();
     expect(screen.queryByText("Song 6")).toBeNull();
+    // The compact preview: no sort toolbar or column header.
+    expect(screen.queryByRole("columnheader")).toBeNull();
     const rows = rowTitles();
     expect(rows).toEqual(["Albums", "Artists"]);
   });

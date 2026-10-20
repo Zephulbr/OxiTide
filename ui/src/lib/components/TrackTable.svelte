@@ -47,6 +47,7 @@
     fill = false,
     showAlbum = true,
     showFilter = true,
+    compact = false,
     /// Multi-volume album groups (album page); ignored while a sort/filter is
     /// engaged. Grouped lists render whole (no virtualization) and section
     /// headings reset the row number per volume.
@@ -83,6 +84,9 @@
     /// Render the filter/status toolbar above the table. Views that surface
     /// the filter in their header (playlist) pass false.
     showFilter?: boolean;
+    /// A short preview list (search overview): no toolbar, header or number,
+    /// album or quality columns; the artists sit under the title.
+    compact?: boolean;
     sections?: VolumeSection[];
     /// Highlights the playing row (accent tint + title, ringed thumb).
     playingTrackId?: number | null;
@@ -100,6 +104,7 @@
   const columnStore = trackColumns();
   /// Chosen optional columns plus any the sort uses (MS-D12).
   const shownColumns = $derived.by<OptionalColumn[]>(() => {
+    if (compact) return [];
     const chosen = columnStore.chosen(kind);
     return columnStore
       .available(kind)
@@ -207,7 +212,7 @@
     }
     return volumeDisplayRows(grouping, rowSourceIndex);
   });
-  const columns = $derived((showAlbum ? 8 : 7) + shownColumns.length);
+  const columns = $derived(compact ? 4 : (showAlbum ? 8 : 7) + shownColumns.length);
 
   // Rows render immediately; flags land asynchronously when the AI filter or
   // content labels are on (the store's `ensure` is a no-op when both are off).
@@ -417,13 +422,16 @@
   {/if}
 {/snippet}
 
-<div class="table-tools">
-  {#if showFilter}<TrackFilter {view} />{/if}
-  <SortBar {view} keys={sortKeys} />
-</div>
+{#if !compact}
+  <div class="table-tools">
+    {#if showFilter}<TrackFilter {view} />{/if}
+    <SortBar {view} keys={sortKeys} />
+  </div>
+{/if}
 
 <div
   class="table-scroll pane pane-flush"
+  class:compact
   class:fill
   class:scrolled
   bind:this={scrollEl}
@@ -433,12 +441,15 @@
   data-perf-scroll
   use:trackDrag={drag}
 >
+  {#if !compact}
   <div
     class="head-frost"
     aria-hidden="true"
     style="height:{theadHeight}px;margin-bottom:-{theadHeight}px"
   ></div>
-  <table aria-label="Tracks" aria-rowcount={grouping ? undefined : rows.length + 1}>
+  {/if}
+  <table aria-label="Tracks" aria-rowcount={grouping || compact ? undefined : rows.length + 1}>
+    {#if !compact}
     <thead bind:clientHeight={theadHeight}>
       <tr use:menuFor={columnMenu}>
         <th scope="col" style="text-align:right">
@@ -456,6 +467,7 @@
         <th scope="col" class="actions-head"></th>
       </tr>
     </thead>
+    {/if}
     <tbody>
       {#if range.padTop > 0}
         <tr aria-hidden="true"><td colspan={columns} style="height:{range.padTop}px;padding:0;border:0"></td></tr>
@@ -507,13 +519,15 @@
                 playlist: playlistActions,
               })}
           >
-            <td class="muted tnum num-cell">
-              {#if playingTrackId !== null && t.id === playingTrackId}
-                <span class="num-mark"><NowPlayingMark playing={playbackRunning} size={16} label={playbackRunning ? "Now playing" : "Paused"} /></span>
-              {:else}
-                {row.number ?? index + 1}
-              {/if}
-            </td>
+            {#if !compact}
+              <td class="muted tnum num-cell">
+                {#if playingTrackId !== null && t.id === playingTrackId}
+                  <span class="num-mark"><NowPlayingMark playing={playbackRunning} size={16} label={playbackRunning ? "Now playing" : "Paused"} /></span>
+                {:else}
+                  {row.number ?? index + 1}
+                {/if}
+              </td>
+            {/if}
             <td class="thumb-cell">
               <button class="thumb" onclick={() => play(index)} disabled={loadingAll} aria-label="Play" title="Play">
                 <Cover uuid={t.album?.cover} size={80} radius={0} alt="" />
@@ -532,7 +546,19 @@
                     : (tag === "explicit" ? "Explicit" : "AI-generated")}
                 >{tag === "explicit" ? "E" : "AI"}</span>
               {/each}
-            </div></td>
+            </div>
+            {#if compact}
+              <div class="cell-text sub-text muted">
+                <ArtistLinks
+                  artists={t.artists}
+                  onOpen={nav ? openArtist : undefined}
+                  current={here?.artistId}
+                  focusable={false}
+                />
+              </div>
+            {/if}
+            </td>
+            {#if !compact}
             <td class="text-cell muted"><div class="cell-text">
               <ArtistLinks
                 artists={t.artists}
@@ -541,7 +567,8 @@
                 focusable={false}
               />
             </div></td>
-            {#if showAlbum}
+            {/if}
+            {#if showAlbum && !compact}
               <td class="text-cell muted"><div class="cell-text">
                 <NameLink label={t.album?.title ?? ""} onOpen={openAlbum} focusable={false} />
               </div></td>
@@ -554,9 +581,11 @@
               >{columnText(t, column)}</td>
             {/each}
             <td class="muted tnum nowrap-cell time-cell">{formatDuration(t.duration)}</td>
-            <td class="nowrap-cell">
-              {#if quality}<span class="badge" class:max={quality === "MAX"}>{quality}</span>{/if}
-            </td>
+            {#if !compact}
+              <td class="nowrap-cell">
+                {#if quality}<span class="badge" class:max={quality === "MAX"}>{quality}</span>{/if}
+              </td>
+            {/if}
             <td class="actions-cell">
               <button
                 class="reveal"
@@ -892,6 +921,31 @@
   }
   td button.thumb {
     display: block;
+  }
+  /* Compact: a list, not a table. No rules between rows; the title takes the
+     width and carries the artists on a second line. */
+  /* Taller rows with an inset, rounded cover so the thumbs don't touch. The
+     row math stays at --row-height: a preview renders whole, never windowed
+     (it is far shorter than the overscan). */
+  .compact .row {
+    height: calc(var(--row-height) + 10px);
+    border-bottom: 0;
+  }
+  .compact .thumb-cell {
+    padding: 0 14px 0 6px;
+  }
+  .compact .thumb {
+    width: calc(var(--row-height) - 6px);
+    height: calc(var(--row-height) - 6px);
+    overflow: hidden;
+    border-radius: 4px;
+  }
+  .compact .title-cell {
+    width: 100%;
+    line-height: 1.25;
+  }
+  .sub-text {
+    font-size: 12.5px;
   }
   .section-row th {
     text-align: left;
