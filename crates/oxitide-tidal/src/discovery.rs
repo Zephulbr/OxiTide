@@ -1,7 +1,7 @@
 use serde_json::Value;
 
 use crate::client::TidalClient;
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::models::{Artist, Track};
 
 /// Radio responses are fixed-size; 50 matches the official clients' first page.
@@ -24,10 +24,15 @@ impl TidalClient {
         Ok(radio_tracks_from_value(&raw))
     }
 
-    /// Artists similar to `id` (`artists/{id}/similar`).
+    /// Artists similar to `id` (`artists/{id}/similar`). TIDAL answers 404
+    /// for an artist it has no similar artists for (bare credit-only
+    /// profiles), which is an empty list, not an error.
     pub async fn similar_artists(&self, id: u64) -> Result<Vec<Artist>> {
         let params = [("limit", SIMILAR_ARTISTS_LIMIT.to_string())];
-        let raw: Value = self.get(&format!("artists/{id}/similar"), &params).await?;
+        let raw: Value = match self.get(&format!("artists/{id}/similar"), &params).await {
+            Err(Error::NotFound(_)) => return Ok(Vec::new()),
+            other => other?,
+        };
         let mut artists = similar_artists_from_value(&raw);
         self.fill_cover_fallbacks(&mut artists).await;
         Ok(artists)
@@ -210,6 +215,17 @@ mod tests {
         assert_eq!(artists[0].cover_fallback, None);
         assert_eq!(artists[1].cover_fallback.as_deref(), Some("c-12"));
         assert_eq!(artists[2].cover_fallback, None);
+    }
+
+    #[tokio::test]
+    async fn similar_artists_404_is_an_empty_list() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/artists/9/similar"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        assert!(client(&server).similar_artists(9).await.unwrap().is_empty());
     }
 
     #[tokio::test]
