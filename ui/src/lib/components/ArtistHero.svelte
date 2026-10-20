@@ -3,7 +3,7 @@
   import { api, type Artist, type ArtistProfile } from "../api";
   import { appearance } from "../appearance.svelte";
   import { isHttpUrl, linkBrand, linkLabel } from "../artistLinks";
-  import { ARTIST_PICTURE_SIZE, coverUrl } from "../artwork";
+  import { artistArt, coverUrl } from "../artwork";
   import { formatCount } from "../format";
   import { heroScrim } from "../heroScrim";
   import BioText from "./BioText.svelte";
@@ -52,9 +52,8 @@
   const fans = $derived(profile?.numberOfFollowers ?? null);
   const bioSegments = $derived(profile?.bioSegments ?? []);
   const links = $derived((profile?.externalLinks ?? []).filter((link) => isHttpUrl(link.url)));
-  const backdrop = $derived(
-    artist.picture ? coverUrl(artist.picture, ARTIST_PICTURE_SIZE) : "",
-  );
+  const art = $derived(artistArt(artist));
+  const backdrop = $derived(art.uuid ? coverUrl(art.uuid, art.size) : "");
   const scrim = $derived(
     heroScrim(tint ? [tint.primary, tint.secondary, tint.tertiary] : null, appearance.resolvedTheme),
   );
@@ -66,7 +65,7 @@
 
   // Local palette only: the hero must not repaint the app-wide --dyn-* mood.
   $effect(() => {
-    const uuid = artist.picture;
+    const uuid = art.uuid;
     const theme = appearance.resolvedTheme;
     if (!uuid) {
       tint = null;
@@ -118,7 +117,7 @@
   <div class="scrim" aria-hidden="true"></div>
   <div class="content">
     <span class="portrait">
-      <Cover uuid={artist.picture} size={ARTIST_PICTURE_SIZE} radius={999} alt={artist.name} />
+      <Cover uuid={art.uuid} size={art.size} radius={999} alt={artist.name} />
     </span>
     <div class="meta">
       <span class="kicker">Artist</span>

@@ -28,7 +28,30 @@ impl TidalClient {
     pub async fn similar_artists(&self, id: u64) -> Result<Vec<Artist>> {
         let params = [("limit", SIMILAR_ARTISTS_LIMIT.to_string())];
         let raw: Value = self.get(&format!("artists/{id}/similar"), &params).await?;
-        Ok(similar_artists_from_value(&raw))
+        let mut artists = similar_artists_from_value(&raw);
+        self.fill_cover_fallbacks(&mut artists).await;
+        Ok(artists)
+    }
+
+    /// List payloads omit `selectedAlbumCoverFallback`; only `artists/{id}`
+    /// carries it. Look it up for artists with no picture so their cards show
+    /// the album cover TIDAL does. Best effort: a failed lookup leaves the
+    /// artist imageless.
+    async fn fill_cover_fallbacks(&self, artists: &mut [Artist]) {
+        let missing: Vec<usize> = artists
+            .iter()
+            .enumerate()
+            .filter(|(_, a)| a.picture.is_none() && a.cover_fallback.is_none())
+            .map(|(i, _)| i)
+            .collect();
+        let full =
+            futures_util::future::join_all(missing.iter().map(|&i| self.artist(artists[i].id)))
+                .await;
+        for (i, result) in missing.into_iter().zip(full) {
+            if let Ok(full) = result {
+                artists[i].cover_fallback = full.cover_fallback;
+            }
+        }
     }
 }
 
@@ -153,6 +176,40 @@ mod tests {
         assert_eq!(artists[0].id, 11);
         assert_eq!(artists[0].name, "B");
         assert_eq!(artists[0].picture.as_deref(), Some("p-11"));
+    }
+
+    #[tokio::test]
+    async fn similar_artists_fetch_the_cover_fallback_for_pictureless_artists() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/artists/9/similar"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [
+                    {"id": 11, "name": "B", "picture": "p-11"},
+                    {"id": 12, "name": "C", "picture": null},
+                    {"id": 13, "name": "D", "picture": null}
+                ]
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/artists/12"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": 12, "name": "C", "picture": null, "selectedAlbumCoverFallback": "c-12"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/artists/13"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        let artists = client(&server).similar_artists(9).await.unwrap();
+        assert_eq!(artists.len(), 3);
+        assert_eq!(artists[0].cover_fallback, None);
+        assert_eq!(artists[1].cover_fallback.as_deref(), Some("c-12"));
+        assert_eq!(artists[2].cover_fallback, None);
     }
 
     #[tokio::test]

@@ -150,7 +150,7 @@
       title: artist.name,
       subtitle: `Like ${seed}`,
       item_type: "ARTIST",
-      artwork: artist.picture ?? null,
+      artwork: artist.picture ?? artist.cover_fallback ?? null,
     })),
   );
 
@@ -386,7 +386,7 @@
     <ul class="results">
       {#each search.results.artists.items as a (a.id)}
         <li>
-          <span class="res-thumb round"><Cover uuid={a.picture} size={80} radius={50} alt="" /></span>
+          <span class="res-thumb round"><Cover uuid={a.picture ?? a.cover_fallback} size={80} radius={50} alt="" /></span>
           <button onclick={() => nav.goto({ name: "artist", id: a.id })}>{a.name}</button>
         </li>
       {/each}

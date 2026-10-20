@@ -1,5 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { ARTIST_PICTURE_SIZE, collageCovers, coverUrl } from "./artwork";
+import { ARTIST_PICTURE_SIZE, artistArt, collageCovers, coverUrl } from "./artwork";
+
+describe("artistArt", () => {
+  it("prefers the picture at the artist size", () => {
+    expect(artistArt({ picture: "p", cover_fallback: "c" })).toEqual({
+      uuid: "p",
+      size: ARTIST_PICTURE_SIZE,
+    });
+  });
+
+  it("falls back to the album cover at an album size", () => {
+    expect(artistArt({ picture: null, cover_fallback: "c" })).toEqual({ uuid: "c", size: 640 });
+    expect(artistArt({})).toEqual({ uuid: null, size: 640 });
+  });
+});
 
 describe("coverUrl", () => {
   it("maps a dashed uuid onto the image CDN path", () => {

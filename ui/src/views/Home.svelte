@@ -90,7 +90,7 @@
       title: artist.name,
       subtitle: "Artist",
       item_type: "ARTIST",
-      artwork: artist.picture ?? null,
+      artwork: artist.picture ?? artist.cover_fallback ?? null,
     })),
   );
 

@@ -5,6 +5,16 @@ export type CoverSize = 80 | 160 | 320 | 480 | 640 | 1280;
 /// keep using 640.
 export const ARTIST_PICTURE_SIZE: CoverSize = 480;
 
+/// An artist's image: the picture, else the album cover TIDAL falls back to.
+/// The fallback is an album image (403 at 480), so it pairs with 640.
+export function artistArt(artist: {
+  picture?: string | null;
+  cover_fallback?: string | null;
+}): { uuid: string | null; size: CoverSize } {
+  if (artist.picture) return { uuid: artist.picture, size: ARTIST_PICTURE_SIZE };
+  return { uuid: artist.cover_fallback ?? null, size: 640 };
+}
+
 /// TIDAL serves artwork from an unauthenticated CDN keyed by the dashed
 /// uuid exploded into a path. Mix rows from `pages/*` endpoints instead carry
 /// a ready-made absolute url (the `images` object); pass those through.

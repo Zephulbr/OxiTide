@@ -1,12 +1,11 @@
 <script lang="ts">
   import Icon from "../../lib/components/Icon.svelte";
-  import { ARTIST_PICTURE_SIZE } from "../../lib/artwork";
   import DetailHead from "../components/DetailHead.svelte";
   import Loader from "../components/Loader.svelte";
   import Shelf from "../components/Shelf.svelte";
   import TrackRow from "../components/TrackRow.svelte";
   import { useRemote } from "../context";
-  import { albumTile, art, artistTile, fromTrack } from "../convert";
+  import { albumTile, artistImage, artistTile, fromTrack } from "../convert";
 
   let { id }: { id: number } = $props();
   const { api, actions, store } = useRemote();
@@ -38,7 +37,7 @@
   <Loader {load} key={id}>
     {#snippet children({ artist, top, albums, singles, similar })}
       <DetailHead
-        image={art(artist.picture, ARTIST_PICTURE_SIZE)}
+        image={artistImage(artist)}
         title={artist.name}
         kind="Artist"
         round

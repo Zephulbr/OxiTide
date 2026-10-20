@@ -323,7 +323,7 @@
               title: `${artist.name} Mix`,
               subtitle: "Artist mix",
               item_type: "MIX",
-              artwork: artist.picture,
+              artwork: artist.picture ?? artist.cover_fallback,
             }}
             onclick={() => nav.goto({ name: "mix", id: mixId })}
           />

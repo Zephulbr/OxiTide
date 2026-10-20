@@ -45,7 +45,14 @@ export interface AlbumInfo {
 export interface CreditContributor { name: string; artistId?: number | null }
 export interface CreditRole { role: string; contributors: CreditContributor[] }
 export interface TrackCredits { roles: CreditRole[] }
-export interface Artist { id: number; name: string; picture?: string | null; mixes?: ArtistMixes | null }
+export interface Artist {
+  id: number;
+  name: string;
+  picture?: string | null;
+  /// Album cover shown when the artist has no picture (album sizes only).
+  cover_fallback?: string | null;
+  mixes?: ArtistMixes | null;
+}
 export interface ArtistMixes {
   ARTIST_MIX?: string | null;
   MASTER_ARTIST_MIX?: string | null;

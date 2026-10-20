@@ -21,7 +21,7 @@ export function artistCard(artist: Artist): PageItem {
     title: artist.name,
     subtitle: null,
     item_type: "ARTIST",
-    artwork: artist.picture,
+    artwork: artist.picture ?? artist.cover_fallback,
   };
 }
 

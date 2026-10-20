@@ -62,7 +62,7 @@
   {#each list as artist (artist.id)}
     <button class="card" onclick={() => nav.goto({ name: "artist", id: artist.id })}>
       <span class="record" aria-hidden="true">
-        <span class="label"><Cover uuid={artist.picture} size={320} radius={160} alt="" /></span>
+        <span class="label"><Cover uuid={artist.picture ?? artist.cover_fallback} size={320} radius={160} alt="" /></span>
       </span>
       <span class="title">{artist.name}</span>
     </button>

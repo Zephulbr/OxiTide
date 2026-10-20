@@ -131,6 +131,15 @@ pub struct Artist {
     pub name: String,
     #[serde(default)]
     pub picture: Option<String>,
+    /// Album cover TIDAL shows for an artist without a picture. It is an album
+    /// image, so it has album sizes (no 480; see `ui/src/lib/artwork.ts`).
+    #[serde(
+        default,
+        rename(deserialize = "selectedAlbumCoverFallback"),
+        alias = "cover_fallback",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub cover_fallback: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mixes: Option<ArtistMixes>,
 }
@@ -532,5 +541,17 @@ mod tests {
         assert!(artist.mixes.is_none());
         let value = serde_json::to_value(&artist).unwrap();
         assert!(value.get("mixes").is_none());
+    }
+
+    #[test]
+    fn artist_reads_album_cover_fallback() {
+        let raw = r#"{"id": 1, "name": "A", "picture": null, "selectedAlbumCoverFallback": "c-1"}"#;
+        let artist: Artist = serde_json::from_str(raw).unwrap();
+        assert_eq!(artist.cover_fallback.as_deref(), Some("c-1"));
+
+        let value = serde_json::to_value(&artist).unwrap();
+        assert_eq!(value["cover_fallback"], "c-1");
+        let back: Artist = serde_json::from_value(value).unwrap();
+        assert_eq!(back.cover_fallback.as_deref(), Some("c-1"));
     }
 }

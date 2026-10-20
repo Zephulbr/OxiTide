@@ -9,7 +9,7 @@ import type {
   QueueItem,
   Track,
 } from "../lib/api";
-import { ARTIST_PICTURE_SIZE, coverUrl, type CoverSize } from "../lib/artwork";
+import { ARTIST_PICTURE_SIZE, artistArt, coverUrl, type CoverSize } from "../lib/artwork";
 import { isPlayableTrack, pageTrackInput } from "../lib/media";
 import type { RemoteRoute } from "./routes";
 import { routeForItem } from "./routes";
@@ -116,6 +116,12 @@ export function art(uuid: string | null | undefined, size: CoverSize = 320): str
   return uuid ? coverUrl(uuid, size) : "";
 }
 
+/// An artist's picture, else TIDAL's album cover fallback.
+export function artistImage(artist: Artist): string {
+  const { uuid, size } = artistArt(artist);
+  return art(uuid, size);
+}
+
 /// A shelf tile.
 export interface Tile {
   key: string;
@@ -160,7 +166,7 @@ export function artistTile(artist: Artist): Tile {
     key: `artist-${artist.id}`,
     title: artist.name,
     subtitle: "Artist",
-    image: art(artist.picture, ARTIST_PICTURE_SIZE),
+    image: artistImage(artist),
     round: true,
     route: { name: "artist", id: artist.id },
     track: null,
