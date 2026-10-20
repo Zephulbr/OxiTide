@@ -15,6 +15,8 @@ export interface SearchStore {
   retry(): void;
   /// Clears the query, results, and any pending timer.
   reset(): void;
+  /// Shows `results` for `query` at once (a cached search coming back).
+  restore(query: string, results: SearchResults): void;
 }
 
 const MIN_LIVE_CHARS = 2;
@@ -102,6 +104,13 @@ export function createSearch(
     clearResults();
   }
 
+  function restore(text: string, cached: SearchResults) {
+    clearResults();
+    query = text;
+    results = cached;
+    settledQuery = text.trim();
+  }
+
   return {
     get query() {
       return query;
@@ -122,5 +131,6 @@ export function createSearch(
     runNow,
     retry,
     reset,
+    restore,
   };
 }

@@ -34,9 +34,14 @@ function isSectionSource(value: unknown): value is SectionSource {
   return value === "home" || value === "explore" || value === "forYou" || isPagePath(value);
 }
 
+/// The search Explore shows: its query and type chip live in the route, so
+/// Back from a result returns to the results, not Explore's front page.
+export type ExploreKind = "tracks" | "albums" | "artists" | "playlists";
+const EXPLORE_KINDS: readonly ExploreKind[] = ["tracks", "albums", "artists", "playlists"];
+
 export type Route =
   | { name: "home" }
-  | { name: "explore" }
+  | { name: "explore"; q?: string; kind?: ExploreKind }
   | { name: "feed" }
   | { name: "history"; tab: HistoryTab }
   | { name: "playlists" }
@@ -89,6 +94,9 @@ function sameRoute(a: Route, b: Route): boolean {
   if (a.name === "history" && b.name === "history") {
     return a.tab === b.tab;
   }
+  if (a.name === "explore" && b.name === "explore") {
+    return (a.q ?? "") === (b.q ?? "") && a.kind === b.kind;
+  }
   if ("id" in a && "id" in b) return a.id === b.id;
   return true;
 }
@@ -125,8 +133,14 @@ function parseRoute(value: unknown): Route | null {
   switch (record.name) {
     case "home":
       return { name: "home" };
-    case "explore":
-      return { name: "explore" };
+    case "explore": {
+      const q = typeof record.q === "string" && record.q.trim().length > 0 ? record.q : undefined;
+      if (!q) return { name: "explore" };
+      const kind = record.kind;
+      return typeof kind === "string" && EXPLORE_KINDS.includes(kind as ExploreKind)
+        ? { name: "explore", q, kind: kind as ExploreKind }
+        : { name: "explore", q };
+    }
     case "feed":
       return { name: "feed" };
     case "history": {

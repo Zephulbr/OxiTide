@@ -16,9 +16,9 @@
   import { searchHistory } from "../lib/searchHistory.svelte";
   import { createSearchPages } from "../lib/searchPages.svelte";
   import { kindsWithResults } from "../lib/searchResults";
-  import { load as loadCached, peek } from "../lib/viewCache";
+  import { fetchShared, load as loadCached, peek } from "../lib/viewCache";
   import type { Favorites } from "../lib/favorites.svelte";
-  import type { Nav } from "../lib/nav.svelte";
+  import type { Nav, Route } from "../lib/nav.svelte";
   import type { PlaylistActions } from "../lib/playlists.svelte";
   import type { Player } from "../lib/player.svelte";
   import type { Toasts } from "../lib/toasts.svelte";
@@ -37,7 +37,10 @@
     toasts: Toasts;
   } = $props();
 
-  const search = createSearch(api.search);
+  /// Searches go through the page cache, so Back to a search shows its
+  /// results on the first frame instead of searching again.
+  const searchSource = (query: string) => ({ key: `search:${query}`, fetch: () => api.search(query) });
+  const search = createSearch((query) => fetchShared(searchSource(query)));
   const history = searchHistory();
 
   let searchFocused = $state(false);
@@ -69,6 +72,58 @@
     const results = search.results;
     const query = search.settledQuery;
     if (results) untrack(() => pages.seed(results, query));
+  });
+
+  /// The search in the route (`q`, `kind`) and the one on screen follow each
+  /// other: a settled search or a chip writes the route in place (no new
+  /// history entry per keystroke), and a route that differs from what was
+  /// last written (mount, Back, the sidebar's plain Explore) is applied.
+  let written: string | null = null;
+  const routeKey = (q: string, k: SearchKind | "all") => `${q}\n${k}`;
+
+  function applyRoute(route: Route) {
+    if (route.name !== "explore") return;
+    const q = route.q?.trim() ?? "";
+    const k = route.kind ?? "all";
+    written = routeKey(q, k);
+    kind = k;
+    if (q === search.settledQuery && search.results) return;
+    if (!q) {
+      search.reset();
+      return;
+    }
+    const cached = peek(searchSource(q));
+    if (cached) search.restore(q, cached);
+    else {
+      search.setQuery(q);
+      search.runNow();
+    }
+  }
+
+  // At once, so a restored search is on the first frame (and the scroll
+  // position Back restores has its results to land on).
+  applyRoute(untrack(() => nav.route));
+
+  $effect(() => {
+    const route = nav.route;
+    untrack(() => {
+      if (route.name !== "explore") return;
+      const key = routeKey(route.q?.trim() ?? "", route.kind ?? "all");
+      if (key !== written) applyRoute(route);
+    });
+  });
+
+  $effect(() => {
+    // Mid-search the old route stands; it moves once the results land.
+    if (search.loading) return;
+    const q = search.query.trim() ? search.settledQuery : "";
+    const k = q ? kind : "all";
+    untrack(() => {
+      const key = routeKey(q, k);
+      if (key === written || nav.route.name !== "explore") return;
+      written = key;
+      nav.replace(q ? (k === "all" ? { name: "explore", q } : { name: "explore", q, kind: k }) : { name: "explore" });
+    });
   });
 
   // Both parts read through the page cache (lib/viewCache.ts); the personal
@@ -236,7 +291,7 @@
 
 </script>
 
-<header class="page-head explore-head">
+<header class="page-head explore-head" class:searching>
 <h2>Explore</h2>
 <div class="search-block">
 <div class="search-bar">
@@ -393,6 +448,10 @@
     align-items: stretch;
     gap: 12px;
     margin-bottom: 26px;
+  }
+  /* Results open with their own headings' margin; the chips sit closer. */
+  .explore-head.searching {
+    margin-bottom: 4px;
   }
   /* The search is the page's centrepiece: centred, with its chips clipped to
      one row of the same width. */

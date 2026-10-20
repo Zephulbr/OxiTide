@@ -92,6 +92,26 @@ describe("nav history", () => {
     expect(nav.entry).toBe(entry);
   });
 
+  it("keeps a search in the explore route: Back from a result returns to it", () => {
+    const storage = fakeStorage();
+    const nav = createNav(storage);
+    nav.goto({ name: "explore" });
+    nav.replace({ name: "explore", q: "ado", kind: "artists" });
+    nav.goto({ name: "artist", id: 7 });
+
+    nav.back();
+    expect(nav.route).toEqual({ name: "explore", q: "ado", kind: "artists" });
+    // The plain Explore is a different place from the search.
+    nav.goto({ name: "explore" });
+    expect(nav.route).toEqual({ name: "explore" });
+    // And it survives a restart, with an unknown kind dropped.
+    expect(createNav(storage).route).toEqual({ name: "explore" });
+    const seeded = fakeStorage(
+      JSON.stringify({ history: [{ name: "explore", q: "ado", kind: "videos" }], index: 0 }),
+    );
+    expect(createNav(seeded).route).toEqual({ name: "explore", q: "ado" });
+  });
+
   it("clamps back and forward at the ends", () => {
     const nav = createNav();
     nav.goto({ name: "explore" });
