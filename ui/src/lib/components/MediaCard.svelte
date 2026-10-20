@@ -23,6 +23,7 @@
     playing = false,
     blocked = false,
     playButton = false,
+    gapless = false,
   }: {
     item: PageItem;
     variant: "tile" | "carousel" | "mini" | "row";
@@ -38,6 +39,8 @@
     /// Show the hover play button on a card whose click starts playback even
     /// though it is not a track (Home's radio cards). Tracks always show it.
     playButton?: boolean;
+    /// Collage covers with no seams between the four tiles (Home's rows).
+    gapless?: boolean;
   } = $props();
 
   const shape = $derived(shapeForItemType(item.item_type));
@@ -120,6 +123,7 @@
         image={item.artwork}
         size={variant === "row" ? 160 : 320}
         radius={0}
+        {gapless}
         alt=""
       />
     {:else}
@@ -408,6 +412,7 @@
     width: 30px;
     height: 30px;
   }
+
   .media:hover .play-glyph,
   .media:focus-visible .play-glyph,
   .media.split:focus-within .play-glyph {
@@ -461,5 +466,13 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  /* Row cards carry larger art than the type was sized for; a step up keeps
+     the text from reading as a caption beside it. */
+  .row .title {
+    font-size: 15px;
+  }
+  .row .sub {
+    font-size: 13px;
   }
 </style>

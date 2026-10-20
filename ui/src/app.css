@@ -86,7 +86,20 @@ body {
 }
 /* position: relative anchors NowPlaying's absolute-positioned close fade. */
 /* Bottom clearance keeps the last content reachable past the floating bar. */
-.main { position: relative; padding: 32px 28px calc(var(--player-height) + 8px); overflow: auto; }
+/* `--page-top` is every page's gap above its content: 32px of frame plus 58px
+   of air. Pages that draw their own top (Profiles' sticky head) read it; Now
+   Playing is a full-window composition and keeps the bare 32px. */
+.main {
+  --page-top: 90px;
+  --page-title-size: 46px;
+  position: relative;
+  padding: var(--page-top) 28px calc(var(--player-height) + 8px);
+  overflow: auto;
+}
+.main:not(.rack-main):has(> .now-playing) { padding-top: 32px; }
+/* Rack's display is also `.main` but keeps its own frame (RackShell) and
+   title labels (rack.css): the bare 32px top, the default title sizes. */
+.main.rack-main { --page-top: 32px; --page-title-size: initial; }
 /* The skip link focuses the scroller itself; a ring around the whole page
    would be noise, so the landmark opts out of the global focus ring. */
 .main:focus-visible { outline: none; }
@@ -326,13 +339,22 @@ body {
   font-size: 13px;
 }
 
-/* View titles use the Fraunces display face (spec §6); section headings stay
-   in the UI face at the 20/600 step. */
+/* View titles use the display settings (the UI face, heavier and tighter);
+   section headings stay at the 20/600 step. */
 h1, h2 {
   font-family: var(--font-display);
   font-size: 32px;
-  font-weight: 640;
-  letter-spacing: -0.02em;
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
+}
+/* A page's own title (the routed page's first heading, bare or in its
+   .page-head) steps up to `--page-title-size`, set on `.main`; Rack unsets it
+   and draws these as its own small labels (rack.css). */
+.page > h2,
+.page-head > h2,
+.page-head > .title-block > h2 {
+  font-size: var(--page-title-size, 32px);
+  line-height: 1.1;
 }
 h3 {
   font-size: 20px;

@@ -1,5 +1,6 @@
 import { api, type CollectionEntry, type CollectionFolder, type Playlist } from "./api";
 import { errorMessage } from "./errors";
+import { folderMeta, type FolderColorId } from "./folderMeta.svelte";
 import type { CollectionTree } from "./collection.svelte";
 import type { Toasts } from "./toasts.svelte";
 import { invalidate } from "./viewCache";
@@ -13,6 +14,12 @@ export interface FolderOption {
   depth: number;
 }
 
+/// A folder's local details, edited alongside its name.
+export interface FolderDetails {
+  description: string;
+  color: FolderColorId | null;
+}
+
 export interface CreateFolderTarget {
   parentId: string;
 }
@@ -21,6 +28,8 @@ export interface CollectionActions {
   readonly renameTarget: RenameTarget | null;
   readonly removeTarget: CollectionEntry | null;
   readonly moveTarget: Playlist | null;
+  /// The folder the move target sits in now ("root": in no folder).
+  readonly moveFrom: string;
   readonly createFolderTarget: CreateFolderTarget | null;
   readonly busy: boolean;
   readonly revision: number;
@@ -29,13 +38,15 @@ export interface CollectionActions {
   openRenamePlaylist(playlist: Playlist): void;
   openRenameFolder(folder: CollectionFolder): void;
   openRemove(entry: CollectionEntry): void;
-  openMove(playlist: Playlist): void;
+  openMove(playlist: Playlist, fromFolderId?: string): void;
   openCreateFolder(parentId: string): void;
   close(): void;
-  rename(value: string): Promise<void>;
+  /// Folders also take a description and colour (kept on this device,
+  /// folderMeta).
+  rename(value: string, folder?: FolderDetails): Promise<void>;
   confirmRemove(): Promise<void>;
   move(folderId: string): Promise<void>;
-  createFolder(name: string): Promise<void>;
+  createFolder(name: string, color?: FolderColorId | null): Promise<void>;
   reset(): void;
 }
 
@@ -51,6 +62,7 @@ export function createCollectionActions(
   let renameTarget = $state<RenameTarget | null>(null);
   let removeTarget = $state<CollectionEntry | null>(null);
   let moveTarget = $state<Playlist | null>(null);
+  let moveFrom = $state("root");
   let createFolderTarget = $state<CreateFolderTarget | null>(null);
   let busy = $state(false);
   let revision = $state(0);
@@ -110,8 +122,9 @@ export function createCollectionActions(
     removeTarget = entry;
   }
 
-  function openMove(playlist: Playlist) {
+  function openMove(playlist: Playlist, fromFolderId = "root") {
     moveTarget = playlist;
+    moveFrom = fromFolderId;
     folderOptions = [];
     void loadFolders();
   }
@@ -120,7 +133,7 @@ export function createCollectionActions(
     createFolderTarget = { parentId };
   }
 
-  async function rename(value: string) {
+  async function rename(value: string, details?: FolderDetails) {
     const target = renameTarget;
     const name = value.trim();
     if (!target || name.length === 0 || busy) return;
@@ -131,8 +144,14 @@ export function createCollectionActions(
         invalidate(`playlist:${target.playlist.uuid}`);
         toasts.show("Playlist renamed", { severity: "success" });
       } else {
-        await api.renameFolder(target.folder.id, name);
-        toasts.show("Folder renamed", { severity: "success" });
+        // Only a changed name goes to TIDAL; the description is local.
+        const renamed = name !== target.folder.name;
+        if (renamed) await api.renameFolder(target.folder.id, name);
+        if (details) {
+          folderMeta().setDescription(target.folder.id, details.description);
+          folderMeta().setColor(target.folder.id, details.color);
+        }
+        toasts.show(renamed ? "Folder renamed" : "Folder saved", { severity: "success" });
       }
       revision += 1;
       close();
@@ -170,13 +189,14 @@ export function createCollectionActions(
     }
   }
 
-  async function createFolder(value: string) {
+  async function createFolder(value: string, color: FolderColorId | null = null) {
     const target = createFolderTarget;
     const name = value.trim();
     if (!target || name.length === 0 || busy) return;
     busy = true;
     try {
-      await api.createFolder(name, target.parentId);
+      const created = await api.createFolder(name, target.parentId);
+      if (color && created?.id) folderMeta().setColor(created.id, color);
       toasts.show(`Created ${name}`, { severity: "success" });
       revision += 1;
       close();
@@ -214,6 +234,9 @@ export function createCollectionActions(
     },
     get moveTarget() {
       return moveTarget;
+    },
+    get moveFrom() {
+      return moveFrom;
     },
     get createFolderTarget() {
       return createFolderTarget;

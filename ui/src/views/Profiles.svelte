@@ -128,13 +128,15 @@
     padding-bottom: 32px;
   }
   /* The shared page head, made sticky with a frost ramp once the page scrolls
-     (the main scroller's top padding is dropped for this view, app.css). */
+     (the main scroller's top padding is dropped for this view, app.css). It
+     carries the page's top gap itself, and scrolls up by the extra air before
+     it sticks so the stuck band stays 32px deep. */
   .page-head {
     position: sticky;
-    top: 0;
+    top: calc(32px - var(--page-top, 32px));
     z-index: 5;
     margin: 0 0 8px;
-    padding: 32px 0 16px;
+    padding: var(--page-top, 32px) 0 16px;
   }
   .head-frost {
     position: absolute;
@@ -187,7 +189,8 @@
     background: linear-gradient(var(--surface-3), var(--surface-1));
     font-family: var(--font-display);
     font-size: 18px;
-    font-weight: 640;
+    font-weight: var(--display-weight);
+    letter-spacing: var(--display-tracking);
     text-align: center;
   }
   .n {

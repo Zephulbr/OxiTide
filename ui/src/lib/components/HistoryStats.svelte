@@ -12,8 +12,13 @@
     percentOf,
     WEEKDAYS,
   } from "../historyChart";
-  import type { Nav } from "../nav.svelte";
+  import { getCardActions } from "../cardActions";
+  import { menuFor, type MenuItem } from "../menu.svelte";
+  import { historyMenuItems } from "../menus";
+  import type { Nav, Route } from "../nav.svelte";
   import { playSource } from "../playSource.svelte";
+  import { goToTargets } from "../queueLinks";
+  import { playArtistRadio, playTrackRadio } from "../radio";
   import { resolveAlbum, resolveArtist, type ArtistTarget } from "../statsResolve";
   import type { Toasts } from "../toasts.svelte";
   import { trackFlags } from "../trackFlags.svelte";
@@ -31,6 +36,13 @@
 
   const plural = (n: number, word: string) => `${formatCount(n)} ${n === 1 ? word : `${word}s`}`;
 
+  /// The masthead's count line; the numbers take the accent.
+  const counts = $derived([
+    { n: stats.total_plays, word: "play" },
+    { n: stats.distinct_tracks, word: "track" },
+    { n: stats.distinct_artists, word: "artist" },
+    { n: stats.distinct_albums, word: "album" },
+  ]);
   const fan = $derived(stats.top_albums.filter((album) => album.cover).slice(0, 5));
   const figures = $derived([
     {
@@ -103,10 +115,46 @@
     /// `undefined` while an artist picture is still resolving.
     cover: string | null | undefined;
     round: boolean;
+    /// An album cover: square corners, like album sleeves across the UI.
+    sleeve: boolean;
     /// The cover is an artist picture (served at different sizes than albums).
     picture: boolean;
     open: (() => void) | null;
     label: string;
+    /// Right-click / Shift+F10 menu, built when it opens (ids resolve late).
+    menu: () => MenuItem[];
+  }
+
+  const cardActions = getCardActions();
+  const go = (route: Route) => nav.goto(route);
+
+  /// Shown while a name has not resolved to an id yet (or never will).
+  function pendingItem(label: string): MenuItem[] {
+    return [{ id: "pending", label, icon: "external-link", disabled: true, run: () => {} }];
+  }
+
+  function artistMenu(name: string, target: ArtistTarget | null | undefined): MenuItem[] {
+    if (!target) return pendingItem(`Go to ${name}`);
+    return [
+      { id: "go-artist", label: "Go to artist", icon: "user", run: () => go({ name: "artist", id: target.id }) },
+      { id: "radio", label: "Artist radio", icon: "radio", run: () => void playArtistRadio(target.id, toasts) },
+    ];
+  }
+
+  function trackMenu(track: StatsTopTrack, i: number): MenuItem[] {
+    const [play, ...rest] = historyMenuItems({ play: () => void playTop(i), ...goToTargets(track, go, api.getTrack) });
+    return [
+      play,
+      { id: "radio", label: "Track radio", icon: "radio", run: () => void playTrackRadio(track.track_id, toasts) },
+      ...rest,
+    ];
+  }
+
+  /// Albums get the same menu as album cards (play, queue, favorite, link).
+  function albumMenu(name: string, cover: string | null, id: number | null | undefined): MenuItem[] {
+    if (!id || !cardActions) return pendingItem(`Go to ${name}`);
+    const item = { id: String(id), title: name, item_type: "ALBUM", artwork: cover };
+    return cardActions.menu(item, { kind: "album", id });
   }
 
   async function playTop(start: number) {
@@ -147,9 +195,11 @@
           listened: entry.listened_ms,
           cover: target === undefined ? undefined : (target?.picture ?? entry.cover ?? null),
           round: true,
+          sleeve: false,
           picture: !!target?.picture,
           open: target ? () => nav.goto({ name: "artist", id: target.id }) : null,
           label: `Open ${entry.name}`,
+          menu: () => artistMenu(entry.name, artistTargets[entry.name]),
         };
       }),
     },
@@ -166,9 +216,11 @@
           listened: track.listened_ms,
           cover: track.cover ?? null,
           round: false,
+          sleeve: false,
           picture: false,
           open: () => void playTop(i),
           label: `Play ${track.title}`,
+          menu: () => trackMenu(track, i),
         }),
       ),
     },
@@ -186,9 +238,11 @@
           listened: entry.listened_ms,
           cover: entry.cover ?? null,
           round: false,
+          sleeve: true,
           picture: false,
           open: id ? () => nav.goto({ name: "album", id }) : null,
           label: `Open ${entry.name}`,
+          menu: () => albumMenu(entry.name, entry.cover ?? null, albumIds[entry.name]),
         };
       }),
     },
@@ -196,9 +250,9 @@
 </script>
 
 {#snippet art(row: Row, size: 80 | 160 | 320)}
-  <span class="art" class:round={row.round}>
+  <span class="art" class:round={row.round} class:square={row.sleeve}>
     {#if row.cover !== undefined}
-      <Cover uuid={row.cover} size={row.picture ? ARTIST_PICTURE_SIZE : size} radius={row.round ? 999 : 6} alt="" />
+      <Cover uuid={row.cover} size={row.picture ? ARTIST_PICTURE_SIZE : size} radius={row.round ? 999 : row.sleeve ? 0 : 6} alt="" />
     {/if}
   </span>
 {/snippet}
@@ -210,12 +264,6 @@
     <div class="headline">
       <span class="eyebrow">All time</span>
       <strong class="total tnum">{formatListenTime(stats.total_listened_ms)}</strong>
-      <span class="muted tnum counts">
-        {plural(stats.total_plays, "play")} · {plural(stats.distinct_tracks, "track")} · {plural(
-          stats.distinct_artists,
-          "artist",
-        )} · {plural(stats.distinct_albums, "album")}
-      </span>
       <dl class="figures">
         {#each figures as figure (figure.label)}
           <div>
@@ -226,10 +274,19 @@
         {/each}
       </dl>
     </div>
+    <!-- All-time counts, stacked in the middle of the masthead. -->
+    <ul class="counts" aria-label="All-time counts">
+      {#each counts as count (count.word)}
+        <li class="tnum">
+          <span class="n">{formatCount(count.n)}</span>
+          <span class="muted">{count.n === 1 ? count.word : `${count.word}s`}</span>
+        </li>
+      {/each}
+    </ul>
     {#if fan.length > 0}
       <div class="fan" aria-hidden="true" style:--count={fan.length}>
         {#each fan as album, i (album.name)}
-          <span class="sleeve" style:--i={i}><Cover uuid={album.cover} size={320} radius={10} alt="" /></span>
+          <span class="sleeve" style:--i={i} title={album.name}><Cover uuid={album.cover} size={320} radius={0} alt="" /></span>
         {/each}
       </div>
     {/if}
@@ -324,7 +381,14 @@
           <span class="muted tnum">{column.total}</span>
         </header>
         {#if top}
-          <button type="button" class="lead" disabled={!top.open} onclick={() => top.open?.()} aria-label={top.label}>
+          <button
+            type="button"
+            class="lead"
+            disabled={!top.open}
+            onclick={() => top.open?.()}
+            aria-label={top.label}
+            use:menuFor={() => top.menu()}
+          >
             {@render art(top, 320)}
             <span class="lead-text">
               <span class="eyebrow">{column.lead}</span>
@@ -343,6 +407,7 @@
                 disabled={!row.open}
                 onclick={() => row.open?.()}
                 aria-label={row.label}
+                use:menuFor={() => row.menu()}
                 style:--share={row.plays / max}
               >
                 <span class="rank tnum">{i + 2}</span>
@@ -371,12 +436,15 @@
     color: var(--accent);
   }
 
-  /* Masthead: the all-time figure in Fraunces, four secondary figures under
+  /* Masthead: the all-time figure in the display weight, four secondary figures under
      it, and the top albums fanned out on the right like sleeves on a table. */
   .hero {
     position: relative;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    /* Headline | counts | album fan. Equal side tracks put the counts on the
+       card's centre line (an `auto 1fr auto` split centres them between the
+       headline and the fan instead, which drifts with their widths). */
+    grid-template-columns: 1fr auto 1fr;
     gap: 32px;
     align-items: center;
     margin-bottom: 16px;
@@ -394,12 +462,44 @@
   .total {
     font-family: var(--font-display);
     font-size: 56px;
-    font-weight: 640;
-    letter-spacing: -0.02em;
+    font-weight: var(--display-weight);
+    letter-spacing: var(--display-tracking);
     line-height: 1.05;
   }
+  /* The masthead sits on an accent wash (`.lit-tint`) that lifts and tints
+     the backdrop, so the global muted grey loses contrast here. Secondary
+     text uses a stronger share of the text colour instead, and the figure
+     dividers a firmer line. */
+  .hero {
+    --hero-muted: color-mix(in srgb, var(--text) 74%, transparent);
+  }
+  .hero .muted {
+    color: var(--hero-muted);
+  }
+  /* One row across the card's centre: each number over its word. */
   .counts {
-    font-size: 13px;
+    grid-column: 2;
+    display: flex;
+    gap: 40px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .counts li {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+  .counts .n {
+    color: var(--accent);
+    font-size: 32px;
+    font-weight: var(--display-weight);
+    letter-spacing: var(--display-tracking);
+    line-height: 1.1;
+  }
+  .counts .muted {
+    font-size: 14.5px;
   }
   .figures {
     display: grid;
@@ -412,14 +512,14 @@
     flex-direction: column;
     gap: 2px;
     padding: 0 28px;
-    border-left: 1px solid var(--line);
+    border-left: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
   }
   .figures div:first-child {
     padding-left: 0;
     border-left: 0;
   }
   .figures dt {
-    font-size: 12px;
+    font-size: 12.5px;
     font-weight: 600;
   }
   .figures dd {
@@ -429,12 +529,14 @@
     white-space: nowrap;
   }
   .figures dd.note {
-    font-size: 12px;
-    font-weight: 400;
+    font-size: 12.5px;
+    font-weight: 500;
   }
   .fan {
     --size: 150px;
     --step: 62px;
+    grid-column: 3;
+    justify-self: end;
     position: relative;
     width: calc(var(--size) + (var(--count) - 1) * var(--step));
     height: var(--size);
@@ -448,11 +550,27 @@
     z-index: calc(10 - var(--i));
     width: var(--size);
     height: var(--size);
-    border-radius: 10px;
+    border-radius: 0;
     box-shadow: var(--shadow-cover), 0 0 0 1px var(--line);
-    transform: scale(calc(1 - var(--i) * 0.08));
+    scale: calc(1 - var(--i) * 0.08);
     transform-origin: right center;
     filter: brightness(calc(1 - var(--i) * 0.12));
+    transition:
+      translate var(--dur-view) var(--ease-enter),
+      scale var(--dur-view) var(--ease-enter),
+      filter var(--dur-state) var(--ease-enter);
+  }
+  /* Hover: the stack fans out to the left (the back sleeve stays put, each
+     one nearer the front slides further), and the sleeve under the pointer
+     comes forward at full size and brightness, lifted a little. */
+  .fan:hover .sleeve {
+    translate: calc((var(--i) - var(--count) + 1) * 34px) 0;
+  }
+  .fan .sleeve:hover {
+    z-index: 20;
+    scale: 1;
+    translate: calc((var(--i) - var(--count) + 1) * 34px) -6px;
+    filter: none;
   }
   .sleeve :global(.cover) {
     width: 100%;
@@ -678,13 +796,15 @@
     margin-bottom: 10px;
     padding: 10px;
     border-radius: var(--radius-card);
-    background: color-mix(in srgb, var(--accent) 9%, var(--surface-1));
+    /* No fill at rest: the #1 sits open on the panel and only takes the
+       rows' hover surface. */
+    background: transparent;
     color: inherit;
     text-align: left;
     transition: background-color var(--dur-micro) var(--ease-enter);
   }
   .lead:not(:disabled):hover {
-    background: color-mix(in srgb, var(--accent) 14%, var(--surface-2));
+    background: var(--surface-2);
   }
   .lead .art {
     width: 104px;
@@ -700,8 +820,8 @@
   .lead-name {
     font-family: var(--font-display);
     font-size: 24px;
-    font-weight: 640;
-    letter-spacing: -0.01em;
+    font-weight: var(--display-weight);
+    letter-spacing: var(--display-tracking);
     line-height: 1.15;
     display: -webkit-box;
     -webkit-line-clamp: 2;
@@ -710,7 +830,6 @@
     overflow: hidden;
   }
   .lead-by {
-    font-style: italic;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -728,6 +847,9 @@
   }
   .art.round {
     border-radius: 50%;
+  }
+  .art.square {
+    border-radius: 0;
   }
   .art :global(.cover) {
     width: 100%;
@@ -829,6 +951,17 @@
     }
     .total {
       font-size: 42px;
+    }
+    /* Under the headline: the counts run across in one wrapping row. */
+    /* Under the headline, left-aligned, wrapping if it must. */
+    .counts {
+      grid-column: auto;
+      justify-self: start;
+      flex-wrap: wrap;
+      gap: 12px 28px;
+    }
+    .counts li {
+      align-items: flex-start;
     }
   }
 </style>

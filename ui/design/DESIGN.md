@@ -119,8 +119,27 @@ Select, alongside High, Lossless (still the default), and Max. Saved `low` prefe
 are preserved on load. Compact badges stay **AAC** for served Low streams; detailed
 readouts show the served bitrate. No new styling, animation, or background work.
 
+**Page frame:** the main scroller pads every page `90px 28px` (`--page-top` on `.main`:
+32px of frame plus 58px of air above the title), with the floating player's clearance at
+the bottom. Now Playing is a full-window composition and keeps a bare 32px top. A page
+that draws its own top reads `var(--page-top)`: Profiles' sticky head carries it as
+padding and sticks at `32px − --page-top`, so the stuck band stays 32px deep.
+
+**Page titles** (a page's own `h2`, bare or in its `.page-head`; Home's greeting and the
+Tracks and artist-catalogue heads read the variable in their own styles) are 46px (`--page-title-size` on `.main`, line-height 1.1) in the display face. Section
+headings stay at 20/600; detail-page headers (album, playlist, artist) have their own
+scale. Rack's display is also `.main` but resets both variables (`.main.rack-main`), so it
+keeps its own page padding and small title labels (`rack/DESIGN.md`).
+
 **Collection grids** share one recipe: `repeat(auto-fill, minmax(160–168px, 1fr))`, 12px
-card padding (Albums, Mixes, Playlists, Feed releases).
+card padding (Mixes, Feed releases). The two library collections, Playlists and Albums,
+use an `18px 14px` gap, 10px card padding and a 15/600 title over a 13px subtitle.
+Playlists has large tiles, `minmax(210px, 1fr)` (about six across a wide window). Albums
+sets eight across inside an extra 24px side inset, with container queries stepping down
+one column per ~160px of width so that tiles stay at about 140px or wider. Their headers carry
+the count under the title (`.title-block`: 14px at 62% text, 2px below) and a sort select (Albums: Recently added, Release date, Title A–Z, Artist A–Z), and
+a sort change glides the cards to their new places (`animate:flip`, 320ms, none under
+reduced motion).
 
 **Media cards** (`MediaCard.svelte`: Home, Explore/For You sections, Mixes, Playlists,
 Albums, Artist, Purchases) share one card. Variants: `tile`, `carousel` (210px), `mini`
@@ -164,10 +183,33 @@ pill chips the same width (recent searches with the history icon, top artists fr
 listening history with the user icon); chips that would wrap are clipped by the row's
 fixed height. Untitled quick-link rows (New, Top, HiRes, …) follow "New to you".
 
+**Search results** (`SearchResultsView.svelte`) replace the old all-in-one lists. While a
+search shows results, the suggestion chips give way to type chips (All · Tracks · Albums ·
+Artists · Playlists, only types that have results; the chosen one is accent-filled). The
+**All** overview has three parts:
+- A **Top result** card (`SearchTopHit.svelte`): TIDAL's `topHit`, or else an artist whose
+  name equals the query once case, accents and punctuation are ignored. It has no panel: a
+  row of cover and text, centred in its column under a centred "Top result" heading. The
+  152px cover (round for artists) lifts 3px on hover. To its right, 24px away and
+  left-aligned, sit a 30px display-face title clamped to two lines and, under it, a kind
+  pill with the artists and a year, album or track count. The 56px accent Play button grows in on
+  the centre of the cover on hover. Play plays an artist's top tracks.
+- **Tracks** beside the card: five rows without a filter bar (eight when there is no top
+  result), with "Show all", Shuffle and Play all. A container query on the overview
+  stacks the card above the tracks below 820px. A play from the preview queues every
+  loaded result track.
+- One `Carousel` row each for Artists, Albums and Playlists (`MediaCard` carousel cards,
+  "See all"), with the top result's own type leading.
+
+A single type shows its full table, or a `minmax(168px, 1fr)` tile grid, and pages in
+50 more per "Load more" (`search_type`).
+
 ### 2.2 Type
 
-- Display: **Fraunces** (Atmosphere/Instrument titles). Rack uses **Manrope 700** for
-  titles (hardware type, no serif).
+- Display: the UI face itself (`--font-display: var(--font-ui)`), set apart only by
+  `--display-weight` (750) and `--display-tracking` (−0.015em), so titles follow the
+  Typeface pick. No serif and no synthesized italics (Manrope ships upright only).
+  The sidebar wordmark is fixed Manrope 800 (+0.01em). Rack uses **Manrope 700** for titles.
 - UI: Manrope (default) / Inter (Instrument default) / System / Custom, user-selectable;
   fallback always ends in `system-ui`.
 - Weights 400/500/600/700; tabular numerals for all times and readouts.

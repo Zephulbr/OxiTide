@@ -140,6 +140,7 @@
 /* Printed section labels with an engraved rule (DESIGN §5.6). */
 :root[data-mode="rack"] .rack-main .page > h2,
 :root[data-mode="rack"] .rack-main .page-head > h2,
+:root[data-mode="rack"] .rack-main .page-head > .title-block > h2,
 :root[data-mode="rack"] .rack-main h3 {
   display: flex;
   align-items: center;
@@ -155,13 +156,15 @@
   margin-top: 0;
 }
 :root[data-mode="rack"] .rack-main .page > h2,
-:root[data-mode="rack"] .rack-main .page-head > h2 {
+:root[data-mode="rack"] .rack-main .page-head > h2,
+:root[data-mode="rack"] .rack-main .page-head > .title-block > h2 {
   margin-top: 0;
   font-size: 12px;
   color: var(--rack-silk);
 }
 :root[data-mode="rack"] .rack-main .page > h2::after,
 :root[data-mode="rack"] .rack-main .page-head > h2::after,
+:root[data-mode="rack"] .rack-main .page-head > .title-block > h2::after,
 :root[data-mode="rack"] .rack-main h3::after {
   content: "";
   flex: 1;

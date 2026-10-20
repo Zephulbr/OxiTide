@@ -6,10 +6,9 @@
     type FeedActivity,
     type PageItem,
     type PageSection,
-    type Stats,
   } from "../lib/api";
   import { errorMessage } from "../lib/errors";
-  import { editorialSections, feedAlbumItems, madeForYou, unseenCount } from "../lib/homeData";
+  import { editorialSections, feedAlbumItems, greeting, madeForYou, unseenCount } from "../lib/homeData";
   import { buildSuggestions, type HomeSuggestions, type RadioSeed } from "../lib/homeSuggest";
   import { shortcutEntries, type ShortcutEntry } from "../lib/media";
   import { routeForPageItem, type Nav } from "../lib/nav.svelte";
@@ -22,7 +21,6 @@
   import Carousel from "../lib/components/Carousel.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
   import HomeHero from "../lib/components/HomeHero.svelte";
-  import HomeListening from "../lib/components/HomeListening.svelte";
   import Loading from "../lib/components/Loading.svelte";
   import MediaCard from "../lib/components/MediaCard.svelte";
   import PageSections from "../lib/components/PageSections.svelte";
@@ -32,7 +30,6 @@
   // Every source reads through the page cache (lib/viewCache.ts). The
   // personal ones change with each play, so they always revalidate in the
   // background (`freshMs: 0`); the cache only removes the wait.
-  const tz = new Date().getTimezoneOffset();
   const sources = {
     editorial: { key: "home:editorial", fetch: () => api.getHome() },
     shortcuts: {
@@ -49,7 +46,6 @@
     // Shared with the Mixes and Feed pages (lib/viewData.ts).
     forYou: forYouSource(),
     feed: feedSource(),
-    stats: { key: "home:stats", fetch: () => api.getStats(tz), freshMs: 0 },
     suggestions: {
       key: "home:suggestions",
       fetch: async () => buildSuggestions((await api.getHistoryPage(0, 60)).items, api),
@@ -66,7 +62,11 @@
   let suggestions = $state<HomeSuggestions | null>(null);
   let mixes = $state<PageItem[]>([]);
   let releases = $state<FeedActivity[]>([]);
-  let stats = $state<Stats | null>(null);
+
+  const hello = greeting(new Date().getHours());
+  /// The continue-listening item (HomeHero, two slots) leads the Jump back in
+  /// grid when there is a track; the grid's one-row rules shift for it.
+  const current = $derived(player.state.current);
 
   const releaseItems = $derived(feedAlbumItems(releases));
   const unseen = $derived(unseenCount(releases));
@@ -113,7 +113,7 @@
   /// rows sit below them all, so they wait too. A revisit with every personal
   /// source cached reveals at once.
   const REVEAL_CAP_MS = 2500;
-  const personalSources = [sources.shortcuts, sources.forYou, sources.feed, sources.stats, sources.suggestions];
+  const personalSources = [sources.shortcuts, sources.forYou, sources.feed, sources.suggestions];
   let personalSettled = $state(false);
   let capped = $state(personalSources.every((source) => peek(source as Source<unknown>) !== undefined));
   const ready = $derived(personalSettled || capped);
@@ -142,7 +142,6 @@
       }),
       part(sources.forYou, (sections) => (mixes = madeForYou(sections))),
       part(sources.feed, (feed) => (releases = feed)),
-      part(sources.stats, (value) => (stats = value)),
       part(sources.suggestions, (built) => (suggestions = built)),
     ]);
     personalSettled = true;
@@ -190,31 +189,46 @@
 </script>
 
 <div class="home">
-  <HomeHero {player} go={(route) => nav.goto(route)} onerror={(e) => toasts.show(errorMessage(e), { severity: "error" })} />
+  <header class="masthead">
+    <h2>{hello}</h2>
+    {#if !current}<p class="muted">Pick something to start the night.</p>{/if}
+  </header>
 
-  {#if !ready}
-    <div class="pending"><Loading /></div>
-  {:else}
+  <!-- Jump back in shows at once when there is a track to resume (its tiles
+       lead the row); the shortcuts fill the rest of that one row at the
+       reveal, so nothing below moves. -->
   <svelte:boundary onerror={shelfFailed}>
-  {#if shortcuts.length > 0}
+  {#if current || (ready && shortcuts.length > 0)}
     <section class="block" aria-labelledby="home-jump">
       <h3 id="home-jump">Jump back in</h3>
-      <div class="shortcuts pane">
-        {#each shortcuts as entry (entry.key)}
-          <div class="shortcut lit-tint">
-            <MediaCard
-              item={entry.item}
-              variant="row"
-              thumb={64}
-              collage={entry.playlist}
-              onclick={() => nav.goto(entry.route)}
-            />
-          </div>
-        {/each}
+      <!-- The frame is the size container, so the queries below can also
+           restyle the grid itself (an element cannot query its own size). -->
+      <div class="jump pane">
+      <div class="shortcuts" class:continuing={current}>
+        <HomeHero {player} go={(route) => nav.goto(route)} onerror={(e) => toasts.show(errorMessage(e), { severity: "error" })} />
+        {#if ready}
+          {#each shortcuts as entry (entry.key)}
+            <div class="shortcut">
+              <MediaCard
+                item={entry.item}
+                variant="row"
+                thumb={88}
+                gapless
+                collage={entry.playlist}
+                onclick={() => nav.goto(entry.route)}
+              />
+            </div>
+          {/each}
+        {/if}
+      </div>
       </div>
     </section>
   {/if}
   </svelte:boundary>
+
+  {#if !ready}
+    <div class="pending"><Loading /></div>
+  {:else}
 
   <svelte:boundary onerror={shelfFailed}>
   {#if albumItems.length > 0}
@@ -270,11 +284,12 @@
       <p class="hint muted">Radio built from what you've been playing.</p>
       <div class="radios pane">
         {#each radios as seed (seed.key)}
-          <div class="radio lit-tint">
+          <div class="radio">
             <MediaCard
               item={radioCard(seed)}
               variant="row"
-              thumb={92}
+              thumb={108}
+              gapless
               playButton
               onclick={() => startRadio(seed)}
             />
@@ -297,14 +312,6 @@
   {/if}
   </svelte:boundary>
 
-  <svelte:boundary onerror={shelfFailed}>
-  {#if stats && stats.total_plays > 0}
-    <section class="block">
-      <h3>Your listening</h3>
-      <HomeListening {stats} {nav} {toasts} />
-    </section>
-  {/if}
-  </svelte:boundary>
 
   <section class="block editorial">
     {#if loading}
@@ -326,6 +333,17 @@
     display: flex;
     flex-direction: column;
     padding-bottom: 16px;
+  }
+  .masthead {
+    margin: 0 0 20px;
+  }
+  .masthead h2 {
+    margin: 0;
+    font-size: var(--page-title-size, 40px);
+    line-height: 1.1;
+  }
+  .masthead p {
+    margin: 4px 0 0;
   }
   .block {
     margin-bottom: 18px;
@@ -356,11 +374,13 @@
   .block > h3 {
     margin: 0 0 10px;
   }
+  .jump {
+    container: shortcuts / inline-size;
+  }
   .shortcuts {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
     gap: 10px 16px;
-    container: shortcuts / inline-size;
   }
   /* One row only: hide the cards that would wrap. n cards (240px min, 16px
      gaps) need 256n - 16 px. This is CSS, not a measured count, so it resolves
@@ -402,26 +422,47 @@
       display: none;
     }
   }
-  /* Containers: lit edge (`.lit`) plus a resting drop shadow, so they sit
-     above the backdrop instead of printing flat onto it. */
-  .shortcut {
-    border-radius: var(--radius-control);
-    box-shadow: var(--shadow-panel);
+  /* With a track to resume, the continue-listening item (child 1) gets its
+     own column at its content width (HomeHero sizes it to fit) and the
+     shortcuts take the rest: k cards fit from 640 + 256k px. Below one card
+     it is the whole row. */
+  .shortcuts.continuing {
+    grid-template-columns: minmax(0, 640px) repeat(auto-fill, minmax(240px, 1fr));
+  }
+  .continuing .shortcut:nth-child(n + 9) {
+    display: none;
+  }
+  @container shortcuts (width < 2432px) {
+    .continuing .shortcut:nth-child(n + 8) { display: none; }
+  }
+  @container shortcuts (width < 2176px) {
+    .continuing .shortcut:nth-child(n + 7) { display: none; }
+  }
+  @container shortcuts (width < 1920px) {
+    .continuing .shortcut:nth-child(n + 6) { display: none; }
+  }
+  @container shortcuts (width < 1664px) {
+    .continuing .shortcut:nth-child(n + 5) { display: none; }
+  }
+  @container shortcuts (width < 1408px) {
+    .continuing .shortcut:nth-child(n + 4) { display: none; }
+  }
+  @container shortcuts (width < 1152px) {
+    .continuing .shortcut:nth-child(n + 3) { display: none; }
+  }
+  @container shortcuts (width < 896px) {
+    .shortcuts.continuing { grid-template-columns: minmax(0, 1fr); }
+    .continuing .shortcut { display: none; }
   }
   .hint {
     margin: -6px 0 12px;
     font-size: 13px;
   }
-  /* Keep exploring: wide radio cards with big art, lit like panels. */
+  /* Keep exploring: wide radio rows with big art, open on the page. */
   .radios {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
     gap: 14px;
-  }
-  .radio {
-    padding: 6px;
-    border-radius: var(--radius-card);
-    box-shadow: var(--shadow-panel);
   }
   .view-all {
     color: var(--text-muted);

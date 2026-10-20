@@ -226,7 +226,8 @@ export function collectionFolderMenuItems(ctx: {
 }): MenuItem[] {
   return [
     { id: "open", label: "Open", icon: "external-link", run: () => ctx.open() },
-    { id: "rename", label: "Rename", icon: "pencil", run: () => ctx.rename() },
+    // Name and the (local) description edit together.
+    { id: "rename", label: "Edit folder…", icon: "pencil", run: () => ctx.rename() },
     { id: "remove", label: "Remove", icon: "trash-2", danger: true, divider: true, run: () => ctx.remove() },
   ];
 }

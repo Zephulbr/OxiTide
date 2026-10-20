@@ -26,12 +26,12 @@ Track 3 performance baseline and the natural home for reduced-motion users.
 
 ## 3. Typography
 
-UI font defaults to **Inter**; the user's Typeface pick always wins. Fraunces stays the
-display face (identity belongs to the system, not the mode).
+UI font defaults to **Inter**; the user's Typeface pick always wins. Display text is the
+same face at the shared display weight/tracking (see the root DESIGN.md §2.2).
 
 ## 4. Kept deliberately
 
-Fraunces display, disc spinner for loading, radii, icons, focus rings, badges, toasts,
+Display type, disc spinner for loading, radii, icons, focus rings, badges, toasts,
 menus, dialogs, layout and breakpoints, density, mini player.
 
 ## 5. Performance role

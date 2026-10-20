@@ -53,6 +53,24 @@ describe("sortEntries", () => {
     expect(labels(sortEntries(entries, "date"))).toEqual(["New", "Old"]);
   });
 
+  it("played mode ranks by last play, never-played by date, folders in place", () => {
+    const played: Record<string, number> = { b: 200, c: 100 };
+    const entries = [
+      playlist("a", "Never old", "2024-01-01T00:00:00.000+0000"),
+      folder("f", "Folder"),
+      playlist("b", "Played last"),
+      playlist("c", "Played first"),
+      playlist("d", "Never new", "2026-01-01T00:00:00.000+0000"),
+    ];
+    expect(labels(sortEntries(entries, "played", (uuid) => played[uuid] ?? 0))).toEqual([
+      "Played last",
+      "Folder",
+      "Played first",
+      "Never new",
+      "Never old",
+    ]);
+  });
+
   it("sorts folders first then playlists by name", () => {
     const entries = [
       playlist("z", "zebra"),

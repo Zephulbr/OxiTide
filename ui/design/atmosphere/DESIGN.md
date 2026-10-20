@@ -18,7 +18,7 @@ sleeve is the lamp.
 3. **Motion answers the music.** Ambient motion only while playing; pause stills the room.
 4. **Chrome is quiet until needed.**
 
-**Identity budget:** exactly four signature places — the Fraunces display face, lit edges
+**Identity budget:** exactly four signature places — the display type (UI face at 750, −0.015em), lit edges
 + film grain, the tide motif (waveform seek + the disc: loading spinner, Now Playing disc
 art, now-playing mark — AR-4), artwork reactivity. Do not add a fifth.
 
@@ -49,10 +49,10 @@ kicker and fan count use `--text` at 82% rather than muted.
   rail 260–420px (overlay below 760px), floating 80px glass player bar with the seek as
   its top edge.
 - Now Playing "Editorial Split": artwork left (Disc default / Sleeve), metadata column
-  right (eyebrow, Fraunces title, italic byline, badges, tabs Lyrics / Next / Info). The
+  right (eyebrow, display title, muted byline, badges, tabs Lyrics / Next / Info). The
   sidebar steps aside; the queue rail can stay docked beside it (Now Playing narrows).
 - Queue rail (`QueueRail.svelte`, shared with Mini and the Rack drawers): header with a
-  Fraunces "Queue" title, "N up next · 1 h 32 min left", locate-current and clear icon
+  display "Queue" title, "N up next · 1 h 32 min left", locate-current and clear icon
   buttons (circle-dot = "go to current", shared with lyrics). Full-bleed rows (hover and
   the current tint run edge to edge) 58px / 48px (compact): cover, title over muted
   artist, duration on the right (swapped for × on hover/focus); a grip fades in at the
@@ -84,16 +84,18 @@ kicker and fan count use `--text` at 82% rather than muted.
   per 2 s while playback runs and eases to a stop on pause; still without ambient motion.
   Used on the playing track-table row (# column), beside the queue's current cover, and
   over the sidebar's playing playlist cover (on a 55% `--bg` scrim).
-- Home (`views/Home.svelte`): a Fraunces time-of-day greeting over a "Continue listening"
-  hero (`HomeHero.svelte` — current or restored track; cover-tinted card with a drop
-  shadow, the cover lit per AR-3, progress line, Resume/Pause pill with the
-  primary-transport glow, Next, and an "Up next" list of the next four queued tracks on the right, set off by a
-  full-height hairline with hairline rules between rows; hidden below 1100px),
+- Playlists (`views/Playlists.svelte`): a 28px inset from the sidebar and window edge, eight tiles across a wide window (fewer per container query as it narrows) with seamless covers and no backing sheet; the cover lifts on hover and Shuffle (glass) + Play (accent) rise from its corner; the playing playlist carries the sidebar's now-playing mark and an accent name. Sorts: Recently updated, Recently played (`playlistRecency`), Name. Folders are a seamless mosaic of their playlists' first covers (`FolderArt.svelte`) with a glass folder badge; an empty folder is its icon on a wash. Folder colours and descriptions (`lib/folderMeta.svelte.ts`, local to the device; colour and description in the New / Edit folder dialogs (`FolderColorPicker.svelte` swatches), shown under the folder page title) tint the badge, the empty wash and the sidebar folder icon through `--folder-l` / `--folder-c`.
+- Home (`views/Home.svelte`): a display-weight time-of-day greeting, then Jump back in led
+  by the continue-listening tiles (`HomeHero.svelte` — current or restored track, shown
+  before the shelves reveal) as one item in its own column (up to 640px, set off by a fading hairline in the gap; the shortcuts fill the rest): the resume tile (88px cover lit per AR-3
+  with a hover-revealed play/pause disc centred on it; 17px title over muted
+  artist over a short ~210px progress bar; no separate transport buttons) with an "Up next" tile right after it (dropped below a 600px item;
+  plays it; 48px thumb, surface hover), both open on the page like the shortcut rows; the shortcuts fill the rest of the row,
   then personal shelves, each hidden when its source is empty or fails, deliberately in
-  different shapes so the page has rhythm: Jump back in (compact rows, one line — only as many
+  different shapes so the page has rhythm: Jump back in (open row cards, no container: 88px covers, 15/13px type, gapless collages — one line — only as many
   cards as fit across, decided by a CSS container query so it never lags a layout change: playlists by last played + saved mixes), Recently played (albums
   from history, `mini` cards), Made for you (For You mixes, standard carousel), New from artists you follow (Feed, with the unseen
-  count), Keep exploring (wide lit radio cards with 92px art, for your most-played recent
+  count), Keep exploring (wide open radio rows with 108px art, no container, for your most-played recent
   artists plus the last track), Because you listen to X (similar artists of the top recent artist), Your listening (`HomeListening.svelte`: 7-day total + bars, top artists and
   tracks, from local history), and last a capped "From TIDAL" block of the editorial
   `pages/home` rows. Data shaping lives in `lib/homeData.ts`; the history-driven shelves in
@@ -102,7 +104,7 @@ kicker and fan count use `--text` at 82% rather than muted.
 - List views follow the shared page header ([../DESIGN.md](../DESIGN.md) §2.1). History is
   a play log (clock time gutter · cover · title/artist · album · length; day headers with
   plays and listening time; partial plays at 60%). Stats (`HistoryStats.svelte`): a
-  `.lit-tint` masthead with the all-time total in 56px Fraunces ("23 h 43 min" — never
+  `.lit-tint` masthead with the all-time total in 56px display type ("23 h 43 min" — never
   clock notation), the distinct track/artist/album counts, four hairline-divided figures
   (last 7 / 30 days with the daily average, day streak with the best, share played
   through) and the top five album sleeves fanned on the right (#1 in front, later ones
@@ -112,7 +114,7 @@ kicker and fan count use `--text` at 82% rather than muted.
   (24 hourly bars and Monday-first weekday meters, the peak in solid accent, with a
   "Mostly in the evening · peak around 20:00" line). Last, three ranked columns (artists,
   tracks, albums): each opens with its #1 as a feature card (104px art — round artist
-  picture — eyebrow, Fraunces name, plays and time), then rows 2–10 with 36px art and a
+  picture — eyebrow, display name, plays and time), then rows 2–10 with 36px art and a
   small share meter before the count. Artist/album rows open their pages once the
   entry's newest play resolves to ids (`lib/statsResolve.ts`); track rows play the top
   ten from that row. Feed: date groups on the timeline rail, each a grid of release

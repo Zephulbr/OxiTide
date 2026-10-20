@@ -163,6 +163,7 @@
         <MediaCard
           {item}
           variant={effective === "list" ? "row" : "tile"}
+          thumb={64}
           {onclick}
           playing={isPlaying(item)}
           blocked={isBlocked(item)}

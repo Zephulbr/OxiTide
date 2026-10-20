@@ -1,4 +1,4 @@
-import type { FeedActivity, PageItem, PageSection, Stats } from "./api";
+import type { FeedActivity, PageItem, PageSection } from "./api";
 import { shapeForItemType } from "./media";
 
 /// Time-of-day greeting for the Home hero (local hour, 0-23).
@@ -49,9 +49,4 @@ export function unseenCount(activities: FeedActivity[]): number {
 /// Editorial rows trail the personal shelves, so only the first few show.
 export function editorialSections(sections: PageSection[], cap = 4): PageSection[] {
   return sections.filter((section) => section.items.length > 0).slice(0, cap);
-}
-
-/// The last `days` entries of the stats' daily series (oldest first).
-export function lastDays(stats: Stats, days = 7) {
-  return stats.daily.slice(-days);
 }

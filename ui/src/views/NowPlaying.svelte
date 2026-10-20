@@ -660,15 +660,13 @@
   .title {
     font-family: var(--font-display);
     font-size: 31px;
-    font-weight: 640;
-    letter-spacing: -0.02em;
+    font-weight: var(--display-weight);
+    letter-spacing: var(--display-tracking);
     margin: 0 0 6px;
   }
   .byline {
-    font-family: var(--font-display);
-    font-style: italic;
     font-size: 15.5px;
-    font-weight: 520;
+    font-weight: 500;
     color: var(--text-muted);
     margin: 0 0 16px;
   }

@@ -72,7 +72,7 @@
     { source: "home", label: "Home", route: { name: "home" } },
     { source: "explore", label: "Explore", route: { name: "explore" } },
     { source: "feed", label: "Feed", route: { name: "feed" } },
-    { source: "history", label: "History", route: { name: "history", tab: "recent" } },
+    { source: "history", label: "History", route: { name: "history", tab: "stats" } },
     { source: "library", label: "Library", route: { name: "playlists" } },
   ];
   const sleeping = $derived(sleepTimer.mode !== "off");

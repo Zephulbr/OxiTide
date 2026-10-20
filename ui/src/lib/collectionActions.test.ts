@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CollectionEntry, CollectionFolder, Playlist } from "./api";
 import { api } from "./api";
 import { createCollectionActions } from "./collectionActions.svelte";
+import { folderMeta } from "./folderMeta.svelte";
 import type { CollectionTree } from "./collection.svelte";
 import type { ToastSeverity, Toasts } from "./toasts.svelte";
 
@@ -92,6 +93,22 @@ describe("collection actions", () => {
     expect(calls[0]?.message).toBe("You can only edit your own playlists");
   });
 
+  it("saves only a folder's description without a TIDAL rename when the name is unchanged", async () => {
+    const { tree, refresh } = fakeTree();
+    const { toasts, calls } = fakeToasts();
+    const actions = createCollectionActions(tree, toasts);
+
+    actions.openRenameFolder(folder("f2"));
+    await actions.rename("Ff2", { description: "  Road trips  ", color: "teal" });
+
+    expect(api.renameFolder).not.toHaveBeenCalled();
+    expect(folderMeta().description("f2")).toBe("Road trips");
+    expect(folderMeta().color("f2")).toBe("teal");
+    expect(calls[0]?.message).toBe("Folder saved");
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(actions.renameTarget).toBeNull();
+  });
+
   it("deletes owned playlists but removes liked ones from the collection", async () => {
     vi.mocked(api.deletePlaylist).mockResolvedValue(undefined);
     vi.mocked(api.removeCollectionEntry).mockResolvedValue(undefined);
@@ -121,6 +138,16 @@ describe("collection actions", () => {
     expect(api.movePlaylistsToFolder).toHaveBeenCalledWith(["p1"], "f2");
     expect(refresh).toHaveBeenCalledTimes(1);
     expect(actions.moveTarget).toBeNull();
+  });
+
+  it("remembers which folder a move starts from (top level by default)", () => {
+    vi.mocked(api.getCollectionItems).mockResolvedValue([]);
+    const actions = createCollectionActions(fakeTree().tree, fakeToasts().toasts);
+
+    actions.openMove(playlist("p1"));
+    expect(actions.moveFrom).toBe("root");
+    actions.openMove(playlist("p2"), "f7");
+    expect(actions.moveFrom).toBe("f7");
   });
 
   it("lists nested folders with depth for the move picker", async () => {
@@ -154,6 +181,16 @@ describe("collection actions", () => {
     expect(actions.revision).toBe(1);
     expect(actions.createFolderTarget).toBeNull();
     expect(calls).toEqual([{ message: "Created Road trip", severity: "success" }]);
+  });
+
+  it("gives a new folder its picked colour under the id TIDAL returns", async () => {
+    vi.mocked(api.createFolder).mockResolvedValue(folder("f10"));
+    const actions = createCollectionActions(fakeTree().tree, fakeToasts().toasts);
+
+    actions.openCreateFolder("root");
+    await actions.createFolder("Gym", "orange");
+
+    expect(folderMeta().color("f10")).toBe("orange");
   });
 
   it("keeps the new-folder dialog open when the write fails", async () => {

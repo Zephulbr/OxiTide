@@ -117,7 +117,7 @@
   .decades .name {
     font-family: var(--font-display);
     font-size: 30px;
-    font-weight: 600;
-    letter-spacing: -0.02em;
+    font-weight: var(--display-weight);
+    letter-spacing: var(--display-tracking);
   }
 </style>

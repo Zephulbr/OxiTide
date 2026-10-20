@@ -184,7 +184,7 @@
     <button class="nav-item" class:active={nav.route.name === "feed"} aria-current={nav.route.name === "feed" ? "page" : undefined} onclick={() => nav.goto({ name: "feed" })} use:prefetchIntent={{ name: "feed" }} title="Feed" aria-label="Feed">
       <Icon name="bell" />{#if !rail}<span>Feed</span>{/if}
     </button>
-    <button class="nav-item" class:active={nav.route.name === "history"} aria-current={nav.route.name === "history" ? "page" : undefined} onclick={() => nav.goto({ name: "history", tab: "recent" })} title="History" aria-label="History">
+    <button class="nav-item" class:active={nav.route.name === "history"} aria-current={nav.route.name === "history" ? "page" : undefined} onclick={() => nav.goto({ name: "history", tab: "stats" })} title="History" aria-label="History">
       <Icon name="history" />{#if !rail}<span>History</span>{/if}
     </button>
     <button class="nav-item" class:active={nav.route.name === "settings"} aria-current={nav.route.name === "settings" ? "page" : undefined} onclick={() => nav.goto({ name: "settings" })} title="Settings" aria-label="Settings">
@@ -299,9 +299,11 @@
     display: flex;
     align-items: center;
     gap: 9px;
-    font-family: var(--font-display);
-    font-size: 22px;
-    font-weight: 640;
+    /* The wordmark is brand lettering: always Manrope, whatever the
+       Typeface pick. */
+    font-family: "Manrope", var(--font-ui);
+    font-size: 21px;
+    font-weight: 800;
     margin: 0;
     /* As tall as the mark, with or without the name beside it, so the mark
        never moves vertically as the sidebar collapses or expands. */
@@ -309,7 +311,7 @@
     /* The rail's centred spot for the mark ((40px - 28px) / 2), so it never
        moves as the sidebar collapses, expands or peeks. */
     padding-left: 6px;
-    letter-spacing: -0.02em;
+    letter-spacing: 0.01em;
     transition: opacity var(--dur-micro) var(--ease-enter);
   }
   .history {

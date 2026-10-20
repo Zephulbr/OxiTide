@@ -31,7 +31,6 @@ vi.mock("../lib/api", async (importOriginal) => {
         if (name === "getFeed")
           return async () => [{ id: 9, title: "New", subtitle: "A", artists: [], seen: false, releaseType: "ALBUM" }];
         if (name === "getHistoryPage") return async () => ({ items: [], total: 0 });
-        if (name === "getStats") return async () => ({ total_plays: 0 });
         return async () => [];
       },
     },

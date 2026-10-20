@@ -148,6 +148,8 @@
     display: block;
     font-family: var(--font-display);
     font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.015em;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

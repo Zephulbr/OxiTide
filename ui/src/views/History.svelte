@@ -26,8 +26,8 @@
   }: { nav: Nav; player: Player; toasts: Toasts; tab: HistoryTab } = $props();
 
   const TABS: { id: HistoryTab; label: string }[] = [
-    { id: "recent", label: "Recently played" },
     { id: "stats", label: "Stats" },
+    { id: "recent", label: "Recently played" },
   ];
   const PAGE = 100;
 
@@ -157,7 +157,7 @@
                     historyMenuItems({ play: () => void playEntry(entry), ...goToTargets(entry, go, api.getTrack) })}
                 >
                   <span class="muted tnum when">{clockTime(entry.started_at)}</span>
-                  <span class="thumb"><Cover uuid={entry.cover} size={160} radius={4} alt="" /></span>
+                  <span class="thumb"><Cover uuid={entry.cover} size={160} radius={6} alt="" /></span>
                   <!-- Nested links: the row is the play button (name-links spec NL-D10). -->
                   <span class="meta">
                     <strong><NameLink label={entry.title} onOpen={() => void openAlbum(entry)} nested /></strong>
@@ -256,11 +256,11 @@
   /* A play log: clock time in the gutter, then the track, album and length. */
   .row {
     display: grid;
-    grid-template-columns: 56px 40px minmax(0, 1.3fr) minmax(0, 1fr) 48px;
+    grid-template-columns: 56px 52px minmax(0, 1.3fr) minmax(0, 1fr) 48px;
     gap: 14px;
     align-items: center;
     width: 100%;
-    padding: 6px 12px;
+    padding: 7px 12px;
     text-align: left;
     border-radius: var(--radius-control);
   }
@@ -277,20 +277,22 @@
     opacity: 0.6;
   }
   .when {
-    font-size: 12.5px;
+    font-size: 13px;
     white-space: nowrap;
     text-align: right;
   }
   .thumb {
-    width: 40px;
-    height: 40px;
+    width: 52px;
+    height: 52px;
   }
   .meta {
     display: flex;
     flex-direction: column;
+    gap: 2px;
     min-width: 0;
   }
   .meta strong {
+    font-size: 15px;
     font-weight: 600;
   }
   .meta strong,
@@ -303,7 +305,7 @@
   .meta .muted,
   .album,
   .len {
-    font-size: 12.5px;
+    font-size: 13.5px;
   }
   .meta .muted :global(.name-link:hover),
   .album :global(.name-link:hover) {
@@ -314,7 +316,7 @@
   }
   @media (max-width: 1000px) {
     .row {
-      grid-template-columns: 56px 40px minmax(0, 1fr) 48px;
+      grid-template-columns: 56px 52px minmax(0, 1fr) 48px;
     }
     .album {
       display: none;

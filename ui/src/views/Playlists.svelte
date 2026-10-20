@@ -4,21 +4,27 @@
   import { cubicOut } from "svelte/easing";
   import type { CollectionEntry } from "../lib/api";
   import { appearance } from "../lib/appearance.svelte";
+  import { getCardActions } from "../lib/cardActions";
   import { fetchShared, load as loadCached, peek } from "../lib/viewCache";
   import { collectionSource } from "../lib/viewData";
   import { sortEntries, type CollectionSort } from "../lib/collectionSort";
   import EmptyState from "../lib/components/EmptyState.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
+  import FolderArt from "../lib/components/FolderArt.svelte";
   import Icon from "../lib/components/Icon.svelte";
   import Loading from "../lib/components/Loading.svelte";
+  import NowPlayingMark from "../lib/components/NowPlayingMark.svelte";
   import PlaylistCover from "../lib/components/PlaylistCover.svelte";
   import SortSelect from "../lib/components/SortSelect.svelte";
   import type { CollectionActions } from "../lib/collectionActions.svelte";
   import { errorMessage } from "../lib/errors";
+  import { folderMeta } from "../lib/folderMeta.svelte";
   import { menuFor } from "../lib/menu.svelte";
   import { collectionFolderMenuItems, collectionPlaylistMenuItems } from "../lib/menus";
   import type { Nav } from "../lib/nav.svelte";
+  import { playlistRecency } from "../lib/playlistRecency.svelte";
   import type { PlaylistActions } from "../lib/playlists.svelte";
+  import { playSource } from "../lib/playSource.svelte";
 
   let {
     nav,
@@ -26,13 +32,20 @@
     actions,
     folderId = null,
     folderLabel = "",
+    playing = false,
   }: {
     nav: Nav;
     playlistActions: PlaylistActions;
     actions: CollectionActions;
     folderId?: string | null;
     folderLabel?: string;
+    /// Playback is running: the playing playlist's mark animates.
+    playing?: boolean;
   } = $props();
+
+  const cardActions = getCardActions();
+  const recency = playlistRecency();
+  const colors = folderMeta();
 
   let sortMode = $state<CollectionSort>("date");
   // svelte-ignore state_referenced_locally
@@ -47,7 +60,7 @@
   let actionsSeen = untrack(() => actions.revision);
   let createSeen = untrack(() => playlistActions.revision);
 
-  const rows = $derived(sortEntries(entries, sortMode));
+  const rows = $derived(sortEntries(entries, sortMode, (uuid) => recency.rank(uuid)));
   const summary = $derived.by(() => {
     const folders = entries.filter((entry) => entry.kind === "folder").length;
     const playlists = entries.length - folders;
@@ -93,8 +106,22 @@
     createSeen = revision;
     untrack(() => void load(true));
   });
+
+  function openFolder(id: string, label: string) {
+    nav.goto({ name: "folder", id, label });
+  }
+
+  function openPlaylist(uuid: string) {
+    nav.goto({ name: "playlist", id: uuid });
+  }
+
+  /// Through the shared card actions (content filters, play source, toasts).
+  function play(uuid: string, shuffle: boolean) {
+    void cardActions?.play({ kind: "playlist", id: uuid }, shuffle);
+  }
 </script>
 
+<div class="playlists">
 {#if folderId}
   <nav class="crumbs" aria-label="Breadcrumb">
     <button onclick={() => nav.goto({ name: "playlists" })}>All playlists</button>
@@ -102,8 +129,11 @@
   </nav>
 {/if}
 <header class="page-head">
-  <h2>{folderId ? folderLabel || "Folder" : "All playlists"}</h2>
-  {#if !loading && !error && entries.length > 0}<span class="muted count tnum">{summary}</span>{/if}
+  <!-- The count sits under the title rather than beside the tools. -->
+  <div class="title-block">
+    <h2>{folderId ? folderLabel || "Folder" : "All playlists"}</h2>
+    {#if !loading && !error && entries.length > 0}<span class="summary tnum">{summary}</span>{/if}
+  </div>
   <button class="tool-btn" onclick={() => playlistActions.openCreate()}>
     <Icon name="plus" size={15} />New playlist
   </button>
@@ -114,12 +144,16 @@
     value={sortMode}
     options={[
       { value: "date", label: "Recently updated" },
+      { value: "played", label: "Recently played" },
       { value: "name", label: "Name A–Z" },
     ]}
     label="Sort playlists"
     onchange={(value) => (sortMode = value as CollectionSort)}
   />
 </header>
+{#if folderId && colors.description(folderId)}
+  <p class="folder-desc">{colors.description(folderId)}</p>
+{/if}
 
 {#if loading}
   <Loading />
@@ -138,54 +172,98 @@
           entry.kind === "folder"
             ? collectionFolderMenuItems({
                 folder: entry,
-                open: () => nav.goto({ name: "folder", id: entry.id, label: entry.name }),
+                open: () => openFolder(entry.id, entry.name),
                 rename: () => actions.openRenameFolder(entry),
                 remove: () => actions.openRemove(entry),
               })
             : collectionPlaylistMenuItems({
                 playlist: entry,
-                open: () => nav.goto({ name: "playlist", id: entry.uuid }),
+                open: () => openPlaylist(entry.uuid),
                 rename: () => actions.openRenamePlaylist(entry),
                 remove: () => actions.openRemove(entry),
-                move: () => actions.openMove(entry),
+                move: () => actions.openMove(entry, folderId ?? "root"),
               })}
       >
         {#if entry.kind === "folder"}
-          <button class="card" onclick={() => nav.goto({ name: "folder", id: entry.id, label: entry.name })}>
-            <span class="art folder"><Icon name="folder" size={40} /></span>
+          <button
+            class="card"
+            title={colors.description(entry.id) || undefined}
+            onclick={() => openFolder(entry.id, entry.name)}
+          >
+            <span class="art"><span class="clip"><FolderArt folderId={entry.id} /></span></span>
             <span class="title">{entry.name}</span>
-            <span class="muted sub">
+            <span class="sub">
               Folder · {entry.totalNumberOfItems}
               {entry.totalNumberOfItems === 1 ? "playlist" : "playlists"}
             </span>
           </button>
         {:else}
-          <button class="card" onclick={() => nav.goto({ name: "playlist", id: entry.uuid })}>
+          {@const source = playSource.playlistId === entry.uuid}
+          <!-- The cover and title open the playlist; play and shuffle are
+               their own buttons over the cover (MediaCard's split cards). -->
+          <div class="card split" class:source>
             <span class="art">
-              <span class="clip">
+              <button
+                type="button"
+                class="clip cover-hit"
+                aria-label={`Open ${entry.title}`}
+                onclick={() => openPlaylist(entry.uuid)}
+              >
                 <PlaylistCover
                   owned={entry.owned}
                   playlist={entry.uuid}
                   image={entry.squareImage}
                   size={320}
                   radius={0}
+                  gapless
                   alt=""
                 />
-              </span>
+              </button>
+              {#if source}
+                <span class="playing-mark" aria-hidden="true"><NowPlayingMark {playing} size={34} /></span>
+              {/if}
+              {#if cardActions}
+                <span class="cover-actions">
+                  <button
+                    type="button"
+                    class="act shuffle"
+                    aria-label={`Shuffle ${entry.title}`}
+                    title="Shuffle"
+                    onclick={() => play(entry.uuid, true)}
+                  ><Icon name="shuffle" size={16} /></button>
+                  <button
+                    type="button"
+                    class="act play"
+                    aria-label={`Play ${entry.title}`}
+                    title="Play"
+                    onclick={() => play(entry.uuid, false)}
+                  ><Icon name="play" size={18} /></button>
+                </span>
+              {/if}
             </span>
-            <span class="title">{entry.title}</span>
-            <span class="muted sub tnum">
+            <button type="button" class="title name" tabindex="-1" onclick={() => openPlaylist(entry.uuid)}>
+              {entry.title}
+            </button>
+            <span class="sub tnum">
               {entry.numberOfTracks}
               {entry.numberOfTracks === 1 ? "track" : "tracks"}
             </span>
-          </button>
+          </div>
         {/if}
       </div>
     {/each}
   </div>
 {/if}
+</div>
 
 <style>
+  /* The page sits further in from the sidebar and the window edge than the
+     shared page padding, and is the size container the grid's column count
+     reads. */
+  .playlists {
+    padding-inline: 28px;
+    container: playlists / inline-size;
+  }
   .crumbs {
     display: flex;
     align-items: center;
@@ -200,12 +278,57 @@
   .crumbs button:hover {
     color: var(--text);
   }
-  /* Same grid as Albums and Mixes: tiles with the playlist "sheet" behind the
-     cover (MediaCard's playlist shape), folders as a sleeve with an icon. */
+  /* Title over its count, taking the row's free width (as a bare h2 does in
+     .page-head), so the tools stay right-aligned. */
+  .title-block {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .title-block h2 {
+    margin: 0;
+  }
+  .summary {
+    color: color-mix(in srgb, var(--text) 62%, transparent);
+    font-size: 14px;
+  }
+  /* A folder's local description, under the page title. */
+  .folder-desc {
+    max-width: 72ch;
+    margin: -6px 0 18px;
+    color: color-mix(in srgb, var(--text) 70%, transparent);
+    font-size: 14px;
+    line-height: 1.5;
+    white-space: pre-line;
+  }
+  /* Eight tiles across a wide window, fewer as it narrows (tiles stay about
+     160px or wider): seamless covers, folders as a mosaic of what they hold.
+     Column counts are container queries, so the queue glide never sees a
+     late reflow. */
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 16px;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    gap: 20px 16px;
+  }
+  @container playlists (width < 1440px) {
+    .grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  }
+  @container playlists (width < 1260px) {
+    .grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  }
+  @container playlists (width < 1080px) {
+    .grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  }
+  @container playlists (width < 900px) {
+    .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  }
+  @container playlists (width < 720px) {
+    .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+  @container playlists (width < 540px) {
+    .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
   .cell {
     min-width: 0;
@@ -213,15 +336,17 @@
   .card {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 3px;
     width: 100%;
     min-width: 0;
-    padding: 12px;
+    padding: 10px;
     border-radius: var(--radius-card);
     text-align: left;
     color: inherit;
+    transition: background-color var(--dur-micro) var(--ease-enter);
   }
-  .card:hover {
+  .card:hover,
+  .card.split:focus-within {
     background: var(--surface-2);
   }
   .art {
@@ -229,23 +354,32 @@
     isolation: isolate;
     display: block;
     aspect-ratio: 1;
+    margin-bottom: 9px;
+    /* The whole cover (and its actions) lifts on hover, as on Home's cards. */
+    transition: transform var(--dur-state) var(--ease-enter);
   }
-  .art::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    transform: translate(3px, 3px);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-card-sharp);
-    background: var(--surface-3);
+  .card:hover .art,
+  .card.split:focus-within .art {
+    transform: translateY(-3px);
   }
   .clip {
     display: block;
+    width: 100%;
     height: 100%;
+    padding: 0;
+    border: 0;
     overflow: hidden;
     border-radius: var(--radius-card-sharp);
     background: var(--surface-2);
+    box-shadow: 0 0 0 1px var(--line), var(--shadow-cover);
+    color: inherit;
+  }
+  .cover-hit {
+    cursor: pointer;
+  }
+  .cover-hit:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
   .clip :global(img) {
     transition: transform var(--dur-state) var(--ease-enter);
@@ -253,27 +387,93 @@
   .card:hover .clip :global(img) {
     transform: scale(1.03);
   }
-  .art.folder {
+
+  /* The playing playlist: the sidebar's spinning record mark on its own (it
+     is a solid accent disc, so it needs no chip), seated by a soft shadow so
+     it holds on bright covers too. */
+  .playing-mark {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    display: block;
+    filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.45)) drop-shadow(0 3px 8px rgb(0 0 0 / 0.3));
+    pointer-events: none;
+  }
+  .card.source .title {
+    color: var(--accent);
+  }
+
+  /* Shuffle (glass) and Play (accent, the primary-transport glow, AR-1) rise
+     from the cover's bottom-right corner on hover or keyboard focus. */
+  .cover-actions {
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    opacity: 0;
+    transform: translateY(8px);
+    transition:
+      opacity var(--dur-state) var(--ease-enter),
+      transform var(--dur-state) var(--ease-enter);
+  }
+  .card:hover .cover-actions,
+  .card.split:focus-within .cover-actions {
+    opacity: 1;
+    transform: none;
+  }
+  .act {
     display: grid;
     place-items: center;
-    border-radius: var(--radius-card-sharp);
-    background: linear-gradient(135deg, var(--surface-2), var(--surface-3));
-    color: var(--text-muted);
+    border-radius: 50%;
+    cursor: pointer;
+    transition:
+      transform var(--dur-micro) var(--ease-enter),
+      filter var(--dur-micro) var(--ease-enter);
   }
-  .card:hover .art.folder {
+  .act:hover {
+    transform: scale(1.06);
+    filter: brightness(1.08);
+  }
+  .act:focus-visible {
+    outline: 2px solid var(--text);
+    outline-offset: 2px;
+  }
+  .act.shuffle {
+    width: 36px;
+    height: 36px;
     color: var(--text);
+    background: var(--surface-float);
+    box-shadow: 0 0 0 1px var(--line);
+    backdrop-filter: blur(var(--glass-blur));
   }
+  .act.play {
+    width: 44px;
+    height: 44px;
+    color: var(--on-accent);
+    background: var(--accent);
+    box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+
   .title {
-    font-weight: 500;
+    padding: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    color: var(--text);
+    font-size: 16px;
+    font-weight: 600;
+    text-align: left;
+  }
+  button.name {
+    cursor: pointer;
   }
   .sub {
-    margin-top: -6px;
-    font-size: 12.5px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    color: color-mix(in srgb, var(--text) 62%, transparent);
+    font-size: 14px;
   }
 </style>

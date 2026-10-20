@@ -12,6 +12,7 @@
     size = 320,
     radius = 12,
     alt = "",
+    gapless = false,
   }: {
     /// Only user-created playlists get the collage; curated ones keep TIDAL art.
     owned: boolean;
@@ -25,6 +26,8 @@
     size?: CoverSize;
     radius?: number;
     alt?: string;
+    /// Collage tiles meet with no seam (Home's row cards).
+    gapless?: boolean;
   } = $props();
 
   const covers = $derived(
@@ -43,7 +46,7 @@
 
   const tile = $derived(size >= 320 ? (160 as const) : (80 as const));
   const single = $derived(size >= 320 ? (320 as const) : (160 as const));
-  const gap = $derived(size >= 320 ? 2 : 1);
+  const gap = $derived(gapless ? 0 : size >= 320 ? 2 : 1);
 </script>
 
 {#if covers.length > 1}

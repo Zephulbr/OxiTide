@@ -62,6 +62,13 @@ export function createPlaylistRecency(
 let singleton: PlaylistRecency | null = null;
 
 export function playlistRecency(): PlaylistRecency {
-  singleton ??= createPlaylistRecency(window.localStorage);
+  singleton ??= createPlaylistRecency(globalThis.localStorage ?? memoryStorage());
   return singleton;
+}
+
+/// Where localStorage is unavailable (some test environments): ranks still
+/// work for the session, they just are not kept.
+function memoryStorage(): RecencyStorage {
+  const items = new Map<string, string>();
+  return { getItem: (key) => items.get(key) ?? null, setItem: (key, value) => void items.set(key, value) };
 }

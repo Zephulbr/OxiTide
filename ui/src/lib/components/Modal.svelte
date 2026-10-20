@@ -75,6 +75,7 @@
   header strong {
     font-family: var(--font-display);
     font-size: 20px;
-    font-weight: 640;
+    font-weight: var(--display-weight);
+    letter-spacing: var(--display-tracking);
   }
 </style>

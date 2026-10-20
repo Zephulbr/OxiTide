@@ -1,17 +1,19 @@
 import type { CollectionEntry } from "./api";
 import { parseTidalTime } from "./playlistSort";
 
-export type CollectionSort = "date" | "name";
+export type CollectionSort = "date" | "name" | "played";
 
 type PlaylistEntry = Extract<CollectionEntry, { kind: "playlist" }>;
 
 /// "date" sorts playlists by their most recent addition (falling back to
 /// creation/update), newest first, with folders and playlist slots kept in
-/// place. "name" groups folders first, then playlists, each alphabetically
-/// and case-insensitively.
+/// place. "played" does the same by last-played time (`playedAt`, 0 when
+/// never played; ties and never-played fall back to "date"). "name" groups
+/// folders first, then playlists, each alphabetically and case-insensitively.
 export function sortEntries(
   entries: readonly CollectionEntry[],
   mode: CollectionSort,
+  playedAt: (uuid: string) => number = () => 0,
 ): CollectionEntry[] {
   if (mode === "name") {
     const nameOf = (entry: CollectionEntry) => (entry.kind === "folder" ? entry.name : entry.title);
@@ -24,7 +26,9 @@ export function sortEntries(
   const playlists = entries.filter((entry): entry is PlaylistEntry => entry.kind === "playlist");
   const recency = (entry: PlaylistEntry) =>
     parseTidalTime(entry.lastItemAddedAt ?? entry.created ?? entry.lastUpdated);
-  const sorted = [...playlists].sort((a, b) => recency(b) - recency(a));
+  const sorted = [...playlists].sort(
+    (a, b) => (mode === "played" ? playedAt(b.uuid) - playedAt(a.uuid) : 0) || recency(b) - recency(a),
+  );
   let i = 0;
   return entries.map((entry) => (entry.kind === "playlist" ? sorted[i++] : entry));
 }

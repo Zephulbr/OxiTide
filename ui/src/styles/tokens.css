@@ -59,6 +59,10 @@
   --link-wash-l: 0.5;
   --link-wash-c: 0.11;
   --link-wash-a: 0.5;
+  /* Folder colours (lib/folderColors): the user picks a hue; these knobs
+     keep the icon and its wash in the theme's register. */
+  --folder-l: 0.76;
+  --folder-c: 0.13;
 
   /* Theme-paired room + scrim (Backdrop reads these; themes.css flips them). */
   --room-top: #1d1712;
@@ -99,8 +103,12 @@
   --rise: 10px;
 
   /* Type (spec §6) */
-  --font-display: "Fraunces", Georgia, serif;
   --font-ui: "Manrope", system-ui, sans-serif;
+  /* One family: display text is the UI face (so it follows the Typeface
+     pick), set apart by weight and tight tracking only. */
+  --font-display: var(--font-ui);
+  --display-weight: 750;
+  --display-tracking: -0.015em;
 
   /* Density (comfortable default; spec §7.4) */
   --row-height: 46px;

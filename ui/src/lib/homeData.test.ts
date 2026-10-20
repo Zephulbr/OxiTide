@@ -1,10 +1,9 @@
 ﻿import { describe, expect, it } from "vitest";
-import type { FeedActivity, PageSection, Stats } from "./api";
+import type { FeedActivity, PageSection } from "./api";
 import {
   editorialSections,
   feedAlbumItems,
   greeting,
-  lastDays,
   madeForYou,
   unseenCount,
 } from "./homeData";
@@ -72,14 +71,5 @@ describe("editorialSections", () => {
     const rows = [section("a", ["ALBUM"]), section("b", []), section("c", ["ALBUM"])];
     expect(editorialSections(rows, 1).map((s) => s.title)).toEqual(["a"]);
     expect(editorialSections(rows).map((s) => s.title)).toEqual(["a", "c"]);
-  });
-});
-
-describe("lastDays", () => {
-  it("returns the trailing days", () => {
-    const stats = {
-      daily: [1, 2, 3, 4].map((plays) => ({ date: `2026-10-0${plays}`, plays, listened_ms: 0 })),
-    } as Stats;
-    expect(lastDays(stats, 2).map((d) => d.plays)).toEqual([3, 4]);
   });
 });
