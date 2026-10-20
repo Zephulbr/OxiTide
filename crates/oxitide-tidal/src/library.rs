@@ -21,6 +21,15 @@ fn favorited_track(fav: Favorited<Track>) -> Track {
     track
 }
 
+/// A favorite album carries when it was favorited as its `date_added`.
+fn favorited_album(fav: Favorited<Album>) -> Album {
+    let mut album = fav.item;
+    if album.date_added.is_none() {
+        album.date_added = fav.created;
+    }
+    album
+}
+
 /// Window used when hydrating favorite ids; the favorites endpoint is known to
 /// honor 1000-row requests.
 const FAVORITE_ID_PAGE_SIZE: u32 = 1000;
@@ -62,7 +71,7 @@ impl TidalClient {
                 &page(limit, offset),
             )
             .await?;
-        Ok(p.items.into_iter().map(|f| f.item).collect())
+        Ok(p.items.into_iter().map(favorited_album).collect())
     }
 
     pub async fn favorite_artists(&self, limit: u32, offset: u32) -> Result<Vec<Artist>> {
@@ -96,7 +105,7 @@ impl TidalClient {
                 DEFAULT_PAGE_SIZE,
             )
             .await?;
-        Ok(favs.into_iter().map(|f| f.item).collect())
+        Ok(favs.into_iter().map(favorited_album).collect())
     }
 
     /// Walk every page of the user's favorite artists.
@@ -299,6 +308,23 @@ mod tests {
             tracks[0].date_added.as_deref(),
             Some("2025-01-01T00:00:00.000+0000"),
             "the favorites wrapper's `created` becomes the track's date added"
+        );
+    }
+
+    #[tokio::test]
+    async fn all_favorite_albums_carry_their_date_added() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/users/42/favorites/albums"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [{"created": "2025-03-04T05:06:07.000+0000", "item": {"id": 9, "title": "LP"}}],
+                "totalNumberOfItems": 1, "limit": 100, "offset": 0
+            })))
+            .mount(&server).await;
+        let albums = client(&server).all_favorite_albums().await.unwrap();
+        assert_eq!(albums[0].id, 9);
+        assert_eq!(
+            albums[0].date_added.as_deref(),
+            Some("2025-03-04T05:06:07.000+0000")
         );
     }
 

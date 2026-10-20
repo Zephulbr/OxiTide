@@ -184,10 +184,13 @@
     align-items: center;
     gap: 6px;
   }
+  /* Not a .page-head, so it takes the page-title size itself (app.css). */
   .list-head h2 {
     flex: 1;
     min-width: 0;
     margin: 0;
+    font-size: var(--page-title-size, 32px);
+    line-height: 1.1;
   }
   .list-action {
     display: grid;

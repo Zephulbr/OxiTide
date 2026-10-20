@@ -1019,6 +1019,28 @@ pub async fn search(state: State<'_, AppState>, query: String) -> Result<SearchR
         .map_err(|e| state.fail_tidal(e))
 }
 
+/// One page of a single result type (Explore's filter chips): `kind` is
+/// `tracks`, `albums`, `artists` or `playlists`; the other groups come back
+/// empty.
+#[tauri::command]
+pub async fn search_type(
+    state: State<'_, AppState>,
+    query: String,
+    kind: String,
+    offset: u32,
+) -> Result<SearchResults, String> {
+    const KINDS: [&str; 4] = ["tracks", "albums", "artists", "playlists"];
+    let Some(kind) = KINDS.iter().find(|k| **k == kind) else {
+        return Err(format!("unknown search type: {kind}"));
+    };
+    let mut results = require_client(&state)?
+        .search(&query, &[kind], 50, offset)
+        .await
+        .map_err(|e| state.fail_tidal(e))?;
+    results.top_hit = None;
+    Ok(results)
+}
+
 #[tauri::command]
 pub async fn get_favorite_tracks(state: State<'_, AppState>) -> Result<Vec<Track>, String> {
     require_client(&state)?

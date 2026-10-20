@@ -34,6 +34,8 @@ export interface Album {
   audioQuality?: string | null;
   /// Release type: `ALBUM` / `EP` / `SINGLE`.
   type?: string | null;
+  /// When it joined the favorites (favorite albums only).
+  dateAdded?: string | null;
 }
 export interface AlbumInfo {
   releaseDate?: string | null;
@@ -107,11 +109,23 @@ export interface FeedActivity {
   /// Credited artists with ids (main artists when present).
   artists: ArtistRef[];
 }
-export interface SearchGroup<T> { items: T[] }
+export interface SearchGroup<T> {
+  items: T[];
+  /// Every match TIDAL has for the type, beyond this page.
+  totalNumberOfItems?: number;
+}
+/// TIDAL's single best match for a query (absent when it names none, or a video).
+export type TopHit =
+  | { kind: "artist"; item: Artist }
+  | { kind: "album"; item: Album }
+  | { kind: "track"; item: Track }
+  | { kind: "playlist"; item: Playlist };
 export interface SearchResults {
   tracks: SearchGroup<Track>; albums: SearchGroup<Album>;
   artists: SearchGroup<Artist>; playlists: SearchGroup<Playlist>;
+  topHit?: TopHit | null;
 }
+export type SearchKind = "tracks" | "albums" | "artists" | "playlists";
 export interface TrackPage { items: Track[]; total: number; offset: number; limit: number }
 export interface HistoryEntry {
   track_id: number; title: string; artist: string; album: string;
@@ -624,6 +638,9 @@ export const api = {
   getPlaylistTracks: (id: string) => invoke<Track[]>("get_playlist_tracks", { id }),
   getArtist: (id: number) => invoke<Artist>("get_artist", { id }),
   search: (query: string) => invoke<SearchResults>("search", { query }),
+  /// One 50-item page of a single result type; the other groups are empty.
+  searchType: (query: string, kind: SearchKind, offset: number) =>
+    invoke<SearchResults>("search_type", { query, kind, offset }),
   getFavoriteTracks: () => invoke<Track[]>("get_favorite_tracks"),
   getFavoriteAlbums: () => invoke<Album[]>("get_favorite_albums"),
   getFavoriteArtists: () => invoke<Artist[]>("get_favorite_artists"),

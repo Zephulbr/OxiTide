@@ -81,6 +81,10 @@ pub struct Album {
     /// Release type: `ALBUM`, `EP` or `SINGLE`.
     #[serde(default, rename = "type")]
     pub album_type: Option<String>,
+    /// When the album joined the favorites (copied from the favorites
+    /// wrapper's `created`); absent elsewhere.
+    #[serde(default, rename = "dateAdded", skip_serializing_if = "Option::is_none")]
+    pub date_added: Option<String>,
 }
 
 /// Public v2 album facts (spec §5.3). Absent attributes stay `None` and the
@@ -302,10 +306,47 @@ pub struct ItemPage<T> {
 pub struct SearchGroup<T> {
     #[serde(default = "Vec::new")]
     pub items: Vec<T>,
+    /// Every match TIDAL has for the type, beyond this page.
+    #[serde(default, rename = "totalNumberOfItems")]
+    pub total_number_of_items: u32,
 }
 
 fn empty_group<T>() -> SearchGroup<T> {
-    SearchGroup { items: Vec::new() }
+    SearchGroup {
+        items: Vec::new(),
+        total_number_of_items: 0,
+    }
+}
+
+/// TIDAL's single best match for a query, of any type.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "kind", content = "item", rename_all = "lowercase")]
+pub enum TopHit {
+    Artist(Artist),
+    Album(Album),
+    Track(Track),
+    Playlist(Playlist),
+}
+
+/// `{"type": "ARTISTS", "value": {...}}`. Anything unexpected (a video, a
+/// missing or malformed value) is no top hit rather than a failed search.
+fn lenient_top_hit<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<Option<TopHit>, D::Error> {
+    let raw: Option<serde_json::Value> = Option::deserialize(d)?;
+    let Some(mut raw) = raw else { return Ok(None) };
+    let kind = raw
+        .get("type")
+        .and_then(|t| t.as_str())
+        .unwrap_or_default()
+        .to_ascii_uppercase();
+    let value = raw.get_mut("value").map(serde_json::Value::take).unwrap_or_default();
+    let hit = match kind.trim_end_matches('S') {
+        "ARTIST" => serde_json::from_value(value).map(TopHit::Artist).ok(),
+        "ALBUM" => serde_json::from_value(value).map(TopHit::Album).ok(),
+        "TRACK" => serde_json::from_value(value).map(TopHit::Track).ok(),
+        "PLAYLIST" => serde_json::from_value(value).map(TopHit::Playlist).ok(),
+        _ => None,
+    };
+    Ok(hit)
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -318,6 +359,13 @@ pub struct SearchResults {
     pub artists: SearchGroup<Artist>,
     #[serde(default = "empty_group")]
     pub playlists: SearchGroup<Playlist>,
+    #[serde(
+        default,
+        rename = "topHit",
+        deserialize_with = "lenient_top_hit",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub top_hit: Option<TopHit>,
 }
 
 impl SearchResults {

@@ -350,8 +350,11 @@
     text-transform: uppercase;
     color: var(--text-muted);
   }
+  /* Not a .page-head, so it takes the page-title size itself (app.css). */
   .catalog-head h2 {
     margin: 0;
+    font-size: var(--page-title-size, 32px);
+    line-height: 1.1;
   }
   .tabs {
     position: relative;

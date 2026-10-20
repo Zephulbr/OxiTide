@@ -1,9 +1,9 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import { api, trackToQueueItem, type HistoryEntry, type PageItem, type PageSection } from "../lib/api";
+  import { api, type HistoryEntry, type PageItem, type PageSection, type SearchKind } from "../lib/api";
   import Carousel from "../lib/components/Carousel.svelte";
-  import Cover from "../lib/components/Cover.svelte";
   import MediaCard from "../lib/components/MediaCard.svelte";
+  import SearchResultsView from "../lib/components/SearchResultsView.svelte";
   import { buildNewToYou, topArtistNames, type NewArtist } from "../lib/exploreSuggest";
   import { routeForPageItem } from "../lib/nav.svelte";
   import { splitQuickLinks, withoutVideoLinks } from "../lib/pageLinks";
@@ -12,14 +12,10 @@
   import Icon from "../lib/components/Icon.svelte";
   import Loading from "../lib/components/Loading.svelte";
   import PageSections from "../lib/components/PageSections.svelte";
-  import PlaylistCover from "../lib/components/PlaylistCover.svelte";
-  import TrackTable from "../lib/components/TrackTable.svelte";
-  import { isAlbumRelease } from "../lib/media";
-  import { playSource } from "../lib/playSource.svelte";
-  import { trackFlags } from "../lib/trackFlags.svelte";
   import { createSearch } from "../lib/search.svelte";
   import { searchHistory } from "../lib/searchHistory.svelte";
-  import { createTrackView } from "../lib/trackView.svelte";
+  import { createSearchPages } from "../lib/searchPages.svelte";
+  import { kindsWithResults } from "../lib/searchResults";
   import { load as loadCached, peek } from "../lib/viewCache";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { Nav } from "../lib/nav.svelte";
@@ -52,7 +48,28 @@
   const showSuggestions = $derived(
     searchFocused && !suggestionsDismissed && suggestions.length > 0,
   );
-  const resultsView = createTrackView(() => search.results?.tracks.items ?? []);
+
+  /// The results' type filter: "all" is the overview (top result, tracks,
+  /// rows); a type shows it alone, paged. It survives a new query, like a
+  /// tab, and resets when the search is cleared.
+  let kind = $state<SearchKind | "all">("all");
+  const pages = createSearchPages((query, type, offset) => api.searchType(query, type, offset));
+  const KIND_LABELS: Record<SearchKind | "all", string> = {
+    all: "All",
+    tracks: "Tracks",
+    albums: "Albums",
+    artists: "Artists",
+    playlists: "Playlists",
+  };
+  const kinds = $derived(search.results ? kindsWithResults(search.results) : []);
+  /// A type the current results lack falls back to the overview.
+  const shownKind = $derived(kind !== "all" && kinds.includes(kind) ? kind : "all");
+
+  $effect(() => {
+    const results = search.results;
+    const query = search.settledQuery;
+    if (results) untrack(() => pages.seed(results, query));
+  });
 
   // Both parts read through the page cache (lib/viewCache.ts); the personal
   // one changes with each play, so it always revalidates in the background.
@@ -177,6 +194,7 @@
     suggestionsDismissed = false;
     activeSuggestion = -1;
     search.setQuery(value);
+    if (value.trim().length === 0) kind = "all";
   }
 
   function chooseSuggestion(value: string) {
@@ -216,37 +234,6 @@
     activeSuggestion = -1;
   }
 
-  async function playFrom(index: number) {
-    const prepared = await trackFlags.filterPlayable(resultsView.items, index);
-    if (!prepared) {
-      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
-      return;
-    }
-    playSource.set(null);
-    void api.playTracks(prepared.items.map(trackToQueueItem), prepared.start);
-  }
-
-  async function playAll() {
-    if (resultsView.items.length === 0) return;
-    const prepared = await trackFlags.filterPlayable(resultsView.items, 0);
-    if (!prepared) {
-      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
-      return;
-    }
-    playSource.set(null);
-    void api.playTracks(prepared.items.map(trackToQueueItem), prepared.start);
-  }
-
-  async function shuffleAll() {
-    if (resultsView.items.length === 0) return;
-    const prepared = await trackFlags.filterPlayable(resultsView.items, 0);
-    if (!prepared) {
-      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
-      return;
-    }
-    playSource.set(null);
-    void api.playTracks(prepared.items.map(trackToQueueItem), 0, true);
-  }
 </script>
 
 <header class="page-head explore-head">
@@ -335,6 +322,19 @@
     {/each}
   </div>
 {/if}
+{#if searching && kinds.length > 1}
+  <!-- The results' type filter, in the suggestion chips' place. -->
+  <div class="chips kinds" role="group" aria-label="Show results">
+    {#each ["all", ...kinds] as const as option (option)}
+      <button
+        type="button"
+        class="chip"
+        aria-pressed={shownKind === option}
+        onclick={() => (kind = option)}
+      >{KIND_LABELS[option]}</button>
+    {/each}
+  </div>
+{/if}
 </div>
 </header>
 
@@ -346,69 +346,18 @@
   {:else if noResults}
     <EmptyState message={`No results for “${search.settledQuery}”`} />
   {:else if search.results}
-    <div class="list-head">
-      <h3>Tracks</h3>
-      <button
-        class="list-action"
-        onclick={shuffleAll}
-        disabled={resultsView.items.length === 0}
-        aria-label="Shuffle"
-        title="Shuffle"
-      ><Icon name="shuffle" size={16} /></button>
-      <button
-        class="list-action"
-        onclick={playAll}
-        disabled={resultsView.items.length === 0}
-        aria-label="Play all"
-        title="Play all"
-      ><Icon name="play" size={16} /></button>
-    </div>
-    <TrackTable
-      view={resultsView}
+    <SearchResultsView
+      results={search.results}
+      query={search.settledQuery}
+      {pages}
+      kind={shownKind}
+      onKind={(next) => (kind = next)}
       {nav}
+      {player}
       {favorites}
+      {playlistActions}
       {toasts}
-      onPlay={playFrom}
-      onAddToPlaylist={(t) => playlistActions.openPicker([t])}
-      playingTrackId={player.state.current?.track_id ?? null}
-      playbackRunning={player.state.playing}
     />
-    <h3>Albums</h3>
-    <ul class="results">
-      {#each search.results.albums.items as a (a.id)}
-        <li>
-          <span class="res-thumb"><Cover uuid={a.cover} size={80} radius={isAlbumRelease(a.type) ? 0 : 6} alt="" /></span>
-          <button onclick={() => nav.goto({ name: "album", id: a.id })}>{a.title}</button>
-        </li>
-      {/each}
-    </ul>
-    <h3>Artists</h3>
-    <ul class="results">
-      {#each search.results.artists.items as a (a.id)}
-        <li>
-          <span class="res-thumb round"><Cover uuid={a.picture ?? a.cover_fallback} size={80} radius={50} alt="" /></span>
-          <button onclick={() => nav.goto({ name: "artist", id: a.id })}>{a.name}</button>
-        </li>
-      {/each}
-    </ul>
-    <h3>Playlists</h3>
-    <ul class="results">
-      {#each search.results.playlists.items as p (p.uuid)}
-        <li>
-          <span class="res-thumb">
-            <PlaylistCover
-              owned={p.owned}
-              playlist={p.uuid}
-              image={p.squareImage}
-              size={80}
-              radius={6}
-              alt=""
-            />
-          </span>
-          <button onclick={() => nav.goto({ name: "playlist", id: p.uuid })}>{p.title}</button>
-        </li>
-      {/each}
-    </ul>
   {/if}
 {:else if !ready}
   <div class="pending"><Loading /></div>
@@ -598,40 +547,14 @@
       transform: translateY(var(--rise));
     }
   }
-  .list-head {
-    display: flex;
-    align-items: center;
-    gap: 6px;
+  /* The results' type filter: the same chips, the chosen one filled with
+     the accent. */
+  .kinds .chip {
+    padding: 0 14px;
   }
-  .list-head h3 {
-    flex: 1;
-    min-width: 0;
-  }
-  .list-action {
-    display: grid;
-    place-items: center;
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    border: 1px solid var(--line);
-    color: var(--text-muted);
-  }
-  .list-action:hover {
-    color: var(--text);
-  }
-  .results {
-    list-style: none;
-    margin: 0 0 16px;
-    padding: 0;
-  }
-  .results li {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 4px 0;
-  }
-  .res-thumb {
-    flex: 0 0 auto;
-    width: var(--thumb-size);
+  .kinds .chip[aria-pressed="true"] {
+    border-color: transparent;
+    background: var(--accent);
+    color: var(--on-accent);
   }
 </style>
