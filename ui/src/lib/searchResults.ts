@@ -60,6 +60,37 @@ export function pickTopHit(results: SearchResults, query: string): TopHit | null
   return artist ? { kind: "artist", item: artist } : null;
 }
 
+/// The query to search again with when TIDAL's results are thin: a typo such
+/// as "kaygen chuch" still finds the artist as the top hit, but no tracks,
+/// albums or playlists. Then the top hit's own name, if it reads differently
+/// from the query (ignoring case, accents and punctuation); otherwise null.
+export function correctedQuery(results: SearchResults, query: string): string | null {
+  const top = results.topHit;
+  if (!top || results.tracks.items.length > 0) return null;
+  const name = top.kind === "artist" ? top.item.name : top.item.title;
+  const wanted = fold(name);
+  return wanted && wanted !== fold(query) ? name : null;
+}
+
+/// Runs `search`, and once more with `correctedQuery` when that applies.
+/// The second search wins only if it found tracks; otherwise (or if it
+/// fails) the first stands. `query` is what the results answer.
+export async function searchCorrecting(
+  search: (query: string) => Promise<SearchResults>,
+  query: string,
+): Promise<{ results: SearchResults; query: string }> {
+  const first = await search(query);
+  const retry = correctedQuery(first, query);
+  if (!retry) return { results: first, query };
+  try {
+    const second = await search(retry);
+    if (second.tracks.items.length > 0) return { results: second, query: retry };
+  } catch {
+    // The first results still answer the query.
+  }
+  return { results: first, query };
+}
+
 export type ShelfKind = Exclude<SearchKind, "tracks">;
 
 /// The rows under the tracks: artists, albums, playlists, except that the

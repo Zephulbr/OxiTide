@@ -1,4 +1,4 @@
-﻿// @vitest-environment jsdom
+// @vitest-environment jsdom
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/svelte";
 import type { Favorites } from "../favorites.svelte";
@@ -96,12 +96,12 @@ describe("SearchResultsView overview", () => {
     expect(rowTitles()).toEqual(["Artists", "Albums"]);
   });
 
-  it("shows more tracks without a top result, and Show all switches to Tracks", async () => {
+  it("shows more tracks without a top result, and See all switches to Tracks", async () => {
     const { onKind } = setup(results(false), "highway");
     expect(screen.queryByText("Top result")).toBeNull();
     expect(screen.getByText("Song 8")).toBeTruthy();
     expect(screen.queryByText("Song 9")).toBeNull();
-    await fireEvent.click(screen.getByRole("button", { name: "Show all" }));
+    await fireEvent.click(screen.getByRole("button", { name: "See all tracks" }));
     expect(onKind).toHaveBeenCalledWith("tracks");
   });
 });

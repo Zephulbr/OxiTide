@@ -59,7 +59,15 @@
     {@render controls?.()}
   </div>
 </div>
-<div class="row pane" bind:this={el} onscroll={sync} role="region" aria-label={title}>
+<div
+  class="row pane"
+  class:fade-left={canLeft}
+  class:fade-right={canRight}
+  bind:this={el}
+  onscroll={sync}
+  role="region"
+  aria-label={title}
+>
   {@render children()}
 </div>
 
@@ -94,14 +102,72 @@
     opacity: 0.4;
   }
   .row {
+    --gap: 20px;
     display: flex;
-    gap: 20px;
+    gap: var(--gap);
     overflow-x: auto;
+    container-type: inline-size;
     scroll-snap-type: x proximity;
     padding: 2px 2px 8px;
     scrollbar-width: none;
+    --fade: 72px;
   }
   .row::-webkit-scrollbar {
     display: none;
+  }
+  /* Cards size to the row so a part of the next one always peeks past the
+     edge (and fades): --per whole cards plus 0.4 of one. The count steps
+     with the row's width (container queries), keeping a card near its
+     nominal size: 190-220px for the regular card, 136-152px for Home's
+     compact one. The width selector outranks MediaCard's fixed widths. */
+  .row > :global(.media) {
+    --per: 1;
+  }
+  .row > :global(.media.carousel),
+  .row > :global(.media.mini) {
+    width: max(120px, calc((100cqi - var(--per) * var(--gap)) / (var(--per) + 0.4)));
+  }
+  @container (min-width: 496px) { .row > :global(.carousel) { --per: 2; } }
+  @container (min-width: 706px) { .row > :global(.carousel) { --per: 3; } }
+  @container (min-width: 917px) { .row > :global(.carousel) { --per: 4; } }
+  @container (min-width: 1126px) { .row > :global(.carousel) { --per: 5; } }
+  @container (min-width: 1336px) { .row > :global(.carousel) { --per: 6; } }
+  @container (min-width: 1546px) { .row > :global(.carousel) { --per: 7; } }
+  @container (min-width: 1756px) { .row > :global(.carousel) { --per: 8; } }
+  @container (min-width: 1966px) { .row > :global(.carousel) { --per: 9; } }
+  @container (min-width: 2176px) { .row > :global(.carousel) { --per: 10; } }
+  @container (min-width: 2386px) { .row > :global(.carousel) { --per: 11; } }
+  @container (min-width: 2596px) { .row > :global(.carousel) { --per: 12; } }
+  @container (min-width: 367px) { .row > :global(.mini) { --per: 2; } }
+  @container (min-width: 523px) { .row > :global(.mini) { --per: 3; } }
+  @container (min-width: 679px) { .row > :global(.mini) { --per: 4; } }
+  @container (min-width: 835px) { .row > :global(.mini) { --per: 5; } }
+  @container (min-width: 991px) { .row > :global(.mini) { --per: 6; } }
+  @container (min-width: 1147px) { .row > :global(.mini) { --per: 7; } }
+  @container (min-width: 1303px) { .row > :global(.mini) { --per: 8; } }
+  @container (min-width: 1459px) { .row > :global(.mini) { --per: 9; } }
+  @container (min-width: 1615px) { .row > :global(.mini) { --per: 10; } }
+  @container (min-width: 1771px) { .row > :global(.mini) { --per: 11; } }
+  @container (min-width: 1927px) { .row > :global(.mini) { --per: 12; } }
+  @container (min-width: 2083px) { .row > :global(.mini) { --per: 13; } }
+  @container (min-width: 2239px) { .row > :global(.mini) { --per: 14; } }
+  @container (min-width: 2395px) { .row > :global(.mini) { --per: 15; } }
+  @container (min-width: 2551px) { .row > :global(.mini) { --per: 16; } }
+  /* A side with more to scroll fades out (72px), so a card cut at the edge
+     reads as "more this way" rather than a clipped render. */
+  .row.fade-right {
+    mask-image: linear-gradient(to right, #000 calc(100% - var(--fade)), transparent);
+  }
+  .row.fade-left {
+    mask-image: linear-gradient(to right, transparent, #000 var(--fade));
+  }
+  .row.fade-left.fade-right {
+    mask-image: linear-gradient(
+      to right,
+      transparent,
+      #000 var(--fade),
+      #000 calc(100% - var(--fade)),
+      transparent
+    );
   }
 </style>

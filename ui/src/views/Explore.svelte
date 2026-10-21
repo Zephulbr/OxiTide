@@ -15,7 +15,7 @@
   import { createSearch } from "../lib/search.svelte";
   import { searchHistory } from "../lib/searchHistory.svelte";
   import { createSearchPages } from "../lib/searchPages.svelte";
-  import { kindsWithResults } from "../lib/searchResults";
+  import { kindsWithResults, searchCorrecting } from "../lib/searchResults";
   import { fetchShared, load as loadCached, peek } from "../lib/viewCache";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { Nav, Route } from "../lib/nav.svelte";
@@ -38,9 +38,21 @@
   } = $props();
 
   /// Searches go through the page cache, so Back to a search shows its
-  /// results on the first frame instead of searching again.
-  const searchSource = (query: string) => ({ key: `search:${query}`, fetch: () => api.search(query) });
-  const search = createSearch((query) => fetchShared(searchSource(query)));
+  /// results on the first frame instead of searching again. A typo that only
+  /// finds its top hit searches again under the top hit's name
+  /// (`searchCorrecting`); the entry keeps the query its results answer.
+  const searchSource = (query: string) => ({
+    key: `search:${query}`,
+    fetch: () => searchCorrecting(api.search, query),
+  });
+  const search = createSearch(async (query) => (await fetchShared(searchSource(query))).results);
+  /// The query the results on screen answer: the typed one, or its correction.
+  const answered = $derived.by(() => {
+    const typed = search.settledQuery;
+    if (!search.results || !typed) return typed;
+    return peek(searchSource(typed))?.query ?? typed;
+  });
+  const corrected = $derived(answered !== search.settledQuery ? answered : null);
   const history = searchHistory();
 
   let searchFocused = $state(false);
@@ -69,8 +81,9 @@
   const shownKind = $derived(kind !== "all" && kinds.includes(kind) ? kind : "all");
 
   $effect(() => {
+    // Paging (type chips, Load more) asks for the corrected query's pages.
     const results = search.results;
-    const query = search.settledQuery;
+    const query = answered;
     if (results) untrack(() => pages.seed(results, query));
   });
 
@@ -93,7 +106,7 @@
       return;
     }
     const cached = peek(searchSource(q));
-    if (cached) search.restore(q, cached);
+    if (cached) search.restore(q, cached.results);
     else {
       search.setQuery(q);
       search.runNow();
@@ -291,6 +304,9 @@
 
 </script>
 
+<!-- Capped and centred, so a wide window doesn't pull the columns apart; the
+     title, the browse rows and the results share the one edge. -->
+<div class="explore">
 <header class="page-head explore-head" class:searching>
 <h2>Explore</h2>
 <div class="search-block">
@@ -390,6 +406,9 @@
     {/each}
   </div>
 {/if}
+{#if searching && corrected && search.results}
+  <p class="corrected" role="status">Showing results for <strong>{corrected}</strong></p>
+{/if}
 </div>
 </header>
 
@@ -403,7 +422,7 @@
   {:else if search.results}
     <SearchResultsView
       results={search.results}
-      query={search.settledQuery}
+      query={answered}
       {pages}
       kind={shownKind}
       onKind={(next) => (kind = next)}
@@ -438,8 +457,13 @@
     </div>
   {/if}
 {/if}
+</div>
 
 <style>
+  .explore {
+    max-width: 1680px;
+    margin-inline: auto;
+  }
   /* Explore's header is its search: the title keeps every page's h2 step,
      the field below it is the page's hero (spec 2026-10-16 Explore). */
   .explore-head {
@@ -610,6 +634,17 @@
      the accent. */
   .kinds .chip {
     padding: 0 14px;
+  }
+  /* A corrected search says what it searched for, under the chips. */
+  .corrected {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 13px;
+    text-align: center;
+  }
+  .corrected strong {
+    color: var(--text);
+    font-weight: 600;
   }
   .kinds .chip[aria-pressed="true"] {
     border-color: transparent;

@@ -54,7 +54,7 @@
 
   const top = $derived(pickTopHit(results, query));
   /// Beside a top result the tracks match its height; alone they get a
-  /// little more room. Either way the rest is one click away ("Show all").
+  /// little more room. Either way the rest is one click away ("See all").
   const previewCount = $derived(top ? 5 : 8);
   const allTracks = $derived(pages.items("tracks"));
   const preview = createTrackView(() => allTracks.slice(0, previewCount));
@@ -132,7 +132,7 @@
         <div class="list-head">
           <h3 id="search-tracks">Tracks</h3>
           {#if allTracks.length > previewCount}
-            <button type="button" class="view-all" onclick={() => onKind("tracks")}>Show all</button>
+            <button type="button" class="view-all" aria-label="See all tracks" onclick={() => onKind("tracks")}>See all</button>
           {/if}
           {@render trackActions()}
         </div>
@@ -158,7 +158,7 @@
       <section class="block">
         <Carousel title={SHELF_TITLES[shelf]}>
           {#snippet controls()}
-            <button type="button" class="view-all" onclick={() => onKind(shelf)}>See all</button>
+            <button type="button" class="view-all" aria-label={`See all ${shelf}`} onclick={() => onKind(shelf)}>See all</button>
           {/snippet}
           {#each cards[shelf] as item (item.id)}
             <MediaCard {item} variant="carousel" onclick={open(item)} />
@@ -209,12 +209,6 @@
 </div>
 
 <style>
-  /* Capped and centred under the search field, so a wide window doesn't
-     pull the columns apart. */
-  .results {
-    max-width: 1680px;
-    margin-inline: auto;
-  }
   /* The top result and the first tracks side by side; stacked once the
      column is too narrow for both. A container query on the frame (an
      element cannot query itself), so the queue glide sees the final layout. */
@@ -250,11 +244,11 @@
     align-items: center;
     gap: 6px;
   }
+  /* As in the carousels' heads: the heading takes the row, and "See all"
+     sits at its end before the play buttons. */
   .list-head h3 {
+    flex: 1;
     min-width: 0;
-  }
-  .list-head h3 + .list-action {
-    margin-left: auto;
   }
   .list-action {
     display: grid;
@@ -267,11 +261,6 @@
   }
   .list-action:hover {
     color: var(--text);
-  }
-  /* "Show all" follows the heading; the play buttons close the row. */
-  .list-head .view-all {
-    margin-right: auto;
-    margin-left: 8px;
   }
   .view-all {
     margin-right: 6px;
