@@ -95,6 +95,30 @@ describe("TrackTable semantics", () => {
     expect(cells[1].querySelector('[role="img"]')?.getAttribute("aria-label")).toBe("Now playing");
   });
 
+  it("offers 'Now playing' only when the playing track is listed and scrolls to it", async () => {
+    const view = {
+      filter: "", levels: [], engaged: false, preparing: false, error: "",
+      items: [track(1), track(2), track(3)], setFilter: vi.fn(), toggleSort: vi.fn(), clearSort: vi.fn(),
+      retry: vi.fn(), sourceIndex: (index: number) => index,
+    } as unknown as TrackView;
+    const favorites = { hasTrack: () => false, toggleTrack: vi.fn() } as unknown as Favorites;
+    const toasts = { show: vi.fn() } as unknown as Toasts;
+    const scrollTo = vi.fn();
+    const original = HTMLElement.prototype.scrollTo;
+    HTMLElement.prototype.scrollTo = scrollTo;
+    try {
+      const { rerender } = render(TrackTable, { view, favorites, toasts, playingTrackId: 9 });
+      expect(document.querySelector("button.locate")).toBeNull();
+
+      await rerender({ view, favorites, toasts, playingTrackId: 3 });
+      await fireEvent.click(document.querySelector<HTMLButtonElement>("button.locate")!);
+      expect(scrollTo).toHaveBeenCalledTimes(1);
+      expect(scrollTo.mock.calls[0][0].top).toBeGreaterThan(0);
+    } finally {
+      HTMLElement.prototype.scrollTo = original;
+    }
+  });
+
   it("labels virtualized rows with their index in the full list", () => {
     setup();
     const rows = document.querySelectorAll<HTMLTableRowElement>("tbody tr.row");

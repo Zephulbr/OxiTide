@@ -3,7 +3,6 @@
   import { api, trackToQueueItem, type Track } from "../lib/api";
   import ErrorState from "../lib/components/ErrorState.svelte";
   import Icon from "../lib/components/Icon.svelte";
-  import Loading from "../lib/components/Loading.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
   import { createTrackPager } from "../lib/pager.svelte";
   import { perf } from "../lib/perf.svelte";
@@ -25,6 +24,9 @@
     playlistActions,
     toasts,
   }: { nav: Nav; player: Player; favorites: Favorites; playlistActions: PlaylistActions; toasts: Toasts } = $props();
+
+  const UNAVAILABLE_NOTE =
+    "TIDAL still counts these favorites but no longer serves them: they were removed from the catalogue or aren't licensed in your region.";
 
   const favoritesPager = createTrackPager("favorites", (offset, limit) =>
     api.getFavoriteTracksPage(offset, limit),
@@ -149,16 +151,25 @@
       title="Play all"
     ><Icon name="play" size={16} /></button>
   </div>
-  <p>
-    <button onclick={() => favoritesPager.refresh()}>Refresh</button>
-    <span class="muted">
-      {#if favoritesPager.unavailable > 0}
-        {rows.length} tracks ({favoritesPager.unavailable} unavailable)
-      {:else}
-        {rows.length} tracks
-      {/if}
-    </span>
-    {#if favoritesPager.loading}<Loading />{/if}
+  <!-- The count, then Refresh as an icon that spins while a load runs.
+       TIDAL counts unavailable favorites but never returns them, so they
+       can't be listed; the button explains instead. -->
+  <p class="list-meta">
+    <span class="muted">{rows.length} tracks</span>
+    {#if favoritesPager.unavailable > 0}
+      <button
+        class="unavailable"
+        onclick={() => toasts.show(UNAVAILABLE_NOTE, { severity: "info" })}
+        title={UNAVAILABLE_NOTE}
+      ><Icon name="info" size={13} />{favoritesPager.unavailable} unavailable</button>
+    {/if}
+    <button
+      class="refresh"
+      class:spinning={favoritesPager.loading}
+      onclick={() => favoritesPager.refresh()}
+      aria-label={favoritesPager.loading ? "Refreshing" : "Refresh"}
+      title="Refresh"
+    ><Icon name="refresh-cw" size={14} /></button>
   </p>
   <TrackTable
     {view}
@@ -203,5 +214,47 @@
   }
   .list-action:hover {
     color: var(--text);
+  }
+  .list-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .unavailable {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    color: var(--text-muted);
+  }
+  .unavailable:hover {
+    color: var(--text);
+    background: var(--surface-2);
+  }
+  .refresh {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    color: var(--text-muted);
+  }
+  .refresh:hover {
+    color: var(--text);
+    background: var(--surface-2);
+  }
+  .refresh.spinning :global(svg) {
+    animation: refresh-spin 0.9s linear infinite;
+  }
+  @keyframes refresh-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .refresh.spinning :global(svg) {
+      animation: none;
+    }
   }
 </style>

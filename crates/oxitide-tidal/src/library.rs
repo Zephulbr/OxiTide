@@ -45,18 +45,23 @@ fn page(limit: u32, offset: u32) -> Vec<(&'static str, String)> {
     vec![("limit", limit.to_string()), ("offset", offset.to_string())]
 }
 
+/// Favorite tracks list newest-favorited first (TIDAL's default is by name),
+/// so the Tracks page's original order is "recently added".
+fn newest_first() -> [(&'static str, String); 2] {
+    [("order", "DATE".to_string()), ("orderDirection", "DESC".to_string())]
+}
+
 impl TidalClient {
     fn user_base(&self) -> String {
         format!("users/{}/favorites", self.session().user_id)
     }
 
-    /// One page of favorite tracks plus the server-reported total.
+    /// One page of favorite tracks (newest first) plus the server-reported total.
     pub async fn favorite_tracks_page(&self, limit: u32, offset: u32) -> Result<(Vec<Track>, u32)> {
+        let mut params = page(limit, offset);
+        params.extend(newest_first());
         let p: ItemPage<Favorited<Track>> = self
-            .get(
-                &format!("{}/tracks", self.user_base()),
-                &page(limit, offset),
-            )
+            .get(&format!("{}/tracks", self.user_base()), &params)
             .await?;
         Ok((
             p.items.into_iter().map(favorited_track).collect(),
@@ -84,12 +89,12 @@ impl TidalClient {
         Ok(p.items.into_iter().map(|f| f.item).collect())
     }
 
-    /// Walk every page of the user's favorite tracks.
+    /// Walk every page of the user's favorite tracks (newest first).
     pub async fn all_favorite_tracks(&self) -> Result<Vec<Track>> {
         let favs: Vec<Favorited<Track>> = self
             .get_all_pages(
                 &format!("{}/tracks", self.user_base()),
-                &[],
+                &newest_first(),
                 DEFAULT_PAGE_SIZE,
             )
             .await?;
@@ -293,6 +298,7 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("GET")).and(path("/users/42/favorites/tracks"))
             .and(query_param("offset", "200")).and(query_param("limit", "100"))
+            .and(query_param("order", "DATE")).and(query_param("orderDirection", "DESC"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "items": [{"created": "2025-01-01T00:00:00.000+0000", "item": {"id": 7, "title": "Fav"}}],
                 "totalNumberOfItems": 201, "limit": 100, "offset": 200
@@ -334,6 +340,7 @@ mod tests {
         Mock::given(method("GET"))
             .and(path("/users/42/favorites/tracks"))
             .and(query_param("offset", "0"))
+            .and(query_param("order", "DATE"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "items": (1..=100)
                     .map(|id| serde_json::json!({"item": {"id": id, "title": "T"}}))

@@ -66,6 +66,30 @@ family — `.search-input` for search/filter, `SortSelect` for sort, `.tool-btn`
 label) for actions — never mixed with round icon buttons in the same row. Rack skins
 `.page-head > h2` as a printed label and `.tool-btn` as a light-bar key.
 
+**Track table edges** (`TrackTable.svelte`). A table that scrolls itself (`fill`: Tracks,
+Album, Playlist, Mix, History, ArtistAll) has no header frost. A mask on the `tbody` fades the
+rows out over 48px just below the sticky header and just above the player bar (the scroller
+runs under it). Each fade grows with the scroll distance left that way, so a list at rest,
+or at its end, shows every row whole. The row rules are cell borders (`border-collapse:
+separate`), so they fade with the rows; collapsed borders are painted by the table and would
+escape the mask. The header itself stays unmasked and untinted. Tables
+that don't scroll themselves keep the frost.
+
+**Track table columns.** Every column but the number, cover and actions takes a share of the
+width (title 21%, artist 19%, album 18%, optional columns 14%, time and quality 8%), so the
+date, time and quality spread across the row instead of packing at the right edge (time is
+left-aligned like the other shared columns; the compact list keeps it right-aligned); a table
+without some of them hands the spare width to the rest by share. Long names end in an
+ellipsis and never widen their column (the full name is the tooltip). The number and cover
+cells pad 18px (text cells 12px) so the row's start breathes. While the playing track is
+among the listed rows, a quiet "Now playing" button (`circle-dot`, the queue's "Show the current track" icon) after the sort
+controls scrolls it to the middle of the list (smooth unless reduced motion).
+Favorites arrive newest-favorited first, so the Tracks page's original order is "recently
+added". Row actions show on hover/focus; the heart stays visible except on the favorites
+list (Tracks), where every row is a favorite. The Tracks count line ends in a refresh icon
+(spins while loading) and, when TIDAL counts favorites it no longer serves, an
+"N unavailable" info button whose tooltip and toast explain them (they can't be listed).
+
 **Track table sorting** (`TrackTable.svelte` + `SortBar.svelte`, 2026-10-19 multi-sort spec).
 Sortable headers are text buttons. A plain click sorts by that column alone; Shift+click, or the
 round `+` that appears on another header's hover/focus once a sort is on, adds it as the next
@@ -143,7 +167,10 @@ reduced motion).
 
 **Media cards** (`MediaCard.svelte`: Home, Explore/For You sections, Mixes, Playlists,
 Albums, Artist, Purchases) share one card. Variants: `tile`, `carousel` (210px), `mini`
-(148px), `row`. Every cover carries a 1px `--line` ring and `--shadow-cover`. Playlist
+(148px), `row`. Inside a `Carousel` the `carousel` and `mini` cards size to the row
+instead: a container query picks a whole-card count, and each card takes the width that
+leaves 0.4 of the next peeking past the edge (190–220px and 136–152px at usual widths),
+under the row's 72px edge fade. Every cover carries a 1px `--line` ring and `--shadow-cover`. Playlist
 covers keep sharp corners, and the old offset "stacked sleeve" box behind them is gone.
 Full-length albums (release type `ALBUM`, `media.isAlbumRelease`) have fully square covers
 (radius 0) everywhere they show as albums: cards, the album page header, search rows. EPs,
@@ -186,28 +213,36 @@ fixed height. Untitled quick-link rows (New, Top, HiRes, …) follow "New to you
 **Search results** (`SearchResultsView.svelte`) replace the old all-in-one lists. While a
 search shows results, the suggestion chips give way to type chips (All · Tracks · Albums ·
 Artists · Playlists, only types that have results; the chosen one is accent-filled). The
-**All** overview has three parts. All results are capped at 1680px and centred under the
-search field, and the header's bottom margin drops to 4px while searching, so the
-results' own heading margins set the gap under the chips.
+**All** overview has three parts. The whole Explore page (title, browse rows and results)
+is capped at 1680px and centred, so the title shares the results' left edge; the header's
+bottom margin drops to 4px while searching, so the results' own heading margins set the
+gap under the chips. A typo that finds only its top hit (no tracks) searches again under
+the top hit's name (`searchCorrecting`); a centred 13px muted line under the chips says
+"Showing results for **name**", and paging uses the corrected query.
 - A **Top result** card (`SearchTopHit.svelte`): TIDAL's `topHit`, or else an artist whose
   name equals the query once case, accents and punctuation are ignored. It sits in a fixed
-  380px column, 48px from the tracks, stretched to the height of the track preview. The card is a soft panel
-  (`--text` at 4%, 7% on hover, 20px padding), with everything left-aligned under a
-  left-aligned heading, like "Tracks". It holds a 132px cover (round for artists) that
-  lifts 3px on hover, then a 28px display-face title clamped to two lines, then a kind
-  pill with the artists and a year, album or track count. The 56px accent Play button
-  rises into the card's bottom-right corner on hover. Play plays an artist's top tracks.
+  380px column, 48px from the tracks, stretched to the height of the track preview, under
+  a left-aligned heading like "Tracks". The card is a soft panel (20px padding) washed
+  with the cover's own colour (`coverTint`, the accent until it arrives; 30% fading to
+  8%, then `--text` at 4%), with a `--text` 4% layer on hover. Its content is centred in
+  both axes: the cover (150px round for artists, 136px otherwise) lifts 3px on hover,
+  then the display-face title (28px for artists, 24px otherwise, clamped to two lines),
+  then a kind pill with the artists and a year, album or track count. The 48px accent
+  Play button sits on the cover's bottom-right edge at rest (its glow comes up on hover).
+  Play plays an artist's top tracks.
 - **Tracks** beside the card: a compact `TrackTable` (`compact`). It has no toolbar,
-  header, number, album or quality column, and no rules between rows. Rows are 10px
-  taller than `--row-height`, with an inset cover rounded to 4px. The artists sit
-  under the title. It shows five rows (eight when there is no top result). "Show all"
-  follows the heading; Shuffle and Play all close the row. A container query on the
-  overview stacks the card above the tracks below 820px. A play from the preview queues
-  every loaded result track.
+  header, number or quality column, and no rules between rows. Rows are 10px taller than
+  `--row-height`, with an inset cover rounded to 4px. The artists sit under the title;
+  title and album share the width 55/45, and the album column drops out (a container
+  query) once the list is under 640px. It shows five rows (eight when there is no top
+  result). "See all" sits at the row's end before Shuffle and Play all, as in the
+  carousel heads. A container query on the overview stacks the card above the tracks
+  below 820px. A play from the preview queues every loaded result track.
 - One `Carousel` row each for Artists, Albums and Playlists (`MediaCard` carousel cards,
   "See all"), with the top result's own type leading and 24px between rows. The Artists
   row moves artists with no image at all (bare credit-only profiles) to its end.
-
+  Carousels (here, on Home and on Artist) fade the last 72px of a side that has more
+  to scroll, and their cards size so a part of the next card always peeks under it.
 A single type shows its full table, or a `minmax(168px, 1fr)` tile grid, and pages in
 50 more per "Load more" (`search_type`).
 

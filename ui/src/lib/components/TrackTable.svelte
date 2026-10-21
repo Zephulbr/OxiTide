@@ -84,8 +84,9 @@
     /// Render the filter/status toolbar above the table. Views that surface
     /// the filter in their header (playlist) pass false.
     showFilter?: boolean;
-    /// A short preview list (search overview): no toolbar, header or number,
-    /// album or quality columns; the artists sit under the title.
+    /// A short preview list (search overview): no toolbar, header, number or
+    /// quality column; the artists sit under the title, and the album column
+    /// shows only while the list is wide enough for it.
     compact?: boolean;
     sections?: VolumeSection[];
     /// Highlights the playing row (accent tint + title, ringed thumb).
@@ -212,7 +213,7 @@
     }
     return volumeDisplayRows(grouping, rowSourceIndex);
   });
-  const columns = $derived(compact ? 4 : (showAlbum ? 8 : 7) + shownColumns.length);
+  const columns = $derived(compact ? (showAlbum ? 5 : 4) : (showAlbum ? 8 : 7) + shownColumns.length);
 
   // Rows render immediately; flags land asynchronously when the AI filter or
   // content labels are on (the store's `ensure` is a no-op when both are off).
@@ -304,9 +305,35 @@
     void play(index);
   }
 
+  /// Fill mode fades the rows out at the scroller's edges (under the sticky
+  /// header and above the player bar) instead of frosting the header. The
+  /// mask sits on the tbody, so the header stays solid; its stops are in
+  /// tbody coordinates, where the header's bottom edge is `scrollTop`. Each
+  /// fade grows in with the distance left to scroll that way, so a list at
+  /// rest (or at its end) shows every row whole.
+  const EDGE_FADE = 48;
+  let scrollMax = $state(0);
+  $effect(() => {
+    if (!fill) return;
+    void [rows.length, viewport, rowHeight, theadHeight];
+    const element = scrollEl;
+    if (element) scrollMax = element.scrollHeight - element.clientHeight;
+  });
+  const edge = $derived(
+    fill
+      ? {
+          top: scrollTop,
+          topFade: Math.min(scrollTop, EDGE_FADE),
+          bottom: scrollTop + viewport - theadHeight,
+          bottomFade: Math.min(Math.max(0, scrollMax - scrollTop), EDGE_FADE),
+        }
+      : null,
+  );
+
   function onScroll(event: Event) {
     const element = event.currentTarget as HTMLElement;
     scrollTop = element.scrollTop;
+    if (fill) scrollMax = element.scrollHeight - element.clientHeight;
     if (element.scrollHeight - element.scrollTop - element.clientHeight < END_THRESHOLD) {
       onEndReached?.();
     }
@@ -339,6 +366,32 @@
     }
     await tick();
     scroll?.querySelector<HTMLElement>(`tr[data-row-index="${target}"]`)?.focus();
+  }
+
+  /// The playing track's position in the visible rows; -1 when it isn't
+  /// among them (not playing, filtered out, or on a page not loaded yet).
+  const playingIndex = $derived(
+    playingTrackId === null ? -1 : rows.findIndex((t) => t.id === playingTrackId),
+  );
+
+  /// Scroll the playing row to the middle of the visible rows (between the
+  /// header and, in fill mode, the player bar clearance). Flat rows sit at
+  /// `index * rowHeight` below the header (virtualized, so the row may not be
+  /// mounted yet); grouped rows render whole and are measured.
+  function scrollToPlaying() {
+    const scroll = scrollEl;
+    const index = playingIndex;
+    if (!scroll || index < 0) return;
+    let rowTop = theadHeight + index * rowHeight;
+    if (grouping) {
+      const row = scroll.querySelector<HTMLElement>(`tr[data-row-index="${index}"]`);
+      if (!row) return;
+      rowTop = row.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop;
+    }
+    const clearance = parseFloat(getComputedStyle(scroll).paddingBottom) || 0;
+    const middle = theadHeight + (viewport - clearance - theadHeight - rowHeight) / 2;
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    scroll.scrollTo({ top: Math.max(0, rowTop - middle), behavior: reduce ? "auto" : "smooth" });
   }
 
   function onRowKeydown(event: KeyboardEvent, index: number) {
@@ -426,6 +479,11 @@
   <div class="table-tools">
     {#if showFilter}<TrackFilter {view} />{/if}
     <SortBar {view} keys={sortKeys} />
+    {#if playingIndex >= 0}
+      <button class="locate" type="button" title="Show the current track" onclick={scrollToPlaying}>
+        <Icon name="circle-dot" size={14} /> Now playing
+      </button>
+    {/if}
   </div>
 {/if}
 
@@ -441,7 +499,7 @@
   data-perf-scroll
   use:trackDrag={drag}
 >
-  {#if !compact}
+  {#if !compact && !fill}
   <div
     class="head-frost"
     aria-hidden="true"
@@ -452,7 +510,7 @@
     {#if !compact}
     <thead bind:clientHeight={theadHeight}>
       <tr use:menuFor={columnMenu}>
-        <th scope="col" style="text-align:right">
+        <th scope="col" class="num-head" style="text-align:right">
           <button class="sort" title="Original order" onclick={() => view.clearSort()}>#</button>
         </th>
         <th scope="col" class="thumb-head"></th>
@@ -462,13 +520,19 @@
         {#each shownColumns as column (column)}
           {@render sortHead(column, SORT_LABELS[column], column === "added" || column === "released" ? "left" : "right", "opt-col")}
         {/each}
-        {@render sortHead("duration", "Time", "right")}
+        {@render sortHead("duration", "Time", "left")}
         {@render sortHead("quality", "Quality", "left")}
         <th scope="col" class="actions-head"></th>
       </tr>
     </thead>
     {/if}
-    <tbody>
+    <tbody
+      class:edge-fade={edge !== null}
+      style:--edge-top={edge ? `${edge.top}px` : undefined}
+      style:--edge-top-fade={edge ? `${edge.topFade}px` : undefined}
+      style:--edge-bottom={edge ? `${edge.bottom}px` : undefined}
+      style:--edge-bottom-fade={edge ? `${edge.bottomFade}px` : undefined}
+    >
       {#if range.padTop > 0}
         <tr aria-hidden="true"><td colspan={columns} style="height:{range.padTop}px;padding:0;border:0"></td></tr>
       {/if}
@@ -568,8 +632,8 @@
               />
             </div></td>
             {/if}
-            {#if showAlbum && !compact}
-              <td class="text-cell muted"><div class="cell-text">
+            {#if showAlbum}
+              <td class="text-cell muted album-cell"><div class="cell-text">
                 <NameLink label={t.album?.title ?? ""} onOpen={openAlbum} focusable={false} />
               </div></td>
             {/if}
@@ -582,7 +646,7 @@
             {/each}
             <td class="muted tnum nowrap-cell time-cell">{formatDuration(t.duration)}</td>
             {#if !compact}
-              <td class="nowrap-cell">
+              <td class="nowrap-cell quality-cell">
                 {#if quality}<span class="badge" class:max={quality === "MAX"}>{quality}</span>{/if}
               </td>
             {/if}
@@ -603,6 +667,7 @@
               {/if}
               <button
                 class:on={favorites.hasTrack(t.id)}
+                class:reveal={kind === "favorites" && favorites.hasTrack(t.id)}
                 onclick={() => favorites.toggleTrack(t.id)}
                 aria-label={favorites.hasTrack(t.id) ? "Unfavorite" : "Favorite"}
                 title={favorites.hasTrack(t.id) ? "Unfavorite" : "Favorite"}
@@ -631,6 +696,23 @@
     align-items: center;
     gap: 6px 14px;
     margin-bottom: 6px;
+  }
+  /* Same quiet look as the Sort button beside it. */
+  .locate {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 10px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-control);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+  .locate:hover {
+    color: var(--text);
+    border-color: var(--line);
   }
   /* A container, so the optional columns drop out on narrow widths in CSS
      (the queue glide needs width-driven layout in CSS, not JS counts). */
@@ -664,12 +746,18 @@
     background: var(--accent);
     pointer-events: none;
   }
+  /* Separate borders: the row rules belong to the cells, so the tbody's edge
+     fade masks them with the rows (collapsed borders are painted by the table
+     and escaped the mask). */
   table {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
   }
-  /* One frost layer for the sticky header. No per-cell backdrop-filter and no
-     mask: both are unreliable in Chromium inside a scroller (masked blur can
+  /* One frost layer for the sticky header (tables that don't scroll
+     themselves; fill mode fades its rows instead, see tbody.edge-fade). No
+     per-cell backdrop-filter and no mask on the frost: both are unreliable
+     in Chromium inside a scroller (masked blur can
      render as solid dark blocks). At rest the header is untinted so it matches
      the surface above it exactly; the frost fades in only once rows scroll
      beneath — atmosphere's blur carries it, instrument's veil is opaque. The
@@ -710,6 +798,22 @@
   }
   .table-scroll.scrolled thead th {
     background: var(--glass-veil);
+  }
+  /* Fill mode: no frost. The rows fade out before they reach the header and
+     before the player bar (the scroller runs under it; `--edge-*` from the
+     script), so the header stays clear without a veil. */
+  .table-scroll.fill.scrolled thead th {
+    background: transparent;
+  }
+  tbody.edge-fade {
+    --edge-end: calc(var(--edge-bottom) - var(--player-height) - 8px);
+    mask-image: linear-gradient(
+      to bottom,
+      transparent var(--edge-top),
+      #000 calc(var(--edge-top) + var(--edge-top-fade)),
+      #000 calc(var(--edge-end) - var(--edge-bottom-fade)),
+      transparent var(--edge-end)
+    );
   }
   thead th.thumb-head {
     padding: 0;
@@ -779,7 +883,6 @@
   }
   .row {
     height: var(--row-height);
-    border-bottom: 1px solid var(--line);
     user-select: none;
     transition: background-color var(--dur-micro);
   }
@@ -789,10 +892,19 @@
   td {
     padding: 0 12px 0 0;
   }
+  .row > td {
+    border-bottom: 1px solid var(--line);
+  }
   /* The cover fills the row top to bottom; -1px keeps it inside the row's
      content box so the virtualization row math (var(--row-height)) holds. */
   .thumb-cell {
-    padding: 0 12px 0 0;
+    padding: 0 18px 0 0;
+  }
+  /* The number, cover and title get more air than the text columns, so the
+     row's start doesn't read as one block. */
+  .num-cell,
+  thead th.num-head {
+    padding-right: 18px;
   }
   .thumb {
     position: relative;
@@ -823,17 +935,41 @@
   .row.playing .title-text {
     color: var(--accent);
   }
-  /* Text columns share the leftover width proportionally (title widest) so
-     the row breathes at any window width; the inner divs ellipsis. The
-     remaining columns size to their (nowrap) content, actions last. */
+  /* Every column but the number, cover and actions takes a share of the
+     width, so the date, time and quality spread across the row instead of
+     packing at the right edge (title a little wider than artist and album).
+     The number, cover and actions take a token 1% so they shrink to their
+     content: a table without an album or optional columns then hands its
+     spare width to the shared columns by their share (a px width would make
+     them fixed columns, which Chromium widens first). */
   .title-cell {
-    width: 34%;
+    width: 21%;
   }
   .text-cell {
-    width: 22%;
+    width: 19%;
+  }
+  .album-cell {
+    width: 18%;
+  }
+  .opt-col {
+    width: 14%;
+  }
+  .time-cell,
+  .quality-cell {
+    width: 8%;
   }
   .num-cell,
-  .time-cell {
+  thead th.num-head,
+  .thumb-cell,
+  thead th.thumb-head,
+  .actions-cell {
+    width: 1%;
+  }
+  /* Time starts its column like the other shared columns, so the gap to the
+     quality badge is the column's width, not one cell padding. The compact
+     list keeps it at the row's end. */
+  .num-cell,
+  .compact .time-cell {
     text-align: right;
   }
   /* The playing row's number gives way to the spinning mark, right-aligned
@@ -842,8 +978,13 @@
     display: inline-flex;
     vertical-align: middle;
   }
+  /* A long name ends in an ellipsis (the full name is the link's tooltip)
+     instead of widening its column: inline-size containment keeps the text
+     out of the cell's intrinsic width, which a table would otherwise grow
+     to fit. */
   .title-text,
   .cell-text {
+    contain: inline-size;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -862,8 +1003,10 @@
   .actions-cell button + button {
     margin-left: 6px;
   }
-  /* Queue/playlist actions hide until the row is hovered or focused (heart
-     stays visible); pointer-events follow so hidden buttons can't be hit. */
+  /* Queue/playlist actions hide until the row is hovered or focused; the
+     heart stays visible except on the favorites list, where every row is a
+     favorite (an unfavorited row keeps its outline heart). Pointer-events
+     follow so hidden buttons can't be hit. */
   .actions-cell .reveal {
     opacity: 0;
     pointer-events: none;
@@ -922,13 +1065,17 @@
   td button.thumb {
     display: block;
   }
-  /* Compact: a list, not a table. No rules between rows; the title takes the
-     width and carries the artists on a second line. */
+  /* Compact: a list, not a table. No rules between rows; the title carries
+     the artists on a second line and shares the width with the album, which
+     drops out when the list is narrow (a container query, so the queue glide
+     sees the final layout). */
   /* Taller rows with an inset, rounded cover so the thumbs don't touch. The
      row math stays at --row-height: a preview renders whole, never windowed
      (it is far shorter than the overscan). */
   .compact .row {
     height: calc(var(--row-height) + 10px);
+  }
+  .compact .row > td {
     border-bottom: 0;
   }
   .compact .thumb-cell {
@@ -941,8 +1088,23 @@
     border-radius: 4px;
   }
   .compact .title-cell {
-    width: 100%;
+    width: 55%;
     line-height: 1.25;
+  }
+  .compact .album-cell {
+    width: 45%;
+    padding-right: 24px;
+  }
+  .compact .time-cell {
+    width: 1%;
+  }
+  @container (max-width: 640px) {
+    .compact .album-cell {
+      display: none;
+    }
+    .compact .title-cell {
+      width: 100%;
+    }
   }
   .sub-text {
     font-size: 12.5px;
