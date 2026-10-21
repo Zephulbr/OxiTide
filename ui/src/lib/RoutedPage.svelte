@@ -80,6 +80,12 @@
   // mounted (hidden), so closing reveals it as it was — no refetch, no spinner,
   // same scroll — under Now Playing's closing fade.
   const covered = $derived(nowPlaying && nav.nowPlayingOpen);
+  /// Every open mounts a fresh Now Playing. Reopening mid-close (a quick
+  /// double click on the cover) would otherwise resume the closing instance,
+  /// which its outro has already pinned and faded out: an empty view. Keyed,
+  /// the old one finishes its outro over the new one's entrance.
+  let opens = 0;
+  const nowPlayingKeys = $derived(covered ? [++opens] : []);
   let pageEl = $state<HTMLElement | null>(null);
 
   let coverSnapshot: { entry: number; offsets: ScrollSnapshot } | null = null;
@@ -133,7 +139,7 @@
   }
 </script>
 
-{#if covered}<NowPlaying {player} {nav} {qualityDisplay} />{/if}
+{#each nowPlayingKeys as key (key)}<NowPlaying {player} {nav} {qualityDisplay} />{/each}
 {#key pageKey}
   <div class="page" class:covered bind:this={pageEl} inert={covered}>
     {#if nav.route.name === "home"}<Home {nav} {player} {toasts} />
