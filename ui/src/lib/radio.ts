@@ -1,10 +1,14 @@
 import { api, trackToQueueItem, type Track } from "./api";
 import { errorMessage } from "./errors";
-import { playSource } from "./playSource.svelte";
+import { playSource, type PlayFrom } from "./playSource.svelte";
 import { trackFlags } from "./trackFlags.svelte";
 import type { Toasts } from "./toasts.svelte";
 
-async function playRadio(fetchTracks: () => Promise<Track[]>, toasts: Toasts): Promise<void> {
+async function playRadio(
+  fetchTracks: () => Promise<Track[]>,
+  toasts: Toasts,
+  from: PlayFrom,
+): Promise<void> {
   try {
     const tracks = await fetchTracks();
     if (tracks.length === 0) {
@@ -16,7 +20,7 @@ async function playRadio(fetchTracks: () => Promise<Track[]>, toasts: Toasts): P
       toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
       return;
     }
-    playSource.set(null);
+    playSource.set(from, prepared.items.map((t) => t.id));
     await api.playTracks(prepared.items.map(trackToQueueItem), prepared.start);
   } catch (e) {
     const message =
@@ -27,10 +31,19 @@ async function playRadio(fetchTracks: () => Promise<Track[]>, toasts: Toasts): P
   }
 }
 
-export function playTrackRadio(trackId: number, toasts: Toasts): Promise<void> {
-  return playRadio(() => api.getTrackRadio(trackId), toasts);
+/// `title` / `name` name the station in the player bar ("Californication radio").
+export function playTrackRadio(trackId: number, toasts: Toasts, title?: string): Promise<void> {
+  return playRadio(() => api.getTrackRadio(trackId), toasts, {
+    kind: "radio",
+    name: title ? `${title} radio` : "Track radio",
+    route: null,
+  });
 }
 
-export function playArtistRadio(artistId: number, toasts: Toasts): Promise<void> {
-  return playRadio(() => api.getArtistRadio(artistId), toasts);
+export function playArtistRadio(artistId: number, toasts: Toasts, name?: string): Promise<void> {
+  return playRadio(() => api.getArtistRadio(artistId), toasts, {
+    kind: "radio",
+    name: name ? `${name} radio` : "Artist radio",
+    route: { name: "artist", id: artistId },
+  });
 }

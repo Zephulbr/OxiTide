@@ -88,7 +88,10 @@
       toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
       return;
     }
-    playSource.set(null);
+    playSource.set(
+      { kind: "history", name: "Listening history", route: { name: "history", tab: "recent" } },
+      prepared.items.map((item) => item.id),
+    );
     void api
       .playTracks(prepared.items.map((item) => historyToQueueItem(item.entry)), prepared.start)
       .catch((e) => {

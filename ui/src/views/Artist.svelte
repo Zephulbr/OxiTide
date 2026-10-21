@@ -19,7 +19,7 @@
   import Loading from "../lib/components/Loading.svelte";
   import MediaCard from "../lib/components/MediaCard.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
-  import { playSource } from "../lib/playSource.svelte";
+  import { playSource, type PlayFrom } from "../lib/playSource.svelte";
   import { trackFlags } from "../lib/trackFlags.svelte";
   import { playArtistRadio } from "../lib/radio";
   import { shareUrl } from "../lib/share";
@@ -142,6 +142,11 @@
   // svelte-ignore state_referenced_locally
   const view = createTrackView(() => topTracks, undefined, { memoryKey: `artist:${id}` });
 
+  /// The player bar's "From artist" line for plays started here.
+  const origin = $derived<PlayFrom | null>(
+    artist ? { kind: "artist", name: artist.name, route: { name: "artist", id: artist.id } } : null,
+  );
+
   async function load() {
     const token = ++loadToken;
     if (peek(heroSource) === undefined) loading = true;
@@ -171,7 +176,7 @@
       toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
       return;
     }
-    playSource.set(null);
+    playSource.set(origin, prepared.items.map((t) => t.id));
     await api.playTracks(prepared.items.map(trackToQueueItem), prepared.start, shuffle);
   }
 
@@ -231,7 +236,7 @@
         icon="radio"
         label="Radio"
         title="Start artist radio"
-        onclick={() => void playArtistRadio(artistId, toasts)}
+        onclick={() => void playArtistRadio(artistId, toasts, artist?.name)}
       />
       <DetailAction icon="share-2" label="Share" title="Copy artist link" onclick={() => void share()} />
       {#if mixId}

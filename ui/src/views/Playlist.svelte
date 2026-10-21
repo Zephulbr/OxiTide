@@ -14,7 +14,7 @@
   import { formatTotalDuration } from "../lib/format";
   import { menu, type MenuItem } from "../lib/menu.svelte";
   import { createTrackPager } from "../lib/pager.svelte";
-  import { playSource } from "../lib/playSource.svelte";
+  import { playSource, type PlayFrom } from "../lib/playSource.svelte";
   import { trackFlags } from "../lib/trackFlags.svelte";
   import { invalidatePlaylistCovers } from "../lib/playlistArt.svelte";
   import { shareUrl } from "../lib/share";
@@ -54,6 +54,13 @@
   let playlist = $state<PlaylistT | null>(cached ?? null);
   let loading = $state(cached === undefined);
   let error = $state("");
+  /// The player bar's "From playlist" line (and the sidebar's playing marker)
+  /// for plays started here.
+  const origin = $derived<PlayFrom>({
+    kind: "playlist",
+    name: playlist?.title ?? "",
+    route: { name: "playlist", id },
+  });
   let renaming = $state(false);
   let renameTitle = $state("");
   let renameDescription = $state("");
@@ -266,7 +273,7 @@
       toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
       return;
     }
-    playSource.set(id);
+    playSource.set(origin, prepared.items.map((t) => t.id));
     void api.playTracks(prepared.items.map(trackToQueueItem), prepared.start);
   }
 
@@ -278,7 +285,7 @@
       toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
       return;
     }
-    playSource.set(id);
+    playSource.set(origin, prepared.items.map((t) => t.id));
     void api.playTracks(prepared.items.map(trackToQueueItem), prepared.start);
   }
 
@@ -290,7 +297,7 @@
       toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
       return;
     }
-    playSource.set(id);
+    playSource.set(origin, prepared.items.map((t) => t.id));
     void api.playTracks(prepared.items.map(trackToQueueItem), 0, true);
   }
 </script>

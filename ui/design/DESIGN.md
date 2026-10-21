@@ -67,13 +67,16 @@ label) for actions — never mixed with round icon buttons in the same row. Rack
 `.page-head > h2` as a printed label and `.tool-btn` as a light-bar key.
 
 **Track table edges** (`TrackTable.svelte`). A table that scrolls itself (`fill`: Tracks,
-Album, Playlist, Mix, History, ArtistAll) has no header frost. A mask on the `tbody` fades the
-rows out over 48px just below the sticky header and just above the player bar (the scroller
-runs under it). Each fade grows with the scroll distance left that way, so a list at rest,
-or at its end, shows every row whole. The row rules are cell borders (`border-collapse:
-separate`), so they fade with the rows; collapsed borders are painted by the table and would
-escape the mask. The header itself stays unmasked and untinted. Tables
-that don't scroll themselves keep the frost.
+Album, Playlist, Mix, ArtistAll) has no header frost. Its header is a separate table above the
+scroller (both `table-layout: fixed` over one `<colgroup>`, both reserving the scrollbar
+gutter), and a static mask on the scroller fades the rows out over 48px just below the header
+and just above the player bar (the scroller runs under it). The mask never moves with the
+scroll, so it can't trail a fast scroll and costs nothing per frame; a mask whose stops follow
+`scrollTop` lags the compositor and restyles on every frame. Each fade grows with the scroll
+distance left that way, so a list at rest, or at its end, shows every row whole. The header
+stays unmasked and untinted, and the scrollbar strip (`--scrollbar-w`, the standard thin
+bar's 10px) is left out of the mask. Tables that
+don't scroll themselves keep the frost.
 
 **Track table columns.** Every column but the number, cover and actions takes a share of the
 width (title 21%, artist 19%, album 18%, optional columns 14%, time and quality 8%), so the
@@ -141,7 +144,9 @@ color not in Rack, AutoMix needs a crossfade). Rack skins the switch as a square
 Streaming quality restores **Low** with the hint **HE-AAC 96 kbps** in the existing
 Select, alongside High, Lossless (still the default), and Max. Saved `low` preferences
 are preserved on load. Compact badges stay **AAC** for served Low streams; detailed
-readouts show the served bitrate. No new styling, animation, or background work.
+readouts show the served bitrate. No new styling, animation, or background work. The
+player bar's quality plate (Atmosphere §3) also switches the tier from a menu, with the
+same four tiers.
 
 **Page frame:** the main scroller pads every page `90px 28px` (`--page-top` on `.main`:
 32px of frame plus 58px of air above the title), with the floating player's clearance at

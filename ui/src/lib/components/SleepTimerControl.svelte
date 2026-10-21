@@ -1,6 +1,6 @@
 <script lang="ts">
   import { formatDuration } from "../format";
-  import { menu, type MenuItem } from "../menu.svelte";
+  import { menu, menuButton, type MenuItem } from "../menu.svelte";
   import type { SleepTimer } from "../sleepTimer.svelte";
   import Icon from "./Icon.svelte";
   import Modal from "./Modal.svelte";
@@ -33,9 +33,17 @@
         : "Sleep timer",
   );
 
-  function openMenu(event: MouseEvent) {
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    menu.show(rect.left, rect.bottom + 4, items(), event.currentTarget as HTMLElement);
+  // The moon rocks like a cradle when its menu opens and again when a timer
+  // is set (AR-2); the keyed remount replays the swing.
+  let sways = $state(0);
+  function sway() {
+    sways += 1;
+  }
+
+  function openMenu(button: HTMLElement) {
+    sway();
+    const rect = button.getBoundingClientRect();
+    menu.show(rect.left, rect.bottom + 4, items(), button);
   }
 
   function items(): MenuItem[] {
@@ -50,7 +58,10 @@
         id: `minutes-${minutes}`,
         label: `${minutes} minutes`,
         selected: sleepTimer.mode === "duration" && sleepTimer.totalMinutes === minutes,
-        run: () => sleepTimer.armMinutes(minutes),
+        run: () => {
+          sleepTimer.armMinutes(minutes);
+          sway();
+        },
       })),
       {
         id: "custom",
@@ -66,7 +77,10 @@
         id: "end-of-track",
         label: "End of current track",
         selected: sleepTimer.mode === "end-of-track",
-        run: () => sleepTimer.armEndOfTrack(),
+        run: () => {
+          sleepTimer.armEndOfTrack();
+          sway();
+        },
       },
     ];
   }
@@ -76,17 +90,19 @@
     if (!customValid) return;
     sleepTimer.armMinutes(customValue);
     customOpen = false;
+    sway();
   }
 </script>
 
 <button
   class="moon"
   class:on={sleepTimer.mode !== "off"}
-  onclick={openMenu}
+  data-floor
+  use:menuButton={openMenu}
   {title}
   aria-label="Sleep timer"
 >
-  <Icon name="moon" size={18} />
+  {#key sways}<span class="moon-ico" class:sway={sways > 0}><Icon name="moon" size={18} /></span>{/key}
   {#if countdown !== null}<span class="count tnum">{countdown}</span>{/if}
 </button>
 
@@ -123,6 +139,26 @@
   }
   .moon.on {
     color: var(--accent);
+  }
+  /* A damped swing about the crescent's centre: out, back past rest, settle. */
+  .moon-ico {
+    display: inline-grid;
+    place-items: center;
+  }
+  .moon-ico.sway {
+    animation: moon-sway 750ms var(--ease-in-out);
+  }
+  @keyframes moon-sway {
+    0% { transform: rotate(0deg); }
+    30% { transform: rotate(-22deg); }
+    60% { transform: rotate(10deg); }
+    82% { transform: rotate(-3deg); }
+    100% { transform: rotate(0deg); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .moon-ico.sway {
+      animation: none;
+    }
   }
   .count {
     font-size: 12px;

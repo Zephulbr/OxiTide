@@ -182,11 +182,12 @@
   }
   /* Wave cap (edge only): fills the area under the stroke up to the bar edge,
      so the wave doubles as the bar's shaped top edge. It uses the bar's own
-     glass recipe (the --surface-2 tint over a blur of whatever is behind) so
-     it matches the bar by construction — including content scrolling behind
-     the floating bar, which the old opaque scrimmed-wash fill could not
-     track. In Instrument --glass-blur is 0 and --surface-2 is opaque, so the
-     cap is a plain opaque strip matching the opaque bar. The clip is the
+     glass recipe (the veil's top-edge tint, --player-veil-top, over a blur of
+     whatever is behind) so it matches the bar by construction — including
+     content scrolling behind the floating bar, which the old opaque
+     scrimmed-wash fill could not track. In Instrument --glass-blur is 0 and
+     the veil is the opaque --surface-2, so the cap is a plain opaque strip
+     matching the opaque bar. The clip is the
      wave's objectBoundingBox shape (its 12.6-unit space matches the stroke's
      10/14 scale, so the fill edge stays on the wave centerline). The hover
      geometry is pre-baked at 1.2x (offsets are relative to .seek, whose top
@@ -201,7 +202,7 @@
     right: 0;
     top: -1.8px;
     height: 10.8px;
-    background: var(--surface-2);
+    background: var(--player-veil-top);
     backdrop-filter: blur(var(--glass-blur));
     clip-path: url(#seek-cap-clip);
     transform-origin: bottom;

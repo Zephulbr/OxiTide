@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
-import { createMenu, menu as sharedMenu, menuFor, type MenuItem } from "./menu.svelte";
+import { createMenu, menu as sharedMenu, menuButton, menuFor, type MenuItem } from "./menu.svelte";
 
 function item(id: string, extra: Partial<MenuItem> = {}): MenuItem {
   return { id, label: id, run: vi.fn(), ...extra };
@@ -19,7 +19,7 @@ describe("menu store", () => {
 
     menu.show(10, 20, items);
 
-    expect(menu.open).toEqual({ x: 10, y: 20, items, opener: null });
+    expect(menu.open).toEqual({ x: 10, y: 20, items, opener: null, placement: "below", align: "start" });
   });
 
   it("replaces the previous menu", () => {
@@ -111,5 +111,65 @@ describe("menuFor keyboard invocation", () => {
 
     handle.destroy();
     node.remove();
+  });
+});
+
+describe("menuButton", () => {
+  function press(node: HTMLElement, detail = 1) {
+    node.dispatchEvent(new Event("pointerdown"));
+    // The menu host closes an open menu on the window's mousedown.
+    if (sharedMenu.open) sharedMenu.close(false);
+    node.dispatchEvent(new MouseEvent("click", { detail }));
+  }
+
+  it("opens on a press and closes on the next press instead of reopening", () => {
+    const button = document.createElement("button");
+    document.body.append(button);
+    const open = vi.fn((node: HTMLElement) => sharedMenu.show(0, 0, [item("a")], node));
+    const handle = menuButton(button, open);
+
+    press(button);
+    expect(sharedMenu.open?.opener).toBe(button);
+
+    press(button);
+    expect(sharedMenu.open).toBeNull();
+    expect(open).toHaveBeenCalledTimes(1);
+
+    press(button);
+    expect(sharedMenu.open?.opener).toBe(button);
+
+    sharedMenu.close(false);
+    handle.destroy();
+    button.remove();
+  });
+
+  it("reopens when another menu was open", () => {
+    const button = document.createElement("button");
+    const other = document.createElement("button");
+    document.body.append(button, other);
+    const handle = menuButton(button, (node) => sharedMenu.show(0, 0, [item("a")], node));
+    sharedMenu.show(0, 0, [item("b")], other);
+
+    press(button);
+    expect(sharedMenu.open?.opener).toBe(button);
+
+    sharedMenu.close(false);
+    handle.destroy();
+    button.remove();
+    other.remove();
+  });
+
+  it("always opens on a keyboard click", () => {
+    const button = document.createElement("button");
+    document.body.append(button);
+    const handle = menuButton(button, (node) => sharedMenu.show(0, 0, [item("a")], node));
+    sharedMenu.show(0, 0, [item("a")], button);
+
+    press(button, 0);
+    expect(sharedMenu.open?.opener).toBe(button);
+
+    sharedMenu.close(false);
+    handle.destroy();
+    button.remove();
   });
 });

@@ -78,7 +78,10 @@
       toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
       return;
     }
-    playSource.set(null);
+    playSource.set(
+      { kind: "search", name: query, route: { name: "explore", q: query } },
+      prepared.items.map((t) => t.id),
+    );
     void api.playTracks(prepared.items.map(trackToQueueItem), shuffle ? 0 : prepared.start, shuffle);
   }
 

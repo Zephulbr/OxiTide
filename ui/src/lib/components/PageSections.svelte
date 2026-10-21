@@ -53,8 +53,15 @@
     return items.filter(isPlayableTrack);
   }
 
-  function play(items: PageItem[], start: number) {
-    playSource.set(null);
+  /// `title` names the section a "Play all" started (the player bar's "From"
+  /// line); a single track has no source.
+  function play(items: PageItem[], start: number, title = "") {
+    playSource.set(
+      title.trim()
+        ? { kind: "section", name: title, route: { name: "section", source, title } }
+        : null,
+      items.map((item) => Number(item.id)),
+    );
     return api.playPageItems(items.map(pageTrackInput), start);
   }
 
@@ -71,11 +78,11 @@
     return undefined;
   }
 
-  async function playAll(items: PageItem[]) {
+  async function playAll(items: PageItem[], title: string) {
     if (busy) return;
     busy = true;
     try {
-      await play(items, 0);
+      await play(items, 0, title);
     } catch (e) {
       toasts.show(errorMessage(e), { severity: "error" });
     } finally {
@@ -141,7 +148,7 @@
             <button
               type="button"
               class="control"
-              onclick={() => playAll(tracks)}
+              onclick={() => playAll(tracks, section.title)}
               disabled={busy}
               aria-label="Play all"
               title="Play all"

@@ -183,8 +183,8 @@
 
   function startRadio(seed: RadioSeed) {
     void (seed.kind === "artist"
-      ? playArtistRadio(seed.id, toasts)
-      : playTrackRadio(seed.id, toasts));
+      ? playArtistRadio(seed.id, toasts, seed.title)
+      : playTrackRadio(seed.id, toasts, seed.title));
   }
 </script>
 

@@ -1935,6 +1935,8 @@ pub struct RestoredSessionDto {
     pub shuffle: bool,
     pub repeat: RepeatMode,
     pub play_source: Option<String>,
+    /// What started the queue (the player bar's "From …" line).
+    pub play_from: Option<crate::session::PlayFrom>,
     /// Last known stream for the restored current track (detailed quality
     /// display before playback opens a stream).
     pub stream: Option<oxitide_audio::engine::StreamMeta>,
@@ -1961,6 +1963,7 @@ pub fn get_restored_session(state: State<'_, AppState>) -> Result<Option<Restore
         shuffle: session.shuffle,
         repeat: session.repeat,
         play_source: session.play_source,
+        play_from: session.play_from,
         stream: session.stream,
         queue: filtered.items.into_iter().map(QueueItem::from).collect(),
     }))
@@ -1983,9 +1986,13 @@ pub fn restore_session(
 }
 
 #[tauri::command]
-pub fn set_play_source(state: State<'_, AppState>, id: Option<String>) -> Result<(), String> {
+pub fn set_play_source(
+    state: State<'_, AppState>,
+    id: Option<String>,
+    from: Option<crate::session::PlayFrom>,
+) -> Result<(), String> {
     if let Some(saver) = state.session_saver() {
-        saver.set_play_source(id);
+        saver.set_play_source(id, from);
     }
     Ok(())
 }

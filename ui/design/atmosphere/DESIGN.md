@@ -48,6 +48,29 @@ kicker and fan count use `--text` at 82% rather than muted.
 - Shell "Refined Classic": sidebar 248px ↔ 64px rail (auto below 1080px), main, queue
   rail 260–420px (overlay below 760px), floating 80px glass player bar with the seek as
   its top edge.
+- Player bar (`PlayerBar.svelte`): the glass is filled with `--player-veil`, warm graphite
+  deepening toward the bottom edge (.66 → .86) so bright covers behind it cannot wash out
+  its text (opaque modes use `--surface-2`; light theme a paper version). Left: a 64px
+  cover, then title (15px) / artist (12px) / a "From …" line (11px muted: a 9.5px
+  uppercase eyebrow — From album, From playlist, From mix, From artist, From search, or
+  plain From — then the source's name as a name link that opens it; when that page is
+  already open the link scrolls its track list to the playing track instead,
+  `lib/locatePlaying.svelte.ts`). The source is what
+  started the queue (`lib/playSource.svelte.ts`), credited only for the tracks it queued;
+  anything added later shows its own album. The three lines end in an ellipsis at rest;
+  hovering the block slides any that overflow slowly to their end (30 px/s, 1.2 s hold at
+  each end, looping) and eases them home on leave (`lib/marquee.ts`; never under reduced
+  motion). Right: the quality plate — one 26px pill,
+  hairline-split into tier (in the accent) · format (detailed mode:
+  "16-bit · 44.1 kHz", AAC shows its bitrate; hidden below 900px) · output (✓ BP, tooltip
+  "Bit Perfect", or DSP with its stages) · a chevron. It opens a menu upward, its right
+  edge on the plate's: the four tiers with what each serves; below a hairline, the open
+  stream — an eyebrow row with the file type (FLAC) in the accent on the left and the
+  output path on the right (Shared / Exclusive output muted, ✓ Bit-perfect in the accent,
+  "· DSP" with its stages as a tooltip), over the format in text colour ("16-bit /
+  44.1 kHz · 938 kbps"); then Output settings…. Picking a tier restarts the track at its
+  position; pressing the plate again closes the menu. The seek's hover wave cap fills
+  with `--player-veil-top`, the veil's top-edge tint, so it continues the bar.
 - Now Playing "Editorial Split": artwork left (Disc default / Sleeve), metadata column
   right (eyebrow, display title, muted byline, badges, tabs Lyrics / Next / Info). The
   sidebar steps aside; the queue rail can stay docked beside it (Now Playing narrows).
@@ -125,9 +148,18 @@ kicker and fan count use `--text` at 82% rather than muted.
 Radii: controls 8 · cards 12 · sheets 16 · play button round. Hover = surface brighten
 (media cards: cover-colour tint, below);
 press = scale .98; disabled 40%. Buttons: primary accent fill, ghost glass, danger red
-ghost. Badges: bordered chips (MAX Tertiary-outlined). Toasts: glass + severity glyph,
-slide-in with slight overshoot. Loading: disc spinner. Scrollbar: 8px warm translucent
-thumb.
+ghost. Badges: bordered chips (MAX Tertiary-outlined); the player bar's quality readout
+is a segmented plate instead (§3), its tier in the accent. Menus size to their content (clamped into the
+window), can open upward from a bottom-edge opener and align their right edge to an
+opener on the right, carry a muted second line per row, and can hold status lines
+(plain rows, never dimmed — the global disabled-button fade does not apply — not
+actionable, skipped by the keyboard; a status line may draw its own body). A button that opens a menu
+closes it when pressed again. Toasts: glass + severity glyph,
+slide-in with slight overshoot. Loading: disc spinner. Scrollbar: the standard thin bar
+(`scrollbar-width: thin`) with a warm translucent thumb, no hover accent: a
+`::-webkit-scrollbar`-styled bar repaints on the main thread every scroll frame. The main
+scroller keeps the 8px pseudo-styled bar under custom chrome, whose track steps below the
+caption buttons.
 
 **Resting depth:** plain dark drop shadows — `--shadow-panel` (Home's containers: hero,
 Jump back in, radio cards, listening panel) and `--shadow-cover` (every `MediaCard`
@@ -149,14 +181,41 @@ corner on tracks and on cards that start playback (`playButton`, e.g. Home's rad
 Collage playlists (no artwork of their own) take the tint from the collage's first cover.
 Only transform and opacity animate, plus the registered `--card-tint` colour (AR-10).
 
-**Micro-interactions (AR-2):** toast overshoot; heart pop on favourite; player-bar icon
-buttons lift 1px on hover and squash to 0.92 on press. Nothing breathes or idles.
+**Micro-interactions (AR-2):** toast overshoot; heart pop on favourite and a broken heart
+on unfavourite (the filled heart swells, splits down a jagged crack, and the halves tip
+apart and fall away over 700 ms while the outline fades back in); player-bar
+controls rest at 78% text colour and come up to full on hover while the bar's floor light
+(below) gathers under them; no lift and no hover circle; they squash to 0.92 on press.
+Each transport press also moves its icon once: shuffle glides forward a touch with its
+arrowheads pushing further ahead, then settles (520 ms; no flip — a flat icon squashed
+through scaleX reads cheap), repeat turns a full circle (520 ms), previous/next slide out
+the way they skip and back in from the other side (280 ms); play/pause only squashes.
+The sleep timer's moon rocks like a cradle (a damped swing, 750 ms) when its menu opens
+and again when a timer is set. Under reduced motion the icons stay still and the broken
+heart just fades. Nothing breathes or idles.
 
 **Glow (AR-1):** emitted accent light only — play button, the current track (cover,
 mark), focus/active fields, slider thumbs in use, destructive confirm on hover, a soft
-halo behind the Now Playing cover. Never on resting chrome (cards, panels, sidebar,
-headers, nav, badges, toasts); never stacked; never animated on its own. Small controls
-≤ ~10px blur; ambient halos ≤ ~35% alpha so the art stays the brightest thing.
+halo behind the Now Playing cover, and the player bar's floor light. Never on resting
+chrome (cards, panels, sidebar, headers, nav, badges, toasts); never stacked; never
+animated on its own. Small controls ≤ ~10px blur; ambient halos ≤ ~35% alpha so the art
+stays the brightest thing.
+
+**Floor light (AR-1 amendment, 2026-10-21):** hovering a player-bar control (or focusing
+one from the keyboard) lights the bar from its bottom edge — a faint accent wash (8%)
+along the whole edge that swells on a bell curve into a soft peak centred under the
+control (28% at its foot): flat along the edge, long gentle slopes, no rim or hard point,
+fading into the glass. Built as a Gaussian across times an exponential fade upward
+(shared with the 16px edge wash), never a radial dome, whose rim rises too steeply. It
+stays low and wide, well below the controls: width 6 × the control's width + 80px
+(240–440px), height 0.3 × its height + 17px or 7.5% of the width, whichever is larger
+(24–34px) — about 260 × 26px under an icon, 380 × 32px under play/pause, widest under
+the quality plate; position and size change as one transform. One light per bar: it
+appears in place on the first control, glides between controls (`--dur-view`,
+`--ease-enter`), lingers 160 ms over gaps so crossing between neighbours does not blink
+it, and fades out when the pointer leaves the bar. It warms up slowly (opacity over
+700 ms) and cools more slowly still (1 s), both `--ease-in-out`, so it never reads as a
+switch. It is pointer feedback only; it never lights on its own. The volume track keeps its own hover glow.
 
 ## 5. Motion
 

@@ -116,8 +116,8 @@
   }
 
   /// Through the shared card actions (content filters, play source, toasts).
-  function play(uuid: string, shuffle: boolean) {
-    void cardActions?.play({ kind: "playlist", id: uuid }, shuffle);
+  function play(uuid: string, title: string, shuffle: boolean) {
+    void cardActions?.play({ kind: "playlist", id: uuid, title }, shuffle);
   }
 </script>
 
@@ -229,14 +229,14 @@
                     class="act shuffle"
                     aria-label={`Shuffle ${entry.title}`}
                     title="Shuffle"
-                    onclick={() => play(entry.uuid, true)}
+                    onclick={() => play(entry.uuid, entry.title, true)}
                   ><Icon name="shuffle" size={16} /></button>
                   <button
                     type="button"
                     class="act play"
                     aria-label={`Play ${entry.title}`}
                     title="Play"
-                    onclick={() => play(entry.uuid, false)}
+                    onclick={() => play(entry.uuid, entry.title, false)}
                   ><Icon name="play" size={18} /></button>
                 </span>
               {/if}

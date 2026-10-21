@@ -12,8 +12,12 @@
   // labels aligned with a spacer.
   let hasLeadIcons = $derived(menu.open?.items.some((item) => item.icon) ?? false);
 
+  function inert(item: MenuItem): boolean {
+    return Boolean(item.disabled || item.note);
+  }
+
   function enabledIndexes(items: MenuItem[]): number[] {
-    return items.map((item, index) => (item.disabled ? -1 : index)).filter((i) => i >= 0);
+    return items.map((item, index) => (inert(item) ? -1 : index)).filter((i) => i >= 0);
   }
 
   function clampToViewport() {
@@ -21,8 +25,10 @@
     const state = menu.open;
     if (!node || !state) return;
     const rect = node.getBoundingClientRect();
-    left = Math.max(4, Math.min(state.x, window.innerWidth - rect.width - 4));
-    top = Math.max(4, Math.min(state.y, window.innerHeight - rect.height - 4));
+    const x = state.align === "end" ? state.x - rect.width : state.x;
+    left = Math.max(4, Math.min(x, window.innerWidth - rect.width - 4));
+    const y = state.placement === "above" ? state.y - rect.height : state.y;
+    top = Math.max(4, Math.min(y, window.innerHeight - rect.height - 4));
   }
 
   function moveTo(position: "first" | "last") {
@@ -44,7 +50,7 @@
   }
 
   function run(item: MenuItem) {
-    if (item.disabled) return;
+    if (inert(item)) return;
     menu.close();
     item.run();
   }
@@ -112,6 +118,8 @@
   <div
     bind:this={panel}
     class="menu"
+    class:above={menu.open.placement === "above"}
+    class:end={menu.open.align === "end"}
     role="menu"
     tabindex="-1"
     aria-activedescendant={active >= 0 && menu.open.items[active]
@@ -124,6 +132,23 @@
       {#if item.section && item.section !== menu.open.items[i - 1]?.section}
         <p class="section" class:first={i === 0}>{item.section}</p>
       {/if}
+      {#if item.note}
+        <!-- A status line: not a (disabled) button, so it is never dimmed. -->
+        <div
+          id={`menu-item-${item.id}`}
+          class="note"
+          class:divided={item.divider && i > 0 && !item.section}
+          role="menuitem"
+          aria-disabled="true"
+          tabindex="-1"
+        >
+          {#if item.content}
+            {@render item.content()}
+          {:else}
+            <span class="label">{item.label}{#if item.detail}<span class="detail">{item.detail}</span>{/if}</span>
+          {/if}
+        </div>
+      {:else}
       <button
         id={`menu-item-${item.id}`}
         type="button"
@@ -143,9 +168,14 @@
         {:else if hasLeadIcons}
           <span class="lead-spacer" aria-hidden="true"></span>
         {/if}
-        <span class="label">{item.label}</span>
+        {#if item.detail}
+          <span class="label">{item.label}<span class="detail">{item.detail}</span></span>
+        {:else}
+          <span class="label">{item.label}</span>
+        {/if}
         {#if item.trailing}<Icon name={item.trailing} size={14} />{/if}
       </button>
+      {/if}
     {/each}
   </div>
 {/if}
@@ -157,7 +187,11 @@
     z-index: 50;
     display: flex;
     flex-direction: column;
+    /* Sized by its content, not by the room right of where it opens: a menu
+       opened near the right edge is moved left by the clamp, not squeezed. */
+    width: max-content;
     min-width: 196px;
+    max-width: calc(100vw - 8px);
     padding: 6px;
     border: 1px solid transparent;
     border-radius: var(--radius-card);
@@ -176,6 +210,23 @@
     from {
       opacity: 0;
       transform: translateY(-4px) scale(0.97);
+    }
+  }
+  /* Grown upward from a bottom-edge opener: it unfolds from its foot. */
+  .menu.above {
+    transform-origin: bottom left;
+    animation-name: menu-in-above;
+  }
+  .menu.end {
+    transform-origin: top right;
+  }
+  .menu.above.end {
+    transform-origin: bottom right;
+  }
+  @keyframes menu-in-above {
+    from {
+      opacity: 0;
+      transform: translateY(4px) scale(0.97);
     }
   }
   .section {
@@ -235,6 +286,13 @@
     flex: 1;
     min-width: 0;
   }
+  .menu button .detail {
+    display: block;
+    margin-top: 1px;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 400;
+  }
   .menu button :global(svg) {
     flex: 0 0 auto;
     color: var(--text-muted);
@@ -268,5 +326,36 @@
   .menu button:disabled {
     color: var(--text-muted);
     cursor: default;
+  }
+  /* A status line reads as information, not as a greyed-out action: the
+     row's padding and type, no hover wash. */
+  .note {
+    display: flex;
+    padding: 8px 11px;
+    font-size: 13px;
+    cursor: default;
+  }
+  .note .label {
+    flex: 1;
+    min-width: 0;
+  }
+  .note .detail {
+    display: block;
+    margin-top: 1px;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+  .note.divided {
+    position: relative;
+    margin-top: 7px;
+  }
+  .note.divided::before {
+    content: "";
+    position: absolute;
+    left: 6px;
+    right: 6px;
+    top: -4px;
+    height: 1px;
+    background: var(--line);
   }
 </style>

@@ -41,6 +41,12 @@
   /* Warm graphite veil for floating overlays over art (menus, dropdowns):
      opaque enough that a bright cover can never wash them out. */
   --surface-float: rgba(23, 18, 14, 0.82);
+  /* The player bar's glass fill. Opaque modes use their panel surface;
+     Atmosphere darkens it toward the bottom edge so text stays legible over
+     a bright cover (modes.css / themes.css). `-top` is the fill at the bar's
+     top edge, which the seek's wave cap continues. */
+  --player-veil-top: var(--surface-2);
+  --player-veil: var(--player-veil-top);
   --line: rgba(255, 240, 225, 0.10);
   --edge-lit: linear-gradient(135deg, rgba(255, 240, 225, 0.28), rgba(255, 240, 225, 0.06) 45%, rgba(0, 0, 0, 0.35));
   /* Resting depth, not light: plain dark drop shadows (never accent-coloured,

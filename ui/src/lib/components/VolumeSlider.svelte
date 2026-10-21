@@ -18,6 +18,7 @@
   <button
     class="mute"
     class:on={muted}
+    data-floor
     onclick={() => player.toggleMute()}
     aria-label={muted ? "Unmute" : "Mute"}
     title={muted ? "Unmute" : "Mute"}

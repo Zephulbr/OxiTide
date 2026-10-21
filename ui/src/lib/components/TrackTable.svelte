@@ -10,6 +10,7 @@
   import { copyText } from "../clipboard";
   import { errorMessage } from "../errors";
   import { formatDuration, formatReleaseDate } from "../format";
+  import { locatePlaying } from "../locatePlaying.svelte";
   import { menuFor, type MenuItem } from "../menu.svelte";
   import { trackMenuItems } from "../menus";
   import { trackQualityLabel } from "../quality";
@@ -181,12 +182,21 @@
 
   const rows = $derived(view.items);
   const grouping = $derived(sections !== undefined && !view.engaged ? sections : null);
-  const range = $derived(
-    grouping
-      ? { first: 0, last: rows.length, padTop: 0, padBottom: 0 }
-      : windowRange(rows.length, scrollTop, viewport, rowHeight, OVERSCAN),
+  // The window is read through its bounds, so a scroll that stays inside the
+  // same rows (most frames) keeps `range` and everything below it unchanged;
+  // a fresh windowRange object every frame re-ran the slice and every row.
+  const span = $derived(
+    grouping ? null : windowRange(rows.length, scrollTop, viewport, rowHeight, OVERSCAN),
   );
-  const slice = $derived(grouping ? rows : rows.slice(range.first, range.last));
+  const first = $derived(span ? span.first : 0);
+  const last = $derived(span ? span.last : rows.length);
+  const range = $derived({
+    first,
+    last,
+    padTop: grouping ? 0 : first * rowHeight,
+    padBottom: grouping ? 0 : Math.max(0, (rows.length - last) * rowHeight),
+  });
+  const slice = $derived(grouping ? rows : rows.slice(first, last));
 
   /// Grouped rows resolve their index through identity against `rows`
   /// (source order), which can differ from display order when a payload
@@ -201,15 +211,22 @@
 
   /// Flat rows when ungrouped; heading rows interleaved with disc-scoped
   /// numbers when grouped.
+  /// Flat rows are reused by key while they stay in the window, so moving the
+  /// window by a row updates the rows entering and leaving, not all of them.
+  let flatRows = new Map<string, VolumeDisplayRow>();
   const displayRows = $derived.by<VolumeDisplayRow[]>(() => {
     if (!grouping) {
-      return slice.map((track, i) => ({
-        key: `${track.id}-${range.first + i}`,
-        label: null,
-        track,
-        index: range.first + i,
-        number: range.first + i + 1,
-      }));
+      const kept = new Map<string, VolumeDisplayRow>();
+      const out = slice.map((track, i) => {
+        const index = range.first + i;
+        const key = `${track.id}-${index}`;
+        let row = flatRows.get(key);
+        if (row?.track !== track) row = { key, label: null, track, index, number: index + 1 };
+        kept.set(key, row);
+        return row;
+      });
+      flatRows = kept;
+      return out;
     }
     return volumeDisplayRows(grouping, rowSourceIndex);
   });
@@ -247,7 +264,7 @@
     enabled: () => canDrag,
     count: () => rows.length,
     rowHeight: () => rowHeight,
-    offset: () => theadHeight,
+    offset: () => bodyOffset,
     onChange: (from, at) => {
       dragFrom = from;
       dropAt = at;
@@ -305,35 +322,42 @@
     void play(index);
   }
 
-  /// Fill mode fades the rows out at the scroller's edges (under the sticky
-  /// header and above the player bar) instead of frosting the header. The
-  /// mask sits on the tbody, so the header stays solid; its stops are in
-  /// tbody coordinates, where the header's bottom edge is `scrollTop`. Each
-  /// fade grows in with the distance left to scroll that way, so a list at
-  /// rest (or at its end) shows every row whole.
+  /// Fill mode splits the header into its own table above the scroller, so
+  /// the rows can fade out at the scroller's edges (under the header and
+  /// above the player bar) instead of passing under a frosted header. The
+  /// mask sits on the scroller itself: it stays put while the compositor
+  /// scrolls the rows under it, so it never trails a fast scroll and costs
+  /// nothing per frame. Both tables use fixed layout over the same colgroup,
+  /// so their columns line up without measuring. Only the fade lengths come
+  /// from script: each grows in with the distance left to scroll that way (a
+  /// list at rest or at its end shows every row whole), so they change in the
+  /// first and last EDGE_FADE px of travel only.
+  const split = $derived(fill && !compact);
+  /// Content above the first row inside the scroller: the sticky head, unless
+  /// it was split out.
+  const bodyOffset = $derived(split ? 0 : theadHeight);
   const EDGE_FADE = 48;
   let scrollMax = $state(0);
   $effect(() => {
-    if (!fill) return;
-    void [rows.length, viewport, rowHeight, theadHeight];
+    if (!split) return;
+    void [rows.length, viewport, rowHeight];
     const element = scrollEl;
     if (element) scrollMax = element.scrollHeight - element.clientHeight;
   });
-  const edge = $derived(
-    fill
-      ? {
-          top: scrollTop,
-          topFade: Math.min(scrollTop, EDGE_FADE),
-          bottom: scrollTop + viewport - theadHeight,
-          bottomFade: Math.min(Math.max(0, scrollMax - scrollTop), EDGE_FADE),
-        }
-      : null,
-  );
+  const fadeTop = $derived(split ? Math.min(scrollTop, EDGE_FADE) : 0);
+  const fadeBottom = $derived(split ? Math.min(Math.max(0, scrollMax - scrollTop), EDGE_FADE) : 0);
+  /// Fixed-layout widths for the content-sized columns: the row number's
+  /// digits and the row's action buttons (counts, not measurements).
+  const numDigits = $derived(Math.max(2, String(rows.length).length));
+  const actionCount = $derived(onAddToPlaylist ? 3 : 2);
+  /// The split tables are presentational; the frame is the ARIA table, so
+  /// its sections, rows and cells carry their roles explicitly.
+  const roleOf = (role: string) => (split ? role : undefined);
 
   function onScroll(event: Event) {
     const element = event.currentTarget as HTMLElement;
     scrollTop = element.scrollTop;
-    if (fill) scrollMax = element.scrollHeight - element.clientHeight;
+    if (split) scrollMax = element.scrollHeight - element.clientHeight;
     if (element.scrollHeight - element.scrollTop - element.clientHeight < END_THRESHOLD) {
       onEndReached?.();
     }
@@ -382,17 +406,27 @@
     const scroll = scrollEl;
     const index = playingIndex;
     if (!scroll || index < 0) return;
-    let rowTop = theadHeight + index * rowHeight;
+    let rowTop = bodyOffset + index * rowHeight;
     if (grouping) {
       const row = scroll.querySelector<HTMLElement>(`tr[data-row-index="${index}"]`);
       if (!row) return;
       rowTop = row.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop;
     }
     const clearance = parseFloat(getComputedStyle(scroll).paddingBottom) || 0;
-    const middle = theadHeight + (viewport - clearance - theadHeight - rowHeight) / 2;
+    const middle = bodyOffset + (viewport - clearance - bodyOffset - rowHeight) / 2;
     const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     scroll.scrollTo({ top: Math.max(0, rowTop - middle), behavior: reduce ? "auto" : "smooth" });
   }
+
+  // The player bar's "From …" link asks the open page to show the playing
+  // track; only requests made while this table is mounted count.
+  let locateSeen = locatePlaying.requests;
+  $effect(() => {
+    const requests = locatePlaying.requests;
+    if (requests === locateSeen) return;
+    locateSeen = requests;
+    untrack(scrollToPlaying);
+  });
 
   function onRowKeydown(event: KeyboardEvent, index: number) {
     // Keys on the row's own buttons keep their native behavior.
@@ -438,6 +472,7 @@
   {#if sortKeys.includes(key)}
     <th
       scope="col"
+      role={roleOf("columnheader")}
       class="sort-head {extraClass}"
       class:active={rank >= 0}
       style="text-align:{align}"
@@ -471,8 +506,41 @@
       </span>
     </th>
   {:else}
-    <th scope="col" class={extraClass} style="text-align:{align}">{label}</th>
+    <th scope="col" role={roleOf("columnheader")} class={extraClass} style="text-align:{align}">{label}</th>
   {/if}
+{/snippet}
+
+{#snippet headRow()}
+  <tr use:menuFor={columnMenu} role={roleOf("row")}>
+    <th scope="col" role={roleOf("columnheader")} class="num-head" style="text-align:right">
+      <button class="sort" title="Original order" onclick={() => view.clearSort()}>#</button>
+    </th>
+    <th scope="col" role={roleOf("columnheader")} class="thumb-head"></th>
+    {@render sortHead("title", "Title", "left")}
+    {@render sortHead("artist", "Artist", "left")}
+    {#if showAlbum}{@render sortHead("album", "Album", "left")}{/if}
+    {#each shownColumns as column (column)}
+      {@render sortHead(column, SORT_LABELS[column], column === "added" || column === "released" ? "left" : "right", "opt-col")}
+    {/each}
+    {@render sortHead("duration", "Time", "left")}
+    {@render sortHead("quality", "Quality", "left")}
+    <th scope="col" role={roleOf("columnheader")} class="actions-head"></th>
+  </tr>
+{/snippet}
+
+<!-- Split mode: both tables size their columns from this, in fixed layout. -->
+{#snippet columnSizes()}
+  <colgroup>
+    <col class="col-num" />
+    <col class="col-thumb" />
+    <col class="col-title" />
+    <col class="col-text" />
+    {#if showAlbum}<col class="col-album" />{/if}
+    {#each shownColumns as column (column)}<col class="col-opt opt-col" />{/each}
+    <col class="col-time" />
+    <col class="col-quality" />
+    <col class="col-actions" />
+  </colgroup>
 {/snippet}
 
 {#if !compact}
@@ -487,13 +555,18 @@
   </div>
 {/if}
 
+{#snippet body()}
 <div
-  class="table-scroll pane pane-flush"
+  class="table-scroll"
+  class:pane={!split}
+  class:pane-flush={!split}
   class:compact
   class:fill
   class:scrolled
   bind:this={scrollEl}
   style:max-height={fill ? "none" : maxHeight}
+  style:--fade-top={split ? `${fadeTop}px` : undefined}
+  style:--fade-bottom={split ? `${fadeBottom}px` : undefined}
   bind:clientHeight={viewport}
   onscroll={onScroll}
   data-perf-scroll
@@ -506,40 +579,24 @@
     style="height:{theadHeight}px;margin-bottom:-{theadHeight}px"
   ></div>
   {/if}
-  <table aria-label="Tracks" aria-rowcount={grouping || compact ? undefined : rows.length + 1}>
-    {#if !compact}
-    <thead bind:clientHeight={theadHeight}>
-      <tr use:menuFor={columnMenu}>
-        <th scope="col" class="num-head" style="text-align:right">
-          <button class="sort" title="Original order" onclick={() => view.clearSort()}>#</button>
-        </th>
-        <th scope="col" class="thumb-head"></th>
-        {@render sortHead("title", "Title", "left")}
-        {@render sortHead("artist", "Artist", "left")}
-        {#if showAlbum}{@render sortHead("album", "Album", "left")}{/if}
-        {#each shownColumns as column (column)}
-          {@render sortHead(column, SORT_LABELS[column], column === "added" || column === "released" ? "left" : "right", "opt-col")}
-        {/each}
-        {@render sortHead("duration", "Time", "left")}
-        {@render sortHead("quality", "Quality", "left")}
-        <th scope="col" class="actions-head"></th>
-      </tr>
-    </thead>
+  <table
+    role={roleOf("presentation")}
+    aria-label={split ? undefined : "Tracks"}
+    aria-rowcount={split || grouping || compact ? undefined : rows.length + 1}
+  >
+    {#if split}
+      {@render columnSizes()}
+    {:else if !compact}
+      <thead bind:clientHeight={theadHeight}>{@render headRow()}</thead>
     {/if}
-    <tbody
-      class:edge-fade={edge !== null}
-      style:--edge-top={edge ? `${edge.top}px` : undefined}
-      style:--edge-top-fade={edge ? `${edge.topFade}px` : undefined}
-      style:--edge-bottom={edge ? `${edge.bottom}px` : undefined}
-      style:--edge-bottom-fade={edge ? `${edge.bottomFade}px` : undefined}
-    >
+    <tbody role={roleOf("rowgroup")}>
       {#if range.padTop > 0}
         <tr aria-hidden="true"><td colspan={columns} style="height:{range.padTop}px;padding:0;border:0"></td></tr>
       {/if}
       {#each displayRows as row (row.key)}
         {#if row.label !== null}
-          <tr class="section-row">
-            <th scope="colgroup" colspan={columns}>{row.label}</th>
+          <tr class="section-row" role={roleOf("row")}>
+            <th scope="colgroup" role={roleOf("columnheader")} colspan={columns} aria-colspan={split ? columns : undefined}>{row.label}</th>
           </tr>
         {:else if row.track !== undefined}
           {@const t = row.track}
@@ -552,6 +609,7 @@
           {@const openAlbum = albumOpener(t)}
           <tr
             class="row"
+            role={roleOf("row")}
             class:blocked={reasons.length > 0}
             class:dragging={dragFrom === index}
             class:playing={playingTrackId !== null && t.id === playingTrackId}
@@ -570,7 +628,7 @@
                 favorites,
                 blocked: reasons.length > 0,
                 play: () => play(index),
-                startRadio: () => void playTrackRadio(t.id, toasts),
+                startRadio: () => void playTrackRadio(t.id, toasts, t.title),
                 playNext: () => queueOne(t, true),
                 addToQueue: () => queueOne(t),
                 addToPlaylist: () => onAddToPlaylist?.(t),
@@ -584,7 +642,7 @@
               })}
           >
             {#if !compact}
-              <td class="muted tnum num-cell">
+              <td class="muted tnum num-cell" role={roleOf("cell")}>
                 {#if playingTrackId !== null && t.id === playingTrackId}
                   <span class="num-mark"><NowPlayingMark playing={playbackRunning} size={16} label={playbackRunning ? "Now playing" : "Paused"} /></span>
                 {:else}
@@ -592,13 +650,13 @@
                 {/if}
               </td>
             {/if}
-            <td class="thumb-cell">
+            <td class="thumb-cell" role={roleOf("cell")}>
               <button class="thumb" onclick={() => play(index)} disabled={loadingAll} aria-label="Play" title="Play">
                 <Cover uuid={t.album?.cover} size={80} radius={0} alt="" />
                 <span class="thumb-play" aria-hidden="true"><Icon name="play" size={14} /></span>
               </button>
             </td>
-            <td class="title-cell"><div class="title-text">
+            <td class="title-cell" role={roleOf("cell")}><div class="title-text">
               <NameLink label={t.title} onOpen={openAlbum} focusable={false} />
               {#each tags as tag (tag)}
                 <span
@@ -623,7 +681,7 @@
             {/if}
             </td>
             {#if !compact}
-            <td class="text-cell muted"><div class="cell-text">
+            <td class="text-cell muted" role={roleOf("cell")}><div class="cell-text">
               <ArtistLinks
                 artists={t.artists}
                 onOpen={nav ? openArtist : undefined}
@@ -633,24 +691,25 @@
             </div></td>
             {/if}
             {#if showAlbum}
-              <td class="text-cell muted album-cell"><div class="cell-text">
+              <td class="text-cell muted album-cell" role={roleOf("cell")}><div class="cell-text">
                 <NameLink label={t.album?.title ?? ""} onOpen={openAlbum} focusable={false} />
               </div></td>
             {/if}
             {#each shownColumns as column (column)}
               <td
+                role={roleOf("cell")}
                 class="muted nowrap-cell opt-col"
                 class:tnum={column === "popularity" || column === "plays"}
                 class:num-col={column === "popularity" || column === "plays"}
               >{columnText(t, column)}</td>
             {/each}
-            <td class="muted tnum nowrap-cell time-cell">{formatDuration(t.duration)}</td>
+            <td class="muted tnum nowrap-cell time-cell" role={roleOf("cell")}>{formatDuration(t.duration)}</td>
             {#if !compact}
-              <td class="nowrap-cell quality-cell">
+              <td class="nowrap-cell quality-cell" role={roleOf("cell")}>
                 {#if quality}<span class="badge" class:max={quality === "MAX"}>{quality}</span>{/if}
               </td>
             {/if}
-            <td class="actions-cell">
+            <td class="actions-cell" role={roleOf("cell")}>
               <button
                 class="reveal"
                 onclick={() => queueOne(t)}
@@ -680,14 +739,36 @@
         <tr aria-hidden="true"><td colspan={columns} style="height:{range.padBottom}px;padding:0;border:0"></td></tr>
       {/if}
       {#if rows.length === 0}
-        <tr><td colspan={columns} class="muted">{view.filter.trim() ? `No tracks match “${view.filter.trim()}”` : "No tracks"}</td></tr>
+        <tr role={roleOf("row")}><td colspan={columns} role={roleOf("cell")} aria-colspan={split ? columns : undefined} class="muted">{view.filter.trim() ? `No tracks match “${view.filter.trim()}”` : "No tracks"}</td></tr>
       {/if}
     </tbody>
   </table>
   {#if dropAt !== null}
-    <div class="drop-line" style="top:{theadHeight + dropAt * rowHeight}px"></div>
+    <div class="drop-line" style="top:{bodyOffset + dropAt * rowHeight}px"></div>
   {/if}
 </div>
+{/snippet}
+
+{#if split}
+  <div
+    class="table-frame pane pane-flush"
+    role="table"
+    aria-label="Tracks"
+    aria-rowcount={grouping ? undefined : rows.length + 1}
+    style:--num-digits={numDigits}
+    style:--actions={actionCount}
+  >
+    <div class="table-head">
+      <table role="presentation">
+        {@render columnSizes()}
+        <thead role={roleOf("rowgroup")} bind:clientHeight={theadHeight}>{@render headRow()}</thead>
+      </table>
+    </div>
+    {@render body()}
+  </div>
+{:else}
+  {@render body()}
+{/if}
 
 <style>
   .table-tools {
@@ -735,6 +816,93 @@
        row rise clear of it. */
     padding-bottom: calc(var(--player-height) + 8px);
   }
+  /* Split (fill) mode: the frame is the pane and the width container (the
+     header table sits outside the scroller but drops the same optional
+     columns); the scroller takes what the header leaves. */
+  /* `--scrollbar-w`: the standard thin bar's width (app.css), which the edge
+     fade leaves unmasked. */
+  .table-frame {
+    --scrollbar-w: 10px;
+    flex: 1 1 auto;
+    min-height: 140px;
+    display: flex;
+    flex-direction: column;
+    container-type: inline-size;
+  }
+  .table-frame .table-scroll {
+    container-type: normal;
+    min-height: 0;
+  }
+  /* Both parts reserve the scrollbar's gutter, so the header table is
+     exactly as wide as the body table whether or not the list scrolls. */
+  .table-head,
+  .table-frame .table-scroll {
+    scrollbar-gutter: stable;
+  }
+  .table-head {
+    flex: none;
+    overflow: hidden;
+  }
+  .table-frame table {
+    table-layout: fixed;
+  }
+  /* The static edge fade (see `split` in the script): rows fade out under
+     the header once scrolled and before the player bar while there is more
+     below; past the bar's top edge they are hidden. A second layer keeps the
+     scrollbar strip unmasked. Only the fade lengths vary, near the ends. */
+  @property --fade-top {
+    syntax: "<length>";
+    inherits: false;
+    initial-value: 0px;
+  }
+  @property --fade-bottom {
+    syntax: "<length>";
+    inherits: false;
+    initial-value: 0px;
+  }
+  .table-frame .table-scroll {
+    mask:
+      linear-gradient(
+          to bottom,
+          transparent 0,
+          #000 var(--fade-top),
+          #000 calc(100% - var(--player-height) - 8px - var(--fade-bottom)),
+          transparent calc(100% - var(--player-height) - 8px)
+        )
+        left top / calc(100% - var(--scrollbar-w)) 100% no-repeat,
+      linear-gradient(#000, #000) right top / var(--scrollbar-w) 100% no-repeat;
+  }
+  /* Fixed-layout columns. The number, cover and actions are sized from
+     their content (digit and button counts from the script); the shares
+     split the rest by ratio. They sum past 100% whatever columns show, which
+     makes Chromium keep the px columns and scale the shares to fit (below
+     100% it would widen the px columns; calc(% - px) degrades to an equal
+     split). Ratios match the auto-layout shares below. */
+  .col-num {
+    width: calc(var(--num-digits) * 1ch + 22px);
+  }
+  .col-thumb {
+    width: calc(var(--row-height) - 1px + 18px);
+  }
+  .col-actions {
+    width: calc(var(--actions) * 32px - 6px);
+  }
+  .col-title {
+    width: 42%;
+  }
+  .col-text {
+    width: 38%;
+  }
+  .col-album {
+    width: 36%;
+  }
+  .col-opt {
+    width: 28%;
+  }
+  .col-time,
+  .col-quality {
+    width: 16%;
+  }
   .row.dragging {
     opacity: 0.5;
   }
@@ -746,16 +914,15 @@
     background: var(--accent);
     pointer-events: none;
   }
-  /* Separate borders: the row rules belong to the cells, so the tbody's edge
-     fade masks them with the rows (collapsed borders are painted by the table
-     and escaped the mask). */
+  /* Separate borders: the row rules belong to the cells (with the rows'
+     own height math), not to the table. */
   table {
     width: 100%;
     border-collapse: separate;
     border-spacing: 0;
   }
-  /* One frost layer for the sticky header (tables that don't scroll
-     themselves; fill mode fades its rows instead, see tbody.edge-fade). No
+  /* One frost layer for the sticky header (tables that don't fill the page;
+     fill mode splits the header out and fades its rows instead). No
      per-cell backdrop-filter and no mask on the frost: both are unreliable
      in Chromium inside a scroller (masked blur can
      render as solid dark blocks). At rest the header is untinted so it matches
@@ -798,22 +965,6 @@
   }
   .table-scroll.scrolled thead th {
     background: var(--glass-veil);
-  }
-  /* Fill mode: no frost. The rows fade out before they reach the header and
-     before the player bar (the scroller runs under it; `--edge-*` from the
-     script), so the header stays clear without a veil. */
-  .table-scroll.fill.scrolled thead th {
-    background: transparent;
-  }
-  tbody.edge-fade {
-    --edge-end: calc(var(--edge-bottom) - var(--player-height) - 8px);
-    mask-image: linear-gradient(
-      to bottom,
-      transparent var(--edge-top),
-      #000 calc(var(--edge-top) + var(--edge-top-fade)),
-      #000 calc(var(--edge-end) - var(--edge-bottom-fade)),
-      transparent var(--edge-end)
-    );
   }
   thead th.thumb-head {
     padding: 0;
@@ -999,6 +1150,10 @@
     padding: 0;
     white-space: nowrap;
     text-align: right;
+  }
+  /* Explicit (it is the UA default): `.col-actions` counts 26px per button. */
+  .actions-cell button {
+    padding: 1px 6px;
   }
   .actions-cell button + button {
     margin-left: 6px;

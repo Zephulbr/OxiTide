@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatQuality, trackQualityLabel } from "./quality";
+import { formatQuality, qualityPlate, streamReadout, trackQualityLabel } from "./quality";
 import type { StreamMeta } from "./api";
 
 function meta(over: Partial<StreamMeta> = {}): StreamMeta {
@@ -75,5 +75,53 @@ describe("trackQualityLabel", () => {
     expect(trackQualityLabel(undefined)).toBeNull();
     expect(trackQualityLabel("")).toBeNull();
     expect(trackQualityLabel("DOLBY_ATMOS")).toBeNull();
+  });
+});
+
+describe("qualityPlate", () => {
+  it("shows the tier alone in compact mode", () => {
+    expect(qualityPlate(meta({ quality: "max", bit_depth: 24 }), "compact", "max")).toEqual({
+      tier: "MAX",
+      spec: null,
+      max: true,
+    });
+  });
+
+  it("adds bit depth and rate for lossless streams, leaving the bitrate to the menu", () => {
+    expect(qualityPlate(meta(), "detailed", "max")).toEqual({
+      tier: "LOSSLESS",
+      spec: "16-bit · 44.1 kHz",
+      max: false,
+    });
+  });
+
+  it("shows only the bitrate for AAC", () => {
+    const aac = meta({ quality: "high", codec: "aac", bit_depth: 0, bitrate_kbps: 320 });
+    expect(qualityPlate(aac, "detailed", "max").spec).toBe("320 kbps");
+  });
+
+  it("shows the preferred tier before a stream opens", () => {
+    expect(qualityPlate(null, "detailed", "high")).toEqual({ tier: "HIGH", spec: null, max: false });
+  });
+});
+
+describe("streamReadout", () => {
+  it("spells out the open stream", () => {
+    expect(streamReadout(meta({ bit_depth: 24, sample_rate: 96000, bitrate_kbps: 2304 }))).toEqual({
+      codec: "FLAC",
+      spec: "24-bit / 96 kHz · 2304 kbps",
+    });
+  });
+
+  it("skips what is unknown", () => {
+    expect(streamReadout(meta({ codec: "aac", bit_depth: 0, bitrate_kbps: null }))).toEqual({
+      codec: "AAC",
+      spec: "44.1 kHz",
+    });
+    expect(streamReadout(meta({ codec: null, sample_rate: 0, bit_depth: 0, bitrate_kbps: null }))).toEqual({
+      codec: null,
+      spec: null,
+    });
+    expect(streamReadout(null)).toBeNull();
   });
 });

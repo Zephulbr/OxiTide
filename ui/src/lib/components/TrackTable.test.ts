@@ -80,6 +80,42 @@ describe("TrackTable semantics", () => {
     expect(document.querySelectorAll('thead th[scope="col"]').length).toBeGreaterThan(5);
   });
 
+  it("splits a fill table's header out of the scroller, as one ARIA table", () => {
+    const view = {
+      filter: "", levels: [], engaged: false, preparing: false, error: "",
+      items: [track(1), track(2)], setFilter: vi.fn(), toggleSort: vi.fn(), clearSort: vi.fn(),
+      retry: vi.fn(), sourceIndex: (index: number) => index,
+    } as unknown as TrackView;
+    const favorites = { hasTrack: () => false, toggleTrack: vi.fn() } as unknown as Favorites;
+    const toasts = { show: vi.fn() } as unknown as Toasts;
+    render(TrackTable, { view, favorites, toasts, fill: true, onAddToPlaylist: vi.fn() });
+
+    const frame = document.querySelector<HTMLElement>('.table-frame[role="table"]');
+    expect(frame?.getAttribute("aria-label")).toBe("Tracks");
+    expect(frame?.style.getPropertyValue("--actions")).toBe("3");
+    // The header is not inside the masked scroller.
+    expect(document.querySelector(".table-scroll thead")).toBeNull();
+    const heads = frame!.querySelectorAll('.table-head th[role="columnheader"]');
+    expect(heads.length).toBeGreaterThan(5);
+    // Both tables size from the same columns, one per header cell.
+    for (const colgroup of frame!.querySelectorAll("colgroup")) {
+      expect(colgroup.children).toHaveLength(heads.length);
+    }
+    const rows = frame!.querySelectorAll('.table-scroll tr.row[role="row"]');
+    expect(rows).toHaveLength(2);
+    expect(rows[0].querySelectorAll('td[role="cell"]')).toHaveLength(heads.length);
+    for (const table of frame!.querySelectorAll("table")) {
+      expect(table.getAttribute("role")).toBe("presentation");
+    }
+  });
+
+  it("keeps a plain table with its own header when not filling", () => {
+    setup();
+    expect(document.querySelector(".table-frame")).toBeNull();
+    expect(document.querySelector('.table-scroll table[aria-label="Tracks"] thead')).not.toBeNull();
+    expect(document.querySelector("tr[role]")).toBeNull();
+  });
+
   it("swaps the playing row's number for the now-playing mark", () => {
     const view = {
       filter: "", levels: [{ key: "title", dir: "asc" }], engaged: true, preparing: false, error: "",

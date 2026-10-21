@@ -137,7 +137,7 @@
     if (!target) return pendingItem(`Go to ${name}`);
     return [
       { id: "go-artist", label: "Go to artist", icon: "user", run: () => go({ name: "artist", id: target.id }) },
-      { id: "radio", label: "Artist radio", icon: "radio", run: () => void playArtistRadio(target.id, toasts) },
+      { id: "radio", label: "Artist radio", icon: "radio", run: () => void playArtistRadio(target.id, toasts, name) },
     ];
   }
 
@@ -145,7 +145,7 @@
     const [play, ...rest] = historyMenuItems({ play: () => void playTop(i), ...goToTargets(track, go, api.getTrack) });
     return [
       play,
-      { id: "radio", label: "Track radio", icon: "radio", run: () => void playTrackRadio(track.track_id, toasts) },
+      { id: "radio", label: "Track radio", icon: "radio", run: () => void playTrackRadio(track.track_id, toasts, track.title) },
       ...rest,
     ];
   }
@@ -154,7 +154,7 @@
   function albumMenu(name: string, cover: string | null, id: number | null | undefined): MenuItem[] {
     if (!id || !cardActions) return pendingItem(`Go to ${name}`);
     const item = { id: String(id), title: name, item_type: "ALBUM", artwork: cover };
-    return cardActions.menu(item, { kind: "album", id });
+    return cardActions.menu(item, { kind: "album", id, title: name });
   }
 
   async function playTop(start: number) {
@@ -167,7 +167,10 @@
       toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
       return;
     }
-    playSource.set(null);
+    playSource.set(
+      { kind: "history", name: "Your top tracks", route: { name: "history", tab: "stats" } },
+      prepared.items.map((item) => item.id),
+    );
     const items = prepared.items.map(({ track }: { track: StatsTopTrack }) => ({
       id: track.track_id,
       title: track.title,

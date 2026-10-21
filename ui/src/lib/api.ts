@@ -274,7 +274,17 @@ export interface RestoredSession {
   shuffle: boolean;
   repeat: RepeatMode;
   play_source: string | null;
+  /** What started the queue (the player bar's "From …" line); absent in
+   *  sessions saved before it. The UI validates it (`parseSavedPlayFrom`). */
+  play_from?: PlayFromDto | null;
   stream?: StreamMeta | null;
+}
+/** A queue's source as persisted in the session; `route` is a UI `Route`. */
+export interface PlayFromDto {
+  kind: string;
+  name: string;
+  route: unknown;
+  track_ids: number[];
 }
 export interface OutputDevice { id: string; name: string; is_default: boolean }
 export interface AudioStatus {
@@ -715,7 +725,8 @@ export const api = {
     shuffle: boolean,
     repeat: RepeatMode,
   ) => invoke<void>("restore_session", { items, start, positionMs, shuffle, repeat }),
-  setPlaySource: (id: string | null) => invoke<void>("set_play_source", { id }),
+  setPlaySource: (id: string | null, from: PlayFromDto | null) =>
+    invoke<void>("set_play_source", { id, from }),
   getHistoryPage: (offset: number, limit: number) =>
     invoke<HistoryPage>("get_history_page", { offset, limit }),
   getStats: (offsetMinutes: number) => invoke<Stats>("get_stats", { offsetMinutes }),

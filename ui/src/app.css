@@ -239,7 +239,7 @@ body {
   position: absolute;
   inset: 0;
   z-index: -1;
-  background: var(--surface-2);
+  background: var(--player-veil);
   backdrop-filter: blur(var(--glass-blur));
 }
 
@@ -407,7 +407,24 @@ button {
 button:not(:disabled):active { transform: scale(0.98); }
 button:disabled { opacity: 0.4; cursor: default; }
 
-/* Thin warm scrollbar; accent on hover (spec §8). */
+/* Thin warm scrollbar (spec §8), in the standard properties: the compositor
+   draws it. Chromium repaints a `::-webkit-scrollbar`-styled bar on the main
+   thread every scroll frame, which held a fast scroll down to the main
+   thread's rate (track list at 4000 px/s: 73 frames/s drawn, 142 with this).
+   The pseudo rules below are the fallback for engines without the standard
+   properties; Chromium ignores them wherever these are set. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--text) 14%, transparent) transparent;
+}
+/* Exception: under custom chrome the main scroller's track steps below the
+   caption buttons (`.main::-webkit-scrollbar-track` above), which only the
+   pseudo-styled bar can do; a standard one would put its top under Close.
+   Rack's display keeps the thin bar (rack.css). */
+:root[data-chrome="custom"] .main:not(.rack-main) {
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+}
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--text) 14%, transparent); border-radius: 4px; }

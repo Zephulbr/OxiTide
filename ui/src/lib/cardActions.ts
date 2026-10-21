@@ -6,26 +6,36 @@ import type { Favorites } from "./favorites.svelte";
 import type { MenuItem } from "./menu.svelte";
 import { collectionCardMenuItems } from "./menus";
 import { routeForPageItem, type Nav } from "./nav.svelte";
-import { playSource } from "./playSource.svelte";
+import { playSource, type PlayFrom } from "./playSource.svelte";
 import type { PlaylistActions } from "./playlists.svelte";
 import { shareUrl } from "./share";
 import type { Toasts } from "./toasts.svelte";
 import { trackFlags } from "./trackFlags.svelte";
 
-/// What a collection card (album, playlist, mix) opens and plays.
+/// What a collection card (album, playlist, mix) opens and plays. `title`
+/// names it in the player bar's "From …" line.
 export type CardTarget =
-  | { kind: "album"; id: number }
-  | { kind: "playlist"; id: string }
-  | { kind: "mix"; id: string };
+  | { kind: "album"; id: number; title?: string }
+  | { kind: "playlist"; id: string; title?: string }
+  | { kind: "mix"; id: string; title?: string };
 
 /// The card's collection, from the same routing rule its click uses. Tracks,
 /// artists and page links are not collections.
 export function cardTarget(item: PageItem): CardTarget | null {
   const route = routeForPageItem(item);
-  if (route?.name === "album") return { kind: "album", id: route.id };
-  if (route?.name === "playlist") return { kind: "playlist", id: route.id };
-  if (route?.name === "mix") return { kind: "mix", id: route.id };
+  const title = item.title;
+  if (route?.name === "album") return { kind: "album", id: route.id, title };
+  if (route?.name === "playlist") return { kind: "playlist", id: route.id, title };
+  if (route?.name === "mix") return { kind: "mix", id: route.id, title };
   return null;
+}
+
+/// The play source a card's collection credits.
+export function cardPlayFrom(target: CardTarget): PlayFrom {
+  const name = target.title ?? "";
+  if (target.kind === "album") return { kind: "album", name, route: { name: "album", id: target.id } };
+  if (target.kind === "playlist") return { kind: "playlist", name, route: { name: "playlist", id: target.id } };
+  return { kind: "mix", name, route: { name: "mix", id: target.id } };
 }
 
 export interface CardActions {
@@ -70,8 +80,7 @@ export function createCardActions({ nav, toasts, favorites, playlistActions }: C
   async function play(target: CardTarget, shuffle = false) {
     const tracks = await playable(target);
     if (!tracks) return;
-    // Only playlists mark the sidebar source; every other origin clears it.
-    playSource.set(target.kind === "playlist" ? target.id : null);
+    playSource.set(cardPlayFrom(target), tracks.map((t) => t.id));
     try {
       await api.playTracks(tracks.map(trackToQueueItem), 0, shuffle);
     } catch (e) {

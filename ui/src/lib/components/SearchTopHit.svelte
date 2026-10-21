@@ -5,7 +5,7 @@
   import { coverTint } from "../coverTint";
   import { isAlbumRelease } from "../media";
   import type { Nav, Route } from "../nav.svelte";
-  import { playSource } from "../playSource.svelte";
+  import { playSource, type PlayFrom } from "../playSource.svelte";
   import type { Toasts } from "../toasts.svelte";
   import { trackFlags } from "../trackFlags.svelte";
   import ArtistLinks from "./ArtistLinks.svelte";
@@ -58,13 +58,13 @@
     }
   });
 
-  async function playTracks(tracks: Track[]) {
+  async function playTracks(tracks: Track[], from: PlayFrom | null) {
     const prepared = await trackFlags.filterPlayable(tracks, 0);
     if (!prepared) {
       toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
       return;
     }
-    playSource.set(null);
+    playSource.set(from, prepared.items.map((t) => t.id));
     await api.playTracks(prepared.items.map(trackToQueueItem), prepared.start);
   }
 
@@ -72,10 +72,17 @@
   /// playlist plays through the shared card actions; a track plays alone.
   async function play() {
     try {
-      if (hit.kind === "artist") await playTracks(await api.getArtistTopTracks(hit.item.id, 50));
-      else if (hit.kind === "track") await playTracks([hit.item]);
-      else if (hit.kind === "album") await cardActions?.play({ kind: "album", id: hit.item.id });
-      else await cardActions?.play({ kind: "playlist", id: hit.item.uuid });
+      if (hit.kind === "artist") {
+        const { id, name } = hit.item;
+        await playTracks(await api.getArtistTopTracks(id, 50), {
+          kind: "artist",
+          name,
+          route: { name: "artist", id },
+        });
+      } else if (hit.kind === "track") await playTracks([hit.item], null);
+      else if (hit.kind === "album")
+        await cardActions?.play({ kind: "album", id: hit.item.id, title: hit.item.title });
+      else await cardActions?.play({ kind: "playlist", id: hit.item.uuid, title: hit.item.title });
     } catch (e) {
       toasts.show(String(e), { severity: "error" });
     }

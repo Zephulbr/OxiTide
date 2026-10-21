@@ -423,15 +423,20 @@
 }
 
 /* ---- Track tables inside panes ---- */
-:root[data-mode="rack"] .rack-main .table-scroll.pane th {
+/* The pane is the scroller, or (full-page lists) the frame around the split
+   header and scroller. */
+:root[data-mode="rack"] .rack-main .table-scroll.pane th,
+:root[data-mode="rack"] .rack-main .table-frame.pane th {
   font: 600 10.5px/1 var(--font-ui);
   letter-spacing: 0.05em;
   color: var(--rack-silk-dim);
 }
 
 /* ---- Display scrollbar: an engraved groove ---- */
+/* The split header reserves the same gutter, so it takes the same bar. */
 :root[data-mode="rack"] .rack-main,
-:root[data-mode="rack"] .rack-main .table-scroll {
+:root[data-mode="rack"] .rack-main .table-scroll,
+:root[data-mode="rack"] .rack-main .table-head {
   scrollbar-color: #3a342e transparent;
   scrollbar-width: thin;
 }

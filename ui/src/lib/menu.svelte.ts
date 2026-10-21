@@ -1,3 +1,4 @@
+import type { Snippet } from "svelte";
 import type { IconName } from "./components/Icon.svelte";
 
 export interface MenuItem {
@@ -12,12 +13,32 @@ export interface MenuItem {
   selected?: boolean;
   /// Icon rendered before the label.
   icon?: IconName;
+  /// A second, muted line under the label (e.g. what a quality tier means).
+  detail?: string;
   /// Small icon rendered at the trailing edge, e.g. the sort direction arrow.
   trailing?: IconName;
   /// Draws a hairline divider above this row, grouping it apart from the
   /// rows before it (ignored on the first row and under a section heading).
   divider?: boolean;
+  /// A status line, not an action: drawn at full text colour (not dimmed like
+  /// a disabled row), never runs, and keyboard nav skips it.
+  note?: boolean;
+  /// A note's own body in place of label/detail (e.g. the quality menu's
+  /// stream readout); `label` stays its plain-text name.
+  content?: Snippet;
   run(): void;
+}
+
+export type MenuPlacement = "below" | "above";
+export type MenuAlign = "start" | "end";
+
+export interface MenuOptions {
+  /// "above" grows the menu upward from `y` (openers at the bottom edge,
+  /// e.g. the player bar); the default hangs it below `y`.
+  placement?: MenuPlacement;
+  /// "end" puts the menu's right edge at `x` (openers on the right); the
+  /// default puts its left edge there.
+  align?: MenuAlign;
 }
 
 export interface MenuState {
@@ -26,11 +47,19 @@ export interface MenuState {
   items: MenuItem[];
   /// The element that opened the menu; closing restores focus to it.
   opener: HTMLElement | null;
+  placement: MenuPlacement;
+  align: MenuAlign;
 }
 
 export interface Menu {
   readonly open: MenuState | null;
-  show(x: number, y: number, items: MenuItem[], opener?: HTMLElement | null): void;
+  show(
+    x: number,
+    y: number,
+    items: MenuItem[],
+    opener?: HTMLElement | null,
+    options?: MenuOptions,
+  ): void;
   /// Close; with `restoreFocus` (default) focus returns to a connected opener.
   close(restoreFocus?: boolean): void;
 }
@@ -42,8 +71,8 @@ export function createMenu(): Menu {
     get open() {
       return open;
     },
-    show(x, y, items, opener = null) {
-      open = { x, y, items, opener };
+    show(x, y, items, opener = null, { placement = "below", align = "start" } = {}) {
+      open = { x, y, items, opener, placement, align };
     },
     close(restoreFocus = true) {
       const state = open;
@@ -79,6 +108,36 @@ export function menuFor(node: HTMLElement, items: () => MenuItem[]) {
     destroy() {
       node.removeEventListener("contextmenu", onContextMenu);
       node.removeEventListener("keydown", onKeydown);
+    },
+  };
+}
+
+/// Svelte action for a button that opens a menu (`open` shows it): pressing
+/// the button while its menu is open closes the menu instead of reopening it.
+/// The host closes an open menu on the window's mousedown, before the
+/// button's click, so the button notes on pointerdown whether its own menu
+/// was the one open. Keyboard clicks (`detail` 0) always open: focus is inside
+/// an open menu, so they cannot be a second press.
+export function menuButton(node: HTMLElement, open: (button: HTMLElement) => void) {
+  let show = open;
+  let wasOpen = false;
+  function onPointerDown() {
+    wasOpen = menu.open?.opener === node;
+  }
+  function onClick(event: MouseEvent) {
+    const dismissed = wasOpen && event.detail > 0;
+    wasOpen = false;
+    if (!dismissed) show(node);
+  }
+  node.addEventListener("pointerdown", onPointerDown);
+  node.addEventListener("click", onClick);
+  return {
+    update(next: (button: HTMLElement) => void) {
+      show = next;
+    },
+    destroy() {
+      node.removeEventListener("pointerdown", onPointerDown);
+      node.removeEventListener("click", onClick);
     },
   };
 }

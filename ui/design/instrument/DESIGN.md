@@ -20,6 +20,7 @@ Track 3 performance baseline and the natural home for reduced-motion users.
 | `--surface-float` | `#2b241c` | `#fffdf9` |
 | `--edge-lit` | flat 1px `--line` | same |
 | `--glare-alpha` | .10 | .08 |
+| `--player-veil` | `--surface-2` (opaque; no gradient needed) | same |
 | `--glass-blur`, `--overlay-blur` | 0 | 0 |
 | `--accent` | brand `#2ee2c4` (Dynamic colour `Auto` = Off; user may enable) | brand `#0e7a67` |
 | flags | backdrop art, glass blur, grain, disc spin, wave seek, ambient motion: **off** | same |
@@ -32,7 +33,9 @@ same face at the shared display weight/tracking (see the root DESIGN.md §2.2).
 ## 4. Kept deliberately
 
 Display type, disc spinner for loading, radii, icons, focus rings, badges, toasts,
-menus, dialogs, layout and breakpoints, density, mini player.
+menus, dialogs, layout and breakpoints, density, mini player, and the player bar as a
+whole (64px cover, "From …" line, quality plate, floor light on hover — it answers the
+pointer, so it fits "nothing moves unless you touched it").
 
 ## 5. Performance role
 

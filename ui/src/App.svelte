@@ -68,7 +68,7 @@
   import { clearPagerCache } from "./lib/pager.svelte";
   import { clearViewCache } from "./lib/viewCache";
   import { clearPlaylistCovers } from "./lib/playlistArt.svelte";
-  import { playSource } from "./lib/playSource.svelte";
+  import { legacyPlaylistSource, parseSavedPlayFrom, playSource, type SavedPlayFrom } from "./lib/playSource.svelte";
   import { scrobbled } from "./lib/scrobbled.svelte";
   import { trackFlags } from "./lib/trackFlags.svelte";
   import { api, FAVORITE_CHANGED_EVENT, SCROBBLE_AUTH_ERROR_EVENT, SCROBBLE_SCROBBLED_EVENT, UPDATE_AVAILABLE_EVENT, trackToQueueItem, type FavoriteChange, type QueueItem, type RepeatMode, type StreamMeta, type UpdateInfo } from "./lib/api";
@@ -80,7 +80,7 @@
     position: number;
     shuffle: boolean;
     repeat: RepeatMode;
-    playSource: string | null;
+    playSource: SavedPlayFrom | null;
     stream: StreamMeta | null;
   }
 
@@ -280,7 +280,7 @@
         position: snapshot.position_ms,
         shuffle: snapshot.shuffle,
         repeat: snapshot.repeat,
-        playSource: playSource.playlistId,
+        playSource: playSource.snapshot(),
         stream: snapshot.stream,
       };
       // The route and its persisted history stay put: after re-login the same
@@ -548,7 +548,7 @@
         session.repeat,
         session.stream ?? null,
       );
-      playSource.restore(session.play_source);
+      playSource.restore(parseSavedPlayFrom(session.play_from) ?? legacyPlaylistSource(session.play_source));
     } catch (e) {
       error = String(e);
     }

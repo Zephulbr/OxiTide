@@ -17,7 +17,7 @@
   import TrackTable from "../lib/components/TrackTable.svelte";
   import { routeForPageItem, type ArtistTab, type Nav } from "../lib/nav.svelte";
   import { createTrackPager } from "../lib/pager.svelte";
-  import { playSource } from "../lib/playSource.svelte";
+  import { playSource, type PlayFrom } from "../lib/playSource.svelte";
   import { trackFlags } from "../lib/trackFlags.svelte";
   import { playArtistRadio } from "../lib/radio";
   import { createTrackView, visibleIndexOf } from "../lib/trackView.svelte";
@@ -62,6 +62,10 @@
 
   let artist = $state<Artist | null>(null);
   let artistError = $state("");
+  /// The player bar's "From artist" line for plays started here.
+  const origin = $derived<PlayFrom | null>(
+    artist ? { kind: "artist", name: artist.name, route: { name: "artist", id } } : null,
+  );
   let albumLists = $state<Record<AlbumTab, Album[] | null>>({
     albums: null,
     eps: null,
@@ -179,7 +183,7 @@
       toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
       return;
     }
-    playSource.set(null);
+    playSource.set(origin, prepared.items.map((t) => t.id));
     void api.playTracks(prepared.items.map(trackToQueueItem), prepared.start);
   }
 
@@ -191,7 +195,7 @@
       toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
       return;
     }
-    playSource.set(null);
+    playSource.set(origin, prepared.items.map((t) => t.id));
     void api.playTracks(prepared.items.map(trackToQueueItem), 0, shuffle);
   }
 </script>
@@ -328,7 +332,7 @@
             onclick={() => nav.goto({ name: "mix", id: mixId })}
           />
         {/if}
-        <button class="radio-tile" onclick={() => void playArtistRadio(id, toasts)}>
+        <button class="radio-tile" onclick={() => void playArtistRadio(id, toasts, artist?.name)}>
           <span class="radio-icon" aria-hidden="true"><Icon name="radio" size={30} /></span>
           <span class="radio-title">Artist Radio</span>
           <span class="radio-sub muted">Endless station seeded on {artist.name}</span>

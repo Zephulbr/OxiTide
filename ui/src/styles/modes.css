@@ -6,6 +6,10 @@
   --surface-2: rgba(255, 240, 225, 0.07);
   --surface-3: rgba(255, 240, 225, 0.09);
   --surface-float: rgba(23, 18, 14, 0.82);
+  /* Warm graphite, deepest at the bottom edge: bright covers behind the bar
+     can no longer wash out its text. */
+  --player-veil-top: rgba(23, 18, 14, 0.66);
+  --player-veil: linear-gradient(to top, rgba(23, 18, 14, 0.86), var(--player-veil-top));
   --glass-blur: 18px;
   --glass-veil: transparent; /* the blur alone frosts the sticky header */
   --overlay-blur: 8px;

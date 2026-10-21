@@ -51,7 +51,7 @@ describe("MediaCard collection cards", () => {
     expect(a.openArtist).toHaveBeenCalledWith(3);
 
     await fireEvent.click(screen.getByRole("button", { name: "Play Evangelion Finally" }));
-    expect(a.play).toHaveBeenCalledWith({ kind: "album", id: 7 });
+    expect(a.play).toHaveBeenCalledWith({ kind: "album", id: 7, title: "Evangelion Finally" });
     expect(open).toHaveBeenCalledTimes(2);
   });
 
@@ -60,7 +60,7 @@ describe("MediaCard collection cards", () => {
     fake.actions = a;
     render(MediaCard, { item: album, variant: "tile", onclick: vi.fn() });
     await fireEvent.contextMenu(screen.getByRole("group", { name: "Evangelion Finally" }));
-    expect(a.menu).toHaveBeenCalledWith(album, { kind: "album", id: 7 });
+    expect(a.menu).toHaveBeenCalledWith(album, { kind: "album", id: 7, title: "Evangelion Finally" });
   });
 
   it("stays a single button without a provider, for tracks, and for action cards", () => {

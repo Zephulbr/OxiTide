@@ -17,7 +17,7 @@
   import { makeSyntheticAlbum } from "../lib/perfFixture";
   import { perfHooks } from "../lib/perfHooks";
   import { createTrackView } from "../lib/trackView.svelte";
-  import { playSource } from "../lib/playSource.svelte";
+  import { playSource, type PlayFrom } from "../lib/playSource.svelte";
   import { trackFlags } from "../lib/trackFlags.svelte";
   import { shareUrl } from "../lib/share";
   import { load as loadCached, peek } from "../lib/viewCache";
@@ -46,6 +46,11 @@
 
   // svelte-ignore state_referenced_locally
   const view = createTrackView(() => tracks, undefined, { memoryKey: `album:${id}` });
+
+  /// The player bar's "From album" line for plays started here.
+  const origin = $derived<PlayFrom | null>(
+    album ? { kind: "album", name: album.title, route: { name: "album", id: album.id } } : null,
+  );
 
   // "FEB 11, 2014 · 12 TRACKS (43:21)" — release date (when known), then album
   // totals with loaded-item fallback. The stats line is the only place the
@@ -106,7 +111,7 @@
       toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
       return;
     }
-    playSource.set(null);
+    playSource.set(origin, prepared.items.map((t) => t.id));
     void api.playTracks(prepared.items.map(trackToQueueItem), prepared.start);
   }
 
@@ -117,7 +122,7 @@
       toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
       return;
     }
-    playSource.set(null);
+    playSource.set(origin, prepared.items.map((t) => t.id));
     void api.playTracks(prepared.items.map(trackToQueueItem), prepared.start);
   }
 
@@ -128,7 +133,7 @@
       toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
       return;
     }
-    playSource.set(null);
+    playSource.set(origin, prepared.items.map((t) => t.id));
     void api.playTracks(prepared.items.map(trackToQueueItem), 0, true);
   }
 

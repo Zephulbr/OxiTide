@@ -8,7 +8,7 @@
   import { perf } from "../lib/perf.svelte";
   import { makeSyntheticTracks } from "../lib/perfFixture";
   import { perfHooks } from "../lib/perfHooks";
-  import { playSource } from "../lib/playSource.svelte";
+  import { playSource, type PlayFrom } from "../lib/playSource.svelte";
   import { trackFlags } from "../lib/trackFlags.svelte";
   import { createTrackView, visibleIndexOf, warmTrackSearch } from "../lib/trackView.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
@@ -27,6 +27,9 @@
 
   const UNAVAILABLE_NOTE =
     "TIDAL still counts these favorites but no longer serves them: they were removed from the catalogue or aren't licensed in your region.";
+
+  /// The player bar's "From" line for plays started here.
+  const FAVORITES: PlayFrom = { kind: "favorites", name: "Favorite tracks", route: { name: "tracks" } };
 
   const favoritesPager = createTrackPager("favorites", (offset, limit) =>
     api.getFavoriteTracksPage(offset, limit),
@@ -104,7 +107,7 @@
       toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
       return;
     }
-    playSource.set(null);
+    playSource.set(FAVORITES, prepared.items.map((t) => t.id));
     void api.playTracks(prepared.items.map(trackToQueueItem), prepared.start);
   }
 
@@ -116,7 +119,7 @@
       toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
       return;
     }
-    playSource.set(null);
+    playSource.set(FAVORITES, prepared.items.map((t) => t.id));
     void api.playTracks(prepared.items.map(trackToQueueItem), prepared.start);
   }
 
@@ -128,7 +131,7 @@
       toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
       return;
     }
-    playSource.set(null);
+    playSource.set(FAVORITES, prepared.items.map((t) => t.id));
     void api.playTracks(prepared.items.map(trackToQueueItem), 0, true);
   }
 </script>

@@ -10,7 +10,7 @@
   import TrackTable from "../lib/components/TrackTable.svelte";
   import { copyText } from "../lib/clipboard";
   import { formatTotalDuration } from "../lib/format";
-  import { playSource } from "../lib/playSource.svelte";
+  import { playSource, type PlayFrom } from "../lib/playSource.svelte";
   import { trackFlags } from "../lib/trackFlags.svelte";
   import { shareUrl } from "../lib/share";
   import { createTrackView } from "../lib/trackView.svelte";
@@ -42,6 +42,10 @@
   // svelte-ignore state_referenced_locally
   const view = createTrackView(() => mix?.tracks ?? [], undefined, { memoryKey: `mix:${id}` });
   const artwork = $derived(mix?.artwork ?? mix?.tracks[0]?.album?.cover ?? null);
+  /// The player bar's "From mix" line for plays started here.
+  const origin = $derived<PlayFrom | null>(
+    mix ? { kind: "mix", name: mix.title, route: { name: "mix", id } } : null,
+  );
 
   // "50 TRACKS (3:12:44)" — mixes carry no metadata totals, so sum the tracks.
   const stats = $derived.by(() => {
@@ -75,7 +79,7 @@
       toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
       return;
     }
-    playSource.set(null);
+    playSource.set(origin, prepared.items.map((t) => t.id));
     void api.playTracks(prepared.items.map(trackToQueueItem), prepared.start);
   }
 
@@ -86,7 +90,7 @@
       toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
       return;
     }
-    playSource.set(null);
+    playSource.set(origin, prepared.items.map((t) => t.id));
     void api.playTracks(prepared.items.map(trackToQueueItem), 0, true);
   }
 
@@ -96,7 +100,7 @@
       toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
       return;
     }
-    playSource.set(null);
+    playSource.set(origin, prepared.items.map((t) => t.id));
     void api.playTracks(prepared.items.map(trackToQueueItem), prepared.start);
   }
 

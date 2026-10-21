@@ -61,6 +61,19 @@ impl From<SessionItem> for QueueItem {
     }
 }
 
+/// What started the queue, for the player bar's "From …" line. The UI owns
+/// the shape: `kind` is its source kind, `route` the page the name opens (a
+/// UI `Route`, re-validated on restore), and `track_ids` the tracks the source
+/// queued, so later additions are not credited to it.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PlayFrom {
+    pub kind: String,
+    pub name: String,
+    pub route: Option<serde_json::Value>,
+    pub track_ids: Vec<u64>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Session {
@@ -70,7 +83,11 @@ pub struct Session {
     pub position_ms: u64,
     pub shuffle: bool,
     pub repeat: RepeatMode,
+    /// The playlist that started the queue (sidebar marker); kept beside
+    /// `play_from` so sessions saved before it still restore the marker.
     pub play_source: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub play_from: Option<PlayFrom>,
     /// The last stream actually served for the current track, so a paused
     /// restore can still render the detailed quality readout.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -89,6 +106,7 @@ impl Default for Session {
             repeat: RepeatMode::Off,
             stream: None,
             play_source: None,
+            play_from: None,
             saved_at: 0,
         }
     }
@@ -172,7 +190,7 @@ pub const SESSION_DEBOUNCE: Duration = Duration::from_secs(30);
 #[allow(clippy::large_enum_variant)]
 enum SaverMsg {
     Event(EngineEvent),
-    SetPlaySource(Option<String>),
+    SetPlaySource(Option<String>, Option<PlayFrom>),
     Flush(Sender<()>),
     Clear,
 }
@@ -205,8 +223,8 @@ impl SessionSaver {
         let _ = self.tx.send(SaverMsg::Event(event.clone()));
     }
 
-    pub fn set_play_source(&self, id: Option<String>) {
-        let _ = self.tx.send(SaverMsg::SetPlaySource(id));
+    pub fn set_play_source(&self, id: Option<String>, from: Option<PlayFrom>) {
+        let _ = self.tx.send(SaverMsg::SetPlaySource(id, from));
     }
 
     /// Best-effort synchronous flush used on exit; waits briefly for the saver.
@@ -225,6 +243,7 @@ impl SessionSaver {
 fn session_from_state(
     state: &PlaybackState,
     play_source: Option<String>,
+    play_from: Option<PlayFrom>,
     saved_at: u64,
     flags: Option<&TrackFlagsStore>,
 ) -> Session {
@@ -247,6 +266,7 @@ fn session_from_state(
         shuffle: state.shuffle,
         repeat: state.repeat,
         play_source,
+        play_from,
         stream: state.stream.clone(),
         saved_at,
     }
@@ -312,6 +332,7 @@ fn saver_main(
 ) {
     let mut snapshot: Option<PlaybackState> = None;
     let mut play_source: Option<String> = None;
+    let mut play_from: Option<PlayFrom> = None;
     let mut dirty = false;
     let mut urgent = false;
     let mut last_flush = Instant::now();
@@ -353,14 +374,15 @@ fn saver_main(
                 }
             }
             Ok(SaverMsg::Event(_)) => {}
-            Ok(SaverMsg::SetPlaySource(id)) => {
+            Ok(SaverMsg::SetPlaySource(id, from)) => {
                 play_source = id;
+                play_from = from;
                 dirty = true;
                 urgent = true;
             }
             Ok(SaverMsg::Flush(ack)) => {
                 if dirty {
-                    write_snapshot(&path, snapshot.as_ref(), &play_source, &flags);
+                    write_snapshot(&path, snapshot.as_ref(), &play_source, &play_from, &flags);
                     dirty = false;
                     urgent = false;
                     last_flush = Instant::now();
@@ -371,6 +393,7 @@ fn saver_main(
                 clear(&path);
                 snapshot = None;
                 play_source = None;
+                play_from = None;
                 dirty = false;
                 urgent = false;
             }
@@ -378,7 +401,7 @@ fn saver_main(
             Err(RecvTimeoutError::Disconnected) => break,
         }
         if dirty && (urgent || last_flush.elapsed() >= debounce) {
-            write_snapshot(&path, snapshot.as_ref(), &play_source, &flags);
+            write_snapshot(&path, snapshot.as_ref(), &play_source, &play_from, &flags);
             dirty = false;
             urgent = false;
             last_flush = Instant::now();
@@ -390,6 +413,7 @@ fn write_snapshot(
     path: &Path,
     snapshot: Option<&PlaybackState>,
     play_source: &Option<String>,
+    play_from: &Option<PlayFrom>,
     flags: &Arc<Mutex<Option<Arc<TrackFlagsStore>>>>,
 ) {
     let Some(state) = snapshot else { return };
@@ -398,7 +422,7 @@ fn write_snapshot(
         .map(|d| d.as_secs())
         .unwrap_or(0);
     let source = flags.lock().unwrap().clone();
-    let session = session_from_state(state, play_source.clone(), saved_at, source.as_deref());
+    let session = session_from_state(state, play_source.clone(), play_from.clone(), saved_at, source.as_deref());
     if let Err(e) = save(path, &session) {
         tracing::warn!("failed to save session: {e}");
     }
@@ -448,6 +472,12 @@ mod tests {
             shuffle: true,
             repeat: RepeatMode::All,
             play_source: Some("pl-1".into()),
+            play_from: Some(PlayFrom {
+                kind: "playlist".into(),
+                name: "Road trip".into(),
+                route: Some(serde_json::json!({ "name": "playlist", "id": "pl-1" })),
+                track_ids: vec![1, 2, 3],
+            }),
             stream: Some(StreamMeta {
                 quality: Some(Quality::Max),
                 codec: Some("flac".into()),
@@ -473,7 +503,7 @@ mod tests {
             bitrate_kbps: Some(1058),
             replay_gain_db: None,
         });
-        let saved = session_from_state(&state, None, 100, None);
+        let saved = session_from_state(&state, None, None, 100, None);
         assert_eq!(saved.stream.expect("stream").bit_depth, 24);
     }
 
@@ -485,6 +515,19 @@ mod tests {
         value.as_object_mut().unwrap().remove("stream");
         fs::write(&path, value.to_string()).unwrap();
         assert_eq!(load(&path).unwrap().stream, None);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn legacy_session_without_play_from_loads_with_none() {
+        let dir = temp_dir();
+        let path = dir.join("session.json");
+        let mut value = serde_json::to_value(session()).unwrap();
+        value.as_object_mut().unwrap().remove("play_from");
+        fs::write(&path, value.to_string()).unwrap();
+        let loaded = load(&path).unwrap();
+        assert_eq!(loaded.play_from, None);
+        assert_eq!(loaded.play_source.as_deref(), Some("pl-1"));
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -632,9 +675,12 @@ mod tests {
         let path = dir.join("session.json");
         let saver = SessionSaver::start(path.clone(), Duration::from_secs(60));
         saver.record(&EngineEvent::State(playback_state(&[1], Some(0), 0)));
-        saver.set_play_source(Some("pl-1".into()));
+        let from = PlayFrom { kind: "album".into(), name: "Blood Sugar Sex Magik".into(), route: None, track_ids: vec![1] };
+        saver.set_play_source(Some("pl-1".into()), Some(from.clone()));
         saver.flush_now();
-        assert_eq!(load(&path).unwrap().play_source.as_deref(), Some("pl-1"));
+        let saved = load(&path).unwrap();
+        assert_eq!(saved.play_source.as_deref(), Some("pl-1"));
+        assert_eq!(saved.play_from, Some(from));
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -767,7 +813,7 @@ mod tests {
         let store = crate::track_flags::TrackFlagsStore::start(None);
         store.record_explicit(3, true);
         let state = playback_state(&[3], Some(0), 0);
-        let session = session_from_state(&state, None, 100, Some(&store));
+        let session = session_from_state(&state, None, None, 100, Some(&store));
         assert_eq!(session.queue[0].explicit, Some(true));
         assert_eq!(session.queue[0].ai, None);
     }

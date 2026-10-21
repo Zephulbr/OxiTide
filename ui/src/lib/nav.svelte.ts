@@ -82,7 +82,7 @@ export interface Nav {
   reset(): void;
 }
 
-function sameRoute(a: Route, b: Route): boolean {
+export function sameRoute(a: Route, b: Route): boolean {
   if (a.name !== b.name) return false;
   if (a.name === "section" && b.name === "section") {
     return a.source === b.source && a.title === b.title;
@@ -127,7 +127,8 @@ export function routeForPageItem(item: PageItem): Route | null {
   return null;
 }
 
-function parseRoute(value: unknown): Route | null {
+/// A persisted route checked field by field; anything malformed is null.
+export function parseRoute(value: unknown): Route | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
   switch (record.name) {
