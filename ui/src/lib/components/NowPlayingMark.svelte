@@ -18,27 +18,32 @@
   } = $props();
 
   let disc: SVGGElement | undefined;
+  // Outside the effect, so a pause/resume keeps the angle and the speed.
+  let angle = 0;
+  let speed = 0;
 
   // Same eased-speed loop as DiscArt, faster (one turn per 2 s) so motion
-  // reads at glyph size. `playing` is read inside the tick so a resume keeps
-  // the current angle.
+  // reads at glyph size. The loop runs only while the disc turns: it starts
+  // on play and ends once a pause has eased it to a stop (paused is idle).
   $effect(() => {
+    const spinning = playing;
     if (!appearance.ambientMotion) {
+      angle = 0;
+      speed = 0;
       disc?.setAttribute("transform", "rotate(0 12 12)");
       return;
     }
+    if (!spinning && speed === 0) return;
     let raf = 0;
     let last = performance.now();
-    let angle = 0;
-    let speed = 0;
     const tick = (now: number) => {
       const dt = Math.min((now - last) / 1000, 0.1);
       last = now;
-      speed += ((playing ? 180 : 0) - speed) * Math.min(1, dt / 0.15);
+      speed += ((spinning ? 180 : 0) - speed) * Math.min(1, dt / 0.15);
       if (Math.abs(speed) < 0.01) speed = 0;
       angle = (angle + speed * dt) % 360;
       disc?.setAttribute("transform", `rotate(${angle} 12 12)`);
-      raf = requestAnimationFrame(tick);
+      if (spinning || speed !== 0) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
