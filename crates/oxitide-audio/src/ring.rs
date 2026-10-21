@@ -58,6 +58,16 @@ fn wait_for(samples: usize, samples_per_sec: usize) -> Duration {
     Duration::from_micros(micros).clamp(MIN_WAIT, MAX_WAIT)
 }
 
+/// How long the words queued in a ring take to play, in ms: `capacity`
+/// minus the producer's `free_slots`, at `samples_per_sec` (rate × channels).
+pub(crate) fn queued_ms(capacity: usize, free_slots: usize, samples_per_sec: usize) -> u32 {
+    if samples_per_sec == 0 {
+        return 0;
+    }
+    let queued = capacity.saturating_sub(free_slots) as u64;
+    (queued * 1000 / samples_per_sec as u64).min(u32::MAX as u64) as u32
+}
+
 /// Fill `out` (little-endian words) from the ring: whole frames only, so an
 /// underrun never shifts the channels, and silence (all-zero bytes, which is
 /// 0.0 f32 and 0 i32) for whatever the ring cannot cover. `out` is reused by
@@ -124,6 +134,18 @@ mod tests {
         let samples: Vec<u32> = (0..64).collect();
         push_samples(&mut producer, &samples, 8_000, |s| s).unwrap();
         assert_eq!(drain.join().unwrap(), 64);
+    }
+
+    #[test]
+    fn queued_ms_counts_the_words_not_yet_played() {
+        // A 200 ms stereo 48 kHz ring (19 200 words).
+        assert_eq!(queued_ms(19_200, 0, 96_000), 200);
+        assert_eq!(queued_ms(19_200, 19_200, 96_000), 0);
+        assert_eq!(queued_ms(19_200, 4_800, 96_000), 150);
+        assert_eq!(queued_ms(19_200, 0, 0), 0);
+        let (mut producer, _consumer) = RingBuffer::<u32>::new(8_820);
+        push_samples(&mut producer, &[0u32; 4_410], 88_200, |s| s).unwrap();
+        assert_eq!(queued_ms(producer.buffer().capacity(), producer.slots(), 88_200), 50);
     }
 
     #[test]

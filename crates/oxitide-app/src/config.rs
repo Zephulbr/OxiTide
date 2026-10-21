@@ -264,6 +264,26 @@ pub enum CoverShape {
     Sleeve,
 }
 
+/// The jamming cat's coat (CatJam, CJ-D12); mirrors `COAT_IDS` in
+/// `ui/src/lib/catjamSprite.ts`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CatjamCoat {
+    #[default]
+    White,
+    Black,
+    Ginger,
+    Grey,
+    Tuxedo,
+    Cream,
+}
+
+/// The jamming cat's size in percent of its 32 px sprite. Capped so it fits
+/// the player bar.
+pub fn clamp_catjam_scale(percent: u32) -> u32 {
+    percent.clamp(100, 200)
+}
+
 /// Spec §7.1: the queue rail docks at 260–420px.
 pub fn clamp_queue_width(px: u32) -> u32 {
     px.clamp(260, 420)
@@ -285,6 +305,11 @@ pub struct UiConfig {
     /// Launch the window in the mini player (spec MP-D7); default off.
     pub start_in_mini: bool,
     pub oneko: bool,
+    /// The jamming cat on the player bar cover (CatJam); default off.
+    pub catjam: bool,
+    pub catjam_coat: CatjamCoat,
+    /// Percent of the sprite's 32 px (100–200).
+    pub catjam_scale: u32,
     /// The collapsed sidebar and the closed queue expand as overlays on hover.
     pub hover_panels: bool,
     /// Close hides the window to the tray instead of exiting (QoL-D3).
@@ -312,6 +337,9 @@ impl Default for UiConfig {
             queue_width: 320,
             start_in_mini: false,
             oneko: false,
+            catjam: false,
+            catjam_coat: CatjamCoat::White,
+            catjam_scale: 125,
             hover_panels: false,
             close_to_tray: true,
             window_width: 1200,
@@ -559,6 +587,9 @@ mod tests {
                 queue_width: 320,
                 start_in_mini: false,
                 oneko: true,
+                catjam: true,
+                catjam_coat: CatjamCoat::Tuxedo,
+                catjam_scale: 150,
                 hover_panels: true,
                 close_to_tray: true,
                 window_width: 1280,
@@ -869,6 +900,51 @@ duration_ms = 4000
         assert!(fs::read_to_string(&path).unwrap().contains("oneko = true"));
         assert!(Config::load_from(&path).ui.oneko);
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn catjam_defaults_off_and_white_and_round_trips() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        let defaults = Config::default();
+        assert!(!defaults.ui.catjam);
+        assert_eq!(defaults.ui.catjam_coat, CatjamCoat::White);
+        let mut config = Config::default();
+        config.ui.catjam = true;
+        config.ui.catjam_coat = CatjamCoat::Ginger;
+        config.save_to(&path).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("catjam = true"), "{text}");
+        assert!(text.contains("catjam_coat = \"ginger\""), "{text}");
+        let loaded = Config::load_from(&path);
+        assert!(loaded.ui.catjam);
+        assert_eq!(loaded.ui.catjam_coat, CatjamCoat::Ginger);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn catjam_scale_defaults_to_125_and_is_capped() {
+        assert_eq!(Config::default().ui.catjam_scale, 125);
+        assert_eq!(clamp_catjam_scale(50), 100);
+        assert_eq!(clamp_catjam_scale(150), 150);
+        assert_eq!(clamp_catjam_scale(400), 200);
+    }
+
+    #[test]
+    fn catjam_coats_use_the_ui_ids() {
+        let ids: Vec<String> = [
+            CatjamCoat::White,
+            CatjamCoat::Black,
+            CatjamCoat::Ginger,
+            CatjamCoat::Grey,
+            CatjamCoat::Tuxedo,
+            CatjamCoat::Cream,
+        ]
+        .iter()
+        .map(|c| serde_json::to_value(c).unwrap().as_str().unwrap().to_string())
+        .collect();
+        assert_eq!(ids, ["white", "black", "ginger", "grey", "tuxedo", "cream"]);
+        assert!(serde_json::from_value::<CatjamCoat>(serde_json::json!("calico")).is_err());
     }
 
     #[test]

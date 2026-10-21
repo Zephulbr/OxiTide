@@ -353,6 +353,8 @@ export interface CacheStatus {
   usable: boolean;
   configured_dir: string;
 }
+/// The jamming cat's coat (`CatjamCoat` in config.rs; frames in catjamSprite.ts).
+export type CatjamCoat = "white" | "black" | "ginger" | "grey" | "tuxedo" | "cream";
 export interface Config {
   audio: {
     output_device: string;
@@ -373,6 +375,10 @@ export interface Config {
     queue_width: number;
     start_in_mini: boolean;
     oneko: boolean;
+    catjam: boolean;
+    catjam_coat: CatjamCoat;
+    /// Percent of the 32 px sprite, 100–200.
+    catjam_scale: number;
     hover_panels: boolean;
     close_to_tray: boolean;
     window_width: number;
@@ -527,10 +533,21 @@ export interface LevelFrame {
   bands: number[];
 }
 export const LEVEL_FRAME_EVENT = "level_frame";
+/// Tempo and phase of the playing track from local analysis (CatJam). Times
+/// are track positions; `bpm` is null when the beat is not clear enough.
+export interface BeatClock {
+  track_id: number;
+  bpm: number | null;
+  period_ms: number;
+  anchor_ms: number;
+  confidence: number;
+}
 export type EngineEvent =
   | ({ type: "state" } & StateEvent)
   | { type: "now_playing"; [k: string]: unknown }
-  | { type: "position"; position_ms: number; duration_ms: number }
+  // lead_ms: how far position_ms runs ahead of what is heard (output buffering).
+  | { type: "position"; position_ms: number; duration_ms: number; lead_ms: number }
+  | ({ type: "beat" } & BeatClock)
   | { type: "error"; code: string; message: string };
 
 export const AUTH_SUCCESS_EVENT = "auth://success";
@@ -750,6 +767,10 @@ export const api = {
   setMiniMode: (active: boolean) => invoke<void>("set_mini_mode", { active }),
   setStartInMini: (enabled: boolean) => invoke<void>("set_start_in_mini", { enabled }),
   setOneko: (enabled: boolean) => invoke<void>("set_oneko", { enabled }),
+  setCatjam: (enabled: boolean) => invoke<void>("set_catjam", { enabled }),
+  setCatjamCoat: (coat: CatjamCoat) => invoke<void>("set_catjam_coat", { coat }),
+  setCatjamScale: (percent: number) => invoke<number>("set_catjam_scale", { percent }),
+  setBeatTracking: (enabled: boolean) => invoke<void>("set_beat_tracking", { enabled }),
   setHoverPanels: (enabled: boolean) => invoke<void>("set_hover_panels", { enabled }),
   setSmtc: (enabled: boolean) => invoke<void>("set_smtc", { enabled }),
   setCloseToTray: (enabled: boolean) => invoke<void>("set_close_to_tray", { enabled }),

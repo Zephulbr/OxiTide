@@ -366,6 +366,7 @@ that is not active must cost nothing.
 | Covers | `ui/src/lib/components/Cover.svelte`, `ui/src/lib/artwork.ts` |
 | Rack reference mockup | `ui/design/rack/reference-mockup.html` (open via any static server at the repo root) |
 | Phone remote | `ui/remote.html`, `ui/src/remote/` (styles: `remote/remote.css` + component styles) |
+| Easter eggs | Oneko + kuroneko: `ui/src/lib/components/Neko.svelte`. Classic gif colours; kuroneko is the same sprite under `filter: invert(1)`; petting hearts are an 8×6 pixel SVG in `--accent` that float up and fade over 900 ms, at most 6 at once, `z-index: 8` like the cats. Jamming cat: `CatJam.svelte`, a 32 px pixel sprite in the player bar's left zone between the track title and the heart, at 100–200 % (Settings → Extras → Size, default 125 %; `pointer-events: none`). It has six coats (`lib/catjamSprite.ts`, chosen in Settings → Extras with `settings/CoatPicker.svelte`). None of them branch on mode; all are hidden under reduced motion. |
 
 ## 4. Phone remote (Track 11)
 

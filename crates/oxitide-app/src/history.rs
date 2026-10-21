@@ -97,7 +97,7 @@ impl HistoryTracker {
                 }
                 None
             }
-            EngineEvent::Position { position_ms, duration_ms } => {
+            EngineEvent::Position { position_ms, duration_ms, .. } => {
                 if let Some(play) = self.current.as_mut() {
                     let delta = position_ms.saturating_sub(play.last_pos_ms);
                     if delta > 0 && delta <= SEEK_MAX_MS {
@@ -110,7 +110,7 @@ impl HistoryTracker {
                 }
                 None
             }
-            EngineEvent::Error { .. } => None,
+            EngineEvent::Beat(_) | EngineEvent::Error { .. } => None,
         }
     }
 
@@ -746,7 +746,7 @@ mod tests {
     }
 
     fn position(ms: u64, duration_ms: u64) -> EngineEvent {
-        EngineEvent::Position { position_ms: ms, duration_ms }
+        EngineEvent::Position { position_ms: ms, duration_ms, lead_ms: 0 }
     }
 
     /// Start a play and feed `seconds` of 1 s position ticks.

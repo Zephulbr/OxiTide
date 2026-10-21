@@ -3,6 +3,8 @@ export const NEKO_SPEED = 10;
 export const TICK_MS = 100;
 export const IDLE_RADIUS = 48;
 export const PERCH_SETTLE = 0.6;
+/// Ticks a petted cat holds still with her eyes closed (1.5 s).
+export const PET_TICKS = 15;
 
 export interface Sprite {
   col: number;
@@ -30,6 +32,11 @@ export interface NekoEngine {
   endDrag(): void;
   toggleSleep(perch: PerchRect | null): void;
   setPerch(perch: PerchRect | null): void;
+  /// Petted: hold still, eyes closed, for `PET_TICKS`. A sleeping cat stays
+  /// asleep. False when she did not react (asleep or being dragged).
+  pet(): boolean;
+  /// True while she sleeps (told to, or dozed off on her own).
+  asleep(): boolean;
   tick(): NekoFrame;
 }
 
@@ -102,6 +109,7 @@ export function createNekoEngine(opts: { rng?: () => number } = {}): NekoEngine 
   let dragAnchor: { mouseX: number; mouseY: number; nekoX: number; nekoY: number } | null = null;
   let dragSprite: SpriteName = "alert";
   let nudge = false;
+  let petTicks = 0;
 
   function spriteFor(name: SpriteName, frame: number): Sprite {
     const set = SPRITES[name];
@@ -171,7 +179,19 @@ export function createNekoEngine(opts: { rng?: () => number } = {}): NekoEngine 
       : { x, y };
   }
 
+  function asleep(): boolean {
+    return forceSleep || (idleAnimation === "sleeping" && idleAnimationFrame >= 8);
+  }
+
+  function pet(): boolean {
+    if (grabbing || asleep()) return false;
+    petTicks = PET_TICKS;
+    resetIdleAnimation();
+    return true;
+  }
+
   function startDrag(mx: number, my: number) {
+    petTicks = 0;
     grabbing = true;
     dragAnchor = { mouseX: mx, mouseY: my, nekoX: x, nekoY: y };
     dragSprite = "alert";
@@ -247,6 +267,10 @@ export function createNekoEngine(opts: { rng?: () => number } = {}): NekoEngine 
   function tick(): NekoFrame {
     frameCount += 1;
     if (grabbing) return { x, y, sprite: spriteFor(dragSprite, frameCount) };
+    if (petTicks > 0) {
+      petTicks -= 1;
+      return { x, y, sprite: spriteFor("tired", 0) };
+    }
     const diffX = x - mouseX;
     const diffY = y - mouseY;
     const distance = Math.hypot(diffX, diffY);
@@ -272,5 +296,17 @@ export function createNekoEngine(opts: { rng?: () => number } = {}): NekoEngine 
     return { x, y, sprite };
   }
 
-  return { setMouse, setViewport, setPosition, startDrag, dragTo, endDrag, toggleSleep, setPerch, tick };
+  return {
+    setMouse,
+    setViewport,
+    setPosition,
+    startDrag,
+    dragTo,
+    endDrag,
+    toggleSleep,
+    setPerch,
+    pet,
+    asleep,
+    tick,
+  };
 }

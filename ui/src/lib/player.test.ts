@@ -33,7 +33,7 @@ describe("player reducer", () => {
     const start: PlayerState = { ...emptyState(), queue: [
       { track_id: 1, title: "T", artist: "A", album: "", duration_secs: 10, cover: null },
     ] };
-    const next = reduce(start, { type: "position", position_ms: 1000, duration_ms: 10000 });
+    const next = reduce(start, { type: "position", position_ms: 1000, duration_ms: 10000, lead_ms: 0 });
     expect(next.position_ms).toBe(1000);
     expect(next.queue).toHaveLength(1);
   });
@@ -77,10 +77,10 @@ describe("volume icon", () => {
 describe("seek reconciliation", () => {
   it("releases the pending position when the engine catches up", () => {
     expect(
-      reconcileSeek(1000, { type: "position", position_ms: 100, duration_ms: 2000 }),
+      reconcileSeek(1000, { type: "position", position_ms: 100, duration_ms: 2000, lead_ms: 0 }),
     ).toBe(1000);
     expect(
-      reconcileSeek(1000, { type: "position", position_ms: 1100, duration_ms: 2000 }),
+      reconcileSeek(1000, { type: "position", position_ms: 1100, duration_ms: 2000, lead_ms: 0 }),
     ).toBeNull();
   });
 
@@ -110,7 +110,7 @@ describe("player event application", () => {
 
   it("mutates the existing state for a position event", () => {
     const state = { ...positioned };
-    const result = applyEvent(state, { type: "position", position_ms: 1000, duration_ms: 10000 });
+    const result = applyEvent(state, { type: "position", position_ms: 1000, duration_ms: 10000, lead_ms: 0 });
     expect(result).toBe(state);
     expect(state.position_ms).toBe(1000);
     expect(state.duration_ms).toBe(10000);
@@ -170,7 +170,7 @@ describe("player event application", () => {
 
   it("keeps queue and position updates when events interleave", () => {
     const state = emptyState();
-    applyEvent(state, { type: "position", position_ms: 1000, duration_ms: 10000 });
+    applyEvent(state, { type: "position", position_ms: 1000, duration_ms: 10000, lead_ms: 0 });
     applyEvent(state, {
       type: "state", playing: true, buffering: false, current: null,
       position_ms: 1000, duration_ms: 10000, volume: 1, shuffle: false,
@@ -180,7 +180,7 @@ describe("player event application", () => {
       queue_rev: 0, queue: [{ track_id: 1, title: "T", artist: "A", album: "", duration_secs: 10, cover: null }],
       stream: null,
     });
-    applyEvent(state, { type: "position", position_ms: 2000, duration_ms: 10000 });
+    applyEvent(state, { type: "position", position_ms: 2000, duration_ms: 10000, lead_ms: 0 });
     expect(state.queue).toHaveLength(1);
     expect(state.position_ms).toBe(2000);
   });

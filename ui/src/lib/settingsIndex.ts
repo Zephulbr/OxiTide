@@ -46,6 +46,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   e("rack-brightness", "appearance", "Hi-Fi Rack", "Lamp brightness", "dim glow", "rack"),
   e("rack-eq", "appearance", "Hi-Fi Rack", "Show the graphic EQ unit", "equalizer rack", "rack"),
   e("cat", "appearance", "Extras", "Cat", "oneko pet fun cursor"),
+  e("catjam", "appearance", "Extras", "Jamming cat", "catjam bob beat dance tempo coat colour color size scale bigger fun"),
 
   e("quality", "playback", "Streaming", "Streaming quality", "audio hifi hi-res lossless max high aac flac bitrate"),
   e("allow-fallback", "playback", "Streaming", "Use the best available quality", "fallback unavailable"),

@@ -16,6 +16,9 @@ vi.mock("./api", () => ({
   api: {
     getConfig: vi.fn(),
     setOneko: vi.fn(),
+    setCatjam: vi.fn(),
+    setCatjamCoat: vi.fn(),
+    setCatjamScale: vi.fn(),
     setTheme: vi.fn(),
     setUiMode: vi.fn(),
     setRackSettings: vi.fn(),
@@ -183,6 +186,77 @@ describe("oneko setting", () => {
     vi.mocked(api.setOneko).mockRejectedValueOnce(new Error("disk full"));
     await expect(appearance.setOneko(true)).rejects.toThrow("disk full");
     expect(appearance.oneko).toBe(false);
+  });
+});
+
+describe("catjam settings", () => {
+  beforeEach(() => {
+    vi.stubGlobal("window", {
+      matchMedia: () => ({ matches: false, addEventListener: () => {} }),
+    });
+    vi.stubGlobal("document", {
+      documentElement: { dataset: {}, style: { setProperty: () => {} } },
+    });
+    vi.stubGlobal("localStorage", { getItem: () => null, setItem: vi.fn() });
+    vi.mocked(api.setCatjam).mockResolvedValue(undefined);
+    vi.mocked(api.setCatjamCoat).mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  it("defaults to off and white", () => {
+    const appearance = createAppearance();
+    expect(appearance.catjam).toBe(false);
+    expect(appearance.catjamCoat).toBe("white");
+  });
+
+  it("init reads the flag and coat, and the setters persist them", async () => {
+    vi.mocked(api.getConfig).mockResolvedValue({ ui: { catjam: true, catjam_coat: "tuxedo", theme: "dark" } } as never);
+    const appearance = createAppearance();
+    await appearance.init();
+    expect(appearance.catjam).toBe(true);
+    expect(appearance.catjamCoat).toBe("tuxedo");
+    await appearance.setCatjam(false);
+    await appearance.setCatjamCoat("ginger");
+    expect(appearance.catjam).toBe(false);
+    expect(appearance.catjamCoat).toBe("ginger");
+    expect(api.setCatjam).toHaveBeenCalledWith(false);
+    expect(api.setCatjamCoat).toHaveBeenCalledWith("ginger");
+  });
+
+  it("an unknown stored coat reads as white", async () => {
+    vi.mocked(api.getConfig).mockResolvedValue({ ui: { catjam_coat: "calico", theme: "dark" } } as never);
+    const appearance = createAppearance();
+    await appearance.init();
+    expect(appearance.catjamCoat).toBe("white");
+  });
+
+  it("reads, clamps and persists the size", async () => {
+    vi.mocked(api.getConfig).mockResolvedValue({ ui: { catjam_scale: 900, theme: "dark" } } as never);
+    vi.mocked(api.setCatjamScale).mockImplementation(async (p: number) => p);
+    const appearance = createAppearance();
+    expect(appearance.catjamScale).toBe(125);
+    await appearance.init();
+    expect(appearance.catjamScale).toBe(200);
+    await appearance.setCatjamScale(150);
+    expect(appearance.catjamScale).toBe(150);
+    expect(api.setCatjamScale).toHaveBeenCalledWith(150);
+    vi.mocked(api.setCatjamScale).mockRejectedValueOnce(new Error("disk full"));
+    await expect(appearance.setCatjamScale(100)).rejects.toThrow("disk full");
+    expect(appearance.catjamScale).toBe(150);
+  });
+
+  it("the setters roll back when persistence fails", async () => {
+    const appearance = createAppearance();
+    vi.mocked(api.setCatjam).mockRejectedValueOnce(new Error("disk full"));
+    vi.mocked(api.setCatjamCoat).mockRejectedValueOnce(new Error("disk full"));
+    await expect(appearance.setCatjam(true)).rejects.toThrow("disk full");
+    await expect(appearance.setCatjamCoat("black")).rejects.toThrow("disk full");
+    expect(appearance.catjam).toBe(false);
+    expect(appearance.catjamCoat).toBe("white");
   });
 });
 

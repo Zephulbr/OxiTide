@@ -15,7 +15,7 @@ use crate::output::{
     exclusive_formats, platform, AudioOutput, AudioOutputSpec, ExclusiveFallback, OutputMode,
     OutputStatus, SOFTWARE_VOLUME_NOTICE,
 };
-use crate::ring::{pop_frames_le, push_samples};
+use crate::ring::{self, pop_frames_le, push_samples};
 
 /// Floor for the ring so tiny formats still leave room for the device period.
 const MIN_RING_SAMPLES: usize = 4096;
@@ -64,6 +64,9 @@ pub struct WasapiOutput {
     producer: Option<Producer<u32>>,
     /// Rate × channels of the open stream; paces waits on a full ring.
     samples_per_sec: usize,
+    /// The device buffer negotiated at open, in ms. The pump keeps it full,
+    /// so it adds to the ring in `queued_ms`.
+    device_ms: u32,
     worker: Option<JoinHandle<()>>,
     stop: Arc<AtomicBool>,
     flush: Option<Arc<FlushSignal>>,
@@ -82,6 +85,7 @@ impl WasapiOutput {
             resolved_device_id: None,
             producer: None,
             samples_per_sec: 0,
+            device_ms: 0,
             worker: None,
             stop: Arc::new(AtomicBool::new(false)),
             flush: None,
@@ -154,6 +158,7 @@ impl AudioOutput for WasapiOutput {
                 self.stop = stop;
                 self.flush = Some(flush);
                 self.resolved_device_id = ready.device_id;
+                self.device_ms = frames_to_ms(ready.buffer_frames, sample_rate);
                 *self.status.lock().unwrap() = ready.status;
             }
             Ok(Err(message)) => {
@@ -264,6 +269,20 @@ impl AudioOutput for WasapiOutput {
         }
         status
     }
+
+    fn queued_ms(&self) -> Option<u32> {
+        let producer = self.producer.as_ref()?;
+        let ring = ring::queued_ms(producer.buffer().capacity(), producer.slots(), self.samples_per_sec);
+        Some(ring + self.device_ms)
+    }
+}
+
+fn frames_to_ms(frames: u32, rate: u32) -> u32 {
+    if rate == 0 {
+        0
+    } else {
+        (frames as u64 * 1000 / rate as u64) as u32
+    }
 }
 
 impl Drop for WasapiOutput {
@@ -275,6 +294,8 @@ impl Drop for WasapiOutput {
 struct DeviceReady {
     device_id: Option<String>,
     status: OutputStatus,
+    /// The endpoint buffer, in frames of the stream format.
+    buffer_frames: u32,
 }
 
 struct DeviceSession {
@@ -464,6 +485,9 @@ fn setup_device(
     }
 
     let render = client.get_audiorenderclient().map_err(to_error)?;
+    // IAudioClient has no stream latency in this binding; the buffer the pump
+    // keeps full is the device-side part of the lead.
+    let buffer_frames = client.get_buffer_size().unwrap_or(0);
 
     // Keep the device-change registration alive for the session.
     let mut registration = None;
@@ -505,7 +529,7 @@ fn setup_device(
         scratch: Vec::new(),
         _registration: registration,
     };
-    Ok((session, DeviceReady { device_id: resolved_id, status }))
+    Ok((session, DeviceReady { device_id: resolved_id, status, buffer_frames }))
 }
 
 /// Hand the device everything it has room for, from the ring; silence for
@@ -577,6 +601,13 @@ mod tests {
             Some("old"),
             Some("new")
         ));
+    }
+
+    #[test]
+    fn frames_to_ms_converts_at_the_stream_rate() {
+        assert_eq!(frames_to_ms(480, 48_000), 10);
+        assert_eq!(frames_to_ms(1_764, 44_100), 40);
+        assert_eq!(frames_to_ms(480, 0), 0);
     }
 
     #[test]

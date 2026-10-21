@@ -10,6 +10,8 @@
   import NameLink from "./NameLink.svelte";
   import QueueArtistLinks from "./QueueArtistLinks.svelte";
   import type { Mini } from "../mini.svelte";
+  import { appearance } from "../appearance.svelte";
+  import CatJam from "./CatJam.svelte";
   import Cover from "./Cover.svelte";
   import Icon from "./Icon.svelte";
   import PlayPauseGlyph from "./PlayPauseGlyph.svelte";
@@ -75,12 +77,18 @@
 
       <!-- Keyed on the track so a track change fades the new title in rather
            than snapping it (the backdrop crossfades behind it). -->
-      {#key current.track_id}
-        <div class="now">
-          <strong class="title"><NameLink label={current.title} onOpen={() => void openAlbum(current)} /></strong>
-          <span class="muted artist"><QueueArtistLinks item={current} {go} /></span>
-        </div>
-      {/key}
+      <div class="now-cat" style:--cat-px={`${(32 * appearance.catjamScale) / 100}px`}>
+        {#key current.track_id}
+          <div class="now">
+            <strong class="title"><NameLink label={current.title} onOpen={() => void openAlbum(current)} /></strong>
+            <span class="muted artist"><QueueArtistLinks item={current} {go} /></span>
+          </div>
+        {/key}
+
+        {#if appearance.catjam && !appearance.reducedMotion}
+          <CatJam {player} coat={appearance.catjamCoat} scale={appearance.catjamScale} />
+        {/if}
+      </div>
 
       <button
         class="ibtn icon-heart"
@@ -226,6 +234,25 @@
     min-width: 120px;
     max-width: 260px;
     animation: now-in var(--dur-view) var(--ease-enter) backwards;
+  }
+  /* Title + jamming cat. With the cat, the title's minimum width moves to
+     this wrapper and the title hugs its text; the cat's auto margins split the
+     leftover room, so it sits as far from the title as from the heart (the
+     wrapper gap on its left matches the zone gap on its right). */
+  .now-cat {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+  }
+  .now-cat:has(:global(.catjam)) {
+    min-width: calc(120px + 12px + var(--cat-px));
+  }
+  .now-cat:has(:global(.catjam)) .now {
+    min-width: 0;
+  }
+  .now-cat :global(.catjam) {
+    margin-inline: auto;
   }
   @keyframes now-in {
     from {

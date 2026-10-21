@@ -8,7 +8,7 @@
 //! lets teardown wait out a callback that already holds it.
 
 use std::ffi::{c_long, c_void};
-use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -26,7 +26,7 @@ use crate::output::{
     asio_device_key, AudioOutput, AudioOutputSpec, OutputDevice, OutputMode, OutputStatus,
     ASIO_PREFIX, SOFTWARE_VOLUME_NOTICE,
 };
-use crate::ring::push_samples;
+use crate::ring::{self, push_samples};
 
 /// Floor for the ring so tiny formats still leave room for the driver buffer.
 const MIN_RING_SAMPLES: usize = 4096;
@@ -179,6 +179,8 @@ static CLAIMED: AtomicBool = AtomicBool::new(false);
 static DRIVER_RESET: AtomicBool = AtomicBool::new(false);
 /// Last rate the driver reported through `sampleRateDidChange` (f64 bits).
 static RATE_CHANGED: AtomicU64 = AtomicU64::new(0);
+/// Set by the driver (`kAsioLatenciesChanged`); the owner re-reads them.
+static LATENCIES_CHANGED: AtomicBool = AtomicBool::new(false);
 
 static CALLBACKS: AsioCallbacks = AsioCallbacks {
     buffer_switch,
@@ -227,7 +229,11 @@ extern "C" fn asio_message(selector: c_long, value: c_long, _msg: *mut c_void, _
         }
         // Unsupported: the driver follows up with a reset request.
         asio_sys::K_BUFFER_SIZE_CHANGE => 0,
-        asio_sys::K_RESYNC_REQUEST | asio_sys::K_LATENCIES_CHANGED => 1,
+        asio_sys::K_RESYNC_REQUEST => 1,
+        asio_sys::K_LATENCIES_CHANGED => {
+            LATENCIES_CHANGED.store(true, Ordering::SeqCst);
+            1
+        }
         // We render from `bufferSwitch`; no time info needed.
         asio_sys::K_SUPPORTS_TIME_INFO => 0,
         _ => 0,
@@ -305,6 +311,22 @@ struct Opened {
     producer: Producer<u32>,
     format: AsioFormat,
     flush: FlushHandle,
+    /// The driver's output latency in ms; the owner updates it when the
+    /// driver reports a change.
+    latency_ms: Arc<AtomicU32>,
+}
+
+/// The driver's reported output latency (frames, including its buffer) in
+/// ms, or two buffers when it reports none: one playing, one being filled.
+fn output_latency_ms(reported: Option<i32>, buffer_frames: usize, rate: f64) -> u32 {
+    if rate <= 0.0 {
+        return 0;
+    }
+    let frames = match reported {
+        Some(frames) if frames > 0 => frames as f64,
+        _ => 2.0 * buffer_frames as f64,
+    };
+    (frames * 1000.0 / rate).round() as u32
 }
 
 /// The caller's side of the flush handshake with the callback.
@@ -322,6 +344,7 @@ pub struct AsioOutput {
     stop: Arc<AtomicBool>,
     lost: Arc<AtomicBool>,
     flush: Option<FlushHandle>,
+    latency_ms: Option<Arc<AtomicU32>>,
     format: Option<AsioFormat>,
     input_bits: Option<u16>,
     volume: f32,
@@ -337,6 +360,7 @@ impl AsioOutput {
             stop: Arc::new(AtomicBool::new(false)),
             lost: Arc::new(AtomicBool::new(false)),
             flush: None,
+            latency_ms: None,
             format: None,
             input_bits: None,
             volume: 1.0,
@@ -351,6 +375,7 @@ impl AsioOutput {
             let _ = handle.join();
         }
         self.producer = None;
+        self.latency_ms = None;
         self.format = None;
     }
 
@@ -408,6 +433,7 @@ impl AudioOutput for AsioOutput {
                 self.producer = Some(opened.producer);
                 self.format = Some(opened.format);
                 self.flush = Some(opened.flush);
+                self.latency_ms = Some(opened.latency_ms);
                 self.worker = Some(handle);
                 self.stop = stop;
                 self.lost = lost;
@@ -489,6 +515,13 @@ impl AudioOutput for AsioOutput {
         }
         status
     }
+
+    fn queued_ms(&self) -> Option<u32> {
+        let producer = self.producer.as_ref()?;
+        let ring = ring::queued_ms(producer.buffer().capacity(), producer.slots(), self.samples_per_sec);
+        let driver = self.latency_ms.as_ref().map_or(0, |l| l.load(Ordering::Relaxed));
+        Some(ring + driver)
+    }
 }
 
 impl Drop for AsioOutput {
@@ -536,6 +569,8 @@ struct Session {
     driver: Driver,
     state: *mut RenderState,
     rate: f64,
+    buffer_frames: usize,
+    latency_ms: Arc<AtomicU32>,
 }
 
 impl Session {
@@ -612,16 +647,26 @@ impl Session {
             (*state).fill_silence(1, len);
         }
         ACTIVE.store(state, Ordering::SeqCst);
-        let session = Session { driver, state, rate: wanted };
+        LATENCIES_CHANGED.store(false, Ordering::SeqCst);
+        let latency_ms = Arc::new(AtomicU32::new(0));
+        let session = Session { driver, state, rate: wanted, buffer_frames, latency_ms: latency_ms.clone() };
+        session.read_latency();
         if let Err(code) = session.driver.start() {
             session.close();
             return Err(format!("ASIO driver could not start ({})", asio_sys::error_text(code)));
         }
         tracing::info!(
-            "asio output open: {} Hz, {channels} ch, {format:?}, {buffer_frames} frames",
-            rate
+            "asio output open: {} Hz, {channels} ch, {format:?}, {buffer_frames} frames, {} ms output latency",
+            rate,
+            latency_ms.load(Ordering::SeqCst)
         );
-        Ok((session, Opened { producer, format, flush: FlushHandle(state) }))
+        Ok((session, Opened { producer, format, flush: FlushHandle(state), latency_ms }))
+    }
+
+    fn read_latency(&self) {
+        let reported = self.driver.latencies().ok().map(|(_, output)| output);
+        self.latency_ms
+            .store(output_latency_ms(reported, self.buffer_frames, self.rate), Ordering::SeqCst);
     }
 
     fn run(&self, stop: &AtomicBool, lost: &AtomicBool) {
@@ -640,6 +685,9 @@ impl Session {
                 DRIVER_RESET.swap(false, Ordering::SeqCst) || (rate - self.rate).abs() > 0.5;
             if reset && !lost.swap(true, Ordering::SeqCst) {
                 tracing::warn!("asio driver requested a reset");
+            }
+            if LATENCIES_CHANGED.swap(false, Ordering::SeqCst) {
+                self.read_latency();
             }
             std::thread::sleep(Duration::from_millis(10));
         }
@@ -675,6 +723,14 @@ mod tests {
     use super::*;
     use crate::decode::StreamInfo;
     use crate::output::ExclusiveFallback;
+
+    #[test]
+    fn output_latency_uses_the_driver_report_or_two_buffers() {
+        assert_eq!(output_latency_ms(Some(1_056), 512, 48_000.0), 22);
+        assert_eq!(output_latency_ms(None, 512, 48_000.0), 21);
+        assert_eq!(output_latency_ms(Some(0), 441, 44_100.0), 20);
+        assert_eq!(output_latency_ms(Some(512), 512, 0.0), 0);
+    }
 
     #[test]
     fn maps_little_endian_pcm_types_only() {

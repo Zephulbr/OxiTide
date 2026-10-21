@@ -19,8 +19,8 @@ use tauri::{Manager, State};
 
 use crate::artwork::PaletteDto;
 use crate::config::{
-    clamp_queue_width, Config, CoverShape, Density, DynamicColor, QualityDisplay, RackConfig, Theme,
-    Typeface, UiMode,
+    clamp_catjam_scale, clamp_queue_width, CatjamCoat, Config, CoverShape, Density, DynamicColor, QualityDisplay,
+    RackConfig, Theme, Typeface, UiMode,
 };
 use crate::lyrics::{LyricsDto, LyricsRequest};
 use crate::player::{devices, OutputDeviceDto, QualityDto};
@@ -2414,6 +2414,44 @@ pub fn set_oneko(state: State<'_, AppState>, enabled: bool) -> Result<(), String
 }
 
 #[tauri::command]
+pub fn set_catjam(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    let mut config = state.config();
+    config.ui.catjam = enabled;
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_catjam_coat(state: State<'_, AppState>, coat: CatjamCoat) -> Result<(), String> {
+    let mut config = state.config();
+    config.ui.catjam_coat = coat;
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
+/// Stores the cat's size clamped to 100–200 % and returns what was stored.
+#[tauri::command]
+pub fn set_catjam_scale(state: State<'_, AppState>, percent: u32) -> Result<u32, String> {
+    let mut config = state.config();
+    config.ui.catjam_scale = clamp_catjam_scale(percent);
+    let stored = config.ui.catjam_scale;
+    config.save()?;
+    state.set_config(config);
+    Ok(stored)
+}
+
+/// CatJam: analyze the playing audio for beats (`beat` events) while the
+/// jamming cat is mounted. Kept on `AppState` so an engine rebuilt after
+/// re-login starts with the same setting.
+#[tauri::command]
+pub fn set_beat_tracking(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    state.set_beat_tracking(enabled);
+    Ok(())
+}
+
+#[tauri::command]
 pub fn set_hover_panels(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
     let mut config = state.config();
     config.ui.hover_panels = enabled;
@@ -2721,6 +2759,10 @@ mod tests {
         "set_quality_display", "set_ui_mode", "set_theme", "set_typeface", "set_custom_typeface",
         "set_density", "set_cover_shape", "set_dynamic_color", "set_rack_settings",
         "set_level_meter", "set_queue_width", "set_mini_mode", "set_start_in_mini", "set_oneko",
+        "set_catjam", "set_catjam_coat", "set_catjam_scale",
+        // An atomic store plus one engine call; ordered with CatJam's mount
+        // and unmount so a quick remount cannot end with tracking off.
+        "set_beat_tracking",
         "set_hover_panels", "set_smtc", "set_discord", "set_close_to_tray", "set_cache_max_size_mb",
         "set_cache_clear_on_exit", "get_remote_status", "begin_remote_pairing",
         "cancel_remote_pairing", "list_remote_devices", "rename_remote_device",

@@ -1129,11 +1129,12 @@ pub fn render_transition(tail: &Clip, head: &Clip, settings: &CrossfadeSettings)
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use rand::{RngExt, SeedableRng};
 
-    const RATE: u32 = 44_100;
+    /// The rate of the synthetic material below (shared with `beat` tests).
+    pub(crate) const RATE: u32 = 44_100;
 
     fn settings(duration_ms: u32) -> CrossfadeSettings {
         CrossfadeSettings { duration_ms, ..Default::default() }
@@ -1142,7 +1143,7 @@ mod tests {
     /// A stereo drum loop: a decaying low kick on every beat, a noisy hat on
     /// the off-beats, and a quiet noise floor. `offset_s` delays the first
     /// beat.
-    fn drums(bpm: f64, seconds: f64, offset_s: f64, seed: u64) -> Vec<f64> {
+    pub(crate) fn drums(bpm: f64, seconds: f64, offset_s: f64, seed: u64) -> Vec<f64> {
         let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
         let frames = (seconds * RATE as f64) as usize;
         let mut mono = vec![0.0f64; frames];
@@ -1173,7 +1174,7 @@ mod tests {
     /// A dense band mix: kick on 1 and 3, snare on 2 and 4, straight-eighth
     /// hats, and a loud clipped sawtooth power chord with pick noise on every
     /// eighth (rock/metal), under `guitar` gain.
-    fn band(bpm: f64, seconds: f64, offset_s: f64, guitar: f64, seed: u64) -> Vec<f64> {
+    pub(crate) fn band(bpm: f64, seconds: f64, offset_s: f64, guitar: f64, seed: u64) -> Vec<f64> {
         let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
         let frames = (seconds * RATE as f64) as usize;
         let period = 60.0 / bpm;

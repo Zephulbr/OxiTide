@@ -34,11 +34,11 @@ impl ScrobbleTracker {
                 *self = Self::default();
                 Vec::new()
             }
-            EngineEvent::Position { position_ms, duration_ms } => {
+            EngineEvent::Position { position_ms, duration_ms, .. } => {
                 self.position(*position_ms as i64, *duration_ms as i64)
             }
             EngineEvent::State(state) => self.state(state.playing, now),
-            EngineEvent::Error { .. } => Vec::new(),
+            EngineEvent::Beat(_) | EngineEvent::Error { .. } => Vec::new(),
         }
     }
 
@@ -131,7 +131,7 @@ mod tests {
 
     fn pos(tracker: &mut ScrobbleTracker, ms: i64, dur_ms: i64) -> Vec<ScrobbleIntent> {
         tracker.on_event(
-            &EngineEvent::Position { position_ms: ms as u64, duration_ms: dur_ms as u64 },
+            &EngineEvent::Position { position_ms: ms as u64, duration_ms: dur_ms as u64, lead_ms: 0 },
             0,
         )
     }

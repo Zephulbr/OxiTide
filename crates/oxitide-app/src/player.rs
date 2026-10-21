@@ -109,7 +109,9 @@ impl QualityDto {
 pub enum EngineEventDto {
     State(StateDto),
     NowPlaying { item: Option<oxitide_audio::queue::QueueItem> },
-    Position { position_ms: u64, duration_ms: u64 },
+    Position { position_ms: u64, duration_ms: u64, lead_ms: u32 },
+    /// CatJam's beat clock (local analysis; `bpm` is null when not confident).
+    Beat { track_id: u64, bpm: Option<f32>, period_ms: f32, anchor_ms: u64, confidence: f32 },
     Error { code: String, message: String },
 }
 
@@ -157,7 +159,16 @@ pub fn to_dto(event: EngineEvent) -> EngineEventDto {
     match event {
         EngineEvent::State(s) => EngineEventDto::State(StateDto::full(s)),
         EngineEvent::NowPlaying(i) => EngineEventDto::NowPlaying { item: i },
-        EngineEvent::Position { position_ms, duration_ms } => EngineEventDto::Position { position_ms, duration_ms },
+        EngineEvent::Position { position_ms, duration_ms, lead_ms } => {
+            EngineEventDto::Position { position_ms, duration_ms, lead_ms }
+        }
+        EngineEvent::Beat(clock) => EngineEventDto::Beat {
+            track_id: clock.track_id,
+            bpm: clock.bpm,
+            period_ms: clock.period_ms,
+            anchor_ms: clock.anchor_ms,
+            confidence: clock.confidence,
+        },
         EngineEvent::Error { code, message } => EngineEventDto::Error { code, message },
     }
 }
@@ -223,6 +234,37 @@ mod tests {
         let value = serde_json::to_value(&dto).unwrap();
         assert_eq!(value["type"], "error");
         assert_eq!(value["code"], "auth");
+    }
+
+    #[test]
+    fn position_and_beat_events_carry_the_catjam_fields() {
+        let position = to_dto(EngineEvent::Position { position_ms: 5000, duration_ms: 9000, lead_ms: 215 });
+        let value = serde_json::to_value(&position).unwrap();
+        assert_eq!(value["type"], "position");
+        assert_eq!(value["lead_ms"], 215);
+
+        let beat = to_dto(EngineEvent::Beat(oxitide_audio::beat::BeatClock {
+            track_id: 7,
+            bpm: Some(128.0),
+            period_ms: 468.75,
+            anchor_ms: 61_250,
+            confidence: 0.8,
+        }));
+        let value = serde_json::to_value(&beat).unwrap();
+        assert_eq!(value["type"], "beat");
+        assert_eq!(value["track_id"], 7);
+        assert_eq!(value["bpm"], 128.0);
+        assert_eq!(value["period_ms"], 468.75);
+        assert_eq!(value["anchor_ms"], 61_250);
+
+        let unsure = to_dto(EngineEvent::Beat(oxitide_audio::beat::BeatClock {
+            track_id: 7,
+            bpm: None,
+            period_ms: 500.0,
+            anchor_ms: 0,
+            confidence: 0.1,
+        }));
+        assert!(serde_json::to_value(&unsure).unwrap()["bpm"].is_null());
     }
 
     fn state_with(ids: &[u64], volume: f32, queue_rev: u64) -> PlaybackState {

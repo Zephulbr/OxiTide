@@ -4,6 +4,7 @@ pub mod asio_output;
 #[cfg(windows)]
 pub mod asio_sys;
 pub mod automix;
+pub mod beat;
 pub mod cache;
 pub mod connectivity;
 pub mod decode;

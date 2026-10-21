@@ -7,6 +7,7 @@
     SCROBBLE_STATUS_EVENT,
     type AnalyzerStyle,
     type CacheStatus,
+    type CatjamCoat,
     type Config,
     type CrossfadeSettings,
     type DeckFace,
@@ -43,6 +44,8 @@
   import Slider from "../lib/components/settings/Slider.svelte";
   import Toggle from "../lib/components/settings/Toggle.svelte";
   import ToggleRow from "../lib/components/settings/ToggleRow.svelte";
+  import CoatPicker from "../lib/components/settings/CoatPicker.svelte";
+  import { CATJAM_SCALES } from "../lib/catjamSprite";
   import {
     appearance,
     clampLampBrightness,
@@ -608,6 +611,26 @@
     });
   }
 
+  function setCatjam(enabled: boolean) {
+    if (!config) return;
+    const previous = config.ui.catjam;
+    config = { ...config, ui: { ...config.ui, catjam: enabled } };
+    appearance.setCatjam(enabled).catch((e) => {
+      if (config) config = { ...config, ui: { ...config.ui, catjam: previous } };
+      apply(e);
+    });
+  }
+
+  /// 1× to 2× of the 32 px sprite; the cap keeps it inside the player bar.
+  const CATJAM_SIZE_OPTIONS = CATJAM_SCALES.map((percent) => ({
+    value: String(percent),
+    label: `${percent}%`,
+  }));
+
+  function setCatjamCoat(coat: CatjamCoat) {
+    appearance.setCatjamCoat(coat).catch(apply);
+  }
+
   function setHoverPanels(enabled: boolean) {
     if (!config) return;
     const previous = config.ui.hover_panels;
@@ -1068,13 +1091,33 @@
                 checked={config.ui.oneko}
                 onchange={setOneko}
               />
+              <ToggleRow
+                id="catjam" label="Jamming cat"
+                description={appearance.reducedMotion
+                  ? "A cat on the player bar that bobs along to the beat. Paused while your system's reduced-motion setting is on."
+                  : "A cat on the player bar that bobs along to the beat."}
+                checked={config.ui.catjam}
+                onchange={setCatjam}
+              />
+              {#if config.ui.catjam}
+                <SettingRow id="catjam-coat" label="Coat">
+                  <CoatPicker value={appearance.catjamCoat} onchange={setCatjamCoat} />
+                </SettingRow>
+                <SettingRow id="catjam-size" label="Size">
+                  <Segmented
+                    label="Jamming cat size"
+                    value={String(appearance.catjamScale)}
+                    options={CATJAM_SIZE_OPTIONS}
+                    onchange={(value) => appearance.setCatjamScale(Number(value)).catch(apply)}
+                  />
+                </SettingRow>
+              {/if}
               <SettingRow label="Credits" stacked>
                 <span class="muted credits">
                   <button class="link" type="button" onclick={() => openCredit("https://github.com/adryd325/oneko.js")}>oneko.js by adryd325</button>
                   &amp;
                   <button class="link" type="button" onclick={() => openCredit("https://github.com/kyrie25/spicetify-oneko")}>spicetify-oneko by kyrie25</button>
-                </span>
-              </SettingRow>
+                </span>              </SettingRow>
             </SettingsSection>
             </div>
             </div>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clampPosition, createNekoEngine } from "./oneko";
+import { PET_TICKS, clampPosition, createNekoEngine } from "./oneko";
 
 function engineAt(x: number, y: number, rng: () => number = () => 0.5) {
   const engine = createNekoEngine({ rng });
@@ -222,5 +222,58 @@ describe("neko sleep", () => {
     for (let i = 0; i < 400; i += 1) {
       expect(sleepingOnly).toContainEqual(engine.tick().sprite);
     }
+  });
+});
+
+describe("neko petting", () => {
+  const tired = { col: 3, row: 2 };
+
+  it("holds still with her eyes closed for the pet, ignoring the cursor", () => {
+    const engine = engineAt(400, 300);
+    expect(engine.pet()).toBe(true);
+    engine.setMouse(700, 300);
+    for (let i = 0; i < PET_TICKS; i += 1) {
+      expect(engine.tick()).toEqual({ x: 400, y: 300, sprite: tired });
+    }
+    let frame = engine.tick();
+    for (let i = 0; i < 20; i += 1) frame = engine.tick();
+    expect(frame.x).toBeGreaterThan(400);
+  });
+
+  it("a drag ends the pet", () => {
+    const engine = engineAt(400, 300);
+    engine.pet();
+    engine.startDrag(400, 300);
+    engine.dragTo(450, 300);
+    engine.endDrag();
+    engine.setMouse(450, 300);
+    expect(engine.tick().sprite).not.toEqual(tired);
+  });
+
+  it("cannot be petted while dragged", () => {
+    const engine = engineAt(400, 300);
+    engine.startDrag(400, 300);
+    expect(engine.pet()).toBe(false);
+  });
+
+  it("a sleeping cat stays asleep", () => {
+    const sleeping = [
+      { col: 2, row: 0 },
+      { col: 2, row: 1 },
+    ];
+    const engine = engineAt(400, 300);
+    engine.toggleSleep({ left: 0, right: 800, top: 500 });
+    for (let i = 0; i < 60; i += 1) engine.tick();
+    expect(engine.asleep()).toBe(true);
+    expect(engine.pet()).toBe(false);
+    expect(sleeping).toContainEqual(engine.tick().sprite);
+  });
+
+  it("reports when she has dozed off on her own", () => {
+    const engine = engineAt(400, 300, () => 0);
+    engine.setMouse(410, 300);
+    expect(engine.asleep()).toBe(false);
+    for (let i = 0; i < 30; i += 1) engine.tick();
+    expect(engine.asleep()).toBe(true);
   });
 });

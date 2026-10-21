@@ -198,6 +198,15 @@ impl Driver {
         Ok((inputs, outputs))
     }
 
+    /// `(input, output)` latencies in frames, including the buffer itself;
+    /// valid once buffers exist.
+    pub fn latencies(&self) -> Result<(i32, i32), AsioError> {
+        let (mut input, mut output) = (0, 0);
+        // SAFETY: valid out-pointers.
+        check(unsafe { (self.vtbl().get_latencies)(self.ptr, &mut input, &mut output) })?;
+        Ok((input, output))
+    }
+
     /// `(min, max, preferred, granularity)` in frames.
     pub fn buffer_size(&self) -> Result<(i32, i32, i32, i32), AsioError> {
         let (mut min, mut max, mut preferred, mut granularity) = (0, 0, 0, 0);

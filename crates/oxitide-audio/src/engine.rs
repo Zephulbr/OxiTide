@@ -1,9 +1,10 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::collections::VecDeque;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender, TryRecvError};
-use std::sync::{Arc, Condvar, Mutex, OnceLock};
+use std::sync::{Arc, Condvar, Mutex, OnceLock, Weak};
 use std::time::{Duration, Instant};
 
+use crate::beat::{self, BeatClock, BeatTap, Window as BeatWindow};
 use crate::cache::{CacheKey, DiskCache};
 use crate::decode::{PcmBuffer, PcmFormat, PcmSink, StreamInfo};
 use crate::automix::{self, Clip, Rendered, TransitionKind, TransitionPlan, TransitionReport};
@@ -15,7 +16,7 @@ use crate::error::{Error, Result};
 use crate::fetch::{self, AheadGate, AheadSink, AheadTicket, Fetcher, ScratchFile, StreamBuffer};
 use crate::retry::{self, Backoff};
 use crate::meter::LevelTap;
-use crate::output::{AudioOutput, AudioOutputSpec, ExclusiveFallback, OutputMode, OutputStatus};
+use crate::output::{AudioOutput, AudioOutputSpec, ExclusiveFallback, LeadEstimate, OutputMode, OutputStatus};
 use crate::perf::{AudioPerfEvent, PerfHook};
 use crate::queue::{Queue, QueueItem, RepeatMode};
 use crate::seek::{self, Discarder, SourceStart};
@@ -84,7 +85,12 @@ pub struct PlaybackState {
 pub enum EngineEvent {
     State(PlaybackState),
     NowPlaying(Option<QueueItem>),
-    Position { position_ms: u64, duration_ms: u64 },
+    /// `lead_ms`: how far `position_ms` runs ahead of what is heard (audio
+    /// queued in the output), smoothed; 0 when the output cannot tell.
+    Position { position_ms: u64, duration_ms: u64, lead_ms: u32 },
+    /// Tempo and phase of the playing track, from local analysis while beat
+    /// tracking is on (CatJam). A few per track; never fetched.
+    Beat(BeatClock),
     Error { code: String, message: String },
 }
 
@@ -126,6 +132,18 @@ pub enum EngineCmd {
 }
 
 type Listener = Arc<dyn Fn(EngineEvent) + Send + Sync>;
+type BeatAnalyzer = Arc<dyn Fn(&BeatWindow) -> Option<BeatClock> + Send + Sync>;
+
+/// Beat clocks kept per track, so a replay or a seek back starts in time.
+const BEAT_CACHE: usize = 64;
+
+/// The beat helper thread's job slot: only the newest window waits.
+#[derive(Default)]
+struct BeatJobs {
+    slot: Mutex<Option<BeatWindow>>,
+    cond: Condvar,
+    started: AtomicBool,
+}
 
 /// Number of decoded PCM buffers a track's producer may run ahead of the
 /// worker. Bounds the lookahead (typically a few seconds of audio) so a long
@@ -176,6 +194,14 @@ struct Inner {
     perf_hook: Mutex<Option<PerfHook>>,
     /// Read-only meter tap (Hi-Fi Rack): every written buffer is offered to it.
     level_tap: Arc<LevelTap>,
+    /// Read-only beat tap (CatJam): every decoded buffer is offered to it
+    /// while beat tracking is on; full windows go to the helper thread.
+    beat_tap: BeatTap,
+    beat_jobs: Arc<BeatJobs>,
+    /// Recent clocks, newest last.
+    beat_cache: Mutex<VecDeque<BeatClock>>,
+    /// `beat::analyze`; replaced by engine tests.
+    beat_analyzer: Mutex<BeatAnalyzer>,
     /// Serializes queue mutation against the worker's advance decision.
     /// Lock ordering: always take `playback_lock` before `queue`.
     playback_lock: Mutex<()>,
@@ -189,6 +215,9 @@ struct Inner {
     position_ms: AtomicU64,
     /// Track id the current `position_ms` belongs to (0 = none).
     position_track: AtomicU64,
+    /// The smoothed output lead (`EngineEvent::Position::lead_ms`). Fed by the
+    /// worker on every write; kept across sessions as the next one's prior.
+    lead: Mutex<LeadEstimate>,
     /// Pending seek; consumed by the worker.
     seek_target: Mutex<Option<PendingSeek>>,
     /// Set while playback waits for the network (`PlaybackState.buffering`).
@@ -332,6 +361,10 @@ impl Engine {
             listeners: Mutex::new(Vec::new()),
             perf_hook: Mutex::new(None),
             level_tap: Arc::new(LevelTap::new()),
+            beat_tap: BeatTap::new(),
+            beat_jobs: Arc::new(BeatJobs::default()),
+            beat_cache: Mutex::new(VecDeque::new()),
+            beat_analyzer: Mutex::new(Arc::new(beat::analyze)),
             playback_lock: Mutex::new(()),
             generation: AtomicU64::new(0),
             paused: AtomicBool::new(false),
@@ -339,6 +372,7 @@ impl Engine {
             fade: Mutex::new(None),
             position_ms: AtomicU64::new(0),
             position_track: AtomicU64::new(0),
+            lead: Mutex::new(LeadEstimate::default()),
             seek_target: Mutex::new(None),
             reconnect: Mutex::new(None),
             stream_stalled: AtomicBool::new(false),
@@ -373,6 +407,7 @@ impl Engine {
         // Nothing from a retired engine may reach the UI or the integrations.
         self.inner.listeners.lock().unwrap().clear();
         self.inner.notify_worker();
+        self.inner.beat_jobs.cond.notify_all();
     }
 
     pub fn set_quality(&self, quality: Quality) {
@@ -403,13 +438,35 @@ impl Engine {
         self.inner.device_id.lock().unwrap().clone()
     }
 
-    /// The mode/bit-perfect state the output last reported, with active DSP
-    /// folded in.
     /// The meter tap; enable it while a level display is visible.
     pub fn level_tap(&self) -> Arc<LevelTap> {
         self.inner.level_tap.clone()
     }
 
+    /// How far the reported position runs ahead of what is heard, in ms (the
+    /// value `Position` events carry).
+    pub fn output_lead_ms(&self) -> u32 {
+        self.inner.lead.lock().unwrap().ms()
+    }
+
+    /// Analyze the playing audio for tempo and beats (`EngineEvent::Beat`).
+    /// On only while something shows them (CatJam is mounted). Turning it on
+    /// re-sends the clock already known for the current track.
+    pub fn set_beat_tracking(&self, enabled: bool) {
+        if self.inner.beat_tap.is_enabled() == enabled {
+            return;
+        }
+        self.inner.beat_tap.set_enabled(enabled);
+        if enabled {
+            let track = self.inner.position_track.load(Ordering::SeqCst);
+            if let Some(clock) = cached_beat(&self.inner, track) {
+                emit(&self.inner, EngineEvent::Beat(clock));
+            }
+        }
+    }
+
+    /// The mode/bit-perfect state the output last reported, with active DSP
+    /// folded in.
     pub fn audio_status(&self) -> OutputStatus {
         effective_status(&self.inner).0
     }
@@ -1634,7 +1691,84 @@ fn emit_position_if_due(inner: &Arc<Inner>, frames: u64, rate: u32, last: &mut I
         .current()
         .map(|i| i.duration_secs as u64 * 1000)
         .unwrap_or(0);
-    emit(inner, EngineEvent::Position { position_ms, duration_ms });
+    let lead_ms = inner.lead.lock().unwrap().ms();
+    emit(inner, EngineEvent::Position { position_ms, duration_ms, lead_ms });
+}
+
+/// The output starts refilling (opened, flushed, resumed): skip its first
+/// half second of writes when estimating the lead.
+fn reset_lead(inner: &Inner, rate: u32) {
+    inner.lead.lock().unwrap().reset(rate);
+}
+
+/// Hand a full beat window to the helper thread (started on first use). A
+/// window still waiting is replaced: only the newest matters.
+fn submit_beat_window(inner: &Arc<Inner>, window: BeatWindow) {
+    let jobs = &inner.beat_jobs;
+    *jobs.slot.lock().unwrap() = Some(window);
+    jobs.cond.notify_one();
+    if jobs.started.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let weak = Arc::downgrade(inner);
+    let thread_jobs = jobs.clone();
+    let spawned = std::thread::Builder::new()
+        .name("oxitide-beat".into())
+        .spawn(move || beat_worker(weak, thread_jobs));
+    if let Err(e) = spawned {
+        tracing::warn!("beat analysis thread failed to start: {e}");
+        jobs.started.store(false, Ordering::SeqCst);
+    }
+}
+
+/// Analyze windows off the playback worker. A clock is remembered for its
+/// track either way, but only sent while that track is still the one
+/// playing and tracking is still on. Ends with the engine.
+fn beat_worker(inner: Weak<Inner>, jobs: Arc<BeatJobs>) {
+    let gone = |inner: &Weak<Inner>| inner.upgrade().is_none_or(|i| i.shutdown.load(Ordering::SeqCst));
+    loop {
+        let window = {
+            let mut slot = jobs.slot.lock().unwrap();
+            loop {
+                if let Some(window) = slot.take() {
+                    break window;
+                }
+                if gone(&inner) {
+                    return;
+                }
+                slot = jobs.cond.wait_timeout(slot, Duration::from_secs(5)).unwrap().0;
+            }
+        };
+        let Some(inner) = inner.upgrade() else { return };
+        if inner.shutdown.load(Ordering::SeqCst) {
+            return;
+        }
+        let analyzer = inner.beat_analyzer.lock().unwrap().clone();
+        let Some(clock) = analyzer(&window) else { continue };
+        remember_beat(&inner, clock.clone());
+        let current = inner.position_track.load(Ordering::SeqCst) == clock.track_id;
+        if current && inner.beat_tap.is_enabled() {
+            emit(&inner, EngineEvent::Beat(clock));
+        }
+    }
+}
+
+fn remember_beat(inner: &Inner, clock: BeatClock) {
+    let mut cache = inner.beat_cache.lock().unwrap();
+    cache.retain(|c| c.track_id != clock.track_id);
+    cache.push_back(clock);
+    while cache.len() > BEAT_CACHE {
+        cache.pop_front();
+    }
+}
+
+/// The remembered clock for `track_id`, marked most recently used.
+fn cached_beat(inner: &Inner, track_id: u64) -> Option<BeatClock> {
+    let mut cache = inner.beat_cache.lock().unwrap();
+    let index = cache.iter().position(|c| c.track_id == track_id)?;
+    let clock = cache.remove(index)?;
+    cache.push_back(clock.clone());
+    Some(clock)
 }
 
 /// Record which DSP stages alter the current track's samples; `crossfading`
@@ -1947,6 +2081,9 @@ fn run_session(
     }
     let mut first_write_of_track;
     let mut last_write: Option<(u64, Instant)> = None;
+    // The output refills from here (a new session follows a flush, a stop or
+    // a fresh open); its lead reads low until it does.
+    let mut refill = true;
     let mut stream = start_track(inner, first_item, mode, gen, seek_ms);
     let mut prefetch = start_prefetch(inner, mode, gen);
     // Unplayable tracks passed over since the last track that started; bounds
@@ -2184,6 +2321,7 @@ fn run_session(
                 };
             }
             fire_perf(inner, AudioPerfEvent::OutputOpened { track_id: stream.item.track_id });
+            refill = true;
             // A format change mid-fade must not jump back to the user volume.
             let (volume, _) = current_volume(inner);
             if let Err(e) = output.set_volume(volume) {
@@ -2202,6 +2340,15 @@ fn run_session(
         let channels = info.channels;
         let rate = info.sample_rate;
         let track_id = stream.item.track_id;
+        if std::mem::take(&mut refill) {
+            reset_lead(inner, rate);
+        }
+        // A track analyzed before (replay, seek back) is in time at once.
+        if inner.beat_tap.is_enabled() {
+            if let Some(clock) = cached_beat(inner, track_id) {
+                emit(inner, EngineEvent::Beat(clock));
+            }
+        }
         first_write_of_track = true;
         let mut last_volume = f32::from_bits(inner.volume.load(Ordering::SeqCst));
         // Decoded audio read ahead of the output. Empty unless a crossfade is
@@ -2266,6 +2413,7 @@ fn run_session(
                             track_id: stream.item.track_id,
                         };
                     }
+                    reset_lead(inner, rate);
                     // The fade finished: pause here, keep queue and position,
                     // and restore the user's volume so the next play is audible.
                     let base = fade.base_volume;
@@ -2332,6 +2480,8 @@ fn run_session(
                     *open_spec = Some(spec);
                     emit(inner, EngineEvent::State(build_state(inner)));
                 }
+                // The device drained its ring while nothing was written.
+                reset_lead(inner, rate);
                 continue;
             }
             // A sleep fade ends the session on this track; never cross into
@@ -2518,6 +2668,11 @@ fn run_session(
             if let Some(pending) = analysis.as_mut() {
                 pending.written += buf.frames(channels);
             }
+            // CatJam's beats come from the track's own frames, before DSP, so
+            // they map exactly onto the position (read-only; no-op when off).
+            if let Some(window) = inner.beat_tap.push(track_id, frames, &buf, channels, rate) {
+                submit_beat_window(inner, window);
+            }
             let mut buf = dsp.process(buf);
             if let Some(r) = ride.as_mut() {
                 buf = r.apply(buf);
@@ -2546,6 +2701,7 @@ fn run_session(
             }
             // The meter sees what the device plays (converted, when kept).
             inner.level_tap.push(&buf, channels, device_rate);
+            inner.lead.lock().unwrap().observe(source_frames, output.queued_ms());
             frames += source_frames;
             if first_write_of_track {
                 first_write_of_track = false;
@@ -4197,6 +4353,141 @@ mod tests {
         engine.handle(EngineCmd::PlayPause).unwrap();
         wait_for(|| output.samples().len() >= 176_400);
         assert_eq!(output.samples().len(), 176_400, "resume did not finish the track");
+    }
+
+    /// CatJam (CJ-D9): the audio the output reports as queued reaches
+    /// `Position` events as `lead_ms`, and a new session starts from the kept
+    /// estimate instead of reading the refilling ring as no lead at all.
+    #[test]
+    fn position_events_carry_the_output_lead() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        output.set_queued_ms(230);
+        let leads = Arc::new(Mutex::new(Vec::new()));
+        let seen = leads.clone();
+        engine.subscribe(Arc::new(move |e| {
+            if let EngineEvent::Position { lead_ms, .. } = e {
+                seen.lock().unwrap().push(lead_ms);
+            }
+        }));
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| !engine.state().playing);
+        assert_eq!(engine.output_lead_ms(), 230);
+
+        leads.lock().unwrap().clear();
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| !leads.lock().unwrap().is_empty());
+        assert_eq!(leads.lock().unwrap().first(), Some(&230), "the first position of a new session");
+    }
+
+    /// A beat engine whose tap completes a 1 s window (the fixture is 2 s)
+    /// and whose analyzer is `analyzer`; returns the beats it sends.
+    fn beat_engine(
+        analyzer: BeatAnalyzer,
+    ) -> (Engine, NullOutput, Arc<Mutex<Vec<BeatClock>>>) {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        engine.inner.beat_tap.set_window_ms(1000, 1000);
+        *engine.inner.beat_analyzer.lock().unwrap() = analyzer;
+        let beats = Arc::new(Mutex::new(Vec::new()));
+        let seen = beats.clone();
+        engine.subscribe(Arc::new(move |e| {
+            if let EngineEvent::Beat(clock) = e {
+                seen.lock().unwrap().push(clock);
+            }
+        }));
+        (engine, output, beats)
+    }
+
+    fn fake_clock(window: &BeatWindow) -> Option<BeatClock> {
+        Some(BeatClock {
+            track_id: window.track_id,
+            bpm: Some(120.0),
+            period_ms: 500.0,
+            anchor_ms: window.start_ms as u64,
+            confidence: 0.9,
+        })
+    }
+
+    #[test]
+    fn beat_tracking_sends_a_clock_for_the_playing_track() {
+        let (engine, _output, beats) = beat_engine(Arc::new(fake_clock));
+        engine.set_beat_tracking(true);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| !beats.lock().unwrap().is_empty());
+        let clock = beats.lock().unwrap()[0].clone();
+        assert_eq!(clock.track_id, 1);
+        assert_eq!(clock.bpm, Some(120.0));
+        assert_eq!(clock.anchor_ms, 0, "the first window starts at the track start");
+    }
+
+    #[test]
+    fn beat_tracking_off_analyzes_nothing() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let counter = calls.clone();
+        let (engine, output, beats) = beat_engine(Arc::new(move |w: &BeatWindow| {
+            counter.fetch_add(1, Ordering::SeqCst);
+            fake_clock(w)
+        }));
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| output.samples().len() >= 176_400);
+        std::thread::sleep(Duration::from_millis(200));
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        assert!(beats.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_beat_for_a_track_no_longer_playing_is_dropped() {
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+        let release_rx = Mutex::new(release_rx);
+        let started = Arc::new(AtomicBool::new(false));
+        let flag = started.clone();
+        let (engine, _output, beats) = beat_engine(Arc::new(move |w: &BeatWindow| {
+            if w.track_id == 1 {
+                flag.store(true, Ordering::SeqCst);
+                let _ = release_rx.lock().unwrap().recv_timeout(Duration::from_secs(5));
+            }
+            fake_clock(w)
+        }));
+        engine.set_beat_tracking(true);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| started.load(Ordering::SeqCst));
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(2)], start: 0 }).unwrap();
+        wait_for(|| engine.inner.position_track.load(Ordering::SeqCst) == 2);
+        release_tx.send(()).unwrap();
+        wait_for(|| beats.lock().unwrap().iter().any(|c| c.track_id == 2));
+        assert!(
+            beats.lock().unwrap().iter().all(|c| c.track_id != 1),
+            "a stale clock for track 1 was sent"
+        );
+        assert!(cached_beat(&engine.inner, 1).is_some(), "the stale clock is still remembered");
+    }
+
+    #[test]
+    fn turning_tracking_back_on_resends_the_known_clock() {
+        let (engine, _output, beats) = beat_engine(Arc::new(fake_clock));
+        engine.set_beat_tracking(true);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| !beats.lock().unwrap().is_empty());
+        engine.set_beat_tracking(false);
+        beats.lock().unwrap().clear();
+        engine.set_beat_tracking(true);
+        assert_eq!(beats.lock().unwrap().len(), 1, "sent at once, without new analysis");
+        assert_eq!(beats.lock().unwrap()[0].track_id, 1);
+    }
+
+    #[test]
+    fn the_beat_cache_keeps_the_most_recent_tracks() {
+        let (engine, _output, _beats) = beat_engine(Arc::new(fake_clock));
+        let clock = |id: u64| BeatClock { track_id: id, bpm: None, period_ms: 500.0, anchor_ms: 0, confidence: 0.1 };
+        for id in 1..=BEAT_CACHE as u64 {
+            remember_beat(&engine.inner, clock(id));
+        }
+        assert!(cached_beat(&engine.inner, 1).is_some(), "track 1 is now the most recent");
+        remember_beat(&engine.inner, clock(1000));
+        assert!(cached_beat(&engine.inner, 2).is_none(), "the oldest entry made room");
+        assert!(cached_beat(&engine.inner, 1).is_some());
+        assert_eq!(engine.inner.beat_cache.lock().unwrap().len(), BEAT_CACHE);
     }
 
     /// Regression (found by the Track 13 S13 runs): a restored session leaves

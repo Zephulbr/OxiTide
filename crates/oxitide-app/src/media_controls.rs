@@ -121,7 +121,7 @@ pub fn plan(event: &EngineEvent, last_track: Option<u64>) -> (Vec<SessionUpdate>
                 None,
             ),
         },
-        EngineEvent::Position { position_ms, duration_ms } => {
+        EngineEvent::Position { position_ms, duration_ms, .. } => {
             let position =
                 if *duration_ms > 0 { (*position_ms).min(*duration_ms) } else { *position_ms };
             (
@@ -129,7 +129,7 @@ pub fn plan(event: &EngineEvent, last_track: Option<u64>) -> (Vec<SessionUpdate>
                 last_track,
             )
         }
-        EngineEvent::Error { .. } => (Vec::new(), last_track),
+        EngineEvent::Beat(_) | EngineEvent::Error { .. } => (Vec::new(), last_track),
     }
 }
 
@@ -390,12 +390,12 @@ mod tests {
     #[test]
     fn position_is_clamped_to_duration() {
         let (updates, _) =
-            plan(&EngineEvent::Position { position_ms: 250_000, duration_ms: 200_000 }, None);
+            plan(&EngineEvent::Position { position_ms: 250_000, duration_ms: 200_000, lead_ms: 0 }, None);
         assert_eq!(
             updates,
             vec![SessionUpdate::Position { position_ms: 200_000, duration_ms: 200_000 }]
         );
-        let (updates, _) = plan(&EngineEvent::Position { position_ms: 5, duration_ms: 0 }, None);
+        let (updates, _) = plan(&EngineEvent::Position { position_ms: 5, duration_ms: 0, lead_ms: 0 }, None);
         assert_eq!(updates, vec![SessionUpdate::Position { position_ms: 5, duration_ms: 0 }]);
     }
 

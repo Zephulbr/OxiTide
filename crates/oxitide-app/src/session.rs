@@ -612,7 +612,7 @@ mod tests {
         let path = dir.join("session.json");
         let saver = SessionSaver::start(path.clone(), Duration::from_secs(60));
         saver.record(&EngineEvent::State(playback_state(&[1, 2, 3], Some(1), 1000)));
-        saver.record(&EngineEvent::Position { position_ms: 4200, duration_ms: 3000 });
+        saver.record(&EngineEvent::Position { position_ms: 4200, duration_ms: 3000, lead_ms: 0 });
         saver.flush_now();
         let session = load(&path).expect("session written");
         assert_eq!(
@@ -660,7 +660,7 @@ mod tests {
         let saver = SessionSaver::start(path.clone(), Duration::from_millis(50));
         saver.record(&EngineEvent::State(playback_state(&[1], Some(0), 100)));
         saver.flush_now();
-        saver.record(&EngineEvent::Position { position_ms: 9000, duration_ms: 3000 });
+        saver.record(&EngineEvent::Position { position_ms: 9000, duration_ms: 3000, lead_ms: 0 });
         std::thread::sleep(Duration::from_millis(400));
         assert_eq!(load(&path).unwrap().position_ms, 9000);
         let _ = fs::remove_dir_all(dir);

@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
@@ -122,6 +122,57 @@ pub trait AudioOutput: Send {
     fn stop(&mut self) -> Result<()>;
     /// The mode/bit-perfect state currently in effect.
     fn status(&self) -> OutputStatus;
+    /// How much written audio has not been heard yet, in ms: the backend's
+    /// ring plus the device buffer it negotiated. `None` when unknown. A cheap
+    /// read of counters the writer side owns; callable after every `write`.
+    fn queued_ms(&self) -> Option<u32> {
+        None
+    }
+}
+
+/// Written audio to observe after a reset (open, flush) before sampling
+/// again: the output refills its ring meanwhile and reads low.
+const LEAD_SETTLE_MS: u64 = 500;
+/// Smoothing per observed write; averages the ring's fill swing (a full ring
+/// drains a quarter before the writer tops it up).
+const LEAD_ALPHA: f32 = 0.1;
+
+/// Smoothed `queued_ms`: how far the written position runs ahead of what is
+/// heard, for UI sync (spec `2026-10-21-oxitide-catjam-kuroneko-design.md`
+/// §5.2). Fed once per written buffer by the playback worker.
+#[derive(Debug, Default)]
+pub(crate) struct LeadEstimate {
+    value: Option<f32>,
+    settle_frames: u64,
+}
+
+impl LeadEstimate {
+    /// Ignore the next `LEAD_SETTLE_MS` of written audio (at `rate`). The
+    /// previous value stays as the estimate meanwhile.
+    pub fn reset(&mut self, rate: u32) {
+        self.settle_frames = rate as u64 * LEAD_SETTLE_MS / 1000;
+    }
+
+    /// Record one write of `frames` after which the output reported `queued`.
+    pub fn observe(&mut self, frames: u64, queued: Option<u32>) {
+        if self.settle_frames > 0 {
+            self.settle_frames = self.settle_frames.saturating_sub(frames);
+            return;
+        }
+        let Some(queued) = queued else {
+            self.value = None;
+            return;
+        };
+        let sample = queued as f32;
+        self.value = Some(match self.value {
+            Some(value) => value + LEAD_ALPHA * (sample - value),
+            None => sample,
+        });
+    }
+
+    pub fn ms(&self) -> u32 {
+        self.value.map_or(0, |v| v.round().max(0.0) as u32)
+    }
 }
 
 /// Captures everything written, for tests and headless use. Clones share all
@@ -137,6 +188,7 @@ pub struct NullOutput {
     last_spec: Arc<Mutex<Option<AudioOutputSpec>>>,
     volumes: Arc<Mutex<Vec<f32>>>,
     status: Arc<Mutex<OutputStatus>>,
+    queued_ms: Arc<AtomicU32>,
 }
 
 impl Default for NullOutput {
@@ -151,6 +203,7 @@ impl Default for NullOutput {
             last_spec: Arc::new(Mutex::new(None)),
             volumes: Arc::new(Mutex::new(Vec::new())),
             status: Arc::new(Mutex::new(OutputStatus::default())),
+            queued_ms: Arc::new(AtomicU32::new(0)),
         }
     }
 }
@@ -179,6 +232,10 @@ impl NullOutput {
     }
     pub fn volumes(&self) -> Vec<f32> {
         self.volumes.lock().unwrap().clone()
+    }
+    /// What `queued_ms` reports (0 unless set), as if audio were buffered.
+    pub fn set_queued_ms(&self, ms: u32) {
+        self.queued_ms.store(ms, Ordering::SeqCst);
     }
 }
 
@@ -232,6 +289,9 @@ impl AudioOutput for NullOutput {
     }
     fn status(&self) -> OutputStatus {
         self.status.lock().unwrap().clone()
+    }
+    fn queued_ms(&self) -> Option<u32> {
+        Some(self.queued_ms.load(Ordering::SeqCst))
     }
 }
 
@@ -311,6 +371,52 @@ mod tests {
             mode,
             exclusive_fallback: ExclusiveFallback::Shared,
         }
+    }
+
+    #[test]
+    fn lead_estimate_takes_its_first_sample_then_smooths() {
+        let mut lead = LeadEstimate::default();
+        assert_eq!(lead.ms(), 0);
+        lead.observe(1024, Some(200));
+        assert_eq!(lead.ms(), 200);
+        lead.observe(1024, Some(150));
+        assert_eq!(lead.ms(), 195, "one step moves a tenth of the way");
+        for _ in 0..200 {
+            lead.observe(1024, Some(175));
+        }
+        assert_eq!(lead.ms(), 175);
+    }
+
+    #[test]
+    fn lead_estimate_skips_the_refill_after_a_reset_and_keeps_its_value() {
+        let mut lead = LeadEstimate::default();
+        lead.observe(1024, Some(210));
+        lead.reset(44_100);
+        // 0.5 s at 44.1 kHz = 22 050 frames of refill are not sampled.
+        for _ in 0..21 {
+            lead.observe(1024, Some(20));
+        }
+        assert_eq!(lead.ms(), 210, "refill samples ignored, prior value kept");
+        lead.observe(1024, Some(20));
+        assert_eq!(lead.ms(), 210, "the write that ends the settle is not sampled");
+        lead.observe(1024, Some(230));
+        assert_eq!(lead.ms(), 212);
+    }
+
+    #[test]
+    fn lead_estimate_clears_when_the_output_cannot_report() {
+        let mut lead = LeadEstimate::default();
+        lead.observe(1024, Some(200));
+        lead.observe(1024, None);
+        assert_eq!(lead.ms(), 0);
+    }
+
+    #[test]
+    fn null_output_reports_the_queued_time_it_was_given() {
+        let out = NullOutput::new();
+        assert_eq!(out.queued_ms(), Some(0));
+        out.set_queued_ms(230);
+        assert_eq!(out.clone().queued_ms(), Some(230));
     }
 
     #[test]

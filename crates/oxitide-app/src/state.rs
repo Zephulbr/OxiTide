@@ -58,6 +58,8 @@ pub struct AppState {
     pub discord: Mutex<Option<crate::discord::DiscordPresence>>,
     /// Hi-Fi Rack level meter emitter; idle unless the UI enables it.
     pub meter: crate::meter::MeterEmitter,
+    /// CatJam is mounted: the engine analyzes beats (applied to every player).
+    beat_tracking: AtomicBool,
     /// The phone remote server; `None` while disabled (Track 11).
     pub remote: Mutex<Option<Arc<crate::remote::RemoteService>>>,
     /// Why an enabled remote is not listening (bind failure).
@@ -104,7 +106,16 @@ impl AppState {
     }
 
     pub fn set_player(&self, player: Player) {
+        player.engine.set_beat_tracking(self.beat_tracking.load(Ordering::SeqCst));
         *self.player.write().unwrap() = Some(Arc::new(player));
+    }
+
+    /// Turn beat analysis on or off now and for any player built later.
+    pub fn set_beat_tracking(&self, enabled: bool) {
+        self.beat_tracking.store(enabled, Ordering::SeqCst);
+        if let Some(player) = self.player() {
+            player.engine.set_beat_tracking(enabled);
+        }
     }
 
     pub fn player(&self) -> Option<Arc<Player>> {

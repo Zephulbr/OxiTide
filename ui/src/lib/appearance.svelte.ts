@@ -1,4 +1,5 @@
-import { api, type AnalyzerStyle, type RackSettings } from "./api";
+import { api, type AnalyzerStyle, type CatjamCoat, type RackSettings } from "./api";
+import { DEFAULT_CATJAM_SCALE, DEFAULT_COAT, clampCatjamScale, isCoat } from "./catjamSprite";
 import { readThemeMirror, resolveTheme, writeThemeMirror, type ResolvedTheme, type ThemeSetting } from "./theme";
 
 export type UiMode = "instrument" | "atmosphere" | "rack";
@@ -85,6 +86,11 @@ export interface Appearance {
   readonly queueWidth: number;
   readonly reducedMotion: boolean;
   readonly oneko: boolean;
+  /// The jamming cat on the player bar cover, and its coat.
+  readonly catjam: boolean;
+  readonly catjamCoat: CatjamCoat;
+  /// Percent of the 32 px sprite, 100–200.
+  readonly catjamScale: number;
   /// The collapsed sidebar and the closed queue expand as overlays on hover.
   readonly hoverPanels: boolean;
   readonly dynamicColor: DynamicColorMode;
@@ -108,6 +114,9 @@ export interface Appearance {
   setDynamicColor(setting: DynamicColorSetting): Promise<void>;
   setQueueWidth(px: number): Promise<void>;
   setOneko(enabled: boolean): Promise<void>;
+  setCatjam(enabled: boolean): Promise<void>;
+  setCatjamCoat(coat: CatjamCoat): Promise<void>;
+  setCatjamScale(percent: number): Promise<void>;
   setHoverPanels(enabled: boolean): Promise<void>;
 }
 
@@ -123,6 +132,9 @@ export function createAppearance(): Appearance {
   let queueWidth = $state(320);
   let reducedMotion = $state(false);
   let oneko = $state(false);
+  let catjam = $state(false);
+  let catjamCoat = $state<CatjamCoat>(DEFAULT_COAT);
+  let catjamScale = $state(DEFAULT_CATJAM_SCALE);
   let hoverPanels = $state(false);
   let rack = $state<RackSettings>(defaultRackSettings());
 
@@ -160,6 +172,9 @@ export function createAppearance(): Appearance {
       dynamicColorSetting = config.ui.dynamic_color;
       queueWidth = config.ui.queue_width;
       oneko = config.ui.oneko;
+      catjam = config.ui.catjam ?? false;
+      catjamCoat = isCoat(config.ui.catjam_coat) ? config.ui.catjam_coat : DEFAULT_COAT;
+      catjamScale = clampCatjamScale(config.ui.catjam_scale ?? DEFAULT_CATJAM_SCALE);
       hoverPanels = config.ui.hover_panels ?? false;
       if (config.rack) rack = { ...defaultRackSettings(), ...config.rack };
     } catch {
@@ -184,6 +199,41 @@ export function createAppearance(): Appearance {
       await api.setOneko(enabled);
     } catch (error) {
       oneko = previous;
+      throw error;
+    }
+  }
+
+  async function setCatjam(enabled: boolean): Promise<void> {
+    const previous = catjam;
+    catjam = enabled;
+    try {
+      await api.setCatjam(enabled);
+    } catch (error) {
+      catjam = previous;
+      throw error;
+    }
+  }
+
+  async function setCatjamCoat(coat: CatjamCoat): Promise<void> {
+    const previous = catjamCoat;
+    catjamCoat = coat;
+    try {
+      await api.setCatjamCoat(coat);
+    } catch (error) {
+      catjamCoat = previous;
+      throw error;
+    }
+  }
+
+  /// The stored (clamped) size wins on success.
+  async function setCatjamScale(percent: number): Promise<void> {
+    const previous = catjamScale;
+    catjamScale = clampCatjamScale(percent);
+    try {
+      const stored = await api.setCatjamScale(catjamScale);
+      if (typeof stored === "number") catjamScale = clampCatjamScale(stored);
+    } catch (error) {
+      catjamScale = previous;
       throw error;
     }
   }
@@ -226,6 +276,9 @@ export function createAppearance(): Appearance {
     get queueWidth() { return queueWidth; },
     get reducedMotion() { return reducedMotion; },
     get oneko() { return oneko; },
+    get catjam() { return catjam; },
+    get catjamCoat() { return catjamCoat; },
+    get catjamScale() { return catjamScale; },
     get hoverPanels() { return hoverPanels; },
     get dynamicColor() { return resolveDynamicColor(dynamicColorSetting, mode); },
     get backdropArt() { return mode === "atmosphere"; },
@@ -247,6 +300,9 @@ export function createAppearance(): Appearance {
     setDynamicColor: (s) => { dynamicColorSetting = s; return persist(() => api.setDynamicColor(s)); },
     setQueueWidth: (px) => { queueWidth = clampQueueWidth(px); return persist(() => api.setQueueWidth(queueWidth)); },
     setOneko,
+    setCatjam,
+    setCatjamCoat,
+    setCatjamScale,
     setHoverPanels,
   };
 }

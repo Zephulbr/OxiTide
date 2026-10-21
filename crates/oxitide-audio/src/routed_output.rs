@@ -139,6 +139,14 @@ impl AudioOutput for RoutedOutput {
         }
         status
     }
+
+    fn queued_ms(&self) -> Option<u32> {
+        match self.active {
+            Some(Backend::System) => self.system.queued_ms(),
+            Some(Backend::Asio) => self.asio.queued_ms(),
+            None => None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -199,6 +207,19 @@ mod tests {
         assert_eq!(asio.stops(), 1, "switching backends releases ASIO");
         assert_eq!(system.opens(), 1);
         assert_eq!(system.last_spec().unwrap().device_id.as_deref(), Some("wasapi-endpoint"));
+    }
+
+    #[test]
+    fn queued_time_comes_from_the_open_backend() {
+        let (system, asio) = (NullOutput::new(), NullOutput::new());
+        system.set_queued_ms(210);
+        asio.set_queued_ms(230);
+        let mut out = RoutedOutput::new(Box::new(system.clone()), Box::new(asio.clone()));
+        assert_eq!(out.queued_ms(), None, "nothing open");
+        out.open(&spec("asio:Topping", ExclusiveFallback::Shared)).unwrap();
+        assert_eq!(out.queued_ms(), Some(230));
+        out.open(&spec("wasapi-endpoint", ExclusiveFallback::Shared)).unwrap();
+        assert_eq!(out.queued_ms(), Some(210));
     }
 
     #[test]

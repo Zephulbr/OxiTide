@@ -325,7 +325,7 @@ impl Hub {
                     self.schedule_state(&mut inner);
                 }
             }
-            EngineEvent::Position { position_ms, duration_ms } => {
+            EngineEvent::Position { position_ms, duration_ms, .. } => {
                 let mut inner = self.inner.lock().unwrap();
                 if let Some(latest) = inner.latest.as_mut() {
                     latest.position_ms = *position_ms;
@@ -342,6 +342,8 @@ impl Hub {
                 code: code.clone(),
                 message: message.clone(),
             }),
+            // CatJam is desktop-only; the phone never gets beats.
+            EngineEvent::Beat(_) => {}
         }
     }
 
@@ -625,7 +627,7 @@ pub(crate) mod tests {
         let session = FakeSession::with(playback((1..=3).map(item).collect(), Some(0)));
         let hub = Hub::new(session.clone(), None);
         hub.on_engine_event(&EngineEvent::State(playback((1..=3).map(item).collect(), Some(0))));
-        hub.on_engine_event(&EngineEvent::Position { position_ms: 1, duration_ms: 2 });
+        hub.on_engine_event(&EngineEvent::Position { position_ms: 1, duration_ms: 2, lead_ms: 0 });
         assert_eq!(session.lookups.load(Ordering::SeqCst), 0);
         assert!(hub.inner.lock().unwrap().latest.is_none());
     }
@@ -639,8 +641,8 @@ pub(crate) mod tests {
         hub.on_engine_event(&EngineEvent::State(state.clone()));
         hub.on_engine_event(&EngineEvent::State(state.clone()));
         hub.on_engine_event(&EngineEvent::State(state));
-        hub.on_engine_event(&EngineEvent::Position { position_ms: 10, duration_ms: 20 });
-        hub.on_engine_event(&EngineEvent::Position { position_ms: 11, duration_ms: 20 });
+        hub.on_engine_event(&EngineEvent::Position { position_ms: 10, duration_ms: 20, lead_ms: 0 });
+        hub.on_engine_event(&EngineEvent::Position { position_ms: 11, duration_ms: 20, lead_ms: 0 });
 
         assert!(matches!(rx.recv().await.unwrap(), HubEvent::State(_)), "first state is immediate");
         assert!(matches!(
