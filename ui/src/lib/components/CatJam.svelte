@@ -127,15 +127,16 @@
   });
 </script>
 
-<div class="catjam" bind:this={el} aria-hidden="true"></div>
+<!-- `data-floor`: the player bar's hover light rises under it like under a
+     control. -->
+<div class="catjam" bind:this={el} aria-hidden="true" data-floor></div>
 
 <style>
   /* In the player bar's left zone, between the title and the heart; purely
-     decorative, so it never takes a click. */
+     decorative: it takes hover (for the bar's light) but has no click. */
   .catjam {
     flex: 0 0 auto;
     align-self: center;
-    pointer-events: none;
     background-repeat: no-repeat;
     image-rendering: pixelated;
   }

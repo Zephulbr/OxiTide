@@ -51,6 +51,7 @@ describe("rack mode", () => {
     await a.init();
     expect(document.documentElement.dataset.mode).toBe("rack");
     expect(a.rackShell).toBe(true);
+    expect(a.vinylRecords).toBe(true);
     // A config written before a field existed picks up its default.
     expect(a.rack).toEqual({ deck_face: "cd", meters: "led", analyzer: "auto", lamp: "blue", eq_unit: false, lamp_brightness: 70 });
     // Rack draws its own materials: the Atmosphere effects stay off.
@@ -79,6 +80,7 @@ describe("rack mode", () => {
     await a.init();
     await a.setMode("atmosphere");
     expect(a.rackShell).toBe(false);
+    expect(a.vinylRecords).toBe(false);
     expect(api.setUiMode).toHaveBeenCalledWith("atmosphere");
   });
 

@@ -11,6 +11,7 @@
   import Loading from "../lib/components/Loading.svelte";
   import SortSelect from "../lib/components/SortSelect.svelte";
   import type { Nav } from "../lib/nav.svelte";
+  import { appearance } from "../lib/appearance.svelte";
 
   let { nav }: { nav: Nav } = $props();
 
@@ -56,11 +57,16 @@
   });
 </script>
 
-<!-- Each artist is a record: the portrait is the label on a vinyl disc. In
-     name order the letters are crate dividers. -->
+<!-- Each artist is a round portrait; in the Hi-Fi Rack it is a record, the
+     portrait being the label on a vinyl disc. In name order the letters are
+     crate dividers. -->
 {#snippet records(list: Artist[])}
   {#each list as artist (artist.id)}
-    <button class="card" onclick={() => nav.goto({ name: "artist", id: artist.id })}>
+    <button
+      class="card"
+      class:vinyl={appearance.vinylRecords}
+      onclick={() => nav.goto({ name: "artist", id: artist.id })}
+    >
       <span class="record" aria-hidden="true">
         <span class="label"><Cover uuid={artist.picture ?? artist.cover_fallback} size={320} radius={160} alt="" /></span>
       </span>
@@ -76,13 +82,16 @@
         <EdgeBlur layers={10} height={140} strength={1.3} tint="var(--glass-veil)" tintStrength={75} />
       </div>
     </div>
-    <h2>Profiles</h2>
-    <!-- Space held while loading (no "0 artists" flash, no header reflow). -->
-    <span
-      class="muted count tnum"
-      class:arrive={arrive && !loading}
-      style:visibility={loading || error ? "hidden" : undefined}
-    >{artists.length} {artists.length === 1 ? "artist" : "artists"}</span>
+    <!-- The count sits under the title, as on Albums and Playlists. -->
+    <div class="title-block">
+      <h2>Profiles</h2>
+      <!-- Space held while loading (no "0 artists" flash, no header reflow). -->
+      <span
+        class="summary tnum"
+        class:arrive={arrive && !loading}
+        style:visibility={loading || error ? "hidden" : undefined}
+      >{artists.length} {artists.length === 1 ? "artist" : "artists"}</span>
+    </div>
     <input
       class="search-input filter"
       placeholder="Search artists"
@@ -124,8 +133,26 @@
 </div>
 
 <style>
+  /* Albums' inset and shelf: a wider gutter than the shared page one, so the
+     grid sits off the sidebar and the window edge. */
   .profiles {
+    container-type: inline-size;
+    padding-inline: 24px;
     padding-bottom: 32px;
+  }
+  .title-block {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .title-block h2 {
+    margin: 0;
+  }
+  .summary {
+    color: color-mix(in srgb, var(--text) 62%, transparent);
+    font-size: 14px;
   }
   /* The shared page head, made sticky with a frost ramp once the page scrolls
      (the main scroller's top padding is dropped for this view, app.css). It
@@ -147,8 +174,9 @@
   .head-ramp {
     position: absolute;
     top: 0;
-    right: -12px;
-    left: -12px;
+    /* Past the 24px inset, out to the scroller's edges. */
+    right: -36px;
+    left: -36px;
     visibility: hidden;
   }
   .page-head.scrolled .head-ramp {
@@ -161,11 +189,32 @@
   .empty {
     margin-top: 48px;
   }
+  /* Albums' columns: eight across a wide window, stepping down as the column
+     narrows. A container query, not a JS count: the queue dock's glide
+     measures layout synchronously (AGENTS.md). */
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
-    gap: 28px 20px;
+    grid-template-columns: repeat(var(--cols, 8), minmax(0, 1fr));
+    gap: 18px 14px;
     margin-top: 16px;
+  }
+  @container (max-width: 1240px) {
+    .grid { --cols: 7; }
+  }
+  @container (max-width: 1080px) {
+    .grid { --cols: 6; }
+  }
+  @container (max-width: 920px) {
+    .grid { --cols: 5; }
+  }
+  @container (max-width: 760px) {
+    .grid { --cols: 4; }
+  }
+  @container (max-width: 600px) {
+    .grid { --cols: 3; }
+  }
+  @container (max-width: 440px) {
+    .grid { --cols: 2; }
   }
 
   /* Crate dividers: a tab with the letter standing up from a rule. */
@@ -199,13 +248,14 @@
     font-weight: 500;
   }
 
+  /* The album tile's frame: 10px padding, a 12px gap to the caption. */
   .card {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 12px;
     min-width: 0;
-    padding: 6px;
+    padding: 10px;
     border-radius: var(--radius-card);
     text-align: center;
     color: inherit;
@@ -219,25 +269,45 @@
       0 0 0 4px var(--accent),
       0 16px 30px -18px rgba(0, 0, 0, 0.8);
   }
-  /* The disc: fine grooves, a lead-in ring, a light sheen that turns on hover
-     and the portrait as the label around the spindle. */
+  /* Default: the portrait fills a plain circle, seated by a hairline. */
   .record {
     position: relative;
     display: block;
     width: 100%;
     aspect-ratio: 1;
     border-radius: 50%;
+    box-shadow: 0 0 0 1px var(--line), var(--shadow-cover);
+  }
+  .label {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    border-radius: 50%;
+    background: var(--surface-3);
+  }
+  .label :global(.cover) {
+    width: 100%;
+    height: 100%;
+  }
+  /* Hover: only the image eases in, inside its circle. */
+  .label :global(img) {
+    transition: transform var(--dur-view) var(--ease-enter);
+  }
+  .card:hover .label :global(img) {
+    transform: scale(1.06);
+  }
+
+  /* Hi-Fi Rack: the disc. Fine grooves, a lead-in ring, a light sheen that
+     turns on hover and the portrait as the label around the spindle. */
+  .vinyl .record {
     background:
       radial-gradient(circle, transparent 0 66%, rgba(255, 255, 255, 0.05) 66.4% 66.8%, transparent 67.2%),
       repeating-radial-gradient(circle, var(--vinyl) 0 1px, var(--vinyl-groove) 1px 2px);
     box-shadow:
       0 16px 30px -18px rgba(0, 0, 0, 0.8),
       inset 0 0 0 1px rgba(255, 255, 255, 0.05);
-    transition:
-      transform var(--dur-state) var(--ease-enter),
-      box-shadow var(--dur-state) var(--ease-enter);
   }
-  .record::before {
+  .vinyl .record::before {
     content: "";
     position: absolute;
     inset: 0;
@@ -254,25 +324,15 @@
     pointer-events: none;
     transition: transform var(--dur-view) var(--ease-enter);
   }
-  .label {
-    position: absolute;
+  .vinyl .label {
     inset: 17%;
-    overflow: hidden;
-    border-radius: 50%;
     background: linear-gradient(var(--surface-3), var(--surface-3)), var(--vinyl);
     box-shadow:
       0 0 0 3px var(--vinyl),
       0 0 0 4px rgba(255, 255, 255, 0.06);
   }
-  .label :global(.cover) {
-    width: 100%;
-    height: 100%;
-  }
-  .label :global(img) {
-    transition: transform var(--dur-view) var(--ease-enter);
-  }
   /* Spindle hole. */
-  .record::after {
+  .vinyl .record::after {
     content: "";
     position: absolute;
     inset: calc(50% - 4px);
@@ -282,24 +342,21 @@
       inset 0 1px 1px rgba(0, 0, 0, 0.8),
       0 0 0 1px rgba(255, 255, 255, 0.18);
   }
-  .card:hover .record {
-    transform: translateY(-3px);
-    box-shadow:
-      0 0 0 5px color-mix(in srgb, var(--accent) 14%, transparent),
-      0 20px 34px -18px rgba(0, 0, 0, 0.85);
-  }
-  .card:hover .record::before {
+  .vinyl.card:hover .record::before {
     transform: rotate(48deg);
   }
-  .card:hover .label :global(img) {
-    transform: scale(1.05);
-  }
+  /* Albums' caption type. The name underlines on hover like every other
+     name link (NameLink). */
   .title {
     max-width: 100%;
-    font-size: 14.5px;
-    font-weight: 500;
+    font-size: 15px;
+    font-weight: 600;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    text-underline-offset: 2px;
+  }
+  .card:hover .title {
+    text-decoration: underline;
   }
 </style>

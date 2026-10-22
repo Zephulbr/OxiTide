@@ -343,11 +343,6 @@
     border-radius: var(--radius-card);
     text-align: left;
     color: inherit;
-    transition: background-color var(--dur-micro) var(--ease-enter);
-  }
-  .card:hover,
-  .card.split:focus-within {
-    background: var(--surface-2);
   }
   .art {
     position: relative;

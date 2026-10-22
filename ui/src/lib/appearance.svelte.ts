@@ -100,6 +100,8 @@ export interface Appearance {
   readonly discSpin: boolean;
   readonly waveSeek: boolean;
   readonly ambientMotion: boolean;
+  /// Profiles draws artists as vinyl records (Hi-Fi Rack only).
+  readonly vinylRecords: boolean;
   /// Hi-Fi Rack: App mounts `RackShell` instead of the default shell (RK-D1).
   readonly rackShell: boolean;
   readonly rack: RackSettings;
@@ -287,6 +289,7 @@ export function createAppearance(): Appearance {
     get discSpin() { return mode === "atmosphere" && !reducedMotion; },
     get waveSeek() { return mode === "atmosphere"; },
     get ambientMotion() { return mode === "atmosphere" && !reducedMotion; },
+    get vinylRecords() { return mode === "rack"; },
     get rackShell() { return mode === "rack"; },
     get rack() { return rack; },
     init,

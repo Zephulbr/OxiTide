@@ -163,7 +163,8 @@ keeps its own page padding and small title labels (`rack/DESIGN.md`).
 **Collection grids** share one recipe: `repeat(auto-fill, minmax(160–168px, 1fr))`, 12px
 card padding (Mixes, Feed releases). The two library collections, Playlists and Albums,
 use an `18px 14px` gap, 10px card padding and a 15/600 title over a 13px subtitle.
-Playlists has large tiles, `minmax(210px, 1fr)` (about six across a wide window). Albums
+Playlists has large tiles, `minmax(210px, 1fr)` (about six across a wide window); on
+hover its cards get no fill, only the cover's lift and zoom and the Shuffle/Play buttons. Albums
 sets eight across inside an extra 24px side inset, with container queries stepping down
 one column per ~160px of width so that tiles stay at about 140px or wider. Their headers carry
 the count under the title (`.title-block`: 14px at 62% text, 2px below) and a sort select (Albums: Recently added, Release date, Title A–Z, Artist A–Z), and
@@ -193,9 +194,11 @@ Shuffle, Play next, Add to queue, Add to playlist, Favorite for albums, Go to ar
 link). Tracks, artists and action cards (`playButton`, e.g. Home's radios) stay one
 button. Feed releases keep their own card (`FeedTimeline`), whose
 hover is still `--surface-2`. Profiles
-draw each artist as a **record** (portrait as the label on a vinyl disc; `--vinyl*`
-material tokens, black in every mode) and, in name order, letter groups as crate
-dividers.
+use Albums' shelf (24px inset, eight columns stepping down by container query, album
+tile padding and caption type) and draw each artist as a round portrait; in Rack only
+(`appearance.vinylRecords`) it is a **record** (portrait as the label on a vinyl disc;
+`--vinyl*` material tokens, black in every theme). Hover only zooms the image inside its circle
+and underlines the name like a `NameLink` (no card wash or lift). In name order, letter groups are crate dividers.
 
 **Page-link tiles** (`PageLinkGrid.svelte`: Explore's genres, moods and decades, and the
 same rows on linked pages). TIDAL sends these without artwork, so they are not cards: a
