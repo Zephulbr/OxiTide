@@ -73,14 +73,25 @@ test("checksums cover installers only, sorted by name", () => {
   ]);
 });
 
-test("version check accepts a consistent tag", () => {
-  assert.deepEqual(versionProblems("v0.3.0", "0.3.0", "0.3.0"), []);
+test("version check accepts a tag matching Cargo.toml", () => {
+  assert.deepEqual(versionProblems("v0.3.0", "0.3.0"), []);
+  assert.deepEqual(versionProblems("v0.3.0", "0.3.0", { "ui/package.json": undefined }), []);
+  assert.deepEqual(versionProblems("v1.0.0-rc.1", "1.0.0-rc.1"), []);
 });
 
-test("version check reports each mismatch and bad tags", () => {
-  assert.equal(versionProblems("v0.3.0", "0.2.0", "0.3.0").length, 1);
-  assert.equal(versionProblems("v0.3.0", "0.2.0", "0.2.0").length, 2);
-  assert.match(versionProblems("0.3.0", "0.3.0", "0.3.0")[0], /not of the form/);
+test("version check reports a mismatch and bad tags", () => {
+  assert.match(versionProblems("v0.3.0", "0.2.0")[0], /Cargo\.toml version is 0\.2\.0, tag is 0\.3\.0/);
+  assert.match(versionProblems("0.3.0", "0.3.0")[0], /not of the form/);
+});
+
+test("version check rejects a version outside Cargo.toml", () => {
+  const problems = versionProblems("v0.3.0", "0.3.0", {
+    "crates/oxitide-app/tauri.conf.json": "0.3.0",
+    "ui/package.json": "0.1.0",
+  });
+  assert.equal(problems.length, 2);
+  assert.match(problems[0], /tauri\.conf\.json sets version 0\.3\.0/);
+  assert.match(problems[1], /ui\/package\.json sets version 0\.1\.0/);
 });
 
 test("workspaceVersion reads [workspace.package] only", () => {

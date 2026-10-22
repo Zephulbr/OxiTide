@@ -1,6 +1,6 @@
 name: Release
 
-# Push a tag vX.Y.Z (matching tauri.conf.json and Cargo.toml) to build a draft
+# Push a tag vX.Y.Z (matching the workspace Cargo.toml version) to build a draft
 # GitHub Release. Publishing the draft by hand is what exposes latest.json to
 # installed copies. See docs/release.md.
 on:

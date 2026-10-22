@@ -24,10 +24,14 @@ built by `.github/workflows/release.yml` from a version tag; nothing is uploaded
 
 ## Release steps
 
-1. Bump the version in **both** `crates/oxitide-app/tauri.conf.json` and the workspace `Cargo.toml`
-   (`[workspace.package]`), commit, and push to `main`; wait for CI to pass.
+1. Bump `version` in the workspace `Cargo.toml` (`[workspace.package]`) — the only place the
+   version lives — and refresh `Cargo.lock` (any `cargo build`/`cargo check` does it). Commit, push
+   to `main`, and wait for CI to pass.
+   - `tauri.conf.json` has no `version` on purpose: Tauri then uses `Cargo.toml`'s, and the Rust
+     code (updater, lyrics user agent) reads the same value through `CARGO_PKG_VERSION`.
+     `ui/package.json` has none either. The release check fails if either file gains one.
 2. `git tag vX.Y.Z && git push origin vX.Y.Z`.
-3. The workflow checks the tag against both versions, builds Windows (NSIS, MSI) and Linux
+3. The workflow checks the tag against `Cargo.toml`, builds Windows (NSIS, MSI) and Linux
    (deb, AppImage) bundles, signs the updater artifacts, and creates a **draft** release containing
    the bundles, `latest.json`, and `SHA256SUMS.txt`.
 4. Smoke the draft's installer on a clean machine, edit the generated notes, then **publish**.
@@ -46,6 +50,6 @@ built by `.github/workflows/release.yml` from a version tag; nothing is uploaded
   set `TAURI_SIGNING_PRIVATE_KEY` to the key path and add
   `-- --config crates/oxitide-app/tauri.release.conf.json`.
 - To test the pipeline without a real release, push a tag like `v0.0.0-test` on a throwaway branch
-  after temporarily matching the versions, or run the pieces locally:
+  after temporarily setting the `Cargo.toml` version to match, or run the pieces locally:
   `node --test scripts/release/release.test.mjs` and
   `node scripts/release/make-manifest.mjs <bundleDir> <outDir> vX.Y.Z owner/repo`.

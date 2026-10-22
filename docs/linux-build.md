@@ -146,7 +146,7 @@ directory after chdir, not from this CWD):
 
     npm --prefix ui run app:build
 
-Artifacts (unsigned; version from `crates/oxitide-app/tauri.conf.json`):
+Artifacts (unsigned; version from the workspace `Cargo.toml`):
 
 - `target/release/bundle/deb/OxiTide_0.2.0_amd64.deb`
 - `target/release/bundle/appimage/OxiTide_0.2.0_amd64.AppImage`
