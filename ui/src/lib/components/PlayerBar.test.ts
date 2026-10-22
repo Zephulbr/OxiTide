@@ -85,6 +85,22 @@ describe("PlayerBar: From line", () => {
   });
 });
 
+describe("PlayerBar: track menu", () => {
+  it("opens the track's context menu on a right-click on its names", async () => {
+    setup();
+    await fireEvent.contextMenu(screen.getByText("Track 1"));
+
+    const labels = menu.open?.items.map((item) => item.label) ?? [];
+    expect(labels).toContain("Favorite");
+    expect(labels).toContain("Go to album");
+    expect(labels).toContain("Copy title");
+    expect(labels).toContain("Track info");
+    // No toasts / picker passed: those entries are left out.
+    expect(labels).not.toContain("Track Radio");
+    expect(labels).not.toContain("Add to playlist");
+  });
+});
+
 describe("PlayerBar: heart", () => {
   it("breaks the heart on unfavorite only", async () => {
     setup({}, "detailed", { name: "home" }, true);

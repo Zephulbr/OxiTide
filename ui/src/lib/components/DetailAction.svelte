@@ -5,6 +5,7 @@
     icon,
     label,
     active = false,
+    fill = true,
     danger = false,
     disabled = false,
     title,
@@ -13,6 +14,9 @@
     icon: IconName;
     label: string;
     active?: boolean;
+    /// Fill the icon while active (the heart); off for outline-only marks
+    /// such as the globe, which fill into a solid dot.
+    fill?: boolean;
     danger?: boolean;
     disabled?: boolean;
     title?: string;
@@ -23,6 +27,7 @@
 <button
   class="action"
   class:on={active}
+  class:fill
   class:danger
   {title}
   {disabled}
@@ -55,7 +60,7 @@
   .action.on {
     color: var(--accent);
   }
-  .action.on :global(svg) {
+  .action.on.fill :global(svg) {
     fill: currentColor;
   }
   .action.danger:hover:not(:disabled) {

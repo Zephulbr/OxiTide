@@ -24,11 +24,15 @@
     const node = panel;
     const state = menu.open;
     if (!node || !state) return;
-    const rect = node.getBoundingClientRect();
-    const x = state.align === "end" ? state.x - rect.width : state.x;
-    left = Math.max(4, Math.min(x, window.innerWidth - rect.width - 4));
-    const y = state.placement === "above" ? state.y - rect.height : state.y;
-    top = Math.max(4, Math.min(y, window.innerHeight - rect.height - 4));
+    // Layout size, not getBoundingClientRect: the entrance animation starts
+    // scaled to 0.97, which measured short and set an upward menu ~10px too
+    // low, over its opener.
+    const width = node.offsetWidth;
+    const height = node.offsetHeight;
+    const x = state.align === "end" ? state.x - width : state.x;
+    left = Math.max(4, Math.min(x, window.innerWidth - width - 4));
+    const y = state.placement === "above" ? state.y - height : state.y;
+    top = Math.max(4, Math.min(y, window.innerHeight - height - 4));
   }
 
   function moveTo(position: "first" | "last") {

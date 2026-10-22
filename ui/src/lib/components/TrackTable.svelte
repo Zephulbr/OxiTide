@@ -418,6 +418,16 @@
     scroll.scrollTo({ top: Math.max(0, rowTop - middle), behavior: reduce ? "auto" : "smooth" });
   }
 
+  /// Double-clicking "Now playing" follows the playing track: every time it
+  /// changes (next track, or a sort/filter moves it) the list scrolls to it
+  /// again. Another double-click stops; it lasts while the table is mounted.
+  let following = $state(false);
+  $effect(() => {
+    if (!following) return;
+    void playingIndex;
+    untrack(scrollToPlaying);
+  });
+
   // The player bar's "From …" link asks the open page to show the playing
   // track; only requests made while this table is mounted count.
   let locateSeen = locatePlaying.requests;
@@ -548,8 +558,18 @@
     {#if showFilter}<TrackFilter {view} />{/if}
     <SortBar {view} keys={sortKeys} />
     {#if playingIndex >= 0}
-      <button class="locate" type="button" title="Show the current track" onclick={scrollToPlaying}>
-        <Icon name="circle-dot" size={14} /> Now playing
+      <button
+        class="locate"
+        class:following
+        type="button"
+        aria-pressed={following}
+        title={following
+          ? "Following the current track (double-click to stop)"
+          : "Show the current track (double-click to keep following it)"}
+        onclick={scrollToPlaying}
+        ondblclick={() => (following = !following)}
+      >
+        <Icon name="circle-dot" size={14} /> {following ? "Following" : "Now playing"}
       </button>
     {/if}
   </div>
@@ -778,22 +798,46 @@
     gap: 6px 14px;
     margin-bottom: 6px;
   }
-  /* Same quiet look as the Sort button beside it. */
+  /* Same look as the Sort button beside it (SortBar's `.quiet`): a soft
+     resting fill, a raised fill + line and an accent icon on hover. While
+     following it takes the accent like an active sort chip. */
   .locate {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    height: 28px;
-    padding: 0 10px;
+    gap: 7px;
+    height: 30px;
+    padding: 0 12px;
     border: 1px solid transparent;
     border-radius: var(--radius-control);
-    background: transparent;
+    background: color-mix(in srgb, var(--surface-2) 55%, transparent);
     color: var(--text-muted);
     font-size: 12px;
+    font-weight: 600;
+    transition:
+      color var(--dur-micro) var(--ease-enter),
+      background var(--dur-micro) var(--ease-enter),
+      border-color var(--dur-micro) var(--ease-enter),
+      transform var(--dur-micro) var(--ease-enter);
+  }
+  .locate :global(svg) {
+    transition: color var(--dur-micro) var(--ease-enter);
   }
   .locate:hover {
     color: var(--text);
+    background: var(--surface-2);
     border-color: var(--line);
+  }
+  .locate:hover :global(svg),
+  .locate.following :global(svg) {
+    color: var(--accent);
+  }
+  .locate:active {
+    transform: scale(0.97);
+  }
+  .locate.following {
+    color: var(--text);
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+    background: color-mix(in srgb, var(--accent) 16%, var(--surface-2));
   }
   /* A container, so the optional columns drop out on narrow widths in CSS
      (the queue glide needs width-driven layout in CSS, not JS counts). */

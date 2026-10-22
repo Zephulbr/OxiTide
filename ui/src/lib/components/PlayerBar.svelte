@@ -1,10 +1,18 @@
 <script lang="ts">
   import { dspBadgeTitle } from "../dsp";
   import { formatDuration } from "../format";
-  import { menu, menuButton, type MenuItem } from "../menu.svelte";
+  import { menu, menuButton, menuFor, type MenuItem } from "../menu.svelte";
+  import { nowPlayingMenuItems } from "../menus";
+  import { copyText } from "../clipboard";
+  import { errorMessage } from "../errors";
+  import { playTrackRadio } from "../radio";
+  import { trackInfo } from "../trackInfo.svelte";
+  import type { Toasts } from "../toasts.svelte";
+  import type { PlaylistActions } from "../playlists.svelte";
+  import { goToTargets } from "../queueLinks";
   import { playFromLabel, playSource } from "../playSource.svelte";
   import { QUALITY_TIERS, qualityPlate, streamReadout, type QualityDisplay } from "../quality";
-  import { api, type QueueItem, type RepeatMode } from "../api";
+  import { api, type QueueItem, type RepeatMode, type Track } from "../api";
   import type { Favorites } from "../favorites.svelte";
   import type { Player } from "../player.svelte";
   import { sameRoute, type Nav, type Route } from "../nav.svelte";
@@ -31,6 +39,8 @@
     nav,
     mini,
     sleepTimer,
+    toasts,
+    playlistActions,
     floating = false,
   }: {
     player: Player;
@@ -39,6 +49,10 @@
     nav: Nav;
     mini: Mini;
     sleepTimer: SleepTimer;
+    /// Track Radio and errors in the track menu; the entry is left out without.
+    toasts?: Toasts;
+    /// "Add to playlist" in the track menu; left out without.
+    playlistActions?: PlaylistActions;
     /// The floating card (App's `data-player`); its seek tapers the wave.
     floating?: boolean;
   } = $props();
@@ -113,6 +127,35 @@
     void favorites.toggleTrack(trackId);
   }
 
+  /// The playing track as a full `Track` (playlist picker, info modal); a
+  /// queue item carries only its display fields.
+  async function withTrack(item: QueueItem, use: (track: Track) => void) {
+    try {
+      use(await api.getTrack(item.track_id));
+    } catch (e) {
+      toasts?.show(errorMessage(e), { severity: "error" });
+    }
+  }
+
+  /// Right-click (or Shift+F10) on the title, artist or "From" line. Built at
+  /// open time, so it reads the live track and favorite state.
+  function nowMenuItems(): MenuItem[] {
+    const item = player.state.current;
+    if (!item) return [];
+    const favorited = favorites.hasTrack(item.track_id);
+    const radioToasts = toasts;
+    const picker = playlistActions;
+    return nowPlayingMenuItems({
+      favorited,
+      toggleFavorite: () => toggleFavorite(item.track_id, favorited),
+      startRadio: radioToasts ? () => void playTrackRadio(item.track_id, radioToasts, item.title) : undefined,
+      addToPlaylist: picker ? () => void withTrack(item, (track) => picker.openPicker([track])) : undefined,
+      copyTitle: () => void copyText(item.title),
+      trackInfo: () => void withTrack(item, (track) => trackInfo.open(track)),
+      ...goToTargets(item, go, api.getTrack),
+    });
+  }
+
   let plateButton = $state<HTMLButtonElement | null>(null);
 
   const readout = $derived(streamReadout(player.state.stream));
@@ -167,7 +210,7 @@
   /// window edge; pressing the plate again closes it (`menuButton`).
   function openQuality(button: HTMLElement) {
     const rect = button.getBoundingClientRect();
-    menu.show(rect.right, rect.top - 6, qualityItems(), button, { placement: "above", align: "end" });
+    menu.show(rect.right, rect.top - 8, qualityItems(), button, { placement: "above", align: "end" });
   }
 
   /// Hover light (AR-2): one glow per bar that rises from the bottom edge
@@ -294,7 +337,7 @@
         {#key current.track_id}
           <!-- Lines too long for the column scroll slowly while hovered
                (lib/marquee.ts); each line's first child is what moves. -->
-          <div class="now" use:marquee>
+          <div class="now" use:marquee use:menuFor={nowMenuItems}>
             <strong class="title" data-marquee><span><NameLink label={current.title} onOpen={() => void openAlbum(current)} /></span></strong>
             <span class="muted artist" data-marquee><span><QueueArtistLinks item={current} {go} /></span></span>
             {#if from}

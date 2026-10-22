@@ -126,6 +126,40 @@ function goToItems(ctx: GoToTargets): MenuItem[] {
   return items;
 }
 
+/// The player bar's playing track (right-click its title, artist or "From"
+/// line): what a track row offers, minus playing it again or queueing it.
+export function nowPlayingMenuItems(ctx: GoToTargets & {
+  favorited: boolean;
+  toggleFavorite(): void;
+  /// Absent where the bar has no toasts to report a radio failure.
+  startRadio?: () => void;
+  /// Absent where the bar has no playlist picker.
+  addToPlaylist?: () => void;
+  copyTitle(): void;
+  trackInfo(): void;
+}): MenuItem[] {
+  const items: MenuItem[] = [];
+  const startRadio = ctx.startRadio;
+  if (startRadio) items.push({ id: "radio", label: "Track Radio", icon: "radio", run: () => startRadio() });
+  const addToPlaylist = ctx.addToPlaylist;
+  if (addToPlaylist) {
+    items.push({ id: "add-playlist", label: "Add to playlist", icon: "list-plus", run: () => addToPlaylist() });
+  }
+  items.push({
+    id: "favorite",
+    label: ctx.favorited ? "Unfavorite" : "Favorite",
+    icon: ctx.favorited ? "heart-crack" : "heart",
+    divider: items.length > 0,
+    run: () => ctx.toggleFavorite(),
+  });
+  items.push(
+    ...goToItems(ctx),
+    { id: "copy-title", label: "Copy title", icon: "copy", divider: true, run: () => ctx.copyTitle() },
+    { id: "track-info", label: "Track info", icon: "info", run: () => ctx.trackInfo() },
+  );
+  return items;
+}
+
 /// Queue rows. The "Go to" group is the keyboard path to the row's nested
 /// name links (name-links spec NL-D10).
 export function queueMenuItems(ctx: GoToTargets & {

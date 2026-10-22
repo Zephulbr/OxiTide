@@ -94,21 +94,39 @@
     color: var(--text-muted);
     margin-right: 2px;
   }
+  /* Shared look with TrackTable's "Now playing" (`.locate`): a soft resting
+     fill, a raised fill + line and an accent icon on hover. */
   .quiet {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    height: 28px;
-    padding: 0 10px;
+    gap: 7px;
+    height: 30px;
+    padding: 0 12px;
     border: 1px solid transparent;
     border-radius: var(--radius-control);
-    background: transparent;
+    background: color-mix(in srgb, var(--surface-2) 55%, transparent);
     color: var(--text-muted);
     font-size: 12px;
+    font-weight: 600;
+    transition:
+      color var(--dur-micro) var(--ease-enter),
+      background var(--dur-micro) var(--ease-enter),
+      border-color var(--dur-micro) var(--ease-enter),
+      transform var(--dur-micro) var(--ease-enter);
+  }
+  .quiet :global(svg) {
+    transition: color var(--dur-micro) var(--ease-enter);
   }
   .quiet:hover:not(:disabled) {
     color: var(--text);
+    background: var(--surface-2);
     border-color: var(--line);
+  }
+  .quiet:hover:not(:disabled) :global(svg) {
+    color: var(--accent);
+  }
+  .quiet:active:not(:disabled) {
+    transform: scale(0.97);
   }
   .chip {
     display: inline-flex;

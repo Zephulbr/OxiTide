@@ -155,6 +155,42 @@ describe("TrackTable semantics", () => {
     }
   });
 
+  it("follows the playing track after a double-click on 'Now playing'", async () => {
+    const view = {
+      filter: "", levels: [], engaged: false, preparing: false, error: "",
+      items: [track(1), track(2), track(3)], setFilter: vi.fn(), toggleSort: vi.fn(), clearSort: vi.fn(),
+      retry: vi.fn(), sourceIndex: (index: number) => index,
+    } as unknown as TrackView;
+    const favorites = { hasTrack: () => false, toggleTrack: vi.fn() } as unknown as Favorites;
+    const toasts = { show: vi.fn() } as unknown as Toasts;
+    const scrollTo = vi.fn();
+    const original = HTMLElement.prototype.scrollTo;
+    HTMLElement.prototype.scrollTo = scrollTo;
+    try {
+      const { rerender } = render(TrackTable, { view, favorites, toasts, playingTrackId: 2 });
+      // Without following, a track change does not scroll.
+      await rerender({ view, favorites, toasts, playingTrackId: 3 });
+      expect(scrollTo).not.toHaveBeenCalled();
+
+      const button = document.querySelector<HTMLButtonElement>("button.locate")!;
+      await fireEvent.dblClick(button);
+      expect(button.getAttribute("aria-pressed")).toBe("true");
+      expect(button.textContent).toContain("Following");
+      scrollTo.mockClear();
+
+      await rerender({ view, favorites, toasts, playingTrackId: 2 });
+      expect(scrollTo).toHaveBeenCalledTimes(1);
+
+      await fireEvent.dblClick(button);
+      expect(button.getAttribute("aria-pressed")).toBe("false");
+      scrollTo.mockClear();
+      await rerender({ view, favorites, toasts, playingTrackId: 3 });
+      expect(scrollTo).not.toHaveBeenCalled();
+    } finally {
+      HTMLElement.prototype.scrollTo = original;
+    }
+  });
+
   it("labels virtualized rows with their index in the full list", () => {
     setup();
     const rows = document.querySelectorAll<HTMLTableRowElement>("tbody tr.row");

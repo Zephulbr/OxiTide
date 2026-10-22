@@ -40,10 +40,17 @@
     sways += 1;
   }
 
+  /// Opens away from the nearer window edge: upward from the player bar,
+  /// downward from Rack's header. A downward menu at the bottom used to be
+  /// clamped back over the bar and its own button.
   function openMenu(button: HTMLElement) {
     sway();
     const rect = button.getBoundingClientRect();
-    menu.show(rect.left, rect.bottom + 4, items(), button);
+    if (rect.top > window.innerHeight / 2) {
+      menu.show(rect.left, rect.top - 8, items(), button, { placement: "above" });
+    } else {
+      menu.show(rect.left, rect.bottom + 4, items(), button);
+    }
   }
 
   function items(): MenuItem[] {

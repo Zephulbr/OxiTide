@@ -14,12 +14,14 @@
     if (open) input?.focus();
   });
 
-  // Clicking anywhere outside closes the search. `refocus` stays false there so
+  // Clicking anywhere outside closes an empty search; once something is typed
+  // it stays open until the x (or Escape). `refocus` stays false there so
   // clicking a track does not yank focus back to the toggle.
   $effect(() => {
     if (!open) return;
     function onWindowMouseDown(event: MouseEvent) {
       if (root && event.target instanceof Node && root.contains(event.target)) return;
+      if (view.filter.trim() !== "") return;
       close(false);
     }
     window.addEventListener("mousedown", onWindowMouseDown);
@@ -69,7 +71,7 @@
       onkeydown={onkeydown}
     />
     {#if view.filter.trim() !== ""}
-      <button class="clear" onclick={() => view.setFilter("")} aria-label="Clear filter">
+      <button class="clear" onclick={() => close()} aria-label="Clear and close filter">
         <Icon name="x" size={14} />
       </button>
     {/if}

@@ -78,6 +78,13 @@ stays unmasked and untinted, and the scrollbar strip (`--scrollbar-w`, the stand
 bar's 10px) is left out of the mask. Tables that
 don't scroll themselves keep the frost.
 
+**Track table tools.** Sort (SortBar's `.quiet` buttons) and Now playing (`.locate`) share
+one look: 30px, 12px/600 muted text on a soft `--surface-2` fill (55%); hover raises the fill
+to `--surface-2`, adds the `--line` border, lifts the text to `--text` and turns the icon
+`--accent`; press scales to 0.97. Double-clicking Now playing follows the playing track
+(label "Following", `aria-pressed`, styled like the primary sort chip: accent border 55%,
+accent 16% fill) and re-centres it on every track change until double-clicked again.
+
 **Track table columns.** Every column but the number, cover and actions takes a share of the
 width (title 21%, artist 19%, album 18%, optional columns 14%, time and quality 8%), so the
 date, time and quality spread across the row instead of packing at the right edge (time is
@@ -162,9 +169,9 @@ keeps its own page padding and small title labels (`rack/DESIGN.md`).
 
 **Detail headers** (`DetailHeader.svelte`: Album, Playlist, Mix) put the cover beside one
 column as tall as the cover: the Play/Shuffle row (with the playlist's search pill) sits on
-the cover's bottom edge, and the title block (title at `clamp(30px, 3.6vw, 48px)`, byline,
-stats with counts like "702 TRACKS" and "2 FANS" in `--accent`; 10px apart) sits 40px above
-it. The kicker (PLAYLIST / ALBUM / MIX) runs vertically down the cover's right
+the cover's bottom edge, and the title block sits 28px above it, 10px apart top to bottom:
+stats (counts like "702 TRACKS" and "2 FANS" in `--accent`), the byline, then the title
+(`clamp(30px, 3.6vw, 48px)`) directly over the buttons. The kicker (PLAYLIST / ALBUM / MIX) runs vertically down the cover's right
 edge (reading top to bottom), centred on it. The page's actions (Edit, Favorite, Share, More, …) sit at the
 row's right end, level with Play. Nothing sits under the cover, so the track list starts
 right below it.

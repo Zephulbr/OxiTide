@@ -30,30 +30,40 @@
     onShuffle: () => void;
     disabled?: boolean;
   } = $props();
+
+  /// The stats line split so its counts ("702 TRACKS", "2 FANS") can take the
+  /// accent; odd entries are the counts.
+  const statParts = $derived(stats.split(/(\d[\d,.]*\s+(?:TRACKS?|FANS?)\b)/));
 </script>
 
 <header class="detail-header pane">
   <div class="hero">
-    <span class="hero-art">{@render cover()}</span>
-    <div class="hero-meta">
+    <span class="hero-art">
+      {@render cover()}
       <span class="kicker">{kicker}</span>
-      <h2><span class="title-track">{title}</span></h2>
-      {#if byline}<p class="subtitle">{@render byline()}</p>
-      {:else if subtitle}<p class="subtitle">{subtitle}</p>{/if}
-      {#if stats}<p class="stats tnum">{stats}</p>{/if}
-    </div>
-  </div>
-  <div class="controls">
-    <div class="transport">
-      <button class="btn-play" onclick={onPlay} {disabled}>
-        <Icon name="play" size={20} /> Play
-      </button>
-      <button class="btn-shuffle" onclick={onShuffle} {disabled}>
-        <Icon name="shuffle" size={20} /> Shuffle
-      </button>
-      {#if tools}
-        <span class="tools">{@render tools()}</span>
-      {/if}
+    </span>
+    <div class="hero-meta">
+      <div class="titles">
+        {#if stats}
+          <p class="stats tnum">
+            {#each statParts as part, i (i)}{#if i % 2}<span class="count">{part}</span>{:else}{part}{/if}{/each}
+          </p>
+        {/if}
+        {#if byline}<p class="subtitle">{@render byline()}</p>
+        {:else if subtitle}<p class="subtitle">{subtitle}</p>{/if}
+        <h2><span class="title-track">{title}</span></h2>
+      </div>
+      <div class="transport">
+        <button class="btn-play" onclick={onPlay} {disabled}>
+          <Icon name="play" size={20} /> Play
+        </button>
+        <button class="btn-shuffle" onclick={onShuffle} {disabled}>
+          <Icon name="shuffle" size={20} /> Shuffle
+        </button>
+        {#if tools}
+          <span class="tools">{@render tools()}</span>
+        {/if}
+      </div>
     </div>
     {#if actions}
       <div class="actions">{@render actions()}</div>
@@ -72,19 +82,41 @@
     gap: 40px;
   }
   .hero-art {
+    position: relative;
     flex: 0 0 auto;
     width: var(--hero-size);
   }
+  /* As tall as the cover: the transport sits on its bottom edge and the
+     title block sits a fixed step above it. */
   .hero-meta {
     flex: 1;
+    align-self: stretch;
     display: flex;
     flex-direction: column;
-    gap: 8px;
     min-width: 0;
-    max-width: 512px;
-    padding-bottom: 2px;
   }
+  .titles {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: auto;
+    margin-bottom: 28px;
+  }
+  h2,
+  .subtitle,
+  .stats {
+    max-width: 560px;
+  }
+  /* Runs down the cover's right edge in the gap beside it, centred on it,
+     reading top to bottom. */
   .kicker {
+    position: absolute;
+    top: 50%;
+    left: calc(100% + 8px);
+    writing-mode: vertical-rl;
+    transform: translateY(-50%);
+    line-height: 1;
+    white-space: nowrap;
     font-size: 11px;
     font-weight: 700;
     letter-spacing: 0.16em;
@@ -93,7 +125,7 @@
   }
   h2 {
     margin: 0;
-    font-size: clamp(28px, 3.2vw, 42px);
+    font-size: clamp(30px, 3.6vw, 48px);
     line-height: 1.1;
     container-type: inline-size;
     overflow: hidden;
@@ -137,20 +169,17 @@
     text-transform: uppercase;
     color: var(--text-muted);
   }
-  .controls {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 12px 16px;
-    margin-top: 24px;
+  .stats .count {
+    color: var(--accent);
   }
   .tools {
     display: flex;
     align-items: center;
   }
-  /* Resting width matches the cover so their right edges line up; the search
-     pill can still grow the row when it expands (max-content, not fixed). */
+  /* Under the title, bottom-aligned with the cover, so the track list starts
+     right below the cover. Resting width is the cover's, so Play/Shuffle keep
+     their size; the search pill can still grow the row when it expands
+     (max-content, not fixed). */
   .transport {
     display: flex;
     align-items: center;
@@ -193,7 +222,9 @@
     color: var(--text);
     background: var(--surface-3);
   }
+  /* The page's own actions stay at the row's right end, level with Play. */
   .actions {
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     gap: 4px;

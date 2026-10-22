@@ -895,7 +895,7 @@
         <QueueRail {player} go={(route) => { queuePeek.reset(); goFromChrome(route); }} />
       </aside>
     {/if}
-    <PlayerBar {player} {qualityDisplay} {favorites} {nav} {mini} {sleepTimer} floating={barFloats} />
+    <PlayerBar {player} {qualityDisplay} {favorites} {nav} {mini} {sleepTimer} {toasts} {playlistActions} floating={barFloats} />
     <TrackInfoHost {nav} />
     <PlaylistPicker actions={playlistActions} onnavigate={(id) => nav.goto({ name: "playlist", id })} />
     <CollectionDialogs actions={collectionActions} />

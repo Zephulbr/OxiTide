@@ -342,9 +342,10 @@
             />
             {#if publicState !== null}
               <DetailAction
-                icon="globe"
+                icon={publicState ? "globe" : "lock"}
                 label={publicState ? "Public" : "Private"}
                 active={publicState}
+                fill={false}
                 title={publicState ? "Make private" : "Make public"}
                 disabled={publicBusy}
                 onclick={togglePublic}
