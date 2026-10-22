@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildManifest, checksumLines } from "./make-manifest.mjs";
 import { versionProblems, workspaceVersion } from "./check-version.mjs";
+import { archPkgver, renderPkgbuild } from "./make-pkgbuild.mjs";
+import { readFileSync } from "node:fs";
 
 const files = [
   "a/OxiTide_0.3.0_x64-setup.exe",
@@ -92,6 +94,31 @@ test("version check rejects a version outside Cargo.toml", () => {
   assert.equal(problems.length, 2);
   assert.match(problems[0], /tauri\.conf\.json sets version 0\.3\.0/);
   assert.match(problems[1], /ui\/package\.json sets version 0\.1\.0/);
+});
+
+test("archPkgver drops the tag prefix and prerelease hyphens", () => {
+  assert.equal(archPkgver("v0.4.0"), "0.4.0");
+  assert.equal(archPkgver("v1.0.0-rc.1"), "1.0.0rc.1");
+  assert.equal(archPkgver("v0.0.0-test-2"), "0.0.0test2");
+  assert.throws(() => archPkgver("0.4.0"), /not of the form/);
+});
+
+test("the AUR template renders to the tagged source", () => {
+  const template = readFileSync(new URL("../../packaging/aur/PKGBUILD.in", import.meta.url), "utf8");
+  const pkgbuild = renderPkgbuild(template, "v1.0.0-rc.1");
+  assert.match(pkgbuild, /^pkgver=1\.0\.0rc\.1$/m);
+  assert.match(pkgbuild, /^_tag=v1\.0\.0-rc\.1$/m);
+  assert.match(pkgbuild, /^source=\("\$pkgname::git\+\$url\.git#tag=\$_tag"\)$/m);
+  assert.doesNotMatch(pkgbuild, /@[A-Z]+@|#commit=/);
+});
+
+test("a CRLF template renders with LF line endings", () => {
+  assert.equal(renderPkgbuild("pkgver=@PKGVER@\r\n_tag=@TAG@\r\n", "v1.0.0"), "pkgver=1.0.0\n_tag=v1.0.0\n");
+});
+
+test("a template missing or repeating a placeholder is an error", () => {
+  assert.throws(() => renderPkgbuild("pkgver=@PKGVER@\n", "v1.0.0"), /@TAG@ exactly once/);
+  assert.throws(() => renderPkgbuild("@PKGVER@ @PKGVER@ @TAG@", "v1.0.0"), /@PKGVER@ exactly once/);
 });
 
 test("workspaceVersion reads [workspace.package] only", () => {

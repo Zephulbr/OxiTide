@@ -180,5 +180,7 @@ Fact: direct AppImage execution needs FUSE2 (`libfuse2` on Ubuntu 22.04) and
 `/dev/fuse`; `--appimage-extract-and-run` bypasses FUSE. Record which path was
 used in `plans/notes/2026-10-03-track8-packaging-smoke.md`.
 
-AUR: build/install `packaging/aur/PKGBUILD` on Arch against `webkit2gtk-4.1`
+AUR: build/install the `PKGBUILD` attached to a release (rendered from the
+`packaging/aur/PKGBUILD.in` template; `node scripts/release/make-pkgbuild.mjs vX.Y.Z <dir>`
+renders it locally for an existing tag) on Arch against `webkit2gtk-4.1`
 (`makepkg -si`); verification is deferred to the bare-metal checklist.

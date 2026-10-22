@@ -1,6 +1,8 @@
 # Maintainer: OxiTide project <https://codeberg.org/Zephulbr/OxiTide/issues>
+# Template: the release workflow renders it with scripts/release/make-pkgbuild.mjs
+# and attaches the resulting PKGBUILD to the draft release. Do not fill it in by hand.
 pkgname=oxitide
-pkgver=0.2.0
+pkgver=@PKGVER@
 pkgrel=1
 pkgdesc="Unofficial TIDAL desktop client"
 arch=('x86_64')
@@ -8,8 +10,8 @@ url="https://codeberg.org/Zephulbr/OxiTide"
 license=('AGPL-3.0-or-later')
 depends=('webkit2gtk-4.1' 'gtk3' 'alsa-lib' 'librsvg' 'hicolor-icon-theme' 'xdg-utils' 'desktop-file-utils')
 makedepends=('rust' 'nodejs' 'npm' 'pkgconf' 'git')
-_commit=31b27a8d532b977637d5418c003a5fd47f7784f0
-source=("$pkgname::git+$url.git#commit=$_commit")
+_tag=@TAG@
+source=("$pkgname::git+$url.git#tag=$_tag")
 sha256sums=('SKIP')
 
 prepare() {

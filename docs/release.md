@@ -33,7 +33,8 @@ built by `.github/workflows/release.yml` from a version tag; nothing is uploaded
 2. `git tag vX.Y.Z && git push origin vX.Y.Z`.
 3. The workflow checks the tag against `Cargo.toml`, builds Windows (NSIS, MSI) and Linux
    (deb, AppImage) bundles, signs the updater artifacts, and creates a **draft** release containing
-   the bundles, `latest.json`, and `SHA256SUMS.txt`.
+   the bundles, `latest.json`, `SHA256SUMS.txt`, and the AUR `PKGBUILD` (rendered from
+   `packaging/aur/PKGBUILD.in` by `make-pkgbuild.mjs`, building the tagged source).
 4. Smoke the draft's installer on a clean machine, edit the generated notes, then **publish**.
    Publishing is what makes `…/releases/latest/download/latest.json` resolve — installed copies
    only see the update after this step.
@@ -44,6 +45,11 @@ built by `.github/workflows/release.yml` from a version tag; nothing is uploaded
   verify downloads against `SHA256SUMS.txt`. Updates are still verified against the minisign key.
 - The updater runs for Windows installs and for the Linux AppImage. deb/AUR installs update through
   the package manager.
+- The AUR recipe is a template (`pkgver=@PKGVER@`, `_tag=@TAG@`); never fill it in by hand. The
+  rendered `PKGBUILD` fetches `#tag=vX.Y.Z` from the Codeberg `url`, so the tag must be on Codeberg
+  (step 2 pushes it there). A prerelease tag drops its hyphens (`v1.0.0-rc.1` → `pkgver=1.0.0rc.1`)
+  so it sorts before the release. The package is not on the AUR yet; to publish, copy the release's
+  `PKGBUILD` into the AUR repo and run `makepkg --printsrcinfo > .SRCINFO`.
 - A copy only updates to releases published after it contained the updater, so the first
   updater-enabled version must be installed by hand.
 - Local unsigned build (no key needed): `npm --prefix ui run app:build`. Local signed build:
@@ -52,4 +58,5 @@ built by `.github/workflows/release.yml` from a version tag; nothing is uploaded
 - To test the pipeline without a real release, push a tag like `v0.0.0-test` on a throwaway branch
   after temporarily setting the `Cargo.toml` version to match, or run the pieces locally:
   `node --test scripts/release/release.test.mjs` and
-  `node scripts/release/make-manifest.mjs <bundleDir> <outDir> vX.Y.Z owner/repo`.
+  `node scripts/release/make-manifest.mjs <bundleDir> <outDir> vX.Y.Z owner/repo` and
+  `node scripts/release/make-pkgbuild.mjs vX.Y.Z <outDir>`.

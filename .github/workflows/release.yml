@@ -103,6 +103,9 @@ jobs:
       - name: Write manifest and checksums
         run: node scripts/release/make-manifest.mjs artifacts out "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY"
 
+      - name: Render the AUR PKGBUILD
+        run: node scripts/release/make-pkgbuild.mjs "$GITHUB_REF_NAME" out
+
       - name: Create draft release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -112,4 +115,4 @@ jobs:
             --draft --verify-tag \
             --title "OxiTide ${GITHUB_REF_NAME#v}" \
             --generate-notes \
-            "${files[@]}" out/latest.json out/SHA256SUMS.txt
+            "${files[@]}" out/latest.json out/SHA256SUMS.txt out/PKGBUILD
