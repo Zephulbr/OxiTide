@@ -268,6 +268,7 @@
         playingTrackId={player.state.current?.track_id ?? null}
         playbackRunning={player.state.playing}
         onAddToPlaylist={(track) => playlistActions.openPicker([track])}
+        onAddManyToPlaylist={(tracks) => playlistActions.openPicker(tracks)}
       />
     </section>
   {:else if shown.tracks && sectionErrors.tracks}

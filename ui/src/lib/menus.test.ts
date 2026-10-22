@@ -6,9 +6,32 @@ import {
   historyMenuItems,
   libraryPlaylistMenuItems,
   queueMenuItems,
+  selectionMenuItems,
   trackMenuItems,
   type TrackMenuContext,
 } from "./menus";
+
+describe("selectionMenuItems", () => {
+  it("counts the rows and runs each action", () => {
+    const ctx = { count: 3, playNext: vi.fn(), addToQueue: vi.fn(), addToPlaylist: vi.fn(), remove: vi.fn() };
+    const items = selectionMenuItems(ctx);
+    expect(items.map((i) => i.label)).toEqual([
+      "Play 3 next",
+      "Add 3 to queue",
+      "Add 3 to playlist",
+      "Remove 3 from playlist",
+    ]);
+    for (const item of items) item.run();
+    for (const fn of [ctx.playNext, ctx.addToQueue, ctx.addToPlaylist, ctx.remove]) {
+      expect(fn).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("leaves out the picker and Remove when absent", () => {
+    const items = selectionMenuItems({ count: 2, playNext: vi.fn(), addToQueue: vi.fn() });
+    expect(items.map((i) => i.id)).toEqual(["play-next", "add-queue"]);
+  });
+});
 
 function track(id: number): Track {
   return {

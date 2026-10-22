@@ -25,6 +25,9 @@
   import { playlistRecency } from "../lib/playlistRecency.svelte";
   import type { PlaylistActions } from "../lib/playlists.svelte";
   import { playSource } from "../lib/playSource.svelte";
+  import { dragDrop, dragSource, dropZone } from "../lib/dragDrop.svelte";
+  import NameLink from "../lib/components/NameLink.svelte";
+  import { playlistDropKey, playlistDropZone } from "../lib/playlistDrop";
 
   let {
     nav,
@@ -199,10 +202,29 @@
           </button>
         {:else}
           {@const source = playSource.playlistId === entry.uuid}
+          {@const dropKey = playlistDropKey(entry.uuid)}
+          {@const drop = dragDrop.targetKey === dropKey ? (dragDrop.verdict?.ok ? "target" : "refused") : null}
           <!-- The cover and title open the playlist; play and shuffle are
-               their own buttons over the cover (MediaCard's split cards). -->
-          <div class="card split" class:source>
+               their own buttons over the cover (MediaCard's split cards). The
+               card drags the playlist, and a drag dropped on it adds to it. -->
+          <div
+            class="card split"
+            class:source
+            class:drop-target={drop === "target"}
+            class:drop-refused={drop === "refused"}
+            data-drop-refused={drop === "refused" ? "" : undefined}
+            aria-busy={dragDrop.pending.has(dropKey) || undefined}
+            use:dropZone={playlistDropZone(entry, playlistActions, () => openPlaylist(entry.uuid))}
+            use:dragSource={() => ({
+              kind: "collection",
+              target: { kind: "playlist", id: entry.uuid, title: entry.title },
+              cover: entry.squareImage ?? entry.image ?? null,
+            })}
+          >
             <span class="art">
+              {#if dragDrop.pending.has(dropKey)}
+                <span class="adding" aria-hidden="true"><span class="disc"></span></span>
+              {/if}
               <button
                 type="button"
                 class="clip cover-hit"
@@ -241,9 +263,7 @@
                 </span>
               {/if}
             </span>
-            <button type="button" class="title name" tabindex="-1" onclick={() => openPlaylist(entry.uuid)}>
-              {entry.title}
-            </button>
+            <span class="title"><NameLink label={entry.title} onOpen={() => openPlaylist(entry.uuid)} focusable={false} /></span>
             <span class="sub tnum">
               {entry.numberOfTracks}
               {entry.numberOfTracks === 1 ? "track" : "tracks"}
@@ -398,6 +418,42 @@
     color: var(--accent);
   }
 
+  /* Drop targets (drag-to-playlist spec §7): an accent ring around the cover
+     a drop would add to; a refusing card dims. */
+  .card.drop-target .clip {
+    box-shadow: 0 0 0 3px var(--accent), var(--shadow-cover);
+  }
+  .card.drop-target .title {
+    color: var(--accent);
+  }
+  .card.drop-refused {
+    opacity: 0.55;
+  }
+  /* An add in flight: a spinning disc over the cover. */
+  .adding {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    border-radius: var(--radius-card-sharp);
+    background: color-mix(in srgb, var(--bg) 50%, transparent);
+    pointer-events: none;
+  }
+  .adding .disc {
+    width: 26px;
+    height: 26px;
+    border: 3px solid var(--line);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: adding-spin 0.9s linear infinite;
+  }
+  @keyframes adding-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
   /* Shuffle (glass) and Play (accent, the primary-transport glow, AR-1) rise
      from the cover's bottom-right corner on hover or keyboard focus. */
   .cover-actions {
@@ -460,9 +516,6 @@
     font-size: 16px;
     font-weight: 600;
     text-align: left;
-  }
-  button.name {
-    cursor: pointer;
   }
   .sub {
     overflow: hidden;

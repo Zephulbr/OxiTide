@@ -1897,6 +1897,20 @@ pub fn queue_play_next(state: State<'_, AppState>, items: Vec<QueueItem>) -> Res
         .map_err(|e| e.to_string())
 }
 
+/// Insert at queue slot `index` (a drag dropped on the queue rail).
+#[tauri::command]
+pub fn queue_insert(
+    state: State<'_, AppState>,
+    index: usize,
+    items: Vec<QueueItem>,
+) -> Result<(), String> {
+    let player = state.player().ok_or_else(|| "not logged in".to_string())?;
+    player
+        .engine
+        .handle(EngineCmd::EnqueueAt { index, items })
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command(async)]
 pub fn get_playback_state(state: State<'_, AppState>) -> Result<crate::player::StateDto, String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
@@ -2777,7 +2791,7 @@ mod tests {
         "set_volume", "fade_and_pause", "set_history_enabled", "set_history_max_entries",
         "set_block_explicit", "set_block_ai", "set_show_labels", "set_shuffle", "set_repeat",
         "queue_reorder", "queue_remove", "queue_clear", "retry", "queue_add", "queue_play_next",
-        "restore_session", "set_play_source", "clear_session", "perf_mark", "perf_quit",
+        "queue_insert", "restore_session", "set_play_source", "clear_session", "perf_mark", "perf_quit",
         "get_perf_snapshot", "perf_submit_ui_metrics", "perf_queue_build", "set_output_device",
         "set_preferred_quality", "set_exclusive", "set_exclusive_fallback", "set_dsp_settings",
         "get_config", "get_audio_status", "get_cache_status", "set_allow_fallback",

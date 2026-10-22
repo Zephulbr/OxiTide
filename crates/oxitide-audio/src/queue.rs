@@ -322,6 +322,23 @@ impl Queue {
         }
     }
 
+    /// Insert items at slot `index` (before the item now there; past the end
+    /// appends), keeping their order. The current track stays current: an
+    /// insert at or before it shifts its index. The playing state is untouched.
+    pub fn insert_at(&mut self, index: usize, items: Vec<QueueItem>) {
+        if items.is_empty() {
+            return;
+        }
+        let at = index.min(self.items.len());
+        let count = items.len();
+        self.items_mut().splice(at..at, items);
+        if let Some(cur) = self.current {
+            if at <= cur {
+                self.current = Some(cur + count);
+            }
+        }
+    }
+
     /// Stop playback without clearing the queue (e.g. after a playback error).
     pub fn stop(&mut self) {
         self.playing = false;
@@ -393,6 +410,7 @@ mod tests {
         for edit in [
             |q: &mut Queue| q.push(vec![item(9)]),
             |q: &mut Queue| q.insert_next(vec![item(8)]),
+            |q: &mut Queue| q.insert_at(1, vec![item(7)]),
             |q: &mut Queue| {
                 q.reorder(0, 1);
             },
@@ -587,6 +605,65 @@ mod tests {
         let ids: Vec<_> = q.items().iter().map(|i| i.track_id).collect();
         assert_eq!(ids, vec![1, 2]);
         assert_eq!(q.current_index(), None);
+    }
+
+    fn ids(q: &Queue) -> Vec<u64> {
+        q.items().iter().map(|i| i.track_id).collect()
+    }
+
+    #[test]
+    fn insert_at_before_current_keeps_it_playing() {
+        let mut q = queue(3);
+        q.next(); // current track 2 at index 1
+        q.insert_at(0, vec![item(8), item(9)]);
+        assert_eq!(ids(&q), vec![8, 9, 1, 2, 3]);
+        assert_eq!(q.current_index(), Some(3));
+        assert_eq!(q.current().unwrap().track_id, 2);
+        assert!(q.is_playing());
+    }
+
+    #[test]
+    fn insert_at_current_slot_lands_before_it() {
+        let mut q = queue(3);
+        q.next(); // current track 2 at index 1
+        q.insert_at(1, vec![item(8)]);
+        assert_eq!(ids(&q), vec![1, 8, 2, 3]);
+        assert_eq!(q.current().unwrap().track_id, 2);
+    }
+
+    #[test]
+    fn insert_at_after_current_keeps_index() {
+        let mut q = queue(3);
+        q.insert_at(2, vec![item(8)]);
+        assert_eq!(ids(&q), vec![1, 2, 8, 3]);
+        assert_eq!(q.current_index(), Some(0));
+        assert_eq!(q.peek_next_index(), Some(1));
+    }
+
+    #[test]
+    fn insert_at_past_the_end_appends() {
+        let mut q = queue(2);
+        q.insert_at(99, vec![item(8), item(9)]);
+        assert_eq!(ids(&q), vec![1, 2, 8, 9]);
+        assert_eq!(q.current_index(), Some(0));
+    }
+
+    #[test]
+    fn insert_at_into_empty_queue_sets_no_current() {
+        let mut q = Queue::default();
+        q.insert_at(0, vec![item(1), item(2)]);
+        assert_eq!(ids(&q), vec![1, 2]);
+        assert_eq!(q.current_index(), None);
+        assert!(!q.is_playing());
+    }
+
+    #[test]
+    fn insert_at_with_no_items_changes_nothing() {
+        let mut q = queue(2);
+        let rev = q.rev();
+        q.insert_at(1, Vec::new());
+        assert_eq!(q.rev(), rev);
+        assert_eq!(ids(&q), vec![1, 2]);
     }
 
     #[test]

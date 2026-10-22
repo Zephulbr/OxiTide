@@ -1,6 +1,5 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import { trackDrag, type DragParams } from "../drag";
   import { windowRange } from "../virtual";
 
   let {
@@ -8,7 +7,6 @@
     rowHeight,
     maxHeight = "none",
     overscan = 8,
-    drag,
     bottomPadding = "0px",
     role = undefined,
     scroller = $bindable(null),
@@ -18,7 +16,6 @@
     rowHeight: number;
     maxHeight?: string;
     overscan?: number;
-    drag?: DragParams;
     bottomPadding?: string;
     /// ARIA role for the scroller; rows then carry the matching item role.
     role?: "list";
@@ -26,14 +23,6 @@
     scroller?: HTMLElement | null;
     children: Snippet<[number]>;
   } = $props();
-
-  const NO_DRAG: DragParams = {
-    enabled: () => false,
-    count: () => 0,
-    rowHeight: () => 1,
-    onChange: () => {},
-    onDrop: () => {},
-  };
 
   let scrollTop = $state(0);
   let viewport = $state(0);
@@ -54,7 +43,6 @@
   bind:this={scroller}
   bind:clientHeight={viewport}
   onscroll={onScroll}
-  use:trackDrag={drag ?? NO_DRAG}
 >
   <div style="height:{range.padTop}px" aria-hidden="true"></div>
   {#each indexes as index (index)}

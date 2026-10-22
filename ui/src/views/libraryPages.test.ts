@@ -2,6 +2,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/svelte";
 import type { Component } from "svelte";
+import { dragDrop } from "../lib/dragDrop.svelte";
 import type { Nav } from "../lib/nav.svelte";
 import { fakePlayer } from "../lib/test/fakes";
 import { clearViewCache } from "../lib/viewCache";
@@ -68,6 +69,31 @@ const pages: Array<[string, Component<any>, Record<string, unknown>, string]> = 
   ["Mixes", Mixes as Component<any>, { nav, player: fakePlayer(), toasts }, "Mix One"],
   ["Playlists", Playlists as Component<any>, { nav, playlistActions: revisioned, actions: revisioned }, "Playlist One"],
 ];
+
+describe("Playlists page drag", () => {
+  function pointer(type: string, target: EventTarget, x: number, y: number) {
+    const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0 });
+    Object.defineProperty(event, "pointerType", { value: "mouse" });
+    target.dispatchEvent(event);
+  }
+
+  it("a playlist card drags the playlist, and its title is a name link", async () => {
+    render(Playlists, { nav, playlistActions: revisioned, actions: revisioned } as never);
+    const title = await screen.findByText("Playlist One");
+    expect(title.classList.contains("name-link")).toBe(true);
+
+    document.elementFromPoint = vi.fn(() => null);
+    pointer("pointerdown", title, 0, 0);
+    pointer("pointermove", window, 30, 30);
+    expect(dragDrop.active).toMatchObject({
+      kind: "collection",
+      target: { kind: "playlist", id: "p1", title: "Playlist One" },
+    });
+    dragDrop.cancel();
+    pointer("pointerup", window, 30, 30);
+    await new Promise((r) => setTimeout(r));
+  });
+});
 
 describe("library pages and the page cache", () => {
   it.each(pages)("%s mounts, then remounts from cache without looping", async (_name, page, props, text) => {

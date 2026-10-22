@@ -6,6 +6,17 @@ body {
   font: var(--font-body-size)/1.4 var(--font-ui);
   overflow: hidden;
 }
+/* An app drag (lib/dragDrop.svelte.ts) is under way: no text selection, and
+   the grab cursor everywhere, or no-drop over a target that refuses it. */
+body.dragging,
+body.dragging * {
+  user-select: none;
+  cursor: grabbing !important;
+}
+body.dragging [data-drop-refused],
+body.dragging [data-drop-refused] * {
+  cursor: no-drop !important;
+}
 
 .app {
   display: grid;

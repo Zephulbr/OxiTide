@@ -9,6 +9,7 @@
   import type { CollectionTree } from "../collection.svelte";
   import { menu, type MenuItem } from "../menu.svelte";
   import type { PlaylistActions } from "../playlists.svelte";
+  import { dragDrop, dropZone, type DropZone } from "../dragDrop.svelte";
   import { playlistView } from "../playlistView.svelte";
   import { playlistViewMenuItems } from "../playlistViewMenu";
   import Icon from "./Icon.svelte";
@@ -45,8 +46,23 @@
   const peekIntent = createHoverIntent({ isHeld: () => menu.open !== null });
   const canPeek = $derived(collapsed && hoverExpand);
   let closing = $state(false);
-  const peek = $derived(canPeek && (peekIntent.open || closing));
+  /// A drag that rests on the collapsed rail opens it, hover panels or not,
+  /// until the drag ends (drag-to-playlist spec DD-D9).
+  let dragPeek = $state(false);
+  const peek = $derived((canPeek && (peekIntent.open || closing)) || (collapsed && dragPeek));
   const rail = $derived(collapsed && !peek);
+
+  $effect(() => {
+    if (dragDrop.active === null) dragPeek = false;
+  });
+
+  let scrollEl = $state<HTMLElement | null>(null);
+  const RAIL_SPRING_MS = 400;
+  const sidebarZone = $derived<DropZone>({
+    key: "sidebar",
+    scroller: () => scrollEl,
+    spring: collapsed && !peek ? { ms: RAIL_SPRING_MS, open: () => (dragPeek = true) } : undefined,
+  });
 
   $effect(() => {
     if (!canPeek) untrack(() => peekIntent.reset());
@@ -110,15 +126,6 @@
     ]);
   }
 
-  let revisionSeen = untrack(() => playlistActions.revision);
-
-  $effect(() => {
-    const revision = playlistActions.revision;
-    if (revision === revisionSeen) return;
-    revisionSeen = revision;
-    untrack(() => void collection.refresh());
-  });
-
   const collectionItems: { route: Route; label: string; icon: "list-music" | "disc-3" | "music" }[] = [
     { route: { name: "playlists" }, label: "Playlists", icon: "list-music" },
     { route: { name: "albums" }, label: "Albums", icon: "disc-3" },
@@ -150,8 +157,9 @@
   class:closing
   onpointerenter={onPointerEnter}
   onpointerleave={() => peekIntent.leave()}
+  use:dropZone={sidebarZone}
 >
-  <div class="scroll">
+  <div class="scroll" bind:this={scrollEl}>
     <div class="top">
       <h1 class="wordmark" aria-label="OxiTide">
         <Logo size={28} />{#if !rail}OxiTide{/if}
@@ -256,7 +264,7 @@
       {#if collection.error}
         <p class="muted tree-error">{collection.error}</p>
       {:else}
-        <PlaylistTree entries={collection.root} {collection} {nav} {actions} {rail} {playing} />
+        <PlaylistTree entries={collection.root} {collection} {nav} {actions} {rail} {playing} {playlistActions} />
       {/if}
     </div>
   </div>

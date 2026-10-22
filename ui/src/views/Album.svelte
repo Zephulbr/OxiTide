@@ -160,6 +160,7 @@
       onPlay={playAll}
       onShuffle={shuffleAll}
       disabled={view.items.length === 0}
+      drag={() => ({ kind: "collection", target: { kind: "album", id: albumId, title: data.title }, cover: data.cover })}
     >
       {#snippet byline()}
         <ArtistLinks artists={data.artists} onOpen={(artistId) => nav.goto({ name: "artist", id: artistId })} />
@@ -202,6 +203,7 @@
       playingTrackId={player.state.current?.track_id ?? null}
       playbackRunning={player.state.playing}
       onAddToPlaylist={(t) => playlistActions.openPicker([t])}
+      onAddManyToPlaylist={(ts) => playlistActions.openPicker(ts)}
     />
   </div>
 {:else}

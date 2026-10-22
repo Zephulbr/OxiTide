@@ -375,6 +375,33 @@ a 1px `--line` edge and `--shadow-panel`:
   card form).
 `backdrop-filter` surfaces are a fixed set and never nest. Menus mark the selected
 option with the accent, not a second background.
+
+Drag and drop (spec `2026-10-22-oxitide-drag-to-playlist-design.md`) has one look in every
+mode, with no mode branches:
+- **ghost:** a pill fixed under the pointer (offset 14/12 px), the context menu's glass
+  (`--surface-float` with 8 % accent, `--glass-blur`). It shows one 34 px cover, or two
+  stacked covers with an accent count badge, plus the label and a hint line: accent when a
+  drop is accepted, `--text-muted` with the reason when refused. It scales in over
+  `--dur-micro`, and appears at once under reduced motion.
+- **targets:** a playlist row gets an inset 2 px accent ring on a 14 % accent wash; a grid
+  card gets a 3 px accent ring around its cover. A refusing target dims to 55 % and the
+  cursor becomes `no-drop`. While an add is running, a spinning disc (accent tick on
+  `--line`) sits over the cover.
+- **queue:** a 2 px accent insertion line between rows, with the current-track gaps closed
+  while a drag is over the rail.
+- **in-table reorder:** the existing table drop line.
+- **confirm:** a drop of more than one track onto a playlist opens the playlist dialog's
+  confirm step: a 16 px lead ("Add 20 tracks?"), a `--surface-2` card with small-caps
+  From / To labels over the names, and a footer with an outlined Cancel and the accent
+  "Add N tracks" button ("Adding…" while it runs).
+- **duplicates:** a lead naming the playlist (accent), an "All" switch, and a scrolling list
+  of rows (40 px cover, title, artist) each with a Keep one / Add both pill switch whose
+  chosen half is accent-filled. The footer is "Skip duplicates" (outlined) and
+  "Add N copies" (accent, disabled with none chosen).
+- Long names in both wrap anywhere and clamp to two lines, with the full name on hover;
+  track rows ellipsize.
+- **selected track rows:** `--selection-bg` (13 % accent). A playing row keeps its stronger
+  playing tint.
 Ambient motion only while playing. `prefers-reduced-motion` is a hard floor in every
 mode: ambient off, glides instant, slides become 120 ms fades.
 
@@ -413,6 +440,7 @@ that is not active must cost nothing.
 | App mark | `ui/src/lib/components/Logo.svelte` (inline SVG; ring = `--accent`, wave = accent hue-rotated −130°, brand colours as fallback; detail steps down by `size`; shown in Sidebar, Rack header, Login; icon-file sources in `crates/oxitide-app/icons/svg/`) |
 | Window chrome (Windows) | Undecorated window: `WindowControls.svelte` caption buttons pinned top-right over every shell, `lib/titlebar.ts` drag band (top `--titlebar-h` = 32px; presses on non-controls drag, double-click maximizes). Shells without a top gutter (Mini, Rack, Rack mini) pad their top to `--titlebar-h`; the queue steps down under it. Close hover uses `--caption-close` (platform red). Snap Layouts: native overlay in `crates/oxitide-app/src/titlebar.rs`. Linux keeps the system frame. |
 | Covers | `ui/src/lib/components/Cover.svelte`, `ui/src/lib/artwork.ts` |
+| Drag and drop | `ui/src/lib/dragDrop.svelte.ts` (controller, `dragSource` / `dropZone`), `ui/src/lib/components/DragGhost.svelte`, `ui/src/lib/playlistDrop.ts` |
 | Rack reference mockup | `ui/design/rack/reference-mockup.html` (open via any static server at the repo root) |
 | Phone remote | `ui/remote.html`, `ui/src/remote/` (styles: `remote/remote.css` + component styles) |
 | Easter eggs | Oneko + kuroneko: `ui/src/lib/components/Neko.svelte`. Classic gif colours; kuroneko is the same sprite under `filter: invert(1)`; petting hearts are an 8×6 pixel SVG in `--accent` that float up and fade over 900 ms, at most 6 at once, `z-index: 8` like the cats. Jamming cat: `CatJam.svelte`, a 32 px pixel sprite in the player bar's left zone between the track title and the heart, at 100–200 % (Settings → Extras → Size, default 125 %; `pointer-events: none`). It has six coats (`lib/catjamSprite.ts`, chosen in Settings → Extras with `settings/CoatPicker.svelte`). None of them branch on mode; all are hidden under reduced motion. |

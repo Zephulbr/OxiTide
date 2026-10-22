@@ -2,7 +2,7 @@
   import { untrack } from "svelte";
   import { cubicOut } from "svelte/easing";
   import { fade, type TransitionConfig } from "svelte/transition";
-  import { api, type QueueItem } from "../api";
+  import { api, trackToQueueItem, type QueueItem } from "../api";
   import { copyText } from "../clipboard";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import Icon from "./Icon.svelte";
@@ -19,6 +19,12 @@
   import type { Player } from "../player.svelte";
   import type { Route } from "../nav.svelte";
   import { albumRoute, goToTargets } from "../queueLinks";
+  import { dragDrop, dropZone, type DropZone } from "../dragDrop.svelte";
+  import { resolveTracks } from "../dragPayload";
+  import { errorMessage } from "../errors";
+  import { glideActive } from "../queueTransition";
+  import type { Toasts } from "../toasts.svelte";
+  import { trackFlags } from "../trackFlags.svelte";
   import NameLink from "./NameLink.svelte";
   import QueueArtistLinks from "./QueueArtistLinks.svelte";
 
@@ -26,6 +32,7 @@
     player,
     title = true,
     go,
+    toasts,
   }: {
     player: Player;
     /// Rack shells draw their own unit heading; they pass false.
@@ -33,6 +40,8 @@
     /// Opens a page from a row's names (name-links spec); without it the names
     /// stay plain text (mini players).
     go?: (route: Route) => void;
+    /// Reports drops on the rail; without it they land silently.
+    toasts?: Toasts;
   } = $props();
 
   /// A name click right after a drag release must not navigate, just as the
@@ -133,7 +142,7 @@
   const TAIL = 12 + 2 * GAP;
 
   function gapBefore(index: number): number {
-    if (drag || currentIndex === null || index < currentIndex) return 0;
+    if (drag || dropSlot !== null || currentIndex === null || index < currentIndex) return 0;
     return index === currentIndex ? GAP : 2 * GAP;
   }
 
@@ -176,6 +185,57 @@
       followed = { el, id, index };
     });
   });
+
+  // ---- App drags dropped on the rail --------------------------------------
+
+  /// The slot an app drag over the rail would insert at (the row gaps close
+  /// meanwhile, so rows sit at index × rowH), and where its line is drawn.
+  let dropSlot = $state<number | null>(null);
+  let dropLineY = $state(0);
+  let listEl = $state<HTMLElement | null>(null);
+
+  function slotAt(clientY: number): number {
+    if (!scroller) return items.length;
+    return Math.max(0, Math.min(items.length, Math.round(contentY(clientY) / rowH)));
+  }
+
+  /// Tracks dropped on the rail (drag-to-playlist spec DD-D8): inserted at
+  /// the slot, or appended below the last row, without hidden tracks.
+  async function dropTracks(payload: Parameters<typeof resolveTracks>[0], slot: number) {
+    try {
+      const prepared = await trackFlags.filterPlayable(await resolveTracks(payload), 0);
+      if (!prepared) {
+        toasts?.show("Everything here is hidden by your content filters.", { severity: "info" });
+        return;
+      }
+      const queued = prepared.items.map(trackToQueueItem);
+      if (slot >= items.length) await api.queueAdd(queued);
+      else await api.queueInsert(slot, queued);
+      const noun = queued.length === 1 ? `"${queued[0].title}"` : `${queued.length} tracks`;
+      toasts?.show(`Added ${noun} to the queue`);
+    } catch (e) {
+      toasts?.show(errorMessage(e), { severity: "error" });
+    }
+  }
+
+  const queueZone: DropZone = {
+    key: "queue",
+    accepts: () =>
+      glideActive() ? { ok: false, reason: "The queue is moving" } : { ok: true, hint: "Add to queue" },
+    hover: (_payload, point) => {
+      const slot = items.length === 0 ? 0 : slotAt(point.y);
+      dropSlot = slot;
+      if (scroller && listEl) {
+        const offset = scroller.getBoundingClientRect().top - listEl.getBoundingClientRect().top;
+        dropLineY = offset + slot * rowH - scroller.scrollTop;
+      }
+    },
+    leave: () => {
+      dropSlot = null;
+    },
+    drop: (payload, point) => dropTracks(payload, items.length === 0 ? 0 : slotAt(point.y)),
+    scroller: () => scroller,
+  };
 
   // ---- Pointer drag -------------------------------------------------------
 
@@ -388,7 +448,15 @@
   </span>
 {/snippet}
 
-<div class="queue-rail" class:settling class:dragging={drag !== null} bind:this={rail} style:--q-row="{rowH}px">
+<div
+  class="queue-rail"
+  class:settling
+  class:dragging={drag !== null || dropSlot !== null}
+  class:drop-over={dragDrop.targetKey === "queue" && dragDrop.verdict?.ok === true}
+  bind:this={rail}
+  style:--q-row="{rowH}px"
+  use:dropZone={queueZone}
+>
   <header class="q-head">
     {#if title}<h2 class="q-title">Queue</h2>{/if}
     {#if items.length > 0}
@@ -425,7 +493,10 @@
       <p class="muted">Play something, or use “Play next” and “Add to queue” on any track.</p>
     </div>
   {:else}
-    <div class="q-list">
+    <div class="q-list" bind:this={listEl}>
+      {#if dropSlot !== null && dragDrop.verdict?.ok}
+        <div class="q-drop-line" style:top="{dropLineY}px" aria-hidden="true"></div>
+      {/if}
       <VirtualList
         total={items.length}
         rowHeight={rowH}
@@ -583,10 +654,27 @@
   /* Flex sizing (not a percentage max-height) bounds the virtual list to the
      space left under the header, whatever the host container is. */
   .q-list {
+    position: relative;
     display: flex;
     flex-direction: column;
     flex: 1 1 auto;
     min-height: 0;
+  }
+  /* Where an app drag would insert (drag-to-playlist spec DD-D8). */
+  .q-drop-line {
+    position: absolute;
+    z-index: 2;
+    left: 12px;
+    right: 12px;
+    height: 2px;
+    margin-top: -1px;
+    border-radius: 1px;
+    background: var(--accent);
+    pointer-events: none;
+  }
+  /* An empty queue under a drag: the whole rail is the target. */
+  .drop-over .q-empty {
+    color: var(--accent);
   }
   .q-list > :global(.scroll) {
     flex: 1 1 0;

@@ -102,6 +102,45 @@ export function trackMenuItems(ctx: TrackMenuContext): MenuItem[] {
   return items;
 }
 
+/// A track table's multi-row selection (right-click inside a selection of
+/// two or more). Remove is present only while the playlist is editable.
+export function selectionMenuItems(ctx: {
+  count: number;
+  playNext(): void;
+  addToQueue(): void;
+  /// Absent where the table has no playlist picker.
+  addToPlaylist?: () => void;
+  remove?: () => void;
+}): MenuItem[] {
+  const n = ctx.count;
+  const items: MenuItem[] = [
+    { id: "play-next", label: `Play ${n} next`, icon: "skip-forward", run: () => ctx.playNext() },
+    { id: "add-queue", label: `Add ${n} to queue`, icon: "plus", run: () => ctx.addToQueue() },
+  ];
+  const addToPlaylist = ctx.addToPlaylist;
+  if (addToPlaylist) {
+    items.push({
+      id: "add-playlist",
+      label: `Add ${n} to playlist`,
+      icon: "list-plus",
+      divider: true,
+      run: () => addToPlaylist(),
+    });
+  }
+  const remove = ctx.remove;
+  if (remove) {
+    items.push({
+      id: "remove",
+      label: `Remove ${n} from playlist`,
+      icon: "trash-2",
+      danger: true,
+      divider: true,
+      run: () => remove(),
+    });
+  }
+  return items;
+}
+
 interface GoToTargets {
   goToAlbum?: () => void;
   goToArtists?: { name: string; open(): void }[];

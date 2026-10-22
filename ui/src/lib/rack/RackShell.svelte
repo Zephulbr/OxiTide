@@ -12,6 +12,7 @@
   import Icon from "../components/Icon.svelte";
   import Logo from "../components/Logo.svelte";
   import PlaylistTree from "../components/PlaylistTree.svelte";
+  import { dropZone } from "../dragDrop.svelte";
   import QueueRail from "../components/QueueRail.svelte";
   import SleepTimerControl from "../components/SleepTimerControl.svelte";
   import type { Favorites } from "../favorites.svelte";
@@ -66,6 +67,8 @@
     onLogout: () => void;
     onQualityDisplay: (mode: QualityDisplay) => void;
   } = $props();
+
+  let treeWin = $state<HTMLElement | null>(null);
 
   /// Mirrors the default sidebar (search lives on Explore).
   const SOURCES: { source: Source; label: string; route: Route }[] = [
@@ -266,17 +269,18 @@
     {:else}
       {#if appearance.rack.eq_unit}<EqUnit {toasts} />{/if}
       {#if nav.queueOpen}
-        <ChangerUnit {player} onClose={() => nav.toggleQueue()} {go} />
+        <ChangerUnit {player} {toasts} onClose={() => nav.toggleQueue()} {go} />
       {:else}
       <section class="rk-unit library" aria-label="Playlists">
         <div class="rk-head"><h2 class="rk-name">Playlists</h2>
           <button class="rk-key sm" onclick={() => go({ name: "playlists" })} title="All playlists">All</button>
         </div>
-        <div class="rk-win tree">
+        <!-- Auto-scrolls under a drag headed for one of its playlists. -->
+        <div class="rk-win tree" bind:this={treeWin} use:dropZone={{ key: "rack-tree", scroller: () => treeWin }}>
           {#if collection.error}
             <p class="muted">{collection.error}</p>
           {:else}
-            <PlaylistTree entries={collection.root} {collection} {nav} actions={collectionActions} playing={player.state.playing} />
+            <PlaylistTree entries={collection.root} {collection} {nav} actions={collectionActions} playing={player.state.playing} {playlistActions} />
           {/if}
         </div>
       </section>
@@ -315,7 +319,7 @@
           <div class="rk-head"><h2 class="rk-name">Queue</h2>
             <button class="rk-key sm" onclick={() => nav.toggleQueue()} aria-label="Close queue" title="Close"><Icon name="x" size={12} /></button>
           </div>
-          <div class="rk-win drawerwin"><QueueRail {player} title={false} {go} /></div>
+          <div class="rk-win drawerwin"><QueueRail {player} {toasts} title={false} {go} /></div>
         </aside>
       {/if}
     </section>
@@ -325,7 +329,7 @@
       <div class="rk-head"><h2 class="rk-name">Queue</h2>
         <button class="rk-key sm" onclick={() => nav.toggleQueue()} aria-label="Close queue" title="Close"><Icon name="x" size={12} /></button>
       </div>
-      <div class="rk-win drawerwin"><QueueRail {player} title={false} {go} /></div>
+      <div class="rk-win drawerwin"><QueueRail {player} {toasts} title={false} {go} /></div>
     </aside>
   {/if}
 </div>

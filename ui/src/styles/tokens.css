@@ -41,6 +41,8 @@
   /* Warm graphite veil for floating overlays over art (menus, dropdowns):
      opaque enough that a bright cover can never wash them out. */
   --surface-float: rgba(23, 18, 14, 0.82);
+  /* Selected track rows (multi-select); follows each mode's accent. */
+  --selection-bg: color-mix(in srgb, var(--accent) 13%, transparent);
   /* The player bar's glass fill. Opaque modes use their panel surface;
      Atmosphere darkens it toward the bottom edge so text stays legible over
      a bright cover (modes.css / themes.css). `-top` is the fill at the bar's

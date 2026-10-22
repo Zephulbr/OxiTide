@@ -1,5 +1,7 @@
 <script lang="ts">
   import { dspBadgeTitle } from "../dsp";
+  import { dragSource } from "../dragDrop.svelte";
+  import type { DragPayload } from "../dragPayload";
   import { formatDuration } from "../format";
   import { menu, menuButton, menuFor, type MenuItem } from "../menu.svelte";
   import { nowPlayingMenuItems } from "../menus";
@@ -154,6 +156,13 @@
       trackInfo: () => void withTrack(item, (track) => trackInfo.open(track)),
       ...goToTargets(item, go, api.getTrack),
     });
+  }
+
+  /// The cover and the title block drag the playing track (to a playlist or
+  /// the queue); read at drag time, like the menu.
+  function dragCurrent(): DragPayload | null {
+    const item = player.state.current;
+    return item ? { kind: "track-id", id: item.track_id, title: item.title, cover: item.cover } : null;
   }
 
   let plateButton = $state<HTMLButtonElement | null>(null);
@@ -326,7 +335,13 @@
     <SeekBar {player} taper={floating} />
 
     <div class="zone left">
-      <button class="thumb" onclick={() => nav.toggleNowPlaying()} aria-label="Open now playing" title="Open now playing">
+      <button
+        class="thumb"
+        onclick={() => nav.toggleNowPlaying()}
+        aria-label="Open now playing"
+        title="Open now playing"
+        use:dragSource={dragCurrent}
+      >
         <Cover uuid={current.cover} size={160} radius={6} alt={`${current.title} artwork`} />
         <span class="thumb-hint" aria-hidden="true"><Icon name="chevron-up" size={18} /></span>
       </button>
@@ -337,7 +352,7 @@
         {#key current.track_id}
           <!-- Lines too long for the column scroll slowly while hovered
                (lib/marquee.ts); each line's first child is what moves. -->
-          <div class="now" use:marquee use:menuFor={nowMenuItems}>
+          <div class="now" use:marquee use:menuFor={nowMenuItems} use:dragSource={dragCurrent}>
             <strong class="title" data-marquee><span><NameLink label={current.title} onOpen={() => void openAlbum(current)} /></span></strong>
             <span class="muted artist" data-marquee><span><QueueArtistLinks item={current} {go} /></span></span>
             {#if from}

@@ -3,6 +3,7 @@
   import { api, type Playlist } from "../api";
   import type { PlaylistActions } from "../playlists.svelte";
   import { sortPlaylistsByRecency } from "../playlistSort";
+  import Cover from "./Cover.svelte";
   import Icon from "./Icon.svelte";
   import Modal from "./Modal.svelte";
 
@@ -66,9 +67,42 @@
   }
 </script>
 
+<!-- Keep one / Add both, for one duplicate (`label` names it) or all of them.
+     Neither half is pressed when the rows are mixed. -->
+{#snippet segmented(keep: boolean, both: boolean, onKeep: () => void, onBoth: () => void, label?: string)}
+  <span class="seg" role="group" aria-label={label ? `${label}: keep one or add both` : "All duplicates"}>
+    <button class:on={keep} aria-pressed={keep} onclick={onKeep}>Keep one</button>
+    <button class:on={both} aria-pressed={both} onclick={onBoth}>Add both</button>
+  </span>
+{/snippet}
+
 {#if actions.open}
   <Modal title={actions.step === "create" ? "Create playlist" : "Add to playlist"} onclose={close}>
-    {#if actions.step === "list"}
+    {#if actions.step === "confirm" && actions.confirming}
+      <!-- A drop of more than one track asks first (drag-to-playlist DD-D15). -->
+      {@const c = actions.confirming}
+      <div class="confirm">
+        <p class="lead">Add {c.count} tracks?</p>
+        <dl class="route">
+          {#if c.from}
+            <div class="leg">
+              <dt>From</dt>
+              <dd title={c.from}>{c.from}</dd>
+            </div>
+          {/if}
+          <div class="leg">
+            <dt>To</dt>
+            <dd title={c.playlist.title}>{c.playlist.title}</dd>
+          </div>
+        </dl>
+        <p class="footer">
+          <button class="cancel" onclick={close}>Cancel</button>
+          <button class="save" disabled={actions.busy} onclick={() => void actions.confirmAdd()}>
+            {actions.busy ? "Adding…" : `Add ${c.count} tracks`}
+          </button>
+        </p>
+      </div>
+    {:else if actions.step === "list"}
       <div class="list-step">
         <button class="new" disabled={actions.busy} onclick={() => actions.startCreate()}>
           <span class="new-icon"><Icon name="plus" size={16} /></span>
@@ -154,41 +188,37 @@
         </p>
       </form>
     {:else}
-      <p class="muted">Some tracks are already in this playlist. Keep one, or add another copy.</p>
-      <div class="dupes">
-        {#each actions.duplicates as t (t.id)}
-          <div class="dupe">
-            <div class="card">
-              <strong>{t.title}</strong>
-              <span class="muted">{t.artists.map((a) => a.name).join(", ")}</span>
-              <span class="muted">In playlist</span>
-            </div>
-            <div class="card">
-              <strong>{t.title}</strong>
-              <span class="muted">{t.artists.map((a) => a.name).join(", ")}</span>
-              <span class="muted">Adding</span>
-            </div>
-            <div class="choice">
-              <button class:on={!choice(t.id)} onclick={() => actions.setChoice(t.id, false)}>
-                Keep one
-              </button>
-              <button class:on={choice(t.id)} onclick={() => actions.setChoice(t.id, true)}>
-                Add both
-              </button>
-            </div>
-          </div>
-        {/each}
+      {@const dupes = actions.duplicates}
+      {@const copies = dupes.filter((t) => choice(t.id)).length}
+      <div class="dupes-step">
+        <p class="lead">
+          {dupes.length === 1 ? "1 track is" : `${dupes.length} tracks are`} already in
+          {#if actions.target}<span class="name" title={actions.target.title}>{actions.target.title}</span>{:else}this playlist{/if}
+        </p>
+        <p class="muted hint">Keep the copy that's there, or add another.</p>
+        <div class="bulk">
+          <span class="muted">All</span>
+          {@render segmented(copies === 0, copies === dupes.length, () => actions.setAllChoices(false), () => actions.setAllChoices(true))}
+        </div>
+        <ul class="dupes">
+          {#each dupes as t (t.id)}
+            <li class="dupe">
+              <span class="dupe-cover"><Cover uuid={t.album?.cover} size={80} radius={4} /></span>
+              <span class="dupe-text">
+                <span class="dupe-title" title={t.title}>{t.title}</span>
+                <span class="muted dupe-artist">{t.artists.map((a) => a.name).join(", ")}</span>
+              </span>
+              {@render segmented(!choice(t.id), choice(t.id), () => actions.setChoice(t.id, false), () => actions.setChoice(t.id, true), t.title)}
+            </li>
+          {/each}
+        </ul>
+        <p class="footer">
+          <button class="cancel" onclick={close}>Skip duplicates</button>
+          <button class="save" disabled={actions.busy || copies === 0} onclick={() => void actions.confirmDuplicates()}>
+            {copies === 0 ? "Add copies" : copies === 1 ? "Add 1 copy" : `Add ${copies} copies`}
+          </button>
+        </p>
       </div>
-      <p class="actions">
-        <button onclick={() => actions.setAllChoices(false)}>Keep one of each</button>
-        <button onclick={() => actions.setAllChoices(true)}>Add all duplicates</button>
-      </p>
-      <p class="actions">
-        <button onclick={close}>Close (keep one of each)</button>
-        <button disabled={actions.busy} onclick={() => void actions.confirmDuplicates()}>
-          Confirm
-        </button>
-      </p>
     {/if}
   </Modal>
 {/if}
@@ -263,37 +293,161 @@
     align-self: flex-start;
     margin: 0 10px 9px;
   }
-  .dupes {
-    max-height: 45vh;
-    overflow: auto;
-  }
-  .dupe {
-    display: grid;
-    grid-template-columns: 1fr 1fr auto;
-    gap: 8px;
-    align-items: center;
-    padding: 8px 0;
-    border-bottom: 1px solid var(--line);
-  }
-  .card {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  .choice {
-    display: flex;
-    gap: 4px;
-  }
-  .choice .on {
-    color: var(--accent);
-  }
   .error {
     color: var(--danger);
   }
-  .actions {
+  /* Confirm and duplicates steps: a short lead, then the details, then a
+     footer of real buttons (quiet secondary, accent primary). Long names
+     wrap anywhere and clamp to two lines; the full name is on hover. */
+  .confirm,
+  .dupes-step {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: min(420px, 80vw);
+  }
+  .dupes-step {
+    width: min(500px, 84vw);
+  }
+  .lead {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 650;
+    line-height: 1.35;
+  }
+  .lead .name,
+  .route dd {
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+  }
+  .lead .name {
+    color: var(--accent);
+  }
+  .hint {
+    margin: -6px 0 0;
+    font-size: 13px;
+  }
+  .route {
+    display: grid;
+    gap: 2px;
+    margin: 0;
+    padding: 4px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    background: var(--surface-2);
+  }
+  .leg {
+    display: grid;
+    grid-template-columns: 44px 1fr;
+    align-items: baseline;
+    gap: 10px;
+    padding: 8px 10px;
+  }
+  .leg + .leg {
+    border-top: 1px solid var(--line);
+  }
+  .route dt {
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .route dd {
+    margin: 0;
+    min-width: 0;
+    color: var(--text);
+    font-weight: 600;
+    line-height: 1.35;
+  }
+  .footer {
     display: flex;
     justify-content: flex-end;
     gap: 8px;
+    margin: 4px 0 0;
+  }
+  .footer .save {
+    min-width: 96px;
+  }
+  .bulk {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    font-size: 13px;
+  }
+  .dupes {
+    max-height: min(46vh, 420px);
+    margin: 0;
+    padding: 0 4px 0 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    list-style: none;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  .dupe {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 2px;
+  }
+  .dupe + .dupe {
+    border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+  }
+  .dupe-cover {
+    flex: 0 0 auto;
+    width: 40px;
+    height: 40px;
+  }
+  .dupe-text {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    gap: 1px;
+  }
+  .dupe-title,
+  .dupe-artist {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .dupe-title {
+    font-weight: 600;
+  }
+  .dupe-artist {
+    font-size: 13px;
+  }
+  /* Keep one / Add both: a two-part switch; the chosen half is filled. */
+  .seg {
+    flex: 0 0 auto;
+    display: inline-flex;
+    padding: 2px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--surface-2);
+  }
+  .seg button {
+    padding: 5px 11px;
+    border-radius: 999px;
+    color: var(--text-muted);
+    font-size: 12.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    transition:
+      background var(--dur-micro) var(--ease-enter),
+      color var(--dur-micro) var(--ease-enter);
+  }
+  .seg button:hover:not(.on) {
+    color: var(--text);
+  }
+  .seg button.on {
+    background: var(--accent);
+    color: var(--on-accent);
   }
   .create {
     min-width: min(460px, 76vw);
@@ -429,12 +583,28 @@
     justify-content: flex-end;
     margin: 16px 0 0;
   }
+  .cancel {
+    padding: 9px 16px;
+    border: 1px solid color-mix(in srgb, var(--text) 22%, transparent);
+    border-radius: var(--radius-control);
+    background: var(--surface-2);
+    color: var(--text);
+    font-weight: 600;
+    transition: background var(--dur-micro) var(--ease-enter);
+  }
+  .cancel:hover {
+    background: var(--surface-3);
+  }
   .save {
     padding: 9px 24px;
     border-radius: var(--radius-control);
     background: var(--accent);
     color: var(--on-accent);
     font-weight: 600;
+    transition: filter var(--dur-micro) var(--ease-enter);
+  }
+  .save:hover:not(:disabled) {
+    filter: brightness(1.08);
   }
   .save:disabled {
     opacity: 0.5;

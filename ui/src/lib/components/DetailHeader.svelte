@@ -1,5 +1,7 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import { dragSource } from "../dragDrop.svelte";
+  import type { DragPayload } from "../dragPayload";
   import Icon from "./Icon.svelte";
 
   let {
@@ -14,6 +16,7 @@
     onPlay,
     onShuffle,
     disabled = false,
+    drag,
   }: {
     kicker: string;
     title: string;
@@ -29,6 +32,9 @@
     onPlay: () => void;
     onShuffle: () => void;
     disabled?: boolean;
+    /// What dragging the cover carries (the page's collection), for a drop
+    /// on a playlist or the queue.
+    drag?: () => DragPayload | null;
   } = $props();
 
   /// The stats line split so its counts ("702 TRACKS", "2 FANS") can take the
@@ -38,7 +44,7 @@
 
 <header class="detail-header pane">
   <div class="hero">
-    <span class="hero-art">
+    <span class="hero-art" use:dragSource={() => drag?.() ?? null}>
       {@render cover()}
       <span class="kicker">{kicker}</span>
     </span>

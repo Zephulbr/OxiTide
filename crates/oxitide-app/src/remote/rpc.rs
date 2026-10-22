@@ -510,6 +510,8 @@ mod tests {
         "get_artist_albums",
         // Desktop Explore's per-type paging; the phone's search uses `search`.
         "search_type",
+        // Slot drops from the desktop queue rail; the phone has no drag UI.
+        "queue_insert",
         "open_external",
         "get_custom_titlebar",
         "set_snap_target",

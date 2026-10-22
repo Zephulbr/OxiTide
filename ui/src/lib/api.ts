@@ -719,6 +719,8 @@ export const api = {
   queueRemove: (index: number) => invoke<void>("queue_remove", { index }),
   queueAdd: (items: QueueItem[]) => invoke<void>("queue_add", { items }),
   queuePlayNext: (items: QueueItem[]) => invoke<void>("queue_play_next", { items }),
+  /// Insert at queue slot `index` (before the item there; past the end appends).
+  queueInsert: (index: number, items: QueueItem[]) => invoke<void>("queue_insert", { index, items }),
   queueClear: () => invoke<void>("queue_clear"),
   getPlaybackState: () => invoke<PlaybackState>("get_playback_state"),
   getRestoredSession: () => invoke<RestoredSession | null>("get_restored_session"),

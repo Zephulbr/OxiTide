@@ -131,6 +131,20 @@
     untrack(() => current.loadMore());
   });
 
+  // Tracks added to this playlist from elsewhere (the picker, or a drop on
+  // its tree row) show up without leaving the page.
+  let addSeen = untrack(() => playlistActions.lastAdded?.seq ?? 0);
+  $effect(() => {
+    const added = playlistActions.lastAdded;
+    if (!added || added.seq === addSeen) return;
+    addSeen = added.seq;
+    if (added.uuid !== id) return;
+    untrack(() => {
+      void pager.refresh();
+      void load();
+    });
+  });
+
   // Warm the filter/sort caches in idle chunks for large playlists (see
   // CollectionTracks); the first keystroke must not pay the whole build.
   $effect(() => {
@@ -247,6 +261,28 @@
     }
   }
 
+  /// Remove a multi-row selection (displayed-row indices) in one request.
+  async function removeMany(indices: number[]) {
+    if (busy) return;
+    const sources = [...new Set(indices.map((index) => view.sourceIndex(index)))]
+      .filter((index) => index >= 0)
+      .sort((a, b) => a - b);
+    if (sources.length === 0) return;
+    busy = true;
+    try {
+      await api.removePlaylistItems(id, sources);
+      invalidatePlaylistCovers(id);
+      await pager.refresh();
+      toasts.show(`Removed ${sources.length} ${sources.length === 1 ? "track" : "tracks"} from playlist`, {
+        severity: "success",
+      });
+    } catch (e) {
+      toasts.show(errorMessage(e), { severity: "error" });
+    } finally {
+      busy = false;
+    }
+  }
+
   async function moveTrack(from: number, to: number) {
     if (busy || from === to) return;
     busy = true;
@@ -317,6 +353,11 @@
         onPlay={playAll}
         onShuffle={shuffleAll}
         disabled={view.items.length === 0}
+        drag={() => ({
+          kind: "collection",
+          target: { kind: "playlist", id, title: data.title },
+          cover: data.squareImage ?? pager.items[0]?.album?.cover ?? null,
+        })}
       >
         {#snippet cover()}
           <PlaylistCover
@@ -386,10 +427,12 @@
       onPlay={playFrom}
       onEndReached={() => void pager.loadMore()}
       onAddToPlaylist={(t) => playlistActions.openPicker([t])}
+      onAddManyToPlaylist={(ts) => playlistActions.openPicker(ts)}
+      sourcePlaylist={id}
       playingTrackId={player.state.current?.track_id ?? null}
       playbackRunning={player.state.playing}
       playlistActions={playlist?.owned
-        ? { onRemove: removeAt, busy, disabled: !pager.done, onDrop: moveTrack }
+        ? { onRemove: removeAt, onRemoveMany: removeMany, busy, disabled: !pager.done, onDrop: moveTrack }
         : undefined}
     />
     {#if pager.error}

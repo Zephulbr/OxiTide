@@ -2,6 +2,8 @@
   import type { PageItem } from "../api";
   import { appearance } from "../appearance.svelte";
   import { cardTarget, getCardActions } from "../cardActions";
+  import { dragSource } from "../dragDrop.svelte";
+  import type { DragPayload } from "../dragPayload";
   import { coverTint } from "../coverTint";
   import { isFullAlbum, isPlayableTrack, shapeForItemType } from "../media";
   import { menuFor } from "../menu.svelte";
@@ -111,6 +113,16 @@
   function intentEnd() {
     clearTimeout(dwell);
   }
+
+  /// What dragging the card carries (drag-to-playlist spec §6.2): its
+  /// collection, or a track card's track; artists, page links and radios
+  /// carry nothing. Tracks are fetched only on drop.
+  function dragPayload(): DragPayload | null {
+    const collection = cardTarget(item);
+    if (collection) return { kind: "collection", target: collection, cover: tintSource };
+    if (playable) return { kind: "track-id", id: Number(item.id), title: item.title, cover: item.artwork };
+    return null;
+  }
   $effect(() => () => clearTimeout(dwell));
 </script>
 
@@ -164,6 +176,7 @@
     onpointerleave={intentEnd}
     onfocusin={intentStart}
     use:menuFor={() => actions.menu(item, collection)}
+    use:dragSource={dragPayload}
   >
     <span class="art" style:--thumb="{thumb}px">
       <!-- The cover is the card's tab stop; the title repeats its target, so
@@ -204,6 +217,7 @@
     onpointerleave={intentEnd}
     onfocus={intentStart}
     aria-label={showPlay ? `Play ${item.title}` : undefined}
+    use:dragSource={dragPayload}
   >{@render body()}</button>
 {:else}
   <div class="media {variant} shape-{shape} inert" class:full-album={fullAlbum} class:playing class:blocked>{@render body()}</div>

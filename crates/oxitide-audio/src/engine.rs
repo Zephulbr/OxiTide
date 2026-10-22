@@ -122,6 +122,10 @@ pub enum EngineCmd {
     /// Insert right after the current track ("Play next"). A prefetched next
     /// track that is no longer next is dropped at the advance, like a reorder.
     EnqueueNext { items: Vec<QueueItem> },
+    /// Insert at queue slot `index` (a drop on the queue); past the end
+    /// appends. The current track keeps playing; a stale prefetch is dropped
+    /// at the advance, as for `EnqueueNext`.
+    EnqueueAt { index: usize, items: Vec<QueueItem> },
     Clear,
     /// Fade the output to silence over `duration_ms`, then pause at the current
     /// position. The pre-fade volume is restored for the next play; a
@@ -793,6 +797,12 @@ impl Engine {
             EngineCmd::EnqueueNext { items } => {
                 if !items.is_empty() {
                     self.inner.queue.lock().unwrap().insert_next(items);
+                    self.emit(EngineEvent::State(self.state()));
+                }
+            }
+            EngineCmd::EnqueueAt { index, items } => {
+                if !items.is_empty() {
+                    self.inner.queue.lock().unwrap().insert_at(index, items);
                     self.emit(EngineEvent::State(self.state()));
                 }
             }
@@ -4133,6 +4143,25 @@ mod tests {
         assert_eq!(state.current_index, Some(0));
         assert!(state.playing);
         assert_eq!(output.opens(), opens, "play next must not restart the session");
+    }
+
+    #[test]
+    fn enqueue_at_before_current_keeps_playing_without_restarting() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 }).unwrap();
+        wait_for(|| !output.samples().is_empty());
+        let opens = output.opens();
+
+        engine.handle(EngineCmd::EnqueueAt { index: 0, items: vec![item(3), item(4)] }).unwrap();
+
+        let state = engine.state();
+        let ids: Vec<_> = state.queue.iter().map(|i| i.track_id).collect();
+        assert_eq!(ids, vec![3, 4, 1, 2]);
+        assert_eq!(state.current_index, Some(2));
+        assert_eq!(state.current.map(|i| i.track_id), Some(1));
+        assert!(state.playing);
+        assert_eq!(output.opens(), opens, "a queue insert must not restart the session");
     }
 
     #[test]

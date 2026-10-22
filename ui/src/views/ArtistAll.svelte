@@ -261,6 +261,7 @@
       onPlay={playFrom}
       onEndReached={() => void pager.loadMore()}
       onAddToPlaylist={(t) => playlistActions.openPicker([t])}
+      onAddManyToPlaylist={(ts) => playlistActions.openPicker(ts)}
       playingTrackId={player.state.current?.track_id ?? null}
       playbackRunning={player.state.playing}
     />

@@ -94,7 +94,7 @@ describe("playlist actions store", () => {
 
     expect(api.addPlaylistTracks).toHaveBeenCalledTimes(1);
     expect(actions.open).toBe(false);
-    expect(toasts.calls).toEqual([{ message: "0 added, 1 kept one of", severity: "info" }]);
+    expect(toasts.calls).toEqual([{ message: "Kept one of the duplicate", severity: "info" }]);
   });
 
   it("sends only the add-both choices with allow_duplicates", async () => {
@@ -154,7 +154,7 @@ describe("playlist actions store", () => {
 
     expect(api.addPlaylistTracks).toHaveBeenLastCalledWith("p", [7], true);
     expect(api.addPlaylistTracks).toHaveBeenCalledTimes(2);
-    expect(toasts.calls).toEqual([{ message: "1 added, 0 kept one of", severity: "info" }]);
+    expect(toasts.calls).toEqual([{ message: "Added 1 copy", severity: "info" }]);
   });
 
   it("surfaces a failed add and keeps the picker open with its pending tracks", async () => {
@@ -285,5 +285,179 @@ describe("playlist actions store", () => {
     expect(actions.open).toBe(false);
     expect(actions.pendingTrackIds).toEqual([]);
     expect(actions.step).toBe("list");
+  });
+});
+
+describe("addTracks (drag drop)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function capturingToasts() {
+    const shown: { message: string; severity?: ToastSeverity; action?: { label: string; run(): void } }[] = [];
+    const toasts: Toasts = {
+      get toasts() {
+        return [];
+      },
+      show(message, options) {
+        shown.push({ message, ...options });
+        return shown.length;
+      },
+      dismiss() {},
+    };
+    return { toasts, shown };
+  }
+
+  it("adds without opening the picker and offers Open", async () => {
+    vi.mocked(api.addPlaylistTracks).mockResolvedValue([1, 2]);
+    const { toasts, shown } = capturingToasts();
+    const actions = createPlaylistActions(toasts);
+    const onOpen = vi.fn();
+
+    await actions.addTracks(playlist("p", "Road Trip"), [track(1), track(2)], { onOpen });
+
+    expect(api.addPlaylistTracks).toHaveBeenCalledWith("p", [1, 2], false);
+    expect(actions.open).toBe(false);
+    expect(shown).toHaveLength(1);
+    expect(shown[0].message).toBe("Added 2 tracks to Road Trip");
+    expect(shown[0].severity).toBe("success");
+    shown[0].action?.run();
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(actions.revision).toBe(1);
+    expect(actions.lastAdded).toEqual({ uuid: "p", seq: 1 });
+  });
+
+  it("names a single track", async () => {
+    vi.mocked(api.addPlaylistTracks).mockResolvedValue([1]);
+    const { toasts, shown } = capturingToasts();
+    const actions = createPlaylistActions(toasts);
+
+    await actions.addTracks(playlist("p", "Chill"), [track(1)]);
+
+    expect(shown[0].message).toBe('Added "T1" to Chill');
+    expect(shown[0].action).toBeUndefined();
+  });
+
+  it("opens the duplicates step when tracks were skipped", async () => {
+    vi.mocked(api.addPlaylistTracks).mockResolvedValueOnce([1]).mockResolvedValueOnce([2]);
+    const { toasts, shown } = capturingToasts();
+    const actions = createPlaylistActions(toasts);
+
+    await actions.addTracks(playlist("p"), [track(1), track(2)]);
+
+    expect(actions.open).toBe(true);
+    expect(actions.step).toBe("duplicates");
+    expect(actions.duplicates.map((t) => t.id)).toEqual([2]);
+    expect(shown).toEqual([]);
+
+    actions.setChoice(2, true);
+    await actions.confirmDuplicates();
+    expect(api.addPlaylistTracks).toHaveBeenLastCalledWith("p", [2], true);
+    expect(actions.open).toBe(false);
+    expect(actions.lastAdded?.seq).toBe(2);
+  });
+
+  it("reports an error and leaves nothing pending", async () => {
+    vi.mocked(api.addPlaylistTracks).mockRejectedValue(new Error("nope"));
+    const { toasts, shown } = capturingToasts();
+    const actions = createPlaylistActions(toasts);
+
+    await actions.addTracks(playlist("p"), [track(1)]);
+
+    expect(shown).toEqual([{ message: "Error: nope", severity: "error" }]);
+    expect(actions.open).toBe(false);
+    expect(actions.pendingTrackIds).toEqual([]);
+    expect(actions.busy).toBe(false);
+    expect(actions.revision).toBe(0);
+  });
+
+  it("loads the tracks first, and reports a failed load", async () => {
+    vi.mocked(api.addPlaylistTracks).mockResolvedValue([1]);
+    const { toasts, shown } = capturingToasts();
+    const actions = createPlaylistActions(toasts);
+
+    await actions.addTracks(playlist("p", "Chill"), async () => [track(1)]);
+    expect(api.addPlaylistTracks).toHaveBeenCalledWith("p", [1], false);
+
+    await actions.addTracks(playlist("p"), async () => {
+      throw new Error("offline");
+    });
+    expect(shown[shown.length - 1]).toEqual({ message: "Error: offline", severity: "error" });
+    expect(actions.busy).toBe(false);
+  });
+
+  it("asks before adding more than one track, then adds on confirm", async () => {
+    vi.mocked(api.addPlaylistTracks).mockResolvedValue([1, 2]);
+    const { toasts, shown } = capturingToasts();
+    const actions = createPlaylistActions(toasts);
+    const onOpen = vi.fn();
+
+    await actions.addTracks(playlist("p", "Road Trip"), async () => [track(1), track(2), track(2)], {
+      onOpen,
+      confirm: true,
+      from: "Blue",
+    });
+
+    expect(api.addPlaylistTracks).not.toHaveBeenCalled();
+    expect(actions.open).toBe(true);
+    expect(actions.step).toBe("confirm");
+    expect(actions.confirming).toEqual({ playlist: playlist("p", "Road Trip"), count: 2, from: "Blue" });
+    expect(actions.busy).toBe(false);
+
+    await actions.confirmAdd();
+    expect(api.addPlaylistTracks).toHaveBeenCalledWith("p", [1, 2], false);
+    expect(actions.open).toBe(false);
+    expect(actions.confirming).toBeNull();
+    expect(shown[0].message).toBe("Added 2 tracks to Road Trip");
+    shown[0].action?.run();
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("adds a single track without asking, and Cancel adds nothing", async () => {
+    vi.mocked(api.addPlaylistTracks).mockResolvedValue([1]);
+    const actions = createPlaylistActions(capturingToasts().toasts);
+
+    await actions.addTracks(playlist("p"), [track(1), track(1)], { confirm: true });
+    expect(api.addPlaylistTracks).toHaveBeenCalledTimes(1);
+    expect(actions.open).toBe(false);
+
+    await actions.addTracks(playlist("p"), [track(1), track(2)], { confirm: true });
+    expect(actions.step).toBe("confirm");
+    actions.close();
+    await actions.confirmAdd();
+    expect(api.addPlaylistTracks).toHaveBeenCalledTimes(1);
+    expect(actions.open).toBe(false);
+  });
+
+  it("goes from the confirm step to the duplicates step when tracks were skipped", async () => {
+    vi.mocked(api.addPlaylistTracks).mockResolvedValue([1]);
+    const actions = createPlaylistActions(capturingToasts().toasts);
+
+    await actions.addTracks(playlist("p"), [track(1), track(2)], { confirm: true });
+    await actions.confirmAdd();
+
+    expect(actions.open).toBe(true);
+    expect(actions.step).toBe("duplicates");
+    expect(actions.duplicates.map((t) => t.id)).toEqual([2]);
+  });
+
+  it("ignores an empty drop and a drop while busy", async () => {
+    let release: ((ids: number[]) => void) | null = null;
+    vi.mocked(api.addPlaylistTracks).mockImplementation(
+      () =>
+        new Promise<number[]>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const actions = createPlaylistActions(capturingToasts().toasts);
+
+    await actions.addTracks(playlist("p"), []);
+    expect(api.addPlaylistTracks).not.toHaveBeenCalled();
+
+    const first = actions.addTracks(playlist("p"), [track(1)]);
+    await actions.addTracks(playlist("q"), [track(2)]);
+    expect(api.addPlaylistTracks).toHaveBeenCalledTimes(1);
+    release!([1]);
+    await first;
   });
 });

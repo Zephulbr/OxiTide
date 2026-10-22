@@ -1,6 +1,7 @@
 import { getContext, setContext } from "svelte";
 import { api, trackToQueueItem, type PageItem, type Track } from "./api";
 import { copyText } from "./clipboard";
+import { loadTracks } from "./collectionTracks";
 import { errorMessage } from "./errors";
 import type { Favorites } from "./favorites.svelte";
 import type { MenuItem } from "./menu.svelte";
@@ -49,12 +50,6 @@ export interface CardDeps {
   toasts: Toasts;
   favorites: Favorites;
   playlistActions: PlaylistActions;
-}
-
-async function loadTracks(target: CardTarget): Promise<Track[]> {
-  if (target.kind === "album") return api.getAlbumTracks(target.id);
-  if (target.kind === "playlist") return api.getPlaylistTracks(target.id);
-  return (await api.getMix(target.id)).tracks;
 }
 
 /// Card play/queue/menu behaviour, shared by every page through context so

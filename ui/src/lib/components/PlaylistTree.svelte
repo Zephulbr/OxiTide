@@ -1,7 +1,11 @@
 <script lang="ts">
-  import type { CollectionEntry } from "../api";
+  import type { CollectionEntry, Playlist } from "../api";
   import type { CollectionActions } from "../collectionActions.svelte";
   import type { CollectionTree } from "../collection.svelte";
+  import { dragDrop, dragSource, dropZone, type DropZone } from "../dragDrop.svelte";
+  import type { DragPayload } from "../dragPayload";
+  import { playlistDropKey, playlistDropZone } from "../playlistDrop";
+  import type { PlaylistActions } from "../playlists.svelte";
   import { menuFor } from "../menu.svelte";
   import { folderMeta } from "../folderMeta.svelte";
   import { collectionFolderMenuItems, collectionPlaylistMenuItems } from "../menus";
@@ -24,11 +28,15 @@
     rail = false,
     playing = false,
     parentId = "root",
+    playlistActions,
   }: {
     entries: readonly CollectionEntry[];
     collection: CollectionTree;
     nav: Nav;
     actions: CollectionActions;
+    /// Makes playlist rows drop targets for dragged tracks (drag-to-playlist
+    /// spec §4.2); without it the tree takes no drops.
+    playlistActions?: PlaylistActions;
     rail?: boolean;
     /// Playback is running: the playing source's mark spins.
     playing?: boolean;
@@ -57,6 +65,43 @@
   function openPlaylist(id: string) {
     nav.goto({ name: "playlist", id });
   }
+
+  /// A playlist row as a drop target; a zone with no verdict when the tree
+  /// takes no drops.
+  function playlistZone(entry: Playlist): DropZone {
+    if (!playlistActions) return { key: playlistDropKey(entry.uuid) };
+    return playlistDropZone(entry, playlistActions, () => openPlaylist(entry.uuid));
+  }
+
+  /// A collapsed folder springs open under a drag that rests on it (DD-D9).
+  const SPRING_MS = 600;
+  function folderZone(id: string): DropZone {
+    if (rail || !playlistActions) return { key: `folder:${id}` };
+    return {
+      key: `folder:${id}`,
+      spring: {
+        ms: SPRING_MS,
+        open: () => {
+          if (!collection.isExpanded(id)) void collection.toggleFolder(id);
+        },
+      },
+    };
+  }
+
+  /// A playlist row drags the playlist itself (onto another playlist or the
+  /// queue), like its card on the Playlists page.
+  function playlistPayload(entry: Playlist): DragPayload {
+    return {
+      kind: "collection",
+      target: { kind: "playlist", id: entry.uuid, title: entry.title },
+      cover: entry.squareImage ?? entry.image ?? null,
+    };
+  }
+
+  function dropState(uuid: string): "target" | "refused" | null {
+    if (dragDrop.targetKey !== playlistDropKey(uuid)) return null;
+    return dragDrop.verdict?.ok ? "target" : "refused";
+  }
 </script>
 
 {#each rows as entry (entry.kind === "folder" ? `f:${entry.id}` : `p:${entry.uuid}`)}
@@ -67,6 +112,7 @@
       class:active={nav.route.name === "folder" && nav.route.id === entry.id}
       aria-current={nav.route.name === "folder" && nav.route.id === entry.id ? "page" : undefined}
       onclick={() => (rail ? nav.goto({ name: "playlists" }) : void collection.toggleFolder(entry.id))}
+      use:dropZone={folderZone(entry.id)}
       use:menuFor={() =>
         collectionFolderMenuItems({
           folder: entry,
@@ -96,6 +142,7 @@
             {actions}
             {rail}
             {playing}
+            {playlistActions}
             parentId={entry.id}
           />
         </div>
@@ -104,13 +151,21 @@
   {:else}
     {@const isActive = nav.route.name === "playlist" && nav.route.id === entry.uuid}
     {@const rowState = playlistRowState(playSource.playlistId === entry.uuid, isActive)}
+    {@const drop = dropState(entry.uuid)}
+    {@const adding = dragDrop.pending.has(playlistDropKey(entry.uuid))}
     <button
       class="row"
       class:rail
       class:active={rowState === "active" || rowState === "source-active"}
       class:source={rowState === "source" || rowState === "source-active"}
+      class:drop-target={drop === "target"}
+      class:drop-refused={drop === "refused"}
+      data-drop-refused={drop === "refused" ? "" : undefined}
+      aria-busy={adding || undefined}
       aria-current={isActive ? "page" : undefined}
       onclick={() => openPlaylist(entry.uuid)}
+      use:dropZone={playlistZone(entry)}
+      use:dragSource={() => playlistPayload(entry)}
       use:menuFor={() =>
         collectionPlaylistMenuItems({
           playlist: entry,
@@ -130,7 +185,9 @@
           radius={6}
           alt=""
         />
-        {#if rowState === "source" || rowState === "source-active"}
+        {#if adding}
+          <span class="adding" aria-hidden="true"><span class="disc"></span></span>
+        {:else if rowState === "source" || rowState === "source-active"}
           <span class="playing-mark" aria-hidden="true"><NowPlayingMark {playing} size={16} /></span>
         {/if}
       </span>
@@ -198,6 +255,37 @@
     display: grid;
     place-items: center;
     background: color-mix(in srgb, var(--bg) 55%, transparent);
+  }
+  /* Drop targets (drag-to-playlist spec §7): an accent ring on the row a drop
+     would add to; a refusing row dims. */
+  .row.drop-target {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    box-shadow: inset 0 0 0 2px var(--accent);
+    color: var(--text);
+  }
+  .row.drop-refused {
+    opacity: 0.55;
+  }
+  /* An add in flight: a small spinning disc over the cover. */
+  .adding {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: color-mix(in srgb, var(--bg) 55%, transparent);
+  }
+  .adding .disc {
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--line);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: adding-spin 0.9s linear infinite;
+  }
+  @keyframes adding-spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
   .text {
     display: flex;

@@ -34,6 +34,52 @@ const album: PageItem = {
   artist_refs: [{ id: 3, name: "Arianne" }],
 };
 
+describe("MediaCard drag", () => {
+  function pointer(type: string, target: EventTarget, x: number, y: number) {
+    const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0 });
+    Object.defineProperty(event, "pointerType", { value: "mouse" });
+    target.dispatchEvent(event);
+  }
+
+  it("carries the card's collection, and the drag never opens it", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "requestAnimationFrame", "cancelAnimationFrame"] });
+    const { dragDrop } = await import("../dragDrop.svelte");
+    fake.actions = actions();
+    const open = vi.fn();
+    render(MediaCard, { item: album, variant: "carousel", onclick: open });
+    const cover = screen.getByRole("button", { name: "Open Evangelion Finally" });
+
+    pointer("pointerdown", cover, 0, 0);
+    pointer("pointermove", window, 40, 40);
+    expect(dragDrop.active).toEqual({
+      kind: "collection",
+      target: { kind: "album", id: 7, title: "Evangelion Finally" },
+      cover: null,
+    });
+    pointer("pointerup", window, 40, 40);
+    cover.click();
+    expect(open).not.toHaveBeenCalled();
+
+    vi.runAllTimers();
+    cover.click();
+    expect(open).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it("carries nothing from an artist card", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "requestAnimationFrame", "cancelAnimationFrame"] });
+    const { dragDrop } = await import("../dragDrop.svelte");
+    const artist: PageItem = { id: "3", title: "Arianne", item_type: "ARTIST", artwork: null };
+    render(MediaCard, { item: artist, variant: "tile", onclick: vi.fn() });
+    pointer("pointerdown", screen.getByRole("button"), 0, 0);
+    pointer("pointermove", window, 40, 40);
+    expect(dragDrop.active).toBeNull();
+    pointer("pointerup", window, 40, 40);
+    vi.runAllTimers();
+    vi.useRealTimers();
+  });
+});
+
 describe("MediaCard collection cards", () => {
   it("splits into open, play, title and artist targets", async () => {
     const a = actions();

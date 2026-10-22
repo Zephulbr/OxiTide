@@ -12,7 +12,10 @@
   import { formatDuration, formatReleaseDate } from "../format";
   import { locatePlaying } from "../locatePlaying.svelte";
   import { menuFor, type MenuItem } from "../menu.svelte";
-  import { trackMenuItems } from "../menus";
+  import { selectionMenuItems, trackMenuItems } from "../menus";
+  import { createSelection } from "../selection.svelte";
+  import { dragDrop, dragSource, dropZone, type DropZone } from "../dragDrop.svelte";
+  import type { DragPayload } from "../dragPayload";
   import { trackQualityLabel } from "../quality";
   import { playTrackRadio } from "../radio";
   import type { Toasts } from "../toasts.svelte";
@@ -26,7 +29,7 @@
   import { sortData } from "../sortData.svelte";
   import { trackColumns, type OptionalColumn } from "../trackColumns.svelte";
   import { keysFor, releaseDateOf, SORT_LABELS, type SortKey, type TableKind } from "../trackSort";
-  import { trackDrag, type DragParams } from "../drag";
+  import { dropTarget, normalizeDrop } from "../drag";
   import { hereTargets, menuArtists } from "../nameLinks";
   import type { Nav } from "../nav.svelte";
   import ArtistLinks from "./ArtistLinks.svelte";
@@ -43,6 +46,8 @@
     onPlay,
     onEndReached,
     onAddToPlaylist,
+    onAddManyToPlaylist,
+    sourcePlaylist,
     playlistActions,
     maxHeight = "min(60vh, 560px)",
     fill = false,
@@ -67,11 +72,18 @@
     /// Renders the "add to playlist" row action (list-plus icon, distinct
     /// from the plus-icon queue action).
     onAddToPlaylist?: (track: Track) => void;
+    /// "Add N to playlist" for a multi-row selection (the picker).
+    onAddManyToPlaylist?: (tracks: Track[]) => void;
+    /// The playlist these rows belong to: a drag of them is never added back
+    /// to it (drag-to-playlist spec DD-D6).
+    sourcePlaylist?: string;
     /// Playlist-view row editing via drag-and-drop and the context menu.
     /// `disabled` is set by the parent until the pager has the complete list;
     /// `onDrop` receives absolute source-order indices from drag-and-drop.
+    /// `onRemoveMany` takes displayed-row indices of a selection.
     playlistActions?: {
       onRemove(index: number): void;
+      onRemoveMany?(indices: number[]): void;
       busy: boolean;
       disabled: boolean;
       onDrop?(from: number, to: number): void;
@@ -248,29 +260,123 @@
     untrack(() => void sortData.ensure(keys, visible));
   });
 
-  let dragFrom = $state<number | null>(null);
   let dropAt = $state<number | null>(null);
   let theadHeight = $state(0);
 
+  /// Multi-row selection (drag-to-playlist spec §5), keyed by row object so a
+  /// playlist's repeated tracks stay distinct rows. A new order or filter
+  /// changes what the rows are, so it starts over; appended pages keep it.
+  const selection = createSelection<Track>();
+  $effect(() => {
+    void view;
+    void view.levels;
+    void view.filter;
+    untrack(() => selection.clear());
+  });
+
+  /// Names this table in its drags, so it only reorders its own rows.
+  const tableId = `tracks-${Math.random().toString(36).slice(2)}`;
+
+  /// In-place reorder: an owned playlist, its whole list loaded, in source
+  /// order.
   const canDrag = $derived(
     sections === undefined &&
-      playlistActions !== undefined &&
+      playlistActions?.onDrop !== undefined &&
       !playlistActions.busy &&
       !playlistActions.disabled &&
       !view.engaged,
   );
 
-  const drag = $derived<DragParams>({
-    enabled: () => canDrag,
-    count: () => rows.length,
-    rowHeight: () => rowHeight,
-    offset: () => bodyOffset,
-    onChange: (from, at) => {
-      dragFrom = from;
-      dropAt = at;
-    },
-    onDrop: (from, to) => playlistActions?.onDrop?.(from, to),
+  /// The rows a drag from here carries: the selection when the pressed row
+  /// is part of it (in display order), else that row alone (DD-D5).
+  function dragPayload(target: Element): DragPayload | null {
+    const element = target.closest<HTMLElement>("tr[data-row-index]");
+    const track = element ? rows[Number(element.dataset.rowIndex)] : undefined;
+    if (!track) return null;
+    const tracks = selection.has(track) ? selection.ordered(rows) : [track];
+    return { kind: "tracks", tracks, source: { tableId, playlistId: sourcePlaylist } };
+  }
+
+  /// Rows of this table being dragged, dimmed in place.
+  const draggedRows = $derived.by(() => {
+    const payload = dragDrop.active;
+    if (payload?.kind !== "tracks" || payload.source?.tableId !== tableId) return null;
+    return new Set(payload.tracks);
   });
+
+  function slotAt(clientY: number): number {
+    const scroll = scrollEl;
+    if (!scroll) return 0;
+    return dropTarget(clientY, scroll.getBoundingClientRect().top, scroll.scrollTop, rowHeight, rows.length, bodyOffset);
+  }
+
+  /// The table as a drop zone: its own rows reorder while `canDrag`; other
+  /// payloads pass through (it still auto-scrolls under any drag).
+  const reorderZone = $derived<DropZone>({
+    key: `reorder:${tableId}`,
+    accepts: (payload) => {
+      if (payload.kind !== "tracks" || payload.source?.tableId !== tableId || !canDrag) return null;
+      // Moving several rows waits on TIDAL's multi-index move semantics
+      // (drag-to-playlist plan Task 1).
+      if (payload.tracks.length > 1) return { ok: false, reason: "Can't move several rows yet" };
+      return { ok: true, hint: "Move" };
+    },
+    hover: (_payload, point) => {
+      dropAt = slotAt(point.y);
+    },
+    leave: () => {
+      dropAt = null;
+    },
+    drop: (payload, point) => {
+      if (payload.kind !== "tracks") return;
+      const from = rows.indexOf(payload.tracks[0]);
+      if (from < 0) return;
+      const to = normalizeDrop(from, slotAt(point.y));
+      if (to !== from) playlistActions?.onDrop?.(from, to);
+    },
+    scroller: () => scrollEl,
+  });
+
+  function onRowClick(event: MouseEvent, track: Track) {
+    const target = event.target;
+    if (target instanceof Element && target.closest("button, a, input, select, textarea, [role='link']")) return;
+    selection.click(track, rows, { ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey });
+  }
+
+  /// Queue a selection, without the rows the content filters hide.
+  async function queueMany(tracks: Track[], next: boolean) {
+    const prepared = await trackFlags.filterPlayable(tracks, 0);
+    if (!prepared) {
+      toasts.show("Everything selected is hidden by your content filters.", { severity: "info" });
+      return;
+    }
+    const items = prepared.items.map(trackToQueueItem);
+    const noun = items.length === 1 ? "track" : "tracks";
+    try {
+      await (next ? api.queuePlayNext(items) : api.queueAdd(items));
+      toasts.show(next ? `${items.length} ${noun} play next` : `Added ${items.length} ${noun} to the queue`);
+    } catch (e) {
+      toasts.show(errorMessage(e), { severity: "error" });
+    }
+  }
+
+  /// The menu for a row: the selection's when the row is part of a selection
+  /// of two or more, else the row's own (a right-click selects the row).
+  function rowMenu(t: Track, single: () => MenuItem[]): MenuItem[] {
+    if (selection.size > 1 && selection.has(t)) {
+      const chosen = selection.ordered(rows);
+      const editable = playlistActions?.onRemoveMany && !playlistActions.busy && !playlistActions.disabled;
+      return selectionMenuItems({
+        count: chosen.length,
+        playNext: () => void queueMany(chosen, true),
+        addToQueue: () => void queueMany(chosen, false),
+        addToPlaylist: onAddManyToPlaylist ? () => onAddManyToPlaylist(chosen) : undefined,
+        remove: editable ? () => playlistActions?.onRemoveMany?.(selection.indices(rows)) : undefined,
+      });
+    }
+    if (!selection.has(t)) selection.click(t, rows, { ctrl: false, shift: false });
+    return single();
+  }
 
   function blockedNotice(title: string) {
     toasts.show(
@@ -441,6 +547,26 @@
   function onRowKeydown(event: KeyboardEvent, index: number) {
     // Keys on the row's own buttons keep their native behavior.
     if (event.target !== event.currentTarget) return;
+    const ctrl = event.ctrlKey || event.metaKey;
+    // Selection keys: Ctrl+A all, Ctrl+Space toggles this row, Escape clears.
+    if (ctrl && event.key.toLowerCase() === "a") {
+      event.preventDefault();
+      event.stopPropagation();
+      selection.selectAll(rows);
+      return;
+    }
+    if (ctrl && event.key === " ") {
+      event.preventDefault();
+      event.stopPropagation();
+      if (rows[index]) selection.toggle(rows[index]);
+      return;
+    }
+    if (event.key === "Escape" && selection.size > 0) {
+      event.preventDefault();
+      event.stopPropagation();
+      selection.clear();
+      return;
+    }
     const page = Math.max(1, Math.floor(viewport / rowHeight) - 1);
     let target: number | null = null;
     switch (event.key) {
@@ -466,6 +592,12 @@
     if (target !== null) {
       event.preventDefault();
       event.stopPropagation();
+      // Shift extends the selection from this row's anchor to the new row.
+      if (event.shiftKey) {
+        const end = rows[Math.min(Math.max(0, target), rows.length - 1)];
+        if (selection.size === 0 && rows[index]) selection.click(rows[index], rows, { ctrl: false, shift: false });
+        if (end) selection.extend(end, rows);
+      }
       void focusRow(target);
       return;
     }
@@ -590,7 +722,8 @@
   bind:clientHeight={viewport}
   onscroll={onScroll}
   data-perf-scroll
-  use:trackDrag={drag}
+  use:dragSource={dragPayload}
+  use:dropZone={reorderZone}
 >
   {#if !compact && !fill}
   <div
@@ -631,17 +764,17 @@
             class="row"
             role={roleOf("row")}
             class:blocked={reasons.length > 0}
-            class:dragging={dragFrom === index}
+            class:dragging={draggedRows?.has(t) ?? false}
+            class:selected={selection.has(t)}
             class:playing={playingTrackId !== null && t.id === playingTrackId}
-            draggable={canDrag}
-            data-drag-index={canDrag ? index : undefined}
             data-row-index={index}
             tabindex={tabbableIndex === index ? 0 : -1}
             aria-rowindex={grouping ? undefined : index + 2}
             onfocus={() => (focusedIndex = index)}
             onkeydown={(event) => onRowKeydown(event, index)}
+            onclick={(event) => onRowClick(event, t)}
             ondblclick={(event) => onRowDoubleClick(event, index)}
-            use:menuFor={() =>
+            use:menuFor={() => rowMenu(t, () =>
               trackMenuItems({
                 track: t,
                 index,
@@ -659,7 +792,7 @@
                   ? menuArtists(t.artists, here).map((a) => ({ name: a.name, open: () => openArtist(a.id) }))
                   : undefined,
                 playlist: playlistActions,
-              })}
+              }))}
           >
             {#if !compact}
               <td class="muted tnum num-cell" role={roleOf("cell")}>
@@ -768,6 +901,9 @@
   {/if}
 </div>
 {/snippet}
+
+<!-- Multi-select is visual on the rows; this tells screen readers. -->
+<span class="sr-only" aria-live="polite">{selection.size > 1 ? `${selection.size} tracks selected` : ""}</span>
 
 {#if split}
   <div
@@ -1129,6 +1265,22 @@
   }
   .row.playing .title-text {
     color: var(--accent);
+  }
+  /* Multi-select (drag-to-playlist spec §5); a selected playing row keeps
+     its stronger playing tint. */
+  .row.selected:not(.playing) {
+    background: var(--selection-bg);
+  }
+  .row.selected:not(.playing):hover {
+    background: color-mix(in srgb, var(--selection-bg), var(--surface-2));
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
   /* Every column but the number, cover and actions takes a share of the
      width, so the date, time and quality spread across the row instead of

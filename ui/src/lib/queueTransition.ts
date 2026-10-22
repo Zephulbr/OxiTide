@@ -85,6 +85,12 @@ interface Hold {
 
 let hold: Hold | null = null;
 
+/// The queue glide is running (or parked on its first frame): the rail is
+/// moving, so it takes no drops (drag-to-playlist spec §10).
+export function glideActive(): boolean {
+  return hold !== null;
+}
+
 export function releasePageHold() {
   if (!hold) return;
   if (hold.fallback) clearTimeout(hold.fallback);

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/svelte";
 import { fakePlayer } from "../test/fakes";
 import { api } from "../api";
+import { dragDrop } from "../dragDrop.svelte";
 import { menu } from "../menu.svelte";
 import { playSource } from "../playSource.svelte";
 import type { Favorites } from "../favorites.svelte";
@@ -98,6 +99,32 @@ describe("PlayerBar: track menu", () => {
     // No toasts / picker passed: those entries are left out.
     expect(labels).not.toContain("Track Radio");
     expect(labels).not.toContain("Add to playlist");
+  });
+});
+
+describe("PlayerBar: drag", () => {
+  function pointer(type: string, target: EventTarget, x: number, y: number) {
+    const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0 });
+    Object.defineProperty(event, "pointerType", { value: "mouse" });
+    target.dispatchEvent(event);
+  }
+
+  // A drag's release swallows the next click until a timeout; let it lapse.
+  afterEach(async () => {
+    dragDrop.cancel();
+    await new Promise((resolve) => setTimeout(resolve));
+  });
+
+  it("drags the playing track from the cover and from its title", () => {
+    setup();
+    document.elementFromPoint = vi.fn(() => null);
+    for (const from of [screen.getByRole("button", { name: "Open now playing" }), screen.getByText("Track 1")]) {
+      pointer("pointerdown", from, 0, 0);
+      pointer("pointermove", window, 30, 30);
+      expect(dragDrop.active).toMatchObject({ kind: "track-id", id: 1, title: "Track 1" });
+      pointer("pointerup", window, 30, 30);
+      expect(dragDrop.active).toBeNull();
+    }
   });
 });
 

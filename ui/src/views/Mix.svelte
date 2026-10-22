@@ -126,6 +126,7 @@
       onPlay={playAll}
       onShuffle={shuffleAll}
       disabled={view.items.length === 0}
+      drag={() => ({ kind: "collection", target: { kind: "mix", id, title: data.title }, cover: artwork })}
     >
       {#snippet cover()}
         <Cover uuid={artwork} size={640} radius={12} alt={`${data.title} cover`} />
@@ -152,6 +153,7 @@
       playingTrackId={player.state.current?.track_id ?? null}
       playbackRunning={player.state.playing}
       onAddToPlaylist={(t) => playlistActions.openPicker([t])}
+      onAddManyToPlaylist={(ts) => playlistActions.openPicker(ts)}
     />
   </div>
 {:else}

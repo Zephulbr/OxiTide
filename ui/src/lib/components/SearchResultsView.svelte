@@ -148,6 +148,7 @@
           compact
           onPlay={(index) => playFrom(preview.items[index])}
           onAddToPlaylist={(t) => playlistActions.openPicker([t])}
+          onAddManyToPlaylist={(ts) => playlistActions.openPicker(ts)}
           playingTrackId={playing}
           playbackRunning={player.state.playing}
         />
@@ -186,6 +187,7 @@
       maxHeight="none"
       onPlay={(index) => playFrom(full.items[index])}
       onAddToPlaylist={(t) => playlistActions.openPicker([t])}
+      onAddManyToPlaylist={(ts) => playlistActions.openPicker(ts)}
       playingTrackId={playing}
       playbackRunning={player.state.playing}
     />

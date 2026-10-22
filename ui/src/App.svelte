@@ -27,6 +27,8 @@
   import TrackInfoHost from "./lib/components/TrackInfoHost.svelte";
   import CollectionDialogs from "./lib/components/CollectionDialogs.svelte";
   import ToastHost from "./lib/components/ToastHost.svelte";
+  import DragGhost from "./lib/components/DragGhost.svelte";
+  import { dragDrop } from "./lib/dragDrop.svelte";
   import ContextMenu from "./lib/components/ContextMenu.svelte";
   import { dialogs } from "./lib/dialogs.svelte";
   import Neko from "./lib/components/Neko.svelte";
@@ -104,6 +106,23 @@
   const playlistActions = createPlaylistActions(toasts);
   const collection = createCollectionTree(toasts);
   const collectionActions = createCollectionActions(collection, toasts);
+
+  // A created playlist or an add refreshes the tree (its counts), whichever
+  // shell (sidebar or Rack) is showing it.
+  let playlistRevisionSeen = untrack(() => playlistActions.revision);
+  $effect(() => {
+    const revision = playlistActions.revision;
+    if (revision === playlistRevisionSeen) return;
+    playlistRevisionSeen = revision;
+    untrack(() => void collection.refresh());
+  });
+
+  // A drag never outlives the page it started on, or the session.
+  $effect(() => {
+    void nav.route;
+    void loggedIn;
+    untrack(() => dragDrop.cancel());
+  });
 
   // Custom window chrome (Windows): Rust decides; `data-chrome` turns on the
   // caption band (--titlebar-h) for every shell.
@@ -855,14 +874,14 @@
           transition:fade|global={{ duration: appearance.reducedMotion ? 120 : GLIDE_MS }}
         ></div>
         <aside class="queue floating" transition:queueFloat|global={{ reduced: appearance.reducedMotion }}>
-          <QueueRail {player} go={(route) => { nav.toggleQueue(); goFromChrome(route); }} />
+          <QueueRail {player} {toasts} go={(route) => { nav.toggleQueue(); goFromChrome(route); }} />
         </aside>
       {:else if queueCard}
         <!-- Non-modal like the docked rail: no backdrop, the page stays live
              beside it, and name links leave it open. -->
         <aside class="queue floating card" transition:queueCardTransition|global={{ reduced: appearance.reducedMotion }}>
           {@render queueResize()}
-          <QueueRail {player} go={goFromChrome} />
+          <QueueRail {player} {toasts} go={goFromChrome} />
         </aside>
       {:else}
         <aside
@@ -877,7 +896,7 @@
           onoutroend={releasePageHold}
         >
           {@render queueResize()}
-          <QueueRail {player} go={goFromChrome} />
+          <QueueRail {player} {toasts} go={goFromChrome} />
         </aside>
       {/if}
     {:else if queuePeek.open && queueCard}
@@ -885,14 +904,14 @@
         class="queue floating card"
         transition:queueCardTransition|global={{ reduced: appearance.reducedMotion, duration: QUEUE_PEEK_SLIDE_MS }}
       >
-        <QueueRail {player} go={(route) => { queuePeek.reset(); goFromChrome(route); }} />
+        <QueueRail {player} {toasts} go={(route) => { queuePeek.reset(); goFromChrome(route); }} />
       </aside>
     {:else if queuePeek.open}
       <aside
         class="queue floating"
         transition:queueFloat|global={{ reduced: appearance.reducedMotion, duration: QUEUE_PEEK_SLIDE_MS }}
       >
-        <QueueRail {player} go={(route) => { queuePeek.reset(); goFromChrome(route); }} />
+        <QueueRail {player} {toasts} go={(route) => { queuePeek.reset(); goFromChrome(route); }} />
       </aside>
     {/if}
     <PlayerBar {player} {qualityDisplay} {favorites} {nav} {mini} {sleepTimer} {toasts} {playlistActions} floating={barFloats} />
@@ -914,6 +933,7 @@
   onauxclick={onSideButton}
 />
 <ToastHost {toasts} />
+<DragGhost />
 {#if customChrome}<WindowControls maximizable={!(loggedIn && mini.active)} />{/if}
 <ContextMenu {menu} />
 <PerfHud />

@@ -65,9 +65,14 @@ export function createCollectionTree(toasts: Toasts): CollectionTree {
     if (!childrenMap.has(folderId)) await loadChildren(folderId);
   }
 
+  /// Open folders keep showing their old rows until the new ones land, so a
+  /// refresh after each drop does not blink the tree; collapsed folders refetch
+  /// when next opened.
   async function refresh(): Promise<void> {
-    childrenMap.clear();
     await loadRoot();
+    for (const folderId of [...childrenMap.keys()]) {
+      if (!expanded.has(folderId)) childrenMap.delete(folderId);
+    }
     for (const folderId of [...expanded]) await loadChildren(folderId);
   }
 

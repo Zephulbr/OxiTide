@@ -432,6 +432,7 @@ fn main() {
             commands::queue_remove,
             commands::queue_add,
             commands::queue_play_next,
+            commands::queue_insert,
             commands::queue_clear,
             commands::apply_content_filters,
             commands::get_playback_state,
