@@ -3084,7 +3084,7 @@ dependencies = [
 
 [[package]]
 name = "oxitide-app"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -3127,7 +3127,7 @@ dependencies = [
 
 [[package]]
 name = "oxitide-audio"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "alsa",
  "base64 0.22.1",
@@ -3152,7 +3152,7 @@ dependencies = [
 
 [[package]]
 name = "oxitide-tidal"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "base64 0.22.1",
  "futures-util",
