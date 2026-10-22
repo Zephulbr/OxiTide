@@ -1,4 +1,4 @@
-import type { PageItem } from "./api";
+import type { LaterKind, PageItem } from "./api";
 
 export const NAV_KEY = "oxitide.nav";
 
@@ -39,6 +39,9 @@ function isSectionSource(value: unknown): value is SectionSource {
 export type ExploreKind = "tracks" | "albums" | "artists" | "playlists";
 const EXPLORE_KINDS: readonly ExploreKind[] = ["tracks", "albums", "artists", "playlists"];
 
+/// The Save for Later page's type chip (absent: All).
+const LATER_KINDS: readonly LaterKind[] = ["track", "album", "artist", "playlist"];
+
 export type Route =
   | { name: "home" }
   | { name: "explore"; q?: string; kind?: ExploreKind }
@@ -48,6 +51,7 @@ export type Route =
   | { name: "folder"; id: string; label?: string }
   | { name: "albums" }
   | { name: "tracks" }
+  | { name: "later"; kind?: LaterKind }
   | { name: "mixes" }
   | { name: "profiles" }
   | { name: "purchases" }
@@ -94,6 +98,7 @@ export function sameRoute(a: Route, b: Route): boolean {
   if (a.name === "history" && b.name === "history") {
     return a.tab === b.tab;
   }
+  if (a.name === "later" && b.name === "later") return a.kind === b.kind;
   if (a.name === "explore" && b.name === "explore") {
     return (a.q ?? "") === (b.q ?? "") && a.kind === b.kind;
   }
@@ -157,6 +162,12 @@ export function parseRoute(value: unknown): Route | null {
       return { name: "albums" };
     case "tracks":
       return { name: "tracks" };
+    case "later": {
+      const kind = record.kind;
+      return typeof kind === "string" && LATER_KINDS.includes(kind as LaterKind)
+        ? { name: "later", kind: kind as LaterKind }
+        : { name: "later" };
+    }
     case "mixes":
       return { name: "mixes" };
     case "profiles":

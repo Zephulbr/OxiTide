@@ -1,10 +1,13 @@
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
+use std::time::{Duration, Instant};
 
 use oxitide_audio::cache::DiskCache;
 use oxitide_audio::engine::Engine;
 use oxitide_tidal::client::TidalClient;
 use oxitide_tidal::pkce::Pkce;
+use oxitide_tidal::shares::PlaylistInvite;
 use oxitide_tidal::token_store::{KeyringStatus, TokenStore};
 use oxitide_tidal::Error;
 use tauri::{AppHandle, Emitter};
@@ -72,6 +75,8 @@ pub struct AppState {
     pub pending_update: Mutex<Option<tauri_plugin_updater::Update>>,
     /// Album release dates for track sorting, opened on first use.
     album_dates: std::sync::OnceLock<Arc<crate::album_dates::AlbumDatesStore>>,
+    /// Collaborator invitations made this session (cleared on sign-out).
+    pub invites: InviteCache,
     session_expired: AtomicBool,
     handle: Mutex<Option<AppHandle>>,
 }
@@ -310,7 +315,58 @@ impl AppState {
         let _ = self.take_discord();
         *self.client.write().unwrap() = None;
         *self.player.write().unwrap() = None;
+        self.invites.clear();
         self.clear_session_expired();
+    }
+}
+
+/// Collaborator invitations created this session, one per playlist (spec
+/// CO-D3). Links are reusable, so a copy reuses the last one until it is near
+/// its seven-day expiry instead of leaving a trail of live invites. Nothing is
+/// persisted.
+#[derive(Default)]
+pub struct InviteCache {
+    entries: Mutex<HashMap<String, (PlaylistInvite, Instant)>>,
+}
+
+impl InviteCache {
+    /// TIDAL expires new shares seven days after creation.
+    const LIFETIME: Duration = Duration::from_secs(7 * 24 * 3600);
+    /// A link this close to expiry is replaced rather than handed out.
+    const MARGIN: Duration = Duration::from_secs(3600);
+
+    pub fn get(&self, uuid: &str) -> Option<PlaylistInvite> {
+        self.get_at(uuid, Instant::now())
+    }
+
+    fn get_at(&self, uuid: &str, now: Instant) -> Option<PlaylistInvite> {
+        let entries = self.entries.lock().unwrap();
+        let (invite, created) = entries.get(uuid)?;
+        (now.saturating_duration_since(*created) + Self::MARGIN < Self::LIFETIME)
+            .then(|| invite.clone())
+    }
+
+    pub fn insert(&self, uuid: &str, invite: PlaylistInvite) {
+        self.insert_at(uuid, invite, Instant::now());
+    }
+
+    fn insert_at(&self, uuid: &str, invite: PlaylistInvite, created: Instant) {
+        self.entries
+            .lock()
+            .unwrap()
+            .insert(uuid.to_string(), (invite, created));
+    }
+
+    pub fn take(&self, uuid: &str) -> Option<PlaylistInvite> {
+        self.entries
+            .lock()
+            .unwrap()
+            .remove(uuid)
+            .map(|(invite, _)| invite)
+    }
+
+    pub fn clear(&self) {
+        self.entries.lock().unwrap().clear();
     }
 }
 
@@ -328,6 +384,43 @@ mod tests {
         });
         assert!(state.take_pending().is_some());
         assert!(state.take_pending().is_none());
+    }
+
+    fn invite(code: &str) -> PlaylistInvite {
+        PlaylistInvite {
+            share_id: format!("s-{code}"),
+            code: code.into(),
+            expires_at: None,
+            url: format!("https://tidal.com/playlist/p/invite?code={code}"),
+        }
+    }
+
+    #[test]
+    fn invites_are_reused_until_an_hour_before_expiry() {
+        let cache = InviteCache::default();
+        let created = Instant::now();
+        cache.insert_at("p", invite("a"), created);
+        let day = Duration::from_secs(24 * 3600);
+        assert_eq!(cache.get_at("p", created).map(|i| i.code), Some("a".into()));
+        assert!(cache.get_at("p", created + 6 * day).is_some());
+        assert!(
+            cache
+                .get_at("p", created + 7 * day - Duration::from_secs(1800))
+                .is_none(),
+            "a link in its last hour is replaced"
+        );
+        assert!(cache.get_at("other", created).is_none());
+    }
+
+    #[test]
+    fn invites_are_dropped_on_take_and_sign_out() {
+        let state = AppState::default();
+        state.invites.insert("p", invite("a"));
+        assert_eq!(state.invites.take("p").map(|i| i.code), Some("a".into()));
+        assert!(state.invites.get("p").is_none());
+        state.invites.insert("q", invite("b"));
+        state.logout();
+        assert!(state.invites.get("q").is_none());
     }
 
     #[test]

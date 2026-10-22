@@ -14,6 +14,7 @@
   import ArtistHero from "../lib/components/ArtistHero.svelte";
   import Carousel from "../lib/components/Carousel.svelte";
   import DetailAction from "../lib/components/DetailAction.svelte";
+  import { later } from "../lib/later.svelte";
   import EmptyState from "../lib/components/EmptyState.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
   import Loading from "../lib/components/Loading.svelte";
@@ -237,6 +238,13 @@
         label="Radio"
         title="Start artist radio"
         onclick={() => void playArtistRadio(artistId, toasts, artist?.name)}
+      />
+      <DetailAction
+        icon={later.has("artist", artistId) ? "bookmark-minus" : "bookmark"}
+        label={later.has("artist", artistId) ? "Saved" : "Save"}
+        active={later.has("artist", artistId)}
+        title={later.has("artist", artistId) ? "Remove from Save for later" : "Save for later"}
+        onclick={() => void later.toggle("artist", artistId)}
       />
       <DetailAction icon="share-2" label="Share" title="Copy artist link" onclick={() => void share()} />
       {#if mixId}

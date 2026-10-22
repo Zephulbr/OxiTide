@@ -6,7 +6,7 @@ import type { Route } from "../nav.svelte";
 export type Source = "home" | "explore" | "feed" | "history" | "library" | "settings";
 
 const LIBRARY: Route["name"][] = [
-  "playlists", "folder", "playlist", "albums", "tracks", "profiles", "mixes", "purchases",
+  "playlists", "folder", "playlist", "albums", "tracks", "later", "profiles", "mixes", "purchases",
   "album", "artist", "artist-all", "mix",
 ];
 
@@ -35,6 +35,7 @@ export const LIBRARY_KEYS: { label: string; route: Route; also?: Route["name"][]
   { label: "Playlists", route: { name: "playlists" }, also: ["folder"] },
   { label: "Albums", route: { name: "albums" } },
   { label: "Tracks", route: { name: "tracks" } },
+  { label: "Save for Later", route: { name: "later" } },
   { label: "Mixes & Radio", route: { name: "mixes" } },
   { label: "Profiles", route: { name: "profiles" } },
   { label: "Purchases", route: { name: "purchases" } },

@@ -112,6 +112,16 @@ describe("nav history", () => {
     expect(createNav(seeded).route).toEqual({ name: "explore", q: "ado" });
   });
 
+  it("restores the Save for Later chip and drops an unknown one", () => {
+    const storage = fakeStorage();
+    const nav = createNav(storage);
+    nav.goto({ name: "later" });
+    nav.replace({ name: "later", kind: "album" });
+    expect(createNav(storage).route).toEqual({ name: "later", kind: "album" });
+    const seeded = fakeStorage(JSON.stringify({ history: [{ name: "later", kind: "video" }], index: 0 }));
+    expect(createNav(seeded).route).toEqual({ name: "later" });
+  });
+
   it("clamps back and forward at the ends", () => {
     const nav = createNav();
     nav.goto({ name: "explore" });

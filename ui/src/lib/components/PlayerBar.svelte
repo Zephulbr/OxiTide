@@ -4,6 +4,7 @@
   import type { DragPayload } from "../dragPayload";
   import { formatDuration } from "../format";
   import { menu, menuButton, menuFor, type MenuItem } from "../menu.svelte";
+  import { later } from "../later.svelte";
   import { nowPlayingMenuItems } from "../menus";
   import { copyText } from "../clipboard";
   import { errorMessage } from "../errors";
@@ -152,6 +153,7 @@
       toggleFavorite: () => toggleFavorite(item.track_id, favorited),
       startRadio: radioToasts ? () => void playTrackRadio(item.track_id, radioToasts, item.title) : undefined,
       addToPlaylist: picker ? () => void withTrack(item, (track) => picker.openPicker([track])) : undefined,
+      later: { active: later.has("track", item.track_id), toggle: () => void later.toggle("track", item.track_id) },
       copyTitle: () => void copyText(item.title),
       trackInfo: () => void withTrack(item, (track) => trackInfo.open(track)),
       ...goToTargets(item, go, api.getTrack),

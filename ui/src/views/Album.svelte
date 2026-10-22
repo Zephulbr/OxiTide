@@ -4,6 +4,7 @@
   import ArtistLinks from "../lib/components/ArtistLinks.svelte";
   import Cover from "../lib/components/Cover.svelte";
   import DetailAction from "../lib/components/DetailAction.svelte";
+  import { later } from "../lib/later.svelte";
   import DetailHeader from "../lib/components/DetailHeader.svelte";
   import EmptyState from "../lib/components/EmptyState.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
@@ -180,6 +181,13 @@
           active={favorites.hasAlbum(albumId)}
           title={favorites.hasAlbum(albumId) ? "Unfavorite album" : "Favorite album"}
           onclick={() => favorites.toggleAlbum(albumId)}
+        />
+        <DetailAction
+          icon={later.has("album", albumId) ? "bookmark-minus" : "bookmark"}
+          label={later.has("album", albumId) ? "Saved" : "Save"}
+          active={later.has("album", albumId)}
+          title={later.has("album", albumId) ? "Remove from Save for later" : "Save for later"}
+          onclick={() => void later.toggle("album", albumId)}
         />
         <DetailAction
           icon="list-plus"

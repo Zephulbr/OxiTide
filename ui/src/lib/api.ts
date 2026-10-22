@@ -159,6 +159,24 @@ export interface Stats {
 export interface SessionInfoDto { country_code: string; user_id: number }
 export interface KeyringStatus { persistent: boolean; reason?: string | null }
 export interface FavoriteIds { tracks: number[]; albums: number[]; artists: number[] }
+/// Save for Later (spec 2026-10-22). Mirrors `oxitide_tidal::later`.
+export type LaterKind = "track" | "album" | "artist" | "playlist" | "mix";
+export interface LaterIds {
+  tracks: number[]; albums: number[]; artists: number[]; playlists: string[]; mixes: string[];
+  /// Saved videos, which OxiTide does not show.
+  videos: number;
+}
+export type LaterEntry = { added_at?: string | null } & (
+  | { kind: "track"; item: Track }
+  | { kind: "album"; item: Album }
+  | { kind: "artist"; item: Artist }
+  | { kind: "playlist"; item: Playlist }
+  | { kind: "mix"; item: Mix }
+);
+export interface LaterPage { items: LaterEntry[]; cursor?: string | null; videos: number }
+/// A collaborator invitation (`oxitide_tidal::shares::PlaylistInvite`).
+export interface PlaylistInvite { share_id: string; code: string; expires_at?: string | null; url: string }
+export interface PlaylistMember { id: number; name: string; picture?: string | null; owner: boolean }
 export interface Mix {
   id: string; title: string; subTitle?: string | null;
   mixType?: string | null; image?: string | null;
@@ -694,6 +712,14 @@ export const api = {
   getPlaylistTracksPage: (id: string, offset: number, limit: number) =>
     invoke<TrackPage>("get_playlist_tracks_page", { id, offset, limit }),
   getFavoriteIds: () => invoke<FavoriteIds>("get_favorite_ids"),
+  getSaveForLaterIds: () => invoke<LaterIds>("get_save_for_later_ids"),
+  getSaveForLaterPage: (cursor?: string | null) =>
+    invoke<LaterPage>("get_save_for_later_page", { cursor: cursor ?? null }),
+  setSaveForLater: (kind: LaterKind, id: string, saved: boolean) =>
+    invoke<void>("set_save_for_later", { kind, id, saved }),
+  playlistInvite: (uuid: string, renew = false) =>
+    invoke<PlaylistInvite>("playlist_invite", { uuid, renew }),
+  playlistMembers: (uuid: string) => invoke<PlaylistMember[]>("playlist_members", { uuid }),
   setFavoriteTrack: (trackId: number, favorite: boolean) =>
     invoke<void>("set_favorite_track", { trackId, favorite }),
   setFavoriteAlbum: (albumId: number, favorite: boolean) =>

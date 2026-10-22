@@ -402,6 +402,24 @@ mode, with no mode branches:
   track rows ellipsize.
 - **selected track rows:** `--selection-bg` (13 % accent). A playing row keeps its stronger
   playing tint.
+
+Save for Later and Collaborators (spec `2026-10-22-oxitide-save-for-later-collaborators-design.md`)
+have one look in every mode, with no mode branches:
+- **menu entry:** "Save for later" (`bookmark`) / "Remove from Save for later"
+  (`bookmark-minus`), right after Favorite. The album, artist and mix headers carry a
+  `DetailAction` ("Save" / "Saved", active when saved).
+- **page:** Collection Albums' grid and insets. The type chips are 34 px pills
+  (`--surface-1`, 1 px `--line`), and the chosen one is filled with `--accent` /
+  `--on-accent`. Track cards carry a small uppercase "Track" tag (`--surface-3`) over the
+  cover. Artists read from their round covers, playlists from their collages, and mixes
+  from their usual mix tile (the Mixes & Radio chip comes after Playlists). A footnote
+  counts saved videos, which are not shown.
+- **Collaborators dialog:** the shared `Modal`. A full-width "Copy invitation link" row
+  sits on a 40 px `--surface-3` circular icon well (a spinning accent tick while it
+  works). Member rows have a 40 px round avatar (the picture, else initials on
+  `--surface-3`), with "Owner" muted under the owner. A hairline footer holds the 7-day
+  note and a text-button Reset link, whose confirm happens in place (Cancel / Reset link
+  in `--danger`), with no second modal.
 Ambient motion only while playing. `prefers-reduced-motion` is a hard floor in every
 mode: ambient off, glides instant, slides become 120 ms fades.
 
@@ -441,6 +459,7 @@ that is not active must cost nothing.
 | Window chrome (Windows) | Undecorated window: `WindowControls.svelte` caption buttons pinned top-right over every shell, `lib/titlebar.ts` drag band (top `--titlebar-h` = 32px; presses on non-controls drag, double-click maximizes). Shells without a top gutter (Mini, Rack, Rack mini) pad their top to `--titlebar-h`; the queue steps down under it. Close hover uses `--caption-close` (platform red). Snap Layouts: native overlay in `crates/oxitide-app/src/titlebar.rs`. Linux keeps the system frame. |
 | Covers | `ui/src/lib/components/Cover.svelte`, `ui/src/lib/artwork.ts` |
 | Drag and drop | `ui/src/lib/dragDrop.svelte.ts` (controller, `dragSource` / `dropZone`), `ui/src/lib/components/DragGhost.svelte`, `ui/src/lib/playlistDrop.ts` |
+| Save for Later / Collaborators | `ui/src/views/SaveForLater.svelte`, `ui/src/lib/{later.svelte,saveForLater}.ts`, `ui/src/lib/components/CollaboratorsDialog.svelte` (+ `lib/collaborators.svelte.ts`) |
 | Rack reference mockup | `ui/design/rack/reference-mockup.html` (open via any static server at the repo root) |
 | Phone remote | `ui/remote.html`, `ui/src/remote/` (styles: `remote/remote.css` + component styles) |
 | Easter eggs | Oneko + kuroneko: `ui/src/lib/components/Neko.svelte`. Classic gif colours; kuroneko is the same sprite under `filter: invert(1)`; petting hearts are an 8×6 pixel SVG in `--accent` that float up and fade over 900 ms, at most 6 at once, `z-index: 8` like the cats. Jamming cat: `CatJam.svelte`, a 32 px pixel sprite in the player bar's left zone between the track title and the heart, at 100–200 % (Settings → Extras → Size, default 125 %; `pointer-events: none`). It has six coats (`lib/catjamSprite.ts`, chosen in Settings → Extras with `settings/CoatPicker.svelte`). None of them branch on mode; all are hidden under reduced motion. |

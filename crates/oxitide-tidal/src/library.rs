@@ -212,7 +212,7 @@ fn mixes_from_json(raw: &serde_json::Value) -> (Vec<Mix>, u32) {
     (mixes, total)
 }
 
-fn mix_from_value(value: &serde_json::Value) -> Option<Mix> {
+pub(crate) fn mix_from_value(value: &serde_json::Value) -> Option<Mix> {
     let mix = value
         .get("mix")
         .or_else(|| value.get("data"))

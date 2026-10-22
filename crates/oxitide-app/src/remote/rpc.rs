@@ -512,6 +512,12 @@ mod tests {
         "search_type",
         // Slot drops from the desktop queue rail; the phone has no drag UI.
         "queue_insert",
+        // Save for Later and playlist collaboration have no phone UI.
+        "get_save_for_later_ids",
+        "get_save_for_later_page",
+        "set_save_for_later",
+        "playlist_invite",
+        "playlist_members",
         "open_external",
         "get_custom_titlebar",
         "set_snap_target",

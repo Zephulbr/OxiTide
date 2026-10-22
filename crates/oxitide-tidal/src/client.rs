@@ -68,6 +68,35 @@ pub(crate) async fn decode_json<T: DeserializeOwned>(resp: reqwest::Response) ->
     })
 }
 
+/// The JSON:API media type the OpenAPI host requires on request bodies.
+const JSON_API: &str = "application/vnd.api+json";
+
+/// A write's request body.
+#[derive(Clone, Copy)]
+enum Body<'a> {
+    Empty,
+    Form(&'a [(&'a str, String)]),
+    /// A JSON:API document and the `Idempotency-Key` every resend repeats.
+    JsonApi(&'a serde_json::Value, &'a str),
+}
+
+/// A random version-4 UUID for the OpenAPI `Idempotency-Key` header.
+fn idempotency_key() -> String {
+    let mut bytes = [0u8; 16];
+    getrandom::fill(&mut bytes).expect("OS random source unavailable");
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    format!(
+        "{}-{}-{}-{}-{}",
+        &hex[0..8],
+        &hex[8..12],
+        &hex[12..16],
+        &hex[16..20],
+        &hex[20..32]
+    )
+}
+
 #[derive(Clone)]
 pub struct TidalClient {
     http: reqwest::Client,
@@ -175,9 +204,16 @@ impl TidalClient {
         form: &[(&str, String)],
         etag: Option<&str>,
     ) -> Result<()> {
-        self.mutate(reqwest::Method::POST, &self.base_url, path, &[], form, etag)
-            .await
-            .map(|_| ())
+        self.mutate(
+            reqwest::Method::POST,
+            &self.base_url,
+            path,
+            &[],
+            Body::Form(form),
+            etag,
+        )
+        .await
+        .map(|_| ())
     }
 
     /// Send a DELETE, refreshing once on 401 and honoring a `Retry-After` hint
@@ -193,7 +229,7 @@ impl TidalClient {
             &self.base_url,
             path,
             &[],
-            &[],
+            Body::Empty,
             etag,
         )
         .await
@@ -212,7 +248,7 @@ impl TidalClient {
                 &self.v2_base_url,
                 path,
                 params,
-                &[],
+                Body::Empty,
                 None,
             )
             .await?;
@@ -227,7 +263,56 @@ impl TidalClient {
             &self.v2_base_url,
             path,
             params,
-            &[],
+            Body::Empty,
+            None,
+        )
+        .await
+        .map(|_| ())
+    }
+
+    /// POST a JSON:API document on the public OpenAPI base and decode the
+    /// response. One `Idempotency-Key` covers the request and its resends (401
+    /// refresh, 429), so a write TIDAL already applied is replayed, not repeated.
+    /// Callers pass `countryCode` explicitly, as with `get_openapi`.
+    pub async fn post_openapi<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        params: &[(&str, String)],
+        doc: &serde_json::Value,
+    ) -> Result<T> {
+        let key = idempotency_key();
+        let resp = self
+            .mutate(
+                reqwest::Method::POST,
+                &self.openapi_base_url,
+                path,
+                params,
+                Body::JsonApi(doc, &key),
+                None,
+            )
+            .await?;
+        decode_json(resp).await
+    }
+
+    /// DELETE on the public OpenAPI base, with a JSON:API document when the
+    /// endpoint takes one (relationship removals), discarding the response.
+    pub async fn delete_openapi(
+        &self,
+        path: &str,
+        params: &[(&str, String)],
+        doc: Option<&serde_json::Value>,
+    ) -> Result<()> {
+        let key = idempotency_key();
+        let body = match doc {
+            Some(doc) => Body::JsonApi(doc, &key),
+            None => Body::Empty,
+        };
+        self.mutate(
+            reqwest::Method::DELETE,
+            &self.openapi_base_url,
+            path,
+            params,
+            body,
             None,
         )
         .await
@@ -248,7 +333,7 @@ impl TidalClient {
                 &self.base_url,
                 path,
                 params,
-                form,
+                Body::Form(form),
                 None,
             )
             .await?;
@@ -269,7 +354,7 @@ impl TidalClient {
                 &self.base_url,
                 path,
                 params,
-                form,
+                Body::Form(form),
                 etag,
             )
             .await?;
@@ -446,7 +531,7 @@ impl TidalClient {
         base: &str,
         path: &str,
         params: &[(&str, String)],
-        form: &[(&str, String)],
+        body: Body<'_>,
         etag: Option<&str>,
     ) -> Result<reqwest::Response> {
         let country_code = base == self.base_url.as_str();
@@ -458,7 +543,7 @@ impl TidalClient {
                 base,
                 path,
                 params,
-                form,
+                body,
                 &token,
                 country_code,
                 etag,
@@ -473,7 +558,7 @@ impl TidalClient {
                     base,
                     path,
                     params,
-                    form,
+                    body,
                     &self.access_token(),
                     country_code,
                     etag,
@@ -493,7 +578,7 @@ impl TidalClient {
                     base,
                     path,
                     params,
-                    form,
+                    body,
                     &self.access_token(),
                     country_code,
                     etag,
@@ -510,7 +595,7 @@ impl TidalClient {
         base: &str,
         path: &str,
         params: &[(&str, String)],
-        form: &[(&str, String)],
+        body: Body<'_>,
         token: &str,
         country_code: bool,
         etag: Option<&str>,
@@ -532,8 +617,16 @@ impl TidalClient {
                 .request(method.clone(), &url)
                 .bearer_auth(token)
                 .query(&query);
-            if !form.is_empty() {
-                request = request.form(form);
+            match body {
+                Body::Empty | Body::Form([]) => {}
+                Body::Form(form) => request = request.form(form),
+                Body::JsonApi(doc, key) => {
+                    request = request
+                        .header(reqwest::header::CONTENT_TYPE, JSON_API)
+                        .header(reqwest::header::ACCEPT, JSON_API)
+                        .header("Idempotency-Key", key)
+                        .body(doc.to_string());
+                }
             }
             if let Some(value) = etag {
                 request = request.header(reqwest::header::IF_NONE_MATCH, value);
@@ -1072,6 +1165,105 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(thing.value, 3);
+    }
+
+    #[tokio::test]
+    async fn post_openapi_sends_json_api_and_keeps_its_idempotency_key_across_a_refresh() {
+        use std::sync::Mutex;
+        let server = MockServer::start().await;
+        let keys = Arc::new(Mutex::new(Vec::<String>::new()));
+        let responder = {
+            let keys = keys.clone();
+            move |req: &wiremock::Request| {
+                let key = req
+                    .headers
+                    .get("idempotency-key")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("")
+                    .to_string();
+                keys.lock().unwrap().push(key);
+                let auth = req.headers.get("authorization").and_then(|v| v.to_str().ok());
+                if auth == Some("Bearer old") {
+                    ResponseTemplate::new(401)
+                } else {
+                    ResponseTemplate::new(200).set_body_json(serde_json::json!({"value": 5}))
+                }
+            }
+        };
+        Mock::given(method("POST"))
+            .and(path("/openapi/v2/things"))
+            .and(header("content-type", "application/vnd.api+json"))
+            .and(query_param("countryCode", "GR"))
+            .and(body_string_contains("\"type\":\"tracks\""))
+            .respond_with(responder)
+            .expect(2)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST")).and(path("/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": "new", "refresh_token": "rt2", "token_type": "Bearer", "expires_in": 3600
+            })))
+            .mount(&server).await;
+        let client = TidalClient::new(
+            reqwest::Client::new(),
+            server.uri(),
+            format!("{}/token", server.uri()),
+            session(),
+            tokens(),
+            Arc::new(MemoryStore::default()),
+        );
+        let doc = serde_json::json!({"data": [{"type": "tracks", "id": "7"}]});
+        let thing: Thing = client
+            .post_openapi("things", &[("countryCode", "GR".to_string())], &doc)
+            .await
+            .unwrap();
+        assert_eq!(thing.value, 5);
+        let keys = keys.lock().unwrap();
+        assert_eq!(keys.len(), 2);
+        assert_eq!(keys[0].len(), 36, "a UUID key is sent");
+        assert_eq!(keys[0], keys[1], "the resend repeats the key");
+    }
+
+    #[tokio::test]
+    async fn delete_openapi_sends_the_document_when_given() {
+        let server = MockServer::start().await;
+        Mock::given(method("DELETE"))
+            .and(path("/openapi/v2/things/relationships/items"))
+            .and(header("content-type", "application/vnd.api+json"))
+            .and(body_string_contains("\"id\":\"7\""))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("DELETE"))
+            .and(path("/openapi/v2/shares/s-1"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let client = TidalClient::new(
+            reqwest::Client::new(),
+            server.uri(),
+            format!("{}/token", server.uri()),
+            session(),
+            tokens(),
+            Arc::new(MemoryStore::default()),
+        );
+        let doc = serde_json::json!({"data": [{"type": "tracks", "id": "7"}]});
+        client
+            .delete_openapi("things/relationships/items", &[], Some(&doc))
+            .await
+            .unwrap();
+        client.delete_openapi("shares/s-1", &[], None).await.unwrap();
+    }
+
+    #[test]
+    fn idempotency_keys_are_distinct_v4_uuids() {
+        let a = idempotency_key();
+        let b = idempotency_key();
+        assert_ne!(a, b);
+        assert_eq!(a.len(), 36);
+        assert_eq!(&a[14..15], "4", "version nibble");
     }
 
     #[tokio::test]

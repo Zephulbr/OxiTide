@@ -270,6 +270,45 @@ impl TidalClient {
         let raw: serde_json::Value = self.get("pages/mix", &params).await?;
         Ok(mix_detail_from_json(mix_id, &raw))
     }
+
+    /// A mix's card data (title, subtitle, type, artwork) from its page
+    /// header. TIDAL has no single-mix endpoint on v1.
+    pub async fn mix_info(&self, mix_id: &str) -> Result<crate::models::Mix> {
+        let params = vec![
+            ("mixId", mix_id.to_string()),
+            ("deviceType", "BROWSER".to_string()),
+            ("platform", "WEB".to_string()),
+        ];
+        let raw: serde_json::Value = self.get("pages/mix", &params).await?;
+        Ok(mix_info_from_json(mix_id, &raw))
+    }
+}
+
+fn mix_info_from_json(mix_id: &str, raw: &serde_json::Value) -> crate::models::Mix {
+    let header = raw.pointer("/rows/0/modules/0/mix");
+    let mut mix = header
+        .and_then(crate::library::mix_from_value)
+        .unwrap_or_else(|| crate::models::Mix {
+            id: mix_id.to_string(),
+            title: String::new(),
+            sub_title: None,
+            mix_type: None,
+            image: None,
+        });
+    mix.id = mix_id.to_string();
+    if mix.title.is_empty() {
+        if let Some(title) = raw
+            .pointer("/rows/0/modules/0/title")
+            .and_then(serde_json::Value::as_str)
+        {
+            mix.title = title.to_string();
+        }
+    }
+    // The header's MEDIUM image suits a card better than the list's SMALL.
+    if let Some(artwork) = header_artwork(raw) {
+        mix.image = Some(artwork);
+    }
+    mix
 }
 
 fn sections_from_page(raw: RawPage) -> Vec<PageSection> {
@@ -895,6 +934,48 @@ mod tests {
         assert_eq!(detail.tracks.len(), 1);
         assert_eq!(detail.tracks[0].id, 1);
         assert_eq!(detail.tracks[0].duration, 200);
+    }
+
+    #[tokio::test]
+    async fn mix_info_reads_the_header() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/pages/mix"))
+            .and(query_param("mixId", "0019ab"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "rows": [{"modules": [{"type": "MIX_HEADER", "mix": {
+                    "id": "0019ab", "title": "a tombstone", "subTitle": "Kensuke Ushio",
+                    "mixType": "TRACK_MIX",
+                    "images": {
+                        "SMALL": {"url": "https://img/s.jpg"},
+                        "MEDIUM": {"url": "https://img/m.jpg"}
+                    }
+                }}]}]
+            })))
+            .mount(&server)
+            .await;
+        let mix = client(&server).mix_info("0019ab").await.unwrap();
+        assert_eq!(mix.id, "0019ab");
+        assert_eq!(mix.title, "a tombstone");
+        assert_eq!(mix.sub_title.as_deref(), Some("Kensuke Ushio"));
+        assert_eq!(mix.mix_type.as_deref(), Some("TRACK_MIX"));
+        assert_eq!(mix.image.as_deref(), Some("https://img/m.jpg"));
+    }
+
+    #[tokio::test]
+    async fn mix_info_without_a_header_keeps_the_id() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/pages/mix"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "rows": [{"modules": [{"type": "TRACK_LIST", "title": "Radio"}]}]
+            })))
+            .mount(&server)
+            .await;
+        let mix = client(&server).mix_info("m").await.unwrap();
+        assert_eq!(mix.id, "m");
+        assert_eq!(mix.title, "Radio");
+        assert_eq!(mix.image, None);
     }
 
     #[tokio::test]

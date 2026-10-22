@@ -6,6 +6,7 @@ pub mod error;
 pub mod feed;
 pub mod flags;
 pub mod folders;
+pub mod later;
 pub mod library;
 pub mod lyrics;
 pub mod models;
@@ -14,6 +15,7 @@ pub mod pkce;
 pub mod playlists;
 pub mod purchases;
 pub mod search;
+pub mod shares;
 pub mod stream;
 pub mod token_store;
 

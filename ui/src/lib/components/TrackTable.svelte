@@ -12,6 +12,7 @@
   import { formatDuration, formatReleaseDate } from "../format";
   import { locatePlaying } from "../locatePlaying.svelte";
   import { menuFor, type MenuItem } from "../menu.svelte";
+  import { later } from "../later.svelte";
   import { selectionMenuItems, trackMenuItems } from "../menus";
   import { createSelection } from "../selection.svelte";
   import { dragDrop, dragSource, dropZone, type DropZone } from "../dragDrop.svelte";
@@ -809,6 +810,7 @@
                   ? menuArtists(t.artists, here).map((a) => ({ name: a.name, open: () => openArtist(a.id) }))
                   : undefined,
                 playlist: playlistActions,
+                later: { active: later.has("track", t.id), toggle: () => void later.toggle("track", t.id) },
               }))}
           >
             {#if !compact}

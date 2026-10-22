@@ -21,6 +21,8 @@
   import { folderMeta } from "../lib/folderMeta.svelte";
   import { menuFor } from "../lib/menu.svelte";
   import { collectionFolderMenuItems, collectionPlaylistMenuItems } from "../lib/menus";
+  import { later } from "../lib/later.svelte";
+  import { collaboratorsDialog } from "../lib/collaborators.svelte";
   import type { Nav } from "../lib/nav.svelte";
   import { playlistRecency } from "../lib/playlistRecency.svelte";
   import type { PlaylistActions } from "../lib/playlists.svelte";
@@ -185,6 +187,8 @@
                 rename: () => actions.openRenamePlaylist(entry),
                 remove: () => actions.openRemove(entry),
                 move: () => actions.openMove(entry, folderId ?? "root"),
+                later: { active: later.has("playlist", entry.uuid), toggle: () => void later.toggle("playlist", entry.uuid) },
+                collaborators: () => collaboratorsDialog.open({ uuid: entry.uuid, title: entry.title }),
               })}
       >
         {#if entry.kind === "folder"}

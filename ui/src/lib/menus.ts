@@ -23,6 +23,8 @@ export interface TrackMenuContext {
   goToArtists?: { name: string; open(): void }[];
   /// True when the active content filters hide this track.
   blocked?: boolean;
+  /// Save for Later state; absent where the surface does not offer it.
+  later?: LaterToggle;
   playlist?: {
     onRemove(index: number): void;
     busy: boolean;
@@ -78,6 +80,7 @@ export function trackMenuItems(ctx: TrackMenuContext): MenuItem[] {
       icon: favorited ? "heart-crack" : "heart",
       run: () => void ctx.favorites.toggleTrack(ctx.track.id),
     },
+    ...laterItems(ctx.later),
     ...goToItems(ctx),
     {
       id: "copy-title",
@@ -146,6 +149,26 @@ interface GoToTargets {
   goToArtists?: { name: string; open(): void }[];
 }
 
+/// Whether the item is in Save for Later, and the toggle.
+export interface LaterToggle {
+  active: boolean;
+  toggle(): void;
+}
+
+/// The Save for Later entry, labelled by state (spec SL-D4); none when the
+/// surface has no toggle.
+export function laterItems(later: LaterToggle | undefined): MenuItem[] {
+  if (!later) return [];
+  return [
+    {
+      id: "later",
+      label: later.active ? "Remove from Save for later" : "Save for later",
+      icon: later.active ? "bookmark-minus" : "bookmark",
+      run: () => later.toggle(),
+    },
+  ];
+}
+
 /// The navigation group: album, then one "Go to artist" or a "Go to {name}"
 /// per artist when there are several.
 function goToItems(ctx: GoToTargets): MenuItem[] {
@@ -174,6 +197,7 @@ export function nowPlayingMenuItems(ctx: GoToTargets & {
   startRadio?: () => void;
   /// Absent where the bar has no playlist picker.
   addToPlaylist?: () => void;
+  later?: LaterToggle;
   copyTitle(): void;
   trackInfo(): void;
 }): MenuItem[] {
@@ -192,6 +216,7 @@ export function nowPlayingMenuItems(ctx: GoToTargets & {
     run: () => ctx.toggleFavorite(),
   });
   items.push(
+    ...laterItems(ctx.later),
     ...goToItems(ctx),
     { id: "copy-title", label: "Copy title", icon: "copy", divider: true, run: () => ctx.copyTitle() },
     { id: "track-info", label: "Track info", icon: "info", run: () => ctx.trackInfo() },
@@ -235,6 +260,7 @@ export function collectionCardMenuItems(ctx: GoToTargets & {
   addToQueue(): void;
   addToPlaylist(): void;
   favorite?: { active: boolean; toggle(): void };
+  later?: LaterToggle;
   copyLink(): void;
 }): MenuItem[] {
   const items: MenuItem[] = [
@@ -260,6 +286,7 @@ export function collectionCardMenuItems(ctx: GoToTargets & {
     });
   }
   items.push(
+    ...laterItems(ctx.later),
     ...goToItems(ctx),
     { id: "copy-link", label: "Copy link", icon: "link", divider: true, run: () => ctx.copyLink() },
   );
@@ -311,11 +338,19 @@ export function collectionPlaylistMenuItems(ctx: {
   rename(): void;
   remove(): void;
   move(): void;
+  later?: LaterToggle;
+  /// Opens the Collaborators dialog; offered on owned playlists only (CO-D1).
+  collaborators?: () => void;
 }): MenuItem[] {
   const items: MenuItem[] = [
     { id: "open", label: "Open", icon: "external-link", run: () => ctx.open() },
     { id: "move", label: "Move to folder…", icon: "folder", run: () => ctx.move() },
+    ...laterItems(ctx.later),
   ];
+  const collaborators = ctx.collaborators;
+  if (ctx.playlist.owned && collaborators) {
+    items.push({ id: "collaborators", label: "Collaborators…", icon: "users", run: () => collaborators() });
+  }
   if (ctx.playlist.owned) {
     items.push(
       { id: "rename", label: "Rename", icon: "pencil", run: () => ctx.rename() },

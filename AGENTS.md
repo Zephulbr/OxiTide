@@ -61,6 +61,22 @@ Prereqs: Rust stable (`rust-toolchain.toml` pins it, with clippy/rustfmt), Node 
     inserts through `queue_insert`.
   - **Track tables multi-select through `lib/selection.svelte.ts`**, keyed by row object
     (playlists repeat ids). A drag from a selected row carries the selection.
+- Save for Later + Collaborators (spec `2026-10-22-oxitide-save-for-later-collaborators-design.md`):
+  - **OxiTide's first writes on the public OpenAPI host.** `post_openapi` / `delete_openapi`
+    in `client.rs` send `application/vnd.api+json` and one `Idempotency-Key` per write
+    (resends repeat it).
+  - **Save for Later:** `later.rs` uses `userCollectionSaveForLaters/me` and hydrates
+    pages into the v1 models. The UI singleton `lib/later.svelte.ts` (like `trackFlags`)
+    labels the menus. TIDAL stores a saved mix as a `playlists` reference with the mix
+    id, so a non-UUID playlist id reads back as `LaterKind::Mix`. Videos are only
+    counted.
+  - **Invitations:** `shares.rs` creates COLLABORATOR shares and builds
+    `tidal.com/playlist/{uuid}/invite?code=…` itself, because TIDAL returns no link.
+    `AppState::invites` reuses one per playlist per session.
+  - **Members** come from the internal v2 `user-playlists/{uuid}`. TIDAL can't revoke
+    grants yet, so there is no "remove collaborator".
+  - **Collaborator editing is not built yet.** `Playlist.owned` still means "creator";
+    plan Task 1 settles it.
 - Easter eggs (spec `2026-10-21-oxitide-catjam-kuroneko-design.md`):
   - **CatJam:** `CatJam.svelte` sits on the player bar cover and bobs to the beat (not in the Rack or mini shells). Beats come **only from local analysis**: `crates/oxitide-audio/src/beat.rs` (`BeatTap`, read-only, pushed with the track's own frames before DSP) feeds `automix::analyze_beats` on the `oxitide-beat` helper, and the result is `EngineEvent::Beat` (desktop `beat` event). Never fetch tempo or beat data and never send track ids anywhere for it (the reference plugin sent every track id to a third-party API).
   - **Beat tracking is mount-driven:** `set_beat_tracking` is on only while CatJam is mounted. `AppState` re-applies it to an engine rebuilt after re-login.

@@ -10,6 +10,7 @@
   import TrackTable from "../lib/components/TrackTable.svelte";
   import { copyText } from "../lib/clipboard";
   import { formatTotalDuration } from "../lib/format";
+  import { later } from "../lib/later.svelte";
   import { playSource, type PlayFrom } from "../lib/playSource.svelte";
   import { trackFlags } from "../lib/trackFlags.svelte";
   import { shareUrl } from "../lib/share";
@@ -132,6 +133,13 @@
         <Cover uuid={artwork} size={640} radius={12} alt={`${data.title} cover`} />
       {/snippet}
       {#snippet actions()}
+        <DetailAction
+          icon={later.has("mix", id) ? "bookmark-minus" : "bookmark"}
+          label={later.has("mix", id) ? "Saved" : "Save"}
+          active={later.has("mix", id)}
+          title={later.has("mix", id) ? "Remove from Save for later" : "Save for later"}
+          onclick={() => void later.toggle("mix", id)}
+        />
         <DetailAction
           icon="list-plus"
           label="Add"

@@ -65,6 +65,9 @@
   import { createAuthGate } from "./lib/authGate";
   import { createDynamicColor } from "./lib/dynamicColor.svelte";
   import { createFavorites } from "./lib/favorites.svelte";
+  import { later } from "./lib/later.svelte";
+  import { collaboratorsDialog } from "./lib/collaborators.svelte";
+  import CollaboratorsDialog from "./lib/components/CollaboratorsDialog.svelte";
   import { createPlaylistActions } from "./lib/playlists.svelte";
   import { createCollectionTree } from "./lib/collection.svelte";
   import { createCollectionActions } from "./lib/collectionActions.svelte";
@@ -103,6 +106,7 @@
   createLamp(player);
   const mini = createMini(toasts);
   const favorites = createFavorites(toasts);
+  later.connect({ toasts, open: () => nav.goto({ name: "later" }) });
   const playlistActions = createPlaylistActions(toasts);
   const collection = createCollectionTree(toasts);
   const collectionActions = createCollectionActions(collection, toasts);
@@ -320,6 +324,8 @@
       // different account inheriting the route is not a case handled here.
       loggedIn = false;
       favorites.reset();
+      later.reset();
+      collaboratorsDialog.reset();
       playlistActions.reset();
       collection.reset();
       collectionActions.reset();
@@ -387,7 +393,7 @@
   });
 
   $effect(() => {
-    if (loggedIn) untrack(() => favorites.hydrate());
+    if (loggedIn) untrack(() => { void favorites.hydrate(); void later.hydrate(); });
   });
 
   $effect(() => {
@@ -624,6 +630,8 @@
     clearViewCache();
     clearPlaylistCovers();
     favorites.reset();
+    later.reset();
+    collaboratorsDialog.reset();
     playlistActions.reset();
     collection.reset();
     collectionActions.reset();
@@ -814,6 +822,7 @@
       />
       <TrackInfoHost {nav} />
       <PlaylistPicker actions={playlistActions} onnavigate={(id) => nav.goto({ name: "playlist", id })} />
+      <CollaboratorsDialog {toasts} />
       <CollectionDialogs actions={collectionActions} />
     </div>
   {:else}
@@ -917,6 +926,7 @@
     <PlayerBar {player} {qualityDisplay} {favorites} {nav} {mini} {sleepTimer} {toasts} {playlistActions} floating={barFloats} />
     <TrackInfoHost {nav} />
     <PlaylistPicker actions={playlistActions} onnavigate={(id) => nav.goto({ name: "playlist", id })} />
+    <CollaboratorsDialog {toasts} />
     <CollectionDialogs actions={collectionActions} />
   </div>
   {/if}

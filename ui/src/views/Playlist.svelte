@@ -13,6 +13,9 @@
   import { copyText } from "../lib/clipboard";
   import { formatTotalDuration } from "../lib/format";
   import { menu, type MenuItem } from "../lib/menu.svelte";
+  import { laterItems } from "../lib/menus";
+  import { later } from "../lib/later.svelte";
+  import { collaboratorsDialog } from "../lib/collaborators.svelte";
   import { createTrackPager } from "../lib/pager.svelte";
   import { playSource, type PlayFrom } from "../lib/playSource.svelte";
   import { trackFlags } from "../lib/trackFlags.svelte";
@@ -216,8 +219,19 @@
           void pager.refresh();
         },
       },
+      ...laterItems({
+        active: later.has("playlist", id),
+        toggle: () => void later.toggle("playlist", id),
+      }),
     ];
     if (playlist?.owned) {
+      const title = playlist.title;
+      items.push({
+        id: "collaborators",
+        label: "Collaborators…",
+        icon: "users",
+        run: () => collaboratorsDialog.open({ uuid: id, title }),
+      });
       items.push({
         id: "delete",
         label: "Delete playlist",

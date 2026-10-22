@@ -8,7 +8,9 @@ use oxitide_audio::output::{ExclusiveFallback, OutputMode};
 use oxitide_audio::queue::{ArtistRef, QueueItem, RepeatMode};
 use oxitide_tidal::auth::{self, SessionInfo};
 use oxitide_tidal::client::TidalClient;
+use oxitide_tidal::later::{LaterEntry, LaterIds, LaterKind};
 use oxitide_tidal::library::FavoriteIds;
+use oxitide_tidal::shares::{PlaylistInvite, PlaylistMember};
 use oxitide_tidal::pkce::{
     random_state, Pkce, PKCE_CLIENT_ID, PKCE_REDIRECT_DEEP_LINK, PKCE_REDIRECT_PASTE, TOKEN_URL,
 };
@@ -1111,6 +1113,114 @@ pub async fn set_favorite_artist(
 pub async fn get_favorite_ids(state: State<'_, AppState>) -> Result<FavoriteIds, String> {
     require_client(&state)?
         .favorite_ids()
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
+/// Every Save for Later id, by kind (videos only counted).
+#[tauri::command]
+pub async fn get_save_for_later_ids(state: State<'_, AppState>) -> Result<LaterIds, String> {
+    require_client(&state)?
+        .later_ids()
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
+/// One Save for Later page, newest first, hydrated into the usual models.
+#[derive(Serialize)]
+pub struct LaterPageDto {
+    pub items: Vec<LaterEntry>,
+    pub cursor: Option<String>,
+    /// Videos on this page, which OxiTide does not show.
+    pub videos: u32,
+}
+
+#[tauri::command]
+pub async fn get_save_for_later_page(
+    state: State<'_, AppState>,
+    cursor: Option<String>,
+) -> Result<LaterPageDto, String> {
+    let client = require_client(&state)?;
+    let page = client
+        .later_page(cursor.as_deref())
+        .await
+        .map_err(|e| state.fail_tidal(e))?;
+    let videos = page
+        .items
+        .iter()
+        .filter(|item| item.kind == LaterKind::Video)
+        .count() as u32;
+    let items = client
+        .later_entries(page.items)
+        .await
+        .map_err(|e| state.fail_tidal(e))?;
+    Ok(LaterPageDto {
+        items,
+        cursor: page.cursor,
+        videos,
+    })
+}
+
+/// Save to or remove from Save for Later. TIDAL skipping an item that is
+/// already saved counts as success (spec SL-D7).
+#[tauri::command]
+pub async fn set_save_for_later(
+    state: State<'_, AppState>,
+    kind: LaterKind,
+    id: String,
+    saved: bool,
+) -> Result<(), String> {
+    let client = require_client(&state)?;
+    let items = [(kind, id)];
+    let result = if saved {
+        client.later_add(&items).await.map(|_| ())
+    } else {
+        client.later_remove(&items).await
+    };
+    result.map_err(|e| match e {
+        Error::Api { status: 409, message } if message.contains("TOO_MANY_ITEMS") => {
+            "Save for Later is full".to_string()
+        }
+        e => state.fail_tidal(e),
+    })
+}
+
+/// The playlist's collaborator invitation, reused for the session until it
+/// nears expiry (spec CO-D3). `renew` deletes the current link first, so it
+/// stops working.
+#[tauri::command]
+pub async fn playlist_invite(
+    state: State<'_, AppState>,
+    uuid: String,
+    renew: bool,
+) -> Result<PlaylistInvite, String> {
+    let client = require_client(&state)?;
+    if renew {
+        if let Some(old) = state.invites.take(&uuid) {
+            client
+                .delete_share(&old.share_id)
+                .await
+                .map_err(|e| state.fail_tidal(e))?;
+        }
+    } else if let Some(invite) = state.invites.get(&uuid) {
+        return Ok(invite);
+    }
+    let invite = client
+        .create_playlist_invite(&uuid)
+        .await
+        .map_err(|e| state.fail_tidal(e))?;
+    state.invites.insert(&uuid, invite.clone());
+    Ok(invite)
+}
+
+/// The owner, then the collaborators.
+#[tauri::command]
+pub async fn playlist_members(
+    state: State<'_, AppState>,
+    uuid: String,
+) -> Result<Vec<PlaylistMember>, String> {
+    require_client(&state)?
+        .playlist_members(&uuid)
         .await
         .map_err(|e| state.fail_tidal(e))
 }

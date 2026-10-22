@@ -4,6 +4,7 @@ import { copyText } from "./clipboard";
 import { loadTracks } from "./collectionTracks";
 import { errorMessage } from "./errors";
 import type { Favorites } from "./favorites.svelte";
+import { later } from "./later.svelte";
 import type { MenuItem } from "./menu.svelte";
 import { collectionCardMenuItems } from "./menus";
 import { routeForPageItem, type Nav } from "./nav.svelte";
@@ -127,6 +128,10 @@ export function createCardActions({ nav, toasts, favorites, playlistActions }: C
         album === null
           ? undefined
           : { active: favorites.hasAlbum(album), toggle: () => void favorites.toggleAlbum(album) },
+      later: {
+        active: later.has(target.kind, target.id),
+        toggle: () => void later.toggle(target.kind, target.id),
+      },
       goToArtists: (item.artist_refs ?? []).map((artist) => ({
         name: artist.name,
         open: () => openArtist(artist.id),

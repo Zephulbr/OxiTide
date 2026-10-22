@@ -21,6 +21,8 @@ export function routeTitle(route: Route, nowPlaying = false): string {
       return "Albums · OxiTide";
     case "tracks":
       return "Tracks · OxiTide";
+    case "later":
+      return "Save for Later · OxiTide";
     case "mixes":
       return "Mixes · OxiTide";
     case "profiles":

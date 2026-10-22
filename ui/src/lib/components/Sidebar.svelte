@@ -126,10 +126,15 @@
     ]);
   }
 
-  const collectionItems: { route: Route; label: string; icon: "list-music" | "disc-3" | "music" }[] = [
+  const collectionItems: {
+    route: Route;
+    label: string;
+    icon: "list-music" | "disc-3" | "music" | "bookmark";
+  }[] = [
     { route: { name: "playlists" }, label: "Playlists", icon: "list-music" },
     { route: { name: "albums" }, label: "Albums", icon: "disc-3" },
     { route: { name: "tracks" }, label: "Tracks", icon: "music" },
+    { route: { name: "later" }, label: "Save for Later", icon: "bookmark" },
   ];
 
   const moreItems: {

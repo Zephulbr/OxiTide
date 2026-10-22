@@ -9,6 +9,8 @@
   import { menuFor } from "../menu.svelte";
   import { folderMeta } from "../folderMeta.svelte";
   import { collectionFolderMenuItems, collectionPlaylistMenuItems } from "../menus";
+  import { later } from "../later.svelte";
+  import { collaboratorsDialog } from "../collaborators.svelte";
   import type { Nav } from "../nav.svelte";
   import { playlistRecency } from "../playlistRecency.svelte";
   import { filterCollectionEntries, sortCollectionEntries } from "../playlistSort";
@@ -173,6 +175,8 @@
           rename: () => actions.openRenamePlaylist(entry),
           remove: () => actions.openRemove(entry),
           move: () => actions.openMove(entry, parentId),
+          later: { active: later.has("playlist", entry.uuid), toggle: () => void later.toggle("playlist", entry.uuid) },
+          collaborators: () => collaboratorsDialog.open({ uuid: entry.uuid, title: entry.title }),
         })}
       title={entry.title}
     >

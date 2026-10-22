@@ -3,7 +3,9 @@ import type { Playlist, Track } from "./api";
 import type { Favorites } from "./favorites.svelte";
 import {
   collectionCardMenuItems,
+  collectionPlaylistMenuItems,
   historyMenuItems,
+  laterItems,
   libraryPlaylistMenuItems,
   queueMenuItems,
   selectionMenuItems,
@@ -361,5 +363,65 @@ describe("collectionCardMenuItems", () => {
     for (const fn of [c.play, c.shuffle, c.playNext, c.addToQueue, c.addToPlaylist, c.copyLink]) {
       expect(fn).toHaveBeenCalledTimes(1);
     }
+  });
+});
+
+describe("laterItems", () => {
+  it("is absent without a toggle", () => {
+    expect(laterItems(undefined)).toEqual([]);
+  });
+
+  it("labels by state and runs the toggle", () => {
+    const toggle = vi.fn();
+    const [save] = laterItems({ active: false, toggle });
+    expect(save).toMatchObject({ id: "later", label: "Save for later", icon: "bookmark" });
+    const [remove] = laterItems({ active: true, toggle });
+    expect(remove).toMatchObject({ label: "Remove from Save for later", icon: "bookmark-minus" });
+    remove.run();
+    expect(toggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("sits after Favorite in the track and card menus", () => {
+    const later = { active: false, toggle: vi.fn() };
+    const card = collectionCardMenuItems({
+      play: vi.fn(),
+      shuffle: vi.fn(),
+      playNext: vi.fn(),
+      addToQueue: vi.fn(),
+      addToPlaylist: vi.fn(),
+      copyLink: vi.fn(),
+      favorite: { active: false, toggle: vi.fn() },
+      later,
+    }).map((item) => item.id);
+    expect(card.indexOf("later")).toBe(card.indexOf("favorite") + 1);
+    const track = trackMenuItems(baseCtx({ later })).map((item) => item.id);
+    expect(track.indexOf("later")).toBe(track.indexOf("favorite") + 1);
+  });
+});
+
+describe("collectionPlaylistMenuItems", () => {
+  function ctx(owned: boolean, collaborators?: () => void) {
+    return {
+      playlist: { ...playlist(), owned },
+      open: vi.fn(),
+      rename: vi.fn(),
+      remove: vi.fn(),
+      move: vi.fn(),
+      later: { active: false, toggle: vi.fn() },
+      collaborators,
+    };
+  }
+
+  it("offers Collaborators on an owned playlist", () => {
+    const open = vi.fn();
+    const items = collectionPlaylistMenuItems(ctx(true, open));
+    expect(items.map((item) => item.id)).toEqual(["open", "move", "later", "collaborators", "rename", "delete"]);
+    items.find((item) => item.id === "collaborators")!.run();
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  it("never offers Collaborators on a playlist we do not own", () => {
+    const items = collectionPlaylistMenuItems(ctx(false, vi.fn()));
+    expect(items.map((item) => item.id)).toEqual(["open", "move", "later", "remove"]);
   });
 });
