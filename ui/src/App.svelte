@@ -10,6 +10,7 @@
     GLIDE_MS,
     holdPage,
     prepareOpenGlide,
+    queueCard as queueCardTransition,
     queueDock,
     queueFloat,
     releasePageHold,
@@ -134,6 +135,12 @@
     return () => media.removeEventListener("change", sync);
   });
 
+  // Floating player bar / queue card (ui.player_bar_style / queue_style). A
+  // narrow window keeps the docked bar and the modal queue overlay: there is
+  // no room to inset either.
+  const barFloats = $derived(appearance.playerBarStyle === "floating" && !queueOverlay);
+  const queueCard = $derived(appearance.queueStyle === "floating" && !queueOverlay);
+
   function startQueueDrag(event: PointerEvent) {
     event.preventDefault();
     const startX = event.clientX;
@@ -225,14 +232,20 @@
   });
   $effect(() => {
     if (!queuePeekEnabled) return;
+    // The card stands off the window edge by --float-gap; that strip counts
+    // as part of it.
+    const inset = queueCard
+      ? parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--float-gap")) || 0
+      : 0;
     const onMove = (event: PointerEvent) => {
       const width = window.innerWidth;
-      const reach = queuePeek.open ? appearance.queueWidth : QUEUE_PEEK_EDGE_PX;
+      const reach = queuePeek.open ? appearance.queueWidth + inset : QUEUE_PEEK_EDGE_PX;
       if (event.clientX < width - reach) {
         queuePeek.leave();
         return;
       }
-      const root = getComputedStyle(document.documentElement);
+      // The shell, not :root: a floating bar sets its own --player-height.
+      const root = getComputedStyle(document.querySelector(".app") ?? document.documentElement);
       const view = {
         width,
         height: window.innerHeight,
@@ -520,13 +533,13 @@
   // Closing is handled by the rail's outro start, when it is still laid out.
   let queueWasOpen = false;
   $effect.pre(() => {
-    if (nav.queueOpen && !queueWasOpen && !queueOverlay) {
+    if (nav.queueOpen && !queueWasOpen && !queueOverlay && !queueCard) {
       prepareOpenGlide(document.getElementById("main"), { glide: !appearance.reducedMotion });
     }
   });
   $effect(() => {
     const open = nav.queueOpen;
-    if (open && !queueWasOpen && !queueOverlay) {
+    if (open && !queueWasOpen && !queueOverlay && !queueCard) {
       commitOpenGlide(document.getElementById("main"), appearance.queueWidth);
     }
     queueWasOpen = open;
@@ -785,7 +798,27 @@
       <CollectionDialogs actions={collectionActions} />
     </div>
   {:else}
-  <div class="app" data-sidebar={sidebarRail ? "rail" : "full"} data-now-playing={nav.nowPlayingOpen} inert={dialogs.count > 0}>
+  {#snippet queueResize()}
+    <div
+      class="queue-resize"
+      onpointerdown={startQueueDrag}
+      onkeydown={onQueueResizeKeydown}
+      tabindex="0"
+      role="slider"
+      aria-label="Queue width"
+      aria-valuemin={QUEUE_WIDTH_MIN}
+      aria-valuemax={QUEUE_WIDTH_MAX}
+      aria-valuenow={appearance.queueWidth}
+      aria-valuetext={`${appearance.queueWidth} pixels`}
+    ></div>
+  {/snippet}
+  <div
+    class="app"
+    data-sidebar={sidebarRail ? "rail" : "full"}
+    data-now-playing={nav.nowPlayingOpen}
+    data-player={barFloats ? "floating" : "docked"}
+    inert={dialogs.count > 0}
+  >
     <a class="skip-link" href="#main">Skip to content</a>
     <Sidebar
       {nav}
@@ -824,6 +857,13 @@
         <aside class="queue floating" transition:queueFloat|global={{ reduced: appearance.reducedMotion }}>
           <QueueRail {player} go={(route) => { nav.toggleQueue(); goFromChrome(route); }} />
         </aside>
+      {:else if queueCard}
+        <!-- Non-modal like the docked rail: no backdrop, the page stays live
+             beside it, and name links leave it open. -->
+        <aside class="queue floating card" transition:queueCardTransition|global={{ reduced: appearance.reducedMotion }}>
+          {@render queueResize()}
+          <QueueRail {player} go={goFromChrome} />
+        </aside>
       {:else}
         <aside
           class="queue"
@@ -836,21 +876,17 @@
           onintroend={releasePageHold}
           onoutroend={releasePageHold}
         >
-          <div
-            class="queue-resize"
-            onpointerdown={startQueueDrag}
-            onkeydown={onQueueResizeKeydown}
-            tabindex="0"
-            role="slider"
-            aria-label="Queue width"
-            aria-valuemin={QUEUE_WIDTH_MIN}
-            aria-valuemax={QUEUE_WIDTH_MAX}
-            aria-valuenow={appearance.queueWidth}
-            aria-valuetext={`${appearance.queueWidth} pixels`}
-          ></div>
+          {@render queueResize()}
           <QueueRail {player} go={goFromChrome} />
         </aside>
       {/if}
+    {:else if queuePeek.open && queueCard}
+      <aside
+        class="queue floating card"
+        transition:queueCardTransition|global={{ reduced: appearance.reducedMotion, duration: QUEUE_PEEK_SLIDE_MS }}
+      >
+        <QueueRail {player} go={(route) => { queuePeek.reset(); goFromChrome(route); }} />
+      </aside>
     {:else if queuePeek.open}
       <aside
         class="queue floating"
@@ -859,7 +895,7 @@
         <QueueRail {player} go={(route) => { queuePeek.reset(); goFromChrome(route); }} />
       </aside>
     {/if}
-    <PlayerBar {player} {qualityDisplay} {favorites} {nav} {mini} {sleepTimer} />
+    <PlayerBar {player} {qualityDisplay} {favorites} {nav} {mini} {sleepTimer} floating={barFloats} />
     <TrackInfoHost {nav} />
     <PlaylistPicker actions={playlistActions} onnavigate={(id) => nav.goto({ name: "playlist", id })} />
     <CollectionDialogs actions={collectionActions} />

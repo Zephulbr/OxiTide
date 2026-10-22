@@ -365,6 +365,8 @@ export interface CacheStatus {
 }
 /// The jamming cat's coat (`CatjamCoat` in config.rs; frames in catjamSprite.ts).
 export type CatjamCoat = "white" | "black" | "ginger" | "grey" | "tuxedo" | "cream";
+/// Player bar / queue placement in the default shell (`PanelStyle` in config.rs).
+export type PanelStyle = "docked" | "floating";
 export interface Config {
   audio: {
     output_device: string;
@@ -383,6 +385,8 @@ export interface Config {
     cover_shape: "disc" | "sleeve";
     dynamic_color: "auto" | "full" | "accent" | "off";
     queue_width: number;
+    player_bar_style: PanelStyle;
+    queue_style: PanelStyle;
     start_in_mini: boolean;
     oneko: boolean;
     catjam: boolean;
@@ -783,6 +787,8 @@ export const api = {
   setCatjamScale: (percent: number) => invoke<number>("set_catjam_scale", { percent }),
   setBeatTracking: (enabled: boolean) => invoke<void>("set_beat_tracking", { enabled }),
   setHoverPanels: (enabled: boolean) => invoke<void>("set_hover_panels", { enabled }),
+  setPlayerBarStyle: (style: PanelStyle) => invoke<void>("set_player_bar_style", { style }),
+  setQueueStyle: (style: PanelStyle) => invoke<void>("set_queue_style", { style }),
   setSmtc: (enabled: boolean) => invoke<void>("set_smtc", { enabled }),
   setCloseToTray: (enabled: boolean) => invoke<void>("set_close_to_tray", { enabled }),
   setHotkey: (action: HotkeyAction, accelerator: string, replace: HotkeyAction | null = null) =>

@@ -38,6 +38,8 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   e("density", "appearance", "Typography & layout", "Density", "compact comfortable spacing rows size"),
   e("cover-shape", "appearance", "Typography & layout", "Cover shape", "disc sleeve artwork album art now playing"),
   e("track-sort-memory", "appearance", "Typography & layout", "Remember track sorting", "sort order playlist favorites columns reset"),
+  e("player-bar-style", "appearance", "Typography & layout", "Player bar", "floating docked card layout bottom", "notRack"),
+  e("queue-style", "appearance", "Typography & layout", "Queue", "floating docked card overlay rail panel layout", "notRack"),
   e("hover-panels", "appearance", "Typography & layout", "Expand panels on hover", "sidebar queue rail peek mouse collapse auto", "notRack"),
   e("rack-deck", "appearance", "Hi-Fi Rack", "Deck face", "transport cd player display", "rack"),
   e("rack-meters", "appearance", "Hi-Fi Rack", "Amp meters", "needles bars led spectrum vu", "rack"),

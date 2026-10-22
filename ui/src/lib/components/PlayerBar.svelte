@@ -31,6 +31,7 @@
     nav,
     mini,
     sleepTimer,
+    floating = false,
   }: {
     player: Player;
     qualityDisplay: QualityDisplay;
@@ -38,6 +39,8 @@
     nav: Nav;
     mini: Mini;
     sleepTimer: SleepTimer;
+    /// The floating card (App's `data-player`); its seek tapers the wave.
+    floating?: boolean;
   } = $props();
 
   const position = $derived(player.pendingSeek ?? player.state.position_ms);
@@ -277,7 +280,7 @@
     {@const current = player.state.current}
     {@const fav = favorites.hasTrack(current.track_id)}
     <span class="floor" bind:this={floor} aria-hidden="true"></span>
-    <SeekBar {player} />
+    <SeekBar {player} taper={floating} />
 
     <div class="zone left">
       <button class="thumb" onclick={() => nav.toggleNowPlaying()} aria-label="Open now playing" title="Open now playing">
@@ -470,6 +473,8 @@
     inset: 0;
     z-index: -1;
     overflow: hidden;
+    /* The floating bar's rounded box (app.css). */
+    border-radius: inherit;
     pointer-events: none;
     opacity: 0;
     transition: opacity 1000ms var(--ease-in-out);
@@ -544,6 +549,12 @@
   }
   .thumb:hover {
     transform: scale(1.04);
+  }
+  /* The floating bar is 76px (app.css); the cover keeps the same 8px margin
+     to its edges. */
+  :global(.app[data-player="floating"]) .thumb {
+    width: 60px;
+    height: 60px;
   }
   /* Expand hint: the cover opens Now Playing, so say so on hover. */
   .thumb-hint {

@@ -242,6 +242,42 @@ body {
   background: var(--player-veil);
   backdrop-filter: blur(var(--glass-blur));
 }
+/* Floating bar (ui.player_bar_style; App drops it on narrow windows): an
+   inset card over the main column only. Placed in the grid's main track, so
+   it follows the sidebar rail, a docked queue and Now Playing (where the
+   sidebar leaves the grid and main is the first track). The sidebar and a
+   docked queue then run to the window bottom (--sidebar-clear,
+   --queue-clear). Its seek runs round the top corners (SeekBar's rim). The
+   card is 76px: --player-height, the bottom clearance everything under it
+   reads, adds the gap to that. */
+.app[data-player="floating"] {
+  --sidebar-clear: 0px;
+  --player-height: calc(76px + var(--float-gap));
+}
+.app[data-player="floating"] > .player {
+  grid-column: 2;
+  grid-row: 1;
+  left: var(--float-gap);
+  right: var(--float-gap);
+  bottom: var(--float-gap);
+  height: calc(var(--player-height) - var(--float-gap));
+  border-radius: var(--radius-sheet);
+  box-shadow: var(--shadow-panel);
+}
+.app[data-player="floating"][data-now-playing="true"] > .player {
+  grid-column: 1;
+}
+/* No top border: the seek's rim draws the top edge and its tapering corners
+   alone. The side borders thin out up into the corners where the rim's
+   taper ends, so the two hand over at both ends, not just the played one. */
+.app[data-player="floating"] > .player::before {
+  border: 1px solid var(--line);
+  border-top-width: 0;
+  border-radius: inherit;
+}
+.app[data-player="floating"] .queue {
+  --queue-clear: 0px;
+}
 
 /* Narrow window: the queue can no longer dock (spec §7.1) — it floats. */
 .queue-backdrop {
@@ -258,6 +294,30 @@ body {
   z-index: 20;
   backdrop-filter: blur(var(--glass-blur));
   box-shadow: -12px 0 32px rgba(0, 0, 0, 0.45);
+}
+/* Floating queue card (ui.queue_style): non-modal, inset from the window
+   edge, clear of the caption buttons above and the player bar below (either
+   style: --player-height is the bar's clearance in both), so the rail needs
+   no bottom clearance of its own. It takes the menus' opaque floating veil:
+   the page stays fully live behind it. */
+.queue.card {
+  --queue-clear: 0px;
+  top: calc(var(--titlebar-h) + var(--float-gap));
+  right: var(--float-gap);
+  bottom: calc(var(--player-height) + var(--float-gap));
+  padding-top: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sheet);
+  background: var(--surface-float);
+  box-shadow: var(--shadow-panel), 0 16px 40px rgb(0 0 0 / 0.3);
+  overflow: hidden;
+}
+.queue.card > .queue-rail {
+  min-width: 0;
+}
+/* Clipped by the card's rounded box, so the handle sits just inside it. */
+.queue.card > .queue-resize {
+  left: 0;
 }
 
 .muted { color: var(--text-muted); }

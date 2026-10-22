@@ -1,4 +1,4 @@
-import { api, type AnalyzerStyle, type CatjamCoat, type RackSettings } from "./api";
+import { api, type AnalyzerStyle, type CatjamCoat, type PanelStyle, type RackSettings } from "./api";
 import { DEFAULT_CATJAM_SCALE, DEFAULT_COAT, clampCatjamScale, isCoat } from "./catjamSprite";
 import { readThemeMirror, resolveTheme, writeThemeMirror, type ResolvedTheme, type ThemeSetting } from "./theme";
 
@@ -93,6 +93,10 @@ export interface Appearance {
   readonly catjamScale: number;
   /// The collapsed sidebar and the closed queue expand as overlays on hover.
   readonly hoverPanels: boolean;
+  /// Default shell only (Atmosphere, Instrument): the player bar and the
+  /// queue dock to the window edges or float as inset cards.
+  readonly playerBarStyle: PanelStyle;
+  readonly queueStyle: PanelStyle;
   readonly dynamicColor: DynamicColorMode;
   readonly backdropArt: boolean;
   readonly glassPanels: boolean;
@@ -120,6 +124,12 @@ export interface Appearance {
   setCatjamCoat(coat: CatjamCoat): Promise<void>;
   setCatjamScale(percent: number): Promise<void>;
   setHoverPanels(enabled: boolean): Promise<void>;
+  setPlayerBarStyle(style: PanelStyle): Promise<void>;
+  setQueueStyle(style: PanelStyle): Promise<void>;
+}
+
+function isPanelStyle(value: unknown): value is PanelStyle {
+  return value === "docked" || value === "floating";
 }
 
 export function createAppearance(): Appearance {
@@ -138,7 +148,9 @@ export function createAppearance(): Appearance {
   let catjamCoat = $state<CatjamCoat>(DEFAULT_COAT);
   let catjamScale = $state(DEFAULT_CATJAM_SCALE);
   let hoverPanels = $state(false);
-  let rack = $state<RackSettings>(defaultRackSettings());
+  let playerBarStyle = $state<PanelStyle>("docked");
+  let queueStyle = $state<PanelStyle>("docked");
+  let rack =$state<RackSettings>(defaultRackSettings());
 
   function apply() {
     const root = document.documentElement;
@@ -178,6 +190,8 @@ export function createAppearance(): Appearance {
       catjamCoat = isCoat(config.ui.catjam_coat) ? config.ui.catjam_coat : DEFAULT_COAT;
       catjamScale = clampCatjamScale(config.ui.catjam_scale ?? DEFAULT_CATJAM_SCALE);
       hoverPanels = config.ui.hover_panels ?? false;
+      if (isPanelStyle(config.ui.player_bar_style)) playerBarStyle = config.ui.player_bar_style;
+      if (isPanelStyle(config.ui.queue_style)) queueStyle = config.ui.queue_style;
       if (config.rack) rack = { ...defaultRackSettings(), ...config.rack };
     } catch {
       // Defaults are fine; a config failure must not block boot.
@@ -251,6 +265,28 @@ export function createAppearance(): Appearance {
     }
   }
 
+  async function setPlayerBarStyle(style: PanelStyle): Promise<void> {
+    const previous = playerBarStyle;
+    playerBarStyle = style;
+    try {
+      await api.setPlayerBarStyle(style);
+    } catch (error) {
+      playerBarStyle = previous;
+      throw error;
+    }
+  }
+
+  async function setQueueStyle(style: PanelStyle): Promise<void> {
+    const previous = queueStyle;
+    queueStyle = style;
+    try {
+      await api.setQueueStyle(style);
+    } catch (error) {
+      queueStyle = previous;
+      throw error;
+    }
+  }
+
   /// Local-first; a failed persist reverts so the UI never disagrees with the
   /// stored config. The stored (clamped) value wins on success.
   async function setRack(patch: Partial<RackSettings>): Promise<void> {
@@ -282,6 +318,8 @@ export function createAppearance(): Appearance {
     get catjamCoat() { return catjamCoat; },
     get catjamScale() { return catjamScale; },
     get hoverPanels() { return hoverPanels; },
+    get playerBarStyle() { return playerBarStyle; },
+    get queueStyle() { return queueStyle; },
     get dynamicColor() { return resolveDynamicColor(dynamicColorSetting, mode); },
     get backdropArt() { return mode === "atmosphere"; },
     get glassPanels() { return mode === "atmosphere"; },
@@ -307,6 +345,8 @@ export function createAppearance(): Appearance {
     setCatjamCoat,
     setCatjamScale,
     setHoverPanels,
+    setPlayerBarStyle,
+    setQueueStyle,
   };
 }
 

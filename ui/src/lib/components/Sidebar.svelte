@@ -280,9 +280,10 @@
     overflow-y: auto;
     /* Bleed over the sidebar padding so scrolled rows span edge to edge,
        while the inner padding keeps the 12px gutters. The bottom clearance
-       lets the playlist tree scroll clear of the floating player bar. */
+       lets the playlist tree scroll clear of the floating player bar
+       (none when the bar floats over the main column only, app.css). */
     margin: -12px -12px 0;
-    padding: 12px 12px calc(var(--player-height) + 12px);
+    padding: 12px 12px calc(var(--sidebar-clear, var(--player-height)) + 12px);
   }
   .top {
     display: flex;

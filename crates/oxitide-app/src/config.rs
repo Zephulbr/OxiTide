@@ -264,6 +264,17 @@ pub enum CoverShape {
     Sleeve,
 }
 
+/// How the player bar and the queue sit in the default shell (Atmosphere and
+/// Instrument; Rack has its own shell): docked to the window edges, or
+/// floating as inset cards over the page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PanelStyle {
+    #[default]
+    Docked,
+    Floating,
+}
+
 /// The jamming cat's coat (CatJam, CJ-D12); mirrors `COAT_IDS` in
 /// `ui/src/lib/catjamSprite.ts`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -302,6 +313,8 @@ pub struct UiConfig {
     pub cover_shape: CoverShape,
     pub dynamic_color: DynamicColor,
     pub queue_width: u32,
+    pub player_bar_style: PanelStyle,
+    pub queue_style: PanelStyle,
     /// Launch the window in the mini player (spec MP-D7); default off.
     pub start_in_mini: bool,
     pub oneko: bool,
@@ -335,6 +348,8 @@ impl Default for UiConfig {
             cover_shape: CoverShape::Disc,
             dynamic_color: DynamicColor::Auto,
             queue_width: 320,
+            player_bar_style: PanelStyle::Docked,
+            queue_style: PanelStyle::Docked,
             start_in_mini: false,
             oneko: false,
             catjam: false,
@@ -585,6 +600,8 @@ mod tests {
                 cover_shape: CoverShape::Disc,
                 dynamic_color: DynamicColor::Auto,
                 queue_width: 320,
+                player_bar_style: PanelStyle::Floating,
+                queue_style: PanelStyle::Floating,
                 start_in_mini: false,
                 oneko: true,
                 catjam: true,
@@ -957,6 +974,25 @@ duration_ms = 4000
         config.save_to(&path).unwrap();
         assert!(fs::read_to_string(&path).unwrap().contains("hover_panels = true"));
         assert!(Config::load_from(&path).ui.hover_panels);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn panel_styles_default_docked_and_round_trip() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        assert_eq!(Config::default().ui.player_bar_style, PanelStyle::Docked);
+        assert_eq!(Config::default().ui.queue_style, PanelStyle::Docked);
+        let mut config = Config::default();
+        config.ui.player_bar_style = PanelStyle::Floating;
+        config.ui.queue_style = PanelStyle::Floating;
+        config.save_to(&path).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("player_bar_style = \"floating\""));
+        assert!(text.contains("queue_style = \"floating\""));
+        let loaded = Config::load_from(&path);
+        assert_eq!(loaded.ui.player_bar_style, PanelStyle::Floating);
+        assert_eq!(loaded.ui.queue_style, PanelStyle::Floating);
         let _ = fs::remove_dir_all(dir);
     }
 

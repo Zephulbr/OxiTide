@@ -22,6 +22,8 @@ vi.mock("./api", () => ({
     setTheme: vi.fn(),
     setUiMode: vi.fn(),
     setRackSettings: vi.fn(),
+    setPlayerBarStyle: vi.fn(),
+    setQueueStyle: vi.fn(),
   },
 }));
 
@@ -259,6 +261,61 @@ describe("catjam settings", () => {
     await expect(appearance.setCatjamCoat("black")).rejects.toThrow("disk full");
     expect(appearance.catjam).toBe(false);
     expect(appearance.catjamCoat).toBe("white");
+  });
+});
+
+describe("panel styles", () => {
+  beforeEach(() => {
+    vi.stubGlobal("window", {
+      matchMedia: () => ({ matches: false, addEventListener: () => {} }),
+    });
+    vi.stubGlobal("document", {
+      documentElement: { dataset: {}, style: { setProperty: () => {} } },
+    });
+    vi.stubGlobal("localStorage", { getItem: () => null, setItem: vi.fn() });
+    vi.mocked(api.setPlayerBarStyle).mockResolvedValue(undefined);
+    vi.mocked(api.setQueueStyle).mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  it("default to docked, read the config, and the setters persist them", async () => {
+    vi.mocked(api.getConfig).mockResolvedValue({
+      ui: { theme: "dark", player_bar_style: "floating", queue_style: "floating" },
+    } as never);
+    const appearance = createAppearance();
+    expect(appearance.playerBarStyle).toBe("docked");
+    expect(appearance.queueStyle).toBe("docked");
+    await appearance.init();
+    expect(appearance.playerBarStyle).toBe("floating");
+    expect(appearance.queueStyle).toBe("floating");
+    await appearance.setPlayerBarStyle("docked");
+    await appearance.setQueueStyle("docked");
+    expect(appearance.playerBarStyle).toBe("docked");
+    expect(appearance.queueStyle).toBe("docked");
+    expect(api.setPlayerBarStyle).toHaveBeenCalledWith("docked");
+    expect(api.setQueueStyle).toHaveBeenCalledWith("docked");
+  });
+
+  it("an unknown or missing stored style reads as docked", async () => {
+    vi.mocked(api.getConfig).mockResolvedValue({ ui: { theme: "dark", player_bar_style: "hovering" } } as never);
+    const appearance = createAppearance();
+    await appearance.init();
+    expect(appearance.playerBarStyle).toBe("docked");
+    expect(appearance.queueStyle).toBe("docked");
+  });
+
+  it("the setters roll back when persistence fails", async () => {
+    const appearance = createAppearance();
+    vi.mocked(api.setPlayerBarStyle).mockRejectedValueOnce(new Error("disk full"));
+    vi.mocked(api.setQueueStyle).mockRejectedValueOnce(new Error("disk full"));
+    await expect(appearance.setPlayerBarStyle("floating")).rejects.toThrow("disk full");
+    await expect(appearance.setQueueStyle("floating")).rejects.toThrow("disk full");
+    expect(appearance.playerBarStyle).toBe("docked");
+    expect(appearance.queueStyle).toBe("docked");
   });
 });
 

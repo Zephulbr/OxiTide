@@ -470,6 +470,8 @@ fn main() {
             commands::set_catjam_scale,
             commands::set_beat_tracking,
             commands::set_hover_panels,
+            commands::set_player_bar_style,
+            commands::set_queue_style,
             commands::set_smtc,
             commands::set_discord,
             commands::set_close_to_tray,

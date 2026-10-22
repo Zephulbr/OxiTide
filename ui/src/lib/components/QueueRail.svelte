@@ -430,7 +430,7 @@
         total={items.length}
         rowHeight={rowH}
         maxHeight="none"
-        bottomPadding="calc(var(--player-height) + {TAIL}px)"
+        bottomPadding="calc(var(--queue-clear, var(--player-height)) + {TAIL}px)"
         role="list"
         bind:scroller
       >

@@ -3,12 +3,41 @@
   import { formatDuration } from "../format";
   import type { Player } from "../player.svelte";
   import { seekByKey, seekRatio } from "../seek";
-  import { waveFillPath, wavePath } from "../wave";
+  import { waveFillPath, wavePath, type WaveTaper } from "../wave";
 
   let {
     player,
     variant = "edge",
-  }: { player: Player; variant?: "edge" | "inline" } = $props();
+    taper = false,
+  }: {
+    player: Player;
+    variant?: "edge" | "inline";
+    /// Floating player bar: the wave lies flat on the edge past the rounded
+    /// corners (where the rim hands over to it) before it rises.
+    taper?: boolean;
+  } = $props();
+
+  /// Mirrors the CSS below: the rim's corner (--radius-sheet) plus its
+  /// cross-fade with the wave (--corner-fade); the wave rises after that.
+  const TAPER_FLAT_PX = 16 + 12;
+  const TAPER_RAMP_PX = 32;
+
+  let width = $state(0);
+  let seekEl = $state<HTMLElement | null>(null);
+  // Measured only while tapering: the docked bar needs no observer.
+  $effect(() => {
+    if (!taper || !seekEl) return;
+    const observer = new ResizeObserver(([entry]) => (width = entry.contentRect.width));
+    observer.observe(seekEl);
+    return () => observer.disconnect();
+  });
+  const waveTaper = $derived<WaveTaper | undefined>(
+    taper && variant === "edge" && width > 0
+      ? { flat: TAPER_FLAT_PX / width, ramp: TAPER_RAMP_PX / width }
+      : undefined,
+  );
+  /// A finer path when tapered, so the short ramps stay smooth.
+  const waveCount = $derived(waveTaper ? 192 : 96);
 
   let dragging = $state(false);
   let dragValue = $state(0);
@@ -65,15 +94,22 @@
     aria-valuetext={valueText}
     onpointerdown={seekPointer}
     onkeydown={seekKeydown}
+    bind:this={seekEl}
   >
+    {#if variant === "edge"}
+      <div class="seek-rim" aria-hidden="true">
+        <div class="rim-track"></div>
+        <div class="rim-fill" style:clip-path="inset(0 {100 - progress}% 0 0)"></div>
+      </div>
+    {/if}
     {#if appearance.waveSeek}
       {@const pct = (position / Math.max(duration, 1)) * 100}
-      {@const d = wavePath(current.track_id, 800, 14)}
+      {@const d = wavePath(current.track_id, 800, 14, waveCount, waveTaper)}
       {#if variant === "edge"}
         <svg width="0" height="0" aria-hidden="true">
           <defs>
             <clipPath id="seek-cap-clip" clipPathUnits="objectBoundingBox">
-              <path d={waveFillPath(current.track_id)} />
+              <path d={waveFillPath(current.track_id, waveCount, waveTaper)} />
             </clipPath>
           </defs>
         </svg>
@@ -255,5 +291,113 @@
   .seek.edge:focus-visible .wave-base,
   .seek.edge.dragging .wave-base {
     stroke: var(--text-muted);
+  }
+
+  /* Floating player bar only (app.css; the rim is display: none elsewhere):
+     the line follows the card's top edge round both corners. The rim is the
+     card's top band (the bar's corner radius) drawn twice: the track, and the
+     fill clipped to the played share of the width, the same mapping the
+     pointer uses. Only its top border has width, so each corner's stroke
+     tapers from the line's width to nothing as it turns down the side (the
+     inner edge becomes an ellipse that meets the outer arc). The line variant
+     keeps its thumb (its straight line goes clear). Its top sits on the bar's
+     edge (.seek is 1px / 9px above it). */
+  .seek.edge {
+    /* Where the floating bar's straight edge starts, and the hand-off
+       between the rim's corners and the hover wave (below). The wave is
+       tapered flat across both (TAPER_FLAT_PX in the script), so the two
+       cross-fade at the same height on the bar edge. */
+    --corner: var(--radius-sheet);
+    --corner-fade: 12px;
+  }
+  .seek-rim {
+    --rim-w: 3px;
+    display: none;
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 1px;
+    height: var(--corner);
+    pointer-events: none;
+  }
+  .seek.wave .seek-rim {
+    --rim-w: 2px;
+    top: 9px;
+  }
+  .rim-track,
+  .rim-fill {
+    position: absolute;
+    inset: 0;
+    border: 0 solid var(--line);
+    border-top-width: var(--rim-w);
+    border-radius: var(--corner) var(--corner) 0 0;
+    transition: border-width var(--dur-micro) var(--ease-enter);
+  }
+  /* The track is well clear of the card's --line side border: the corner
+     taper thins to under a pixel, and at a fainter tint the unplayed corner
+     vanished, so the line looked cut off before the turn. At this one it
+     reads round the corner the way the fill does at the start. */
+  .rim-track {
+    border-color: color-mix(in srgb, var(--text) 35%, transparent);
+  }
+  .rim-fill {
+    border-color: var(--accent);
+  }
+  .seek.edge:not(.wave):hover .seek-rim,
+  .seek.edge:not(.wave):focus-visible .seek-rim,
+  .seek.edge.dragging:not(.wave) .seek-rim {
+    --rim-w: 5px;
+  }
+  /* Wave branch: the wave takes over only along the straight edge. The rim
+     keeps its two corners and fades out where the wave fades in; the wave
+     lies flat on the edge there and only rises after, so the line runs on
+     unbroken from each corner into the wave. */
+  .seek.edge.wave:hover .seek-rim,
+  .seek.edge.wave:focus-visible .seek-rim,
+  .seek.edge.wave.dragging .seek-rim {
+    /* Staggered with the wave's fade-in: one of the two is always at full
+       strength, so the hand-over has no dim patch. */
+    mask-image: linear-gradient(
+      to right,
+      #000 calc(var(--corner) + var(--corner-fade) / 2),
+      transparent calc(var(--corner) + var(--corner-fade)),
+      transparent calc(100% - var(--corner) - var(--corner-fade)),
+      #000 calc(100% - var(--corner) - var(--corner-fade) / 2)
+    );
+  }
+  /* Same colour as the revealed wave's unplayed stroke (.wave-base). */
+  .seek.edge.wave:hover .rim-track,
+  .seek.edge.wave:focus-visible .rim-track,
+  .seek.edge.wave.dragging .rim-track {
+    border-color: var(--text-muted);
+  }
+  :global(.app[data-player="floating"]) .seek.edge .seek-wave,
+  :global(.app[data-player="floating"]) .seek.edge .seek-cap {
+    mask-image: linear-gradient(
+      to right,
+      transparent var(--corner),
+      #000 calc(var(--corner) + var(--corner-fade) / 2),
+      #000 calc(100% - var(--corner) - var(--corner-fade) / 2),
+      transparent calc(100% - var(--corner))
+    );
+  }
+  /* The resting wave is squashed to scaleY(0), but its non-scaling stroke
+     survives as a straight line on the bar edge. On the docked bar the flat
+     line hides it; here it ran straight past the rim's corners, so it is
+     cleared until the wave is revealed. */
+  :global(.app[data-player="floating"]) .seek.edge:not(:hover, :focus-visible, .dragging) .seek-wave {
+    opacity: 0;
+  }
+  :global(.app[data-player="floating"]) .seek-rim {
+    display: block;
+  }
+  :global(.app[data-player="floating"]) .seek-flat {
+    display: none;
+  }
+  :global(.app[data-player="floating"]) .seek.edge .seek-line {
+    background: transparent;
+  }
+  :global(.app[data-player="floating"]) .seek.edge .seek-line > .seek-fill {
+    visibility: hidden;
   }
 </style>

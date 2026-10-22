@@ -160,6 +160,15 @@ headings stay at 20/600; detail-page headers (album, playlist, artist) have thei
 scale. Rack's display is also `.main` but resets both variables (`.main.rack-main`), so it
 keeps its own page padding and small title labels (`rack/DESIGN.md`).
 
+**Detail headers** (`DetailHeader.svelte`: Album, Playlist, Mix) put the cover beside one
+column as tall as the cover: the Play/Shuffle row (with the playlist's search pill) sits on
+the cover's bottom edge, and the title block (title at `clamp(30px, 3.6vw, 48px)`, byline,
+stats with counts like "702 TRACKS" and "2 FANS" in `--accent`; 10px apart) sits 40px above
+it. The kicker (PLAYLIST / ALBUM / MIX) runs vertically down the cover's right
+edge (reading top to bottom), centred on it. The page's actions (Edit, Favorite, Share, More, …) sit at the
+row's right end, level with Play. Nothing sits under the cover, so the track list starts
+right below it.
+
 **Collection grids** share one recipe: `repeat(auto-fill, minmax(160–168px, 1fr))`, 12px
 card padding (Mixes, Feed releases). The two library collections, Playlists and Albums,
 use an `18px 14px` gap, 10px card padding and a 15/600 title over a 13px subtitle.
@@ -332,6 +341,31 @@ contents laid out at full width and clipped by the moving edge, and it stops at 
 bar. The closed queue arrives as the floating overlay (`queueFloat`, 320 ms here) when the
 pointer rests 100 ms on the window's right 8 px, between the title bar and the player bar,
 and leaves 280 ms after the pointer does. Shortcuts: `Ctrl+B` sidebar, `Q` queue.
+Panel styles (Settings → "Player bar" / "Queue", `ui.player_bar_style` / `ui.queue_style`,
+Docked default / Floating; Atmosphere and Instrument share them, Rack has its own shell).
+Floating applies only above 760px; below it the docked bar and the modal queue overlay
+return. Both floating panels are inset `--float-gap` (12px), rounded `--radius-sheet`, with
+a 1px `--line` edge and `--shadow-panel`:
+- the floating bar sits over the main grid track only (it follows the sidebar rail, a
+  docked queue and Now Playing). It is 76px with a 60px cover, and `--player-height` (the
+  bottom clearance in both styles) becomes 76px + the gap. The seek line runs round the
+  card's top corners and tapers to nothing down each side (SeekBar's rim: top border
+  only, a track at 35% `--text` (fainter and its thinned corner vanishes) and the accent fill, the fill clipped to the played
+  share of the width). The card itself has no top border, so its `--line` sides thin out
+  up into the corners where the rim's taper ends, at both ends alike. The
+  hover wave covers only the straight edge and is tapered (`SeekBar` `taper`, `wave.ts`
+  `WaveTaper`): it lies flat on the bar edge for 28px past each corner, then rises over
+  32px. The rim's corners stay on hover (in the wave's `--text-muted`) and cross-fade into
+  that flat stretch with staggered 6px fades, so the line runs unbroken from each corner
+  into the wave at the same height. At rest it is fully
+  transparent: squashed to `scaleY(0)`, its non-scaling stroke would otherwise leave a
+  straight line on the edge that the docked bar's flat line hides but the rim does not.
+  The sidebar and a docked queue run to the window bottom.
+- the floating queue is a non-modal card: no backdrop, no page reflow (no glide), and name
+  links leave it open. It stands clear of the caption band and of the player bar in either
+  style, fills with `--surface-float`, keeps the width handle, and enters with
+  `queueCard` (24px slide + fade, 240 ms; 320 ms for the hover peek, which also takes the
+  card form).
 `backdrop-filter` surfaces are a fixed set and never nest. Menus mark the selected
 option with the accent, not a second background.
 Ambient motion only while playing. `prefers-reduced-motion` is a hard floor in every

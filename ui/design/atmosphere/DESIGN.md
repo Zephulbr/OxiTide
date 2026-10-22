@@ -47,7 +47,10 @@ kicker and fan count use `--text` at 82% rather than muted.
 
 - Shell "Refined Classic": sidebar 248px ↔ 64px rail (auto below 1080px), main, queue
   rail 260–420px (overlay below 760px), floating 80px glass player bar with the seek as
-  its top edge.
+  its top edge. Settings can float both as inset cards instead (root DESIGN.md §2.3,
+  panel styles): a 76px rounded bar over the main column, its seek running round the
+  top corners, the queue as a card over the
+  page.
 - Player bar (`PlayerBar.svelte`): the glass is filled with `--player-veil`, warm graphite
   deepening toward the bottom edge (.66 → .86) so bright covers behind it cannot wash out
   its text (opaque modes use `--surface-2`; light theme a paper version). Left: a 64px

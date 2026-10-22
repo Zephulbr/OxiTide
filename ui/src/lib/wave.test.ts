@@ -1,5 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { waveFillPath, wavePath, waveSamples } from "./wave";
+import { taperAt, waveFillPath, wavePath, waveSamples } from "./wave";
+
+describe("taperAt", () => {
+  const taper = { flat: 0.1, ramp: 0.2 };
+  it("is 1 without a taper", () => {
+    expect(taperAt(0, undefined)).toBe(1);
+  });
+  it("is flat at both ends, full in the middle, and symmetric", () => {
+    expect(taperAt(0, taper)).toBe(0);
+    expect(taperAt(0.1, taper)).toBe(0);
+    expect(taperAt(0.95, taper)).toBe(0);
+    expect(taperAt(0.5, taper)).toBe(1);
+    expect(taperAt(0.2, taper)).toBeCloseTo(0.5, 5);
+    expect(taperAt(0.2, taper)).toBeCloseTo(taperAt(0.8, taper), 5);
+  });
+  it("pins a tapered wave's ends to the baseline", () => {
+    const samples = waveSamples(42, 192, { flat: 0.05, ramp: 0.05 });
+    expect(samples[0]).toBe(0);
+    expect(samples[191]).toBe(0);
+    expect(samples.slice(0, 9).every((v) => v === 0)).toBe(true);
+    expect(waveSamples(42, 192)[0]).toBeGreaterThan(0);
+  });
+});
 
 describe("waveSamples", () => {
   it("is deterministic for a seed", () => {

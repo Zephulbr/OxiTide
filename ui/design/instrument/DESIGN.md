@@ -33,8 +33,9 @@ same face at the shared display weight/tracking (see the root DESIGN.md §2.2).
 ## 4. Kept deliberately
 
 Display type, disc spinner for loading, radii, icons, focus rings, badges, toasts,
-menus, dialogs, layout and breakpoints, density, mini player, and the player bar as a
-whole (64px cover, "From …" line, quality plate, floor light on hover — it answers the
+menus, dialogs, layout and breakpoints (including the docked/floating panel styles for the
+player bar and queue; the floating cards are opaque here), density, mini player, and the
+player bar as a whole (64px cover, "From …" line, quality plate, floor light on hover — it answers the
 pointer, so it fits "nothing moves unless you touched it").
 
 ## 5. Performance role

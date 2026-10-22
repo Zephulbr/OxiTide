@@ -16,6 +16,7 @@
     type LampColor,
     type MeterStyle,
     type OutputDevice,
+    type PanelStyle,
     type Quality,
     type ReplayGainSettings,
     type ScrobbleServiceId,
@@ -177,6 +178,10 @@
   const COVER_OPTIONS: { value: CoverShape; label: string }[] = [
     { value: "disc", label: "Disc" },
     { value: "sleeve", label: "Sleeve" },
+  ];
+  const PANEL_STYLE_OPTIONS: { value: PanelStyle; label: string }[] = [
+    { value: "docked", label: "Docked" },
+    { value: "floating", label: "Floating" },
   ];
   const DECK_OPTIONS: { value: DeckFace; label: string }[] = [
     { value: "transport", label: "Transport" },
@@ -1071,6 +1076,30 @@
                 </SettingRow>
               {/if}
               {#if appearance.mode !== "rack"}
+                <SettingRow
+                  id="player-bar-style"
+                  label="Player bar"
+                  description="Docked runs along the bottom of the window. Floating sits beside the sidebar as a rounded card."
+                >
+                  <Segmented
+                    label="Player bar"
+                    value={appearance.playerBarStyle}
+                    options={PANEL_STYLE_OPTIONS}
+                    onchange={(value) => appearance.setPlayerBarStyle(value).catch(apply)}
+                  />
+                </SettingRow>
+                <SettingRow
+                  id="queue-style"
+                  label="Queue"
+                  description="Docked makes room beside the page. Floating opens over the page as a card, so the page keeps its width."
+                >
+                  <Segmented
+                    label="Queue"
+                    value={appearance.queueStyle}
+                    options={PANEL_STYLE_OPTIONS}
+                    onchange={(value) => appearance.setQueueStyle(value).catch(apply)}
+                  />
+                </SettingRow>
                 <ToggleRow
                   id="hover-panels" label="Expand panels on hover"
                   description="Hovering the collapsed sidebar opens it over the page, and resting the pointer on the window's right edge slides the queue in. Both close when the pointer leaves."

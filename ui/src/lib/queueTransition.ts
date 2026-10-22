@@ -35,6 +35,21 @@ export function queueFloat(
   };
 }
 
+/// Floating queue card (ui.queue_style): it sits inset from the window edge,
+/// so it fades in with a short slide from the right instead of travelling in
+/// from off-screen.
+export function queueCard(
+  _node: HTMLElement,
+  { reduced, duration = 240 }: { reduced: boolean; duration?: number },
+): TransitionConfig {
+  if (reduced) return { duration: 120, css: (t) => `opacity: ${t}` };
+  return {
+    duration,
+    easing: glideEasing,
+    css: (t) => `opacity: ${t}; transform: translateX(${(1 - t) * 24}px)`,
+  };
+}
+
 // ---- Page hold + glide -----------------------------------------------------
 //
 // While the docked rail glides, the main column would change width every
