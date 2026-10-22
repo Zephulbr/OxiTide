@@ -274,6 +274,23 @@
     untrack(() => selection.clear());
   });
 
+  /// A press anywhere but this table's rows clears the selection; menus and
+  /// dialogs opened from it (Add N to playlist) keep it. Listens only while
+  /// something is selected.
+  const hasSelection = $derived(selection.size > 0);
+  $effect(() => {
+    if (!hasSelection) return;
+    const onDown = (event: PointerEvent) => {
+      if (event.button !== 0 || !(event.target instanceof Element)) return;
+      if (event.target.closest("[role='menu'], [role='dialog']")) return;
+      const row = event.target.closest("tr[data-row-index]");
+      if (row && scrollEl?.contains(row)) return;
+      selection.clear();
+    };
+    window.addEventListener("pointerdown", onDown, true);
+    return () => window.removeEventListener("pointerdown", onDown, true);
+  });
+
   /// Names this table in its drags, so it only reorders its own rows.
   const tableId = `tracks-${Math.random().toString(36).slice(2)}`;
 

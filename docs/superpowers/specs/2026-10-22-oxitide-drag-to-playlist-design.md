@@ -354,6 +354,9 @@ Owner feedback round (2026-10-22):
 - **DD-D15's confirm step** lives in `PlaylistPicker` (`step: "confirm"`,
   `playlistActions.confirming` / `confirmAdd`). The modal's focus trap leaves focus on Close,
   so Enter never confirms by accident.
+- **A left press outside a table's rows clears its selection** (after the owner smoke run).
+  Presses inside a context menu or dialog keep it, and the window listener exists only
+  while something is selected.
 - **Confirm and duplicates dialogs restyled** (second round): From / To card, clamped long
   names, per-row Keep one / Add both switches, an "All" switch, and a footer of "Skip
   duplicates" + "Add N copies". The duplicates toast reads "Added 2 copies, kept one of 3"

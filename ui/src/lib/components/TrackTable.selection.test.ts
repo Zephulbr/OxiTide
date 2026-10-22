@@ -94,6 +94,29 @@ afterEach(() => {
 });
 
 describe("TrackTable selection", () => {
+  it("a press outside the rows clears it; rows, menus and dialogs keep it", async () => {
+    const { rowEl, selected } = setup();
+    await fireEvent.click(rowEl(1));
+    await fireEvent.click(rowEl(2), { ctrlKey: true });
+
+    pointer("pointerdown", rowEl(3), 0, 0);
+    expect(selected()).toEqual([1, 2]);
+    for (const role of ["menu", "dialog"]) {
+      const layer = document.createElement("div");
+      layer.setAttribute("role", role);
+      layer.append(document.createElement("button"));
+      document.body.append(layer);
+      pointer("pointerdown", layer.firstElementChild!, 0, 0);
+      layer.remove();
+    }
+    await Promise.resolve();
+    expect(selected()).toEqual([1, 2]);
+
+    pointer("pointerdown", document.body, 0, 0);
+    await Promise.resolve();
+    expect(selected()).toEqual([]);
+  });
+
   it("click selects, Ctrl toggles, Shift ranges", async () => {
     const { rowEl, selected } = setup();
     await fireEvent.click(rowEl(1));
