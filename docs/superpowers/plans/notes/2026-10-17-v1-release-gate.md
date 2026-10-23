@@ -114,7 +114,7 @@ Candidates (pick per value; none block 1.0 on their own):
 - [ ] Lyrics in the mini player.
 - [ ] AutoMix beat-grid confidence tuning (roadmap, 2026-10-14 revision).
 - [ ] Explore feed integration is inert until TIDAL serves track rows — revisit or drop.
-- [ ] Optional: one-line `SECURITY.md` pointing to the GitHub profile.
+- [x] Optional: one-line `SECURITY.md` pointing to the GitHub profile. **Done 2026-10-23.**
 
 ## 4. Final perf run
 
