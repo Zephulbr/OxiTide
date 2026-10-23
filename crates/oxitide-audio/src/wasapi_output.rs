@@ -287,6 +287,16 @@ impl AudioOutput for WasapiOutput {
     fn underruns(&self) -> Option<u64> {
         Some(self.starvation.count())
     }
+
+    fn drain(&mut self, cancel: &dyn Fn() -> bool) -> Result<()> {
+        if let Some(producer) = self.producer.as_ref() {
+            let lost = &self.device_lost;
+            ring::wait_drained(producer, self.samples_per_sec, self.device_ms, &|| {
+                cancel() || lost.load(Ordering::SeqCst)
+            });
+        }
+        Ok(())
+    }
 }
 
 fn frames_to_ms(frames: u32, rate: u32) -> u32 {
@@ -643,5 +653,41 @@ mod tests {
         std::thread::sleep(Duration::from_millis(200));
         out.flush().unwrap();
         out.stop().unwrap();
+    }
+
+    /// The end of the queue: `write` returns with the ring full, so a stop
+    /// right after it would drop that audio. `drain` must wait for the ring
+    /// and the device buffer to play out, then the ring reads empty.
+    #[test]
+    #[ignore = "requires an audio device"]
+    fn drain_waits_until_the_written_audio_has_played() {
+        let mut out = WasapiOutput::new();
+        out.open(&AudioOutputSpec {
+            device_id: None,
+            info: StreamInfo {
+                sample_rate: 44100,
+                channels: 2,
+                bits_per_sample: 16,
+                format: PcmFormat::I32 { bits: 16 },
+            },
+            mode: OutputMode::Shared,
+            exclusive_fallback: ExclusiveFallback::Shared,
+        })
+        .unwrap();
+        out.start().unwrap();
+        // One second: more than the ring holds, so `write` blocks until all
+        // but the ring's worth has played.
+        out.write(&PcmBuffer::F32(vec![0.0f32; 44100 * 2])).unwrap();
+        let queued = out.queued_ms().unwrap();
+        let started = std::time::Instant::now();
+        out.drain(&|| false).unwrap();
+        let took = started.elapsed();
+        eprintln!("queued after write: {queued} ms; drain took {took:?} (device {} ms)", out.device_ms);
+        let ring_left = out.queued_ms().unwrap().saturating_sub(out.device_ms);
+        out.stop().unwrap();
+        assert!(queued > 100, "the ring should be nearly full after the write: {queued} ms");
+        assert!(took >= Duration::from_millis(100), "drain returned before the audio played: {took:?}");
+        assert!(took < Duration::from_secs(1), "drain overran: {took:?}");
+        assert_eq!(ring_left, 0, "the ring still held audio after the drain");
     }
 }

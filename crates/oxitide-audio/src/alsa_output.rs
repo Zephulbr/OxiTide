@@ -309,6 +309,9 @@ mod linux {
     const WAIT_SLICE: Duration = Duration::from_millis(100);
     /// Consecutive xrun/suspend recoveries tolerated within one `write` call.
     const MAX_CONSECUTIVE_RECOVERIES: u32 = 8;
+    /// Longest a drain waits: the buffer is about half a second, plus slack.
+    const DRAIN_LIMIT: Duration = Duration::from_millis(1500);
+    const DRAIN_STEP: Duration = Duration::from_millis(5);
 
     pub struct AlsaOutput {
         pcm: Option<PCM>,
@@ -703,6 +706,22 @@ mod linux {
 
         fn underruns(&self) -> Option<u64> {
             Some(self.underruns)
+        }
+
+        /// Poll the frames still queued in the device until they have played
+        /// (`snd_pcm_drain` would block without a way to cancel).
+        fn drain(&mut self, cancel: &dyn Fn() -> bool) -> Result<()> {
+            let Some(pcm) = self.pcm.as_ref() else {
+                return Ok(());
+            };
+            let give_up = Instant::now() + DRAIN_LIMIT;
+            while !cancel() && Instant::now() < give_up && pcm.state() == alsa::pcm::State::Running {
+                match pcm.delay() {
+                    Ok(frames) if frames > 0 => std::thread::sleep(DRAIN_STEP),
+                    _ => break,
+                }
+            }
+            Ok(())
         }
     }
 }

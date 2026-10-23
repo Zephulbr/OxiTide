@@ -1733,6 +1733,17 @@ fn output_refills(inner: &Inner, rate: u32) {
     inner.underruns.lock().unwrap().reset();
 }
 
+/// Let the written audio be heard before the output stops (end of queue, a
+/// reopen for the next track's format): a stop drops what the output still
+/// buffers, the last ~200 ms of the track and the device buffer. A command
+/// that supersedes the session cuts the wait short.
+fn drain_output(inner: &Inner, output: &mut dyn AudioOutput, gen: u64) {
+    let cancel = || inner.generation.load(Ordering::SeqCst) != gen || inner.shutdown.load(Ordering::SeqCst);
+    if let Err(e) = output.drain(&cancel) {
+        tracing::debug!("output drain failed: {e}");
+    }
+}
+
 /// After every output write: count new underruns (`underrun_count` in perf
 /// runs). Cheap: one counter read.
 fn note_underruns(inner: &Inner, output: &dyn AudioOutput) {
@@ -2358,6 +2369,14 @@ fn run_session(
         }
         if !keep_device && open_spec.as_ref() != Some(&want) {
             if open_spec.is_some() {
+                if advanced {
+                    // The previous track ended on its own: play out its end.
+                    drain_output(inner, output, gen);
+                    // The gap is the silence after it, not the drain.
+                    if let Some((_, at)) = last_write.as_mut() {
+                        *at = Instant::now();
+                    }
+                }
                 let _ = output.stop();
             }
             if let Err(e) = output.open(&want) {
@@ -2901,6 +2920,8 @@ fn run_session(
                         Err(e) => return SessionOutcome::OutputError { message: e.to_string(), track_id },
                     }
                 }
+                // The worker stops the output next: play out the end first.
+                drain_output(inner, output, gen);
                 // The queue is over, so the worker is about to go idle. Bump
                 // the generation here so a `PlayPause` that raced the worker
                 // clearing `worker_busy` still starts a fresh session.
@@ -6303,6 +6324,8 @@ mod tests {
         // One open for both tracks; a reopen between tracks would make this 2.
         assert_eq!(output.opens(), 1, "gapless playback must not reopen between matching tracks");
         assert_eq!(output.stops(), 1, "gapless playback must not stop between matching tracks");
+        wait_for(|| output.calls().len() >= 3);
+        assert_eq!(output.calls(), vec!["open", "drain", "stop"], "the queue's end plays out before the stop");
     }
 
     #[test]
@@ -6334,6 +6357,38 @@ mod tests {
         assert_eq!(output.opens(), 2, "a format change must reopen the output");
         assert_eq!(output.stops(), 2, "a format change must stop and reopen");
         assert_eq!(output.last_spec().map(|s| s.info.sample_rate), Some(48000));
+        wait_for(|| output.calls().len() >= 6);
+        assert_eq!(
+            output.calls(),
+            vec!["open", "drain", "stop", "open", "drain", "stop"],
+            "each track's end plays out before its output stops"
+        );
+    }
+
+    /// A user skip cuts the playing track at once: only a natural end drains.
+    #[test]
+    fn a_skip_to_another_format_stops_without_draining() {
+        let tone16 = std::fs::read("tests/fixtures/tone.mp4").unwrap();
+        let tone48 = std::fs::read("tests/fixtures/tone48.mp4").unwrap();
+        let mut plans = HashMap::new();
+        plans.insert(1, plan_for("mem://t16", 44100, 16));
+        plans.insert(2, plan_for("mem://t48", 48000, 16));
+        let mut files = HashMap::new();
+        files.insert("mem://t16".to_string(), tone16);
+        files.insert("mem://t48".to_string(), tone48);
+        let output = NullOutput::new();
+        let engine = build_engine(
+            Arc::new(PerTrackResolver { plans, order: Arc::new(Mutex::new(Vec::new())) }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(ThrottledOutput { inner: output.clone(), delay: Duration::from_millis(30) }),
+            Quality::Lossless,
+        );
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| output.samples().len() > 0);
+
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(2)], start: 0 }).unwrap();
+        wait_for(|| output.calls().len() >= 5);
+        assert_eq!(output.calls(), vec!["open", "stop", "open", "drain", "stop"]);
     }
 
     #[test]
@@ -6399,6 +6454,9 @@ mod tests {
         }
         fn underruns(&self) -> Option<u64> {
             self.inner.underruns()
+        }
+        fn drain(&mut self, cancel: &dyn Fn() -> bool) -> Result<()> {
+            self.inner.drain(cancel)
         }
     }
 

@@ -135,6 +135,15 @@ pub trait AudioOutput: Send {
     fn underruns(&self) -> Option<u64> {
         None
     }
+    /// Wait until the audio written so far has been heard, so the `stop` that
+    /// follows does not cut it off (the end of the queue, a reopen for the
+    /// next track's format). Returns early once `cancel` says so, and is
+    /// bounded, so a stalled device cannot hang the caller. The default (an
+    /// output with no buffer of its own) returns at once.
+    fn drain(&mut self, cancel: &dyn Fn() -> bool) -> Result<()> {
+        let _ = cancel;
+        Ok(())
+    }
 }
 
 /// Written audio to observe after a reset (open, flush) before sampling
@@ -227,6 +236,8 @@ pub struct NullOutput {
     status: Arc<Mutex<OutputStatus>>,
     queued_ms: Arc<AtomicU32>,
     underruns: Arc<AtomicU64>,
+    /// `open` / `flush` / `drain` / `stop`, in call order.
+    calls: Arc<Mutex<Vec<&'static str>>>,
 }
 
 impl Default for NullOutput {
@@ -243,6 +254,7 @@ impl Default for NullOutput {
             status: Arc::new(Mutex::new(OutputStatus::default())),
             queued_ms: Arc::new(AtomicU32::new(0)),
             underruns: Arc::new(AtomicU64::new(0)),
+            calls: Arc::new(Mutex::new(Vec::new())),
         }
     }
 }
@@ -280,10 +292,15 @@ impl NullOutput {
     pub fn add_underruns(&self, n: u64) {
         self.underruns.fetch_add(n, Ordering::SeqCst);
     }
+    /// The lifecycle calls so far (`open`, `flush`, `drain`, `stop`), in order.
+    pub fn calls(&self) -> Vec<&'static str> {
+        self.calls.lock().unwrap().clone()
+    }
 }
 
 impl AudioOutput for NullOutput {
     fn open(&mut self, spec: &AudioOutputSpec) -> Result<()> {
+        self.calls.lock().unwrap().push("open");
         self.opens.fetch_add(1, Ordering::SeqCst);
         *self.last_spec.lock().unwrap() = Some(spec.clone());
         *self.status.lock().unwrap() = OutputStatus {
@@ -323,11 +340,17 @@ impl AudioOutput for NullOutput {
         Ok(())
     }
     fn flush(&mut self) -> Result<()> {
+        self.calls.lock().unwrap().push("flush");
         self.flushes.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
     fn stop(&mut self) -> Result<()> {
+        self.calls.lock().unwrap().push("stop");
         self.stops.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+    fn drain(&mut self, _cancel: &dyn Fn() -> bool) -> Result<()> {
+        self.calls.lock().unwrap().push("drain");
         Ok(())
     }
     fn status(&self) -> OutputStatus {

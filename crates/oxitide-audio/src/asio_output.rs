@@ -536,6 +536,17 @@ impl AudioOutput for AsioOutput {
     fn underruns(&self) -> Option<u64> {
         Some(self.starvation.count())
     }
+
+    fn drain(&mut self, cancel: &dyn Fn() -> bool) -> Result<()> {
+        if let Some(producer) = self.producer.as_ref() {
+            let driver_ms = self.latency_ms.as_ref().map_or(0, |l| l.load(Ordering::Relaxed));
+            let lost = &self.lost;
+            ring::wait_drained(producer, self.samples_per_sec, driver_ms, &|| {
+                cancel() || lost.load(Ordering::SeqCst)
+            });
+        }
+        Ok(())
+    }
 }
 
 impl Drop for AsioOutput {

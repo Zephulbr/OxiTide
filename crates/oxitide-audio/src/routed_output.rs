@@ -148,6 +148,13 @@ impl AudioOutput for RoutedOutput {
         }
     }
 
+    fn drain(&mut self, cancel: &dyn Fn() -> bool) -> Result<()> {
+        match self.active_mut() {
+            Ok(active) => active.drain(cancel),
+            Err(_) => Ok(()),
+        }
+    }
+
     /// Both backends' counts summed, so the total never steps back when the
     /// active one changes.
     fn underruns(&self) -> Option<u64> {

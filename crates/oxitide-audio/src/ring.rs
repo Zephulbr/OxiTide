@@ -85,6 +85,42 @@ pub(crate) fn push_samples<T: Copy>(
     Ok(())
 }
 
+/// Poll step while draining.
+const DRAIN_STEP: Duration = Duration::from_millis(5);
+/// Slack past the ring and device buffer before a drain gives up.
+const DRAIN_SLACK: Duration = Duration::from_millis(500);
+
+/// Wait for the device to take every word in the ring, then for it to play
+/// out its own buffer (`device_ms`), polling `cancel`. Bounded by the ring's
+/// length plus the device buffer and [`DRAIN_SLACK`], so a stalled device
+/// cannot hang the caller.
+pub(crate) fn wait_drained(
+    producer: &Producer<u32>,
+    samples_per_sec: usize,
+    device_ms: u32,
+    cancel: &dyn Fn() -> bool,
+) {
+    let capacity = producer.buffer().capacity();
+    let device = Duration::from_millis(device_ms as u64);
+    let ring = Duration::from_millis(queued_ms(capacity, 0, samples_per_sec) as u64);
+    let give_up = Instant::now() + ring + device + DRAIN_SLACK;
+    while producer.slots() < capacity {
+        if cancel() || Instant::now() >= give_up {
+            return;
+        }
+        std::thread::sleep(DRAIN_STEP);
+    }
+    // The ring is empty; what the device still holds plays within `device`.
+    let heard = (Instant::now() + device).min(give_up);
+    loop {
+        let left = heard.saturating_duration_since(Instant::now());
+        if left.is_zero() || cancel() {
+            return;
+        }
+        std::thread::sleep(left.min(DRAIN_STEP));
+    }
+}
+
 /// How long the device takes to play `samples` words, clamped.
 fn wait_for(samples: usize, samples_per_sec: usize) -> Duration {
     if samples_per_sec == 0 {
@@ -208,6 +244,41 @@ mod tests {
         starvation.disarm();
         starvation.observe(0, 480);
         assert_eq!(starvation.count(), 2, "a flush empties the ring on purpose");
+    }
+
+    #[test]
+    fn a_drain_waits_for_the_ring_and_then_the_device_buffer() {
+        let (mut producer, mut consumer) = RingBuffer::<u32>::new(64);
+        push_samples(&mut producer, &[0u32; 64], 1_000, |s| s).unwrap();
+        let device = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(60));
+            let mut out = vec![0u8; 64 * 4];
+            pop_frames_le(&mut consumer, 1, &mut out);
+            Instant::now()
+        });
+        let started = Instant::now();
+        wait_drained(&producer, 1_000, 40, &|| false);
+        let emptied = device.join().unwrap();
+        assert!(emptied >= started + Duration::from_millis(60));
+        assert!(
+            Instant::now() >= emptied + Duration::from_millis(35),
+            "the device buffer must play out after the ring empties"
+        );
+    }
+
+    #[test]
+    fn a_drain_stops_on_cancel_and_on_a_stalled_device() {
+        let (mut producer, _consumer) = RingBuffer::<u32>::new(64);
+        push_samples(&mut producer, &[0u32; 8], 1_000, |s| s).unwrap();
+        let started = Instant::now();
+        wait_drained(&producer, 1_000, 0, &|| true);
+        assert!(started.elapsed() < Duration::from_millis(50), "cancel must return at once");
+
+        // Nobody consumes: give up after ring (64 ms) + device (10 ms) + slack.
+        let started = Instant::now();
+        wait_drained(&producer, 1_000, 10, &|| false);
+        let took = started.elapsed();
+        assert!(took >= DRAIN_SLACK && took < DRAIN_SLACK + Duration::from_millis(400), "{took:?}");
     }
 
     #[test]
