@@ -545,6 +545,7 @@ mod tests {
         "rename_playlist",
         "delete_playlist",
         "remove_playlist_items",
+        "restore_playlist_items",
         "move_playlist_items",
         "play_tracks",
         "get_stats",

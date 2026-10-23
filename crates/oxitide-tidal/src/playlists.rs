@@ -331,6 +331,56 @@ impl TidalClient {
             result => result,
         }
     }
+
+    /// Put removed rows back where they were (undo of `remove_playlist_items`).
+    /// `rows` are `(index, track id)` from before the removal; each run of
+    /// consecutive indices is one insert at its first index, lowest first, so
+    /// every earlier run is back in place before a later one lands. Duplicates
+    /// are kept: a playlist may hold the same track twice.
+    pub async fn restore_playlist_items(&self, id: &str, rows: &[(u32, u64)]) -> Result<()> {
+        let mut sorted = rows.to_vec();
+        sorted.sort_by_key(|(index, _)| *index);
+        let mut runs: Vec<(u32, Vec<u64>)> = Vec::new();
+        for (index, track_id) in sorted {
+            match runs.last_mut() {
+                Some((start, ids)) if *start + ids.len() as u32 == index => ids.push(track_id),
+                _ => runs.push((index, vec![track_id])),
+            }
+        }
+        let path = format!("playlists/{id}/items");
+        for (start, ids) in runs {
+            for (offset, chunk) in ids.chunks(ADD_CHUNK).enumerate() {
+                let form = [
+                    ("onArtifactNotFound", "SKIP".to_string()),
+                    (
+                        "trackIds",
+                        chunk
+                            .iter()
+                            .map(|track_id| track_id.to_string())
+                            .collect::<Vec<_>>()
+                            .join(","),
+                    ),
+                    ("toIndex", (start as usize + offset * ADD_CHUNK).to_string()),
+                    ("onDupes", "ADD".to_string()),
+                ];
+                let params = [("limit", chunk.len().to_string())];
+                // Each write rotates the playlist etag, so every chunk reads it fresh.
+                let mut etag = self.playlist_etag(id).await?;
+                let _: AddedItems = match self
+                    .post_form_json_with_etag(&path, &params, &form, etag.as_deref())
+                    .await
+                {
+                    Err(e) if is_stale_etag(&e) => {
+                        etag = self.playlist_etag(id).await?;
+                        self.post_form_json_with_etag(&path, &params, &form, etag.as_deref())
+                            .await?
+                    }
+                    result => result?,
+                };
+            }
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -840,6 +890,37 @@ mod tests {
             .await;
         client(&server)
             .move_playlist_items("p-uuid", &[4], 1)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn restore_playlist_items_reinserts_each_run_at_its_index() {
+        let server = MockServer::start().await;
+        playlist_page(&server, 0).await;
+        Mock::given(method("POST"))
+            .and(path("/playlists/p-uuid/items"))
+            .and(header("if-none-match", "\"e1\""))
+            .and(query_param("limit", "2"))
+            .and(body_string_contains("trackIds=7%2C7"))
+            .and(body_string_contains("toIndex=2"))
+            .and(body_string_contains("onDupes=ADD"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/playlists/p-uuid/items"))
+            .and(query_param("limit", "1"))
+            .and(body_string_contains("trackIds=9"))
+            .and(body_string_contains("toIndex=5"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
+            .expect(1)
+            .mount(&server)
+            .await;
+        // Out of order on purpose; the same track twice stays twice.
+        client(&server)
+            .restore_playlist_items("p-uuid", &[(5, 9), (2, 7), (3, 7)])
             .await
             .unwrap();
     }

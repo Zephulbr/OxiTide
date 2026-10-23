@@ -1,5 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { api, type EngineEvent, type PlaybackState, type Quality, type QueueItem, type RepeatMode, type StreamMeta, type TransitionReport } from "./api";
+import { errorMessage } from "./errors";
 import type { Toasts } from "./toasts.svelte";
 import { latestPerFrame } from "./latestPerFrame";
 
@@ -209,6 +210,23 @@ export function createPlayer(toasts?: Toasts) {
     return setVolume(muteTarget(state.volume, lastVolume));
   }
 
+  /// Remove one queue row; the toast's Undo puts it back at the same slot.
+  async function remove(index: number) {
+    const item = state.queue[index];
+    await api.queueRemove(index);
+    if (item === undefined || toasts === undefined) return;
+    const shown = toasts;
+    shown.show(`Removed "${item.title}" from the queue`, {
+      action: {
+        label: "Undo",
+        run: () =>
+          void api
+            .queueInsert(index, [item])
+            .catch((e) => shown.show(errorMessage(e), { severity: "error" })),
+      },
+    });
+  }
+
   return {
     get state() { return state; },
     get pendingSeek() { return pendingSeek; },
@@ -224,7 +242,7 @@ export function createPlayer(toasts?: Toasts) {
     setShuffle: (enabled: boolean) => api.setShuffle(enabled),
     setRepeat: (mode: RepeatMode) => api.setRepeat(mode),
     reorder: (from: number, to: number) => api.queueReorder(from, to),
-    remove: (index: number) => api.queueRemove(index),
+    remove,
     clear: () => api.queueClear(),
   };
 }

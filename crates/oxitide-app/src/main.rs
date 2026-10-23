@@ -413,6 +413,7 @@ fn main() {
             commands::delete_playlist,
             commands::add_playlist_tracks,
             commands::remove_playlist_items,
+            commands::restore_playlist_items,
             commands::move_playlist_items,
             commands::retry,
             commands::play_tracks,

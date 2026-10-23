@@ -262,17 +262,7 @@
     if (busy) return;
     const sourceIndex = view.sourceIndex(index);
     if (sourceIndex < 0) return;
-    busy = true;
-    try {
-      await api.removePlaylistItems(id, [sourceIndex]);
-      invalidatePlaylistCovers(id);
-      await pager.refresh();
-      toasts.show("Removed from playlist", { severity: "success" });
-    } catch (e) {
-      toasts.show(errorMessage(e), { severity: "error" });
-    } finally {
-      busy = false;
-    }
+    await removeSources([sourceIndex], "Removed from playlist");
   }
 
   /// Remove a multi-row selection (displayed-row indices) in one request.
@@ -282,18 +272,48 @@
       .filter((index) => index >= 0)
       .sort((a, b) => a - b);
     if (sources.length === 0) return;
+    await removeSources(
+      sources,
+      `Removed ${sources.length} ${sources.length === 1 ? "track" : "tracks"} from playlist`,
+    );
+  }
+
+  /// Remove playlist rows (source indices) in one request; the toast's Undo
+  /// puts the same tracks back at the same indices.
+  async function removeSources(sources: number[], message: string) {
+    const rows = sources.flatMap((index) => {
+      const track = pager.items[index];
+      return track ? [{ index, track_id: track.id }] : [];
+    });
     busy = true;
     try {
       await api.removePlaylistItems(id, sources);
       invalidatePlaylistCovers(id);
       await pager.refresh();
-      toasts.show(`Removed ${sources.length} ${sources.length === 1 ? "track" : "tracks"} from playlist`, {
+      toasts.show(message, {
         severity: "success",
+        action:
+          rows.length === sources.length
+            ? { label: "Undo", run: () => void undoRemove(rows) }
+            : undefined,
       });
     } catch (e) {
       toasts.show(errorMessage(e), { severity: "error" });
     } finally {
       busy = false;
+    }
+  }
+
+  async function undoRemove(rows: { index: number; track_id: number }[]) {
+    try {
+      await api.restorePlaylistItems(id, rows);
+      invalidatePlaylistCovers(id);
+      await pager.refresh();
+      toasts.show(rows.length === 1 ? "Track restored" : `${rows.length} tracks restored`, {
+        severity: "success",
+      });
+    } catch (e) {
+      toasts.show(errorMessage(e), { severity: "error" });
     }
   }
 

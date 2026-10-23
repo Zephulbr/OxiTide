@@ -94,7 +94,15 @@ export function createLater(): Later {
           action: go ? { label: "Open", run: go } : undefined,
         });
       } else {
-        toasts?.show("Removed from Save for later", { severity: "success" });
+        toasts?.show("Removed from Save for later", {
+          severity: "success",
+          action: {
+            label: "Undo",
+            run: () => {
+              if (!set.has(id)) void toggle(kind, id);
+            },
+          },
+        });
       }
       return next;
     } catch (e) {

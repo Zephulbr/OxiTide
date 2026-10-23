@@ -1295,6 +1295,27 @@ pub async fn remove_playlist_items(
         .map_err(|e| state.fail_tidal(e))
 }
 
+/// One removed playlist row, as it was before the removal (undo).
+#[derive(Debug, Clone, Deserialize)]
+pub struct RemovedPlaylistRow {
+    pub index: u32,
+    pub track_id: u64,
+}
+
+/// Undo of `remove_playlist_items`: put the rows back at their indices.
+#[tauri::command]
+pub async fn restore_playlist_items(
+    state: State<'_, AppState>,
+    id: String,
+    rows: Vec<RemovedPlaylistRow>,
+) -> Result<(), String> {
+    let rows: Vec<(u32, u64)> = rows.iter().map(|row| (row.index, row.track_id)).collect();
+    require_client(&state)?
+        .restore_playlist_items(&id, &rows)
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
 #[tauri::command]
 pub async fn move_playlist_items(
     state: State<'_, AppState>,

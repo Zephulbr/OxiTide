@@ -16,7 +16,8 @@ nothing is smoked twice.
 Branch `track13-efficiency` (unmerged). Plan `plans/2026-10-16-track13-efficiency.md`, smoke
 `plans/notes/2026-10-16-track13-smoke.md`.
 
-- [ ] Finish and merge Track 13; run its smoke.
+- [ ] Finish and merge Track 13; run its smoke. Merged (`ee6135c`); the smoke
+      (`2026-10-16-track13-smoke.md`) still has 33 unticked rows.
 - [ ] Settle the PM-D1 debt (fix or renegotiate the budgets in `scripts/perf/budgets.json`).
       **Ruled 2026-10-23** (`2026-10-23-v1-perf-rulings.md`: release reference, memory = worst run
       + 15 %, S4 re-measure then debt, S6 p99 re-measure then relax); waits on the release corpus:
@@ -81,10 +82,18 @@ Branch `track13-efficiency` (unmerged). Plan `plans/2026-10-16-track13-efficienc
 
 ## 2. UI pass
 
-- [ ] Visual/animation/text pass across Atmosphere, Instrument and Hi-Fi Rack (light + dark); update
-      `ui/design/*/DESIGN.md` with any visual change.
-- [ ] Fold in the small UI-side deferred items so they are polished with everything else (e.g. undo
-      for destructive ops).
+- [x] Visual/animation/text pass across Atmosphere, Instrument and Hi-Fi Rack (light + dark); update
+      `ui/design/*/DESIGN.md` with any visual change. **Done 2026-10-24** (owner, over several
+      sessions; last batch `bc7101c`: soft list edges, Row separators setting, sleeve, Profiles).
+- [x] Fold in the small UI-side deferred items so they are polished with everything else (e.g. undo
+      for destructive ops). **Undo done 2026-10-24:** the success toast carries Undo for removing
+      playlist rows (`restore_playlist_items` re-inserts each run of rows at its old index, duplicates
+      kept), a queue row (`queue_insert` at the old slot), an unfavorite (favorites again, so it is
+      dated as just added) and a Save for Later removal. Undo of a favorite or save is skipped if it
+      was already re-added. Not undoable, so they keep their confirm dialogs: deleting a playlist or
+      folder, removing a followed playlist from the collection (no add-to-collection call), clearing
+      the queue (also drops the play source) and clearing history. Smoke: each of the four Undos
+      once, including removing a selection of non-adjacent playlist rows.
 - [ ] If i18n is ever wanted, consider extracting strings during the text pass (about 600–800 strings
       across about 55 files).
 - [ ] README screenshots (`docs/images/`, replace the placeholder comment) once the visuals are final.

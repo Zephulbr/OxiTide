@@ -103,6 +103,19 @@ export function createFavorites(toasts: Toasts): Favorites {
           trackRevision += 1;
         }
       }
+      // An unfavorite is a one-click loss (the row leaves the favorites list);
+      // Undo favorites it again, now dated as just added.
+      if (!next) {
+        toasts.show("Removed from Favorites", {
+          severity: "success",
+          action: {
+            label: "Undo",
+            run: () => {
+              if (!set.has(id)) void toggle(kind, id);
+            },
+          },
+        });
+      }
       return next;
     } catch (e) {
       if (was) set.add(id);

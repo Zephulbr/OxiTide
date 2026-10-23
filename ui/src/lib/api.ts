@@ -711,6 +711,9 @@ export const api = {
     invoke<number[]>("add_playlist_tracks", { id, trackIds, allowDuplicates }),
   removePlaylistItems: (id: string, indices: number[]) =>
     invoke<void>("remove_playlist_items", { id, indices }),
+  /// Undo of `removePlaylistItems`: rows as they were before the removal.
+  restorePlaylistItems: (id: string, rows: { index: number; track_id: number }[]) =>
+    invoke<void>("restore_playlist_items", { id, rows }),
   movePlaylistItems: (id: string, indices: number[], toIndex: number) =>
     invoke<void>("move_playlist_items", { id, indices, toIndex }),
   getFavoriteTracksPage: (offset: number, limit: number) =>
