@@ -596,6 +596,7 @@ mod tests {
         "set_catjam_scale",
         "set_beat_tracking",
         "set_hover_panels",
+        "set_row_separators",
         "set_player_bar_style",
         "set_queue_style",
         "set_smtc",

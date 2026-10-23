@@ -779,7 +779,7 @@
             : reasons}
           {@const openAlbum = albumOpener(t)}
           <tr
-            class="row"
+            class="row row-wash"
             role={roleOf("row")}
             class:blocked={reasons.length > 0}
             class:dragging={draggedRows?.has(t) ?? false}
@@ -1001,6 +1001,14 @@
     position: relative;
     container-type: inline-size;
   }
+  /* Air between the row's ends and its first and last cells (the number and
+     the actions), so neither sits on the edge where the row wash fades out.
+     The actions sit further in, clear of the whole fade. */
+  .table-scroll,
+  .table-frame {
+    --row-inset: 14px;
+    --actions-inset: 72px;
+  }
   @container (max-width: 760px) {
     .opt-col {
       display: none;
@@ -1078,13 +1086,13 @@
      100% it would widen the px columns; calc(% - px) degrades to an equal
      split). Ratios match the auto-layout shares below. */
   .col-num {
-    width: calc(var(--num-digits) * 1ch + 22px);
+    width: calc(var(--num-digits) * 1ch + 22px + var(--row-inset));
   }
   .col-thumb {
     width: calc(var(--row-height) - 1px + 18px);
   }
   .col-actions {
-    width: calc(var(--actions) * 32px - 6px);
+    width: calc(var(--actions) * 32px - 6px + var(--actions-inset));
   }
   .col-title {
     width: 42%;
@@ -1231,19 +1239,25 @@
   .num-col {
     text-align: right;
   }
+  /* Row tints are `--row-wash` (app.css): they fade in from the row's ends. */
   .row {
     height: var(--row-height);
     user-select: none;
-    transition: background-color var(--dur-micro);
+    transition: --row-wash var(--dur-micro);
   }
   .row:hover {
-    background: var(--surface-2);
+    --row-wash: var(--surface-2);
   }
   td {
     padding: 0 12px 0 0;
   }
   .row > td {
     border-bottom: 1px solid var(--line);
+  }
+  /* Settings → "Row separators" off: the hairline goes transparent rather
+     than away, so the row height (and the virtualization math) holds. */
+  :global(:root[data-row-lines="off"]) .row > td {
+    border-bottom-color: transparent;
   }
   /* The cover fills the row top to bottom; -1px keeps it inside the row's
      content box so the virtualization row math (var(--row-height)) holds. */
@@ -1255,6 +1269,7 @@
   .num-cell,
   thead th.num-head {
     padding-right: 18px;
+    padding-left: var(--row-inset);
   }
   .thumb {
     position: relative;
@@ -1277,10 +1292,10 @@
     opacity: 1;
   }
   .row.playing {
-    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    --row-wash: color-mix(in srgb, var(--accent) 18%, transparent);
   }
   .row.playing:hover {
-    background: color-mix(in srgb, var(--accent) 24%, transparent);
+    --row-wash: color-mix(in srgb, var(--accent) 24%, transparent);
   }
   .row.playing .title-text {
     color: var(--accent);
@@ -1288,10 +1303,10 @@
   /* Multi-select (drag-to-playlist spec §5); a selected playing row keeps
      its stronger playing tint. */
   .row.selected:not(.playing) {
-    background: var(--selection-bg);
+    --row-wash: var(--selection-bg);
   }
   .row.selected:not(.playing):hover {
-    background: color-mix(in srgb, var(--selection-bg), var(--surface-2));
+    --row-wash: color-mix(in srgb, var(--selection-bg), var(--surface-2));
   }
   .sr-only {
     position: absolute;
@@ -1362,7 +1377,7 @@
     color: var(--text);
   }
   .actions-cell {
-    padding: 0;
+    padding: 0 var(--actions-inset) 0 0;
     white-space: nowrap;
     text-align: right;
   }
@@ -1449,7 +1464,7 @@
     border-bottom: 0;
   }
   .compact .thumb-cell {
-    padding: 0 14px 0 6px;
+    padding: 0 14px 0 var(--row-inset);
   }
   .compact .thumb {
     width: calc(var(--row-height) - 6px);
@@ -1481,7 +1496,7 @@
   }
   .section-row th {
     text-align: left;
-    padding: 16px 12px 6px 0;
+    padding: 16px 12px 6px var(--row-inset);
     font-size: 11px;
     font-weight: 700;
     letter-spacing: 0.12em;

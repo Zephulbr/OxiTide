@@ -512,7 +512,7 @@
                  no interactive element nests inside another. Dragging is
                  delegated from the scroller (pointerdown). -->
             <div
-              class="q-row"
+              class="q-row row-wash"
               class:current={index === currentIndex}
               class:played={currentIndex !== null && index < currentIndex}
               class:placeholder={drag?.from === index}
@@ -708,24 +708,25 @@
     align-items: center;
     gap: 6px;
     height: var(--q-row);
-    /* Full-bleed: hover and the current-track tint run edge to edge. */
+    /* Full-bleed: hover and the current-track tint (`--row-wash`, app.css)
+       span the rail and fade in from its edges. */
     padding: 0 14px 0 16px;
     user-select: none;
     transition:
       transform var(--dur-state) var(--ease-in-out),
-      background-color var(--dur-micro);
+      --row-wash var(--dur-micro);
   }
   .settling .q-row {
     transition: none;
   }
   .q-row:hover {
-    background: var(--surface-2);
+    --row-wash: var(--surface-2);
   }
   .q-row.current {
-    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    --row-wash: color-mix(in srgb, var(--accent) 18%, transparent);
   }
   .q-row.current:hover {
-    background: color-mix(in srgb, var(--accent) 24%, transparent);
+    --row-wash: color-mix(in srgb, var(--accent) 24%, transparent);
   }
   .q-row.played .thumb,
   .q-row.played .text,
@@ -745,7 +746,7 @@
   }
   /* No hover washes while dragging: the gap is the only highlight. */
   .dragging .q-row:not(.placeholder):not(.current):hover {
-    background: transparent;
+    --row-wash: transparent;
   }
 
   .grip {
@@ -892,7 +893,7 @@
   }
   @media (prefers-reduced-motion: reduce) {
     .q-row {
-      transition: background-color var(--dur-micro);
+      transition: --row-wash var(--dur-micro);
     }
     .q-ghost {
       transform: none;

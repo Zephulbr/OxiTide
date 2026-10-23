@@ -98,8 +98,7 @@ body.dragging [data-drop-refused] * {
 /* position: relative anchors NowPlaying's absolute-positioned close fade. */
 /* Bottom clearance keeps the last content reachable past the floating bar. */
 /* `--page-top` is every page's gap above its content: 32px of frame plus 58px
-   of air. Pages that draw their own top (Profiles' sticky head) read it; Now
-   Playing is a full-window composition and keeps the bare 32px. */
+   of air. Now Playing is a full-window composition and keeps the bare 32px. */
 .main {
   --page-top: 90px;
   --page-title-size: 46px;
@@ -137,7 +136,6 @@ body.dragging [data-drop-refused] * {
 /* `> .page:not(.covered)`: a page hidden under Now Playing must not reshape
    .main around Now Playing. */
 .main:has(> .page:not(.covered) .view-fill) { padding-bottom: 0; }
-.main:has(> .page:not(.covered) .profiles) { padding-top: 0; }
 /* Route enter: the incoming page settles in (opacity + 8px rise) while the
    outgoing one is replaced immediately, so there is no dual-layout crossfade.
    `height: 100%` preserves the `.view-fill` height contract. */
@@ -438,6 +436,27 @@ h3 {
   background:
     linear-gradient(var(--surface-2), var(--surface-2)) padding-box,
     var(--edge-lit) border-box;
+}
+
+/* List-row wash: a row's hover / playing / selected tint fades in from both
+   ends like a glow instead of stopping at a hard edge. Rows add the class and
+   set `--row-wash` (a colour, registered so it transitions); list it in the
+   row's own `transition`, since a component's rule overrides this one's. */
+@property --row-wash {
+  syntax: "<color>";
+  inherits: false;
+  initial-value: transparent;
+}
+.row-wash {
+  --row-fade: 40px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--row-wash) var(--row-fade),
+    var(--row-wash) calc(100% - var(--row-fade)),
+    transparent
+  );
+  transition: --row-wash var(--dur-micro) var(--ease-enter);
 }
 
 /* Tinted edge: the same panel recipe without the light-to-dark key-light

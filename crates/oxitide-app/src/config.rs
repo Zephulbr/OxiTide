@@ -339,6 +339,8 @@ pub struct UiConfig {
     pub catjam_scale: u32,
     /// The collapsed sidebar and the closed queue expand as overlays on hover.
     pub hover_panels: bool,
+    /// Hairlines between the rows of track lists; default on.
+    pub row_separators: bool,
     /// Close hides the window to the tray instead of exiting (QoL-D3).
     pub close_to_tray: bool,
     pub window_width: u32,
@@ -371,6 +373,7 @@ impl Default for UiConfig {
             catjam_coat: CatjamCoat::White,
             catjam_scale: 125,
             hover_panels: false,
+            row_separators: true,
             close_to_tray: true,
             window_width: 1200,
             window_height: 800,
@@ -633,6 +636,7 @@ mod tests {
                 catjam_coat: CatjamCoat::Tuxedo,
                 catjam_scale: 150,
                 hover_panels: true,
+                row_separators: false,
                 close_to_tray: true,
                 window_width: 1280,
                 window_height: 720,
@@ -1034,6 +1038,22 @@ duration_ms = 4000
         config.save_to(&path).unwrap();
         assert!(fs::read_to_string(&path).unwrap().contains("hover_panels = true"));
         assert!(Config::load_from(&path).ui.hover_panels);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn row_separators_default_on_and_round_trip() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        assert!(Config::default().ui.row_separators);
+        let mut config = Config::default();
+        config.ui.row_separators = false;
+        config.save_to(&path).unwrap();
+        assert!(fs::read_to_string(&path).unwrap().contains("row_separators = false"));
+        assert!(!Config::load_from(&path).ui.row_separators);
+        // A config written before the setting existed keeps the hairlines.
+        fs::write(&path, "[ui]\nhover_panels = true\n").unwrap();
+        assert!(Config::load_from(&path).ui.row_separators);
         let _ = fs::remove_dir_all(dir);
     }
 

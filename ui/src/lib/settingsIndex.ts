@@ -39,6 +39,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   e("dynamic-color", "appearance", "Look & feel", "Dynamic color", "album art cover tint accent colour", "notRack"),
   e("typeface", "appearance", "Typography & layout", "Typeface", "font text manrope inter system custom"),
   e("density", "appearance", "Typography & layout", "Density", "compact comfortable spacing rows size"),
+  e("row-separators", "appearance", "Typography & layout", "Row separators", "lines dividers hairlines rules borders track list rows"),
   e("cover-shape", "appearance", "Typography & layout", "Cover shape", "disc sleeve artwork album art now playing"),
   e("track-sort-memory", "appearance", "Typography & layout", "Remember track sorting", "sort order playlist favorites columns reset"),
   e("player-bar-style", "appearance", "Typography & layout", "Player bar", "floating docked card layout bottom", "notRack"),

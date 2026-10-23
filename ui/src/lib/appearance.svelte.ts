@@ -100,6 +100,8 @@ export interface Appearance {
   readonly catjamScale: number;
   /// The collapsed sidebar and the closed queue expand as overlays on hover.
   readonly hoverPanels: boolean;
+  /// Hairlines between track list rows; the root's `data-row-lines`.
+  readonly rowSeparators: boolean;
   /// Default shell only (Atmosphere, Instrument): the player bar and the
   /// queue dock to the window edges or float as inset cards.
   readonly playerBarStyle: PanelStyle;
@@ -132,6 +134,7 @@ export interface Appearance {
   setCatjamCoat(coat: CatjamCoat): Promise<void>;
   setCatjamScale(percent: number): Promise<void>;
   setHoverPanels(enabled: boolean): Promise<void>;
+  setRowSeparators(enabled: boolean): Promise<void>;
   setPlayerBarStyle(style: PanelStyle): Promise<void>;
   setQueueStyle(style: PanelStyle): Promise<void>;
 }
@@ -165,6 +168,7 @@ export function createAppearance(): Appearance {
   let catjamCoat = $state<CatjamCoat>(DEFAULT_COAT);
   let catjamScale = $state(DEFAULT_CATJAM_SCALE);
   let hoverPanels = $state(false);
+  let rowSeparators = $state(true);
   let playerBarStyle = $state<PanelStyle>("docked");
   let queueStyle = $state<PanelStyle>("docked");
   let rack =$state<RackSettings>(defaultRackSettings());
@@ -178,6 +182,7 @@ export function createAppearance(): Appearance {
     // Rack is always dark; it has no light variant (RK-D12).
     root.style.colorScheme = mode === "rack" ? "dark" : resolved;
     root.dataset.density = density;
+    root.dataset.rowLines = rowSeparators ? "on" : "off";
     root.style.setProperty("--font-ui", fontStack(resolveTypeface(typefaceSetting, mode), customTypeface));
     root.style.setProperty("--queue-width", `${queueWidth}px`);
   }
@@ -211,6 +216,7 @@ export function createAppearance(): Appearance {
       catjamCoat = isCoat(config.ui.catjam_coat) ? config.ui.catjam_coat : DEFAULT_COAT;
       catjamScale = clampCatjamScale(config.ui.catjam_scale ?? DEFAULT_CATJAM_SCALE);
       hoverPanels = config.ui.hover_panels ?? false;
+      rowSeparators = config.ui.row_separators ?? true;
       if (isPanelStyle(config.ui.player_bar_style)) playerBarStyle = config.ui.player_bar_style;
       if (isPanelStyle(config.ui.queue_style)) queueStyle = config.ui.queue_style;
       if (config.rack) rack = { ...defaultRackSettings(), ...config.rack };
@@ -288,6 +294,19 @@ export function createAppearance(): Appearance {
     }
   }
 
+  async function setRowSeparators(enabled: boolean): Promise<void> {
+    const previous = rowSeparators;
+    rowSeparators = enabled;
+    apply();
+    try {
+      await api.setRowSeparators(enabled);
+    } catch (error) {
+      rowSeparators = previous;
+      apply();
+      throw error;
+    }
+  }
+
   async function setPlayerBarStyle(style: PanelStyle): Promise<void> {
     const previous = playerBarStyle;
     playerBarStyle = style;
@@ -342,6 +361,7 @@ export function createAppearance(): Appearance {
     get catjamCoat() { return catjamCoat; },
     get catjamScale() { return catjamScale; },
     get hoverPanels() { return hoverPanels; },
+    get rowSeparators() { return rowSeparators; },
     get playerBarStyle() { return playerBarStyle; },
     get queueStyle() { return queueStyle; },
     get dynamicColor() { return resolveDynamicColor(dynamicColorSetting, mode); },
@@ -378,6 +398,7 @@ export function createAppearance(): Appearance {
     setCatjamCoat,
     setCatjamScale,
     setHoverPanels,
+    setRowSeparators,
     setPlayerBarStyle,
     setQueueStyle,
   };

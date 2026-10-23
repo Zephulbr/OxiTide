@@ -5,7 +5,6 @@
   import { favoriteArtistsSource } from "../lib/viewData";
   import { groupArtists, visibleArtists, type ArtistSort } from "../lib/artistSort";
   import Cover from "../lib/components/Cover.svelte";
-  import EdgeBlur from "../lib/components/EdgeBlur.svelte";
   import EmptyState from "../lib/components/EmptyState.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
   import Loading from "../lib/components/Loading.svelte";
@@ -25,8 +24,6 @@
   let error = $state("");
   let query = $state("");
   let sortMode = $state<ArtistSort>("date");
-  let headEl = $state<HTMLElement | null>(null);
-  let scrolled = $state(false);
 
   const shown = $derived(visibleArtists(artists, query, sortMode));
   const groups = $derived(sortMode === "date" ? null : groupArtists(shown));
@@ -45,15 +42,6 @@
 
   $effect(() => {
     untrack(() => void load());
-  });
-
-  $effect(() => {
-    const main = headEl?.closest(".main");
-    if (!main) return;
-    const sync = () => (scrolled = main.scrollTop > 4);
-    sync();
-    main.addEventListener("scroll", sync, { passive: true });
-    return () => main.removeEventListener("scroll", sync);
   });
 </script>
 
@@ -76,12 +64,7 @@
 {/snippet}
 
 <div class="profiles">
-  <header class="page-head" class:scrolled bind:this={headEl}>
-    <div class="head-frost" aria-hidden="true">
-      <div class="head-ramp">
-        <EdgeBlur layers={10} height={140} strength={1.3} tint="var(--glass-veil)" tintStrength={75} />
-      </div>
-    </div>
+  <header class="page-head">
     <!-- The count sits under the title, as on Albums and Playlists. -->
     <div class="title-block">
       <h2>Profiles</h2>
@@ -154,34 +137,9 @@
     color: color-mix(in srgb, var(--text) 62%, transparent);
     font-size: 14px;
   }
-  /* The shared page head, made sticky with a frost ramp once the page scrolls
-     (the main scroller's top padding is dropped for this view, app.css). It
-     carries the page's top gap itself, and scrolls up by the extra air before
-     it sticks so the stuck band stays 32px deep. */
-  .page-head {
-    position: sticky;
-    top: calc(32px - var(--page-top, 32px));
-    z-index: 5;
-    margin: 0 0 8px;
-    padding: var(--page-top, 32px) 0 16px;
-  }
-  .head-frost {
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    pointer-events: none;
-  }
-  .head-ramp {
-    position: absolute;
-    top: 0;
-    /* Past the 24px inset, out to the scroller's edges. */
-    right: -36px;
-    left: -36px;
-    visibility: hidden;
-  }
-  .page-head.scrolled .head-ramp {
-    visibility: visible;
-  }
+  /* The shared page head, scrolling with the page as on Albums and
+     Playlists, so the search and sort fields always sit on the page
+     background, never over the portraits. */
   .filter {
     flex: 0 1 240px;
     min-width: 140px;
@@ -196,6 +154,8 @@
     display: grid;
     grid-template-columns: repeat(var(--cols, 8), minmax(0, 1fr));
     gap: 18px 14px;
+  }
+  .divider + .grid {
     margin-top: 16px;
   }
   @container (max-width: 1240px) {

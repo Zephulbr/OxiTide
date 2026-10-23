@@ -2601,6 +2601,15 @@ pub fn set_hover_panels(state: State<'_, AppState>, enabled: bool) -> Result<(),
 }
 
 #[tauri::command]
+pub fn set_row_separators(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    let mut config = state.config();
+    config.ui.row_separators = enabled;
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
+#[tauri::command]
 pub fn set_player_bar_style(state: State<'_, AppState>, style: PanelStyle) -> Result<(), String> {
     let mut config = state.config();
     config.ui.player_bar_style = style;
@@ -2983,7 +2992,7 @@ mod tests {
         // An atomic store plus one engine call; ordered with CatJam's mount
         // and unmount so a quick remount cannot end with tracking off.
         "set_beat_tracking",
-        "set_hover_panels", "set_player_bar_style", "set_queue_style", "set_smtc", "set_discord", "set_close_to_tray", "set_cache_max_size_mb",
+        "set_hover_panels", "set_row_separators", "set_player_bar_style", "set_queue_style", "set_smtc", "set_discord", "set_close_to_tray", "set_cache_max_size_mb",
         "set_cache_clear_on_exit", "get_remote_status", "begin_remote_pairing",
         "cancel_remote_pairing", "list_remote_devices", "rename_remote_device",
         "revoke_remote_device", "resolve_remote_pair_request", "get_custom_titlebar",

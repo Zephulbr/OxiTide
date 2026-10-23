@@ -74,13 +74,14 @@ kicker and fan count use `--text` at 82% rather than muted.
   44.1 kHz · 938 kbps"); then Output settings…. Picking a tier restarts the track at its
   position; pressing the plate again closes the menu. The seek's hover wave cap fills
   with `--player-veil-top`, the veil's top-edge tint, so it continues the bar.
-- Now Playing "Editorial Split": artwork left (Disc default / Sleeve), metadata column
+- Now Playing "Editorial Split": artwork left (Disc default / Sleeve: the bare cover
+  with square corners and its drop shadow, no panel or lit frame), metadata column
   right (eyebrow, display title, muted byline, badges, tabs Lyrics / Next / Info). The
   sidebar steps aside; the queue rail can stay docked beside it (Now Playing narrows).
 - Queue rail (`QueueRail.svelte`, shared with Mini and the Rack drawers): header with a
   display "Queue" title, "N up next · 1 h 32 min left", locate-current and clear icon
   buttons (circle-dot = "go to current", shared with lyrics). Full-bleed rows (hover and
-  the current tint run edge to edge) 58px / 48px (compact): cover, title over muted
+  the current tint span the rail and fade in from its edges, `--row-wash`) 58px / 48px (compact): cover, title over muted
   artist, duration on the right (swapped for × on hover/focus); a grip fades in at the
   left edge on hover. The
   current row takes the 18% accent tint and accent title, and its cover + text glide 34px

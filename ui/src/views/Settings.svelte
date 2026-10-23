@@ -1086,6 +1086,12 @@
                   onchange={(value) => appearance.setDensity(value).catch(apply)}
                 />
               </SettingRow>
+              <ToggleRow
+                id="row-separators" label="Row separators"
+                description="Thin lines between the rows of track lists."
+                checked={appearance.rowSeparators}
+                onchange={(enabled) => appearance.setRowSeparators(enabled).catch(apply)}
+              />
               <SettingRow id="cover-shape" label="Cover shape" description="How artwork is drawn on Now Playing.">
                 <Segmented
                   label="Cover shape"

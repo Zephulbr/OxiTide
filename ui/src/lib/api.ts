@@ -416,6 +416,8 @@ export interface Config {
     /// Percent of the 32 px sprite, 100–200.
     catjam_scale: number;
     hover_panels: boolean;
+    /// Hairlines between track list rows (default on).
+    row_separators?: boolean;
     close_to_tray: boolean;
     window_width: number;
     window_height: number;
@@ -820,6 +822,7 @@ export const api = {
   setCatjamScale: (percent: number) => invoke<number>("set_catjam_scale", { percent }),
   setBeatTracking: (enabled: boolean) => invoke<void>("set_beat_tracking", { enabled }),
   setHoverPanels: (enabled: boolean) => invoke<void>("set_hover_panels", { enabled }),
+  setRowSeparators: (enabled: boolean) => invoke<void>("set_row_separators", { enabled }),
   setPlayerBarStyle: (style: PanelStyle) => invoke<void>("set_player_bar_style", { style }),
   setQueueStyle: (style: PanelStyle) => invoke<void>("set_queue_style", { style }),
   setSmtc: (enabled: boolean) => invoke<void>("set_smtc", { enabled }),

@@ -152,7 +152,7 @@
               {#each group.entries as entry, i (entry.started_at + "-" + entry.track_id + "-" + i)}
                 {@const playing = player.state.current?.track_id === entry.track_id && !entry.completed}
                 <button
-                  class="row"
+                  class="row row-wash"
                   class:playing
                   class:partial={!playing && !entry.completed && entry.listened_ms < entry.duration_secs * 500}
                   onclick={() => playEntry(entry)}
@@ -264,15 +264,16 @@
     gap: 14px;
     align-items: center;
     width: 100%;
-    padding: 7px 12px;
+    padding: 7px 14px;
     text-align: left;
-    border-radius: var(--radius-control);
+    transition: --row-wash var(--dur-micro);
   }
+  /* Tints are `--row-wash` (app.css): they fade in from the row's ends. */
   .row:hover {
-    background: var(--surface-2);
+    --row-wash: var(--surface-2);
   }
   .row.playing {
-    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    --row-wash: color-mix(in srgb, var(--accent) 14%, transparent);
   }
   .row.playing strong {
     color: var(--accent);

@@ -406,7 +406,7 @@
             <li>
               <button
                 type="button"
-                class="row"
+                class="row row-wash"
                 disabled={!row.open}
                 onclick={() => row.open?.()}
                 aria-label={row.label}
@@ -870,14 +870,14 @@
     gap: 12px;
     align-items: center;
     width: 100%;
-    padding: 5px 8px;
-    border-radius: var(--radius-control);
+    padding: 5px 12px;
     color: inherit;
     text-align: left;
-    transition: background-color var(--dur-micro) var(--ease-enter);
+    transition: --row-wash var(--dur-micro) var(--ease-enter);
   }
+  /* The hover tint is `--row-wash` (app.css): it fades in from the ends. */
   .row:not(:disabled):hover {
-    background: var(--surface-2);
+    --row-wash: var(--surface-2);
   }
   /* Disabled only while ids resolve; the row should not look faded. */
   .row:disabled,

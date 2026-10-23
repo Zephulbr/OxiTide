@@ -320,13 +320,13 @@
                 </button>
               {:else}
                 <button
-                  class="art-sleeve lit"
+                  class="art-sleeve"
                   class:hovering={sleeveHover}
                   class:entering={sleeveEntering}
                   onclick={() => nav.closeNowPlaying()}
                   aria-label="Close now playing"
                 >
-                  <Cover uuid={track.cover} size={640} radius={12} alt={`${track.title} artwork`} />
+                  <Cover uuid={track.cover} size={640} radius={0} alt={`${track.title} artwork`} />
                   <span class="art-glare" aria-hidden="true"></span>
                 </button>
               {/if}
@@ -587,10 +587,12 @@
      under the cursor — a perspective tilt toward the pointer with a specular
      glare mirrored through the center (no grow; the tilt alone carries it).
      The press lives in --tilt-scale so it composes with the tilt instead of
-     replacing it. */
+     replacing it. The artwork is the whole object: square corners, no panel
+     or lit frame behind it. No padding either: a button's default 6px side
+     padding would show as a band around the cover. */
   .art-sleeve {
     position: relative;
-    border-radius: var(--radius-card);
+    padding: 0;
     box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
     --tilt-scale: 1;
     /* The leave settle: slower than the hover tracking, decelerating into
@@ -619,7 +621,6 @@
     position: absolute;
     inset: 0;
     pointer-events: none;
-    border-radius: var(--radius-card);
     opacity: var(--tilt-glare, 0);
     background: radial-gradient(
       circle at var(--tilt-gx, 50%) var(--tilt-gy, 50%),

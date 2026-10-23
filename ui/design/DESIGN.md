@@ -159,9 +159,17 @@ same four tiers.
 
 **Page frame:** the main scroller pads every page `90px 28px` (`--page-top` on `.main`:
 32px of frame plus 58px of air above the title), with the floating player's clearance at
-the bottom. Now Playing is a full-window composition and keeps a bare 32px top. A page
-that draws its own top reads `var(--page-top)`: Profiles' sticky head carries it as
-padding and sticks at `32px − --page-top`, so the stuck band stays 32px deep.
+the bottom. Now Playing is a full-window composition and keeps a bare 32px top. Page
+heads scroll with their page (Profiles included, so its search and sort fields never sit
+over the portraits).
+
+**List rows** (track tables, the queue rail, History and the stats lists): the hover,
+playing and selected tints are `--row-wash` on the shared `.row-wash` class (`app.css`),
+a gradient that fades in over the row's first and last 40px like a glow instead of
+ending in a hard edge. Track tables inset the number 14px (`--row-inset`) and the
+action buttons 72px (`--actions-inset`) so neither sits on the faded edge. Their row hairlines follow Settings →
+"Row separators" (`ui.row_separators`, default on, the root's `data-row-lines`); off makes
+them transparent, so row heights stay the same.
 
 **Page titles** (a page's own `h2`, bare or in its `.page-head`; Home's greeting and the
 Tracks and artist-catalogue heads read the variable in their own styles) are 46px (`--page-title-size` on `.main`, line-height 1.1) in the display face. Section
