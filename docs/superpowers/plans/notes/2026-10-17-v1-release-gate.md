@@ -97,6 +97,14 @@ Track 8 resume lists, the Track 11 `ufw` item, Track 9 surfaces on WebKitGTK, an
 path. Re-check any resulting fixes on Windows. If the run slips, label Linux "preview" in the 1.0
 release notes (the README currently says "Supported").
 
+**Run 2026-10-23 (CachyOS / KDE Wayland / PipeWire):** gates, build, MPRIS, deep links, tray, Rack,
+credits, remote and the first Linux perf corpus all executed — results and issues in
+`2026-10-23-linux-bare-metal-run.md`. A USB-DAC follow-up the same day verified exclusive
+bit-perfect playback and hardware mixer volume (after fixing two ALSA bugs, currently an
+uncommitted patch) and found that the device picker cannot select a direct `hw:` device — the last audio-path blocker. Still blocking a
+full close: that picker fix, DAC hotplug, AUR (recipe URL/tag drift), the oldest-base checks,
+MPRIS desktop-entry resolution, and the MPRIS `Stop` parity issue.
+
 ## 7. Tag `v1.0.0`
 
 - [ ] `docs/release.md` runbook; release notes list accepted debt (S4 gap, any renegotiated budgets).

@@ -14,6 +14,22 @@ the companion notes `2026-10-03-track8-packaging-smoke.md` and
 `2026-10-03-track8-4-linux-desktop-smoke.md`; those results do not close any
 item here.
 
+Status (2026-10-23): the first bare-metal run executed on CachyOS (Arch) / KDE
+Plasma 6.8.1 Wayland / PipeWire 1.6.10 / WebKitGTK 2.54.1 — evidence and
+row-by-row results in `2026-10-23-linux-bare-metal-run.md`. Closed there:
+`ExclusiveFallback` on a busy device, real-DE MPRIS + media keys (KDE),
+`tidal://` + single instance, Wayland geometry, AppImage on the current distro.
+A USB-DAC follow-up the same day (`MOONDROP Dawn Pro`) closed the two audio
+rows after fixing two ALSA bugs (§11 there, and note the fixes are an
+**uncommitted** working-tree patch — §12): exclusive bit-perfect playback
+(S32_LE at the file's rate, no PipeWire stream, `✓ BP`) and hardware mixer
+volume. DAC hotplug and the format step-down are still unexercised, and
+exclusive cannot be selected from the UI yet — the picker never offers a `hw:`
+device on this alsa-lib (issue #11 in the run note). Still open: AUR install
+(recipe still points at Codeberg and `v0.4.0` is untagged), the oldest-base
+WebKitGTK/AppImage checks (not available on this host), and the MPRIS
+desktop-entry resolution per package (issue #4 in the run note).
+
 ## Audio
 
 - [ ] **Exclusive / bit-perfect on a real DAC.** Select the DAC in Exclusive
@@ -21,12 +37,20 @@ item here.
       the same file plays without server resampling. Hold the device in
       another app (or pick an unsupported format) → `ExclusiveFallback`
       reopens shared with the existing notice.
+      Status 2026-10-23 (Dawn Pro): the engine path **passes** — exclusive
+      S32_LE at 44.1/48/96/192, no PipeWire stream, `✓ BP`, pause releases and
+      resume reopens. Selecting it in the UI is blocked (#11): the picker has
+      no `hw:` entry, so the id was written into `config.toml` by hand.
 - [ ] **Hotplug.** Unplug/replug a USB DAC while paused → enumeration lists it
       again; default-device switch mid-playback and resume behave as on
       Windows. (On-demand enumeration only; no hotplug events is accepted.)
-- [ ] **Hardware mixer volume.** With a writable card Master/PCM element the
+      Status 2026-10-23: not exercised (needs the cable).
+- [x] **Hardware mixer volume.** With a writable card Master/PCM element the
       slider drives the mixer and stays bit-perfect; with none, software
       scaling applies the "volume in software" notice.
+      Done 2026-10-23 (Dawn Pro): one `PCM` element, slider drag set it to
+      38 % with the stream RUNNING and `✓ BP` still lit. The no-element path
+      was not seen on this DAC.
 
 ## Desktop integration
 
