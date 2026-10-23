@@ -161,16 +161,62 @@ const requireTracks = (tracks, count) => {
   return tracks;
 };
 
+/// Waits until a play that missed the cache has committed its entry. The old
+/// "nothing pending and none seen" shortcut also held before the download
+/// had started, so the replay missed too (S3-hit's 0-hit runs after S3-miss
+/// cleared the cache). A play that hit needs no wait.
 const awaitWarmCache = async (beforeBytes, label = "cache write", maxMs = 300000) => {
+  const perf = await invoke("get_perf_snapshot");
+  if (perf.cache_hits > 0) return;
   const deadline = Date.now() + maxMs;
-  let sawPending = false;
   while (Date.now() < deadline) {
     const status = await invoke("get_cache_status");
-    if (status.pending_bytes > 0) sawPending = true;
-    if (status.pending_bytes === 0 && (status.used_bytes > beforeBytes || !sawPending)) return;
+    if (status.pending_bytes === 0 && status.used_bytes > beforeBytes) return;
     await delay(500);
   }
   throw new Error(`timed out waiting for ${label}`);
+};
+
+/// Chromium's cumulative page counters plus the animations running right now,
+/// written as a `ui_metrics` row with a `page` field. The checker turns two
+/// rows into per-minute rates, so work an idle window still does (style,
+/// layout, script) shows up even with the frame sampler off.
+const PAGE_COUNTERS = {
+  LayoutCount: "layouts",
+  RecalcStyleCount: "style_recalcs",
+  LayoutDuration: "layout_s",
+  RecalcStyleDuration: "style_s",
+  ScriptDuration: "script_s",
+  TaskDuration: "task_s",
+  JSHeapUsedSize: "js_heap_bytes",
+  Nodes: "nodes",
+};
+const snapPage = async (label) => {
+  try {
+    const { metrics } = await send("Performance.getMetrics");
+    const page = { label };
+    for (const { name, value } of metrics) {
+      if (PAGE_COUNTERS[name]) page[PAGE_COUNTERS[name]] = value;
+    }
+    // Compositor-only animations never touch the counters above.
+    page.animations = await evaluate(
+      `document.getAnimations().filter((a) => a.playState === "running").map((a) => {
+        const el = a.effect?.target;
+        const what = el ? el.tagName.toLowerCase() + (el.classList.length ? "." + [...el.classList].join(".") : "") : "?";
+        return (a.animationName ?? a.transitionProperty ?? a.constructor.name) + " " + what;
+      }).slice(0, 20)`,
+    );
+    await invoke("perf_submit_ui_metrics", { metrics: { page } });
+  } catch (e) {
+    console.error(`page counters (${label}) unavailable: ${e.message}`);
+  }
+};
+
+/// Starts the steady window: the mark the checker measures from, and the
+/// first page-counter row.
+const measureStart = async () => {
+  await invoke("perf_mark", { name: "measure_start" });
+  await snapPage("measure_start");
 };
 
 /// `--minutes` for the timed idle scenarios, else the scenario's default.
@@ -230,6 +276,11 @@ const scenarioFallback = async (id) => {
     }
   };
   try {
+    // Whole-run window for scenarios without a `measure_start`.
+    await until("!!window.__TAURI_INTERNALS__", "app page").then(
+      () => snapPage("start"),
+      () => {},
+    );
     if (id.startsWith("S5")) {
       await awaitLoggedIn();
       await until("!!window.__perf", "__perf bridge");
@@ -302,8 +353,10 @@ const scenarioFallback = async (id) => {
       await awaitPlaying("S11 playback");
       await delay(3000);
       await invoke("play_pause");
+      await until("!!window.__perf", "__perf bridge");
+      await evaluate("window.__perf.sampleFrames(false)");
       await delay(10000);
-      await invoke("perf_mark", { name: "measure_start" });
+      await measureStart();
       await delay(minutesFlag(5) * 60_000);
     } else if (id === "S12") {
       // Playing while hidden to the tray (close_to_tray on). The owner closes
@@ -313,9 +366,11 @@ const scenarioFallback = async (id) => {
       await invoke("set_repeat", { mode: "all" });
       await playItems(items);
       await awaitPlaying("S12 playback");
+      await until("!!window.__perf", "__perf bridge");
+      await evaluate("window.__perf.sampleFrames(false)");
       console.log("S12: close the window to the tray now");
       await delay(20_000);
-      await invoke("perf_mark", { name: "measure_start" });
+      await measureStart();
       await delay(minutesFlag(10) * 60_000);
       await invoke("set_repeat", { mode: "off" });
     } else if (id === "S13") {
@@ -331,7 +386,7 @@ const scenarioFallback = async (id) => {
       await evaluate('window.__perf.goto("tracks")');
       await until('!!document.querySelector("[data-perf-scroll]")', "track table");
       await delay(3000);
-      await invoke("perf_mark", { name: "measure_start" });
+      await measureStart();
       for (let i = 0; i < 12; i++) {
         await evaluate("window.__perf.scrollTracks(1200)");
         await delay(600);
@@ -349,7 +404,7 @@ const scenarioFallback = async (id) => {
       if (!loaded) throw new Error("S14: queue load unavailable");
       await until('!!document.querySelector("[data-perf-volume]")', "volume slider");
       await delay(3000);
-      await invoke("perf_mark", { name: "measure_start" });
+      await measureStart();
       for (let i = 0; i < 3; i++) {
         const swept = await evaluate("window.__perf.sweepVolume(120)");
         if (!swept) throw new Error("S14: volume slider unavailable");
@@ -473,6 +528,7 @@ const scenarioFallback = async (id) => {
       // Start-only scenarios (S1/S2 and manual ones): idle while marks accumulate.
       await delay(Number(flag("--idle", "8000")));
     }
+    await snapPage("end");
   } finally {
     if (modeApplied) {
       try {
@@ -495,6 +551,11 @@ try {
   await send("Runtime.enable");
 } catch {
   /* older targets may not need it */
+}
+try {
+  await send("Performance.enable");
+} catch {
+  /* page counters stay unmeasured */
 }
 
 await scenarioFallback(scenario).catch((e) => {

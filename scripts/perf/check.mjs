@@ -105,6 +105,28 @@ export function perMinute(samples, key) {
   return (last[key] - first[key]) / minutes;
 }
 
+/// Page work per minute from the driver's CDP counter rows (Track 13 harness
+/// follow-up): style recalcs, layouts, and main-thread script/task time. A
+/// settled idle window should be near zero on all of them; `animations_max`
+/// counts the animations still running when a row was taken.
+export function pageMetrics(rows) {
+  const out = {};
+  for (const [key, metric, scale] of [
+    ["style_recalcs", "page_style_per_min", 1],
+    ["layouts", "page_layouts_per_min", 1],
+    ["script_s", "page_script_ms_per_min", 1000],
+    ["task_s", "page_task_ms_per_min", 1000],
+  ]) {
+    const rate = perMinute(rows.filter((r) => typeof r[key] === "number"), key);
+    if (rate !== null) out[metric] = rate * scale;
+  }
+  const heaps = rows.map((r) => r.js_heap_bytes).filter((v) => typeof v === "number");
+  if (heaps.length > 0) out.js_heap_max_mb = Math.max(...heaps) / 1048576;
+  const running = rows.filter((r) => Array.isArray(r.animations)).map((r) => r.animations.length);
+  if (running.length > 0) out.animations_max = Math.max(...running);
+  return out;
+}
+
 export function metricsFor(run) {
   const metrics = { scenario: run.scenario, cache_hits: 0, cache_misses: 0 };
   const frames = new Map(); // mode -> number[]
@@ -115,6 +137,7 @@ export function metricsFor(run) {
   const processRows = []; // memory_process rows (cpu_ms, pid)
   const ipcRows = []; // cumulative playback_event counters
   const privates = []; // all-process private MiB
+  const pageRows = []; // the driver's cumulative CDP page counters
   let advanceMax = 0;
   for (const line of run.lines) {
     if (line.kind === "mark") metrics[`${line.name}_ms`] = line.t_ms;
@@ -146,6 +169,9 @@ export function metricsFor(run) {
       if (line.event === "decode_start") first("decode_start");
       if (line.event === "info_ready") first("info_ready");
       if (line.event === "output_opened") first("output_opened");
+    }
+    if (line.kind === "ui_metrics" && line.metrics?.page) {
+      pageRows.push({ t_ms: line.t_ms, ...line.metrics.page });
     }
     if (line.kind === "ui_metrics") {
       const mode = line.metrics?.mode ?? "instrument";
@@ -212,6 +238,7 @@ export function metricsFor(run) {
   if (events !== null) metrics.ipc_events_per_min = events;
   const bytes = perMinute(ipcWindow, "bytes");
   if (bytes !== null) metrics.ipc_kb_per_min = bytes / 1024;
+  Object.assign(metrics, pageMetrics(pageRows.filter((r) => r.t_ms >= from)));
   for (const [mode, samples] of frames) {
     metrics[`frame_p95_ms:${mode}`] = Math.max(...samples.map((s) => s.p95));
     const p99s = samples.map((s) => s.p99).filter((v) => typeof v === "number");
@@ -307,6 +334,23 @@ export function evaluate(aggregatedRuns, config) {
   return { ok: results.every((r) => r.status !== "fail"), results };
 }
 
+/// `--metrics`: every measured metric per scenario as median / worst (p95)
+/// over the runs, budgeted or not, for baselines and comparisons.
+export function metricsTable(aggregatedRuns) {
+  const lines = [];
+  for (const { scenario, metrics } of aggregatedRuns) {
+    lines.push(`${scenario} (${metrics.samples} run(s))  median / worst`);
+    const keys = Object.keys(metrics)
+      .filter((k) => metrics[`${k}_median`] !== undefined)
+      .sort();
+    const fmt = (v) => (Number.isInteger(v) ? String(v) : v.toFixed(1));
+    for (const key of keys) {
+      lines.push(`  ${key.padEnd(30)} ${fmt(metrics[`${key}_median`])} / ${fmt(metrics[key])}`);
+    }
+  }
+  return lines;
+}
+
 export function unmatchedScenarios(runs, config) {
   const scenarios = [...new Set(runs.map((r) => r.scenario))];
   return {
@@ -334,6 +378,10 @@ function main() {
   let runs = readRuns(files);
   if (onlyScenario) runs = runs.filter((r) => r.scenario === onlyScenario);
   const aggregated = [...aggregate(runs).values()].map((m) => ({ scenario: m.scenario, metrics: m }));
+  if (args.includes("--metrics")) {
+    for (const line of metricsTable(aggregated)) console.log(line);
+    console.log("");
+  }
   const { ok, results } = evaluate(aggregated, config);
   if (results.length === 0) {
     const { missing, informational } = unmatchedScenarios(runs, config);

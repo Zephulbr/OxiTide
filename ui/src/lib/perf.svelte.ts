@@ -48,13 +48,7 @@ export function createPerf() {
     }
     if (!snapshot.active) return;
     active = true;
-    lastFrame = performance.now();
-    const tick = (now: number) => {
-      frames.record(now - lastFrame);
-      lastFrame = now;
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
+    setFrameSampling(true);
     requestAnimationFrame(() => mark("first_paint"));
     try {
       observer = new PerformanceObserver((list) => {
@@ -66,6 +60,26 @@ export function createPerf() {
     }
     timers.push(window.setInterval(() => void refresh(), 2000));
     timers.push(window.setInterval(() => void submit(), 5000));
+  }
+
+  function tick(now: number) {
+    frames.record(now - lastFrame);
+    lastFrame = now;
+    raf = requestAnimationFrame(tick);
+  }
+
+  /// The sampler is a rAF loop of its own, so it keeps an idle window
+  /// producing frames; idle scenarios (S11/S12) turn it off and read the
+  /// driver's page counters instead. Off also drops the partial window.
+  function setFrameSampling(on: boolean) {
+    cancelAnimationFrame(raf);
+    raf = 0;
+    if (!on) {
+      frames.reset();
+      return;
+    }
+    lastFrame = performance.now();
+    raf = requestAnimationFrame(tick);
   }
 
   function mark(name: string) {
@@ -98,6 +112,7 @@ export function createPerf() {
     init,
     mark,
     recordInteraction,
+    setFrameSampling,
     toggleHud,
     dispose,
   };

@@ -2090,6 +2090,9 @@ fn run_session(
         }
     }
     let mut first_write_of_track;
+    // The track that last reached the output and when. Every write counts,
+    // the held-back tail included: timing from the main loop's last write
+    // counted a crossfade's whole tail as a gap (perf S4 read ~18 s).
     let mut last_write: Option<(u64, Instant)> = None;
     // The output refills from here (a new session follows a flush, a stop or
     // a fresh open); its lead reads low until it does.
@@ -2239,7 +2242,11 @@ fn run_session(
                     report.kind = TransitionKind::FadeOut;
                     let (ch, rate) = (previous.info.channels, previous.info.sample_rate);
                     match write_responsive(inner, output, &tail.fade_out_remaining(), ch, rate, gen, &mut |_| {}) {
-                        Ok(true) => {}
+                        Ok(true) => {
+                            if let Some((_, at)) = last_write.as_mut() {
+                                *at = Instant::now();
+                            }
+                        }
                         Ok(false) => return SessionOutcome::Superseded,
                         Err(e) => {
                             return SessionOutcome::OutputError {
@@ -2743,7 +2750,7 @@ fn run_session(
         if planned.is_none() {
             if let Some(mut rs) = resampler.take() {
                 match write_responsive(inner, output, &rs.flush(), channels, device_rate, gen, &mut |_| {}) {
-                    Ok(true) => {}
+                    Ok(true) => last_write = Some((track_id, Instant::now())),
                     Ok(false) => return SessionOutcome::Superseded,
                     Err(e) => return SessionOutcome::OutputError { message: e.to_string(), track_id },
                 }
@@ -2753,7 +2760,7 @@ fn run_session(
         // finished; let the rest of that tail fade out on its own.
         if let Some(mut tail) = incoming.take() {
             match write_responsive(inner, output, &tail.fade_out_remaining(), channels, device_rate, gen, &mut |_| {}) {
-                Ok(true) => {}
+                Ok(true) => last_write = Some((track_id, Instant::now())),
                 Ok(false) => return SessionOutcome::Superseded,
                 Err(e) => return SessionOutcome::OutputError { message: e.to_string(), track_id },
             }
@@ -2795,7 +2802,7 @@ fn run_session(
                     emit_position_if_due(inner, at, rate, &mut last_emit);
                 };
                 match write_responsive(inner, output, &preroll, channels, device_rate, gen, &mut progress) {
-                    Ok(true) => {}
+                    Ok(true) => last_write = Some((track_id, Instant::now())),
                     Ok(false) => return SessionOutcome::Superseded,
                     Err(e) => return SessionOutcome::OutputError { message: e.to_string(), track_id },
                 }
@@ -7475,5 +7482,45 @@ mod tests {
         assert_eq!(output.samples().len(), 176_400 + 192_000);
         let report = engine.state().last_transition.expect("report");
         assert_eq!(report.kind, TransitionKind::FadeOut);
+    }
+
+    /// Regression (perf S4, 2026-10-20): the advance gap ran from the main
+    /// loop's last write, so a 1 s tail faded out after it read as a 1 s gap.
+    #[test]
+    fn the_advance_gap_starts_after_the_faded_tail() {
+        let tone16 = std::fs::read("tests/fixtures/tone.mp4").unwrap();
+        let tone48 = std::fs::read("tests/fixtures/tone48.mp4").unwrap();
+        let mut plans = HashMap::new();
+        plans.insert(1, plan_for("mem://t16", 44100, 16));
+        plans.insert(2, plan_for("mem://t48", 48000, 16));
+        let mut files = HashMap::new();
+        files.insert("mem://t16".to_string(), tone16);
+        files.insert("mem://t48".to_string(), tone48);
+        let events: Arc<Mutex<Vec<crate::perf::AudioPerfEvent>>> = Arc::new(Mutex::new(Vec::new()));
+        let sink = events.clone();
+        let engine = build_engine(
+            Arc::new(PerTrackResolver { plans, order: Arc::new(Mutex::new(Vec::new())) }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            // ~0.9 s for the 1 s tail.
+            Box::new(PacedOutput { inner: NullOutput::new(), per_frame: Duration::from_micros(20) }),
+            Quality::Lossless,
+        );
+        engine.set_perf_hook(Arc::new(move |event| sink.lock().unwrap().push(event)));
+        engine.set_dsp(crossfade(1000, true));
+        engine
+            .handle(EngineCmd::PlayTracks { items: vec![album_item(1, "A"), album_item(2, "B")], start: 0 })
+            .unwrap();
+        let gap = || {
+            events.lock().unwrap().iter().find_map(|e| match e {
+                crate::perf::AudioPerfEvent::Advance { track_id: 2, gap_ms } => Some(*gap_ms),
+                _ => None,
+            })
+        };
+        wait_for(|| gap().is_some());
+        let gap_ms = gap().unwrap();
+        let kind = engine.state().last_transition.expect("report").kind;
+        engine.handle(EngineCmd::Clear).unwrap();
+        assert_eq!(kind, TransitionKind::FadeOut);
+        assert!(gap_ms < 400, "the faded tail counted as a {gap_ms} ms gap");
     }
 }
