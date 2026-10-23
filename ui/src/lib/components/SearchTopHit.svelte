@@ -3,6 +3,7 @@
   import { appearance } from "../appearance.svelte";
   import { getCardActions } from "../cardActions";
   import { coverTint } from "../coverTint";
+  import { errorMessage } from "../errors";
   import { isAlbumRelease } from "../media";
   import type { Nav, Route } from "../nav.svelte";
   import { playSource, type PlayFrom } from "../playSource.svelte";
@@ -84,7 +85,7 @@
         await cardActions?.play({ kind: "album", id: hit.item.id, title: hit.item.title });
       else await cardActions?.play({ kind: "playlist", id: hit.item.uuid, title: hit.item.title });
     } catch (e) {
-      toasts.show(String(e), { severity: "error" });
+      toasts.show(errorMessage(e), { severity: "error" });
     }
   }
 

@@ -99,8 +99,11 @@ Candidates (pick per value; none block 1.0 on their own):
       output path, quality, current stream, DSP stages, underruns, enabled switches and the last 20
       WARN/ERROR lines, with URL queries, token/code/state values, bearer tokens and the home
       directory redacted. Smoke: copy once, paste, check nothing personal is in it.
-- [ ] Recognisable error for TIDAL API drift ("TIDAL changed something — check for updates") instead
-      of a generic failure (roadmap §6 backlog).
+- [x] Recognisable error for TIDAL API drift ("TIDAL changed something — check for updates") instead
+      of a generic failure (roadmap §6 backlog). **Done 2026-10-23** (UI, `lib/errors.ts`): a 2xx
+      body that no longer decodes (`json error:`, already logged at `warn` with status/URL by
+      `decode_json`) or a 410 reads "TIDAL changed something on its side — check for an OxiTide
+      update (Settings → System)" in error states and toasts; 404s are left alone (deleted items).
 - [ ] Credits pagination (Info tab shows the first 20).
 - [ ] Lyrics in the mini player.
 - [ ] AutoMix beat-grid confidence tuning (roadmap, 2026-10-14 revision).

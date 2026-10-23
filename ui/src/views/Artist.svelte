@@ -200,7 +200,7 @@
     try {
       await api.openExternal(url);
     } catch (e) {
-      toasts.show(String(e), { severity: "error" });
+      toasts.show(errorMessage(e), { severity: "error" });
     }
   }
 

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, historyToQueueItem, type HistoryEntry, type Stats } from "../lib/api";
   import { clockTime, groupByDay, mergeHistoryEntries, relativeTime } from "../lib/historyTime";
+  import { errorMessage } from "../lib/errors";
   import { formatDuration, formatListenTime } from "../lib/format";
   import type { HistoryTab, Nav, Route } from "../lib/nav.svelte";
   import { menuFor } from "../lib/menu.svelte";
@@ -95,7 +96,7 @@
     void api
       .playTracks(prepared.items.map((item) => historyToQueueItem(item.entry)), prepared.start)
       .catch((e) => {
-        toasts.show(String(e), { severity: "error" });
+        toasts.show(errorMessage(e), { severity: "error" });
       });
   }
 
