@@ -114,7 +114,10 @@ Candidates (pick per value; none block 1.0 on their own):
 - [x] Lyrics in the mini player. **Deferred past 1.0** (owner, 2026-10-23: not important enough).
 - [x] AutoMix beat-grid confidence tuning (roadmap, 2026-10-14 revision). **Closed, no change**
       (owner, 2026-10-23: nothing egregious in listening so far; revisit if a bad pair shows up).
-- [ ] Explore feed integration is inert until TIDAL serves track rows — revisit or drop.
+- [x] Explore feed integration is inert until TIDAL serves track rows — revisit or drop.
+      **Closed, no action** (owner, 2026-10-23): Explore still shows only the genre/mood/decade
+      tiles and "New to you"; the enrichment lives in the shared feed renderer, so track rows, if
+      TIDAL ever adds them, are handled with no code change.
 - [x] Optional: one-line `SECURITY.md` pointing to the GitHub profile. **Done 2026-10-23.**
 
 ## 4. Final perf run
