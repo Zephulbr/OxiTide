@@ -2,10 +2,11 @@ use crate::decode::{PcmFormat, StreamInfo};
 use crate::error::{Error, Result};
 use crate::output::{exclusive_formats, ExclusiveFallback, OutputDevice};
 
-/// True when `snd_pcm_start` answered `-EPIPE`: a start with no frames queued,
-/// which the first `write` recovers by starting the stream itself.
+/// True when ALSA answered `-EPIPE`, an underrun. From `snd_pcm_start` it is a
+/// start with no frames queued, which the first `write` recovers by starting
+/// the stream itself; from `writei` the device ran dry since the last write.
 #[cfg(target_os = "linux")]
-pub fn is_start_underrun(error: &alsa::Error) -> bool {
+pub fn is_underrun(error: &alsa::Error) -> bool {
     std::io::Error::from_raw_os_error(error.errno()).kind() == std::io::ErrorKind::BrokenPipe
 }
 
@@ -317,6 +318,8 @@ mod linux {
         volume: f32,
         software_volume: bool,
         status: OutputStatus,
+        /// `writei` underruns (`EPIPE`) over this output's life.
+        underruns: u64,
     }
 
     impl AlsaOutput {
@@ -333,6 +336,7 @@ mod linux {
                     bit_perfect: false,
                     notice: None,
                 },
+                underruns: 0,
             }
         }
 
@@ -589,7 +593,7 @@ mod linux {
                 // nothing queued and answers EPIPE. Nothing is lost, because
                 // the first `write` starts the stream once the buffer reaches
                 // the start threshold, so re-prepare and let it.
-                Err(error) if is_start_underrun(&error) => {
+                Err(error) if is_underrun(&error) => {
                     tracing::debug!(target: "alsa", "start underran on {}; the first write starts it", self.device);
                     pcm.prepare().map_err(to_error)
                 }
@@ -645,6 +649,9 @@ mod linux {
                         if recoveries > MAX_CONSECUTIVE_RECOVERIES {
                             return Err(Error::Output("audio device errored repeatedly".into()));
                         }
+                        if is_underrun(&error) {
+                            self.underruns += 1;
+                        }
                         // xrun / suspend: recover and retry; unrecoverable
                         // errors are returned by `try_recover`.
                         pcm.try_recover(error, true).map_err(to_error)?;
@@ -693,6 +700,10 @@ mod linux {
         fn status(&self) -> OutputStatus {
             self.status.clone()
         }
+
+        fn underruns(&self) -> Option<u64> {
+            Some(self.underruns)
+        }
     }
 }
 
@@ -737,9 +748,9 @@ mod tests {
     #[test]
     fn only_epipe_counts_as_a_start_underrun() {
         use alsa::Error as AlsaError;
-        assert!(is_start_underrun(&AlsaError::new("snd_pcm_start", 32)));
-        assert!(!is_start_underrun(&AlsaError::new("snd_pcm_start", 19)));
-        assert!(!is_start_underrun(&AlsaError::new("snd_pcm_start", 0)));
+        assert!(is_underrun(&AlsaError::new("snd_pcm_start", 32)));
+        assert!(!is_underrun(&AlsaError::new("snd_pcm_start", 19)));
+        assert!(!is_underrun(&AlsaError::new("snd_pcm_start", 0)));
     }
 
     #[test]

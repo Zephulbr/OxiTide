@@ -57,6 +57,30 @@ test("metricsFor derives mark, ttfs, frame, and memory metrics", () => {
   assert.equal(metrics["frame_p99_ms:instrument"], 12);
 });
 
+test("underrun_count sums underrun rows, reads 0 for a clean playing run, and is absent without playback", () => {
+  const playing = (rows) => metricsFor(readRuns([runFile([
+    { kind: "session", run_id: "S4-1", scenario: "S4" },
+    ...rows,
+  ])])[0]);
+  const noisy = playing([
+    { kind: "audio", event: "first_pcm", track_id: 1, t_ms: 100 },
+    { kind: "audio", event: "underrun", track_id: 1, count: 2, t_ms: 500 },
+    { kind: "audio", event: "underrun", track_id: 2, count: 1, t_ms: 900 },
+  ]);
+  assert.equal(noisy.underrun_count, 3);
+  const clean = playing([{ kind: "audio", event: "first_pcm", track_id: 1, t_ms: 100 }]);
+  assert.equal(clean.underrun_count, 0);
+  const idle = playing([{ kind: "mark", name: "first_paint", t_ms: 800, unix_ms: 1 }]);
+  assert.equal(idle.underrun_count, undefined);
+  const windowed = playing([
+    { kind: "audio", event: "first_pcm", track_id: 1, t_ms: 100 },
+    { kind: "audio", event: "underrun", track_id: 1, count: 4, t_ms: 200 },
+    { kind: "mark", name: "measure_start", t_ms: 1000, unix_ms: 2 },
+    { kind: "audio", event: "underrun", track_id: 1, count: 1, t_ms: 1500 },
+  ]);
+  assert.equal(windowed.underrun_count, 1, "only the measured window counts");
+});
+
 test("ttfs attribution derives resolve, fetch, and open stages", () => {
   const file = runFile([
     { kind: "session", run_id: "S3-miss-1", scenario: "S3-miss" },

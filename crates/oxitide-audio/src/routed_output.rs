@@ -147,6 +147,15 @@ impl AudioOutput for RoutedOutput {
             None => None,
         }
     }
+
+    /// Both backends' counts summed, so the total never steps back when the
+    /// active one changes.
+    fn underruns(&self) -> Option<u64> {
+        match (self.system.underruns(), self.asio.underruns()) {
+            (None, None) => None,
+            (system, asio) => Some(system.unwrap_or(0) + asio.unwrap_or(0)),
+        }
+    }
 }
 
 #[cfg(test)]

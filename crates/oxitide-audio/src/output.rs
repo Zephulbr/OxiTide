@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
@@ -128,6 +128,13 @@ pub trait AudioOutput: Send {
     fn queued_ms(&self) -> Option<u32> {
         None
     }
+    /// Times the device ran out of written audio, cumulative over this
+    /// output's life (opens included). It counts every dry-out, the ones a
+    /// pause or seek causes too; the engine keeps only those during playback.
+    /// `None` when the backend cannot tell.
+    fn underruns(&self) -> Option<u64> {
+        None
+    }
 }
 
 /// Written audio to observe after a reset (open, flush) before sampling
@@ -175,6 +182,36 @@ impl LeadEstimate {
     }
 }
 
+/// Underruns during playback, from an output's cumulative
+/// [`AudioOutput::underruns`]. The output also counts the dry-outs the engine
+/// causes itself (a pause, a network stall, the moment before a seek's flush),
+/// so the count is re-read at the first write after each of those
+/// ([`UnderrunTally::reset`]) and whatever happened before that is dropped.
+#[derive(Debug, Default)]
+pub(crate) struct UnderrunTally {
+    baseline: Option<u64>,
+}
+
+impl UnderrunTally {
+    /// Feeding resumes after a pause, flush, open or network stall.
+    pub fn reset(&mut self) {
+        self.baseline = None;
+    }
+
+    /// After a write: the underruns since the previous write, 0 for the first
+    /// write after a reset.
+    pub fn observe(&mut self, count: Option<u64>) -> u64 {
+        let Some(count) = count else {
+            return 0;
+        };
+        let new = self
+            .baseline
+            .map_or(0, |baseline| count.saturating_sub(baseline));
+        self.baseline = Some(count);
+        new
+    }
+}
+
 /// Captures everything written, for tests and headless use. Clones share all
 /// recorded state.
 #[derive(Clone)]
@@ -189,6 +226,7 @@ pub struct NullOutput {
     volumes: Arc<Mutex<Vec<f32>>>,
     status: Arc<Mutex<OutputStatus>>,
     queued_ms: Arc<AtomicU32>,
+    underruns: Arc<AtomicU64>,
 }
 
 impl Default for NullOutput {
@@ -204,6 +242,7 @@ impl Default for NullOutput {
             volumes: Arc::new(Mutex::new(Vec::new())),
             status: Arc::new(Mutex::new(OutputStatus::default())),
             queued_ms: Arc::new(AtomicU32::new(0)),
+            underruns: Arc::new(AtomicU64::new(0)),
         }
     }
 }
@@ -236,6 +275,10 @@ impl NullOutput {
     /// What `queued_ms` reports (0 unless set), as if audio were buffered.
     pub fn set_queued_ms(&self, ms: u32) {
         self.queued_ms.store(ms, Ordering::SeqCst);
+    }
+    /// Count `n` more dry-outs in `underruns`, as if the device ran dry.
+    pub fn add_underruns(&self, n: u64) {
+        self.underruns.fetch_add(n, Ordering::SeqCst);
     }
 }
 
@@ -292,6 +335,9 @@ impl AudioOutput for NullOutput {
     }
     fn queued_ms(&self) -> Option<u32> {
         Some(self.queued_ms.load(Ordering::SeqCst))
+    }
+    fn underruns(&self) -> Option<u64> {
+        Some(self.underruns.load(Ordering::SeqCst))
     }
 }
 
@@ -371,6 +417,27 @@ mod tests {
             mode,
             exclusive_fallback: ExclusiveFallback::Shared,
         }
+    }
+
+    #[test]
+    fn underrun_tally_counts_between_writes_and_drops_what_precedes_a_refill() {
+        let mut tally = UnderrunTally::default();
+        assert_eq!(
+            tally.observe(Some(5)),
+            0,
+            "the first write only sets the baseline"
+        );
+        assert_eq!(tally.observe(Some(5)), 0);
+        assert_eq!(tally.observe(Some(7)), 2);
+        tally.reset();
+        // The pause's dry-out lands before the first write after the refill.
+        assert_eq!(tally.observe(Some(8)), 0);
+        assert_eq!(tally.observe(Some(9)), 1);
+        assert_eq!(
+            tally.observe(None),
+            0,
+            "a backend that cannot tell counts nothing"
+        );
     }
 
     #[test]

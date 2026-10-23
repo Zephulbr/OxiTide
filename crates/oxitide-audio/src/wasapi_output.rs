@@ -15,7 +15,7 @@ use crate::output::{
     exclusive_formats, platform, AudioOutput, AudioOutputSpec, ExclusiveFallback, OutputMode,
     OutputStatus, SOFTWARE_VOLUME_NOTICE,
 };
-use crate::ring::{self, pop_frames_le, push_samples};
+use crate::ring::{self, pop_frames_le, push_samples, Starvation};
 
 /// Floor for the ring so tiny formats still leave room for the device period.
 const MIN_RING_SAMPLES: usize = 4096;
@@ -76,6 +76,9 @@ pub struct WasapiOutput {
     software_volume: bool,
     device_lost: Arc<AtomicBool>,
     status: Arc<Mutex<OutputStatus>>,
+    /// Shared with every pump thread this output starts, so the count spans
+    /// reopens.
+    starvation: Arc<Starvation>,
 }
 
 impl WasapiOutput {
@@ -93,6 +96,7 @@ impl WasapiOutput {
             software_volume: true,
             device_lost: Arc::new(AtomicBool::new(false)),
             status: Arc::new(Mutex::new(OutputStatus::default())),
+            starvation: Arc::new(Starvation::default()),
         }
     }
 
@@ -134,10 +138,12 @@ impl AudioOutput for WasapiOutput {
         let lost = self.device_lost.clone();
         let flush = Arc::new(FlushSignal::default());
         let flush_thread = flush.clone();
+        self.starvation.disarm();
+        let starvation = self.starvation.clone();
 
         let handle = std::thread::Builder::new()
             .name("oxitide-wasapi".into())
-            .spawn(move || match setup_device(&spec_thread, &lost) {
+            .spawn(move || match setup_device(&spec_thread, &lost, starvation) {
                 Ok((mut session, ready)) => {
                     let _ = ready_tx.send(Ok(ready));
                     if let Err(e) = session.pump(&mut consumer, &stop_thread, &flush_thread) {
@@ -195,7 +201,7 @@ impl AudioOutput for WasapiOutput {
             .producer
             .as_mut()
             .ok_or_else(|| Error::Output("output not open".into()))?;
-        match buf {
+        let pushed = match buf {
             PcmBuffer::F32(v) => push_samples(producer, v, rate, |sample| {
                 let scaled = if software { sample * volume } else { sample };
                 scaled.to_bits()
@@ -217,7 +223,9 @@ impl AudioOutput for WasapiOutput {
                 let scaled = if software { float * volume } else { float };
                 scaled.to_bits()
             }),
-        }
+        };
+        self.starvation.arm();
+        pushed
     }
 
     fn set_volume(&mut self, volume: f32) -> Result<()> {
@@ -275,6 +283,10 @@ impl AudioOutput for WasapiOutput {
         let ring = ring::queued_ms(producer.buffer().capacity(), producer.slots(), self.samples_per_sec);
         Some(ring + self.device_ms)
     }
+
+    fn underruns(&self) -> Option<u64> {
+        Some(self.starvation.count())
+    }
 }
 
 fn frames_to_ms(frames: u32, rate: u32) -> u32 {
@@ -305,6 +317,7 @@ struct DeviceSession {
     channels: usize,
     /// One device period of bytes, reused (was one allocation per period).
     scratch: Vec<u8>,
+    starvation: Arc<Starvation>,
     // Kept alive so device-change notifications keep firing.
     _registration: Option<wasapi::DeviceEventRegistration>,
 }
@@ -317,7 +330,7 @@ impl DeviceSession {
         flush: &FlushSignal,
     ) -> Result<()> {
         // Prime the buffer before starting.
-        write_frames(&self.client, &self.render, consumer, self.channels, &mut self.scratch)?;
+        self.write_frames(consumer)?;
         self.client.start_stream().map_err(to_error)?;
         while !stop.load(Ordering::SeqCst) {
             if flush.pending() {
@@ -336,7 +349,7 @@ impl DeviceSession {
                 // Polling exclusive: no event handle, just poll.
                 None => std::thread::sleep(Duration::from_millis(5)),
             }
-            write_frames(&self.client, &self.render, consumer, self.channels, &mut self.scratch)?;
+            self.write_frames(consumer)?;
         }
         let _ = self.client.stop_stream();
         Ok(())
@@ -351,10 +364,30 @@ impl DeviceSession {
         if let Ok(chunk) = consumer.read_chunk(queued) {
             chunk.commit_all();
         }
+        self.starvation.disarm();
         // Shared mode only; in exclusive mode Stop already discards the buffer.
         let _ = self.client.reset_stream();
-        write_frames(&self.client, &self.render, consumer, self.channels, &mut self.scratch)?;
+        self.write_frames(consumer)?;
         self.client.start_stream().map_err(to_error)
+    }
+
+    /// Hand the device everything it has room for, from the ring; silence for
+    /// what the ring cannot cover (an underrun pads whole frames, see
+    /// `ring::pop_frames_le`). `scratch` is reused across periods.
+    fn write_frames(&mut self, consumer: &mut rtrb::Consumer<u32>) -> Result<()> {
+        let frames = self
+            .client
+            .get_available_space_in_frames()
+            .map_err(to_error)? as usize;
+        if frames == 0 {
+            return Ok(());
+        }
+        self.scratch.resize(frames * self.channels * 4, 0);
+        let taken = pop_frames_le(consumer, self.channels, &mut self.scratch);
+        self.starvation.observe(taken, frames);
+        self.render
+            .write_to_device(frames, &self.scratch, None)
+            .map_err(to_error)
     }
 }
 
@@ -446,6 +479,7 @@ fn open_shared(
 fn setup_device(
     spec: &AudioOutputSpec,
     lost: &Arc<AtomicBool>,
+    starvation: Arc<Starvation>,
 ) -> Result<(DeviceSession, DeviceReady)> {
     platform::ensure_com()?;
     let enumerator = DeviceEnumerator::new().map_err(to_error)?;
@@ -527,32 +561,10 @@ fn setup_device(
         event,
         channels: spec.info.channels as usize,
         scratch: Vec::new(),
+        starvation,
         _registration: registration,
     };
     Ok((session, DeviceReady { device_id: resolved_id, status, buffer_frames }))
-}
-
-/// Hand the device everything it has room for, from the ring; silence for
-/// what the ring cannot cover (an underrun pads whole frames, see
-/// `ring::pop_frames_le`). `scratch` is reused across periods.
-fn write_frames(
-    client: &wasapi::AudioClient,
-    render: &wasapi::AudioRenderClient,
-    consumer: &mut rtrb::Consumer<u32>,
-    channels: usize,
-    scratch: &mut Vec<u8>,
-) -> Result<()> {
-    let frames = client
-        .get_available_space_in_frames()
-        .map_err(to_error)? as usize;
-    if frames == 0 {
-        return Ok(());
-    }
-    scratch.resize(frames * channels * 4, 0);
-    pop_frames_le(consumer, channels, scratch);
-    render
-        .write_to_device(frames, scratch, None)
-        .map_err(to_error)
 }
 
 fn to_error(e: wasapi::WasapiError) -> Error {

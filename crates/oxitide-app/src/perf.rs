@@ -170,23 +170,32 @@ impl PerfSession {
             }
             _ => {}
         }
-        let (kind, track_id, gap_ms) = match &event {
-            AudioPerfEvent::ResolveStart { track_id } => ("resolve_start", *track_id, None),
-            AudioPerfEvent::DecodeStart { track_id } => ("decode_start", *track_id, None),
-            AudioPerfEvent::InfoReady { track_id } => ("info_ready", *track_id, None),
-            AudioPerfEvent::OutputOpened { track_id } => ("output_opened", *track_id, None),
-            AudioPerfEvent::CacheHit { track_id } => ("cache_hit", *track_id, None),
-            AudioPerfEvent::CacheMiss { track_id } => ("cache_miss", *track_id, None),
-            AudioPerfEvent::FirstPcm { track_id } => ("first_pcm", *track_id, None),
-            AudioPerfEvent::Advance { track_id, gap_ms } => ("advance", *track_id, Some(*gap_ms)),
+        let (kind, track_id, gap_ms, count) = match &event {
+            AudioPerfEvent::ResolveStart { track_id } => ("resolve_start", *track_id, None, None),
+            AudioPerfEvent::DecodeStart { track_id } => ("decode_start", *track_id, None, None),
+            AudioPerfEvent::InfoReady { track_id } => ("info_ready", *track_id, None, None),
+            AudioPerfEvent::OutputOpened { track_id } => ("output_opened", *track_id, None, None),
+            AudioPerfEvent::CacheHit { track_id } => ("cache_hit", *track_id, None, None),
+            AudioPerfEvent::CacheMiss { track_id } => ("cache_miss", *track_id, None, None),
+            AudioPerfEvent::FirstPcm { track_id } => ("first_pcm", *track_id, None, None),
+            AudioPerfEvent::Advance { track_id, gap_ms } => {
+                ("advance", *track_id, Some(*gap_ms), None)
+            }
+            AudioPerfEvent::Underrun { track_id, count } => {
+                ("underrun", *track_id, None, Some(*count))
+            }
         };
-        self.write(serde_json::json!({
+        let mut row = serde_json::json!({
             "kind": "audio",
             "event": kind,
             "track_id": track_id,
             "gap_ms": gap_ms,
             "t_ms": self.elapsed_ms(),
-        }));
+        });
+        if let Some(count) = count {
+            row["count"] = count.into();
+        }
+        self.write(row);
     }
 
     pub fn ui_metrics(&self, metrics: serde_json::Value) {
@@ -891,6 +900,21 @@ mod tests {
         let snapshot = session.snapshot();
         assert_eq!(snapshot.cache_hits, 1);
         assert_eq!(snapshot.cache_misses, 2);
+    }
+
+    #[test]
+    fn underruns_are_written_with_their_count() {
+        let session = PerfSession::create_in(&temp_dir("underrun"), "S4").unwrap();
+        session.audio_event(AudioPerfEvent::Underrun { track_id: 9, count: 2 });
+        let text = std::fs::read_to_string(session.jsonl_path()).unwrap();
+        let row: serde_json::Value = text
+            .lines()
+            .map(|l| serde_json::from_str::<serde_json::Value>(l).unwrap())
+            .find(|l| l["event"] == "underrun")
+            .expect("underrun row");
+        assert_eq!(row["kind"], "audio");
+        assert_eq!(row["track_id"], 9);
+        assert_eq!(row["count"], 2);
     }
 
     #[test]

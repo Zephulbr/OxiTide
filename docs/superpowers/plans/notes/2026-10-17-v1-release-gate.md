@@ -26,11 +26,20 @@ Branch `track13-efficiency` (unmerged). Plan `plans/2026-10-16-track13-efficienc
       harness drives the debug exe today.
 - [ ] Fix the flaky `oxitide-audio engine::tests::retry_resumes_at_the_recorded_position`
       (`2026-10-13-track12-completion.md`).
-- [ ] Underrun counter: count output buffer underruns in the engine and report `underrun_count` in
+- [x] Underrun counter: count output buffer underruns in the engine and report `underrun_count` in
       the perf rows (S4, S9), so playback glitches are measurable before V2 (V2 spec V2-D42 budgets
       it at 0 for S16). An engine change: it lands before the engine smokes below.
-- [ ] Panic hook: route panics (message + location, all threads) into the `tracing` file log. There
+      - **Done 2026-10-23.** WASAPI/ASIO count ring dry-outs (`ring::Starvation`: a short device
+        period after a write, once per dry-out); ALSA counts `writei` `EPIPE`. The engine keeps only
+        those during playback (`UnderrunTally`: the dry-out a pause, seek, reopen or network stall
+        leaves is dropped at the next refill), logs each at `warn`, and fires
+        `AudioPerfEvent::Underrun`. Perf rows: `audio` / `event: "underrun"` with `count`;
+        `check.mjs` reports `underrun_count` (0 for any run that played, measured from
+        `measure_start`). No budget rows added yet: rule on S4/S9 after the first runs.
+- [x] Panic hook: route panics (message + location, all threads) into the `tracing` file log. There
       is no `panic::set_hook` today, and the Windows GUI build has no console, so panics vanish.
+      - **Done 2026-10-23** (`panic_log.rs`): message, location, thread and backtrace at `error`
+        (target `panic`); a main-thread panic flushes the non-blocking file writer first.
 - [ ] Persisted-data versioning for V2: `history.jsonl` records have no version field, and saved
       items carry bare TIDAL ids. Add a version and a source tag to history records and
       `QueueItem` / `SessionItem` / `session.json`, with tolerant reads of existing files.

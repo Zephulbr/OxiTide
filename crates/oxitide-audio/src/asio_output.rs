@@ -26,7 +26,7 @@ use crate::output::{
     asio_device_key, AudioOutput, AudioOutputSpec, OutputDevice, OutputMode, OutputStatus,
     ASIO_PREFIX, SOFTWARE_VOLUME_NOTICE,
 };
-use crate::ring::{self, push_samples};
+use crate::ring::{self, push_samples, Starvation};
 
 /// Floor for the ring so tiny formats still leave room for the driver buffer.
 const MIN_RING_SAMPLES: usize = 4096;
@@ -254,6 +254,7 @@ struct RenderState {
     post_output: bool,
     flush_requested: AtomicU64,
     flush_completed: AtomicU64,
+    starvation: Arc<Starvation>,
 }
 
 // SAFETY: the raw pointers are driver-owned buffers and the driver object,
@@ -275,10 +276,12 @@ impl RenderState {
             if let Ok(chunk) = consumer.read_chunk(pending) {
                 chunk.commit_all();
             }
+            self.starvation.disarm();
             self.flush_completed.store(requested, Ordering::SeqCst);
         }
         // Whole frames only, so an underrun never shifts the channels.
         let frames = (consumer.slots() / self.channels).min(self.buffer_frames);
+        self.starvation.observe(frames, self.buffer_frames);
         let count = frames * self.channels;
         if let Ok(chunk) = consumer.read_chunk(count) {
             let (first, second) = chunk.as_slices();
@@ -349,6 +352,8 @@ pub struct AsioOutput {
     input_bits: Option<u16>,
     volume: f32,
     status: OutputStatus,
+    /// Shared with each open's render state, so the count spans reopens.
+    starvation: Arc<Starvation>,
 }
 
 impl AsioOutput {
@@ -365,6 +370,7 @@ impl AsioOutput {
             input_bits: None,
             volume: 1.0,
             status: OutputStatus::default(),
+            starvation: Arc::new(Starvation::default()),
         }
     }
 
@@ -422,9 +428,11 @@ impl AudioOutput for AsioOutput {
         let rate = spec.info.sample_rate;
         let channels = spec.info.channels as usize;
         self.samples_per_sec = rate as usize * channels;
+        self.starvation.disarm();
+        let starvation = self.starvation.clone();
         let handle = std::thread::Builder::new()
             .name("oxitide-asio".into())
-            .spawn(move || owner_main(clsid, rate, channels, ready_tx, &stop_thread, &lost_thread))
+            .spawn(move || owner_main(clsid, rate, channels, ready_tx, &stop_thread, &lost_thread, starvation))
             .map_err(|e| Error::Output(e.to_string()))?;
 
         // Driver loads can be slow (USB interfaces wake up, firmware syncs).
@@ -468,14 +476,16 @@ impl AudioOutput for AsioOutput {
             .producer
             .as_mut()
             .ok_or_else(|| Error::Output("output not open".into()))?;
-        match buf {
+        let pushed = match buf {
             PcmBuffer::F32(v) => {
                 push_samples(producer, v, rate, |sample| f32_word(sample, float_target, volume))
             }
             PcmBuffer::I32(v) => {
                 push_samples(producer, v, rate, |sample| i32_word(sample, float_target, volume))
             }
-        }
+        };
+        self.starvation.arm();
+        pushed
     }
 
     /// ASIO has no endpoint volume: anything below 100% is software.
@@ -522,6 +532,10 @@ impl AudioOutput for AsioOutput {
         let driver = self.latency_ms.as_ref().map_or(0, |l| l.load(Ordering::Relaxed));
         Some(ring + driver)
     }
+
+    fn underruns(&self) -> Option<u64> {
+        Some(self.starvation.count())
+    }
 }
 
 impl Drop for AsioOutput {
@@ -541,6 +555,7 @@ fn owner_main(
     ready: Ready,
     stop: &AtomicBool,
     lost: &AtomicBool,
+    starvation: Arc<Starvation>,
 ) {
     if CLAIMED.swap(true, Ordering::SeqCst) {
         let _ = ready.send(Err("another ASIO driver is already open".into()));
@@ -548,7 +563,7 @@ fn owner_main(
     }
     // SAFETY: balanced by CoUninitialize below.
     let com = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
-    match Session::open(clsid, rate, channels) {
+    match Session::open(clsid, rate, channels, starvation) {
         Ok((session, opened)) => {
             let _ = ready.send(Ok(opened));
             session.run(stop, lost);
@@ -578,6 +593,7 @@ impl Session {
         clsid: windows::core::GUID,
         rate: u32,
         channels: usize,
+        starvation: Arc<Starvation>,
     ) -> std::result::Result<(Self, Opened), String> {
         let driver = Driver::create(&clsid)?;
         // SAFETY: plain Win32 call.
@@ -638,6 +654,7 @@ impl Session {
             post_output: driver.supports_output_ready(),
             flush_requested: AtomicU64::new(0),
             flush_completed: AtomicU64::new(0),
+            starvation,
         }));
         // Start from silence in both halves.
         // SAFETY: freshly created state.

@@ -138,6 +138,8 @@ export function metricsFor(run) {
   const ipcRows = []; // cumulative playback_event counters
   const privates = []; // all-process private MiB
   const pageRows = []; // the driver's cumulative CDP page counters
+  const underruns = []; // {t_ms, count}: output underruns during playback
+  let played = false;
   let advanceMax = 0;
   for (const line of run.lines) {
     if (line.kind === "mark") metrics[`${line.name}_ms`] = line.t_ms;
@@ -161,6 +163,8 @@ export function metricsFor(run) {
         cacheDecisions.push(0);
       }
       if (line.event === "advance") advanceMax = Math.max(advanceMax, line.gap_ms ?? 0);
+      if (line.event === "first_pcm") played = true;
+      if (line.event === "underrun") underruns.push({ t_ms: line.t_ms, count: line.count ?? 1 });
       const first = (key) => {
         const metric = `${key}_ms`;
         if (metrics[metric] === undefined) metrics[metric] = line.t_ms;
@@ -239,6 +243,12 @@ export function metricsFor(run) {
   const bytes = perMinute(ipcWindow, "bytes");
   if (bytes !== null) metrics.ipc_kb_per_min = bytes / 1024;
   Object.assign(metrics, pageMetrics(pageRows.filter((r) => r.t_ms >= from)));
+  // Any run that played reports a count, so a 0 budget can pass.
+  if (played || underruns.length > 0) {
+    metrics.underrun_count = underruns
+      .filter((u) => u.t_ms >= from)
+      .reduce((sum, u) => sum + u.count, 0);
+  }
   for (const [mode, samples] of frames) {
     metrics[`frame_p95_ms:${mode}`] = Math.max(...samples.map((s) => s.p95));
     const p99s = samples.map((s) => s.p99).filter((v) => typeof v === "number");

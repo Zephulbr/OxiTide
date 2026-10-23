@@ -23,6 +23,9 @@ pub enum AudioPerfEvent {
     /// A different track started after one ended; `gap_ms` is the time since
     /// the previous track's last PCM write.
     Advance { track_id: u64, gap_ms: u64 },
+    /// The output ran dry `count` times during playback since the previous
+    /// write (see `Engine::underrun_count`).
+    Underrun { track_id: u64, count: u64 },
 }
 
 /// Called on the worker/decode threads; must be cheap and non-blocking.

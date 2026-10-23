@@ -2,11 +2,47 @@
 //! worker pushes sample words into an `rtrb` ring that a device thread or
 //! callback drains. Track 13 (EF-D5).
 
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use rtrb::{Consumer, Producer};
 
 use crate::error::{Error, Result};
+
+/// Counts the times the ring ran dry under a device that was being fed: a
+/// device period that came up short after audio was written. One dry-out
+/// counts once however many silent periods follow, until the next write
+/// re-arms it. A ring that is empty because nothing was written yet (a fresh
+/// open, after a flush) does not count; the engine discards dry-outs it
+/// caused itself (pause, seek), see `engine::UnderrunTally`.
+#[derive(Debug, Default)]
+pub(crate) struct Starvation {
+    armed: AtomicBool,
+    count: AtomicU64,
+}
+
+impl Starvation {
+    /// The writer pushed audio: the next short period is a dry-out.
+    pub fn arm(&self) {
+        self.armed.store(true, Ordering::Relaxed);
+    }
+
+    /// The ring was emptied on purpose (flush, open).
+    pub fn disarm(&self) {
+        self.armed.store(false, Ordering::Relaxed);
+    }
+
+    /// The device took `taken` of the `wanted` frames of one period.
+    pub fn observe(&self, taken: usize, wanted: usize) {
+        if taken < wanted && self.armed.swap(false, Ordering::Relaxed) {
+            self.count.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    pub fn count(&self) -> u64 {
+        self.count.load(Ordering::Relaxed)
+    }
+}
 
 /// A ring that has not drained for this long means the device stalled.
 const STALL: Duration = Duration::from_secs(2);
@@ -146,6 +182,32 @@ mod tests {
         let (mut producer, _consumer) = RingBuffer::<u32>::new(8_820);
         push_samples(&mut producer, &[0u32; 4_410], 88_200, |s| s).unwrap();
         assert_eq!(queued_ms(producer.buffer().capacity(), producer.slots(), 88_200), 50);
+    }
+
+    #[test]
+    fn a_dry_out_counts_once_and_only_after_a_write() {
+        let starvation = Starvation::default();
+        // Nothing written yet: an empty ring is not an underrun.
+        starvation.observe(0, 480);
+        assert_eq!(starvation.count(), 0);
+        starvation.arm();
+        starvation.observe(480, 480);
+        assert_eq!(starvation.count(), 0, "a full period is not a dry-out");
+        starvation.observe(100, 480);
+        starvation.observe(0, 480);
+        starvation.observe(0, 480);
+        assert_eq!(
+            starvation.count(),
+            1,
+            "one dry-out, however many silent periods"
+        );
+        starvation.arm();
+        starvation.observe(0, 480);
+        assert_eq!(starvation.count(), 2);
+        starvation.arm();
+        starvation.disarm();
+        starvation.observe(0, 480);
+        assert_eq!(starvation.count(), 2, "a flush empties the ring on purpose");
     }
 
     #[test]

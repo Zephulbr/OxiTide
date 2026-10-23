@@ -16,7 +16,10 @@ use crate::error::{Error, Result};
 use crate::fetch::{self, AheadGate, AheadSink, AheadTicket, Fetcher, ScratchFile, StreamBuffer};
 use crate::retry::{self, Backoff};
 use crate::meter::LevelTap;
-use crate::output::{AudioOutput, AudioOutputSpec, ExclusiveFallback, LeadEstimate, OutputMode, OutputStatus};
+use crate::output::{
+    AudioOutput, AudioOutputSpec, ExclusiveFallback, LeadEstimate, OutputMode, OutputStatus,
+    UnderrunTally,
+};
 use crate::perf::{AudioPerfEvent, PerfHook};
 use crate::queue::{Queue, QueueItem, RepeatMode};
 use crate::seek::{self, Discarder, SourceStart};
@@ -222,6 +225,10 @@ struct Inner {
     /// The smoothed output lead (`EngineEvent::Position::lead_ms`). Fed by the
     /// worker on every write; kept across sessions as the next one's prior.
     lead: Mutex<LeadEstimate>,
+    /// Turns the output's cumulative dry-outs into underruns during playback.
+    underruns: Mutex<UnderrunTally>,
+    /// Underruns since the engine started (`Engine::underrun_count`).
+    underrun_count: AtomicU64,
     /// Pending seek; consumed by the worker.
     seek_target: Mutex<Option<PendingSeek>>,
     /// Set while playback waits for the network (`PlaybackState.buffering`).
@@ -377,6 +384,8 @@ impl Engine {
             position_ms: AtomicU64::new(0),
             position_track: AtomicU64::new(0),
             lead: Mutex::new(LeadEstimate::default()),
+            underruns: Mutex::new(UnderrunTally::default()),
+            underrun_count: AtomicU64::new(0),
             seek_target: Mutex::new(None),
             reconnect: Mutex::new(None),
             stream_stalled: AtomicBool::new(false),
@@ -451,6 +460,13 @@ impl Engine {
     /// value `Position` events carry).
     pub fn output_lead_ms(&self) -> u32 {
         self.inner.lead.lock().unwrap().ms()
+    }
+
+    /// Output underruns during playback since the engine started: the device
+    /// ran dry while the engine was feeding it. Pauses, seeks and network
+    /// stalls (`buffering`) do not count.
+    pub fn underrun_count(&self) -> u64 {
+        self.inner.underrun_count.load(Ordering::SeqCst)
     }
 
     /// Analyze the playing audio for tempo and beats (`EngineEvent::Beat`).
@@ -1637,6 +1653,10 @@ fn publish_stall(inner: &Arc<Inner>, stalled: bool) {
     if inner.stream_stalled.swap(stalled, Ordering::SeqCst) != stalled {
         if stalled {
             tracing::warn!("playback is waiting for the network");
+        } else {
+            // The device ran dry waiting for the network; that is buffering,
+            // not an underrun.
+            inner.underruns.lock().unwrap().reset();
         }
         emit(inner, EngineEvent::State(build_state(inner)));
     }
@@ -1706,9 +1726,23 @@ fn emit_position_if_due(inner: &Arc<Inner>, frames: u64, rate: u32, last: &mut I
 }
 
 /// The output starts refilling (opened, flushed, resumed): skip its first
-/// half second of writes when estimating the lead.
-fn reset_lead(inner: &Inner, rate: u32) {
+/// half second of writes when estimating the lead, and drop the dry-out the
+/// pause or flush left behind from the underrun count.
+fn output_refills(inner: &Inner, rate: u32) {
     inner.lead.lock().unwrap().reset(rate);
+    inner.underruns.lock().unwrap().reset();
+}
+
+/// After every output write: count new underruns (`underrun_count` in perf
+/// runs). Cheap: one counter read.
+fn note_underruns(inner: &Inner, output: &dyn AudioOutput) {
+    let new = inner.underruns.lock().unwrap().observe(output.underruns());
+    if new > 0 {
+        let track_id = inner.position_track.load(Ordering::SeqCst);
+        inner.underrun_count.fetch_add(new, Ordering::SeqCst);
+        tracing::warn!("output underrun during track {track_id} ({new})");
+        fire_perf(inner, AudioPerfEvent::Underrun { track_id, count: new });
+    }
 }
 
 /// Hand a full beat window to the helper thread (started on first use). A
@@ -2012,6 +2046,7 @@ fn write_responsive(
             PcmBuffer::I32(v) => PcmBuffer::I32(v[start..end].to_vec()),
         };
         output.write(&part)?;
+        note_underruns(inner, output);
         inner.level_tap.push(&part, channels, rate);
         progress(((end - start) / ch) as u64);
         start = end;
@@ -2358,7 +2393,7 @@ fn run_session(
         let rate = info.sample_rate;
         let track_id = stream.item.track_id;
         if std::mem::take(&mut refill) {
-            reset_lead(inner, rate);
+            output_refills(inner, rate);
         }
         // A track analyzed before (replay, seek back) is in time at once.
         if inner.beat_tap.is_enabled() {
@@ -2430,7 +2465,7 @@ fn run_session(
                             track_id: stream.item.track_id,
                         };
                     }
-                    reset_lead(inner, rate);
+                    output_refills(inner, rate);
                     // The fade finished: pause here, keep queue and position,
                     // and restore the user's volume so the next play is audible.
                     let base = fade.base_volume;
@@ -2498,7 +2533,7 @@ fn run_session(
                     emit(inner, EngineEvent::State(build_state(inner)));
                 }
                 // The device drained its ring while nothing was written.
-                reset_lead(inner, rate);
+                output_refills(inner, rate);
                 continue;
             }
             // A sleep fade ends the session on this track; never cross into
@@ -2716,6 +2751,7 @@ fn run_session(
                     track_id: stream.item.track_id,
                 };
             }
+            note_underruns(inner, output);
             // The meter sees what the device plays (converted, when kept).
             inner.level_tap.push(&buf, channels, device_rate);
             inner.lead.lock().unwrap().observe(source_frames, output.queued_ms());
@@ -6348,6 +6384,50 @@ mod tests {
         fn status(&self) -> OutputStatus {
             self.inner.status()
         }
+        fn underruns(&self) -> Option<u64> {
+            self.inner.underruns()
+        }
+    }
+
+    fn throttled_engine() -> (Engine, NullOutput) {
+        let (plan, files) = fixture_plan();
+        let output = NullOutput::new();
+        let engine = build_engine(
+            Arc::new(FakeResolver { plan }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(ThrottledOutput { inner: output.clone(), delay: Duration::from_millis(30) }),
+            Quality::Lossless,
+        );
+        (engine, output)
+    }
+
+    #[test]
+    fn a_dry_out_during_playback_counts_as_an_underrun() {
+        let (engine, output) = throttled_engine();
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| engine.state().position_ms >= 200);
+        assert_eq!(engine.underrun_count(), 0);
+
+        output.add_underruns(2);
+        wait_for(|| engine.underrun_count() == 2);
+        assert_eq!(engine.underrun_count(), 2);
+    }
+
+    #[test]
+    fn the_dry_out_a_pause_leaves_is_not_an_underrun() {
+        let (engine, output) = throttled_engine();
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| engine.state().position_ms >= 200);
+        engine.handle(EngineCmd::PlayPause).unwrap();
+        // Let the worker reach its park before the ring "drains".
+        std::thread::sleep(Duration::from_millis(100));
+        output.add_underruns(1);
+        let before = output.samples().len();
+
+        engine.handle(EngineCmd::PlayPause).unwrap();
+        wait_for(|| output.samples().len() > before + 4096);
+        assert!(output.samples().len() > before, "playback did not resume");
+        assert_eq!(engine.underrun_count(), 0);
     }
 
     /// The approved refinement: a settings change while playing restarts the
