@@ -35,7 +35,7 @@ describe("undo toasts", () => {
     await player.remove(1);
 
     expect(mocks.queueRemove).toHaveBeenCalledWith(1);
-    const toast = toasts.toasts.at(-1)!;
+    const toast = toasts.toasts[toasts.toasts.length - 1];
     expect(toast.action?.label).toBe("Undo");
     toast.action!.run();
     expect(mocks.queueInsert).toHaveBeenCalledWith(1, [queue[1]]);
@@ -48,7 +48,7 @@ describe("undo toasts", () => {
     await favorites.toggleTrack(7);
     expect(favorites.hasTrack(7)).toBe(false);
 
-    const toast = toasts.toasts.at(-1)!;
+    const toast = toasts.toasts[toasts.toasts.length - 1];
     expect(toast.message).toBe("Removed from Favorites");
     toast.action!.run();
     await vi.waitFor(() => expect(favorites.hasTrack(7)).toBe(true));
