@@ -447,6 +447,13 @@ plugins, network renderers (UPnP / Chromecast / AirPlay), downloads/sync.
 
   - `url:` refs keep the phone remote's rule: only TIDAL image hosts pass the RPC boundary.
   - Every row has a fixture test built from real 1.x files.
+  - **What 1.0 writes** (versioning step, 2026-10-23, `crates/oxitide-app/src/stored_ref.rs`):
+    `session.json` version 2 and `history.jsonl` lines with `"version": 1` carry `track_id` /
+    `album_id` as `"tidal:<n>"` and `artist_refs` as `[{ "ref": "tidal:<n>", "name" }]` (the
+    `ArtistLink` shape); earlier files hold the bare-number shapes in the table. IPC payloads keep
+    numbers. Not converted, so 2.0 reads them as above: `cover`, `play_source`, map keys, and
+    `session.json` `play_from.track_ids` (numbers, the UI's shape; read as `tidal:<n>`).
+    `QueuedScrobble` is memory-only in 1.x (nothing persisted).
 - **V2-D35 — local file playback: prefetch, gapless, slow drives** (owner review 2026-10-17).
   - **Read-ahead:** `StreamSource::File` is read through a **seekable read-ahead reader** (a
     background thread keeps ~4 MB ahead of the decoder; a seek flushes it and repositions). A slow or

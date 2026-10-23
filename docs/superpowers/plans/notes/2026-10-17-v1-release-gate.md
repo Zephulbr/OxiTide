@@ -40,7 +40,7 @@ Branch `track13-efficiency` (unmerged). Plan `plans/2026-10-16-track13-efficienc
       is no `panic::set_hook` today, and the Windows GUI build has no console, so panics vanish.
       - **Done 2026-10-23** (`panic_log.rs`): message, location, thread and backtrace at `error`
         (target `panic`); a main-thread panic flushes the non-blocking file writer first.
-- [ ] Persisted-data versioning for V2: `history.jsonl` records have no version field, and saved
+- [x] Persisted-data versioning for V2: `history.jsonl` records have no version field, and saved
       items carry bare TIDAL ids. Add a version and a source tag to history records and
       `QueueItem` / `SessionItem` / `session.json`, with tolerant reads of existing files.
       (`session.json` and `track_flags.json` already carry `version`.)
@@ -49,6 +49,13 @@ Branch `track13-efficiency` (unmerged). Plan `plans/2026-10-16-track13-efficienc
         `artist_refs` (this also covers `QueuedScrobble.item`); read both that and a bare number.
         Internally 1.x keeps `u64`; only (de)serialisation changes. Anything else (`cover`, map keys,
         `play_source`) can stay as is — V2-D34 reads those shapes.
+      - **Done 2026-10-23** (`stored_ref.rs`): `session.json` is version 2 (version 1 still loads),
+        `history.jsonl` lines carry `"version": 1` through a file-only `StoredRecord` (the History
+        page's `HistoryRecord` IPC shape is unchanged); both read bare numbers too. `artist_refs`
+        are written as `{ ref, name }`. `QueuedScrobble` is never persisted, and
+        `play_from.track_ids` stays numeric (UI-owned, crosses IPC); both noted in V2-D34.
+        Downgrade caveat: a pre-1.0 build backs up a version 2 session and skips the new history
+        lines, so its next cap-trim rewrite would drop them.
 
 ### Then: engine smokes (Track 13 changes the audio engine)
 

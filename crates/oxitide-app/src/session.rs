@@ -5,13 +5,18 @@ use oxitide_audio::engine::StreamMeta;
 use oxitide_audio::queue::{ArtistRef, QueueItem, RepeatMode};
 use serde::{Deserialize, Serialize};
 
-pub const SESSION_VERSION: u32 = 1;
+/// 2: ids are written as `tidal:<n>` refs (`stored_ref`). Version 1 files
+/// (bare numbers) still load.
+pub const SESSION_VERSION: u32 = 2;
+/// The oldest version `load` reads.
+const OLDEST_SESSION_VERSION: u32 = 1;
 
 /// One queue item as persisted. `explicit`/`ai` are reserved for the Track 10.5
 /// content filters; they are `None` until that plan populates them.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SessionItem {
+    #[serde(with = "crate::stored_ref::id")]
     pub track_id: u64,
     pub title: String,
     pub artist: String,
@@ -23,9 +28,9 @@ pub struct SessionItem {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ai: Option<bool>,
     /// Name-link ids (see `QueueItem`); absent in sessions saved before them.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(skip_serializing_if = "Vec::is_empty", with = "crate::stored_ref::artist_refs")]
     pub artist_refs: Vec<ArtistRef>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", with = "crate::stored_ref::opt_id")]
     pub album_id: Option<u64>,
 }
 
@@ -119,11 +124,15 @@ pub fn session_path() -> Option<PathBuf> {
 
 /// Read `path`; a missing file yields `None`, and a malformed or
 /// future-version file is renamed `.bak` (so it cannot brick startup) and
-/// yields `None`.
+/// yields `None`. An older supported version loads as is (its bare-number
+/// ids read like refs) and is rewritten in the current form on the next save.
 pub fn load(path: &Path) -> Option<Session> {
     let text = fs::read_to_string(path).ok()?;
     match serde_json::from_str::<Session>(&text) {
-        Ok(session) if session.version == SESSION_VERSION => Some(session),
+        Ok(mut session) if (OLDEST_SESSION_VERSION..=SESSION_VERSION).contains(&session.version) => {
+            session.version = SESSION_VERSION;
+            Some(session)
+        }
         Ok(session) => {
             tracing::warn!("unsupported session version {}; backing up", session.version);
             backup(path);
@@ -558,6 +567,37 @@ mod tests {
                 .unwrap();
         assert!(legacy.artist_refs.is_empty());
         assert_eq!(legacy.album_id, None);
+    }
+
+    /// A version 1 file as 0.4 wrote it: bare-number ids, `{ id, name }` links.
+    #[test]
+    fn a_version_1_session_loads_and_saves_back_as_refs() {
+        let dir = temp_dir();
+        let path = dir.join("session.json");
+        fs::write(
+            &path,
+            r#"{"version":1,"queue":[{"track_id":101,"title":"T","artist":"A","album":"B","duration_secs":3,"cover":"660f113b-e63f-4c2b-a021-33350ca6948b","artist_refs":[{"id":7,"name":"A"}],"album_id":8},{"track_id":102,"title":"U","artist":"A","album":"B","duration_secs":4,"cover":null}],"current_index":1,"position_ms":4200,"shuffle":false,"repeat":"off","play_source":"pl-1","play_from":{"kind":"album","name":"B","route":null,"track_ids":[101,102]},"saved_at":1700000000}"#,
+        )
+        .unwrap();
+        let loaded = load(&path).expect("a version 1 session must load");
+        assert_eq!(loaded.version, SESSION_VERSION);
+        assert_eq!(loaded.queue[0].track_id, 101);
+        assert_eq!(loaded.queue[0].artist_refs, vec![ArtistRef { id: 7, name: "A".into() }]);
+        assert_eq!(loaded.queue[0].album_id, Some(8));
+        assert_eq!(loaded.queue[1].album_id, None);
+        assert_eq!(loaded.current_index, Some(1));
+        assert_eq!(loaded.play_from.as_ref().unwrap().track_ids, vec![101, 102]);
+
+        save(&path, &loaded).unwrap();
+        let written: serde_json::Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(written["version"], SESSION_VERSION);
+        assert_eq!(written["queue"][0]["track_id"], "tidal:101");
+        assert_eq!(written["queue"][0]["album_id"], "tidal:8");
+        assert_eq!(written["queue"][0]["artist_refs"][0]["ref"], "tidal:7");
+        // `play_from` is the UI's shape (it crosses IPC) and keeps numbers.
+        assert_eq!(written["play_from"]["track_ids"][0], 101);
+        assert_eq!(load(&path), Some(loaded));
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

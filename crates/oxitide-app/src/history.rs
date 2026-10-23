@@ -47,6 +47,79 @@ pub struct HistoryRecord {
     pub album_id: Option<u64>,
 }
 
+/// The `history.jsonl` line format. 1: ids are `tidal:<n>` refs
+/// (`stored_ref`). Lines without a version predate it and hold bare numbers;
+/// both read the same.
+const HISTORY_VERSION: u32 = 1;
+
+/// One `history.jsonl` line: a `HistoryRecord` with its ids in the V2 ref form
+/// and a version. File-only: the History page receives `HistoryRecord`.
+#[derive(Debug, Serialize, Deserialize)]
+struct StoredRecord {
+    #[serde(default)]
+    version: u32,
+    #[serde(with = "crate::stored_ref::id")]
+    track_id: u64,
+    title: String,
+    artist: String,
+    album: String,
+    duration_secs: u32,
+    #[serde(default)]
+    cover: Option<String>,
+    started_at: i64,
+    listened_ms: u64,
+    completed: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty", with = "crate::stored_ref::artist_refs")]
+    artist_refs: Vec<ArtistRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "crate::stored_ref::opt_id")]
+    album_id: Option<u64>,
+}
+
+impl From<&HistoryRecord> for StoredRecord {
+    fn from(record: &HistoryRecord) -> Self {
+        Self {
+            version: HISTORY_VERSION,
+            track_id: record.track_id,
+            title: record.title.clone(),
+            artist: record.artist.clone(),
+            album: record.album.clone(),
+            duration_secs: record.duration_secs,
+            cover: record.cover.clone(),
+            started_at: record.started_at,
+            listened_ms: record.listened_ms,
+            completed: record.completed,
+            artist_refs: record.artist_refs.clone(),
+            album_id: record.album_id,
+        }
+    }
+}
+
+impl From<StoredRecord> for HistoryRecord {
+    fn from(stored: StoredRecord) -> Self {
+        Self {
+            track_id: stored.track_id,
+            title: stored.title,
+            artist: stored.artist,
+            album: stored.album,
+            duration_secs: stored.duration_secs,
+            cover: stored.cover,
+            started_at: stored.started_at,
+            listened_ms: stored.listened_ms,
+            completed: stored.completed,
+            artist_refs: stored.artist_refs,
+            album_id: stored.album_id,
+        }
+    }
+}
+
+fn to_line(record: &HistoryRecord) -> serde_json::Result<String> {
+    serde_json::to_string(&StoredRecord::from(record))
+}
+
+fn from_line(line: &str) -> serde_json::Result<HistoryRecord> {
+    serde_json::from_str::<StoredRecord>(line).map(HistoryRecord::from)
+}
+
 /// The play currently accumulating, if playback has started.
 #[derive(Debug)]
 struct ActivePlay {
@@ -358,7 +431,7 @@ fn load_records(path: &Path, max_entries: usize) -> (VecDeque<HistoryRecord>, bo
         if line.is_empty() {
             continue;
         }
-        match serde_json::from_str::<HistoryRecord>(line) {
+        match from_line(line) {
             Ok(record) => records.push_front(record),
             Err(e) => tracing::warn!("skipping malformed history line: {e}"),
         }
@@ -395,7 +468,7 @@ fn writer_main(
                         records.pop_back();
                         trimmed = true;
                     }
-                    let line = serde_json::to_string(records.front().unwrap()).unwrap_or_default();
+                    let line = to_line(records.front().unwrap()).unwrap_or_default();
                     (line, if trimmed { Some(records.clone()) } else { None })
                 };
                 if !line.is_empty() {
@@ -441,7 +514,7 @@ fn append_line(path: &Path, line: &str) -> std::io::Result<()> {
 fn rewrite(path: &Path, records: &VecDeque<HistoryRecord>) {
     let mut text = String::new();
     for record in records.iter().rev() {
-        if let Ok(line) = serde_json::to_string(record) {
+        if let Ok(line) = to_line(record) {
             text.push_str(&line);
             text.push('\n');
         }
@@ -998,6 +1071,47 @@ mod tests {
         let (items, total) = store.page(0, 10);
         assert_eq!(total, 1);
         assert_eq!(items[0].track_id, 1);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// A line as 0.4 wrote it (bare numbers, `{ id, name }` links) loads; new
+    /// lines carry a version and `tidal:` refs; the History page's records keep
+    /// numbers (IPC is unchanged).
+    #[test]
+    fn lines_are_written_as_refs_and_older_lines_still_load() {
+        let dir = temp_dir();
+        let path = dir.join("history.jsonl");
+        fs::write(
+            &path,
+            "{\"track_id\":1,\"title\":\"T1\",\"artist\":\"A\",\"album\":\"B\",\"duration_secs\":200,\"cover\":null,\"started_at\":1,\"listened_ms\":40000,\"completed\":true,\"artist_refs\":[{\"id\":7,\"name\":\"A\"}],\"album_id\":8}\n",
+        )
+        .unwrap();
+        let store = store(&dir, 100, true);
+        let (items, _) = store.page(0, 10);
+        assert_eq!(items[0].artist_refs, vec![ArtistRef { id: 7, name: "A".into() }]);
+        assert_eq!(items[0].album_id, Some(8));
+
+        record_play(&store, 2, 40);
+        store.record(&EngineEvent::NowPlaying(None));
+        assert_eq!(store.page(0, 10).1, 2);
+        let text = fs::read_to_string(&path).unwrap();
+        let newest: serde_json::Value = serde_json::from_str(text.lines().last().unwrap()).unwrap();
+        assert_eq!(newest["version"], HISTORY_VERSION);
+        assert_eq!(newest["track_id"], "tidal:2");
+
+        let wire = serde_json::to_value(&items[0]).unwrap();
+        assert_eq!(wire["track_id"], 1);
+        assert_eq!(wire["album_id"], 8);
+        assert_eq!(wire["artist_refs"][0]["id"], 7);
+        assert!(wire.get("version").is_none());
+
+        // A rewrite (cap trim) turns the older line into the current form.
+        rewrite(&path, &store.records.lock().unwrap().clone());
+        let first: serde_json::Value =
+            serde_json::from_str(fs::read_to_string(&path).unwrap().lines().next().unwrap()).unwrap();
+        assert_eq!(first["track_id"], "tidal:1");
+        assert_eq!(first["artist_refs"][0]["ref"], "tidal:7");
+        assert_eq!(first["album_id"], "tidal:8");
         let _ = fs::remove_dir_all(dir);
     }
 

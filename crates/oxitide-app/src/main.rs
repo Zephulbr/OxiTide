@@ -20,6 +20,7 @@ mod scheme;
 mod scrobble;
 mod session;
 mod state;
+mod stored_ref;
 mod thumbbar;
 mod titlebar;
 mod track_flags;
