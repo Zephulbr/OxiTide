@@ -72,13 +72,24 @@ fn ensure_supported(state: &AppState) -> Result<(), String> {
     }
 }
 
+/// The plugin reports a missing manifest (`releases/latest` 404s while every
+/// release is still a draft) as "Could not fetch a valid release JSON".
+fn check_error(e: tauri_plugin_updater::Error) -> String {
+    match e {
+        tauri_plugin_updater::Error::ReleaseNotFound => {
+            "update: no published release was found to check against".to_string()
+        }
+        e => format!("update: {e}"),
+    }
+}
+
 /// Look for a newer release and remember it for `install`. `Ok(None)` means
 /// this build is current.
 pub async fn check(app: &AppHandle) -> Result<Option<UpdateInfo>, String> {
     let state = app.state::<AppState>();
     ensure_supported(&state)?;
     let updater = app.updater().map_err(|e| format!("update: {e}"))?;
-    let found = updater.check().await.map_err(|e| format!("update: {e}"))?;
+    let found = updater.check().await.map_err(check_error)?;
     let info = found.as_ref().map(|update| UpdateInfo {
         version: update.version.clone(),
         current_version: update.current_version.clone(),
@@ -150,6 +161,14 @@ pub fn spawn_startup_check(app: &AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_missing_manifest_reads_as_no_published_release() {
+        assert_eq!(
+            check_error(tauri_plugin_updater::Error::ReleaseNotFound),
+            "update: no published release was found to check against"
+        );
+    }
 
     #[test]
     fn windows_always_supports_updates() {
