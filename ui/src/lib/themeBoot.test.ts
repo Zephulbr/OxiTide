@@ -11,10 +11,14 @@ interface WindowStub {
 interface BootResult {
   theme: string | undefined;
   colorScheme: string | undefined;
+  mode?: string;
+  tone?: string;
 }
 
 function runBootScript(options: {
   stored?: string | null;
+  /// Other mirrored keys (`oxitide.mode`, `oxitide.tone`).
+  look?: Record<string, string>;
   throws?: boolean;
   prefersDark?: boolean;
   withMatchMedia?: boolean;
@@ -24,9 +28,10 @@ function runBootScript(options: {
   const dataset: Record<string, string> = {};
   const style: Record<string, string> = {};
   const localStorage = {
-    getItem: () => {
+    getItem: (key: string) => {
       if (options.throws) throw new Error("storage unavailable");
-      return options.stored ?? null;
+      if (key === "oxitide.theme") return options.stored ?? null;
+      return options.look?.[key] ?? null;
     },
   };
   const window: WindowStub = {};
@@ -38,7 +43,10 @@ function runBootScript(options: {
     localStorage,
     { documentElement: { dataset, style } },
   );
-  return { theme: dataset.theme, colorScheme: style.colorScheme };
+  const result: BootResult = { theme: dataset.theme, colorScheme: style.colorScheme };
+  if (dataset.mode) result.mode = dataset.mode;
+  if (dataset.tone) result.tone = dataset.tone;
+  return result;
 }
 
 describe("theme boot script", () => {
@@ -86,5 +94,27 @@ describe("theme boot script", () => {
 
   it("defaults system without matchMedia to dark", () => {
     expect(runBootScript({ stored: "system", withMatchMedia: false }).theme).toBe("dark");
+  });
+
+  it("applies the mirrored mode and Studio tone", () => {
+    expect(
+      runBootScript({ stored: "dark", look: { "oxitide.mode": "instrument", "oxitide.tone": "black" } }),
+    ).toEqual({ theme: "dark", colorScheme: "dark", mode: "instrument", tone: "black" });
+  });
+
+  it("keeps Rack's colour scheme dark in the light theme", () => {
+    expect(runBootScript({ stored: "light", look: { "oxitide.mode": "rack" } })).toEqual({
+      theme: "light",
+      colorScheme: "dark",
+      mode: "rack",
+    });
+  });
+
+  it("skips unknown or unreadable mode and tone mirrors", () => {
+    expect(runBootScript({ look: { "oxitide.mode": "junk", "oxitide.tone": "plaid" } })).toEqual({
+      theme: "dark",
+      colorScheme: "dark",
+    });
+    expect(runBootScript({ throws: true })).toEqual({ theme: "dark", colorScheme: "dark" });
   });
 });

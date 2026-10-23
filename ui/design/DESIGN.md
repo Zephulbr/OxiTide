@@ -6,7 +6,7 @@ are deliberately different products on one engine; this file holds what they sha
 | Mode | `data-mode` | Personality | Design file |
 |---|---|---|---|
 | Atmosphere (default) | `atmosphere` | A listening room at night; the record sleeve is the lamp. Glass over the artwork, motion answers the music. | [atmosphere/DESIGN.md](atmosphere/DESIGN.md) |
-| Instrument | `instrument` | The mastering desk: Atmosphere with the dial at zero. Static, dense, nothing moves unless you touched it. | [instrument/DESIGN.md](instrument/DESIGN.md) |
+| Studio (formerly Instrument) | `instrument` | The mastering desk: Atmosphere with the dial at zero. Static, dense, nothing moves unless you touched it. Dark tones: Warm / Neutral / Black (`data-tone`). | [instrument/DESIGN.md](instrument/DESIGN.md) |
 | Hi-Fi Rack | `rack` | A premium late-80s/90s component stack: black glass, amber VFDs, light-bar keys, real needles. | [rack/DESIGN.md](rack/DESIGN.md) |
 
 Decision records live in `docs/superpowers/specs/` (dated); these files describe the
@@ -28,12 +28,14 @@ current system and must be updated in the same change that alters it.
    tokens, which exist only under `[data-mode="rack"]`.
 3. **Mode and theme are orthogonal attributes** on `<html>`: `data-mode`
    (`atmosphere | instrument | rack`) and `data-theme` (`dark | light`). Rack is always
-   dark and ignores `data-theme` (no light variant is planned).
+   dark and ignores `data-theme` (no light variant is planned). `data-tone`
+   (`warm | neutral | black`) is always present but only Studio (`instrument`) in the
+   dark theme reads it.
 4. **Feature flags** live as CSS numbers (`--flag-*`) for presentation gates and as JS
    getters on the `appearance` singleton for behaviour (`discSpin`, `waveSeek`,
    `rackShell`, …).
-5. **Settings are per user, not per mode**, except Typeface and Dynamic colour which have
-   per-mode defaults; Rack replaces Dynamic colour with Lamp colour.
+5. **Settings are per user, not per mode**, except Typeface, which has per-mode
+   defaults; Rack replaces Dynamic colour with Lamp colour, and Tone only shows in Studio.
 
 ## 2. Shared foundations
 
@@ -43,7 +45,7 @@ current system and must be updated in the same change that alters it.
 |---|---|---|
 | Page background | `--bg` | Mode/theme specific |
 | Text / secondary text | `--text`, `--text-muted` | ≥ 4.5:1 on their surface |
-| Accent + text on accent | `--accent`, `--on-accent` | Atmosphere: dynamic; Instrument: brand; Rack: lamp |
+| Accent + text on accent | `--accent`, `--on-accent` | Dynamic (Full by default) over the brand warm white; Rack: lamp |
 | Surfaces | `--surface-1..3`, `--surface-float` | Raised layers; float = menus/popovers |
 | Hairlines | `--line`, `--edge-lit` | |
 | Resting depth | `--shadow-panel`, `--shadow-cover` | Neutral dark drop shadows (warm-ink and softer in light); never accent-coloured, so never a glow |

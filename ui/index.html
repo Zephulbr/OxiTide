@@ -22,8 +22,19 @@
         } else if (t !== "dark" && t !== "light") {
           t = "dark";
         }
-        document.documentElement.dataset.theme = t;
-        document.documentElement.style.colorScheme = t;
+        // Mode and Studio tone mirror lib/theme.ts (MODE/TONE_STORAGE_KEY):
+        // drawing the first frame in the saved look avoids a flash of the
+        // default one. Unknown values are skipped; init reconciles.
+        var m = null, tone = null;
+        try {
+          m = localStorage.getItem("oxitide.mode");
+          tone = localStorage.getItem("oxitide.tone");
+        } catch (e) {}
+        var root = document.documentElement;
+        root.dataset.theme = t;
+        root.style.colorScheme = m === "rack" ? "dark" : t;
+        if (m === "atmosphere" || m === "instrument" || m === "rack") root.dataset.mode = m;
+        if (tone === "warm" || tone === "neutral" || tone === "black") root.dataset.tone = tone;
       })();
     </script>
   </head>

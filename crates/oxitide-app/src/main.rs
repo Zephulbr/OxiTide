@@ -462,6 +462,7 @@ fn main() {
             commands::set_quality_display,
             commands::set_ui_mode,
             commands::set_theme,
+            commands::set_instrument_tone,
             commands::set_typeface,
             commands::set_custom_typeface,
             commands::set_density,

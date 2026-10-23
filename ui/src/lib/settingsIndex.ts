@@ -10,11 +10,13 @@ export interface SettingEntry {
   section: string;
   label: string;
   keywords?: string;
-  needs?: "rack" | "notRack" | "exclusive";
+  needs?: "rack" | "notRack" | "studio" | "exclusive";
 }
 
 export interface SearchContext {
   rack: boolean;
+  /// Studio mode (`instrument`): its Tone row is on the page.
+  studio: boolean;
   exclusive: boolean;
 }
 
@@ -32,7 +34,8 @@ const e = (
 /// or removed row cannot silently leave a dead result.
 export const SETTINGS_INDEX: SettingEntry[] = [
   e("theme", "appearance", "Look & feel", "Theme", "dark light system night day colour color scheme"),
-  e("mode", "appearance", "Look & feel", "Mode", "atmosphere instrument hi-fi rack style skin"),
+  e("mode", "appearance", "Look & feel", "Mode", "atmosphere studio instrument hi-fi rack style skin"),
+  e("studio-tone", "appearance", "Look & feel", "Tone", "studio warm neutral grey gray black amoled oled dark colour color", "studio"),
   e("dynamic-color", "appearance", "Look & feel", "Dynamic color", "album art cover tint accent colour", "notRack"),
   e("typeface", "appearance", "Typography & layout", "Typeface", "font text manrope inter system custom"),
   e("density", "appearance", "Typography & layout", "Density", "compact comfortable spacing rows size"),
@@ -110,6 +113,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
 function visible(entry: SettingEntry, ctx: SearchContext): boolean {
   if (entry.needs === "rack") return ctx.rack;
   if (entry.needs === "notRack") return !ctx.rack;
+  if (entry.needs === "studio") return ctx.studio;
   if (entry.needs === "exclusive") return ctx.exclusive;
   return true;
 }

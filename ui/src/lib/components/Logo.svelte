@@ -1,8 +1,8 @@
 <script lang="ts">
   // The OxiTide mark: ink disc edged by a ring, wave clipped to the disc.
-  // Colours follow --accent (dynamic colour / Rack lamp): ring = accent, wave =
-  // accent hue-rotated -130deg (teal -> rust in the brand palette), disc = a
-  // near-black tint of the accent. Browsers without relative colour syntax keep
+  // Colours follow --logo-accent (brand teal, else the cover colour / Rack
+  // lamp): ring = that colour, wave = it hue-rotated -130deg (teal -> orange),
+  // disc = a near-black tint of it. Browsers without relative colour syntax keep
   // the static brand colours. Detail steps down with size, mirroring
   // crates/oxitide-app/icons/svg/*.svg, but keeps both rings down to 22px
   // (sidebar/Rack header sizes); below that, one ring and a bolder wave.
@@ -61,13 +61,15 @@
   }
   @supports (color: oklch(from red l c h)) {
     .ink {
-      fill: oklch(from var(--accent) 0.26 calc(c * 0.2) h);
+      fill: oklch(from var(--logo-accent) 0.26 calc(c * 0.2) h);
     }
+    /* The disc is always dark, so a dark cover colour (light theme) is
+       lifted to stay visible on it. */
     .ring {
-      stroke: var(--accent);
+      stroke: oklch(from var(--logo-accent) max(l, 0.8) c h);
     }
     .wave {
-      stroke: oklch(from var(--accent) l c calc(h - 130));
+      stroke: oklch(from var(--logo-accent) max(l, 0.8) c calc(h - 130));
     }
   }
 </style>

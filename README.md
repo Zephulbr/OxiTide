@@ -12,7 +12,7 @@ An unofficial, native TIDAL desktop client with a bit-perfect audio engine. Taur
 > your account is entitled to and nothing more. It is not a downloader, has no offline export, and
 > does not circumvent DRM. Use it at your own risk and in line with TIDAL's terms.
 
-<!-- Screenshots: add Atmosphere / Instrument / Hi-Fi Rack captures under docs/images/ and link them here. -->
+<!-- Screenshots: add Atmosphere / Studio / Hi-Fi Rack captures under docs/images/ and link them here. -->
 
 ## Contents
 
@@ -40,7 +40,7 @@ An unofficial, native TIDAL desktop client with a bit-perfect audio engine. Taur
 - Synced lyrics, listening history and stats, optional explicit / AI-content blocking.
 
 **Interface**
-- Three visual modes: **Atmosphere** (default, dynamic cover colour), **Instrument** (dense and technical) and **Hi-Fi Rack** (a hardware-style skin with needle or spectrum meters). Dark and light themes.
+- Three visual modes: **Atmosphere** (default, dynamic cover colour), **Studio** (dense and still, in warm, neutral grey or OLED black) and **Hi-Fi Rack** (a hardware-style skin with needle or spectrum meters). Dark and light themes.
 - Mini player, native Windows 11 title bar with Snap Layouts, system tray with close-to-tray, and an accessibility pass (keyboard navigation, focus handling, reduced motion).
 - Sleep timer, configurable global hotkeys and in-app keyboard shortcuts.
 

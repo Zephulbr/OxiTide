@@ -16,6 +16,7 @@
     type LampColor,
     type MeterStyle,
     type OutputDevice,
+    type InstrumentTone,
     type PanelStyle,
     type Quality,
     type ReplayGainSettings,
@@ -140,16 +141,25 @@
   ];
   const MODE_OPTIONS: { value: UiMode; label: string }[] = [
     { value: "atmosphere", label: "Atmosphere" },
-    { value: "instrument", label: "Instrument" },
+    { value: "instrument", label: "Studio" },
     { value: "rack", label: "Hi-Fi Rack" },
   ];
   const MODE_HELP: Record<UiMode, string> = {
     atmosphere: "Glass over the album art, with motion that follows the music.",
-    instrument: "Minimal animation and visual effects.",
+    instrument: "Solid surfaces with minimal animation and visual effects.",
     rack: "Swaps the sidebar and player bar for a component stack. Always dark, whatever the theme.",
   };
+  const TONE_OPTIONS: { value: InstrumentTone; label: string }[] = [
+    { value: "warm", label: "Warm" },
+    { value: "neutral", label: "Neutral" },
+    { value: "black", label: "Black" },
+  ];
+  const TONE_HELP: Record<InstrumentTone, string> = {
+    warm: "Warm brown surfaces.",
+    neutral: "Neutral dark greys.",
+    black: "Pure black, for OLED screens.",
+  };
   const DYNAMIC_OPTIONS: { value: DynamicColorSetting; label: string }[] = [
-    { value: "auto", label: "Default" },
     { value: "full", label: "Full" },
     { value: "accent", label: "Accent-only" },
     { value: "off", label: "Off" },
@@ -844,6 +854,7 @@
       <SettingsSearch
         scope={{
           rack: appearance.mode === "rack",
+          studio: appearance.mode === "instrument",
           exclusive: config.audio.exclusive || config.audio.output_device.startsWith("asio:"),
         }}
         onselect={jumpTo}
@@ -920,10 +931,25 @@
                   onchange={(value) => appearance.setMode(value).catch(apply)}
                 />
               </SettingRow>
+              {#if appearance.mode === "instrument"}
+                <SettingRow
+                  id="studio-tone" label="Tone"
+                  description={appearance.resolvedTheme === "light"
+                    ? "Applies with the dark theme; light keeps its warm paper."
+                    : TONE_HELP[appearance.instrumentTone]}
+                >
+                  <Segmented
+                    label="Tone"
+                    value={appearance.instrumentTone}
+                    options={TONE_OPTIONS}
+                    onchange={(value) => appearance.setInstrumentTone(value).catch(apply)}
+                  />
+                </SettingRow>
+              {/if}
               {#if appearance.mode !== "rack"}
                 <SettingRow
                   id="dynamic-color" label="Dynamic color"
-                  description="Tints the interface with the colors of the album art. Default follows the mode."
+                  description="Tints the interface with the colors of the album art."
                 >
                   <Segmented
                     label="Dynamic color"

@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  readMirror,
   readThemeMirror,
   resolveTheme,
   THEME_STORAGE_KEY,
+  TONE_STORAGE_KEY,
   writeThemeMirror,
 } from "./theme";
 
@@ -40,6 +42,14 @@ describe("theme mirror", () => {
     expect(readThemeMirror(storage)).toBe("dark");
     expect(() => writeThemeMirror(storage, "light")).not.toThrow();
     expect(readThemeMirror(undefined)).toBe("dark");
+  });
+
+  it("readMirror accepts only the allowed values", () => {
+    const get = (value: string | null) => ({ getItem: () => value, setItem: () => {} });
+    const tones = ["warm", "neutral", "black"] as const;
+    expect(readMirror(get("black"), TONE_STORAGE_KEY, tones, "warm")).toBe("black");
+    expect(readMirror(get("plaid"), TONE_STORAGE_KEY, tones, "warm")).toBe("warm");
+    expect(readMirror(get(null), TONE_STORAGE_KEY, tones, "warm")).toBe("warm");
   });
 
   it("writes under the documented key", () => {

@@ -1,7 +1,9 @@
-# Instrument — design file
+# Studio (formerly Instrument) — design file
 
 Shared foundation: [../DESIGN.md](../DESIGN.md). Decision record:
 `docs/superpowers/specs/2026-09-25-oxitide-2b-visual-mode-instrument-design.md`.
+Renamed Studio in the UI (2026-10-23); the mode id stays `instrument` in config,
+`data-mode` and code.
 
 ## 1. Personality
 
@@ -22,8 +24,26 @@ Track 3 performance baseline and the natural home for reduced-motion users.
 | `--glare-alpha` | .10 | .08 |
 | `--player-veil` | `--surface-2` (opaque; no gradient needed) | same |
 | `--glass-blur`, `--overlay-blur` | 0 | 0 |
-| `--accent` | brand `#2ee2c4` (Dynamic colour `Auto` = Off; user may enable) | brand `#0e7a67` |
+| `--accent` | brand `#f7f3ee` warm white (Dynamic colour defaults to Full; shown when it is Off) | brand `#2a211a` warm ink |
 | flags | backdrop art, glass blur, grain, disc spin, wave seek, ambient motion: **off** | same |
+
+The Dark column is the **Warm** tone (the default).
+
+### 2.1 Tones (dark theme only)
+
+`ui.instrument_tone` (Settings → Tone, shown in Studio) sets `data-tone` on `<html>`.
+`modes.css` swaps the dark recipe for Neutral and Black; the light theme keeps its warm
+paper whatever the tone. Layout, flags and everything else stay identical.
+
+| Token | Warm | Neutral | Black (OLED) |
+|---|---|---|---|
+| `--bg` | `#17120e` | `#121212` | `#000000` |
+| `--surface-1/2/3` | `#211b15` / `#262019` / `#2b241c` | `#1b1b1b` / `#202020` / `#262626` | `#0a0a0a` / `#121212` / `#1a1a1a` |
+| `--surface-float` | `#2b241c` | `#262626` | `#161616` |
+| `--player-veil-top` | `--surface-2` | `--surface-2` | `--surface-1` (the chrome sits a hair above black) |
+| `--text` / `--text-muted` | `#f2ece6` / `#a99f94` | `#ededed` / `#a3a3a3` | `#ededed` / `#9e9e9e` |
+| `--line` | `rgba(255,240,225,.10)` | `rgba(255,255,255,.10)` | `rgba(255,255,255,.11)` |
+| brand accent / on-accent | `#f7f3ee` / `#17120e` | `#f2f2f2` / `#121212` | `#f2f2f2` / `#000000` |
 
 ## 3. Typography
 

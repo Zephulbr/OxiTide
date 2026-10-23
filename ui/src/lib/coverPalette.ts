@@ -87,5 +87,9 @@ export function applyToDocument(tokens: DynamicColorApply) {
     if (value) style.setProperty(key, value);
     else style.removeProperty(key);
   }
+  // The logo follows the cover only while a cover colour is applied (else
+  // it keeps the brand teal from tokens.css).
+  if (tokens["--dyn-primary"]) style.setProperty("--logo-accent", "var(--dyn-primary)");
+  else style.removeProperty("--logo-accent");
 }
 

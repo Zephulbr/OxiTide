@@ -84,6 +84,7 @@
   --text-muted: var(--rack-screen-muted);
   --accent: oklch(0.79 var(--lamp-c) var(--lamp-h));
   --on-accent: #140c04;
+  --logo-accent: var(--accent);
   --danger: #ff8a7a;
   --success: #5fd68a;
   --warning: #e0a030;

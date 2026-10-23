@@ -6,7 +6,7 @@ import remote from "./components/RemoteSettings.svelte?raw";
 import updates from "./components/UpdatesSection.svelte?raw";
 import autoMix from "./components/settings/AutoMixPanel.svelte?raw";
 
-const ctx = { rack: false, exclusive: false };
+const ctx = { rack: false, studio: false, exclusive: false };
 
 describe("settings index", () => {
   it("has unique ids on real tabs", () => {
@@ -53,6 +53,8 @@ describe("searchSettings", () => {
     expect(searchSettings("lamp", ctx)).toEqual([]);
     expect(searchSettings("lamp", { ...ctx, rack: true }).map((e) => e.id)).toContain("rack-lamp");
     expect(searchSettings("dynamic color", { ...ctx, rack: true })).toEqual([]);
+    expect(searchSettings("amoled", ctx)).toEqual([]);
+    expect(searchSettings("amoled", { ...ctx, studio: true })[0].id).toBe("studio-tone");
     expect(searchSettings("if unsupported", ctx)).toEqual([]);
     expect(searchSettings("if unsupported", { ...ctx, exclusive: true })[0].id).toBe("exclusive-fallback");
   });

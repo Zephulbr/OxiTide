@@ -42,3 +42,46 @@
   --flag-dynamic-color: 0;
   --flag-ambient-motion: 0;
 }
+
+/* Studio tones (ui.instrument_tone, `data-tone`): the block above is Warm.
+   Neutral and Black swap the whole dark recipe for zero-chroma greys; the
+   light theme keeps its warm paper (themes.css), so they skip it. */
+[data-mode="instrument"][data-tone="neutral"]:not([data-theme="light"]) {
+  --accent-brand: #f2f2f2;
+  --on-accent-brand: #121212;
+  --bg: #121212;
+  --text: #ededed;
+  --text-muted: #a3a3a3;
+  --surface-1: #1b1b1b;
+  --surface-2: #202020;
+  --surface-3: #262626;
+  --surface-float: #262626;
+  --line: rgba(255, 255, 255, 0.10);
+  --dyn-secondary: #121212;
+  --dyn-backdrop: #151515;
+  --room-top: #181818;
+  --scrim-top: rgba(18, 18, 18, 0.55);
+  --scrim-bottom: rgba(18, 18, 18, 0.78);
+}
+
+/* Black (OLED): the canvas is true black and the chrome (sidebar, queue,
+   player bar) sits a hair above it; controls and menus keep enough lift to
+   read as surfaces. */
+[data-mode="instrument"][data-tone="black"]:not([data-theme="light"]) {
+  --accent-brand: #f2f2f2;
+  --on-accent-brand: #000000;
+  --bg: #000000;
+  --text: #ededed;
+  --text-muted: #9e9e9e;
+  --surface-1: #0a0a0a;
+  --surface-2: #121212;
+  --surface-3: #1a1a1a;
+  --surface-float: #161616;
+  --player-veil-top: var(--surface-1);
+  --line: rgba(255, 255, 255, 0.11);
+  --dyn-secondary: #000000;
+  --dyn-backdrop: #000000;
+  --room-top: #000000;
+  --scrim-top: rgba(0, 0, 0, 0.55);
+  --scrim-bottom: rgba(0, 0, 0, 0.78);
+}

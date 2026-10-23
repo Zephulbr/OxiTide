@@ -21,8 +21,8 @@ use tauri::{Manager, State};
 
 use crate::artwork::PaletteDto;
 use crate::config::{
-    clamp_catjam_scale, clamp_queue_width, CatjamCoat, Config, CoverShape, Density, DynamicColor, PanelStyle,
-    QualityDisplay, RackConfig, Theme, Typeface, UiMode,
+    clamp_catjam_scale, clamp_queue_width, CatjamCoat, Config, CoverShape, Density, DynamicColor, InstrumentTone,
+    PanelStyle, QualityDisplay, RackConfig, Theme, Typeface, UiMode,
 };
 use crate::lyrics::{LyricsDto, LyricsRequest};
 use crate::player::{devices, OutputDeviceDto, QualityDto};
@@ -2385,6 +2385,15 @@ pub fn set_theme(state: State<'_, AppState>, theme: Theme) -> Result<(), String>
 }
 
 #[tauri::command]
+pub fn set_instrument_tone(state: State<'_, AppState>, tone: InstrumentTone) -> Result<(), String> {
+    let mut config = state.config();
+    config.ui.instrument_tone = tone;
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
+#[tauri::command]
 pub fn set_typeface(state: State<'_, AppState>, typeface: Typeface) -> Result<(), String> {
     let mut config = state.config();
     config.ui.typeface = typeface;
@@ -2905,7 +2914,8 @@ mod tests {
         "get_perf_snapshot", "perf_submit_ui_metrics", "perf_queue_build", "set_output_device",
         "set_preferred_quality", "set_exclusive", "set_exclusive_fallback", "set_dsp_settings",
         "get_config", "get_audio_status", "get_cache_status", "set_allow_fallback",
-        "set_quality_display", "set_ui_mode", "set_theme", "set_typeface", "set_custom_typeface",
+        "set_quality_display", "set_ui_mode", "set_theme", "set_instrument_tone", "set_typeface",
+        "set_custom_typeface",
         "set_density", "set_cover_shape", "set_dynamic_color", "set_rack_settings",
         "set_level_meter", "set_queue_width", "set_mini_mode", "set_start_in_mini", "set_oneko",
         "set_catjam", "set_catjam_coat", "set_catjam_scale",

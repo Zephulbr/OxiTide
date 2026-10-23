@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/svelte";
 import SettingsSearch from "./SettingsSearch.svelte";
 
-const scope = { rack: false, exclusive: false };
+const scope = { rack: false, studio: false, exclusive: false };
 
 afterEach(cleanup);
 

@@ -2,10 +2,10 @@
    Three layers: base (static) → dynamic seed (--dyn-*, Plan 11 drives
    them) → semantic (the only layer components read). */
 
-@property --dyn-primary { syntax: "<color>"; inherits: true; initial-value: #2ee2c4; }
-@property --dyn-on-primary { syntax: "<color>"; inherits: true; initial-value: #0b2420; }
+@property --dyn-primary { syntax: "<color>"; inherits: true; initial-value: #f7f3ee; }
+@property --dyn-on-primary { syntax: "<color>"; inherits: true; initial-value: #17120e; }
 @property --dyn-secondary { syntax: "<color>"; inherits: true; initial-value: #17120e; }
-@property --dyn-tertiary { syntax: "<color>"; inherits: true; initial-value: #2ee2c4; }
+@property --dyn-tertiary { syntax: "<color>"; inherits: true; initial-value: #f7f3ee; }
 /* Blurred-cover wash behind the player bar's scrim + tint (seek cap). The
    initial value is the no-art room gradient's mean. */
 @property --dyn-backdrop { syntax: "<color>"; inherits: true; initial-value: #1a1510; }
@@ -23,8 +23,8 @@
 
 :root {
   /* Base — Warm Graphite (spec §5.1) */
-  --accent-brand: #2ee2c4;
-  --on-accent-brand: #0b2420;
+  --accent-brand: #f7f3ee;
+  --on-accent-brand: #17120e;
   --danger: #ff8a7a;
   --success: #5fd68a;
   --warning: #e0a030;
@@ -35,6 +35,10 @@
   --text-muted: #a99f94;
   --accent: var(--dyn-primary);
   --on-accent: var(--dyn-on-primary);
+  /* The logo keeps the icon's teal (and its orange wave) while no cover
+     colour is applied; applyToDocument points it at --dyn-primary while one
+     is, and Rack at its lamp. */
+  --logo-accent: #2ee2c4;
   --surface-1: rgba(255, 240, 225, 0.05);
   --surface-2: rgba(255, 240, 225, 0.07);
   --surface-3: rgba(255, 240, 225, 0.09);

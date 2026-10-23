@@ -107,7 +107,7 @@ pub enum QualityDisplay {
 }
 
 /// Visual mode. Plan 10 ships Instrument; Plan 11 adds `Atmosphere` and flips
-/// the default.
+/// the default. Instrument is labelled "Studio" in the UI; the stored id stays.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum UiMode {
@@ -225,6 +225,18 @@ pub enum Theme {
     System,
 }
 
+/// Studio (Instrument) surface colours in the dark theme: the warm brown
+/// original, neutral greys, or pure black for OLED screens. Light keeps its
+/// warm paper whatever this says.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum InstrumentTone {
+    #[default]
+    Warm,
+    Neutral,
+    Black,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Typeface {
@@ -237,12 +249,13 @@ pub enum Typeface {
     Custom,
 }
 
-/// Dynamic cover color (spec §5.4). `Auto` = Full in Atmosphere, Off in Instrument.
+/// Dynamic cover color (spec §5.4). Full by default in every mode (Rack ignores
+/// it); the former per-mode `auto` reads back as Full.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DynamicColor {
     #[default]
-    Auto,
+    #[serde(alias = "auto")]
     Full,
     Accent,
     Off,
@@ -306,6 +319,7 @@ pub struct UiConfig {
     pub quality_display: QualityDisplay,
     pub mode: UiMode,
     pub theme: Theme,
+    pub instrument_tone: InstrumentTone,
     pub typeface: Typeface,
     /// Font family name used when `typeface == Custom`.
     pub custom_typeface: String,
@@ -342,11 +356,12 @@ impl Default for UiConfig {
             quality_display: QualityDisplay::Compact,
             mode: UiMode::Atmosphere,
             theme: Theme::Dark,
+            instrument_tone: InstrumentTone::Warm,
             typeface: Typeface::Auto,
             custom_typeface: String::new(),
             density: Density::Comfortable,
             cover_shape: CoverShape::Disc,
-            dynamic_color: DynamicColor::Auto,
+            dynamic_color: DynamicColor::Full,
             queue_width: 320,
             player_bar_style: PanelStyle::Docked,
             queue_style: PanelStyle::Docked,
@@ -603,11 +618,12 @@ mod tests {
                 quality_display: QualityDisplay::Detailed,
                 mode: UiMode::Instrument,
                 theme: Theme::Dark,
+                instrument_tone: InstrumentTone::Black,
                 typeface: Typeface::Manrope,
                 custom_typeface: String::new(),
                 density: Density::Comfortable,
                 cover_shape: CoverShape::Disc,
-                dynamic_color: DynamicColor::Auto,
+                dynamic_color: DynamicColor::Full,
                 queue_width: 320,
                 player_bar_style: PanelStyle::Floating,
                 queue_style: PanelStyle::Floating,
@@ -862,7 +878,8 @@ duration_ms = 4000
         assert_eq!(config.ui.mode, UiMode::Atmosphere);
         assert_eq!(config.ui.theme, Theme::Dark);
         assert_eq!(config.ui.typeface, Typeface::Auto);
-        assert_eq!(config.ui.dynamic_color, DynamicColor::Auto);
+        assert_eq!(config.ui.dynamic_color, DynamicColor::Full);
+        assert_eq!(config.ui.instrument_tone, InstrumentTone::Warm);
         assert_eq!(config.ui.custom_typeface, "");
         assert_eq!(config.ui.density, Density::Comfortable);
         assert_eq!(config.ui.cover_shape, CoverShape::Disc);
@@ -886,7 +903,7 @@ duration_ms = 4000
         let config = Config::default();
         assert_eq!(config.ui.mode, UiMode::Atmosphere);
         assert_eq!(config.ui.typeface, Typeface::Auto);
-        assert_eq!(config.ui.dynamic_color, DynamicColor::Auto);
+        assert_eq!(config.ui.dynamic_color, DynamicColor::Full);
     }
 
     /// Review Focus: Plan 10 wrote explicit values; they stay honored.
@@ -898,7 +915,17 @@ duration_ms = 4000
         let config = Config::load_from(&path);
         assert_eq!(config.ui.mode, UiMode::Instrument);
         assert_eq!(config.ui.typeface, Typeface::Manrope);
-        assert_eq!(config.ui.dynamic_color, DynamicColor::Auto);
+        assert_eq!(config.ui.dynamic_color, DynamicColor::Full);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// The removed per-mode `auto` setting reads back as Full.
+    #[test]
+    fn legacy_auto_dynamic_color_loads_as_full() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        fs::write(&path, "[ui]\ndynamic_color = \"auto\"\n").unwrap();
+        assert_eq!(Config::load_from(&path).ui.dynamic_color, DynamicColor::Full);
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -910,6 +937,18 @@ duration_ms = 4000
         config.ui.dynamic_color = DynamicColor::Accent;
         config.save_to(&path).unwrap();
         assert!(fs::read_to_string(&path).unwrap().contains("dynamic_color = \"accent\""));
+        assert_eq!(Config::load_from(&path), config);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn instrument_tone_round_trips() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        let mut config = Config::default();
+        config.ui.instrument_tone = InstrumentTone::Neutral;
+        config.save_to(&path).unwrap();
+        assert!(fs::read_to_string(&path).unwrap().contains("instrument_tone = \"neutral\""));
         assert_eq!(Config::load_from(&path), config);
         let _ = fs::remove_dir_all(dir);
     }

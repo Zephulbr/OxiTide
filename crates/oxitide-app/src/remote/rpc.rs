@@ -574,6 +574,7 @@ mod tests {
         "set_quality_display",
         "set_ui_mode",
         "set_theme",
+        "set_instrument_tone",
         "set_typeface",
         "set_custom_typeface",
         "set_density",

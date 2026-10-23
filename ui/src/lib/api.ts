@@ -385,6 +385,9 @@ export interface CacheStatus {
 export type CatjamCoat = "white" | "black" | "ginger" | "grey" | "tuxedo" | "cream";
 /// Player bar / queue placement in the default shell (`PanelStyle` in config.rs).
 export type PanelStyle = "docked" | "floating";
+/// Studio's dark surfaces (`InstrumentTone` in config.rs; Studio is the
+/// `instrument` mode id).
+export type InstrumentTone = "warm" | "neutral" | "black";
 export interface Config {
   audio: {
     output_device: string;
@@ -397,11 +400,12 @@ export interface Config {
     quality_display: "compact" | "detailed";
     mode: "instrument" | "atmosphere" | "rack";
     theme: "dark" | "light" | "system";
+    instrument_tone: InstrumentTone;
     typeface: "auto" | "manrope" | "inter" | "system" | "custom";
     custom_typeface: string;
     density: "comfortable" | "compact";
     cover_shape: "disc" | "sleeve";
-    dynamic_color: "auto" | "full" | "accent" | "off";
+    dynamic_color: "full" | "accent" | "off";
     queue_width: number;
     player_bar_style: PanelStyle;
     queue_style: PanelStyle;
@@ -799,12 +803,13 @@ export const api = {
     invoke<RackSettings>("set_rack_settings", { settings }),
   setLevelMeter: (enabled: boolean) => invoke<void>("set_level_meter", { enabled }),
   setTheme: (theme: "dark" | "light" | "system") => invoke<void>("set_theme", { theme }),
+  setInstrumentTone: (tone: InstrumentTone) => invoke<void>("set_instrument_tone", { tone }),
   setTypeface: (typeface: "auto" | "manrope" | "inter" | "system" | "custom") =>
     invoke<void>("set_typeface", { typeface }),
   setCustomTypeface: (name: string) => invoke<void>("set_custom_typeface", { name }),
   setDensity: (density: "comfortable" | "compact") => invoke<void>("set_density", { density }),
   setCoverShape: (shape: "disc" | "sleeve") => invoke<void>("set_cover_shape", { shape }),
-  setDynamicColor: (mode: "auto" | "full" | "accent" | "off") =>
+  setDynamicColor: (mode: "full" | "accent" | "off") =>
     invoke<void>("set_dynamic_color", { mode }),
   setQueueWidth: (px: number) => invoke<void>("set_queue_width", { px }),
   setMiniMode: (active: boolean) => invoke<void>("set_mini_mode", { active }),

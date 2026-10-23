@@ -7,14 +7,14 @@
   --bg: #f6f1ea;
   --text: #2a211a;
   --text-muted: #665a4f;
-  --accent-brand: #0e7a67;
+  --accent-brand: #2a211a;
   --on-accent-brand: #ffffff;
   --danger: #b3261e;
   --success: #1e6b3a;
   --warning: #8a5a00;
 
   /* Static fallbacks for cleared inline --dyn-* values (Review Focus 4). */
-  --dyn-primary: #0e7a67;
+  --dyn-primary: #2a211a;
   --dyn-on-primary: #ffffff;
   --dyn-secondary: #e8dfd3;
   --dyn-tertiary: #8a4a1f;

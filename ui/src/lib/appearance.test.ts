@@ -21,6 +21,7 @@ vi.mock("./api", () => ({
     setCatjamScale: vi.fn(),
     setTheme: vi.fn(),
     setUiMode: vi.fn(),
+    setInstrumentTone: vi.fn(),
     setRackSettings: vi.fn(),
     setPlayerBarStyle: vi.fn(),
     setQueueStyle: vi.fn(),
@@ -148,14 +149,14 @@ describe("resolveTypeface", () => {
 });
 
 describe("resolveDynamicColor", () => {
-  it("auto is full in atmosphere and off in instrument", () => {
-    expect(resolveDynamicColor("auto", "atmosphere")).toBe("full");
-    expect(resolveDynamicColor("auto", "instrument")).toBe("off");
-  });
-  it("explicit picks always win, including off in atmosphere", () => {
+  it("applies the setting as chosen in atmosphere and instrument", () => {
+    expect(resolveDynamicColor("full", "atmosphere")).toBe("full");
+    expect(resolveDynamicColor("full", "instrument")).toBe("full");
     expect(resolveDynamicColor("accent", "atmosphere")).toBe("accent");
     expect(resolveDynamicColor("off", "atmosphere")).toBe("off");
-    expect(resolveDynamicColor("full", "instrument")).toBe("full");
+  });
+  it("is always off in rack", () => {
+    expect(resolveDynamicColor("full", "rack")).toBe("off");
   });
 });
 
@@ -388,5 +389,72 @@ describe("theme", () => {
     expect(appearance.resolvedTheme).toBe("dark");
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(document.documentElement.style.colorScheme).toBe("dark");
+  });
+});
+
+/// Mode and Studio tone are mirrored like the theme so index.html's pre-paint
+/// script draws the first frame in the saved look.
+describe("look mirror", () => {
+  let stored: Record<string, string>;
+
+  beforeEach(() => {
+    stored = {};
+    vi.stubGlobal("window", {
+      matchMedia: () => ({ matches: false, addEventListener: () => {} }),
+    });
+    vi.stubGlobal("document", {
+      documentElement: { dataset: {}, style: { setProperty: () => {} } },
+    });
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => stored[key] ?? null,
+      setItem: vi.fn((key: string, value: string) => { stored[key] = value; }),
+    });
+    vi.mocked(api.setUiMode).mockResolvedValue(undefined);
+    vi.mocked(api.setInstrumentTone).mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  it("starts from the mirror before the config arrives", () => {
+    stored = { "oxitide.mode": "rack", "oxitide.tone": "black" };
+    const a = createAppearance();
+    expect(a.mode).toBe("rack");
+    expect(a.rackShell).toBe(true);
+    expect(a.instrumentTone).toBe("black");
+  });
+
+  it("ignores unknown mirrored values", () => {
+    stored = { "oxitide.mode": "evil", "oxitide.tone": "plaid" };
+    const a = createAppearance();
+    expect(a.mode).toBe("atmosphere");
+    expect(a.instrumentTone).toBe("warm");
+  });
+
+  it("init reconciles the mirror with the config", async () => {
+    stored = { "oxitide.mode": "rack", "oxitide.tone": "black" };
+    vi.mocked(api.getConfig).mockResolvedValue({
+      ui: { mode: "instrument", theme: "dark", instrument_tone: "neutral" },
+    } as never);
+    const a = createAppearance();
+    await a.init();
+    expect(a.mode).toBe("instrument");
+    expect(document.documentElement.dataset.tone).toBe("neutral");
+    expect(stored["oxitide.mode"]).toBe("instrument");
+    expect(stored["oxitide.tone"]).toBe("neutral");
+  });
+
+  it("setMode and setInstrumentTone write the mirror", async () => {
+    vi.mocked(api.getConfig).mockResolvedValue({ ui: { theme: "dark" } } as never);
+    const a = createAppearance();
+    await a.init();
+    await a.setMode("instrument");
+    await a.setInstrumentTone("black");
+    expect(stored["oxitide.mode"]).toBe("instrument");
+    expect(stored["oxitide.tone"]).toBe("black");
+    expect(document.documentElement.dataset.tone).toBe("black");
+    expect(api.setInstrumentTone).toHaveBeenCalledWith("black");
   });
 });
