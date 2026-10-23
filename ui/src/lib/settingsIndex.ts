@@ -106,7 +106,8 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     e(`hotkey-${a.id}`, "system", "Global hotkeys", `Hotkey: ${a.label}`, "global shortcut keybinding record"),
   ),
   e("shortcuts", "system", "Keyboard shortcuts", "Keyboard shortcuts", "keys bindings reference seek volume mute sidebar queue"),
-  e("logs", "system", "Troubleshooting", "Logs", "debug folder diagnostics"),
+  e("logs", "system", "Troubleshooting", "Logs", "debug folder"),
+  e("diagnostics", "system", "Troubleshooting", "Diagnostics", "copy bug report support system version"),
   e("logout", "system", "Account", "Log out", "sign out account tidal"),
 ];
 

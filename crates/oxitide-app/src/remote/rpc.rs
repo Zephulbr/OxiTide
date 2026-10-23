@@ -602,6 +602,7 @@ mod tests {
         "set_cache_clear_on_exit",
         "get_logs_dir",
         "open_logs_folder",
+        "get_diagnostics",
         "perf_mark",
         "perf_quit",
         "get_perf_snapshot",

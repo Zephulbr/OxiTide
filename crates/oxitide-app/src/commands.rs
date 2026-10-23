@@ -2884,6 +2884,67 @@ pub fn open_logs_folder(app: tauri::AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// Settings → Troubleshooting → Copy diagnostics: a redacted plain-text report
+/// (`diagnostics.rs`). Async: it reads the log and runs `ver` on Windows.
+#[tauri::command(async)]
+pub fn get_diagnostics(state: State<'_, AppState>) -> Result<String, String> {
+    use crate::diagnostics::{self, Audio, Inputs};
+    let config = state.config();
+    let audio = state.player().map(|player| {
+        let playback = player.engine.state();
+        let status = player.engine.audio_status();
+        let device = match config.audio.output_device.as_str() {
+            "" => "system default".to_string(),
+            id if oxitide_audio::output::is_asio_device(id) => "an ASIO driver".to_string(),
+            _ => "a selected device".to_string(),
+        };
+        let stream = playback.stream.as_ref().map(|s| {
+            let codec = s.codec.as_deref().unwrap_or("unknown codec");
+            let bitrate = s.bitrate_kbps.map(|kbps| format!(", {kbps} kbps")).unwrap_or_default();
+            format!(
+                "{codec} {:.1} kHz / {}-bit, {} ch{bitrate}",
+                s.sample_rate as f64 / 1000.0,
+                s.bit_depth,
+                s.channels
+            )
+        });
+        Audio {
+            output: format!("{:?}", status.mode),
+            device,
+            bit_perfect: status.bit_perfect,
+            notice: status.notice,
+            quality: format!("{:?}", playback.preferred_quality),
+            stream,
+            dsp_stages: playback.dsp_stages.clone(),
+            underruns: player.engine.underrun_count(),
+        }
+    });
+    let inputs = Inputs {
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        debug_build: cfg!(debug_assertions),
+        os: diagnostics::os_description(),
+        webview: tauri::webview_version().unwrap_or_else(|_| "unknown".into()),
+        signed_in: audio.is_some(),
+        audio,
+        switches: vec![
+            ("Exclusive mode", config.audio.exclusive),
+            ("Media controls", config.integrations.smtc),
+            ("Discord", config.integrations.discord),
+            ("Last.fm", config.scrobbling.lastfm_enabled),
+            ("ListenBrainz", config.scrobbling.listenbrainz_enabled),
+            ("Phone remote", config.remote.enabled),
+            ("History", config.history.enabled),
+            ("Close to tray", config.ui.close_to_tray),
+            ("Block explicit", config.content.block_explicit),
+            ("Block AI", config.content.block_ai),
+            ("Update check on start", config.updates.check_on_start),
+        ],
+        ui: format!("{:?}, {:?} theme", config.ui.mode, config.ui.theme),
+        recent_problems: diagnostics::recent_problems_from_logs(),
+    };
+    Ok(diagnostics::report(&inputs))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

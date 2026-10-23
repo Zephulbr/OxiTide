@@ -4,6 +4,7 @@ mod album_dates;
 mod artwork;
 mod commands;
 mod config;
+mod diagnostics;
 mod discord;
 mod history;
 mod hotkeys;
@@ -497,6 +498,7 @@ fn main() {
             commands::set_snap_target,
             commands::get_logs_dir,
             commands::open_logs_folder,
+            commands::get_diagnostics,
             commands::perf_mark,
             commands::perf_quit,
             commands::get_perf_snapshot,

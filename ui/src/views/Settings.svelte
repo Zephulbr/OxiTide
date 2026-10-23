@@ -82,6 +82,7 @@
   import { SETTINGS_TABS, nextTab, type SettingsTab } from "../lib/settingsTabs";
   import { TAB_META, formatSize, outputDeviceOptions, usageFraction } from "../lib/settingsView";
   import { sentenceCase } from "../lib/format";
+  import { copyText } from "../lib/clipboard";
   import type { Toasts } from "../lib/toasts.svelte";
   import type { Player } from "../lib/player.svelte";
   import { SHORTCUTS } from "../lib/shortcuts";
@@ -495,6 +496,17 @@
 
   function apply(failure: unknown) {
     toasts.show(errorMessage(failure), { severity: "error" });
+  }
+
+  async function copyDiagnostics() {
+    try {
+      const copied = await copyText(await api.getDiagnostics());
+      toasts.show(copied ? "Diagnostics copied" : "Couldn't copy diagnostics", {
+        severity: copied ? "success" : "error",
+      });
+    } catch (e) {
+      apply(e);
+    }
   }
 
   function refreshCacheStatus() {
@@ -1750,6 +1762,13 @@
                 <Button icon="folder" onclick={() => api.openLogsFolder().catch(apply)}>
                   Open logs folder
                 </Button>
+              </SettingRow>
+              <SettingRow
+                id="diagnostics"
+                label="Diagnostics"
+                description="Version, system, audio output and recent problems, for a bug report. No account details or keys."
+              >
+                <Button icon="copy" onclick={copyDiagnostics}>Copy diagnostics</Button>
               </SettingRow>
             </SettingsSection>
 

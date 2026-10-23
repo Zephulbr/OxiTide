@@ -93,8 +93,12 @@ Branch `track13-efficiency` (unmerged). Plan `plans/2026-10-16-track13-efficienc
 
 Candidates (pick per value; none block 1.0 on their own):
 
-- [ ] "Open logs folder" / "Copy diagnostics" in Settings (version, OS, output mode, recent errors),
-      if not already present.
+- [x] "Open logs folder" / "Copy diagnostics" in Settings (version, OS, output mode, recent errors),
+      if not already present. **Done 2026-10-23:** "Open logs folder" existed; "Copy diagnostics"
+      (`diagnostics.rs`, `get_diagnostics`, not exposed to the phone) copies version, OS, WebView,
+      output path, quality, current stream, DSP stages, underruns, enabled switches and the last 20
+      WARN/ERROR lines, with URL queries, token/code/state values, bearer tokens and the home
+      directory redacted. Smoke: copy once, paste, check nothing personal is in it.
 - [ ] Recognisable error for TIDAL API drift ("TIDAL changed something — check for updates") instead
       of a generic failure (roadmap §6 backlog).
 - [ ] Credits pagination (Info tab shows the first 20).
