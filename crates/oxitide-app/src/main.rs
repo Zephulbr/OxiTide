@@ -12,6 +12,7 @@ mod lyrics;
 mod media_controls;
 mod meter;
 mod palette;
+mod panic_log;
 pub mod perf;
 mod player;
 mod remote;
@@ -27,8 +28,6 @@ mod updater;
 mod webview_idle;
 mod window;
 
-use std::sync::OnceLock;
-
 use oxitide_tidal::auth;
 use tauri::{Emitter, Manager};
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -36,9 +35,6 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
 use state::AppState;
-
-/// Keeps the non-blocking file writer's worker thread alive for the process.
-static LOG_GUARD: OnceLock<tracing_appender::non_blocking::WorkerGuard> = OnceLock::new();
 
 /// The daily-rotated file writer, or `None` when the logs directory cannot be
 /// created (the app then logs to the console only).
@@ -62,7 +58,10 @@ fn file_writer() -> Option<tracing_appender::non_blocking::NonBlocking> {
         }
     };
     let (writer, guard) = tracing_appender::non_blocking(appender);
-    let _ = LOG_GUARD.set(guard);
+    // Kept for the process (the panic hook may drop it to flush).
+    *panic_log::LOG_GUARD
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = Some(guard);
     Some(writer)
 }
 
@@ -145,6 +144,7 @@ fn main() {
     #[cfg(target_os = "linux")]
     tray::set_application_name();
     init_logging();
+    panic_log::install();
     perf::mark("logging_ready");
     let config = config::Config::load();
     perf::mark("config_loaded");
