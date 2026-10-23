@@ -378,7 +378,7 @@ the same, `npm --prefix ui run check` 0 errors and `npm --prefix ui test` 151 fi
 | 5 | Output notices are shown sentence-cased (`sentenceCase` in `lib/format.ts`) in Settings, the player bar tooltip, and the Rack VFD. The Rust strings stay lowercase clauses because the engine composes and compares them. |
 | 6 | Linux stores the window size in logical pixels (GTK only has integer scale factors, so the 1.75 display reported scale 2). Windows keeps physical pixels. The first Linux start after this change reads the old doubled values as logical once; closing the window rewrites them. |
 | 7 | Not changed. `tauri-plugin-deep-link`'s `register_all` runs `xdg-mime`, whose KDE backend wants `qtpaths` (Arch: `qt6-tools`). Skipping registration for packaged installs would silence it, but the registration also repairs a stale `tidal://` default left by an AppImage run, and login depends on it. |
-| 8 | Not changed. The Windows smoke (`DONE-2026-09-30-track4b-discovery-smoke.md`) shows mix art, and the CSP allows only `resources.tidal.com`, so the URL host is the first suspect on Linux. To settle it, capture one `pages/home` `MIX_LIST` item's `images` block on the laptop, or check the WebKit inspector console for a CSP or load error. |
+| 8 | Fixed 2026-10-23 (it reproduced on Windows too). `get_for_you` mix artwork is now served from `https://images.tidal.com/0/…?token=…` (the 2026-09-30 smoke still saw `resources.tidal.com`), and the CSP's `img-src` blocked it. `images.tidal.com` is now allowed in the webview `csp`/`devCsp`, the phone page CSP (`remote/server.rs`), and the phone's cover filter (`trusted_cover` in `remote/rpc.rs`). Cover tints still skip full-URL artwork, as before. |
 | 9 | Not changed: logged at `info` and never shown to the user; resolves once two releases exist. |
 | 10 | Not changed. Nothing in the app sets `NO_AT_BRIDGE` or other a11y switches. Next step: check with Orca or `accerciser` whether WebKitGTK's web-process tree is reachable at all (the KWin client may not follow the embedded socket). |
 | 11 | The picker now lists every playback PCM of every card as `hw:CARD=<id>,DEV=<n>` ("MOONDROP Dawn Pro, USB Audio (direct hardware)"), read from the cards' control interfaces (`direct_pcms`), because current alsa-lib hints carry no `hw:` names. A hint with the same id wins. A shared-mode open of a `hw:` id goes through `plughw:` (a raw `hw:` open accepts only native formats and rates). A device that cannot be opened in shared mode falls back to `default` with WASAPI's "selected output device unavailable; using system default". The exclusive fallback now tries the selected device through `plughw:` before `default`. Settings no longer rewrites a missing stored device to `""`; it keeps it, listed as "`<id>` (not connected)". This applies on Windows too, where WASAPI already falls back with the same notice. |
@@ -403,8 +403,9 @@ the same, `npm --prefix ui run check` 0 errors and `npm --prefix ui test` 151 fi
       AppImage and the deb.
 - [ ] Logs land in `~/.config/oxitide/logs/`.
 - [ ] After one close/reopen, `config.toml` stores `window_width = 900` for a 900-wide window.
-- [ ] **Issue #8: capture the mix artwork payload.** Home → "Made for you" shows placeholders on
-      Linux only; find out whether the URL or the load fails:
+- [x] **Issue #8: capture the mix artwork payload.** Captured on Windows 2026-10-23: the URLs
+      are on `images.tidal.com`, blocked by the CSP (fixed, see the table above). On Linux, only
+      confirm that the mix art now shows. Original steps:
   1. Run the dev build (`npm --prefix ui run app:dev`); debug builds have the WebKit inspector
      (right-click → Inspect Element).
   2. In the Console, list what the app received for the mixes (the shelf can come from either

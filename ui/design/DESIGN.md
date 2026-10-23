@@ -492,7 +492,7 @@ The phone page served by the LAN remote is a separate entry, not a fourth mode.
 - **Touch:** every control is at least 44×44px (`--remote-touch`); presses scale to 0.92;
   row menus open a bottom sheet; queue reorder uses a drag handle (`touch-action: none`).
 - **Icons:** the shared `Icon.svelte` (Lucide only, no glyphs). Covers load straight from
-  `resources.tidal.com`; a missing cover shows the `music` icon on `--surface-2`.
+  `resources.tidal.com` (mix artwork from `images.tidal.com`); a missing cover shows the `music` icon on `--surface-2`.
 - **Motion:** page enter (fly 14px, 260ms), title fade per track, cover settles to 0.9 while
   paused, rows/tiles rise in with a short stagger (first 16 rows / 10 tiles), sheet rise,
   toast/mini-bar slide. Durations come from the `--dur-*` tokens or `remote/motion.ts`,

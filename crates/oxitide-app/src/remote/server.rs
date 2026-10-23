@@ -43,7 +43,7 @@ const KEEP_ALIVE: Duration = Duration::from_secs(15);
 const PORT_ATTEMPTS: u16 = 10;
 
 /// The remote page's own CSP (spec §5.2). The webview CSP is unaffected.
-pub const PAGE_CSP: &str = "default-src 'self'; img-src 'self' https://resources.tidal.com data:; \
+pub const PAGE_CSP: &str = "default-src 'self'; img-src 'self' https://resources.tidal.com https://images.tidal.com data:; \
 connect-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; \
 object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'none'";
 

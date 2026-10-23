@@ -235,9 +235,14 @@ fn is_cover_uuid(uuid: &str) -> bool {
 
 /// Covers a phone sends ride into the desktop queue, the media overlay (which
 /// fetches them), Discord presence (which publishes them), and history. Keep
-/// only TIDAL image ids and TIDAL CDN URLs; anything else is dropped.
+/// only TIDAL image ids and TIDAL CDN URLs (mix artwork lives on
+/// `images.tidal.com`); anything else is dropped.
 fn trusted_cover(cover: Option<String>) -> Option<String> {
-    cover.filter(|c| is_cover_uuid(c) || c.starts_with("https://resources.tidal.com/"))
+    cover.filter(|c| {
+        is_cover_uuid(c)
+            || c.starts_with("https://resources.tidal.com/")
+            || c.starts_with("https://images.tidal.com/")
+    })
 }
 
 /// The allowlist: map a wire call to a command or refuse it.
@@ -758,16 +763,22 @@ mod tests {
     fn phone_supplied_covers_are_limited_to_tidal_images() {
         let uuid = "660f113b-e63f-4c2b-a021-33350ca6948b";
         let cdn = "https://resources.tidal.com/images/a/b/320x320.jpg";
+        let mix = "https://images.tidal.com/0/EIAFGIAF/CAEQ?token=abc";
         let params = json!({"items": [
             {"track_id": 1, "title": "a", "cover": uuid},
             {"track_id": 2, "title": "b", "cover": cdn},
             {"track_id": 3, "title": "c", "cover": "http://192.168.1.1/admin"},
             {"track_id": 4, "title": "d", "cover": "https://evil.example/x.png"},
+            {"track_id": 5, "title": "e", "cover": mix},
+            {"track_id": 6, "title": "f", "cover": "https://images.tidal.com.evil.example/x"},
         ]});
         match parse("queue_add", params).unwrap() {
             RemoteCommand::QueueAdd { items } => {
                 let covers: Vec<_> = items.iter().map(|i| i.cover.as_deref()).collect();
-                assert_eq!(covers, vec![Some(uuid), Some(cdn), None, None]);
+                assert_eq!(
+                    covers,
+                    vec![Some(uuid), Some(cdn), None, None, Some(mix), None]
+                );
             }
             other => panic!("unexpected {other:?}"),
         }
