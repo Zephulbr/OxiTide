@@ -1,9 +1,9 @@
 <script lang="ts">
   // The OxiTide mark: ink disc edged by a ring, wave clipped to the disc.
-  // Colours follow --logo-accent (brand teal, else the cover colour / Rack
-  // lamp): ring = that colour, wave = it hue-rotated -130deg (teal -> orange),
-  // disc = a near-black tint of it. Browsers without relative colour syntax keep
-  // the static brand colours. Detail steps down with size, mirroring
+  // Without a cover colour the mark is the app icon's own teal/orange. With
+  // --logo-accent set (the cover colour, or Rack's lamp): ring = that colour,
+  // wave = it hue-rotated -130deg (teal -> orange), disc = a near-black tint of
+  // it. Browsers without relative colour syntax keep the icon colours. Detail steps down with size, mirroring
   // crates/oxitide-app/icons/svg/*.svg, but keeps both rings down to 22px
   // (sidebar/Rack header sizes); below that, one ring and a bolder wave.
   let { size = 24 }: { size?: number } = $props();
@@ -50,26 +50,25 @@
     flex: none;
     display: block;
   }
+  /* The icon's own colours (icons/svg) are the fallbacks: while
+     --logo-accent is unset the derived values below are invalid, so each
+     var() falls back to them. */
   .ink {
-    fill: #1c2825;
+    fill: var(--logo-ink, #1c2825);
   }
   .ring {
-    stroke: #4f8c82;
+    stroke: var(--logo-ring, #4f8c82);
   }
   .wave {
-    stroke: #c4693e;
+    stroke: var(--logo-wave, #c4693e);
   }
   @supports (color: oklch(from red l c h)) {
-    .ink {
-      fill: oklch(from var(--logo-accent) 0.26 calc(c * 0.2) h);
-    }
     /* The disc is always dark, so a dark cover colour (light theme) is
        lifted to stay visible on it. */
-    .ring {
-      stroke: oklch(from var(--logo-accent) max(l, 0.8) c h);
-    }
-    .wave {
-      stroke: oklch(from var(--logo-accent) max(l, 0.8) c calc(h - 130));
+    .logo {
+      --logo-ink: oklch(from var(--logo-accent) 0.26 calc(c * 0.2) h);
+      --logo-ring: oklch(from var(--logo-accent) max(l, 0.8) c h);
+      --logo-wave: oklch(from var(--logo-accent) max(l, 0.8) c calc(h - 130));
     }
   }
 </style>

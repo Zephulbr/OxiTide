@@ -35,10 +35,9 @@
   --text-muted: #a99f94;
   --accent: var(--dyn-primary);
   --on-accent: var(--dyn-on-primary);
-  /* The logo keeps the icon's teal (and its orange wave) while no cover
-     colour is applied; applyToDocument points it at --dyn-primary while one
-     is, and Rack at its lamp. */
-  --logo-accent: #2ee2c4;
+  /* --logo-accent is deliberately unset here: Logo.svelte then draws the
+     app icon's own colours. applyToDocument points it at --dyn-primary while
+     a cover colour is applied, and Rack at its lamp. */
   --surface-1: rgba(255, 240, 225, 0.05);
   --surface-2: rgba(255, 240, 225, 0.07);
   --surface-3: rgba(255, 240, 225, 0.09);
