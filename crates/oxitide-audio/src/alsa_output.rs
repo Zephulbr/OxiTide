@@ -2,6 +2,25 @@ use crate::decode::{PcmFormat, StreamInfo};
 use crate::error::{Error, Result};
 use crate::output::{exclusive_formats, ExclusiveFallback, OutputDevice};
 
+/// True when `snd_pcm_start` answered `-EPIPE`: a start with no frames queued,
+/// which the first `write` recovers by starting the stream itself.
+#[cfg(target_os = "linux")]
+pub fn is_start_underrun(error: &alsa::Error) -> bool {
+    std::io::Error::from_raw_os_error(error.errno()).kind() == std::io::ErrorKind::BrokenPipe
+}
+
+/// Periods the ALSA open asks for.
+pub const ALSA_PERIODS: u32 = 4;
+
+/// Frames the ALSA open asks for: half a second, at least 1024, rounded down
+/// to a multiple of [`ALSA_PERIODS`]. `snd_pcm_hw_params_set_periods` returns
+/// EINVAL when the period count does not divide the buffer, so a raw half
+/// second (22050 frames at 44.1 kHz) made every 44.1 kHz open fail and fall
+/// back to shared output.
+pub fn buffer_frames(sample_rate: u32) -> i64 {
+    ((sample_rate as i64 / 2).max(1024) / ALSA_PERIODS as i64) * ALSA_PERIODS as i64
+}
+
 /// The ALSA sample formats OxiTide writes, best quality first. All are
 /// little-endian and use a 32-, 24-, or 16-bit container.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -269,9 +288,9 @@ mod linux {
                 hwp.set_rate(spec.info.sample_rate, ValueOr::Nearest).map_err(to_error)?;
                 hwp.set_format(alsa_format(format)).map_err(to_error)?;
                 hwp.set_access(Access::RWInterleaved).map_err(to_error)?;
-                hwp.set_buffer_size_near((spec.info.sample_rate as i64 / 2).max(1024))
+                hwp.set_buffer_size_near(buffer_frames(spec.info.sample_rate))
                     .map_err(to_error)?;
-                hwp.set_periods(4, ValueOr::Nearest).map_err(to_error)?;
+                hwp.set_periods(ALSA_PERIODS, ValueOr::Nearest).map_err(to_error)?;
                 pcm.hw_params(&hwp).map_err(to_error)?;
             }
             pcm.prepare().map_err(to_error)?;
@@ -391,6 +410,8 @@ mod linux {
                 _ => "default".to_string(),
             };
             validate_device_name(&device)?;
+            tracing::debug!(target: "alsa", "open requested={requested:?} device={device} rate={} bits={}",
+                spec.info.sample_rate, spec.info.bits_per_sample);
             let mut status = OutputStatus {
                 mode: OutputMode::Shared,
                 bit_perfect: false,
@@ -405,7 +426,13 @@ mod linux {
                 let opened = if is_direct_hw(&device) {
                     alsa_exclusive_formats(&spec.info)
                         .into_iter()
-                        .find(|format| self.open_pcm(&device, *format, spec).is_ok())
+                        .find(|format| {
+                            let result = self.open_pcm(&device, *format, spec);
+                            if let Err(error) = &result {
+                                tracing::debug!(target: "alsa", "exclusive {format:?} failed: {error}");
+                            }
+                            result.is_ok()
+                        })
                 } else {
                     None
                 };
@@ -443,9 +470,21 @@ mod linux {
         }
 
         fn start(&mut self) -> Result<()> {
-            match self.pcm.as_ref() {
-                Some(pcm) => pcm.start().map_err(to_error),
-                None => Ok(()),
+            let Some(pcm) = self.pcm.as_ref() else {
+                return Ok(());
+            };
+            match pcm.start() {
+                Ok(()) => Ok(()),
+                // A start on an empty prepared PCM underruns at once on USB
+                // (and some HDMI) devices: the driver begins streaming with
+                // nothing queued and answers EPIPE. Nothing is lost, because
+                // the first `write` starts the stream once the buffer reaches
+                // the start threshold, so re-prepare and let it.
+                Err(error) if is_start_underrun(&error) => {
+                    tracing::debug!(target: "alsa", "start underran on {}; the first write starts it", self.device);
+                    pcm.prepare().map_err(to_error)
+                }
+                Err(error) => Err(to_error(error)),
             }
         }
 
@@ -583,6 +622,29 @@ mod tests {
     #[test]
     fn alsa_formats_are_empty_for_non_candidates() {
         assert!(alsa_exclusive_formats(&info(16, PcmFormat::F32)).is_empty());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn only_epipe_counts_as_a_start_underrun() {
+        use alsa::Error as AlsaError;
+        assert!(is_start_underrun(&AlsaError::new("snd_pcm_start", 32)));
+        assert!(!is_start_underrun(&AlsaError::new("snd_pcm_start", 19)));
+        assert!(!is_start_underrun(&AlsaError::new("snd_pcm_start", 0)));
+    }
+
+    #[test]
+    fn buffer_frames_divide_evenly_into_periods_at_every_rate() {
+        // 44.1 kHz is the case that used to fail: a raw half second is 22050
+        // frames, which four periods cannot split, and ALSA answered EINVAL.
+        for rate in [44_100, 48_000, 88_200, 96_000, 176_400, 192_000, 8_000] {
+            let frames = buffer_frames(rate);
+            assert_eq!(frames % ALSA_PERIODS as i64, 0, "{frames} frames at {rate}");
+            assert!(frames >= 1024, "{frames} frames at {rate}");
+            assert!(frames >= rate as i64 / 2 - ALSA_PERIODS as i64, "{frames} at {rate}");
+        }
+        assert_eq!(buffer_frames(44_100), 22_048);
+        assert_eq!(buffer_frames(48_000), 24_000);
     }
 
     #[test]
