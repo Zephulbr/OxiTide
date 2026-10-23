@@ -24,8 +24,16 @@ Branch `track13-efficiency` (unmerged). Plan `plans/2026-10-16-track13-efficienc
   - [ ] `S4.advance_max_gap_ms` (105 vs 100): accept as documented debt in the 1.0 notes, or fix.
 - [ ] Measure the shipped artifact at least once (release + LTO profile for S1/S3/memory); the
       harness drives the debug exe today.
-- [ ] Fix the flaky `oxitide-audio engine::tests::retry_resumes_at_the_recorded_position`
+- [x] Fix the flaky `oxitide-audio engine::tests::retry_resumes_at_the_recorded_position`
       (`2026-10-13-track12-completion.md`).
+      - **Done 2026-10-23** (test-only). The test simulated a stream error with a bare
+        `queue.stop()`, which left the failed session running; at 3x real time its track end
+        could land between `retry()` resuming the queue and the `playing` assert (`retry()` does
+        not hold `playback_lock`), or a stalled test thread let it play out so the retry resumed
+        at the end. It now ends the session as the worker does (stop + generation bump), waits
+        for the worker to go idle, asserts `playing` straight after `retry()`, and runs the output
+        at about real time from a 500 ms seek (1.5 s of margin). Not reproduced locally before
+        the fix (0/70 under load on 16 threads); 0/30 after it.
 - [x] Underrun counter: count output buffer underruns in the engine and report `underrun_count` in
       the perf rows (S4, S9), so playback glitches are measurable before V2 (V2 spec V2-D42 budgets
       it at 0 for S16). An engine change: it lands before the engine smokes below.

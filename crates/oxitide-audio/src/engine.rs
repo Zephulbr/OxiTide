@@ -5003,34 +5003,47 @@ mod tests {
     #[test]
     fn retry_resumes_at_the_recorded_position() {
         let (plan, files) = fixture_plan();
-        // Real-time-ish output: with an instant one the last second can play
-        // out before `playing` is observed.
+        // About real time (one ~93 ms packet per 100 ms), so the ~1.5 s left
+        // after the seek outlasts a stalled test thread; at 3x the session
+        // could reach the end mid-test and the retry would resume at the end.
         let output = NullOutput::new();
         let engine = build_engine(
             Arc::new(FakeResolver { plan }),
             Arc::new(crate::fetch::MapFetcher { files }),
-            Box::new(ThrottledOutput { inner: output.clone(), delay: Duration::from_millis(30) }),
+            Box::new(ThrottledOutput { inner: output.clone(), delay: Duration::from_millis(100) }),
             Quality::Lossless,
         );
         engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
         wait_for(|| output.samples().len() > 0);
 
-        engine.handle(EngineCmd::Seek(1000)).unwrap();
+        engine.handle(EngineCmd::Seek(500)).unwrap();
         // Past the target, so the seeked session is the one playing: until
         // the worker switches, the pre-seek session can still publish its
         // own (early) position over the seek's.
-        wait_for(|| engine.state().position_ms >= 1100);
-        assert!(engine.state().position_ms >= 1100, "the seek never played");
-        // Simulate the stop a stream error performs, keeping the position.
-        engine.inner.queue.lock().unwrap().stop();
+        wait_for(|| engine.state().position_ms >= 600);
+        assert!(engine.state().position_ms >= 600, "the seek never played");
+        // End the session the way the worker does on a stream error: stop the
+        // queue and supersede the session, keeping the position. A bare
+        // `stop()` left the session running, and its track end could clear
+        // `playing` right after the retry set it.
+        {
+            let _guard = engine.inner.playback_lock.lock().unwrap();
+            engine.inner.queue.lock().unwrap().stop();
+            engine.inner.generation.fetch_add(1, Ordering::SeqCst);
+        }
+        engine.inner.notify_worker();
+        // Once the worker is idle, every later sample comes from the retry.
+        wait_for(|| !engine.inner.worker_busy.load(Ordering::SeqCst));
+        assert!(!engine.inner.worker_busy.load(Ordering::SeqCst), "the failed session never ended");
         let before = output.samples().len();
 
         engine.retry().unwrap();
+        assert!(engine.state().playing, "retry did not resume the queue");
 
         wait_for(|| output.samples().len() > before);
-        assert!(engine.state().playing, "retry did not resume playback");
+        assert!(output.samples().len() > before, "retry did not resume playback");
         assert!(
-            engine.state().position_ms >= 1000,
+            engine.state().position_ms >= 500,
             "retry restarted from the beginning: {}",
             engine.state().position_ms
         );
