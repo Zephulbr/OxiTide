@@ -572,12 +572,18 @@ impl Engine {
     /// error, a device-loss pause, or a queue stopped at the end of a track.
     /// A no-op without a current item.
     pub fn retry(&self) -> Result<()> {
-        let item = {
-            let q = self.inner.queue.lock().unwrap();
-            q.current().cloned()
-        };
-        if let Some(item) = item {
-            self.inner.queue.lock().unwrap().resume();
+        {
+            // Under `playback_lock`, generation first, like the other
+            // transport commands: a session ending its track at the same
+            // moment then sees itself superseded instead of clearing
+            // `playing` right after the resume below.
+            let _guard = self.inner.playback_lock.lock().unwrap();
+            let mut q = self.inner.queue.lock().unwrap();
+            let Some(item) = q.current().cloned() else {
+                return Ok(());
+            };
+            self.inner.generation.fetch_add(1, Ordering::SeqCst);
+            q.resume();
             self.inner.paused.store(false, Ordering::SeqCst);
             // Only trust `position_ms` when it belongs to the current track.
             let position = if self.inner.position_track.load(Ordering::SeqCst) == item.track_id {
@@ -590,10 +596,9 @@ impl Engine {
                 position_ms: position,
                 auto_start: true,
             });
-            self.inner.generation.fetch_add(1, Ordering::SeqCst);
-            self.inner.notify_worker();
-            self.emit(EngineEvent::State(self.state()));
         }
+        self.inner.notify_worker();
+        self.emit(EngineEvent::State(self.state()));
         Ok(())
     }
 
@@ -5068,6 +5073,29 @@ mod tests {
             "retry restarted from the beginning: {}",
             engine.state().position_ms
         );
+    }
+
+    /// The worker's track end advances the queue under `playback_lock`; a retry
+    /// must wait for it, or the end can clear `playing` right after the resume.
+    #[test]
+    fn retry_waits_for_the_playback_lock() {
+        let (plan, files) = fixture_plan();
+        let (engine, _output) = engine_with(plan, files);
+        engine.inner.queue.lock().unwrap().play_context(vec![item(1)], 0);
+        engine.inner.queue.lock().unwrap().stop();
+        let before = engine.inner.generation.load(Ordering::SeqCst);
+
+        let guard = engine.inner.playback_lock.lock().unwrap();
+        std::thread::scope(|scope| {
+            let retry = scope.spawn(|| engine.retry().unwrap());
+            std::thread::sleep(Duration::from_millis(50));
+            assert_eq!(engine.inner.generation.load(Ordering::SeqCst), before, "retry ran under the lock");
+            assert!(!engine.inner.queue.lock().unwrap().is_playing());
+            drop(guard);
+            retry.join().unwrap();
+        });
+        assert_eq!(engine.inner.generation.load(Ordering::SeqCst), before + 1);
+        assert!(engine.state().playing);
     }
 
     #[test]
