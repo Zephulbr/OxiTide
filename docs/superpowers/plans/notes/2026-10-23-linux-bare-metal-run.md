@@ -9,13 +9,13 @@
 - **Owner:** V (hardware and TIDAL account); the run was driven by the agent (build, gates, GUI automation, D-Bus/MPRIS checks, perf corpus).
 - **Authority:** `2026-10-03-track8-bare-metal-checklist.md` (Track 8 closure gate),
   `2026-10-13-track9-completion.md` § Linux bare-metal run, `2026-10-17-v1-release-gate.md` §6.
-- **Tree:** `main` at `db6e320`, version 0.4.0; clean at the start of the run, with the
-  uncommitted ALSA patch of §12 at the end.
+- **Tree:** `main` at `db6e320`, version 0.4.0; the run added the docs commit `d71ea22` and
+  the ALSA fix `7498179` (§12).
 - **Machine:** CachyOS (Arch rolling), kernel 7.3.0-3-cachyos, KDE Plasma 6.8.1 on **Wayland**,
-  PipeWire 1.6.10, WebKitGTK 2.54.1, ASUS Vivobook M3402RA (AMD), internal HDA speakers, plus a MOONDROP Dawn Pro
-  USB DAC in the §11 follow-up; 1.75 display scale, 32 GB RAM. **This is not the Windows 11 machine the earlier smoke rows were
-  recorded on** — hardware, GPU/audio stack and WebKit engine differ, so results are a Linux
-  baseline, not a comparison.
+  PipeWire 1.6.10, WebKitGTK 2.54.1, ASUS Vivobook M3402RA (AMD), internal HDA speakers plus a
+  MOONDROP Dawn Pro USB DAC in the §11 follow-up; 1.75 display scale, 32 GB RAM. **This is not
+  the Windows 11 machine the earlier smoke rows were recorded on** — hardware, GPU/audio stack
+  and WebKit engine differ, so results are a Linux baseline, not a comparison.
 
 Toolchain used: Rust 1.99.1 (stable, local install), Node 24.22.1 (local), `webkit2gtk-4.1`
 2.54.1, `patchelf` 0.19.2, `playerctl` 2.4.1, `xdotool`/libxdo installed.
@@ -123,9 +123,8 @@ calibration before they can gate anything.
 
 ## 8. Issues
 
-Register first, detail below. "Working tree" means the fix exists locally in
-`crates/oxitide-audio/src/alsa_output.rs` but is **not committed or pushed** (the owner asked for a
-docs-only push; see §12).
+Register first, detail below. #13/#14 are fixed by `crates/oxitide-audio/src/alsa_output.rs`
+in commit `7498179`; §12 records what the patch changes.
 
 | # | Issue | Severity | Status |
 |---|---|---|---|
@@ -141,8 +140,8 @@ docs-only push; see §12).
 | 10 | Empty AT-SPI tree for the WebKitGTK window | a11y | open |
 | 11 | Exclusive mode unreachable from the picker | **high** | open — blocks the audio path |
 | 12 | MPRIS `Volume` is read-only | low | open |
-| 13 | 44.1 kHz exclusive opens fail on buffer/period math (`EINVAL`) | **high** | fixed in working tree |
-| 14 | `snd_pcm_start` on an empty buffer returns `EPIPE` (USB DAC) | **high** | fixed in working tree |
+| 13 | 44.1 kHz exclusive opens fail on buffer/period math (`EINVAL`) | **high** | fixed (`7498179`) |
+| 14 | `snd_pcm_start` on an empty buffer returns `EPIPE` (USB DAC) | **high** | fixed (`7498179`) |
 
 1. **Split state directories (functional, low).** Config/session/cache/history live in
    `~/.config/oxitide/`, logs in `~/.config/OxiTide/logs/` (`config.rs:541-553` mixes
@@ -193,7 +192,7 @@ docs-only push; see §12).
     property stays `1.0` and the app volume does not move; hardware volume changes only come
     from the in-app slider. Either expose it (the engine already takes `set_volume`) or leave it
     documented as unsupported.
-13. **44.1 kHz exclusive opens failed on buffer/period math (high, fixed in working tree).**
+13. **44.1 kHz exclusive opens failed on buffer/period math (high, fixed in `7498179`).**
     `AlsaOutput::open_pcm` asked for `buffer = rate/2` frames (22 050 at 44.1 kHz) and then
     `set_periods(4, Nearest)`. Four periods cannot split 22 050, and
     `snd_pcm_hw_params_set_periods` answered `EINVAL`, so *every* exclusive open of a 44.1 kHz
@@ -201,7 +200,7 @@ docs-only push; see §12).
     48/96 kHz divided evenly, which is why the DAC initially looked like the problem. The fix
     rounds the buffer down to a multiple of the requested periods (`buffer_frames`, 22 048
     frames at 44.1 kHz) and keeps 48 kHz at 24 000.
-14. **`snd_pcm_start` on an empty prepared PCM returns `EPIPE` (high, fixed in working tree).**
+14. **`snd_pcm_start` on an empty prepared PCM returns `EPIPE` (high, fixed in `7498179`).**
     On the Dawn Pro the exclusive open succeeds, then `snd_pcm_start` fails with
     `Broken pipe (32)` at 44.1/48/96/192 kHz, and the engine turned that into a playback error
     before a single frame was written. A start with nothing queued makes the USB driver begin
@@ -247,7 +246,7 @@ Plugged in the same day, after the batch above. `Comtrue` USB (`2fc6:f06a`), ALS
 (`PCM`, no `Master`). The device is the PipeWire default sink and is held open by WirePlumber
 while a stream runs, released after its suspend timeout.
 
-**Three bugs found; two fixed in the working tree (#13, #14), one open (#11).**
+**Three bugs found; two fixed (#13, #14 in `7498179`), one open (#11).**
 
 1. **Issue #13 — 44.1 kHz exclusive opens failed on buffer/period math.** The first exclusive
    attempt on the DAC opened as `Shared` at every rate, and the step-by-step ALSA probe showed
@@ -299,10 +298,11 @@ pactl list short sink-inputs                   # empty => the app bypasses PipeW
 playerctl play | pause | next | volume 0.35
 ```
 
-## 12. Pending patch (not committed)
+## 12. ALSA patch (`7498179`)
 
-Owner decision after the DAC pass: **document only, do not commit fixes yet.** The working tree
-holds the two ALSA fixes from #13/#14 in `crates/oxitide-audio/src/alsa_output.rs` (+68/−6):
+The docs were committed first (`d71ea22`) while the fixes were still working-tree-only; the
+owner then asked for them to go up too, so they land as `7498179`
+(`crates/oxitide-audio/src/alsa_output.rs`, +68/−6):
 
 - `ALSA_PERIODS`, `buffer_frames(rate)` and their use in `open_pcm` (fixes #13);
 - `is_start_underrun(&alsa::Error)` and the re-preparing `start()` (fixes #14);
@@ -311,11 +311,11 @@ holds the two ALSA fixes from #13/#14 in `crates/oxitide-audio/src/alsa_output.r
   which device/mode/rate was opened and why an exclusive format attempt failed.
 
 Verified with the patch present: `cargo test --workspace` (1094 passed, 0 failed),
-`cargo clippy --workspace -- -D warnings` clean, and the end-to-end DAC checks above. That
-tree remains uncommitted; nothing in this note depends on it being merged, and the app as
-pushed still falls back to shared output on this machine.
+`cargo clippy --workspace -- -D warnings` clean, and the end-to-end DAC checks above. `main` is
+at `7498179`; the release binary used for the pass was built from that tree.
 
-Issue #11 (picker) is **not** patched anywhere — it needs an enumeration/labelling decision.
+Issue #11 (picker) is **not** patched — exclusive still cannot be selected from the UI; the DAC
+rows above used a device id written into `config.toml` by hand.
 
 ## 13. Evidence index (local, gitignored)
 

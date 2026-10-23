@@ -100,8 +100,8 @@ release notes (the README currently says "Supported").
 **Run 2026-10-23 (CachyOS / KDE Wayland / PipeWire):** gates, build, MPRIS, deep links, tray, Rack,
 credits, remote and the first Linux perf corpus all executed — results and issues in
 `2026-10-23-linux-bare-metal-run.md`. A USB-DAC follow-up the same day verified exclusive
-bit-perfect playback and hardware mixer volume (after fixing two ALSA bugs, currently an
-uncommitted patch) and found that the device picker cannot select a direct `hw:` device — the last audio-path blocker. Still blocking a
+bit-perfect playback and hardware mixer volume (after fixing two ALSA bugs in `7498179`) and found that the device picker cannot select a direct
+`hw:` device — the last audio-path blocker. Still blocking a
 full close: that picker fix, DAC hotplug, AUR (recipe URL/tag drift), the oldest-base checks,
 MPRIS desktop-entry resolution, and the MPRIS `Stop` parity issue.
 

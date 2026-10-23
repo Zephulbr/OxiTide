@@ -20,8 +20,8 @@ row-by-row results in `2026-10-23-linux-bare-metal-run.md`. Closed there:
 `ExclusiveFallback` on a busy device, real-DE MPRIS + media keys (KDE),
 `tidal://` + single instance, Wayland geometry, AppImage on the current distro.
 A USB-DAC follow-up the same day (`MOONDROP Dawn Pro`) closed the two audio
-rows after fixing two ALSA bugs (§11 there, and note the fixes are an
-**uncommitted** working-tree patch — §12): exclusive bit-perfect playback
+rows after fixing two ALSA bugs (§11 there; fixes in `7498179`): exclusive
+bit-perfect playback
 (S32_LE at the file's rate, no PipeWire stream, `✓ BP`) and hardware mixer
 volume. DAC hotplug and the format step-down are still unexercised, and
 exclusive cannot be selected from the UI yet — the picker never offers a `hw:`
