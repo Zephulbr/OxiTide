@@ -1,11 +1,11 @@
 # Native Linux bare-metal run (2026-10-23)
 
 - **Status:** first bare-metal batch executed, then a USB-DAC follow-up the same day (§11):
-  bit-perfect playback works end-to-end once two ALSA bugs are patched (#13, #14 — fixes sit
-  uncommitted in the working tree), while the device picker still cannot select a direct device
-  (#11, open). 14 issues recorded, 1 row blocked (AUR), the oldest-base rows not
-  available on this host. Docs only: no fix was committed
-  or pushed with this note (§12).
+  bit-perfect playback works end-to-end once two ALSA bugs are patched (#13, #14, committed
+  as `7498179`, §12). 14 issues recorded, 1 row blocked (AUR), the oldest-base rows not
+  available on this host. A follow-up pass the same day (§14) fixed #1–#6, #11 and #12 in
+  code, hardened the #13 fix, and left #7–#10 open with reasons; its changes still need a
+  rerun on this laptop (§14.3).
 - **Owner:** V (hardware and TIDAL account); the run was driven by the agent (build, gates, GUI automation, D-Bus/MPRIS checks, perf corpus).
 - **Authority:** `2026-10-03-track8-bare-metal-checklist.md` (Track 8 closure gate),
   `2026-10-13-track9-completion.md` § Linux bare-metal run, `2026-10-17-v1-release-gate.md` §6.
@@ -128,19 +128,19 @@ in commit `7498179`; §12 records what the patch changes.
 
 | # | Issue | Severity | Status |
 |---|---|---|---|
-| 1 | Split state directories (`oxitide` vs `OxiTide`) | low | open |
-| 2 | MPRIS `Stop` behaves as pause | medium | open |
-| 3 | Tray SNI title `oxitide-app`, empty tooltip | cosmetic | open |
-| 4 | MPRIS `DesktopEntry` does not resolve per package | packaging | open |
-| 5 | Exclusive-fallback notice starts lowercase | cosmetic | open |
-| 6 | Window geometry persisted at 2× the logical size | low | open |
-| 7 | `xdg-mime: qtpaths: command not found` at startup | cosmetic | open (environment) |
-| 8 | Mix cards show placeholder art | data | open (confirm payload) |
-| 9 | Updater check fails on an unpublished release | expected | open (needs two releases) |
-| 10 | Empty AT-SPI tree for the WebKitGTK window | a11y | open |
-| 11 | Exclusive mode unreachable from the picker | **high** | open — blocks the audio path |
-| 12 | MPRIS `Volume` is read-only | low | open |
-| 13 | 44.1 kHz exclusive opens fail on buffer/period math (`EINVAL`) | **high** | fixed (`7498179`) |
+| 1 | Split state directories (`oxitide` vs `OxiTide`) | low | fixed in code (§14), rerun pending |
+| 2 | MPRIS `Stop` behaves as pause | medium | fixed in code (§14), rerun pending |
+| 3 | Tray SNI title `oxitide-app`, empty tooltip | cosmetic | title fixed in code (§14); tooltip not possible through libappindicator |
+| 4 | MPRIS `DesktopEntry` does not resolve per package | packaging | fixed in code (§14), rerun pending |
+| 5 | Exclusive-fallback notice starts lowercase | cosmetic | fixed (§14) |
+| 6 | Window geometry persisted at 2× the logical size | low | fixed in code (§14), rerun pending |
+| 7 | `xdg-mime: qtpaths: command not found` at startup | cosmetic | open (environment, §14) |
+| 8 | Mix cards show placeholder art | data | open: needs a payload capture (§14) |
+| 9 | Updater check fails on an unpublished release | expected | no change: logged at info, nothing shown to the user |
+| 10 | Empty AT-SPI tree for the WebKitGTK window | a11y | open (§14) |
+| 11 | Exclusive mode unreachable from the picker | **high** | fixed in code (§14), DAC rerun pending |
+| 12 | MPRIS `Volume` is read-only | low | fixed in code (§14), rerun pending |
+| 13 | 44.1 kHz exclusive opens fail on buffer/period math (`EINVAL`) | **high** | fixed (`7498179`), hardened in §14 |
 | 14 | `snd_pcm_start` on an empty buffer returns `EPIPE` (USB DAC) | **high** | fixed (`7498179`) |
 
 1. **Split state directories (functional, low).** Config/session/cache/history live in
@@ -233,8 +233,8 @@ in commit `7498179`; §12 records what the patch changes.
   selected, DAC hotplug, the two oldest-base checks, AUR and the MPRIS desktop-entry
   resolution.
 - Fix issue #2 (MPRIS Stop) or renegotiate the row; #11 is the only blocker on the audio path.
-- #13/#14 are fixed in the working tree only (§12). They should be committed (or rewritten)
-  before anyone reruns the DAC rows, otherwise the run repeats the shared fallback.
+  Both are fixed in code by §14 and wait for the §14.3 rerun.
+- #13/#14 are committed (`7498179`, §12).
 - Before `v1.0.0`: render the AUR `PKGBUILD` from a pushed tag and point the template at the
   current `origin` (GitHub), then run `makepkg -si`; otherwise label Linux "preview" in the
   1.0 notes as `2026-10-17-v1-release-gate.md` §6 allows.
@@ -280,7 +280,7 @@ have been "PipeWire holds the card". Two checks separated the causes:
 | App end to end (device id written into `config.toml`) | **PASS** — `/proc/asound/card3/pcm0p/sub0/hw_params`: `S32_LE`, `rate 44100`, `period 5512`, `buffer 22048`; `status` owner is a thread of the app process; `pactl list short sink-inputs` empty; player bar shows `✓ BP` |
 | Track/reopen behaviour | **PASS** — a 24-bit track reopened at `rate=44100 bits=24`; pause past `PAUSE_RELEASE` (30 s) closed the PCM, resume reopened it exclusively with no PipeWire hijack in between |
 | Hardware volume | **PASS** — slider drag → DAC `PCM` 48/127 (38 %, −39.5 dB) with the stream RUNNING and `✓ BP` still lit |
-| Rate following (backend) | **PASS** — the same `AlsaOutput` opened 44.1/48/96/192 sequentially; a 48 kHz-only device would have been accepted at a nearby rate, because `set_rate(…, Nearest)` is never read back (follow-up: make exclusive asks `Exact`) |
+| Rate following (backend) | **PASS** — the same `AlsaOutput` opened 44.1/48/96/192 sequentially. (The concern first noted here, that `set_rate(…, Nearest)` could accept a nearby rate, does not hold: in the `alsa` crate `set_rate` is `snd_pcm_hw_params_set_rate`, an exact restriction, and `ValueOr::Nearest` is only its `dir = 0` argument. See §14.1.) |
 
 **Not exercised:** hotplug (needs the cable), format step-down (device accepts `S32_LE`
 everywhere), GUI sample-rate switching (queue is CD-quality).
@@ -311,11 +311,12 @@ owner then asked for them to go up too, so they land as `7498179`
   which device/mode/rate was opened and why an exclusive format attempt failed.
 
 Verified with the patch present: `cargo test --workspace` (1094 passed, 0 failed),
-`cargo clippy --workspace -- -D warnings` clean, and the end-to-end DAC checks above. `main` is
-at `7498179`; the release binary used for the pass was built from that tree.
+`cargo clippy --workspace -- -D warnings` clean, and the end-to-end DAC checks above. The
+release binary used for the pass was built from `7498179`; the note itself landed on top as
+`0f5918c`.
 
-Issue #11 (picker) is **not** patched — exclusive still cannot be selected from the UI; the DAC
-rows above used a device id written into `config.toml` by hand.
+Issue #11 (picker) was not patched in that commit: the DAC rows above used a device id
+written into `config.toml` by hand. §14 fixes it.
 
 ## 13. Evidence index (local, gitignored)
 
@@ -328,3 +329,101 @@ rows above used a device id written into `config.toml` by hand.
 
 Nothing under `.superpowers/` is committed; this note quotes the numbers so the record survives
 without it.
+
+## 14. Follow-up pass (same day, Windows + WSL)
+
+Done on the Windows dev machine with the gates run on both platforms: Windows
+`cargo test --workspace` and `cargo clippy --workspace -- -D warnings` clean, WSL Ubuntu 22.04
+(compiles and tests the `cfg(target_os = "linux")` code, incl. the ALSA `null`-device tests)
+the same, `npm --prefix ui run check` 0 errors and `npm --prefix ui test` 151 files /
+1231 tests. No hardware was touched, so every Linux behaviour change below still needs the
+§14.3 rerun.
+
+### 14.1 Review of the ALSA fixes (`7498179`)
+
+- **#14 (`EPIPE` on start): correct, kept.** `snd_pcm_start` on a prepared, empty PCM can only
+  fail with `EPIPE` as an immediate underrun; re-preparing returns the PCM to `PREPARED`, and
+  with the default software params (start threshold 1 frame) the first `writei` starts the
+  stream. Other errnos still fail the start. The check reads `alsa::Error::errno()` (positive),
+  which the unit test pins.
+- **#13 (period math): right diagnosis, fragile fix; hardened.** Rounding the buffer to a
+  multiple of 4 made the exact `set_periods(4)` succeed on the Dawn Pro, but two cases still
+  failed:
+  - `set_buffer_size_near` may settle on a different size than asked (HDA, devices with
+    byte-aligned buffers), and the exact `set_periods(4)` then fails again.
+  - HDA controllers need periods that are a multiple of 128 bytes. 22 048 / 4 = 5 512 frames is
+    44 096 bytes at S32 stereo, which is not 128-aligned. So the internal speakers' `hw:` device
+    would still have failed every 44.1 kHz exclusive open.
+
+  Now `buffer_frames` rounds to 4 periods of 64-frame multiples (22 016 frames at 44.1 kHz,
+  23 808 at 48 kHz), and the period is set with `set_period_size_near(buffer / 4)`, so a device
+  that cannot split its buffer that way picks the nearest period it supports instead of failing
+  the open. On the Dawn Pro this changes `period 5512 / buffer 22048` to `5504 / 22016`.
+- **The "make exclusive ask `Exact`" follow-up is withdrawn.** `HwParams::set_rate(v, dir)`
+  wraps `snd_pcm_hw_params_set_rate`, which restricts the space to exactly `v`. The `Nearest`
+  argument is only `dir = 0`. A `hw:` device without that rate fails the open; it is not
+  silently resampled. `set_periods` behaves the same way, which is why #13 surfaced as
+  `EINVAL`.
+- The three `tracing::debug!` lines (`target: "alsa"`) are kept; `RUST_LOG=alsa=debug` shows
+  which device, mode, and format an open used.
+
+### 14.2 Issues
+
+| # | Change |
+|---|---|
+| 1 | Linux `config::logs_dir()` is `~/.config/oxitide/logs` (beside the config, session, cache); Windows keeps `%APPDATA%\OxiTide\logs`. Old logs in `~/.config/OxiTide/logs` are left in place. |
+| 2 | MPRIS `Stop` pauses (when playing), seeks to 0, and reports `PlaybackStatus=Stopped` until Play or a track change (`request_stop`, `MprisState::stopped`). The engine still has no stop state, so the queue and metadata stay, and Play resumes the same track from 0. The smoke row "stopping playback clears the metadata" should read "stopping shows Stopped at 0:00". |
+| 3 | `tray::set_application_name()` sets GLib's application name to "OxiTide" at the top of `main`; libayatana-appindicator reports it as the SNI `Title` (it defaulted to the binary name). A track tooltip is still impossible: libappindicator has no tooltip API and Tauri does not expose the indicator. |
+| 4 | MPRIS `DesktopEntry` is the first installed of `OxiTide` (deb/AppImage bundle), `oxitide` (AUR), `oxitide-app-handler` (deep-link handler from dev/AppImage runs), looked up in `$XDG_DATA_HOME` and `$XDG_DATA_DIRS`; else `OxiTide`. |
+| 5 | Output notices are shown sentence-cased (`sentenceCase` in `lib/format.ts`) in Settings, the player bar tooltip, and the Rack VFD. The Rust strings stay lowercase clauses because the engine composes and compares them. |
+| 6 | Linux stores the window size in logical pixels (GTK only has integer scale factors, so the 1.75 display reported scale 2). Windows keeps physical pixels. The first Linux start after this change reads the old doubled values as logical once; closing the window rewrites them. |
+| 7 | Not changed. `tauri-plugin-deep-link`'s `register_all` runs `xdg-mime`, whose KDE backend wants `qtpaths` (Arch: `qt6-tools`). Skipping registration for packaged installs would silence it, but the registration also repairs a stale `tidal://` default left by an AppImage run, and login depends on it. |
+| 8 | Not changed. The Windows smoke (`DONE-2026-09-30-track4b-discovery-smoke.md`) shows mix art, and the CSP allows only `resources.tidal.com`, so the URL host is the first suspect on Linux. To settle it, capture one `pages/home` `MIX_LIST` item's `images` block on the laptop, or check the WebKit inspector console for a CSP or load error. |
+| 9 | Not changed: logged at `info` and never shown to the user; resolves once two releases exist. |
+| 10 | Not changed. Nothing in the app sets `NO_AT_BRIDGE` or other a11y switches. Next step: check with Orca or `accerciser` whether WebKitGTK's web-process tree is reachable at all (the KWin client may not follow the embedded socket). |
+| 11 | The picker now lists every playback PCM of every card as `hw:CARD=<id>,DEV=<n>` ("MOONDROP Dawn Pro, USB Audio (direct hardware)"), read from the cards' control interfaces (`direct_pcms`), because current alsa-lib hints carry no `hw:` names. A hint with the same id wins. A shared-mode open of a `hw:` id goes through `plughw:` (a raw `hw:` open accepts only native formats and rates). A device that cannot be opened in shared mode falls back to `default` with WASAPI's "selected output device unavailable; using system default". The exclusive fallback now tries the selected device through `plughw:` before `default`. Settings no longer rewrites a missing stored device to `""`; it keeps it, listed as "`<id>` (not connected)". This applies on Windows too, where WASAPI already falls back with the same notice. |
+| 12 | MPRIS `Volume` is writable: `connect_set_volume` sends `SetVolume` to the engine (not persisted, like the phone remote), and the property follows every engine `State` (app slider, phone, hotkeys). |
+| AUR row | The template's Codeberg URL is not drift: `origin` is Codeberg (`git@codeberg.org:Zephulbr/OxiTide.git`) and GitHub is the mirror the laptop cloned. The row stays blocked only on an unpushed `v0.4.0` tag. |
+
+### 14.3 Rerun on the CachyOS laptop
+
+- [ ] Settings → Audio device lists `MOONDROP Dawn Pro, USB Audio (direct hardware)`;
+      selecting it with exclusive on plays `✓ BP` (`hw_params`: `S32_LE`, 44100,
+      `period 5504`, `buffer 22016`) with no hand-edited `config.toml`.
+- [ ] Same device with exclusive **off** plays (through `plughw:`), no notice.
+- [ ] The internal speakers' `hw:` entry (HDA) opens exclusive at 44.1 kHz.
+- [ ] Unplug the DAC with Settings closed, start a track: system default plays with "Selected
+      output device unavailable; using system default". Settings shows the DAC as "(not
+      connected)". Replug it: the next track plays on the DAC.
+- [ ] `playerctl stop` → `PlaybackStatus` `Stopped`, position 0, metadata kept; `playerctl play`
+      resumes from 0.
+- [ ] `playerctl volume 0.35` moves the app slider; dragging the slider updates
+      `playerctl volume`.
+- [ ] SNI `Title` is `OxiTide`; MPRIS `DesktopEntry` names an installed `.desktop` file for the
+      AppImage and the deb.
+- [ ] Logs land in `~/.config/oxitide/logs/`.
+- [ ] After one close/reopen, `config.toml` stores `window_width = 900` for a 900-wide window.
+- [ ] **Issue #8: capture the mix artwork payload.** Home → "Made for you" shows placeholders on
+      Linux only; find out whether the URL or the load fails:
+  1. Run the dev build (`npm --prefix ui run app:dev`); debug builds have the WebKit inspector
+     (right-click → Inspect Element).
+  2. In the Console, list what the app received for the mixes (the shelf can come from either
+     page, so check both):
+     ```js
+     for (const cmd of ["get_home", "get_for_you"])
+       console.table((await window.__TAURI_INTERNALS__.invoke(cmd))
+         .flatMap((s) => s.items.filter((i) => /MIX/i.test(`${i.item_type} ${s.kind}`))
+           .map((i) => ({ cmd, shelf: s.title, title: i.title, artwork: i.artwork }))));
+     ```
+     `artwork` is the URL taken from the mix's `images.MEDIUM` (else `LARGE`, `SMALL`) block
+     (`pages.rs`). Record one full URL here.
+  3. Read the result:
+     - `null` or empty: TIDAL sent no `images` for the mix on this account, or under a key the
+       parser does not read.
+     - A host other than `resources.tidal.com`: the CSP's `img-src` blocks it. The Console shows
+       a "Refused to load the image" line. Fix: allow that host in `tauri.conf.json` (`csp` and
+       `devCsp`).
+     - A `resources.tidal.com` URL: open it in the Network tab and note the status and
+       `Content-Type`. A load failure that does not happen on Windows points at WebKitGTK
+       (image format, redirect).
+  4. Compare with the same call on Windows (WebView2 DevTools, F12) if the hosts differ.
