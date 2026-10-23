@@ -142,6 +142,8 @@ fn handle_deep_link(app: &tauri::AppHandle, raw: &str) {
 
 fn main() {
     let _ = perf::install();
+    #[cfg(target_os = "linux")]
+    tray::set_application_name();
     init_logging();
     perf::mark("logging_ready");
     let config = config::Config::load();

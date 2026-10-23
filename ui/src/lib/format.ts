@@ -41,6 +41,13 @@ export function formatCount(n: number): string {
   return compact(thousands, "K");
 }
 
+/// Engine notices are lowercase clauses ("exclusive mode unavailable; …") so
+/// Rust can compare and compose them; shown on their own they start a
+/// sentence. Only the first letter changes.
+export function sentenceCase(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /// TIDAL release dates (`2014-02-11`, sometimes just a year) as `Feb 11, 2014`.

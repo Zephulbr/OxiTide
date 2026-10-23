@@ -9,16 +9,79 @@ pub fn is_start_underrun(error: &alsa::Error) -> bool {
     std::io::Error::from_raw_os_error(error.errno()).kind() == std::io::ErrorKind::BrokenPipe
 }
 
-/// Periods the ALSA open asks for.
+/// Periods the ALSA open aims for.
 pub const ALSA_PERIODS: u32 = 4;
 
-/// Frames the ALSA open asks for: half a second, at least 1024, rounded down
-/// to a multiple of [`ALSA_PERIODS`]. `snd_pcm_hw_params_set_periods` returns
-/// EINVAL when the period count does not divide the buffer, so a raw half
-/// second (22050 frames at 44.1 kHz) made every 44.1 kHz open fail and fall
-/// back to shared output.
+/// Frames per period are kept a multiple of this, so a period is a multiple
+/// of 128 bytes in every container OxiTide writes (2+ bytes per frame). HDA
+/// controllers require that alignment of the period and the buffer.
+const PERIOD_ALIGN_FRAMES: i64 = 64;
+
+/// Frames the ALSA open asks for: about half a second, at least 1024,
+/// rounded down to [`ALSA_PERIODS`] aligned periods. A raw half second
+/// (22050 frames at 44.1 kHz) cannot be split into four periods, and the
+/// exact `set_periods(4)` that followed it answered EINVAL, so every 44.1 kHz
+/// exclusive open fell back to shared output.
 pub fn buffer_frames(sample_rate: u32) -> i64 {
-    ((sample_rate as i64 / 2).max(1024) / ALSA_PERIODS as i64) * ALSA_PERIODS as i64
+    let step = ALSA_PERIODS as i64 * PERIOD_ALIGN_FRAMES;
+    ((sample_rate as i64 / 2).max(1024) / step) * step
+}
+
+/// The period to ask for once the device settled on `buffer` frames: a
+/// quarter of it. Used with `set_period_size_near`, so a device that cannot
+/// split its buffer that way picks the nearest period it supports instead of
+/// failing the open.
+pub fn period_frames(buffer: i64) -> i64 {
+    (buffer / ALSA_PERIODS as i64).max(1)
+}
+
+/// The PCM a shared-mode open uses for `device`: a direct `hw:` device goes
+/// through its `plughw:` twin, which converts format and rate. A raw `hw:`
+/// open accepts only the device's native formats and rates, so a shared
+/// session on it would fail for most tracks.
+pub fn shared_pcm_name(device: &str) -> String {
+    match device.strip_prefix("hw:") {
+        Some(rest) => format!("plughw:{rest}"),
+        None => device.to_string(),
+    }
+}
+
+/// Notice shown when the selected device cannot be opened and playback moved
+/// to the system default; matches WASAPI's wording.
+pub const DEVICE_UNAVAILABLE_NOTICE: &str = "selected output device unavailable; using system default";
+
+/// One playback PCM device on a sound card, from the card's control interface.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DirectPcm {
+    /// The card's stable id (`Pro`, `Generic`), as in `hw:CARD=<id>`.
+    pub card_id: String,
+    /// The card's name (`MOONDROP Dawn Pro`).
+    pub card_name: String,
+    pub device: u32,
+    /// The PCM's name (`USB Audio`, `ALC3246 Analog`, `HDMI 0`).
+    pub pcm_name: String,
+}
+
+/// Picker entries for direct hardware PCMs. Current alsa-lib no longer lists
+/// `hw:` names in its device hints, so they are built from the cards
+/// themselves; only these ids can open exclusive (see [`is_direct_hw`]).
+pub fn direct_devices(pcms: &[DirectPcm]) -> Vec<OutputDevice> {
+    pcms.iter()
+        .map(|pcm| {
+            let card = pcm.card_name.trim();
+            let card = if card.is_empty() { pcm.card_id.as_str() } else { card };
+            let name = pcm.pcm_name.trim();
+            OutputDevice {
+                id: format!("hw:CARD={},DEV={}", pcm.card_id, pcm.device),
+                name: if name.is_empty() {
+                    format!("{card} (direct hardware)")
+                } else {
+                    format!("{card}, {name} (direct hardware)")
+                },
+                is_default: false,
+            }
+        })
+        .collect()
 }
 
 /// The ALSA sample formats OxiTide writes, best quality first. All are
@@ -121,19 +184,21 @@ fn hint_label(name: &str, desc: Option<&str>) -> String {
         .to_string()
 }
 
-/// Collapse hints into the picker list: one entry per ALSA device name, the
+/// Collapse hints and direct PCMs into the picker list: one entry per ALSA
+/// device name (a hint wins over a direct entry with the same id), the
 /// default first, then the rest by id.
-pub fn device_list(hints: &[Hint]) -> Vec<OutputDevice> {
+pub fn device_list(hints: &[Hint], direct: &[DirectPcm]) -> Vec<OutputDevice> {
     let mut seen = std::collections::BTreeSet::new();
     let mut out: Vec<OutputDevice> = hints
         .iter()
         .filter(|hint| hint_is_output(hint) && hint_is_pickable(&hint.name))
-        .filter(|hint| seen.insert(hint.name.clone()))
         .map(|hint| OutputDevice {
             id: hint.name.clone(),
             name: hint_label(&hint.name, hint.desc.as_deref()),
             is_default: hint.name == "default",
         })
+        .chain(direct_devices(direct))
+        .filter(|device| seen.insert(device.id.clone()))
         .collect();
     out.sort_by(|a, b| (a.id != "default", &a.id).cmp(&(b.id != "default", &b.id)));
     out
@@ -288,9 +353,11 @@ mod linux {
                 hwp.set_rate(spec.info.sample_rate, ValueOr::Nearest).map_err(to_error)?;
                 hwp.set_format(alsa_format(format)).map_err(to_error)?;
                 hwp.set_access(Access::RWInterleaved).map_err(to_error)?;
-                hwp.set_buffer_size_near(buffer_frames(spec.info.sample_rate))
+                let buffer = hwp
+                    .set_buffer_size_near(buffer_frames(spec.info.sample_rate))
                     .map_err(to_error)?;
-                hwp.set_periods(ALSA_PERIODS, ValueOr::Nearest).map_err(to_error)?;
+                hwp.set_period_size_near(period_frames(buffer), ValueOr::Nearest)
+                    .map_err(to_error)?;
                 pcm.hw_params(&hwp).map_err(to_error)?;
             }
             pcm.prepare().map_err(to_error)?;
@@ -299,6 +366,23 @@ mod linux {
             self.device = name.to_string();
             self.channels = spec.info.channels;
             Ok(())
+        }
+
+        /// Open `device` for shared playback (see [`shared_pcm_name`]). When
+        /// it cannot be opened (unplugged, held by another program) the
+        /// system default is used instead and `Ok(false)` is returned, so the
+        /// caller can say so, as WASAPI does for a missing device.
+        fn open_shared(&mut self, device: &str, spec: &AudioOutputSpec) -> Result<bool> {
+            let name = shared_pcm_name(device);
+            match self.open_pcm(&name, AlsaSampleFormat::S32Le, spec) {
+                Ok(()) => Ok(true),
+                Err(error) if name != "default" => {
+                    tracing::debug!(target: "alsa", "shared open of {name} failed: {error}");
+                    self.open_pcm("default", AlsaSampleFormat::S32Le, spec)?;
+                    Ok(false)
+                }
+                Err(error) => Err(error),
+            }
         }
 
         fn close(&mut self) {
@@ -365,7 +449,33 @@ mod linux {
         if !hints.iter().any(|hint| hint.name == "default") {
             hints.push(Hint { name: "default".into(), desc: None, ioid: None });
         }
-        Ok(device_list(&hints))
+        Ok(device_list(&hints, &direct_pcms()))
+    }
+
+    /// Every playback PCM on every card, read from the cards' control
+    /// interfaces. Opening a CTL does not touch the PCM, so a device in use
+    /// (PipeWire, another player) is still listed. Errors skip the card.
+    fn direct_pcms() -> Vec<DirectPcm> {
+        use alsa::card::Iter as CardIter;
+        use alsa::ctl::{Ctl, DeviceIter};
+        let mut out = Vec::new();
+        for card in CardIter::new().filter_map(|card| card.ok()) {
+            let Ok(ctl) = Ctl::from_card(&card, false) else { continue };
+            let Ok(info) = ctl.card_info() else { continue };
+            let (Ok(card_id), Ok(card_name)) = (info.get_id(), info.get_name()) else { continue };
+            let (card_id, card_name) = (card_id.to_string(), card_name.to_string());
+            for device in DeviceIter::new(&ctl) {
+                let Ok(device) = u32::try_from(device) else { continue };
+                let Ok(pcm) = ctl.pcm_info(device, 0, Direction::Playback) else { continue };
+                out.push(DirectPcm {
+                    card_id: card_id.clone(),
+                    card_name: card_name.clone(),
+                    device,
+                    pcm_name: pcm.get_name().unwrap_or_default().to_string(),
+                });
+            }
+        }
+        out
     }
 
     /// Set the card's playback volume through ALSA's mixer, preferring
@@ -444,12 +554,11 @@ mod linux {
                     }
                     None => match exclusive_fallback_plan(spec.exclusive_fallback) {
                         AlsaOpen::SharedWithNotice => {
-                            // Keep the plugin device the user selected; a
-                            // failed direct `hw:` open falls back to the
-                            // system default (which can be shared).
-                            let fallback =
-                                if is_direct_hw(&device) { "default" } else { device.as_str() };
-                            self.open_pcm(fallback, AlsaSampleFormat::S32Le, spec)?;
+                            // Stay on the selected device when it can share
+                            // (a `hw:` device through `plughw:`, e.g. for a
+                            // lossy source); a busy or missing one falls back
+                            // to the system default.
+                            self.open_shared(&device, spec)?;
                             status.notice =
                                 Some("exclusive mode unavailable; using shared output".into());
                         }
@@ -460,8 +569,8 @@ mod linux {
                         }
                     },
                 }
-            } else {
-                self.open_pcm(&device, AlsaSampleFormat::S32Le, spec)?;
+            } else if !self.open_shared(&device, spec)? {
+                status.notice = Some(DEVICE_UNAVAILABLE_NOTICE.into());
             }
 
             self.status = status;
@@ -634,17 +743,84 @@ mod tests {
     }
 
     #[test]
-    fn buffer_frames_divide_evenly_into_periods_at_every_rate() {
+    fn buffer_frames_divide_evenly_into_aligned_periods_at_every_rate() {
         // 44.1 kHz is the case that used to fail: a raw half second is 22050
         // frames, which four periods cannot split, and ALSA answered EINVAL.
-        for rate in [44_100, 48_000, 88_200, 96_000, 176_400, 192_000, 8_000] {
+        for rate in [44_100, 48_000, 88_200, 96_000, 176_400, 192_000, 352_800, 384_000, 8_000] {
             let frames = buffer_frames(rate);
+            let period = period_frames(frames);
             assert_eq!(frames % ALSA_PERIODS as i64, 0, "{frames} frames at {rate}");
+            assert_eq!(period * ALSA_PERIODS as i64, frames, "{frames} at {rate}");
+            // HDA wants 128-byte periods; the narrowest container here is a
+            // 16-bit mono frame (2 bytes).
+            assert_eq!(period * 2 % 128, 0, "{period}-frame period at {rate}");
             assert!(frames >= 1024, "{frames} frames at {rate}");
-            assert!(frames >= rate as i64 / 2 - ALSA_PERIODS as i64, "{frames} at {rate}");
+            assert!(frames > rate as i64 / 2 - 256, "{frames} at {rate}");
         }
-        assert_eq!(buffer_frames(44_100), 22_048);
-        assert_eq!(buffer_frames(48_000), 24_000);
+        assert_eq!(buffer_frames(44_100), 22_016);
+        assert_eq!(buffer_frames(48_000), 23_808);
+    }
+
+    #[test]
+    fn shared_opens_route_direct_devices_through_plughw() {
+        assert_eq!(shared_pcm_name("hw:CARD=Pro,DEV=0"), "plughw:CARD=Pro,DEV=0");
+        assert_eq!(shared_pcm_name("hw:0,0"), "plughw:0,0");
+        assert_eq!(shared_pcm_name("plughw:CARD=Pro,DEV=0"), "plughw:CARD=Pro,DEV=0");
+        assert_eq!(shared_pcm_name("sysdefault:CARD=Pro"), "sysdefault:CARD=Pro");
+        assert_eq!(shared_pcm_name("default"), "default");
+    }
+
+    fn pcm(card_id: &str, card_name: &str, device: u32, pcm_name: &str) -> DirectPcm {
+        DirectPcm {
+            card_id: card_id.into(),
+            card_name: card_name.into(),
+            device,
+            pcm_name: pcm_name.into(),
+        }
+    }
+
+    #[test]
+    fn direct_devices_are_named_after_the_card_and_pcm() {
+        let devices = direct_devices(&[
+            pcm("Pro", "MOONDROP Dawn Pro", 0, "USB Audio"),
+            pcm("Generic", "HD-Audio Generic", 3, ""),
+            pcm("X", " ", 1, "PCM"),
+        ]);
+        assert_eq!(devices[0], OutputDevice {
+            id: "hw:CARD=Pro,DEV=0".into(),
+            name: "MOONDROP Dawn Pro, USB Audio (direct hardware)".into(),
+            is_default: false,
+        });
+        assert_eq!(devices[1].id, "hw:CARD=Generic,DEV=3");
+        assert_eq!(devices[1].name, "HD-Audio Generic (direct hardware)");
+        assert_eq!(devices[2].name, "X, PCM (direct hardware)");
+        assert!(devices.iter().all(|device| is_direct_hw(&device.id)));
+    }
+
+    /// Issue #11 (2026-10-23 run): alsa-lib's hints carried no `hw:` names,
+    /// so the picker could not offer an exclusive-capable device.
+    #[test]
+    fn device_list_adds_direct_pcms_the_hints_lack() {
+        let list = device_list(
+            &[
+                hint("default", Some("Default"), None),
+                hint("sysdefault:CARD=Pro", Some("MOONDROP Dawn Pro, USB Audio"), Some("Output")),
+                hint("front:CARD=Pro,DEV=0", Some("Front"), Some("Output")),
+            ],
+            &[pcm("Pro", "MOONDROP Dawn Pro", 0, "USB Audio")],
+        );
+        let ids: Vec<&str> = list.iter().map(|d| d.id.as_str()).collect();
+        assert_eq!(ids, vec!["default", "hw:CARD=Pro,DEV=0", "sysdefault:CARD=Pro"]);
+    }
+
+    #[test]
+    fn device_list_prefers_a_hint_over_the_same_direct_pcm() {
+        let list = device_list(
+            &[hint("hw:CARD=Pro,DEV=0", Some("Dawn Pro direct"), Some("Output"))],
+            &[pcm("Pro", "MOONDROP Dawn Pro", 0, "USB Audio")],
+        );
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].name, "Dawn Pro direct");
     }
 
     #[test]
@@ -697,7 +873,7 @@ mod tests {
             hint("mic", Some("Microphone"), Some("Input")),
             hint("surround21:CARD=X,DEV=0", Some("Surround"), Some("Output")),
             hint("null", Some("Null"), Some("Output")),
-        ]);
+        ], &[]);
         let ids: Vec<&str> = list.iter().map(|d| d.id.as_str()).collect();
         assert_eq!(ids, vec!["default", "hw:CARD=X,DEV=0", "sysdefault:CARD=X"]);
     }
@@ -708,7 +884,7 @@ mod tests {
             hint("hw:CARD=X,DEV=0", Some("Direct"), Some("Output")),
             hint("default", Some("Default"), None),
             hint("default", Some("Default again"), None),
-        ]);
+        ], &[]);
         assert!(list[0].is_default);
         assert_eq!(list[0].name, "Default");
         assert_eq!(list.len(), 2);
@@ -716,7 +892,7 @@ mod tests {
 
     #[test]
     fn device_list_falls_back_to_the_device_name_as_label() {
-        let list = device_list(&[hint("sysdefault:CARD=Y", None, None)]);
+        let list = device_list(&[hint("sysdefault:CARD=Y", None, None)], &[]);
         assert_eq!(list[0].name, "sysdefault:CARD=Y");
         assert_eq!(list[0], OutputDevice {
             id: "sysdefault:CARD=Y".into(),

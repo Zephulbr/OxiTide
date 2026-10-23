@@ -45,6 +45,20 @@ pub fn tooltip(item: Option<&QueueItem>) -> String {
     }
 }
 
+/// Linux: the StatusNotifierItem `Title` is GLib's application name, which
+/// defaults to the binary name (`oxitide-app`); tray-icon never sets one.
+/// libappindicator has no tooltip, so desktops show this title in its place.
+/// Called once at the start of `main`, before GTK starts.
+#[cfg(target_os = "linux")]
+pub fn set_application_name() {
+    #[link(name = "glib-2.0")]
+    extern "C" {
+        fn g_set_application_name(name: *const std::ffi::c_char);
+    }
+    // SAFETY: a NUL-terminated static string; GLib copies it.
+    unsafe { g_set_application_name(c"OxiTide".as_ptr()) }
+}
+
 /// Create the tray icon and menu. Called once at startup, before login.
 pub fn build(app: &AppHandle) -> tauri::Result<TrayIcon> {
     let show_hide = MenuItem::with_id(app, "show_hide", "Show / Hide", true, None::<&str>)?;

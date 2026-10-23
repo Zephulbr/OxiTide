@@ -61,13 +61,39 @@ pub fn mini_stash_after<E>(
     Ok(if active { captured } else { None })
 }
 
+/// The window size in the units it is stored in: physical pixels on Windows,
+/// logical pixels on Linux. GTK only has integer scale factors, so on a
+/// fractional display (1.75) it reports scale 2 and physical sizes twice the
+/// logical ones; stored that way, a scale change restored the wrong size.
+#[cfg(target_os = "linux")]
+fn stored_extent(window: &WebviewWindow, size: PhysicalSize<u32>) -> (u32, u32) {
+    let logical = size.to_logical::<f64>(window.scale_factor().unwrap_or(1.0));
+    (logical.width.round() as u32, logical.height.round() as u32)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn stored_extent(_window: &WebviewWindow, size: PhysicalSize<u32>) -> (u32, u32) {
+    (size.width, size.height)
+}
+
+/// A stored size (see [`stored_extent`]) as a size to apply.
+#[cfg(target_os = "linux")]
+fn stored_size(width: u32, height: u32) -> Size {
+    Size::Logical(LogicalSize::new(width as f64, height as f64))
+}
+
+#[cfg(not(target_os = "linux"))]
+fn stored_size(width: u32, height: u32) -> Size {
+    Size::Physical(PhysicalSize::new(width, height))
+}
+
 /// Read the live window geometry for the pre-mini stash.
 pub fn read_geometry(window: &WebviewWindow) -> tauri::Result<FullGeometry> {
-    let size = window.inner_size()?;
+    let (width, height) = stored_extent(window, window.inner_size()?);
     let position = window.outer_position().ok();
     Ok(FullGeometry {
-        width: size.width,
-        height: size.height,
+        width,
+        height,
         x: position.map(|p| p.x),
         y: position.map(|p| p.y),
         maximized: window.is_maximized().unwrap_or(false),
@@ -76,7 +102,7 @@ pub fn read_geometry(window: &WebviewWindow) -> tauri::Result<FullGeometry> {
 
 /// Apply a stashed geometry: size, position when known, then maximize.
 pub fn apply_geometry(window: &WebviewWindow, geometry: FullGeometry) -> tauri::Result<()> {
-    window.set_size(PhysicalSize::new(geometry.width, geometry.height))?;
+    window.set_size(stored_size(geometry.width, geometry.height))?;
     if let (Some(x), Some(y)) = (geometry.x, geometry.y) {
         window.set_position(PhysicalPosition::new(x, y))?;
     }
@@ -145,8 +171,10 @@ pub fn apply(window: &WebviewWindow, config: &Config) -> tauri::Result<()> {
     if ui.window_x.is_none() && ui.window_y.is_none() {
         return Ok(());
     }
-    window.set_size(PhysicalSize::new(ui.window_width, ui.window_height))?;
+    let size = stored_size(ui.window_width, ui.window_height);
+    window.set_size(size)?;
     if let (Some(x), Some(y)) = (ui.window_x, ui.window_y) {
+        let extent = size.to_physical::<u32>(window.scale_factor()?);
         let monitors: Vec<MonitorRect> = window
             .available_monitors()?
             .iter()
@@ -160,14 +188,15 @@ pub fn apply(window: &WebviewWindow, config: &Config) -> tauri::Result<()> {
                 }
             })
             .collect();
-        if visible_position(x, y, ui.window_width, ui.window_height, &monitors).is_some() {
+        if visible_position(x, y, extent.width, extent.height, &monitors).is_some() {
             window.set_position(PhysicalPosition::new(x, y))?;
         }
     }
     Ok(())
 }
 
-/// Read the window's current geometry into `config` (physical pixels).
+/// Read the window's current geometry into `config`: the position in
+/// physical pixels, the size in its stored units (see [`stored_extent`]).
 pub fn capture(window: &WebviewWindow, config: &mut Config) {
     // A minimized window reports ~(-32000, -32000) and a bogus size; keep the
     // last known values instead of poisoning the saved geometry.
@@ -179,8 +208,7 @@ pub fn capture(window: &WebviewWindow, config: &mut Config) {
         config.ui.window_y = Some(position.y);
     }
     if let Ok(size) = window.inner_size() {
-        config.ui.window_width = size.width;
-        config.ui.window_height = size.height;
+        (config.ui.window_width, config.ui.window_height) = stored_extent(window, size);
     }
     if let Ok(maximized) = window.is_maximized() {
         config.ui.window_maximized = maximized;

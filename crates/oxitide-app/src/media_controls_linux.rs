@@ -13,9 +13,11 @@ use mpris_server::{Metadata, PlaybackStatus, Player, Time, TrackId};
 use oxitide_audio::engine::Engine;
 use tauri::Manager;
 
+use oxitide_audio::engine::EngineCmd;
+
 use super::{
-    apply_session_update, control_for_pause, control_for_play, control_for_stop, cover_url,
-    seek_target, to_engine_cmd, track_path, ControlCommand, MprisEffect, MprisState, PlayState,
+    apply_session_update, control_for_pause, control_for_play, cover_url, desktop_entry,
+    request_stop, seek_target, to_engine_cmd, track_path, ControlCommand, MprisEffect, MprisState, PlayState,
     SessionSender, SessionUpdate, TrackMeta,
 };
 
@@ -29,6 +31,8 @@ const IDENTITY: &str = "OxiTide";
 /// method callbacks never need to await.
 enum AdapterEffect {
     Seeked(u64),
+    /// The snapshot's playback status changed outside a session update (Stop).
+    Status,
 }
 
 pub struct MediaSession {
@@ -114,9 +118,10 @@ async fn serve(
     connect(&player, &engine, &raise, &state, &effect_tx, &enabled);
     tokio::task::spawn_local(player.run());
     player.set_identity(IDENTITY).await?;
-    player.set_desktop_entry(IDENTITY).await?;
+    player.set_desktop_entry(desktop_entry(desktop_file_installed)).await?;
     player.set_can_raise(true).await?;
     player.set_can_seek(true).await?;
+    player.set_volume(engine.state().volume as f64).await?;
 
     let mut shown = true;
     let mut last_position_at = Instant::now();
@@ -136,6 +141,12 @@ async fn serve(
             last_position_at = Instant::now();
             if want {
                 push_effect(&player, &state, effect).await?;
+                if effect == MprisEffect::Playback {
+                    // Every engine `State` (a volume change included) arrives
+                    // as a playback update; mirror the volume from it so the
+                    // property follows the app, the phone, and hotkeys.
+                    player.set_volume(engine.state().volume as f64).await?;
+                }
             }
         }
         while let Ok(effect) = effect_rx.try_recv() {
@@ -145,6 +156,9 @@ async fn serve(
                         let position = Time::from_millis(position_ms as i64);
                         player.set_position(position);
                         player.seeked(position).await?;
+                    }
+                    AdapterEffect::Status => {
+                        push_effect(&player, &state, MprisEffect::Playback).await?;
                     }
                 }
             }
@@ -258,12 +272,34 @@ fn connect(
     {
         let engine = engine.clone();
         let state = state.clone();
+        let effects = effects.clone();
         let enabled = enabled.clone();
         player.connect_stop(move |_| {
             if !enabled.load(Ordering::Relaxed) {
                 return;
             }
-            dispatch_gated(&engine, &state, control_for_stop);
+            let commands = request_stop(&mut state.lock().unwrap());
+            if commands.is_empty() {
+                return;
+            }
+            for command in commands {
+                let _ = engine.handle(to_engine_cmd(command));
+            }
+            let _ = effects.send(AdapterEffect::Seeked(0));
+            let _ = effects.send(AdapterEffect::Status);
+        });
+    }
+    {
+        let engine = engine.clone();
+        let enabled = enabled.clone();
+        player.connect_set_volume(move |_, volume| {
+            if !enabled.load(Ordering::Relaxed) || !volume.is_finite() {
+                return;
+            }
+            // Not persisted, like the phone remote's volume: the app's own
+            // slider stays the one that writes the config. The engine's
+            // `State` reply sets the property (see `serve`).
+            let _ = engine.handle(EngineCmd::SetVolume(volume.clamp(0.0, 1.0) as f32));
         });
     }
     {
@@ -382,6 +418,22 @@ fn track_metadata(track: &TrackMeta) -> Metadata {
         builder = builder.art_url(url);
     }
     builder.build()
+}
+
+/// Whether `{name}.desktop` is installed in an XDG `applications` directory
+/// (`$XDG_DATA_HOME`, then `$XDG_DATA_DIRS`, with the spec's defaults).
+fn desktop_file_installed(name: &str) -> bool {
+    let home = std::env::var_os("XDG_DATA_HOME")
+        .filter(|dir| !dir.is_empty())
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| std::path::Path::new(&home).join(".local/share")));
+    let system = std::env::var("XDG_DATA_DIRS")
+        .ok()
+        .filter(|dirs| !dirs.is_empty())
+        .unwrap_or_else(|| "/usr/local/share:/usr/share".to_string());
+    home.into_iter()
+        .chain(system.split(':').filter(|dir| !dir.is_empty()).map(std::path::PathBuf::from))
+        .any(|dir| dir.join("applications").join(format!("{name}.desktop")).is_file())
 }
 
 fn empty_metadata() -> Metadata {

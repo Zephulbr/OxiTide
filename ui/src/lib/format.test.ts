@@ -5,7 +5,20 @@ import {
   formatListenTime,
   formatReleaseDate,
   formatTotalDuration,
+  sentenceCase,
 } from "./format";
+
+describe("sentenceCase", () => {
+  it("capitalizes an engine notice's first letter only", () => {
+    expect(sentenceCase("exclusive mode unavailable; using shared output")).toBe(
+      "Exclusive mode unavailable; using shared output",
+    );
+    expect(sentenceCase("ASIO unavailable (x); using shared output")).toBe(
+      "ASIO unavailable (x); using shared output",
+    );
+    expect(sentenceCase("")).toBe("");
+  });
+});
 
 describe("formatReleaseDate", () => {
   it("formats full dates and bare years", () => {

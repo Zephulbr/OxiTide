@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SETTINGS_TABS } from "./settingsTabs";
-import { TAB_META, formatSize, usageFraction } from "./settingsView";
+import { TAB_META, formatSize, outputDeviceOptions, usageFraction } from "./settingsView";
 import { formatDbShort } from "./dsp";
 
 describe("TAB_META", () => {
@@ -19,6 +19,29 @@ describe("formatSize", () => {
   });
   it("switches to gigabytes", () => {
     expect(formatSize(1536 * 1024 * 1024)).toBe("1.5 GB");
+  });
+});
+
+describe("outputDeviceOptions", () => {
+  const dac = { id: "hw:CARD=Pro,DEV=0", name: "MOONDROP Dawn Pro", is_default: false };
+  const sys = { id: "default", name: "Default", is_default: true };
+
+  it("lists the system default first, then the devices", () => {
+    expect(outputDeviceOptions([sys, dac], "").map((o) => o.value)).toEqual([
+      "",
+      "default",
+      "hw:CARD=Pro,DEV=0",
+    ]);
+    expect(outputDeviceOptions([sys], "")[1].label).toBe("Default (default)");
+  });
+
+  it("keeps a stored device that is not connected", () => {
+    const options = outputDeviceOptions([sys], "hw:CARD=Pro,DEV=0");
+    expect(options[options.length - 1]).toEqual({
+      value: "hw:CARD=Pro,DEV=0",
+      label: "hw:CARD=Pro,DEV=0 (not connected)",
+    });
+    expect(outputDeviceOptions([sys, dac], dac.id)).toHaveLength(3);
   });
 });
 

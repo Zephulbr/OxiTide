@@ -549,8 +549,17 @@ pub fn default_cache_dir() -> Option<PathBuf> {
 
 /// `%APPDATA%\OxiTide\logs` (the app root, not the config directory:
 /// `ProjectDirs::config_dir()` appends `\config`).
+#[cfg(windows)]
 pub fn logs_dir() -> Option<PathBuf> {
     directories::BaseDirs::new().map(|dirs| dirs.config_dir().join("OxiTide").join("logs"))
+}
+
+/// `~/.config/oxitide/logs`: next to the config, session, and cache, which
+/// `ProjectDirs` puts in the lowercase `oxitide` directory on Linux. Joining
+/// the literal `OxiTide` here split the app across two directories.
+#[cfg(not(windows))]
+pub fn logs_dir() -> Option<PathBuf> {
+    directories::ProjectDirs::from("", "", "OxiTide").map(|dirs| dirs.config_dir().join("logs"))
 }
 
 #[cfg(test)]
@@ -763,6 +772,7 @@ duration_ms = 4000
 
     /// Review Focus: the logs directory must be `%APPDATA%\OxiTide\logs`, not
     /// the config directory (`ProjectDirs::config_dir()` appends `\config`).
+    #[cfg(windows)]
     #[test]
     fn logs_dir_is_under_the_oxitide_app_dir() {
         let dir = logs_dir().expect("no project directories available");
@@ -773,6 +783,17 @@ duration_ms = 4000
             "logs must live directly under the app dir: {}",
             dir.display()
         );
+    }
+
+    /// Linux: logs share the config's directory instead of a second
+    /// `OxiTide` directory beside it.
+    #[cfg(not(windows))]
+    #[test]
+    fn logs_dir_shares_the_config_directory() {
+        let logs = logs_dir().expect("no project directories available");
+        let config = config_path().expect("no project directories available");
+        assert_eq!(logs.parent(), config.parent(), "logs: {}", logs.display());
+        assert!(logs.ends_with("logs"));
     }
 
     #[test]

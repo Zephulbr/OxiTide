@@ -151,6 +151,10 @@ pub struct MprisState {
     pub status: PlayState,
     pub position_ms: u64,
     pub duration_ms: u64,
+    /// MPRIS `Stop` was the last transport request. The engine has no stop
+    /// state (it pauses at 0), so its paused reports keep showing `Stopped`
+    /// until playback resumes or the track changes.
+    pub stopped: bool,
 }
 
 /// What the adapter must push after folding one session update.
@@ -189,10 +193,14 @@ pub fn apply_session_update(
             state.track = track.clone();
             state.position_ms = 0;
             state.duration_ms = track.as_ref().map_or(0, |track| track.duration_ms);
+            state.stopped = false;
             MprisEffect::Track
         }
         SessionUpdate::Playback(play) => {
-            state.status = *play;
+            if *play != PlayState::Paused {
+                state.stopped = false;
+            }
+            state.status = if state.stopped { PlayState::Stopped } else { *play };
             MprisEffect::Playback
         }
         SessionUpdate::Position { position_ms, duration_ms } => {
@@ -216,10 +224,24 @@ pub fn control_for_pause(state: &MprisState) -> Option<ControlCommand> {
     (state.status == PlayState::Playing).then_some(ControlCommand::PlayPause)
 }
 
-/// MPRIS `Stop`: the engine has no separate stop state, so stop pauses.
+/// MPRIS `Stop`: the engine has no separate stop state, so stop pauses and
+/// rewinds to the start, and the snapshot reports `Stopped` from now on (see
+/// [`MprisState::stopped`]). The queue and metadata stay, so `Play` resumes
+/// the same track from 0. Returns the engine commands to run, in order.
 #[cfg(any(target_os = "linux", test))]
-pub fn control_for_stop(state: &MprisState) -> Option<ControlCommand> {
-    (state.status == PlayState::Playing).then_some(ControlCommand::PlayPause)
+pub fn request_stop(state: &mut MprisState) -> Vec<ControlCommand> {
+    if state.track.is_none() {
+        return Vec::new();
+    }
+    let mut commands = Vec::new();
+    if state.status == PlayState::Playing {
+        commands.push(ControlCommand::PlayPause);
+    }
+    commands.push(ControlCommand::Seek(0));
+    state.stopped = true;
+    state.status = PlayState::Stopped;
+    state.position_ms = 0;
+    commands
 }
 
 /// MPRIS relative `Seek` offset -> absolute engine target, clamped to the
@@ -232,6 +254,19 @@ pub fn seek_target(state: &MprisState, offset_ms: i64) -> u64 {
     } else {
         target
     }
+}
+
+/// `.desktop` ids MPRIS `DesktopEntry` may name, most specific first: the
+/// deb/AppImage bundle's `OxiTide.desktop`, the AUR package's
+/// `oxitide.desktop`, and the handler entry the deep-link plugin writes for
+/// dev and AppImage runs. Desktops resolve the player's name and icon from it.
+#[cfg(any(target_os = "linux", test))]
+pub const DESKTOP_ENTRIES: [&str; 3] = ["OxiTide", "oxitide", "oxitide-app-handler"];
+
+/// The first desktop entry `installed` reports, else the bundle's name.
+#[cfg(any(target_os = "linux", test))]
+pub fn desktop_entry(installed: impl Fn(&str) -> bool) -> &'static str {
+    DESKTOP_ENTRIES.into_iter().find(|name| installed(name)).unwrap_or(DESKTOP_ENTRIES[0])
 }
 
 /// D-Bus object path for `mpris:trackid`. Object-path elements may not start
@@ -511,6 +546,7 @@ mod tests {
             status: PlayState::Playing,
             position_ms: 30_000,
             duration_ms: 200_000,
+            stopped: false,
         };
         assert_eq!(seek_target(&snapshot, -45_000), 0);
         assert_eq!(seek_target(&snapshot, 10_000), 40_000);
@@ -525,10 +561,65 @@ mod tests {
         let paused = MprisState { status: PlayState::Paused, ..Default::default() };
         assert_eq!(control_for_play(&playing), None);
         assert_eq!(control_for_pause(&playing), Some(ControlCommand::PlayPause));
-        assert_eq!(control_for_stop(&playing), Some(ControlCommand::PlayPause));
         assert_eq!(control_for_play(&paused), Some(ControlCommand::PlayPause));
         assert_eq!(control_for_pause(&paused), None);
-        assert_eq!(control_for_stop(&paused), None);
+    }
+
+    #[test]
+    fn mpris_stop_pauses_rewinds_and_reports_stopped() {
+        let mut playing = MprisState {
+            track: Some(meta(1)),
+            status: PlayState::Playing,
+            position_ms: 60_000,
+            duration_ms: 200_000,
+            stopped: false,
+        };
+        assert_eq!(
+            request_stop(&mut playing),
+            vec![ControlCommand::PlayPause, ControlCommand::Seek(0)]
+        );
+        assert_eq!(playing.status, PlayState::Stopped);
+        assert_eq!(playing.position_ms, 0);
+        assert!(playing.track.is_some(), "stop keeps the track so Play resumes it");
+
+        let mut paused = MprisState { status: PlayState::Paused, stopped: false, ..playing.clone() };
+        assert_eq!(request_stop(&mut paused), vec![ControlCommand::Seek(0)]);
+
+        let mut empty = MprisState::default();
+        assert!(request_stop(&mut empty).is_empty());
+        assert!(!empty.stopped);
+    }
+
+    #[test]
+    fn mpris_stopped_survives_the_engines_pause_until_play() {
+        let mut snapshot = MprisState {
+            track: Some(meta(1)),
+            status: PlayState::Playing,
+            ..Default::default()
+        };
+        request_stop(&mut snapshot);
+        // The engine reports the pause the stop issued: still Stopped.
+        apply_session_update(&mut snapshot, &SessionUpdate::Playback(PlayState::Paused), 0);
+        assert_eq!(snapshot.status, PlayState::Stopped);
+        assert_eq!(control_for_play(&snapshot), Some(ControlCommand::PlayPause));
+        // Play resumes: the stop is over.
+        apply_session_update(&mut snapshot, &SessionUpdate::Playback(PlayState::Playing), 0);
+        apply_session_update(&mut snapshot, &SessionUpdate::Playback(PlayState::Paused), 0);
+        assert_eq!(snapshot.status, PlayState::Paused);
+
+        // A track change also ends it.
+        request_stop(&mut snapshot);
+        apply_session_update(&mut snapshot, &SessionUpdate::Track(Some(meta(2))), 0);
+        apply_session_update(&mut snapshot, &SessionUpdate::Playback(PlayState::Paused), 0);
+        assert_eq!(snapshot.status, PlayState::Paused);
+    }
+
+    #[test]
+    fn mpris_desktop_entry_follows_the_installed_package() {
+        assert_eq!(desktop_entry(|name| name == "OxiTide" || name == "oxitide"), "OxiTide");
+        assert_eq!(desktop_entry(|name| name == "oxitide"), "oxitide");
+        assert_eq!(desktop_entry(|name| name == "oxitide-app-handler"), "oxitide-app-handler");
+        assert_eq!(desktop_entry(|_| false), "OxiTide");
     }
 
     #[test]

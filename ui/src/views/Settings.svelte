@@ -79,7 +79,8 @@
   import type { QualityDisplay } from "../lib/quality";
   import type { SettingEntry } from "../lib/settingsIndex";
   import { SETTINGS_TABS, nextTab, type SettingsTab } from "../lib/settingsTabs";
-  import { TAB_META, formatSize, usageFraction } from "../lib/settingsView";
+  import { TAB_META, formatSize, outputDeviceOptions, usageFraction } from "../lib/settingsView";
+  import { sentenceCase } from "../lib/format";
   import type { Toasts } from "../lib/toasts.svelte";
   import type { Player } from "../lib/player.svelte";
   import { SHORTCUTS } from "../lib/shortcuts";
@@ -229,10 +230,7 @@
     { value: "warn_only", label: "Stop with a message" },
   ];
 
-  const deviceOptions = $derived([
-    { value: "", label: "System default" },
-    ...devices.map((d) => ({ value: d.id, label: `${d.name}${d.is_default ? " (default)" : ""}` })),
-  ]);
+  const deviceOptions = $derived(outputDeviceOptions(devices, config?.audio.output_device ?? ""));
   const presetOptions = $derived([
     ...EQ_PRESETS.map((p) => ({ value: p.id, label: p.label })),
     { value: "custom", label: "Custom", disabled: true },
@@ -510,13 +508,10 @@
       devices = list;
       cacheStatus = status;
       logsDir = logs;
-      // The stored device may be gone; fall back to the system default and
-      // persist that so the next start does not retry it.
-      let next = loaded;
-      if (next.audio.output_device && !list.some((d) => d.id === next.audio.output_device)) {
-        next = { ...next, audio: { ...next.audio, output_device: "" } };
-        api.setOutputDevice("").catch(apply);
-      }
+      // A stored device missing from the list (an unplugged DAC) is kept: the
+      // engine falls back to the system default with a notice while it is
+      // gone and uses it again once it is back. `deviceOptions` lists it.
+      const next = loaded;
       config = next;
       dspStore.hydrate(next.dsp);
       trackFlags.setContentFlags(next.content.block_explicit, next.content.block_ai);
@@ -1154,7 +1149,7 @@
         {:else if tab === "playback"}
           <div id="settings-panel-playback" role="tabpanel" aria-labelledby="settings-tab-playback">
             {#if player.state.bit_perfect_notice}
-              <Notice kind="warning">{player.state.bit_perfect_notice}</Notice>
+              <Notice kind="warning">{sentenceCase(player.state.bit_perfect_notice)}</Notice>
             {/if}
             {#if player.state.dsp_active}
               <Notice kind="info">

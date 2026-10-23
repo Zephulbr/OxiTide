@@ -1,3 +1,4 @@
+import type { OutputDevice } from "./api";
 import type { IconName } from "./components/Icon.svelte";
 import type { SettingsTab } from "./settingsTabs";
 
@@ -16,6 +17,23 @@ export function formatSize(bytes: number): string {
   const mb = bytes / 1024 / 1024;
   if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GB`;
   return `${mb.toFixed(1)} MB`;
+}
+
+/// The audio device picker: the system default, every listed device, and the
+/// stored device when it is missing from the list (unplugged), so the choice
+/// survives until it returns instead of silently becoming the default.
+export function outputDeviceOptions(
+  devices: OutputDevice[],
+  selected: string,
+): { value: string; label: string }[] {
+  const options = [
+    { value: "", label: "System default" },
+    ...devices.map((d) => ({ value: d.id, label: `${d.name}${d.is_default ? " (default)" : ""}` })),
+  ];
+  if (selected && !devices.some((d) => d.id === selected)) {
+    options.push({ value: selected, label: `${selected} (not connected)` });
+  }
+  return options;
 }
 
 /// How full the cache is, 0–1 (0 when there is no limit to measure against).
