@@ -153,9 +153,10 @@ release notes (the README currently says "Supported").
 credits, remote and the first Linux perf corpus all executed — results and issues in
 `2026-10-23-linux-bare-metal-run.md`. A USB-DAC follow-up the same day verified exclusive
 bit-perfect playback and hardware mixer volume (after fixing two ALSA bugs in `7498179`) and found that the device picker cannot select a direct
-`hw:` device — the last audio-path blocker. Still blocking a
-full close: that picker fix, DAC hotplug, AUR (recipe URL/tag drift), the oldest-base checks,
-MPRIS desktop-entry resolution, and the MPRIS `Stop` parity issue.
+`hw:` device — the last audio-path blocker. The picker and the MPRIS `Stop`/`Volume` issues are
+fixed in code (`01b92b8`) and wait for the rerun on the laptop (run note §14.3). Still blocking a
+full close: that rerun, DAC hotplug, AUR (blocked only on an unpushed `v0.4.0` tag), the
+oldest-base checks, and MPRIS desktop-entry resolution.
 
 ## 7. Tag `v1.0.0`
 
