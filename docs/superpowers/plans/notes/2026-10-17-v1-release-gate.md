@@ -17,7 +17,9 @@ Branch `track13-efficiency` (unmerged). Plan `plans/2026-10-16-track13-efficienc
 `plans/notes/2026-10-16-track13-smoke.md`.
 
 - [ ] Finish and merge Track 13; run its smoke.
-- [ ] Settle the PM-D1 debt (fix or renegotiate the budgets in `scripts/perf/budgets.json`):
+- [ ] Settle the PM-D1 debt (fix or renegotiate the budgets in `scripts/perf/budgets.json`).
+      **Ruled 2026-10-23** (`2026-10-23-v1-perf-rulings.md`: release reference, memory = worst run
+      + 15 %, S4 re-measure then debt, S6 p99 re-measure then relax); waits on the release corpus:
   - [ ] the seven pre-existing breaches listed in `2026-10-10-track11-completion.md`;
   - [ ] the 9.3 S5/S6/S7 and Rack S1/S5 re-runs never recorded (`2026-10-13-track9-completion.md`);
   - [ ] the 9.1 `S5-light` `memory_max_mb` 681 vs 675 ruling and the S1/S2 quiet re-run;
