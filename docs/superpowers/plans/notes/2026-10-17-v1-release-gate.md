@@ -104,7 +104,13 @@ Candidates (pick per value; none block 1.0 on their own):
       body that no longer decodes (`json error:`, already logged at `warn` with status/URL by
       `decode_json`) or a 410 reads "TIDAL changed something on its side — check for an OxiTide
       update (Settings → System)" in error states and toasts; 404s are left alone (deleted items).
-- [ ] Credits pagination (Info tab shows the first 20).
+- [x] Credits pagination (Info tab shows the first 20). **Done 2026-10-23** (`catalog.rs`
+      `track_credits`): follows `links.meta.nextCursor` through `tracks/{id}/relationships/credits`
+      with `include=credits` and `page[cursor]`, up to 10 pages; a later page that fails or names no
+      credits keeps what was read. **Live check owed:** the 2026-10-06 probe saw that endpoint
+      return linkage only *without* `include`; open Track info on a track with 20+ credits (e.g.
+      564178214, "Draw You Out") and confirm the list grows past 20 — if it stays at 20, the log
+      has "credits: a later page named no credits".
 - [ ] Lyrics in the mini player.
 - [ ] AutoMix beat-grid confidence tuning (roadmap, 2026-10-14 revision).
 - [ ] Explore feed integration is inert until TIDAL serves track rows — revisit or drop.

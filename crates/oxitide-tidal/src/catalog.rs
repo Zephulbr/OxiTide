@@ -74,13 +74,49 @@ impl TidalClient {
 
     /// Role-grouped credits from the public v2 track document. An empty
     /// `roles` list means the API exposed no credits for this track.
+    ///
+    /// The credits relationship is cursor-paginated at 20 (2026-10-06 probe):
+    /// later pages come from `tracks/{id}/relationships/credits`. A later page
+    /// that fails or names no credits ends the walk with what was read, so a
+    /// long credit list never costs the first page.
     pub async fn track_credits(&self, id: u64) -> Result<TrackCredits> {
-        let params = [
-            ("countryCode", self.session().country_code.clone()),
-            ("include", "credits.artist".to_string()),
-        ];
+        let country = self.session().country_code.clone();
+        let params = [("countryCode", country.clone()), ("include", "credits.artist".to_string())];
         let raw: OpenApiTrackCredits = self.get_openapi(&format!("tracks/{id}"), &params).await?;
-        Ok(credits_from_document(raw))
+        let credits = raw.data.and_then(|data| data.relationships).and_then(|r| r.credits);
+        let mut cursor = credits.as_ref().and_then(OpenApiCreditRefs::next_cursor);
+        let mut referenced: Vec<String> =
+            credits.map(|c| c.data.into_iter().map(|entry| entry.id).collect()).unwrap_or_default();
+        let mut included = raw.included;
+        let mut pages = 1;
+        while let Some(next) = cursor.take() {
+            if pages >= CREDIT_PAGES_MAX {
+                tracing::warn!(track = id, pages, "credits: stopped at the page limit");
+                break;
+            }
+            let params = [
+                ("countryCode", country.clone()),
+                ("include", "credits".to_string()),
+                ("page[cursor]", next.clone()),
+            ];
+            let page: OpenApiCreditPage =
+                match self.get_openapi(&format!("tracks/{id}/relationships/credits"), &params).await {
+                    Ok(page) => page,
+                    Err(e) => {
+                        tracing::warn!(track = id, pages, "credits: a later page failed, keeping what was read: {e}");
+                        break;
+                    }
+                };
+            if !page.included.iter().any(|resource| resource.resource_type == "credits") {
+                tracing::warn!(track = id, pages, "credits: a later page named no credits; keeping what was read");
+                break;
+            }
+            pages += 1;
+            cursor = page.next_cursor().filter(|following| *following != next);
+            referenced.extend(page.data.into_iter().map(|entry| entry.id));
+            included.extend(page.included);
+        }
+        Ok(group_credits(&referenced, included))
     }
 
     pub async fn artist(&self, id: u64) -> Result<Artist> {
@@ -412,25 +448,35 @@ struct OpenApiCopyright {
     text: Option<String>,
 }
 
-/// Group included `credits` resources by role, preserving first-seen role and
-/// contributor order; the credit's `artist` relationship id becomes
-/// `artist_id` when present and parseable. Non-credit or unreferenced
-/// `included` entries, blank rows, and duplicate (role, name, artist) rows are
-/// dropped.
+/// `group_credits` over one track document (the first page only).
+#[cfg(test)]
 fn credits_from_document(raw: OpenApiTrackCredits) -> TrackCredits {
-    let referenced: std::collections::HashSet<String> = raw
+    let referenced: Vec<String> = raw
         .data
         .and_then(|data| data.relationships)
         .and_then(|relationships| relationships.credits)
         .map(|credits| credits.data.into_iter().map(|entry| entry.id).collect())
         .unwrap_or_default();
+    group_credits(&referenced, raw.included)
+}
+
+/// Credit pages read per track at most (20 credits each).
+const CREDIT_PAGES_MAX: usize = 10;
+
+/// Group included `credits` resources by role, preserving first-seen role and
+/// contributor order across every page read; the credit's `artist`
+/// relationship id becomes `artist_id` when present and parseable.
+/// Non-credit or unreferenced `included` entries, blank rows, and duplicate
+/// (role, name, artist) rows are dropped.
+fn group_credits(referenced: &[String], included: Vec<OpenApiCreditResource>) -> TrackCredits {
+    let referenced: std::collections::HashSet<&str> = referenced.iter().map(String::as_str).collect();
     let mut order: Vec<String> = Vec::new();
     let mut roles: std::collections::HashMap<String, Vec<CreditContributor>> =
         std::collections::HashMap::new();
     let mut seen: std::collections::HashSet<(String, String, Option<u64>)> =
         std::collections::HashSet::new();
-    for resource in raw.included {
-        if resource.resource_type != "credits" || !referenced.contains(&resource.id) {
+    for resource in included {
+        if resource.resource_type != "credits" || !referenced.contains(resource.id.as_str()) {
             continue;
         }
         let Some(attributes) = resource.attributes else { continue };
@@ -488,6 +534,47 @@ struct OpenApiTrackCreditsRelationships {
 struct OpenApiCreditRefs {
     #[serde(default)]
     data: Vec<OpenApiCreditRef>,
+    #[serde(default)]
+    links: Option<OpenApiCursorLinks>,
+}
+
+impl OpenApiCreditRefs {
+    fn next_cursor(&self) -> Option<String> {
+        cursor_of(self.links.as_ref())
+    }
+}
+
+/// One `tracks/{id}/relationships/credits` page.
+#[derive(Debug, Deserialize)]
+struct OpenApiCreditPage {
+    #[serde(default)]
+    data: Vec<OpenApiCreditRef>,
+    #[serde(default)]
+    included: Vec<OpenApiCreditResource>,
+    #[serde(default)]
+    links: Option<OpenApiCursorLinks>,
+}
+
+impl OpenApiCreditPage {
+    fn next_cursor(&self) -> Option<String> {
+        cursor_of(self.links.as_ref())
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenApiCursorLinks {
+    #[serde(default)]
+    meta: Option<OpenApiCursorMeta>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenApiCursorMeta {
+    #[serde(default, rename = "nextCursor")]
+    next_cursor: Option<String>,
+}
+
+fn cursor_of(links: Option<&OpenApiCursorLinks>) -> Option<String> {
+    links?.meta.as_ref()?.next_cursor.clone().filter(|cursor| !cursor.is_empty())
 }
 
 #[derive(Debug, Deserialize)]
@@ -1151,6 +1238,100 @@ mod tests {
         assert_eq!(credits.roles[0].contributors[0].name, "John Lennon");
         assert_eq!(credits.roles[0].contributors[0].artist_id, Some(13));
         assert_eq!(credits.roles[1].contributors[0].artist_id, None);
+    }
+
+    /// Page 1 as the 2026-10-06 probe saw it: refs plus `links.meta.nextCursor`.
+    async fn mount_first_credit_page(server: &MockServer, next: &str) {
+        Mock::given(method("GET"))
+            .and(path("/openapi/v2/tracks/1"))
+            .and(query_param("include", "credits.artist"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": { "id": "1", "type": "tracks", "relationships": { "credits": {
+                    "data": [{ "id": "c1", "type": "credits" }],
+                    "links": { "meta": { "nextCursor": next } }
+                } } },
+                "included": [{ "id": "c1", "type": "credits",
+                    "attributes": { "name": "Aaron Dessner", "role": "Producer" },
+                    "relationships": { "artist": { "data": { "id": "5957579", "type": "artists" } } } }]
+            })))
+            .mount(server)
+            .await;
+    }
+
+    #[tokio::test]
+    async fn track_credits_follow_the_cursor_through_later_pages() {
+        let server = MockServer::start().await;
+        mount_first_credit_page(&server, "p2").await;
+        Mock::given(method("GET"))
+            .and(path("/openapi/v2/tracks/1/relationships/credits"))
+            .and(query_param("countryCode", "GR"))
+            .and(query_param("include", "credits"))
+            .and(query_param("page[cursor]", "p2"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": [{ "id": "c2", "type": "credits" }],
+                "included": [{ "id": "c2", "type": "credits",
+                    "attributes": { "name": "Aaron Dessner", "role": "Banjo" } }],
+                "links": { "meta": { "nextCursor": "p3" } }
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/openapi/v2/tracks/1/relationships/credits"))
+            .and(query_param("page[cursor]", "p3"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": [{ "id": "c3", "type": "credits" }],
+                "included": [{ "id": "c3", "type": "credits",
+                    "attributes": { "name": "Jack Antonoff", "role": "Producer" } }],
+                "links": {}
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let credits = client(&server).track_credits(1).await.unwrap();
+        let roles: Vec<(&str, Vec<&str>)> = credits
+            .roles
+            .iter()
+            .map(|r| (r.role.as_str(), r.contributors.iter().map(|c| c.name.as_str()).collect()))
+            .collect();
+        assert_eq!(
+            roles,
+            vec![("Producer", vec!["Aaron Dessner", "Jack Antonoff"]), ("Banjo", vec!["Aaron Dessner"])]
+        );
+        assert_eq!(credits.roles[0].contributors[0].artist_id, Some(5957579));
+    }
+
+    #[tokio::test]
+    async fn a_failed_later_credit_page_keeps_the_first() {
+        let server = MockServer::start().await;
+        mount_first_credit_page(&server, "p2").await;
+        Mock::given(method("GET"))
+            .and(path("/openapi/v2/tracks/1/relationships/credits"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        let credits = client(&server).track_credits(1).await.unwrap();
+        assert_eq!(credits.roles.len(), 1);
+        assert_eq!(credits.roles[0].contributors[0].name, "Aaron Dessner");
+    }
+
+    #[tokio::test]
+    async fn a_repeated_credit_cursor_ends_the_walk() {
+        let server = MockServer::start().await;
+        mount_first_credit_page(&server, "p2").await;
+        Mock::given(method("GET"))
+            .and(path("/openapi/v2/tracks/1/relationships/credits"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": [{ "id": "c2", "type": "credits" }],
+                "included": [{ "id": "c2", "type": "credits",
+                    "attributes": { "name": "B", "role": "Mixer" } }],
+                "links": { "meta": { "nextCursor": "p2" } }
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        assert_eq!(client(&server).track_credits(1).await.unwrap().roles.len(), 2);
     }
 
     #[tokio::test]
