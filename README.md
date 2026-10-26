@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/hero-atmosphere.png" alt="OxiTide in Atmosphere mode, showing the Home page" width="900">
+  <img src="docs/images/hero-atmosphere.webp" alt="OxiTide in Atmosphere mode, playing a track with synced lyrics" width="900">
 </p>
 
 > [!IMPORTANT]
