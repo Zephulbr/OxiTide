@@ -16,8 +16,8 @@ nothing is smoked twice.
 Branch `track13-efficiency` (unmerged). Plan `plans/2026-10-16-track13-efficiency.md`, smoke
 `plans/notes/2026-10-16-track13-smoke.md`.
 
-- [ ] Finish and merge Track 13; run its smoke. Merged (`ee6135c`); the smoke
-      (`2026-10-16-track13-smoke.md`) still has 33 unticked rows.
+- [x] Finish and merge Track 13; run its smoke. Merged (`ee6135c`); the smoke
+      (`2026-10-16-track13-smoke.md`) was marked done by the owner on 2026-10-26.
 - [ ] Settle the PM-D1 debt (fix or renegotiate the budgets in `scripts/perf/budgets.json`).
       **Ruled 2026-10-23** (`2026-10-23-v1-perf-rulings.md`: release reference, memory = worst run
       + 15 %, S4 re-measure then debt, S6 p99 re-measure then relax); waits on the release corpus:
@@ -70,8 +70,9 @@ Branch `track13-efficiency` (unmerged). Plan `plans/2026-10-16-track13-efficienc
 
 ### Then: engine smokes (Track 13 changes the audio engine)
 
-- [ ] Network resilience — `2026-10-14-network-resilience-smoke.md` (18 rows).
-- [ ] ASIO — `2026-10-11-asio-smoke.md` (12 rows).
+- [x] Network resilience — `2026-10-14-network-resilience-smoke.md` (18 rows). Marked done by the
+      owner 2026-10-26 (run record: `2026-10-24-engine-smokes.md`).
+- [x] ASIO — `2026-10-11-asio-smoke.md` (12 rows). Marked done by the owner 2026-10-26.
 - [x] 96 kbps / Low listening rows — `2026-10-16-96kbps-validation.md`. **PASS 2026-10-24**
       (all ten owner rows, including the GUI selector rows).
 
@@ -109,7 +110,8 @@ Branch `track13-efficiency` (unmerged). Plan `plans/2026-10-16-track13-efficienc
       index/slot.
 - [ ] If i18n is ever wanted, consider extracting strings during the text pass (about 600–800 strings
       across about 55 files).
-- [ ] README screenshots (`docs/images/`, replace the placeholder comment) once the visuals are final.
+- [x] README screenshots (`docs/images/`, replace the placeholder comment) once the visuals are final.
+      **Done 2026-10-26** (`826b0d1`; the Atmosphere hero is now `.webp`).
 
 ## 3. Gaps and deferred items
 
@@ -156,6 +158,9 @@ Candidates (pick per value; none block 1.0 on their own):
 - [x] 96 kbps GUI rows (selector in all three modes, restart persistence) —
       `2026-10-16-96kbps-validation.md`. **PASS 2026-10-24**; the whole owner smoke went with them
       (ten rows), so §1's listening item is ticked too.
+- [x] Feature smokes with open rows (Track 13, network resilience, ASIO, multi-sort, drag to
+      playlist, Save for Later + Collaborators, CatJam/Kuroneko): marked done by the owner
+      2026-10-26, not row by row.
 - [x] Smokes for anything added in steps 2–3. **PASS 2026-10-24:** the four Undos (non-adjacent
       playlist selection included), the Row separators setting, Copy diagnostics, and the credits
       pagination live check. Notes sit on each item above.

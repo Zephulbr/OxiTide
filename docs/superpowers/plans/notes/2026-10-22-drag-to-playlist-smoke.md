@@ -15,7 +15,7 @@ batched bare-metal run.
       "Add N to playlist" (opens the picker with all of them).
 - [x] Owned playlist: "Remove N from playlist" removes exactly those rows (also while sorted).
 - [x] Right-click on an unselected row selects it and shows the usual track menu.
-- [ ] Clicking outside the rows (sidebar, header, empty space below the list, another
+- [x] Clicking outside the rows (sidebar, header, empty space below the list, another
       page area) clears the selection; using its right-click menu or the playlist picker
       does not; dragging the selection to the sidebar still carries all of it.
 
@@ -82,8 +82,10 @@ batched bare-metal run.
 
 ## Shells and modes
 
-- [ ] Rack shell: the playlist tree accepts drops; the queue drawer/changer accepts drops;
+- [x] Rack shell: the playlist tree accepts drops; the queue drawer/changer accepts drops;
       the ghost is readable in the skin.
-- [ ] Atmosphere, Instrument and Rack, light and dark: ghost, ring, selection tint legible.
-- [ ] Reduced motion: no ghost scale-in; springs still open.
-- [ ] Perf: no frame loop or listeners at rest (PerfHud idle CPU unchanged after a few drags).
+- [x] Atmosphere, Instrument and Rack, light and dark: ghost, ring, selection tint legible.
+- [x] Reduced motion: no ghost scale-in; springs still open.
+- [x] Perf: no frame loop or listeners at rest (PerfHud idle CPU unchanged after a few drags).
+
+**Closed 2026-10-26 (owner):** the remaining rows were marked done by the owner, not ticked row by row.

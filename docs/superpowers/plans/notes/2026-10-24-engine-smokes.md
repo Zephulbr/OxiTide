@@ -103,3 +103,9 @@ Source: `2026-10-11-asio-smoke.md`. Not started.
 
 Source: `2026-10-16-96kbps-validation.md` rows 104–113 (the restart-persistence and
 three-mode selector rows belong to the later GUI pass). Not started.
+
+## Closed 2026-10-26 (owner)
+
+The owner marked the rest of Session 1 and all of Session 2 done without a recorded run. The
+result cells above stay empty for those rows. Session 3 passed separately on 2026-10-24
+(`2026-10-16-96kbps-validation.md`).
