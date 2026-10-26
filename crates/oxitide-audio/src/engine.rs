@@ -795,13 +795,20 @@ impl Engine {
                 self.emit(EngineEvent::State(self.state()));
             }
             EngineCmd::SetVolume(v) => {
-                self.cancel_fade();
-                let clamped = {
-                    let mut q = self.inner.queue.lock().unwrap();
-                    q.set_volume(v);
-                    q.volume()
-                };
-                self.inner.volume.store(clamped.to_bits(), Ordering::SeqCst);
+                // The new volume replaces any sleep fade. Store it and drop the
+                // fade under the fade lock, so the worker reads either the fade
+                // or the new volume, never the pre-fade one in between (as
+                // `cancel_fade` would restore it first).
+                {
+                    let mut fade = self.inner.fade.lock().unwrap();
+                    let clamped = {
+                        let mut q = self.inner.queue.lock().unwrap();
+                        q.set_volume(v);
+                        q.volume()
+                    };
+                    self.inner.volume.store(clamped.to_bits(), Ordering::SeqCst);
+                    fade.take();
+                }
                 // A paused worker is parked; wake it to apply the volume.
                 self.inner.notify_worker();
                 self.emit(EngineEvent::State(self.state()));
@@ -2144,6 +2151,7 @@ fn run_session(
     inner: &Arc<Inner>,
     output: &mut dyn AudioOutput,
     open_spec: &mut Option<AudioOutputSpec>,
+    last_volume: &mut f32,
     first_item: &QueueItem,
     mode: OutputMode,
     fallback: ExclusiveFallback,
@@ -2429,6 +2437,7 @@ fn run_session(
                     track_id: stream.item.track_id,
                 };
             }
+            *last_volume = volume;
             *inner.output_status.lock().unwrap() = output.status();
             // Publish the fresh status: after a device-loss recovery the
             // previous notice would otherwise linger in clients until some
@@ -2449,7 +2458,6 @@ fn run_session(
             }
         }
         first_write_of_track = true;
-        let mut last_volume = f32::from_bits(inner.volume.load(Ordering::SeqCst));
         // Decoded audio read ahead of the output. Empty unless a crossfade is
         // armed, when it holds the crossfade length so that, once the producer
         // ends, it is exactly the track's tail.
@@ -2481,11 +2489,13 @@ fn run_session(
             }
             let (volume, fading) = current_volume(inner);
             // Fades step coarsely (endpoint volume calls are not free);
-            // SetVolume changes are tracked exactly.
+            // SetVolume changes are tracked exactly. `last_volume` is what the
+            // open device was last set to, kept across tracks: seeding it from
+            // the user volume at a track start lost a change made in between.
             let changed = if fading {
-                volume <= f32::EPSILON || (volume - last_volume).abs() >= 0.01
+                volume <= f32::EPSILON || (volume - *last_volume).abs() >= 0.01
             } else {
-                (volume - last_volume).abs() >= f32::EPSILON
+                (volume - *last_volume).abs() >= f32::EPSILON
             };
             if changed {
                 if let Err(e) = output.set_volume(volume) {
@@ -2494,7 +2504,7 @@ fn run_session(
                         track_id: stream.item.track_id,
                     };
                 }
-                last_volume = volume;
+                *last_volume = volume;
                 *inner.output_status.lock().unwrap() = output.status();
             }
             if fading && volume <= f32::EPSILON {
@@ -2543,14 +2553,14 @@ fn run_session(
                     // exclusive endpoint shows it, and a completed sleep fade
                     // restores the user's volume here.
                     let (volume, _) = current_volume(inner);
-                    if released.is_none() && (volume - last_volume).abs() >= f32::EPSILON {
+                    if released.is_none() && (volume - *last_volume).abs() >= f32::EPSILON {
                         if let Err(e) = output.set_volume(volume) {
                             return SessionOutcome::OutputError {
                                 message: e.to_string(),
                                 track_id: stream.item.track_id,
                             };
                         }
-                        last_volume = volume;
+                        *last_volume = volume;
                         *inner.output_status.lock().unwrap() = output.status();
                     }
                     park_while_paused(inner, gen);
@@ -2564,17 +2574,18 @@ fn run_session(
                     return SessionOutcome::Superseded;
                 }
                 if let Some(spec) = released {
+                    let (volume, _) = current_volume(inner);
                     let reopened = output
                         .open(&spec)
                         .and_then(|()| output.start())
-                        .and_then(|()| output.set_volume(current_volume(inner).0));
+                        .and_then(|()| output.set_volume(volume));
                     if let Err(e) = reopened {
                         return SessionOutcome::OutputError {
                             message: e.to_string(),
                             track_id: stream.item.track_id,
                         };
                     }
-                    last_volume = current_volume(inner).0;
+                    *last_volume = volume;
                     *inner.output_status.lock().unwrap() = output.status();
                     *open_spec = Some(spec);
                     emit(inner, EngineEvent::State(build_state(inner)));
@@ -2989,6 +3000,8 @@ fn worker_main(
     let _ = inner.fetcher.set(make_fetcher());
     let _ = ready.send(());
     let mut open_spec: Option<AudioOutputSpec> = None;
+    // The volume the open output was last set to; every open sets it.
+    let mut last_volume = f32::from_bits(inner.volume.load(Ordering::SeqCst));
     let mut handled_gen: u64 = 0;
     loop {
         if inner.shutdown.load(Ordering::SeqCst) {
@@ -3057,6 +3070,7 @@ fn worker_main(
             &inner,
             output.as_mut(),
             &mut open_spec,
+            &mut last_volume,
             &item,
             mode,
             fallback,
@@ -5548,6 +5562,51 @@ mod tests {
         std::thread::sleep(Duration::from_millis(300));
         assert_eq!(output.volumes().last(), Some(&0.25), "the fade kept ramping");
         assert!(engine.state().playing, "the fade must not pause after cancel");
+    }
+
+    /// A volume change that lands between two tracks on a kept device must
+    /// still reach it: the next track compares against what the device was
+    /// last set to, not the user volume (it once seeded from the latter and
+    /// skipped the write, the CI flake in the test above).
+    #[test]
+    fn set_volume_between_tracks_reaches_a_kept_device() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        let gate = Arc::new((Mutex::new((0u32, false)), Condvar::new()));
+        let hook_gate = gate.clone();
+        engine.set_perf_hook(Arc::new(move |event| {
+            if !matches!(event, AudioPerfEvent::InfoReady { .. }) {
+                return;
+            }
+            // Hold the worker at the second track's start until released.
+            let (state, cond) = &*hook_gate;
+            let mut state = state.lock().unwrap();
+            state.0 += 1;
+            cond.notify_all();
+            if state.0 == 2 {
+                while !state.1 {
+                    state = cond.wait(state).unwrap();
+                }
+            }
+        }));
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine.handle(EngineCmd::SetRepeat(RepeatMode::All)).unwrap();
+
+        let (state, cond) = &*gate;
+        {
+            let mut state = state.lock().unwrap();
+            while state.0 < 2 {
+                state = cond.wait(state).unwrap();
+            }
+        }
+        assert_eq!(output.opens(), 1, "the repeat must keep the device");
+        engine.handle(EngineCmd::SetVolume(0.25)).unwrap();
+        state.lock().unwrap().1 = true;
+        cond.notify_all();
+
+        wait_for(|| output.volumes().last() == Some(&0.25));
+        assert_eq!(output.volumes().last(), Some(&0.25), "volume lost at the track change: {:?}", output.volumes());
+        assert_eq!(output.opens(), 1, "the repeat must keep the device");
     }
 
     /// Review Focus: FadeAndPause on an already-paused queue is inert.
