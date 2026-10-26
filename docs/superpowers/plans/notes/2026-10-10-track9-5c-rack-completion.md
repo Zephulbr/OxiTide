@@ -33,14 +33,14 @@
 | `npm --prefix ui test` | green (new: changer paging/slots, segment layers, `ChangerUnit` component contract) |
 | Segment font render | Checked in a static page: ghost and lit layers line up cell for cell at 14–64px |
 | Rust gates | No Rust changes on this branch |
-| Owner visual review + smoke below | **Closed 2026-10-13** - owner accepted with Track 9; rows below were not ticked individually |
+| Owner visual review + smoke below | **PASS 2026-10-24** - rows below ticked individually (Track 9 had accepted the surfaces on 2026-10-13 without ticking them) |
 
 ## Smoke checklist (human, real account, Mode = Hi-Fi Rack)
 
-- [ ] Narrow the window below 1000px: the column disappears, the strip shows under the display, and every control works (transport, seek, shuffle/repeat/♥, queue drawer, Now Playing, knob). Widen it again: the column comes back with the same state.
-- [ ] Below 860px the keys move under the VFD. Below 760px the cover hides. At the 720×520 minimum it is still usable.
-- [ ] Now Playing while folded scrolls as one column; Esc returns.
-- [ ] Queue key with the column visible: the changer replaces Playlists. The DISC/OF/REMAIN readout is right, the current disc lamp is lit, ◂ ▸ page through the queue, a disc key plays that track, and the page follows the current track again after a track change. The close key and Esc restore Playlists.
-- [ ] Mini from Rack opens the Rack mini player: cover, VFD (title, segment time, seek, annunciators), keys, Bars meter moving, knob, Restore. The queue sheet opens and closes with its key, the backdrop and Esc. Below 400px tall the cover hides.
-- [ ] Segment digits (deck time, CD REMAIN, changer) are crisp, the unlit segments faintly visible, and they follow lamp colour and brightness.
-- [ ] Atmosphere/Instrument mini player and shell are unchanged.
+- [x] Narrow the window below 1000px: the column disappears, the strip shows under the display, and every control works (transport, seek, shuffle/repeat/♥, queue drawer, Now Playing, knob). Widen it again: the column comes back with the same state.
+- [x] Below 860px the keys move under the VFD. Below 760px the cover hides. At the 720×520 minimum it is still usable.
+- [x] Now Playing while folded scrolls as one column; Esc returns.
+- [x] Queue key with the column visible: the changer replaces Playlists. The DISC/OF/REMAIN readout is right, the current disc lamp is lit, ◂ ▸ page through the queue, a disc key plays that track, and the page follows the current track again after a track change. The close key and Esc restore Playlists.
+- [x] Mini from Rack opens the Rack mini player: cover, VFD (title, segment time, seek, annunciators), keys, Bars meter moving, knob, Restore. The queue sheet opens and closes with its key, the backdrop and Esc. Below 400px tall the cover hides.
+- [x] Segment digits (deck time, CD REMAIN, changer) are crisp, the unlit segments faintly visible, and they follow lamp colour and brightness.
+- [x] Atmosphere/Instrument mini player and shell are unchanged.

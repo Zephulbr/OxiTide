@@ -72,19 +72,30 @@ Branch `track13-efficiency` (unmerged). Plan `plans/2026-10-16-track13-efficienc
 
 - [ ] Network resilience — `2026-10-14-network-resilience-smoke.md` (18 rows).
 - [ ] ASIO — `2026-10-11-asio-smoke.md` (12 rows).
-- [ ] 96 kbps / Low listening rows — `2026-10-16-96kbps-validation.md`.
+- [x] 96 kbps / Low listening rows — `2026-10-16-96kbps-validation.md`. **PASS 2026-10-24**
+      (all ten owner rows, including the GUI selector rows).
 
 ### Then: start the updater proof
 
-- [ ] Install the published 0.3 build on a clean profile; publish `v0.4.0`; confirm Settings →
+- [x] Install the published 0.3 build on a clean profile; publish `v0.4.0`; confirm Settings →
       System → Updates finds and installs it (first recorded installed-app update). Every later
       pre-1.0 bump repeats this check. Checklist: `2026-10-13-track12-completion.md`.
+      - **Progress 2026-10-24:** publishing `v0.3.1` updated the installed copy in-app — the first
+        recorded installed-app update.
+      - **PASS 2026-10-24:** `v0.4.0` (tag on `6f05014`, release run `40041427605`) was published
+        and the installed 0.3.1 found it in Settings → System → Updates and updated itself to
+        0.4.0. Until then every release had been a draft, so `releases/latest/download/latest.json`
+        404'd and the check read "Could not fetch a valid release JSON" (now reworded, `6f05014`).
+        The AppImage path waits on the Linux batch.
 
 ## 2. UI pass
 
 - [x] Visual/animation/text pass across Atmosphere, Instrument and Hi-Fi Rack (light + dark); update
       `ui/design/*/DESIGN.md` with any visual change. **Done 2026-10-24** (owner, over several
       sessions; last batch `bc7101c`: soft list edges, Row separators setting, sleeve, Profiles).
+      **Smoked 2026-10-24:** "Row separators" turned off and on in Settings → Appearance hides and
+      restores the track-table hairlines without changing row heights, and survives a restart
+      (`ui.row_separators`).
 - [x] Fold in the small UI-side deferred items so they are polished with everything else (e.g. undo
       for destructive ops). **Undo done 2026-10-24:** the success toast carries Undo for removing
       playlist rows (`restore_playlist_items` re-inserts each run of rows at its old index, duplicates
@@ -93,7 +104,9 @@ Branch `track13-efficiency` (unmerged). Plan `plans/2026-10-16-track13-efficienc
       was already re-added. Not undoable, so they keep their confirm dialogs: deleting a playlist or
       folder, removing a followed playlist from the collection (no add-to-collection call), clearing
       the queue (also drops the play source) and clearing history. Smoke: each of the four Undos
-      once, including removing a selection of non-adjacent playlist rows.
+      once, including removing a selection of non-adjacent playlist rows. **Smoked 2026-10-24:**
+      all four, the non-adjacent playlist selection included — each removal came back at its old
+      index/slot.
 - [ ] If i18n is ever wanted, consider extracting strings during the text pass (about 600–800 strings
       across about 55 files).
 - [ ] README screenshots (`docs/images/`, replace the placeholder comment) once the visuals are final.
@@ -107,7 +120,8 @@ Candidates (pick per value; none block 1.0 on their own):
       (`diagnostics.rs`, `get_diagnostics`, not exposed to the phone) copies version, OS, WebView,
       output path, quality, current stream, DSP stages, underruns, enabled switches and the last 20
       WARN/ERROR lines, with URL queries, token/code/state values, bearer tokens and the home
-      directory redacted. Smoke: copy once, paste, check nothing personal is in it.
+      directory redacted. Smoke: copy once, paste, check nothing personal is in it. **Smoked
+      2026-10-24:** copied once and pasted; nothing personal in it.
 - [x] Recognisable error for TIDAL API drift ("TIDAL changed something — check for updates") instead
       of a generic failure (roadmap §6 backlog). **Done 2026-10-23** (UI, `lib/errors.ts`): a 2xx
       body that no longer decodes (`json error:`, already logged at `warn` with status/URL by
@@ -116,10 +130,10 @@ Candidates (pick per value; none block 1.0 on their own):
 - [x] Credits pagination (Info tab shows the first 20). **Done 2026-10-23** (`catalog.rs`
       `track_credits`): follows `links.meta.nextCursor` through `tracks/{id}/relationships/credits`
       with `include=credits` and `page[cursor]`, up to 10 pages; a later page that fails or names no
-      credits keeps what was read. **Live check owed:** the 2026-10-06 probe saw that endpoint
-      return linkage only *without* `include`; open Track info on a track with 20+ credits (e.g.
-      564178214, "Draw You Out") and confirm the list grows past 20 — if it stays at 20, the log
-      has "credits: a later page named no credits".
+      credits keeps what was read. **Live check passed 2026-10-24:** the 2026-10-06 probe saw that
+      endpoint return linkage only *without* `include`, so the check opened Track info on a track
+      with 20+ credits (564178214, "Draw You Out") and the list grew past 20. If it ever stays at
+      20, the log has "credits: a later page named no credits".
 - [x] Lyrics in the mini player. **Deferred past 1.0** (owner, 2026-10-23: not important enough).
 - [x] AutoMix beat-grid confidence tuning (roadmap, 2026-10-14 revision). **Closed, no change**
       (owner, 2026-10-23: nothing egregious in listening so far; revisit if a bad pair shows up).
@@ -136,11 +150,18 @@ Candidates (pick per value; none block 1.0 on their own):
 
 ## 5. Remaining smokes
 
-- [ ] Thumbbar — `2026-10-16-thumbbar-smoke.md` (9 rows).
-- [ ] Rack 9.5c — `2026-10-10-track9-5c-rack-completion.md` (7 rows, closed without ticks).
-- [ ] 96 kbps GUI rows (selector in all three modes, restart persistence) — `2026-10-16-96kbps-validation.md`.
-- [ ] Smokes for anything added in steps 2–3.
-- [ ] Updater: latest pre-1.0 bump installs over the previous one.
+- [x] Thumbbar — `2026-10-16-thumbbar-smoke.md` (9 rows). **PASS 2026-10-24**, all nine ticked.
+- [x] Rack 9.5c — `2026-10-10-track9-5c-rack-completion.md` (7 rows, closed without ticks).
+      **PASS 2026-10-24**, all seven ticked.
+- [x] 96 kbps GUI rows (selector in all three modes, restart persistence) —
+      `2026-10-16-96kbps-validation.md`. **PASS 2026-10-24**; the whole owner smoke went with them
+      (ten rows), so §1's listening item is ticked too.
+- [x] Smokes for anything added in steps 2–3. **PASS 2026-10-24:** the four Undos (non-adjacent
+      playlist selection included), the Row separators setting, Copy diagnostics, and the credits
+      pagination live check. Notes sit on each item above.
+- [x] Updater: latest pre-1.0 bump installs over the previous one. **PASS 2026-10-24:** publishing
+      `v0.3.1` updated the installed copy in-app, and the published `v0.4.0` then updated 0.3.1 to
+      0.4.0 (§1).
 
 ## 6. Linux bare-metal run
 
@@ -155,8 +176,9 @@ credits, remote and the first Linux perf corpus all executed — results and iss
 bit-perfect playback and hardware mixer volume (after fixing two ALSA bugs in `7498179`) and found that the device picker cannot select a direct
 `hw:` device — the last audio-path blocker. The picker and the MPRIS `Stop`/`Volume` issues are
 fixed in code (`01b92b8`) and wait for the rerun on the laptop (run note §14.3). Still blocking a
-full close: that rerun, DAC hotplug, AUR (blocked only on an unpushed `v0.4.0` tag), the
-oldest-base checks, and MPRIS desktop-entry resolution.
+full close: that rerun, DAC hotplug, AUR (the `v0.4.0` tag is now pushed and its release carries
+the rendered `PKGBUILD`, so the row can run), the oldest-base checks, and MPRIS desktop-entry
+resolution.
 
 ## 7. Tag `v1.0.0`
 

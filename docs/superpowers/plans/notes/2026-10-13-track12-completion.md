@@ -16,8 +16,10 @@ Spec: `../../specs/2026-10-13-oxitide-track12-distribution-design.md`. Runbook: 
 
 - Neither workflow has run on GitHub. Expect first-run fixes (hosted-runner audio/keyring in
   `cargo test`, apt packages, AppImage build on 22.04).
-- The Linux AppImage updater path and the in-app install/restart flow.
-- An end-to-end update (needs two published releases).
+- The Linux AppImage updater path. (The Windows in-app install/restart flow is verified as of
+  2026-10-24 — see the owner checklist.)
+- An end-to-end update with `v0.4.0` (that tag is not published yet; the `v0.3.1` update is
+  recorded in the owner checklist).
 
 ## Run on GitHub (2026-10-14, `Zephulbr/OxiTide`)
 
@@ -38,7 +40,11 @@ Spec: `../../specs/2026-10-13-oxitide-track12-distribution-design.md`. Runbook: 
 - [x] Add secret `TAURI_SIGNING_PRIVATE_KEY` (contents of the key file; no password secret).
 - [x] Push; fix whatever the first CI run shows.
 - [x] Push a tag; inspect the draft release.
-- [ ] Install the draft's NSIS build on a clean profile; publish the draft.
-- [ ] Release a second version; confirm Settings → System → Updates finds and installs it
-      (Windows), and the AppImage path later with the batched Linux run.
+- [x] Install the draft's NSIS build on a clean profile; publish the draft. **Done 2026-10-24:**
+      `v0.3.1` published and installed; `v0.4.0` published and installed over it in-app.
+- [x] Release a second version; confirm Settings → System → Updates finds and installs it
+      (Windows), and the AppImage path later with the batched Linux run. **Windows PASS
+      2026-10-24:** releasing the second version as `v0.3.1` updated the installed copy in-app
+      (`%LOCALAPPDATA%\OxiTide` now reports 0.3.1). Repeated with `v0.4.0`: the installed 0.3.1
+      found it and updated to 0.4.0. The AppImage path stays with the Linux batch.
 - [ ] Discuss: Windows code signing (SignPath Foundation etc.) and the pre-public review.

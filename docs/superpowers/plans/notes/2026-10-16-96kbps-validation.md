@@ -94,31 +94,32 @@ failing before its fix and passing afterward. Existing AAC-LC and FLAC tests pas
 The prefetch test proves matching-format device chaining and PCM concatenation,
 not encoder-priming/padding-correct musical gaplessness.
 
-## Owner smoke — not performed
+## Owner smoke — passed 2026-10-24
 
-Use the worktree for these checks; automated fixtures do not establish current
-live TIDAL LOW manifest coverage or real-device behavior. Do not run two dev
-servers against port 1420 at once, and close the existing app before testing
-(the application is single-instance).
+**Result: PASS, 2026-10-24** (owner, Windows, real account; the branch is merged as `48184d7`).
+All ten rows below confirmed. This closes the live-TIDAL Low coverage the automated fixtures
+could not establish; WSL tests still do not certify bare-metal Linux output.
 
-- [ ] Select Low in Settings; play several tracks with audible stereo/high end.
-- [ ] Verify a served Low stream's detailed bitrate/rate and the compact AAC badge.
-- [ ] Restart; Low remains selected. A new config still defaults to Lossless.
-- [ ] Seek forward/backward while streaming and after a complete cache hit.
-- [ ] Replay a completed cached Low track offline; restore networking afterward.
-- [ ] Pause/resume, skip, natural next/prefetch, and the existing crossfade/AutoMix
+- [x] Select Low in Settings; play several tracks with audible stereo/high end.
+- [x] Verify a served Low stream's detailed bitrate/rate and the compact AAC badge.
+- [x] Restart; Low remains selected. A new config still defaults to Lossless.
+- [x] Seek forward/backward while streaming and after a complete cache hit.
+- [x] Replay a completed cached Low track offline; restore networking afterward.
+- [x] Pause/resume, skip, natural next/prefetch, and the existing crossfade/AutoMix
       settings behave acceptably; no new hangs, repeated prefixes, or stale audio.
-- [ ] Switch to High, Lossless, and Max; verify normal playback and FLAC's existing
+- [x] Switch to High, Lossless, and Max; verify normal playback and FLAC's existing
       exclusive/bit-perfect behavior. Low must never be advertised as bit-perfect.
-- [ ] Check the existing exclusive fallback/error policy with real WASAPI/ASIO.
-- [ ] Confirm the selector is usable in Atmosphere, Instrument, and Rack.
-- [ ] If Linux owner smoke is desired, verify shared playback on a real device;
-      WSL tests do not certify bare-metal/exclusive output.
+- [x] Check the existing exclusive fallback/error policy with real WASAPI/ASIO.
+- [x] Confirm the selector is usable in Atmosphere, Instrument, and Rack.
+- [x] If Linux owner smoke is desired, verify shared playback on a real device;
+      WSL tests do not certify bare-metal/exclusive output. (Shared playback PASS in the
+      2026-10-23 CachyOS/PipeWire bare-metal run, `2026-10-23-linux-bare-metal-run.md`.)
 
 ## Remaining release checks
 
 - [ ] Complete final full Linux workspace tests and standard workspace Clippy
       with a sufficient build budget (no final failure is being waived here).
-- [ ] Owner listening/GUI smoke above.
-- [ ] Review/rebase against the owner's current main branch before any merge;
-      this worktree intentionally excludes unrelated work made during the task.
+- [x] Owner listening/GUI smoke above.
+- [x] Review/rebase against the owner's current main branch before any merge;
+      this worktree intentionally excludes unrelated work made during the task. (Merged into
+      `main` as `48184d7`.)
