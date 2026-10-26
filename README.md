@@ -42,7 +42,7 @@
 ## Screenshots
 
 <details>
-<summary><b>Show screenshots</b></summary>
+<summary><b>See More</b></summary>
 
 ### Atmosphere
 
