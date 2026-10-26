@@ -138,12 +138,24 @@
   /// the list's bottom padding holds the extra 2 × GAP. Gaps close while a
   /// drag runs so the drop math stays uniform.
   const GAP = 28;
+  /// Room above the first upcoming Autoplay suggestion, for its label.
+  const AUTOPLAY_GAP = 26;
   /// Bottom padding beyond the player-bar overlap: 12px tail + the gaps.
   const TAIL = 12 + 2 * GAP;
 
+  /// The first Autoplay suggestion still to come; the label sits above it.
+  const autoplayFrom = $derived.by(() => {
+    for (let i = currentIndex === null ? 0 : currentIndex + 1; i < items.length; i++) {
+      if (items[i].autoplay) return i;
+    }
+    return null;
+  });
+
   function gapBefore(index: number): number {
-    if (drag || dropSlot !== null || currentIndex === null || index < currentIndex) return 0;
-    return index === currentIndex ? GAP : 2 * GAP;
+    if (drag || dropSlot !== null) return 0;
+    let gap = currentIndex === null || index < currentIndex ? 0 : index === currentIndex ? GAP : 2 * GAP;
+    if (autoplayFrom !== null && index >= autoplayFrom) gap += AUTOPLAY_GAP;
+    return gap;
   }
 
   function rowTop(index: number): number {
@@ -501,7 +513,7 @@
         total={items.length}
         rowHeight={rowH}
         maxHeight="none"
-        bottomPadding="calc(var(--queue-clear, var(--player-height)) + {TAIL}px)"
+        bottomPadding="calc(var(--queue-clear, var(--player-height)) + {TAIL + (autoplayFrom === null ? 0 : AUTOPLAY_GAP)}px)"
         role="list"
         bind:scroller
       >
@@ -523,12 +535,16 @@
               aria-current={index === currentIndex ? "true" : undefined}
               style:transform={rowTransform(index)}
             >
+              {#if index === autoplayFrom && !drag && dropSlot === null}
+                <!-- Rides with the row into the gap gapBefore leaves above it. -->
+                <span class="q-autoplay" aria-hidden="true" style:height="{AUTOPLAY_GAP}px">Autoplay</span>
+              {/if}
               <span class="grip" aria-hidden="true"><Icon name="grip-vertical" size={14} /></span>
               <button
                 type="button"
                 class="row-main"
                 tabindex={index === tabIndex ? 0 : -1}
-                aria-label={`${item.title} — ${item.artist}`}
+                aria-label={`${item.title} — ${item.artist}${item.autoplay ? " (Autoplay)" : ""}`}
                 aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown Delete"
                 title="Play"
                 use:menuFor={() => {
@@ -732,6 +748,29 @@
   .q-row.played .text,
   .q-row.played .dur {
     opacity: 0.5;
+  }
+
+  /* Eyebrow over the first upcoming Autoplay suggestion, on a hairline. */
+  .q-autoplay {
+    position: absolute;
+    left: 16px;
+    right: 14px;
+    bottom: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    pointer-events: none;
+  }
+  .q-autoplay::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--line);
   }
 
   /* The dragged row's own slot travels to the drop position as an outlined

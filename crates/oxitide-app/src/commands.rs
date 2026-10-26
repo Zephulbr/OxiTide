@@ -562,6 +562,11 @@ fn build_player(
             history.record(&event);
         }
     }));
+    // Autoplay: a no-op unless the last queued track is current.
+    let autoplay_handle = app.clone();
+    engine.subscribe(Arc::new(move |event| {
+        autoplay_handle.state::<AppState>().autoplay.on_event(&event, &autoplay_handle);
+    }));
     // Phone remote (Track 11): a no-op unless the remote is on and a phone
     // is connected.
     let remote_handle = app.clone();
@@ -1409,6 +1414,7 @@ impl PageTrackDto {
             cover: self.cover.clone(),
             artist_refs: Vec::new(),
             album_id: None,
+            autoplay: false,
         })
     }
 }
@@ -1447,7 +1453,7 @@ async fn queue_items_from_ids(
 }
 
 /// Queue metadata for a track, matching the UI's `trackToQueueItem`.
-fn queue_item_from_track(track: &Track) -> QueueItem {
+pub(crate) fn queue_item_from_track(track: &Track) -> QueueItem {
     QueueItem {
         track_id: track.id,
         title: track.title.clone(),
@@ -1473,6 +1479,7 @@ fn queue_item_from_track(track: &Track) -> QueueItem {
             })
             .collect(),
         album_id: track.album.as_ref().map(|a| a.id),
+        autoplay: false,
     }
 }
 
@@ -1529,7 +1536,7 @@ async fn resolve_playable_items(
 
 /// Apply the active content filters to already-resolved queue items. Unknown
 /// flags never block; AI enrichment uses `ids` to batch-fetch flags.
-async fn filter_playable_items(
+pub(crate) async fn filter_playable_items(
     client: &TidalClient,
     ids: &[u64],
     items: Vec<QueueItem>,
@@ -1840,6 +1847,25 @@ pub fn set_block_explicit(state: State<'_, AppState>, enabled: bool) -> Result<(
     config.content.block_explicit = enabled;
     config.save()?;
     state.set_config(config);
+    Ok(())
+}
+
+/// Autoplay on or off. Off drops the upcoming suggestions (the current track
+/// keeps playing); on fills at once when the last track is already current.
+#[tauri::command]
+pub fn set_autoplay(app: tauri::AppHandle, state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    let mut config = state.config();
+    config.playback.autoplay = enabled;
+    config.save()?;
+    state.set_config(config);
+    state.autoplay.set_enabled(enabled);
+    if let Some(player) = state.player() {
+        if enabled {
+            state.autoplay.consider(&player.engine.state(), &app);
+        } else {
+            state.autoplay.prune(&player.engine);
+        }
+    }
     Ok(())
 }
 
@@ -3000,6 +3026,9 @@ mod tests {
         "set_scrobble_enabled", "open_external", "play_tracks", "play_pause", "next", "prev", "seek",
         "set_volume", "fade_and_pause", "set_history_enabled", "set_history_max_entries",
         "set_block_explicit", "set_block_ai", "set_show_labels", "set_shuffle", "set_repeat",
+        // A config writer; turning it off removes queue items, ordered with
+        // the user's own queue edits.
+        "set_autoplay",
         "queue_reorder", "queue_remove", "queue_clear", "retry", "queue_add", "queue_play_next",
         "queue_insert", "restore_session", "set_play_source", "clear_session", "perf_mark", "perf_quit",
         "get_perf_snapshot", "perf_submit_ui_metrics", "perf_queue_build", "set_output_device",
@@ -3509,6 +3538,7 @@ mod tests {
             cover: None,
             artist_refs: Vec::new(),
             album_id: None,
+            autoplay: false,
         }];
         let result = perf_queue_build_items(items, 0);
         assert!(result.is_err(), "the perf command must not run outside a session");
@@ -3753,6 +3783,7 @@ mod tests {
             cover: None,
             artist_refs: Vec::new(),
             album_id: None,
+            autoplay: false,
         }
     }
 

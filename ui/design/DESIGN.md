@@ -171,6 +171,14 @@ action buttons 72px (`--actions-inset`) so neither sits on the faded edge. Their
 "Row separators" (`ui.row_separators`, default on, the root's `data-row-lines`); off makes
 them transparent, so row heights stay the same.
 
+**Autoplay in the queue rail:** the first upcoming Autoplay suggestion gets 26px more room
+above it, like the current-track gaps (the rows below shift by transform; the virtual
+list stays uniform). An 11px/600 uppercase "Autoplay" eyebrow in `--text-muted` sits in that
+room, followed by a `--line` hairline. It is shown once, the gap closes during drags, and
+rows keep their normal look. The phone queue pages its rows, so each suggestion's artist
+line starts with "Autoplay ·" instead. The player bar's From line reads "From Autoplay",
+with no link.
+
 **Page titles** (a page's own `h2`, bare or in its `.page-head`; Home's greeting and the
 Tracks and artist-catalogue heads read the variable in their own styles) are 46px (`--page-title-size` on `.main`, line-height 1.1) in the display face. Section
 headings stay at 20/600; detail-page headers (album, playlist, artist) have their own

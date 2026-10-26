@@ -82,6 +82,9 @@ pub struct PlaybackState {
     /// Revision of `queue`; changes whenever its items do.
     pub queue_rev: u64,
     pub stream: Option<StreamMeta>,
+    /// The queue stopped because its last track played out (not a pause or
+    /// an error); cleared when anything starts playing or replaces the queue.
+    pub ended: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -122,12 +125,13 @@ pub enum EngineCmd {
     Reorder { from: usize, to: usize },
     Remove(usize),
     Enqueue { items: Vec<QueueItem> },
-    /// Insert right after the current track ("Play next"). A prefetched next
-    /// track that is no longer next is dropped at the advance, like a reorder.
+    /// Insert right after the current track ("Play next"). Like any queue
+    /// edit, the playing session re-targets its prefetch at the new next
+    /// track while the current one has not reached its end.
     EnqueueNext { items: Vec<QueueItem> },
     /// Insert at queue slot `index` (a drop on the queue); past the end
-    /// appends. The current track keeps playing; a stale prefetch is dropped
-    /// at the advance, as for `EnqueueNext`.
+    /// appends. The current track keeps playing; the prefetch follows the
+    /// edit, as for `EnqueueNext`.
     EnqueueAt { index: usize, items: Vec<QueueItem> },
     Clear,
     /// Fade the output to silence over `duration_ms`, then pause at the current
@@ -236,6 +240,8 @@ struct Inner {
     /// The current track ran out of audio while its download waits for the
     /// network (also `PlaybackState.buffering`).
     stream_stalled: AtomicBool,
+    /// `PlaybackState.ended`.
+    ended: AtomicBool,
     /// True while the worker is running a session (used by `PlayPause` to know
     /// whether a resume needs a fresh generation).
     worker_busy: AtomicBool,
@@ -303,6 +309,7 @@ fn build_state(inner: &Inner) -> PlaybackState {
         queue: q.shared_items(),
         queue_rev: q.rev(),
         stream: inner.stream_meta.lock().unwrap().clone(),
+        ended: inner.ended.load(Ordering::SeqCst),
     }
 }
 
@@ -341,7 +348,7 @@ fn fire_perf(inner: &Inner, event: AudioPerfEvent) {
 impl Engine {
     /// `make_fetcher` runs on the playback worker thread, so a blocking fetcher
     /// (e.g. `HttpFetcher`'s `reqwest::blocking::Client`) is never built on the
-    /// caller's thread — constructing one inside an async runtime context
+    /// caller's thread â€” constructing one inside an async runtime context
     /// panics in debug builds.
     pub fn new(
         resolver: Arc<dyn StreamResolver>,
@@ -389,6 +396,7 @@ impl Engine {
             seek_target: Mutex::new(None),
             reconnect: Mutex::new(None),
             stream_stalled: AtomicBool::new(false),
+            ended: AtomicBool::new(false),
             worker_busy: AtomicBool::new(false),
             wake_lock: Mutex::new(()),
             wake: Condvar::new(),
@@ -663,6 +671,7 @@ impl Engine {
             // open.
             *self.inner.seek_target.lock().unwrap() = None;
             self.inner.paused.store(false, Ordering::SeqCst);
+            self.inner.ended.store(false, Ordering::SeqCst);
             q.current().cloned()
         });
         self.inner.notify_worker();
@@ -684,6 +693,7 @@ impl Engine {
                     q.restore(items, start, shuffle, repeat);
                     q.current().cloned()
                 });
+                self.inner.ended.store(false, Ordering::SeqCst);
                 // A saved position past the track's end (an old session written
                 // before seeks were range-checked) restarts the track instead.
                 let position_ms = match item.as_ref() {
@@ -776,6 +786,9 @@ impl Engine {
                     // staying paused if the queue is paused.
                     self.inner.position_ms.store(ms, Ordering::SeqCst);
                     self.inner.position_track.store(item.track_id, Ordering::SeqCst);
+                    // A seek back into the ended track is the user's choice
+                    // of what to hear, not an end to continue from.
+                    self.inner.ended.store(false, Ordering::SeqCst);
                     self.inner.generation.fetch_add(1, Ordering::SeqCst);
                     self.inner.notify_worker();
                 }
@@ -833,6 +846,7 @@ impl Engine {
                 self.inner.dsp_stages.lock().unwrap().clear();
                 self.mutate_playing_queue(|q| q.clear());
                 self.inner.paused.store(false, Ordering::SeqCst);
+                self.inner.ended.store(false, Ordering::SeqCst);
                 self.inner.notify_worker();
                 self.emit(EngineEvent::NowPlaying(None));
                 self.emit(EngineEvent::State(self.state()));
@@ -1896,6 +1910,13 @@ fn upcoming_track(inner: &Inner) -> Option<u64> {
     q.peek_next_index().and_then(|i| q.items().get(i)).map(|item| item.track_id)
 }
 
+/// What the prefetch target depends on besides the current index (which a
+/// skip changes along with the generation): the items and the repeat mode.
+fn upcoming_key(inner: &Inner) -> (u64, RepeatMode) {
+    let q = inner.queue.lock().unwrap();
+    (q.rev(), q.repeat())
+}
+
 /// Offsets from a plan computed while `written` tail frames kept playing.
 /// A plan whose overlap would have started already falls back to `fallback`
 /// (the style without beat matching) while that is still ahead, else to a
@@ -2149,6 +2170,8 @@ fn run_session(
     // a fresh open); its lead reads low until it does.
     let mut refill = true;
     let mut stream = start_track(inner, first_item, mode, gen, seek_ms);
+    // Read before the prefetch starts, so an edit racing it is seen below.
+    let mut prefetch_key = upcoming_key(inner);
     let mut prefetch = start_prefetch(inner, mode, gen);
     // Unplayable tracks passed over since the last track that started; bounds
     // the skip chain so repeat-all/repeat-one cannot loop forever.
@@ -2560,6 +2583,23 @@ fn run_session(
                 output_refills(inner, rate);
                 continue;
             }
+            // A queue edit mid-track (Add to queue or Play next on the last
+            // track, a reorder, autoplay appending) can change what follows:
+            // re-target the prefetch so the advance stays gapless and can
+            // cross-fade. Once the tail is final or being planned, the
+            // advance handles a mismatch instead.
+            if !ended && analysis.is_none() && planned.is_none() {
+                let key = upcoming_key(inner);
+                if key != prefetch_key {
+                    prefetch_key = key;
+                    if prefetch.as_ref().map(|p| p.item.track_id) != upcoming_track(inner) {
+                        // Cancel the stale download before its successor
+                        // registers with the ahead gate.
+                        drop(prefetch.take());
+                        prefetch = start_prefetch(inner, mode, gen);
+                    }
+                }
+            }
             // A sleep fade ends the session on this track; never cross into
             // the next one while it runs.
             let base = if fading {
@@ -2895,6 +2935,9 @@ fn run_session(
                 let mut q = inner.queue.lock().unwrap();
                 q.on_track_ended().and_then(|i| q.items().get(i).cloned())
             };
+            if next.is_none() {
+                inner.ended.store(true, Ordering::SeqCst);
+            }
             emit(inner, EngineEvent::NowPlaying(next.clone()));
             emit(inner, EngineEvent::State(build_state(inner)));
             next
@@ -2977,6 +3020,7 @@ fn worker_main(
         }
         handled_gen = gen_now;
         inner.worker_busy.store(true, Ordering::SeqCst);
+        inner.ended.store(false, Ordering::SeqCst);
 
         let (item, seek_ms, was_playing) = {
             let _guard = inner.playback_lock.lock().unwrap();
@@ -3304,6 +3348,7 @@ mod tests {
             cover: None,
             artist_refs: Vec::new(),
             album_id: None,
+            autoplay: false,
         }
     }
 
@@ -4320,6 +4365,32 @@ mod tests {
         engine.handle(EngineCmd::PlayPause).unwrap();
         wait_for(|| output.samples().len() > settled);
         assert!(engine.state().position_ms >= 1500);
+    }
+
+    /// A natural end reports `ended` (Autoplay continues from it); a pause,
+    /// a seek and a new context do not.
+    #[test]
+    fn ended_marks_a_natural_end_only() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 }).unwrap();
+        wait_for(|| !output.samples().is_empty());
+        engine.handle(EngineCmd::PlayPause).unwrap();
+        wait_for(|| !engine.state().playing);
+        assert!(!engine.state().ended, "a pause is not an end");
+        engine.handle(EngineCmd::PlayPause).unwrap();
+        wait_for(|| !engine.state().playing && output.samples().len() >= 2 * 176_400);
+        assert!(engine.state().ended, "the last track played out");
+
+        engine.handle(EngineCmd::Seek(500)).unwrap();
+        assert!(!engine.state().ended, "a seek into the last track clears it");
+
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        assert!(!engine.state().ended);
+        wait_for(|| engine.state().ended);
+        assert!(engine.state().ended);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        assert!(!engine.state().ended, "a new context clears it");
     }
 
     /// Regression: seeking after the queue ended must not start audio while
@@ -6448,6 +6519,85 @@ mod tests {
             1,
             "prefetched track 2 resolved more than once: {resolved:?}"
         );
+    }
+
+    /// An engine over `ids` (all the fixture tone) whose output takes real
+    /// time per write, plus the resolve order.
+    fn queue_edit_engine(ids: &[u64], delay_ms: u64) -> (Engine, NullOutput, Arc<Mutex<Vec<u64>>>) {
+        let (plan, files) = fixture_plan();
+        let order = Arc::new(Mutex::new(Vec::new()));
+        let plans = ids.iter().map(|&id| (id, plan.clone())).collect();
+        let output = NullOutput::new();
+        let engine = build_engine(
+            Arc::new(PerTrackResolver { plans, order: order.clone() }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(ThrottledOutput { inner: output.clone(), delay: Duration::from_millis(delay_ms) }),
+            Quality::Lossless,
+        );
+        (engine, output, order)
+    }
+
+    /// AP-D7: a track appended while the last one plays is prefetched at
+    /// once, not cold-started after the end (autoplay, Add to queue).
+    #[test]
+    fn a_track_enqueued_during_the_last_track_is_prefetched() {
+        let (engine, output, order) = queue_edit_engine(&[1, 2], 10);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| !output.samples().is_empty());
+        engine.handle(EngineCmd::Enqueue { items: vec![item(2)] }).unwrap();
+        wait_for(|| order.lock().unwrap().contains(&2));
+        assert!(order.lock().unwrap().contains(&2), "track 2 was never resolved");
+        assert!(
+            output.samples().len() < 176_400,
+            "track 2 must be prefetched while track 1 still plays"
+        );
+        wait_for(|| !engine.state().playing && output.samples().len() >= 2 * 176_400);
+        assert_eq!(output.samples().len(), 2 * 176_400);
+        assert_eq!(output.opens(), 1, "the prefetched track reuses the open output");
+        let resolved = order.lock().unwrap().clone();
+        assert_eq!(resolved.iter().filter(|&&t| t == 2).count(), 1, "{resolved:?}");
+    }
+
+    /// Play next on a queue that already has a prefetch swaps it for the
+    /// inserted track mid-track.
+    #[test]
+    fn play_next_retargets_a_stale_prefetch() {
+        let (engine, output, order) = queue_edit_engine(&[1, 2, 3], 10);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 }).unwrap();
+        wait_for(|| order.lock().unwrap().contains(&2));
+        engine.handle(EngineCmd::EnqueueNext { items: vec![item(3)] }).unwrap();
+        wait_for(|| order.lock().unwrap().contains(&3));
+        assert!(order.lock().unwrap().contains(&3), "track 3 was never resolved");
+        assert!(
+            output.samples().len() < 176_400,
+            "the inserted track must be prefetched while track 1 still plays"
+        );
+        wait_for(|| !engine.state().playing && output.samples().len() >= 3 * 176_400);
+        assert_eq!(output.samples().len(), 3 * 176_400);
+    }
+
+    /// With crossfade on, a track appended mid-track is crossed into like
+    /// any other next track.
+    #[test]
+    fn a_track_enqueued_mid_track_is_crossfaded_into() {
+        let (engine, output, _order) = queue_edit_engine(&[1, 2], 30);
+        let stages = Arc::new(Mutex::new(Vec::new()));
+        let stages_ref = stages.clone();
+        engine.subscribe(Arc::new(move |event| {
+            if let EngineEvent::State(state) = event {
+                stages_ref.lock().unwrap().push(state.dsp_stages);
+            }
+        }));
+        engine.set_dsp(crossfade(1000, true));
+        engine.handle(EngineCmd::PlayTracks { items: vec![album_item(1, "A")], start: 0 }).unwrap();
+        wait_for(|| !output.samples().is_empty());
+        engine.handle(EngineCmd::Enqueue { items: vec![album_item(2, "B")] }).unwrap();
+        wait_for(|| !engine.state().playing && output.samples().len() >= 2 * 176_400 - 2 * 44_100 - 2 * 8192);
+        std::thread::sleep(Duration::from_millis(50));
+        let total = output.samples().len();
+        assert!(total < 2 * 176_400 - 2 * 44_100 + 2 * 4096, "expected an overlap, got {total} samples");
+        assert_eq!(output.opens(), 1, "a crossfade must not reopen the output");
+        assert!(stages.lock().unwrap().iter().any(|s| s.contains(&"crossfade")));
     }
 
     /// Sleeps in `write` so playback takes real time, making mid-track state

@@ -77,6 +77,8 @@ pub struct AppState {
     album_dates: std::sync::OnceLock<Arc<crate::album_dates::AlbumDatesStore>>,
     /// Collaborator invitations made this session (cleared on sign-out).
     pub invites: InviteCache,
+    /// Keeps the queue going with similar tracks (`[playback] autoplay`).
+    pub autoplay: crate::autoplay::Autoplay,
     session_expired: AtomicBool,
     handle: Mutex<Option<AppHandle>>,
 }

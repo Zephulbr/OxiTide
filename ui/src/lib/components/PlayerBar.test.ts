@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/svelte";
-import { fakePlayer } from "../test/fakes";
+import { fakePlayer, queueItem } from "../test/fakes";
 import { api } from "../api";
 import { dragDrop } from "../dragDrop.svelte";
 import { menu } from "../menu.svelte";
@@ -74,6 +74,15 @@ describe("PlayerBar: From line", () => {
     expect(nav.goto).not.toHaveBeenCalled();
     expect(nav.closeNowPlaying).toHaveBeenCalled();
     expect(locatePlaying.requests).toBe(before + 1);
+  });
+
+  it("credits an Autoplay suggestion to Autoplay, not its album", () => {
+    playSource.set({ kind: "playlist", name: "Road trip", route: { name: "playlist", id: "p1" } }, [1]);
+    setup({ current: { ...queueItem(1), autoplay: true } });
+
+    expect(screen.getByText("Autoplay")).toBeTruthy();
+    expect(screen.queryByText("Road trip")).toBeNull();
+    expect(screen.queryByText("From album")).toBeNull();
   });
 
   it("falls back to the track's album when the source did not queue it", () => {

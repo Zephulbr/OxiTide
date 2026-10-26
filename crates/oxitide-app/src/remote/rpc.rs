@@ -517,6 +517,8 @@ mod tests {
         "search_type",
         // Slot drops from the desktop queue rail; the phone has no drag UI.
         "queue_insert",
+        // A desktop setting; the phone has no settings page.
+        "set_autoplay",
         // Save for Later and playlist collaboration have no phone UI.
         "get_save_for_later_ids",
         "get_save_for_later_page",

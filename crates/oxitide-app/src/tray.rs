@@ -160,6 +160,7 @@ mod tests {
             cover: None,
             artist_refs: Vec::new(),
             album_id: None,
+            autoplay: false,
         }
     }
 

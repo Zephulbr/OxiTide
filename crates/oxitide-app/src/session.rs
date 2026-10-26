@@ -32,6 +32,9 @@ pub struct SessionItem {
     pub artist_refs: Vec<ArtistRef>,
     #[serde(skip_serializing_if = "Option::is_none", with = "crate::stored_ref::opt_id")]
     pub album_id: Option<u64>,
+    /// An Autoplay suggestion (`QueueItem::autoplay`).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub autoplay: bool,
 }
 
 impl From<&QueueItem> for SessionItem {
@@ -47,6 +50,7 @@ impl From<&QueueItem> for SessionItem {
             ai: None,
             artist_refs: item.artist_refs.clone(),
             album_id: item.album_id,
+            autoplay: item.autoplay,
         }
     }
 }
@@ -62,6 +66,7 @@ impl From<SessionItem> for QueueItem {
             cover: item.cover,
             artist_refs: item.artist_refs,
             album_id: item.album_id,
+            autoplay: item.autoplay,
         }
     }
 }
@@ -469,6 +474,7 @@ mod tests {
             ai: None,
             artist_refs: Vec::new(),
             album_id: None,
+            autoplay: false,
         }
     }
 
@@ -569,6 +575,18 @@ mod tests {
         assert_eq!(legacy.album_id, None);
     }
 
+    #[test]
+    fn the_autoplay_mark_survives_a_save() {
+        let suggested = QueueItem { autoplay: true, ..QueueItem::from(item(1)) };
+        let stored = SessionItem::from(&suggested);
+        let json = serde_json::to_string(&stored).unwrap();
+        assert!(json.contains(r#""autoplay":true"#));
+        let restored = QueueItem::from(serde_json::from_str::<SessionItem>(&json).unwrap());
+        assert_eq!(restored, suggested);
+        let plain = serde_json::to_string(&SessionItem::from(&QueueItem::from(item(1)))).unwrap();
+        assert!(!plain.contains("autoplay"));
+    }
+
     /// A version 1 file as 0.4 wrote it: bare-number ids, `{ id, name }` links.
     #[test]
     fn a_version_1_session_loads_and_saves_back_as_refs() {
@@ -663,6 +681,7 @@ mod tests {
                 cover: None,
                 artist_refs: Vec::new(),
                 album_id: None,
+                autoplay: false,
             })
             .collect();
         PlaybackState {
@@ -684,6 +703,7 @@ mod tests {
             crossfade_ms: 0,
             last_transition: None,
             queue_rev: ids.len() as u64,
+            ended: false,
             queue: std::sync::Arc::new(items),
             stream: None,
         }

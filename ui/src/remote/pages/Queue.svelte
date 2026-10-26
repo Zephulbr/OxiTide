@@ -114,7 +114,8 @@
               <Art src={art(item.cover, 80)} size={44} />
               <span class="text">
                 <span class="title ellipsis">{item.title}</span>
-                <span class="muted ellipsis">{item.artist}</span>
+                <!-- Paged rows can't find the first suggestion, so each says so. -->
+                <span class="muted ellipsis">{#if item.autoplay}<span class="autoplay">Autoplay</span> · {/if}{item.artist}</span>
               </span>
               <span class="muted time">{formatDuration(item.duration_secs)}</span>
             </button>
@@ -184,6 +185,9 @@
   }
   .current .title {
     color: var(--accent);
+  }
+  .autoplay {
+    font-weight: 600;
   }
   .time {
     font-size: 13px;

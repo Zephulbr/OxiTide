@@ -23,6 +23,13 @@ pub struct QueueItem {
     pub artist_refs: Vec<ArtistRef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub album_id: Option<u64>,
+    /// Appended by Autoplay when the queue ran out, not queued by the user.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub autoplay: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -385,7 +392,19 @@ mod tests {
     use super::*;
 
     fn item(id: u64) -> QueueItem {
-        QueueItem { track_id: id, title: format!("T{id}"), artist: String::new(), album: String::new(), duration_secs: 1, cover: None, artist_refs: Vec::new(), album_id: None }
+        QueueItem { track_id: id, title: format!("T{id}"), artist: String::new(), album: String::new(), duration_secs: 1, cover: None, artist_refs: Vec::new(), album_id: None, autoplay: false }
+    }
+
+    #[test]
+    fn autoplay_flag_is_written_only_when_set() {
+        let plain = serde_json::to_value(item(1)).unwrap();
+        assert!(plain.get("autoplay").is_none());
+        let suggested = QueueItem { autoplay: true, ..item(1) };
+        let json = serde_json::to_string(&suggested).unwrap();
+        assert!(json.contains(r#""autoplay":true"#));
+        assert_eq!(serde_json::from_str::<QueueItem>(&json).unwrap(), suggested);
+        let old: QueueItem = serde_json::from_str(r#"{"track_id":1,"title":"T"}"#).unwrap();
+        assert!(!old.autoplay);
     }
 
     fn queue(n: u64) -> Queue {

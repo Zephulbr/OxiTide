@@ -795,6 +795,12 @@
     api.clearCache().then(refreshCacheStatus).catch(apply);
   }
 
+  function setAutoplay(autoplay: boolean) {
+    if (!config) return;
+    config = { ...config, playback: { ...config.playback, autoplay } };
+    api.setAutoplay(autoplay).catch(apply);
+  }
+
   function setHistoryEnabled(enabled: boolean) {
     if (!config) return;
     config = { ...config, history: { ...config.history, enabled } };
@@ -1232,6 +1238,15 @@
                   onchange={setDisplay}
                 />
               </SettingRow>
+            </SettingsSection>
+
+            <SettingsSection title="Queue" icon="list-music">
+              <ToggleRow
+                id="autoplay" label="Autoplay"
+                description="Keep playing similar content when your queue ends."
+                checked={config.playback.autoplay}
+                onchange={setAutoplay}
+              />
             </SettingsSection>
 
             <SettingsSection title="Output" icon="headphones">

@@ -2,6 +2,7 @@
 
 mod album_dates;
 mod artwork;
+mod autoplay;
 mod commands;
 mod config;
 mod diagnostics;
@@ -200,6 +201,7 @@ fn main() {
     );
     state.set_scrobbler(scrobbler.clone());
     perf::mark("services_ready");
+    state.autoplay.set_enabled(config.playback.autoplay);
     state.set_config(config);
     let track_flags = std::sync::Arc::new(track_flags::TrackFlagsStore::start(
         track_flags::track_flags_path(),
@@ -434,6 +436,7 @@ fn main() {
             commands::get_play_counts,
             commands::get_album_release_dates,
             commands::set_block_explicit,
+            commands::set_autoplay,
             commands::set_block_ai,
             commands::set_show_labels,
             commands::set_shuffle,

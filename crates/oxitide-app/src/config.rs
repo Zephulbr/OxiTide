@@ -27,6 +27,22 @@ pub struct Config {
     pub remote: RemoteConfig,
     /// Update checks (Track 12). On by default.
     pub updates: UpdatesConfig,
+    /// Queue behaviour (Autoplay).
+    pub playback: PlaybackConfig,
+}
+
+/// `[playback]`: what happens around the queue.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PlaybackConfig {
+    /// Keep playing similar tracks when the queue ends (TIDAL parity: on).
+    pub autoplay: bool,
+}
+
+impl Default for PlaybackConfig {
+    fn default() -> Self {
+        Self { autoplay: true }
+    }
 }
 
 pub const REMOTE_DEFAULT_PORT: u16 = 47820;
@@ -678,10 +694,21 @@ mod tests {
                 approve_new_devices: false,
             },
             updates: UpdatesConfig { check_on_start: false },
+            playback: PlaybackConfig { autoplay: false },
         };
         config.save_to(&path).unwrap();
         assert_eq!(Config::load_from(&path), config);
         assert!(!dir.join("config.toml.tmp").exists(), "temp file left behind");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// Configs written before Autoplay get it on, like TIDAL.
+    #[test]
+    fn autoplay_defaults_on_for_older_configs() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        fs::write(&path, "[content]\nblock_explicit = true\n").unwrap();
+        assert!(Config::load_from(&path).playback.autoplay);
         let _ = fs::remove_dir_all(dir);
     }
 

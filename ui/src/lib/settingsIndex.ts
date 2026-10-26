@@ -57,6 +57,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   e("quality", "playback", "Streaming", "Streaming quality", "audio hifi hi-res lossless max high aac flac bitrate"),
   e("allow-fallback", "playback", "Streaming", "Use the best available quality", "fallback unavailable"),
   e("quality-badge", "playback", "Streaming", "Quality badge", "display compact detailed bit depth sample rate"),
+  e("autoplay", "playback", "Queue", "Autoplay", "similar radio continue keep playing queue ends recommendations"),
   e("device", "playback", "Output", "Audio device", "output speakers dac headphones sound card wasapi asio"),
   e("exclusive", "playback", "Output", "Bit-perfect output (exclusive mode)", "wasapi asio exclusive mixer unchanged"),
   e("exclusive-fallback", "playback", "Output", "If unsupported", "exclusive fallback shared", "exclusive"),

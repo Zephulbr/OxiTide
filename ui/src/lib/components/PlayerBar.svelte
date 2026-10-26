@@ -98,6 +98,7 @@
   const from = $derived.by(() => {
     const current = player.state.current;
     if (!current) return null;
+    if (current.autoplay) return { label: "From", name: "Autoplay", open: undefined };
     const source = playSource.fromFor(current.track_id);
     if (source?.name) {
       const route = source.route;

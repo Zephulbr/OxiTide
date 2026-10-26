@@ -320,6 +320,7 @@ mod tests {
             cover: cover.map(str::to_string),
             artist_refs: Vec::new(),
             album_id: None,
+            autoplay: false,
         }
     }
 
@@ -344,6 +345,7 @@ mod tests {
             last_transition: None,
             queue: Default::default(),
             queue_rev: 0,
+            ended: false,
             stream: None,
         })
     }

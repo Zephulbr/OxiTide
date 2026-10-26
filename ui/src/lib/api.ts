@@ -237,6 +237,8 @@ export interface QueueItem {
   /// tracks, sessions saved before them). `artist` stays the display string.
   artist_refs?: ArtistRef[];
   album_id?: number | null;
+  /** Appended by Autoplay when the queue ran out; absent on queued items. */
+  autoplay?: boolean;
 }
 export interface PageTrackInput {
   id: number;
@@ -281,6 +283,9 @@ export interface PlaybackState {
   /** Revision of `queue`; moves whenever its items change. */
   queue_rev: number;
   stream?: StreamMeta | null;
+  /** The last track played out (not a pause or an error). Always sent by
+   *  Rust; optional so hand-built states in tests may omit it. */
+  ended?: boolean;
 }
 /** A `state` event: `queue` is omitted when `queue_rev` did not move since the
  *  previous event, and the UI keeps the copy it has. */
@@ -450,6 +455,8 @@ export interface Config {
   rack: RackSettings;
   remote: RemoteSettings;
   updates: { check_on_start: boolean };
+  /** Keep playing similar tracks when the queue ends (default on). */
+  playback: { autoplay: boolean };
 }
 /** `get_update_support` (`updater.rs`). `reason` explains an unsupported install. */
 export interface UpdateSupport {
@@ -780,6 +787,7 @@ export const api = {
   getAlbumReleaseDates: (ids: number[]) =>
     invoke<AlbumDate[]>("get_album_release_dates", { ids }),
   setBlockExplicit: (enabled: boolean) => invoke<void>("set_block_explicit", { enabled }),
+  setAutoplay: (enabled: boolean) => invoke<void>("set_autoplay", { enabled }),
   setBlockAi: (enabled: boolean) => invoke<void>("set_block_ai", { enabled }),
   setShowLabels: (enabled: boolean) => invoke<void>("set_show_labels", { enabled }),
   applyContentFilters: (scope: "explicit" | "ai") =>

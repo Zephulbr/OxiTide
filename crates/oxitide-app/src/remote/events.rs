@@ -521,6 +521,7 @@ pub(crate) mod tests {
             cover: Some("c".into()),
             artist_refs: Vec::new(),
             album_id: None,
+            autoplay: false,
         }
     }
 
@@ -545,6 +546,7 @@ pub(crate) mod tests {
             last_transition: None,
             queue: Arc::new(queue),
             queue_rev: 1,
+            ended: false,
             stream: None,
         }
     }

@@ -79,6 +79,29 @@ describe("QueueRail", () => {
     expect(screen.queryAllByRole("link")).toHaveLength(0);
   });
 
+  it("labels the first upcoming Autoplay suggestion once", () => {
+    const queue = [
+      queueItem(1),
+      { ...queueItem(2), autoplay: true },
+      { ...queueItem(3), autoplay: true },
+      { ...queueItem(4), autoplay: true },
+    ];
+    // The current track is itself a suggestion: the label goes on the next.
+    render(QueueRail, { player: fakePlayer({ queue, current: queue[1], current_index: 1 }) });
+
+    const labels = document.querySelectorAll(".q-autoplay");
+    expect(labels).toHaveLength(1);
+    expect(labels[0].closest("[data-q-index]")?.getAttribute("data-q-index")).toBe("2");
+    expect(screen.getByRole("button", { name: "Track 3 — Artist (Autoplay)" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Track 1 — Artist" })).toBeTruthy();
+  });
+
+  it("shows no Autoplay label without suggestions to come", () => {
+    const queue = [queueItem(1), { ...queueItem(2), autoplay: true }];
+    render(QueueRail, { player: fakePlayer({ queue, current: queue[1], current_index: 1 }) });
+    expect(document.querySelector(".q-autoplay")).toBeNull();
+  });
+
   it("keeps names as plain text without a go handler", () => {
     render(QueueRail, { player: fakePlayer({ queue: [queueItem(1)] }) });
     expect(document.querySelector(".name-link")).toBeNull();
