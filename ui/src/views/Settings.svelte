@@ -648,6 +648,7 @@
     value: String(percent),
     label: `${percent}%`,
   }));
+  const REDUCED_MOTION_PAUSED = "Paused while your system's reduced-motion setting is on.";
 
   function setCatjamCoat(coat: CatjamCoat) {
     appearance.setCatjamCoat(coat).catch(apply);
@@ -1156,20 +1157,16 @@
             </div>
 
             <div class="col wide" style="order: 4">
-            <SettingsSection title="Extras" icon="sparkles">
+            <SettingsSection title="Cat" icon="paw-print">
               <ToggleRow
                 id="cat" label="Cat"
-                description={appearance.reducedMotion
-                  ? "A little cat that follows your cursor. Paused while your system's reduced-motion setting is on."
-                  : "A little cat that follows your cursor around the window."}
+                description={appearance.reducedMotion ? REDUCED_MOTION_PAUSED : undefined}
                 checked={config.ui.oneko}
                 onchange={setOneko}
               />
               <ToggleRow
                 id="catjam" label="Jamming cat"
-                description={appearance.reducedMotion
-                  ? "A cat on the player bar that bobs along to the beat. Paused while your system's reduced-motion setting is on."
-                  : "A cat on the player bar that bobs along to the beat."}
+                description={appearance.reducedMotion ? REDUCED_MOTION_PAUSED : undefined}
                 checked={config.ui.catjam}
                 onchange={setCatjam}
               />
