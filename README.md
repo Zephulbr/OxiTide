@@ -24,13 +24,12 @@
 > **OxiTide is an unofficial, third-party project. It is not affiliated with, endorsed by, or connected to TIDAL.**
 > "TIDAL" is a trademark of its owner. A paid TIDAL subscription is required. OxiTide plays only what your
 > own account can already stream. It does not bypass subscriptions, does not download or export songs,
-> and does not circumvent DRM. Use it in line with TIDAL's terms.
+> and does not circumvent DRM.
 
 ## Why OxiTide
 
 - **Bit-perfect output.** WASAPI exclusive mode on Windows, ASIO on Windows, and ALSA on Linux. When sound
   processing changes the signal, OxiTide tells you.
-- **Sound tuning, all opt-in.** A 10-band EQ, ReplayGain, crossfade and AutoMix transitions. All are off by default.
 - **Three looks.** Atmosphere, Studio and Hi-Fi Rack, each with light and dark themes, and settings for density,
   colour and more.
 - **Phone remote.** Control playback, the queue and your library from a phone on your local network. Nothing to install on the phone.
@@ -38,6 +37,7 @@
 - **Light on your machine.** A native Tauri shell. It goes idle when paused, releases the audio device after 30 seconds
   of pause, and reduces its memory use while hidden to the tray.
 - **Private by default.** No telemetry, no account of its own, and your session tokens live in the OS keyring.
+- **Sound tuning.** A 10-band EQ, ReplayGain, crossfade and AutoMix transitions. All are off by default.
 
 ## Screenshots
 
@@ -90,7 +90,16 @@ A hardware-style skin with needle and spectrum meters.
 
 ### Phone remote
 
-<p align="center"><img src="docs/images/phone-remote-pair.webp" alt="The phone remote and the desktop app, playing the same track side by side" width="100%"></p>
+<table align="center" cellspacing="0" cellpadding="0">
+  <tr>
+    <td valign="top"><img src="docs/images/phone-remote.webp" alt="The phone remote on a phone, playing a track" height="353"></td>
+    <td valign="top"><img src="docs/images/phone-remote-desktop.webp" alt="The desktop app, playing the same track" height="353"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Phone Remote</sub></td>
+    <td align="center"><sub>Desktop App</sub></td>
+  </tr>
+</table>
 
 </details>
 
@@ -98,40 +107,19 @@ A hardware-style skin with needle and spectrum meters.
 
 ### Playback engine
 
-- Own Rust audio engine with gapless playback, a queue with history, and a streaming cache that prefetches the next track.
-- **Bit-perfect output.** Exclusive mode on WASAPI, or ASIO on Windows. If another app holds the device, exclusive mode
-  falls back to shared output and tells you.
-- **Sound processing, opt-in.** 10-band EQ, ReplayGain and crossfade. The UI shows which stage is active and when
-  playback is no longer bit-perfect.
+- Own Rust audio engine with gapless playback, a queue with local history, and a streaming cache that prefetches the next track.
+- **Bit-perfect output.** Exclusive mode on WASAPI, or ASIO on Windows.
+- **Customize your sound** 10-band EQ, ReplayGain and crossfade.
 - **AutoMix (experimental).** Trims silence, overlaps tracks of different formats, and can beat-match transitions.
   Choose Classic, Quick, Blend or Auto.
-- **Resilient.** If the network drops mid-track, playback waits and resumes where it stopped. Queue and position
-  survive a restart.
 
 ### Customisable interface
 
-- **Three modes:** Atmosphere (default), Studio (tones: warm, neutral, black) and Hi-Fi Rack (lamp colour and
-  brightness, needle or spectrum meters).
+- **Three modes to choose from:** Atmosphere, Studio and Hi-Fi Rack.
 - **Appearance:** light or dark theme, density, dynamic colour from cover art (or off), and row separators.
 - **Accessibility:** keyboard navigation, focus handling, and reduced motion.
 
-### Browse, search and discover
-
-- **Home** has your personal shelves (recently played, and more) above TIDAL's editorial rows.
-- **Explore** covers genres, moods and decades, plus "New to you" suggestions of artists you haven't heard.
-- **Search** shows a top result, a track preview, and type filters, and corrects typos.
-- Albums and artists with credits and album info, playlists, mixes and radio.
-- Synced lyrics.
-
-### Your library
-
-- Favorite tracks, albums and artists. Create, rename and manage playlists.
-- Drag tracks into playlists or the queue, and select several at once.
-- Undo for removals from playlists, the queue and favorites.
-- Listening history and stats, a sleep timer, and session restore.
-- Optional filters for explicit and AI-generated content.
-
-### Phone remote
+### Phone remote control
 
 - An opt-in web page on your phone that controls playback, the queue, search and your library.
 - Pair by scanning a QR code shown on the desktop. The code works once and expires after five minutes.
@@ -145,16 +133,10 @@ A hardware-style skin with needle and spectrum meters.
 
 ### Scrobbling
 
-- Last.fm and ListenBrainz, each with its own switch.
+- Last.fm and ListenBrainz.
 - Last.fm needs an API key, which is free to get from last.fm/api. Enter it in `config.toml` or the
   `OXITIDE_LASTFM_API_KEY` / `OXITIDE_LASTFM_API_SECRET` environment variables. ListenBrainz only needs your user token.
 - Scrobbles queue while you're offline and send when the connection returns.
-
-### Small touches
-
-- **CatJam:** a cat beside the cover bobs to the beat. Beats are detected on your machine, and nothing about the track is sent anywhere.
-- **oneko:** a cat that chases your cursor. Right-click it to summon its black cousin, kuroneko.
-- Both can be turned off in Settings.
 
 ## What it isn't
 
@@ -232,8 +214,7 @@ Found a vulnerability? Please report it privately to the maintainer rather than 
 | Output | WASAPI shared/exclusive, ASIO | ALSA |
 | Media controls | SMTC and media keys | MPRIS |
 | Credential storage | Credential Manager | Secret Service |
-| Packaging | NSIS, MSI | AppImage, deb, AUR recipe |
-| Testing | Daily use and owner smoke tests | Builds and tests pass under WSL2; bare-metal testing so far covers one KDE/Wayland machine |
+| Packaging | NSIS, MSI | AppImage, deb, AUR recipe (not available yet)|
 
 macOS is not planned. ASIO output is merged, and its hardware smoke test is still pending.
 
