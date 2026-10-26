@@ -90,16 +90,7 @@ A hardware-style skin with needle and spectrum meters.
 
 ### Phone remote
 
-<table width="100%">
-  <tr>
-    <td width="35%" align="center" valign="middle"><img src="docs/images/phone-remote.webp" alt="The phone remote on a phone, playing a track" width="100%"></td>
-    <td width="65%" align="center" valign="middle"><img src="docs/images/phone-remote-desktop.webp" alt="The desktop app, playing the same track" width="100%"></td>
-  </tr>
-  <tr>
-    <td align="center"><sub>Phone remote</sub></td>
-    <td align="center"><sub>Desktop app, the same track</sub></td>
-  </tr>
-</table>
+<p align="center"><img src="docs/images/phone-remote-pair.webp" alt="The phone remote and the desktop app, playing the same track side by side" width="100%"></p>
 
 </details>
 
