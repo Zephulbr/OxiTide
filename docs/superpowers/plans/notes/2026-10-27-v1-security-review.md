@@ -80,6 +80,27 @@ Run with `npm --prefix ui run app:dev` and a real account; the DAC used for the 
   - Also fixed: a device picked **while paused** did nothing until the next track (the restart
     only ran for a playing queue), so resume kept the old device.
 
+- **"Exclusive failed to close; no DAC / device unavailable" (owner, same smoke session).** From
+  `logs\oxitide.2026-10-27.log` (times UTC; local is +2):
+  - 12:39:13 WASAPI ended the DX5 stream with `0x88890004` (`AUDCLNT_E_DEVICE_INVALIDATED`), then
+    `0x88890026` (`AUDCLNT_E_RESOURCES_INVALIDATED`) at 12:39:27; an ASIO open at 12:40:39 found
+    the Topping driver unable to initialize, and it opened again at 12:40:56. The DAC itself
+    dropped off and came back. Not reproduced: 18 back-to-back DX5 exclusive → shared → Topping
+    ASIO (44.1 / 96 kHz) switches on the owner's PC all played in real time and closed in ≤ 10 ms,
+    so release/reacquire in `RoutedOutput` / `WasapiOutput` / `AsioOutput` is sound.
+  - **Our bug:** the dead WASAPI pump only logged; writes filled an undrained ring for 2 s before
+    the generic "disconnected or stalled" error. Fixed (`2e25fc1`): the pump marks the device lost
+    and the ring fails a blocked write as soon as its consumer is gone.
+  - 12:44–12:46: five stalls on an output that opened but never consumed (the DAC still settling
+    after the drop-off); each surfaced as an output error and a later Play reopened, as designed.
+  - 12:50:48 **panic → app wedged:** a webview reload (Vite reloading after UI edits) re-ran
+    `auth_restore`, whose `set_player` dropped the old engine inside the async command; the
+    resolver's tokio runtime panicked on drop under the player write lock, poisoning it, so every
+    later `state.player()` panicked (five times in the log, all in `replace_player`) and nothing
+    could play until a restart. Release builds reach the same path on F5 or a re-login that
+    replaces the player. Fixed (`5a0ed13`): background runtime shutdown on drop, and the old
+    player is dropped outside the lock; the regression test fails with the old drop.
+
 ### Smoke: the follow-ups (owner)
 
 - [ ] ASIO selected: every volume control (player bar, mini player, Rack knob, phone) reads 100 %,
@@ -94,6 +115,10 @@ Run with `npm --prefix ui run app:dev` and a real account; the DAC used for the 
 - [ ] Switch while paused, then Play: resumes on the new device.
 - [ ] The log (`Settings → Open logs folder`) shows `output moved to … in … ms` for the in-place
       switches.
+- [ ] Reload the window while playing (F5, or let Vite reload in `app:dev`): the app signs back
+      in and plays; no `panic` lines in the log.
+- [ ] Unplug the DAC while playing on its WASAPI endpoint: the device notice appears within a
+      fraction of a second (not after ~2 s); replug + Play resumes.
 
 ## Accepted advisories (open at 1.0)
 
