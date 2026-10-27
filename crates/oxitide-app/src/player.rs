@@ -34,7 +34,8 @@ pub fn build_cache(config: &Config) -> Arc<DiskCache> {
 /// the engine's worker thread.
 pub struct TidalResolver {
     client: TidalClient,
-    runtime: tokio::runtime::Runtime,
+    /// `None` only during drop.
+    runtime: Option<tokio::runtime::Runtime>,
 }
 
 impl TidalResolver {
@@ -43,7 +44,20 @@ impl TidalResolver {
             .worker_threads(1)
             .enable_all()
             .build()?;
-        Ok(Self { client, runtime })
+        Ok(Self { client, runtime: Some(runtime) })
+    }
+}
+
+/// The last engine reference can go in an async command (`auth_restore` or a
+/// login replacing the player), and a plain runtime drop there panics ("Cannot
+/// drop a runtime in a context where blocking is not allowed"). That panic
+/// poisoned the player lock and wedged the app until restart. Shutting down
+/// in the background never blocks.
+impl Drop for TidalResolver {
+    fn drop(&mut self) {
+        if let Some(runtime) = self.runtime.take() {
+            runtime.shutdown_background();
+        }
     }
 }
 
@@ -53,9 +67,8 @@ impl StreamResolver for TidalResolver {
         track_id: u64,
         quality: Quality,
     ) -> oxitide_audio::Result<oxitide_audio::source::StreamPlan> {
-        let info = self
-            .runtime
-            .block_on(self.client.playback_info(track_id, quality))?;
+        let runtime = self.runtime.as_ref().expect("the runtime lives until drop");
+        let info = runtime.block_on(self.client.playback_info(track_id, quality))?;
         // The manifest body carries signed CDN URLs, so only its size is logged.
         tracing::debug!(
             "playbackinfo track {track_id} ({quality:?}): mime={} manifest_len={}",
@@ -220,6 +233,29 @@ mod tests {
         cache.cleanup();
         assert!(!part.exists(), "cleanup must remove the stale .part");
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Regression (2026-10-27 log): `auth_restore` after a webview reload
+    /// dropped the old player, and with it this resolver's runtime, inside an
+    /// async command. That panicked, poisoned the player lock and wedged the
+    /// app. The drop must be safe on an async worker.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_resolver_can_be_dropped_inside_an_async_task() {
+        let client = TidalClient::new(
+            reqwest::Client::new(),
+            "http://127.0.0.1:9/v1",
+            "http://127.0.0.1:9/token",
+            oxitide_tidal::auth::SessionInfo { session_id: "s".into(), country_code: "GR".into(), user_id: 1 },
+            oxitide_tidal::token_store::TokenSet {
+                access_token: "AT".into(),
+                refresh_token: None,
+                token_type: "Bearer".into(),
+                expires_at: None,
+            },
+            Arc::new(oxitide_tidal::token_store::MemoryStore::default()),
+        );
+        let resolver = TidalResolver::new(client).unwrap();
+        tokio::spawn(async move { drop(resolver) }).await.expect("dropping the resolver panicked");
     }
 
     #[test]

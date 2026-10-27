@@ -114,7 +114,10 @@ impl AppState {
 
     pub fn set_player(&self, player: Player) {
         player.engine.set_beat_tracking(self.beat_tracking.load(Ordering::SeqCst));
-        *self.player.write().unwrap() = Some(Arc::new(player));
+        // The old player may be the engine's last reference: drop it after
+        // the lock is released, so a failing teardown cannot poison it.
+        let old = self.player.write().unwrap().replace(Arc::new(player));
+        drop(old);
     }
 
     /// Turn beat analysis on or off now and for any player built later.
