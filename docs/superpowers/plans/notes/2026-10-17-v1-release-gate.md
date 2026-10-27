@@ -145,6 +145,16 @@ Candidates (pick per value; none block 1.0 on their own):
       TIDAL ever adds them, are handled with no code change.
 - [x] Optional: one-line `SECURITY.md` pointing to the GitHub profile. **Done 2026-10-23.**
 
+## 3b. Security, privacy and bug review
+
+- [x] Review of the remote, auth, secrets, webview, CI, dependencies and recent features.
+      **Done 2026-10-27** (`2026-10-27-v1-security-review.md`, branch `wasapi-0.26`): remote id
+      validation, an Autoplay stall, a NaN volume guard, rustls/webpki/tokio patch releases and
+      wasapi 0.26 (RUSTSEC-2026-0332). `zip` 4.6.1 (via `tauri-plugin-updater`) is accepted with
+      the reasons in the note.
+- [ ] Owner smoke for wasapi 0.26 (shared + exclusive rows in the review note), then merge
+      `wasapi-0.26`. The four review-fix commits can go to `main` on their own first.
+
 ## 4. Final perf run
 
 - [ ] Full scripted scenarios on a quiet machine after the UI pass, ideally against the release build;
@@ -187,7 +197,11 @@ resolution.
 
 ## 7. Tag `v1.0.0`
 
-- [ ] `docs/release.md` runbook; release notes list accepted debt (S4 gap, any renegotiated budgets).
+- [ ] Bump `[workspace.package] version` in `Cargo.toml` from `0.4.0` to `1.0.0` (the only place
+      the version lives; `check-version.mjs` checks the tag against it).
+- [ ] `docs/release.md` runbook; release notes list accepted debt (S4 gap, any renegotiated budgets)
+      and the known limits in `2026-10-27-v1-security-review.md` (remote over plain HTTP, debug
+      builds proxy Vite, unsigned Windows build).
 
 ## After 1.0 (not gated)
 
