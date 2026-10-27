@@ -1704,7 +1704,8 @@ pub fn set_volume(state: State<'_, AppState>, volume: f32, persist: bool) -> Res
         .engine
         .handle(EngineCmd::SetVolume(volume))
         .map_err(|e| e.to_string())?;
-    if persist {
+    // Ignored while volume is held at 100% (ASIO): keep the saved volume.
+    if persist && !player.engine.state().volume_fixed {
         let mut config = state.config();
         config.audio.volume = volume.clamp(0.0, 1.0);
         config.save()?;

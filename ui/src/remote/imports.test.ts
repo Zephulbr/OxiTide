@@ -18,6 +18,7 @@ const SHARED = new Set([
   "src/lib/format.ts",
   "src/lib/lyrics.ts",
   "src/lib/media.ts",
+  "src/lib/volume.ts",
   "src/lib/components/Icon.svelte",
 ]);
 const BARE = new Set(["svelte", "svelte/reactivity", "svelte/transition"]);

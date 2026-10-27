@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Player } from "../player.svelte";
+  import { FIXED_VOLUME_HINT } from "../volume";
 
   /// Amp volume knob with a 23-dot LED ring (DESIGN §5.7). A slider: drag up
   /// or down, wheel, arrows ±2 %, Page keys ±10 %, Home/End; double-click
@@ -24,11 +25,15 @@
     return { x: 38 + 35 * Math.sin(a), y: 38 - 35 * Math.cos(a) };
   });
 
+  /// ASIO: held at 100% for bit-perfect output; the knob is inert.
+  const fixed = $derived(player.state.volume_fixed);
+
   const clamp = (v: number) => Math.min(1, Math.max(0, Math.round(v * 100) / 100));
 
   let startY = 0;
   let startVolume = 0;
   function onPointerDown(event: PointerEvent) {
+    if (fixed) return;
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
     startY = event.clientY;
     startVolume = volume;
@@ -46,6 +51,7 @@
     dragVolume = null;
   }
   function onKeydown(event: KeyboardEvent) {
+    if (fixed) return;
     const step: Record<string, number> = { ArrowUp: 0.02, ArrowRight: 0.02, ArrowDown: -0.02, ArrowLeft: -0.02, PageUp: 0.1, PageDown: -0.1 };
     let next: number | null = null;
     if (event.key in step) next = clamp(volume + step[event.key]);
@@ -57,6 +63,7 @@
   }
   function onWheel(event: WheelEvent) {
     event.preventDefault();
+    if (fixed) return;
     stepTo(clamp(volume - Math.sign(event.deltaY) * 0.02));
   }
   /// Live now, persisted once the steps stop.
@@ -78,10 +85,13 @@
     role="slider"
     tabindex="0"
     aria-label="Volume"
+    aria-disabled={fixed}
+    title={fixed ? FIXED_VOLUME_HINT : undefined}
+    class:fixed
     aria-valuemin={0}
     aria-valuemax={100}
     aria-valuenow={Math.round(volume * 100)}
-    aria-valuetext={volume === 0 ? "Muted" : `${Math.round(volume * 100)} percent`}
+    aria-valuetext={fixed ? FIXED_VOLUME_HINT : volume === 0 ? "Muted" : `${Math.round(volume * 100)} percent`}
     style:--angle="{angle}deg"
     onpointerdown={onPointerDown}
     onpointermove={onPointerMove}
@@ -157,6 +167,10 @@
     border-radius: 2px;
     background: var(--rack-lamp);
     box-shadow: 0 0 6px var(--rack-lamp-glow);
+  }
+  .knob.fixed {
+    cursor: not-allowed;
+    opacity: 0.6;
   }
   .knob:focus-visible {
     outline: 2px solid var(--accent);

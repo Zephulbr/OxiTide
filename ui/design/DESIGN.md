@@ -464,6 +464,15 @@ Every visual change states its cost and re-runs the affected Track 3 scenarios u
 unchanged `scripts/perf/budgets.json`. Instrument is the performance baseline. A mode
 that is not active must cost nothing.
 
+### 2.6 Fixed volume (ASIO, all modes)
+
+ASIO has no endpoint volume, so any level below 100% would be software scaling and break
+bit-perfect output; on an ASIO device the engine holds volume at 100% (`volume_fixed`) and
+the DAC's own control sets the level. Every volume control reads full and takes no input,
+with the shared `FIXED_VOLUME_HINT` (`lib/volume.ts`) as its title / value text: the
+player-bar and mini `VolumeSlider` dims to 55% with its range and mute button `disabled`
+(`not-allowed`, hover glows off); Rack's knob is in rack `DESIGN.md` §5.7, the phone in §4.
+
 ## 3. Where things live
 
 | Concern | Location |
@@ -505,6 +514,8 @@ The phone page served by the LAN remote is a separate entry, not a fourth mode.
   Swiping up/down on the artwork changes the PC's volume (full cover height = 100%,
   6px dead zone so taps never change it) with a level overlay; the artwork is a keyboard /
   screen-reader slider (arrows step 5%). A small speaker button shows the level and mutes.
+  While the PC plays ASIO (`volumeFixed`) the level reads 100%, the speaker button is
+  disabled, and a swipe changes nothing but shows `FIXED_VOLUME_HINT` once on release.
 - **Touch:** every control is at least 44×44px (`--remote-touch`); presses scale to 0.92;
   row menus open a bottom sheet; queue reorder uses a drag handle (`touch-action: none`).
 - **Icons:** the shared `Icon.svelte` (Lucide only, no glyphs). Covers load straight from

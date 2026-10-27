@@ -1,6 +1,7 @@
 <script lang="ts">
   import Icon from "../../lib/components/Icon.svelte";
   import type { Track } from "../../lib/api";
+  import { FIXED_VOLUME_HINT } from "../../lib/volume";
   import { fade } from "svelte/transition";
   import CoverStage from "../components/CoverStage.svelte";
   import Lyrics from "../components/Lyrics.svelte";
@@ -51,11 +52,17 @@
   const position = $derived(seeking ?? store.positionAt(now));
   const duration = $derived(playback?.durationMs ?? 0);
   const shownVolume = $derived(volume ?? playback?.volume ?? 1);
+  /// The PC plays ASIO at a fixed 100% (bit-perfect); volume is the DAC's.
+  const volumeFixed = $derived(playback?.volumeFixed ?? false);
   const favorite = $derived(current ? actions.favTracks.has(current.trackId) : false);
 
   // Live updates while swiping are throttled; the final value always goes.
   let volumeSent = 0;
   function onVolume(value: number, final: boolean) {
+    if (volumeFixed) {
+      if (final) actions.notify(FIXED_VOLUME_HINT);
+      return;
+    }
     volume = value;
     store.noteVolume(value);
     const at = Date.now();
@@ -224,9 +231,10 @@
     <div class="extras">
       <button
         class="icon-btn level"
-        aria-label={shownVolume === 0 ? "Unmute" : `Mute (volume ${Math.round(shownVolume * 100)}%)`}
-        title="Swipe the artwork to change the volume"
+        aria-label={volumeFixed ? FIXED_VOLUME_HINT : shownVolume === 0 ? "Unmute" : `Mute (volume ${Math.round(shownVolume * 100)}%)`}
+        title={volumeFixed ? FIXED_VOLUME_HINT : "Swipe the artwork to change the volume"}
         onclick={toggleMute}
+        disabled={volumeFixed}
       >
         <Icon name={shownVolume === 0 ? "volume-x" : shownVolume < 0.5 ? "volume-1" : "volume-2"} size={20} />
         <span class="pct">{Math.round(shownVolume * 100)}</span>

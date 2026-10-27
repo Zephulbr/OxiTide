@@ -57,7 +57,13 @@ pub struct PlaybackState {
     pub current_index: Option<usize>,
     pub position_ms: u64,
     pub duration_ms: u64,
+    /// The volume being applied: 1.0 while `volume_fixed`, the user's
+    /// otherwise.
     pub volume: f32,
+    /// The output has no volume control that keeps it bit-perfect (ASIO has
+    /// no endpoint volume), so volume stays at 100% and `SetVolume` is
+    /// ignored; the user's volume returns with the next non-ASIO device.
+    pub volume_fixed: bool,
     pub shuffle: bool,
     pub repeat: RepeatMode,
     pub preferred_quality: Quality,
@@ -284,8 +290,15 @@ fn seek_in_range(item: &QueueItem, position_ms: u64) -> bool {
     item.duration_secs == 0 || position_ms <= u64::from(item.duration_secs) * 1000
 }
 
+/// Whether the selected output keeps volume at 100% (see
+/// `PlaybackState::volume_fixed`).
+fn volume_fixed(inner: &Inner) -> bool {
+    inner.device_id.lock().unwrap().as_deref().is_some_and(crate::output::is_asio_device)
+}
+
 fn build_state(inner: &Inner) -> PlaybackState {
     let (status, dsp_stages) = effective_status(inner);
+    let fixed = volume_fixed(inner);
     let q = inner.queue.lock().unwrap();
     PlaybackState {
         playing: q.is_playing(),
@@ -295,7 +308,8 @@ fn build_state(inner: &Inner) -> PlaybackState {
         current_index: q.current_index(),
         position_ms: inner.position_ms.load(Ordering::SeqCst),
         duration_ms: q.current().map(|i| i.duration_secs as u64 * 1000).unwrap_or(0),
-        volume: q.volume(),
+        volume: if fixed { 1.0 } else { q.volume() },
+        volume_fixed: fixed,
         shuffle: q.shuffle(),
         repeat: q.repeat(),
         preferred_quality: *inner.quality.lock().unwrap(),
@@ -316,15 +330,20 @@ fn build_state(inner: &Inner) -> PlaybackState {
 /// The volume the output should have right now and whether a sleep fade is
 /// driving it. A fade overrides the user's volume until it completes or is
 /// cancelled; the output-reopen path uses this too, so a format change
-/// mid-fade never jumps back to full volume.
+/// mid-fade never jumps back to full volume. A fixed-volume output plays at
+/// 1.0; a sleep fade still ramps it down from there (the one deliberate
+/// departure from bit-perfect, right before the pause).
 fn current_volume(inner: &Inner) -> (f32, bool) {
+    let fixed = volume_fixed(inner);
     let fade = inner.fade.lock().unwrap();
     match fade.as_ref() {
         Some(f) => {
             let duration = f.duration.as_secs_f32().max(0.001);
             let t = (f.started.elapsed().as_secs_f32() / duration).min(1.0);
-            (f.base_volume * (1.0 - t), true)
+            let base = if fixed { 1.0 } else { f.base_volume };
+            (base * (1.0 - t), true)
         }
+        None if fixed => (1.0, false),
         None => (f32::from_bits(inner.volume.load(Ordering::SeqCst)), false),
     }
 }
@@ -447,6 +466,8 @@ impl Engine {
     pub fn set_output_device(&self, device: Option<String>) {
         *self.inner.device_id.lock().unwrap() = device;
         self.restart_current_at_position();
+        // `volume_fixed` (and the applied volume) follow the device.
+        self.emit(EngineEvent::State(self.state()));
     }
 
     /// Install a perf hook. Events are delivered on engine threads and must be
@@ -794,6 +815,12 @@ impl Engine {
                 }
                 self.emit(EngineEvent::State(self.state()));
             }
+            EngineCmd::SetVolume(_) if volume_fixed(&self.inner) => {
+                // Fixed at 100% (ASIO): keep the user's volume for the next
+                // device. Re-send the state so a surface that moved its
+                // slider snaps back.
+                self.emit(EngineEvent::State(self.state()));
+            }
             EngineCmd::SetVolume(v) => {
                 // The new volume replaces any sleep fade. Store it and drop the
                 // fade under the fade lock, so the worker reads either the fade
@@ -862,7 +889,10 @@ impl Engine {
                 let playing = self.inner.queue.lock().unwrap().is_playing();
                 if playing {
                     let base = f32::from_bits(self.inner.volume.load(Ordering::SeqCst));
-                    if duration_ms == 0 || base <= 0.0 {
+                    // A fixed-volume output is audible at 100% whatever the
+                    // saved volume, so it always has something to ramp.
+                    let audible = if volume_fixed(&self.inner) { 1.0 } else { base };
+                    if duration_ms == 0 || audible <= 0.0 {
                         // Nothing to ramp: pause now.
                         self.inner.queue.lock().unwrap().stop();
                         self.inner.paused.store(true, Ordering::SeqCst);
@@ -5562,6 +5592,58 @@ mod tests {
         std::thread::sleep(Duration::from_millis(300));
         assert_eq!(output.volumes().last(), Some(&0.25), "the fade kept ramping");
         assert!(engine.state().playing, "the fade must not pause after cancel");
+    }
+
+    /// ASIO has no endpoint volume, so anything below 100% would be software
+    /// scaling: volume is held at unity there, and the user's comes back with
+    /// the next device.
+    #[test]
+    fn asio_holds_volume_at_unity_and_the_user_volume_returns() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        engine.handle(EngineCmd::SetVolume(0.4)).unwrap();
+        engine.set_output_device(Some("asio:Topping USB Audio Device".into()));
+        let state = engine.state();
+        assert!(state.volume_fixed);
+        assert_eq!(state.volume, 1.0, "the state reports what is applied");
+
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine.handle(EngineCmd::SetRepeat(RepeatMode::All)).unwrap();
+        wait_for(|| !output.samples().is_empty());
+        wait_for(|| output.volumes().last() == Some(&1.0));
+        engine.handle(EngineCmd::SetVolume(0.2)).unwrap();
+        std::thread::sleep(Duration::from_millis(200));
+        assert_eq!(output.volumes().last(), Some(&1.0), "SetVolume reached a fixed output");
+        assert_eq!(engine.state().volume, 1.0);
+
+        engine.set_output_device(None);
+        let state = engine.state();
+        assert!(!state.volume_fixed);
+        assert_eq!(state.volume, 0.4, "the user's volume survives the ASIO stint");
+        wait_for(|| output.volumes().last() == Some(&0.4));
+        assert_eq!(output.volumes().last(), Some(&0.4));
+    }
+
+    /// The sleep fade still works on ASIO: it ramps down from 100%, even when
+    /// the saved volume is 0 (the device is audible at unity regardless).
+    #[test]
+    fn a_sleep_fade_on_asio_ramps_from_unity() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        engine.handle(EngineCmd::SetVolume(0.0)).unwrap();
+        engine.set_output_device(Some("asio:Topping USB Audio Device".into()));
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine.handle(EngineCmd::SetRepeat(RepeatMode::All)).unwrap();
+        wait_for(|| !output.samples().is_empty());
+
+        engine.handle(EngineCmd::FadeAndPause { duration_ms: 150 }).unwrap();
+        wait_for(|| !engine.state().playing);
+        let volumes = output.volumes();
+        assert!(
+            volumes.iter().any(|v| *v > 0.05 && *v < 0.95),
+            "no ramp from unity: {volumes:?}"
+        );
+        assert_eq!(engine.state().volume, 1.0);
     }
 
     /// A volume change that lands between two tracks on a kept device must
