@@ -152,8 +152,10 @@ Candidates (pick per value; none block 1.0 on their own):
       validation, an Autoplay stall, a NaN volume guard, rustls/webpki/tokio patch releases and
       wasapi 0.26 (RUSTSEC-2026-0332). `zip` 4.6.1 (via `tauri-plugin-updater`) is accepted with
       the reasons in the note.
-- [ ] Owner smoke for wasapi 0.26 (shared + exclusive rows in the review note), then merge
-      `wasapi-0.26`. The four review-fix commits can go to `main` on their own first.
+- [x] Owner smoke for wasapi 0.26 (shared + exclusive rows in the review note). **Passed
+      2026-10-27.** The four review-fix commits can go to `main` on their own first.
+- [ ] Smoke the two follow-ups it raised (ASIO volume held at 100 %, in-place device switching;
+      rows in the review note), then merge `wasapi-0.26`.
 
 ## 4. Final perf run
 

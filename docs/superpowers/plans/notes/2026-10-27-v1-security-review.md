@@ -41,21 +41,59 @@
 
 Run with `npm --prefix ui run app:dev` and a real account; the DAC used for the ASIO smoke is ideal.
 
-- [ ] Shared mode: play, seek, pause past 30 s (`PAUSE_RELEASE`) and resume; volume changes apply.
-- [ ] Exclusive, 16/44.1 track: opens, Exclusive + bit-perfect shown (Rack EXCL).
-- [ ] Exclusive, 24/96 and 24/192 tracks (Max quality): reopen at the new rate, correct pitch,
+- [x] Shared mode: play, seek, pause past 30 s (`PAUSE_RELEASE`) and resume; volume changes apply.
+- [x] Exclusive, 16/44.1 track: opens, Exclusive + bit-perfect shown (Rack EXCL).
+- [x] Exclusive, 24/96 and 24/192 tracks (Max quality): reopen at the new rate, correct pitch,
       bit-perfect.
-- [ ] Exclusive gapless album (same format): no reopen between tracks, no gap.
-- [ ] Exclusive seek: no stale audio, no click/re-lock.
-- [ ] Exclusive volume below 100 %: endpoint volume used (no software-volume notice on a DAC
+- [x] Exclusive gapless album (same format): no reopen between tracks, no gap.
+- [x] Exclusive seek: no stale audio, no click/re-lock.
+- [x] Exclusive volume below 100 %: endpoint volume used (no software-volume notice on a DAC
       with hardware volume); back to 100 %.
-- [ ] Exclusive fallback: select a device that refuses exclusive (e.g. Realtek with exclusive
+- [x] Exclusive fallback: select a device that refuses exclusive (e.g. Realtek with exclusive
       disabled in Windows Sound settings) with fallback = shared → plays with the notice; with
       fallback = stop → stops with the reason.
-- [ ] Device switch while playing (WASAPI → WASAPI, WASAPI ↔ ASIO); unplug the DAC while playing →
+- [x] Device switch while playing (WASAPI → WASAPI, WASAPI ↔ ASIO); unplug the DAC while playing →
       pause with a notice, replug + Play resumes.
-- [ ] Change the Windows default device while playing on "System default" → follows to the new
+- [x] Change the Windows default device while playing on "System default" → follows to the new
       device.
+
+**Passed 2026-10-27 (owner).** Two follow-ups came out of it, below.
+
+## Follow-ups from the smoke (2026-10-27)
+
+- **ASIO volume broke bit-perfect.** ASIO has no endpoint volume, so anything below 100 % was
+  scaled in software (bit-perfect off, "volume applied in software"). The engine now holds an
+  `asio:` device at 100 % (`PlaybackState.volume_fixed`; phone `volumeFixed`): `SetVolume` from
+  any surface is ignored, every volume control reads full and is disabled with one shared hint
+  (`ui/src/lib/volume.ts`), and hotkeys / a persisting `set_volume` no longer rewrite the saved
+  volume, which returns with the next non-ASIO device. The sleep fade still ramps from 100 %.
+  WASAPI exclusive is unchanged: it uses the endpoint (hardware) volume when the device has one.
+- **Device switching was slow.** Measured on the owner's PC (throwaway test, not committed):
+  device open/close is 2–190 ms for every device (worst: first Topping ASIO load, Realtek
+  shared). The cost was elsewhere: a switch restarted the track like a seek (fresh
+  `playbackinfo`, refetch and decode to the position) and only then closed the old device, which
+  went quiet after ~200 ms in between. The session now moves the open output in place when the
+  output mode stays the same (`switch_device`): one close + one open, same stream; the ~200–260 ms
+  still queued in the old device is dropped. A mode change (e.g. WASAPI shared → ASIO) still
+  restarts at the position, since the decoder's sample format follows the mode. Each move logs
+  `output moved to <device> in <n> ms` at `info`.
+  - Also fixed: a device picked **while paused** did nothing until the next track (the restart
+    only ran for a playing queue), so resume kept the old device.
+
+### Smoke: the follow-ups (owner)
+
+- [ ] ASIO selected: every volume control (player bar, mini player, Rack knob, phone) reads 100 %,
+      is dimmed and does nothing; hovering says why; bit-perfect stays on; volume hotkeys do nothing.
+- [ ] Back to a WASAPI device: the previous volume returns and the controls work again.
+- [ ] Sleep timer "fade and pause" on ASIO: fades out, pauses; the next play is at 100 %.
+- [ ] Switch WASAPI → WASAPI (same mode) while playing: audio continues within a fraction of a
+      second at the same place (a skip of about 0.2 s is expected).
+- [ ] Switch WASAPI exclusive ↔ Topping ASIO with Bit-perfect on (both exclusive): moves in place
+      the same way, bit-perfect shown after.
+- [ ] Switch WASAPI shared → ASIO (mode change): restarts at the position as before.
+- [ ] Switch while paused, then Play: resumes on the new device.
+- [ ] The log (`Settings → Open logs folder`) shows `output moved to … in … ms` for the in-place
+      switches.
 
 ## Accepted advisories (open at 1.0)
 
