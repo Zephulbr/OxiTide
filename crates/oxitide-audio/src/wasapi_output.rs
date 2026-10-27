@@ -148,6 +148,11 @@ impl AudioOutput for WasapiOutput {
                     let _ = ready_tx.send(Ok(ready));
                     if let Err(e) = session.pump(&mut consumer, &stop_thread, &flush_thread) {
                         tracing::error!("wasapi output stopped: {e}");
+                        // Seen as AUDCLNT_E_DEVICE_INVALIDATED (0x88890004)
+                        // when a USB DAC drops off: report the device lost now;
+                        // the engine heard nothing for 2 s (the ring's stall
+                        // timeout) before.
+                        lost.store(true, Ordering::SeqCst);
                     }
                 }
                 Err(e) => {

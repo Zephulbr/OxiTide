@@ -46,6 +46,8 @@ impl Starvation {
 
 /// A ring that has not drained for this long means the device stalled.
 const STALL: Duration = Duration::from_secs(2);
+/// The device thread is gone (its end of the ring was dropped).
+pub(crate) const DEVICE_STOPPED: &str = "Audio device stopped responding (disconnected or reset)";
 /// Bounds for one wait on a full ring. The upper bound stays far below any
 /// ring's length, so the device never runs dry while the worker sleeps.
 const MIN_WAIT: Duration = Duration::from_millis(1);
@@ -67,6 +69,12 @@ pub(crate) fn push_samples<T: Copy>(
     while !rest.is_empty() {
         let free = producer.slots();
         if free == 0 {
+            // The device thread exited (e.g. WASAPI reported the endpoint
+            // invalidated) and dropped its end: nothing will drain the ring,
+            // so say so now instead of after `STALL`.
+            if producer.is_abandoned() {
+                return Err(Error::Output(DEVICE_STOPPED.into()));
+            }
             let since = *stalled_since.get_or_insert_with(Instant::now);
             if since.elapsed() > STALL {
                 return Err(Error::Output("Audio device has been disconnected or stalled".into()));
@@ -189,6 +197,18 @@ mod tests {
         pop_frames_le(&mut consumer, 2, &mut out);
         assert_eq!(u32::from_le_bytes(out[0..4].try_into().unwrap()), 3);
         assert_eq!(u32::from_le_bytes(out[4..8].try_into().unwrap()), 4);
+    }
+
+    /// A device thread that died (its consumer dropped) fails the write at
+    /// once; it used to wait out the 2 s stall first.
+    #[test]
+    fn a_full_ring_with_no_consumer_fails_at_once() {
+        let (mut producer, consumer) = RingBuffer::<u32>::new(8);
+        drop(consumer);
+        let started = Instant::now();
+        let err = push_samples(&mut producer, &[0u32; 32], 1_000, |s| s).unwrap_err();
+        assert!(started.elapsed() < Duration::from_millis(200), "waited {:?}", started.elapsed());
+        assert_eq!(err.to_string(), DEVICE_STOPPED);
     }
 
     #[test]
