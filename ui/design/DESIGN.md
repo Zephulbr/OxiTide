@@ -391,7 +391,9 @@ a 1px `--line` edge and `--shadow-panel`:
   style, fills with `--surface-float`, keeps the width handle, and enters with
   `queueCard` (24px slide + fade, 240 ms; 320 ms for the hover peek, which also takes the
   card form).
-`backdrop-filter` surfaces are a fixed set and never nest. Menus mark the selected
+`backdrop-filter` surfaces are a fixed set and never nest. On Linux (WebKitGTK,
+`data-platform="linux"` from `index.html`) the card radio badge drops its blur: WebKitGTK
+re-filters every backdrop on each composite, and Home's mix row held it near 1 fps. Menus mark the selected
 option with the accent, not a second background.
 
 Drag and drop (spec `2026-10-22-oxitide-drag-to-playlist-design.md`) has one look in every

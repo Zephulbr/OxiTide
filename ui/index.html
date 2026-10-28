@@ -35,6 +35,8 @@
         root.style.colorScheme = m === "rack" ? "dark" : t;
         if (m === "atmosphere" || m === "instrument" || m === "rack") root.dataset.mode = m;
         if (tone === "warm" || tone === "neutral" || tone === "black") root.dataset.tone = tone;
+        // WebKitGTK-only render fallbacks key off this (WebView2 never says Linux).
+        if (/Linux/.test(navigator.userAgent)) root.dataset.platform = "linux";
       })();
     </script>
   </head>

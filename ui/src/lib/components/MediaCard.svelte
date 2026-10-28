@@ -400,6 +400,12 @@
       var(--edge-lit) border-box;
     backdrop-filter: blur(var(--glass-blur));
   }
+  /* WebKitGTK re-filters every backdrop on each composite: Home's 16 mix
+     badges held it near 1 fps while playing. The badge fill is ~82% opaque,
+     so on Linux it drops the blur and looks the same. */
+  :global(:root[data-platform="linux"]) .badge {
+    backdrop-filter: none;
+  }
   /* Accent play button: rises from the cover's bottom-right corner. The small
      steady glow is the primary-transport allowance (AR-1). */
   .play-glyph {
