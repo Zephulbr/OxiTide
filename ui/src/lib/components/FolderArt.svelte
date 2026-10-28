@@ -115,4 +115,10 @@
     box-shadow: 0 0 0 1px var(--line), var(--shadow-cover);
     backdrop-filter: blur(var(--glass-blur));
   }
+  /* WebKitGTK re-filters every backdrop on each composite, so a page of
+     folders would cost what Home's mix badges did (MediaCard). The fill is
+     mostly opaque; on Linux the chip drops the blur. */
+  :global(:root[data-platform="linux"]) .badge {
+    backdrop-filter: none;
+  }
 </style>
