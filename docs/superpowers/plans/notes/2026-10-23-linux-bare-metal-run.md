@@ -395,14 +395,14 @@ the same, `npm --prefix ui run check` 0 errors and `npm --prefix ui test` 151 fi
 - [ ] Unplug the DAC with Settings closed, start a track: system default plays with "Selected
       output device unavailable; using system default". Settings shows the DAC as "(not
       connected)". Replug it: the next track plays on the DAC.
-- [ ] `playerctl stop` → `PlaybackStatus` `Stopped`, position 0, metadata kept; `playerctl play`
+- [x] `playerctl stop` → `PlaybackStatus` `Stopped`, position 0, metadata kept; `playerctl play`
       resumes from 0.
 - [ ] `playerctl volume 0.35` moves the app slider; dragging the slider updates
       `playerctl volume`.
 - [ ] SNI `Title` is `OxiTide`; MPRIS `DesktopEntry` names an installed `.desktop` file for the
       AppImage and the deb.
-- [ ] Logs land in `~/.config/oxitide/logs/`.
-- [ ] After one close/reopen, `config.toml` stores `window_width = 900` for a 900-wide window.
+- [x] Logs land in `~/.config/oxitide/logs/` (2026-10-28, `2026-10-28-linux-v1-close-run.md`).
+- [x] After one close/reopen, `config.toml` stores `window_width = 900` for a 900-wide window (2026-10-28). A tray hide-and-show regression is open in `2026-10-28-linux-v1-close-run.md`.
 - [x] **Issue #8: capture the mix artwork payload.** Captured on Windows 2026-10-23: the URLs
       are on `images.tidal.com`, blocked by the CSP (fixed, see the table above). On Linux, only
       confirm that the mix art now shows. Original steps:
