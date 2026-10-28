@@ -323,6 +323,14 @@ mod linux {
         status: OutputStatus,
         /// `writei` underruns (`EPIPE`) over this output's life.
         underruns: u64,
+        /// The rate the device settled on, for [`Self::queued`].
+        rate: u32,
+        /// Audio written but not yet heard after the last `write`
+        /// (`snd_pcm_delay`: the device buffer plus any sound server's).
+        queued: Option<u32>,
+        /// Scaled samples and packed bytes, kept between writes.
+        scratch: Vec<i32>,
+        bytes: Vec<u8>,
     }
 
     impl AlsaOutput {
@@ -340,6 +348,10 @@ mod linux {
                     notice: None,
                 },
                 underruns: 0,
+                rate: 0,
+                queued: None,
+                scratch: Vec::new(),
+                bytes: Vec::new(),
             }
         }
 
@@ -366,6 +378,7 @@ mod linux {
                 hwp.set_period_size_near(period_frames(buffer), ValueOr::Nearest)
                     .map_err(to_error)?;
                 pcm.hw_params(&hwp).map_err(to_error)?;
+                self.rate = hwp.get_rate().unwrap_or(spec.info.sample_rate);
             }
             pcm.prepare().map_err(to_error)?;
             self.pcm = Some(pcm);
@@ -393,6 +406,7 @@ mod linux {
         }
 
         fn close(&mut self) {
+            self.queued = None;
             if let Some(pcm) = self.pcm.take() {
                 let _ = pcm.drop();
             }
@@ -609,27 +623,25 @@ mod linux {
                 return Err(Error::Output("output not open".into()));
             };
             let software = self.software_volume && (self.volume - 1.0).abs() >= f32::EPSILON;
-            let samples: Vec<i32> = match buf {
+            let volume = self.volume;
+            let samples: &[i32] = match buf {
+                PcmBuffer::I32(v) if !software => v,
                 PcmBuffer::I32(v) => {
-                    if software {
-                        v.iter()
-                            .map(|&sample| (sample as f64 * self.volume as f64) as i32)
-                            .collect()
-                    } else {
-                        v.clone()
-                    }
+                    self.scratch.clear();
+                    self.scratch
+                        .extend(v.iter().map(|&sample| (sample as f64 * volume as f64) as i32));
+                    &self.scratch
                 }
-                PcmBuffer::F32(v) => v
-                    .iter()
-                    .map(|&sample| {
-                        let scaled = if software { sample * self.volume } else { sample };
-                        f32_to_i32_one(scaled)
-                    })
-                    .collect(),
+                PcmBuffer::F32(v) => {
+                    self.scratch.clear();
+                    self.scratch.extend(v.iter().map(|&sample| {
+                        f32_to_i32_one(if software { sample * volume } else { sample })
+                    }));
+                    &self.scratch
+                }
             };
-
-            let mut bytes = Vec::with_capacity(samples.len() * self.format.store_bits() as usize / 8);
-            pack_i32(self.format, &samples, &mut bytes);
+            pack_i32(self.format, samples, &mut self.bytes);
+            let bytes = &self.bytes;
             if bytes.is_empty() {
                 return Ok(());
             }
@@ -661,6 +673,12 @@ mod linux {
                     }
                 }
             }
+            self.queued = match pcm.delay() {
+                Ok(frames) if self.rate > 0 => {
+                    Some((frames.max(0) as u64 * 1000 / self.rate as u64) as u32)
+                }
+                _ => None,
+            };
             Ok(())
         }
 
@@ -702,6 +720,10 @@ mod linux {
 
         fn status(&self) -> OutputStatus {
             self.status.clone()
+        }
+
+        fn queued_ms(&self) -> Option<u32> {
+            self.queued
         }
 
         fn underruns(&self) -> Option<u64> {
@@ -999,8 +1021,10 @@ mod tests {
         .unwrap();
         out.start().unwrap();
         out.write(&PcmBuffer::F32(vec![0.5, -0.5, 0.25, -0.25])).unwrap();
+        assert!(out.queued_ms().is_some(), "a write reports the device lead");
         out.flush().unwrap();
         out.stop().unwrap();
+        assert_eq!(out.queued_ms(), None, "a closed output has no lead");
         let status = out.status();
         assert_eq!(status.mode, OutputMode::Shared);
         assert!(!status.bit_perfect);
