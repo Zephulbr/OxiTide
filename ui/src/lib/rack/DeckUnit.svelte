@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { DeckFace } from "../api";
   import { appearance } from "../appearance.svelte";
+  import { gatedSpin } from "../frameGate";
   import Cover from "../components/Cover.svelte";
   import Icon from "../components/Icon.svelte";
   import type { Favorites } from "../favorites.svelte";
@@ -59,7 +60,7 @@
     <button class="turntable" onclick={() => nav.toggleNowPlaying()} aria-label="Close now playing">
       <span class="plinth">
         <span class="record">
-          <span class="label" class:spin={spinning}>
+          <span class="label" class:spin={spinning} use:gatedSpin={{ spinning, turnMs: 1800 }}>
             {#if current}<Cover uuid={current.cover} size={320} radius={999} alt="" />{/if}
           </span>
         </span>
@@ -393,6 +394,11 @@
   }
   .label.spin {
     animation: rk-spin 1.8s linear infinite;
+  }
+  /* WebKitGTK presents every frame of a CSS animation; on Linux `gatedSpin`
+     turns the label at 30 fps instead. */
+  :global(:root[data-platform="linux"]) .label.spin {
+    animation: none;
   }
   @keyframes rk-spin {
     to {

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { frameDue } from "../../frameGate";
   import { RECORDER_INTERVAL_MS, RECORDER_POINTS, recorderFraction } from "../ballistics";
   import type { RecorderHistory } from "../levels.svelte";
 
@@ -64,7 +65,7 @@
     const draw = (t: number) => {
       // Track 13: the paper crosses its width once a minute (a few px a
       // second), so ~30 redraws a second glide as smoothly as one per frame.
-      if (t - drawnAt < DRAW_STEP_MS) {
+      if (!frameDue(t, drawnAt, DRAW_STEP_MS)) {
         raf = requestAnimationFrame(draw);
         return;
       }

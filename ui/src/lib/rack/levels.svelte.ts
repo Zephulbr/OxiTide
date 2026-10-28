@@ -1,5 +1,6 @@
 import { listen as tauriListen } from "@tauri-apps/api/event";
 import { api, LEVEL_FRAME_EVENT, type LevelFrame } from "../api";
+import { frameDue } from "../frameGate";
 import {
   accumulate,
   bandFraction,
@@ -31,7 +32,8 @@ export const BAND_COUNT = 28;
 /// Track 13: the shortest step between meter updates. Tap frames arrive at
 /// ~30 Hz, so redrawing faster only adds frames to paint: a 144 Hz display
 /// updates the meters every third frame (~48 Hz), a 60 Hz one every frame.
-/// The 1 ms slack keeps 60 Hz frames that land a little early.
+/// The 1 ms slack keeps 60 Hz frames that land a little early. Linux draws
+/// at the tap's 30 Hz (`frameDue`).
 export const MIN_STEP_MS = 1000 / 60 - 1;
 
 export interface LevelsSnapshot {
@@ -105,7 +107,7 @@ export function createLevels(depsFactory: () => Deps = browserDeps) {
   const peaks: [PeakState, PeakState] = [peakState(), peakState()];
 
   function frame(t: number) {
-    if (lastT !== null && t - lastT < MIN_STEP_MS) {
+    if (!frameDue(t, lastT, MIN_STEP_MS)) {
       // Too soon: skip this display frame (a pending tap frame waits).
       rafId = deps!.raf(frame);
       return;

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { appearance } from "../appearance.svelte";
+  import { frameDue } from "../frameGate";
 
   /// The "now playing" mark (queue current row, track tables, sidebar
   /// playlists): a tiny accent record — the Atmosphere disc motif at glyph
@@ -37,6 +38,10 @@
     let raf = 0;
     let last = performance.now();
     const tick = (now: number) => {
+      if (!frameDue(now)) {
+        raf = requestAnimationFrame(tick);
+        return;
+      }
       const dt = Math.min((now - last) / 1000, 0.1);
       last = now;
       speed += ((spinning ? 180 : 0) - speed) * Math.min(1, dt / 0.15);

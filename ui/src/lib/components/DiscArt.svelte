@@ -1,5 +1,6 @@
 <script lang="ts">
   import { appearance } from "../appearance.svelte";
+  import { frameDue } from "../frameGate";
   import Cover from "./Cover.svelte";
 
   let { uuid, playing }: { uuid: string | null | undefined; playing: boolean } = $props();
@@ -16,6 +17,10 @@
   let angle = 0;
   let speed = 0;
   const tick = (now: number) => {
+    if (!frameDue(now)) {
+      raf = requestAnimationFrame(tick);
+      return;
+    }
     const dt = Math.min((now - last) / 1000, 0.1);
     last = now;
     const target = playing ? 30 : 0;
