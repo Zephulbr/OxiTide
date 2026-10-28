@@ -46,8 +46,8 @@ built by `.github/workflows/release.yml` from a version tag; nothing is uploaded
 - The updater runs for Windows installs and for the Linux AppImage. deb/AUR installs update through
   the package manager.
 - The AUR recipe is a template (`pkgver=@PKGVER@`, `_tag=@TAG@`); never fill it in by hand. The
-  rendered `PKGBUILD` fetches `#tag=vX.Y.Z` from the Codeberg `url`, so the tag must be on Codeberg
-  (step 2 pushes it there). A prerelease tag drops its hyphens (`v1.0.0-rc.1` → `pkgver=1.0.0rc.1`)
+  rendered `PKGBUILD` fetches `#tag=vX.Y.Z` from the GitHub `url` (anonymous HTTPS; a Codeberg source
+  needs credentials and broke `makepkg`), so the tag must be on GitHub (step 2 pushes it there). A prerelease tag drops its hyphens (`v1.0.0-rc.1` → `pkgver=1.0.0rc.1`)
   so it sorts before the release. The package is not on the AUR yet; to publish, copy the release's
   `PKGBUILD` into the AUR repo and run `makepkg --printsrcinfo > .SRCINFO`.
 - A copy only updates to releases published after it contained the updater, so the first

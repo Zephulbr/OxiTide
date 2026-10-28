@@ -109,6 +109,8 @@ test("the AUR template renders to the tagged source", () => {
   assert.match(pkgbuild, /^pkgver=1\.0\.0rc\.1$/m);
   assert.match(pkgbuild, /^_tag=v1\.0\.0-rc\.1$/m);
   assert.match(pkgbuild, /^source=\("\$pkgname::git\+\$url\.git#tag=\$_tag"\)$/m);
+  // makepkg clones anonymously: the url must be the public host the tag is pushed to.
+  assert.match(pkgbuild, /^url="https:\/\/github\.com\/Zephulbr\/OxiTide"$/m);
   assert.doesNotMatch(pkgbuild, /@[A-Z]+@|#commit=/);
 });
 
