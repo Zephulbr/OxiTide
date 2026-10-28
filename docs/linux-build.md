@@ -103,6 +103,29 @@ npm --prefix ui run app:dev
 - Exclusive/bit-perfect output and hardware mixers cannot be verified here; they
   are on the deferred bare-metal checklist (spec §5.3).
 
+## Profiling WebKitGTK
+
+WebKitGTK does not speak the Chromium DevTools protocol, so the perf harness's
+CDP driver does not apply. To inspect a live page:
+
+- **Inspector.** The dev build has Inspect Element (right-click).
+- **Scripted access.** For scripted access, start it with the remote inspector:
+  ```bash
+  WEBKIT_INSPECTOR_HTTP_SERVER=127.0.0.1:9222 npm --prefix ui run app:dev
+  ```
+  `http://127.0.0.1:9222/` lists the page. Its WebSocket is
+  `ws://127.0.0.1:9222/socket/1/1/WebPage`; wrap each protocol call
+  (`Runtime.evaluate`, …) in `Target.sendMessageToTarget` for the target id from
+  the first `Target.targetCreated` event. `Runtime.evaluate`'s `awaitPromise` does
+  not resolve here; store async results on `window` and read them back.
+- **Per-thread CPU.** Read it from `/proc/<pid>/task/*/stat`. A busy
+  `ThreadedCompositor` thread with an idle main thread means compositing cost,
+  not script or layout.
+
+Known cost: WebKitGTK re-runs every `backdrop-filter` on each composite, even
+`blur(0px)`, so many small filtered elements are far more expensive than one
+large one (`plans/notes/2026-10-28-linux-home-lag.md`).
+
 ## 7. Keyring / Secret Service
 
 WSL2 Ubuntu 22.04 has no Secret Service provider by default. OxiTide probes for
