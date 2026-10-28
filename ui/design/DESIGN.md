@@ -392,8 +392,9 @@ a 1px `--line` edge and `--shadow-panel`:
   `queueCard` (24px slide + fade, 240 ms; 320 ms for the hover peek, which also takes the
   card form).
 `backdrop-filter` surfaces are a fixed set and never nest. On Linux (WebKitGTK,
-`data-platform="linux"` from `index.html`) the card radio badge drops its blur: WebKitGTK
-re-filters every backdrop on each composite, and Home's mix row held it near 1 fps. Menus mark the selected
+`data-platform="linux"` from `index.html`) the card radio badge and the folder chip drop
+their blur: WebKitGTK re-filters every backdrop on each composite, and Home's mix row held it
+near 1 fps. Menus mark the selected
 option with the accent, not a second background.
 
 Drag and drop (spec `2026-10-22-oxitide-drag-to-playlist-design.md`) has one look in every
@@ -441,7 +442,10 @@ have one look in every mode, with no mode branches:
   note and a text-button Reset link, whose confirm happens in place (Cancel / Reset link
   in `--danger`), with no second modal.
 Ambient motion only while playing. `prefers-reduced-motion` is a hard floor in every
-mode: ambient off, glides instant, slides become 120 ms fades.
+mode: ambient off, glides instant, slides become 120 ms fades. On Linux the loops that
+run for as long as playback does (the discs, the now-playing mark, Rack's meters and
+platter) draw at 30 fps through `lib/frameGate.ts`: WebKitGTK pays for every presented
+frame in the app's main thread.
 
 ### 2.4 Accessibility floors (all modes)
 

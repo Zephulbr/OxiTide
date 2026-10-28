@@ -122,9 +122,17 @@ CDP driver does not apply. To inspect a live page:
   `ThreadedCompositor` thread with an idle main thread means compositing cost,
   not script or layout.
 
-Known cost: WebKitGTK re-runs every `backdrop-filter` on each composite, even
-`blur(0px)`, so many small filtered elements are far more expensive than one
-large one (`plans/notes/2026-10-28-linux-home-lag.md`).
+Known costs (`plans/notes/2026-10-28-linux-home-lag.md`):
+
+- **Backdrop filters.** WebKitGTK re-runs every `backdrop-filter` on each composite,
+  even `blur(0px)`, so many small filtered elements are far more expensive than one
+  large one.
+- **Presented frames.** Every frame the page presents costs the app's GTK main thread
+  (the `oxitide-app` thread, not the web process): one 40 px box turning at 60 fps held
+  it at ~25% of a core, at 30 fps ~8%. `WEBKIT_DISABLE_DMABUF_RENDERER=1` and
+  `GDK_BACKEND=x11` do not lower it, so continuous animations go through
+  `ui/src/lib/frameGate.ts`. A CSS animation, even with a `steps()` timing, presents
+  every display frame.
 
 ## 7. Keyring / Secret Service
 
