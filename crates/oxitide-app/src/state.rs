@@ -114,7 +114,10 @@ impl AppState {
 
     pub fn set_player(&self, player: Player) {
         player.engine.set_beat_tracking(self.beat_tracking.load(Ordering::SeqCst));
-        *self.player.write().unwrap() = Some(Arc::new(player));
+        let old = self.player.write().unwrap().replace(Arc::new(player));
+        // Dropped after the lock is released: tearing down the old engine must
+        // never run under (or poison) the player lock.
+        drop(old);
     }
 
     /// Turn beat analysis on or off now and for any player built later.
@@ -316,7 +319,8 @@ impl AppState {
         let _ = self.take_media();
         let _ = self.take_discord();
         *self.client.write().unwrap() = None;
-        *self.player.write().unwrap() = None;
+        let old = self.player.write().unwrap().take();
+        drop(old); // outside the lock, as in `set_player`
         self.invites.clear();
         self.clear_session_expired();
     }

@@ -34,7 +34,8 @@ pub fn build_cache(config: &Config) -> Arc<DiskCache> {
 /// the engine's worker thread.
 pub struct TidalResolver {
     client: TidalClient,
-    runtime: tokio::runtime::Runtime,
+    /// `None` only during `drop`.
+    runtime: Option<tokio::runtime::Runtime>,
 }
 
 impl TidalResolver {
@@ -43,7 +44,17 @@ impl TidalResolver {
             .worker_threads(1)
             .enable_all()
             .build()?;
-        Ok(Self { client, runtime })
+        Ok(Self { client, runtime: Some(runtime) })
+    }
+}
+
+impl Drop for TidalResolver {
+    /// The engine's last reference can go inside an async command (a player
+    /// rebuild), where a plain runtime drop panics; shut down without blocking.
+    fn drop(&mut self) {
+        if let Some(runtime) = self.runtime.take() {
+            runtime.shutdown_background();
+        }
     }
 }
 
@@ -55,6 +66,8 @@ impl StreamResolver for TidalResolver {
     ) -> oxitide_audio::Result<oxitide_audio::source::StreamPlan> {
         let info = self
             .runtime
+            .as_ref()
+            .expect("runtime lives until drop")
             .block_on(self.client.playback_info(track_id, quality))?;
         // The manifest body carries signed CDN URLs, so only its size is logged.
         tracing::debug!(
@@ -220,6 +233,30 @@ mod tests {
         cache.cleanup();
         assert!(!part.exists(), "cleanup must remove the stale .part");
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A rebuild (`auth_restore` on a page reload) can drop the old engine's
+    /// last reference inside an async command; the resolver's runtime must
+    /// not panic there ("Cannot drop a runtime in a context where blocking is
+    /// not allowed"), which used to poison `AppState::player`.
+    #[tokio::test]
+    async fn resolver_drops_inside_an_async_context() {
+        use oxitide_tidal::auth::SessionInfo;
+        use oxitide_tidal::token_store::{MemoryStore, TokenSet};
+        let client = TidalClient::new(
+            reqwest::Client::new(),
+            "http://127.0.0.1:9",
+            "http://127.0.0.1:9/token",
+            SessionInfo { session_id: "s".into(), country_code: "GR".into(), user_id: 1 },
+            TokenSet {
+                access_token: "AT".into(),
+                refresh_token: Some("RT".into()),
+                token_type: "Bearer".into(),
+                expires_at: None,
+            },
+            Arc::new(MemoryStore::default()),
+        );
+        drop(TidalResolver::new(client).unwrap());
     }
 
     #[test]
