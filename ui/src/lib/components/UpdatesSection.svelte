@@ -8,6 +8,7 @@
     type UpdateSupport,
   } from "../api";
   import { errorMessage } from "../errors";
+  import ConfirmDialog from "./ConfirmDialog.svelte";
   import Button from "./settings/Button.svelte";
   import Notice from "./settings/Notice.svelte";
   import SettingRow from "./settings/SettingRow.svelte";
@@ -21,6 +22,8 @@
   let update = $state<UpdateInfo | null>(null);
   let progress = $state<UpdateProgress | null>(null);
   let error = $state("");
+  /// Installing runs code fetched from GitHub, so it is never one click.
+  let confirming = $state(false);
 
   $effect(() => {
     api
@@ -48,6 +51,7 @@
   }
 
   async function install() {
+    confirming = false;
     phase = "installing";
     progress = null;
     error = "";
@@ -91,7 +95,7 @@
     <SettingRow id="updates-check" label={`OxiTide ${support.current_version}`} description={message}>
       {#if support.supported}
         {#if phase === "available"}
-          <Button variant="primary" icon="download" onclick={install}>Download and install</Button>
+          <Button variant="primary" icon="download" onclick={() => (confirming = true)}>Download and install</Button>
         {:else}
           <Button
             icon="refresh-cw"
@@ -124,6 +128,16 @@
     <div class="inset"><Notice kind="warning">{error}</Notice></div>
   {/if}
 </SettingsSection>
+{#if confirming && update}
+  <ConfirmDialog
+    title={`Install OxiTide ${update.version}?`}
+    message="OxiTide will download this version from its GitHub releases (github.com/Zephulbr/OxiTide), check its signature, then run the installer and restart. Nothing is downloaded until you confirm."
+    confirmLabel="Download and install"
+    destructive={false}
+    onconfirm={install}
+    oncancel={() => (confirming = false)}
+  />
+{/if}
 
 <style>
   .notes {

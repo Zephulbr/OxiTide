@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/svelte";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/svelte";
 import type { UpdateSupport } from "../api";
 
 const mocks = vi.hoisted(() => ({
@@ -35,7 +35,7 @@ describe("Settings → Updates", () => {
     expect(await screen.findByText("You are on the latest version.")).toBeTruthy();
   });
 
-  it("offers and installs a newer release", async () => {
+  async function offerRelease() {
     mocks.api.getUpdateSupport.mockResolvedValue(support());
     mocks.api.checkForUpdate.mockResolvedValue({
       version: "0.3.0",
@@ -49,8 +49,26 @@ describe("Settings → Updates", () => {
     expect(await screen.findByText("Version 0.3.0 is available.")).toBeTruthy();
     expect(screen.getByText("Fixes")).toBeTruthy();
     await fireEvent.click(screen.getByRole("button", { name: "Download and install" }));
+  }
+
+  it("installs a newer release only after the GitHub download is confirmed", async () => {
+    await offerRelease();
+    const dialog = await screen.findByRole("dialog", { name: "Install OxiTide 0.3.0?" });
+    expect(dialog.textContent).toContain("github.com/Zephulbr/OxiTide");
+    expect(mocks.api.installUpdate).not.toHaveBeenCalled();
+    await fireEvent.click(within(dialog).getByRole("button", { name: "Download and install" }));
     expect(mocks.api.installUpdate).toHaveBeenCalledOnce();
     expect(await screen.findByRole("status")).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("cancelling the confirmation downloads nothing", async () => {
+    await offerRelease();
+    const dialog = await screen.findByRole("dialog");
+    await fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(mocks.api.installUpdate).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Download and install" })).toBeTruthy();
   });
 
   it("explains an unsupported install instead of offering buttons", async () => {

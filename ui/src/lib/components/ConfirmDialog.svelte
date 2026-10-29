@@ -4,12 +4,15 @@
     title,
     message,
     confirmLabel = "Confirm",
+    destructive = true,
     onconfirm,
     oncancel,
   }: {
     title: string;
     message: string;
     confirmLabel?: string;
+    /// `false` draws the confirm in the accent instead of the danger colour.
+    destructive?: boolean;
     onconfirm: () => void;
     oncancel: () => void;
   } = $props();
@@ -19,7 +22,7 @@
   <p>{message}</p>
   <p class="actions">
     <button class="cancel" onclick={oncancel}>Cancel</button>
-    <button class="confirm" onclick={onconfirm}>{confirmLabel}</button>
+    <button class="confirm" class:safe={!destructive} onclick={onconfirm}>{confirmLabel}</button>
   </p>
 </Modal>
 
@@ -61,5 +64,15 @@
   }
   .confirm:active {
     transform: scale(0.97);
+  }
+  .confirm.safe {
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    color: var(--accent);
+  }
+  .confirm.safe:hover {
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    border-color: var(--accent);
+    box-shadow: 0 0 9px color-mix(in srgb, var(--accent) 80%, transparent);
   }
 </style>
