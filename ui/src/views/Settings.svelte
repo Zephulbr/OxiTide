@@ -124,6 +124,7 @@
   let lbError = $state("");
   let confirmingHistoryClear = $state(false);
   let confirmingBlockExplicit = $state(false);
+  let confirmingLogout = $state(false);
   let hotkeyConflict = $state<
     { action: HotkeyAction; accelerator: string; other: HotkeyAction } | null
   >(null);
@@ -1792,9 +1793,21 @@
 
             <SettingsSection title="Account" icon="user">
               <SettingRow id="logout" label="Log out" description="Signs out of TIDAL on this device. Your settings are kept.">
-                <Button variant="danger" icon="log-out" onclick={onLogout}>Log out</Button>
+                <Button variant="danger" icon="log-out" onclick={() => (confirmingLogout = true)}>Log out</Button>
               </SettingRow>
             </SettingsSection>
+            {#if confirmingLogout}
+              <ConfirmDialog
+                title="Log out of TIDAL?"
+                message="Playback stops. Your queue comes back when you sign in to this account again."
+                confirmLabel="Log out"
+                onconfirm={() => {
+                  confirmingLogout = false;
+                  onLogout();
+                }}
+                oncancel={() => (confirmingLogout = false)}
+              />
+            {/if}
             </div>
             </div>
           </div>

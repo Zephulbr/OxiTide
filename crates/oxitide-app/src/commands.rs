@@ -171,6 +171,9 @@ pub async fn finish_login(
         .ok_or_else(|| "token store unavailable".to_string())?;
     store.save(&tokens).map_err(|e| e.to_string())?;
     save_session(saved_session_path().as_deref(), &session);
+    if let (Some(live), Some(parked)) = (crate::session::session_path(), crate::session::parked_path()) {
+        crate::session::unpark(&live, &parked, session.user_id);
+    }
     let client = TidalClient::new(http, API_BASE, TOKEN_URL, session.clone(), tokens, store);
     state.set_client(client.clone());
     let config = state.config();
@@ -231,6 +234,12 @@ pub fn auth_status(state: State<'_, AppState>) -> bool {
 
 #[tauri::command]
 pub fn auth_logout(state: State<'_, AppState>) -> Result<(), String> {
+    // Set the queue aside for this account before the engine clears it; the
+    // same account gets it back at its next login (`finish_login`).
+    let owner = state.client.read().unwrap().as_ref().map(|client| client.session().user_id);
+    if let (Some(saver), Some(parked)) = (state.session_saver(), crate::session::parked_path()) {
+        saver.park(parked, owner);
+    }
     if let Some(player) = state.player() {
         let _ = player
             .engine

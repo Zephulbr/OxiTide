@@ -103,6 +103,10 @@ pub struct Session {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stream: Option<StreamMeta>,
     pub saved_at: u64,
+    /// The TIDAL user a parked session belongs to (`park`); `None` in the
+    /// live `session.json`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner: Option<u64>,
 }
 
 impl Default for Session {
@@ -118,6 +122,7 @@ impl Default for Session {
             play_source: None,
             play_from: None,
             saved_at: 0,
+            owner: None,
         }
     }
 }
@@ -179,6 +184,40 @@ pub fn clear(path: &Path) {
     }
 }
 
+/// `session.parked.json`: the queue of the account that last logged out.
+pub fn parked_path() -> Option<PathBuf> {
+    crate::config::config_path().map(|path| path.with_file_name("session.parked.json"))
+}
+
+/// Logout: move the live session aside, tagged with its account, so the same
+/// account gets its queue back on the next login and no other account does.
+/// Without an owner (no client) the session is only cleared.
+pub fn park(live: &Path, parked: &Path, owner: Option<u64>) {
+    let session = owner.and_then(|owner| load(live).map(|session| Session { owner: Some(owner), ..session }));
+    clear(live);
+    match session {
+        Some(session) if !session.queue.is_empty() => {
+            if let Err(e) = save(parked, &session) {
+                tracing::warn!("failed to park the session: {e}");
+            }
+        }
+        _ => clear(parked),
+    }
+}
+
+/// Login: bring back the parked session when it belongs to `user`. A parked
+/// session of another account is deleted, never restored.
+pub fn unpark(live: &Path, parked: &Path, user: u64) {
+    let Some(session) = load(parked) else { return };
+    clear(parked);
+    if session.owner != Some(user) {
+        return;
+    }
+    if let Err(e) = save(live, &Session { owner: None, ..session }) {
+        tracing::warn!("failed to restore the parked session: {e}");
+    }
+}
+
 fn backup(path: &Path) {
     let backup = path.with_extension("json.bak");
     let _ = fs::rename(path, &backup);
@@ -206,6 +245,7 @@ enum SaverMsg {
     Event(EngineEvent),
     SetPlaySource(Option<String>, Option<PlayFrom>),
     Flush(Sender<()>),
+    Park { parked: PathBuf, owner: Option<u64>, ack: Sender<()> },
     Clear,
 }
 
@@ -252,6 +292,16 @@ impl SessionSaver {
     pub fn clear(&self) {
         let _ = self.tx.send(SaverMsg::Clear);
     }
+
+    /// Logout: flush, then [`park`] the session for `owner` and forget it.
+    /// On the saver thread, so no pending write can recreate the live file
+    /// in between. Waits briefly, like `flush_now`.
+    pub fn park(&self, parked: PathBuf, owner: Option<u64>) {
+        let (ack, ack_rx) = std::sync::mpsc::channel();
+        if self.tx.send(SaverMsg::Park { parked, owner, ack }).is_ok() {
+            let _ = ack_rx.recv_timeout(Duration::from_secs(2));
+        }
+    }
 }
 
 fn session_from_state(
@@ -283,6 +333,7 @@ fn session_from_state(
         play_from,
         stream: state.stream.clone(),
         saved_at,
+        owner: None,
     }
 }
 
@@ -403,6 +454,18 @@ fn saver_main(
                 }
                 let _ = ack.send(());
             }
+            Ok(SaverMsg::Park { parked, owner, ack }) => {
+                if dirty {
+                    write_snapshot(&path, snapshot.as_ref(), &play_source, &play_from, &flags);
+                }
+                park(&path, &parked, owner);
+                snapshot = None;
+                play_source = None;
+                play_from = None;
+                dirty = false;
+                urgent = false;
+                let _ = ack.send(());
+            }
             Ok(SaverMsg::Clear) => {
                 clear(&path);
                 snapshot = None;
@@ -503,7 +566,44 @@ mod tests {
                 replay_gain_db: None,
             }),
             saved_at: 1_700_000_000,
+            owner: None,
         }
+    }
+
+    #[test]
+    fn a_parked_session_comes_back_only_for_its_account() {
+        let dir = temp_dir();
+        let live = dir.join("session.json");
+        let parked = dir.join("session.parked.json");
+        save(&live, &session()).unwrap();
+        park(&live, &parked, Some(7));
+        assert!(!live.exists(), "logout leaves no live session");
+        assert_eq!(load(&parked).unwrap().owner, Some(7));
+
+        unpark(&live, &parked, 7);
+        assert!(!parked.exists());
+        assert_eq!(load(&live), Some(session()), "the same account gets its queue back, untagged");
+
+        park(&live, &parked, Some(7));
+        unpark(&live, &parked, 8);
+        assert!(!parked.exists(), "another account's login deletes the parked queue");
+        assert!(!live.exists(), "and never restores it");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn parking_without_an_owner_or_a_queue_only_clears() {
+        let dir = temp_dir();
+        let live = dir.join("session.json");
+        let parked = dir.join("session.parked.json");
+        save(&live, &session()).unwrap();
+        park(&live, &parked, None);
+        assert!(!live.exists() && !parked.exists());
+
+        save(&live, &Session { queue: Vec::new(), ..session() }).unwrap();
+        park(&live, &parked, Some(7));
+        assert!(!live.exists() && !parked.exists());
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -754,6 +854,27 @@ mod tests {
         saver.flush_now();
         assert!(path.exists());
         saver.clear();
+        saver.flush_now();
+        assert!(!path.exists());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// Logout parks the latest position, not the last debounced write.
+    #[test]
+    fn saver_park_flushes_first_and_forgets_the_snapshot() {
+        let dir = temp_dir();
+        let path = dir.join("session.json");
+        let parked = dir.join("session.parked.json");
+        let saver = SessionSaver::start(path.clone(), Duration::from_secs(60));
+        saver.record(&EngineEvent::State(playback_state(&[1, 2], Some(1), 0)));
+        saver.flush_now();
+        saver.record(&EngineEvent::Position { position_ms: 9000, duration_ms: 3000, lead_ms: 0 });
+        saver.park(parked.clone(), Some(7));
+        assert!(!path.exists());
+        let saved = load(&parked).expect("parked");
+        assert_eq!((saved.owner, saved.current_index, saved.position_ms), (Some(7), Some(1), 9000));
+        // A late tick from the old engine must not recreate the live file.
+        saver.record(&EngineEvent::Position { position_ms: 9500, duration_ms: 3000, lead_ms: 0 });
         saver.flush_now();
         assert!(!path.exists());
         let _ = fs::remove_dir_all(dir);
