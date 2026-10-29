@@ -390,6 +390,19 @@ export interface CacheStatus {
 export type CatjamCoat = "white" | "black" | "ginger" | "grey" | "tuxedo" | "cream";
 /// Player bar / queue placement in the default shell (`PanelStyle` in config.rs).
 export type PanelStyle = "docked" | "floating";
+/// One mode's Typography & layout and Dynamic color settings (`ModeLook` in
+/// config.rs); each mode keeps its own.
+export interface ModeLook {
+  typeface: "auto" | "manrope" | "inter" | "system" | "custom";
+  custom_typeface: string;
+  density: "comfortable" | "compact";
+  row_separators: boolean;
+  cover_shape: "disc" | "sleeve";
+  player_bar_style: PanelStyle;
+  queue_style: PanelStyle;
+  hover_panels: boolean;
+  dynamic_color: "full" | "accent" | "off";
+}
 /// Studio's dark surfaces (`InstrumentTone` in config.rs; Studio is the
 /// `instrument` mode id).
 export type InstrumentTone = "warm" | "neutral" | "black";
@@ -429,6 +442,8 @@ export interface Config {
     window_x?: number | null;
     window_y?: number | null;
     window_maximized: boolean;
+    /// Each mode's look as it was last left; the flat fields are the active mode's.
+    looks?: Partial<Record<"instrument" | "atmosphere" | "rack", ModeLook>>;
   };
   integrations: {
     smtc: boolean;
@@ -811,7 +826,8 @@ export const api = {
   setAllowFallback: (enabled: boolean) => invoke<void>("set_allow_fallback", { enabled }),
   setQualityDisplay: (mode: "compact" | "detailed") =>
     invoke<void>("set_quality_display", { mode }),
-  setUiMode: (mode: "instrument" | "atmosphere" | "rack") => invoke<void>("set_ui_mode", { mode }),
+  /// Returns the look the mode switched to (its remembered one, if any).
+  setUiMode: (mode: "instrument" | "atmosphere" | "rack") => invoke<ModeLook>("set_ui_mode", { mode }),
   setRackSettings: (settings: RackSettings) =>
     invoke<RackSettings>("set_rack_settings", { settings }),
   setLevelMeter: (enabled: boolean) => invoke<void>("set_level_meter", { enabled }),

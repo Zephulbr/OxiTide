@@ -87,7 +87,7 @@ body.dragging [data-drop-refused] * {
 }
 
 .sidebar {
-  background: var(--surface-1);
+  background: var(--surface-chrome);
   backdrop-filter: blur(var(--glass-blur));
   border-right: 1px solid var(--line);
   padding: 12px;
@@ -200,7 +200,7 @@ body.dragging [data-drop-refused] * {
   }
 }
 .queue {
-  background: var(--surface-1);
+  background: var(--surface-chrome);
   backdrop-filter: blur(var(--glass-blur));
   border-left: 1px solid var(--line);
   width: var(--queue-width);

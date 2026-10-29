@@ -52,6 +52,8 @@
      top edge, which the seek's wave cap continues. */
   --player-veil-top: var(--surface-2);
   --player-veil: var(--player-veil-top);
+  /* The sidebar and the docked queue. */
+  --surface-chrome: var(--surface-1);
   --line: rgba(255, 240, 225, 0.10);
   --edge-lit: linear-gradient(135deg, rgba(255, 240, 225, 0.28), rgba(255, 240, 225, 0.06) 45%, rgba(0, 0, 0, 0.35));
   /* Resting depth, not light: plain dark drop shadows (never accent-coloured,

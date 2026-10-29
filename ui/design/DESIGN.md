@@ -34,8 +34,12 @@ current system and must be updated in the same change that alters it.
 4. **Feature flags** live as CSS numbers (`--flag-*`) for presentation gates and as JS
    getters on the `appearance` singleton for behaviour (`discSpin`, `waveSeek`,
    `rackShell`, …).
-5. **Settings are per user, not per mode**, except Typeface, which has per-mode
-   defaults; Rack replaces Dynamic colour with Lamp colour, and Tone only shows in Studio.
+5. **Each mode remembers its own Typography & layout and Dynamic colour**
+   (`ModeLook` in `config.rs`, `[ui.looks.<mode>]`): switching modes stores the
+   current look under the mode being left and restores the next one's; a mode's
+   first visit keeps the look it arrives with. Everything else (theme, tone, cat,
+   queue width) is per user. Typeface `auto` still has per-mode defaults; Rack
+   replaces Dynamic colour with Lamp colour, and Tone only shows in Studio.
 
 ## 2. Shared foundations
 

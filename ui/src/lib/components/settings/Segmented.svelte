@@ -78,8 +78,10 @@
     background: var(--surface-2);
     color: var(--text);
   }
+  /* Over transparent, like the Settings tab pill: mixed into a grey surface
+     the tint went muddy on Studio's Black and Neutral. */
   button.active {
-    background: color-mix(in srgb, var(--accent) 18%, var(--surface-3));
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
     color: var(--text);
     font-weight: 600;
   }

@@ -366,6 +366,98 @@ pub struct UiConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub window_y: Option<i32>,
     pub window_maximized: bool,
+    /// The look each mode had when it was last left (`[ui.looks.<mode>]`).
+    /// The flat fields above are always the active mode's.
+    pub looks: ModeLooks,
+}
+
+/// One mode's Typography & layout and Dynamic color settings.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ModeLook {
+    pub typeface: Typeface,
+    pub custom_typeface: String,
+    pub density: Density,
+    pub row_separators: bool,
+    pub cover_shape: CoverShape,
+    pub player_bar_style: PanelStyle,
+    pub queue_style: PanelStyle,
+    pub hover_panels: bool,
+    pub dynamic_color: DynamicColor,
+}
+
+impl Default for ModeLook {
+    fn default() -> Self {
+        UiConfig::default().look()
+    }
+}
+
+/// A mode is `None` until it is first left, so its first visit keeps the
+/// look it is switched in with.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ModeLooks {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub atmosphere: Option<ModeLook>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub instrument: Option<ModeLook>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rack: Option<ModeLook>,
+}
+
+impl ModeLooks {
+    fn slot(&mut self, mode: UiMode) -> &mut Option<ModeLook> {
+        match mode {
+            UiMode::Atmosphere => &mut self.atmosphere,
+            UiMode::Instrument => &mut self.instrument,
+            UiMode::Rack => &mut self.rack,
+        }
+    }
+}
+
+impl UiConfig {
+    pub fn look(&self) -> ModeLook {
+        ModeLook {
+            typeface: self.typeface,
+            custom_typeface: self.custom_typeface.clone(),
+            density: self.density,
+            row_separators: self.row_separators,
+            cover_shape: self.cover_shape,
+            player_bar_style: self.player_bar_style,
+            queue_style: self.queue_style,
+            hover_panels: self.hover_panels,
+            dynamic_color: self.dynamic_color,
+        }
+    }
+
+    fn apply_look(&mut self, look: ModeLook) {
+        self.typeface = look.typeface;
+        self.custom_typeface = look.custom_typeface;
+        self.density = look.density;
+        self.row_separators = look.row_separators;
+        self.cover_shape = look.cover_shape;
+        self.player_bar_style = look.player_bar_style;
+        self.queue_style = look.queue_style;
+        self.hover_panels = look.hover_panels;
+        self.dynamic_color = look.dynamic_color;
+    }
+
+    /// Stores the active look under the mode being left and restores the
+    /// next mode's, if it was ever left before. Returns the look now active.
+    pub fn switch_mode(&mut self, mode: UiMode) -> ModeLook {
+        if mode != self.mode {
+            let leaving = self.mode;
+            *self.looks.slot(leaving) = Some(self.look());
+            if let Some(look) = self.looks.slot(mode).clone() {
+                self.apply_look(look);
+            } else if mode == UiMode::Instrument {
+                // Studio's disc never spins, so its first look is the sleeve.
+                self.cover_shape = CoverShape::Sleeve;
+            }
+            self.mode = mode;
+        }
+        self.look()
+    }
 }
 
 impl Default for UiConfig {
@@ -396,6 +488,7 @@ impl Default for UiConfig {
             window_x: None,
             window_y: None,
             window_maximized: false,
+            looks: ModeLooks::default(),
         }
     }
 }
@@ -659,6 +752,10 @@ mod tests {
                 window_x: Some(40),
                 window_y: Some(60),
                 window_maximized: true,
+                looks: ModeLooks {
+                    rack: Some(ModeLook { density: Density::Compact, ..ModeLook::default() }),
+                    ..ModeLooks::default()
+                },
             },
             cache: CacheConfig {
                 dir: "D:\\cache".into(),
@@ -1081,6 +1178,47 @@ duration_ms = 4000
         // A config written before the setting existed keeps the hairlines.
         fs::write(&path, "[ui]\nhover_panels = true\n").unwrap();
         assert!(Config::load_from(&path).ui.row_separators);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn each_mode_remembers_its_own_look() {
+        let mut ui = UiConfig::default();
+        ui.density = Density::Compact;
+        ui.dynamic_color = DynamicColor::Accent;
+        // A first visit keeps the look it arrives with (Studio starts on the sleeve)...
+        let first = ui.switch_mode(UiMode::Instrument);
+        assert_eq!(first.density, Density::Compact);
+        assert_eq!(first.cover_shape, CoverShape::Sleeve);
+        ui.density = Density::Comfortable;
+        ui.typeface = Typeface::System;
+        ui.dynamic_color = DynamicColor::Off;
+        // ...and leaving stores it for the mode being left.
+        let back = ui.switch_mode(UiMode::Atmosphere);
+        assert_eq!(back.density, Density::Compact);
+        assert_eq!(back.typeface, Typeface::Auto);
+        assert_eq!(back.dynamic_color, DynamicColor::Accent);
+        assert_eq!(ui.density, Density::Compact);
+        let studio = ui.switch_mode(UiMode::Instrument);
+        assert_eq!(studio.typeface, Typeface::System);
+        assert_eq!(studio.dynamic_color, DynamicColor::Off);
+        // Switching to the active mode changes nothing.
+        assert_eq!(ui.switch_mode(UiMode::Instrument), studio);
+    }
+
+    #[test]
+    fn mode_looks_round_trip_and_older_files_have_none() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        fs::write(&path, "[ui]\nmode = \"rack\"\n").unwrap();
+        assert_eq!(Config::load_from(&path).ui.looks, ModeLooks::default());
+        let mut config = Config::default();
+        config.ui.switch_mode(UiMode::Rack);
+        config.save_to(&path).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("[ui.looks.atmosphere]"), "{text}");
+        assert!(!text.contains("[ui.looks.rack]"), "{text}");
+        assert_eq!(Config::load_from(&path), config);
         let _ = fs::remove_dir_all(dir);
     }
 

@@ -38,7 +38,7 @@
   --flag-glass-blur: 0;
   --flag-grain: 0;
   --flag-disc-spin: 0;
-  --flag-wave-seek: 0;
+  --flag-wave-seek: 1;
   --flag-dynamic-color: 0;
   --flag-ambient-motion: 0;
 }
@@ -64,9 +64,9 @@
   --scrim-bottom: rgba(18, 18, 18, 0.78);
 }
 
-/* Black (OLED): the canvas is true black and the chrome (sidebar, queue,
-   player bar) sits a hair above it; controls and menus keep enough lift to
-   read as surfaces. */
+/* Black (OLED): the canvas and the chrome (sidebar, queue, player bar) are
+   all true black, parted by their hairlines; controls and menus keep enough
+   lift to read as surfaces. */
 [data-mode="instrument"][data-tone="black"]:not([data-theme="light"]) {
   --accent-brand: #f2f2f2;
   --on-accent-brand: #000000;
@@ -77,7 +77,8 @@
   --surface-2: #121212;
   --surface-3: #1a1a1a;
   --surface-float: #161616;
-  --player-veil-top: var(--surface-1);
+  --surface-chrome: #000000;
+  --player-veil-top: #000000;
   --line: rgba(255, 255, 255, 0.11);
   --dyn-secondary: #000000;
   --dyn-backdrop: #000000;

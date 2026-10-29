@@ -25,9 +25,11 @@ Track 3 performance baseline and the natural home for reduced-motion users.
 | `--player-veil` | `--surface-2` (opaque; no gradient needed) | same |
 | `--glass-blur`, `--overlay-blur` | 0 | 0 |
 | `--accent` | brand `#f7f3ee` warm white (Dynamic colour defaults to Full; shown when it is Off) | brand `#2a211a` warm ink |
-| flags | backdrop art, glass blur, grain, disc spin, wave seek, ambient motion: **off** | same |
+| flags | backdrop art, glass blur, grain, disc spin, ambient motion: **off**; wave seek **on** (a static SVG revealed on hover, so it fits "moves only when touched") | same |
 
-The Dark column is the **Warm** tone (the default).
+The Dark column is the **Warm** tone (the default). Cover shape starts on **Sleeve** the
+first time Studio is opened (its disc would never spin); after that Studio keeps its own
+choice like every per-mode look setting.
 
 ### 2.1 Tones (dark theme only)
 
@@ -40,7 +42,8 @@ paper whatever the tone. Layout, flags and everything else stay identical.
 | `--bg` | `#17120e` | `#121212` | `#000000` |
 | `--surface-1/2/3` | `#211b15` / `#262019` / `#2b241c` | `#1b1b1b` / `#202020` / `#262626` | `#0a0a0a` / `#121212` / `#1a1a1a` |
 | `--surface-float` | `#2b241c` | `#262626` | `#161616` |
-| `--player-veil-top` | `--surface-2` | `--surface-2` | `--surface-1` (the chrome sits a hair above black) |
+| `--player-veil-top` | `--surface-2` | `--surface-2` | `#000000` |
+| `--surface-chrome` (sidebar, docked queue) | `--surface-1` | `--surface-1` | `#000000` (chrome and canvas are one black, parted by hairlines) |
 | `--text` / `--text-muted` | `#f2ece6` / `#a99f94` | `#ededed` / `#a3a3a3` | `#ededed` / `#9e9e9e` |
 | `--line` | `rgba(255,240,225,.10)` | `rgba(255,255,255,.10)` | `rgba(255,255,255,.11)` |
 | brand accent / on-accent | `#f7f3ee` / `#17120e` | `#f2f2f2` / `#121212` | `#f2f2f2` / `#000000` |

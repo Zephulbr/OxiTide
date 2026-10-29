@@ -1,5 +1,6 @@
 import {
-  api, type AnalyzerStyle, type CatjamCoat, type InstrumentTone, type PanelStyle, type RackSettings,
+  api, type AnalyzerStyle, type CatjamCoat, type InstrumentTone, type ModeLook, type PanelStyle,
+  type RackSettings,
 } from "./api";
 import { DEFAULT_CATJAM_SCALE, DEFAULT_COAT, clampCatjamScale, isCoat } from "./catjamSprite";
 import {
@@ -107,6 +108,8 @@ export interface Appearance {
   readonly playerBarStyle: PanelStyle;
   readonly queueStyle: PanelStyle;
   readonly dynamicColor: DynamicColorMode;
+  /// The stored choice, before Rack turns it off.
+  readonly dynamicColorSetting: DynamicColorSetting;
   readonly backdropArt: boolean;
   readonly glassPanels: boolean;
   readonly grain: boolean;
@@ -226,6 +229,21 @@ export function createAppearance(): Appearance {
     writeThemeMirror(themeStorage(), theme);
     writeMirror(themeStorage(), MODE_STORAGE_KEY, mode);
     writeMirror(themeStorage(), TONE_STORAGE_KEY, instrumentTone);
+    apply();
+  }
+
+  /// Each mode keeps its own Typography & layout and Dynamic color; the
+  /// backend swaps them on a mode switch and returns the new mode's.
+  function applyLook(look: ModeLook) {
+    typefaceSetting = look.typeface;
+    customTypeface = look.custom_typeface;
+    density = look.density;
+    rowSeparators = look.row_separators;
+    coverShape = look.cover_shape;
+    if (isPanelStyle(look.player_bar_style)) playerBarStyle = look.player_bar_style;
+    if (isPanelStyle(look.queue_style)) queueStyle = look.queue_style;
+    hoverPanels = look.hover_panels;
+    dynamicColorSetting = look.dynamic_color;
     apply();
   }
 
@@ -365,11 +383,13 @@ export function createAppearance(): Appearance {
     get playerBarStyle() { return playerBarStyle; },
     get queueStyle() { return queueStyle; },
     get dynamicColor() { return resolveDynamicColor(dynamicColorSetting, mode); },
+    get dynamicColorSetting() { return dynamicColorSetting; },
     get backdropArt() { return mode === "atmosphere"; },
     get glassPanels() { return mode === "atmosphere"; },
     get grain() { return mode === "atmosphere"; },
     get discSpin() { return mode === "atmosphere" && !reducedMotion; },
-    get waveSeek() { return mode === "atmosphere"; },
+    // A static SVG (no frame loop): Studio gets it too; Rack has its own seek.
+    get waveSeek() { return mode !== "rack"; },
     get ambientMotion() { return mode === "atmosphere" && !reducedMotion; },
     get vinylRecords() { return mode === "rack"; },
     get rackShell() { return mode === "rack"; },
@@ -379,7 +399,11 @@ export function createAppearance(): Appearance {
     setMode: (m) => {
       mode = m;
       writeMirror(themeStorage(), MODE_STORAGE_KEY, m);
-      return persist(() => api.setUiMode(m));
+      return persist(async () => {
+        const look = await api.setUiMode(m);
+        // A newer switch owns the look; this answer is for a mode already left.
+        if (look && mode === m) applyLook(look);
+      });
     },
     setTheme: (t) => { theme = t; writeThemeMirror(themeStorage(), t); return persist(() => api.setTheme(t)); },
     setInstrumentTone: (t) => {

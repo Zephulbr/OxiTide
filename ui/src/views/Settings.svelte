@@ -490,8 +490,6 @@
   }
 
   function setDynamicColor(setting: DynamicColorSetting) {
-    if (!config) return;
-    config = { ...config, ui: { ...config.ui, dynamic_color: setting } };
     appearance.setDynamicColor(setting).catch(apply);
   }
 
@@ -656,13 +654,7 @@
   }
 
   function setHoverPanels(enabled: boolean) {
-    if (!config) return;
-    const previous = config.ui.hover_panels;
-    config = { ...config, ui: { ...config.ui, hover_panels: enabled } };
-    appearance.setHoverPanels(enabled).catch((e) => {
-      if (config) config = { ...config, ui: { ...config.ui, hover_panels: previous } };
-      apply(e);
-    });
+    appearance.setHoverPanels(enabled).catch(apply);
   }
 
   function setSmtc(enabled: boolean) {
@@ -973,7 +965,7 @@
                 >
                   <Segmented
                     label="Dynamic color"
-                    value={config.ui.dynamic_color}
+                    value={appearance.dynamicColorSetting}
                     options={DYNAMIC_OPTIONS}
                     onchange={setDynamicColor}
                   />
@@ -1150,7 +1142,7 @@
                 <ToggleRow
                   id="hover-panels" label="Expand panels on hover"
                   description="Hovering the collapsed sidebar opens it over the page, and resting the pointer on the window's right edge slides the queue in. Both close when the pointer leaves."
-                  checked={config.ui.hover_panels}
+                  checked={appearance.hoverPanels}
                   onchange={setHoverPanels}
                 />
               {/if}

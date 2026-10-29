@@ -22,7 +22,7 @@ use tauri::{Manager, State};
 use crate::artwork::PaletteDto;
 use crate::config::{
     clamp_catjam_scale, clamp_queue_width, CatjamCoat, Config, CoverShape, Density, DynamicColor, InstrumentTone,
-    PanelStyle, QualityDisplay, RackConfig, Theme, Typeface, UiMode,
+    ModeLook, PanelStyle, QualityDisplay, RackConfig, Theme, Typeface, UiMode,
 };
 use crate::lyrics::{LyricsDto, LyricsRequest};
 use crate::player::{devices, OutputDeviceDto, QualityDto};
@@ -2423,12 +2423,12 @@ pub fn set_quality_display(state: State<'_, AppState>, mode: QualityDisplay) -> 
 }
 
 #[tauri::command]
-pub fn set_ui_mode(state: State<'_, AppState>, mode: UiMode) -> Result<(), String> {
+pub fn set_ui_mode(state: State<'_, AppState>, mode: UiMode) -> Result<ModeLook, String> {
     let mut config = state.config();
-    config.ui.mode = mode;
+    let look = config.ui.switch_mode(mode);
     config.save()?;
     state.set_config(config);
-    Ok(())
+    Ok(look)
 }
 
 #[tauri::command]

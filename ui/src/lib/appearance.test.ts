@@ -41,7 +41,7 @@ describe("rack mode", () => {
       ui: { mode: "rack", theme: "dark", dynamic_color: "full", typeface: "auto" },
       rack: { deck_face: "cd", meters: "led", lamp: "blue", eq_unit: false, lamp_brightness: 70 },
     } as never);
-    vi.mocked(api.setUiMode).mockResolvedValue(undefined);
+    vi.mocked(api.setUiMode).mockResolvedValue(undefined as never);
   });
 
   afterEach(() => {
@@ -85,6 +85,40 @@ describe("rack mode", () => {
     expect(a.rackShell).toBe(false);
     expect(a.vinylRecords).toBe(false);
     expect(api.setUiMode).toHaveBeenCalledWith("atmosphere");
+  });
+
+  it("a mode switch applies the look the backend remembered for that mode", async () => {
+    const a = createAppearance();
+    await a.init();
+    vi.mocked(api.setUiMode).mockResolvedValueOnce({
+      typeface: "system", custom_typeface: "", density: "compact", row_separators: false,
+      cover_shape: "sleeve", player_bar_style: "floating", queue_style: "floating",
+      hover_panels: true, dynamic_color: "accent",
+    });
+    await a.setMode("instrument");
+    expect(a.typeface).toBe("system");
+    expect(a.density).toBe("compact");
+    expect(a.rowSeparators).toBe(false);
+    expect(a.coverShape).toBe("sleeve");
+    expect(a.playerBarStyle).toBe("floating");
+    expect(a.queueStyle).toBe("floating");
+    expect(a.hoverPanels).toBe(true);
+    expect(a.dynamicColor).toBe("accent");
+    expect(document.documentElement.dataset.density).toBe("compact");
+  });
+
+  it("a slow answer for a mode already left is ignored", async () => {
+    const a = createAppearance();
+    await a.init();
+    const before = a.density;
+    let answer!: (look: never) => void;
+    vi.mocked(api.setUiMode).mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    const first = a.setMode("instrument");
+    void a.setMode("atmosphere");
+    answer({ density: "compact", dynamic_color: "off" } as never);
+    await first;
+    expect(a.density).toBe(before);
+    expect(a.dynamicColorSetting).toBe("full");
   });
 
   it("auto analyzer never duplicates the amp's spectrum", () => {
@@ -409,7 +443,7 @@ describe("look mirror", () => {
       getItem: (key: string) => stored[key] ?? null,
       setItem: vi.fn((key: string, value: string) => { stored[key] = value; }),
     });
-    vi.mocked(api.setUiMode).mockResolvedValue(undefined);
+    vi.mocked(api.setUiMode).mockResolvedValue(undefined as never);
     vi.mocked(api.setInstrumentTone).mockResolvedValue(undefined);
   });
 
