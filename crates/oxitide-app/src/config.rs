@@ -551,10 +551,24 @@ impl ScrobblingConfig {
     }
 
     pub fn lastfm_credentials(&self) -> (String, String) {
-        (
-            Self::pick(std::env::var("OXITIDE_LASTFM_API_KEY").ok(), &self.lastfm_api_key),
-            Self::pick(std::env::var("OXITIDE_LASTFM_API_SECRET").ok(), &self.lastfm_api_secret),
+        Self::with_builtin(
+            (
+                Self::pick(std::env::var("OXITIDE_LASTFM_API_KEY").ok(), &self.lastfm_api_key),
+                Self::pick(std::env::var("OXITIDE_LASTFM_API_SECRET").ok(), &self.lastfm_api_secret),
+            ),
+            (crate::scrobble::lastfm::LASTFM_API_KEY, crate::scrobble::lastfm::LASTFM_API_SECRET),
         )
+    }
+
+    /// A user's own key and secret win as a pair; a half-set pair falls back to
+    /// the shipped app key (spec S-D3 amendment, 2026-10-29). A secret only
+    /// signs requests for that key, so the two never mix.
+    pub fn with_builtin(user: (String, String), builtin: (&str, &str)) -> (String, String) {
+        if !user.0.is_empty() && !user.1.is_empty() {
+            user
+        } else {
+            (builtin.0.to_string(), builtin.1.to_string())
+        }
     }
 }
 
@@ -1288,6 +1302,15 @@ duration_ms = 4000
         assert_eq!(ScrobblingConfig::pick(Some("env".into()), "cfg"), "env");
         assert_eq!(ScrobblingConfig::pick(Some(String::new()), "cfg"), "cfg");
         assert_eq!(ScrobblingConfig::pick(None, "cfg"), "cfg");
+    }
+
+    #[test]
+    fn user_lastfm_pair_wins_over_the_builtin_key() {
+        let pair = |k: &str, s: &str| (k.to_string(), s.to_string());
+        assert_eq!(ScrobblingConfig::with_builtin(pair("k", "s"), ("bk", "bs")), pair("k", "s"));
+        assert_eq!(ScrobblingConfig::with_builtin(pair("k", ""), ("bk", "bs")), pair("bk", "bs"));
+        assert_eq!(ScrobblingConfig::with_builtin(pair("", "s"), ("bk", "bs")), pair("bk", "bs"));
+        assert_eq!(ScrobblingConfig::with_builtin(pair("", ""), ("bk", "bs")), pair("bk", "bs"));
     }
 
     #[test]

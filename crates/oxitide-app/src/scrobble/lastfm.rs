@@ -3,6 +3,13 @@
 use md5::{Digest, Md5};
 use oxitide_audio::queue::QueueItem;
 
+/// OxiTide's own Last.fm app key, shipped so Connect works out of the box (spec
+/// S-D3 amendment, 2026-10-29). Desktop scrobblers all ship theirs: the secret
+/// only signs requests, and scrobbling still needs each user's browser grant.
+/// A user's own key in `config.toml` or the env vars overrides it.
+pub const LASTFM_API_KEY: &str = "e470879bf1f6db4d84f4f41f56e6b8ad";
+pub const LASTFM_API_SECRET: &str = "ab070b4aa92158bda9b2283c6dda33f4";
+
 #[derive(Debug, PartialEq, thiserror::Error)]
 pub enum LastFmError {
     #[error("last.fm is temporarily unavailable")]

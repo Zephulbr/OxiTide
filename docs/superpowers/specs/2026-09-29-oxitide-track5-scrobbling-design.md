@@ -48,7 +48,7 @@ applies as stated in §10).
 |---|---|---|
 | S-D1 | Both services in one cycle, independent toggles, one shared feed. | PM-D3; no reason to serialize. |
 | S-D2 | A Rust `ScrobblerService` in `oxitide-app`, fed by engine events. | All HTTP and secrets stay in Rust; the tracker is unit-testable; the service outlives player rebuilds. |
-| S-D3 | The Last.fm app key/secret come from `OXITIDE_LASTFM_API_KEY`/`_SECRET` env vars, else `config.toml`; never committed. | Owner choice; personal use. |
+| S-D3 | ~~The Last.fm app key/secret come from `OXITIDE_LASTFM_API_KEY`/`_SECRET` env vars, else `config.toml`; never committed.~~ **Amended 2026-10-29:** OxiTide's own key/secret are committed (`scrobble/lastfm.rs`) and used unless the user sets a complete pair via the env vars or `config.toml` (env wins per field; a half-set pair falls back to the shipped one). | Original: owner choice, personal use. Amendment: public releases (Track 12) made the user-supplied key a setup wall. Desktop scrobblers ship their secret (it only signs requests; each user still authorizes in the browser), and one source of truth keeps Windows, Linux and AUR source builds identical. Worst case is a revoked or rate-limited key, fixed by rotating it in a release. |
 | S-D4 | **Memory-only** per-service queue; retry within the session with backoff. | Owner choice; simplest, no queue file to manage. |
 | S-D5 | No separate privacy toggle; the per-service toggles cover it. | Owner choice; fewer surfaces. |
 | S-D6 | The Connections tab shows per-service status; a single toast on auth failure. | Owner choice; quiet by default. |

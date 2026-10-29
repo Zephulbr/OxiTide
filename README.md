@@ -134,8 +134,9 @@ A hardware-style skin with needle and spectrum meters.
 ### Scrobbling
 
 - Last.fm and ListenBrainz.
-- Last.fm needs an API key, which is free to get from last.fm/api. Enter it in `config.toml` or the
-  `OXITIDE_LASTFM_API_KEY` / `OXITIDE_LASTFM_API_SECRET` environment variables. ListenBrainz only needs your user token.
+- Last.fm connects in the browser, with no setup: OxiTide ships its own API key. To use your own instead, set
+  `lastfm_api_key` and `lastfm_api_secret` in `config.toml` or the `OXITIDE_LASTFM_API_KEY` /
+  `OXITIDE_LASTFM_API_SECRET` environment variables. ListenBrainz only needs your user token.
 - Scrobbles queue while you're offline and send when the connection returns.
 
 ## What it isn't

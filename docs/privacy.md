@@ -22,8 +22,10 @@ Beat detection for CatJam runs on your machine. No track data is sent to any ser
 - Tokens are never logged.
 - The login uses OAuth PKCE, so there is no client secret. The TIDAL OAuth *client ID* in the source is a public
   identifier, not a credential.
-- Last.fm keys are supplied by you (in `config.toml`, or through `OXITIDE_LASTFM_API_KEY` /
-  `OXITIDE_LASTFM_API_SECRET`). They are not committed to the repository.
+- OxiTide's Last.fm API key and secret are in the source, as in other desktop scrobblers. They identify the app,
+  not you: scrobbling still needs you to authorize your own account in the browser, and the session key that
+  grants is kept in the OS keyring. To use your own app key, set it in `config.toml` or through
+  `OXITIDE_LASTFM_API_KEY` / `OXITIDE_LASTFM_API_SECRET`.
 
 ## Phone remote
 
