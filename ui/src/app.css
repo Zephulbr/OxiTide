@@ -106,7 +106,9 @@ body.dragging [data-drop-refused] * {
   padding: var(--page-top) 28px calc(var(--player-height) + 8px);
   overflow: auto;
 }
-.main:not(.rack-main):has(> .now-playing) { padding-top: 32px; }
+/* `:not([data-closing])`: a closing view (pinned fixed for its outro) hands
+   the frame back to the page it reveals. */
+.main:not(.rack-main):has(> .now-playing:not([data-closing])) { padding-top: 32px; }
 /* Rack's display is also `.main` but keeps its own frame (RackShell) and
    title labels (rack.css): the bare 32px top, the default title sizes. */
 .main.rack-main { --page-top: 32px; --page-title-size: initial; }

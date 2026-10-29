@@ -49,6 +49,9 @@
     const box = node.getBoundingClientRect();
     const art = node.querySelector<HTMLElement>(".art");
     const artBox = art?.getBoundingClientRect();
+    // .main's Now Playing frame (app.css) must let go now, not at removal:
+    // the revealed page would sit 58px high for the whole outro, then snap.
+    node.dataset.closing = "";
     Object.assign(node.style, {
       position: "fixed",
       left: `${box.left}px`,
