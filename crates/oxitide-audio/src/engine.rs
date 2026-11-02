@@ -18,7 +18,7 @@ use crate::retry::{self, Backoff};
 use crate::meter::LevelTap;
 use crate::output::{
     AudioOutput, AudioOutputSpec, ExclusiveFallback, LeadEstimate, OutputMode, OutputStatus,
-    UnderrunTally,
+    UnderrunTally, VolumeControl,
 };
 use crate::perf::{AudioPerfEvent, PerfHook};
 use crate::queue::{Queue, QueueItem, RepeatMode};
@@ -220,6 +220,12 @@ struct Inner {
     generation: AtomicU64,
     paused: AtomicBool,
     volume: AtomicU32, // f32 bits
+    /// Shared with the output's device thread (`AudioOutput::attach_volume`):
+    /// `SetVolume` writes it at once, so the change is heard within a device
+    /// period instead of after the worker's next write. Commands write it
+    /// under the `fade` lock; the worker re-asserts it there after each
+    /// output call (`apply_volume`), so an older value never sticks.
+    volume_control: Arc<VolumeControl>,
     /// Active sleep-timer fade; the worker ramps the output volume to zero and
     /// then pauses.
     fade: Mutex<Option<FadeState>>,
@@ -319,6 +325,10 @@ fn build_state(inner: &Inner) -> PlaybackState {
 /// mid-fade never jumps back to full volume.
 fn current_volume(inner: &Inner) -> (f32, bool) {
     let fade = inner.fade.lock().unwrap();
+    current_volume_locked(inner, &fade)
+}
+
+fn current_volume_locked(inner: &Inner, fade: &Option<FadeState>) -> (f32, bool) {
     match fade.as_ref() {
         Some(f) => {
             let duration = f.duration.as_secs_f32().max(0.001);
@@ -327,6 +337,20 @@ fn current_volume(inner: &Inner) -> (f32, bool) {
         }
         None => (f32::from_bits(inner.volume.load(Ordering::SeqCst)), false),
     }
+}
+
+/// Hand `volume` (read by the worker a moment ago) to the output, then
+/// re-assert the engine's current volume on the shared control. The output
+/// stores what it is given in that control, so a `SetVolume` that landed in
+/// between would otherwise be undone until the worker's next pass. The
+/// re-assert runs under the `fade` lock, which commands write under; no lock
+/// is held across the output call.
+fn apply_volume(inner: &Inner, output: &mut dyn AudioOutput, volume: f32) -> Result<()> {
+    let result = output.set_volume(volume);
+    let fade = inner.fade.lock().unwrap();
+    let (current, _) = current_volume_locked(inner, &fade);
+    inner.volume_control.set(current);
+    result
 }
 
 fn emit(inner: &Arc<Inner>, event: EngineEvent) {
@@ -353,11 +377,13 @@ impl Engine {
     pub fn new(
         resolver: Arc<dyn StreamResolver>,
         make_fetcher: impl FnOnce() -> Arc<dyn Fetcher> + Send + 'static,
-        output: Box<dyn AudioOutput>,
+        mut output: Box<dyn AudioOutput>,
         quality: Quality,
         cache: Arc<DiskCache>,
         allow_fallback: bool,
     ) -> Self {
+        let volume_control = Arc::new(VolumeControl::default());
+        output.attach_volume(volume_control.clone());
         let inner = Arc::new(Inner {
             queue: Mutex::new(Queue::default()),
             resolver,
@@ -387,6 +413,7 @@ impl Engine {
             generation: AtomicU64::new(0),
             paused: AtomicBool::new(false),
             volume: AtomicU32::new(1.0f32.to_bits()),
+            volume_control,
             fade: Mutex::new(None),
             position_ms: AtomicU64::new(0),
             position_track: AtomicU64::new(0),
@@ -621,12 +648,15 @@ impl Engine {
     /// Cancel an in-flight sleep fade and restore the pre-fade volume. Called
     /// by every explicit transport or volume change so the user's action wins.
     fn cancel_fade(&self) {
-        let base = self.inner.fade.lock().unwrap().take().map(|f| f.base_volume);
-        if let Some(base) = base {
-            self.inner.volume.store(base.to_bits(), Ordering::SeqCst);
-            self.inner.queue.lock().unwrap().set_volume(base);
-            self.inner.notify_worker();
-        }
+        let mut fade = self.inner.fade.lock().unwrap();
+        let Some(base) = fade.take().map(|f| f.base_volume) else {
+            return;
+        };
+        self.inner.volume.store(base.to_bits(), Ordering::SeqCst);
+        self.inner.queue.lock().unwrap().set_volume(base);
+        self.inner.volume_control.set(base);
+        drop(fade);
+        self.inner.notify_worker();
     }
 
     /// Run a queue-mutating playback command under `playback_lock`, bumping the
@@ -807,9 +837,13 @@ impl Engine {
                         q.volume()
                     };
                     self.inner.volume.store(clamped.to_bits(), Ordering::SeqCst);
+                    // Straight to the device thread: the worker may be
+                    // blocked mid-write for a whole decoder packet.
+                    self.inner.volume_control.set(clamped);
                     fade.take();
                 }
-                // A paused worker is parked; wake it to apply the volume.
+                // The worker still refreshes the output's status (software
+                // volume notices); a paused one is parked, so wake it.
                 self.inner.notify_worker();
                 self.emit(EngineEvent::State(self.state()));
             }
@@ -2431,7 +2465,7 @@ fn run_session(
             refill = true;
             // A format change mid-fade must not jump back to the user volume.
             let (volume, _) = current_volume(inner);
-            if let Err(e) = output.set_volume(volume) {
+            if let Err(e) = apply_volume(inner, output, volume) {
                 return SessionOutcome::OutputError {
                     message: e.to_string(),
                     track_id: stream.item.track_id,
@@ -2487,18 +2521,18 @@ fn run_session(
                 publish_dsp_stages(inner, &dsp, incoming.is_some());
                 emit(inner, EngineEvent::State(build_state(inner)));
             }
-            let (volume, fading) = current_volume(inner);
-            // Fades step coarsely (endpoint volume calls are not free);
+            // Fades step coarsely (the output glides between steps);
             // SetVolume changes are tracked exactly. `last_volume` is what the
             // open device was last set to, kept across tracks: seeding it from
             // the user volume at a track start lost a change made in between.
+            let (volume, fading) = current_volume(inner);
             let changed = if fading {
                 volume <= f32::EPSILON || (volume - *last_volume).abs() >= 0.01
             } else {
                 (volume - *last_volume).abs() >= f32::EPSILON
             };
             if changed {
-                if let Err(e) = output.set_volume(volume) {
+                if let Err(e) = apply_volume(inner, output, volume) {
                     return SessionOutcome::OutputError {
                         message: e.to_string(),
                         track_id: stream.item.track_id,
@@ -2554,7 +2588,7 @@ fn run_session(
                     // restores the user's volume here.
                     let (volume, _) = current_volume(inner);
                     if released.is_none() && (volume - *last_volume).abs() >= f32::EPSILON {
-                        if let Err(e) = output.set_volume(volume) {
+                        if let Err(e) = apply_volume(inner, output, volume) {
                             return SessionOutcome::OutputError {
                                 message: e.to_string(),
                                 track_id: stream.item.track_id,
@@ -2578,7 +2612,7 @@ fn run_session(
                     let reopened = output
                         .open(&spec)
                         .and_then(|()| output.start())
-                        .and_then(|()| output.set_volume(volume));
+                        .and_then(|()| apply_volume(inner, output, volume));
                     if let Err(e) = reopened {
                         return SessionOutcome::OutputError {
                             message: e.to_string(),
@@ -5702,6 +5736,9 @@ mod tests {
             }
             self.inner.set_volume(volume)
         }
+        fn attach_volume(&mut self, control: Arc<VolumeControl>) {
+            self.inner.attach_volume(control);
+        }
         fn flush(&mut self) -> Result<()> {
             self.inner.flush()
         }
@@ -5758,6 +5795,34 @@ mod tests {
         std::thread::sleep(Duration::from_millis(200));
         assert!(engine.state().playing, "the cancelled fade must not stop playback");
         assert_eq!(engine.state().volume, 0.5, "the cancelled fade must not zero the volume");
+        // The worker's zero (read before the command) reached the output
+        // after it; the device-side control must still end on the command.
+        let control = output.volume_control().expect("attached");
+        assert_eq!(control.position(), 0.5, "a stale worker volume overwrote the command");
+    }
+
+    /// The fix for laggy volume: a command reaches the output's device thread
+    /// (the shared control) before `handle` returns, without waiting for the
+    /// worker, which may be blocked mid-write for a whole decoder packet.
+    #[test]
+    fn set_volume_reaches_the_device_control_at_once() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        let control = output.volume_control().expect("the engine attaches its control");
+        assert_eq!(control.position(), 1.0);
+        engine.handle(EngineCmd::SetVolume(0.3)).unwrap();
+        assert_eq!(control.position(), 0.3);
+
+        // A cancelled sleep fade restores the user's volume there too.
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine.handle(EngineCmd::SetRepeat(RepeatMode::All)).unwrap();
+        wait_for(|| !output.samples().is_empty());
+        engine.handle(EngineCmd::FadeAndPause { duration_ms: 6_000 }).unwrap();
+        wait_for(|| control.position() < 0.3);
+        engine.handle(EngineCmd::PlayPause).unwrap();
+        // The worker may be mid-step; it re-asserts the command's volume.
+        wait_for(|| control.position() == 0.3);
+        assert_eq!(control.position(), 0.3, "the fade's last step must not outlive the cancel");
     }
 
     /// Regression: `Next` at the end of the queue with repeat off must not

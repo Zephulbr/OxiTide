@@ -22,9 +22,10 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use crate::asio_sys::{self, AsioBool, AsioBufferInfo, AsioCallbacks, AsioTime, Driver, IAsio};
 use crate::decode::{PcmBuffer, PcmFormat};
 use crate::error::{Error, Result};
+use crate::gain::{scale_words, GainRamp, WordKind};
 use crate::output::{
-    asio_device_key, AudioOutput, AudioOutputSpec, OutputDevice, OutputMode, OutputStatus,
-    ASIO_PREFIX, SOFTWARE_VOLUME_NOTICE,
+    asio_device_key, volume_gain, AudioOutput, AudioOutputSpec, OutputDevice, OutputMode,
+    OutputStatus, VolumeControl, ASIO_PREFIX, SOFTWARE_VOLUME_NOTICE,
 };
 use crate::ring::{self, push_samples, Starvation};
 
@@ -113,10 +114,9 @@ impl AsioFormat {
     }
 }
 
-/// Convert one sample to its ring word for a float or integer driver, with
-/// software volume applied when `volume` is not unity.
-fn f32_word(sample: f32, float_target: bool, volume: Option<f32>) -> u32 {
-    let sample = volume.map_or(sample, |v| sample * v);
+/// Convert one sample to its ring word for a float or integer driver (left-
+/// aligned `i32` or `f32` bits; the render callback applies the volume).
+fn f32_word(sample: f32, float_target: bool) -> u32 {
     if float_target {
         sample.to_bits()
     } else {
@@ -124,12 +124,11 @@ fn f32_word(sample: f32, float_target: bool, volume: Option<f32>) -> u32 {
     }
 }
 
-fn i32_word(sample: i32, float_target: bool, volume: Option<f32>) -> u32 {
+fn i32_word(sample: i32, float_target: bool) -> u32 {
     if float_target {
-        let float = sample as f32 / 2_147_483_648.0;
-        volume.map_or(float, |v| float * v).to_bits()
+        (sample as f32 / 2_147_483_648.0).to_bits()
     } else {
-        volume.map_or(sample, |v| (sample as f64 * v as f64) as i32) as u32
+        sample as u32
     }
 }
 
@@ -242,9 +241,12 @@ extern "C" fn asio_message(selector: c_long, value: c_long, _msg: *mut c_void, _
 
 /// Everything the render callback touches.
 struct RenderState {
-    /// The ring consumer and a frame-sized scratch buffer. Only the callback
-    /// locks it (`try_lock`: a callback never blocks).
-    ring: Mutex<(Consumer<u32>, Vec<u32>)>,
+    /// The ring consumer, a frame-sized scratch buffer and the software gain.
+    /// Only the callback locks it (`try_lock`: a callback never blocks).
+    ring: Mutex<(Consumer<u32>, Vec<u32>, GainRamp)>,
+    /// The volume to glide to; read every buffer switch, so a change is
+    /// heard one driver buffer later rather than after the queued ring.
+    control: Arc<VolumeControl>,
     /// Per channel, the driver's two half-buffers.
     buffers: Vec<[*mut c_void; 2]>,
     buffer_frames: usize,
@@ -269,7 +271,7 @@ impl RenderState {
             self.fill_silence(half, len);
             return;
         };
-        let (consumer, scratch) = &mut *guard;
+        let (consumer, scratch, ramp) = &mut *guard;
         let requested = self.flush_requested.load(Ordering::SeqCst);
         if self.flush_completed.load(Ordering::SeqCst) < requested {
             let pending = consumer.slots();
@@ -289,6 +291,13 @@ impl RenderState {
             scratch[first.len()..count].copy_from_slice(second);
             chunk.commit_all();
         }
+        // Volume is applied here, as the samples leave for the driver: a
+        // short glide (no click), and a pass-through at unity (bit-perfect).
+        ramp.retarget(volume_gain(self.control.position()));
+        let kind = if self.format.is_float() { WordKind::F32 } else { WordKind::I32 };
+        ramp.apply_frames(&mut scratch[..count], self.channels, |frame, gain| {
+            scale_words(frame, gain, kind)
+        });
         for (channel, halves) in self.buffers.iter().enumerate() {
             // SAFETY: the driver allocated `buffer_frames` samples per half.
             let out = unsafe { std::slice::from_raw_parts_mut(halves[half].cast::<u8>(), len) };
@@ -350,7 +359,8 @@ pub struct AsioOutput {
     latency_ms: Option<Arc<AtomicU32>>,
     format: Option<AsioFormat>,
     input_bits: Option<u16>,
-    volume: f32,
+    /// The volume the render callback applies (the engine's, once attached).
+    control: Arc<VolumeControl>,
     status: OutputStatus,
     /// Shared with each open's render state, so the count spans reopens.
     starvation: Arc<Starvation>,
@@ -368,7 +378,7 @@ impl AsioOutput {
             latency_ms: None,
             format: None,
             input_bits: None,
-            volume: 1.0,
+            control: Arc::new(VolumeControl::default()),
             status: OutputStatus::default(),
             starvation: Arc::new(Starvation::default()),
         }
@@ -386,7 +396,7 @@ impl AsioOutput {
     }
 
     fn refresh_status(&mut self) {
-        let unity = (self.volume - 1.0).abs() < f32::EPSILON;
+        let unity = (self.control.position() - 1.0).abs() < f32::EPSILON;
         let bit_perfect = self
             .format
             .is_some_and(|f| is_bit_perfect(self.input_bits, f, unity));
@@ -430,9 +440,12 @@ impl AudioOutput for AsioOutput {
         self.samples_per_sec = rate as usize * channels;
         self.starvation.disarm();
         let starvation = self.starvation.clone();
+        let control = self.control.clone();
         let handle = std::thread::Builder::new()
             .name("oxitide-asio".into())
-            .spawn(move || owner_main(clsid, rate, channels, ready_tx, &stop_thread, &lost_thread, starvation))
+            .spawn(move || {
+                owner_main(clsid, rate, channels, ready_tx, &stop_thread, &lost_thread, starvation, control)
+            })
             .map_err(|e| Error::Output(e.to_string()))?;
 
         // Driver loads can be slow (USB interfaces wake up, firmware syncs).
@@ -469,30 +482,31 @@ impl AudioOutput for AsioOutput {
         if self.lost.load(Ordering::SeqCst) {
             return Err(Error::Output(LOST_NOTICE.into()));
         }
+        // Unscaled: the render callback applies the volume (`RenderState::render`).
         let float_target = self.format.is_some_and(AsioFormat::is_float);
-        let volume = ((self.volume - 1.0).abs() >= f32::EPSILON).then_some(self.volume);
         let rate = self.samples_per_sec;
         let producer = self
             .producer
             .as_mut()
             .ok_or_else(|| Error::Output("output not open".into()))?;
         let pushed = match buf {
-            PcmBuffer::F32(v) => {
-                push_samples(producer, v, rate, |sample| f32_word(sample, float_target, volume))
-            }
-            PcmBuffer::I32(v) => {
-                push_samples(producer, v, rate, |sample| i32_word(sample, float_target, volume))
-            }
+            PcmBuffer::F32(v) => push_samples(producer, v, rate, |sample| f32_word(sample, float_target)),
+            PcmBuffer::I32(v) => push_samples(producer, v, rate, |sample| i32_word(sample, float_target)),
         };
         self.starvation.arm();
         pushed
     }
 
-    /// ASIO has no endpoint volume: anything below 100% is software.
+    /// ASIO has no endpoint volume: anything below 100% is software, applied
+    /// by the render callback within one driver buffer.
     fn set_volume(&mut self, volume: f32) -> Result<()> {
-        self.volume = volume.clamp(0.0, 1.0);
+        self.control.set(volume);
         self.refresh_status();
         Ok(())
+    }
+
+    fn attach_volume(&mut self, control: Arc<VolumeControl>) {
+        self.control = control;
     }
 
     fn flush(&mut self) -> Result<()> {
@@ -559,6 +573,7 @@ type Ready = std::sync::mpsc::Sender<std::result::Result<Opened, String>>;
 
 /// Owns the driver for one open: set up, report, pump until stopped, tear
 /// down. Every driver call except `outputReady` happens on this thread.
+#[allow(clippy::too_many_arguments)]
 fn owner_main(
     clsid: windows::core::GUID,
     rate: u32,
@@ -567,6 +582,7 @@ fn owner_main(
     stop: &AtomicBool,
     lost: &AtomicBool,
     starvation: Arc<Starvation>,
+    control: Arc<VolumeControl>,
 ) {
     if CLAIMED.swap(true, Ordering::SeqCst) {
         let _ = ready.send(Err("another ASIO driver is already open".into()));
@@ -574,7 +590,7 @@ fn owner_main(
     }
     // SAFETY: balanced by CoUninitialize below.
     let com = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
-    match Session::open(clsid, rate, channels, starvation) {
+    match Session::open(clsid, rate, channels, starvation, control) {
         Ok((session, opened)) => {
             let _ = ready.send(Ok(opened));
             session.run(stop, lost);
@@ -605,6 +621,7 @@ impl Session {
         rate: u32,
         channels: usize,
         starvation: Arc<Starvation>,
+        control: Arc<VolumeControl>,
     ) -> std::result::Result<(Self, Opened), String> {
         let driver = Driver::create(&clsid)?;
         // SAFETY: plain Win32 call.
@@ -655,8 +672,10 @@ impl Session {
             .max(buffer_frames * channels * 4)
             .max(MIN_RING_SAMPLES);
         let (producer, consumer) = RingBuffer::<u32>::new(ring_len);
+        let ramp = GainRamp::new(volume_gain(control.position()), rate);
         let state = Box::into_raw(Box::new(RenderState {
-            ring: Mutex::new((consumer, vec![0; buffer_frames * channels])),
+            ring: Mutex::new((consumer, vec![0; buffer_frames * channels], ramp)),
+            control,
             buffers: infos.iter().map(|i| i.buffers).collect(),
             buffer_frames,
             channels,
@@ -818,12 +837,12 @@ mod tests {
 
     #[test]
     fn words_convert_between_float_and_integer_targets() {
-        assert_eq!(i32_word(1000, false, None), 1000);
-        assert_eq!(i32_word(1000, false, Some(0.5)) as i32, 500);
-        assert_eq!(f32::from_bits(i32_word(i32::MIN, true, None)), -1.0);
-        assert_eq!(f32_word(0.5, true, Some(0.5)), 0.25f32.to_bits());
-        assert_eq!(f32_word(1.0, false, None) as i32, i32::MAX);
-        assert_eq!(f32_word(-2.0, false, None) as i32, -i32::MAX, "clamped");
+        // Volume is no longer applied here (the render callback does it).
+        assert_eq!(i32_word(1000, false), 1000);
+        assert_eq!(f32::from_bits(i32_word(i32::MIN, true)), -1.0);
+        assert_eq!(f32_word(0.5, true), 0.5f32.to_bits());
+        assert_eq!(f32_word(1.0, false) as i32, i32::MAX);
+        assert_eq!(f32_word(-2.0, false) as i32, -i32::MAX, "clamped");
     }
 
     #[test]

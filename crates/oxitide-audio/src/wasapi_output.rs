@@ -3,22 +3,68 @@
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use rtrb::{Producer, RingBuffer};
 use wasapi::{DeviceEnumerator, Direction, SampleType, StreamMode, WaveFormat};
 
 use crate::decode::PcmBuffer;
-use crate::endpoint_volume;
+use crate::endpoint_volume::EndpointVolume;
 use crate::error::{Error, Result};
+use crate::gain::{scale_le_words, GainRamp, WordKind};
 use crate::output::{
-    exclusive_formats, platform, AudioOutput, AudioOutputSpec, ExclusiveFallback, OutputMode,
-    OutputStatus, SOFTWARE_VOLUME_NOTICE,
+    exclusive_formats, platform, volume_gain, AudioOutput, AudioOutputSpec, ExclusiveFallback,
+    OutputMode, OutputStatus, VolumeControl, SOFTWARE_VOLUME_NOTICE,
 };
 use crate::ring::{self, pop_frames_le, push_samples, Starvation};
 
 /// Floor for the ring so tiny formats still leave room for the device period.
 const MIN_RING_SAMPLES: usize = 4096;
+
+/// How long the DAC's own (endpoint) volume takes to reach a new level. It
+/// moves in one step per device period, as many DACs click on a single jump.
+const ENDPOINT_GLIDE: Duration = Duration::from_millis(40);
+
+/// Where the endpoint volume should be on its glide to the latest target.
+/// Pure (the caller sets the device), so the stepping is testable.
+#[derive(Debug, Clone, Copy)]
+struct EndpointGlide {
+    applied: f32,
+    from: f32,
+    target: f32,
+    started: Instant,
+}
+
+impl EndpointGlide {
+    /// Starts settled at `position` (already set on the device).
+    fn new(position: f32, now: Instant) -> Self {
+        Self { applied: position, from: position, target: position, started: now }
+    }
+
+    /// The value to set now for `target`, or `None` when the device already
+    /// has it. A new target glides on from wherever the volume is.
+    fn next(&mut self, target: f32, now: Instant) -> Option<f32> {
+        if (target - self.target).abs() >= f32::EPSILON {
+            self.from = self.applied;
+            self.target = target;
+            self.started = now;
+        }
+        if (self.applied - self.target).abs() < f32::EPSILON {
+            return None;
+        }
+        let t = now.saturating_duration_since(self.started).as_secs_f32()
+            / ENDPOINT_GLIDE.as_secs_f32();
+        let value = if t >= 1.0 { self.target } else { self.from + (self.target - self.from) * t };
+        self.applied = value;
+        Some(value)
+    }
+}
+
+/// The DAC's own volume, stepped by the device thread.
+struct EndpointStepper {
+    volume: EndpointVolume,
+    glide: EndpointGlide,
+}
 
 /// Handshake with the pump thread for a mid-session flush (seek): the caller
 /// bumps `requested` and waits until `completed` catches up. Keeps the device
@@ -70,10 +116,11 @@ pub struct WasapiOutput {
     worker: Option<JoinHandle<()>>,
     stop: Arc<AtomicBool>,
     flush: Option<Arc<FlushSignal>>,
-    volume: f32,
-    /// True when samples are scaled in software (shared mode, or an exclusive
-    /// device whose endpoint volume is unavailable).
-    software_volume: bool,
+    /// The volume the device thread applies (the engine's, once attached).
+    control: Arc<VolumeControl>,
+    /// Set by the device thread: true when samples are scaled in software
+    /// (shared mode, or an exclusive device without hardware volume).
+    software: Arc<AtomicBool>,
     device_lost: Arc<AtomicBool>,
     status: Arc<Mutex<OutputStatus>>,
     /// Shared with every pump thread this output starts, so the count spans
@@ -92,8 +139,8 @@ impl WasapiOutput {
             worker: None,
             stop: Arc::new(AtomicBool::new(false)),
             flush: None,
-            volume: 1.0,
-            software_volume: true,
+            control: Arc::new(VolumeControl::default()),
+            software: Arc::new(AtomicBool::new(true)),
             device_lost: Arc::new(AtomicBool::new(false)),
             status: Arc::new(Mutex::new(OutputStatus::default())),
             starvation: Arc::new(Starvation::default()),
@@ -123,7 +170,7 @@ impl AudioOutput for WasapiOutput {
         self.device_id = spec.device_id.clone();
         self.resolved_device_id = None;
         self.device_lost.store(false, Ordering::SeqCst);
-        self.software_volume = true;
+        self.software.store(true, Ordering::SeqCst);
 
         let sample_rate = spec.info.sample_rate;
         let channels = spec.info.channels;
@@ -140,10 +187,12 @@ impl AudioOutput for WasapiOutput {
         let flush_thread = flush.clone();
         self.starvation.disarm();
         let starvation = self.starvation.clone();
+        let control = self.control.clone();
+        let software = self.software.clone();
 
         let handle = std::thread::Builder::new()
             .name("oxitide-wasapi".into())
-            .spawn(move || match setup_device(&spec_thread, &lost, starvation) {
+            .spawn(move || match setup_device(&spec_thread, &lost, starvation, control, software) {
                 Ok((mut session, ready)) => {
                     let _ = ready_tx.send(Ok(ready));
                     if let Err(e) = session.pump(&mut consumer, &stop_thread, &flush_thread) {
@@ -178,9 +227,9 @@ impl AudioOutput for WasapiOutput {
                 return Err(Error::Output("audio device did not initialize in time".into()));
             }
         }
-
-        let volume = self.volume;
-        self.set_volume(volume)
+        // The device thread applies the volume from `control` from its first
+        // period on.
+        Ok(())
     }
 
     fn start(&mut self) -> Result<()> {
@@ -191,10 +240,11 @@ impl AudioOutput for WasapiOutput {
         if self.device_lost.load(Ordering::SeqCst) {
             return Err(Error::Output("output device unavailable".into()));
         }
-        let volume = self.volume;
-        let software = self.software_volume && (volume - 1.0).abs() >= f32::EPSILON;
-        // The requested mode can differ from the mode that actually opened
-        // (exclusive -> shared fallback), so convert to what the device accepts.
+        // The ring holds unscaled samples: volume is applied as they leave
+        // for the device (`DeviceSession::write_frames`), so a change is not
+        // held back by the ~200 ms already queued. The requested mode can
+        // differ from the mode that actually opened (exclusive -> shared
+        // fallback), so convert to what the device accepts.
         let actual_mode = self.status.lock().unwrap().mode;
         let rate = self.samples_per_sec;
         let producer = self
@@ -202,55 +252,29 @@ impl AudioOutput for WasapiOutput {
             .as_mut()
             .ok_or_else(|| Error::Output("output not open".into()))?;
         let pushed = match buf {
-            PcmBuffer::F32(v) => push_samples(producer, v, rate, |sample| {
-                let scaled = if software { sample * volume } else { sample };
-                scaled.to_bits()
-            }),
+            PcmBuffer::F32(v) => push_samples(producer, v, rate, |sample| sample.to_bits()),
             PcmBuffer::I32(v) if actual_mode == OutputMode::Exclusive => {
-                push_samples(producer, v, rate, |sample| {
-                    let scaled = if software {
-                        (sample as f64 * volume as f64) as i32
-                    } else {
-                        sample
-                    };
-                    scaled as u32
-                })
+                push_samples(producer, v, rate, |sample| sample as u32)
             }
             // Shared output fell back from exclusive: the device wants float
             // samples. Left-aligned i32 -> f32 is a pure divide.
             PcmBuffer::I32(v) => push_samples(producer, v, rate, |sample| {
-                let float = sample as f32 / 2_147_483_648.0;
-                let scaled = if software { float * volume } else { float };
-                scaled.to_bits()
+                (sample as f32 / 2_147_483_648.0).to_bits()
             }),
         };
         self.starvation.arm();
         pushed
     }
 
+    /// Picked up by the device thread within one period: a glide of the
+    /// samples (software) or of the DAC's own volume (exclusive endpoint).
     fn set_volume(&mut self, volume: f32) -> Result<()> {
-        let volume = volume.clamp(0.0, 1.0);
-        self.volume = volume;
-        let exclusive = self.status.lock().unwrap().mode == OutputMode::Exclusive;
-        if exclusive {
-            let target = self.resolved_device_id.as_deref().or(self.device_id.as_deref());
-            if endpoint_volume::set_master_volume(target, volume).is_ok() {
-                self.software_volume = false;
-                let mut status = self.status.lock().unwrap();
-                if status.notice.as_deref() == Some(SOFTWARE_VOLUME_NOTICE) {
-                    status.notice = None;
-                    status.bit_perfect = status.mode == OutputMode::Exclusive;
-                }
-                return Ok(());
-            }
-            self.software_volume = true;
-            let mut status = self.status.lock().unwrap();
-            status.bit_perfect = false;
-            status.notice = Some(SOFTWARE_VOLUME_NOTICE.into());
-        } else {
-            self.software_volume = true;
-        }
+        self.control.set(volume);
         Ok(())
+    }
+
+    fn attach_volume(&mut self, control: Arc<VolumeControl>) {
+        self.control = control;
     }
 
     fn flush(&mut self) -> Result<()> {
@@ -271,6 +295,16 @@ impl AudioOutput for WasapiOutput {
 
     fn status(&self) -> OutputStatus {
         let mut status = self.status.lock().unwrap().clone();
+        // Exclusive without a usable endpoint volume scales in software;
+        // unity is a true pass-through, so only a lower volume costs
+        // bit-perfect.
+        if status.mode == OutputMode::Exclusive
+            && self.software.load(Ordering::SeqCst)
+            && self.control.position() < 1.0
+        {
+            status.bit_perfect = false;
+            status.notice.get_or_insert_with(|| SOFTWARE_VOLUME_NOTICE.into());
+        }
         if self.device_lost.load(Ordering::SeqCst) {
             status.bit_perfect = false;
             status.notice = Some("output device disconnected".into());
@@ -328,6 +362,15 @@ struct DeviceSession {
     /// One device period of bytes, reused (was one allocation per period).
     scratch: Vec<u8>,
     starvation: Arc<Starvation>,
+    control: Arc<VolumeControl>,
+    /// Shared with `WasapiOutput` for its status.
+    software: Arc<AtomicBool>,
+    /// The software gain, applied to each period as it leaves for the device.
+    ramp: GainRamp,
+    /// How the ring words encode samples (the device's format).
+    kind: WordKind,
+    /// The DAC's own volume, when an exclusive stream has hardware volume.
+    endpoint: Option<EndpointStepper>,
     // Kept alive so device-change notifications keep firing.
     _registration: Option<wasapi::DeviceEventRegistration>,
 }
@@ -359,6 +402,7 @@ impl DeviceSession {
                 // Polling exclusive: no event handle, just poll.
                 None => std::thread::sleep(Duration::from_millis(5)),
             }
+            self.step_endpoint();
             self.write_frames(consumer)?;
         }
         let _ = self.client.stop_stream();
@@ -395,9 +439,36 @@ impl DeviceSession {
         self.scratch.resize(frames * self.channels * 4, 0);
         let taken = pop_frames_le(consumer, self.channels, &mut self.scratch);
         self.starvation.observe(taken, frames);
+        let target = if self.endpoint.is_some() {
+            1.0
+        } else {
+            volume_gain(self.control.position())
+        };
+        self.ramp.retarget(target);
+        let kind = self.kind;
+        self.ramp.apply_frames(&mut self.scratch, self.channels * 4, |frame, gain| {
+            scale_le_words(frame, gain, kind)
+        });
         self.render
             .write_to_device(frames, &self.scratch, None)
             .map_err(to_error)
+    }
+
+    /// Move the DAC's own volume one step toward the control's position. A
+    /// device that stops taking it hands the volume to software from here on
+    /// (gliding down from unity, so the switch is silent too).
+    fn step_endpoint(&mut self) {
+        let Some(stepper) = self.endpoint.as_mut() else {
+            return;
+        };
+        let Some(value) = stepper.glide.next(self.control.position(), Instant::now()) else {
+            return;
+        };
+        if let Err(e) = stepper.volume.set(value) {
+            tracing::warn!("endpoint volume failed, using software volume: {e}");
+            self.endpoint = None;
+            self.software.store(true, Ordering::SeqCst);
+        }
     }
 }
 
@@ -486,10 +557,35 @@ fn open_shared(
     Ok((client, Some(event)))
 }
 
+/// The DAC's own volume for an exclusive stream, set to `position` at once
+/// (an open never glides). `None` when the device has no hardware volume:
+/// exclusive streams bypass the audio engine, so its endpoint volume would
+/// do nothing and the volume must be applied in software.
+fn open_endpoint(device_id: Option<&str>, position: f32) -> Option<EndpointStepper> {
+    let volume = match EndpointVolume::open(device_id) {
+        Ok(volume) => volume,
+        Err(e) => {
+            tracing::debug!("no endpoint volume ({e}); using software volume");
+            return None;
+        }
+    };
+    if !volume.has_hardware_volume() {
+        tracing::debug!("device has no hardware volume; using software volume");
+        return None;
+    }
+    if let Err(e) = volume.set(position) {
+        tracing::debug!("endpoint volume failed ({e}); using software volume");
+        return None;
+    }
+    Some(EndpointStepper { volume, glide: EndpointGlide::new(position, Instant::now()) })
+}
+
 fn setup_device(
     spec: &AudioOutputSpec,
     lost: &Arc<AtomicBool>,
     starvation: Arc<Starvation>,
+    control: Arc<VolumeControl>,
+    software: Arc<AtomicBool>,
 ) -> Result<(DeviceSession, DeviceReady)> {
     platform::ensure_com()?;
     let enumerator = DeviceEnumerator::new().map_err(to_error)?;
@@ -565,6 +661,11 @@ fn setup_device(
         registration = notify_enum.register_notification_callback(callbacks).ok();
     }
 
+    let exclusive = status.mode == OutputMode::Exclusive;
+    let position = control.position();
+    let endpoint = if exclusive { open_endpoint(resolved_id.as_deref(), position) } else { None };
+    software.store(endpoint.is_none(), Ordering::SeqCst);
+    let start_gain = if endpoint.is_some() { 1.0 } else { volume_gain(position) };
     let session = DeviceSession {
         client,
         render,
@@ -572,6 +673,13 @@ fn setup_device(
         channels: spec.info.channels as usize,
         scratch: Vec::new(),
         starvation,
+        control,
+        software,
+        ramp: GainRamp::new(start_gain, spec.info.sample_rate),
+        // Exclusive streams take the engine's left-aligned integers; shared
+        // ones take floats.
+        kind: if exclusive { WordKind::I32 } else { WordKind::F32 },
+        endpoint,
         _registration: registration,
     };
     Ok((session, DeviceReady { device_id: resolved_id, status, buffer_frames }))
@@ -623,6 +731,39 @@ mod tests {
             Some("old"),
             Some("new")
         ));
+    }
+
+    #[test]
+    fn the_endpoint_volume_glides_in_steps_instead_of_jumping() {
+        let start = Instant::now();
+        let mut glide = EndpointGlide::new(0.9, start);
+        assert_eq!(glide.next(0.9, start), None, "nothing to do at the target");
+        // A click from 90% to 10%, stepped every 5 ms like the polling pump.
+        let mut steps = Vec::new();
+        for ms in (0..=60).step_by(5) {
+            if let Some(value) = glide.next(0.1, start + Duration::from_millis(ms)) {
+                steps.push(value);
+            }
+        }
+        assert!(steps.len() >= 8, "too few steps: {steps:?}");
+        assert!(steps.windows(2).all(|w| w[1] <= w[0]), "not monotonic: {steps:?}");
+        assert!(steps.windows(2).all(|w| w[0] - w[1] <= 0.11), "a step jumped: {steps:?}");
+        assert_eq!(*steps.last().unwrap(), 0.1, "the glide ends on the target");
+        assert_eq!(glide.next(0.1, start + Duration::from_millis(100)), None);
+    }
+
+    #[test]
+    fn a_new_endpoint_target_glides_on_from_where_the_volume_is() {
+        let start = Instant::now();
+        let mut glide = EndpointGlide::new(1.0, start);
+        // The glide's clock starts when the pump first sees the target.
+        assert_eq!(glide.next(0.0, start), Some(1.0));
+        let halfway = glide.next(0.0, start + Duration::from_millis(20)).unwrap();
+        assert!((halfway - 0.5).abs() < 0.01, "{halfway}");
+        let resumed = glide.next(1.0, start + Duration::from_millis(20)).unwrap();
+        assert!((resumed - halfway).abs() < 1e-6, "jumped from {halfway} to {resumed}");
+        let end = glide.next(1.0, start + Duration::from_millis(60)).unwrap();
+        assert_eq!(end, 1.0);
     }
 
     #[test]

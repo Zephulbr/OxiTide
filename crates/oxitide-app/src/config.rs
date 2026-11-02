@@ -85,7 +85,15 @@ pub struct AudioConfig {
     pub output_device: String,
     pub exclusive: bool,
     pub exclusive_fallback: ExclusiveFallback,
+    /// Slider position; the engine applies the audio taper
+    /// (`oxitide_audio::output::volume_gain`) when it scales samples.
     pub volume: f32,
+    /// Set once `volume` is a tapered slider position. Older configs stored
+    /// it as a linear gain; `Config::load_from` converts them so a saved
+    /// level keeps its loudness. Missing from a file means old (`false`),
+    /// a fresh config starts tapered.
+    #[serde(default)]
+    pub volume_tapered: bool,
 }
 
 impl Default for AudioConfig {
@@ -95,6 +103,18 @@ impl Default for AudioConfig {
             exclusive: false,
             exclusive_fallback: ExclusiveFallback::Shared,
             volume: 1.0,
+            volume_tapered: true,
+        }
+    }
+}
+
+impl AudioConfig {
+    /// A linear-gain volume from before the taper becomes the slider position
+    /// with the same gain.
+    fn migrate_volume(&mut self) {
+        if !self.volume_tapered {
+            self.volume = oxitide_audio::output::volume_position(self.volume);
+            self.volume_tapered = true;
         }
     }
 }
@@ -647,7 +667,10 @@ impl Config {
             return Self::default();
         };
         match toml::from_str::<Config>(&text) {
-            Ok(config) => config,
+            Ok(mut config) => {
+                config.audio.migrate_volume();
+                config
+            }
             Err(e) => {
                 tracing::warn!("malformed config at {}: {e}", path.display());
                 let backup = path.with_extension("toml.bak");
@@ -738,6 +761,7 @@ mod tests {
                 exclusive: true,
                 exclusive_fallback: ExclusiveFallback::WarnOnly,
                 volume: 0.42,
+                volume_tapered: true,
             },
             streaming: StreamingConfig { quality: QualityDto::Max, allow_fallback: false },
             ui: UiConfig {
@@ -1366,6 +1390,22 @@ duration_ms = 4000
         let loaded = Config::load_from(&path);
         assert!(loaded.history.enabled);
         assert_eq!(loaded.history.max_entries, 10_000);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_linear_volume_from_an_old_config_keeps_its_loudness() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        fs::write(&path, "[audio]\nvolume = 0.316\n").unwrap();
+        let loaded = Config::load_from(&path);
+        // A linear 0.316 is -10 dB, which is 50% on the taper.
+        assert!((loaded.audio.volume - 0.5).abs() < 1e-3, "{}", loaded.audio.volume);
+        assert!(loaded.audio.volume_tapered);
+
+        // Once saved, the position loads unchanged.
+        loaded.save_to(&path).unwrap();
+        assert_eq!(Config::load_from(&path).audio, loaded.audio);
         let _ = fs::remove_dir_all(dir);
     }
 

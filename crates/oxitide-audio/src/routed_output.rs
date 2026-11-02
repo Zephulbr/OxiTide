@@ -1,10 +1,13 @@
 //! Dispatches between the system backend (WASAPI) and ASIO by device id
 //! (spec `2026-10-11-oxitide-track7-asio-output-design.md`, T7A-D3/D5).
 
+use std::sync::Arc;
+
 use crate::decode::PcmBuffer;
 use crate::error::{Error, Result};
 use crate::output::{
     is_asio_device, AudioOutput, AudioOutputSpec, ExclusiveFallback, OutputMode, OutputStatus,
+    VolumeControl,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -111,6 +114,11 @@ impl AudioOutput for RoutedOutput {
             Ok(active) => active.set_volume(volume),
             Err(_) => other,
         }
+    }
+
+    fn attach_volume(&mut self, control: Arc<VolumeControl>) {
+        self.system.attach_volume(control.clone());
+        self.asio.attach_volume(control);
     }
 
     fn flush(&mut self) -> Result<()> {

@@ -298,9 +298,15 @@ mod linux {
     use alsa::pcm::{Access, Format, HwParams, PCM};
     use alsa::{Direction, Error as AlsaError, ValueOr};
 
+    use std::sync::Arc;
+
     use super::*;
     use crate::decode::PcmBuffer;
-    use crate::output::{AudioOutput, AudioOutputSpec, OutputDevice, OutputMode, OutputStatus};
+    use crate::gain::{scale_i32, GainRamp};
+    use crate::output::{
+        volume_gain, AudioOutput, AudioOutputSpec, OutputDevice, OutputMode, OutputStatus,
+        VolumeControl,
+    };
 
     /// Maximum wall-clock time one `write` call may spend on the device before
     /// it is declared stalled.
@@ -318,8 +324,12 @@ mod linux {
         format: AlsaSampleFormat,
         device: String,
         channels: u16,
-        volume: f32,
+        /// The volume (the engine's, once attached); read on every write.
+        control: Arc<VolumeControl>,
         software_volume: bool,
+        /// Glides software volume changes (a step would click). ALSA has no
+        /// ring of ours, so it runs as samples are written.
+        ramp: GainRamp,
         status: OutputStatus,
         /// `writei` underruns (`EPIPE`) over this output's life.
         underruns: u64,
@@ -340,8 +350,9 @@ mod linux {
                 format: AlsaSampleFormat::S32Le,
                 device: String::new(),
                 channels: 2,
-                volume: 1.0,
+                control: Arc::new(VolumeControl::default()),
                 software_volume: true,
+                ramp: GainRamp::new(1.0, 48_000),
                 status: OutputStatus {
                     mode: OutputMode::Shared,
                     bit_perfect: false,
@@ -595,7 +606,10 @@ mod linux {
             }
 
             self.status = status;
-            self.set_volume(self.volume)?;
+            self.set_volume(self.control.position())?;
+            // An open starts at the volume, never gliding to it.
+            let start = if self.software_volume { volume_gain(self.control.position()) } else { 1.0 };
+            self.ramp = GainRamp::new(start, self.rate);
             Ok(())
         }
 
@@ -622,21 +636,24 @@ mod linux {
             let Some(pcm) = self.pcm.as_ref() else {
                 return Err(Error::Output("output not open".into()));
             };
-            let software = self.software_volume && (self.volume - 1.0).abs() >= f32::EPSILON;
-            let volume = self.volume;
+            let target = if self.software_volume {
+                volume_gain(self.control.position())
+            } else {
+                1.0
+            };
+            self.ramp.retarget(target);
+            let channels = self.channels as usize;
             let samples: &[i32] = match buf {
-                PcmBuffer::I32(v) if !software => v,
-                PcmBuffer::I32(v) => {
+                PcmBuffer::I32(v) if self.ramp.is_identity() => v,
+                _ => {
                     self.scratch.clear();
-                    self.scratch
-                        .extend(v.iter().map(|&sample| (sample as f64 * volume as f64) as i32));
-                    &self.scratch
-                }
-                PcmBuffer::F32(v) => {
-                    self.scratch.clear();
-                    self.scratch.extend(v.iter().map(|&sample| {
-                        f32_to_i32_one(if software { sample * volume } else { sample })
-                    }));
+                    match buf {
+                        PcmBuffer::I32(v) => self.scratch.extend_from_slice(v),
+                        PcmBuffer::F32(v) => {
+                            self.scratch.extend(v.iter().map(|&sample| f32_to_i32_one(sample)))
+                        }
+                    }
+                    self.ramp.apply_frames(&mut self.scratch, channels, scale_i32);
                     &self.scratch
                 }
             };
@@ -682,11 +699,16 @@ mod linux {
             Ok(())
         }
 
+        fn attach_volume(&mut self, control: Arc<VolumeControl>) {
+            self.control = control;
+        }
+
         fn set_volume(&mut self, volume: f32) -> Result<()> {
-            self.volume = volume.clamp(0.0, 1.0);
+            self.control.set(volume);
+            let volume = self.control.position();
             let exclusive = self.status.mode == OutputMode::Exclusive;
             if exclusive {
-                if set_hardware_volume(&self.device, self.volume).is_ok() {
+                if set_hardware_volume(&self.device, volume).is_ok() {
                     self.software_volume = false;
                     if self.status.notice.as_deref() == Some(SOFTWARE_VOLUME_NOTICE) {
                         self.status.notice = None;

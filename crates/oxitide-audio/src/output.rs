@@ -56,6 +56,70 @@ pub const ASIO_PREFIX: &str = "asio:";
 /// Notice shown while an exclusive output scales samples in software.
 pub const SOFTWARE_VOLUME_NOTICE: &str = "volume applied in software; bit-perfect compromised";
 
+/// Exponent of the loudness-linear volume taper: `1 / (2·log10 2)`.
+///
+/// Perceived loudness doubles for every +10 dB (Stevens' power law: loudness
+/// grows with amplitude^0.6). Making loudness proportional to the slider
+/// position therefore means `dB = 10·log2(position)`, i.e. an amplitude of
+/// `position^1.661`: 50% sounds half as loud as 100% (-10 dB), 25% half as
+/// loud again (-20 dB), and every 5% step adds the same loudness anywhere on
+/// the slider. This is the taper Windows' own `SetMasterVolumeLevelScalar`
+/// gives on drivers that honour dB (about -10 dB at 50%, -35 dB at 10%), so
+/// shared and exclusive output feel the same.
+///
+/// Rejected: linear amplitude (loudness piles into the bottom 20%: 5% -> 10%
+/// is +6 dB, 85% -> 90% is +0.5 dB) and the cubic / 60 dB-exponential
+/// curves of PulseAudio, ALSA and Dr. Lex's guide. Those suit a master
+/// volume that spans the full range down to silence; on top of the system
+/// volume they leave the bottom third inaudible (cubic is -31 dB at 30%).
+pub const VOLUME_TAPER_EXPONENT: f32 = 1.661;
+
+/// The amplitude gain for a volume-slider position (0.0..=1.0), on the
+/// loudness-linear taper ([`VOLUME_TAPER_EXPONENT`]). The ends are exact
+/// (0.0 is silence, 1.0 is unity, so full volume stays a no-op). Every
+/// `volume` in the app is a slider position; only software scaling converts
+/// it here. Endpoint volume needs no conversion:
+/// `SetMasterVolumeLevelScalar` already applies the same taper.
+pub fn volume_gain(position: f32) -> f32 {
+    position.clamp(0.0, 1.0).powf(VOLUME_TAPER_EXPONENT)
+}
+
+/// The slider position for an amplitude gain; the inverse of
+/// [`volume_gain`]. Converts volumes saved before the taper existed.
+pub fn volume_position(gain: f32) -> f32 {
+    gain.clamp(0.0, 1.0).powf(1.0 / VOLUME_TAPER_EXPONENT)
+}
+
+/// The volume (slider position) an output plays at, shared between the
+/// engine and the thread that feeds the device. The engine writes it the
+/// moment a volume command arrives; the device thread reads it every period
+/// and glides to it (`gain::GainRamp`, or stepped endpoint volume), so a
+/// change is heard within a device period instead of after the queued audio.
+#[derive(Debug)]
+pub struct VolumeControl {
+    position: AtomicU32,
+}
+
+impl VolumeControl {
+    pub fn new(position: f32) -> Self {
+        Self { position: AtomicU32::new(position.clamp(0.0, 1.0).to_bits()) }
+    }
+
+    pub fn set(&self, position: f32) {
+        self.position.store(position.clamp(0.0, 1.0).to_bits(), Ordering::SeqCst);
+    }
+
+    pub fn position(&self) -> f32 {
+        f32::from_bits(self.position.load(Ordering::SeqCst))
+    }
+}
+
+impl Default for VolumeControl {
+    fn default() -> Self {
+        Self::new(1.0)
+    }
+}
+
 /// The ASIO driver key in an `asio:<key>` device id.
 pub fn asio_device_key(device_id: &str) -> Option<&str> {
     device_id.strip_prefix(ASIO_PREFIX).filter(|key| !key.is_empty())
@@ -117,7 +181,13 @@ pub trait AudioOutput: Send {
     fn open(&mut self, spec: &AudioOutputSpec) -> Result<()>;
     fn start(&mut self) -> Result<()>;
     fn write(&mut self, buf: &PcmBuffer) -> Result<()>;
+    /// Set the volume (a slider position). Backends store it in their
+    /// [`VolumeControl`] and apply it on the device thread.
     fn set_volume(&mut self, volume: f32) -> Result<()>;
+    /// Share the engine's volume control, so a volume command reaches the
+    /// device thread directly instead of waiting for the playback worker's
+    /// next write. Outputs that apply volume elsewhere ignore it.
+    fn attach_volume(&mut self, _control: Arc<VolumeControl>) {}
     fn flush(&mut self) -> Result<()>;
     fn stop(&mut self) -> Result<()>;
     /// The mode/bit-perfect state currently in effect.
@@ -238,6 +308,9 @@ pub struct NullOutput {
     underruns: Arc<AtomicU64>,
     /// `open` / `flush` / `drain` / `stop`, in call order.
     calls: Arc<Mutex<Vec<&'static str>>>,
+    /// The engine's control, once attached. `set_volume` stores into it like
+    /// the real backends; writes still scale by the last `set_volume`.
+    control: Arc<Mutex<Option<Arc<VolumeControl>>>>,
 }
 
 impl Default for NullOutput {
@@ -255,6 +328,7 @@ impl Default for NullOutput {
             queued_ms: Arc::new(AtomicU32::new(0)),
             underruns: Arc::new(AtomicU64::new(0)),
             calls: Arc::new(Mutex::new(Vec::new())),
+            control: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -262,6 +336,10 @@ impl Default for NullOutput {
 impl NullOutput {
     pub fn new() -> Self {
         Self::default()
+    }
+    /// The volume control the engine attached, if any.
+    pub fn volume_control(&self) -> Option<Arc<VolumeControl>> {
+        self.control.lock().unwrap().clone()
     }
     pub fn samples(&self) -> Vec<f32> {
         self.samples.lock().unwrap().clone()
@@ -337,7 +415,14 @@ impl AudioOutput for NullOutput {
     fn set_volume(&mut self, volume: f32) -> Result<()> {
         self.volume = volume.clamp(0.0, 1.0);
         self.volumes.lock().unwrap().push(self.volume);
+        // Like the real backends, which keep their volume in the control.
+        if let Some(control) = self.control.lock().unwrap().as_ref() {
+            control.set(self.volume);
+        }
         Ok(())
+    }
+    fn attach_volume(&mut self, control: Arc<VolumeControl>) {
+        *self.control.lock().unwrap() = Some(control);
     }
     fn flush(&mut self) -> Result<()> {
         self.calls.lock().unwrap().push("flush");
@@ -527,6 +612,33 @@ mod tests {
         assert_eq!(out.samples(), vec![0.5, -0.5]);
         assert_eq!(out.status().mode, OutputMode::Shared);
         assert!(!out.status().bit_perfect);
+    }
+
+    #[test]
+    fn volume_gain_is_an_exact_ended_loudness_taper() {
+        assert_eq!(volume_gain(0.0), 0.0);
+        assert_eq!(volume_gain(1.0), 1.0, "full volume must stay unity");
+        assert_eq!(volume_gain(-0.5), 0.0);
+        assert_eq!(volume_gain(2.0), 1.0);
+        let db = |p: f32| 20.0 * volume_gain(p).log10();
+        assert!((db(0.5) + 10.0).abs() < 0.05, "50% is {} dB", db(0.5));
+        // Cubic was -31 dB here, which testers found inaudible.
+        assert!(db(0.3) > -18.0, "30% is {} dB", db(0.3));
+        assert!((db(0.1) + 33.2).abs() < 0.1, "10% is {} dB", db(0.1));
+        // Linear gave 85% -> 90% just 0.5 dB.
+        let top = db(0.9) - db(0.85);
+        assert!(top > 0.8, "85% -> 90% is only {top} dB");
+        let mut last = 0.0;
+        for step in 1..=100 {
+            let p = step as f32 / 100.0;
+            let gain = volume_gain(p);
+            assert!(gain > last, "the curve must rise at {step}%");
+            last = gain;
+            // Loudness (doubling per +10 dB) tracks the slider position.
+            let loudness = 2f32.powf(db(p) / 10.0);
+            assert!((loudness - p).abs() < 0.002, "{step}% sounds like {loudness}");
+            assert!((volume_position(gain) - p).abs() < 1e-5, "inverse at {step}%");
+        }
     }
 
     #[test]
