@@ -28,7 +28,8 @@ The UI vendors the following fonts under the SIL Open Font License 1.1:
   (<http://www.keshikan.net>, <https://github.com/keshikan/DSEG>), with Reserved
   Font Name "DSEG"
 
-Font files: `ui/src/assets/fonts/`.
+Font files: `ui/src/assets/fonts/`. The showcase site carries unmodified copies
+of Manrope, Inter and DSEG7 Classic in `site/assets/fonts/`.
 
 ### SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
 
@@ -122,6 +123,11 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 - **Snap Layouts overlay technique** (`crates/oxitide-app/src/titlebar.rs`) —
   approach adapted from tauri-plugin-frame
   (https://github.com/clarifei/tauri-plugin-frame, MIT); not a dependency.
+- **Lucide** icon paths (`ui/src/lib/components/Icon.svelte`, and the icon
+  sprite in `site/index.html`): copied from Lucide (https://lucide.dev),
+  ISC License. Copyright (c) for portions of Lucide are held by Cole Bemis
+  2013-2022 as part of Feather (MIT). All other copyright (c) for Lucide are
+  held by Lucide Contributors 2022.
 - **Simple Icons** brand paths (`ui/src/lib/components/BrandIcon.svelte`) —
   copied from simple-icons 16.35.0 (https://simpleicons.org, CC0-1.0). The
   logos themselves remain trademarks of their respective owners.

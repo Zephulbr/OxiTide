@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="20 20 100 100">
+  <!-- The app's mark (crates/oxitide-app/icons/svg/icon.svg) as a cover that
+       fills a record: its disc is the whole square. The outer ring runs out
+       past the record's round edge (r 47 to 51, cropped there), and the wave
+       stops inside it, so no copper shows beyond the ring. -->
+  <defs>
+    <clipPath id="d"><circle cx="70" cy="70" r="48"/></clipPath>
+    <radialGradient id="bg" cx=".42" cy=".38" r=".7">
+      <stop offset="0" stop-color="#25352f"/>
+      <stop offset="1" stop-color="#16201d"/>
+    </radialGradient>
+  </defs>
+  <rect x="20" y="20" width="100" height="100" fill="url(#bg)"/>
+  <g fill="none" stroke-linecap="round">
+    <circle cx="70" cy="70" r="34" stroke="#4F8C82" stroke-width="4"/>
+    <path d="M12 82 C 38 58, 58 106, 86 82 C 106 64, 118 82, 132 68" stroke="#C4693E" stroke-width="10" clip-path="url(#d)"/>
+    <circle cx="70" cy="70" r="49" stroke="#4F8C82" stroke-width="4"/>
+  </g>
+</svg>

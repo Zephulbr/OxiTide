@@ -1,0 +1,148 @@
+/* Simplified app replicas for the looks chapter; the morph between them
+   moves clones of the cover and the title (scripts/looks.js). v1's
+   full-detail replicas and scroll-timeline morph are archived locally in
+   .superpowers/site-v1 (see PLAN.md).
+   Everything is sized in --u (1/960 of the frame width) so it scales. */
+.lk {
+  position: relative; width: 100%; aspect-ratio: 16 / 10; container-type: inline-size;
+  border-radius: 12px; overflow: hidden; isolation: isolate;
+  box-shadow: 0 30px 80px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.08);
+  font-family: Manrope, Inter, sans-serif;
+}
+.lk * { --u: calc(100cqw / 960); }
+.lk-layer { position: absolute; inset: 0; --u: calc(100cqw / 960); }
+.lk-studio { opacity: var(--o-studio, 0); }
+.lk-rack { opacity: var(--o-rack, 0); }
+.lk-ttl { position: absolute; top: 0; left: 0; right: 0; height: calc(28 * var(--u)); display: flex; justify-content: flex-end; gap: calc(22 * var(--u)); padding: calc(9 * var(--u)) calc(16 * var(--u)); }
+.lk-ttl i { width: calc(9 * var(--u)); height: calc(9 * var(--u)); border: 1px solid currentColor; opacity: .45; border-radius: 2px; }
+
+/* ---- Atmosphere ---- */
+.lk-atmo { --acc: #9fdcc9; background: radial-gradient(70% 90% at 25% 40%, #1b4a44 0%, transparent 60%), radial-gradient(60% 80% at 90% 10%, #123230 0%, transparent 70%), #120e0b; color: #f2ece4; }
+.lk-atmo .a-disc { position: absolute; left: calc(96 * var(--u)); top: calc(92 * var(--u)); width: calc(300 * var(--u)); filter: drop-shadow(0 calc(20 * var(--u)) calc(40 * var(--u)) rgba(0,0,0,.6)); }
+.lk-atmo .a-glow { position: absolute; left: calc(40 * var(--u)); top: calc(40 * var(--u)); width: calc(420 * var(--u)); aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle, rgba(159,220,201,.16), transparent 65%); }
+.lk-atmo .a-meta { position: absolute; left: calc(470 * var(--u)); top: calc(104 * var(--u)); right: calc(50 * var(--u)); }
+.lk-atmo .a-kick { font-size: calc(9 * var(--u)); letter-spacing: .12em; text-transform: uppercase; opacity: .6; font-weight: 700; }
+.lk-atmo .a-title { font-size: calc(46 * var(--u)); font-weight: 800; letter-spacing: -.02em; margin-top: calc(8 * var(--u)); line-height: 1; }
+.lk-atmo .a-artist { font-size: calc(16 * var(--u)); opacity: .7; margin-top: calc(8 * var(--u)); }
+.lk-atmo .a-badges { display: flex; gap: calc(6 * var(--u)); margin-top: calc(16 * var(--u)); }
+.lk-atmo .a-badges span { font-size: calc(9 * var(--u)); padding: calc(4 * var(--u)) calc(7 * var(--u)); border: 1px solid rgba(242,236,228,.25); border-radius: calc(4 * var(--u)); opacity: .85; font-weight: 600; }
+.lk-atmo .a-badges span:first-child { border-color: #e8dfb2; color: #e8dfb2; }
+.lk-atmo .a-tabs { display: flex; gap: calc(20 * var(--u)); margin-top: calc(24 * var(--u)); font-size: calc(12 * var(--u)); font-weight: 600; border-bottom: 1px solid rgba(255,255,255,.1); padding-bottom: calc(8 * var(--u)); }
+.lk-atmo .a-tabs span { opacity: .55; }
+.lk-atmo .a-tabs span:first-child { opacity: 1; padding-bottom: calc(7 * var(--u)); margin-bottom: calc(-9 * var(--u)); border-bottom: 2px solid #9fdcc9; }
+.lk-atmo .a-lyr { margin-top: calc(18 * var(--u)); display: grid; gap: calc(8 * var(--u)); font-size: calc(15 * var(--u)); font-weight: 700; }
+.lk-atmo .a-lyr p { opacity: .35; }
+.lk-atmo .a-lyr p.on { opacity: 1; font-size: calc(18 * var(--u)); }
+.lk-bar { position: absolute; left: 0; right: 0; bottom: 0; height: calc(66 * var(--u)); display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 0 calc(14 * var(--u)); }
+.lk-atmo .lk-bar { background: rgba(14,11,9,.7); border-top: 2px solid rgba(255,255,255,.08); }
+.lk-atmo .lk-bar::before { content: ""; position: absolute; top: -2px; left: 0; width: 38%; height: 2px; background: #9fdcc9; }
+.lk-np { display: flex; align-items: center; gap: calc(10 * var(--u)); font-size: calc(11 * var(--u)); }
+.lk-np .cover { width: calc(44 * var(--u)); height: calc(44 * var(--u)); border-radius: calc(4 * var(--u)); }
+.lk-np b { display: block; font-size: calc(12 * var(--u)); }
+.lk-np small { opacity: .6; font-size: calc(10 * var(--u)); }
+.lk-ctl { display: flex; align-items: center; gap: calc(18 * var(--u)); }
+.lk-ctl .sk { width: calc(18 * var(--u)); height: calc(18 * var(--u)); opacity: .8; }
+/* Own class: the page's .pp (the dock's filled play disc) must not reach it. */
+.lk-ctl .lk-pp { width: calc(27 * var(--u)); height: calc(27 * var(--u)); margin: 0 calc(6 * var(--u)); color: var(--acc); }
+.lk-right { justify-self: end; display: flex; align-items: center; gap: calc(12 * var(--u)); }
+/* VolumeSlider: the speaker, then a thumbless 8px pill filled with the accent. */
+.lk-vol { display: flex; align-items: center; gap: calc(6 * var(--u)); color: rgba(255,255,255,.62); }
+.lk-vol svg { width: calc(15 * var(--u)); height: calc(15 * var(--u)); }
+.lk-vol i { width: calc(76 * var(--u)); height: calc(7 * var(--u)); border-radius: 999px; background: linear-gradient(90deg, var(--acc) 65%, rgba(255,255,255,.12) 65%); }
+/* The quality plate: one pill, hairline-split into tier | output path, and a
+   chevron (it opens the quality menu). */
+.lk-plate { display: inline-flex; align-items: stretch; height: calc(22 * var(--u)); border: 1px solid rgba(255,255,255,.14); border-radius: 999px; background: rgba(255,255,255,.03); font-size: calc(8.5 * var(--u)); font-weight: 800; letter-spacing: .08em; }
+.lk-plate > * { display: inline-flex; align-items: center; gap: calc(3 * var(--u)); padding: 0 calc(8 * var(--u)); }
+.lk-plate b { color: var(--acc); }
+.lk-plate > span { border-left: 1px solid rgba(255,255,255,.14); }
+.lk-plate span svg { width: calc(9 * var(--u)); height: calc(9 * var(--u)); color: var(--acc); }
+.lk-plate .chev { box-sizing: content-box; width: calc(10 * var(--u)); height: calc(10 * var(--u)); align-self: center; padding: 0 calc(7 * var(--u)) 0 0; margin-left: calc(-3 * var(--u)); opacity: .55; }
+
+/* ---- Studio ---- */
+.lk-studio { --acc: #f2b44d; background: #070707; color: #ecebe8; font-family: Inter, sans-serif; }
+.lk-studio .s-side { position: absolute; left: 0; top: 0; bottom: calc(66 * var(--u)); width: calc(190 * var(--u)); background: #0e0e0e; border-right: 1px solid #1d1d1d; padding: calc(40 * var(--u)) calc(16 * var(--u)); display: grid; align-content: start; gap: calc(4 * var(--u)); font-size: calc(12 * var(--u)); }
+.lk-studio .s-side .logo { font-weight: 700; font-size: calc(14 * var(--u)); margin-bottom: calc(18 * var(--u)); }
+.lk-studio .s-side span { padding: calc(7 * var(--u)) calc(10 * var(--u)); border-radius: calc(6 * var(--u)); color: #9a9894; }
+.lk-studio .s-side span.on { background: #1a1a1a; color: #fff; }
+.lk-studio .s-side small { margin: calc(16 * var(--u)) 0 calc(4 * var(--u)) calc(10 * var(--u)); font-size: calc(9 * var(--u)); letter-spacing: .12em; text-transform: uppercase; color: #6c6a66; }
+.lk-studio .s-main { position: absolute; left: calc(190 * var(--u)); right: 0; top: 0; bottom: calc(66 * var(--u)); padding: calc(44 * var(--u)) calc(36 * var(--u)) 0; }
+.lk-studio .s-head { display: flex; gap: calc(22 * var(--u)); align-items: end; }
+.lk-studio .s-head .cover { width: calc(150 * var(--u)); height: calc(150 * var(--u)); border-radius: calc(4 * var(--u)); box-shadow: 0 calc(10 * var(--u)) calc(30 * var(--u)) rgba(0,0,0,.6); }
+.lk-studio .s-head small { font-size: calc(9 * var(--u)); letter-spacing: .14em; text-transform: uppercase; color: #8a8884; }
+.lk-studio .s-head h4 { font-size: calc(36 * var(--u)); font-weight: 800; letter-spacing: -.03em; margin: calc(6 * var(--u)) 0; }
+.lk-studio .s-head p { font-size: calc(11 * var(--u)); color: #9a9894; }
+.lk-studio .s-btns { display: flex; gap: calc(8 * var(--u)); margin-top: calc(14 * var(--u)); }
+.lk-studio .s-btns span { font-size: calc(10 * var(--u)); padding: calc(7 * var(--u)) calc(14 * var(--u)); border-radius: 999px; border: 1px solid #2a2a2a; font-weight: 600; }
+.lk-studio .s-btns span:first-child { background: #ecebe8; color: #0a0a0a; border-color: transparent; }
+.lk-studio .s-rows { margin-top: calc(22 * var(--u)); font-size: calc(11 * var(--u)); }
+.lk-studio .s-rows div { display: grid; grid-template-columns: calc(26 * var(--u)) 1fr auto; padding: calc(7 * var(--u)) calc(8 * var(--u)); border-radius: calc(4 * var(--u)); color: #c9c7c2; }
+.lk-studio .s-rows div span:first-child, .lk-studio .s-rows div span:last-child { color: #6c6a66; }
+.lk-studio .s-rows div.on { background: #151515; color: #f2b44d; }
+/* The seek at rest, as in the app: a flat line on the bar's top edge (the
+   wave only rises from it on hover). */
+.lk-studio .lk-bar { background: #000; border-top: 2px solid #1d1d1d; }
+.lk-studio .lk-bar::before { content: ""; position: absolute; top: -2px; left: 0; width: 38%; height: 2px; background: var(--acc); }
+
+/* ---- Hi-Fi Rack ---- */
+.lk-rack { background: #0c0b0a; color: #e6dccb; font-family: Inter, sans-serif; padding: calc(34 * var(--u)) calc(10 * var(--u)) calc(10 * var(--u)); }
+.lk-rack .r-top { height: calc(46 * var(--u)); border-radius: calc(6 * var(--u)); background: linear-gradient(#232120, #161514); display: flex; align-items: center; gap: calc(6 * var(--u)); padding: 0 calc(14 * var(--u)); box-shadow: inset 0 1px 0 rgba(255,255,255,.06); }
+.lk-rack .r-top .logo { font-size: calc(15 * var(--u)); margin-right: calc(18 * var(--u)); }
+.lk-key { font-size: calc(8 * var(--u)); padding: calc(7 * var(--u)) calc(12 * var(--u)); border-radius: calc(3 * var(--u)); background: linear-gradient(#2c2a28, #1e1d1b); box-shadow: 0 1px 0 rgba(255,255,255,.08) inset, 0 2px 3px rgba(0,0,0,.6); color: #a09686; position: relative; }
+.lk-key.on { color: #ffb347; }
+.lk-key.on::before { content: ""; position: absolute; left: 30%; right: 30%; top: calc(-6 * var(--u)); height: calc(2 * var(--u)); background: #ffb347; box-shadow: 0 0 calc(6 * var(--u)) #ffb347; border-radius: 2px; }
+.lk-rack .r-body { display: grid; grid-template-columns: calc(320 * var(--u)) 1fr; gap: calc(8 * var(--u)); margin-top: calc(8 * var(--u)); height: calc(492 * var(--u)); }
+.lk-rack .r-pan { border-radius: calc(6 * var(--u)); background: linear-gradient(#1a1918, #121110); box-shadow: inset 0 1px 0 rgba(255,255,255,.05); padding: calc(12 * var(--u)) calc(14 * var(--u)); }
+.lk-rack .r-pan > small { font-size: calc(10 * var(--u)); color: #c9bfae; display: flex; justify-content: space-between; }
+.lk-rack .r-pan > small em { font-style: normal; font-size: calc(7 * var(--u)); color: #776f63; letter-spacing: .1em; text-transform: uppercase; }
+.lk-rack .r-col { display: grid; gap: calc(8 * var(--u)); grid-template-rows: auto auto 1fr; min-height: 0; }
+.lk-rack .r-col .r-pan { overflow: hidden; }
+.lk-rack .vfd { margin-top: calc(10 * var(--u)); background: #0a0806; border-radius: calc(4 * var(--u)); padding: calc(12 * var(--u)); box-shadow: inset 0 0 calc(16 * var(--u)) rgba(0,0,0,.9); color: #ffb347; text-shadow: 0 0 calc(6 * var(--u)) rgba(255,160,50,.6); position: relative; }
+.lk-rack .vfd b { font-size: calc(12 * var(--u)); letter-spacing: .06em; display: block; }
+.lk-rack .vfd span { font-size: calc(8 * var(--u)); letter-spacing: .08em; opacity: .8; }
+.lk-rack .vfd .t { position: absolute; right: calc(12 * var(--u)); top: calc(10 * var(--u)); font: calc(26 * var(--u)) DSEG7, monospace; }
+.lk-rack .vfd .lv { margin-top: calc(12 * var(--u)); height: calc(5 * var(--u)); background: repeating-linear-gradient(90deg, #ffb347 0 calc(3 * var(--u)), transparent calc(3 * var(--u)) calc(5 * var(--u))); mask: linear-gradient(90deg, #000 62%, rgba(0,0,0,.18) 62%); }
+.lk-rack .r-tr { display: flex; gap: calc(6 * var(--u)); margin-top: calc(10 * var(--u)); }
+.lk-rack .r-tr .lk-key { padding: calc(9 * var(--u)) calc(16 * var(--u)); }
+.lk-key .tri, .lk-key .bars { display: block; width: calc(9 * var(--u)); height: calc(9 * var(--u)); background: currentColor; }
+.lk-key .tri { clip-path: polygon(0 0, 100% 50%, 0 100%); }
+.lk-key .tri.prev { transform: scaleX(-1); }
+.lk-key .bars { background: linear-gradient(90deg, currentColor 0 35%, transparent 35% 65%, currentColor 65%); }
+.lk-rack .vus { display: grid; grid-template-columns: 1fr 1fr auto; gap: calc(8 * var(--u)); margin-top: calc(10 * var(--u)); align-items: center; }
+/* VU meters: v1's drawn faces in the amber lamp (owner pick, 2026-10-31). */
+.vu { position: relative; overflow: hidden; aspect-ratio: 1.55; border-radius: calc(4 * var(--u)); background: radial-gradient(130% 150% at 50% 115%, oklch(0.31 0.088 64) 0%, oklch(0.18 0.051 64) 45%, oklch(0.1 0.019 64) 100%); box-shadow: inset 0 0 0 2px #070605, inset 0 3px 10px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.08); }
+.vu-face, .vu-glass { position: absolute; inset: 0; width: 100%; height: 100%; }
+.knob { width: calc(54 * var(--u)); aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #444, #151515 70%); box-shadow: 0 calc(3 * var(--u)) calc(6 * var(--u)) rgba(0,0,0,.7), 0 0 0 calc(4 * var(--u)) #0e0d0c; position: relative; }
+.knob::after { content: ""; position: absolute; left: 50%; top: 12%; width: 2px; height: 26%; background: #ffb347; transform: translateX(-50%) rotate(35deg); transform-origin: 50% 150%; }
+.vu-glass { background: linear-gradient(160deg, rgba(255,255,255,.16), rgba(255,255,255,.02) 38%, transparent 39%), radial-gradient(90% 60% at 50% 120%, oklch(0.72 0.168 64 / .45), transparent 70%); mix-blend-mode: screen; }
+.vu-face .vu-ink { stroke: oklch(0.83 0.136 64); fill: none; }
+.vu-face .vu-red { stroke: #ff5a3a; fill: none; }
+.vu-face .vu-t { fill: oklch(0.83 0.136 64); font: 700 8.5px Inter, sans-serif; }
+.vu-face .vu-t.red { fill: #ff5a3a; }
+.vu-face .vu-title { fill: oklch(0.83 0.136 64); font: 700 17px Inter, sans-serif; }
+.vu-face .vu-needle { stroke: oklch(0.9 0.08 64); stroke-width: 1.4; }
+.vu-face .vu-pivot { fill: #141210; }
+
+/* The morph: the veil dims the frame while the chassis swaps under it; the
+   parts travel above the veil, standing in for their hidden originals. */
+.lk-veil { position: absolute; inset: 0; background: #050505; opacity: 0; pointer-events: none; z-index: 5; }
+.lk-parts { position: absolute; inset: 0; pointer-events: none; z-index: 6; }
+.lk-part { position: absolute; transform-origin: 0 0; will-change: transform, opacity; }
+.lk [data-part] { visibility: hidden; }
+
+/* Units (the left column) are plates with the app's sheen; the album and its
+   list sit behind a glass window (rack DESIGN §5.5): a dark recess, the lamp
+   glowing up from below, a diagonal reflection and a top sheen. */
+.lk-rack .r-col .r-pan { background: linear-gradient(160deg, rgba(255,255,255,.09) 0%, rgba(255,255,255,.02) 30%, transparent 31%), linear-gradient(#1a1816, #0d0c0b); box-shadow: inset 0 1px 0 rgba(255,255,255,.1), inset 0 -2px 0 rgba(0,0,0,.45), 0 2px 0 #000; }
+.lk-rack .r-glass { position: relative; border-radius: calc(7 * var(--u)); background: radial-gradient(110% 70% at 50% 125%, rgba(255,179,71,.07), transparent 62%), linear-gradient(180deg, #040302, #090706 40%, #0b0908); box-shadow: 0 0 0 1px #000, 0 1px 0 1px rgba(255,255,255,.075), inset 0 3px 8px rgba(0,0,0,.95), inset 0 0 18px rgba(0,0,0,.55); }
+.lk-rack .r-glass::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: linear-gradient(166deg, rgba(255,255,255,.08) 0%, rgba(255,255,255,.022) 34%, transparent 34.3%), linear-gradient(180deg, rgba(255,255,255,.05), transparent calc(12 * var(--u))); }
+.lk-rack .alb { display: flex; gap: calc(14 * var(--u)); margin-top: calc(10 * var(--u)); padding: calc(4 * var(--u)) calc(8 * var(--u)) calc(12 * var(--u)); border-bottom: 1px solid rgba(255,255,255,.06); }
+.lk-rack .alb .cover { width: calc(96 * var(--u)); height: calc(96 * var(--u)); border-radius: calc(3 * var(--u)); }
+.lk-rack .alb h4 { font: 700 calc(24 * var(--u)) Manrope, sans-serif; color: #f2ebdf; margin-top: calc(14 * var(--u)); }
+.lk-rack .alb p { font-size: calc(10 * var(--u)); color: #a09686; }
+.lk-rack .trk { margin-top: calc(10 * var(--u)); font-size: calc(10 * var(--u)); }
+.lk-rack .trk div { display: grid; grid-template-columns: calc(22 * var(--u)) 1fr auto; padding: calc(6 * var(--u)) calc(8 * var(--u)); border-bottom: 1px solid #1d1b19; color: #d6ccbb; }
+.lk-rack .r-glass .trk div { border-bottom-color: rgba(255,255,255,.04); }
+.lk-rack .trk div span:first-child { color: #ffb347; }
+.lk-rack .trk div span:last-child { color: #776f63; }
+/* The playing row glows in the lamp. */
+.lk-rack .trk div.on span:nth-child(2) { color: #ffb347; text-shadow: 0 0 calc(10 * var(--u)) rgba(255,179,71,.35); }

@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600">
+  <!-- "AutoMix": two tracks overlap; where they meet, their beats line up. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#26120e"/>
+      <stop offset="1" stop-color="#0d0706"/>
+    </linearGradient>
+    <clipPath id="a"><circle cx="232" cy="270" r="150"/></clipPath>
+  </defs>
+  <rect width="600" height="600" fill="url(#bg)"/>
+  <circle cx="232" cy="270" r="150" fill="#e8895c"/>
+  <circle cx="368" cy="270" r="150" fill="#8fcabd" fill-opacity=".9"/>
+  <circle cx="368" cy="270" r="150" fill="#f4e3c4" clip-path="url(#a)"/>
+  <g fill="#f4efe8">
+    <rect x="70" y="484" width="8" height="40" rx="4" opacity=".35"/>
+    <rect x="128" y="484" width="8" height="40" rx="4" opacity=".35"/>
+    <rect x="186" y="484" width="8" height="40" rx="4" opacity=".35"/>
+    <rect x="244" y="472" width="8" height="64" rx="4"/>
+    <rect x="302" y="472" width="8" height="64" rx="4"/>
+    <rect x="360" y="472" width="8" height="64" rx="4"/>
+    <rect x="418" y="484" width="8" height="40" rx="4" opacity=".35"/>
+    <rect x="476" y="484" width="8" height="40" rx="4" opacity=".35"/>
+    <rect x="534" y="484" width="8" height="40" rx="4" opacity=".35"/>
+  </g>
+</svg>

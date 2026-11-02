@@ -1,0 +1,34 @@
+/* Tide rooms: the page palette follows the cover "playing" for the section.
+   Registered so they hold real colours.
+
+   Each section wears its own room for good ([data-room] on the section), and
+   :root stays in the logo's. Changing an inherited variable on :root restyles
+   every element on the page (about 12 ms here, even for a variable nothing
+   uses), and turning transitions on for every element cost about 20 ms more:
+   each room change dropped frames. Now a room change touches only the parts
+   that follow the screen ([data-follow]: the player bar, the looks' dots and
+   glow): script sets their [data-room], and while [data-gliding] is on them
+   their colours ease over (site.css). The backdrop crossfades one stack per
+   room ([data-bd]; opacity, on the GPU). */
+@property --room { syntax: "<color>"; inherits: true; initial-value: #0b1715; }
+@property --glow { syntax: "<color>"; inherits: true; initial-value: #1f5a52; }
+@property --acc  { syntax: "<color>"; inherits: true; initial-value: #9fdcc9; }
+@property --tert { syntax: "<color>"; inherits: true; initial-value: #e8dfb2; }
+:root {
+  --ink: #f4efe8; --on-acc: #0b1210; --bd-strength: .7;
+  /* Muted text is the ink, partly see-through, so it doesn't change with the
+     room (mixing in --room repainted every line of text on a glide). */
+  --ink-2: color-mix(in oklab, var(--ink) 70%, transparent); --ink-3: color-mix(in oklab, var(--ink) 58%, transparent);
+  --glide: 2.6s; --glide-ease: cubic-bezier(.4,0,.2,1);
+}
+/* The glide back to teal for the last section (install) takes its time. Set
+   with the glide itself, so it costs no restyle of its own. */
+[data-gliding="slow"] { --glide: 5s; }
+/* The rooms. */
+[data-room="slack"], [data-bd="slack"]   { --room: #0b1715; --glow: #1f5a52; --acc: #9fdcc9; --tert: #e8dfb2; }
+[data-room="ferry"], [data-bd="ferry"]   { --room: #150912; --glow: #6a2348; --acc: #f4ac86; --tert: #ffd9a0; }
+[data-room="sodium"], [data-bd="sodium"] { --room: #120c06; --glow: #6a4512; --acc: #f2b44d; --tert: #ffd27a; }
+[data-room="field"], [data-bd="field"]   { --room: #0b130c; --glow: #2d4d29; --acc: #a9d394; --tert: #e7d27a; }
+/* The logo's own room (the hero and install): its dark teal, the wave's orange as the
+   accent, the rings' teal as the third colour. */
+[data-room="oxi"], [data-bd="oxi"]       { --room: #0c1614; --glow: #2c524b; --acc: #e8895c; --tert: #8fcabd; }

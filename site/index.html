@@ -1,0 +1,353 @@
+<!doctype html>
+<!-- The page's own room is the logo's; each section has its own, and the
+     parts marked data-follow take the room on screen (styles/tide.css). -->
+<html lang="en" data-room="oxi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OxiTide: an unofficial TIDAL desktop client</title>
+<meta name="description" content="OxiTide is an unofficial TIDAL desktop client for Windows and Linux, with a bit-perfect audio engine, three looks, and a phone remote. Free software under AGPL-3.0-or-later.">
+<meta name="color-scheme" content="dark">
+<!-- The hero's room (oxi), which the page also ends in. -->
+<meta name="theme-color" content="#0c1614">
+<meta property="og:title" content="OxiTide">
+<meta property="og:description" content="An unofficial TIDAL desktop client with a bit-perfect audio engine, three looks, and a phone remote.">
+<meta property="og:type" content="website">
+<!-- og:url and og:image wait for the published address (they must be absolute). -->
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<!-- Fonts load up front: one arriving mid-scroll reflows and restyles the
+     whole page (a 50 ms frame when the Rack's display font came in). -->
+<link rel="preload" href="assets/fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/manrope-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/dseg7-classic-bold-italic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles/base.css">
+<link rel="stylesheet" href="styles/looks.css">
+<link rel="stylesheet" href="styles/tide.css">
+<link rel="stylesheet" href="styles/site.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-dl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol>
+  <!-- The app's own glyphs (PlayPauseGlyph.svelte; Icon.svelte skip-*-solid). -->
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M7.5 3.5h2v17h-2zM14.5 3.5h2v17h-2z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 3.5 21.72 12 7 20.5z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+  <symbol id="i-prev" viewBox="0 0 24 24" fill="currentColor"><path d="M17.971 4.285A2 2 0 0 1 21 6v12a2 2 0 0 1-3.029 1.715l-9.997-5.998a2 2 0 0 1-.003-3.432z"/><rect x="1.625" y="4" width="2.75" height="16" rx="1.375"/></symbol>
+  <symbol id="i-next" viewBox="0 0 24 24" fill="currentColor"><path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z"/><rect x="19.625" y="4" width="2.75" height="16" rx="1.375"/></symbol>
+  <!-- Lucide, as in the app's Icon.svelte (the remote mockups). -->
+  <symbol id="i-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/></symbol>
+  <symbol id="i-heart-on" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/></symbol>
+  <symbol id="i-vol" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"/><path d="M16 9a5 5 0 0 1 0 6"/><path d="M19.364 18.364a9 9 0 0 0 0-12.728"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></symbol>
+  <symbol id="i-github" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></symbol>
+  <symbol id="i-fork" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"/><path d="M12 12v3"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></symbol>
+  <symbol id="i-scale" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/></symbol>
+  <symbol id="i-chev-up"viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></symbol>
+  <symbol id="i-ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
+  <filter id="ripple" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency="0.004 0.08" numOctaves="2" seed="4"><animate attributeName="baseFrequency" dur="9s" values="0.004 0.08;0.005 0.095;0.004 0.08" repeatCount="indefinite"/></feTurbulence><feDisplacementMap in="SourceGraphic" scale="18" xChannelSelector="R" yChannelSelector="G"/></filter>
+  <symbol id="i-monitor" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></symbol>
+  <symbol id="i-queue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 5H3"/><path d="M11 12H3"/><path d="M11 19H3"/><path d="M21 16V5"/><circle cx="18" cy="16" r="3"/></symbol>
+</svg>
+
+<div class="backdrop" aria-hidden="true">
+  <div class="rm" data-bd="slack"><i class="bd art-slack"></i><i class="glow"></i><i class="veil"></i></div>
+  <div class="rm" data-bd="ferry"><i class="bd art-ferry"></i><i class="glow"></i><i class="veil"></i></div>
+  <div class="rm" data-bd="sodium"><i class="bd art-sodium"></i><i class="glow"></i><i class="veil"></i></div>
+  <div class="rm" data-bd="field"><i class="bd art-field"></i><i class="glow"></i><i class="veil"></i></div>
+  <div class="rm" data-bd="oxi"><i class="bd art-oxitide"></i><i class="glow"></i><i class="veil"></i></div>
+  <i class="specks"></i>
+  <div class="grain"></div>
+</div>
+
+<main>
+<section class="hero" id="top" data-room="oxi" data-title="OxiTide" aria-labelledby="top-h">
+  <div class="hero-a">
+    <div class="wrap">
+      <div class="hc hc-a">
+        <p class="hc-kick"><span class="eqs" aria-hidden="true"><i></i><i></i><i></i></span>Now playing<span class="sep"></span><span class="kk">Unofficial TIDAL desktop client</span></p>
+        <h1 id="top-h">OxiTide</h1>
+        <ul class="hc-badges" aria-label="What it does"><li class="max">Bit-perfect</li><li>Fast</li><li>Three looks</li><li>Phone remote</li><li>No telemetry</li></ul>
+      </div>
+      <ol class="dl-rows">
+        <li><a class="dl-row main" href="https://github.com/Zephulbr/OxiTide/releases/latest"><span class="n"><span>01</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><g class="ar"><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></g></svg></span><span class="tt"><b>OxiTide for Windows</b><small>Windows 10 and 11 · 64-bit installer</small></span><i class="lead"></i><span class="len">v0.5.0</span></a></li>
+        <li><a class="dl-row" href="https://github.com/Zephulbr/OxiTide/releases/latest"><span class="n"><span>02</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><g class="ar"><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></g></svg></span><span class="tt"><b>OxiTide for Linux</b><small>AppImage and .deb · experimental</small></span><i class="lead"></i><span class="len">v0.5.0</span></a></li>
+      </ol>
+      <p class="needs">Needs a paid TIDAL plan.</p>
+    </div>
+    <!-- The record scene is the logo's own: it keeps the logo's colours
+         whatever the page's room ([data-bd] scopes them), as its glows are
+         gradients, which can't glide and would snap to the next room. -->
+    <div class="rise" data-bd="oxi">
+      <div class="sky" aria-hidden="true">
+        <div class="halo"></div>
+        <div class="moon"><div class="disc art-oxitide"><i class="d-art"></i><i class="d-grooves"></i><i class="d-sheen"></i><i class="d-label"></i></div></div>
+      </div>
+      <div class="horizon" aria-hidden="true"></div>
+      <div class="water">
+        <div class="reflect" aria-hidden="true"><div class="disc art-oxitide"><i class="d-art"></i><i class="d-grooves"></i><i class="d-label"></i></div></div>
+        <div class="shimmer" aria-hidden="true"></div>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<section id="looks" data-say="One player, three rooms." data-room="slack" data-title="Three looks" aria-labelledby="looks-h">
+  <h2 class="sr-only" id="looks-h">Three looks</h2>
+  <div class="wrap stage" style="padding-bottom:0"></div>
+  <div class="lk-scroll" data-lk-scroll>
+    <div class="lk-stick">
+      <p class="lk-lead hd-line">One player, three rooms</p>
+      <div class="lk-name" aria-live="polite"><span data-cap="0">Atmosphere</span><span data-cap="1">Studio</span><span data-cap="2">Hi-Fi Rack</span></div>
+      <div class="lk-shell"><div class="lk-glow" data-follow data-room="slack" aria-hidden="true"></div><div class="lk" data-lk></div></div>
+      <ol class="dots" data-follow data-room="slack"><li data-cap="0"></li><li data-cap="1"></li><li data-cap="2"></li></ol>
+    </div>
+  </div>
+</section>
+
+<!-- Sound (owner pick, 2026-11-02: crossfade only): the crossfade
+     styles, then the rest of Sound as tags. -->
+<section id="sound" data-say="Crossfade, in four styles." data-room="sodium" data-title="Sound" aria-labelledby="sound-h">
+  <h2 class="sr-only" id="sound-h">Sound</h2>
+  <div class="wrap stage">
+    <!-- The crossfade styles as an album page's tracks (TrackTable), with
+         the "Last transition" readout printed on the sleeve of the style's
+         record. Its line is the section's sentence. -->
+    <div class="sound-alb" data-alb>
+      <div class="xf-hd">
+        <p class="xf-say">Crossfade, <em>in four styles.</em></p>
+        <p class="xf-sub">Up to 12 seconds, and albums can stay gapless.</p>
+      </div>
+      <div class="alb-b">
+        <ol class="alb-list alb-xf" aria-label="Crossfade styles">
+          <li><button type="button" class="alb-row" data-alb-xf="0"><span class="no"><span class="n">1</span><span class="eqs" aria-hidden="true"><i></i><i></i><i></i></span></span><span class="tt"><b>Classic</b><small>An equal-power fade over the last seconds of the track.</small></span><span class="tm">0:06</span></button></li>
+          <li><button type="button" class="alb-row" data-alb-xf="1"><span class="no"><span class="n">2</span><span class="eqs" aria-hidden="true"><i></i><i></i><i></i></span></span><span class="tt"><b>Quick</b><small>A short overlap once the track has died down, so endings stay.</small></span><span class="tm">0:02</span></button></li>
+          <li><button type="button" class="alb-row" data-alb-xf="2"><span class="no"><span class="n">3</span><span class="eqs" aria-hidden="true"><i></i><i></i><i></i></span></span><span class="tt"><b>Blend</b><small>Cuts long fade-outs and slow intros, and swaps the bass halfway.</small></span><span class="tm">0:08</span></button></li>
+          <li><button type="button" class="alb-row" data-alb-xf="3"><span class="no"><span class="n">4</span><span class="eqs" aria-hidden="true"><i></i><i></i><i></i></span></span><span class="tt"><b>Auto</b><small>Picks a style for each pair from how one track ends and the next begins.</small></span><span class="tm">per pair</span></button></li>
+        </ol>
+        <!-- The app's "Last transition" readout (Settings → Playback), with the
+             two volumes drawn over the overlap, printed on the sleeve of the
+             style's record. -->
+        <div class="alb-disc">
+          <div class="alb-jacket">
+            <span class="alb-rec" data-alb-rec aria-hidden="true"><span class="alb-vin" data-lbl="0"><span class="alb-lbl"><small>OxiTide</small><b data-alb-lbl>Classic</b></span></span></span>
+            <div class="alb-last" aria-live="polite">
+              <small>Last transition</small>
+              <b class="alb-tt"><span data-alb-xf-title>Classic</span><span class="sizer" aria-hidden="true">Auto → Blend (beat-matched)</span></b>
+              <div class="alb-fig" aria-hidden="true">
+                <span class="lab a">This track</span><span class="lab b">Next track</span>
+                <svg viewBox="0 0 64 28" preserveAspectRatio="none"><path class="out" d="M2 6 C 16 6, 16 6, 30 6 C 40 6, 46 22, 62 22 C 62 22, 62 22, 62 22"/><path class="in" d="M2 22 C 16 22, 16 22, 30 22 C 40 22, 46 6, 62 6 C 62 6, 62 6, 62 6"/></svg>
+                <span class="playhead"></span>
+              </div>
+              <div class="alb-notes"><ul data-alb-xf-notes><li>6.0 s overlap</li></ul><ul class="sizer" aria-hidden="true"><li>Why: long fade-out: cut it</li><li>7.8 s overlap (16 beats)</li><li>Tempo: 122.0 BPM (91%) → 123.5 BPM (87%)</li></ul></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- The rest of Sound as tags: each feature a little record of its own,
+         with a cover; the record slides out of its sleeve on hover. -->
+    <div class="shelf">
+      <p class="shelf-hd">More from Sound</p>
+      <ul class="shelf-row">
+        <li class="lp"><div class="lp-art" aria-hidden="true"><i class="lp-rec art-exclusive"></i><i class="lp-sleeve cover art-exclusive"></i></div>
+          <div class="lp-t"><b>Exclusive output</b><small>The device to itself. No Windows mixer, no resampling.</small></div></li>
+        <li class="lp"><div class="lp-art" aria-hidden="true"><i class="lp-rec art-asio"></i><i class="lp-sleeve cover art-asio"></i></div>
+          <div class="lp-t"><b>ASIO</b><small>Straight to an ASIO driver, with a fallback you choose.</small></div></li>
+        <li class="lp"><div class="lp-art" aria-hidden="true"><i class="lp-rec art-automix"></i><i class="lp-sleeve cover art-automix"></i></div><span class="lp-stk">Experimental</span>
+          <div class="lp-t"><b>AutoMix</b><small>Trims silence and matches beats, analysed on your computer.</small></div></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="remote" data-say="Your phone is the remote." data-room="field" data-title="Phone remote" aria-labelledby="remote-h">
+  <h2 class="sr-only" id="remote-h">Phone remote</h2>
+  <div class="wrap stage">
+    <div class="duo" data-duo>
+      <!-- The desktop: OxiTide in Atmosphere, Now Playing ("Editorial Split")
+           over the cover's blurred room, with the app's player bar. -->
+      <div class="desk">
+        <div class="mon"><div class="mon-scr">
+          <div class="d-bd cover art-field" data-art aria-hidden="true"></div><div class="d-dim"></div>
+          <div class="d-cap" aria-hidden="true"><i class="c-min"></i><i class="c-max"></i><i class="c-x"></i></div>
+          <div class="d-np" aria-hidden="true">
+            <div class="d-disc"><div class="disc art-field" data-art><i class="d-art"></i><i class="d-grooves"></i><i class="d-sheen"></i><i class="d-label"></i></div></div>
+            <div class="d-meta"><small>From album</small><b data-title>Field Notes</b><span class="d-by">Orla Venn</span>
+              <span class="d-badges"><i class="t">MAX</i><i>24-bit / 96 kHz</i><i class="a">Bit-perfect</i></span>
+              <span class="d-tabs"><i class="on">Lyrics</i><i>Next</i><i>Info</i></span>
+              <p class="d-say"><span>Your phone</span><span class="on">is the remote.</span><span>Off until you turn it on.</span></p></div>
+          </div>
+          <div class="d-bar" aria-hidden="true"><i class="d-seek"></i>
+            <span class="d-l"><span class="cover art-field" data-art></span><span class="d-t"><b data-title>Field Notes</b><span>Orla Venn</span><small><em>From album</em> <span data-title>Field Notes</span></small></span><span class="d-aux d-like"><svg><use href="#i-heart" data-heart/></svg></span><span class="d-time">1:36 / 4:12</span></span>
+            <span class="d-ctl"><span class="d-ic d-prev"><svg><use href="#i-prev"/></svg></span><span class="d-pp"><svg><use href="#i-pause" data-ppicon/></svg></span><span class="d-ic d-next"><svg><use href="#i-next"/></svg></span></span>
+            <span class="d-r"><span class="d-vol"><svg><use href="#i-vol"/></svg><i data-vol></i></span><span class="d-plate"><b>MAX</b><span><svg><use href="#i-ok"/></svg>BP</span><svg class="chev"><use href="#i-chev-up"/></svg></span></span>
+          </div>
+        </div></div>
+      </div>
+      <div class="link" aria-hidden="true"><span class="wifi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12.6a10 10 0 0 1 14 0"/><path d="M8.5 16.1a5 5 0 0 1 7 0"/><path d="M2 8.8a15 15 0 0 1 20 0"/><circle cx="12" cy="20" r=".8" fill="currentColor"/></svg>Same Wi-Fi</span><i class="dot" data-dot></i></div>
+      <!-- The phone: the remote's Now Playing page (ui/src/remote), as the
+           phone's browser shows it. -->
+      <div class="ph" aria-hidden="true"><div class="ph-scr art-field" data-art>
+        <div class="ph-sb"><b>9:41</b><span class="sys"><svg viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M2 8.82a15 15 0 0 1 20 0"/><path d="M5 12.86a10 10 0 0 1 14 0"/><path d="M8.5 16.43a5 5 0 0 1 7 0"/><path d="M12 20h.01"/></svg><svg class="bat" viewBox="0 0 27 13"><rect x=".5" y=".5" width="23" height="12" rx="3.5" fill="none" stroke="currentColor" opacity=".45"/><rect x="2.5" y="2.5" width="17" height="8" rx="2" fill="currentColor"/><path d="M25 4.5v4a2 2 0 0 0 0-4z" fill="currentColor" opacity=".45"/></svg></span></div>
+        <div class="ph-np">
+          <div class="ph-cov cover art-field" data-art><span class="finger" data-finger></span><span class="hud" data-hud><svg><use href="#i-vol"/></svg><i data-hudv></i><b data-pct="%">50%</b></span></div>
+          <div class="ph-meta"><span class="ph-tt"><b data-title>Field Notes</b><span>Orla Venn<em> · <span data-title>Field Notes</span></em></span></span><span class="ph-aux ph-like" data-btn="like"><svg><use href="#i-heart" data-heart/></svg></span></div>
+          <div class="ph-badges"><i class="a">MAX</i><i>24-bit / 96 kHz</i><i class="a">BIT-PERFECT</i></div>
+          <div class="ph-seek"><i class="trk"><i></i></i><span class="tm"><span>1:36</span><span>4:12</span></span></div>
+          <div class="ph-ctl"><span data-btn="prev"><svg><use href="#i-prev"/></svg></span><span class="ph-pp" data-btn="pp"><svg><use href="#i-pause" data-ppicon/></svg></span><span data-btn="next"><svg><use href="#i-next"/></svg></span></div>
+        </div>
+      </div></div>
+    </div>
+    <ol class="duo-steps"><li><button type="button" data-step="0">Play / pause</button></li><li><button type="button" data-step="1">Volume</button></li><li><button type="button" data-step="2">Skip</button></li><li><button type="button" data-step="3">Like</button></li></ol>
+    <ul class="duo-facts"><li>Off until you turn it on</li><li>Paired with a one-time QR code</li><li>Local network only</li><li>A fixed list of actions</li></ul>  </div>
+</section>
+
+<!-- And More (2026-11-01): the lyrics view. The song's title is the section's
+     sentence; its lines are the small features, and each acts itself out. -->
+<section id="extras" data-say="The small things, in time." data-room="ferry" data-title="And More" aria-labelledby="extras-h">
+  <h2 class="sr-only" id="extras-h">And More</h2>
+  <div class="wrap stage">
+    <div class="xl" data-xl>
+      <div class="mon"><div class="mon-scr xl-scr">
+        <div class="xl-wall" aria-hidden="true"></div>
+        <div class="xl-app" data-xl-app>
+          <div class="d-bd cover art-ferry" aria-hidden="true"></div><div class="d-dim" aria-hidden="true"></div>
+          <div class="d-cap" aria-hidden="true"><i class="c-min"></i><i class="c-max"></i><i class="c-x"></i></div>
+          <div class="xl-np">
+            <div class="xl-left" aria-hidden="true"><div class="d-disc"><div class="disc art-ferry"><i class="d-art"></i><i class="d-grooves"></i><i class="d-sheen"></i><i class="d-label"></i></div></div></div>
+            <div class="xl-meta">
+              <small aria-hidden="true">From album · Night Ferry</small>
+              <p class="xl-title">The Small Things</p>
+              <span class="d-by" aria-hidden="true">Orla Venn</span>
+              <span class="d-tabs" aria-hidden="true"><i class="on">Lyrics</i><i>Next</i><i>Info</i></span>
+              <div class="xl-win"><ol class="xl-lines" data-xl-lines aria-label="The small things">
+                <li data-k="net"><button type="button"><span class="t">Keeps playing when the network stumbles.</span></button><p class="dt">Each track loads ahead at full speed, so a short drop goes unheard.</p></li>
+                <li data-k="lyrics"><button type="button"><span class="t">Synced lyrics, when you ask for them.</span></button><p class="dt">From LRCLIB, fetched when you open them. Click a line to jump there.</p></li>
+                <li data-k="scrobble"><button type="button"><span class="t">Scrobbles to Last.fm and ListenBrainz.</span></button><p class="dt">Connect an account in your browser. There's no key to paste.</p></li>
+                <li data-k="keys"><button type="button"><span class="t">Global hotkeys, none until you set them.</span></button><p class="dt">Play, pause and skip from any app, on keys you choose.</p></li>
+                <li data-k="mini"><button type="button"><span class="t">A mini player that stays out of the way.</span></button><p class="dt">The cover, the seek bar and the controls, in a small window.</p></li>
+                <li data-k="tray"><button type="button"><span class="t">Close to the tray, and keep listening.</span></button><p class="dt">The window goes, the music stays, and the interface rests while hidden.</p></li>
+                <li data-k="taskbar"><button type="button"><span class="t">Play, pause and skip from the taskbar.</span></button><p class="dt">Buttons under the taskbar preview, on Windows.</p></li>
+                <li data-k="stats"><button type="button"><span class="t">Your history, and how you listen.</span></button><p class="dt">Every play, your top artists and albums, your streak, and the hours you listen most.</p></li>
+                <li data-k="quiet"><button type="button"><span class="t">Goes quiet when you pause.</span></button><p class="dt">No timers, no redraws, and the audio device is let go after 30 seconds.</p></li>
+                <li data-k="privacy" data-ms="7000"><button type="button"><span class="t">No telemetry. What you play stays yours.</span></button><p class="dt">It talks to TIDAL, and to what you turn on. Your history, stats and settings stay on this computer. <a href="https://github.com/Zephulbr/OxiTide/blob/main/docs/privacy.md">The privacy notes</a></p></li>
+              </ol></div>
+            </div>
+          </div>
+          <div class="d-bar"><i class="d-seek" data-xl-seekbar aria-hidden="true"></i><span class="xl-seekhit" data-xl-seek aria-hidden="true"></span>
+            <span class="d-l" aria-hidden="true"><span class="cover art-ferry"></span><span class="d-t"><b>The Small Things</b><span>Orla Venn</span><small><em>From album</em> Night Ferry</small></span><span class="d-aux"><svg><use href="#i-heart"/></svg></span><span class="d-time" data-xl-time>0:14 / 4:12</span></span>
+            <span class="d-ctl" role="group" aria-label="The Small Things, player"><button type="button" class="d-ic" data-xa="prev" aria-label="Previous line"><svg><use href="#i-prev"/></svg></button><button type="button" class="d-pp" data-xa="pp" aria-label="Pause"><svg class="i-pa"><use href="#i-pause"/></svg><svg class="i-pl"><use href="#i-play"/></svg></button><button type="button" class="d-ic" data-xa="next" aria-label="Next line"><svg><use href="#i-next"/></svg></button></span>
+            <span class="d-r" aria-hidden="true"><span class="d-vol"><svg><use href="#i-vol"/></svg><i></i></span><span class="d-plate"><b>MAX</b><span><svg><use href="#i-ok"/></svg>BP</span><svg class="chev"><use href="#i-chev-up"/></svg></span></span>
+          </div>
+        </div>
+
+        <!-- The scenes. -->
+        <div class="xl-fx xl-note" data-for="net" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20h.01"/><path d="M8.5 16.43a5 5 0 0 1 7 0"/><path d="M5 12.86a10 10 0 0 1 5.17-2.69"/><path d="M19 12.86a10 10 0 0 0-2.01-1.52"/><path d="M2 8.82a15 15 0 0 1 4.18-2.65"/><path d="M22 8.82a15 15 0 0 0-11.29-3.76"/><path d="m2 2 20 20"/></svg><span><b>Wi-Fi dropped.</b> The track is already on disk.</span></div>
+        <div class="xl-fx xl-note" data-for="lyrics" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 15V3"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg><span><b>lrclib.net</b>, asked once, when you opened Lyrics</span></div>
+        <div class="xl-fx xl-note" data-for="tray" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg><span><b>Closed.</b> Still playing, from the tray.</span></div>
+        <div class="xl-fx xl-note" data-for="scrobble" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg><span><b>+1 play</b> on Last.fm and ListenBrainz</span></div>
+        <div class="xl-fx xl-card" data-for="stats" aria-hidden="true"><small>Last 30 days</small><b>41 h · 612 plays</b><span class="xl-bars"><i style="--h:.45"></i><i style="--h:.7"></i><i style="--h:.38"></i><i style="--h:.85"></i><i class="a" style="--h:1"></i><i style="--h:.6"></i><i style="--h:.3"></i></span><em>Streak: 12 days</em></div>
+        <div class="xl-fx xl-priv" data-for="privacy" aria-hidden="true"><small>Where OxiTide connects</small>
+          <ol><li style="--i:0"><i class="a"></i><b>TIDAL</b><span>to play</span></li><li style="--i:1"><i></i><b>LRCLIB</b><span>when you open lyrics</span></li><li style="--i:2"><i></i><b>GitHub</b><span>update check, can be off</span></li><li style="--i:3"><i class="o"></i><b>Last.fm, ListenBrainz</b><span>if you connect</span></li><li style="--i:4"><i class="o"></i><b>Discord</b><span>if you turn it on</span></li><li class="no" style="--i:5"><i class="o"></i><b>Analytics</b><span>never</span></li></ol>
+          <em><svg><use href="#i-monitor"/></svg>History, stats and settings stay on this computer</em></div>
+        <div class="xl-fx xl-card" data-for="quiet" aria-hidden="true"><small>Work while playing, then paused</small><b>Paused: resting</b><svg class="xl-spark" viewBox="0 0 200 50" preserveAspectRatio="none"><path class="base" d="M0 46H200"/><path d="M0 24 L10 18 L20 26 L30 15 L40 22 L50 17 L60 27 L70 19 L80 23 L90 20 L100 44 L110 46 L200 46"/></svg><em>No timers, no redraws</em></div>
+        <div class="xl-fx xl-keys" data-for="keys" aria-hidden="true"><span class="kc">Ctrl</span><span class="kp">+</span><span class="kc">Alt</span><span class="kp">+</span><span class="kc go">P</span><small>Your keys, from any app</small></div>
+        <div class="xl-fx xl-mini" data-for="mini" aria-hidden="true"><div class="cover art-ferry xm-art"></div><b>The Small Things</b><span>Orla Venn</span><i class="xm-seek" data-xl-seekbar></i><span class="xm-ctl"><span data-xa="prev"><svg><use href="#i-prev"/></svg></span><span class="xm-pp" data-xa="pp"><svg class="i-pa"><use href="#i-pause"/></svg><svg class="i-pl"><use href="#i-play"/></svg></span><span data-xa="next"><svg><use href="#i-next"/></svg></span></span></div>
+
+        <div class="xl-task" aria-hidden="true">
+          <span class="tk-c">
+            <span class="tk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg></span>
+            <span class="tk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg></span>
+            <span class="tk tk-app"><i class="tk-logo"></i>
+              <span class="xl-fx xl-thumb" data-for="taskbar"><span class="th-h"><i class="tk-logo"></i>OxiTide</span><span class="th-prev"><span class="cover art-ferry"></span><span><b>The Small Things</b><small>Orla Venn</small></span></span><span class="th-btns"><span data-xa="prev"><svg><use href="#i-prev"/></svg></span><span class="on" data-xa="pp"><svg class="i-pa"><use href="#i-pause"/></svg><svg class="i-pl"><use href="#i-play"/></svg></span><span data-xa="next"><svg><use href="#i-next"/></svg></span></span></span>
+            </span>
+          </span>
+          <span class="tk-r">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m18 15-6-6-6 6"/></svg>
+            <span class="tk-tray" data-tray><i class="tk-logo"></i>
+              <span class="xl-fx xl-tip" data-for="tray"><span class="eqs"><i></i><i></i><i></i></span>OxiTide · The Small Things</span>
+            </span>
+            <svg data-wifi viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20h.01"/><path d="M2 8.82a15 15 0 0 1 20 0"/><path d="M5 12.86a10 10 0 0 1 14 0"/><path d="M8.5 16.43a5 5 0 0 1 7 0"/><path class="slash" d="m3 3 18 18"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"/><path d="M16 9a5 5 0 0 1 0 6"/></svg>
+            <span class="tk-clock">21:14<br>01/11/2026</span>
+          </span>
+        </div>
+      </div></div>
+    </div>
+  </div>
+</section>
+
+<!-- Install (owner pick, 2026-10-31): one button that goes back up to the
+     hero's download rows; the downloads live in one place. -->
+<section id="install" data-say="Press play." data-room="oxi" data-title="Install" aria-labelledby="install-h">
+  <h2 class="sr-only" id="install-h">Install</h2>
+  <div class="wrap stage again">
+    <p class="hd-line">Press <em>play.</em></p>
+    <!-- The hero's main download row, so it reads as the same tracklist. The
+         play mark turns into an up arrow on hover: it goes back up there. -->
+    <div class="dl-rows again-rows">
+      <a class="dl-row main again-row" href="#top" data-to-downloads><span class="n" aria-hidden="true"><svg class="pl"><use href="#i-play"/></svg><svg class="up"><use href="#i-up"/></svg></span><span class="tt"><b>Download OxiTide</b><small>Windows and Linux · back up to the downloads</small></span><i class="lead"></i><span class="len">v0.5.0</span></a>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="foot" data-room="oxi">
+  <!-- Liner notes: the app's mark and a line on the left, the links in two
+       short columns, the small print under a hairline. -->
+  <div class="wrap">
+    <div class="ft-top">
+      <a class="ft-brand" href="#top">
+        <svg class="ft-mark" viewBox="17 17 106 106" aria-hidden="true"><defs><clipPath id="ft-disc"><circle cx="70" cy="70" r="50"/></clipPath></defs><g fill="none" stroke-linecap="round"><circle cx="70" cy="70" r="50" fill="#1C2825"/><circle cx="70" cy="70" r="34" stroke="#4F8C82" stroke-width="4"/><path d="M12 82 C 38 58, 58 106, 86 82 C 106 64, 118 82, 132 68" stroke="#C4693E" stroke-width="10" clip-path="url(#ft-disc)"/><circle cx="70" cy="70" r="50" stroke="#4F8C82" stroke-width="4"/></g></svg>
+        <span><b>OxiTide</b><small>An unofficial TIDAL player for Windows and Linux.</small><span class="sr-only"> Back to the top.</span></span>
+      </a>
+      <nav class="ft-cols" aria-label="Project">
+        <div><h2>Project</h2>
+          <a href="https://github.com/Zephulbr/OxiTide"><svg><use href="#i-github"/></svg>Source on GitHub</a>
+          <a href="https://codeberg.org/Zephulbr/OxiTide"><svg><use href="#i-fork"/></svg>Mirror on Codeberg</a>
+          <a href="https://github.com/Zephulbr/OxiTide/releases"><svg><use href="#i-tag"/></svg>Releases</a>
+        </div>
+        <div><h2>Notes</h2>
+          <a href="https://github.com/Zephulbr/OxiTide/blob/main/docs/privacy.md"><svg><use href="#i-shield"/></svg>Privacy</a>
+          <a href="https://github.com/Zephulbr/OxiTide/blob/main/THIRD_PARTY_NOTICES.md"><svg><use href="#i-file"/></svg>Third-party notices</a>
+          <a href="https://github.com/Zephulbr/OxiTide/blob/main/LICENSE"><svg><use href="#i-scale"/></svg>AGPL-3.0-or-later</a>
+        </div>
+      </nav>
+    </div>
+    <p class="ft-small"><span>Not affiliated with TIDAL. A paid TIDAL plan is needed to play.</span><span>v0.5.0 · Made for personal listening</span></p>
+  </div>
+</footer>
+
+<nav class="dock" aria-label="Player and sections" data-follow data-room="oxi">
+  <div class="announce" data-announce aria-hidden="true"><span class="cover"></span><span><small></small><b></b><em></em></span></div>
+  <div class="queue" data-queue role="dialog" aria-label="Sections"><small>Playing from OxiTide</small><ol data-qlist></ol></div>
+  <div class="prog-tip" data-prog-tip aria-hidden="true"><b><span class="cover"></span><em></em></b></div>
+  <div class="bar">
+    <i class="bar-tint" data-bar-tint aria-hidden="true"></i>
+    <div class="prog f-only" data-prog></div>
+    <div class="row">
+      <div class="side l f-only">
+        <a class="home" href="#top" aria-label="OxiTide, back to the top"><span class="disc art-oxitide" data-dock-art><i class="d-art"></i><i class="d-grooves"></i><i class="d-label"></i></span></a>
+        <span class="meta"><b data-dock-title>OxiTide</b><small data-dock-sub>OxiTide · v0.5.0</small></span>
+      </div>
+      <button class="ib f-only" type="button" data-prev aria-label="Previous section"><svg><use href="#i-prev"/></svg></button>
+      <button class="pp" type="button" data-pp data-dock-pp aria-label="Pause"><svg><use href="#i-pause"/></svg></button>
+      <button class="ib f-only" type="button" data-next aria-label="Next section"><svg><use href="#i-next"/></svg></button>
+      <span class="mc c-only"><b>OxiTide</b>v0.5.0</span>
+      <span class="mini c-only" aria-hidden="true"><i></i><time>1:36</time></span>
+      <div class="side r f-only">
+        <button class="ib" type="button" data-qbtn aria-expanded="false" aria-label="Sections"><svg><use href="#i-queue"/></svg></button>
+        <a class="dl-s" href="#top" data-to-downloads aria-label="Download"><svg><use href="#i-dl"/></svg><span>Download</span></a>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<script src="scripts/main.js"></script>
+<script type="module" src="scripts/looks.js"></script>
+</body>
+</html>

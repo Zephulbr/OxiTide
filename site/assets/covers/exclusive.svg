@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600">
+  <!-- "Exclusive output": one line runs all the way to the speaker; the
+       others (the system's sounds, the mixer) stop short of it. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1a1109"/>
+      <stop offset="1" stop-color="#070504"/>
+    </linearGradient>
+    <radialGradient id="cone" cx=".5" cy=".5" r=".5">
+      <stop offset="0" stop-color="#ffd27a"/>
+      <stop offset=".55" stop-color="#f2b44d"/>
+      <stop offset="1" stop-color="#b8741f"/>
+    </radialGradient>
+    <radialGradient id="haze" cx=".5" cy=".5" r=".5">
+      <stop offset="0" stop-color="#f2b44d" stop-opacity=".35"/>
+      <stop offset="1" stop-color="#f2b44d" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="600" height="600" fill="url(#bg)"/>
+  <circle cx="452" cy="300" r="190" fill="url(#haze)"/>
+  <g stroke-linecap="round" fill="none">
+    <path d="M0 180H250" stroke="#f4efe8" stroke-opacity=".14" stroke-width="6"/>
+    <path d="M0 240H200" stroke="#f4efe8" stroke-opacity=".1" stroke-width="6"/>
+    <path d="M0 360H226" stroke="#f4efe8" stroke-opacity=".12" stroke-width="6"/>
+    <path d="M0 420H170" stroke="#f4efe8" stroke-opacity=".08" stroke-width="6"/>
+    <path d="M0 300H400" stroke="#f2b44d" stroke-width="10"/>
+  </g>
+  <circle cx="452" cy="300" r="62" fill="url(#cone)"/>
+  <circle cx="452" cy="300" r="90" fill="none" stroke="#f2b44d" stroke-opacity=".45" stroke-width="3"/>
+  <circle cx="452" cy="300" r="22" fill="#1a1109" fill-opacity=".55"/>
+</svg>

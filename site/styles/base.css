@@ -1,0 +1,38 @@
+/* Fonts, resets, cover art, and the record. */
+@font-face { font-family: "Inter"; src: url("../assets/fonts/inter-latin-wght-normal.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: "Manrope"; src: url("../assets/fonts/manrope-latin-wght-normal.woff2") format("woff2"); font-weight: 200 800; font-display: swap; }
+@font-face { font-family: "DSEG7"; src: url("../assets/fonts/dseg7-classic-bold-italic.woff2") format("woff2"); font-display: swap; }
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+img, svg { display: block; max-width: 100%; }
+a { color: inherit; }
+h1, h2, h3, h4, p, ul, ol, dl, dd, figure { margin: 0; }
+ul, ol { padding: 0; list-style: none; }
+
+.art-slack  { --art: url("../assets/covers/slack-water.svg"); }
+.art-ferry  { --art: url("../assets/covers/night-ferry.svg"); }
+.art-sodium { --art: url("../assets/covers/sodium-lights.svg"); }
+.art-field  { --art: url("../assets/covers/field-notes.svg"); }
+/* The app's own mark as a record (the hero's). Its centre label takes the mark's teal. */
+.art-oxitide { --art: url("../assets/covers/oxitide.svg"); --label-ring: #6fa79c; }
+/* Sound's tags: the three features as records of their own. */
+.art-exclusive { --art: url("../assets/covers/exclusive.svg"); }
+.art-asio      { --art: url("../assets/covers/asio.svg"); }
+.art-automix   { --art: url("../assets/covers/automix.svg"); }
+.cover { background: var(--art) center / cover no-repeat; }
+
+/* The record: a cover pressed onto a spinning disc. */
+.disc { position: relative; width: 100%; aspect-ratio: 1; border-radius: 50%; overflow: hidden; animation: spin 14s linear infinite; }
+.disc > i { position: absolute; inset: 0; border-radius: 50%; }
+.disc .d-art { background: var(--art) center / cover no-repeat; }
+.disc .d-grooves { background: repeating-radial-gradient(circle, rgba(0,0,0,.24) 0 1px, transparent 1px 4px); }
+.disc .d-sheen { background: conic-gradient(from 200deg, transparent 0deg, rgba(255,255,255,.12) 40deg, transparent 100deg, transparent 180deg, rgba(255,255,255,.06) 230deg, transparent 290deg); }
+.disc .d-label { inset: 38%; border: 3px solid var(--label-ring, #e8dfb2); background: var(--label-hole, #120e0b); }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .disc { animation: none; }
+  html { scroll-behavior: auto !important; }
+}
