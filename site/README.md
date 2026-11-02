@@ -42,4 +42,4 @@ The page is tuned to hold the display's full frame rate (144 Hz on the dev machi
 
 ## Deploying
 
-Not set up yet (PLAN.md milestone 5). The plan is a GitHub Pages workflow that publishes this folder as is. Every download link points at GitHub Releases. The site never hosts binaries. Once the address is known, add `og:url` and an `og:image` (both must be absolute URLs).
+Published at <https://zephulbr.github.io/OxiTide/> by `.github/workflows/pages.yml`. It runs on every push to `main` that touches `site/`, and can also be started by hand. It publishes this folder as is, without its `.md` notes. Every download link points at GitHub Releases. The site never hosts binaries. Still missing: an `og:image` (a 1200 × 630 picture, absolute URL).

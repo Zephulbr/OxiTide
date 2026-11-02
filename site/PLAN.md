@@ -1,6 +1,6 @@
 # OxiTide showcase site: plan
 
-Status (2026-11-02): the page is the "Tide" redesign, ported here from its prototype (local only; deleted once ported, 2026-11-02). It replaces the v1 page built on 2026-10-29. v1 is archived locally in `.superpowers/site-v1` (gitignored; `site/` had never been committed). Not published.
+Status (2026-11-02): the page is the "Tide" redesign, ported here from its prototype (local only; deleted once ported, 2026-11-02). It replaces the v1 page built on 2026-10-29. v1 is archived locally in `.superpowers/site-v1` (gitignored; `site/` had never been committed). Published 2026-11-02 at <https://zephulbr.github.io/OxiTide/> (GitHub Pages, `.github/workflows/pages.yml`).
 
 ## Goal
 
@@ -68,7 +68,7 @@ Non-goals:
 2. **Skeleton** (v1): done.
 3. **Feature sections**: done in v1, then redesigned as Tide (prototyped 2026-10-30 to 2026-11-02, ported 2026-11-02).
 4. **Polish**: done: phone layouts, reduced motion, the a11y pass, meta tags and favicon, link check. Open: a copy review, a pass on a real mid-range laptop plus Safari and Firefox, and Lighthouse on the published URL.
-5. **Publish**: not started. Needs the GitHub Pages workflow, a decision on a custom domain, `og:url` and `og:image` (absolute URLs, so after the address is known), and a link from the README.
+5. **Publish**: done 2026-11-02 on GitHub Pages (`og:url` and a canonical link set). Open: an `og:image`, Lighthouse on the live URL, a custom domain if wanted, and a link from the README.
 
 ## Open decisions
 
