@@ -27,6 +27,7 @@ Opening `index.html` straight from disk mostly works, but browsers block module 
 | `scripts/looks.js` | Builds the three replicas and morphs between them as the looks chapter scrolls by. |
 | `assets/fonts/` | Copies of the app's vendored Manrope, Inter and DSEG7 (OFL 1.1, see `THIRD_PARTY_NOTICES.md`). |
 | `assets/covers/` | Original placeholder cover art. Never use TIDAL artwork here. |
+| `assets/og-image.png` | The share image (1200 × 630) that link previews show: the logo, the name, and the badges, rendered from the page's own fonts and logo. |
 | `favicon.svg` | A copy of `crates/oxitide-app/icons/svg/icon-64.svg`. |
 
 ## Rules that keep it smooth
@@ -42,4 +43,4 @@ The page is tuned to hold the display's full frame rate (144 Hz on the dev machi
 
 ## Deploying
 
-Published at <https://zephulbr.github.io/OxiTide/> by `.github/workflows/pages.yml`. It runs on every push to `main` that touches `site/`, and can also be started by hand. It publishes this folder as is, without its `.md` notes. Every download link points at GitHub Releases. The site never hosts binaries. Still missing: an `og:image` (a 1200 × 630 picture, absolute URL).
+Published at <https://zephulbr.github.io/OxiTide/> by `.github/workflows/pages.yml`. It runs on every push to `main` that touches `site/`, and can also be started by hand. It publishes this folder as is, without its `.md` notes. Every download link points at GitHub Releases. The site never hosts binaries. The share image (`assets/og-image.png`) is referenced by absolute URL in `og:image`, so a moved page needs its tags updated too.

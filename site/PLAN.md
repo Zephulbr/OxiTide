@@ -68,11 +68,11 @@ Non-goals:
 2. **Skeleton** (v1): done.
 3. **Feature sections**: done in v1, then redesigned as Tide (prototyped 2026-10-30 to 2026-11-02, ported 2026-11-02).
 4. **Polish**: done: phone layouts, reduced motion, the a11y pass, meta tags and favicon, link check. Open: a copy review, a pass on a real mid-range laptop plus Safari and Firefox, and Lighthouse on the published URL.
-5. **Publish**: done 2026-11-02 on GitHub Pages (`og:url` and a canonical link set). Open: an `og:image`, Lighthouse on the live URL, a custom domain if wanted, and a link from the README.
+5. **Publish**: done 2026-11-02 on GitHub Pages (`og:url`, a canonical link, and the share image `og:image` at `assets/og-image.png`; Lighthouse 100s on the live URL). Open: a custom domain if wanted, and a link from the README.
 
 ## Open decisions
 
-- **Codeberg link:** the footer's "Mirror on Codeberg" goes to `codeberg.org/Zephulbr/OxiTide`, which returned 404 to visitors on 2026-11-02 (the user page exists, so the repo is private or unpublished). Make it public before publishing, or drop the link.
+- **Codeberg link:** the footer's "Mirror on Codeberg" goes to `codeberg.org/Zephulbr/OxiTide`, which returned 404 to visitors on 2026-11-02 (the user page exists, so the repo is private or unpublished). The repo was pushed to Codeberg on 2026-11-02; check that it is public there before relying on the link.
 - **Unsigned installer:** v1's install section said the Windows installer is unsigned and pointed to `SHA256SUMS.txt` on the release page. The Tide page doesn't (the install cards with the checksum were turned down on 2026-10-31). Decide whether a line about it belongs near the download rows.
 - **Looks replicas:** the looks chapter uses simplified replicas, and its morph runs once per frame on scroll. v1 had full-detail replicas on a scroll timeline (compositor-driven); its `scripts/main.js` (`initMorph`), `styles/mockups.css` and token snapshot are in the local archive. Both measure smooth on the dev machine. Swapping v1's in is possible if the simplified ones look too plain.
 - **Offline wording:** the copy describes the cache as a buffer for short connection issues, not offline playback (owner decision 2026-10-29). `AGENTS.md` describes `DiskCache::find_offline` and offline startup restore, and `docs/privacy.md` says "not an offline mode". Reconcile the code docs with the owner's position before publish.
