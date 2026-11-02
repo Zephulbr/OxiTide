@@ -29,3 +29,6 @@ Thumbs.db
 # Local env / secrets
 .env
 .env.*
+
+# Local-only disk audit (see the note itself; not part of the tracked series)
+/docs/superpowers/plans/notes/2026-11-01-repo-disk-usage-audit.md
