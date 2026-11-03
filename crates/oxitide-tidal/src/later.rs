@@ -91,7 +91,7 @@ pub struct LaterIds {
     pub videos: u32,
 }
 
-/// A hydrated saved item: `{"kind": "track", "item": {â€¦}}`.
+/// A hydrated saved item: `{"kind": "track", "item": {…}}`.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "item", rename_all = "lowercase")]
 pub enum LaterItem {

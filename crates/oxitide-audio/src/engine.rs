@@ -372,7 +372,7 @@ fn fire_perf(inner: &Inner, event: AudioPerfEvent) {
 impl Engine {
     /// `make_fetcher` runs on the playback worker thread, so a blocking fetcher
     /// (e.g. `HttpFetcher`'s `reqwest::blocking::Client`) is never built on the
-    /// caller's thread â€” constructing one inside an async runtime context
+    /// caller's thread — constructing one inside an async runtime context
     /// panics in debug builds.
     pub fn new(
         resolver: Arc<dyn StreamResolver>,

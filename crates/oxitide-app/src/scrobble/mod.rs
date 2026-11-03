@@ -403,16 +403,17 @@ impl ScrobblerService {
     async fn flush_lastfm(&self) {
         let (session, batch) = {
             let inner = self.inner.lock().unwrap();
+            let Some(credentials) = inner.lastfm.as_ref() else {
+                return;
+            };
             if !inner.lastfm_enabled
                 || inner.lastfm_needs_reconnect
-                || inner.lastfm.is_none()
                 || inner.lastfm_queue.is_empty()
                 || !inner.lastfm_backoff.ready()
             {
                 return;
             }
-            let session = inner.lastfm.as_ref().map(|c| c.secret.clone()).unwrap();
-            (session, inner.lastfm_queue.front_batch(50))
+            (credentials.secret.clone(), inner.lastfm_queue.front_batch(50))
         };
         if batch.is_empty() {
             return;
@@ -457,15 +458,17 @@ impl ScrobblerService {
     async fn flush_listenbrainz(&self) {
         let token = {
             let inner = self.inner.lock().unwrap();
+            let Some(credentials) = inner.listenbrainz.as_ref() else {
+                return;
+            };
             if !inner.listenbrainz_enabled
                 || inner.listenbrainz_needs_reconnect
-                || inner.listenbrainz.is_none()
                 || inner.listenbrainz_queue.is_empty()
                 || !inner.listenbrainz_backoff.ready()
             {
                 return;
             }
-            inner.listenbrainz.as_ref().map(|c| c.secret.clone()).unwrap()
+            credentials.secret.clone()
         };
         let mut sent = 0;
         // Cap each flush at 10 submissions and pace them at ~1 req/s (spec §4);
