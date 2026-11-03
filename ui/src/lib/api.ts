@@ -92,6 +92,9 @@ export interface PageItem {
   api_path?: string | null;
   /// Artists with ids, so cards can link them; absent when none carry an id.
   artist_refs?: ArtistRef[] | null;
+  /// Featured promotions linking out (`EXTURL`): a `https://tidal.com/…`
+  /// page to open in the browser, validated in Rust.
+  url?: string | null;
 }
 export interface PageSection { title: string; items: PageItem[]; kind: string }
 /// One release activity from an artist the user follows (v2 feed).

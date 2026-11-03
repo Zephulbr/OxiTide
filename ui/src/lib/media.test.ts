@@ -50,6 +50,11 @@ describe("classifySection", () => {
     expect(classifySection("ANY", [])).toBe("carousel");
   });
 
+  it("keeps featured promotions as banner cards even when they link pages", () => {
+    const link = { ...item("CATEGORY_PAGES"), api_path: "pages/genre_jazz" };
+    expect(classifySection("FEATURED_PROMOTIONS", [link, link, item("ALBUM")])).toBe("carousel");
+  });
+
   it("uses list when tracks or videos are the majority", () => {
     expect(
       classifySection("MIXED_TYPES_LIST", [

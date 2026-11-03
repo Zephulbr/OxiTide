@@ -40,6 +40,18 @@ pub struct PageItem {
     /// artist pages; entries without an id are left out.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub artist_refs: Vec<ArtistRef>,
+    /// Featured promotions that link outside the app (`EXTURL`): a
+    /// `https://tidal.com/…` page to open in the browser. Nothing else is kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+}
+
+/// An external link a promotion may carry: TIDAL's own site only (the opener
+/// capability allows no other origin).
+fn is_tidal_url(url: &str) -> bool {
+    url.strip_prefix("https://tidal.com/").is_some_and(|rest| {
+        !rest.is_empty() && url.len() <= 400 && !url.chars().any(char::is_whitespace)
+    })
 }
 
 /// A page path the client may fetch: `pages/` followed by `/`-separated
@@ -162,6 +174,15 @@ struct RawItem {
     /// `MIXED_TYPES_LIST` entries wrap the payload as `{type, item}`.
     #[serde(default)]
     pub item: Option<Box<RawItem>>,
+    /// `FEATURED_PROMOTIONS` entries name their target here (an album id, a
+    /// playlist uuid, a page path or a url) and their own `imageId` is a
+    /// landscape banner, not a square cover.
+    #[serde(default, rename = "artifactId")]
+    pub artifact_id: Option<String>,
+    #[serde(default, rename = "shortHeader")]
+    pub short_header: Option<String>,
+    #[serde(default, rename = "shortSubHeader")]
+    pub short_sub_header: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -324,8 +345,17 @@ fn sections_from_page(raw: RawPage) -> Vec<PageSection> {
             }
             let items: Vec<PageItem> = raw_items
                 .into_iter()
-                .map(|i| page_item_from_raw(&module.module_type, i))
+                .filter_map(|i| {
+                    if i.artifact_id.is_some() {
+                        promotion_item(i)
+                    } else {
+                        Some(page_item_from_raw(&module.module_type, i))
+                    }
+                })
                 .collect();
+            if items.is_empty() {
+                continue;
+            }
             sections.push(PageSection {
                 title: module.title,
                 items,
@@ -414,7 +444,60 @@ fn page_item_from_raw(module_type: &str, mut raw: RawItem) -> PageItem {
         release_type,
         api_path,
         artist_refs,
+        url: None,
     }
+}
+
+/// A `FEATURED_PROMOTIONS` entry (`{type, artifactId, shortHeader,
+/// shortSubHeader, imageId}`) as a card. Entries the app cannot open (videos,
+/// outside links, malformed page paths, unknown types) are dropped rather
+/// than shown as blank, dead cards.
+fn promotion_item(raw: RawItem) -> Option<PageItem> {
+    let target = raw.artifact_id.filter(|id| !id.is_empty())?;
+    let kind = raw.item_type.to_ascii_uppercase();
+    let title = raw
+        .short_header
+        .filter(|title| !title.trim().is_empty())
+        .or_else(|| (!raw.title.trim().is_empty()).then_some(raw.title))?;
+    let numeric = target.bytes().all(|b| b.is_ascii_digit());
+    let (id, item_type, api_path, url) = match kind.as_str() {
+        "ALBUM" | "ARTIST" | "TRACK" if numeric => (target, kind, None, None),
+        "PLAYLIST" | "MIX" if !numeric => (target, kind, None, None),
+        "CATEGORY_PAGES" if is_page_path(&target) => (String::new(), kind, Some(target), None),
+        "EXTURL" if is_tidal_url(&target) => (String::new(), kind, None, Some(target)),
+        _ => return None,
+    };
+    Some(PageItem {
+        id,
+        title,
+        subtitle: raw.short_sub_header.filter(|sub| !sub.trim().is_empty()),
+        item_type,
+        artwork: raw.image_id.as_deref().and_then(banner_url),
+        artists: Vec::new(),
+        duration: None,
+        explicit: None,
+        audio_quality: None,
+        album_title: None,
+        release_type: None,
+        api_path,
+        artist_refs: Vec::new(),
+        url,
+    })
+}
+
+/// Promotion banners are landscape: the CDN serves them at 1100x800 and
+/// 550x400 only (square sizes 403), so the card gets an absolute url and
+/// crops it to its square frame.
+fn banner_url(image_id: &str) -> Option<String> {
+    let valid = !image_id.is_empty()
+        && image_id.len() <= 64
+        && image_id.chars().all(|c| c.is_ascii_hexdigit() || c == '-');
+    valid.then(|| {
+        format!(
+            "https://resources.tidal.com/images/{}/1100x800.jpg",
+            image_id.replace('-', "/")
+        )
+    })
 }
 
 /// Best-effort mapping of a foreign item shape into a `PageItem`; accepts
@@ -460,6 +543,7 @@ pub fn page_item_from_value(value: &serde_json::Value) -> Option<PageItem> {
         release_type,
         api_path: None,
         artist_refs: Vec::new(),
+        url: None,
     })
 }
 
@@ -704,6 +788,63 @@ mod tests {
         let sections = client(&server).explore_page().await.unwrap();
         assert_eq!(sections[0].title, "For You");
         assert_eq!(sections[0].items[0].id, "p-1");
+    }
+
+    /// Explore's "Featured" row (live shape, 2026-11): targets in `artifactId`,
+    /// names in `shortHeader`/`shortSubHeader`, landscape banners in `imageId`.
+    #[test]
+    fn featured_promotions_map_to_openable_cards() {
+        let raw: RawPage = serde_json::from_value(serde_json::json!({
+            "rows": [{"modules": [{"type": "FEATURED_PROMOTIONS", "title": "Featured", "items": [
+                {"artifactId": "574136505", "header": "TIDAL EXCLUSIVE", "imageId": "fd953554-344a-46cf-839c-40a4ca3c9c96",
+                 "shortHeader": "Phoebe Bridgers", "shortSubHeader": "Live EP", "text": "", "type": "ALBUM"},
+                {"artifactId": "https://tidal.com/magazine/article/x/1-99441", "header": "TIDAL MAGAZINE",
+                 "imageId": "4e7ed775-794a-4fef-b751-198014ec7bac", "shortHeader": "Story", "shortSubHeader": "", "type": "EXTURL"},
+                {"artifactId": "pages/UPLOAD_PAGE_PAYGATED_ALBUMS/view-all?vibe=uploads", "imageId": "67388ba0-b7f5-4800-b381-20571aff048d",
+                 "shortHeader": "Uploads", "type": "CATEGORY_PAGES"},
+                {"artifactId": "pages/genre_jazz", "imageId": "67388ba0", "shortHeader": "Jazz", "type": "CATEGORY_PAGES"},
+                {"artifactId": "0b6c3f4e-1d2a-4b5c-8d9e-0f1a2b3c4d5e", "shortHeader": "Hits", "type": "PLAYLIST"},
+                {"artifactId": "https://evil.example/x", "shortHeader": "Elsewhere", "type": "EXTURL"},
+                {"artifactId": "123", "shortHeader": "Clip", "type": "VIDEO"},
+                {"artifactId": "9", "shortHeader": "", "type": "ALBUM"}
+            ]}]}]
+        }))
+        .unwrap();
+        let sections = sections_from_page(raw);
+        let items = &sections[0].items;
+        assert_eq!(sections[0].kind, "FEATURED_PROMOTIONS");
+        assert_eq!(items.len(), 4, "{items:#?}");
+
+        assert_eq!(items[0].id, "574136505");
+        assert_eq!(items[0].item_type, "ALBUM");
+        assert_eq!(items[0].title, "Phoebe Bridgers");
+        assert_eq!(items[0].subtitle.as_deref(), Some("Live EP"));
+        assert_eq!(
+            items[0].artwork.as_deref(),
+            Some("https://resources.tidal.com/images/fd953554/344a/46cf/839c/40a4ca3c9c96/1100x800.jpg")
+        );
+
+        assert_eq!(items[1].item_type, "EXTURL");
+        assert_eq!(
+            items[1].url.as_deref(),
+            Some("https://tidal.com/magazine/article/x/1-99441")
+        );
+        assert_eq!(items[1].subtitle, None);
+
+        assert_eq!(items[2].api_path.as_deref(), Some("pages/genre_jazz"));
+        assert_eq!(items[3].id, "0b6c3f4e-1d2a-4b5c-8d9e-0f1a2b3c4d5e");
+        assert_eq!(items[3].artwork, None);
+    }
+
+    #[test]
+    fn a_promotion_row_with_nothing_openable_is_dropped() {
+        let raw: RawPage = serde_json::from_value(serde_json::json!({
+            "rows": [{"modules": [{"type": "FEATURED_PROMOTIONS", "title": "Featured", "items": [
+                {"artifactId": "123", "shortHeader": "Clip", "type": "VIDEO"}
+            ]}]}]
+        }))
+        .unwrap();
+        assert!(sections_from_page(raw).is_empty());
     }
 
     #[tokio::test]

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { openUrl } from "@tauri-apps/plugin-opener";
   import { api, type PageItem, type PageSection } from "../api";
   import { errorMessage } from "../errors";
   import { classifySection, isPlayableTrack, pageTrackInput } from "../media";
@@ -68,6 +69,12 @@
   function activate(item: PageItem): (() => void) | undefined {
     const route = routeForPageItem(item);
     if (route) return () => nav.goto(route);
+    const url = item.url;
+    if (url) {
+      return () => {
+        void openUrl(url).catch((e) => toasts.show(errorMessage(e), { severity: "error" }));
+      };
+    }
     if (isPlayableTrack(item)) {
       return () => {
         void play([item], 0).catch((e) =>

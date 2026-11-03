@@ -41,8 +41,10 @@ export function isPageLink(item: PageItem): boolean {
 /// some do send are not square covers (they fail as cards).
 export function classifySection(kind: string, items: PageItem[]): SectionTreatment {
   if (items.length === 0) return "carousel";
-  if (items.filter(isPageLink).length * 2 > items.length) return "links";
   const k = upper(kind);
+  // Promotions carry banner art for every entry, page links included.
+  if (k === "FEATURED_PROMOTIONS") return "carousel";
+  if (items.filter(isPageLink).length * 2 > items.length) return "links";
   const types = items.map((item) => upper(item.item_type));
   const trackish = types.filter(isTrackish).length;
   if (trackish * 2 > items.length) return "list";
