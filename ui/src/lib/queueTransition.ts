@@ -248,11 +248,18 @@ function paintsOwnBox(style: CSSStyleDeclaration): boolean {
 /// scrollbar appears and the right-hand columns are cut off mid-glide.
 /// A box that already overflows sideways (a carousel row) keeps its snap: its
 /// cards are handled by the clipped-card fade in `flip`.
+///
+/// So does a clipping flex *row*, even when its content fits: its items wrap
+/// (Explore's search chips) or size from it (a carousel's cards are `cqi`
+/// wide, stepping their count at container-query breakpoints), so a width
+/// animated through them re-flows in steps mid-glide: a chip drops to the
+/// next row, every card jumps a size. Snapped, its items glide one by one.
 function hasVisibleBox(el: HTMLElement): boolean {
   if (el.matches(".media")) return true;
   const style = getComputedStyle(el);
   if (paintsOwnBox(style)) return true;
   if (style.overflowX === "visible" && style.overflowY === "visible") return false;
+  if (style.display.endsWith("flex") && !style.flexDirection.startsWith("column")) return false;
   return el.scrollWidth <= el.clientWidth + 1;
 }
 
@@ -342,13 +349,12 @@ function flip(
     animations.push(el.animate([{ opacity: 0 }, { opacity: 1 }], timing));
   };
 
+  // Pass 1: sort every mover into skip / fade / move, and start the resizes.
+  const moving: number[] = [];
   movers.forEach((el, i) => {
     // Inside a resizing card, layout already carries the element along.
-    let parent = el.parentElement;
-    let inherited: { x: number; y: number } | undefined;
-    for (; parent; parent = parent.parentElement) {
+    for (let parent = el.parentElement; parent; parent = parent.parentElement) {
       if (resizing.has(parent)) return;
-      inherited ??= raw.get(parent);
     }
 
     // An element hidden on one side of the change (e.g. a Jump back in card
@@ -381,6 +387,9 @@ function flip(
       const shareAfter = visibleShare(after[i], after[ci]);
       if (shareBefore > 0.01 && shareAfter < shareBefore - 0.01) {
         fadeOut(el, before[i], before[ci]);
+        // Still partly on screen at its new spot: cross-fade with the copy
+        // rather than showing both at full strength.
+        if (shareAfter > 0.01) fadeIn(el);
         resizing.add(el);
         return;
       }
@@ -391,14 +400,7 @@ function flip(
       }
     }
 
-    const dxRaw = before[i].left - after[i].left;
-    const dyRaw = before[i].top - after[i].top;
-    raw.set(el, { x: dxRaw, y: dyRaw });
-    const x = dxRaw - (inherited?.x ?? 0);
-    const y = dyRaw - (inherited?.y ?? 0);
-
-    const resize = Math.abs(before[i].width - after[i].width) > 1 && hasVisibleBox(el);
-    if (resize) {
+    if (Math.abs(before[i].width - after[i].width) > 1 && hasVisibleBox(el)) {
       resizing.add(el);
       animations.push(
         el.animate(
@@ -407,6 +409,28 @@ function flip(
         ),
       );
     }
+    moving.push(i);
+  });
+
+  // Pass 2: where each element sits on the glide's first frame. The resizes
+  // above re-flow what follows them (a card's width moves the cards after it
+  // in a flex row; its height, through `aspect-ratio`, moves every section
+  // below), and that layout motion runs on the same curve as the transforms.
+  // Translating from the final box would add the two: the element would jump
+  // on the first frame, then glide. Translating from the first-frame box makes
+  // layout + transform trace one path from the old box to the new one.
+  const start = moving.map((i) => movers[i].getBoundingClientRect());
+  moving.forEach((i, k) => {
+    const el = movers[i];
+    let inherited: { x: number; y: number } | undefined;
+    for (let parent = el.parentElement; parent && !inherited; parent = parent.parentElement) {
+      inherited = raw.get(parent);
+    }
+    const dxRaw = before[i].left - start[k].left;
+    const dyRaw = before[i].top - start[k].top;
+    raw.set(el, { x: dxRaw, y: dyRaw });
+    const x = dxRaw - (inherited?.x ?? 0);
+    const y = dyRaw - (inherited?.y ?? 0);
     if (Math.abs(x) >= 0.5 || Math.abs(y) >= 0.5) {
       animations.push(
         el.animate(
