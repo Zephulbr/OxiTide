@@ -5,6 +5,7 @@
   import type { Nav } from "../nav.svelte";
   import { trackQualityLabel } from "../quality";
   import ErrorState from "./ErrorState.svelte";
+  import NameLink from "./NameLink.svelte";
 
   let {
     trackId,
@@ -41,7 +42,7 @@
         <dd>
           {#if track.album}
             {@const album = track.album}
-            <button onclick={() => go({ name: "album", id: album.id })}>{album.title}</button>
+            <NameLink label={album.title} onOpen={() => go({ name: "album", id: album.id })} />
           {:else}
             <span class="muted">—</span>
           {/if}
@@ -50,8 +51,8 @@
       <div>
         <dt>Artists</dt>
         <dd>
-          {#each track.artists as artist (artist.id)}
-            <button onclick={() => go({ name: "artist", id: artist.id })}>{artist.name}</button>
+          {#each track.artists as artist, i (artist.id)}
+            {#if i > 0}<span class="sep">·</span>{/if}<NameLink label={artist.name} onOpen={() => go({ name: "artist", id: artist.id })} />
           {/each}
         </dd>
       </div>
@@ -77,7 +78,7 @@
             <h3>{role.role}</h3>
             <p>
               {#each role.contributors as contributor, i (contributor.name + i)}
-                {#if i > 0}<span class="sep">·</span>{/if}{#if contributor.artistId !== null && contributor.artistId !== undefined}<button onclick={() => go({ name: "artist", id: contributor.artistId! })}>{contributor.name}</button>{:else}<span>{contributor.name}</span>{/if}
+                {#if i > 0}<span class="sep">·</span>{/if}{#if contributor.artistId !== null && contributor.artistId !== undefined}{@const artistId = contributor.artistId}<NameLink label={contributor.name} onOpen={() => go({ name: "artist", id: artistId })} />{:else}<span>{contributor.name}</span>{/if}
               {/each}
             </p>
           </div>

@@ -263,6 +263,7 @@
 {#if stats.total_plays === 0}
   <p class="muted">No plays yet.</p>
 {:else}
+<div class="stats">
   <section class="hero lit-tint pane" aria-label="All-time listening">
     <div class="headline">
       <span class="eyebrow">All time</span>
@@ -428,9 +429,16 @@
       </section>
     {/each}
   </div>
+</div>
 {/if}
 
 <style>
+  /* A size container: the page's width, not the window's, decides the
+     layout. The sidebar, a docked queue and Rack's display all narrow it, so
+     viewport breakpoints left the masthead wrapping word by word. */
+  .stats {
+    container: stats / inline-size;
+  }
   .eyebrow {
     font-size: 11.5px;
     font-weight: 700;
@@ -931,7 +939,11 @@
     font-size: 12.5px;
   }
 
-  @media (max-width: 1200px) {
+  /* The three-across masthead needs ~1400px (headline, counts and fan side by
+     side) and the four figures in one row ~1880px. Narrower, the figures
+     take two rows, then the counts run under the headline (the fan beside
+     it), the charts and top lists stack, and last the fan goes. */
+  @container stats (width < 1880px) {
     .figures {
       grid-template-columns: repeat(2, minmax(0, max-content));
       row-gap: 16px;
@@ -940,12 +952,34 @@
       padding-left: 0;
       border-left: 0;
     }
+  }
+  @container stats (width < 1400px) {
+    .hero {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .fan {
+      grid-column: 2;
+      grid-row: 1;
+    }
+    /* Under the headline, left-aligned, wrapping if it must. */
+    .counts {
+      grid-column: 1 / -1;
+      grid-row: 2;
+      justify-self: start;
+      flex-wrap: wrap;
+      gap: 12px 40px;
+    }
+    .counts li {
+      align-items: flex-start;
+    }
+  }
+  @container stats (width < 960px) {
     .charts,
     .tops {
       grid-template-columns: minmax(0, 1fr);
     }
   }
-  @media (max-width: 900px) {
+  @container stats (width < 860px) {
     .fan {
       display: none;
     }
@@ -955,16 +989,8 @@
     .total {
       font-size: 42px;
     }
-    /* Under the headline: the counts run across in one wrapping row. */
-    /* Under the headline, left-aligned, wrapping if it must. */
     .counts {
-      grid-column: auto;
-      justify-self: start;
-      flex-wrap: wrap;
       gap: 12px 28px;
-    }
-    .counts li {
-      align-items: flex-start;
     }
   }
 </style>

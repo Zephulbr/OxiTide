@@ -278,7 +278,7 @@
 
 {#snippet details(t: QueueItem)}
   <span class="eyebrow">Now playing</span>
-  <h2 class="title">{t.title}</h2>
+  <h2 class="title" title={t.title}>{t.title}</h2>
   <p class="byline"><QueueArtistLinks item={t} {go} />{#if t.album}{" — "}<NameLink label={t.album} onOpen={() => void openAlbum(t)} />{/if}</p>
   <div class="badges">
     {#if quality}<span class="badge" class:max={quality === "MAX"}>{quality}</span>{/if}
@@ -490,6 +490,9 @@
     max-width: 1520px;
     margin: 0 auto;
     align-items: center;
+    /* A column taller than a short window overflows downward (where the page
+       scrolls), not off the top as plain centring would. */
+    align-items: safe center;
     /* Known lengths animate so every piece of the morph glides together:
        the gap, the composition width, and the flex columns below. */
     transition:
@@ -661,18 +664,32 @@
     color: var(--text-muted);
     margin-bottom: 8px;
   }
+  /* Long titles (classical movements run past 100 characters) stop at three
+     lines and the byline at two; the full title is the tooltip. The sizes
+     step down on short windows, where the cover is small too. */
   .title {
     font-family: var(--font-display);
-    font-size: 31px;
+    font-size: clamp(22px, 5vh, 31px);
     font-weight: var(--display-weight);
     letter-spacing: var(--display-tracking);
     margin: 0 0 6px;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    overflow: hidden;
+    overflow-wrap: anywhere;
   }
   .byline {
     font-size: 15.5px;
     font-weight: 500;
     color: var(--text-muted);
     margin: 0 0 16px;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
   }
   .badges {
     display: flex;
@@ -804,9 +821,13 @@
     text-align: center;
     max-width: 100%;
   }
+  /* Under the cover the line is wide, and the cover's size leaves room for
+     two lines of title (--np-cover reserves 360px below it). */
   .stage-details .title {
     margin-bottom: 4px;
-    font-size: 34px;
+    font-size: clamp(24px, 5.5vh, 34px);
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
   }
   .stage-details .badges {
     justify-content: center;

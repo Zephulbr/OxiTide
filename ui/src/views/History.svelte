@@ -227,7 +227,10 @@
     border-radius: 2px;
     background: var(--accent);
   }
+  /* A size container: the list's own width (the sidebar, a docked queue and
+     Rack's display narrow it) decides when the album column goes. */
   .tab-body {
+    container: history / inline-size;
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
@@ -319,7 +322,7 @@
   .len {
     text-align: right;
   }
-  @media (max-width: 1000px) {
+  @container history (width < 880px) {
     .row {
       grid-template-columns: 56px 52px minmax(0, 1fr) 48px;
     }

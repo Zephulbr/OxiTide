@@ -4,6 +4,9 @@
 
   let { menu }: { menu: Menu } = $props();
 
+  /// The panel's padding (`.menu` below).
+  const MENU_PAD = 6;
+
   let panel = $state<HTMLDivElement | null>(null);
   let left = $state(0);
   let top = $state(0);
@@ -31,8 +34,11 @@
     const height = node.offsetHeight;
     const x = state.align === "end" ? state.x - width : state.x;
     left = Math.max(4, Math.min(x, window.innerWidth - width - 4));
+    // Never up under the caption buttons, which stay on top of everything
+    // (custom chrome's title band; 0 elsewhere).
+    const band = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--titlebar-h")) || 0;
     const y = state.placement === "above" ? state.y - height : state.y;
-    top = Math.max(4, Math.min(y, window.innerHeight - height - 4));
+    top = Math.max(band + 4, Math.min(y, window.innerHeight - height - 4));
   }
 
   function moveTo(position: "first" | "last") {
@@ -73,12 +79,35 @@
     if (menu.open && panel) panel.focus();
   });
 
-  // Close when anything scrolls, including nested scrollers.
+  // Close when anything scrolls, including nested scrollers, but not the
+  // menu itself (a long one scrolls in a short window).
   $effect(() => {
     if (!menu.open) return;
-    const close = () => menu.close(false);
+    const close = (event: Event) => {
+      if (panel && event.target instanceof Node && panel.contains(event.target)) return;
+      menu.close(false);
+    };
     window.addEventListener("scroll", close, true);
     return () => window.removeEventListener("scroll", close, true);
+  });
+
+  // Arrow keys move the highlight; in a scrolling menu it stays in view. The
+  // panel is scrolled directly (it is the items' offset parent), so nothing
+  // around it moves.
+  $effect(() => {
+    const state = menu.open;
+    const node = panel;
+    if (!state || !node || active < 0) return;
+    const item = document.getElementById(`menu-item-${state.items[active]?.id}`);
+    if (!item) return;
+    // A section heading right above the item comes into view with it, and
+    // the panel's own padding at either end.
+    const above = item.previousElementSibling;
+    const lead = above instanceof HTMLElement && above.classList.contains("section") ? above : item;
+    const top = lead.offsetTop - MENU_PAD;
+    const bottom = item.offsetTop + item.offsetHeight + MENU_PAD;
+    if (top < node.scrollTop) node.scrollTop = Math.max(0, top);
+    else if (bottom > node.scrollTop + node.clientHeight) node.scrollTop = bottom - node.clientHeight;
   });
 
   function onKeydown(event: KeyboardEvent) {
@@ -196,6 +225,10 @@
     width: max-content;
     min-width: 196px;
     max-width: calc(100vw - 8px);
+    /* A long menu in a short window (the mini player is 360px tall) scrolls
+       instead of running off the bottom; the clamp keeps it under the band. */
+    max-height: calc(100vh - 8px - var(--titlebar-h, 0px));
+    overflow-y: auto;
     padding: 6px;
     border: 1px solid transparent;
     border-radius: var(--radius-card);

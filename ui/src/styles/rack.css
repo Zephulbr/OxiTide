@@ -198,6 +198,9 @@
   display: inline-flex;
   gap: 5px;
   width: max-content;
+  /* A tray never outgrows the display; one that scrolls (Settings' narrow
+     tab strip) scrolls inside it. */
+  max-width: 100%;
   min-width: 0;
   padding: 4px;
   border: 0;

@@ -234,16 +234,17 @@ body.dragging [data-drop-refused] * {
    and doubles as the separator. The glass lives on a pseudo-element because
    Chromium drops a child's backdrop-filter when an ancestor carries one, and
    the seek's glass cap (which hangs above the bar) needs its own blur).
-   z-index: 0 makes the bar a stacking context so the pseudo-child's negative
-   z-index stays behind its content; DOM order (last child) keeps the bar over
-   the columns. */
+   The z-index makes the bar a stacking context, so the pseudo-child's
+   negative z-index stays behind its content, and lifts it over what pages
+   layer in their own flow (sticky table headers and chips sit at 1–2; .main
+   is not a stacking context), while page popups (10+) still open over it. */
 .player {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
   height: var(--player-height);
-  z-index: 0;
+  z-index: 5;
 }
 .player::before {
   content: "";
@@ -260,14 +261,16 @@ body.dragging [data-drop-refused] * {
    docked queue then run to the window bottom (--sidebar-clear,
    --queue-clear). Its seek runs round the top corners (SeekBar's rim). The
    card is 76px: --player-height, the bottom clearance everything under it
-   reads, adds the gap to that. */
+   reads, adds the gap to that. The end lines are explicit: an absolutely
+   positioned item's `auto` end line is the container's edge, which ran the
+   card on under a docked queue. */
 .app[data-player="floating"] {
   --sidebar-clear: 0px;
   --player-height: calc(76px + var(--float-gap));
 }
 .app[data-player="floating"] > .player {
-  grid-column: 2;
-  grid-row: 1;
+  grid-column: 2 / 3;
+  grid-row: 1 / 2;
   left: var(--float-gap);
   right: var(--float-gap);
   bottom: var(--float-gap);
@@ -276,7 +279,7 @@ body.dragging [data-drop-refused] * {
   box-shadow: var(--shadow-panel);
 }
 .app[data-player="floating"][data-now-playing="true"] > .player {
-  grid-column: 1;
+  grid-column: 1 / 2;
 }
 /* No top border: the seek's rim draws the top edge and its tapering corners
    alone. The side borders thin out up into the corners where the rim's

@@ -174,7 +174,7 @@ export function createAppearance(): Appearance {
   let rowSeparators = $state(true);
   let playerBarStyle = $state<PanelStyle>("docked");
   let queueStyle = $state<PanelStyle>("docked");
-  let rack =$state<RackSettings>(defaultRackSettings());
+  let rack = $state<RackSettings>(defaultRackSettings());
 
   function apply() {
     const root = document.documentElement;

@@ -95,7 +95,11 @@ accent 16% fill) and re-centres it on every track change until double-clicked ag
 width (title 21%, artist 19%, album 18%, optional columns 14%, time and quality 8%), so the
 date, time and quality spread across the row instead of packing at the right edge (time is
 left-aligned like the other shared columns; the compact list keeps it right-aligned); a table
-without some of them hands the spare width to the rest by share. Long names end in an
+without some of them hands the spare width to the rest by share. Tables that scroll
+themselves size the same columns in their fixed layout by ratio (title 42, artist 38,
+album 36, optional 32, time 22) with the quality column a fixed 92px, so the "LOSSLESS"
+badge always fits; any value wider than its column there ends in an ellipsis rather than
+running into the next. Long names end in an
 ellipsis and never widen their column (the full name is the tooltip). The number and cover
 cells pad 18px (text cells 12px) so the row's start breathes. While the playing track is
 among the listed rows, a quiet "Now playing" button (`circle-dot`, the queue's "Show the current track" icon) after the sort
@@ -119,10 +123,14 @@ table, beside the filter, the sort bar shows one chip per level:
 - with no sort the bar is a single quiet "Sort" button.
 
 The optional columns (Date added, Release date, Popularity, Plays) are toggled from a "Columns"
-menu on the header row. They hide under a 760px container query on the table scroller.
+menu on the header row. Container queries on the table keep title, artist and time readable
+as it narrows: the optional columns hide below 860px (narrower, a date's share is less than
+a date), the album column below 700px (the title still opens it), with the actions inset
+pulled in to 20px, and the quality badge below 540px.
 
 **Settings page** (`views/Settings.svelte`, 2026-10-15 overhaul). A left category nav
-(`role="tablist"`, vertical, Lucide icon + label; a scrolling strip below 760px of page width)
+(`role="tablist"`, vertical, Lucide icon + label; below 760px of page width a row that wraps,
+so every category stays in sight)
 beside a content column capped at 1320px. Each tab is a `.cols` grid of hand-balanced column
 stacks (`.col`; two where 520px each fit, about 1060px of content, else one; `.wide` stacks span
 both). Stacks keep a constant height: controls that do not apply are disabled, not removed
@@ -171,7 +179,8 @@ over the portraits).
 playing and selected tints are `--row-wash` on the shared `.row-wash` class (`app.css`),
 a gradient that fades in over the row's first and last 40px like a glow instead of
 ending in a hard edge. Track tables inset the number 14px (`--row-inset`) and the
-action buttons 72px (`--actions-inset`) so neither sits on the faded edge. Their row hairlines follow Settings →
+action buttons 72px (`--actions-inset`; 20px in a table under 700px) so neither sits on the
+faded edge. Their row hairlines follow Settings →
 "Row separators" (`ui.row_separators`, default on, the root's `data-row-lines`); off makes
 them transparent, so row heights stay the same.
 
@@ -193,10 +202,15 @@ keeps its own page padding and small title labels (`rack/DESIGN.md`).
 column as tall as the cover: the Play/Shuffle row (with the playlist's search pill) sits on
 the cover's bottom edge, and the title block sits 28px above it, 10px apart top to bottom:
 stats (counts like "702 TRACKS" and "2 FANS" in `--accent`), the byline, then the title
-(`clamp(30px, 3.6vw, 48px)`) directly over the buttons. The kicker (PLAYLIST / ALBUM / MIX) runs vertically down the cover's right
+(`clamp(30px, 3.6vw, 48px)`) directly over the buttons; a long title ends in an ellipsis and
+slides along on hover (`lib/marquee.ts`, as the player bar's lines). The kicker (PLAYLIST / ALBUM / MIX) runs vertically down the cover's right
 edge (reading top to bottom), centred on it. The page's actions (Edit, Favorite, Share, More, …) sit at the
 row's right end, level with Play. Nothing sits under the cover, so the track list starts
-right below it.
+right below it. The header is a size container and fits narrower columns in steps: below
+1000px the cover is 240px (32px gap); below 840px it is 200px and the actions drop under
+Play/Shuffle, the cover's bottom edge on the actions row; below 520px (a docked queue in a
+small window) the cover, the text and the actions stack. Rack's smaller `--hero-size` caps
+each step.
 
 **Collection grids** share one recipe: `repeat(auto-fill, minmax(160–168px, 1fr))`, 12px
 card padding (Mixes, Feed releases). The two library collections, Playlists and Albums,
@@ -399,7 +413,9 @@ a 1px `--line` edge and `--shadow-panel`:
 `data-platform="linux"` from `index.html`) the card radio badge and the folder chip drop
 their blur: WebKitGTK re-filters every backdrop on each composite, and Home's mix row held it
 near 1 fps. Menus mark the selected
-option with the accent, not a second background.
+option with the accent, not a second background. A menu is clamped inside the window and
+below the caption band (the caption buttons stay over everything); one taller than the
+window scrolls, with the keyboard highlight kept in view.
 
 Drag and drop (spec `2026-10-22-oxitide-drag-to-playlist-design.md`) has one look in every
 mode, with no mode branches:

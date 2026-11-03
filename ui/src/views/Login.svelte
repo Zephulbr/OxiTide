@@ -107,8 +107,11 @@
 </div>
 
 <style>
+  /* Its own scroller (the body never scrolls): with the paste-back form, a
+     session-expired message and an error, the card outgrows a short window. */
   .login {
-    min-height: 100%;
+    height: 100%;
+    overflow-y: auto;
     display: grid;
     place-items: center;
     padding: 24px;

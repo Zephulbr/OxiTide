@@ -296,7 +296,9 @@
     color: var(--text-muted);
     font-size: 13px;
   }
+  /* No button padding: the crumb starts on the title's edge. */
   .crumbs button {
+    padding: 0;
     color: var(--text-muted);
   }
   .crumbs button:hover {

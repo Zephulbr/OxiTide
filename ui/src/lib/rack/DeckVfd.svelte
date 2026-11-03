@@ -65,6 +65,17 @@
   .annos {
     margin-top: 6px;
   }
+  /* The narrowest display (the Rack mini player at its 260px floor) cannot
+     fit every annunciator beside the track counter; the crossfade lamp gives
+     way rather than pushing the counter out of the window. */
+  .deckvfd {
+    container-type: inline-size;
+  }
+  @container (width < 250px) {
+    .xfade {
+      display: none;
+    }
+  }
   .deckvfd.tall {
     padding: 12px 14px 10px;
   }

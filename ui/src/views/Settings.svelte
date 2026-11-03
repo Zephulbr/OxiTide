@@ -1956,11 +1956,14 @@
       grid-template-columns: minmax(0, 1fr);
       gap: 16px;
     }
+    /* In flow, not sticky: `top` must go too, or it shifts the strip down
+       onto the first card. It wraps rather than scrolls: a sideways scroll
+       hid the last tab (System) with nothing to say it was there. */
     .nav {
       position: relative;
+      top: 0;
       flex-direction: row;
-      overflow-x: auto;
-      padding-bottom: 4px;
+      flex-wrap: wrap;
     }
   }
 

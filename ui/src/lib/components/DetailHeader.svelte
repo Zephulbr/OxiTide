@@ -2,6 +2,7 @@
   import type { Snippet } from "svelte";
   import { dragSource } from "../dragDrop.svelte";
   import type { DragPayload } from "../dragPayload";
+  import { marquee } from "../marquee";
   import Icon from "./Icon.svelte";
 
   let {
@@ -57,7 +58,9 @@
         {/if}
         {#if byline}<p class="subtitle">{@render byline()}</p>
         {:else if subtitle}<p class="subtitle">{subtitle}</p>{/if}
-        <h2><span class="title-track">{title}</span></h2>
+        <!-- A long title ends in an ellipsis; hovering slides it along
+             (lib/marquee.ts, as the player bar's lines). -->
+        <h2 use:marquee><span class="title-line" data-marquee><span>{title}</span></span></h2>
       </div>
       <div class="transport">
         <button class="btn-play" onclick={onPlay} {disabled}>
@@ -78,25 +81,32 @@
 </header>
 
 <style>
+  /* A size container: the main column narrows with the window, the sidebar
+     and a docked queue, and the tiers at the end fit the hero to it. */
   .detail-header {
     --hero-size: 320px;
+    container: detail / inline-size;
     margin-bottom: 40px;
   }
+  /* Cover, then title + transport, then the page's actions. `--art` is the
+     cover's drawn size: the hero size (Rack sets a smaller one), capped by
+     the narrow tiers. */
   .hero {
-    display: flex;
-    align-items: flex-end;
-    gap: 40px;
+    --art: var(--hero-size);
+    display: grid;
+    grid-template-columns: var(--art) minmax(0, 1fr) auto;
+    grid-template-areas: "art meta actions";
+    column-gap: 40px;
   }
   .hero-art {
+    grid-area: art;
     position: relative;
-    flex: 0 0 auto;
-    width: var(--hero-size);
+    width: var(--art);
   }
   /* As tall as the cover: the transport sits on its bottom edge and the
      title block sits a fixed step above it. */
   .hero-meta {
-    flex: 1;
-    align-self: stretch;
+    grid-area: meta;
     display: flex;
     flex-direction: column;
     min-width: 0;
@@ -133,30 +143,13 @@
     margin: 0;
     font-size: clamp(30px, 3.6vw, 48px);
     line-height: 1.1;
-    container-type: inline-size;
+  }
+  .title-line {
+    display: block;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
     padding-bottom: 0.1em;
-  }
-  .title-track {
-    display: inline-block;
-    width: max-content;
-    transition: transform 2.5s var(--ease-in-out);
-  }
-  h2:hover {
-    text-overflow: clip;
-  }
-  h2:hover .title-track {
-    transform: translateX(min(0px, calc(100cqw - 100%)));
-    transition-duration: 8s;
-    transition-timing-function: linear;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .title-track,
-    h2:hover .title-track {
-      transition: none;
-    }
   }
   .subtitle {
     margin: 0;
@@ -191,14 +184,14 @@
     align-items: center;
     gap: 10px;
     width: max-content;
-    min-width: var(--hero-size);
+    min-width: var(--art);
   }
   .transport > button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 9px;
-    flex: 1 1 calc((var(--hero-size) - 68px) / 2);
+    flex: 1 1 calc((var(--art) - 68px) / 2);
     height: 48px;
     padding: 0 24px;
     border-radius: var(--radius-control);
@@ -230,9 +223,58 @@
   }
   /* The page's own actions stay at the row's right end, level with Play. */
   .actions {
-    flex: 0 0 auto;
+    grid-area: actions;
+    align-self: end;
     display: flex;
     align-items: center;
     gap: 4px;
+  }
+
+  /* Narrower: a smaller cover first; then the actions drop under Play and
+     Shuffle (the cover's bottom edge still lines up with the last row); a
+     column too narrow to sit anything beside the cover stacks it all. */
+  @container detail (width < 1000px) {
+    .hero {
+      --art: min(var(--hero-size), 240px);
+      column-gap: 32px;
+    }
+  }
+  @container detail (width < 840px) {
+    .hero {
+      --art: min(var(--hero-size), 200px);
+      grid-template-columns: var(--art) minmax(0, 1fr);
+      grid-template-rows: 1fr auto;
+      grid-template-areas:
+        "art meta"
+        "art actions";
+      row-gap: 14px;
+    }
+    .hero-art {
+      align-self: end;
+    }
+    .actions {
+      justify-self: start;
+    }
+    .titles {
+      margin-bottom: 20px;
+    }
+  }
+  @container detail (width < 520px) {
+    .hero {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: none;
+      grid-template-areas:
+        "art"
+        "meta"
+        "actions";
+      row-gap: 20px;
+    }
+    .titles {
+      margin-top: 0;
+    }
+    .transport {
+      width: auto;
+      min-width: 0;
+    }
   }
 </style>

@@ -136,7 +136,10 @@
 </div>
 
 <style>
+  /* A size container: the lines scale with the column (`cqi` below), so a
+     narrow window or Rack's lyrics unit does not wrap every line. */
   .lyrics-wrap {
+    container-type: inline-size;
     position: relative;
     flex: 1;
     min-height: 0;
@@ -185,7 +188,7 @@
     background: none;
     color: var(--text);
     font: inherit;
-    font-size: calc((var(--font-body-size) + 16px) * 1.1);
+    font-size: clamp(18px, 8cqi, calc((var(--font-body-size) + 16px) * 1.1));
     font-weight: 700;
     line-height: 1.35;
     text-align: start;

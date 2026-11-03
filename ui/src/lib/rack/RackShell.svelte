@@ -840,14 +840,25 @@
       display: none;
     }
   }
-  @media (max-width: 1000px) {
+  @media (max-width: 1080px) {
     .brand .rk-silk,
     .power {
       display: none;
     }
   }
-  @media (max-width: 860px) {
-    .src .rk-key {
+  /* Down to the 720px window: every key hugs its label (the utility keys'
+     and the moon's own minimums included) and the logo stands without the
+     wordmark, or the sources ran under the utility keys. */
+  @media (max-width: 920px) {
+    .selector {
+      gap: 12px;
+    }
+    .wordmark {
+      display: none;
+    }
+    .src .rk-key,
+    .src.util .rk-key,
+    .sleep :global(.moon) {
       min-width: 0;
     }
   }

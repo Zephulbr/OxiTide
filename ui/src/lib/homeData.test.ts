@@ -5,6 +5,7 @@ import {
   feedAlbumItems,
   greeting,
   madeForYou,
+  startPrompt,
   unseenCount,
 } from "./homeData";
 
@@ -22,6 +23,15 @@ describe("greeting", () => {
     expect(greeting(18)).toBe("Good evening");
     expect(greeting(23)).toBe("Good night");
     expect(greeting(3)).toBe("Good night");
+  });
+});
+
+describe("startPrompt", () => {
+  it("names the same part of the day as the greeting", () => {
+    expect(startPrompt(9)).toBe("Pick something to start the morning.");
+    expect(startPrompt(15)).toBe("Pick something to start the afternoon.");
+    expect(startPrompt(20)).toBe("Pick something to start the evening.");
+    expect(startPrompt(2)).toBe("Pick something to start the night.");
   });
 });
 

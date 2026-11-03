@@ -678,12 +678,12 @@
     <th scope="col" role={roleOf("columnheader")} class="thumb-head"></th>
     {@render sortHead("title", "Title", "left")}
     {@render sortHead("artist", "Artist", "left")}
-    {#if showAlbum}{@render sortHead("album", "Album", "left")}{/if}
+    {#if showAlbum}{@render sortHead("album", "Album", "left", "album-col")}{/if}
     {#each shownColumns as column (column)}
       {@render sortHead(column, SORT_LABELS[column], column === "added" || column === "released" ? "left" : "right", "opt-col")}
     {/each}
     {@render sortHead("duration", "Time", "left")}
-    {@render sortHead("quality", "Quality", "left")}
+    {@render sortHead("quality", "Quality", "left", "quality-col")}
     <th scope="col" role={roleOf("columnheader")} class="actions-head"></th>
   </tr>
 {/snippet}
@@ -695,10 +695,10 @@
     <col class="col-thumb" />
     <col class="col-title" />
     <col class="col-text" />
-    {#if showAlbum}<col class="col-album" />{/if}
+    {#if showAlbum}<col class="col-album album-col" />{/if}
     {#each shownColumns as column (column)}<col class="col-opt opt-col" />{/each}
     <col class="col-time" />
-    <col class="col-quality" />
+    <col class="col-quality quality-col" />
     <col class="col-actions" />
   </colgroup>
 {/snippet}
@@ -863,7 +863,7 @@
             </div></td>
             {/if}
             {#if showAlbum}
-              <td class="text-cell muted album-cell" role={roleOf("cell")}><div class="cell-text">
+              <td class="text-cell muted album-cell" class:album-col={!compact} role={roleOf("cell")}><div class="cell-text">
                 <NameLink label={t.album?.title ?? ""} onOpen={openAlbum} focusable={false} />
               </div></td>
             {/if}
@@ -877,7 +877,7 @@
             {/each}
             <td class="muted tnum nowrap-cell time-cell" role={roleOf("cell")}>{formatDuration(t.duration)}</td>
             {#if !compact}
-              <td class="nowrap-cell quality-cell" role={roleOf("cell")}>
+              <td class="nowrap-cell quality-cell quality-col" role={roleOf("cell")}>
                 {#if quality}<span class="badge" class:max={quality === "MAX"}>{quality}</span>{/if}
               </td>
             {/if}
@@ -1009,8 +1009,26 @@
     --row-inset: 14px;
     --actions-inset: 72px;
   }
-  @container (max-width: 760px) {
+  /* Narrow lists keep the title, artist and time readable: the optional
+     columns go first (below 860px a date's share is narrower than a date),
+     then the album (the title still opens it) with the actions pulled in
+     from the row's end, then the quality badge. The inset is set on the
+     table: the container itself cannot be restyled from its own query. */
+  @container (max-width: 860px) {
     .opt-col {
+      display: none;
+    }
+  }
+  @container (max-width: 700px) {
+    .album-col {
+      display: none;
+    }
+    table {
+      --actions-inset: 20px;
+    }
+  }
+  @container (max-width: 540px) {
+    .quality-col {
       display: none;
     }
   }
@@ -1052,6 +1070,14 @@
   }
   .table-frame table {
     table-layout: fixed;
+  }
+  /* Fixed columns never grow to their content, so a date or header label
+     wider than its share ends in an ellipsis instead of running into the
+     next column. */
+  .table-frame .nowrap-cell,
+  .table-frame thead th {
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   /* The static edge fade (see `split` in the script): rows fade out under
      the header once scrolled and before the player bar while there is more
@@ -1103,12 +1129,20 @@
   .col-album {
     width: 36%;
   }
-  .col-opt {
-    width: 28%;
+  /* `col.`: the col also carries `.opt-col` (the narrow-width hide hook),
+     whose cell share below would otherwise win and halve the column. */
+  col.col-opt {
+    width: 32%;
   }
-  .col-time,
+  .col-time {
+    width: 22%;
+  }
+  /* Fixed, like the number and actions: the widest badge ("LOSSLESS") plus
+     the cell's padding. A share left it narrower than the badge whenever an
+     optional column showed. Time's share keeps the shares past 100% when
+     only title, artist and time remain. */
   .col-quality {
-    width: 16%;
+    width: 92px;
   }
   .row.dragging {
     opacity: 0.5;

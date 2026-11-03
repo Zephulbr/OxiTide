@@ -337,152 +337,154 @@
     <span class="floor" bind:this={floor} aria-hidden="true"></span>
     <SeekBar {player} taper={floating} />
 
-    <div class="zone left">
-      <button
-        class="thumb"
-        onclick={() => nav.toggleNowPlaying()}
-        aria-label="Open now playing"
-        title="Open now playing"
-        use:dragSource={dragCurrent}
-      >
-        <Cover uuid={current.cover} size={160} radius={6} alt={`${current.title} artwork`} />
-        <span class="thumb-hint" aria-hidden="true"><Icon name="chevron-up" size={18} /></span>
-      </button>
+    <div class="row">
+      <div class="zone left">
+        <button
+          class="thumb"
+          onclick={() => nav.toggleNowPlaying()}
+          aria-label="Open now playing"
+          title="Open now playing"
+          use:dragSource={dragCurrent}
+        >
+          <Cover uuid={current.cover} size={160} radius={6} alt={`${current.title} artwork`} />
+          <span class="thumb-hint" aria-hidden="true"><Icon name="chevron-up" size={18} /></span>
+        </button>
 
-      <!-- Keyed on the track so a track change fades the new title in rather
-           than snapping it (the backdrop crossfades behind it). -->
-      <div class="now-cat" style:--cat-px={`${(32 * appearance.catjamScale) / 100}px`}>
-        {#key current.track_id}
-          <!-- Lines too long for the column scroll slowly while hovered
-               (lib/marquee.ts); each line's first child is what moves. -->
-          <div class="now" use:marquee use:menuFor={nowMenuItems} use:dragSource={dragCurrent}>
-            <strong class="title" data-marquee><span><NameLink label={current.title} onOpen={() => void openAlbum(current)} /></span></strong>
-            <span class="muted artist" data-marquee><span><QueueArtistLinks item={current} {go} /></span></span>
-            {#if from}
-              <span class="from" data-marquee><span><span class="from-label">{from.label}</span> <NameLink label={from.name} onOpen={from.open} /></span></span>
-            {/if}
-          </div>
-        {/key}
+        <!-- Keyed on the track so a track change fades the new title in rather
+             than snapping it (the backdrop crossfades behind it). -->
+        <div class="now-cat" style:--cat-px={`${(32 * appearance.catjamScale) / 100}px`}>
+          {#key current.track_id}
+            <!-- Lines too long for the column scroll slowly while hovered
+                 (lib/marquee.ts); each line's first child is what moves. -->
+            <div class="now" use:marquee use:menuFor={nowMenuItems} use:dragSource={dragCurrent}>
+              <strong class="title" data-marquee><span><NameLink label={current.title} onOpen={() => void openAlbum(current)} /></span></strong>
+              <span class="muted artist" data-marquee><span><QueueArtistLinks item={current} {go} /></span></span>
+              {#if from}
+                <span class="from" data-marquee><span><span class="from-label">{from.label}</span> <NameLink label={from.name} onOpen={from.open} /></span></span>
+              {/if}
+            </div>
+          {/key}
 
-        {#if appearance.catjam && !appearance.reducedMotion}
-          <CatJam {player} coat={appearance.catjamCoat} scale={appearance.catjamScale} />
-        {/if}
+          {#if appearance.catjam && !appearance.reducedMotion}
+            <CatJam {player} coat={appearance.catjamCoat} scale={appearance.catjamScale} />
+          {/if}
+        </div>
+
+        <button
+          class="ibtn icon-heart"
+          data-floor
+          class:on={fav}
+          onclick={() => toggleFavorite(current.track_id, fav)}
+          aria-label={fav ? "Unfavorite" : "Favorite"}
+          title={fav ? "Unfavorite" : "Favorite"}
+        >
+          {#key fav}<span class="heart-ico" class:pop={fav} class:mend={!fav && heartBreaking}><Icon name="heart" size={18} /></span>{/key}
+          {#if heartBreaking}
+            {#key heartBreaks}
+              <span class="heart-break" aria-hidden="true">
+                <span class="half left"><Icon name="heart" size={18} /></span>
+                <span class="half right" onanimationend={() => (heartBreaking = false)}><Icon name="heart" size={18} /></span>
+              </span>
+            {/key}
+          {/if}
+        </button>
+
+        <span class="muted tnum time">{formatDuration(position / 1000)} / {formatDuration(duration / 1000)}</span>
+        {#if player.state.buffering}<span class="muted buffering" role="status">waiting for network…</span>{/if}
       </div>
 
-      <button
-        class="ibtn icon-heart"
-        data-floor
-        class:on={fav}
-        onclick={() => toggleFavorite(current.track_id, fav)}
-        aria-label={fav ? "Unfavorite" : "Favorite"}
-        title={fav ? "Unfavorite" : "Favorite"}
-      >
-        {#key fav}<span class="heart-ico" class:pop={fav} class:mend={!fav && heartBreaking}><Icon name="heart" size={18} /></span>{/key}
-        {#if heartBreaking}
-          {#key heartBreaks}
-            <span class="heart-break" aria-hidden="true">
-              <span class="half left"><Icon name="heart" size={18} /></span>
-              <span class="half right" onanimationend={() => (heartBreaking = false)}><Icon name="heart" size={18} /></span>
-            </span>
-          {/key}
+      <div class="zone center">
+        <button
+          class="ibtn mode"
+          data-floor
+          class:active={player.state.shuffle}
+          onclick={() => { shuffleKicks += 1; player.setShuffle(!player.state.shuffle); }}
+          aria-label="Shuffle"
+          aria-pressed={player.state.shuffle}
+          title="Shuffle the rest of the queue"
+        >{#key shuffleKicks}<span class="ico" class:kick-shuffle={shuffleKicks > 0}><Icon name="shuffle" size={18} /></span>{/key}</button>
+        <button class="ibtn" data-floor onclick={() => { prevKicks += 1; player.prev(); }} aria-label="Previous" title="Previous">{#key prevKicks}<span class="ico" class:kick-prev={prevKicks > 0}><Icon name="skip-back-solid" size={22} /></span>{/key}</button>
+        <button
+          class="ibtn play"
+          data-floor
+          onclick={() => player.playPause()}
+          aria-label={player.state.playing ? "Pause" : "Play"}
+          title={player.state.playing ? "Pause" : "Play"}
+        >
+          <PlayPauseGlyph playing={player.state.playing} size={32} />
+        </button>
+        <button class="ibtn" data-floor onclick={() => { nextKicks += 1; player.next(); }} aria-label="Next" title="Next">{#key nextKicks}<span class="ico" class:kick-next={nextKicks > 0}><Icon name="skip-forward-solid" size={22} /></span>{/key}</button>
+        <button
+          class="ibtn mode"
+          data-floor
+          class:active={player.state.repeat !== "off"}
+          onclick={() => { repeatKicks += 1; player.setRepeat(nextRepeat(player.state.repeat)); }}
+          aria-label={player.state.repeat === "one"
+            ? "Repeat one track"
+            : player.state.repeat === "all"
+              ? "Repeat all"
+              : "Repeat off"}
+          aria-pressed={player.state.repeat !== "off"}
+          title={player.state.repeat === "one" ? "Repeat one" : player.state.repeat === "all" ? "Repeat all" : "Repeat off"}
+        >{#key repeatKicks}<span class="ico" class:kick-repeat={repeatKicks > 0}><Icon name={player.state.repeat === "one" ? "repeat-1" : "repeat"} size={18} /></span>{/key}</button>
+      </div>
+
+      <div class="zone right">
+        <button
+          class="ibtn"
+          data-floor
+          class:active={nav.queueOpen}
+          onclick={() => nav.toggleQueue()}
+          aria-label="Queue"
+          title="Queue (Q)"
+          aria-pressed={nav.queueOpen}
+        ><Icon name="list-music" size={18} /></button>
+
+        <SleepTimerControl {sleepTimer} />
+
+        <VolumeSlider {player} width="var(--bar-volume, 146px)" />
+
+        <!-- One plate for the stream: tier, format (detailed mode), and the
+             output path (BP = bit-perfect, or DSP). It opens the quality menu. -->
+        <button
+          class="plate"
+          data-floor
+          bind:this={plateButton}
+          use:menuButton={openQuality}
+          aria-haspopup="menu"
+          aria-expanded={menu.open !== null && menu.open.opener === plateButton}
+          aria-label={`Streaming quality: ${plate.tier}${plate.spec ? `, ${plate.spec}` : ""}${player.state.bit_perfect ? ", bit-perfect" : player.state.dsp_active ? ", DSP active" : ""}`}
+          title={player.state.stream ? "Streaming quality" : "Preferred quality"}
+        >
+          <span class="tier">{plate.tier}</span>
+          {#if plate.spec}<span class="seg spec tnum">{plate.spec}</span>{/if}
+          {#if player.state.bit_perfect}
+            <span class="seg bp" title="Bit Perfect"><Icon name="check" size={11} />BP</span>
+          {:else if player.state.dsp_active}
+            <span class="seg dsp" title={dspBadgeTitle(player.state.dsp_stages)}>DSP</span>
+          {/if}
+          <span class="chev" aria-hidden="true"><Icon name="chevron-up" size={12} /></span>
+        </button>
+
+        <button
+          class="ibtn mini"
+          data-floor
+          onclick={() => void mini.enter()}
+          aria-label="Mini player"
+          title="Mini player"
+        ><Icon name="minimize-2" size={18} /></button>
+
+        {#if player.state.bit_perfect_notice && !player.state.error}
+          <!-- Output notices can be a sentence long: an icon with the text as
+               its tooltip keeps the right zone from reflowing. -->
+          <span
+            class="notice"
+            role="img"
+            aria-label={sentenceCase(player.state.bit_perfect_notice)}
+            title={sentenceCase(player.state.bit_perfect_notice)}
+          ><Icon name="alert-triangle" size={16} /></span>
         {/if}
-      </button>
-
-      <span class="muted tnum time">{formatDuration(position / 1000)} / {formatDuration(duration / 1000)}</span>
-      {#if player.state.buffering}<span class="muted buffering" role="status">waiting for network…</span>{/if}
-    </div>
-
-    <div class="zone center">
-      <button
-        class="ibtn"
-        data-floor
-        class:active={player.state.shuffle}
-        onclick={() => { shuffleKicks += 1; player.setShuffle(!player.state.shuffle); }}
-        aria-label="Shuffle"
-        aria-pressed={player.state.shuffle}
-        title="Shuffle the rest of the queue"
-      >{#key shuffleKicks}<span class="ico" class:kick-shuffle={shuffleKicks > 0}><Icon name="shuffle" size={18} /></span>{/key}</button>
-      <button class="ibtn" data-floor onclick={() => { prevKicks += 1; player.prev(); }} aria-label="Previous" title="Previous">{#key prevKicks}<span class="ico" class:kick-prev={prevKicks > 0}><Icon name="skip-back-solid" size={22} /></span>{/key}</button>
-      <button
-        class="ibtn play"
-        data-floor
-        onclick={() => player.playPause()}
-        aria-label={player.state.playing ? "Pause" : "Play"}
-        title={player.state.playing ? "Pause" : "Play"}
-      >
-        <PlayPauseGlyph playing={player.state.playing} size={32} />
-      </button>
-      <button class="ibtn" data-floor onclick={() => { nextKicks += 1; player.next(); }} aria-label="Next" title="Next">{#key nextKicks}<span class="ico" class:kick-next={nextKicks > 0}><Icon name="skip-forward-solid" size={22} /></span>{/key}</button>
-      <button
-        class="ibtn"
-        data-floor
-        class:active={player.state.repeat !== "off"}
-        onclick={() => { repeatKicks += 1; player.setRepeat(nextRepeat(player.state.repeat)); }}
-        aria-label={player.state.repeat === "one"
-          ? "Repeat one track"
-          : player.state.repeat === "all"
-            ? "Repeat all"
-            : "Repeat off"}
-        aria-pressed={player.state.repeat !== "off"}
-        title={player.state.repeat === "one" ? "Repeat one" : player.state.repeat === "all" ? "Repeat all" : "Repeat off"}
-      >{#key repeatKicks}<span class="ico" class:kick-repeat={repeatKicks > 0}><Icon name={player.state.repeat === "one" ? "repeat-1" : "repeat"} size={18} /></span>{/key}</button>
-    </div>
-
-    <div class="zone right">
-      <button
-        class="ibtn"
-        data-floor
-        class:active={nav.queueOpen}
-        onclick={() => nav.toggleQueue()}
-        aria-label="Queue"
-        title="Queue (Q)"
-        aria-pressed={nav.queueOpen}
-      ><Icon name="list-music" size={18} /></button>
-
-      <SleepTimerControl {sleepTimer} />
-
-      <VolumeSlider {player} />
-
-      <!-- One plate for the stream: tier, format (detailed mode), and the
-           output path (BP = bit-perfect, or DSP). It opens the quality menu. -->
-      <button
-        class="plate"
-        data-floor
-        bind:this={plateButton}
-        use:menuButton={openQuality}
-        aria-haspopup="menu"
-        aria-expanded={menu.open !== null && menu.open.opener === plateButton}
-        aria-label={`Streaming quality: ${plate.tier}${plate.spec ? `, ${plate.spec}` : ""}${player.state.bit_perfect ? ", bit-perfect" : player.state.dsp_active ? ", DSP active" : ""}`}
-        title={player.state.stream ? "Streaming quality" : "Preferred quality"}
-      >
-        <span class="tier">{plate.tier}</span>
-        {#if plate.spec}<span class="seg spec tnum">{plate.spec}</span>{/if}
-        {#if player.state.bit_perfect}
-          <span class="seg bp" title="Bit Perfect"><Icon name="check" size={11} />BP</span>
-        {:else if player.state.dsp_active}
-          <span class="seg dsp" title={dspBadgeTitle(player.state.dsp_stages)}>DSP</span>
-        {/if}
-        <span class="chev" aria-hidden="true"><Icon name="chevron-up" size={12} /></span>
-      </button>
-
-      <button
-        class="ibtn"
-        data-floor
-        onclick={() => void mini.enter()}
-        aria-label="Mini player"
-        title="Mini player"
-      ><Icon name="minimize-2" size={18} /></button>
-
-      {#if player.state.bit_perfect_notice && !player.state.error}
-        <!-- Output notices can be a sentence long: an icon with the text as
-             its tooltip keeps the right zone from reflowing. -->
-        <span
-          class="notice"
-          role="img"
-          aria-label={sentenceCase(player.state.bit_perfect_notice)}
-          title={sentenceCase(player.state.bit_perfect_notice)}
-        ><Icon name="alert-triangle" size={16} /></span>
-      {/if}
+      </div>
     </div>
   {:else}
     <span class="idle muted"><Icon name="music" size={16} /> Nothing playing</span>
@@ -490,13 +492,22 @@
 </div>
 
 <style>
-  /* Three zones: track info left, transport dead-center, queue/volume/quality
-     right. The 1fr/auto/1fr grid keeps the middle centered no matter how wide
-     the sides get. The box (position/height) comes from app.css so the bar
-     floats over the content. */
+  /* Three zones: track info left, transport centered, queue/volume/quality
+     right. The equal side tracks keep the transport dead-center while both
+     sides fit; the right track never drops below its controls, so when they
+     do not fit the transport gives way to the left and the title narrows,
+     instead of the zones drawing over each other. The box (position/height)
+     comes from app.css so the bar floats over the content. The bar is a size
+     container (the window's width docked, the main column's floating) and the
+     tiers at the end shed controls from the row as it narrows. */
   .player {
+    container: bar / inline-size;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+  }
+  .row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr);
     align-items: center;
     gap: 12px;
     padding: 0 16px;
@@ -507,7 +518,8 @@
     gap: 12px;
     min-width: 0;
   }
-  .zone.left { justify-self: start; }
+  /* The left zone stretches to its track rather than sizing to its content:
+     the nowrap title's min-content would otherwise hold it wider. */
   .zone.center { justify-self: center; gap: 10px; }
   .zone.right { justify-self: end; }
 
@@ -633,15 +645,17 @@
     opacity: 1;
   }
 
+  /* The title column is what gives when the bar is short of room (its lines
+     ellipsize, and scroll on hover); everything else in the zone keeps its
+     size, so the zone can always shrink into its track. */
   .now {
     display: flex;
     flex-direction: column;
-    min-width: 120px;
+    min-width: 0;
     max-width: 260px;
     animation: now-in var(--dur-view) var(--ease-enter) backwards;
   }
-  /* Title + jamming cat. With the cat, the title's minimum width moves to
-     this wrapper and the title hugs its text; the cat's auto margins split the
+  /* Title + jamming cat. The cat keeps its size; its auto margins split the
      leftover room, so it sits as far from the title as from the heart (the
      wrapper gap on its left matches the zone gap on its right). */
   .now-cat {
@@ -650,11 +664,8 @@
     gap: 12px;
     min-width: 0;
   }
-  .now-cat:has(:global(.catjam)) {
-    min-width: calc(120px + 12px + var(--cat-px));
-  }
-  .now-cat:has(:global(.catjam)) .now {
-    min-width: 0;
+  .now-cat :global(.catjam) {
+    flex: 0 0 auto;
   }
   .now-cat :global(.catjam) {
     margin-inline: auto;
@@ -901,7 +912,12 @@
     font-size: 12px;
     white-space: nowrap;
   }
+  /* Shares the squeeze with the title rather than holding the zone open. */
   .buffering {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
     font-size: 12px;
     white-space: nowrap;
   }
@@ -964,8 +980,44 @@
   .plate[aria-expanded="true"] > .chev {
     opacity: 1;
   }
-  @media (max-width: 900px) {
+
+  /* Narrow bars shed in steps, least needed first: the window's 720px floor,
+     and a floating bar beside a docked queue, leave far less than the ~1250px
+     everything takes. The format and output path stay in the quality menu,
+     the seek line still shows progress without the time readout, and the
+     sleep timer stays while a timer is running. */
+  @container bar (width < 1260px) {
+    .zone.right { --bar-volume: 104px; }
+  }
+  @container bar (width < 1160px) {
     .plate > .spec { display: none; }
+  }
+  @container bar (width < 1040px) {
+    .time { display: none; }
+  }
+  @container bar (width < 900px) {
+    .row { gap: 8px; padding: 0 12px; }
+    .zone { gap: 8px; }
+    .zone.center { gap: 4px; }
+    .zone.right { --bar-volume: 80px; }
+    .plate > span { padding: 0 7px; }
+    .plate > .chev { display: none; }
+  }
+  /* From here the transport stops holding dead-center, so the title takes
+     the room the trimmed right zone no longer needs. */
+  @container bar (width < 800px) {
+    .row { grid-template-columns: minmax(0, 1fr) auto auto; }
+    .mini,
+    .zone.right > :global(.moon:not(.on)),
+    .plate > .seg { display: none; }
+  }
+  @container bar (width < 640px) {
+    .plate { display: none; }
+    .zone.right { --bar-volume: 30px; }
+    .zone.right :global(.volume .track) { display: none; }
+  }
+  @container bar (width < 480px) {
+    .mode { display: none; }
   }
 
   /* Quality menu "Now playing" (rendered inside the menu): an eyebrow row —

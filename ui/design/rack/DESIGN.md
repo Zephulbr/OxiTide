@@ -54,7 +54,11 @@ content; widely spaced lowercase labels; app-like flat buttons inside the rack.
 Selector: sources mirror the default sidebar — Home, Explore (search lives there),
 Feed, History, Library (every collection and detail route). Every selector key, sources
 and utility keys alike (Sleep, Mini, Setup), is a lamp above a 34px key on one baseline;
-Power uses the same two rows. The Sleep lamp lights while a timer is armed.
+Power uses the same two rows. The Sleep lamp lights while a timer is armed. The selector
+fits the window down to its 720px floor: below 1080px the "Network audio player" silk and
+Power go; below 920px every key hugs its label (no 76px / 58px minimums) and the logo
+stands without the wordmark. Trays (`[role="tablist"]` and the like) never outgrow the
+display; Settings' narrow tab tray wraps.
 
 Expanded deck right column: amp (wide: DSP keys stacked left, 150px meters centred,
 1.35× knob right) · spectrum (150px) · Now playing (lyrics VFD 1.25fr — nine lines
@@ -70,7 +74,8 @@ Mini player (`RackMini`, 300×430): a compact deck — head (name, quality silk,
 key), cover glass window taking the slack (hidden under 400px tall), the deck VFD
 (18px segments), transport and play-mode trays — over a compact amp (Bars meter on a VFD
 beside a 0.7× knob). Units 10px 12px padding, 4px gap. The queue is a unit sliding up
-over the stack.
+over the stack. At its 260px floor the VFD drops the XFADE annunciator (a container query
+under 250px of VFD) so the track counter stays in the window.
 
 Queue: with the column visible, the Queue key swaps the Playlists unit for the **queue
 changer** (§5.11); folded or in Now Playing it is the drawer over the display.

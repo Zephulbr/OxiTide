@@ -409,16 +409,17 @@
     }
   });
 
+  // One-time boot reads, untracked: `appearance.init` reads the look's state
+  // before its first await (`apply()`), so a tracked effect re-ran it, with
+  // another config read and another pair of media listeners, on every
+  // appearance change.
   $effect(() => {
-    void appearance.init();
-  });
-
-  $effect(() => {
-    void trackFlags.init();
-  });
-
-  $effect(() => {
-    void perf.init();
+    untrack(() => {
+      void appearance.init();
+      void trackFlags.init();
+      void perf.init();
+      void mini.init();
+    });
   });
 
   $effect(() => {
@@ -515,10 +516,6 @@
     return () => {
       delete (window as unknown as { __perf?: unknown }).__perf;
     };
-  });
-
-  $effect(() => {
-    void mini.init();
   });
 
   // The login view needs room: leave mini whenever it shows without a session

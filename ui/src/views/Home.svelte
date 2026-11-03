@@ -8,7 +8,7 @@
     type PageSection,
   } from "../lib/api";
   import { errorMessage } from "../lib/errors";
-  import { editorialSections, feedAlbumItems, greeting, madeForYou, unseenCount } from "../lib/homeData";
+  import { editorialSections, feedAlbumItems, greeting, madeForYou, startPrompt, unseenCount } from "../lib/homeData";
   import { buildSuggestions, type HomeSuggestions, type RadioSeed } from "../lib/homeSuggest";
   import { shortcutEntries, type ShortcutEntry } from "../lib/media";
   import { routeForPageItem, type Nav } from "../lib/nav.svelte";
@@ -63,7 +63,9 @@
   let mixes = $state<PageItem[]>([]);
   let releases = $state<FeedActivity[]>([]);
 
-  const hello = greeting(new Date().getHours());
+  const hour = new Date().getHours();
+  const hello = greeting(hour);
+  const prompt = startPrompt(hour);
   /// The continue-listening item (HomeHero, two slots) leads the Jump back in
   /// grid when there is a track; the grid's one-row rules shift for it.
   const current = $derived(player.state.current);
@@ -191,7 +193,7 @@
 <div class="home">
   <header class="masthead">
     <h2>{hello}</h2>
-    {#if !current}<p class="muted">Pick something to start the night.</p>{/if}
+    {#if !current}<p class="muted">{prompt}</p>{/if}
   </header>
 
   <!-- Jump back in shows at once when there is a track to resume (its tiles

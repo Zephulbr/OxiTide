@@ -1,12 +1,24 @@
 import type { FeedActivity, PageItem, PageSection } from "./api";
 import { shapeForItemType } from "./media";
 
+type DayPart = "morning" | "afternoon" | "evening" | "night";
+
+function dayPart(hour: number): DayPart {
+  if (hour >= 5 && hour < 12) return "morning";
+  if (hour >= 12 && hour < 18) return "afternoon";
+  if (hour >= 18 && hour < 23) return "evening";
+  return "night";
+}
+
 /// Time-of-day greeting for the Home hero (local hour, 0-23).
 export function greeting(hour: number): string {
-  if (hour >= 5 && hour < 12) return "Good morning";
-  if (hour >= 12 && hour < 18) return "Good afternoon";
-  if (hour >= 18 && hour < 23) return "Good evening";
-  return "Good night";
+  return `Good ${dayPart(hour)}`;
+}
+
+/// The hero's line under the greeting while nothing is playing, in step with
+/// it (it used to say "the night" all day).
+export function startPrompt(hour: number): string {
+  return `Pick something to start the ${dayPart(hour)}.`;
 }
 
 /// "Made for you": the mix cards from the For You feed (daily/discovery/

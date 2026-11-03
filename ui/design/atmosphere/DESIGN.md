@@ -65,7 +65,7 @@ kicker and fan count use `--text` at 82% rather than muted.
   each end, looping) and eases them home on leave (`lib/marquee.ts`; never under reduced
   motion). Right: the quality plate — one 26px pill,
   hairline-split into tier (in the accent) · format (detailed mode:
-  "16-bit · 44.1 kHz", AAC shows its bitrate; hidden below 900px) · output (✓ BP, tooltip
+  "16-bit · 44.1 kHz", AAC shows its bitrate) · output (✓ BP, tooltip
   "Bit Perfect", or DSP with its stages) · a chevron. It opens a menu upward, its right
   edge on the plate's: the four tiers with what each serves; below a hairline, the open
   stream — an eyebrow row with the file type (FLAC) in the accent on the left and the
@@ -74,10 +74,23 @@ kicker and fan count use `--text` at 82% rather than muted.
   44.1 kHz · 938 kbps"); then Output settings…. Picking a tier restarts the track at its
   position; pressing the plate again closes the menu. The seek's hover wave cap fills
   with `--player-veil-top`, the veil's top-edge tint, so it continues the bar.
+  Everything takes about 1250px; the bar is a size container (the window docked, the main
+  column floating) and sheds in steps as it narrows, so its zones never draw over each
+  other: below 1260px the volume track is 104px; 1160px drops the plate's format (still
+  in its menu); 1040px the time readout; 900px tightens the gaps, the volume to 80px and
+  drops the chevron; 800px drops the mini-player button, the sleep timer while none is
+  set and the output segment, and the transport stops holding dead-centre so the title
+  gets the room; 640px drops the plate and leaves the volume as its mute button; 480px
+  drops shuffle and repeat. The title column is what gives in between (ellipsis, hover
+  marquee); the right zone never shrinks below its controls.
 - Now Playing "Editorial Split": artwork left (Disc default / Sleeve: the bare cover
   with square corners and its drop shadow, no panel or lit frame), metadata column
   right (eyebrow, display title, muted byline, badges, tabs Lyrics / Next / Info). The
   sidebar steps aside; the queue rail can stay docked beside it (Now Playing narrows).
+  The title stops at three lines (two under the cover with lyrics) and the byline at two,
+  the full title as the tooltip; both step down in size on short windows, and a column
+  still too tall overflows downward (`safe center`), never off the top. Lyric lines scale
+  with their column (`8cqi`, 18px up to the full 33px).
 - Queue rail (`QueueRail.svelte`, shared with Mini and the Rack drawers): header with a
   display "Queue" title, "N up next · 1 h 32 min left", locate-current and clear icon
   buttons (circle-dot = "go to current", shared with lyrics). Full-bleed rows (hover and
@@ -130,12 +143,17 @@ kicker and fan count use `--text` at 82% rather than muted.
   resolved through `getTrack`, cached for the session).
 - List views follow the shared page header ([../DESIGN.md](../DESIGN.md) §2.1). History is
   a play log (clock time gutter · cover · title/artist · album · length; day headers with
-  plays and listening time; partial plays at 60%). Stats (`HistoryStats.svelte`): a
+  plays and listening time; partial plays at 60%; the album column drops when the list is
+  under 880px wide). Stats (`HistoryStats.svelte`): a
   `.lit-tint` masthead with the all-time total in 56px display type ("23 h 43 min" — never
   clock notation), the distinct track/artist/album counts, four hairline-divided figures
   (last 7 / 30 days with the daily average, day streak with the best, share played
   through) and the top five album sleeves fanned on the right (#1 in front, later ones
-  smaller and dimmer; hidden below 900px). Then a "Last 30 days" panel (Time/Plays
+  smaller and dimmer). The layout follows the stats' own width (a container, so the
+  sidebar, a docked queue and Rack's display count): the four figures sit in one row only
+  from 1880px (two rows below); below 1400px the counts run under the headline with the
+  fan beside it; below 960px the charts and top lists stack; below 860px the fan goes and
+  the total drops to 42px. Then a "Last 30 days" panel (Time/Plays
   segmented toggle, accent gradient bars with today's at full strength, a dashed average
   line, hover dims the other days and shows a float-veil tip) beside "When you listen"
   (24 hourly bars and Monday-first weekday meters, the peak in solid accent, with a
