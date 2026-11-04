@@ -36,4 +36,28 @@
 
 ## Results
 
-_Pending the owner's release corpus._
+**Corpus 2026-11-04** (`corpus-20261104-025308`, unattended with `scripts/perf/run-corpus.ps1`):
+release exe built from `ee5fba8` (`app:build:perf`), Ryzen 7 5700X3D, 144 Hz, WebView2 156.0.4314.58,
+owner config (Instrument dark, crossfade 4 s, CatJam on), scrobbling off for the run. 5 runs each
+of S1, S2, S3-miss, S3-hit, S4, S5-instrument, S5-atmosphere, S5-atmosphere-light, S6, S7, S11, S13,
+S14; S8 and S9 (120 min) once. No timeouts; every playback run has `first_pcm`; zero underruns in
+every run. S12 not run (needs the owner to close the window).
+
+| Ruling | Outcome |
+|---|---|
+| R3 (S4 gap) | **Resolved, no debt:** `advance_max_gap_ms` 42 median / 43 worst (≤ 100). |
+| R4 (S6 p99) | Still over: 34.7 median / 62.5 worst. Budget set to **72** (worst + 15 %). |
+| R5 | S2 first paint 403 (≤ 1000); S3-hit `cache_hits` 2 (≥ 1); S3-hit TTFS 222, S3-miss 1391 / mean 638: all PASS. |
+| R7 | `underrun_count` max 0 (required) added to S4 and S9. |
+| R2 (memory) | **Applied to S1–S7** (2026-11-04): S1 735, S2 730, S3-miss 720, S3-hit 720, S4 855, S5-instrument 750, S5-atmosphere 745, S5-atmosphere-light 805, S6 805, S7 850. The ~110–130 MB rise over Track 13 (S1 497 → 609, …) is not the app: the Track 13 UI on today's WebView2 (156, installed 2026-11-01) reads the same start-page memory as today's UI (601–615 vs 584–631 MB). **S8 and S9 held:** their worst runs include the dynamic-colour glide's heap growth (`2026-11-04-v1-perf-regressions-webview.md`); they take R2 from a re-run after that fix. |
+
+The three apparent regressions, pinned (`2026-11-04-v1-perf-regressions-webview.md`):
+
+- **S13** and **S14** were harness artifacts. CPU: Windows process times are tick-sampled, and the
+  same S13 runs read 7.8–32.0 % on them but 20.1–20.5 % on exact cycle counts; a cycle A/B shows the
+  Track 13 UI costs the same (−1.5 %). Frames and long tasks: start-up and the mode switch before
+  `measure_start`. S14 IPC: the same 369 events over a shorter window. All fixed in the harness; a
+  re-run (`corpus-20261104-125420`) passes every S13/S14 row except S13 `cpu_webview_pct`, whose
+  13.6 budget was set on tick-sampled CPU: S11–S14 CPU budgets need a cycle-based re-baseline.
+- **S9** is real: the dynamic-colour glide restyles the whole page every frame for 1.2 s per track
+  change and Blink's GC heap keeps the space. Every fix changes how the glide looks (owner).

@@ -2,61 +2,62 @@
   "S1": [
     { "metric": "first_paint_ms", "max": 1500 },
     { "metric": "ui_ready_ms", "max": 2500 },
-    { "metric": "memory_max_mb", "max": 570 },
+    { "metric": "memory_max_mb", "max": 735 },
     { "metric": "long_task_max_ms", "max": 100 },
     { "metric": "startup_step_max_ms", "max": 100 }
   ],
   "S2": [
     { "metric": "first_paint_ms", "max": 1000 },
-    { "metric": "memory_max_mb", "max": 560 },
+    { "metric": "memory_max_mb", "max": 730 },
     { "metric": "long_task_max_ms", "max": 100 },
     { "metric": "startup_step_max_ms", "max": 100 }
   ],
   "S3-miss": [
     { "metric": "ttfs_ms", "max": 2500 },
     { "metric": "ttfs_ms_mean", "max": 1200 },
-    { "metric": "memory_max_mb", "max": 645 }
+    { "metric": "memory_max_mb", "max": 720 }
   ],
   "S3-hit": [
     { "metric": "ttfs_ms", "max": 300 },
     { "metric": "cache_hits", "min": 1 },
-    { "metric": "memory_max_mb", "max": 645 }
+    { "metric": "memory_max_mb", "max": 720 }
   ],
   "S4": [
     { "metric": "advance_max_gap_ms", "max": 100 },
-    { "metric": "memory_max_mb", "max": 645 }
+    { "metric": "underrun_count", "max": 0, "required": true },
+    { "metric": "memory_max_mb", "max": 855 }
   ],
   "S5-instrument": [
     { "metric": "frame_p95_ms:instrument", "max": 16.7 },
     { "metric": "frame_p99_ms:instrument", "max": 33 },
     { "metric": "long_task_max_ms", "max": 100 },
     { "metric": "page_open_ms", "max": 500, "required": true },
-    { "metric": "memory_max_mb", "max": 690 }
+    { "metric": "memory_max_mb", "max": 750 }
   ],
   "S5-atmosphere": [
     { "metric": "frame_p95_ms:atmosphere", "max": 20 },
     { "metric": "frame_p99_ms:atmosphere", "max": 33 },
     { "metric": "long_task_max_ms", "max": 100 },
     { "metric": "page_open_ms", "max": 500, "required": true },
-    { "metric": "memory_max_mb", "max": 675 }
+    { "metric": "memory_max_mb", "max": 745 }
   ],
   "S5-atmosphere-light": [
     { "metric": "frame_p95_ms:atmosphere", "max": 20 },
     { "metric": "frame_p99_ms:atmosphere", "max": 33 },
     { "metric": "long_task_max_ms", "max": 100 },
     { "metric": "page_open_ms", "max": 500, "required": true },
-    { "metric": "memory_max_mb", "max": 675 }
+    { "metric": "memory_max_mb", "max": 805 }
   ],
   "S6": [
     { "metric": "frame_p95_ms:instrument", "max": 16.7 },
-    { "metric": "frame_p99_ms:instrument", "max": 33 },
+    { "metric": "frame_p99_ms:instrument", "max": 72 },
     { "metric": "filter_max_ms", "max": 50, "required": true },
     { "metric": "sort_max_ms", "max": 150, "required": true },
     { "metric": "album_open_ms", "max": 1000, "required": true },
-    { "metric": "memory_max_mb", "max": 740 }
+    { "metric": "memory_max_mb", "max": 805 }
   ],
   "S7": [
-    { "metric": "memory_max_mb", "max": 670 },
+    { "metric": "memory_max_mb", "max": 850 },
     { "metric": "queue_build_ms", "max": 250, "required": true }
   ],
   "S8": [
@@ -66,6 +67,7 @@
   "S9": [
     { "metric": "memory_drift_mb", "max": 50 },
     { "metric": "memory_drift_app_mb", "max": 25, "required": true },
+    { "metric": "underrun_count", "max": 0, "required": true },
     { "metric": "memory_max_mb", "max": 755 }
   ],
   "S11": [
