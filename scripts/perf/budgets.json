@@ -95,8 +95,8 @@
     { "metric": "memory_max_mb", "max": 707 }
   ],
   "S14": [
-    { "metric": "cpu_app_pct", "max": 2.6, "of": "median" },
-    { "metric": "cpu_webview_pct", "max": 18.1, "of": "median" },
+    { "metric": "cpu_app_pct", "max": 2.0, "of": "median" },
+    { "metric": "cpu_webview_pct", "max": 16.7, "of": "median" },
     { "metric": "ipc_events_per_min", "max": 1706, "of": "median" },
     { "metric": "ipc_kb_per_min", "max": 930, "of": "median" },
     { "metric": "frame_p95_ms:atmosphere", "max": 20 },
