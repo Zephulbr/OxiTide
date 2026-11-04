@@ -71,8 +71,8 @@
     { "metric": "memory_max_mb", "max": 755 }
   ],
   "S11": [
-    { "metric": "cpu_app_pct", "max": 1.2, "of": "median" },
-    { "metric": "cpu_webview_pct", "max": 4.3, "of": "median" },
+    { "metric": "cpu_app_pct", "max": 0.9, "of": "median" },
+    { "metric": "cpu_webview_pct", "max": 0.9, "of": "median" },
     { "metric": "ipc_events_per_min", "max": 0, "required": true },
     { "metric": "long_task_max_ms", "max": 100 },
     { "metric": "memory_max_mb", "max": 718 }
