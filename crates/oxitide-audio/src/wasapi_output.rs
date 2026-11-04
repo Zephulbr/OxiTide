@@ -6,7 +6,7 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use rtrb::{Producer, RingBuffer};
-use wasapi::{DeviceEnumerator, Direction, SampleType, StreamMode, WaveFormat};
+use wasapi::{DeviceEnumerator, DeviceState, Direction, SampleType, StreamMode, WaveFormat};
 
 use crate::decode::PcmBuffer;
 use crate::endpoint_volume::EndpointVolume;
@@ -122,6 +122,9 @@ pub struct WasapiOutput {
     /// (shared mode, or an exclusive device without hardware volume).
     software: Arc<AtomicBool>,
     device_lost: Arc<AtomicBool>,
+    /// Set by device notifications when this open fell back from the selected
+    /// device and that device (or the default) is back: see `needs_reopen`.
+    rejoin: Arc<AtomicBool>,
     status: Arc<Mutex<OutputStatus>>,
     /// Shared with every pump thread this output starts, so the count spans
     /// reopens.
@@ -142,6 +145,7 @@ impl WasapiOutput {
             control: Arc::new(VolumeControl::default()),
             software: Arc::new(AtomicBool::new(true)),
             device_lost: Arc::new(AtomicBool::new(false)),
+            rejoin: Arc::new(AtomicBool::new(false)),
             status: Arc::new(Mutex::new(OutputStatus::default())),
             starvation: Arc::new(Starvation::default()),
         }
@@ -171,6 +175,9 @@ impl AudioOutput for WasapiOutput {
         self.resolved_device_id = None;
         self.device_lost.store(false, Ordering::SeqCst);
         self.software.store(true, Ordering::SeqCst);
+        // A fresh flag per open: a notification for the previous session's
+        // device must not reopen this one.
+        self.rejoin = Arc::new(AtomicBool::new(false));
 
         let sample_rate = spec.info.sample_rate;
         let channels = spec.info.channels;
@@ -183,6 +190,7 @@ impl AudioOutput for WasapiOutput {
         let stop_thread = stop.clone();
         let spec_thread = spec.clone();
         let lost = self.device_lost.clone();
+        let rejoin = self.rejoin.clone();
         let flush = Arc::new(FlushSignal::default());
         let flush_thread = flush.clone();
         self.starvation.disarm();
@@ -192,7 +200,7 @@ impl AudioOutput for WasapiOutput {
 
         let handle = std::thread::Builder::new()
             .name("oxitide-wasapi".into())
-            .spawn(move || match setup_device(&spec_thread, &lost, starvation, control, software) {
+            .spawn(move || match setup_device(&spec_thread, &lost, &rejoin, starvation, control, software) {
                 Ok((mut session, ready)) => {
                     let _ = ready_tx.send(Ok(ready));
                     if let Err(e) = session.pump(&mut consumer, &stop_thread, &flush_thread) {
@@ -320,6 +328,10 @@ impl AudioOutput for WasapiOutput {
 
     fn underruns(&self) -> Option<u64> {
         Some(self.starvation.count())
+    }
+
+    fn needs_reopen(&self) -> bool {
+        self.producer.is_some() && self.rejoin.load(Ordering::SeqCst)
     }
 
     fn drain(&mut self, cancel: &dyn Fn() -> bool) -> Result<()> {
@@ -473,18 +485,46 @@ impl DeviceSession {
 }
 
 /// Resolve the requested device, falling back to the system default when the
-/// id no longer exists. The bool is true when a fallback happened.
+/// id no longer exists or is not active (a USB DAC that is off, still waking
+/// or unplugged keeps its endpoint id, but cannot be opened). The bool is true
+/// when a fallback happened.
 fn resolve_device(
     enumerator: &DeviceEnumerator,
     wanted: Option<&str>,
 ) -> Result<(wasapi::Device, bool)> {
     if let Some(id) = wanted {
         if let Ok(device) = enumerator.get_device(id) {
-            return Ok((device, false));
+            // An unreadable state is not proof the device is gone: try it.
+            match device.get_state() {
+                Ok(DeviceState::Active) | Err(_) => return Ok((device, false)),
+                Ok(state) => tracing::debug!("output device {id} is {state}"),
+            }
         }
     }
     let device = enumerator.get_default_device(&Direction::Render).map_err(to_error)?;
     Ok((device, wanted.is_some()))
+}
+
+/// A device notification, as a session that fell back sees it.
+#[derive(Debug, Clone, Copy)]
+enum DeviceNotice<'a> {
+    Added(&'a str),
+    State(&'a str, DeviceState),
+    Default { direction: Direction, role: wasapi::Role, id: Option<&'a str> },
+}
+
+/// True when a session playing on the default in place of `wanted` should
+/// reopen: `wanted` arrived or became active, or the render/console default it
+/// stands in for moved. The reopen resolves `wanted` again, so a default move
+/// while `wanted` is still away just follows the new default.
+fn fallback_rejoins(wanted: &str, our_id: Option<&str>, notice: DeviceNotice<'_>) -> bool {
+    match notice {
+        DeviceNotice::Added(id) => id == wanted,
+        DeviceNotice::State(id, state) => id == wanted && state == DeviceState::Active,
+        DeviceNotice::Default { direction, role, id } => {
+            direction == Direction::Render && role == wasapi::Role::Console && id != our_id
+        }
+    }
 }
 
 /// True when a default-device change means the device this session opened is
@@ -583,6 +623,7 @@ fn open_endpoint(device_id: Option<&str>, position: f32) -> Option<EndpointStepp
 fn setup_device(
     spec: &AudioOutputSpec,
     lost: &Arc<AtomicBool>,
+    rejoin: &Arc<AtomicBool>,
     starvation: Arc<Starvation>,
     control: Arc<VolumeControl>,
     software: Arc<AtomicBool>,
@@ -621,6 +662,11 @@ fn setup_device(
         OutputMode::Shared => open_shared(&device, spec, def_time)?,
     };
     if fell_back {
+        tracing::warn!(
+            "output device {} unavailable; playing on the system default {} until it returns",
+            spec.device_id.as_deref().unwrap_or_default(),
+            resolved_id.as_deref().unwrap_or("?"),
+        );
         status.notice = Some("selected output device unavailable; using system default".into());
     }
 
@@ -642,8 +688,29 @@ fn setup_device(
                 }
             });
         }
+        // A fallback stands in for the selected device: watch for it (or a
+        // new default) so playback moves back without waiting for a format
+        // change. Not device loss: the engine reopens in place, no pause.
+        let wanted = spec.device_id.clone().filter(|_| fell_back);
+        if let Some(wanted) = wanted.clone() {
+            let rejoin = rejoin.clone();
+            callbacks.set_device_added_callback(move |id| {
+                if fallback_rejoins(&wanted, None, DeviceNotice::Added(&id)) {
+                    rejoin.store(true, Ordering::SeqCst);
+                }
+            });
+        }
+        if let Some(wanted) = wanted.clone() {
+            let rejoin = rejoin.clone();
+            callbacks.set_device_state_callback(move |id, state| {
+                if fallback_rejoins(&wanted, None, DeviceNotice::State(&id, state)) {
+                    rejoin.store(true, Ordering::SeqCst);
+                }
+            });
+        }
         {
             let lost = lost.clone();
+            let rejoin = rejoin.clone();
             let our_id = resolved_id.clone();
             let opened_default = spec.device_id.is_none();
             callbacks.set_default_device_callback(move |direction, role, id| {
@@ -656,9 +723,23 @@ fn setup_device(
                 ) {
                     lost.store(true, Ordering::SeqCst);
                 }
+                if let Some(wanted) = wanted.as_deref() {
+                    let notice = DeviceNotice::Default { direction, role, id: id.as_deref() };
+                    if fallback_rejoins(wanted, our_id.as_deref(), notice) {
+                        rejoin.store(true, Ordering::SeqCst);
+                    }
+                }
             });
         }
         registration = notify_enum.register_notification_callback(callbacks).ok();
+    }
+    // The selected device may have come up between the resolve and the
+    // registration, with no notification left to tell us.
+    if fell_back {
+        let back = spec.device_id.as_deref().and_then(|id| enumerator.get_device(id).ok());
+        if back.is_some_and(|device| matches!(device.get_state(), Ok(DeviceState::Active))) {
+            rejoin.store(true, Ordering::SeqCst);
+        }
     }
 
     let exclusive = status.mode == OutputMode::Exclusive;
@@ -730,6 +811,33 @@ mod tests {
             wasapi::Role::Console,
             Some("old"),
             Some("new")
+        ));
+    }
+
+    #[test]
+    fn a_fallback_rejoins_when_the_selected_device_comes_back() {
+        let dac = "{dac}";
+        let ours = Some("{monitor}");
+        assert!(fallback_rejoins(dac, ours, DeviceNotice::Added(dac)));
+        assert!(!fallback_rejoins(dac, ours, DeviceNotice::Added("{other}")));
+        assert!(fallback_rejoins(dac, ours, DeviceNotice::State(dac, DeviceState::Active)));
+        assert!(!fallback_rejoins(dac, ours, DeviceNotice::State(dac, DeviceState::Unplugged)));
+        assert!(!fallback_rejoins(dac, ours, DeviceNotice::State("{other}", DeviceState::Active)));
+    }
+
+    #[test]
+    fn a_fallback_follows_a_new_render_console_default() {
+        let dac = "{dac}";
+        let ours = Some("{monitor}");
+        let default = |direction, role, id| DeviceNotice::Default { direction, role, id };
+        assert!(fallback_rejoins(dac, ours, default(Direction::Render, wasapi::Role::Console, Some(dac))));
+        assert!(fallback_rejoins(dac, ours, default(Direction::Render, wasapi::Role::Console, Some("{tv}"))));
+        assert!(!fallback_rejoins(dac, ours, default(Direction::Render, wasapi::Role::Console, ours)));
+        assert!(!fallback_rejoins(dac, ours, default(Direction::Capture, wasapi::Role::Console, Some(dac))));
+        assert!(!fallback_rejoins(
+            dac,
+            ours,
+            default(Direction::Render, wasapi::Role::Communications, Some(dac))
         ));
     }
 

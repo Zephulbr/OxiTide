@@ -156,6 +156,14 @@ impl AudioOutput for RoutedOutput {
         }
     }
 
+    fn needs_reopen(&self) -> bool {
+        match self.active {
+            Some(Backend::System) => self.system.needs_reopen(),
+            Some(Backend::Asio) => self.asio.needs_reopen(),
+            None => false,
+        }
+    }
+
     fn drain(&mut self, cancel: &dyn Fn() -> bool) -> Result<()> {
         match self.active_mut() {
             Ok(active) => active.drain(cancel),

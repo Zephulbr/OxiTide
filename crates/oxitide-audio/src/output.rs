@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
@@ -205,6 +205,13 @@ pub trait AudioOutput: Send {
     fn underruns(&self) -> Option<u64> {
         None
     }
+    /// True when the open fell back from the device it was asked for and
+    /// that device (or the default standing in for it) has since come back:
+    /// the engine reopens at the current position, without pausing. A cheap
+    /// flag read, polled while playing; a fresh `open` clears it.
+    fn needs_reopen(&self) -> bool {
+        false
+    }
     /// Wait until the audio written so far has been heard, so the `stop` that
     /// follows does not cut it off (the end of the queue, a reopen for the
     /// next track's format). Returns early once `cancel` says so, and is
@@ -306,6 +313,8 @@ pub struct NullOutput {
     status: Arc<Mutex<OutputStatus>>,
     queued_ms: Arc<AtomicU32>,
     underruns: Arc<AtomicU64>,
+    /// What `needs_reopen` reports; `open` clears it.
+    reopen: Arc<AtomicBool>,
     /// `open` / `flush` / `drain` / `stop`, in call order.
     calls: Arc<Mutex<Vec<&'static str>>>,
     /// The engine's control, once attached. `set_volume` stores into it like
@@ -327,6 +336,7 @@ impl Default for NullOutput {
             status: Arc::new(Mutex::new(OutputStatus::default())),
             queued_ms: Arc::new(AtomicU32::new(0)),
             underruns: Arc::new(AtomicU64::new(0)),
+            reopen: Arc::new(AtomicBool::new(false)),
             calls: Arc::new(Mutex::new(Vec::new())),
             control: Arc::new(Mutex::new(None)),
         }
@@ -370,6 +380,11 @@ impl NullOutput {
     pub fn add_underruns(&self, n: u64) {
         self.underruns.fetch_add(n, Ordering::SeqCst);
     }
+    /// Report `needs_reopen` until the next `open`, as if the selected device
+    /// came back while playing on a fallback.
+    pub fn request_reopen(&self) {
+        self.reopen.store(true, Ordering::SeqCst);
+    }
     /// The lifecycle calls so far (`open`, `flush`, `drain`, `stop`), in order.
     pub fn calls(&self) -> Vec<&'static str> {
         self.calls.lock().unwrap().clone()
@@ -380,6 +395,7 @@ impl AudioOutput for NullOutput {
     fn open(&mut self, spec: &AudioOutputSpec) -> Result<()> {
         self.calls.lock().unwrap().push("open");
         self.opens.fetch_add(1, Ordering::SeqCst);
+        self.reopen.store(false, Ordering::SeqCst);
         *self.last_spec.lock().unwrap() = Some(spec.clone());
         *self.status.lock().unwrap() = OutputStatus {
             mode: spec.mode,
@@ -446,6 +462,9 @@ impl AudioOutput for NullOutput {
     }
     fn underruns(&self) -> Option<u64> {
         Some(self.underruns.load(Ordering::SeqCst))
+    }
+    fn needs_reopen(&self) -> bool {
+        self.reopen.load(Ordering::SeqCst)
     }
 }
 

@@ -188,6 +188,10 @@ struct Inner {
     /// The stream actually served and decoded for the current track.
     stream_meta: Mutex<Option<StreamMeta>>,
     device_id: Mutex<Option<String>>,
+    /// Set when the device is (re)selected: the next track start reopens the
+    /// output even when the spec it wants is unchanged, so re-selecting the
+    /// device retries it after a fallback to the default.
+    reselect_device: AtomicBool,
     output_mode: Mutex<OutputMode>,
     exclusive_fallback: Mutex<ExclusiveFallback>,
     output_status: Mutex<OutputStatus>,
@@ -394,6 +398,7 @@ impl Engine {
             allow_fallback: AtomicBool::new(allow_fallback),
             stream_meta: Mutex::new(None),
             device_id: Mutex::new(None),
+            reselect_device: AtomicBool::new(false),
             output_mode: Mutex::new(OutputMode::Shared),
             exclusive_fallback: Mutex::new(ExclusiveFallback::Shared),
             output_status: Mutex::new(OutputStatus::default()),
@@ -473,6 +478,7 @@ impl Engine {
     /// immediately (restarts the current track at its position).
     pub fn set_output_device(&self, device: Option<String>) {
         *self.inner.device_id.lock().unwrap() = device;
+        self.inner.reselect_device.store(true, Ordering::SeqCst);
         self.restart_current_at_position();
     }
 
@@ -577,30 +583,7 @@ impl Engine {
     /// Restart the current track at its position so an output setting change
     /// applies immediately without losing the listener's place.
     fn restart_current_at_position(&self) {
-        let current = {
-            let q = self.inner.queue.lock().unwrap();
-            if q.is_playing() {
-                q.current().cloned()
-            } else {
-                None
-            }
-        };
-        if let Some(item) = current {
-            let same_track =
-                self.inner.position_track.load(Ordering::SeqCst) == item.track_id;
-            let position = if same_track {
-                self.inner.position_ms.load(Ordering::SeqCst)
-            } else {
-                0
-            };
-            *self.inner.seek_target.lock().unwrap() = Some(PendingSeek {
-                track_id: item.track_id,
-                position_ms: position,
-                auto_start: true,
-            });
-            self.inner.generation.fetch_add(1, Ordering::SeqCst);
-            self.inner.notify_worker();
-        }
+        restart_current_at_position(&self.inner);
     }
 
     /// Restart the current track at its last position. Recovers a stream
@@ -2152,6 +2135,30 @@ fn crossfade_frames(
     settings.duration_ms as u64 * rate as u64 / 1000
 }
 
+/// Start the current track again at its position, as a new generation (the
+/// running session ends as superseded). A no-op unless the queue is playing.
+fn restart_current_at_position(inner: &Inner) {
+    let current = {
+        let q = inner.queue.lock().unwrap();
+        if q.is_playing() {
+            q.current().cloned()
+        } else {
+            None
+        }
+    };
+    if let Some(item) = current {
+        let same_track = inner.position_track.load(Ordering::SeqCst) == item.track_id;
+        let position = if same_track { inner.position_ms.load(Ordering::SeqCst) } else { 0 };
+        *inner.seek_target.lock().unwrap() = Some(PendingSeek {
+            track_id: item.track_id,
+            position_ms: position,
+            auto_start: true,
+        });
+        inner.generation.fetch_add(1, Ordering::SeqCst);
+        inner.notify_worker();
+    }
+}
+
 /// A pending seek: the track it belongs to, the target, and whether it may
 /// start a session by itself (a user seek) or must wait for a play press
 /// (device-loss recovery).
@@ -2304,7 +2311,13 @@ fn run_session(
             (automix::active(&settings.crossfade), settings.crossfade.resample)
         };
         let mut resampler: Option<StreamResampler> = None;
-        let keep_device = advanced
+        // The open device stands in for the selected one, which is back:
+        // reopen even though the wanted spec is unchanged (it names the
+        // selected id, not the fallback that actually opened).
+        let device_back = output.needs_reopen();
+        let rejoin = device_back | inner.reselect_device.swap(false, Ordering::SeqCst);
+        let keep_device = !rejoin
+            && advanced
             && want.mode == OutputMode::Shared
             && open_spec.as_ref().is_some_and(|open| {
                 let same_rate = open.info.sample_rate == want.info.sample_rate;
@@ -2437,7 +2450,10 @@ fn run_session(
                 .position_ms
                 .store(frames.saturating_mul(1000) / info.sample_rate as u64, Ordering::SeqCst);
         }
-        if !keep_device && open_spec.as_ref() != Some(&want) {
+        if rejoin || (!keep_device && open_spec.as_ref() != Some(&want)) {
+            if device_back {
+                tracing::info!("selected output device is back; reopening on it");
+            }
             if open_spec.is_some() {
                 if advanced {
                     // The previous track ended on its own: play out its end.
@@ -2503,6 +2519,7 @@ fn run_session(
         let mut planned: Option<(TransitionPlan, u64, Option<u64>, Option<TransitionPlan>)> = None;
         let mut analysis: Option<PendingPlan> = None;
         let mut base_frames: u64 = 0;
+        let mut rejoin_tried = false;
         loop {
             if inner.generation.load(Ordering::SeqCst) != gen {
                 return SessionOutcome::Superseded;
@@ -2627,6 +2644,18 @@ fn run_session(
                 // The device drained its ring while nothing was written.
                 output_refills(inner, rate);
                 continue;
+            }
+            // Playing on a fallback and the selected device is back: move to
+            // it now, like re-selecting it in Settings (the track restarts at
+            // its position in a new session, which reopens the output).
+            if !rejoin_tried && output.needs_reopen() {
+                // Once per track: if the queue is not playing there is
+                // nothing to restart, and the next track's open rejoins.
+                rejoin_tried = true;
+                restart_current_at_position(inner);
+                if inner.generation.load(Ordering::SeqCst) != gen {
+                    return SessionOutcome::Superseded;
+                }
             }
             // A queue edit mid-track (Add to queue or Play next on the last
             // track, a reorder, autoplay appending) can change what follows:
@@ -6757,9 +6786,56 @@ mod tests {
         fn underruns(&self) -> Option<u64> {
             self.inner.underruns()
         }
+        fn needs_reopen(&self) -> bool {
+            self.inner.needs_reopen()
+        }
         fn drain(&mut self, cancel: &dyn Fn() -> bool) -> Result<()> {
             self.inner.drain(cancel)
         }
+    }
+
+    /// Regression (2026-11-04): playing on the default because the selected
+    /// DAC was not ready at open, the output said the DAC was back, and the
+    /// engine kept playing on the fallback until a format change. It must
+    /// move at once, at the current position, without pausing.
+    #[test]
+    fn a_returned_device_reopens_the_output_mid_track_without_pausing() {
+        let (engine, output) = throttled_engine();
+        engine.set_output_device(Some("dac".into()));
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| engine.state().position_ms >= 300);
+        let opens = output.opens();
+        let at = engine.state().position_ms;
+
+        output.request_reopen();
+        wait_for(|| output.opens() > opens);
+        assert_eq!(output.opens(), opens + 1, "one reopen per notice");
+        assert_eq!(output.last_spec().unwrap().device_id.as_deref(), Some("dac"));
+        let state = engine.state();
+        assert!(state.playing, "a returned device must not pause playback");
+        assert!(state.bit_perfect_notice.is_none(), "{:?}", state.bit_perfect_notice);
+        assert!(
+            state.position_ms + 100 >= at,
+            "the reopen restarted the track: {} ms, was {at} ms",
+            state.position_ms
+        );
+        assert!(!output.needs_reopen(), "the reopen consumed the notice");
+    }
+
+    /// Re-selecting the device that is already selected must retry it: the
+    /// wanted spec is unchanged, so without this a fallback never reopens.
+    #[test]
+    fn reselecting_the_same_device_reopens_the_output() {
+        let (engine, output) = throttled_engine();
+        engine.set_output_device(Some("dac".into()));
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| engine.state().position_ms >= 300);
+        let opens = output.opens();
+
+        engine.set_output_device(Some("dac".into()));
+        wait_for(|| output.opens() > opens);
+        assert!(engine.state().playing);
+        assert!(engine.state().position_ms >= 200, "re-selecting restarted the track");
     }
 
     fn throttled_engine() -> (Engine, NullOutput) {
