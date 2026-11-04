@@ -241,7 +241,7 @@ switch. It is pointer feedback only; it never lights on its own. The volume trac
 
 ## 5. Motion
 
-Backdrop + dynamic-colour crossfade 1200 ms; disc spin ~12 s/rev (now-playing mark
+Backdrop + dynamic-colour crossfade 1200 ms (the colours in 36 steps); disc spin ~12 s/rev (now-playing mark
 2 s/rev), eases to stop in ~600 ms on pause; queue dock width glide 380 ms on `--ease-in-out`
 (AR-5 as amended by AR-9; the page's card widths follow it for the length of the glide —
 see §3); everything else per foundation §2.3.

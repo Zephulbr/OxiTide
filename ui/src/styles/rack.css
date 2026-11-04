@@ -20,9 +20,11 @@
   --lamp-h: 64;
   --lamp-c: 0.16;
   --lamp-dim: 1;
+  /* Stepped like the dynamic colours (tokens.css): inherited tokens on the
+     root restyle the whole page at every change. */
   transition:
-    --lamp-h var(--dur-mood) ease,
-    --lamp-c var(--dur-mood) ease;
+    --lamp-h var(--dur-mood) steps(36, jump-none),
+    --lamp-c var(--dur-mood) steps(36, jump-none);
   color-scheme: dark;
 
   /* ---- Private material tokens ---- */

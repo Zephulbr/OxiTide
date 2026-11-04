@@ -164,13 +164,17 @@
 
   /* Dynamic-color crossfade (spec §5.2): @property-registered tokens
      interpolate natively; a new value interrupts the in-flight transition
-     and starts from the current interpolated color. */
+     and starts from the current interpolated color. Stepped (30 updates a
+     second over the 1.2 s): the tokens are inherited, so every change
+     restyles the whole page, and a per-frame glide at 144 Hz (~170 full
+     restyles per track change) fragmented Blink's GC heap without bound
+     (2026-11-04 S9 notes). */
   transition:
-    --dyn-primary var(--dur-mood) linear,
-    --dyn-on-primary var(--dur-mood) linear,
-    --dyn-secondary var(--dur-mood) linear,
-    --dyn-tertiary var(--dur-mood) linear,
-    --dyn-backdrop var(--dur-mood) linear;
+    --dyn-primary var(--dur-mood) steps(36, jump-none),
+    --dyn-on-primary var(--dur-mood) steps(36, jump-none),
+    --dyn-secondary var(--dur-mood) steps(36, jump-none),
+    --dyn-tertiary var(--dur-mood) steps(36, jump-none),
+    --dyn-backdrop var(--dur-mood) steps(36, jump-none);
 }
 
 [data-density="compact"] {

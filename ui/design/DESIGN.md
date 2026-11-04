@@ -324,7 +324,7 @@ A single type shows its full table, or a `minmax(168px, 1fr)` tile grid, and pag
 | `--dur-reveal` | 80 ms | seek reveal |
 | `--dur-state` | 180 ms | selection, tabs, expand |
 | `--dur-view` | 240 ms | panes, drawers, overlays |
-| `--dur-mood` | 1200 ms | colour glides on track change |
+| `--dur-mood` | 1200 ms | colour glides on track change, in 36 steps (30 a second): the colour tokens are inherited from the root, so each change restyles the page, and a per-frame glide grew the renderer's heap on every track change |
 
 Easings: `--ease-enter` (entrances, hover/state changes), `--ease-exit` (exits),
 `--ease-in-out` (two-way glides); linear only for spins. `--rise` (10px, 0 under reduced

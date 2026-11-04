@@ -100,7 +100,7 @@ changer** (§5.11); folded or in Now Playing it is the drawer over the display.
 
 Inputs: `--lamp-h` (hue°), `--lamp-c` (OKLCH chroma), `--lamp-dim` (0.4–1, Lamp
 brightness). Both `--lamp-h` and `--lamp-c` are `@property`-registered numbers so changes
-glide (1.2 s; instant under reduced motion). Lightness is **fixed per role**:
+glide (1.2 s in 36 steps, like the dynamic colours; instant under reduced motion). Lightness is **fixed per role**:
 
 | Role | Formula |
 |---|---|
