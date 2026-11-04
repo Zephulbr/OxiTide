@@ -19,9 +19,27 @@
   } = $props();
 
   let disc: SVGGElement | undefined;
+  let turn: HTMLSpanElement | undefined;
   // Outside the effect, so a pause/resume keeps the angle and the speed.
   let angle = 0;
   let speed = 0;
+
+  /// While it turns, the compositor rotates the wrapper: a frame is then a
+  /// transform update. Writing the angle into the SVG on every frame cost a
+  /// layout per frame (144 a second, ~60 ms/s of main thread with one mark
+  /// on screen). At rest the angle goes back into the SVG, drawn crisp.
+  function show(moving: boolean) {
+    if (!turn || !disc) return;
+    if (moving) {
+      disc.setAttribute("transform", "rotate(0 12 12)");
+      turn.style.willChange = "transform";
+      turn.style.transform = `rotate(${angle}deg)`;
+    } else {
+      turn.style.transform = "";
+      turn.style.willChange = "";
+      disc.setAttribute("transform", `rotate(${angle} 12 12)`);
+    }
+  }
 
   // Same eased-speed loop as DiscArt, faster (one turn per 2 s) so motion
   // reads at glyph size. The loop runs only while the disc turns: it starts
@@ -31,7 +49,7 @@
     if (!appearance.ambientMotion) {
       angle = 0;
       speed = 0;
-      disc?.setAttribute("transform", "rotate(0 12 12)");
+      show(false);
       return;
     }
     if (!spinning && speed === 0) return;
@@ -47,37 +65,45 @@
       speed += ((spinning ? 180 : 0) - speed) * Math.min(1, dt / 0.15);
       if (Math.abs(speed) < 0.01) speed = 0;
       angle = (angle + speed * dt) % 360;
-      disc?.setAttribute("transform", `rotate(${angle} 12 12)`);
-      if (spinning || speed !== 0) raf = requestAnimationFrame(tick);
+      const moving = spinning || speed !== 0;
+      show(moving);
+      if (moving) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      show(false);
+    };
   });
 </script>
 
-<svg
-  class="np-mark"
-  width={size}
-  height={size}
-  viewBox="0 0 24 24"
-  role={label ? "img" : undefined}
-  aria-label={label ?? undefined}
-  aria-hidden={label ? undefined : "true"}
->
-  <g bind:this={disc}>
-    <circle class="vinyl" cx="12" cy="12" r="11" />
-    <circle class="groove" cx="12" cy="12" r="8" />
-    <circle class="groove" cx="12" cy="12" r="5.6" />
-    <!-- The sheen is the one asymmetric part: it is what makes the spin visible. -->
-    <path class="sheen" d="M 12 2.6 A 9.4 9.4 0 0 1 20.1 7.3" />
-    <circle class="label" cx="12" cy="12" r="3.2" />
-  </g>
-</svg>
+<span class="np-mark" bind:this={turn} style:width="{size}px" style:height="{size}px">
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    role={label ? "img" : undefined}
+    aria-label={label ?? undefined}
+    aria-hidden={label ? undefined : "true"}
+  >
+    <g bind:this={disc}>
+      <circle class="vinyl" cx="12" cy="12" r="11" />
+      <circle class="groove" cx="12" cy="12" r="8" />
+      <circle class="groove" cx="12" cy="12" r="5.6" />
+      <!-- The sheen is the one asymmetric part: it is what makes the spin visible. -->
+      <path class="sheen" d="M 12 2.6 A 9.4 9.4 0 0 1 20.1 7.3" />
+      <circle class="label" cx="12" cy="12" r="3.2" />
+    </g>
+  </svg>
+</span>
 
 <style>
   .np-mark {
     display: block;
     flex: 0 0 auto;
+  }
+  .np-mark svg {
+    display: block;
   }
   .vinyl {
     fill: var(--accent);

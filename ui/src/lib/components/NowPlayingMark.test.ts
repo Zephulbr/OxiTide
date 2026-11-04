@@ -36,8 +36,11 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const angleOf = () =>
-  Number(/rotate\(([-\d.]+)/.exec(document.querySelector("g")?.getAttribute("transform") ?? "")?.[1] ?? 0);
+/// Turning, the wrapper carries the angle (a compositor rotation); at rest
+/// the SVG does, with the wrapper untransformed.
+const wrapperAngle = () => /rotate\(([-\d.]+)deg\)/.exec(document.querySelector<HTMLElement>(".np-mark")?.style.transform ?? "")?.[1];
+const svgAngle = () => /rotate\(([-\d.]+)/.exec(document.querySelector("g")?.getAttribute("transform") ?? "")?.[1];
+const angleOf = () => Number(wrapperAngle() ?? svgAngle() ?? 0);
 
 describe("NowPlayingMark", () => {
   it("runs no frame loop while paused at rest", () => {
@@ -51,11 +54,16 @@ describe("NowPlayingMark", () => {
     expect(queue).toHaveLength(1);
     const playingAngle = angleOf();
     expect(playingAngle).toBeGreaterThan(0);
+    // Turning: the compositor rotates the wrapper; the SVG stays upright.
+    expect(wrapperAngle()).toBeDefined();
+    expect(Number(svgAngle())).toBe(0);
 
     await rerender({ playing: false });
     step(1000);
-    // Settled: no frame is pending, and the disc keeps the angle it stopped at.
+    // Settled: no frame is pending, and the disc keeps the angle it stopped at,
+    // drawn into the SVG (crisp) with the wrapper back to no transform.
     expect(queue).toHaveLength(0);
+    expect(wrapperAngle()).toBeUndefined();
     const rest = angleOf();
     expect(rest).not.toBe(0);
 
