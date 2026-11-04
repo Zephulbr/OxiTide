@@ -506,6 +506,7 @@ fn main() {
             commands::get_diagnostics,
             commands::perf_mark,
             commands::perf_quit,
+            commands::perf_close_window,
             commands::get_perf_snapshot,
             commands::perf_submit_ui_metrics,
             commands::perf_queue_build,

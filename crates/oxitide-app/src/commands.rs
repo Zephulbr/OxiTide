@@ -2201,6 +2201,18 @@ pub fn perf_quit(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Perf scenario S12: closes the main window as the title bar's close button
+/// does, so the real close-to-tray path runs (window state saved, window
+/// hidden, WebView2 idled). Only in a perf session.
+#[tauri::command]
+pub fn perf_close_window(app: tauri::AppHandle) -> Result<(), String> {
+    if crate::perf::session().is_none() {
+        return Err("no perf session".into());
+    }
+    let window = app.get_webview_window("main").ok_or("no main window")?;
+    window.close().map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn get_perf_snapshot() -> crate::perf::PerfSnapshot {
     crate::perf::snapshot()
@@ -3040,6 +3052,8 @@ mod tests {
         "set_autoplay",
         "queue_reorder", "queue_remove", "queue_clear", "retry", "queue_add", "queue_play_next",
         "queue_insert", "restore_session", "set_play_source", "clear_session", "perf_mark", "perf_quit",
+        // Window calls belong on the main thread.
+        "perf_close_window",
         "get_perf_snapshot", "perf_submit_ui_metrics", "perf_queue_build", "set_output_device",
         "set_preferred_quality", "set_exclusive", "set_exclusive_fallback", "set_dsp_settings",
         "get_config", "get_audio_status", "get_cache_status", "set_allow_fallback",

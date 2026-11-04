@@ -614,6 +614,7 @@ mod tests {
         "get_diagnostics",
         "perf_mark",
         "perf_quit",
+        "perf_close_window",
         "get_perf_snapshot",
         "perf_submit_ui_metrics",
         "perf_queue_build",

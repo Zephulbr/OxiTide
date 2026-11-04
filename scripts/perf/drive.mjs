@@ -362,16 +362,22 @@ const scenarioFallback = async (id) => {
       await measureStart();
       await delay(minutesFlag(5) * 60_000);
     } else if (id === "S12") {
-      // Playing while hidden to the tray (close_to_tray on). The owner closes
-      // the window when prompted; measurement starts 20 s later.
+      // Playing while hidden to the tray (close_to_tray on). The driver sends
+      // the window the close request its close button sends (`perf_close_window`),
+      // so the app's own close-to-tray path hides it; measurement starts 20 s
+      // after the page reports itself hidden.
       await awaitLoggedIn();
+      const config = await invoke("get_config");
+      if (!config.ui.close_to_tray) throw new Error("S12 needs close to tray on (Settings)");
       const items = requireTracks(await getFavoriteTracks(), 10).slice(0, 10).map(trackToQueueItem);
       await invoke("set_repeat", { mode: "all" });
       await playItems(items);
       await awaitPlaying("S12 playback");
       await until("!!window.__perf", "__perf bridge");
       await evaluate("window.__perf.sampleFrames(false)");
-      console.log("S12: close the window to the tray now");
+      await invoke("perf_close_window");
+      await until('document.visibilityState === "hidden"', "S12 window hidden to the tray", 15_000);
+      console.log("S12: window hidden to the tray");
       await delay(20_000);
       await measureStart();
       await delay(minutesFlag(10) * 60_000);

@@ -12,13 +12,13 @@
 #   a display that powers off marks the WebView occluded and throttles its frames.
 # - Each scenario runs in a child process with a timeout; a hung one is killed
 #   and the corpus goes on.
-# S12 is left out by default: the owner has to close the window to the tray.
+# S12 hides the window to the tray itself (perf_close_window), so it runs unattended too.
 param(
     [string[]]$Scenarios = @(
         "S1", "S2",
         "S5-instrument", "S5-atmosphere", "S5-atmosphere-light", "S6", "S7", "S14", "S13",
         "S3-miss", "S3-hit",
-        "S11",
+        "S11", "S12",
         "S4", "S8", "S9"
     ),
     [int]$Runs = 5,
