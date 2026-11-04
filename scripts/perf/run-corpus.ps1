@@ -126,9 +126,22 @@ try {
         $summary += [pscustomobject]@{ scenario = $id; runs = $n; files = $files; minutes = $mins; timed_out = $timedOut; warning_lines = $warnings }
     }
 } finally {
-    foreach ($f in $stateFiles) {
-        $bak = Join-Path $backupDir $f
-        if (Test-Path -LiteralPath $bak) { Copy-Item -LiteralPath $bak -Destination $cfgDir -Force }
+    # Nothing of the app may still be writing when the files go back: a late
+    # write would leave a perf queue/history behind, and the next backup would
+    # keep it. Restore, then check again after a pause.
+    Get-Process oxitide-app -ErrorAction SilentlyContinue | ForEach-Object { & taskkill /PID $_.Id /T /F 2>$null | Out-Null }
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        foreach ($f in $stateFiles) {
+            $bak = Join-Path $backupDir $f
+            if (Test-Path -LiteralPath $bak) { Copy-Item -LiteralPath $bak -Destination $cfgDir -Force }
+        }
+        Start-Sleep -Seconds 5
+        $drift = @($stateFiles | Where-Object {
+            $bak = Join-Path $backupDir $_
+            (Test-Path -LiteralPath $bak) -and ((Get-FileHash -LiteralPath $bak).Hash -ne (Get-FileHash -LiteralPath (Join-Path $cfgDir $_)).Hash)
+        })
+        if ($drift.Count -eq 0) { break }
+        Log "state changed after restore ($($drift -join ', ')); restoring again"
     }
     Log "restored $($stateFiles -join ', ') (scrobbling back as it was)"
     [OxiPerf.Power]::SetThreadExecutionState([uint32]"0x80000000") | Out-Null

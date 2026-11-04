@@ -95,11 +95,22 @@ For the owner (visual):
    Rack's lamp glide (`rack.css`: `--lamp-h` / `--lamp-c`, registered `inherits: true`,
    transitioned on `:root` over the same 1.2 s) has the same shape and takes the same fix (not
    soak-tested in Rack).
-2. **Rack meters at the tap rate** (Track 13 follow-up 2): S13 is 20 % of a core, the needles redraw
-   at ~48 Hz from 30 Hz tap frames; drawing per tap frame cuts the main-thread meter work by ~⅓.
-3. **Needles as compositor rotations:** rotate the already-separate needle layer with a CSS transform
-   instead of re-painting the SVG line at each angle: no paint/raster per meter frame, but the line is
-   resampled rather than re-drawn at each angle (a slightly softer edge), so it needs an eye on it.
+2. **Rack meters** (S13 is ~20 % of a core). Measured on builds side by side, Rack playing, the
+   harness frame sampler off (as in real use), cycle CPU of WebView2 + app:
+
+   | Variant | Gcycles/s | Change |
+   | --- | --- | --- |
+   | today (needles redrawn at ~48 Hz) | 0.53–0.58 | — |
+   | needle layer rotated by the compositor, crisp redraw at rest | 0.53–0.55 | ≈ −5 % |
+   | meter loop sleeps through the 144 Hz frames it skips (rAF 144 → 49/s) | 0.52–0.54 | ≈ 0 |
+   | meters drawn at ~30 Hz (`MIN_STEP_MS` 1000/30 − 1) | 0.37–0.40 | **−27 %** |
+
+   The cost is per *changed* frame: each one re-layerizes the whole Rack page (~0.8 ms) and is
+   composited; skipped frames were already nearly free, and a cheaper needle still changes the frame.
+   Hiding the needles (0.25) only showed what no change at all costs. Rotation and loop sleeping were
+   tried and reverted; 30 Hz is the one lever (visual: needles move ~29 times a second, not ~48).
+3. The S13 scenario keeps the harness frame sampler on, a rAF loop of its own, so S13 cannot show
+   frame-count savings in Rack; read Rack CPU work with the sampler off.
 
 Harness/methodology (owner rulings):
 
