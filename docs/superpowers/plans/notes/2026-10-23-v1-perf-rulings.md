@@ -61,8 +61,8 @@ The three apparent regressions, pinned (`2026-11-04-v1-perf-regressions-webview.
   13.6 budget was set on tick-sampled CPU: S11–S14 CPU budgets need a cycle-based re-baseline.
   **S14 re-baselined** (owner, 2026-11-04; rule unchanged, median + 15 %, ≥ +0.5 pt): WebView2
   16.7 (median 14.5), app 2.0 (1.5). **S11 re-baselined** (`corpus-20261104-202535`): WebView2 0.9
-  (median 0.35, the +0.5 pt floor), app 0.9 (0.42). S13 after the 30 Hz meter decision; S12 from its
-  attended run.
+  (median 0.35, the +0.5 pt floor), app 0.9 (0.42). **S13 re-baselined**: meters stay at ~48 Hz
+  (owner: visibly smoother than 30 Hz), WebView2 23.5 (median 20.4), app 1.9 (1.4). S12 from its run.
 - **S8/S9 re-run with the stepped glide** (`corpus-20261104-175831`): S9 drift +72 (≤ 50; was +138);
   the renderer's slow growth halved (~0.6 MB/min) but it now jumps 195 → 358 MB in the first 10 min,
   which the morning corpus did not show (216 → 230); S8 peaks at 896 with the renderer at 360 MB in
