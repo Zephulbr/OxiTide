@@ -82,6 +82,15 @@ export function createPerf() {
     raf = requestAnimationFrame(tick);
   }
 
+  /// The driver's `measure_start`: drop the frames and long tasks seen so far
+  /// (start-up, a mode switch, fixture loads), so the rows that follow cover
+  /// only the steady window the checker measures.
+  function resetSamples() {
+    frames.reset();
+    longTasks.reset();
+    if (raf !== 0) lastFrame = performance.now();
+  }
+
   function mark(name: string) {
     void api.perfMark(name).catch(() => {});
   }
@@ -112,6 +121,7 @@ export function createPerf() {
     init,
     mark,
     recordInteraction,
+    resetSamples,
     setFrameSampling,
     toggleHud,
     dispose,

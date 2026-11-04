@@ -391,6 +391,30 @@ test("a run with only partial frame windows leaves the frame rows unmeasured", (
   assert.equal(metrics["frame_p99_ms:instrument"], undefined);
 });
 
+test("frame and long-task rows before measure_start are not counted", () => {
+  const ui = (t_ms, p95, p99, longMax) => ({
+    kind: "ui_metrics",
+    t_ms,
+    metrics: {
+      mode: "rack",
+      frames: { count: 600, p50: 6.9, p95, p99, max: p99 },
+      long_tasks: { count: 1, max_ms: longMax },
+    },
+  });
+  const file = runFile([
+    { kind: "session", run_id: "S13-9", scenario: "S13" },
+    // Start-up and the switch to Rack, before the steady window.
+    ui(3800, 20.8, 34.6, 105),
+    { kind: "mark", name: "measure_start", t_ms: 6600, unix_ms: 1 },
+    ui(10_000, 7.1, 7.2, 0),
+    ui(15_000, 7.1, 7.3, 0),
+  ]);
+  const metrics = metricsFor(readRuns([file])[0]);
+  assert.equal(metrics["frame_p95_ms:rack"], 7.1);
+  assert.equal(metrics["frame_p99_ms:rack"], 7.3);
+  assert.equal(metrics.long_task_max_ms, 0);
+});
+
 test("app-only drift is required and unmeasured without per-process rows", () => {
   const file = runFile([
     { kind: "session", run_id: "S9-3", scenario: "S9" },
@@ -420,6 +444,23 @@ test("cpuPercent sums per-process deltas by group over the window", () => {
   assert.equal(cpu.webview, 5); // 500 ms over 10 s
   assert.equal(cpuPercent([]), null);
   assert.equal(cpuPercent([{ pid: 1, self: true, cpu_ms: 1, t_ms: 5 }]), null);
+});
+
+test("cpuPercent prefers the cycle-based cpu time when every row has it", () => {
+  const rows = [
+    { pid: 1, self: true, cpu_ms: 100, cpu_cycle_ms: 100, t_ms: 0 },
+    { pid: 2, self: false, cpu_ms: 1000, cpu_cycle_ms: 1000, t_ms: 0 },
+    // Tick-sampled time overstates this window; the cycle count does not.
+    { pid: 1, self: true, cpu_ms: 300, cpu_cycle_ms: 200, t_ms: 10_000 },
+    { pid: 2, self: false, cpu_ms: 3000, cpu_cycle_ms: 2000, t_ms: 10_000 },
+  ];
+  const cpu = cpuPercent(rows);
+  assert.equal(cpu.app, 1); // 100 ms over 10 s
+  assert.equal(cpu.webview, 10); // 1000 ms over 10 s
+  // An older run without the field keeps the tick-based time.
+  const legacy = cpuPercent(rows.map(({ cpu_cycle_ms, ...r }) => r));
+  assert.equal(legacy.app, 2);
+  assert.equal(legacy.webview, 20);
 });
 
 test("perMinute rates a cumulative counter", () => {

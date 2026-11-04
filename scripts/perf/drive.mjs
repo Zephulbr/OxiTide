@@ -213,9 +213,12 @@ const snapPage = async (label) => {
 };
 
 /// Starts the steady window: the mark the checker measures from, and the
-/// first page-counter row.
+/// first page-counter row. The UI's frame and long-task samples restart here,
+/// so start-up, a mode switch or a fixture load before it cannot land in the
+/// window's frame and long-task rows (the checker drops rows before the mark).
 const measureStart = async () => {
   await invoke("perf_mark", { name: "measure_start" });
+  await evaluate("window.__perf?.resetSamples?.()");
   await snapPage("measure_start");
 };
 
@@ -405,12 +408,18 @@ const scenarioFallback = async (id) => {
       await until('!!document.querySelector("[data-perf-volume]")', "volume slider");
       await delay(3000);
       await measureStart();
+      const windowStart = Date.now();
       for (let i = 0; i < 3; i++) {
         const swept = await evaluate("window.__perf.sweepVolume(120)");
         if (!swept) throw new Error("S14: volume slider unavailable");
         await delay(1000);
       }
-      await delay(6000); // let the CPU/IPC samples cover the sweep
+      // A fixed 15 s window: the sweeps step once per display frame, so they
+      // take ~2.5 s at 144 Hz and ~6 s at 60 Hz, and a window that ended a
+      // fixed time after them turned a faster display into higher per-minute
+      // CPU and IPC rates for the same 360 volume changes. 15 s also covers
+      // the CPU/IPC samples (2 s apart) after the last sweep.
+      await delay(Math.max(6000, 15_000 - (Date.now() - windowStart)));
       await invoke("queue_clear");
     } else if (id.startsWith("S3-miss")) {
       await awaitLoggedIn();

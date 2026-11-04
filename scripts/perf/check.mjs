@@ -67,11 +67,21 @@ export function settledDrift(samples) {
 }
 
 /// CPU use per process group as a percentage of one core over the sampled
-/// window. `rows` are `memory_process` rows with cumulative `cpu_ms`; each
+/// window. `rows` are `memory_process` rows with cumulative CPU ms; each
 /// process contributes its own last - first (a process seen once adds 0, so
 /// WebView2 helpers starting or exiting mid-run cannot fake a spike).
+///
+/// `cpu_cycle_ms` (the scheduler's exact cycle accounting) is used when every
+/// row has it. `cpu_ms` (Windows process times) is sampled at the 15.6 ms
+/// clock tick: per-frame bursts at 144 Hz alias with it, and identical S13
+/// launches read anywhere from 7 % to 39 % on it while their cycle counts
+/// agreed within 1 %.
 export function cpuPercent(rows) {
-  const timed = rows.filter((r) => typeof r.cpu_ms === "number" && typeof r.pid === "number");
+  const withPid = rows.filter((r) => typeof r.pid === "number");
+  const key = withPid.length > 0 && withPid.every((r) => typeof r.cpu_cycle_ms === "number") ? "cpu_cycle_ms" : "cpu_ms";
+  const timed = withPid
+    .filter((r) => typeof r[key] === "number")
+    .map((r) => (key === "cpu_ms" ? r : { ...r, cpu_ms: r.cpu_cycle_ms }));
   if (timed.length === 0) return null;
   const span = Math.max(...timed.map((r) => r.t_ms)) - Math.min(...timed.map((r) => r.t_ms));
   if (span <= 0) return null;
@@ -181,9 +191,9 @@ export function metricsFor(run) {
       const mode = line.metrics?.mode ?? "instrument";
       if (line.metrics?.frames?.count >= FRAME_SAMPLE_MIN) {
         if (!frames.has(mode)) frames.set(mode, []);
-        frames.get(mode).push(line.metrics.frames);
+        frames.get(mode).push({ t_ms: line.t_ms, ...line.metrics.frames });
       }
-      if (line.metrics?.long_tasks) longTasks.push(line.metrics.long_tasks);
+      if (line.metrics?.long_tasks) longTasks.push({ t_ms: line.t_ms, ...line.metrics.long_tasks });
       const interactions = line.metrics?.interactions;
       if (interactions) {
         // A count of zero carries a placeholder 0 ms; recording it would let a
@@ -249,13 +259,20 @@ export function metricsFor(run) {
       .filter((u) => u.t_ms >= from)
       .reduce((sum, u) => sum + u.count, 0);
   }
-  for (const [mode, samples] of frames) {
+  // Frame and long-task rows too: the driver restarts the UI's samples at
+  // `measure_start`, so rows sent before it hold start-up and set-up frames.
+  // A row without a time (older runs) still counts.
+  const inWindow = (r) => typeof r.t_ms !== "number" || r.t_ms >= from;
+  for (const [mode, all] of frames) {
+    const samples = all.filter(inWindow);
+    if (samples.length === 0) continue;
     metrics[`frame_p95_ms:${mode}`] = Math.max(...samples.map((s) => s.p95));
     const p99s = samples.map((s) => s.p99).filter((v) => typeof v === "number");
     if (p99s.length > 0) metrics[`frame_p99_ms:${mode}`] = Math.max(...p99s);
   }
-  if (longTasks.length > 0) {
-    metrics.long_task_max_ms = Math.max(...longTasks.map((t) => t.max_ms));
+  const windowTasks = longTasks.filter(inWindow);
+  if (windowTasks.length > 0) {
+    metrics.long_task_max_ms = Math.max(...windowTasks.map((t) => t.max_ms));
   }
   if (metrics.resolve_start_ms !== undefined && metrics.decode_start_ms !== undefined) {
     metrics.resolve_ms = metrics.decode_start_ms - metrics.resolve_start_ms;

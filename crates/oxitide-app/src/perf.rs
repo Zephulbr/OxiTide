@@ -228,6 +228,7 @@ impl PerfSession {
                 "mb": row.mb,
                 "private_mb": row.private_mb,
                 "cpu_ms": row.cpu_ms,
+                "cpu_cycle_ms": row.cpu_cycle_ms,
                 "self": row.is_self,
                 "t_ms": t_ms,
             }));
@@ -551,9 +552,54 @@ struct ProcessSample {
     mb: u64,
     /// Private commit (Windows `PrivateUsage`), MiB; `None` where unavailable.
     private_mb: Option<u64>,
-    /// Kernel + user CPU time consumed so far, ms (cumulative).
+    /// Kernel + user CPU time consumed so far, ms (cumulative). On Windows
+    /// this is sampled at the clock tick (15.6 ms) and charged to whichever
+    /// thread is running then, so for short periodic bursts (frame work at
+    /// 144 Hz) it can be off several-fold in either direction per launch.
     cpu_ms: Option<u64>,
+    /// The same, from the scheduler's exact cycle accounting
+    /// (`QueryProcessCycleTime`, invariant-TSC cycles) converted to ms with
+    /// the measured TSC rate. Windows x86-64 only; `None` elsewhere.
+    cpu_cycle_ms: Option<u64>,
     is_self: bool,
+}
+
+/// TSC cycles per millisecond, measured once against the monotonic clock.
+/// Windows charges thread cycle time in TSC units on invariant-TSC CPUs, so
+/// this turns `QueryProcessCycleTime` into CPU time.
+#[cfg(all(windows, target_arch = "x86_64"))]
+fn tsc_cycles_per_ms() -> Option<f64> {
+    static RATE: OnceLock<Option<f64>> = OnceLock::new();
+    *RATE.get_or_init(|| {
+        use std::arch::x86_64::_rdtsc;
+        let started = Instant::now();
+        // SAFETY: `rdtsc` has no preconditions on x86-64.
+        let c0 = unsafe { _rdtsc() };
+        std::thread::sleep(Duration::from_millis(50));
+        let c1 = unsafe { _rdtsc() };
+        let ms = started.elapsed().as_secs_f64() * 1000.0;
+        (ms > 0.0 && c1 > c0).then(|| (c1 - c0) as f64 / ms)
+    })
+}
+
+/// Cumulative CPU ms of `handle` from its cycle count; `None` when the
+/// count or the TSC rate is unavailable.
+#[cfg(windows)]
+fn process_cycle_ms(handle: windows::Win32::Foundation::HANDLE) -> Option<u64> {
+    #[cfg(target_arch = "x86_64")]
+    {
+        use windows::Win32::System::WindowsProgramming::QueryProcessCycleTime;
+        let mut cycles = 0u64;
+        // SAFETY: `handle` is an open process handle with query access.
+        unsafe { QueryProcessCycleTime(handle, &mut cycles) }.ok()?;
+        let rate = tsc_cycles_per_ms()?;
+        Some((cycles as f64 / rate) as u64)
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        let _ = handle;
+        None
+    }
 }
 
 /// FILETIME as a 100 ns count.
@@ -637,6 +683,7 @@ fn process_memory_rows() -> Vec<ProcessSample> {
         let cpu_ms = unsafe { GetProcessTimes(handle, &mut creation, &mut exit, &mut kernel, &mut user) }
             .ok()
             .map(|()| (filetime_ticks(&kernel) + filetime_ticks(&user)) / 10_000);
+        let cpu_cycle_ms = process_cycle_ms(handle);
         let _ = unsafe { CloseHandle(handle) };
         if ok.is_ok() {
             rows.push(ProcessSample {
@@ -645,6 +692,7 @@ fn process_memory_rows() -> Vec<ProcessSample> {
                 mb: counters.WorkingSetSize as u64 / (1024 * 1024),
                 private_mb: Some(counters.PrivateUsage as u64 / (1024 * 1024)),
                 cpu_ms,
+                cpu_cycle_ms,
                 is_self: pid == self_pid,
             });
         }
@@ -808,6 +856,7 @@ fn process_memory_rows() -> Vec<ProcessSample> {
             mb,
             private_mb: None,
             cpu_ms: read_process_cpu_ms(pid),
+            cpu_cycle_ms: None,
             is_self: pid == self_pid,
         });
     }
@@ -1059,6 +1108,39 @@ mod tests {
             assert!(own["cpu_ms"].as_u64().is_some(), "cpu time missing: {own}");
             assert!(own["pid"].as_u64().is_some());
         }
+        if cfg!(all(windows, target_arch = "x86_64")) {
+            let own = lines
+                .iter()
+                .find(|l| l["kind"] == "memory_process" && l["self"] == true)
+                .expect("own process row");
+            assert!(own["cpu_cycle_ms"].as_u64().is_some(), "cycle cpu time missing: {own}");
+        }
+    }
+
+    /// The cycle-based CPU time is in real milliseconds: a thread that spins
+    /// for ~150 ms of wall time is charged about that much (less if it was
+    /// preempted, never much more).
+    #[cfg(all(windows, target_arch = "x86_64"))]
+    #[test]
+    fn cycle_time_converts_to_real_milliseconds() {
+        use windows::Win32::System::Threading::GetCurrentThread;
+        use windows::Win32::System::WindowsProgramming::QueryThreadCycleTime;
+        let rate = tsc_cycles_per_ms().expect("tsc rate");
+        let read = || {
+            let mut cycles = 0u64;
+            unsafe { QueryThreadCycleTime(GetCurrentThread(), &mut cycles) }.unwrap();
+            cycles
+        };
+        let before = read();
+        let started = Instant::now();
+        let mut spin = 0u64;
+        while started.elapsed() < Duration::from_millis(150) {
+            spin = std::hint::black_box(spin.wrapping_add(1));
+        }
+        let wall_ms = started.elapsed().as_secs_f64() * 1000.0;
+        let cpu_ms = (read() - before) as f64 / rate;
+        assert!(cpu_ms <= wall_ms * 1.1, "charged {cpu_ms:.1} ms for {wall_ms:.1} ms of wall time");
+        assert!(cpu_ms >= wall_ms * 0.5, "charged {cpu_ms:.1} ms for {wall_ms:.1} ms of wall time");
     }
 
     #[test]

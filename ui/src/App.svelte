@@ -511,6 +511,7 @@
       setMode: (mode: "instrument" | "atmosphere" | "rack") => appearance.setMode(mode),
       setTheme: (theme: "dark" | "light" | "system") => appearance.setTheme(theme),
       sampleFrames: (on: boolean) => perf.setFrameSampling(on),
+      resetSamples: () => perf.resetSamples(),
     };
     (window as unknown as { __perf?: typeof bridge }).__perf = bridge;
     return () => {
