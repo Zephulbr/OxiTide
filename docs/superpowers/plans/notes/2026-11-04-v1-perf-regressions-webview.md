@@ -119,6 +119,15 @@ Harness/methodology (owner rulings):
    bigger runtime DLL does not read as app growth.
 6. After (1): re-run S8 and S9, apply R2 to them and re-check the S9 drift budget.
 
+**Atmosphere playback (2026-11-04 evening).** The owner's look became Atmosphere with a maximized
+window (2560×1440) before the S8/S9/S11 re-runs, so those ran in a different shell from the morning
+corpus (Studio, 2068×1438): their memory is not comparable with it. It exposed the now-playing mark:
+it turned by rewriting an SVG `transform` every frame, a layout per frame (144/s, ~60 ms/s) while
+playing in Atmosphere. Now the compositor turns an HTML wrapper and the angle returns to the SVG at
+rest (`08c2815`): start-page playback 2.67 → 1.30 Gcycles/s (−51 %), layouts 144 → 2/s. No scenario
+covered playing in Atmosphere (S4/S8/S9 run in the owner's mode; S5-atmosphere scrolls, S14 is
+paused); 1.30 Gcycles/s is still ~45 % of a core and worth its own look.
+
 Later, measure first (under the hood): Rack's level loop and CatJam both run a rAF callback on every
 144 Hz frame and skip most of them; waiting with a timer until the next draw is due would cut the
 wake-ups without changing what is drawn (CatJam's beat sync must stay frame-exact).
