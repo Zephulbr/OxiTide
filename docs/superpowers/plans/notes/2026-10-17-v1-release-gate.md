@@ -185,6 +185,29 @@ full close: that rerun, DAC hotplug, AUR (the `v0.4.0` tag is now pushed and its
 the rendered `PKGBUILD`, so the row can run), the oldest-base checks, and MPRIS desktop-entry
 resolution.
 
+**Run 2026-10-28** (`2026-10-28-linux-v1-close-run.md`): gates, build and the no-DAC §14.3 rows
+passed; the DAC was not connected, and the AUR source host was unsettled.
+
+**Run 2026-11-05** (`2026-11-05-linux-v1-final-run.md`, `main` at `53cef6d`, 0.6.0): every open
+§14.3 and owner row ran.
+- **Passed:** deb + AppImage build and inspection; the direct-`hw:` picker with exclusive `✓ BP` on the Dawn
+  Pro and shared through `plughw:`; HDA `hw:` exclusive at 44.1 kHz; MPRIS volume both ways; SNI
+  `Title`; MPRIS `DesktopEntry` per package (AppImage/deb `OxiTide`, AUR `oxitide`); mix art (#8);
+  feed gray-out; phone pairing from a real phone; issue #10 (AT-SPI tree is populated; closed).
+- **AUR:** the published PKGBUILD fails to link under makepkg's default `lto`. With
+  `options=('!lto')` (now in `packaging/aur/PKGBUILD.in`) `v0.6.0` builds and runs. `makepkg -si`
+  stays with the owner, and the next release carries the fixed PKGBUILD.
+- **Open:**
+  - L1: unplug mid-play shows the raw ALSA error.
+  - L2: no return to the replugged DAC on ALSA. `53cef6d` is WASAPI-only, and PipeWire's `EBUSY`
+    blocks a re-select while playing.
+  - L3: clicks on start, stop, seek and skip, and a slight transport delay, heard in the listening
+    check.
+  - L4: the `ufw` rule had to be added by hand.
+  - L5: tray hide-and-show comes back sized to the work area.
+  - Not run: the oldest-base checks and the AppImage updater path.
+- **Owner decision:** fix L1–L3 before the tag, or label Linux "preview" in the 1.0 notes.
+
 ## 7. Tag `v1.0.0`
 
 - [ ] `docs/release.md` runbook; release notes list accepted debt (S4 gap, any renegotiated budgets).
