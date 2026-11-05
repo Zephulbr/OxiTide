@@ -128,6 +128,46 @@ rest (`08c2815`): start-page playback 2.67 → 1.30 Gcycles/s (−51 %), layouts
 covered playing in Atmosphere (S4/S8/S9 run in the owner's mode; S5-atmosphere scrolls, S14 is
 paused); 1.30 Gcycles/s is still ~45 % of a core and worth its own look.
 
-Later, measure first (under the hood): Rack's level loop and CatJam both run a rAF callback on every
+**Atmosphere playback, the rest (2026-11-05).** Still the mark. Every frame in which it moves
+costs a frame of the whole page: the main thread's lifecycle (style, prepaint, commit; ~1.5 ms)
+and the compositor + GPU process drawing the window, whatever the glyph's size. 144 Hz means 144
+of them a second. The blurs are not part of it. UI-only A/B (`ab.ps1`'s method: production
+bundles on `vite preview`, the debug exe), playing on Tracks with two marks on screen
+(queue thumb, table row), 2164×1293, harness frame sampler off, cycle CPU of WebView2 + app, two
+runs each:
+
+| Variant | Gcycles/s | Change |
+| --- | --- | --- |
+| `53cef6d` (rAF turn at 144 Hz) | 1.29 / 1.47 | — |
+| marks hidden (the floor) | 0.31 / 0.31 | −78 % |
+| every `backdrop-filter` off | 1.29 / 1.31 | ≈ 0 |
+| the 80 px Backdrop blur hidden | 1.27 / 1.28 | ≈ 0 |
+| no redundant SVG `transform` / `will-change` writes per frame | 1.32 / 1.29 | ≈ 0 |
+| Web Animation on the wrapper, smooth | 0.71 / 0.73 | −48 % (main thread idle; GPU still at 144 Hz) |
+| rAF turn drawn at ~30 fps | 0.49 / 0.42 | −67 % |
+| Web Animation, `steps(60)` per 2 s turn (30 changes/s) | 0.35 / 0.38 | −74 % |
+
+Chromium skips the frames between a stepped compositor animation's changes, so the stepped turn
+saves both the main thread and the GPU process. **Applied (owner: option C):** off Linux the mark
+turns as that stepped Web Animation; JS runs only while the speed eases on play/pause (playback
+rate ramp, ~600 ms) and writes the stepped angle back into the SVG at rest. As shipped: 0.357 /
+0.359 Gcycles/s (−74 %). Linux keeps the 30 fps `frameDue` loop (`framesGated`): WebKitGTK
+presents every frame of an animation, stepped or not (`2026-10-28-linux-home-lag.md`).
+DiscArt (Now Playing) has the same 144 Hz rAF turn and is untouched; at its size a 30/s step
+may judder at the rim (~6 px a step), so it needs its own look.
+
+**Pinned for Linux (later).** The mark there is still a JS loop presenting 30 fps through the
+GTK main thread (app 12 %, web 6 % with the queue open, the 2026-10-28 table). Look at whether WebKitGTK skips a
+stepped Web Animation's unchanged frames as Chromium does (the 10-28 finding was for CSS
+animations), else a lower gate for the mark alone, and re-measure Atmosphere playback on
+bare metal.
+
+~~Later, measure first (under the hood): Rack's level loop and CatJam both run a rAF callback on every
 144 Hz frame and skip most of them; waiting with a timer until the next draw is due would cut the
-wake-ups without changing what is drawn (CatJam's beat sync must stay frame-exact).
+wake-ups without changing what is drawn (CatJam's beat sync must stay frame-exact).~~
+**Answered, not pursued (owner, 2026-11-05).** The level loop was already measured in Suggestion 2:
+sleeping through skipped frames (rAF 144 → 49/s) left cycle CPU unchanged (≈ 0), because a skipped
+frame writes nothing and is nearly free; the cost is in changed frames. CatJam's skipped frames are
+cheaper still (a frame-index compare, a style write only on change), and a timer wake risks its
+frame-exact beat sync (Windows timer resolution can make it miss the change frame), so it was not
+built.

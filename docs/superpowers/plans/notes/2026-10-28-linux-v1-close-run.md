@@ -119,6 +119,10 @@ DAC.
 - Feed gray-out, phone pairing from a real phone, a listening check.
 - AUR decision above, then `makepkg -si` if it goes ahead.
 - Owner call on the tray hide-and-show size (above).
+- Later (pinned 2026-11-05, not a v1 gate): the now-playing mark's Linux turn. Windows moved to a
+  stepped compositor animation (−74 % Atmosphere playback CPU); Linux keeps the 30 fps `frameDue`
+  loop. Check whether WebKitGTK skips a stepped Web Animation's unchanged frames, then re-measure
+  (`2026-11-04-v1-perf-regressions-webview.md`, "Pinned for Linux").
 
 ### Side effects on this machine
 
