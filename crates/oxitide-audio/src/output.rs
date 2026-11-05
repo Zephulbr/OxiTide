@@ -8,11 +8,48 @@ use crate::error::Result;
 #[cfg(windows)]
 use crate::error::Error;
 
+pub use crate::devices::{CapsSource, DeviceCaps, DeviceGroup, DeviceKind, Transport};
+
+/// One output the picker lists (spec `2026-11-05-oxitide-output-device-picker-design.md`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OutputDevice {
+    /// What the backends open: a WASAPI endpoint id, `asio:<key>`, or
+    /// `hw:CARD=<id>,DEV=<n>`.
     pub id: String,
+    /// Clean display name (`devices::wasapi_identity`, `alsa_identity`).
     pub name: String,
+    /// The system's full name, for the tooltip and the nickname placeholder.
+    pub system_name: String,
+    pub group: DeviceGroup,
+    pub kind: DeviceKind,
+    pub transport: Transport,
     pub is_default: bool,
+    /// An ASIO driver that wraps the Windows audio engine (ASIO4ALL, …).
+    pub wrapper: bool,
+    /// False for an output with nothing attached (an HDMI port without a monitor).
+    pub present: bool,
+}
+
+impl OutputDevice {
+    pub fn new(id: impl Into<String>, name: impl Into<String>, group: DeviceGroup) -> Self {
+        let name = name.into();
+        Self {
+            id: id.into(),
+            system_name: name.clone(),
+            name,
+            group,
+            kind: DeviceKind::Unknown,
+            transport: Transport::Unknown,
+            is_default: false,
+            wrapper: false,
+            present: true,
+        }
+    }
+
+    pub fn with_system_name(mut self, system_name: impl Into<String>) -> Self {
+        self.system_name = system_name.into();
+        self
+    }
 }
 
 /// How the output was asked to open.
@@ -500,31 +537,182 @@ pub(crate) mod platform {
         }
     }
 
+    /// Active render endpoints (with their names, type and connection read
+    /// from the property store), then the installed ASIO drivers.
     pub fn enumerate() -> Result<Vec<OutputDevice>> {
+        use crate::devices::{dedupe_names, wasapi_identity, WasapiProps};
+        use windows::Win32::Media::Audio::{
+            eConsole, eRender, IMMDeviceEnumerator, MMDeviceEnumerator, DEVICE_STATE_ACTIVE,
+        };
+        use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_ALL, STGM_READ};
+
         ensure_com()?;
-        let enumerator = DeviceEnumerator::new().map_err(|e| Error::Output(e.to_string()))?;
-        let default_name = enumerator
-            .get_default_device_for_role(&Direction::Render, &wasapi::Role::Console)
-            .ok()
-            .and_then(|d| d.get_friendlyname().ok());
+        let to_err = |e: windows::core::Error| Error::Output(e.to_string());
         let mut out = Vec::new();
-        let collection = enumerator
-            .get_device_collection(&Direction::Render)
-            .map_err(|e| Error::Output(e.to_string()))?;
-        let count = collection
-            .get_nbr_devices()
-            .map_err(|e| Error::Output(e.to_string()))?;
-        for index in 0..count {
-            let device = collection
-                .get_device_at_index(index)
-                .map_err(|e| Error::Output(e.to_string()))?;
-            let name = device.get_friendlyname().unwrap_or_default();
-            let id = device.get_id().unwrap_or_default();
-            let is_default = default_name.as_deref() == Some(name.as_str());
-            out.push(OutputDevice { id, name, is_default });
+        // SAFETY: COM is initialized on this thread; every returned string is
+        // freed by `take_pwstr`.
+        unsafe {
+            let enumerator: IMMDeviceEnumerator =
+                CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL).map_err(to_err)?;
+            let default_id = enumerator
+                .GetDefaultAudioEndpoint(eRender, eConsole)
+                .ok()
+                .and_then(|device| device.GetId().ok())
+                .map(|id| take_pwstr(id));
+            let collection = enumerator.EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE).map_err(to_err)?;
+            for index in 0..collection.GetCount().map_err(to_err)? {
+                let Ok(device) = collection.Item(index) else { continue };
+                let Ok(id) = device.GetId().map(|id| take_pwstr(id)) else { continue };
+                let props = match device.OpenPropertyStore(STGM_READ) {
+                    Ok(store) => WasapiProps {
+                        endpoint: read_string(&store, &keys::DEVICE_DESC),
+                        adapter: read_string(&store, &keys::INTERFACE_FRIENDLY_NAME),
+                        friendly: read_string(&store, &keys::FRIENDLY_NAME),
+                        enumerator: read_string(&store, &keys::ENUMERATOR_NAME),
+                        form_factor: read_string(&store, &keys::FORM_FACTOR).trim().parse().ok(),
+                    },
+                    Err(_) => WasapiProps::default(),
+                };
+                let (name, kind, transport) = wasapi_identity(&props);
+                let system_name = if props.friendly.is_empty() { name.clone() } else { props.friendly.clone() };
+                let mut entry = OutputDevice::new(id.clone(), name, DeviceGroup::Wasapi).with_system_name(system_name);
+                entry.kind = kind;
+                entry.transport = transport;
+                entry.is_default = default_id.as_deref() == Some(id.as_str());
+                out.push(entry);
+            }
         }
         out.extend(crate::asio_output::devices());
+        dedupe_names(&mut out);
         Ok(out)
+    }
+
+    /// Endpoint property keys (`functiondiscoverykeys_devpkey.h`,
+    /// `mmdeviceapi.h`), spelled out so no extra `windows` features are needed.
+    mod keys {
+        use windows::core::GUID;
+        use windows::Win32::Foundation::PROPERTYKEY;
+
+        const DEVICE: GUID = GUID::from_u128(0xa45c254e_df1c_4efd_8020_67d146a850e0);
+        pub const DEVICE_DESC: PROPERTYKEY = PROPERTYKEY { fmtid: DEVICE, pid: 2 };
+        pub const FRIENDLY_NAME: PROPERTYKEY = PROPERTYKEY { fmtid: DEVICE, pid: 14 };
+        pub const ENUMERATOR_NAME: PROPERTYKEY = PROPERTYKEY { fmtid: DEVICE, pid: 24 };
+        pub const INTERFACE_FRIENDLY_NAME: PROPERTYKEY =
+            PROPERTYKEY { fmtid: GUID::from_u128(0x026e516e_b814_414b_83cd_856d6fef4822), pid: 2 };
+        pub const FORM_FACTOR: PROPERTYKEY =
+            PROPERTYKEY { fmtid: GUID::from_u128(0x1da5d803_d492_4edd_8c23_e0c0ffee7f0e), pid: 0 };
+    }
+
+    /// A property as text ("" when missing). Numbers come back as digits.
+    unsafe fn read_string(
+        store: &windows::Win32::UI::Shell::PropertiesSystem::IPropertyStore,
+        key: &windows::Win32::Foundation::PROPERTYKEY,
+    ) -> String {
+        use windows::Win32::System::Com::StructuredStorage::{PropVariantClear, PropVariantToStringAlloc};
+        let Ok(mut value) = store.GetValue(key) else {
+            return String::new();
+        };
+        let text = PropVariantToStringAlloc(&value).map(|s| take_pwstr(s)).unwrap_or_default();
+        let _ = PropVariantClear(&mut value);
+        text
+    }
+
+    /// Copy and free a COM-allocated string.
+    unsafe fn take_pwstr(text: windows::core::PWSTR) -> String {
+        let out = text.to_string().unwrap_or_default();
+        windows::Win32::System::Com::CoTaskMemFree(Some(text.0 as _));
+        out
+    }
+
+    /// The exclusive formats (8 rates × 3 integer depths), the shared mix
+    /// format and the hardware volume of one endpoint. About 20–80 ms.
+    pub fn probe_caps(device_id: &str) -> Option<DeviceCaps> {
+        use crate::devices::{PROBE_BITS, PROBE_RATES};
+        use wasapi::{SampleType, WaveFormat};
+        ensure_com().ok()?;
+        let enumerator = DeviceEnumerator::new().ok()?;
+        let device = enumerator.get_device(device_id).ok()?;
+        let mut formats = Vec::new();
+        for rate in PROBE_RATES {
+            for bits in PROBE_BITS {
+                let Ok(client) = device.get_iaudioclient() else { continue };
+                let wave = WaveFormat::new(32, bits as usize, &SampleType::Int, rate as usize, 2, None);
+                if let Ok(accepted) = client.is_supported_exclusive_with_quirks(&wave) {
+                    if accepted.get_samplespersec() == rate {
+                        formats.push((rate, accepted.get_validbitspersample().min(bits)));
+                    }
+                }
+            }
+        }
+        let mut caps = DeviceCaps::from_formats(&formats);
+        if let Ok(mix) = device.get_iaudioclient().and_then(|client| client.get_mixformat()) {
+            caps.shared_rate = Some(mix.get_samplespersec());
+            caps.shared_bits = Some(mix.get_validbitspersample());
+        }
+        caps.hw_volume = crate::endpoint_volume::EndpointVolume::open(Some(device_id))
+            .ok()
+            .map(|volume| volume.has_hardware_volume());
+        Some(caps)
+    }
+
+    /// Register one device-change listener for the life of the process. The
+    /// registration lives on its own thread (it must stay in one COM
+    /// apartment); callbacks wake a debounce thread that calls `on_change` once
+    /// per burst (a USB DAC arriving fires several notifications).
+    pub fn watch(on_change: Box<dyn Fn() + Send + Sync>) {
+        use std::sync::mpsc;
+        use std::time::Duration;
+        let (tx, rx) = mpsc::channel::<()>();
+        let spawned = std::thread::Builder::new().name("oxitide-device-watch".into()).spawn(move || {
+            if ensure_com().is_err() {
+                return;
+            }
+            let Ok(enumerator) = DeviceEnumerator::new() else { return };
+            let mut callbacks = wasapi::DeviceEventCallbacks::new();
+            {
+                let tx = tx.clone();
+                callbacks.set_device_added_callback(move |_| {
+                    let _ = tx.send(());
+                });
+            }
+            {
+                let tx = tx.clone();
+                callbacks.set_device_removed_callback(move |_| {
+                    let _ = tx.send(());
+                });
+            }
+            {
+                let tx = tx.clone();
+                callbacks.set_device_state_callback(move |_, _| {
+                    let _ = tx.send(());
+                });
+            }
+            {
+                let tx = tx.clone();
+                callbacks.set_default_device_callback(move |direction, role, _| {
+                    if direction == Direction::Render && role == wasapi::Role::Console {
+                        let _ = tx.send(());
+                    }
+                });
+            }
+            let Ok(_registration) = enumerator.register_notification_callback(callbacks) else {
+                tracing::warn!("device watch: registration failed; the picker refreshes when it opens");
+                return;
+            };
+            drop(tx);
+            loop {
+                std::thread::park();
+            }
+        });
+        if spawned.is_err() {
+            return;
+        }
+        let _ = std::thread::Builder::new().name("oxitide-device-debounce".into()).spawn(move || {
+            while rx.recv().is_ok() {
+                while rx.recv_timeout(Duration::from_millis(300)).is_ok() {}
+                on_change();
+            }
+        });
     }
 }
 

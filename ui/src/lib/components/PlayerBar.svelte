@@ -15,6 +15,9 @@
   import { goToTargets } from "../queueLinks";
   import { playFromLabel, playSource } from "../playSource.svelte";
   import { QUALITY_TIERS, qualityPlate, streamReadout, type QualityDisplay } from "../quality";
+  import { outputDevices } from "../outputDeviceStore.svelte";
+  import { deviceIcon, displayName, modeLabel, pinnedDevices } from "../outputDevices";
+  import { settingsJump } from "../settingsJump.svelte";
   import { api, type QueueItem, type RepeatMode, type Track } from "../api";
   import type { Favorites } from "../favorites.svelte";
   import type { Player } from "../player.svelte";
@@ -208,19 +211,57 @@
         content: nowPlaying,
         run: () => {},
       },
+      ...outputItems(),
       {
         id: "quality-settings",
         label: "Output settings…",
         icon: "settings",
         divider: true,
-        run: () => go({ name: "settings" }),
+        run: () => {
+          settingsJump.request("device");
+          go({ name: "settings" });
+        },
       },
     ];
   }
 
+  /// The pinned output devices (spec 2026-11-05 §8.2): pick one to switch at
+  /// the track's position. None pinned, no section.
+  function outputItems(): MenuItem[] {
+    const list = outputDevices.list;
+    if (!list) return [];
+    return pinnedDevices(list).map((device, i) => {
+      const current = device.id === list.selected;
+      const icon = list.icons ? deviceIcon(device) : null;
+      return {
+        id: `output-${device.id}`,
+        label: displayName(device),
+        detail: device.connected ? modeLabel(device) : "Not connected",
+        section: "Output",
+        divider: i === 0,
+        selected: current,
+        icon: icon ?? undefined,
+        trailing: current ? "check" : undefined,
+        disabled: !device.connected && !current,
+        run: () => {
+          if (current) return;
+          outputDevices.set({ ...list, selected: device.id });
+          api.setOutputDevice(device.id).then(
+            () => void outputDevices.refresh(),
+            () => void outputDevices.refresh(),
+          );
+        },
+      };
+    });
+  }
+
   /// Opens upward, its right edge on the plate's, so it stands clear of the
-  /// window edge; pressing the plate again closes it (`menuButton`).
-  function openQuality(button: HTMLElement) {
+  /// window edge; pressing the plate again closes it (`menuButton`). The
+  /// Output section draws from the last known list (instant); a first open
+  /// waits for it once, and every open refreshes it for the next.
+  async function openQuality(button: HTMLElement) {
+    if (!outputDevices.list) await outputDevices.refresh();
+    else void outputDevices.refresh();
     const rect = button.getBoundingClientRect();
     menu.show(rect.right, rect.top - 8, qualityItems(), button, { placement: "above", align: "end" });
   }

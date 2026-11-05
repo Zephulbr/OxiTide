@@ -19,8 +19,40 @@ vi.mock("../api", () => ({
     getTrack: vi.fn(async () => ({ album: { id: 42 } })),
     setPlaySource: vi.fn(async () => {}),
     setPreferredQuality: vi.fn(async () => {}),
+    setOutputDevice: vi.fn(async () => {}),
+    getOutputDevices: vi.fn(async () => outputList),
   },
 }));
+
+const device = (id: string, name: string, extra: Record<string, unknown> = {}) => ({
+  id,
+  name,
+  system_name: name,
+  group: "wasapi",
+  kind: "usb",
+  transport: "usb",
+  is_default: false,
+  connected: true,
+  wrapper: false,
+  present: true,
+  caps: null,
+  prefs: { nickname: "", icon: "", pinned: true, hidden: false, mode: "shared" },
+  ...extra,
+});
+
+let outputList: unknown = {
+  system_default: { now: null, mode: "shared" },
+  devices: [],
+  pinned: [],
+  selected: "",
+  icons: true,
+  moved: [],
+};
+
+/** The quality menu opens after the output list loads (a microtask or two). */
+async function settle() {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
 
 function setup(
   state: Parameters<typeof fakePlayer>[0] = {},
@@ -176,6 +208,7 @@ describe("PlayerBar: quality plate", () => {
     setup({ stream: lossless, preferred_quality: "lossless", bit_perfect: true });
 
     await fireEvent.click(screen.getByRole("button", { name: /^Streaming quality/ }));
+    await settle();
 
     const open = menu.open;
     expect(open?.placement).toBe("above");
@@ -203,6 +236,7 @@ describe("PlayerBar: quality plate", () => {
     render(ContextMenu, { menu });
 
     await fireEvent.click(screen.getByRole("button", { name: /^Streaming quality/ }));
+    await settle();
 
     const note = document.getElementById("menu-item-quality-now");
     expect(note?.tagName).toBe("DIV");
@@ -215,8 +249,46 @@ describe("PlayerBar: quality plate", () => {
     setup({ stream: lossless, preferred_quality: "lossless" });
 
     await fireEvent.click(screen.getByRole("button", { name: /^Streaming quality/ }));
+    await settle();
     menu.open?.items.find((item) => item.id === "quality-lossless")?.run();
 
     expect(api.setPreferredQuality).not.toHaveBeenCalled();
+  });
+
+  it("lists pinned output devices in pin order and switches to one", async () => {
+    outputList = {
+      system_default: { now: null, mode: "shared" },
+      devices: [
+        device("dac", "DX5", { prefs: { nickname: "Desk DAC", icon: "", pinned: true, hidden: false, mode: "exclusive" } }),
+        device("tv", "LG TV", { kind: "hdmi", transport: "hdmi" }),
+        device("gone", "Living room DAC", { connected: false }),
+        device("unpinned", "HyperX DuoCast", { prefs: { nickname: "", icon: "", pinned: false, hidden: false, mode: "shared" } }),
+      ],
+      pinned: ["tv", "dac", "gone"],
+      selected: "dac",
+      icons: true,
+      moved: [],
+    };
+    const { outputDevices } = await import("../outputDeviceStore.svelte");
+    await outputDevices.refresh();
+    setup({ stream: lossless, preferred_quality: "lossless" });
+
+    await fireEvent.click(screen.getByRole("button", { name: /^Streaming quality/ }));
+    await settle();
+
+    const items = menu.open?.items ?? [];
+    const outputs = items.filter((item) => item.id.startsWith("output-"));
+    expect(outputs.map((item) => [item.label, item.detail])).toEqual([
+      ["LG TV", "Shared"],
+      ["Desk DAC", "Exclusive"],
+      ["Living room DAC", "Not connected"],
+    ]);
+    expect(outputs[0].icon).toBe("monitor");
+    expect(outputs[1].selected).toBe(true);
+    expect(outputs[2].disabled).toBe(true);
+    expect(items[items.length - 1].id).toBe("quality-settings");
+
+    outputs[0].run();
+    expect(api.setOutputDevice).toHaveBeenCalledWith("tv");
   });
 });

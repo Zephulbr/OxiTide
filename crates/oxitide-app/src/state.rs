@@ -79,6 +79,11 @@ pub struct AppState {
     pub invites: InviteCache,
     /// Keeps the queue going with similar tracks (`[playback] autoplay`).
     pub autoplay: crate::autoplay::Autoplay,
+    /// What each output device can play (the picker's "Up to …" line).
+    pub device_caps: crate::device_caps::DeviceCapsStore,
+    /// The devices the picker last listed, for remembering a selected or
+    /// pinned device's name while it is unplugged.
+    pub last_devices: Mutex<Vec<oxitide_audio::output::OutputDevice>>,
     session_expired: AtomicBool,
     handle: Mutex<Option<AppHandle>>,
 }

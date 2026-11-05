@@ -4,7 +4,8 @@ use oxitide_audio::cache::DiskCache;
 use oxitide_audio::dsp::{DspSettings, TransitionStyle};
 use oxitide_audio::engine::{Engine, EngineCmd, EngineEvent};
 use oxitide_audio::fetch::HttpFetcher;
-use oxitide_audio::output::{ExclusiveFallback, OutputMode};
+use oxitide_audio::devices::DeviceGroup;
+use oxitide_audio::output::{ExclusiveFallback, OutputDevice, OutputMode};
 use oxitide_audio::queue::{ArtistRef, QueueItem, RepeatMode};
 use oxitide_tidal::auth::{self, SessionInfo};
 use oxitide_tidal::client::TidalClient;
@@ -17,7 +18,7 @@ use oxitide_tidal::pkce::{
 use oxitide_tidal::token_store::{KeyringStatus, TokenSet, TokenStore};
 use oxitide_tidal::Error;
 use serde::{Deserialize, Serialize};
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 
 use crate::artwork::PaletteDto;
 use crate::config::{
@@ -25,7 +26,7 @@ use crate::config::{
     ModeLook, PanelStyle, QualityDisplay, RackConfig, Theme, Typeface, UiMode,
 };
 use crate::lyrics::{LyricsDto, LyricsRequest};
-use crate::player::{devices, OutputDeviceDto, QualityDto};
+use crate::player::{device_list_dto, OutputDeviceListDto, QualityDto};
 use crate::state::{AppState, PendingLogin, Player};
 
 pub const API_BASE: &str = "https://api.tidal.com/v1/";
@@ -434,16 +435,10 @@ fn build_player(
         cache,
         config.streaming.allow_fallback,
     );
-    engine.set_output_device(if config.audio.output_device.is_empty() {
-        None
-    } else {
-        Some(config.audio.output_device.clone())
-    });
-    engine.set_output_mode(if config.audio.exclusive {
-        OutputMode::Exclusive
-    } else {
-        OutputMode::Shared
-    });
+    engine.set_output(
+        if config.audio.output_device.is_empty() { None } else { Some(config.audio.output_device.clone()) },
+        config.audio.mode_for(&config.audio.output_device),
+    );
     engine.set_exclusive_fallback(config.audio.exclusive_fallback);
     engine.set_dsp(config.dsp.clone());
     engine
@@ -582,6 +577,29 @@ fn build_player(
     engine.subscribe(Arc::new(move |event| {
         if let Some(remote) = remote_handle.state::<AppState>().remote() {
             remote.on_engine_event(&event);
+        }
+    }));
+    // The output picker's learned capabilities (spec §7): a bit-perfect
+    // exclusive playback on the selected device proves what it can play. A
+    // notice means the open fell back (another device), so it proves nothing.
+    let caps_handle = app.clone();
+    let last_learned = std::sync::Mutex::new(None::<(String, u32, u16)>);
+    engine.subscribe(Arc::new(move |event| {
+        let EngineEvent::State(snapshot) = &event else { return };
+        if !snapshot.bit_perfect
+            || snapshot.output_mode != OutputMode::Exclusive
+            || snapshot.bit_perfect_notice.is_some()
+        {
+            return;
+        }
+        let Some(stream) = snapshot.stream.as_ref() else { return };
+        let state = caps_handle.state::<AppState>();
+        let id = state.config.lock().unwrap().audio.output_device.clone();
+        let key = (id, stream.sample_rate, stream.bit_depth);
+        let mut last = last_learned.lock().unwrap();
+        if last.as_ref() != Some(&key) {
+            state.device_caps.record_played(&key.0, key.1, key.2);
+            *last = Some(key);
         }
     }));
     engine.set_perf_hook(std::sync::Arc::new(crate::perf::audio_event));
@@ -2240,22 +2258,208 @@ fn perf_queue_build_items(items: Vec<QueueItem>, start: usize) -> Result<(), Str
     Ok(())
 }
 
+/// The output picker's list (spec `2026-11-05-oxitide-output-device-picker-design.md`):
+/// connected devices with their saved settings and known capabilities, plus
+/// selected or pinned devices that are unplugged. Starts capability checks for
+/// devices not checked yet; `output_devices_changed` fires when they finish.
 #[tauri::command(async)]
-pub fn get_output_devices() -> Vec<OutputDeviceDto> {
-    devices()
+pub fn get_output_devices(app: tauri::AppHandle, state: State<'_, AppState>) -> OutputDeviceListDto {
+    let devices = crate::player::enumerate_devices();
+    *state.last_devices.lock().unwrap() = devices.clone();
+    let config = state.config();
+    // The device playing exclusively right now would look busy to a check.
+    let busy = state
+        .player()
+        .filter(|player| player.engine.audio_status().mode == OutputMode::Exclusive)
+        .map(|_| match config.audio.output_device.as_str() {
+            "" => devices.iter().find(|d| d.is_default && d.group != DeviceGroup::Asio).map(|d| d.id.clone()).unwrap_or_default(),
+            id => id.to_string(),
+        });
+    start_capability_checks(&app, &state, &devices, busy.as_deref());
+    let mut list = device_list_dto(devices, &config.audio, |id| state.device_caps.caps_for(id));
+    list.icons = config.ui.device_icons;
+    list
 }
 
+/// Check the unchecked devices one at a time on a worker thread (a WASAPI
+/// format sweep is 20–80 ms; an ASIO driver load can take longer), then tell
+/// the UI to read the list again.
+fn start_capability_checks(app: &tauri::AppHandle, state: &AppState, devices: &[OutputDevice], skip: Option<&str>) {
+    if !state.device_caps.begin_probing() {
+        return;
+    }
+    let pending = state.device_caps.take_unchecked(devices, skip);
+    if pending.is_empty() {
+        state.device_caps.end_probing();
+        return;
+    }
+    let app = app.clone();
+    let spawned = std::thread::Builder::new().name("oxitide-device-caps".into()).spawn(move || {
+        let state = app.state::<AppState>();
+        let mut found = false;
+        for device in pending {
+            if let Some(caps) = oxitide_audio::devices::probe_caps(&device) {
+                state.device_caps.store_probed(&device.id, caps);
+                found = true;
+            }
+        }
+        state.device_caps.end_probing();
+        if found {
+            let _ = app.emit("output_devices_changed", ());
+        }
+    });
+    if spawned.is_err() {
+        state.device_caps.end_probing();
+    }
+}
+
+/// Keep the name a selected or pinned device was last seen with, so its row
+/// still reads right while it is unplugged.
+fn remember_device(state: &AppState, config: &mut Config, id: &str) {
+    if id.is_empty() {
+        return;
+    }
+    let last = state.last_devices.lock().unwrap();
+    if let Some(device) = last.iter().find(|device| device.id == id) {
+        let prefs = config.audio.devices.entry(id.to_string()).or_default();
+        prefs.name = device.name.clone();
+        prefs.system_name = device.system_name.clone();
+        prefs.transport = crate::player::transport_name(device.transport).to_string();
+    }
+}
+
+/// Select the output device; it opens in its own Shared/Exclusive mode
+/// (spec DP-D13: one reopen at the position).
 #[tauri::command]
 pub fn set_output_device(state: State<'_, AppState>, device_id: String) -> Result<(), String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
-    let device = if device_id.is_empty() {
-        None
-    } else {
-        Some(device_id.clone())
-    };
-    player.engine.set_output_device(device);
     let mut config = state.config();
-    config.audio.output_device = device_id;
+    let device = if device_id.is_empty() { None } else { Some(device_id.clone()) };
+    player.engine.set_output(device, config.audio.mode_for(&device_id));
+    config.audio.output_device = device_id.clone();
+    remember_device(&state, &mut config, &device_id);
+    config.audio.prune_devices();
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
+/// One device's Shared/Exclusive mode. Reopens only when it is the selected
+/// device. ASIO drivers are always exclusive.
+#[tauri::command]
+pub fn set_device_mode(state: State<'_, AppState>, device_id: String, mode: OutputMode) -> Result<(), String> {
+    if oxitide_audio::output::is_asio_device(&device_id) {
+        return Err("ASIO drivers are always exclusive".into());
+    }
+    let mut config = state.config();
+    config.audio.devices.entry(device_id.clone()).or_default().mode = mode;
+    if config.audio.output_device == device_id {
+        if let Some(player) = state.player() {
+            player.engine.set_output_mode(mode);
+        }
+    }
+    remember_device(&state, &mut config, &device_id);
+    config.audio.prune_devices();
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
+/// The picker's per-device choices; each field is optional.
+#[derive(Debug, Default, Deserialize)]
+pub struct DevicePrefsPatch {
+    pub nickname: Option<String>,
+    pub icon: Option<String>,
+    pub pinned: Option<bool>,
+    pub hidden: Option<bool>,
+}
+
+/// Longest nickname kept (in characters).
+const NICKNAME_MAX: usize = 64;
+
+/// Apply a picker patch to `audio`. Pure, so its rules are tested here.
+fn apply_device_prefs(audio: &mut crate::config::AudioConfig, device_id: &str, patch: DevicePrefsPatch) -> Result<(), String> {
+    if device_id.is_empty() {
+        return Err("System default has no device settings".into());
+    }
+    if patch.hidden == Some(true) && audio.output_device == device_id {
+        return Err("Switch to another device before hiding this one".into());
+    }
+    if let Some(icon) = &patch.icon {
+        let icon = if icon == "auto" { "" } else { icon.as_str() };
+        if !crate::config::DEVICE_ICONS.contains(&icon) {
+            return Err(format!("unknown device icon: {icon}"));
+        }
+    }
+    let prefs = audio.devices.entry(device_id.to_string()).or_default();
+    if let Some(nickname) = patch.nickname {
+        prefs.nickname = nickname.trim().chars().take(NICKNAME_MAX).collect();
+    }
+    if let Some(icon) = patch.icon {
+        prefs.icon = if icon == "auto" { String::new() } else { icon };
+    }
+    if let Some(hidden) = patch.hidden {
+        prefs.hidden = hidden;
+    }
+    match patch.pinned {
+        Some(true) if !audio.pinned.iter().any(|id| id == device_id) => audio.pinned.push(device_id.to_string()),
+        Some(false) => audio.pinned.retain(|id| id != device_id),
+        _ => {}
+    }
+    Ok(())
+}
+
+/// Nickname, icon, pin or hide one device (spec DP-D6–DP-D9).
+#[tauri::command]
+pub fn set_device_prefs(state: State<'_, AppState>, device_id: String, patch: DevicePrefsPatch) -> Result<(), String> {
+    let mut config = state.config();
+    apply_device_prefs(&mut config.audio, &device_id, patch)?;
+    remember_device(&state, &mut config, &device_id);
+    config.audio.prune_devices();
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
+/// Icons on the picker rows and the quality menu (`ui.device_icons`).
+#[tauri::command]
+pub fn set_device_icons(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    let mut config = state.config();
+    config.ui.device_icons = enabled;
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
+/// Move a device's settings to the id it came back under (a USB DAC on
+/// another port, offered by `get_output_devices` as `moved`). The selection
+/// follows when it was on the old id.
+#[tauri::command]
+pub fn move_device_prefs(state: State<'_, AppState>, from: String, to: String) -> Result<(), String> {
+    if from.is_empty() || to.is_empty() || from == to {
+        return Ok(());
+    }
+    let mut config = state.config();
+    if config.audio.devices.contains_key(&to) {
+        return Ok(());
+    }
+    let Some(prefs) = config.audio.devices.remove(&from) else {
+        return Ok(());
+    };
+    config.audio.devices.insert(to.clone(), prefs);
+    for pin in config.audio.pinned.iter_mut() {
+        if *pin == from {
+            *pin = to.clone();
+        }
+    }
+    if config.audio.output_device == from {
+        config.audio.output_device = to.clone();
+        if let Some(player) = state.player() {
+            player.engine.set_output(Some(to.clone()), config.audio.mode_for(&to));
+        }
+    }
+    remember_device(&state, &mut config, &to);
+    config.audio.prune_devices();
     config.save()?;
     state.set_config(config);
     Ok(())
@@ -2270,21 +2474,6 @@ pub fn set_preferred_quality(
     player.engine.set_quality(quality.to_quality());
     let mut config = state.config();
     config.streaming.quality = quality;
-    config.save()?;
-    state.set_config(config);
-    Ok(())
-}
-
-#[tauri::command]
-pub fn set_exclusive(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
-    let player = state.player().ok_or_else(|| "not logged in".to_string())?;
-    player.engine.set_output_mode(if enabled {
-        OutputMode::Exclusive
-    } else {
-        OutputMode::Shared
-    });
-    let mut config = state.config();
-    config.audio.exclusive = enabled;
     config.save()?;
     state.set_config(config);
     Ok(())
@@ -3004,7 +3193,8 @@ pub fn get_diagnostics(state: State<'_, AppState>) -> Result<String, String> {
         signed_in: audio.is_some(),
         audio,
         switches: vec![
-            ("Exclusive mode", config.audio.exclusive),
+            // The selected device's own mode (each device keeps one).
+            ("Exclusive mode", config.audio.mode_for(&config.audio.output_device) == OutputMode::Exclusive),
             ("Media controls", config.integrations.smtc),
             ("Discord", config.integrations.discord),
             ("Last.fm", config.scrobbling.lastfm_enabled),
@@ -3055,7 +3245,9 @@ mod tests {
         // Window calls belong on the main thread.
         "perf_close_window",
         "get_perf_snapshot", "perf_submit_ui_metrics", "perf_queue_build", "set_output_device",
-        "set_preferred_quality", "set_exclusive", "set_exclusive_fallback", "set_dsp_settings",
+        // Output picker config writers (one also reopens the output).
+        "set_device_mode", "set_device_prefs", "set_device_icons", "move_device_prefs",
+        "set_preferred_quality", "set_exclusive_fallback", "set_dsp_settings",
         "get_config", "get_audio_status", "get_cache_status", "set_allow_fallback",
         "set_quality_display", "set_ui_mode", "set_theme", "set_instrument_tone", "set_typeface",
         "set_custom_typeface",
@@ -3089,6 +3281,36 @@ mod tests {
             }
         }
         names
+    }
+
+    #[test]
+    fn device_prefs_patches_follow_the_picker_rules() {
+        let mut audio = crate::config::AudioConfig { output_device: "dac".into(), ..Default::default() };
+        let hide = |hidden| DevicePrefsPatch { hidden: Some(hidden), ..Default::default() };
+        assert!(apply_device_prefs(&mut audio, "dac", hide(true)).is_err(), "the selected device can't hide");
+        assert!(apply_device_prefs(&mut audio, "", DevicePrefsPatch::default()).is_err(), "System default has none");
+        apply_device_prefs(&mut audio, "tv", hide(true)).unwrap();
+        assert!(audio.devices["tv"].hidden);
+
+        let long = "x".repeat(100);
+        apply_device_prefs(&mut audio, "tv", DevicePrefsPatch { nickname: Some(format!("  {long} ")), ..Default::default() }).unwrap();
+        assert_eq!(audio.devices["tv"].nickname.chars().count(), NICKNAME_MAX);
+        apply_device_prefs(&mut audio, "tv", DevicePrefsPatch { nickname: Some("   ".into()), ..Default::default() }).unwrap();
+        assert_eq!(audio.devices["tv"].nickname, "", "an empty nickname brings the device's own name back");
+
+        apply_device_prefs(&mut audio, "tv", DevicePrefsPatch { icon: Some("monitor".into()), ..Default::default() }).unwrap();
+        assert_eq!(audio.devices["tv"].icon, "monitor");
+        apply_device_prefs(&mut audio, "tv", DevicePrefsPatch { icon: Some("auto".into()), ..Default::default() }).unwrap();
+        assert_eq!(audio.devices["tv"].icon, "");
+        assert!(apply_device_prefs(&mut audio, "tv", DevicePrefsPatch { icon: Some("rocket".into()), ..Default::default() }).is_err());
+
+        let pin = |pinned| DevicePrefsPatch { pinned: Some(pinned), ..Default::default() };
+        apply_device_prefs(&mut audio, "tv", pin(true)).unwrap();
+        apply_device_prefs(&mut audio, "dac", pin(true)).unwrap();
+        apply_device_prefs(&mut audio, "tv", pin(true)).unwrap();
+        assert_eq!(audio.pinned, vec!["tv".to_string(), "dac".to_string()], "pin order, no duplicates");
+        apply_device_prefs(&mut audio, "tv", pin(false)).unwrap();
+        assert_eq!(audio.pinned, vec!["dac".to_string()]);
     }
 
     #[test]

@@ -30,6 +30,15 @@ Read before touching `ui/`: styling and modes, Hi-Fi Rack, Home/Explore/search, 
     inserts through `queue_insert`.
   - **Track tables multi-select through `lib/selection.svelte.ts`**, keyed by row object
     (playlists repeat ids). A drag from a selected row carries the selection.
+- Output picker (spec `2026-11-05-oxitide-output-device-picker-design.md`):
+  - `settings/OutputDevicePicker.svelte` renders from the pure `lib/outputDevices.ts`.
+  - Rows are `role="radio"` buttons. The arrows only move focus, and Enter/Space selects,
+    because selecting reopens the output.
+  - The last list lives in `lib/outputDeviceStore.svelte.ts`, so the player bar's quality
+    menu opens at once with its pinned devices and refreshes in the background.
+  - "Output settings…" goes through `lib/settingsJump.svelte.ts`, a one-shot request that
+    Settings turns into its search jump. It is not a route field, so it isn't persisted, and
+    it works while Settings is already open.
 - Easter eggs (spec `2026-10-21-oxitide-catjam-kuroneko-design.md`):
   - **CatJam:** `CatJam.svelte` sits on the player bar cover and bobs to the beat (not in the Rack or mini shells). Beats come **only from local analysis**: `crates/oxitide-audio/src/beat.rs` (`BeatTap`, read-only, pushed with the track's own frames before DSP) feeds `automix::analyze_beats` on the `oxitide-beat` helper, and the result is `EngineEvent::Beat` (desktop `beat` event). Never fetch tempo or beat data and never send track ids anywhere for it (the reference plugin sent every track id to a third-party API).
   - **Beat tracking is mount-driven:** `set_beat_tracking` is on only while CatJam is mounted. `AppState` re-applies it to an engine rebuilt after re-login.

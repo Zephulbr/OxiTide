@@ -36,14 +36,96 @@ const LOST_NOTICE: &str = "ASIO driver was reset or disconnected";
 /// The installed ASIO drivers as output devices (registry only; no driver is
 /// loaded here).
 pub fn devices() -> Vec<OutputDevice> {
+    use crate::devices::{asio_name, is_wrapper_asio, DeviceGroup, DeviceKind, Transport};
     asio_sys::registered_drivers()
         .into_iter()
-        .map(|d| OutputDevice {
-            id: format!("{ASIO_PREFIX}{}", d.key),
-            name: format!("{} (ASIO)", d.description),
-            is_default: false,
+        .map(|d| {
+            let mut device = OutputDevice::new(format!("{ASIO_PREFIX}{}", d.key), asio_name(&d.description), DeviceGroup::Asio)
+                .with_system_name(d.description.clone());
+            device.wrapper = is_wrapper_asio(&d.key, &d.description);
+            let usb = d.description.to_ascii_lowercase().contains("usb");
+            device.kind = if device.wrapper { DeviceKind::Virtual } else if usb { DeviceKind::Usb } else { DeviceKind::Unknown };
+            device.transport = if device.wrapper { Transport::Virtual } else if usb { Transport::Usb } else { Transport::Unknown };
+            device
         })
         .collect()
+}
+
+/// Set while a capability check holds the driver slot, so an open waits for it
+/// instead of failing (`owner_main`).
+static PROBING: AtomicBool = AtomicBool::new(false);
+
+/// How long a capability check may take before it is given up on (a driver
+/// that hangs while loading).
+const PROBE_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// Load the driver behind `device_id` (`asio:<key>`) just long enough to ask
+/// which rates it accepts and what sample type it takes. `None` while another
+/// ASIO driver is open (only one can be loaded), for an unknown key, or when
+/// the driver does not answer within [`PROBE_TIMEOUT`].
+pub fn probe_caps(device_id: &str) -> Option<crate::devices::DeviceCaps> {
+    use crate::devices::{DeviceCaps, PROBE_RATES};
+    let key = asio_device_key(device_id)?;
+    let driver = asio_sys::registered_drivers().into_iter().find(|d| d.key == key)?;
+    let clsid = asio_sys::parse_clsid(&driver.clsid)?;
+    if CLAIMED.swap(true, Ordering::SeqCst) {
+        return None;
+    }
+    PROBING.store(true, Ordering::SeqCst);
+    let (tx, rx) = std::sync::mpsc::channel();
+    let spawned = std::thread::Builder::new().name("oxitide-asio-probe".into()).spawn(move || {
+        // SAFETY: balanced by CoUninitialize below.
+        let com = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+        let result = (|| {
+            let driver = asio_sys::Driver::create(&clsid).ok()?;
+            // SAFETY: plain Win32 call.
+            if !driver.init(unsafe { GetDesktopWindow() }) {
+                return None;
+            }
+            let rates: Vec<u32> = PROBE_RATES.into_iter().filter(|&rate| driver.can_sample_rate(rate as f64)).collect();
+            let bits = driver
+                .output_channel_type(0)
+                .ok()
+                .and_then(AsioFormat::from_type)
+                .map(|format| match format {
+                    AsioFormat::Float32 => 24,
+                    AsioFormat::Float64 => 32,
+                    other => other.int_bits().unwrap_or(16),
+                })?;
+            let formats: Vec<(u32, u16)> = rates.into_iter().map(|rate| (rate, bits)).collect();
+            let mut caps = DeviceCaps::from_formats(&formats);
+            caps.hw_volume = Some(false);
+            Some(caps)
+        })();
+        if com.is_ok() {
+            // SAFETY: matches the successful CoInitializeEx.
+            unsafe { CoUninitialize() };
+        }
+        PROBING.store(false, Ordering::SeqCst);
+        CLAIMED.store(false, Ordering::SeqCst);
+        let _ = tx.send(result);
+    });
+    if spawned.is_err() {
+        PROBING.store(false, Ordering::SeqCst);
+        CLAIMED.store(false, Ordering::SeqCst);
+        return None;
+    }
+    rx.recv_timeout(PROBE_TIMEOUT).ok().flatten()
+}
+
+/// Take the one-driver slot for an open. A capability check holding it is
+/// waited out (it releases within [`PROBE_TIMEOUT`]); a real open is not.
+fn claim_for_open() -> bool {
+    let deadline = Instant::now() + PROBE_TIMEOUT;
+    loop {
+        if !CLAIMED.swap(true, Ordering::SeqCst) {
+            return true;
+        }
+        if !PROBING.load(Ordering::SeqCst) || Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
 }
 
 /// A driver's native sample layout (little-endian types only).
@@ -584,7 +666,7 @@ fn owner_main(
     starvation: Arc<Starvation>,
     control: Arc<VolumeControl>,
 ) {
-    if CLAIMED.swap(true, Ordering::SeqCst) {
+    if !claim_for_open() {
         let _ = ready.send(Err("another ASIO driver is already open".into()));
         return;
     }

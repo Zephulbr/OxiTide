@@ -5,6 +5,7 @@ mod artwork;
 mod autoplay;
 mod commands;
 mod config;
+mod device_caps;
 mod diagnostics;
 mod discord;
 mod history;
@@ -243,6 +244,15 @@ fn main() {
         .manage(state)
         .setup(|app| {
             let handle = app.handle().clone();
+            // Output devices come and go: the picker re-reads its list (spec
+            // DP-D12). Windows only; callbacks cost nothing while idle.
+            {
+                let handle = handle.clone();
+                oxitide_audio::devices::watch_devices(move || {
+                    handle.state::<AppState>().device_caps.invalidate();
+                    let _ = tauri::Emitter::emit(&handle, "output_devices_changed", ());
+                });
+            }
             app.deep_link().on_open_url({
                 let handle = handle.clone();
                 move |event| {
@@ -456,8 +466,11 @@ fn main() {
             commands::get_config,
             commands::get_output_devices,
             commands::set_output_device,
+            commands::set_device_mode,
+            commands::set_device_prefs,
+            commands::set_device_icons,
+            commands::move_device_prefs,
             commands::set_preferred_quality,
-            commands::set_exclusive,
             commands::set_exclusive_fallback,
             commands::set_dsp_settings,
             commands::automix_render,

@@ -71,7 +71,12 @@ kicker and fan count use `--text` at 82% rather than muted.
   stream — an eyebrow row with the file type (FLAC) in the accent on the left and the
   output path on the right (Shared / Exclusive output muted, ✓ Bit-perfect in the accent,
   "· DSP" with its stages as a tooltip), over the format in text colour ("16-bit /
-  44.1 kHz · 938 kbps"); then Output settings…. Picking a tier restarts the track at its
+  44.1 kHz · 938 kbps"); then, when devices are pinned in Settings, an **Output** section
+  (spec `2026-11-05-oxitide-output-device-picker-design.md`): one row per pinned device in
+  pin order, its icon when device icons are on, the nickname or name, the mode as the
+  muted second line (Shared / Exclusive / ASIO, or "Not connected", disabled), the current
+  one selected with a trailing check; then Output settings…, which opens Playback and
+  scrolls to the device list. Picking a tier or a device restarts the track at its
   position; pressing the plate again closes the menu. The seek's hover wave cap fills
   with `--player-veil-top`, the veil's top-edge tint, so it continues the bar.
   Everything takes about 1250px; the bar is a size container (the window docked, the main

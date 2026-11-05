@@ -55,8 +55,13 @@ describe("searchSettings", () => {
     expect(searchSettings("dynamic color", { ...ctx, rack: true })).toEqual([]);
     expect(searchSettings("amoled", ctx)).toEqual([]);
     expect(searchSettings("amoled", { ...ctx, studio: true })[0].id).toBe("studio-tone");
-    expect(searchSettings("if unsupported", ctx)).toEqual([]);
-    expect(searchSettings("if unsupported", { ...ctx, exclusive: true })[0].id).toBe("exclusive-fallback");
+    expect(searchSettings("exclusive fails", ctx)).toEqual([]);
+    expect(searchSettings("exclusive fails", { ...ctx, exclusive: true })[0].id).toBe("exclusive-fallback");
+  });
+
+  it("finds the output mode through the device list", () => {
+    expect(searchSettings("bit-perfect", ctx)[0].id).toBe("device");
+    expect(searchSettings("nickname", ctx)[0].id).toBe("device");
   });
 
   it("finds a hotkey by its action", () => {

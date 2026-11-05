@@ -1,7 +1,7 @@
 <script lang="ts">
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { listen } from "@tauri-apps/api/event";
-  import { tick } from "svelte";
+  import { tick, untrack } from "svelte";
   import {
     api,
     SCROBBLE_STATUS_EVENT,
@@ -15,7 +15,7 @@
     type EqSettings,
     type LampColor,
     type MeterStyle,
-    type OutputDevice,
+    type OutputDeviceList,
     type InstrumentTone,
     type PanelStyle,
     type Quality,
@@ -36,6 +36,7 @@
   import Button from "../lib/components/settings/Button.svelte";
   import EqBands from "../lib/components/settings/EqBands.svelte";
   import NumberField from "../lib/components/settings/NumberField.svelte";
+  import OutputDevicePicker from "../lib/components/settings/OutputDevicePicker.svelte";
   import Notice from "../lib/components/settings/Notice.svelte";
   import Segmented from "../lib/components/settings/Segmented.svelte";
   import { sortMemory, type SortMemoryMode } from "../lib/sortMemory.svelte";
@@ -78,9 +79,11 @@
   import { errorMessage } from "../lib/errors";
   import { optimistic } from "../lib/optimistic";
   import type { QualityDisplay } from "../lib/quality";
-  import type { SettingEntry } from "../lib/settingsIndex";
+  import { SETTINGS_INDEX, type SettingEntry } from "../lib/settingsIndex";
+  import { settingsJump } from "../lib/settingsJump.svelte";
+  import { outputDevices } from "../lib/outputDeviceStore.svelte";
   import { SETTINGS_TABS, nextTab, type SettingsTab } from "../lib/settingsTabs";
-  import { TAB_META, formatSize, outputDeviceOptions, usageFraction } from "../lib/settingsView";
+  import { TAB_META, formatSize, usageFraction } from "../lib/settingsView";
   import { sentenceCase } from "../lib/format";
   import { copyText } from "../lib/clipboard";
   import type { Toasts } from "../lib/toasts.svelte";
@@ -108,7 +111,7 @@
     onQualityDisplay: (mode: QualityDisplay) => void;
   } = $props();
   let tab = $state<SettingsTab>("appearance");
-  let devices = $state<OutputDevice[]>([]);
+  let deviceList = $state<OutputDeviceList | null>(null);
   let config = $state<Config | null>(null);
   let cacheStatus = $state<CacheStatus | null>(null);
   let logsDir = $state("");
@@ -242,7 +245,20 @@
     { value: "warn_only", label: "Stop with a message" },
   ];
 
-  const deviceOptions = $derived(outputDeviceOptions(devices, config?.audio.output_device ?? ""));
+  /// Any device set to Exclusive, or an ASIO driver selected (always exclusive).
+  const anyExclusive = $derived(
+    deviceList !== null &&
+      (deviceList.system_default.mode === "exclusive" ||
+        deviceList.selected.startsWith("asio:") ||
+        deviceList.devices.some((d) => d.group !== "asio" && d.prefs.mode === "exclusive")),
+  );
+  const selectedExclusive = $derived(
+    deviceList !== null &&
+      (deviceList.selected === ""
+        ? deviceList.system_default.mode === "exclusive"
+        : deviceList.selected.startsWith("asio:") ||
+          deviceList.devices.some((d) => d.id === deviceList?.selected && d.prefs.mode === "exclusive")),
+  );
   const presetOptions = $derived([
     ...EQ_PRESETS.map((p) => ({ value: p.id, label: p.label })),
     { value: "custom", label: "Custom", disabled: true },
@@ -520,18 +536,14 @@
   async function load() {
     error = "";
     try {
-      const [loaded, list, status, logs] = await Promise.all([
+      // The output list loads in OutputDevicePicker (it re-reads on device changes).
+      const [loaded, status, logs] = await Promise.all([
         api.getConfig(),
-        api.getOutputDevices(),
         api.getCacheStatus(),
         api.getLogsDir(),
       ]);
-      devices = list;
       cacheStatus = status;
       logsDir = logs;
-      // A stored device missing from the list (an unplugged DAC) is kept: the
-      // engine falls back to the system default with a notice while it is
-      // gone and uses it again once it is back. `deviceOptions` lists it.
       const next = loaded;
       config = next;
       dspStore.hydrate(next.dsp);
@@ -582,15 +594,32 @@
     }
   }
 
-  function setDevice(deviceId: string) {
-    saveAudio({ output_device: deviceId });
-    api.setOutputDevice(deviceId).catch(apply);
+  /// The picker's latest list: the fallback row shows while any device plays
+  /// exclusive, and the ASIO note while an ASIO driver is selected.
+  function onDeviceList(list: OutputDeviceList) {
+    deviceList = list;
+    if (config && config.audio.output_device !== list.selected) saveAudio({ output_device: list.selected });
   }
 
-  function setExclusive(enabled: boolean) {
-    saveAudio({ exclusive: enabled });
-    api.setExclusive(enabled).catch(apply);
+  function setDeviceIcons(enabled: boolean) {
+    if (!config) return;
+    config = { ...config, ui: { ...config.ui, device_icons: enabled } };
+    const list = outputDevices.list;
+    if (list) outputDevices.set({ ...list, icons: enabled });
+    api.setDeviceIcons(enabled).catch(apply);
   }
+
+  // "Output settings…" in the quality menu: open the row once the page is up
+  // (also when Settings is already showing).
+  $effect(() => {
+    const id = settingsJump.pending;
+    if (!id || !config) return;
+    untrack(() => {
+      settingsJump.take();
+      const entry = SETTINGS_INDEX.find((e) => e.id === id);
+      if (entry) void jumpTo(entry);
+    });
+  });
 
   function setFallback(mode: "shared" | "warn_only") {
     saveAudio({ exclusive_fallback: mode });
@@ -867,7 +896,7 @@
         scope={{
           rack: appearance.mode === "rack",
           studio: appearance.mode === "instrument",
-          exclusive: config.audio.exclusive || config.audio.output_device.startsWith("asio:"),
+          exclusive: anyExclusive,
         }}
         onselect={jumpTo}
       />
@@ -1194,7 +1223,7 @@
             {#if player.state.dsp_active}
               <Notice kind="info">
                 Sound processing is active ({player.state.dsp_stages.join(", ")}), so bit-perfect
-                output is off{config.audio.exclusive
+                output is off{selectedExclusive
                   ? "; exclusive mode still keeps the device to itself"
                   : ""}.
               </Notice>
@@ -1240,28 +1269,23 @@
             </SettingsSection>
 
             <SettingsSection title="Output" icon="headphones">
-              <SettingRow id="device" label="Audio device" description="Where OxiTide plays.">
-                <Select
-                  label="Audio output"
-                  width={300}
-                  value={config.audio.output_device}
-                  options={deviceOptions}
-                  onchange={setDevice}
+              <SettingRow
+                id="device" label="Audio device" stacked
+                description="Where OxiTide plays. Exclusive bypasses the system mixer so samples reach the device unchanged; other apps can't use it meanwhile. Pinned devices also appear in the player bar's quality menu."
+              >
+                <OutputDevicePicker
+                  icons={config.ui.device_icons ?? true}
+                  onlist={onDeviceList}
+                  onerror={apply}
                 />
               </SettingRow>
-              <ToggleRow
-                id="exclusive" label="Bit-perfect output (exclusive mode)"
-                description="Bypasses the system mixer so samples reach the device unchanged. Other apps cannot use the device while it plays."
-                checked={config.audio.exclusive}
-                onchange={setExclusive}
-              />
-              {#if config.audio.exclusive || config.audio.output_device.startsWith("asio:")}
+              {#if anyExclusive}
                 <SettingRow
-                  id="exclusive-fallback" label="If unsupported"
-                  description="What to do when the device refuses exclusive mode."
+                  id="exclusive-fallback" label="If exclusive fails"
+                  description="For every device in Exclusive mode."
                 >
                   <Segmented
-                    label="If unsupported"
+                    label="If exclusive fails"
                     value={config.audio.exclusive_fallback}
                     options={FALLBACK_OPTIONS}
                     onchange={setFallback}
@@ -1276,6 +1300,12 @@
                   </Notice>
                 </SettingRow>
               {/if}
+              <ToggleRow
+                id="device-icons" label="Device icons"
+                description="Icons come from the device type; change one from its ⋯ menu."
+                checked={config.ui.device_icons ?? true}
+                onchange={setDeviceIcons}
+              />
             </SettingsSection>
 
             <SettingsSection
@@ -1340,30 +1370,6 @@
                 onchange={(prevent_clipping) => setReplayGain({ prevent_clipping })}
               />
             </SettingsSection>
-
-            <SettingsSection title="Crossfade" icon="waves">
-              <SettingRow
-                id="crossfade" label="Crossfade"
-                description="Crossfades when a track ends on its own; skipping and seeking cut straight over."
-              >
-                <Slider
-                  label="Crossfade"
-                  min={0}
-                  max={CROSSFADE_MAX_MS}
-                  step={500}
-                  value={dsp.crossfade.duration_ms}
-                  format={formatCrossfade}
-                  oninput={(duration_ms) => setCrossfade({ duration_ms })}
-                />
-              </SettingRow>
-              <ToggleRow
-                id="gapless" label="Keep albums gapless"
-                description="No crossfade between consecutive tracks of one album."
-                disabled={dsp.crossfade.duration_ms === 0}
-                checked={dsp.crossfade.skip_same_album}
-                onchange={(skip_same_album) => setCrossfade({ skip_same_album })}
-              />
-            </SettingsSection>
             </div>
             <div class="col">
             <SettingsSection
@@ -1416,6 +1422,31 @@
                   />
                 {/if}
               </SettingRow>
+            </SettingsSection>
+
+            <!-- Crossfade sits right above AutoMix, which builds on its length. -->
+            <SettingsSection title="Crossfade" icon="waves">
+              <SettingRow
+                id="crossfade" label="Crossfade"
+                description="Crossfades when a track ends on its own; skipping and seeking cut straight over."
+              >
+                <Slider
+                  label="Crossfade"
+                  min={0}
+                  max={CROSSFADE_MAX_MS}
+                  step={500}
+                  value={dsp.crossfade.duration_ms}
+                  format={formatCrossfade}
+                  oninput={(duration_ms) => setCrossfade({ duration_ms })}
+                />
+              </SettingRow>
+              <ToggleRow
+                id="gapless" label="Keep albums gapless"
+                description="No crossfade between consecutive tracks of one album."
+                disabled={dsp.crossfade.duration_ms === 0}
+                checked={dsp.crossfade.skip_same_album}
+                onchange={(skip_same_album) => setCrossfade({ skip_same_album })}
+              />
             </SettingsSection>
 
             <SettingsSection

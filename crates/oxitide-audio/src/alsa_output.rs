@@ -1,4 +1,5 @@
 use crate::decode::{PcmFormat, StreamInfo};
+use crate::devices::Eld;
 use crate::error::{Error, Result};
 use crate::output::{exclusive_formats, ExclusiveFallback, OutputDevice};
 
@@ -51,7 +52,8 @@ pub fn shared_pcm_name(device: &str) -> String {
 /// to the system default; matches WASAPI's wording.
 pub const DEVICE_UNAVAILABLE_NOTICE: &str = "selected output device unavailable; using system default";
 
-/// One playback PCM device on a sound card, from the card's control interface.
+/// One playback PCM device on a sound card, from the card's control interface
+/// and `/proc/asound`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DirectPcm {
     /// The card's stable id (`Pro`, `Generic`), as in `hw:CARD=<id>`.
@@ -61,28 +63,48 @@ pub struct DirectPcm {
     pub device: u32,
     /// The PCM's name (`USB Audio`, `ALC3246 Analog`, `HDMI 0`).
     pub pcm_name: String,
+    /// The card is a USB device.
+    pub usb: bool,
+    /// The ELD matched to an HDMI PCM.
+    pub eld: Option<Eld>,
 }
 
-/// Picker entries for direct hardware PCMs. Current alsa-lib no longer lists
-/// `hw:` names in its device hints, so they are built from the cards
-/// themselves; only these ids can open exclusive (see [`is_direct_hw`]).
-pub fn direct_devices(pcms: &[DirectPcm]) -> Vec<OutputDevice> {
-    pcms.iter()
+/// The picker list: one row per card + playback PCM (spec DP-D2). The row id
+/// is the direct `hw:` name; a shared open goes through its `plughw:` twin
+/// ([`shared_pcm_name`]) and an exclusive one opens it as is. `sysdefault:`,
+/// `plughw:` and the `default` alias are routes to the same hardware, so they
+/// are not rows (the picker's System default stands for `default`).
+pub fn device_list(pcms: &[DirectPcm]) -> Vec<OutputDevice> {
+    use crate::devices::{alsa_identity, dedupe_names, AlsaPcmInfo, DeviceGroup};
+    let mut per_card = std::collections::HashMap::<&str, usize>::new();
+    for pcm in pcms {
+        *per_card.entry(pcm.card_id.as_str()).or_default() += 1;
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    let mut out: Vec<OutputDevice> = pcms
+        .iter()
+        .filter(|pcm| seen.insert((pcm.card_id.clone(), pcm.device)))
         .map(|pcm| {
-            let card = pcm.card_name.trim();
-            let card = if card.is_empty() { pcm.card_id.as_str() } else { card };
-            let name = pcm.pcm_name.trim();
-            OutputDevice {
-                id: format!("hw:CARD={},DEV={}", pcm.card_id, pcm.device),
-                name: if name.is_empty() {
-                    format!("{card} (direct hardware)")
-                } else {
-                    format!("{card}, {name} (direct hardware)")
-                },
-                is_default: false,
-            }
+            let info = AlsaPcmInfo {
+                card_id: pcm.card_id.clone(),
+                card_name: pcm.card_name.clone(),
+                device: pcm.device,
+                pcm_name: pcm.pcm_name.clone(),
+                usb: pcm.usb,
+                multi: per_card[pcm.card_id.as_str()] > 1,
+                eld: pcm.eld.clone(),
+            };
+            let (name, system_name, kind, transport, present) = alsa_identity(&info);
+            let mut device = OutputDevice::new(format!("hw:CARD={},DEV={}", pcm.card_id, pcm.device), name, DeviceGroup::Alsa)
+                .with_system_name(system_name);
+            device.kind = kind;
+            device.transport = transport;
+            device.present = present;
+            device
         })
-        .collect()
+        .collect();
+    dedupe_names(&mut out);
+    out
 }
 
 /// The ALSA sample formats OxiTide writes, best quality first. All are
@@ -152,57 +174,6 @@ pub fn pack_i32(format: AlsaSampleFormat, samples: &[i32], out: &mut Vec<u8>) {
             }
         }
     }
-}
-
-/// A parsed ALSA PCM hint (from `snd_device_name_hint`), before filtering.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Hint {
-    pub name: String,
-    pub desc: Option<String>,
-    pub ioid: Option<String>,
-}
-
-/// True when the hint is playback-capable. An absent IOID means both directions.
-pub fn hint_is_output(hint: &Hint) -> bool {
-    !matches!(hint.ioid.as_deref(), Some(ioid) if ioid.eq_ignore_ascii_case("Input"))
-}
-
-/// The picker surfaces the system default, sysdefault, and direct hardware
-/// names; plugin aliases (surround*, null, dmix, …) are hidden to keep the
-/// list meaningful.
-pub fn hint_is_pickable(name: &str) -> bool {
-    name == "default"
-        || name == "sysdefault"
-        || name.starts_with("sysdefault:")
-        || name.starts_with("hw:")
-        || name.starts_with("plughw:")
-}
-
-fn hint_label(name: &str, desc: Option<&str>) -> String {
-    desc.map(str::trim)
-        .filter(|desc| !desc.is_empty())
-        .unwrap_or(name)
-        .to_string()
-}
-
-/// Collapse hints and direct PCMs into the picker list: one entry per ALSA
-/// device name (a hint wins over a direct entry with the same id), the
-/// default first, then the rest by id.
-pub fn device_list(hints: &[Hint], direct: &[DirectPcm]) -> Vec<OutputDevice> {
-    let mut seen = std::collections::BTreeSet::new();
-    let mut out: Vec<OutputDevice> = hints
-        .iter()
-        .filter(|hint| hint_is_output(hint) && hint_is_pickable(&hint.name))
-        .map(|hint| OutputDevice {
-            id: hint.name.clone(),
-            name: hint_label(&hint.name, hint.desc.as_deref()),
-            is_default: hint.name == "default",
-        })
-        .chain(direct_devices(direct))
-        .filter(|device| seen.insert(device.id.clone()))
-        .collect();
-    out.sort_by(|a, b| (a.id != "default", &a.id).cmp(&(b.id != "default", &b.id)));
-    out
 }
 
 /// Left-aligned i32 conversion for one f32 sample; the float is clamped to
@@ -294,7 +265,6 @@ pub const SOFTWARE_VOLUME_NOTICE: &str = "volume applied in software; bit-perfec
 mod linux {
     use std::time::{Duration, Instant};
 
-    use alsa::device_name::HintIter;
     use alsa::pcm::{Access, Format, HwParams, PCM};
     use alsa::{Direction, Error as AlsaError, ValueOr};
 
@@ -461,53 +431,121 @@ mod linux {
         }
     }
 
-    /// Enumerate output PCMs from ALSA's device hints.
+    /// The picker list: one row per card + playback PCM ([`device_list`]).
     pub fn enumerate() -> Result<Vec<OutputDevice>> {
-        let mut hints: Vec<Hint> = HintIter::new_str(None, "pcm")
-            .map_err(to_error)?
-            .map(|hint| Hint {
-                name: hint.name.unwrap_or_default(),
-                desc: hint.desc,
-                ioid: match hint.direction {
-                    Some(Direction::Capture) => Some("Input".to_string()),
-                    Some(Direction::Playback) => Some("Output".to_string()),
-                    None => None,
-                },
-            })
-            .collect();
-        // namehint omits the built-in `pcm.default` on systems without a
-        // resolved card (e.g. WSL); it is always defined, so keep the picker's
-        // system-default entry stable.
-        if !hints.iter().any(|hint| hint.name == "default") {
-            hints.push(Hint { name: "default".into(), desc: None, ioid: None });
+        Ok(device_list(&direct_pcms()))
+    }
+
+    /// The ids of the present cards, by card index (for migrating numeric
+    /// `hw:0,0` ids).
+    pub fn card_ids() -> Vec<String> {
+        use alsa::card::Iter as CardIter;
+        use alsa::ctl::Ctl;
+        let mut out = Vec::new();
+        for card in CardIter::new().filter_map(|card| card.ok()) {
+            let index = card.get_index().max(0) as usize;
+            let Ok(ctl) = Ctl::from_card(&card, false) else { continue };
+            let Ok(info) = ctl.card_info() else { continue };
+            let Ok(id) = info.get_id() else { continue };
+            if out.len() <= index {
+                out.resize(index + 1, String::new());
+            }
+            out[index] = id.to_string();
         }
-        Ok(device_list(&hints, &direct_pcms()))
+        out
+    }
+
+    /// The card's ELD files (`eld#<codec>.<pin>`), in name order, parsed.
+    fn card_elds(index: i32) -> Vec<Eld> {
+        let Ok(entries) = std::fs::read_dir(format!("/proc/asound/card{index}")) else {
+            return Vec::new();
+        };
+        let mut names: Vec<std::path::PathBuf> = entries
+            .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+            .filter(|path| path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("eld#")))
+            .collect();
+        names.sort();
+        names
+            .iter()
+            .filter_map(|path| std::fs::read_to_string(path).ok())
+            .filter_map(|text| crate::devices::parse_eld(&text))
+            .collect()
     }
 
     /// Every playback PCM on every card, read from the cards' control
     /// interfaces. Opening a CTL does not touch the PCM, so a device in use
-    /// (PipeWire, another player) is still listed. Errors skip the card.
+    /// (PipeWire, another player) is still listed. Errors skip the card. USB
+    /// cards are known by `/proc/asound/cardN/usbid`; HDMI PCMs take the ELD
+    /// in the same position ("HDMI 1" ↔ the second `eld#*` file), a best
+    /// guess the name falls back from when absent.
     fn direct_pcms() -> Vec<DirectPcm> {
         use alsa::card::Iter as CardIter;
         use alsa::ctl::{Ctl, DeviceIter};
         let mut out = Vec::new();
         for card in CardIter::new().filter_map(|card| card.ok()) {
+            let index = card.get_index();
             let Ok(ctl) = Ctl::from_card(&card, false) else { continue };
             let Ok(info) = ctl.card_info() else { continue };
             let (Ok(card_id), Ok(card_name)) = (info.get_id(), info.get_name()) else { continue };
             let (card_id, card_name) = (card_id.to_string(), card_name.to_string());
+            let usb = std::path::Path::new(&format!("/proc/asound/card{index}/usbid")).exists();
+            let elds = card_elds(index);
             for device in DeviceIter::new(&ctl) {
                 let Ok(device) = u32::try_from(device) else { continue };
                 let Ok(pcm) = ctl.pcm_info(device, 0, Direction::Playback) else { continue };
-                out.push(DirectPcm {
-                    card_id: card_id.clone(),
-                    card_name: card_name.clone(),
-                    device,
-                    pcm_name: pcm.get_name().unwrap_or_default().to_string(),
-                });
+                let pcm_name = pcm.get_name().unwrap_or_default().to_string();
+                let eld = crate::devices::hdmi_index(&pcm_name).and_then(|n| elds.get(n).cloned());
+                out.push(DirectPcm { card_id: card_id.clone(), card_name: card_name.clone(), device, pcm_name, usb, eld });
             }
         }
         out
+    }
+
+    /// The card index behind a `hw:CARD=<id>,DEV=<n>` row id.
+    fn card_index(device: &str) -> Option<i32> {
+        use alsa::card::Iter as CardIter;
+        use alsa::ctl::Ctl;
+        let wanted = device.strip_prefix("hw:CARD=")?.split(',').next()?;
+        for card in CardIter::new().filter_map(|card| card.ok()) {
+            let Ok(ctl) = Ctl::from_card(&card, false) else { continue };
+            if ctl.card_info().ok().and_then(|info| info.get_id().ok().map(|id| id == wanted)) == Some(true) {
+                return Some(card.get_index());
+            }
+        }
+        None
+    }
+
+    /// What a row can play (spec §7). USB cards: their `stream0` file, which
+    /// works while PipeWire holds the card. Others: a non-blocking open of the
+    /// direct PCM and a look at its hardware limits; busy means unknown.
+    pub fn probe_caps(device: &str) -> Option<crate::devices::DeviceCaps> {
+        use crate::devices::{CapsSource, DeviceCaps};
+        validate_device_name(device).ok()?;
+        let index = card_index(device)?;
+        let usb_stream = std::fs::read_to_string(format!("/proc/asound/card{index}/stream0")).ok();
+        let mut caps = if let Some((rate, bits)) = usb_stream.as_deref().and_then(crate::devices::parse_usb_stream) {
+            DeviceCaps { exclusive: true, max_rate: Some(rate), max_bits: Some(bits), source: CapsSource::Probed, ..DeviceCaps::default() }
+        } else {
+            let pcm = PCM::new(device, Direction::Playback, true).ok()?;
+            let hwp = HwParams::any(&pcm).ok()?;
+            let rate = hwp.get_rate_max().ok().filter(|&rate| rate > 0)?;
+            let bits = [(Format::S32LE, 32u16), (Format::S243LE, 24), (Format::S24LE, 24), (Format::S16LE, 16)]
+                .into_iter()
+                .find(|(format, _)| hwp.test_format(*format).is_ok())
+                .map(|(_, bits)| bits)?;
+            DeviceCaps { exclusive: true, max_rate: Some(rate), max_bits: Some(bits), source: CapsSource::Probed, ..DeviceCaps::default() }
+        };
+        caps.hw_volume = Some(has_hardware_volume(device));
+        Some(caps)
+    }
+
+    /// Whether the card has a writable `Master` or `PCM` playback volume.
+    fn has_hardware_volume(device: &str) -> bool {
+        use alsa::mixer::{Mixer, SelemId};
+        let Ok(mixer) = Mixer::new(&ctl_name(device), false) else { return false };
+        ["Master", "PCM"].iter().any(|name| {
+            mixer.find_selem(&SelemId::new(name, 0)).is_some_and(|selem| selem.has_playback_volume())
+        })
     }
 
     /// Set the card's playback volume through ALSA's mixer, preferring
@@ -771,7 +809,7 @@ mod linux {
 }
 
 #[cfg(target_os = "linux")]
-pub use linux::{enumerate, AlsaOutput};
+pub use linux::{card_ids, enumerate, probe_caps, AlsaOutput};
 
 #[cfg(test)]
 mod tests {
@@ -844,57 +882,51 @@ mod tests {
         assert_eq!(shared_pcm_name("default"), "default");
     }
 
-    fn pcm(card_id: &str, card_name: &str, device: u32, pcm_name: &str) -> DirectPcm {
+    fn pcm(card_id: &str, card_name: &str, device: u32, pcm_name: &str, usb: bool) -> DirectPcm {
         DirectPcm {
             card_id: card_id.into(),
             card_name: card_name.into(),
             device,
             pcm_name: pcm_name.into(),
+            usb,
+            eld: None,
         }
     }
 
+    /// Spec DP-D2: one row per card + PCM, keyed by the direct `hw:` name
+    /// (issue #11 needed a direct id the picker could offer).
     #[test]
-    fn direct_devices_are_named_after_the_card_and_pcm() {
-        let devices = direct_devices(&[
-            pcm("Pro", "MOONDROP Dawn Pro", 0, "USB Audio"),
-            pcm("Generic", "HD-Audio Generic", 3, ""),
-            pcm("X", " ", 1, "PCM"),
+    fn device_list_gives_one_row_per_card_pcm() {
+        let list = device_list(&[
+            pcm("Pro", "MOONDROP Dawn Pro", 0, "USB Audio", true),
+            pcm("PCH", "HDA Intel PCH", 0, "ALC3246 Analog", false),
+            DirectPcm {
+                eld: Some(Eld { monitor_present: true, monitor_name: "DELL U2723QE".into() }),
+                ..pcm("PCH", "HDA Intel PCH", 3, "HDMI 0", false)
+            },
+            DirectPcm {
+                eld: Some(Eld { monitor_present: false, monitor_name: String::new() }),
+                ..pcm("PCH", "HDA Intel PCH", 7, "HDMI 1", false)
+            },
+            pcm("Pro", "MOONDROP Dawn Pro", 0, "USB Audio", true),
         ]);
-        assert_eq!(devices[0], OutputDevice {
-            id: "hw:CARD=Pro,DEV=0".into(),
-            name: "MOONDROP Dawn Pro, USB Audio (direct hardware)".into(),
-            is_default: false,
-        });
-        assert_eq!(devices[1].id, "hw:CARD=Generic,DEV=3");
-        assert_eq!(devices[1].name, "HD-Audio Generic (direct hardware)");
-        assert_eq!(devices[2].name, "X, PCM (direct hardware)");
-        assert!(devices.iter().all(|device| is_direct_hw(&device.id)));
-    }
-
-    /// Issue #11 (2026-10-23 run): alsa-lib's hints carried no `hw:` names,
-    /// so the picker could not offer an exclusive-capable device.
-    #[test]
-    fn device_list_adds_direct_pcms_the_hints_lack() {
-        let list = device_list(
-            &[
-                hint("default", Some("Default"), None),
-                hint("sysdefault:CARD=Pro", Some("MOONDROP Dawn Pro, USB Audio"), Some("Output")),
-                hint("front:CARD=Pro,DEV=0", Some("Front"), Some("Output")),
-            ],
-            &[pcm("Pro", "MOONDROP Dawn Pro", 0, "USB Audio")],
-        );
-        let ids: Vec<&str> = list.iter().map(|d| d.id.as_str()).collect();
-        assert_eq!(ids, vec!["default", "hw:CARD=Pro,DEV=0", "sysdefault:CARD=Pro"]);
+        let rows: Vec<(&str, &str, bool)> = list.iter().map(|d| (d.id.as_str(), d.name.as_str(), d.present)).collect();
+        assert_eq!(rows, vec![
+            ("hw:CARD=Pro,DEV=0", "MOONDROP Dawn Pro", true),
+            ("hw:CARD=PCH,DEV=0", "Speakers", true),
+            ("hw:CARD=PCH,DEV=3", "DELL U2723QE", true),
+            ("hw:CARD=PCH,DEV=7", "HDMI 1", false),
+        ]);
+        assert!(list.iter().all(|d| is_direct_hw(&d.id)));
+        assert!(list.iter().all(|d| d.group == crate::devices::DeviceGroup::Alsa));
+        assert_eq!(list[0].system_name, "MOONDROP Dawn Pro, USB Audio");
+        assert_eq!(list[0].transport, crate::devices::Transport::Usb);
     }
 
     #[test]
-    fn device_list_prefers_a_hint_over_the_same_direct_pcm() {
-        let list = device_list(
-            &[hint("hw:CARD=Pro,DEV=0", Some("Dawn Pro direct"), Some("Output"))],
-            &[pcm("Pro", "MOONDROP Dawn Pro", 0, "USB Audio")],
-        );
-        assert_eq!(list.len(), 1);
-        assert_eq!(list[0].name, "Dawn Pro direct");
+    fn device_list_is_empty_without_cards() {
+        // WSL has no cards: the picker shows only System default.
+        assert!(device_list(&[]).is_empty());
     }
 
     #[test]
@@ -932,48 +964,7 @@ mod tests {
         assert!(out.is_empty());
     }
 
-    use crate::output::{ExclusiveFallback, OutputDevice};
-
-    fn hint(name: &str, desc: Option<&str>, ioid: Option<&str>) -> Hint {
-        Hint { name: name.into(), desc: desc.map(str::to_string), ioid: ioid.map(str::to_string) }
-    }
-
-    #[test]
-    fn device_list_filters_inputs_and_unpickable_names() {
-        let list = device_list(&[
-            hint("default", Some("Default output"), None),
-            hint("sysdefault:CARD=X", Some("X"), Some("Output")),
-            hint("hw:CARD=X,DEV=0", Some("X direct"), Some("Output")),
-            hint("mic", Some("Microphone"), Some("Input")),
-            hint("surround21:CARD=X,DEV=0", Some("Surround"), Some("Output")),
-            hint("null", Some("Null"), Some("Output")),
-        ], &[]);
-        let ids: Vec<&str> = list.iter().map(|d| d.id.as_str()).collect();
-        assert_eq!(ids, vec!["default", "hw:CARD=X,DEV=0", "sysdefault:CARD=X"]);
-    }
-
-    #[test]
-    fn device_list_marks_default_and_dedupes() {
-        let list = device_list(&[
-            hint("hw:CARD=X,DEV=0", Some("Direct"), Some("Output")),
-            hint("default", Some("Default"), None),
-            hint("default", Some("Default again"), None),
-        ], &[]);
-        assert!(list[0].is_default);
-        assert_eq!(list[0].name, "Default");
-        assert_eq!(list.len(), 2);
-    }
-
-    #[test]
-    fn device_list_falls_back_to_the_device_name_as_label() {
-        let list = device_list(&[hint("sysdefault:CARD=Y", None, None)], &[]);
-        assert_eq!(list[0].name, "sysdefault:CARD=Y");
-        assert_eq!(list[0], OutputDevice {
-            id: "sysdefault:CARD=Y".into(),
-            name: "sysdefault:CARD=Y".into(),
-            is_default: false,
-        });
-    }
+    use crate::output::ExclusiveFallback;
 
     #[test]
     fn f32_conversion_saturates_at_the_rails() {

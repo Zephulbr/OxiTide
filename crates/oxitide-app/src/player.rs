@@ -3,13 +3,14 @@ use std::sync::Arc;
 use oxitide_audio::cache::DiskCache;
 use oxitide_audio::engine::{EngineEvent, PlaybackState, StreamResolver};
 use oxitide_audio::queue::QueueItem;
-use oxitide_audio::output::{self, AudioOutput, OutputDevice};
+use oxitide_audio::devices::{DeviceCaps, DeviceGroup, DeviceKind, Transport};
+use oxitide_audio::output::{self, AudioOutput, OutputDevice, OutputMode};
 use oxitide_audio::source;
 use oxitide_tidal::client::TidalClient;
 use oxitide_tidal::stream::Quality;
 use serde::{Deserialize, Serialize};
 
-use crate::config::{default_cache_dir, Config};
+use crate::config::{default_cache_dir, AudioConfig, Config};
 
 /// Build the disk cache from config: the configured directory when usable,
 /// else the default, else a temp directory. `DiskCache::new` is infallible.
@@ -186,30 +187,252 @@ pub fn to_dto(event: EngineEvent) -> EngineEventDto {
     }
 }
 
-#[derive(Serialize)]
+/// One picker row (spec `2026-11-05-oxitide-output-device-picker-design.md` §5.2).
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct OutputDeviceDto {
     pub id: String,
     pub name: String,
+    pub system_name: String,
+    pub group: DeviceGroup,
+    pub kind: DeviceKind,
+    pub transport: Transport,
     pub is_default: bool,
+    pub connected: bool,
+    pub wrapper: bool,
+    /// False for an output with nothing attached (an HDMI port without a monitor).
+    pub present: bool,
+    pub caps: Option<DeviceCaps>,
+    pub prefs: DevicePrefsDto,
 }
 
-pub fn devices() -> Vec<OutputDeviceDto> {
-    match output::enumerate_output_devices() {
-        Ok(devices) => devices
-            .into_iter()
-            .map(|OutputDevice { id, name, is_default }| OutputDeviceDto { id, name, is_default })
-            .collect(),
-        Err(e) => {
-            tracing::warn!("failed to enumerate output devices: {e}");
-            Vec::new()
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct DevicePrefsDto {
+    pub nickname: String,
+    pub icon: String,
+    pub pinned: bool,
+    pub hidden: bool,
+    pub mode: OutputMode,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SystemDefaultDto {
+    /// The device the system default is right now (Windows), if known.
+    pub now: Option<String>,
+    pub mode: OutputMode,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct OutputDeviceListDto {
+    pub system_default: SystemDefaultDto,
+    pub devices: Vec<OutputDeviceDto>,
+    pub pinned: Vec<String>,
+    pub selected: String,
+    /// `ui.device_icons`, so the quality menu needs no config read.
+    pub icons: bool,
+    /// `(old id, new id)`: a device whose id changed (a USB DAC on another
+    /// port) that should take over the old id's settings (`move_device_prefs`).
+    pub moved: Vec<(String, String)>,
+}
+
+/// The connected devices, or none (logged as a warning).
+pub fn enumerate_devices() -> Vec<OutputDevice> {
+    output::enumerate_output_devices().unwrap_or_else(|e| {
+        tracing::warn!("failed to enumerate output devices: {e}");
+        Vec::new()
+    })
+}
+
+pub fn transport_name(transport: Transport) -> &'static str {
+    match transport {
+        Transport::Usb => "usb",
+        Transport::Bluetooth => "bluetooth",
+        Transport::Hdmi => "hdmi",
+        Transport::Internal => "internal",
+        Transport::Virtual => "virtual",
+        Transport::Unknown => "",
+    }
+}
+
+/// The picker group of a saved id whose device is not connected.
+fn group_of(id: &str) -> DeviceGroup {
+    if output::is_asio_device(id) {
+        DeviceGroup::Asio
+    } else if id.starts_with("hw:") || cfg!(target_os = "linux") {
+        DeviceGroup::Alsa
+    } else {
+        DeviceGroup::Wasapi
+    }
+}
+
+/// Merge the connected devices with the saved settings: prefs on each row,
+/// "Not connected" rows for selected or pinned devices that are gone (DP-D11),
+/// and id-drift candidates (§6.3).
+pub fn device_list_dto(
+    devices: Vec<OutputDevice>,
+    audio: &AudioConfig,
+    caps: impl Fn(&str) -> Option<DeviceCaps>,
+) -> OutputDeviceListDto {
+    let prefs_for = |id: &str| {
+        let saved = audio.devices.get(id).cloned().unwrap_or_default();
+        DevicePrefsDto {
+            nickname: saved.nickname,
+            icon: saved.icon,
+            pinned: audio.pinned.iter().any(|pin| pin == id),
+            hidden: saved.hidden,
+            mode: audio.mode_for(id),
         }
+    };
+    let now = devices.iter().find(|device| device.is_default && device.group != DeviceGroup::Asio).map(|device| {
+        audio.devices.get(&device.id).map(|p| p.nickname.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| device.name.clone())
+    });
+
+    // Saved ids with no connected device that someone cares about.
+    let mut wanted: Vec<String> = Vec::new();
+    for id in std::iter::once(&audio.output_device)
+        .chain(audio.pinned.iter())
+        .chain(audio.devices.iter().filter(|(_, p)| !p.is_default_choice()).map(|(id, _)| id))
+    {
+        if !id.is_empty() && !devices.iter().any(|d| &d.id == id) && !wanted.contains(id) {
+            wanted.push(id.clone());
+        }
+    }
+    let mut moved = Vec::new();
+    for old in &wanted {
+        let Some(saved) = audio.devices.get(old) else { continue };
+        if saved.system_name.is_empty() {
+            continue;
+        }
+        let candidate = devices.iter().find(|d| {
+            d.group == group_of(old)
+                && d.system_name == saved.system_name
+                && transport_name(d.transport) == saved.transport
+                && !audio.devices.contains_key(&d.id)
+                && !audio.pinned.contains(&d.id)
+                && !moved.iter().any(|(_, new): &(String, String)| new == &d.id)
+        });
+        if let Some(device) = candidate {
+            moved.push((old.clone(), device.id.clone()));
+        }
+    }
+
+    let mut rows: Vec<OutputDeviceDto> = devices
+        .into_iter()
+        .map(|device| OutputDeviceDto {
+            caps: caps(&device.id),
+            prefs: prefs_for(&device.id),
+            id: device.id,
+            name: device.name,
+            system_name: device.system_name,
+            group: device.group,
+            kind: device.kind,
+            transport: device.transport,
+            is_default: device.is_default,
+            connected: true,
+            wrapper: device.wrapper,
+            present: device.present,
+        })
+        .collect();
+    for id in wanted {
+        if moved.iter().any(|(old, _)| old == &id) {
+            continue;
+        }
+        let saved = audio.devices.get(&id).cloned().unwrap_or_default();
+        if !audio.pinned.contains(&id) && id != audio.output_device {
+            continue;
+        }
+        let name = if saved.name.is_empty() { id.clone() } else { saved.name.clone() };
+        rows.push(OutputDeviceDto {
+            caps: caps(&id),
+            prefs: prefs_for(&id),
+            system_name: if saved.system_name.is_empty() { name.clone() } else { saved.system_name.clone() },
+            name,
+            group: group_of(&id),
+            kind: DeviceKind::Unknown,
+            transport: Transport::Unknown,
+            is_default: false,
+            connected: false,
+            wrapper: false,
+            present: true,
+            id,
+        });
+    }
+    OutputDeviceListDto {
+        system_default: SystemDefaultDto { now, mode: audio.mode_for("") },
+        devices: rows,
+        pinned: audio.pinned.clone(),
+        selected: audio.output_device.clone(),
+        icons: true,
+        moved,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::DevicePrefs;
     use std::time::{Duration, SystemTime};
+
+    fn wasapi(id: &str, name: &str, system_name: &str, transport: Transport) -> OutputDevice {
+        let mut device = OutputDevice::new(id, name, DeviceGroup::Wasapi).with_system_name(system_name);
+        device.transport = transport;
+        device
+    }
+
+    #[test]
+    fn device_list_merges_prefs_and_keeps_missing_selected_or_pinned_devices() {
+        let mut audio = AudioConfig {
+            output_device: "gone-dac".into(),
+            pinned: vec!["speakers".into(), "gone-tv".into()],
+            ..AudioConfig::default()
+        };
+        audio.devices.insert("gone-dac".into(), DevicePrefs { name: "Living room DAC".into(), mode: OutputMode::Exclusive, ..DevicePrefs::default() });
+        audio.devices.insert("speakers".into(), DevicePrefs { nickname: "Desk".into(), ..DevicePrefs::default() });
+        let mut speakers = wasapi("speakers", "Speakers", "Speakers (Realtek(R) Audio)", Transport::Internal);
+        speakers.is_default = true;
+        let list = device_list_dto(vec![speakers], &audio, |id| (id == "speakers").then(|| DeviceCaps::from_formats(&[(192_000, 24)])));
+        assert_eq!(list.system_default.now.as_deref(), Some("Desk"), "the nickname names the default");
+        assert_eq!(list.selected, "gone-dac");
+        let ids: Vec<(&str, bool)> = list.devices.iter().map(|d| (d.id.as_str(), d.connected)).collect();
+        assert_eq!(ids, vec![("speakers", true), ("gone-dac", false), ("gone-tv", false)]);
+        let speakers = &list.devices[0];
+        assert!(speakers.prefs.pinned);
+        assert_eq!(speakers.prefs.nickname, "Desk");
+        assert!(speakers.caps.as_ref().unwrap().exclusive);
+        let dac = &list.devices[1];
+        assert_eq!(dac.name, "Living room DAC");
+        assert_eq!(dac.prefs.mode, OutputMode::Exclusive);
+        assert_eq!(list.devices[2].name, "gone-tv", "no saved name: the id");
+    }
+
+    #[test]
+    fn a_device_on_a_new_id_is_offered_the_old_settings() {
+        let mut audio = AudioConfig { output_device: "old".into(), pinned: vec!["old".into()], ..AudioConfig::default() };
+        audio.devices.insert(
+            "old".into(),
+            DevicePrefs {
+                name: "DX5".into(),
+                system_name: "DX5 (TOPPING USB DAC)".into(),
+                transport: "usb".into(),
+                nickname: "Desk DAC".into(),
+                ..DevicePrefs::default()
+            },
+        );
+        let devices = vec![
+            wasapi("new", "DX5", "DX5 (TOPPING USB DAC)", Transport::Usb),
+            wasapi("other", "DX5", "DX5 (TOPPING USB DAC)", Transport::Hdmi),
+        ];
+        let list = device_list_dto(devices, &audio, |_| None);
+        assert_eq!(list.moved, vec![("old".to_string(), "new".to_string())]);
+        assert!(list.devices.iter().all(|d| d.connected), "the moved id is not listed as missing");
+    }
+
+    #[test]
+    fn asio_rows_always_report_exclusive() {
+        let audio = AudioConfig::default();
+        let list = device_list_dto(vec![OutputDevice::new("asio:Focusrite", "Focusrite USB ASIO", DeviceGroup::Asio)], &audio, |_| None);
+        assert_eq!(list.devices[0].prefs.mode, OutputMode::Exclusive);
+        assert_eq!(list.system_default.mode, OutputMode::Shared);
+    }
 
     #[test]
     fn build_cache_selects_the_directory_and_cleanup_sweeps_stale_parts() {

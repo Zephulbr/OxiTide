@@ -144,6 +144,14 @@ Candidates (pick per value; none block 1.0 on their own):
       tiles and "New to you"; the enrichment lives in the shared feed renderer, so track rows, if
       TIDAL ever adds them, are handled with no code change.
 - [x] Optional: one-line `SECURITY.md` pointing to the GitHub profile. **Done 2026-10-23.**
+- [x] Output device picker redesign (added 2026-11-05, owner; done 2026-11-05): spec
+      `specs/2026-11-05-oxitide-output-device-picker-design.md`, plan
+      `plans/2026-11-05-output-device-picker.md`. One row per output (no more
+      `sysdefault`/`plughw`/`hw` triplets on Linux, ASIO in its own group), per-device
+      Shared/Exclusive, nickname/pin/hide/icon, a device's "Up to …" format line (the BP tags
+      were dropped in review), pinned devices in the quality menu. The §6 Linux DAC rerun's
+      §14.3 picker rows change to the one-row form. Smoke (Windows and Linux rows passed):
+      `2026-11-05-device-picker-smoke.md`.
 
 ## 4. Final perf run
 

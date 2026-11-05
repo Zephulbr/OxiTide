@@ -9,6 +9,7 @@ pub mod cache;
 pub mod connectivity;
 pub mod decode;
 pub mod demux;
+pub mod devices;
 pub mod dsp;
 #[cfg(windows)]
 pub mod endpoint_volume;

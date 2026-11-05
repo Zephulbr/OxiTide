@@ -312,7 +312,61 @@ export interface PlayFromDto {
   route: unknown;
   track_ids: number[];
 }
-export interface OutputDevice { id: string; name: string; is_default: boolean }
+/** Output picker (Rust `player::OutputDeviceListDto`, spec 2026-11-05). */
+export type OutputMode = "shared" | "exclusive";
+export type DeviceGroup = "wasapi" | "asio" | "alsa";
+export type DeviceKind =
+  | "speakers" | "headphones" | "headset" | "hdmi" | "spdif" | "line" | "bluetooth" | "usb" | "virtual" | "unknown";
+export type DeviceTransport = "usb" | "bluetooth" | "hdmi" | "internal" | "virtual" | "unknown";
+/** What a device can play (Rust `devices::DeviceCaps`). */
+export interface DeviceCaps {
+  exclusive: boolean;
+  max_rate: number | null;
+  max_bits: number | null;
+  hw_volume: boolean | null;
+  shared_rate: number | null;
+  shared_bits: number | null;
+  source: "probed" | "played" | "unknown";
+}
+export interface DevicePrefs {
+  nickname: string;
+  /** "" = from the device type, "none", or an icon name. */
+  icon: string;
+  pinned: boolean;
+  hidden: boolean;
+  mode: OutputMode;
+}
+export interface OutputDevice {
+  id: string;
+  name: string;
+  system_name: string;
+  group: DeviceGroup;
+  kind: DeviceKind;
+  transport: DeviceTransport;
+  is_default: boolean;
+  connected: boolean;
+  wrapper: boolean;
+  /** False for an output with nothing attached (an HDMI port without a monitor). */
+  present: boolean;
+  caps: DeviceCaps | null;
+  prefs: DevicePrefs;
+}
+export interface OutputDeviceList {
+  system_default: { now: string | null; mode: OutputMode };
+  devices: OutputDevice[];
+  pinned: string[];
+  selected: string;
+  /** `ui.device_icons`. */
+  icons: boolean;
+  /** [old id, new id]: a device back under a new id (`moveDevicePrefs`). */
+  moved: [string, string][];
+}
+export interface DevicePrefsPatch {
+  nickname?: string;
+  icon?: string;
+  pinned?: boolean;
+  hidden?: boolean;
+}
 export interface AudioStatus {
   output_mode: "shared" | "exclusive";
   bit_perfect: boolean;
@@ -412,9 +466,10 @@ export type InstrumentTone = "warm" | "neutral" | "black";
 export interface Config {
   audio: {
     output_device: string;
-    exclusive: boolean;
     exclusive_fallback: "shared" | "warn_only";
     volume: number;
+    pinned?: string[];
+    devices?: Record<string, Partial<{ nickname: string; icon: string; hidden: boolean; mode: OutputMode }>>;
   };
   streaming: { quality: Quality; allow_fallback: boolean };
   ui: {
@@ -440,6 +495,8 @@ export interface Config {
     /// Hairlines between track list rows (default on).
     row_separators?: boolean;
     close_to_tray: boolean;
+    /// Icons on the output picker rows and the quality menu (default on).
+    device_icons?: boolean;
     window_width: number;
     window_height: number;
     window_x?: number | null;
@@ -810,10 +867,14 @@ export const api = {
   setShowLabels: (enabled: boolean) => invoke<void>("set_show_labels", { enabled }),
   applyContentFilters: (scope: "explicit" | "ai") =>
     invoke<void>("apply_content_filters", { scope }),
-  getOutputDevices: () => invoke<OutputDevice[]>("get_output_devices"),
+  getOutputDevices: () => invoke<OutputDeviceList>("get_output_devices"),
   setOutputDevice: (deviceId: string) => invoke<void>("set_output_device", { deviceId }),
+  setDeviceMode: (deviceId: string, mode: OutputMode) => invoke<void>("set_device_mode", { deviceId, mode }),
+  setDevicePrefs: (deviceId: string, patch: DevicePrefsPatch) =>
+    invoke<void>("set_device_prefs", { deviceId, patch }),
+  setDeviceIcons: (enabled: boolean) => invoke<void>("set_device_icons", { enabled }),
+  moveDevicePrefs: (from: string, to: string) => invoke<void>("move_device_prefs", { from, to }),
   setPreferredQuality: (quality: Quality) => invoke<void>("set_preferred_quality", { quality }),
-  setExclusive: (enabled: boolean) => invoke<void>("set_exclusive", { enabled }),
   setExclusiveFallback: (mode: "shared" | "warn_only") => invoke<void>("set_exclusive_fallback", { mode }),
   getAudioStatus: () => invoke<AudioStatus>("get_audio_status"),
   setDspSettings: (settings: DspSettings) =>

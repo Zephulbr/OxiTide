@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use oxitide_audio::dsp::DspSettings;
-use oxitide_audio::output::ExclusiveFallback;
+use oxitide_audio::output::{ExclusiveFallback, OutputMode};
 use serde::{Deserialize, Serialize};
 
 use crate::player::QualityDto;
@@ -78,11 +78,70 @@ pub fn clamp_remote_port(port: u16) -> u16 {
     port.clamp(1024, u16::MAX - 9)
 }
 
+/// One output device's picker settings (`[audio.devices."<id>"]`, spec
+/// `2026-11-05-oxitide-output-device-picker-design.md` §6.3). Everything is
+/// optional; an entry holding only defaults is not kept unless the device is
+/// selected or pinned (it then remembers the device's last name).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DevicePrefs {
+    /// The clean name last seen, for a "Not connected" row.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub name: String,
+    /// The system's full name last seen (id-drift matching).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub system_name: String,
+    /// The connection last seen (`usb`, `hdmi`, …; id-drift matching).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub transport: String,
+    /// Display-only name; empty shows the device's own name.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub nickname: String,
+    /// `""` = from the device type, `"none"`, or a Lucide icon name.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub icon: String,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub hidden: bool,
+    #[serde(skip_serializing_if = "is_shared")]
+    pub mode: OutputMode,
+}
+
+fn is_shared(mode: &OutputMode) -> bool {
+    *mode == OutputMode::Shared
+}
+
+impl DevicePrefs {
+    /// True when nothing the user chose is stored.
+    pub fn is_default_choice(&self) -> bool {
+        self.nickname.is_empty() && self.icon.is_empty() && !self.hidden && self.mode == OutputMode::Shared
+    }
+}
+
+/// Icons a device can be given (`DevicePrefs::icon`).
+pub const DEVICE_ICONS: &[&str] = &[
+    "",
+    "none",
+    "speaker",
+    "headphones",
+    "radio-receiver",
+    "monitor",
+    "tv",
+    "laptop",
+    "usb",
+    "bluetooth",
+    "audio-lines",
+    "cable",
+    "radio",
+];
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AudioConfig {
     /// Empty string means the system default device.
     pub output_device: String,
+    /// The old global exclusive switch. Read once and moved onto the selected
+    /// device (`migrate_devices`); never written.
+    #[serde(skip_serializing)]
     pub exclusive: bool,
     pub exclusive_fallback: ExclusiveFallback,
     /// Slider position; the engine applies the audio taper
@@ -94,6 +153,11 @@ pub struct AudioConfig {
     /// a fresh config starts tapered.
     #[serde(default)]
     pub volume_tapered: bool,
+    /// Devices in the quality menu, in pin order.
+    pub pinned: Vec<String>,
+    /// Per-device settings, by device id (`""` is System default). Last, so
+    /// TOML writes it as sub-tables after the plain values.
+    pub devices: std::collections::BTreeMap<String, DevicePrefs>,
 }
 
 impl Default for AudioConfig {
@@ -104,11 +168,66 @@ impl Default for AudioConfig {
             exclusive_fallback: ExclusiveFallback::Shared,
             volume: 1.0,
             volume_tapered: true,
+            pinned: Vec::new(),
+            devices: std::collections::BTreeMap::new(),
         }
     }
 }
 
 impl AudioConfig {
+    /// The mode `id` plays in. ASIO is always exclusive.
+    pub fn mode_for(&self, id: &str) -> OutputMode {
+        if oxitide_audio::output::is_asio_device(id) {
+            return OutputMode::Exclusive;
+        }
+        self.devices.get(id).map(|prefs| prefs.mode).unwrap_or_default()
+    }
+
+    /// Drop entries that hold no choice and belong to no selected or pinned
+    /// device.
+    pub fn prune_devices(&mut self) {
+        let keep: std::collections::HashSet<String> =
+            self.pinned.iter().cloned().chain(std::iter::once(self.output_device.clone())).collect();
+        self.devices.retain(|id, prefs| !prefs.is_default_choice() || keep.contains(id));
+    }
+
+    /// The old global `exclusive = true` becomes the selected device's mode
+    /// (spec DP-D3); every other device starts Shared.
+    fn migrate_exclusive(&mut self) {
+        if self.exclusive {
+            let id = self.output_device.clone();
+            let prefs = self.devices.entry(id).or_default();
+            prefs.mode = OutputMode::Exclusive;
+            self.exclusive = false;
+        }
+    }
+
+    /// Saved ALSA routes (`sysdefault:`, `plughw:`, `default`, numeric `hw:`)
+    /// become the one-row-per-PCM ids (spec §6.3), across the selection, the
+    /// pins and the per-device settings.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    pub fn migrate_alsa_ids(&mut self, card_ids: &[String]) {
+        use oxitide_audio::devices::migrate_alsa_id;
+        self.output_device = migrate_alsa_id(&self.output_device, card_ids);
+        let mut pinned = Vec::new();
+        for id in self.pinned.drain(..).map(|id| migrate_alsa_id(&id, card_ids)) {
+            if !id.is_empty() && !pinned.contains(&id) {
+                pinned.push(id);
+            }
+        }
+        self.pinned = pinned;
+        let devices = std::mem::take(&mut self.devices);
+        for (id, prefs) in devices {
+            self.devices.entry(migrate_alsa_id(&id, card_ids)).or_insert(prefs);
+        }
+    }
+
+    fn migrate_devices(&mut self) {
+        #[cfg(target_os = "linux")]
+        self.migrate_alsa_ids(&oxitide_audio::alsa_output::card_ids());
+        self.migrate_exclusive();
+    }
+
     /// A linear-gain volume from before the taper becomes the slider position
     /// with the same gain.
     fn migrate_volume(&mut self) {
@@ -379,6 +498,8 @@ pub struct UiConfig {
     pub row_separators: bool,
     /// Close hides the window to the tray instead of exiting (QoL-D3).
     pub close_to_tray: bool,
+    /// Icons on the output picker's rows and the quality menu; default on.
+    pub device_icons: bool,
     pub window_width: u32,
     pub window_height: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -503,6 +624,7 @@ impl Default for UiConfig {
             hover_panels: false,
             row_separators: true,
             close_to_tray: true,
+            device_icons: true,
             window_width: 1200,
             window_height: 800,
             window_x: None,
@@ -669,6 +791,7 @@ impl Config {
         match toml::from_str::<Config>(&text) {
             Ok(mut config) => {
                 config.audio.migrate_volume();
+                config.audio.migrate_devices();
                 config
             }
             Err(e) => {
@@ -757,11 +880,24 @@ mod tests {
         let path = dir.join("config.toml");
         let config = Config {
             audio: AudioConfig {
-                output_device: "dev-1".into(),
-                exclusive: true,
+                output_device: "{0.0.0.00000000}.{dev-1}".into(),
+                exclusive: false,
                 exclusive_fallback: ExclusiveFallback::WarnOnly,
                 volume: 0.42,
                 volume_tapered: true,
+                pinned: vec!["{0.0.0.00000000}.{dev-1}".into(), "asio:Focusrite USB ASIO".into()],
+                devices: [(
+                    "{0.0.0.00000000}.{dev-1}".to_string(),
+                    DevicePrefs {
+                        name: "DX5".into(),
+                        nickname: "Desk DAC".into(),
+                        icon: "headphones".into(),
+                        mode: OutputMode::Exclusive,
+                        ..DevicePrefs::default()
+                    },
+                )]
+                .into_iter()
+                .collect(),
             },
             streaming: StreamingConfig { quality: QualityDto::Max, allow_fallback: false },
             ui: UiConfig {
@@ -785,6 +921,7 @@ mod tests {
                 hover_panels: true,
                 row_separators: false,
                 close_to_tray: true,
+                device_icons: false,
                 window_width: 1280,
                 window_height: 720,
                 window_x: Some(40),
@@ -882,12 +1019,70 @@ duration_ms = 4000
     }
 
     #[test]
+    fn the_global_exclusive_switch_moves_onto_the_selected_device() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        fs::write(&path, "[audio]\noutput_device = \"dac\"\nexclusive = true\n").unwrap();
+        let config = Config::load_from(&path);
+        assert_eq!(config.audio.mode_for("dac"), OutputMode::Exclusive);
+        assert_eq!(config.audio.mode_for("speakers"), OutputMode::Shared);
+        assert_eq!(config.audio.mode_for("asio:Focusrite"), OutputMode::Exclusive, "ASIO always is");
+        config.save_to(&path).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("exclusive = true"), "the old switch is not written back:\n{text}");
+        assert_eq!(Config::load_from(&path).audio.mode_for("dac"), OutputMode::Exclusive);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn exclusive_off_leaves_every_device_shared() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        fs::write(&path, "[audio]\noutput_device = \"dac\"\nexclusive = false\n").unwrap();
+        let config = Config::load_from(&path);
+        assert_eq!(config.audio.mode_for("dac"), OutputMode::Shared);
+        assert!(config.audio.devices.is_empty());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn alsa_routes_migrate_to_row_ids() {
+        let mut audio = AudioConfig {
+            output_device: "sysdefault:CARD=Pro".into(),
+            pinned: vec!["plughw:CARD=Pro,DEV=0".into(), "hw:0,3".into(), "default".into()],
+            ..AudioConfig::default()
+        };
+        audio.devices.insert(
+            "plughw:CARD=Pro,DEV=0".into(),
+            DevicePrefs { nickname: "Desk DAC".into(), ..DevicePrefs::default() },
+        );
+        audio.migrate_alsa_ids(&["PCH".to_string(), "Pro".to_string()]);
+        assert_eq!(audio.output_device, "hw:CARD=Pro,DEV=0");
+        assert_eq!(audio.pinned, vec!["hw:CARD=Pro,DEV=0".to_string(), "hw:CARD=PCH,DEV=3".to_string()]);
+        assert_eq!(audio.devices["hw:CARD=Pro,DEV=0"].nickname, "Desk DAC");
+    }
+
+    #[test]
+    fn prune_keeps_choices_and_selected_or_pinned_devices() {
+        let mut audio = AudioConfig { output_device: "sel".into(), pinned: vec!["pin".into()], ..AudioConfig::default() };
+        for id in ["sel", "pin", "gone"] {
+            audio.devices.insert(id.into(), DevicePrefs { name: id.into(), ..DevicePrefs::default() });
+        }
+        audio.devices.insert("named".into(), DevicePrefs { nickname: "TV".into(), ..DevicePrefs::default() });
+        audio.prune_devices();
+        let ids: Vec<&str> = audio.devices.keys().map(String::as_str).collect();
+        assert_eq!(ids, vec!["named", "pin", "sel"]);
+    }
+
+    #[test]
     fn partial_file_fills_defaults() {
         let dir = temp_dir();
         let path = dir.join("config.toml");
         fs::write(&path, "[audio]\nexclusive = true\n").unwrap();
         let config = Config::load_from(&path);
-        assert!(config.audio.exclusive);
+        assert!(!config.audio.exclusive, "migrated onto System default");
+        assert_eq!(config.audio.mode_for(""), OutputMode::Exclusive);
+        assert!(config.ui.device_icons);
         assert_eq!(config.audio.output_device, "");
         assert_eq!(config.audio.exclusive_fallback, ExclusiveFallback::Shared);
         assert_eq!(config.audio.volume, 1.0);

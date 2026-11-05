@@ -158,7 +158,7 @@ upward near the window bottom), `Slider` (filled track, `origin="center"` for ga
 for the EQ bank), `NumberField` (clamps and writes back), `Button` (the `.tool-btn` recipe plus
 primary/danger), `Notice` (info/warning/success callout). Order within a tab is by how often a
 setting is touched: Playback runs Streaming → Output → Volume leveling → Equalizer → Crossfade
-→ AutoMix. Sections hide controls that do not apply (fallback only with exclusive/ASIO, Dynamic
+→ AutoMix. Sections hide controls that do not apply (fallback only while a device plays exclusive or ASIO, Dynamic
 color not in Rack, AutoMix needs a crossfade). Rack skins the switch as a square lamp key in
 `rack.css`.
 
@@ -168,6 +168,53 @@ are preserved on load. Compact badges stay **AAC** for served Low streams; detai
 readouts show the served bitrate. No new styling, animation, or background work. The
 player bar's quality plate (Atmosphere §3) also switches the tier from a menu, with the
 same four tiers.
+
+**Output device list** (`settings/OutputDevicePicker.svelte`, spec
+`2026-11-05-oxitide-output-device-picker-design.md`). The Output card's "Audio device" row is
+stacked and holds a list instead of a Select, with one look in every mode and no mode branches:
+- **Order:** a System default row ("Follows the system · now …"), then group labels (11/700
+  uppercase, 0.06em, `--text-muted`) for Windows audio, Sound cards and ASIO, connected
+  devices before unplugged ones.
+- **Group height:** the selected device always sits first in its group, outside the scroll,
+  and the group's other rows scroll under it: pinned devices first (pin order, no extra
+  styling), then the rest, then unplugged ones. That scroller is capped at 216px under a
+  selected row (about three and a half rows) and 280px otherwise (four and a half), so the
+  cut row says there is more; it uses the thin shared scrollbar. This keeps the Output card
+  near its neighbours' height, so the Playback columns don't stretch.
+- **Rows** (min 52px, radius 10px; hover `--surface-1`):
+  - an optional bare 18px icon in `--text-muted` (accent when selected), shown while Device
+    icons is on. It has no plate on purpose: the card headers' icons sit on plates, and the
+    device icons must not read as more headers;
+  - the name (14/600, ellipsis; the tooltip is the system's full name). There is no
+    capability tag: almost every device can play bit-perfect, so a tag on each row said
+    nothing (removed 2026-11-05);
+  - one muted line (12.5/500) saying how it connects: USB, HDMI, Internal, Bluetooth,
+    "Always exclusive" (ASIO), "Wrapper over Windows audio", or "Not connected";
+  - a pin button (`--text` when pinned, else shown only on row hover or keyboard focus) and a
+    ⋯ button.
+- **Selected row:**
+  - a 45% accent ring, a 7% accent wash, and the icon tile in the accent;
+  - below a hairline: the row's Shared | Exclusive `Segmented` (ASIO says "Always exclusive")
+    on the left, and on the right one muted, tabular line of what the device can do: "Up to
+    384 kHz · 32-bit, hardware volume". Its numbers are `--accent` at 700, since the detail
+    belongs to the selection, and the units stay muted. What is playing now stays the player
+    bar's to say (no "Now …" line here);
+  - the detail rises in over `--dur-state` (none under reduced motion).
+- **⋯ menu** (the shared ContextMenu): Nickname…, Pin / Unpin, Hide / Show (disabled with a
+  reason on the selected device), then an Icon section with Automatic, Speaker, Headphones,
+  DAC / Amp, Monitor, TV, Laptop, USB, Bluetooth, Lines and No icon.
+- **Nickname:** edited inline. The name becomes an input whose placeholder is the device's own
+  name, beside an accent Save and an outlined Cancel. Saving it empty brings the device's name
+  back.
+- **Unplugged and hidden rows:** an unplugged row dims its tile, name and line to 50% and shows a
+  plug icon. Hidden devices and HDMI outputs with nothing attached drop out of the list, with
+  "N hidden · Show" and "HDMI 2: nothing connected · Show anyway" under it.
+- **Accent** is used only for the selection (including its detail's numbers), the active
+  segment and the Device icons switch.
+- **Playback tab balance:** Crossfade sits in the right column above AutoMix, which builds on
+  its length. The left column is Streaming, Queue, Output and Volume leveling.
+- **Below the list:** "If exclusive fails" shows while any device is in Exclusive (one setting
+  for all), then a Device icons toggle row.
 
 **Page frame:** the main scroller pads every page `90px 28px` (`--page-top` on `.main`:
 32px of frame plus 58px of air above the title), with the floating player's clearance at

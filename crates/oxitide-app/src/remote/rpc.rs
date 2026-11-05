@@ -569,8 +569,11 @@ mod tests {
         "get_config",
         "get_output_devices",
         "set_output_device",
+        "set_device_mode",
+        "set_device_prefs",
+        "set_device_icons",
+        "move_device_prefs",
         "set_preferred_quality",
-        "set_exclusive",
         "set_exclusive_fallback",
         "set_dsp_settings",
         // AutoMix replay lab: desktop A/B tool returning WAV bytes.

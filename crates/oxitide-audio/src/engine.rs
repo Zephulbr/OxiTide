@@ -482,6 +482,13 @@ impl Engine {
         self.restart_current_at_position();
     }
 
+    /// Select the output device and its mode together (each device keeps its
+    /// own Shared/Exclusive mode): one restart at the position, not two.
+    pub fn set_output(&self, device: Option<String>, mode: OutputMode) {
+        *self.inner.output_mode.lock().unwrap() = mode;
+        self.set_output_device(device);
+    }
+
     /// Install a perf hook. Events are delivered on engine threads and must be
     /// cheap; the engine never waits on the hook.
     pub fn set_perf_hook(&self, hook: PerfHook) {
