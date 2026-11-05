@@ -390,15 +390,19 @@ the same, `npm --prefix ui run check` 0 errors and `npm --prefix ui test` 151 fi
 - [x] Settings → Audio device lists `MOONDROP Dawn Pro, USB Audio (direct hardware)`;
       selecting it with exclusive on plays `✓ BP` (`hw_params`: `S32_LE`, 44100,
       `period 5504`, `buffer 22016`) with no hand-edited `config.toml` (2026-11-05, `2026-11-05-linux-v1-final-run.md`).
+      Since the L3 fix the expected values are `period 1600`, `buffer 6400` (about 150 ms).
 - [x] Same device with exclusive **off** plays (through `plughw:`), no notice (2026-11-05).
 - [x] The internal speakers' `hw:` entry (HDA) opens exclusive at 44.1 kHz (2026-11-05: `hw:CARD=Generic_1,DEV=0`, 5504 / 22016).
-- [ ] Unplug the DAC with Settings closed, start a track: system default plays with "Selected
+- [x] Unplug the DAC with Settings closed, start a track: system default plays with "Selected
       output device unavailable; using system default". Settings shows the DAC as "(not
       connected)". Replug it: the next track plays on the DAC.
       **Still open (2026-11-05, `2026-11-05-linux-v1-final-run.md`):** the fallback passes; the replug does not.
       ALSA has no `needs_reopen` (`53cef6d` is WASAPI-only), the next track keeps the fallback,
       and a re-select while playing fails with `EBUSY` because PipeWire holds the DAC (issue L2).
       Unplugging mid-play shows the raw ALSA error (L1).
+      **Passed after the fixes (2026-11-05 retest):** unplug mid-play reads "Output device
+      disconnected", Play falls back to the speakers, and a replug while playing moves back to the
+      DAC by itself (exclusive `hw:`, after a ~6 s wait for PipeWire to release the card).
 - [x] `playerctl stop` → `PlaybackStatus` `Stopped`, position 0, metadata kept; `playerctl play`
       resumes from 0.
 - [x] `playerctl volume 0.35` moves the app slider; dragging the slider updates

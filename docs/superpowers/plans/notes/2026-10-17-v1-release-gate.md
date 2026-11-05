@@ -197,16 +197,21 @@ passed; the DAC was not connected, and the AUR source host was unsettled.
 - **AUR:** the published PKGBUILD fails to link under makepkg's default `lto`. With
   `options=('!lto')` (now in `packaging/aur/PKGBUILD.in`) `v0.6.0` builds and runs. `makepkg -si`
   stays with the owner, and the next release carries the fixed PKGBUILD.
+- **Found, then fixed and retested by the owner the same day:**
+  - L1: an unplug now reads "Output device disconnected".
+  - L2: a replug moves back to the DAC by itself.
+  - L4: Settings names `ufw` and gives the command.
+  - L5: the tray keeps the window size.
+  - L6: `sysdefault:` entries are labelled in the picker.
+  - L7: a busy DAC no longer reads "exclusive not supported".
+  - L3: clicks are gone on PipeWire `default` and direct `hw:` exclusive.
 - **Open:**
-  - L1: unplug mid-play shows the raw ALSA error.
-  - L2: no return to the replugged DAC on ALSA. `53cef6d` is WASAPI-only, and PipeWire's `EBUSY`
-    blocks a re-select while playing.
-  - L3: clicks on start, stop, seek and skip, and a slight transport delay, heard in the listening
-    check.
-  - L4: the `ufw` rule had to be added by hand.
-  - L5: tray hide-and-show comes back sized to the work area.
+  - L3 on `sysdefault:` (dmix) entries: fewer clicks but still present on skip and seek
+    (alsa-lib's resampler and mixer path).
+  - WirePlumber may lose the DAC after OxiTide held it directly, until a replug.
   - Not run: the oldest-base checks and the AppImage updater path.
-- **Owner decision:** fix L1–L3 before the tag, or label Linux "preview" in the 1.0 notes.
+- **Owner decision:** ship the dmix clicks and the replug quirk as known issues (or hide or warn
+  on `sysdefault:` first), and whether Linux is labelled "preview" in the 1.0 notes.
 
 ## 7. Tag `v1.0.0`
 

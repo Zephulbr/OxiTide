@@ -42,6 +42,8 @@ pub struct RemoteStatusDto {
     pub pending: Vec<PairRequestDto>,
     /// Seconds left on the outstanding pairing QR, if any.
     pub pairing_expires_in_secs: Option<u64>,
+    /// Linux: an active host firewall that may block the port.
+    pub firewall: Option<super::firewall::FirewallDto>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -196,6 +198,7 @@ pub fn status<R: Runtime>(app: &AppHandle<R>) -> RemoteStatusDto {
             .as_ref()
             .and_then(|s| s.pairing_remaining())
             .map(|d| d.as_secs()),
+        firewall: super::firewall::detect(service.as_ref().map(|s| s.port()).unwrap_or(settings.port)),
         settings,
     }
 }

@@ -1,9 +1,104 @@
 //! Window geometry persistence: capture size/position/maximized state into
 //! `config.toml` and restore it with an on-screen check.
 
-use tauri::{LogicalSize, PhysicalPosition, PhysicalSize, Size, WebviewWindow};
+use tauri::{AppHandle, LogicalSize, Manager, PhysicalPosition, PhysicalSize, Size, WebviewWindow};
 
 use crate::config::Config;
+use crate::state::AppState;
+
+/// Show, unminimize and focus the main window (tray, second launch, MPRIS
+/// Raise). On Linux a window shown from hidden gets its last full size back:
+/// GTK on KWin Wayland can remap it at a stale, work-area size (2026-11-05
+/// Linux run, L5).
+pub fn show_main(app: &AppHandle) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    let was_hidden = !window.is_visible().unwrap_or(true);
+    if was_hidden {
+        mark_shown();
+    }
+    let _ = window.show();
+    let _ = window.unminimize();
+    if was_hidden {
+        restore_last_size(app, &window);
+    }
+    let _ = window.set_focus();
+}
+
+/// When the window was last shown from hidden. The compositor's configure
+/// for the remapped window arrives after `show` returns and can carry the
+/// stale size, so resizes shortly after are neither recorded nor final.
+static SHOWN_AT: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+const REMAP_SETTLE: std::time::Duration = std::time::Duration::from_millis(1500);
+
+fn mark_shown() {
+    *SHOWN_AT.lock().unwrap() = Some(std::time::Instant::now());
+}
+
+fn settling() -> bool {
+    SHOWN_AT.lock().unwrap().is_some_and(|at| at.elapsed() < REMAP_SETTLE)
+}
+
+#[cfg(target_os = "linux")]
+fn restore_last_size(app: &AppHandle, window: &WebviewWindow) {
+    let state = app.state::<AppState>();
+    if state.pre_mini().is_some() || window.is_maximized().unwrap_or(false) {
+        tracing::debug!(target: "window", "show: mini or maximized; size left alone");
+        return;
+    }
+    let Some((width, height)) = state.last_size() else {
+        tracing::debug!(target: "window", "show: no size recorded yet");
+        return;
+    };
+    tracing::debug!(target: "window", "show: restoring {width}x{height}");
+    let _ = window.set_size(stored_size(width, height));
+    // Again once the compositor has mapped the window: its first configure
+    // can come after the call above and win.
+    let window = window.clone();
+    std::thread::spawn(move || {
+        for delay in [150u64, 600] {
+            std::thread::sleep(std::time::Duration::from_millis(delay));
+            if !window.is_visible().unwrap_or(false) || window.is_maximized().unwrap_or(true) {
+                return;
+            }
+            let now = window.inner_size().ok().map(|size| stored_extent(&window, size));
+            if now.is_some_and(|now| now != (width, height)) {
+                tracing::debug!(target: "window", "show: size is {now:?} after {delay} ms; restoring {width}x{height}");
+                let _ = window.set_size(stored_size(width, height));
+            }
+        }
+    });
+}
+
+#[cfg(not(target_os = "linux"))]
+fn restore_last_size(_app: &AppHandle, _window: &WebviewWindow) {}
+
+/// Linux: remember a compositor-given size of the full, unmaximized, visible
+/// window (see [`show_main`]). Ignored in the mini player and while a
+/// remapped window settles.
+pub fn note_resized(app: &AppHandle, size: PhysicalSize<u32>) {
+    if !cfg!(target_os = "linux") {
+        return;
+    }
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    let state = app.state::<AppState>();
+    let full = state.pre_mini().is_none();
+    let visible = window.is_visible().unwrap_or(false);
+    let maximized = window.is_maximized().unwrap_or(true);
+    let minimized = window.is_minimized().unwrap_or(true);
+    let settling = settling();
+    let extent = stored_extent(&window, size);
+    let record = full && visible && !maximized && !minimized && !settling && size.width > 0 && size.height > 0;
+    tracing::debug!(target: "window",
+        "resized {}x{} (logical {extent:?}) visible={visible} maximized={maximized} minimized={minimized} settling={settling} recorded={record}",
+        size.width, size.height);
+    if record {
+        state.set_last_size(extent);
+    }
+}
 
 /// A monitor's work area in physical pixels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -25,6 +25,30 @@ export function parsePort(text: string): number | null {
   return value;
 }
 
+/// What Settings says about a detected host firewall (Linux): fine when its
+/// rules allow the port, otherwise why a phone needs the port and the
+/// command that opens it. Null when no firewall was detected.
+export function firewallNotice(
+  firewall: { name: string; port_open: boolean | null; command: string } | null,
+  port: number,
+): { ok: boolean; text: string; command: string | null } | null {
+  if (!firewall) return null;
+  if (firewall.port_open === true) {
+    return { ok: true, text: `${firewall.name} allows port ${port}, so phones on your network can connect.`, command: null };
+  }
+  const unknown =
+    firewall.port_open === null
+      ? " OxiTide cannot read its rules without admin rights, so it may already be allowed."
+      : "";
+  return {
+    ok: false,
+    text:
+      `${firewall.name} is active on this computer and blocks phones until you allow the remote's port. ` +
+      `A phone on your Wi-Fi connects to OxiTide on TCP port ${port}; run this once in a terminal:${unknown}`,
+    command: firewall.command,
+  };
+}
+
 /// Firewall guidance for the host OS (spec §6.6).
 export function firewallHint(userAgent: string, port: number): string {
   if (/linux/i.test(userAgent) && !/android/i.test(userAgent)) {

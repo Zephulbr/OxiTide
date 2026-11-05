@@ -36,6 +36,7 @@ function status(patch: Partial<RemoteStatus> = {}): RemoteStatus {
     settings: { enabled: true, port: 47820, interface: "", approve_new_devices: true },
     pending: [],
     pairing_expires_in_secs: null,
+    firewall: null,
     ...patch,
   };
 }
@@ -57,6 +58,31 @@ describe("Settings → Remote", () => {
     await fireEvent.click(screen.getByRole("button", { name: "Revoke Pixel" }));
     expect(mocks.api.revokeRemoteDevice).toHaveBeenCalledWith("d1");
     await waitFor(() => expect(screen.queryByText("Pixel")).toBeNull());
+  });
+
+  it("names a blocking firewall, says why, and copies the command", async () => {
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    mocks.api.getRemoteStatus.mockResolvedValue(
+      status({ firewall: { name: "ufw", port_open: false, command: "sudo ufw allow 47820/tcp" } }),
+    );
+    mocks.api.listRemoteDevices.mockResolvedValue([]);
+    render(RemoteSettings);
+    expect(await screen.findByText(/ufw is active on this computer/)).toBeTruthy();
+    expect(screen.getByText("sudo ufw allow 47820/tcp")).toBeTruthy();
+    await fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+    expect(writeText).toHaveBeenCalledWith("sudo ufw allow 47820/tcp");
+    expect(await screen.findByRole("button", { name: "Copied" })).toBeTruthy();
+  });
+
+  it("says so when the firewall already allows the port", async () => {
+    mocks.api.getRemoteStatus.mockResolvedValue(
+      status({ firewall: { name: "ufw", port_open: true, command: "sudo ufw allow 47820/tcp" } }),
+    );
+    mocks.api.listRemoteDevices.mockResolvedValue([]);
+    render(RemoteSettings);
+    expect(await screen.findByText(/ufw allows port 47820/)).toBeTruthy();
+    expect(screen.queryByText("sudo ufw allow 47820/tcp")).toBeNull();
   });
 
   it("renames a phone", async () => {

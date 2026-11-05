@@ -162,6 +162,14 @@ setting is touched: Playback runs Streaming → Output → Volume leveling → E
 color not in Rack, AutoMix needs a crossfade). Rack skins the switch as a square lamp key in
 `rack.css`.
 
+Phone remote card, Linux firewall (2026-11-05): when the status reports an active `ufw` or
+`firewalld` that does not (or may not) allow the port, a warning `Notice` inset below the card's
+rows names the firewall, says why a phone needs the TCP port, and shows the command as selectable
+12px `code` beside a `Copy` button (label turns to "Copied"). When the rules already allow the
+port, the footer's firewall line says so instead of the generic hint. Audio device picker:
+`sysdefault:` entries read "<card> (ALSA default, may resample)", apart from the
+"(direct hardware)" entry for the same card.
+
 Streaming quality restores **Low** with the hint **HE-AAC 96 kbps** in the existing
 Select, alongside High, Lossless (still the default), and Max. Saved `low` preferences
 are preserved on load. Compact badges stay **AAC** for served Low streams; detailed

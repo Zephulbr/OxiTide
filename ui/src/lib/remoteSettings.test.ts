@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { countdownLabel, firewallHint, lastSeenLabel, parsePort } from "./remoteSettings";
+import { countdownLabel, firewallHint, firewallNotice, lastSeenLabel, parsePort } from "./remoteSettings";
 
 describe("remote settings helpers", () => {
   it("labels last-seen ages", () => {
@@ -32,5 +32,17 @@ describe("remote settings helpers", () => {
       "Private networks",
     );
     expect(firewallHint("Mozilla/5.0 (X11; Linux x86_64)", 47821)).toContain("ufw allow 47821/tcp");
+  });
+
+  it("explains a detected firewall and gives its command until the port is open", () => {
+    expect(firewallNotice(null, 47820)).toBeNull();
+    const closed = firewallNotice({ name: "ufw", port_open: false, command: "sudo ufw allow 47820/tcp" }, 47820);
+    expect(closed?.ok).toBe(false);
+    expect(closed?.text).toContain("TCP port 47820");
+    expect(closed?.command).toBe("sudo ufw allow 47820/tcp");
+    const unknown = firewallNotice({ name: "firewalld", port_open: null, command: "x" }, 47820);
+    expect(unknown?.text).toContain("may already be allowed");
+    const open = firewallNotice({ name: "ufw", port_open: true, command: "x" }, 47820);
+    expect(open).toEqual({ ok: true, text: "ufw allows port 47820, so phones on your network can connect.", command: null });
   });
 });

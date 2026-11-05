@@ -517,6 +517,14 @@ export interface RemoteStatus {
   settings: RemoteSettings;
   pending: RemotePairRequest[];
   pairing_expires_in_secs: number | null;
+  /** Linux: an active host firewall that may block the port. */
+  firewall: RemoteFirewall | null;
+}
+export interface RemoteFirewall {
+  name: string;
+  /** Whether its rules allow the port; null when they cannot be read without root. */
+  port_open: boolean | null;
+  command: string;
 }
 export interface RemotePairing { url: string; qr_svg: string; expires_in_secs: number }
 export interface RemoteDevice {

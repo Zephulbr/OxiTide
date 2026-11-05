@@ -129,9 +129,7 @@ pub fn toggle_window(app: &AppHandle) {
     if window.is_visible().unwrap_or(false) {
         let _ = window.hide();
     } else {
-        let _ = window.show();
-        let _ = window.unminimize();
-        let _ = window.set_focus();
+        crate::window::show_main(app);
     }
 }
 

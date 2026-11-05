@@ -212,6 +212,14 @@ pub trait AudioOutput: Send {
     fn needs_reopen(&self) -> bool {
         false
     }
+    /// Playback is pausing, or skipping on the open device: end what was
+    /// written without a click, so the device plays out its buffer into
+    /// silence (ALSA holds back its newest few ms and writes them faded).
+    /// The next write after it fades in.
+    /// The default does nothing (WASAPI and ASIO have not needed it yet).
+    fn fade_out(&mut self) -> Result<()> {
+        Ok(())
+    }
     /// Wait until the audio written so far has been heard, so the `stop` that
     /// follows does not cut it off (the end of the queue, a reopen for the
     /// next track's format). Returns early once `cancel` says so, and is
@@ -308,6 +316,7 @@ pub struct NullOutput {
     opens: Arc<AtomicUsize>,
     stops: Arc<AtomicUsize>,
     flushes: Arc<AtomicUsize>,
+    fade_outs: Arc<AtomicUsize>,
     last_spec: Arc<Mutex<Option<AudioOutputSpec>>>,
     volumes: Arc<Mutex<Vec<f32>>>,
     status: Arc<Mutex<OutputStatus>>,
@@ -331,6 +340,7 @@ impl Default for NullOutput {
             opens: Arc::new(AtomicUsize::new(0)),
             stops: Arc::new(AtomicUsize::new(0)),
             flushes: Arc::new(AtomicUsize::new(0)),
+            fade_outs: Arc::new(AtomicUsize::new(0)),
             last_spec: Arc::new(Mutex::new(None)),
             volumes: Arc::new(Mutex::new(Vec::new())),
             status: Arc::new(Mutex::new(OutputStatus::default())),
@@ -365,6 +375,9 @@ impl NullOutput {
     }
     pub fn flushes(&self) -> usize {
         self.flushes.load(Ordering::SeqCst)
+    }
+    pub fn fade_outs(&self) -> usize {
+        self.fade_outs.load(Ordering::SeqCst)
     }
     pub fn last_spec(&self) -> Option<AudioOutputSpec> {
         self.last_spec.lock().unwrap().clone()
@@ -443,6 +456,10 @@ impl AudioOutput for NullOutput {
     fn flush(&mut self) -> Result<()> {
         self.calls.lock().unwrap().push("flush");
         self.flushes.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+    fn fade_out(&mut self) -> Result<()> {
+        self.fade_outs.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
     fn stop(&mut self) -> Result<()> {

@@ -11,7 +11,6 @@ use std::time::{Duration, Instant};
 use mpris_server::zbus;
 use mpris_server::{Metadata, PlaybackStatus, Player, Time, TrackId};
 use oxitide_audio::engine::Engine;
-use tauri::Manager;
 
 use oxitide_audio::engine::EngineCmd;
 
@@ -367,11 +366,7 @@ fn connect(
             let app = raise.clone();
             let window_handle = app.clone();
             let _ = app.run_on_main_thread(move || {
-                if let Some(window) = window_handle.get_webview_window("main") {
-                    let _ = window.unminimize();
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
+                crate::window::show_main(&window_handle);
             });
         });
     }

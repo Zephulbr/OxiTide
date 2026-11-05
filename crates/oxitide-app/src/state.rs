@@ -39,6 +39,10 @@ pub struct AppState {
     pub config: Mutex<Config>,
     /// The full-window geometry stashed while the mini player is active.
     pub pre_mini: Mutex<Option<FullGeometry>>,
+    /// Linux: the last size (stored units) the compositor gave the full,
+    /// unmaximized window. GTK can report a stale size after a hide, so this
+    /// is what a show from the tray re-applies and what close saves.
+    pub last_size: Mutex<Option<(u32, u32)>>,
     pub cache: Mutex<Option<Arc<DiskCache>>>,
     pub artwork: Mutex<Option<Arc<ArtworkService>>>,
     pub lyrics: Mutex<Option<Arc<LyricsService>>>,
@@ -146,6 +150,14 @@ impl AppState {
 
     pub fn set_pre_mini(&self, geometry: FullGeometry) {
         *self.pre_mini.lock().unwrap() = Some(geometry);
+    }
+
+    pub fn last_size(&self) -> Option<(u32, u32)> {
+        *self.last_size.lock().unwrap()
+    }
+
+    pub fn set_last_size(&self, size: (u32, u32)) {
+        *self.last_size.lock().unwrap() = Some(size);
     }
 
     pub fn take_pre_mini(&self) -> Option<FullGeometry> {

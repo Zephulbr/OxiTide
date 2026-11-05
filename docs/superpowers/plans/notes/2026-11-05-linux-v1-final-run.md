@@ -102,17 +102,62 @@ in a scratch dir (`--nodeps` only because cargo comes from a user rustup, not th
 | — | Issue #7 still logs `xdg-mime: line 885: qtpaths: command not found` with `qt6-tools` installed (Arch ships `qtpaths6`). | Unchanged (registration still works). |
 | — | Each open logs `WARN output underrun during track … (1)` right after the expected "start underran; the first write starts it". | Cosmetic: do not count the deliberate empty-start underrun. |
 
+## Fixes after the run (same day; owner retest below)
+
+| # | Change |
+|---|---|
+| L1 | `to_error` maps `ENODEV`/`ESHUTDOWN` to "output device disconnected" (`DEVICE_DISCONNECTED`); the raw error goes to the `alsa` debug log. |
+| L2 | `AlsaOutput::needs_reopen`: a fallback watches the selected card (`card_dir`, `CardReturn`: gone, then back) and the next open waits up to 7 s for PipeWire to release it. A re-select after the card returned gets the same wait. The fallback is logged at `warn`. |
+| L3 | Buffer 4 × ~36 ms (6400 frames at 44.1 kHz, was 22 016), start threshold buffer minus one period, fade-in after every open and flush, 10 ms hold-back faded out on pause (`AudioOutput::fade_out`, default no-op elsewhere). After the first retest: a skip on the open device calls `fade_out` before the next track (the two waveforms were joined with a step), and ALSA `flush`/`stop` first play up to a faded end (`settle`, at most the ~150 ms buffer; the `alsa` crate has no rewind), so seeks and reopens do not cut mid-waveform. |
+| L4 | Remote status reports an active `ufw` (`/etc/ufw/ufw.conf`, rules from `user.rules`/`user6.rules`) or `firewalld` (`remote/firewall.rs`). Settings names it, says why the port matters, and shows the command with Copy; once the rules allow the port it says so. No one-click privileged action. |
+| L5 | Linux records the compositor's last full, unmaximized size from `Resized` events; showing the window from hidden (tray, second launch, MPRIS Raise: `window::show_main`) re-applies it, and close saves it instead of GTK's stale size. The first version still failed the retest; the second also ignores resizes for 1.5 s after a show (the remap's configure) and re-applies the size 150 ms and 600 ms after it if the compositor changed it. Resizes and shows log at `window=debug`. |
+| L6 | `sysdefault:` picker entries read "<card> (ALSA default, may resample)". |
+| — | The "underrun after every open" was real (start threshold of 1 frame), fixed with L3. |
+| L7 | Found in the retest: an exclusive open right after our own `default` (PipeWire) stream failed with `EBUSY`, because PipeWire still held the DAC, and read "exclusive mode is not supported by this output device". An open after a stream on `default` now waits up to 7 s for the card (same wait as L2), and an exclusive open that still fails on a busy `hw:` device says "output device is busy (another app or the sound server is using it)" (`DEVICE_BUSY`). |
+
+Agent check on the Dawn Pro, silence only (a throwaway probe, not committed): exclusive `hw:` opens
+bit-perfect at `S32_LE` 44100, period 1600 / buffer 6400, `start_threshold 4800`; `plughw:` shared
+the same at 44100; `sysdefault:` (`dmix`) 48000. All three: 0 underruns over 2 s of streaming
+(was 1 per open), ~113–150 ms lead (was ~500), pause ends in `XRUN` after the fade, seek adds none,
+drain ~115–130 ms. Gates: `cargo test --workspace`, `cargo clippy --workspace -- -D warnings`,
+`npm --prefix ui run check`, `npm --prefix ui test` (153 files, 1258 tests) pass.
+
+### Owner retest (same day, AppImage rebuilt after each fix)
+
+| # | Result |
+|---|---|
+| L6 | **PASS**: the picker shows "MOONDROP Dawn Pro (ALSA default, may resample)" next to the "(direct hardware)" entry. |
+| L3, `sysdefault:` (dmix) | **Improved, not fixed.** First rebuild: clicks still on skips (they now came as the new track started) and seeks. After the skip fade and `settle`: fewer and quieter, still present on seeks and more often on skips. No underruns logged. Accepted as a limitation of alsa-lib's `plug` resampler and `dmix` path (they own the card and bypass PipeWire); not chased further. |
+| L3, `default` (PipeWire) | **PASS**: no clicks on skips (same and different rate), seeks, pause and resume. |
+| L3, direct `hw:` exclusive | **PASS**: no clicks heard, `✓ BP`. `hw_params` at 96 kHz: `S32_LE`, period 3584, buffer 14336 (150 ms). Skip and seek wait for the faded end of the buffer, so they lag by up to ~150 ms. |
+| L1 | **PASS** on direct `hw:` exclusive: unplugging mid-song shows "Output device disconnected" (log: `playback error (output): output device disconnected`; the raw `snd_pcm_recover … (19)` is at `alsa` debug only). On `default` an unplug shows no message: PipeWire moves the stream and the desktop paused the player (no OxiTide output error in the log). |
+| L2 | **PASS**: Play after the unplug fell back to the system default (speakers). Replugged while playing: `selected output device is back; reopening on it` at 14:04:04, the open waited ~6 s for PipeWire to release the card, then reopened `hw:CARD=Pro` exclusive at 14:04:10 on its own. |
+| L7 | **FAIL, then fixed** (see the table above); the fixed build opened `hw:` exclusive after the switch from `default`. |
+| L4 | **PASS**: with the owner's rule in place the footer says ufw allows port 47820 and shows no warning. The missing-rule warning is covered by unit tests only, so the owner's rule was left alone. |
+| L5 | **PASS** on the second fix: an unmaximized window came back from the tray at its size (`show: restoring 1299x639`, no correction needed), and a maximized one came back maximized from the tray and from a second launch. |
+
+Also seen: after the `sysdefault:` runs, switching to `default` left the DAC missing from
+PipeWire until a replug. PipeWire logged `Device or resource busy` and WirePlumber failed to set up
+an ALSA output at 15:30:51 local, and the DAC sink came back only with the replug (15:32:09). Likely
+WirePlumber giving up on a card OxiTide held directly; not something OxiTide can retry. Worth one
+line in the Linux notes (switching away from a direct entry may need a replug, or a
+`systemctl --user restart wireplumber`).
+
+Gates after the retest fixes: `cargo test --workspace`, `cargo clippy --workspace -- -D warnings`,
+`npm --prefix ui run check`, `npm --prefix ui test` pass.
+
 ## Open choices (owner)
 
-- **Linux label for 1.0.** Everything on the 10-28 owner list has now run. L1–L3 are audio-path
-  quality issues on Linux (L3 may not be Linux-only): fix before the tag, or ship Linux as
-  "preview" with them listed in the notes.
-- **L5** (tray size) and **L4** (firewall hint): fix for 1.0 or after.
+- **Linux label for 1.0.** Everything on the 10-28 owner list has now run, and L1, L2, L4, L5,
+  L6 and L7 pass after the fixes. What is left: L3 clicks on the `sysdefault:` (dmix) entries, and
+  the PipeWire/WirePlumber replug quirk. Ship them as known issues, or hide or warn on
+  `sysdefault:` entries in the picker first.
+- Whether ~150 ms of extra lag on skip and seek (the faded end of the buffer) is acceptable on ALSA.
 - Still not run: the 22.04 oldest-base launch and the AppImage updater path (release gate §6).
 
 ## Side effects on this machine
 
-- `config.toml`: `output_device = "sysdefault:CARD=Pro"`, `exclusive = false`, `[remote] enabled =
-  true`, Block explicit set back by the owner. `ufw` has the owner's `47820/tcp` rule.
-- No OxiTide process left running. Scratch `XDG_DATA_HOME` dirs and the extracted packages are in the
+- `config.toml`: `output_device = "hw:CARD=Pro,DEV=0"`, `exclusive = true`, `[remote] enabled =
+  true`, Block explicit set back by the owner (exclusive fallback as the owner left it). `ufw` has the owner's `47820/tcp` rule.
+- The last retest AppImage was left running for the owner. Scratch `XDG_DATA_HOME` dirs and the extracted packages are in the
   session scratchpad; `~/.local/share/applications` was not touched.
