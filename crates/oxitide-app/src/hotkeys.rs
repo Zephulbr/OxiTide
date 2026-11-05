@@ -199,6 +199,11 @@ fn adjust_volume(app: &AppHandle, delta: f32) {
     let Some(player) = state.player() else {
         return;
     };
+    // Exclusive output with a fixed volume: the device sets the level, and
+    // the saved slider must not drift for when shared mode applies it again.
+    if player.engine.state().volume_fixed {
+        return;
+    }
     let mut config = state.config();
     let volume = next_volume(config.audio.volume, delta);
     if let Err(e) = player.engine.handle(EngineCmd::SetVolume(volume)) {

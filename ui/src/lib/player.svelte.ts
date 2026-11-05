@@ -12,6 +12,9 @@ export interface PlayerState {
   position_ms: number;
   duration_ms: number;
   volume: number;
+  /// Exclusive output plays at 100% (the device sets the level); see
+  /// `shownVolume`.
+  volume_fixed: boolean;
   shuffle: boolean;
   repeat: RepeatMode;
   preferred_quality: Quality;
@@ -34,7 +37,7 @@ export interface PlayerState {
 export function emptyState(): PlayerState {
   return {
     playing: false, buffering: false, current: null, current_index: null, position_ms: 0,
-    duration_ms: 0, volume: 1, shuffle: false, repeat: "off",
+    duration_ms: 0, volume: 1, volume_fixed: false, shuffle: false, repeat: "off",
     preferred_quality: "lossless", queue: [], queue_rev: 0, stream: null, error: "",
     error_code: "", output_mode: "shared", bit_perfect: false, bit_perfect_notice: null,
     dsp_active: false, dsp_stages: [], crossfade_ms: 0,
@@ -89,6 +92,12 @@ export function reconcileSeek(pending: number | null, event: EngineEvent): numbe
 export function muteTarget(volume: number, lastVolume: number): number {
   if (volume > 0) return 0;
   return lastVolume > 0 ? lastVolume : 0.5;
+}
+
+/** What a volume control shows: 100% while the volume is fixed (exclusive
+ *  output leaves the level to the device), else the user's slider. */
+export function shownVolume(state: Pick<PlayerState, "volume" | "volume_fixed">): number {
+  return state.volume_fixed ? 1 : state.volume;
 }
 
 /** Speaker icon for a volume level: crossed when muted, one wave below half, two at/above half. */
@@ -189,6 +198,8 @@ export function createPlayer(toasts?: Toasts) {
   /// persists once on release; `debounce` (wheel ticks) persists once the
   /// steps stop instead of rewriting the config per tick.
   function setVolume(v: number, persist = false, debounce = false) {
+    // Fixed: the device sets the level, and the saved slider stays as it is.
+    if (state.volume_fixed) return Promise.resolve();
     if (v > 0) lastVolume = v;
     if (persistTimer !== null) clearTimeout(persistTimer);
     persistTimer = null;

@@ -120,7 +120,7 @@ async fn serve(
     player.set_desktop_entry(desktop_entry(desktop_file_installed)).await?;
     player.set_can_raise(true).await?;
     player.set_can_seek(true).await?;
-    player.set_volume(engine.state().volume as f64).await?;
+    player.set_volume(engine.state().shown_volume() as f64).await?;
 
     let mut shown = true;
     let mut last_position_at = Instant::now();
@@ -144,7 +144,7 @@ async fn serve(
                     // Every engine `State` (a volume change included) arrives
                     // as a playback update; mirror the volume from it so the
                     // property follows the app, the phone, and hotkeys.
-                    player.set_volume(engine.state().volume as f64).await?;
+                    player.set_volume(engine.state().shown_volume() as f64).await?;
                 }
             }
         }

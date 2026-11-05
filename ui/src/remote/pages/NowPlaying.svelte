@@ -50,7 +50,9 @@
 
   const position = $derived(seeking ?? store.positionAt(now));
   const duration = $derived(playback?.durationMs ?? 0);
-  const shownVolume = $derived(volume ?? playback?.volume ?? 1);
+  /// Exclusive output on the PC plays at 100%; the level is set on its DAC.
+  const volumeFixed = $derived(playback?.volumeFixed ?? false);
+  const shownVolume = $derived(volumeFixed ? 1 : (volume ?? playback?.volume ?? 1));
   const favorite = $derived(current ? actions.favTracks.has(current.trackId) : false);
 
   // Live updates while swiping are throttled; the final value always goes.
@@ -71,6 +73,7 @@
   }
 
   function toggleMute() {
+    if (volumeFixed) return;
     if (shownVolume > 0) {
       unmuteTo = shownVolume;
       onVolume(0, true);
@@ -118,6 +121,7 @@
         cover={current.cover ?? null}
         playing={playback?.playing ?? false}
         volume={shownVolume}
+        fixed={volumeFixed}
         onvolume={onVolume}
       />
     {/if}
@@ -224,11 +228,16 @@
     <div class="extras">
       <button
         class="icon-btn level"
-        aria-label={shownVolume === 0 ? "Unmute" : `Mute (volume ${Math.round(shownVolume * 100)}%)`}
-        title="Swipe the artwork to change the volume"
+        aria-label={volumeFixed
+          ? "Volume fixed at 100% in exclusive mode"
+          : shownVolume === 0 ? "Unmute" : `Mute (volume ${Math.round(shownVolume * 100)}%)`}
+        title={volumeFixed
+          ? "Exclusive mode: set the level on the PC's DAC or system volume"
+          : "Swipe the artwork to change the volume"}
+        disabled={volumeFixed}
         onclick={toggleMute}
       >
-        <Icon name={shownVolume === 0 ? "volume-x" : shownVolume < 0.5 ? "volume-1" : "volume-2"} size={20} />
+        <Icon name={volumeFixed ? "lock" : shownVolume === 0 ? "volume-x" : shownVolume < 0.5 ? "volume-1" : "volume-2"} size={20} />
         <span class="pct">{Math.round(shownVolume * 100)}</span>
       </button>
       <button

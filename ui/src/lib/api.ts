@@ -267,7 +267,13 @@ export interface StreamMeta {
 export interface PlaybackState {
   playing: boolean; buffering: boolean; current?: QueueItem | null;
   current_index?: number | null;
-  position_ms: number; duration_ms: number; volume: number;
+  position_ms: number; duration_ms: number;
+  /** The user's slider; kept while `volume_fixed`. */
+  volume: number;
+  /** Exclusive output plays at 100% and the device sets the level: show
+   *  100% and lock the control (the engine ignores volume commands). Always
+   *  sent by Rust; optional so hand-built states in tests may omit it. */
+  volume_fixed?: boolean;
   shuffle: boolean; repeat: RepeatMode;
   preferred_quality: Quality;
   output_mode: "shared" | "exclusive";
@@ -415,6 +421,8 @@ export interface Config {
     exclusive: boolean;
     exclusive_fallback: "shared" | "warn_only";
     volume: number;
+    /** Ask before exclusive mode sets the in-app volume to 100%. */
+    exclusive_volume_warning: boolean;
   };
   streaming: { quality: Quality; allow_fallback: boolean };
   ui: {
@@ -566,7 +574,11 @@ export interface RemoteState {
   currentIndex: number | null;
   positionMs: number;
   durationMs: number;
+  /** What the volume control shows: 100% while `volumeFixed`. */
   volume: number;
+  /** Exclusive output on the PC plays at 100% and the device sets the
+   *  level: the phone locks its volume control. Optional for older PCs. */
+  volumeFixed?: boolean;
   shuffle: boolean;
   repeat: RepeatMode;
   queueLen: number;
@@ -823,6 +835,7 @@ export const api = {
   setPreferredQuality: (quality: Quality) => invoke<void>("set_preferred_quality", { quality }),
   setExclusive: (enabled: boolean) => invoke<void>("set_exclusive", { enabled }),
   setExclusiveFallback: (mode: "shared" | "warn_only") => invoke<void>("set_exclusive_fallback", { mode }),
+  setExclusiveVolumeWarning: (enabled: boolean) => invoke<void>("set_exclusive_volume_warning", { enabled }),
   getAudioStatus: () => invoke<AudioStatus>("get_audio_status"),
   setDspSettings: (settings: DspSettings) =>
     invoke<DspSettings>("set_dsp_settings", { settings }),

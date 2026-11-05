@@ -48,6 +48,11 @@ pub struct OutputStatus {
     pub mode: OutputMode,
     pub bit_perfect: bool,
     pub notice: Option<String>,
+    /// The app's volume does not apply: an exclusive stream on a device that
+    /// controls its own volume (or an ASIO driver) plays at 100% and leaves
+    /// the device's volume alone. The engine then hands the output unity
+    /// (a sleep fade still scales it) and ignores volume commands.
+    pub volume_fixed: bool,
 }
 
 /// Device ids of ASIO drivers carry this prefix before the registry key.
@@ -56,6 +61,35 @@ pub const ASIO_PREFIX: &str = "asio:";
 /// Notice shown while an exclusive output scales samples in software.
 pub const SOFTWARE_VOLUME_NOTICE: &str = "volume applied in software; bit-perfect compromised";
 
+/// Error of a strict (`ExclusiveFallback::WarnOnly`) exclusive open on a
+/// device without a volume control of its own: the system volume would not
+/// apply, so the stream would play at full scale.
+pub const NO_DEVICE_VOLUME_ERROR: &str = "this output device has no volume control of its own, so exclusive mode would play at full volume; allow the exclusive fallback or use shared mode";
+
+/// What an exclusive open does about volume, from whether the device has a
+/// volume control of its own (Windows endpoint hardware volume, an ALSA
+/// `Master`/`PCM` element). With one, the app leaves it alone and plays at
+/// 100% (the user sets the level on the DAC or the system). Without one, the
+/// system volume would not apply: the fallback setting decides between the
+/// app's software volume (not bit-perfect below 100%) and refusing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExclusiveVolume {
+    /// Volume fixed at 100%; the device's own control sets the level.
+    Fixed,
+    /// The app's volume, in software.
+    Software,
+    /// Refuse the open with [`NO_DEVICE_VOLUME_ERROR`].
+    Refuse,
+}
+
+pub fn exclusive_volume(device_has_volume: bool, fallback: ExclusiveFallback) -> ExclusiveVolume {
+    match (device_has_volume, fallback) {
+        (true, _) => ExclusiveVolume::Fixed,
+        (false, ExclusiveFallback::Shared) => ExclusiveVolume::Software,
+        (false, ExclusiveFallback::WarnOnly) => ExclusiveVolume::Refuse,
+    }
+}
+
 /// Exponent of the loudness-linear volume taper: `1 / (2·log10 2)`.
 ///
 /// Perceived loudness doubles for every +10 dB (Stevens' power law: loudness
@@ -63,9 +97,9 @@ pub const SOFTWARE_VOLUME_NOTICE: &str = "volume applied in software; bit-perfec
 /// position therefore means `dB = 10·log2(position)`, i.e. an amplitude of
 /// `position^1.661`: 50% sounds half as loud as 100% (-10 dB), 25% half as
 /// loud again (-20 dB), and every 5% step adds the same loudness anywhere on
-/// the slider. This is the taper Windows' own `SetMasterVolumeLevelScalar`
-/// gives on drivers that honour dB (about -10 dB at 50%, -35 dB at 10%), so
-/// shared and exclusive output feel the same.
+/// the slider. It is applied on top of the system volume, which the app
+/// never sets (exclusive output does not take the app's volume at all on a
+/// device with a volume control of its own, see [`ExclusiveVolume`]).
 ///
 /// Rejected: linear amplitude (loudness piles into the bottom 20%: 5% -> 10%
 /// is +6 dB, 85% -> 90% is +0.5 dB) and the cubic / 60 dB-exponential
@@ -78,8 +112,7 @@ pub const VOLUME_TAPER_EXPONENT: f32 = 1.661;
 /// loudness-linear taper ([`VOLUME_TAPER_EXPONENT`]). The ends are exact
 /// (0.0 is silence, 1.0 is unity, so full volume stays a no-op). Every
 /// `volume` in the app is a slider position; only software scaling converts
-/// it here. Endpoint volume needs no conversion:
-/// `SetMasterVolumeLevelScalar` already applies the same taper.
+/// it here.
 pub fn volume_gain(position: f32) -> f32 {
     position.clamp(0.0, 1.0).powf(VOLUME_TAPER_EXPONENT)
 }
@@ -410,10 +443,12 @@ impl AudioOutput for NullOutput {
         self.opens.fetch_add(1, Ordering::SeqCst);
         self.reopen.store(false, Ordering::SeqCst);
         *self.last_spec.lock().unwrap() = Some(spec.clone());
+        // Exclusive models a device with its own volume control.
         *self.status.lock().unwrap() = OutputStatus {
             mode: spec.mode,
             bit_perfect: spec.mode == OutputMode::Exclusive,
             notice: None,
+            volume_fixed: spec.mode == OutputMode::Exclusive,
         };
         Ok(())
     }
@@ -561,6 +596,18 @@ mod tests {
             mode,
             exclusive_fallback: ExclusiveFallback::Shared,
         }
+    }
+
+    #[test]
+    fn exclusive_volume_is_fixed_on_a_device_with_its_own_control() {
+        // The device's control sets the level whatever the fallback says.
+        for fallback in [ExclusiveFallback::Shared, ExclusiveFallback::WarnOnly] {
+            assert_eq!(exclusive_volume(true, fallback), ExclusiveVolume::Fixed);
+        }
+        // Without one the system volume would not apply: software volume
+        // when a non-bit-perfect fallback is allowed, else refuse.
+        assert_eq!(exclusive_volume(false, ExclusiveFallback::Shared), ExclusiveVolume::Software);
+        assert_eq!(exclusive_volume(false, ExclusiveFallback::WarnOnly), ExclusiveVolume::Refuse);
     }
 
     #[test]

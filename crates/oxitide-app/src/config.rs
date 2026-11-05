@@ -94,6 +94,10 @@ pub struct AudioConfig {
     /// a fresh config starts tapered.
     #[serde(default)]
     pub volume_tapered: bool,
+    /// Ask before turning exclusive mode on: it sets the in-app volume to
+    /// 100% and leaves the level to the device. Off once the user ticks
+    /// "Don't show again".
+    pub exclusive_volume_warning: bool,
 }
 
 impl Default for AudioConfig {
@@ -104,6 +108,7 @@ impl Default for AudioConfig {
             exclusive_fallback: ExclusiveFallback::Shared,
             volume: 1.0,
             volume_tapered: true,
+            exclusive_volume_warning: true,
         }
     }
 }
@@ -762,6 +767,7 @@ mod tests {
                 exclusive_fallback: ExclusiveFallback::WarnOnly,
                 volume: 0.42,
                 volume_tapered: true,
+                exclusive_volume_warning: false,
             },
             streaming: StreamingConfig { quality: QualityDto::Max, allow_fallback: false },
             ui: UiConfig {

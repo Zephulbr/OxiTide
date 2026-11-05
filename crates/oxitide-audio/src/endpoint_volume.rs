@@ -8,8 +8,9 @@ use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_ALL};
 
 use crate::error::{Error, Result};
 
-/// One render device's endpoint (master) volume, kept open by the thread that
-/// feeds the device so it can step the volume every period.
+/// One render device's endpoint (master) volume. Only queried: the app never
+/// sets the system volume (an exclusive open checks whether the device has
+/// hardware volume, see `output::ExclusiveVolume`).
 pub struct EndpointVolume {
     endpoint: IAudioEndpointVolume,
 }
@@ -35,21 +36,11 @@ impl EndpointVolume {
     }
 
     /// Whether the device applies the volume in hardware. An exclusive
-    /// stream bypasses the audio engine, so without it the endpoint volume
-    /// would have no effect and the volume must be applied in software.
+    /// stream bypasses the audio engine, so only then does the system volume
+    /// still apply to it.
     pub fn has_hardware_volume(&self) -> bool {
         unsafe { self.endpoint.QueryHardwareSupport() }
             .is_ok_and(|mask| mask & ENDPOINT_HARDWARE_SUPPORT_VOLUME != 0)
-    }
-
-    /// Set the volume as a slider position (0.0..=1.0); Windows applies its
-    /// own audio taper to it.
-    pub fn set(&self, position: f32) -> Result<()> {
-        unsafe {
-            self.endpoint
-                .SetMasterVolumeLevelScalar(position.clamp(0.0, 1.0), std::ptr::null())
-                .map_err(to_error)
-        }
     }
 }
 

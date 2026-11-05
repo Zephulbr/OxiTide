@@ -17,8 +17,8 @@ use crate::fetch::{self, AheadGate, AheadSink, AheadTicket, Fetcher, ScratchFile
 use crate::retry::{self, Backoff};
 use crate::meter::LevelTap;
 use crate::output::{
-    AudioOutput, AudioOutputSpec, ExclusiveFallback, LeadEstimate, OutputMode, OutputStatus,
-    UnderrunTally, VolumeControl,
+    effective_mode, AudioOutput, AudioOutputSpec, ExclusiveFallback, LeadEstimate, OutputMode,
+    OutputStatus, UnderrunTally, VolumeControl,
 };
 use crate::perf::{AudioPerfEvent, PerfHook};
 use crate::queue::{Queue, QueueItem, RepeatMode};
@@ -57,7 +57,13 @@ pub struct PlaybackState {
     pub current_index: Option<usize>,
     pub position_ms: u64,
     pub duration_ms: u64,
+    /// The slider position the user chose; kept while `volume_fixed`, and
+    /// back in effect once the output takes the app's volume again.
     pub volume: f32,
+    /// The app's volume does not apply (`OutputStatus::volume_fixed`):
+    /// exclusive output on a device with its own volume control, or ASIO.
+    /// Clients show 100% and a locked control; volume commands are ignored.
+    pub volume_fixed: bool,
     pub shuffle: bool,
     pub repeat: RepeatMode,
     pub preferred_quality: Quality,
@@ -85,6 +91,19 @@ pub struct PlaybackState {
     /// The queue stopped because its last track played out (not a pause or
     /// an error); cleared when anything starts playing or replaces the queue.
     pub ended: bool,
+}
+
+impl PlaybackState {
+    /// The level the app's volume control should show: 100% while the
+    /// output is fixed (the device's own control sets the level), else the
+    /// user's slider.
+    pub fn shown_volume(&self) -> f32 {
+        if self.volume_fixed {
+            1.0
+        } else {
+            self.volume
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -195,6 +214,11 @@ struct Inner {
     output_mode: Mutex<OutputMode>,
     exclusive_fallback: Mutex<ExclusiveFallback>,
     output_status: Mutex<OutputStatus>,
+    /// `output_status` describes an open made with the current output
+    /// settings. Cleared when the mode, device or fallback changes, so
+    /// `PlaybackState::volume_fixed` predicts from the settings until the
+    /// next open (and before the first one).
+    status_live: AtomicBool,
     /// Sound-processing settings; `dsp_version` bumps on every change so the
     /// worker re-applies them live.
     dsp: Mutex<DspSettings>,
@@ -306,6 +330,7 @@ fn build_state(inner: &Inner) -> PlaybackState {
         position_ms: inner.position_ms.load(Ordering::SeqCst),
         duration_ms: q.current().map(|i| i.duration_secs as u64 * 1000).unwrap_or(0),
         volume: q.volume(),
+        volume_fixed: volume_fixed(inner),
         shuffle: q.shuffle(),
         repeat: q.repeat(),
         preferred_quality: *inner.quality.lock().unwrap(),
@@ -333,14 +358,33 @@ fn current_volume(inner: &Inner) -> (f32, bool) {
 }
 
 fn current_volume_locked(inner: &Inner, fade: &Option<FadeState>) -> (f32, bool) {
+    // A fixed output plays at unity: the device's own control sets the level.
+    // Read from the open output's status, never the settings, so a mode
+    // change cannot hand a still-open shared output full volume.
+    let fixed = inner.output_status.lock().unwrap().volume_fixed;
     match fade.as_ref() {
         Some(f) => {
             let duration = f.duration.as_secs_f32().max(0.001);
             let t = (f.started.elapsed().as_secs_f32() / duration).min(1.0);
-            (f.base_volume * (1.0 - t), true)
+            let base = if fixed { 1.0 } else { f.base_volume };
+            (base * (1.0 - t), true)
         }
+        None if fixed => (1.0, false),
         None => (f32::from_bits(inner.volume.load(Ordering::SeqCst)), false),
     }
+}
+
+/// Whether the app's volume is out of play, for clients and volume commands:
+/// what the open output reported, or, before an open with the current
+/// settings, what they will give (exclusive and ASIO outputs are fixed unless
+/// the device turns out to lack a volume control of its own).
+fn volume_fixed(inner: &Inner) -> bool {
+    if inner.status_live.load(Ordering::SeqCst) {
+        return inner.output_status.lock().unwrap().volume_fixed;
+    }
+    let mode = *inner.output_mode.lock().unwrap();
+    let device = inner.device_id.lock().unwrap();
+    effective_mode(mode, device.as_deref()) == OutputMode::Exclusive
 }
 
 /// Hand `volume` (read by the worker a moment ago) to the output, then
@@ -355,6 +399,13 @@ fn apply_volume(inner: &Inner, output: &mut dyn AudioOutput, volume: f32) -> Res
     let (current, _) = current_volume_locked(inner, &fade);
     inner.volume_control.set(current);
     result
+}
+
+/// Record a fresh open's status: from here it describes the current output
+/// settings, and `volume_fixed` follows the device instead of the prediction.
+fn publish_open_status(inner: &Inner, output: &dyn AudioOutput) {
+    *inner.output_status.lock().unwrap() = output.status();
+    inner.status_live.store(true, Ordering::SeqCst);
 }
 
 fn emit(inner: &Arc<Inner>, event: EngineEvent) {
@@ -402,6 +453,7 @@ impl Engine {
             output_mode: Mutex::new(OutputMode::Shared),
             exclusive_fallback: Mutex::new(ExclusiveFallback::Shared),
             output_status: Mutex::new(OutputStatus::default()),
+            status_live: AtomicBool::new(false),
             dsp: Mutex::new(DspSettings::default()),
             dsp_version: AtomicU64::new(0),
             dsp_stages: Mutex::new(Vec::new()),
@@ -478,6 +530,7 @@ impl Engine {
     /// immediately (restarts the current track at its position).
     pub fn set_output_device(&self, device: Option<String>) {
         *self.inner.device_id.lock().unwrap() = device;
+        self.inner.status_live.store(false, Ordering::SeqCst);
         self.inner.reselect_device.store(true, Ordering::SeqCst);
         self.restart_current_at_position();
     }
@@ -571,12 +624,14 @@ impl Engine {
     /// current track at its position).
     pub fn set_output_mode(&self, mode: OutputMode) {
         *self.inner.output_mode.lock().unwrap() = mode;
+        self.inner.status_live.store(false, Ordering::SeqCst);
         self.restart_current_at_position();
     }
 
     /// Select what to do when exclusive output is unavailable.
     pub fn set_exclusive_fallback(&self, fallback: ExclusiveFallback) {
         *self.inner.exclusive_fallback.lock().unwrap() = fallback;
+        self.inner.status_live.store(false, Ordering::SeqCst);
         self.restart_current_at_position();
     }
 
@@ -637,7 +692,8 @@ impl Engine {
         };
         self.inner.volume.store(base.to_bits(), Ordering::SeqCst);
         self.inner.queue.lock().unwrap().set_volume(base);
-        self.inner.volume_control.set(base);
+        let (position, _) = current_volume_locked(&self.inner, &fade);
+        self.inner.volume_control.set(position);
         drop(fade);
         self.inner.notify_worker();
     }
@@ -807,6 +863,12 @@ impl Engine {
                 }
                 self.emit(EngineEvent::State(self.state()));
             }
+            EngineCmd::SetVolume(_) if volume_fixed(&self.inner) => {
+                // The device's own control sets the level; keep the user's
+                // slider for when the app's volume applies again. The state
+                // event resyncs a client that moved its control anyway.
+                self.emit(EngineEvent::State(self.state()));
+            }
             EngineCmd::SetVolume(v) => {
                 // The new volume replaces any sleep fade. Store it and drop the
                 // fade under the fade lock, so the worker reads either the fade
@@ -820,10 +882,11 @@ impl Engine {
                         q.volume()
                     };
                     self.inner.volume.store(clamped.to_bits(), Ordering::SeqCst);
+                    fade.take();
                     // Straight to the device thread: the worker may be
                     // blocked mid-write for a whole decoder packet.
-                    self.inner.volume_control.set(clamped);
-                    fade.take();
+                    let (position, _) = current_volume_locked(&self.inner, &fade);
+                    self.inner.volume_control.set(position);
                 }
                 // The worker still refreshes the output's status (software
                 // volume notices); a paused one is parked, so wake it.
@@ -879,7 +942,9 @@ impl Engine {
                 let playing = self.inner.queue.lock().unwrap().is_playing();
                 if playing {
                     let base = f32::from_bits(self.inner.volume.load(Ordering::SeqCst));
-                    if duration_ms == 0 || base <= 0.0 {
+                    // A fixed output fades from unity whatever the slider says.
+                    let (audible, _) = current_volume(&self.inner);
+                    if duration_ms == 0 || audible <= 0.0 {
                         // Nothing to ramp: pause now.
                         self.inner.queue.lock().unwrap().stop();
                         self.inner.paused.store(true, Ordering::SeqCst);
@@ -2488,6 +2553,9 @@ fn run_session(
             }
             fire_perf(inner, AudioPerfEvent::OutputOpened { track_id: stream.item.track_id });
             refill = true;
+            // The status first: whether the new open takes the app's volume
+            // decides the volume handed to it (a fixed output gets unity).
+            publish_open_status(inner, output);
             // A format change mid-fade must not jump back to the user volume.
             let (volume, _) = current_volume(inner);
             if let Err(e) = apply_volume(inner, output, volume) {
@@ -2573,8 +2641,8 @@ fn run_session(
                 // and must win, not be overwritten with a stale zero.
                 if let Some(fade) = inner.fade.lock().unwrap().take() {
                     // Discard the audio staged at the faded volume before the
-                    // user volume is restored: exclusive endpoint volume
-                    // applies at render time, so a full ring would otherwise
+                    // user volume is restored: volume applies at render time
+                    // (as samples leave the ring), so a full ring would otherwise
                     // un-mute an audible tail after the pause.
                     if let Err(e) = output.flush() {
                         return SessionOutcome::OutputError {
@@ -2615,9 +2683,8 @@ fn run_session(
                     && inner.generation.load(Ordering::SeqCst) == gen
                     && !inner.shutdown.load(Ordering::SeqCst)
                 {
-                    // Volume still reaches an open output while paused: an
-                    // exclusive endpoint shows it, and a completed sleep fade
-                    // restores the user's volume here.
+                    // Volume still reaches an open output while paused: a
+                    // completed sleep fade restores the user's volume here.
                     let (volume, _) = current_volume(inner);
                     if released.is_none() && (volume - *last_volume).abs() >= f32::EPSILON {
                         if let Err(e) = apply_volume(inner, output, volume) {
@@ -2640,11 +2707,12 @@ fn run_session(
                     return SessionOutcome::Superseded;
                 }
                 if let Some(spec) = released {
-                    let (volume, _) = current_volume(inner);
-                    let reopened = output
-                        .open(&spec)
-                        .and_then(|()| output.start())
-                        .and_then(|()| apply_volume(inner, output, volume));
+                    let reopened = output.open(&spec).and_then(|()| output.start());
+                    if reopened.is_ok() {
+                        publish_open_status(inner, output);
+                    }
+                    let volume = current_volume(inner).0;
+                    let reopened = reopened.and_then(|()| apply_volume(inner, output, volume));
                     if let Err(e) = reopened {
                         return SessionOutcome::OutputError {
                             message: e.to_string(),
@@ -5883,6 +5951,91 @@ mod tests {
         assert_eq!(control.position(), 0.3, "the fade's last step must not outlive the cancel");
     }
 
+    /// Exclusive output on a device with its own volume control (NullOutput
+    /// models one) plays at 100% and leaves the level to the device; the
+    /// user's slider is kept and applies again in shared mode.
+    #[test]
+    fn exclusive_on_a_device_with_its_own_volume_plays_at_unity() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        let control = output.volume_control().expect("attached");
+        engine.handle(EngineCmd::SetVolume(0.4)).unwrap();
+        assert!(!engine.state().volume_fixed);
+        engine.set_output_mode(OutputMode::Exclusive);
+        assert!(engine.state().volume_fixed, "predicted from the settings before any open");
+
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine.handle(EngineCmd::SetRepeat(RepeatMode::All)).unwrap();
+        wait_for(|| !output.samples().is_empty());
+        assert_eq!(output.last_spec().unwrap().mode, OutputMode::Exclusive);
+        assert_eq!(control.position(), 1.0);
+        let volumes = output.volumes();
+        assert!(volumes.iter().all(|v| *v == 1.0), "the slider reached the device: {volumes:?}");
+        let state = engine.state();
+        assert!(state.volume_fixed);
+        assert_eq!(state.volume, 0.4, "the slider is kept");
+
+        // Volume commands do nothing while fixed.
+        engine.handle(EngineCmd::SetVolume(0.1)).unwrap();
+        assert_eq!(engine.state().volume, 0.4);
+        assert_eq!(control.position(), 1.0);
+
+        // Back to shared: the slider applies again (quieter, never louder).
+        engine.set_output_mode(OutputMode::Shared);
+        assert!(!engine.state().volume_fixed);
+        wait_for(|| {
+            output.last_spec().is_some_and(|spec| spec.mode == OutputMode::Shared)
+                && control.position() == 0.4
+        });
+        assert_eq!(output.volumes().last(), Some(&0.4));
+    }
+
+    /// A sleep fade still works on a fixed output: it fades from unity (not
+    /// from the slider) and restores unity after the pause.
+    #[test]
+    fn a_sleep_fade_on_a_fixed_output_fades_from_unity() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        engine.handle(EngineCmd::SetVolume(0.4)).unwrap();
+        engine.set_output_mode(OutputMode::Exclusive);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine.handle(EngineCmd::SetRepeat(RepeatMode::All)).unwrap();
+        wait_for(|| !output.samples().is_empty());
+
+        engine.handle(EngineCmd::FadeAndPause { duration_ms: 150 }).unwrap();
+        wait_for(|| !engine.state().playing);
+        wait_for(|| output.volumes().last() == Some(&1.0));
+        let volumes = output.volumes();
+        assert!(volumes.iter().any(|v| *v > 0.5 && *v < 0.95), "not faded from unity: {volumes:?}");
+        assert!(volumes.iter().any(|v| v.abs() <= f32::EPSILON), "never silent: {volumes:?}");
+        assert_eq!(engine.state().volume, 0.4, "the slider is kept");
+    }
+
+    /// An exclusive device without a volume control of its own (fallback
+    /// allowed) takes the app's volume in software: not fixed.
+    #[test]
+    fn exclusive_without_a_device_volume_keeps_the_app_volume() {
+        let (plan, files) = fixture_plan();
+        let status = OutputStatus {
+            mode: OutputMode::Exclusive,
+            bit_perfect: true,
+            notice: None,
+            volume_fixed: false,
+        };
+        let engine = build_engine(
+            Arc::new(FakeResolver { plan }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(FixedStatusOutput { status }),
+            Quality::Lossless,
+        );
+        engine.set_output_mode(OutputMode::Exclusive);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| engine.audio_status().mode == OutputMode::Exclusive);
+        wait_for(|| !engine.state().volume_fixed);
+        engine.handle(EngineCmd::SetVolume(0.3)).unwrap();
+        assert_eq!(engine.state().volume, 0.3);
+    }
+
     /// Regression: `Next` at the end of the queue with repeat off must not
     /// restart the last track.
     #[test]
@@ -6112,6 +6265,7 @@ mod tests {
             mode: OutputMode::Exclusive,
             bit_perfect: false,
             notice: Some("volume applied in software; bit-perfect compromised".into()),
+            volume_fixed: false,
         };
         let engine = build_engine(
             Arc::new(FakeResolver { plan }),

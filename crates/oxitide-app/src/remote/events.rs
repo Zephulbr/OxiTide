@@ -57,7 +57,11 @@ pub struct RemoteState {
     pub current_index: Option<usize>,
     pub position_ms: u64,
     pub duration_ms: u64,
+    /// What the volume control shows: 100% while `volume_fixed`.
     pub volume: f32,
+    /// Exclusive output plays at 100% and the device sets the level: the
+    /// phone locks its volume control (the desktop ignores volume commands).
+    pub volume_fixed: bool,
     pub shuffle: bool,
     pub repeat: RepeatMode,
     pub queue_len: usize,
@@ -79,6 +83,7 @@ impl RemoteState {
             position_ms: 0,
             duration_ms: 0,
             volume: 1.0,
+            volume_fixed: false,
             shuffle: false,
             repeat: RepeatMode::Off,
             queue_len: 0,
@@ -119,7 +124,8 @@ pub fn slim(state: &PlaybackState, explicit: Option<bool>, queue_rev: u64) -> Re
         current_index: state.current_index,
         position_ms: state.position_ms,
         duration_ms: state.duration_ms,
-        volume: state.volume,
+        volume: state.shown_volume(),
+        volume_fixed: state.volume_fixed,
         shuffle: state.shuffle,
         repeat: state.repeat,
         queue_len: state.queue.len(),
@@ -534,6 +540,7 @@ pub(crate) mod tests {
             position_ms: 1500,
             duration_ms: 200_000,
             volume: 0.8,
+            volume_fixed: false,
             shuffle: false,
             repeat: RepeatMode::All,
             preferred_quality: Quality::Lossless,
@@ -600,6 +607,19 @@ pub(crate) mod tests {
         assert_eq!(value["dspStages"], serde_json::json!(["EQ"]));
         assert_eq!(value["repeat"], "all");
         assert_eq!(value["loggedIn"], true);
+    }
+
+    #[test]
+    fn a_fixed_volume_shows_full_and_locks_the_phone_control() {
+        let mut playback = playback(vec![item(1)], Some(0));
+        playback.volume = 0.8;
+        let shared = serde_json::to_value(slim(&playback, None, 0)).unwrap();
+        assert_eq!(shared["volumeFixed"], false);
+        assert!((shared["volume"].as_f64().unwrap() - 0.8).abs() < 1e-6);
+        playback.volume_fixed = true;
+        let fixed = serde_json::to_value(slim(&playback, None, 0)).unwrap();
+        assert_eq!(fixed["volumeFixed"], true);
+        assert_eq!(fixed["volume"], 1.0);
     }
 
     #[test]

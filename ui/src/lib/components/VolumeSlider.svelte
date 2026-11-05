@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Player } from "../player.svelte";
-  import { volumeIcon } from "../player.svelte";
+  import { shownVolume, volumeIcon } from "../player.svelte";
   import Icon from "./Icon.svelte";
 
   let {
@@ -9,28 +9,35 @@
     width = "146px",
   }: { player: Player; iconSize?: number; width?: string } = $props();
 
-  const muted = $derived(player.state.volume === 0);
-  const icon = $derived(volumeIcon(player.state.volume));
-  const level = $derived(`${player.state.volume * 100}%`);
+  /// Exclusive output plays at 100% and leaves the level to the device: the
+  /// slider shows full and locks, with a lock in place of the mute button.
+  const fixed = $derived(player.state.volume_fixed);
+  const volume = $derived(shownVolume(player.state));
+  const muted = $derived(volume === 0);
+  const icon = $derived(fixed ? "lock" : volumeIcon(volume));
+  const level = $derived(`${volume * 100}%`);
+  const FIXED_HINT = "Volume fixed at 100% in exclusive mode; set the level on your DAC or with the system volume";
 </script>
 
-<div class="volume" style:width={width}>
+<div class="volume" class:fixed style:width={width} title={fixed ? FIXED_HINT : undefined}>
   <button
     class="mute"
     class:on={muted}
     data-floor
+    disabled={fixed}
     onclick={() => player.toggleMute()}
-    aria-label={muted ? "Unmute" : "Mute"}
-    title={muted ? "Unmute" : "Mute"}
-    aria-pressed={muted}
+    aria-label={fixed ? FIXED_HINT : muted ? "Unmute" : "Mute"}
+    title={fixed ? FIXED_HINT : muted ? "Unmute" : "Mute"}
+    aria-pressed={fixed ? undefined : muted}
   ><Icon name={icon} size={iconSize} /></button>
   <div class="track" style:--level={level}>
     <input
-      type="range" min="0" max="1" step="0.01" value={player.state.volume} data-perf-volume
+      type="range" min="0" max="1" step="0.01" value={volume} data-perf-volume
+      disabled={fixed}
       oninput={(e) => player.setVolume(Number((e.currentTarget as HTMLInputElement).value))}
       onchange={(e) => player.setVolume(Number((e.currentTarget as HTMLInputElement).value), true)}
       aria-label="Volume"
-      aria-valuetext={`${Math.round(player.state.volume * 100)}%`}
+      aria-valuetext={fixed ? "100%, fixed in exclusive mode" : `${Math.round(volume * 100)}%`}
     />
   </div>
 </div>
@@ -65,6 +72,16 @@
   .mute.on {
     color: var(--accent);
   }
+  .mute:disabled {
+    cursor: default;
+  }
+  .mute:disabled:hover {
+    background: none;
+    color: var(--text-muted);
+  }
+  .mute:disabled:active {
+    transform: none;
+  }
 
   /* Pill track with a thumbless level fill: accent up to the value, `--line`
      after — the same track color as the seek bar. Fixed 8px; on hover it
@@ -84,6 +101,17 @@
   }
   .track:hover {
     box-shadow: 0 0 9px color-mix(in srgb, var(--accent) 80%, transparent);
+  }
+  /* Fixed: a full but muted fill, no glow, no pointer. */
+  .fixed .track {
+    background: var(--text-muted);
+    opacity: 0.5;
+  }
+  .fixed .track:hover {
+    box-shadow: none;
+  }
+  .fixed .track input {
+    cursor: default;
   }
 
   /* The input is an invisible hit area over the track; the thumb stays hidden

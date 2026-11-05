@@ -293,6 +293,7 @@ mod tests {
             position_ms: 0,
             duration_ms: 200_000,
             volume: 1.0,
+            volume_fixed: false,
             shuffle: false,
             repeat: oxitide_audio::queue::RepeatMode::Off,
             preferred_quality: oxitide_tidal::stream::Quality::Lossless,

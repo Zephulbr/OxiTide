@@ -125,6 +125,9 @@
   let confirmingHistoryClear = $state(false);
   let confirmingBlockExplicit = $state(false);
   let confirmingLogout = $state(false);
+  /// A change that turns on a fixed volume (exclusive mode, an ASIO device),
+  /// held while the volume warning asks first.
+  let pendingFixedVolume = $state<(() => void) | null>(null);
   let hotkeyConflict = $state<
     { action: HotkeyAction; accelerator: string; other: HotkeyAction } | null
   >(null);
@@ -582,14 +585,44 @@
     }
   }
 
+  /// Exclusive output sets the in-app volume to 100% and leaves the level to
+  /// the DAC or system: ask first when that is louder than the slider now,
+  /// unless the user chose "Don't show again".
+  function withVolumeWarning(change: () => void) {
+    const louder = !player.state.volume_fixed && player.state.volume < 1;
+    if (config?.audio.exclusive_volume_warning !== false && louder) pendingFixedVolume = change;
+    else change();
+  }
+
+  function confirmFixedVolume(optedOut: boolean) {
+    const change = pendingFixedVolume;
+    pendingFixedVolume = null;
+    if (optedOut) {
+      saveAudio({ exclusive_volume_warning: false });
+      api.setExclusiveVolumeWarning(false).catch(apply);
+    }
+    change?.();
+  }
+
   function setDevice(deviceId: string) {
-    saveAudio({ output_device: deviceId });
-    api.setOutputDevice(deviceId).catch(apply);
+    const change = () => {
+      saveAudio({ output_device: deviceId });
+      api.setOutputDevice(deviceId).catch(apply);
+    };
+    // ASIO is always exclusive, so picking it can fix the volume too.
+    const fixes = deviceId.startsWith("asio:") && !config?.audio.exclusive
+      && !config?.audio.output_device.startsWith("asio:");
+    if (fixes) withVolumeWarning(change);
+    else change();
   }
 
   function setExclusive(enabled: boolean) {
-    saveAudio({ exclusive: enabled });
-    api.setExclusive(enabled).catch(apply);
+    const change = () => {
+      saveAudio({ exclusive: enabled });
+      api.setExclusive(enabled).catch(apply);
+    };
+    if (enabled && !config?.audio.output_device.startsWith("asio:")) withVolumeWarning(change);
+    else change();
   }
 
   function setFallback(mode: "shared" | "warn_only") {
@@ -1251,14 +1284,14 @@
               </SettingRow>
               <ToggleRow
                 id="exclusive" label="Bit-perfect output (exclusive mode)"
-                description="Bypasses the system mixer so samples reach the device unchanged. Other apps cannot use the device while it plays."
+                description="Bypasses the system mixer so samples reach the device unchanged. Other apps cannot use the device while it plays. The in-app volume stays at 100%; set the level on your DAC or with the system volume."
                 checked={config.audio.exclusive}
                 onchange={setExclusive}
               />
               {#if config.audio.exclusive || config.audio.output_device.startsWith("asio:")}
                 <SettingRow
                   id="exclusive-fallback" label="If unsupported"
-                  description="What to do when the device refuses exclusive mode."
+                  description="What to do when the device refuses exclusive mode, or has no volume control of its own (exclusive would then play at full volume; the fallback uses the in-app volume instead, which is not bit-perfect)."
                 >
                   <Segmented
                     label="If unsupported"
@@ -1271,12 +1304,24 @@
               {#if config.audio.output_device.startsWith("asio:")}
                 <SettingRow label="ASIO driver" stacked>
                   <Notice kind="info">
-                    ASIO drivers are always exclusive and bit-perfect at 100% volume; lower volume is
-                    applied in software. The buffer size follows the driver's own control panel.
+                    ASIO drivers are always exclusive and bit-perfect: the in-app volume stays at 100%, so
+                    set the level on the interface or in its mixer. The buffer size follows the driver's
+                    own control panel.
                   </Notice>
                 </SettingRow>
               {/if}
             </SettingsSection>
+            {#if pendingFixedVolume}
+              <ConfirmDialog
+                title="Exclusive mode volume"
+                message="Caution: exclusive mode sets the in-app volume to 100%, which can be much louder than now. Turn the volume down on your DAC or with the system volume first; the in-app volume returns when you leave exclusive mode."
+                confirmLabel="Use exclusive mode"
+                destructive={false}
+                optOutLabel="Don't show again"
+                onconfirm={confirmFixedVolume}
+                oncancel={() => (pendingFixedVolume = null)}
+              />
+            {/if}
 
             <SettingsSection
               title="Volume leveling"

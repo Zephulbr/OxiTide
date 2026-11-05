@@ -23,6 +23,7 @@ export function fakePlayer(state: Partial<PlaybackState> = {}): Player {
     position_ms: 30000,
     duration_ms: 60000,
     volume: 0.42,
+    volume_fixed: false,
     shuffle: false,
     repeat: "off",
     preferred_quality: "high",

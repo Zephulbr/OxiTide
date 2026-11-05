@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Player } from "../player.svelte";
+  import { shownVolume } from "../player.svelte";
 
   /// Amp volume knob with a 23-dot LED ring (DESIGN §5.7). A slider: drag up
   /// or down, wheel, arrows ±2 %, Page keys ±10 %, Home/End; double-click
@@ -16,7 +17,11 @@
   $effect(() => {
     if (stepVolume !== null && player.state.volume === stepVolume) stepVolume = null;
   });
-  const volume = $derived(dragVolume ?? stepVolume ?? player.state.volume);
+  /// Exclusive output plays at 100% and leaves the level to the device: the
+  /// knob sits at full, dimmed, and ignores input.
+  const fixed = $derived(player.state.volume_fixed);
+  const FIXED_HINT = "Volume fixed at 100% in exclusive mode; set the level on your DAC or with the system volume";
+  const volume = $derived(fixed ? 1 : (dragVolume ?? stepVolume ?? shownVolume(player.state)));
   const angle = $derived(-SWEEP / 2 + volume * SWEEP);
   const lit = $derived(Math.round(volume * (RING - 1)));
   const dots = Array.from({ length: RING }, (_, i) => {
@@ -29,6 +34,7 @@
   let startY = 0;
   let startVolume = 0;
   function onPointerDown(event: PointerEvent) {
+    if (fixed) return;
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
     startY = event.clientY;
     startVolume = volume;
@@ -46,6 +52,7 @@
     dragVolume = null;
   }
   function onKeydown(event: KeyboardEvent) {
+    if (fixed) return;
     const step: Record<string, number> = { ArrowUp: 0.02, ArrowRight: 0.02, ArrowDown: -0.02, ArrowLeft: -0.02, PageUp: 0.1, PageDown: -0.1 };
     let next: number | null = null;
     if (event.key in step) next = clamp(volume + step[event.key]);
@@ -56,6 +63,7 @@
     stepTo(next);
   }
   function onWheel(event: WheelEvent) {
+    if (fixed) return;
     event.preventDefault();
     stepTo(clamp(volume - Math.sign(event.deltaY) * 0.02));
   }
@@ -66,7 +74,7 @@
   }
 </script>
 
-<div class="frame" style:--s={scale}>
+<div class="frame" class:fixed style:--s={scale} title={fixed ? FIXED_HINT : undefined}>
 <div class="knobbox">
   <svg class="ring" viewBox="0 0 76 76" aria-hidden="true">
     {#each dots as d, i (i)}
@@ -81,7 +89,8 @@
     aria-valuemin={0}
     aria-valuemax={100}
     aria-valuenow={Math.round(volume * 100)}
-    aria-valuetext={volume === 0 ? "Muted" : `${Math.round(volume * 100)} percent`}
+    aria-valuetext={fixed ? "100 percent, fixed in exclusive mode" : volume === 0 ? "Muted" : `${Math.round(volume * 100)} percent`}
+    aria-disabled={fixed || undefined}
     style:--angle="{angle}deg"
     onpointerdown={onPointerDown}
     onpointermove={onPointerMove}
@@ -89,7 +98,7 @@
     onpointercancel={() => (dragVolume = null)}
     onkeydown={onKeydown}
     onwheel={onWheel}
-    ondblclick={() => player.toggleMute()}
+    ondblclick={() => !fixed && player.toggleMute()}
   ></div>
 </div>
 </div>
@@ -157,6 +166,12 @@
     border-radius: 2px;
     background: var(--rack-lamp);
     box-shadow: 0 0 6px var(--rack-lamp-glow);
+  }
+  .fixed .knob {
+    cursor: default;
+  }
+  .fixed .ring circle.on {
+    opacity: 0.45;
   }
   .knob:focus-visible {
     outline: 2px solid var(--accent);

@@ -792,6 +792,7 @@ mod tests {
             position_ms,
             duration_ms: 3000,
             volume: 1.0,
+            volume_fixed: false,
             shuffle: true,
             repeat: RepeatMode::All,
             preferred_quality: Quality::Lossless,

@@ -319,22 +319,6 @@ pub fn f32_to_i32_one(sample: f32) -> i32 {
     }
 }
 
-/// Map a raw ALSA mixer volume into 0.0..=1.0.
-pub fn raw_to_volume(raw: i64, min: i64, max: i64) -> f32 {
-    if max <= min {
-        return 1.0;
-    }
-    ((raw - min) as f32 / (max - min) as f32).clamp(0.0, 1.0)
-}
-
-/// Map 0.0..=1.0 onto a raw ALSA mixer volume.
-pub fn volume_to_raw(volume: f32, min: i64, max: i64) -> i64 {
-    if max <= min {
-        return max;
-    }
-    (min as f64 + (volume.clamp(0.0, 1.0) as f64) * (max - min) as f64).round() as i64
-}
-
 /// Map an ALSA PCM device name to the CTL name its mixer lives on:
 /// `hw:CARD=X,DEV=0` -> `hw:CARD=X`, `hw:0,0` -> `hw:0`,
 /// `plughw:`/`sysdefault:` -> `hw:`, `default` stays `default`.
@@ -401,8 +385,8 @@ mod linux {
     use crate::decode::PcmBuffer;
     use crate::gain::{scale_i32, GainRamp};
     use crate::output::{
-        volume_gain, AudioOutput, AudioOutputSpec, OutputDevice, OutputMode, OutputStatus,
-        VolumeControl,
+        exclusive_volume, volume_gain, AudioOutput, AudioOutputSpec, ExclusiveVolume, OutputDevice,
+        OutputMode, OutputStatus, VolumeControl, NO_DEVICE_VOLUME_ERROR,
     };
 
     /// Maximum wall-clock time one `write` call may spend on the device before
@@ -438,7 +422,6 @@ mod linux {
         channels: u16,
         /// The volume (the engine's, once attached); read on every write.
         control: Arc<VolumeControl>,
-        software_volume: bool,
         /// Glides software volume changes (a step would click). ALSA has no
         /// ring of ours, so it runs as samples are written.
         ramp: GainRamp,
@@ -472,13 +455,8 @@ mod linux {
                 device: String::new(),
                 channels: 2,
                 control: Arc::new(VolumeControl::default()),
-                software_volume: true,
                 ramp: GainRamp::new(1.0, 48_000),
-                status: OutputStatus {
-                    mode: OutputMode::Shared,
-                    bit_perfect: false,
-                    notice: None,
-                },
+                status: OutputStatus::default(),
                 underruns: 0,
                 rate: 0,
                 queued: None,
@@ -760,28 +738,23 @@ mod linux {
         out
     }
 
-    /// Set the card's playback volume through ALSA's mixer, preferring
-    /// "Master" then "PCM". Returns an error when no writable playback
-    /// element exists, which sends the caller down the software path.
-    pub fn set_hardware_volume(device: &str, volume: f32) -> Result<()> {
+    /// Whether the card behind `device` has a playback volume control of its
+    /// own ("Master" or "PCM"), which the sound server drives as the system
+    /// volume and which still applies to a direct `hw:` stream. Only read:
+    /// the app never sets it (see `output::ExclusiveVolume`).
+    pub fn has_hardware_volume(device: &str) -> bool {
         use alsa::mixer::{Mixer, SelemId};
-        validate_device_name(device)?;
-        let mixer = Mixer::new(&ctl_name(device), false).map_err(to_error)?;
-        for name in ["Master", "PCM"] {
-            let id = SelemId::new(name, 0);
-            let Some(selem) = mixer.find_selem(&id) else {
-                continue;
-            };
-            if !selem.has_playback_volume() {
-                continue;
-            }
-            let (min, max) = selem.get_playback_volume_range();
-            selem
-                .set_playback_volume_all(volume_to_raw(volume, min, max))
-                .map_err(to_error)?;
-            return Ok(());
+        if validate_device_name(device).is_err() {
+            return false;
         }
-        Err(Error::Output("no writable playback volume control".into()))
+        let Ok(mixer) = Mixer::new(&ctl_name(device), false) else {
+            return false;
+        };
+        ["Master", "PCM"].into_iter().any(|name| {
+            mixer
+                .find_selem(&SelemId::new(name, 0))
+                .is_some_and(|selem| selem.has_playback_volume())
+        })
     }
 
     impl AudioOutput for AlsaOutput {
@@ -798,14 +771,9 @@ mod linux {
                 let mut seen = state.get();
                 seen.observe(card_present(&card))
             });
-            self.software_volume = true;
             // Reset before any fallible step so a failed reopen cannot leave
             // the previous session's exclusive/bit-perfect status visible.
-            self.status = OutputStatus {
-                mode: OutputMode::Shared,
-                bit_perfect: false,
-                notice: None,
-            };
+            self.status = OutputStatus::default();
             let requested = spec.mode;
             let device = match spec.device_id.as_deref() {
                 Some(id) if !id.is_empty() => id.to_string(),
@@ -821,11 +789,7 @@ mod linux {
             if rejoining || (after_server && device != "default") {
                 Self::wait_until_free(&device);
             }
-            let mut status = OutputStatus {
-                mode: OutputMode::Shared,
-                bit_perfect: false,
-                notice: None,
-            };
+            let mut status = OutputStatus::default();
 
             if requested == OutputMode::Exclusive {
                 // Only `hw:` PCMs bypass alsa-lib's plugins, so only they can
@@ -850,6 +814,14 @@ mod linux {
                         self.format = format;
                         status.mode = OutputMode::Exclusive;
                         status.bit_perfect = true;
+                        match exclusive_volume(has_hardware_volume(&device), spec.exclusive_fallback) {
+                            ExclusiveVolume::Fixed => status.volume_fixed = true,
+                            ExclusiveVolume::Software => {}
+                            ExclusiveVolume::Refuse => {
+                                self.close();
+                                return Err(Error::Output(NO_DEVICE_VOLUME_ERROR.into()));
+                            }
+                        }
                     }
                     None => match exclusive_fallback_plan(spec.exclusive_fallback) {
                         AlsaOpen::SharedWithNotice => {
@@ -909,12 +881,7 @@ mod linux {
             if self.pcm.is_none() {
                 return Err(Error::Output("output not open".into()));
             }
-            let target = if self.software_volume {
-                volume_gain(self.control.position())
-            } else {
-                1.0
-            };
-            self.ramp.retarget(target);
+            self.ramp.retarget(volume_gain(self.control.position()));
             let channels = self.channels.max(1) as usize;
             // The audio held back last time goes first; it was already scaled.
             self.scratch.clear();
@@ -942,24 +909,23 @@ mod linux {
             self.control = control;
         }
 
+        /// Applied in `write`, as a glide of the samples. The card's mixer is
+        /// never set: exclusive output on a card with one gets unity from the
+        /// engine, so the system volume (the sound server's, on that mixer)
+        /// sets the level.
         fn set_volume(&mut self, volume: f32) -> Result<()> {
             self.control.set(volume);
-            let volume = self.control.position();
-            let exclusive = self.status.mode == OutputMode::Exclusive;
-            if exclusive {
-                if set_hardware_volume(&self.device, volume).is_ok() {
-                    self.software_volume = false;
-                    if self.status.notice.as_deref() == Some(SOFTWARE_VOLUME_NOTICE) {
-                        self.status.notice = None;
-                        self.status.bit_perfect = true;
-                    }
-                    return Ok(());
+            if self.status.mode == OutputMode::Exclusive {
+                // Unity is a true pass-through: only a lower volume costs
+                // bit-perfect, with a notice when it is the app's volume (a
+                // card without its own control) and not a sleep fade.
+                let software = self.control.position() < 1.0;
+                self.status.bit_perfect = !software;
+                if software && !self.status.volume_fixed {
+                    self.status.notice = Some(SOFTWARE_VOLUME_NOTICE.into());
+                } else if self.status.notice.as_deref() == Some(SOFTWARE_VOLUME_NOTICE) {
+                    self.status.notice = None;
                 }
-                self.software_volume = true;
-                self.status.bit_perfect = false;
-                self.status.notice = Some(SOFTWARE_VOLUME_NOTICE.into());
-            } else {
-                self.software_volume = true;
             }
             Ok(())
         }
@@ -1342,16 +1308,6 @@ mod tests {
         assert_eq!(f32_to_i32_one(-1.0), i32::MIN);
         assert_eq!(f32_to_i32_one(2.0), i32::MAX);
         assert_eq!(f32_to_i32_one(f32::NAN), 0);
-    }
-
-    #[test]
-    fn volume_math_maps_both_directions() {
-        assert_eq!(raw_to_volume(0, 0, 100), 0.0);
-        assert_eq!(raw_to_volume(50, 0, 100), 0.5);
-        assert_eq!(raw_to_volume(100, 0, 100), 1.0);
-        assert_eq!(volume_to_raw(0.5, 0, 100), 50);
-        assert_eq!(volume_to_raw(1.0, 0, 100), 100);
-        assert_eq!(raw_to_volume(10, 10, 10), 1.0);
     }
 
     #[test]

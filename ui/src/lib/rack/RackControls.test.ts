@@ -53,6 +53,19 @@ describe("VolumeKnob", () => {
     render(VolumeKnob, { player: fakePlayer({ volume: 0 }) });
     expect(screen.getByRole("slider", { name: "Volume" }).getAttribute("aria-valuetext")).toBe("Muted");
   });
+
+  it("sits at full and ignores input while exclusive fixes the volume", async () => {
+    const player = fakePlayer({ volume: 0.42, volume_fixed: true });
+    render(VolumeKnob, { player });
+    const knob = screen.getByRole("slider", { name: "Volume" });
+    expect(knob.getAttribute("aria-valuenow")).toBe("100");
+    expect(knob.getAttribute("aria-disabled")).toBe("true");
+    await fireEvent.keyDown(knob, { key: "ArrowDown" });
+    await fireEvent.wheel(knob, { deltaY: 1 });
+    await fireEvent.dblClick(knob);
+    expect(player.setVolume).not.toHaveBeenCalled();
+    expect(player.toggleMute).not.toHaveBeenCalled();
+  });
 });
 
 describe("VfdSeek", () => {

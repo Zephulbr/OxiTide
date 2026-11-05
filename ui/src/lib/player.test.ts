@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyEvent, reduce, emptyState, reconcileSeek, muteTarget, volumeIcon, type PlayerState } from "./player.svelte";
+import { applyEvent, reduce, emptyState, reconcileSeek, muteTarget, shownVolume, volumeIcon, type PlayerState } from "./player.svelte";
 
 describe("player reducer", () => {
   it("applies a state event", () => {
@@ -55,6 +55,13 @@ describe("mute target", () => {
 
   it("falls back to half volume when there is no audible history", () => {
     expect(muteTarget(0, 0)).toBe(0.5);
+  });
+});
+
+describe("shown volume", () => {
+  it("is the slider unless exclusive mode fixes the volume at 100%", () => {
+    expect(shownVolume({ volume: 0.42, volume_fixed: false })).toBe(0.42);
+    expect(shownVolume({ volume: 0.42, volume_fixed: true })).toBe(1);
   });
 });
 
