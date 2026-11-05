@@ -10,6 +10,11 @@ const LINUX_STEP_MS = 1000 / 30 - 4;
 const linux =
   typeof document !== "undefined" && document.documentElement.dataset.platform === "linux";
 
+/// Whether this platform gates its loops (Linux). A turn that a compositor
+/// animation draws elsewhere goes through a `frameDue` loop here instead, since
+/// WebKitGTK presents every frame of a CSS or Web Animation, `steps()` too.
+export const framesGated = linux;
+
 let gateAt = -Infinity;
 let seenAt = NaN;
 let open = false;

@@ -122,6 +122,8 @@ kicker and fan count use `--text` at 82% rather than muted.
 - Now-playing mark (`NowPlayingMark.svelte`): a glyph-size accent record (grooves, centre
   label, one white sheen arc) — the disc motif, not a new element. It spins at one turn
   per 2 s while playback runs and eases to a stop on pause; still without ambient motion.
+  The turn is stepped: 60 steps a turn, 30 a second (6° each), which reads as smooth at glyph size and lets
+  the page skip the frames between (a 144 Hz turn kept the whole page drawing every frame).
   Used on the playing track-table row (# column), beside the queue's current cover, and
   over the sidebar's playing playlist cover (on a 55% `--bg` scrim).
 - Playlists (`views/Playlists.svelte`): a 28px inset from the sidebar and window edge, eight tiles across a wide window (fewer per container query as it narrows) with seamless covers and no backing sheet; the cover lifts on hover and Shuffle (glass) + Play (accent) rise from its corner; the playing playlist carries the sidebar's now-playing mark and an accent name. Sorts: Recently updated, Recently played (`playlistRecency`), Name. Folders are a seamless mosaic of their playlists' first covers (`FolderArt.svelte`) with a glass folder badge; an empty folder is its icon on a wash. Folder colours and descriptions (`lib/folderMeta.svelte.ts`, local to the device; colour and description in the New / Edit folder dialogs (`FolderColorPicker.svelte` swatches), shown under the folder page title) tint the badge, the empty wash and the sidebar folder icon through `--folder-l` / `--folder-c`.
@@ -242,7 +244,7 @@ switch. It is pointer feedback only; it never lights on its own. The volume trac
 ## 5. Motion
 
 Backdrop + dynamic-colour crossfade 1200 ms (the colours in 36 steps); disc spin ~12 s/rev (now-playing mark
-2 s/rev), eases to stop in ~600 ms on pause; queue dock width glide 380 ms on `--ease-in-out`
+2 s/rev, in 30 steps a second), eases to stop in ~600 ms on pause; queue dock width glide 380 ms on `--ease-in-out`
 (AR-5 as amended by AR-9; the page's card widths follow it for the length of the glide —
 see §3); everything else per foundation §2.3.
 

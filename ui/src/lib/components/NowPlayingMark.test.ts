@@ -17,9 +17,21 @@ function step(frames: number) {
   }
 }
 
+/// jsdom has no Web Animations: a stand-in that records what was asked.
+type FakeAnimation = {
+  keyframes: Keyframe[];
+  options: KeyframeAnimationOptions;
+  currentTime: number;
+  playbackRate: number;
+  cancelled: boolean;
+  cancel(): void;
+};
+let animations: FakeAnimation[] = [];
+
 beforeEach(() => {
   queue = [];
   now = 0;
+  animations = [];
   vi.spyOn(performance, "now").mockImplementation(() => now);
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
     queue.push(callback);
@@ -28,48 +40,90 @@ beforeEach(() => {
   vi.stubGlobal("cancelAnimationFrame", () => {
     queue = [];
   });
+  HTMLElement.prototype.animate = function (keyframes, options) {
+    const a: FakeAnimation = {
+      keyframes: keyframes as Keyframe[],
+      options: options as KeyframeAnimationOptions,
+      currentTime: 0,
+      playbackRate: 1,
+      cancelled: false,
+      cancel() {
+        this.cancelled = true;
+      },
+    };
+    animations.push(a);
+    return a as unknown as Animation;
+  };
 });
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  delete (HTMLElement.prototype as Partial<HTMLElement>).animate;
 });
 
-/// Turning, the wrapper carries the angle (a compositor rotation); at rest
-/// the SVG does, with the wrapper untransformed.
-const wrapperAngle = () => /rotate\(([-\d.]+)deg\)/.exec(document.querySelector<HTMLElement>(".np-mark")?.style.transform ?? "")?.[1];
-const svgAngle = () => /rotate\(([-\d.]+)/.exec(document.querySelector("g")?.getAttribute("transform") ?? "")?.[1];
-const angleOf = () => Number(wrapperAngle() ?? svgAngle() ?? 0);
+const svgAngle = () => Number(/rotate\(([-\d.]+)/.exec(document.querySelector("g")?.getAttribute("transform") ?? "")?.[1] ?? 0);
+const live = () => animations.filter((a) => !a.cancelled);
 
 describe("NowPlayingMark", () => {
-  it("runs no frame loop while paused at rest", () => {
+  it("runs no frame loop and no animation while paused at rest", () => {
     render(NowPlayingMark, { playing: false });
     expect(queue).toHaveLength(0);
+    expect(animations).toHaveLength(0);
   });
 
-  it("spins while playing, eases to a stop on pause, then stops its loop", async () => {
-    const { rerender } = render(NowPlayingMark, { playing: true });
-    step(30);
-    expect(queue).toHaveLength(1);
-    const playingAngle = angleOf();
-    expect(playingAngle).toBeGreaterThan(0);
-    // Turning: the compositor rotates the wrapper; the SVG stays upright.
-    expect(wrapperAngle()).toBeDefined();
-    expect(Number(svgAngle())).toBe(0);
-
-    await rerender({ playing: false });
-    step(1000);
-    // Settled: no frame is pending, and the disc keeps the angle it stopped at,
-    // drawn into the SVG (crisp) with the wrapper back to no transform.
+  it("turns in 30 steps a second on the compositor; JS runs only while the speed eases", () => {
+    render(NowPlayingMark, { playing: true });
+    expect(live()).toHaveLength(1);
+    const [a] = live();
+    expect(a.options).toMatchObject({ duration: 2000, iterations: Infinity, easing: "steps(60, end)" });
+    expect(a.keyframes).toEqual([{ transform: "rotate(0deg)" }, { transform: "rotate(360deg)" }]);
+    // Easing in: the rate climbs from rest.
+    expect(a.playbackRate).toBe(0);
+    step(5);
+    expect(a.playbackRate).toBeGreaterThan(0);
+    expect(a.playbackRate).toBeLessThan(1);
+    // Up to speed, the loop ends: the compositor turns it alone.
+    step(200);
+    expect(a.playbackRate).toBe(1);
     expect(queue).toHaveLength(0);
-    expect(wrapperAngle()).toBeUndefined();
-    const rest = angleOf();
-    expect(rest).not.toBe(0);
+    // The SVG stays upright while the wrapper turns.
+    expect(svgAngle()).toBe(0);
+  });
+
+  it("eases to a stop on pause, keeps the stepped angle in the SVG, and resumes from it", async () => {
+    const { rerender } = render(NowPlayingMark, { playing: true });
+    step(200);
+    const [a] = live();
+    a.currentTime = 510; // a quarter turn and a bit: step 15 of 60
+    await rerender({ playing: false });
+    step(5);
+    expect(a.playbackRate).toBeGreaterThan(0);
+    expect(a.playbackRate).toBeLessThan(1);
+    step(1000);
+    // Settled: no frame pending, no animation, the angle drawn into the SVG.
+    expect(queue).toHaveLength(0);
+    expect(a.cancelled).toBe(true);
+    expect(svgAngle()).toBe(90);
 
     await rerender({ playing: true });
-    expect(queue).toHaveLength(1);
+    expect(live()).toHaveLength(1);
+    expect(live()[0].keyframes[0]).toEqual({ transform: "rotate(90deg)" });
+    expect(svgAngle()).toBe(0);
+  });
+
+  it("keeps the same animation when play returns mid-ease", async () => {
+    const { rerender } = render(NowPlayingMark, { playing: true });
+    step(200);
+    await rerender({ playing: false });
     step(5);
-    expect(angleOf()).not.toBe(rest);
+    const slowed = live()[0].playbackRate;
+    expect(slowed).toBeLessThan(1);
+    await rerender({ playing: true });
+    step(200);
+    expect(animations).toHaveLength(1);
+    expect(live()[0].playbackRate).toBe(1);
+    expect(queue).toHaveLength(0);
   });
 });
