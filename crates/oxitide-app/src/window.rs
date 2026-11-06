@@ -74,6 +74,69 @@ fn restore_last_size(app: &AppHandle, window: &WebviewWindow) {
 #[cfg(not(target_os = "linux"))]
 fn restore_last_size(_app: &AppHandle, _window: &WebviewWindow) {}
 
+/// The first show waits for two things: `setup` has placed the window
+/// (geometry, mini, chrome) and the page has loaded, so the window opens on
+/// index.html's boot screen instead of an empty webview. A page that never
+/// reports its load is shown anyway after [`FIRST_SHOW_FALLBACK`].
+pub struct FirstShow(std::sync::atomic::AtomicU8);
+
+impl FirstShow {
+    pub const SETUP_DONE: u8 = 1;
+    pub const PAGE_LOADED: u8 = 2;
+    const SHOWN: u8 = 4;
+
+    pub const fn new() -> Self {
+        Self(std::sync::atomic::AtomicU8::new(0))
+    }
+
+    /// Record `gate`; true exactly once, when both gates are in.
+    pub fn arrive(&self, gate: u8) -> bool {
+        use std::sync::atomic::Ordering::SeqCst;
+        let both = Self::SETUP_DONE | Self::PAGE_LOADED;
+        let now = self.0.fetch_or(gate, SeqCst) | gate;
+        now & both == both && self.0.fetch_or(Self::SHOWN, SeqCst) & Self::SHOWN == 0
+    }
+}
+
+static FIRST_SHOW: FirstShow = FirstShow::new();
+pub const FIRST_SHOW_FALLBACK: std::time::Duration = std::time::Duration::from_millis(1500);
+
+/// Pass a first-show gate; the call that completes both shows the window.
+/// Later page loads (reloads) do nothing, so a window hidden to the tray
+/// stays hidden.
+pub fn first_show_gate(app: &AppHandle, gate: u8) {
+    if !FIRST_SHOW.arrive(gate) {
+        return;
+    }
+    if let Some(window) = app.get_webview_window("main") {
+        if let Err(e) = window.show() {
+            tracing::warn!("failed to show the main window: {e}");
+        }
+    }
+    crate::perf::mark("window_shown");
+}
+
+/// The page background (`--bg`) the saved look starts in, as RGB: given to
+/// the native window and webview so any frame before the page paints is
+/// already the app's colour, not white. Mirrors tokens.css / modes.css /
+/// themes.css / rack.css; `os_dark` resolves `Theme::System`.
+pub fn boot_background(config: &Config, os_dark: bool) -> (u8, u8, u8) {
+    use crate::config::{InstrumentTone, Theme, UiMode};
+    let dark = match config.ui.theme {
+        Theme::Dark => true,
+        Theme::Light => false,
+        Theme::System => os_dark,
+    };
+    match (config.ui.mode, dark, config.ui.instrument_tone) {
+        // Rack is always dark (RK-D12).
+        (UiMode::Rack, _, _) => (0x05, 0x05, 0x05),
+        (_, false, _) => (0xf6, 0xf1, 0xea),
+        (UiMode::Instrument, true, InstrumentTone::Neutral) => (0x12, 0x12, 0x12),
+        (UiMode::Instrument, true, InstrumentTone::Black) => (0, 0, 0),
+        _ => (0x17, 0x12, 0x0e),
+    }
+}
+
 /// Linux: remember a compositor-given size of the full, unmaximized, visible
 /// window (see [`show_main`]). Ignored in the mini player and while a
 /// remapped window settles.
@@ -313,6 +376,46 @@ pub fn capture(window: &WebviewWindow, config: &mut Config) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn first_show_fires_once_when_both_gates_are_in() {
+        let gate = FirstShow::new();
+        assert!(!gate.arrive(FirstShow::PAGE_LOADED), "page alone");
+        assert!(!gate.arrive(FirstShow::PAGE_LOADED), "a reload is still not enough");
+        assert!(gate.arrive(FirstShow::SETUP_DONE), "both in: show");
+        assert!(!gate.arrive(FirstShow::PAGE_LOADED), "a later reload never re-shows");
+        assert!(!gate.arrive(FirstShow::SETUP_DONE));
+
+        let gate = FirstShow::new();
+        assert!(!gate.arrive(FirstShow::SETUP_DONE), "setup alone");
+        assert!(gate.arrive(FirstShow::PAGE_LOADED));
+    }
+
+    #[test]
+    fn boot_background_follows_the_saved_look() {
+        use crate::config::{InstrumentTone, Theme, UiMode};
+        let mut config = Config::default();
+        config.ui.mode = UiMode::Atmosphere;
+        config.ui.theme = Theme::Dark;
+        assert_eq!(boot_background(&config, false), (0x17, 0x12, 0x0e));
+        config.ui.theme = Theme::Light;
+        assert_eq!(boot_background(&config, true), (0xf6, 0xf1, 0xea));
+        config.ui.theme = Theme::System;
+        assert_eq!(boot_background(&config, true), (0x17, 0x12, 0x0e));
+        assert_eq!(boot_background(&config, false), (0xf6, 0xf1, 0xea));
+
+        config.ui.theme = Theme::Dark;
+        config.ui.mode = UiMode::Instrument;
+        config.ui.instrument_tone = InstrumentTone::Black;
+        assert_eq!(boot_background(&config, false), (0, 0, 0));
+        config.ui.instrument_tone = InstrumentTone::Neutral;
+        assert_eq!(boot_background(&config, false), (0x12, 0x12, 0x12));
+        config.ui.theme = Theme::Light;
+        assert_eq!(boot_background(&config, false), (0xf6, 0xf1, 0xea), "light keeps its paper");
+
+        config.ui.mode = UiMode::Rack;
+        assert_eq!(boot_background(&config, false), (0x05, 0x05, 0x05), "Rack is always dark");
+    }
 
     fn monitor(x: i32, y: i32, width: u32, height: u32) -> MonitorRect {
         MonitorRect { x, y, width, height }

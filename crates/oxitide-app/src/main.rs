@@ -245,6 +245,11 @@ fn main() {
                 .build(),
         )
         .manage(state)
+        .on_page_load(|webview, payload| {
+            if webview.label() == "main" && payload.event() == tauri::webview::PageLoadEvent::Finished {
+                window::first_show_gate(webview.app_handle(), window::FirstShow::PAGE_LOADED);
+            }
+        })
         .setup(|app| {
             let handle = app.handle().clone();
             // Output devices come and go: the picker re-reads its list (spec
@@ -317,14 +322,28 @@ fn main() {
                         tracing::warn!("failed to start in mini player: {e}");
                     }
                 }
-                if let Err(e) = window.show() {
-                    tracing::warn!("failed to show the main window: {e}");
+                let os_dark = window.theme().is_ok_and(|theme| theme == tauri::Theme::Dark);
+                let (r, g, b) = window::boot_background(&config, os_dark);
+                if let Err(e) = window.set_background_color(Some(tauri::window::Color(r, g, b, 255))) {
+                    tracing::warn!("failed to set the window background: {e}");
                 }
             }
-            perf::mark("window_shown");
+            // Shown once the page has loaded too (on_page_load below), so the
+            // window opens on the boot screen; the fallback covers a page
+            // that never reports its load.
+            window::first_show_gate(app.handle(), window::FirstShow::SETUP_DONE);
+            {
+                let handle = app.handle().clone();
+                let _ = std::thread::Builder::new()
+                    .name("oxitide-first-show".into())
+                    .spawn(move || {
+                        std::thread::sleep(window::FIRST_SHOW_FALLBACK);
+                        window::first_show_gate(&handle, window::FirstShow::PAGE_LOADED);
+                    });
+            }
             // Background startup: cache cleanup and scheme registration are
-            // not needed for the first frame, so they run after the window is
-            // shown. A quit before this finishes simply skips the scheme
+            // not needed for the first frame, so they run off the critical
+            // path. A quit before this finishes simply skips the scheme
             // restore (no snapshot remembered).
             let bg = app.handle().clone();
             let cache = app.state::<AppState>().cache();

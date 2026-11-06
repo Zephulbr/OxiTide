@@ -45,6 +45,7 @@
   } from "./lib/appearance.svelte";
   import { routeTitle } from "./lib/titles";
   import { perf } from "./lib/perf.svelte";
+  import { dismissBootScreen } from "./lib/bootScreen";
   import { perfHooks } from "./lib/perfHooks";
   import { makeSyntheticTracks } from "./lib/perfFixture";
   import { errorMessage } from "./lib/errors";
@@ -432,6 +433,11 @@
     if (!booting) perf.mark("ui_ready");
   });
 
+  // index.html's boot screen covers the window until the first real view.
+  $effect(() => {
+    if (!booting) dismissBootScreen();
+  });
+
   $effect(() => {
     if (!perf.active) return;
     const bridge = {
@@ -788,7 +794,7 @@
 </script>
 
 {#if booting}
-  <p class="muted" style="padding:24px">Loading…</p>
+  <!-- index.html's #boot screen shows the loader until booting ends. -->
 {:else if !loggedIn}
   {#if error}<p style="color:var(--danger);padding:0 24px">{error}</p>{/if}
   <Login

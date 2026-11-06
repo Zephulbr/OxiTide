@@ -39,8 +39,56 @@
         if (/Linux/.test(navigator.userAgent)) root.dataset.platform = "linux";
       })();
     </script>
+    <!-- Boot screen (lib/bootScreen.ts dismisses it once auth_restore settles).
+         Inline because it paints before the bundle's CSS: tokens get literal
+         fallbacks matching tokens.css / themes.css for that first frame. -->
+    <style>
+      html, #boot { background: var(--bg, #17120e); }
+      html[data-theme="light"], html[data-theme="light"] #boot { background: var(--bg, #f6f1ea); }
+      #boot {
+        position: fixed;
+        inset: 0;
+        z-index: 999; /* under WindowControls (1000): the window stays closable */
+        display: grid;
+        place-items: center;
+        transition: opacity 180ms ease-out;
+      }
+      #boot.boot-done { opacity: 0; pointer-events: none; }
+      #boot .boot-mark { position: relative; width: 72px; height: 72px; }
+      #boot .boot-mark svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+      #boot .boot-mark svg.boot-logo { inset: 12px; width: 48px; height: 48px; }
+      #boot .boot-ring {
+        stroke: var(--text-muted, #a99f94);
+        transform-origin: 50% 50%;
+        opacity: 0;
+        /* The logo shows at once; the ring waits like Loading (DESIGN.md
+           §2.3), so a fast start shows no spinner. */
+        animation: boot-in 240ms ease-out 320ms forwards, boot-spin 1.1s linear infinite;
+      }
+      html[data-theme="light"] #boot .boot-ring { stroke: var(--text-muted, #665a4f); }
+      @keyframes boot-in { to { opacity: 1; } }
+      @keyframes boot-spin { to { transform: rotate(360deg); } }
+      @media (prefers-reduced-motion: reduce) {
+        #boot { transition: none; }
+        #boot .boot-ring { animation: boot-in 240ms ease-out 320ms forwards; }
+      }
+    </style>
   </head>
   <body>
+    <div id="boot" role="status" aria-label="Loading OxiTide">
+      <div class="boot-mark" aria-hidden="true">
+        <svg viewBox="0 0 72 72" fill="none" stroke-linecap="round">
+          <circle class="boot-ring" cx="36" cy="36" r="33" stroke-width="2" stroke-dasharray="52 156" />
+        </svg>
+        <svg class="boot-logo" viewBox="17 17 106 106" fill="none" stroke-linecap="round">
+          <defs><clipPath id="boot-disc"><circle cx="70" cy="70" r="50" /></clipPath></defs>
+          <circle cx="70" cy="70" r="50" fill="#1C2825" />
+          <circle cx="70" cy="70" r="34" stroke="#4F8C82" stroke-width="4" />
+          <path d="M12 82 C 38 58, 58 106, 86 82 C 106 64, 118 82, 132 68" stroke="#C4693E" stroke-width="10" clip-path="url(#boot-disc)" />
+          <circle cx="70" cy="70" r="50" stroke="#4F8C82" stroke-width="4" />
+        </svg>
+      </div>
+    </div>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

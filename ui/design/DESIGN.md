@@ -398,6 +398,13 @@ motion) is the entrance travel for content arriving in place.
   parts and the explore rows settle (2.5 s cap), then they rise in together; the title
   and search field stay put.
 - `Loading` appears only after 320 ms (then fades in): quick loads show no spinner.
+- Startup: the window first shows once the page has loaded (`window::first_show_gate`,
+  1.5 s fallback), with the native window and webview already in the saved look's `--bg`
+  (`window::boot_background`), so it never opens blank. It opens on `index.html`'s boot
+  screen (`#boot`, inline so it paints before the bundle): the app mark at once, and
+  after the same 320 ms a spinning `--text-muted` arc around it (a fade only under
+  reduced motion). `lib/bootScreen.ts` fades the screen out over 180 ms once
+  `auth_restore` settles; WindowControls stay above it.
 - A page whose data is cached (`lib/viewCache.ts`; revisits, or a card or sidebar link
   hovered before the click) renders complete on its first frame and plays the same rise;
   a background refresh that changes something updates in place.
