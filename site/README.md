@@ -26,7 +26,7 @@ Opening `index.html` straight from disk mostly works, but browsers block module 
 | `scripts/main.js` | Rooms and the colour glide, the player bar (announcements, section queue, seekable progress), and each section's demo: the phone remote, the crossfade record, the lyrics player. |
 | `scripts/looks.js` | Builds the three replicas and morphs between them as the looks chapter scrolls by. |
 | `assets/fonts/` | Copies of the app's vendored Manrope, Inter and DSEG7 (OFL 1.1, see `THIRD_PARTY_NOTICES.md`). |
-| `assets/covers/` | Original placeholder cover art. Never use TIDAL artwork here. |
+| `assets/covers/` | Original placeholder cover art. Never use TIDAL artwork here. `soft/` holds the backdrop covers pre-blurred for phones. |
 | `assets/og-image.png` | The share image (1200 × 630) that link previews show: the logo, the name, and the badges, rendered from the page's own fonts and logo. |
 | `favicon.svg` | A copy of `crates/oxitide-app/icons/svg/icon-64.svg`. |
 
@@ -37,7 +37,11 @@ The page is tuned to hold the display's full frame rate (144 Hz on the dev machi
 - Never change a custom property on `:root` while the page runs: even an unused one restyles all ~1,400 elements (about 12 ms). Each section keeps its own room (`data-room`). A room change sets `data-room` only on the parts marked `data-follow` (the player bar, the looks' dots and glow), and while `[data-gliding]` is on them their colours ease over. The backdrop crossfades one stack per room (opacity only). Anything new that should follow the room gets `data-follow`, not a rule on `:root`.
 - Never write transition rules for every element (`*`): switching them on and off restyles the whole page.
 - Anything coloured by a gradient or a box-shadow snaps on a room change. Give it fixed colours (a cover, the crossfade sleeve), scope it to one room with `[data-bd]`, or fade an old-colour layer out over it.
-- Animate `transform` and `opacity` only. Move a line by translating a full-width layer, not by animating `left`.
+- Animate `transform` and `opacity` only, never `height` or `width` (the equaliser bars once laid out and repainted the page every frame). Move a line by translating a full-width layer, not by animating `left`. Keep a translate's distance a length (`px`, `cqw`), not a percentage of the element's own box: Chrome won't run that on the compositor.
+- Nothing runs forever unseen. A section off screen gets `[data-off]`, which rests its records, bars and playhead (add any new endless animation to that rule in `site.css`). Demos and timers start and stop on an `IntersectionObserver`, and a frame loop stops while its demo is paused: an idle `requestAnimationFrame` loop still makes the page render every frame. The water's SVG ripple pauses when the hero is out of view.
+- Don't read `innerHeight` or `scrollY` after writing styles in a frame (each forces a style and layout pass). `main.js` keeps the viewport height in `geo.vh`.
+- Re-measure on a `ResizeObserver` on the element that matters, not on window `resize`. A phone's toolbar fires window resizes mid-scroll.
+- Phones and tablets (`(hover: none) and (pointer: coarse)`, at the end of `site.css`) get the light set: the backdrop is a pre-blurred image from `assets/covers/soft/`, standing still (no live blur, no drift); the glow blends normally and the overlay grain is off; frosted glass is a near-solid tint; the reflection is blurred, not rippled; the mockups' blurs are halved. A new cover for the backdrop needs its soft copy too (a 256 px WebP with `blur(14.6px) saturate(1.5) brightness(.62) contrast(.9)` baked in, edges mirrored before blurring). Desktop keeps the full set.
 - Scroll-linked motion uses a scroll timeline where it can (the Remote to And More hand-off). Otherwise it runs once per frame, only while near the screen. Cache layout reads.
 - Respect `prefers-reduced-motion`: demos don't advance on their own and records don't turn.
 

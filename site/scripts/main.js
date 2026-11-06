@@ -123,13 +123,17 @@ function paintDock() {
   dockSub.textContent = name + " · " + by;
 }
 // Where the sections are, measured once per layout change rather than on
-// every frame (reading layout during scroll forces it to be redone).
+// every frame (reading layout during scroll forces it to be redone). The
+// viewport height is kept too: reading innerHeight after a style write
+// forces a style and layout pass (it cost about 3 ms a frame on a phone).
 let geo = null;
 const measure = () => {
+  const vh = innerHeight;
   geo = {
+    vh,
     secs: secs.map((s) => [s.offsetTop, s.offsetHeight]),
     lk: [lk.getBoundingClientRect().top + scrollY, lk.offsetHeight],
-    end: document.documentElement.scrollHeight - innerHeight,
+    end: document.documentElement.scrollHeight - vh,
   };
 };
 const lkRect = () => { const t = geo.lk[0] - scrollY; return { top: t, bottom: t + geo.lk[1] }; };
@@ -137,14 +141,14 @@ const lkRect = () => { const t = geo.lk[0] - scrollY; return { top: t, bottom: t
 // except over the last half-screen of scrolling, where it runs down to the
 // bottom of the screen, so the last section fills as you reach the end
 // (the middle never gets that far). readY is its inverse, for seeking.
-const readAt = (y) => { const mid = innerHeight / 2, k = Math.max(0, y - (geo.end - mid)); return y + mid + k; };
+const readAt = (y) => { const mid = geo.vh / 2, k = Math.max(0, y - (geo.end - mid)); return y + mid + k; };
 const readY = (p) => {
-  const mid = innerHeight / 2;
-  const y = p - mid <= geo.end - mid ? p - mid : (p + geo.end - innerHeight) / 2;
+  const mid = geo.vh / 2;
+  const y = p - mid <= geo.end - mid ? p - mid : (p + geo.end - geo.vh) / 2;
   return Math.max(0, Math.min(geo.end, y));
 };
 function screenNow(i) {
-  const s = secs[i], mid = innerHeight * 0.5;
+  const s = secs[i], mid = geo.vh * 0.5;
   if (s.id === "looks") { const r = lkRect(); if (r.top <= mid && r.bottom > mid) return covers[lookRoom[+(lk.dataset.look || 0)]]; }
   if (s.id === "remote") return duoNow;
   return null;
@@ -179,7 +183,7 @@ function setDocked(d) {
 const lastF = [];
 function tick() {
   if (!geo) measure();
-  const mid = innerHeight * 0.5, y = scrollY;
+  const mid = geo.vh * 0.5, y = scrollY;
   let i = 0;
   geo.secs.forEach(([top], k) => { if (top - y <= mid) i = k; });
   // At the very bottom the last section counts even if it's too short to
@@ -196,7 +200,9 @@ function tick() {
   askRoom(r);
   // Dock first, so a jump from the hero straight into a section still
   // gets its announcement.
-  setDocked(scrollY > innerHeight * 0.16);
+  // y, not scrollY: reading it again here, after the writes above, would
+  // force a style pass.
+  setDocked(y > geo.vh * 0.16);
   if (i !== shownSec) {
     shownSec = i;
     dockTitle.textContent = secs[i].dataset.title;
@@ -224,6 +230,19 @@ addEventListener("resize", () => { geo = null; sizeSegs(); tick(); });
 new ResizeObserver(() => { geo = null; schedule(); }).observe(document.body);
 sizeSegs();
 setTimeout(tick, 60);
+
+// Off screen, a section's endless motions rest ([data-off], site.css): left
+// running, the crossfade playhead alone kept the page rendering every frame.
+const offscreen = new IntersectionObserver((es) => es.forEach((e) => e.target.toggleAttribute("data-off", !e.isIntersecting)), { rootMargin: "100px 0px" });
+secs.forEach((s) => offscreen.observe(s));
+
+// The water's ripple is an SVG animation, which redraws its filter every
+// frame (and SVG animations never stop on their own off screen). On a phone
+// it doesn't run at all (the reflection is blurred instead, site.css);
+// elsewhere it runs only while the hero is in view.
+const sprite = document.querySelector("body > svg"), ripple = sprite.querySelector("#ripple animate");
+if (matchMedia("(hover: none) and (pointer: coarse)").matches) ripple.remove();
+else new IntersectionObserver(([e]) => { if (e.isIntersecting) sprite.unpauseAnimations(); else sprite.pauseAnimations(); }).observe($(".rise"));
 
 // Back to the downloads (the install button and the bar's Download): scroll
 // up to the hero's rows and light them once.
@@ -564,27 +583,32 @@ if (xl) {
     painted = "";
     paint(); showPos(); place();
   };
+  // The clock runs once per frame while it plays, and sleeps while it's held:
+  // an idle frame loop still makes the page render every frame.
   const frame = (now) => {
     raf = 0;
     if (!live) return;
+    paint();
+    if (stopped()) return;
     const dt = Math.min(100, now - last);
     last = now;
-    if (!stopped()) {
-      t += dt;
-      const cs = CUES[items[cur].dataset.k] || [];
-      while (cue < cs.length && t >= cs[cue][0]) still = cs[cue++][1];
-      if (!still) pos = Math.min(pos + dt, starts[cur] + len(cur));
-      if (t >= len(cur)) go(cur + 1);
-    }
-    paint(); showPos();
+    t += dt;
+    const cs = CUES[items[cur].dataset.k] || [];
+    while (cue < cs.length && t >= cs[cue][0]) still = cs[cue++][1];
+    if (!still) pos = Math.min(pos + dt, starts[cur] + len(cur));
+    if (t >= len(cur)) go(cur + 1);
+    showPos();
     raf = requestAnimationFrame(frame);
   };
+  const wake = () => { paint(); if (live && !stopped() && !raf) { last = performance.now(); raf = requestAnimationFrame(frame); } };
+  // The site bar's play/pause holds it too (its own handler runs first).
+  document.querySelectorAll("[data-pp]").forEach((b) => b.addEventListener("click", wake));
   // Play also ends the site bar's pause, so play works wherever you press it.
   const act = (a) => {
     if (a === "pp") {
       if (stopped() || still) { held = false; still = false; if (siteHeld()) dockPP.click(); }
       else held = true;
-      paint();
+      wake();
     } else if (a === "next") go(cur + 1);
     // Previous starts the line over, or goes back one if it has just begun.
     else if (a === "prev") go(t > 1500 ? cur : cur - 1);
@@ -605,9 +629,11 @@ if (xl) {
     if (e.isIntersecting === live) return;
     live = e.isIntersecting;
     // Coming back on screen starts the song over.
-    if (live) { go(0); last = performance.now(); if (!raf) raf = requestAnimationFrame(frame); }
+    if (live) { go(0); wake(); }
   }, { threshold: 0.4 }).observe(xl);
-  addEventListener("resize", () => place());
+  // When the lyrics window changes size (not on every window resize: a
+  // phone's toolbar fires those mid-scroll).
+  new ResizeObserver(() => place()).observe(win);
   go(0);
 
   // From the phone remote: its computer screen grows into this one. Between
@@ -730,8 +756,10 @@ if (alb) {
     bTitle.textContent = reads[i][0];
     bNotes.replaceChildren(...reads[i][1].map((t) => Object.assign(document.createElement("li"), { textContent: t })));
   };
-  const cycleB = () => { clearInterval(bTimer); bTimer = setInterval(() => setB((bi + 1) % 4), 4500); };
-  rows.forEach((r, k) => r.addEventListener("click", () => { setB(k); if (!still.matches) cycleB(); }));
+  // The styles play in turn only while the album is on screen.
+  let albOn = false;
+  const cycleB = () => { clearInterval(bTimer); if (albOn && !still.matches) bTimer = setInterval(() => setB((bi + 1) % 4), 4500); };
+  rows.forEach((r, k) => r.addEventListener("click", () => { setB(k); cycleB(); }));
   setB(0);
-  if (!still.matches) cycleB();
+  new IntersectionObserver(([e]) => { albOn = e.isIntersecting; cycleB(); }).observe(alb);
 }
