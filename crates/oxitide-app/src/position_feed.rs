@@ -102,6 +102,8 @@ pub fn emit(app: &tauri::AppHandle, event: EngineEventDto) {
 /// The main window went out of sight (`false`) or came back (`true`). Called
 /// from the window proc, so the held tick is sent from another thread: an emit
 /// on the main thread runs at once, inside whatever message is being handled.
+/// Only Windows reports visibility so far (`webview_idle`).
+#[cfg_attr(not(windows), allow(dead_code))]
 pub fn set_window_visible(app: &tauri::AppHandle, visible: bool) {
     FEED.hidden.store(!visible, Ordering::SeqCst);
     if visible {
