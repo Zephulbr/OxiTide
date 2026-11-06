@@ -45,8 +45,9 @@ fn page(limit: u32, offset: u32) -> Vec<(&'static str, String)> {
     vec![("limit", limit.to_string()), ("offset", offset.to_string())]
 }
 
-/// Favorite tracks list newest-favorited first (TIDAL's default is by name),
-/// so the Tracks page's original order is "recently added".
+/// Favorites listed newest-favorited first (TIDAL's default is by name), so
+/// the Tracks page's original order and Profiles' "Date added" are both
+/// "recently added".
 fn newest_first() -> [(&'static str, String); 2] {
     [("order", "DATE".to_string()), ("orderDirection", "DESC".to_string())]
 }
@@ -113,12 +114,12 @@ impl TidalClient {
         Ok(favs.into_iter().map(favorited_album).collect())
     }
 
-    /// Walk every page of the user's favorite artists.
+    /// Walk every page of the user's favorite artists (newest first).
     pub async fn all_favorite_artists(&self) -> Result<Vec<Artist>> {
         let favs: Vec<Favorited<Artist>> = self
             .get_all_pages(
                 &format!("{}/artists", self.user_base()),
-                &[],
+                &newest_first(),
                 DEFAULT_PAGE_SIZE,
             )
             .await?;
@@ -418,6 +419,23 @@ mod tests {
         let client = client(&server);
         client.set_favorite_artist(11, true).await.unwrap();
         client.set_favorite_artist(11, false).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn all_favorite_artists_lists_newest_first() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/users/42/favorites/artists"))
+            .and(query_param("order", "DATE"))
+            .and(query_param("orderDirection", "DESC"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [{"item": {"id": 5, "name": "Newest"}}, {"item": {"id": 4, "name": "Older"}}],
+                "totalNumberOfItems": 2, "limit": 50, "offset": 0
+            })))
+            .mount(&server)
+            .await;
+        let artists = client(&server).all_favorite_artists().await.unwrap();
+        assert_eq!(artists.iter().map(|a| a.id).collect::<Vec<_>>(), vec![5, 4]);
     }
 
     #[tokio::test]

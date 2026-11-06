@@ -3,7 +3,8 @@ import type { Artist } from "./api";
 export type ArtistSort = "date" | "name" | "name-desc";
 
 /// Filter favorite artists by a case-insensitive name query, then sort them.
-/// "date" keeps the API's own order (newest first). Returns a new array; the
+/// "date" keeps the API's own order (newest first: `all_favorite_artists`
+/// asks for it, since TIDAL's default is by name). Returns a new array; the
 /// input is never mutated.
 export function visibleArtists(
   artists: readonly Artist[],
