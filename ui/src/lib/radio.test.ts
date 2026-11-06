@@ -59,7 +59,7 @@ describe("playTrackRadio", () => {
     await playTrackRadio(7, toasts);
 
     expect(api.playTracks).not.toHaveBeenCalled();
-    expect(calls[0]?.message).toContain("No radio tracks");
+    expect(calls[0]?.message).toBe("There's no radio for this track yet.");
   });
 
   it("surfaces a fetch failure as an error toast instead of rejecting", async () => {
@@ -96,5 +96,23 @@ describe("playArtistRadio", () => {
 
     expect(api.getArtistRadio).toHaveBeenCalledWith(9);
     expect(api.playTracks).toHaveBeenCalledWith([{ track_id: 3 }], 0);
+  });
+
+  // An artist with nothing playable (a new profile) has no station: TIDAL
+  // answers 404, which read "not found: /v1/artists/58912082/radio".
+  it("words TIDAL's 404 as an artist without a radio, not an error", async () => {
+    vi.clearAllMocks();
+    vi.mocked(api.getArtistRadio).mockRejectedValue("not found: /v1/artists/58912082/radio");
+    const { toasts, calls } = fakeToasts();
+
+    await playArtistRadio(58912082, toasts);
+
+    expect(api.playTracks).not.toHaveBeenCalled();
+    expect(calls).toEqual([
+      {
+        message: "There's no radio for this artist yet. TIDAL builds one once they have tracks to play.",
+        severity: "info",
+      },
+    ]);
   });
 });
