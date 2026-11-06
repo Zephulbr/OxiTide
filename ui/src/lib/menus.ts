@@ -224,25 +224,51 @@ export function nowPlayingMenuItems(ctx: GoToTargets & {
   return items;
 }
 
-/// Queue rows. The "Go to" group is the keyboard path to the row's nested
-/// name links (name-links spec NL-D10).
+/// Queue rows: playback, then the library group a track row has, the "Go to"
+/// group (the keyboard path to the row's nested name links, name-links spec
+/// NL-D10), and Remove last. Radio, the playlist picker and Favorite are
+/// present only where the rail has what they need.
 export function queueMenuItems(ctx: GoToTargets & {
   index: number;
   playNow(): void;
+  /// Absent where the rail has no toasts to report a radio failure.
+  startRadio?: () => void;
   /// Move the row to right after the current track; absent when it is the
   /// current or already the next track.
   playNext?: () => void;
+  /// Absent where the rail has no playlist picker.
+  addToPlaylist?: () => void;
+  favorite?: { active: boolean; toggle(): void };
+  later?: LaterToggle;
   copyTitle(): void;
   remove(): void;
 }): MenuItem[] {
   const items: MenuItem[] = [
     { id: "play-now", label: "Play now", icon: "play", run: () => ctx.playNow() },
   ];
+  const startRadio = ctx.startRadio;
+  if (startRadio) items.push({ id: "radio", label: "Track Radio", icon: "radio", run: () => startRadio() });
   const playNext = ctx.playNext;
   if (playNext) {
     items.push({ id: "play-next", label: "Play next", icon: "skip-forward", run: () => playNext() });
   }
-  items.push(...goToItems(ctx));
+  const library: MenuItem[] = [];
+  const addToPlaylist = ctx.addToPlaylist;
+  if (addToPlaylist) {
+    library.push({ id: "add-playlist", label: "Add to playlist", icon: "list-plus", run: () => addToPlaylist() });
+  }
+  const favorite = ctx.favorite;
+  if (favorite) {
+    library.push({
+      id: "favorite",
+      label: favorite.active ? "Unfavorite" : "Favorite",
+      icon: favorite.active ? "heart-crack" : "heart",
+      run: () => favorite.toggle(),
+    });
+  }
+  library.push(...laterItems(ctx.later));
+  if (library.length > 0) library[0].divider = true;
+  items.push(...library, ...goToItems(ctx));
   items.push(
     { id: "copy-title", label: "Copy title", icon: "copy", divider: true, run: () => ctx.copyTitle() },
     { id: "remove", label: "Remove", icon: "trash-2", danger: true, divider: true, run: () => ctx.remove() },

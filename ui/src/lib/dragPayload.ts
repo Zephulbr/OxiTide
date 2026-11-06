@@ -13,7 +13,9 @@ export interface DragSourceRef {
 /// track ids resolve to tracks only on drop (DD-D3).
 export type DragPayload =
   | { kind: "tracks"; tracks: Track[]; source?: DragSourceRef }
-  | { kind: "track-id"; id: number; title: string; cover?: string | null }
+  /// `queueIndex`: a queue row dragged out of the rail, so dropping it back
+  /// on the rail moves that row instead of queueing a copy.
+  | { kind: "track-id"; id: number; title: string; cover?: string | null; queueIndex?: number }
   | { kind: "collection"; target: CardTarget; cover?: string | null };
 
 const COLLECTION_NOUN: Record<CardTarget["kind"], string> = {

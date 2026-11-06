@@ -2,7 +2,9 @@
   import { api } from "../api";
   import Icon from "../components/Icon.svelte";
   import QueueRail from "../components/QueueRail.svelte";
+  import type { Favorites } from "../favorites.svelte";
   import type { Player } from "../player.svelte";
+  import type { PlaylistActions } from "../playlists.svelte";
   import type { Route } from "../nav.svelte";
   import type { Toasts } from "../toasts.svelte";
   import { changerSlots, changerStart, clampChangerStart, clock, currentIndex, remainingMs, CHANGER_SLOTS } from "./deck";
@@ -17,7 +19,16 @@
     onClose,
     go,
     toasts,
-  }: { player: Player; onClose: () => void; go?: (route: Route) => void; toasts?: Toasts } = $props();
+    favorites,
+    playlistActions,
+  }: {
+    player: Player;
+    onClose: () => void;
+    go?: (route: Route) => void;
+    toasts?: Toasts;
+    favorites?: Favorites;
+    playlistActions?: PlaylistActions;
+  } = $props();
 
   const ps = $derived(player.state);
   const length = $derived(ps.queue.length);
@@ -73,7 +84,7 @@
     </div>
     <button class="rk-key sm page" onclick={() => (browse = first + CHANGER_SLOTS)} disabled={first + CHANGER_SLOTS >= length} aria-label="Next discs"><Icon name="chevron-right" size={12} /></button>
   </div>
-  <div class="rk-win queuewin"><QueueRail {player} {toasts} title={false} {go} /></div>
+  <div class="rk-win queuewin"><QueueRail {player} {toasts} {favorites} {playlistActions} title={false} {go} /></div>
 </section>
 
 <style>

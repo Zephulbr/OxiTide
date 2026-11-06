@@ -894,14 +894,14 @@
           transition:fade|global={{ duration: appearance.reducedMotion ? 120 : GLIDE_MS }}
         ></div>
         <aside class="queue floating" transition:queueFloat|global={{ reduced: appearance.reducedMotion }}>
-          <QueueRail {player} {toasts} go={(route) => { nav.toggleQueue(); goFromChrome(route); }} />
+          <QueueRail {player} {toasts} {favorites} {playlistActions} go={(route) => { nav.toggleQueue(); goFromChrome(route); }} />
         </aside>
       {:else if queueCard}
         <!-- Non-modal like the docked rail: no backdrop, the page stays live
              beside it, and name links leave it open. -->
         <aside class="queue floating card" transition:queueCardTransition|global={{ reduced: appearance.reducedMotion }}>
           {@render queueResize()}
-          <QueueRail {player} {toasts} go={goFromChrome} />
+          <QueueRail {player} {toasts} {favorites} {playlistActions} go={goFromChrome} />
         </aside>
       {:else}
         <aside
@@ -916,7 +916,7 @@
           onoutroend={releasePageHold}
         >
           {@render queueResize()}
-          <QueueRail {player} {toasts} go={goFromChrome} />
+          <QueueRail {player} {toasts} {favorites} {playlistActions} go={goFromChrome} />
         </aside>
       {/if}
     {:else if queuePeek.open && queueCard}
@@ -924,14 +924,14 @@
         class="queue floating card"
         transition:queueCardTransition|global={{ reduced: appearance.reducedMotion, duration: QUEUE_PEEK_SLIDE_MS }}
       >
-        <QueueRail {player} {toasts} go={(route) => { queuePeek.reset(); goFromChrome(route); }} />
+        <QueueRail {player} {toasts} {favorites} {playlistActions} go={(route) => { queuePeek.reset(); goFromChrome(route); }} />
       </aside>
     {:else if queuePeek.open}
       <aside
         class="queue floating"
         transition:queueFloat|global={{ reduced: appearance.reducedMotion, duration: QUEUE_PEEK_SLIDE_MS }}
       >
-        <QueueRail {player} {toasts} go={(route) => { queuePeek.reset(); goFromChrome(route); }} />
+        <QueueRail {player} {toasts} {favorites} {playlistActions} go={(route) => { queuePeek.reset(); goFromChrome(route); }} />
       </aside>
     {/if}
     <PlayerBar {player} {qualityDisplay} {favorites} {nav} {mini} {sleepTimer} {toasts} {playlistActions} floating={barFloats} />

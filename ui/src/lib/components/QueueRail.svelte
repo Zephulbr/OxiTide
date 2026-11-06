@@ -21,9 +21,13 @@
   import type { Route } from "../nav.svelte";
   import { albumRoute, goToTargets } from "../queueLinks";
   import { dragDrop, dropZone, type DropZone } from "../dragDrop.svelte";
-  import { resolveTracks } from "../dragPayload";
+  import { resolveTracks, type DragPayload } from "../dragPayload";
   import { errorMessage } from "../errors";
+  import type { Favorites } from "../favorites.svelte";
+  import { later } from "../later.svelte";
+  import type { PlaylistActions } from "../playlists.svelte";
   import { glideActive } from "../queueTransition";
+  import { playTrackRadio } from "../radio";
   import type { Toasts } from "../toasts.svelte";
   import { trackFlags } from "../trackFlags.svelte";
   import NameLink from "./NameLink.svelte";
@@ -34,6 +38,8 @@
     title = true,
     go,
     toasts,
+    favorites,
+    playlistActions,
   }: {
     player: Player;
     /// Rack shells draw their own unit heading; they pass false.
@@ -41,9 +47,46 @@
     /// Opens a page from a row's names (name-links spec); without it the names
     /// stay plain text (mini players).
     go?: (route: Route) => void;
-    /// Reports drops on the rail; without it they land silently.
+    /// Reports drops on the rail, and Track Radio in the row menu (left out
+    /// without); without it drops land silently.
     toasts?: Toasts;
+    /// Favorite in the row menu; left out without.
+    favorites?: Favorites;
+    /// "Add to playlist" in the row menu; left out without.
+    playlistActions?: PlaylistActions;
   } = $props();
+
+  /// The row's menu, built at open time so it reads the live favorite and
+  /// Save for Later state.
+  function rowMenu(item: QueueItem, index: number) {
+    const to = nextSlot(index);
+    const radioToasts = toasts;
+    const picker = playlistActions;
+    const favs = favorites;
+    const id = item.track_id;
+    return queueMenuItems({
+      index,
+      playNow: () => jump(index),
+      startRadio: radioToasts ? () => void playTrackRadio(id, radioToasts, item.title) : undefined,
+      playNext: to === null ? undefined : () => reorder(index, to),
+      addToPlaylist: picker ? () => void addToPlaylist(item, picker) : undefined,
+      favorite: favs ? { active: favs.hasTrack(id), toggle: () => void favs.toggleTrack(id) } : undefined,
+      later: { active: later.has("track", id), toggle: () => void later.toggle("track", id) },
+      copyTitle: () => void copyText(item.title),
+      remove: () => player.remove(index),
+      ...(go ? goToTargets(item, go, api.getTrack) : {}),
+    });
+  }
+
+  /// The picker takes full `Track`s; a queue item carries only its display
+  /// fields.
+  async function addToPlaylist(item: QueueItem, picker: PlaylistActions) {
+    try {
+      picker.openPicker([await api.getTrack(item.track_id)]);
+    } catch (e) {
+      toasts?.show(errorMessage(e), { severity: "error" });
+    }
+  }
 
   /// A name click right after a drag release must not navigate, just as the
   /// row's play click is swallowed.
@@ -249,10 +292,26 @@
     }
   }
 
+  /// The rail's own row, dragged out (handOff) and brought back: it moves to
+  /// the slot, as a reorder inside the rail would. Nothing moves when the row
+  /// is no longer at that index (the queue changed under the drag).
+  function moveBack(payload: DragPayload, slot: number) {
+    if (payload.kind !== "track-id" || payload.queueIndex === undefined) return;
+    const from = payload.queueIndex;
+    if (items[from]?.track_id !== payload.id) return;
+    reorder(from, slot > from ? slot - 1 : slot);
+  }
+
+  function fromRail(payload: DragPayload): boolean {
+    return payload.kind === "track-id" && payload.queueIndex !== undefined;
+  }
+
   const queueZone: DropZone = {
     key: "queue",
-    accepts: () =>
-      glideActive() ? { ok: false, reason: "The queue is moving" } : { ok: true, hint: "Add to queue" },
+    accepts: (payload) =>
+      glideActive()
+        ? { ok: false, reason: "The queue is moving" }
+        : { ok: true, hint: fromRail(payload) ? "Move here" : "Add to queue" },
     hover: (_payload, point) => {
       const slot = items.length === 0 ? 0 : slotAt(point.y);
       dropSlot = slot;
@@ -264,7 +323,11 @@
     leave: () => {
       dropSlot = null;
     },
-    drop: (payload, point) => dropTracks(payload, items.length === 0 ? 0 : slotAt(point.y)),
+    drop: (payload, point) => {
+      const slot = items.length === 0 ? 0 : slotAt(point.y);
+      if (fromRail(payload)) moveBack(payload, slot);
+      else return dropTracks(payload, slot);
+    },
     scroller: () => scroller,
   };
 
@@ -340,7 +403,31 @@
       frame = requestAnimationFrame(autoScroll);
     }
     drag.y = event.clientY;
+    if (handOff(event)) return;
     retarget();
+  }
+
+  /// A row dragged sideways out of the rail becomes an app drag carrying its
+  /// track (to a sidebar playlist, a playlist's table, …). The reorder ends
+  /// and the row glides home; brought back over the rail, the app drag moves
+  /// it (moveBack).
+  function handOff(event: PointerEvent): boolean {
+    if (!drag || !rail) return false;
+    const rect = rail.getBoundingClientRect();
+    if (event.clientX >= rect.left && event.clientX <= rect.right) return false;
+    const item = items[drag.from];
+    if (!item) return false;
+    const payload: DragPayload = {
+      kind: "track-id",
+      id: item.track_id,
+      title: item.title,
+      cover: item.cover,
+      queueIndex: drag.from,
+    };
+    endDrag();
+    // dragDrop swallows the release's click from here on.
+    dragDrop.begin(payload, { x: event.clientX, y: event.clientY });
+    return true;
   }
 
   function onPointerUp() {
@@ -567,17 +654,7 @@
                 aria-label={`${item.title} — ${item.artist}${item.autoplay ? " (Autoplay)" : ""}`}
                 aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown Delete"
                 title="Play"
-                use:menuFor={() => {
-                  const to = nextSlot(index);
-                  return queueMenuItems({
-                    index,
-                    playNow: () => jump(index),
-                    playNext: to === null ? undefined : () => reorder(index, to),
-                    copyTitle: () => void copyText(item.title),
-                    remove: () => player.remove(index),
-                    ...(go ? goToTargets(item, go, api.getTrack) : {}),
-                  });
-                }}
+                use:menuFor={() => rowMenu(item, index)}
                 onfocus={() => (focusIndex = index)}
                 onkeydown={(event) => onRowKey(event, index)}
                 onclick={() => onRowClick(index)}

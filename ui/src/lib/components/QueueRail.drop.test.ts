@@ -7,6 +7,8 @@ import { dragDrop, dragSource } from "../dragDrop.svelte";
 import type { DragPayload } from "../dragPayload";
 import { queueRowHeightFor } from "../rowHeight";
 import { fakePlayer, queueItem } from "../test/fakes";
+// QueueRail reads Save for Later for its row menu.
+vi.mock("../later.svelte", () => ({ later: { has: () => false, toggle: vi.fn() } }));
 import type { Toasts } from "../toasts.svelte";
 import QueueRail from "./QueueRail.svelte";
 
@@ -102,6 +104,31 @@ describe("QueueRail drops", () => {
     const { source } = setup(0);
     await dropAt(source, 0);
     await vi.waitFor(() => expect(api.queueAdd).toHaveBeenCalled());
+  });
+
+  it("hands a row dragged out of the rail to the app drag, and moves it when brought back", async () => {
+    const queue = Array.from({ length: 3 }, (_, i) => queueItem(i + 1));
+    const player = Object.assign(fakePlayer({ queue }), { reorder: vi.fn(async () => {}) });
+    render(QueueRail, { player, toasts: { show: vi.fn() } as unknown as Toasts });
+    const rail = document.querySelector<HTMLElement>(".queue-rail")!;
+    document.elementFromPoint = vi.fn(() => rail);
+    const row = document.querySelector<HTMLElement>('[data-q-index="1"] .row-main')!;
+    const rowH = queueRowHeightFor(appearance.density);
+
+    // jsdom boxes are all 0 wide: x 0 is inside the rail, anything else out.
+    pointer("pointerdown", row, 0, 0);
+    pointer("pointermove", window, 0, 30);
+    expect(dragDrop.active).toBeNull();
+    pointer("pointermove", window, -40, 30);
+    expect(dragDrop.active).toEqual({ kind: "track-id", id: 2, title: "Track 2", cover: null, queueIndex: 1 });
+    expect(document.querySelector(".q-ghost")).toBeNull();
+
+    pointer("pointermove", window, 0, rowH * 3);
+    expect(dragDrop.verdict).toEqual({ ok: true, hint: "Move here" });
+    pointer("pointerup", window, 0, rowH * 3);
+    expect(player.reorder).toHaveBeenCalledWith(1, 2);
+    expect(api.queueInsert).not.toHaveBeenCalled();
+    expect(api.queueAdd).not.toHaveBeenCalled();
   });
 
   it("shows the insertion line while over the list", async () => {

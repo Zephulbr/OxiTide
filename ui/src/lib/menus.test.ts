@@ -254,6 +254,50 @@ describe("queueMenuItems", () => {
     expect(items.map((i) => i.id)).toEqual(["play-now", "go-album", "go-artist", "copy-title", "remove"]);
   });
 
+  it("adds radio and the library group a track row has, when given", () => {
+    const ctx = {
+      index: 2,
+      playNow: vi.fn(),
+      startRadio: vi.fn(),
+      playNext: vi.fn(),
+      addToPlaylist: vi.fn(),
+      favorite: { active: true, toggle: vi.fn() },
+      later: { active: false, toggle: vi.fn() },
+      copyTitle: vi.fn(),
+      remove: vi.fn(),
+      goToAlbum: vi.fn(),
+    };
+    const items = queueMenuItems(ctx);
+    expect(items.map((i) => i.label)).toEqual([
+      "Play now",
+      "Track Radio",
+      "Play next",
+      "Add to playlist",
+      "Unfavorite",
+      "Save for later",
+      "Go to album",
+      "Copy title",
+      "Remove",
+    ]);
+    expect(items.filter((i) => i.divider).map((i) => i.id)).toEqual(["add-playlist", "go-album", "copy-title", "remove"]);
+    for (const item of items) item.run();
+    for (const fn of [ctx.startRadio, ctx.addToPlaylist, ctx.favorite.toggle, ctx.later.toggle]) {
+      expect(fn).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("starts the library group at Save for later alone", () => {
+    const items = queueMenuItems({
+      index: 0,
+      playNow: vi.fn(),
+      later: { active: true, toggle: vi.fn() },
+      copyTitle: vi.fn(),
+      remove: vi.fn(),
+    });
+    expect(items.map((i) => i.id)).toEqual(["play-now", "later", "copy-title", "remove"]);
+    expect(items[1]).toMatchObject({ label: "Remove from Save for later", divider: true });
+  });
+
   it("offers play next only when given", () => {
     const playNext = vi.fn();
     const items = queueMenuItems({ index: 3, playNow: vi.fn(), playNext, copyTitle: vi.fn(), remove: vi.fn() });

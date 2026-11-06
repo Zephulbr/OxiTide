@@ -508,7 +508,10 @@ mode, with no mode branches:
   cursor becomes `no-drop`. While an add is running, a spinning disc (accent tick on
   `--line`) sits over the cover.
 - **queue:** a 2 px accent insertion line between rows, with the current-track gaps closed
-  while a drag is over the rail.
+  while a drag is over the rail. A queue row's own reorder drag (its lifted row and dashed
+  slot) turns into this ghost once the pointer leaves the rail sideways, and the row glides
+  back to its slot. Dropped on a playlist it is added there; brought back over the rail it
+  shows "Move here" and the insertion line, and moves the row instead of queueing a copy.
 - **in-table reorder:** the existing table drop line.
 - **confirm:** a drop of more than one track onto a playlist opens the playlist dialog's
   confirm step: a 16 px lead ("Add 20 tracks?"), a `--surface-2` card with small-caps

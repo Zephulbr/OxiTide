@@ -30,6 +30,10 @@ Read before touching `ui/`: styling and modes, Hi-Fi Rack, Home/Explore/search, 
   - **Payloads** (`lib/dragPayload.ts`) carry rows, a track id, or a collection; tracks are
     fetched only on drop. Playlist targets come from `lib/playlistDrop.ts`. The queue rail
     inserts through `queue_insert`.
+  - **The queue rail's reorder is its own gesture**, not a `dragSource`. A row dragged
+    sideways out of the rail is handed to the controller with `dragDrop.begin`: a
+    `track-id` payload carrying `queueIndex`. Dropped back on the rail, that payload moves
+    the row (`player.reorder`) instead of inserting a copy.
   - **Track tables multi-select through `lib/selection.svelte.ts`**, keyed by row object
     (playlists repeat ids). A drag from a selected row carries the selection.
 - Output picker (spec `2026-11-05-oxitide-output-device-picker-design.md`):

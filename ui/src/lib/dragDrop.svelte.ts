@@ -53,6 +53,10 @@ export interface DragDrop {
   /// A press on a drag source; the drag starts once it moves past the
   /// threshold.
   press(event: PointerEvent, get: PayloadGetter): void;
+  /// Takes over a gesture that is already a drag (the queue rail hands a row
+  /// over when it leaves the rail): the drag starts at once at `at`, with the
+  /// button still down. False while another drag or press runs.
+  begin(payload: DragPayload, at: DragPoint): boolean;
   /// End any drag or press with no drop (route change, sign-out).
   cancel(): void;
   /// The ghost element, moved straight through its style each frame.
@@ -296,6 +300,13 @@ export function createDragDrop(): DragDrop {
       return pending;
     },
     press,
+    begin(payload, at) {
+      if (held || active) return false;
+      point = { x: at.x, y: at.y };
+      listen(true);
+      start(payload);
+      return true;
+    },
     cancel() {
       if (active || held) onCancel();
     },
