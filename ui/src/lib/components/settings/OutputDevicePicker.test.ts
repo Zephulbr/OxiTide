@@ -124,51 +124,88 @@ describe("OutputDevicePicker", () => {
     expect(screen.getByText("Always exclusive", { selector: ".always" })).toBeTruthy();
   });
 
-  it("edits a nickname in place; saving it empty brings the device name back", async () => {
+  it("edits the nickname in a dialog; saving it empty brings the device name back", async () => {
     setList();
     await renderPicker();
     await fireEvent.click(screen.getByRole("button", { name: "More for Speakers" }));
-    menu.open?.items.find((item) => item.id === "nickname")?.run();
+    menu.open?.items.find((item) => item.id === "edit")?.run();
 
-    const input = (await screen.findByRole("textbox", { name: "Nickname for Speakers" })) as HTMLInputElement;
+    await screen.findByRole("dialog", { name: "Edit output" });
+    const input = screen.getByRole("textbox", { name: "Nickname" }) as HTMLInputElement;
     expect(input.placeholder).toBe("Speakers");
     await fireEvent.input(input, { target: { value: "  Desk speakers " } });
-    // The Enter is consumed (not passed on to the row's radio), so it only saves.
-    expect(await fireEvent.keyDown(input, { key: "Enter" })).toBe(false);
+    await fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    // Only what changed is saved, and saving never selects the device.
     expect(mocks.api.setDevicePrefs).toHaveBeenCalledWith("spk", { nickname: "Desk speakers" });
     expect(mocks.api.setOutputDevice).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
     await fireEvent.click(screen.getByRole("button", { name: "More for Desk DAC" }));
-    menu.open?.items.find((item) => item.id === "nickname")?.run();
-    const again = (await screen.findByRole("textbox", { name: "Nickname for DX5" })) as HTMLInputElement;
+    menu.open?.items.find((item) => item.id === "edit")?.run();
+    const again = (await screen.findByRole("textbox", { name: "Nickname" })) as HTMLInputElement;
+    expect(again.value).toBe("Desk DAC");
     await fireEvent.input(again, { target: { value: "" } });
-    await fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await fireEvent.submit(again.form!);
     expect(mocks.api.setDevicePrefs).toHaveBeenLastCalledWith("dac", { nickname: "" });
     await waitFor(() => expect(screen.getByRole("radio", { name: /^DX5/ })).toBeTruthy());
 
+    const calls = mocks.api.setDevicePrefs.mock.calls.length;
     await fireEvent.click(screen.getByRole("button", { name: "More for Desk speakers" }));
-    menu.open?.items.find((item) => item.id === "nickname")?.run();
-    const cancel = await screen.findByRole("textbox", { name: "Nickname for Speakers" });
-    await fireEvent.keyDown(cancel, { key: "Escape" });
-    expect(screen.queryByRole("textbox")).toBeNull();
+    menu.open?.items.find((item) => item.id === "edit")?.run();
+    await screen.findByRole("dialog");
+    await fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(mocks.api.setDevicePrefs.mock.calls.length).toBe(calls);
   });
 
-  it("pins, hides and changes icons from the row", async () => {
+  it("keeps the row menu short and picks the icon in the edit dialog", async () => {
     setList();
     await renderPicker();
     await fireEvent.click(screen.getByRole("button", { name: "Pin Speakers to the quality menu" }));
     expect(mocks.api.setDevicePrefs).toHaveBeenCalledWith("spk", { pinned: true });
 
     await fireEvent.click(screen.getByRole("button", { name: "More for Desk DAC" }));
+    expect(menu.open?.items.map((item) => item.id)).toEqual(["edit", "pin", "hide"]);
     const hide = menu.open?.items.find((item) => item.id === "hide");
     expect(hide?.disabled).toBe(true);
     expect(hide?.detail).toBe("Switch to another device first");
 
     await fireEvent.click(screen.getByRole("button", { name: "More for Speakers" }));
-    menu.open?.items.find((item) => item.id === "icon-none")?.run();
-    expect(mocks.api.setDevicePrefs).toHaveBeenLastCalledWith("spk", { icon: "none" });
     menu.open?.items.find((item) => item.id === "hide")?.run();
     expect(mocks.api.setDevicePrefs).toHaveBeenLastCalledWith("spk", { hidden: true });
+
+    await fireEvent.click(screen.getByRole("button", { name: "More for Speakers" }));
+    menu.open?.items.find((item) => item.id === "edit")?.run();
+    const icons = await screen.findByRole("radiogroup", { name: "Icon" });
+    const automatic = screen.getByRole("radio", { name: "Automatic" });
+    expect(automatic.getAttribute("aria-checked")).toBe("true");
+    expect(icons.querySelectorAll('[role="radio"]')).toHaveLength(11);
+    await fireEvent.keyDown(automatic, { key: "ArrowLeft" });
+    expect(screen.getByRole("radio", { name: "No icon" }).getAttribute("aria-checked")).toBe("true");
+    await fireEvent.click(screen.getByRole("radio", { name: "Headphones" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(mocks.api.setDevicePrefs).toHaveBeenLastCalledWith("spk", { icon: "headphones" });
+  });
+
+  it("opens the row menu on right-click, at the pointer", async () => {
+    setList();
+    await renderPicker();
+    const row = screen.getByRole("radio", { name: /^Speakers/ });
+    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 120, clientY: 340 });
+    row.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(menu.open?.items.map((item) => item.id)).toEqual(["edit", "pin", "hide"]);
+    expect([menu.open?.x, menu.open?.y]).toEqual([120, 340]);
+    expect(menu.open?.opener).toBe(row);
+  });
+
+  it("leaves the icon choice out of the dialog when icons are off", async () => {
+    setList();
+    await renderPicker(false);
+    await fireEvent.click(screen.getByRole("button", { name: "More for Speakers" }));
+    menu.open?.items.find((item) => item.id === "edit")?.run();
+    await screen.findByRole("dialog", { name: "Edit output" });
+    expect(screen.queryByRole("radiogroup", { name: "Icon" })).toBeNull();
   });
 
   it("drops icon tiles when icons are off", async () => {

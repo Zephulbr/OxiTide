@@ -208,12 +208,16 @@ stacked and holds a list instead of a Select, with one look in every mode and no
     belongs to the selection, and the units stay muted. What is playing now stays the player
     bar's to say (no "Now …" line here);
   - the detail rises in over `--dur-state` (none under reduced motion).
-- **⋯ menu** (the shared ContextMenu): Nickname…, Pin / Unpin, Hide / Show (disabled with a
-  reason on the selected device), then an Icon section with Automatic, Speaker, Headphones,
-  DAC / Amp, Monitor, TV, Laptop, USB, Bluetooth, Lines and No icon.
-- **Nickname:** edited inline. The name becomes an input whose placeholder is the device's own
-  name, beside an accent Save and an outlined Cancel. Saving it empty brings the device's name
-  back.
+- **⋯ menu** (the shared ContextMenu; right-clicking a device row opens the same menu at the
+  pointer, and a second click on ⋯ closes it): Edit…, Pin / Unpin, Hide / Show (disabled with
+  a reason on the selected device). Nothing else, so the menu stays short.
+- **Edit output dialog** (`settings/DeviceEditDialog.svelte`, the shared `Modal` the playlist
+  and folder edits use): a Nickname field whose placeholder is the device's own name (saving it
+  empty brings that name back), then, when device icons are on, an Icon radio grid of labelled
+  tiles (`auto-fill`, 88 px min): Automatic (shows the detected icon), Speaker, Headphones,
+  DAC / Amp, Monitor, TV, Laptop, USB, Bluetooth, Lines and No icon. The chosen tile takes an
+  `--accent` ring and glyph on a 14% accent wash; arrows move the choice. Cancel / Save; only
+  changed fields are saved.
 - **Unplugged and hidden rows:** an unplugged row dims its tile, name and line to 50% and shows a
   plug icon. Hidden devices and HDMI outputs with nothing attached drop out of the list, with
   "N hidden · Show" and "HDMI 2: nothing connected · Show anyway" under it.

@@ -2,25 +2,25 @@
   import { listen } from "@tauri-apps/api/event";
   import { tick, untrack } from "svelte";
   import { api, type DevicePrefsPatch, type OutputDevice, type OutputDeviceList, type OutputMode } from "../../api";
-  import { menu, type MenuItem } from "../../menu.svelte";
+  import { menu, menuButton, type MenuItem } from "../../menu.svelte";
   import { outputDevices } from "../../outputDeviceStore.svelte";
   import {
-    DEVICE_ICON_CHOICES,
     OUTPUT_DEVICES_CHANGED_EVENT,
     connectionLabel,
     deviceError,
     deviceIcon,
     displayName,
-    kindIcon,
     numberRuns,
     pickerView,
     supportsLine,
   } from "../../outputDevices";
   import Icon from "../Icon.svelte";
+  import DeviceEditDialog from "./DeviceEditDialog.svelte";
   import Segmented from "./Segmented.svelte";
 
   /// Settings → Playback → Output: one row per output, grouped by type, with a
-  /// mode per device and nickname / pin / hide / icon in each row's menu (spec
+  /// mode per device and edit (nickname + icon, in a dialog) / pin / hide in
+  /// each row's menu, from its "More" button or a right-click (spec
   /// 2026-11-05-oxitide-output-device-picker-design.md §8.1). Rows are radios:
   /// the arrow keys move focus and Enter or Space selects, because selecting
   /// reopens the output. The selected device stays at the top of its group;
@@ -42,10 +42,9 @@
   let list = $state<OutputDeviceList | null>(null);
   let showHidden = $state(false);
   let showAbsent = $state(false);
-  let editing = $state<string | null>(null);
-  let draft = $state("");
+  /// The device whose nickname/icon dialog is open.
+  let editing = $state<OutputDevice | null>(null);
   let focusedId = $state<string | null>(null);
-  let input = $state<HTMLInputElement | null>(null);
   /// Id moves already asked for this session (a USB DAC on another port).
   const movedOnce = new Set<string>();
 
@@ -139,34 +138,21 @@
     );
   }
 
-  function startNickname(device: OutputDevice) {
-    editing = device.id;
-    draft = device.prefs.nickname;
-    queueMicrotask(() => {
-      input?.focus();
-      input?.select();
-    });
-  }
-
-  function saveNickname(device: OutputDevice) {
+  function closeEdit() {
+    const device = editing;
     editing = null;
-    patch(device, { nickname: draft.trim() });
-    refocus(device.id);
-  }
-
-  function cancelNickname(id: string) {
-    editing = null;
-    refocus(id);
+    if (device) refocus(device.id);
   }
 
   function refocus(id: string) {
     void tick().then(() => document.querySelector<HTMLElement>(`[data-pick="${CSS.escape(id)}"]`)?.focus());
   }
 
+  /// Short on purpose: nickname and icon live in the Edit dialog.
   function menuItems(device: OutputDevice): MenuItem[] {
     const pinned = device.prefs.pinned;
-    const items: MenuItem[] = [
-      { id: "nickname", label: "Nickname…", icon: "pencil", run: () => startNickname(device) },
+    return [
+      { id: "edit", label: "Edit…", icon: "pencil", run: () => (editing = device) },
       {
         id: "pin",
         label: pinned ? "Unpin from the quality menu" : "Pin to the quality menu",
@@ -182,25 +168,20 @@
         run: () => patch(device, { hidden: !device.prefs.hidden }),
       },
     ];
-    for (const [i, choice] of DEVICE_ICON_CHOICES.entries()) {
-      const current = device.prefs.icon || "";
-      items.push({
-        id: `icon-${choice.value || "auto"}`,
-        label: choice.label,
-        icon: choice.value === "" ? kindIcon(device.kind) : choice.icon,
-        section: "Icon",
-        divider: i === 0,
-        selected: current === choice.value,
-        trailing: current === choice.value ? "check" : undefined,
-        run: () => patch(device, { icon: choice.value === "" ? "auto" : choice.value }),
-      });
-    }
-    return items;
   }
 
   function openMenu(device: OutputDevice, button: HTMLElement) {
     const rect = button.getBoundingClientRect();
     menu.show(rect.right, rect.bottom + 4, menuItems(device), button, { align: "end" });
+  }
+
+  /// Right-click anywhere on a row: the same menu as its "More" button, at
+  /// the pointer. Closing returns focus to the row's radio.
+  function onRowContextMenu(event: MouseEvent, device: OutputDevice) {
+    event.preventDefault();
+    const row = event.currentTarget as HTMLElement;
+    const opener = row.querySelector<HTMLElement>("[data-pick]") ?? row;
+    menu.show(event.clientX, event.clientY, menuItems(device), opener);
   }
 
   function onRowKeydown(event: KeyboardEvent, device: OutputDevice) {
@@ -254,57 +235,35 @@
   {@const isSel = device.id === selected}
   {@const icon = icons ? deviceIcon(device) : null}
   {@const descId = `${uid}-${device.id}-desc`}
-  <div class="dev" class:sel={isSel} class:off={!device.connected} class:hidden-row={device.prefs.hidden}>
-    {#if editing === device.id}
-      <div class="pick editing">
-        {#if icon}<span class="tile" aria-hidden="true"><Icon name={icon} size={18} /></span>{/if}
-        <div class="edit">
-          <input
-            bind:this={input}
-            bind:value={draft}
-            aria-label={`Nickname for ${device.name}`}
-            placeholder={device.name}
-            maxlength="64"
-            onkeydown={(e) => {
-              e.stopPropagation();
-              // preventDefault: focus returns to the row's radio before the
-              // key finishes, and an unhandled Enter would then press it and
-              // switch to this device.
-              if (e.key === "Enter") {
-                e.preventDefault();
-                saveNickname(device);
-              } else if (e.key === "Escape") {
-                e.preventDefault();
-                cancelNickname(device.id);
-              }
-            }}
-          />
-          <button type="button" class="btn primary" onclick={() => saveNickname(device)}>Save</button>
-          <button type="button" class="btn" onclick={() => cancelNickname(device.id)}>Cancel</button>
-        </div>
-      </div>
-    {:else}
-      <button
-        type="button"
-        class="pick"
-        role="radio"
-        aria-checked={isSel}
-        aria-describedby={descId}
-        data-pick={device.id}
-        tabindex={tabStop === device.id ? 0 : -1}
-        title={device.system_name}
-        disabled={!device.connected && !isSel}
-        onclick={() => select(device.id)}
-        onfocus={() => (focusedId = device.id)}
-        onkeydown={(e) => onRowKeydown(e, device)}
-      >
-        {#if icon}<span class="tile" aria-hidden="true"><Icon name={icon} size={18} /></span>{/if}
-        <span class="text">
-          <span class="name">{displayName(device)}</span>
-          <span class="sub" id={descId}>{connectionLabel(device)}</span>
-        </span>
-      </button>
-    {/if}
+  <!-- Right-click mirrors the "More" button (keyboard: the radio's ContextMenu key). -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    class="dev"
+    class:sel={isSel}
+    class:off={!device.connected}
+    class:hidden-row={device.prefs.hidden}
+    oncontextmenu={(e) => onRowContextMenu(e, device)}
+  >
+    <button
+      type="button"
+      class="pick"
+      role="radio"
+      aria-checked={isSel}
+      aria-describedby={descId}
+      data-pick={device.id}
+      tabindex={tabStop === device.id ? 0 : -1}
+      title={device.system_name}
+      disabled={!device.connected && !isSel}
+      onclick={() => select(device.id)}
+      onfocus={() => (focusedId = device.id)}
+      onkeydown={(e) => onRowKeydown(e, device)}
+    >
+      {#if icon}<span class="tile" aria-hidden="true"><Icon name={icon} size={18} /></span>{/if}
+      <span class="text">
+        <span class="name">{displayName(device)}</span>
+        <span class="sub" id={descId}>{connectionLabel(device)}</span>
+      </span>
+    </button>
     <div class="tools">
       <button
         type="button"
@@ -323,7 +282,7 @@
         aria-label={`More for ${displayName(device)}`}
         title="More"
         tabindex={tabStop === device.id ? 0 : -1}
-        onclick={(e) => openMenu(device, e.currentTarget)}
+        use:menuButton={(button) => openMenu(device, button)}
       ><Icon name="ellipsis" size={16} /></button>
     </div>
     {#if isSel}
@@ -395,6 +354,15 @@
       {/if}
     </div>
   {/if}
+{/if}
+
+{#if editing}
+  <DeviceEditDialog
+    device={editing}
+    {icons}
+    onsave={(change) => editing && patch(editing, change)}
+    onclose={closeEdit}
+  />
 {/if}
 
 <style>
@@ -562,46 +530,6 @@
   .num {
     color: var(--accent);
     font-weight: 700;
-  }
-  .editing {
-    flex: 1;
-  }
-  .edit {
-    display: flex;
-    flex: 1;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-  }
-  .edit input {
-    flex: 1;
-    min-width: 0;
-    padding: 6px 10px;
-    border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
-    border-radius: 7px;
-    color: var(--text);
-    background: var(--surface-1);
-    font: inherit;
-    font-size: 14px;
-    font-weight: 600;
-  }
-  .edit input::placeholder {
-    color: var(--text-muted);
-    font-weight: 500;
-  }
-  .btn {
-    padding: 6px 12px;
-    border: 1px solid var(--line);
-    border-radius: 7px;
-    color: var(--text);
-    background: var(--surface-2);
-    font-size: 12.5px;
-    font-weight: 600;
-  }
-  .btn.primary {
-    border-color: transparent;
-    color: var(--on-accent);
-    background: var(--accent);
   }
   .more {
     display: flex;

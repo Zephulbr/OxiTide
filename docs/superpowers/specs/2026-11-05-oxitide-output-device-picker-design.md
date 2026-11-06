@@ -297,12 +297,15 @@ card shows its tag after a restart.
   - on the right, two lines of 12.5 px muted text, with the values in `--text` and
     tabular numerals: "Now **96 kHz · 24-bit**, bit-perfect" and "Up to 384 kHz · 32-bit,
     hardware volume". Shared-only devices show the shared format instead.
-- **The ⋯ menu** (shared `ContextMenu`): **Nickname…**, **Pin** / **Unpin**, **Hide** /
-  **Show**, then an **Icon** section of seven choices (auto-detected first, then speaker,
-  headphones, monitor, usb, bluetooth, audio-lines, and **None**).
-- **Editing a nickname.** The name turns into an input (placeholder = the clean
-  `name`) with **Save** (accent) and **Cancel**. Enter saves, Escape cancels, and saving it
-  empty clears the nickname.
+- **The ⋯ menu** (shared `ContextMenu`): **Edit…**, **Pin** / **Unpin**, **Hide** /
+  **Show**. A right-click on a device row opens the same menu at the pointer.
+  *(Amended 2026-11-06, V1 polish pass: the icon list made the menu too long, so nickname and
+  icon moved into the Edit dialog below, and inline nickname editing was retired.)*
+- **The Edit output dialog** (shared `Modal`, like the playlist and folder edits): a
+  **Nickname** field (placeholder = the clean `name`; saving it empty clears the nickname)
+  and, when device icons are on, an **Icon** radio grid (Automatic first, then the
+  `DEVICE_ICON_CHOICES`, and **No icon**). Enter saves, Escape and Cancel close it unsaved, and
+  only the changed fields reach `set_device_prefs`.
 - **Disconnected rows** dim their tile, name and sub line to 50 %. They can't be selected
   unless they already are.
 - **Accent** is used only for the selected row, the active segment and the Device icons
@@ -441,7 +444,8 @@ Where the build differs from the text above:
   detail keeps only the "Up to …" line.
 - **Enter in the nickname field only saves.** Saving returns focus to the row's radio before
   the key finished, so Enter also pressed it and switched devices; the field now consumes
-  Enter and Escape.
+  Enter and Escape. (Superseded 2026-11-06: the nickname moved into the Edit output dialog,
+  whose form submit cannot reach a row.)
 - **The detail's numbers are in the accent** ("Up to **192** kHz · **24**-bit"); the units stay
   muted.
 - **Microphone headphone jacks are not filtered.** The HyperX DuoCast shows because the mic
