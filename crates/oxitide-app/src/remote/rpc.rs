@@ -601,6 +601,7 @@ mod tests {
         "set_catjam_coat",
         "set_catjam_scale",
         "set_beat_tracking",
+        "set_position_feed_live",
         "set_hover_panels",
         "set_row_separators",
         "set_player_bar_style",

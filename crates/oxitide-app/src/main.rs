@@ -18,6 +18,7 @@ mod palette;
 mod panic_log;
 pub mod perf;
 mod player;
+mod position_feed;
 mod remote;
 mod scheme;
 mod scrobble;
@@ -497,6 +498,7 @@ fn main() {
             commands::set_catjam_coat,
             commands::set_catjam_scale,
             commands::set_beat_tracking,
+            commands::set_position_feed_live,
             commands::set_hover_panels,
             commands::set_row_separators,
             commands::set_player_bar_style,

@@ -552,7 +552,7 @@ fn build_player(
                 }
             }
         }
-        crate::perf::emit_counted(&handle, "playback_event", queue_gate.dto(event));
+        crate::position_feed::emit(&handle, queue_gate.dto(event));
     }));
     let scrobble_handle = app.clone();
     engine.subscribe(Arc::new(move |event| {
@@ -2848,6 +2848,14 @@ pub fn set_beat_tracking(state: State<'_, AppState>, enabled: bool) -> Result<()
     Ok(())
 }
 
+/// The end-of-track sleep timer needs every position tick, including while
+/// the window is hidden (`position_feed`). Not persisted: a restart disarms
+/// the timer.
+#[tauri::command]
+pub fn set_position_feed_live(app: tauri::AppHandle, live: bool) {
+    crate::position_feed::set_live(&app, live);
+}
+
 #[tauri::command]
 pub fn set_hover_panels(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
     let mut config = state.config();
@@ -3257,6 +3265,8 @@ mod tests {
         // An atomic store plus one engine call; ordered with CatJam's mount
         // and unmount so a quick remount cannot end with tracking off.
         "set_beat_tracking",
+        // An atomic store, ordered with the sleep timer's arm and cancel.
+        "set_position_feed_live",
         "set_hover_panels", "set_row_separators", "set_player_bar_style", "set_queue_style", "set_smtc", "set_discord", "set_close_to_tray", "set_cache_max_size_mb",
         "set_cache_clear_on_exit", "get_remote_status", "begin_remote_pairing",
         "cancel_remote_pairing", "list_remote_devices", "rename_remote_device",

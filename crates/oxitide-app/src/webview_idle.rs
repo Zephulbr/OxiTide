@@ -8,7 +8,8 @@
 //! hide / show) and sets the controller's `IsVisible` together with the
 //! memory target: `Low` while hidden lets WebView2 trim, `Normal` on return.
 //! Audio and the engine live in Rust and are unaffected; the page still
-//! receives events while hidden (it is not suspended).
+//! receives events while hidden (it is not suspended), except position ticks,
+//! which `position_feed` holds until the window shows again.
 
 /// What a window message means for the webview: `Some(true)` it is visible
 /// again, `Some(false)` it went out of sight, `None` no change.
@@ -38,7 +39,7 @@ pub fn install(_window: &tauri::WebviewWindow) {}
 mod imp {
     use std::cell::RefCell;
 
-    use tauri::WebviewWindow;
+    use tauri::{AppHandle, Manager, WebviewWindow};
     use webview2_com::Microsoft::Web::WebView2::Win32::{
         ICoreWebView2Controller, ICoreWebView2_19, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW,
         COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL,
@@ -55,6 +56,8 @@ mod imp {
         /// visible. Both live on the main thread, like the window proc and
         /// every WebView2 call.
         static STATE: RefCell<Option<(ICoreWebView2Controller, bool)>> = const { RefCell::new(None) };
+        /// For the position feed, told about each visibility change.
+        static APP: RefCell<Option<AppHandle>> = const { RefCell::new(None) };
     }
 
     pub fn install(window: &WebviewWindow) {
@@ -73,6 +76,8 @@ mod imp {
             tracing::warn!("webview idle hook unavailable: {e}");
             return;
         }
+        let app = window.app_handle().clone();
+        APP.with(|slot| *slot.borrow_mut() = Some(app));
         // SAFETY: `hwnd` is the live main window; the proc removes itself on
         // WM_NCDESTROY.
         unsafe {
@@ -81,11 +86,12 @@ mod imp {
     }
 
     fn set_visible(visible: bool) {
-        STATE.with(|state| {
+        // Resizing repeats WM_SIZE restored; only a change goes further.
+        let changed = STATE.with(|state| {
             let mut state = state.borrow_mut();
-            let Some((controller, shown)) = state.as_mut() else { return };
+            let Some((controller, shown)) = state.as_mut() else { return false };
             if *shown == visible {
-                return;
+                return false;
             }
             *shown = visible;
             let level = if visible {
@@ -109,6 +115,15 @@ mod imp {
                 }
             }
             tracing::debug!("webview {}", if visible { "visible" } else { "hidden: idle" });
+            true
+        });
+        if !changed {
+            return;
+        }
+        APP.with(|app| {
+            if let Some(app) = app.borrow().as_ref() {
+                crate::position_feed::set_window_visible(app, visible);
+            }
         });
     }
 
@@ -123,6 +138,7 @@ mod imp {
         if msg == WM_NCDESTROY {
             let _ = RemoveWindowSubclass(hwnd, Some(proc), SUBCLASS_ID);
             STATE.with(|state| *state.borrow_mut() = None);
+            APP.with(|app| *app.borrow_mut() = None);
         } else if let Some(visible) = super::visibility_change(msg, wparam.0) {
             set_visible(visible);
         }

@@ -392,6 +392,12 @@
     );
   });
 
+  // Hidden to the tray the app holds position ticks back; end-of-track mode
+  // needs them, so it keeps them coming while armed.
+  $effect(() => {
+    void api.setPositionFeedLive(sleepTimer.mode === "end-of-track").catch(() => {});
+  });
+
   $effect(() => {
     if (loggedIn) untrack(() => { void favorites.hydrate(); void later.hydrate(); });
   });

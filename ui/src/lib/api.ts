@@ -912,6 +912,8 @@ export const api = {
   setCatjamCoat: (coat: CatjamCoat) => invoke<void>("set_catjam_coat", { coat }),
   setCatjamScale: (percent: number) => invoke<number>("set_catjam_scale", { percent }),
   setBeatTracking: (enabled: boolean) => invoke<void>("set_beat_tracking", { enabled }),
+  /// Position ticks keep reaching the hidden window (end-of-track sleep timer).
+  setPositionFeedLive: (live: boolean) => invoke<void>("set_position_feed_live", { live }),
   setHoverPanels: (enabled: boolean) => invoke<void>("set_hover_panels", { enabled }),
   setRowSeparators: (enabled: boolean) => invoke<void>("set_row_separators", { enabled }),
   setPlayerBarStyle: (style: PanelStyle) => invoke<void>("set_player_bar_style", { style }),
