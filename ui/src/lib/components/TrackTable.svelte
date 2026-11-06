@@ -21,6 +21,7 @@
   import { playTrackRadio } from "../radio";
   import type { Toasts } from "../toasts.svelte";
   import { windowRange } from "../virtual";
+  import { edgeFade } from "../edgeFade";
   import { appearance } from "../appearance.svelte";
   import { trackFlags } from "../trackFlags.svelte";
   import { trackInfo } from "../trackInfo.svelte";
@@ -189,7 +190,6 @@
   const END_THRESHOLD = 400;
 
   let scrollTop = $state(0);
-  const scrolled = $derived(scrollTop > 0);
   let viewport = $state(0);
   let loadingAll = $state(false);
 
@@ -262,7 +262,6 @@
   });
 
   let dropAt = $state<number | null>(null);
-  let theadHeight = $state(0);
 
   /// Multi-row selection (drag-to-playlist spec §5), keyed by row object so a
   /// playlist's repeated tracks stay distinct rows. A new order or filter
@@ -325,7 +324,7 @@
   function slotAt(clientY: number): number {
     const scroll = scrollEl;
     if (!scroll) return 0;
-    return dropTarget(clientY, scroll.getBoundingClientRect().top, scroll.scrollTop, rowHeight, rows.length, bodyOffset);
+    return dropTarget(clientY, scroll.getBoundingClientRect().top, scroll.scrollTop, rowHeight, rows.length);
   }
 
   /// The table as a drop zone: its own rows reorder while `canDrag`; other
@@ -446,30 +445,14 @@
     void play(index);
   }
 
-  /// Fill mode splits the header into its own table above the scroller, so
-  /// the rows can fade out at the scroller's edges (under the header and
-  /// above the player bar) instead of passing under a frosted header. The
-  /// mask sits on the scroller itself: it stays put while the compositor
-  /// scrolls the rows under it, so it never trails a fast scroll and costs
-  /// nothing per frame. Both tables use fixed layout over the same colgroup,
-  /// so their columns line up without measuring. Only the fade lengths come
-  /// from script: each grows in with the distance left to scroll that way (a
-  /// list at rest or at its end shows every row whole), so they change in the
-  /// first and last EDGE_FADE px of travel only.
-  const split = $derived(fill && !compact);
-  /// Content above the first row inside the scroller: the sticky head, unless
-  /// it was split out.
-  const bodyOffset = $derived(split ? 0 : theadHeight);
-  const EDGE_FADE = 48;
-  let scrollMax = $state(0);
-  $effect(() => {
-    if (!split) return;
-    void [rows.length, viewport, rowHeight];
-    const element = scrollEl;
-    if (element) scrollMax = element.scrollHeight - element.clientHeight;
-  });
-  const fadeTop = $derived(split ? Math.min(scrollTop, EDGE_FADE) : 0);
-  const fadeBottom = $derived(split ? Math.min(Math.max(0, scrollMax - scrollTop), EDGE_FADE) : 0);
+  /// Every table with a header splits it into its own table above the
+  /// scroller, so the rows fade out at the scroller's edges (lib/edgeFade.ts:
+  /// under the header, and above the player bar in fill mode) instead of
+  /// passing under a frosted header. Both tables use fixed layout over the
+  /// same colgroup, so their columns line up without measuring. Compact
+  /// tables have no header and no fade. Rows start at the scroller's top
+  /// either way (no sticky head inside it).
+  const split = $derived(!compact);
   /// Fixed-layout widths for the content-sized columns: the row number's
   /// digits and the row's action buttons (counts, not measurements).
   const numDigits = $derived(Math.max(2, String(rows.length).length));
@@ -481,7 +464,6 @@
   function onScroll(event: Event) {
     const element = event.currentTarget as HTMLElement;
     scrollTop = element.scrollTop;
-    if (split) scrollMax = element.scrollHeight - element.clientHeight;
     if (element.scrollHeight - element.scrollTop - element.clientHeight < END_THRESHOLD) {
       onEndReached?.();
     }
@@ -530,14 +512,14 @@
     const scroll = scrollEl;
     const index = playingIndex;
     if (!scroll || index < 0) return;
-    let rowTop = bodyOffset + index * rowHeight;
+    let rowTop = index * rowHeight;
     if (grouping) {
       const row = scroll.querySelector<HTMLElement>(`tr[data-row-index="${index}"]`);
       if (!row) return;
       rowTop = row.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop;
     }
     const clearance = parseFloat(getComputedStyle(scroll).paddingBottom) || 0;
-    const middle = bodyOffset + (viewport - clearance - bodyOffset - rowHeight) / 2;
+    const middle = (viewport - clearance - rowHeight) / 2;
     const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     scroll.scrollTo({ top: Math.max(0, rowTop - middle), behavior: reduce ? "auto" : "smooth" });
   }
@@ -730,35 +712,21 @@
   class="table-scroll"
   class:pane={!split}
   class:pane-flush={!split}
+  class:edge-fade={split}
   class:compact
   class:fill
-  class:scrolled
   bind:this={scrollEl}
   style:max-height={fill ? "none" : maxHeight}
-  style:--fade-top={split ? `${fadeTop}px` : undefined}
-  style:--fade-bottom={split ? `${fadeBottom}px` : undefined}
   bind:clientHeight={viewport}
   onscroll={onScroll}
   data-perf-scroll
+  use:edgeFade={{ content: rows.length }}
   use:dragSource={dragPayload}
   use:dropZone={reorderZone}
 >
-  {#if !compact && !fill}
-  <div
-    class="head-frost"
-    aria-hidden="true"
-    style="height:{theadHeight}px;margin-bottom:-{theadHeight}px"
-  ></div>
-  {/if}
-  <table
-    role={roleOf("presentation")}
-    aria-label={split ? undefined : "Tracks"}
-    aria-rowcount={split || grouping || compact ? undefined : rows.length + 1}
-  >
+  <table role={roleOf("presentation")} aria-label={split ? undefined : "Tracks"}>
     {#if split}
       {@render columnSizes()}
-    {:else if !compact}
-      <thead bind:clientHeight={theadHeight}>{@render headRow()}</thead>
     {/if}
     <tbody role={roleOf("rowgroup")}>
       {#if range.padTop > 0}
@@ -916,7 +884,7 @@
     </tbody>
   </table>
   {#if dropAt !== null}
-    <div class="drop-line" style="top:{bodyOffset + dropAt * rowHeight}px"></div>
+    <div class="drop-line" style="top:{dropAt * rowHeight}px"></div>
   {/if}
 </div>
 {/snippet}
@@ -927,6 +895,7 @@
 {#if split}
   <div
     class="table-frame pane pane-flush"
+    class:fill
     role="table"
     aria-label="Tracks"
     aria-rowcount={grouping ? undefined : rows.length + 1}
@@ -936,7 +905,7 @@
     <div class="table-head">
       <table role="presentation">
         {@render columnSizes()}
-        <thead role={roleOf("rowgroup")} bind:clientHeight={theadHeight}>{@render headRow()}</thead>
+        <thead role={roleOf("rowgroup")}>{@render headRow()}</thead>
       </table>
     </div>
     {@render body()}
@@ -1041,18 +1010,18 @@
        row rise clear of it. */
     padding-bottom: calc(var(--player-height) + 8px);
   }
-  /* Split (fill) mode: the frame is the pane and the width container (the
-     header table sits outside the scroller but drops the same optional
-     columns); the scroller takes what the header leaves. */
-  /* `--scrollbar-w`: the standard thin bar's width (app.css), which the edge
-     fade leaves unmasked. */
+  /* Split mode: the frame is the pane and the width container (the header
+     table sits outside the scroller but drops the same optional columns);
+     the scroller takes what the header leaves (in fill mode, of the page's
+     leftover height; otherwise up to maxHeight). */
   .table-frame {
-    --scrollbar-w: 10px;
-    flex: 1 1 auto;
-    min-height: 140px;
     display: flex;
     flex-direction: column;
     container-type: inline-size;
+  }
+  .table-frame.fill {
+    flex: 1 1 auto;
+    min-height: 140px;
   }
   .table-frame .table-scroll {
     container-type: normal;
@@ -1079,31 +1048,10 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  /* The static edge fade (see `split` in the script): rows fade out under
-     the header once scrolled and before the player bar while there is more
-     below; past the bar's top edge they are hidden. A second layer keeps the
-     scrollbar strip unmasked. Only the fade lengths vary, near the ends. */
-  @property --fade-top {
-    syntax: "<length>";
-    inherits: false;
-    initial-value: 0px;
-  }
-  @property --fade-bottom {
-    syntax: "<length>";
-    inherits: false;
-    initial-value: 0px;
-  }
-  .table-frame .table-scroll {
-    mask:
-      linear-gradient(
-          to bottom,
-          transparent 0,
-          #000 var(--fade-top),
-          #000 calc(100% - var(--player-height) - 8px - var(--fade-bottom)),
-          transparent calc(100% - var(--player-height) - 8px)
-        )
-        left top / calc(100% - var(--scrollbar-w)) 100% no-repeat,
-      linear-gradient(#000, #000) right top / var(--scrollbar-w) 100% no-repeat;
+  /* The edge fade (app.css `.edge-fade`): in fill mode the rows scroll
+     behind the floating player bar, hidden past its top edge. */
+  .table-frame .table-scroll.fill {
+    --fade-clear: calc(var(--player-height) + 8px);
   }
   /* Fixed-layout columns. The number, cover and actions are sized from
      their content (digit and button counts from the script); the shares
@@ -1162,50 +1110,10 @@
     border-collapse: separate;
     border-spacing: 0;
   }
-  /* One frost layer for the sticky header (tables that don't fill the page;
-     fill mode splits the header out and fades its rows instead). No
-     per-cell backdrop-filter and no mask on the frost: both are unreliable
-     in Chromium inside a scroller (masked blur can
-     render as solid dark blocks). At rest the header is untinted so it matches
-     the surface above it exactly; the frost fades in only once rows scroll
-     beneath — atmosphere's blur carries it, instrument's veil is opaque. The
-     positive z-index is load-bearing: row thumbnail buttons are positioned
-     and would otherwise paint above this layer, escaping the backdrop blur. */
-  .head-frost {
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    pointer-events: none;
-    backdrop-filter: blur(var(--glass-blur));
-    transition: box-shadow var(--dur-state) var(--ease-enter);
-  }
-  .table-scroll.scrolled .head-frost {
-    box-shadow: 0 14px 18px -14px rgba(0, 0, 0, 0.55);
-  }
-  .head-frost::after {
-    content: "";
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: -12px;
-    height: 12px;
-    background: linear-gradient(to bottom, var(--glass-veil), transparent);
-    opacity: 0;
-    transition: opacity var(--dur-state) var(--ease-enter);
-  }
-  .table-scroll.scrolled .head-frost::after {
-    opacity: 1;
-  }
+  /* The header is its own table above the scroller (split mode): it never
+     moves, so it needs no frost or sticky positioning. */
   thead th {
-    position: sticky;
-    top: 0;
-    z-index: 2;
-    background: transparent;
-    transition: background-color var(--dur-state) var(--ease-enter);
     padding: 8px 12px 8px 0;
-  }
-  .table-scroll.scrolled thead th {
-    background: var(--glass-veil);
   }
   thead th.thumb-head {
     padding: 0;

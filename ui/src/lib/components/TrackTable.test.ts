@@ -109,11 +109,16 @@ describe("TrackTable semantics", () => {
     }
   });
 
-  it("keeps a plain table with its own header when not filling", () => {
+  it("splits the header out of a capped table too, fading its rows like fill mode", () => {
     setup();
-    expect(document.querySelector(".table-frame")).toBeNull();
-    expect(document.querySelector('.table-scroll table[aria-label="Tracks"] thead')).not.toBeNull();
-    expect(document.querySelector("tr[role]")).toBeNull();
+    const frame = document.querySelector<HTMLElement>('.table-frame[role="table"]');
+    expect(frame).not.toBeNull();
+    expect(frame!.classList.contains("fill")).toBe(false);
+    expect(frame!.querySelector(".table-head thead")).not.toBeNull();
+    const scroll = frame!.querySelector<HTMLElement>(".table-scroll")!;
+    expect(scroll.classList.contains("edge-fade")).toBe(true);
+    expect(scroll.querySelector("thead")).toBeNull();
+    expect(document.querySelector(".head-frost")).toBeNull();
   });
 
   it("swaps the playing row's number for the now-playing mark", () => {
@@ -197,7 +202,7 @@ describe("TrackTable semantics", () => {
     expect(rows).toHaveLength(3);
     expect(rows[0].getAttribute("aria-rowindex")).toBe("2");
     expect(rows[2].getAttribute("aria-rowindex")).toBe("4");
-    expect(document.querySelector("table")?.getAttribute("aria-rowcount")).toBe("4");
+    expect(document.querySelector('[role="table"]')?.getAttribute("aria-rowcount")).toBe("4");
   });
 
   it("keeps exactly one tab stop and moves it with arrows, Home, and End", async () => {

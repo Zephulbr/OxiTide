@@ -47,7 +47,6 @@
   --surface-2: rgba(42, 33, 26, 0.065);
   --surface-3: rgba(42, 33, 26, 0.085);
   --surface-float: rgba(250, 246, 240, 0.94);
-  --glass-veil: rgba(246, 241, 234, 0.30);
   --player-veil-top: rgba(246, 241, 234, 0.7);
   --player-veil: linear-gradient(to top, rgba(246, 241, 234, 0.9), var(--player-veil-top));
 }

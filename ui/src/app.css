@@ -464,6 +464,38 @@ h3 {
   transition: --row-wash var(--dur-micro) var(--ease-enter);
 }
 
+/* List edge fade (lib/edgeFade.ts sets the lengths): a scroller's rows fade
+   out at its top once scrolled and at its bottom while there is more below,
+   never cut off or passed under a frosted header. `--fade-clear` is bottom
+   clearance the rows scroll behind (the floating player bar): past its top
+   edge they are hidden. A second layer keeps the scrollbar strip
+   (`--scrollbar-w`, the standard thin bar) unmasked. Track tables and the
+   queue use it. */
+@property --fade-top {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --fade-bottom {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+.edge-fade {
+  --scrollbar-w: 10px;
+  --fade-clear: 0px;
+  mask:
+    linear-gradient(
+        to bottom,
+        transparent 0,
+        #000 var(--fade-top),
+        #000 calc(100% - var(--fade-clear) - var(--fade-bottom)),
+        transparent calc(100% - var(--fade-clear))
+      )
+      left top / calc(100% - var(--scrollbar-w)) 100% no-repeat,
+    linear-gradient(#000, #000) right top / var(--scrollbar-w) 100% no-repeat;
+}
+
 /* Tinted edge: the same panel recipe without the light-to-dark key-light
    rim. A faint accent wash over the surface and an even accent hairline, so
    the panel takes the music's colour instead of a highlight. Home uses it. */

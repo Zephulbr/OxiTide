@@ -3,6 +3,7 @@
   import { untrack } from "svelte";
   import { appearance } from "../appearance.svelte";
   import { createHoverIntent } from "../hoverIntent.svelte";
+  import { edgeFade } from "../edgeFade";
   import type { Route } from "../nav.svelte";
   import type { Nav } from "../nav.svelte";
   import type { CollectionActions } from "../collectionActions.svelte";
@@ -164,7 +165,7 @@
   onpointerleave={() => peekIntent.leave()}
   use:dropZone={sidebarZone}
 >
-  <div class="scroll" bind:this={scrollEl}>
+  <div class="scroll edge-fade" bind:this={scrollEl} use:edgeFade={{ watchChildren: true }}>
     <div class="top">
       <h1 class="wordmark" aria-label="OxiTide">
         <Logo size={28} />{#if !rail}OxiTide{/if}
@@ -297,6 +298,8 @@
        (none when the bar floats over the main column only, app.css). */
     margin: -12px -12px 0;
     padding: 12px 12px calc(var(--sidebar-clear, var(--player-height)) + 12px);
+    /* The list edge fade (app.css): hidden past the player bar's top edge. */
+    --fade-clear: var(--sidebar-clear, var(--player-height));
   }
   .top {
     display: flex;

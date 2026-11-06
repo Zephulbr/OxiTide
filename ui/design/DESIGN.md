@@ -72,17 +72,30 @@ family — `.search-input` for search/filter, `SortSelect` for sort, `.tool-btn`
 label) for actions — never mixed with round icon buttons in the same row. Rack skins
 `.page-head > h2` as a printed label and `.tool-btn` as a light-bar key.
 
-**Track table edges** (`TrackTable.svelte`). A table that scrolls itself (`fill`: Tracks,
-Album, Playlist, Mix, ArtistAll) has no header frost. Its header is a separate table above the
-scroller (both `table-layout: fixed` over one `<colgroup>`, both reserving the scrollbar
-gutter), and a static mask on the scroller fades the rows out over 48px just below the header
-and just above the player bar (the scroller runs under it). The mask never moves with the
-scroll, so it can't trail a fast scroll and costs nothing per frame; a mask whose stops follow
-`scrollTop` lags the compositor and restyles on every frame. Each fade grows with the scroll
-distance left that way, so a list at rest, or at its end, shows every row whole. The header
-stays unmasked and untinted, and the scrollbar strip (`--scrollbar-w`, the standard thin
-bar's 10px) is left out of the mask. Tables that
-don't scroll themselves keep the frost.
+**List edges** (`.edge-fade` in app.css, lengths from `lib/edgeFade.ts`). Scrolling lists never
+cut rows off or pass them under a frosted header: a static mask on the scroller fades the rows
+out over 48px at its top and bottom. The mask never moves with the scroll, so it can't trail a
+fast scroll and costs nothing per frame; a mask whose stops follow `scrollTop` lags the
+compositor and restyles on every frame. Each fade grows with the scroll distance left that way,
+so a list at rest, or at its end, shows every row whole. `--fade-clear` is bottom clearance the
+rows scroll behind (the docked player bar): past its top edge they are hidden. The scrollbar
+strip (`--scrollbar-w`, the standard thin bar's 10px) is left out of the mask. Users:
+
+- Track tables (`TrackTable.svelte`), every one with a header: the full-page ones (`fill`:
+  Tracks, Album, Playlist, Mix, ArtistAll, Save for Later) and the capped ones (Artist's Top
+  tracks, the search results list). The header is a separate table above the scroller (both
+  `table-layout: fixed` over one `<colgroup>`, both reserving the scrollbar gutter), unmasked
+  and untinted. Fill tables clear the player bar; capped ones fade at their pane's edge.
+  Compact tables (search previews) have no header and no fade.
+- The queue (`QueueRail.svelte`), in every host: under its header, and above the docked player
+  bar (`--queue-clear`; 0 in the card, beside a floating bar, in Mini's sheet and in Rack).
+- History's tab body and ArtistAll's release/playlist/overview tabs: under the tabs, and
+  above the player bar (they clear it themselves: `.main` drops its padding for `.view-fill`).
+- The sidebar's scroll area: from the wordmark down, above the player bar (`--sidebar-clear`;
+  0 when the bar floats over the main column only).
+
+Virtualized lists pass `content` (their row count) to re-measure; lists of changing sections
+pass `watchChildren`, which watches each direct child's size and children coming and going.
 
 **Track table tools.** Sort (SortBar's `.quiet` buttons) and Now playing (`.locate`) share
 one look: 30px, 12px/600 muted text on a soft `--surface-2` fill (55%); hover raises the fill

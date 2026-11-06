@@ -10,6 +10,7 @@
     bottomPadding = "0px",
     role = undefined,
     scroller = $bindable(null),
+    class: className = "",
     children,
   }: {
     total: number;
@@ -21,6 +22,8 @@
     role?: "list";
     /// The scrolling element, for hosts that drive scrollTop themselves.
     scroller?: HTMLElement | null;
+    /// Extra classes for the scroller (e.g. app.css's `edge-fade`).
+    class?: string;
     children: Snippet<[number]>;
   } = $props();
 
@@ -37,7 +40,7 @@
 </script>
 
 <div
-  class="scroll"
+  class="scroll {className}"
   {role}
   style="max-height:{maxHeight};padding-bottom:{bottomPadding}"
   bind:this={scroller}

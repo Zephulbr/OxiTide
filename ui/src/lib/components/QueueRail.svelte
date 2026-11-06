@@ -14,6 +14,7 @@
   import { queueRowHeightFor } from "../rowHeight";
   import { DRAG_THRESHOLD, dragTarget, edgeScroll, rowShift } from "../queueDrag";
   import VirtualList from "./VirtualList.svelte";
+  import { edgeFade } from "../edgeFade";
   import { menuFor } from "../menu.svelte";
   import { queueMenuItems } from "../menus";
   import type { Player } from "../player.svelte";
@@ -196,6 +197,24 @@
       }
       followed = { el, id, index };
     });
+  });
+
+  // The list edge fade (lib/edgeFade.ts) on VirtualList's scroller; a new
+  // length re-measures how far there is left to scroll.
+  let fadeEdges: ReturnType<typeof edgeFade> | null = null;
+  $effect(() => {
+    const el = scroller;
+    if (!el) return;
+    const handle = edgeFade(el, { content: untrack(() => items.length) });
+    fadeEdges = handle;
+    return () => {
+      handle.destroy();
+      fadeEdges = null;
+    };
+  });
+  $effect(() => {
+    void items.length;
+    fadeEdges?.update();
   });
 
   // ---- App drags dropped on the rail --------------------------------------
@@ -515,6 +534,7 @@
         maxHeight="none"
         bottomPadding="calc(var(--queue-clear, var(--player-height)) + {TAIL + (autoplayFrom === null ? 0 : AUTOPLAY_GAP)}px)"
         role="list"
+        class="edge-fade"
         bind:scroller
       >
         {#snippet children(index)}
@@ -692,7 +712,11 @@
   .drop-over .q-empty {
     color: var(--accent);
   }
+  /* The list edge fade (app.css `.edge-fade`): rows fade under the header
+     and hide past the docked player bar's top edge (the card, a floating bar
+     and the mini sheet have none: --queue-clear 0). */
   .q-list > :global(.scroll) {
+    --fade-clear: var(--queue-clear, var(--player-height));
     flex: 1 1 0;
     min-height: 0;
   }

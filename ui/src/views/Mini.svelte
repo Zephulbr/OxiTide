@@ -229,6 +229,8 @@
     z-index: 10;
   }
   .queue-sheet {
+    /* No player bar under the sheet: the queue runs (and fades) to its edge. */
+    --queue-clear: 0px;
     position: fixed;
     left: 0;
     right: 0;
