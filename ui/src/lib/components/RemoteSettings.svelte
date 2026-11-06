@@ -8,7 +8,8 @@
     type RemoteStatus,
   } from "../api";
   import { errorMessage } from "../errors";
-  import { countdownLabel, firewallHint, lastSeenLabel, parsePort } from "../remoteSettings";
+  import { copyText } from "../clipboard";
+  import { countdownLabel, firewallHint, firewallNotice, lastSeenLabel, parsePort } from "../remoteSettings";
   import Icon from "./Icon.svelte";
   import Modal from "./Modal.svelte";
   import Button from "./settings/Button.svelte";
@@ -164,7 +165,14 @@
     }
   }
 
-  const hint = $derived(firewallHint(navigator.userAgent, status?.port ?? status?.settings.port ?? 47820));
+  const port = $derived(status?.port ?? status?.settings.port ?? 47820);
+  const hint = $derived(firewallHint(navigator.userAgent, port));
+  const firewall = $derived(status?.enabled ? firewallNotice(status.firewall ?? null, port) : null);
+  let commandCopied = $state(false);
+
+  async function copyCommand(command: string) {
+    commandCopied = await copyText(command);
+  }
 
   const summary = $derived.by(() => {
     if (status?.listening && status.url) {
@@ -308,8 +316,20 @@
   {#if error}
     <div class="inset"><Notice kind="warning">{error}</Notice></div>
   {/if}
+  {#if firewall && !firewall.ok && firewall.command}
+    {@const command = firewall.command}
+    <div class="inset">
+      <Notice kind="warning">
+        <p class="fw-text">{firewall.text}</p>
+        <div class="fw-command">
+          <code>{command}</code>
+          <Button onclick={() => copyCommand(command)}>{commandCopied ? "Copied" : "Copy"}</Button>
+        </div>
+      </Notice>
+    </div>
+  {/if}
   <div class="foot muted">
-    <p>{hint}</p>
+    <p>{firewall?.ok ? firewall.text : hint}</p>
     <p>
       The remote works on your home network only. Artwork loads from TIDAL's servers, so the phone
       needs internet access. Keep the phone screen on while you use it.
@@ -415,6 +435,20 @@
   }
   .inset {
     padding: 14px 18px 0;
+  }
+  .fw-text {
+    margin: 0 0 8px;
+  }
+  .fw-command {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .fw-command code {
+    user-select: all;
+    word-break: break-all;
+    font-size: 12px;
   }
   .foot {
     padding: 12px 18px 14px;

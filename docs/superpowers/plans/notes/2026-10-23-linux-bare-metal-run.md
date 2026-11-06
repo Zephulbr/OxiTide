@@ -387,25 +387,33 @@ the same, `npm --prefix ui run check` 0 errors and `npm --prefix ui test` 151 fi
 
 ### 14.3 Rerun on the CachyOS laptop
 
-- [ ] Settings → Audio device lists `MOONDROP Dawn Pro, USB Audio (direct hardware)`;
+- [x] Settings → Audio device lists `MOONDROP Dawn Pro, USB Audio (direct hardware)`;
       selecting it with exclusive on plays `✓ BP` (`hw_params`: `S32_LE`, 44100,
-      `period 5504`, `buffer 22016`) with no hand-edited `config.toml`.
-- [ ] Same device with exclusive **off** plays (through `plughw:`), no notice.
-- [ ] The internal speakers' `hw:` entry (HDA) opens exclusive at 44.1 kHz.
-- [ ] Unplug the DAC with Settings closed, start a track: system default plays with "Selected
+      `period 5504`, `buffer 22016`) with no hand-edited `config.toml` (2026-11-05, `2026-11-05-linux-v1-final-run.md`).
+      Since the L3 fix the expected values are `period 1600`, `buffer 6400` (about 150 ms).
+- [x] Same device with exclusive **off** plays (through `plughw:`), no notice (2026-11-05).
+- [x] The internal speakers' `hw:` entry (HDA) opens exclusive at 44.1 kHz (2026-11-05: `hw:CARD=Generic_1,DEV=0`, 5504 / 22016).
+- [x] Unplug the DAC with Settings closed, start a track: system default plays with "Selected
       output device unavailable; using system default". Settings shows the DAC as "(not
       connected)". Replug it: the next track plays on the DAC.
+      **Still open (2026-11-05, `2026-11-05-linux-v1-final-run.md`):** the fallback passes; the replug does not.
+      ALSA has no `needs_reopen` (`53cef6d` is WASAPI-only), the next track keeps the fallback,
+      and a re-select while playing fails with `EBUSY` because PipeWire holds the DAC (issue L2).
+      Unplugging mid-play shows the raw ALSA error (L1).
+      **Passed after the fixes (2026-11-05 retest):** unplug mid-play reads "Output device
+      disconnected", Play falls back to the speakers, and a replug while playing moves back to the
+      DAC by itself (exclusive `hw:`, after a ~6 s wait for PipeWire to release the card).
 - [x] `playerctl stop` → `PlaybackStatus` `Stopped`, position 0, metadata kept; `playerctl play`
       resumes from 0.
-- [ ] `playerctl volume 0.35` moves the app slider; dragging the slider updates
-      `playerctl volume`.
-- [ ] SNI `Title` is `OxiTide`; MPRIS `DesktopEntry` names an installed `.desktop` file for the
-      AppImage and the deb.
+- [x] `playerctl volume 0.35` moves the app slider; dragging the slider updates
+      `playerctl volume` (2026-11-05).
+- [x] SNI `Title` is `OxiTide`; MPRIS `DesktopEntry` names an installed `.desktop` file for the
+      AppImage and the deb (2026-11-05; the AUR package reports `oxitide`).
 - [x] Logs land in `~/.config/oxitide/logs/` (2026-10-28, `2026-10-28-linux-v1-close-run.md`).
-- [x] After one close/reopen, `config.toml` stores `window_width = 900` for a 900-wide window (2026-10-28). A tray hide-and-show regression is open in `2026-10-28-linux-v1-close-run.md`.
+- [x] After one close/reopen, `config.toml` stores `window_width = 900` for a 900-wide window (2026-10-28). A tray hide-and-show regression is open in `2026-10-28-linux-v1-close-run.md` (reproduced 2026-11-05, issue L5).
 - [x] **Issue #8: capture the mix artwork payload.** Captured on Windows 2026-10-23: the URLs
       are on `images.tidal.com`, blocked by the CSP (fixed, see the table above). On Linux, only
-      confirm that the mix art now shows. Original steps:
+      confirm that the mix art now shows (confirmed 2026-11-05). Original steps:
   1. Run the dev build (`npm --prefix ui run app:dev`); debug builds have the WebKit inspector
      (right-click → Inspect Element).
   2. In the Console, list what the app received for the mixes (the shelf can come from either

@@ -10,6 +10,9 @@ url="https://github.com/Zephulbr/OxiTide"
 license=('AGPL-3.0-or-later')
 depends=('webkit2gtk-4.1' 'gtk3' 'alsa-lib' 'librsvg' 'hicolor-icon-theme' 'xdg-utils' 'desktop-file-utils')
 makedepends=('rust' 'nodejs' 'npm' 'pkgconf' 'git')
+# makepkg's default `lto` builds ring's C objects as GCC LTO bitcode, which
+# rust-lld cannot link (undefined ring_core_* symbols).
+options=('!lto')
 _tag=@TAG@
 source=("$pkgname::git+$url.git#tag=$_tag")
 sha256sums=('SKIP')

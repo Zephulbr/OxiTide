@@ -6,6 +6,7 @@
 //! no hub (`AppState::remote` is `None`).
 
 pub mod events;
+pub mod firewall;
 pub mod guard;
 pub mod host;
 pub mod net;

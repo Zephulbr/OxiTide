@@ -99,6 +99,12 @@ pub(crate) fn save_window_state(app: &tauri::AppHandle) {
     };
     let mut config = state.config();
     window::capture(&window, &mut config);
+    // Linux: GTK can report a stale size (L5); the compositor's last one wins.
+    if cfg!(target_os = "linux") && !config.ui.window_maximized && state.pre_mini().is_none() {
+        if let Some((width, height)) = state.last_size() {
+            (config.ui.window_width, config.ui.window_height) = (width, height);
+        }
+    }
     let live = window::FullGeometry {
         width: config.ui.window_width,
         height: config.ui.window_height,
@@ -228,11 +234,7 @@ fn main() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.unminimize();
-                let _ = window.set_focus();
-            }
+            window::show_main(app);
         }))
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
@@ -552,6 +554,11 @@ fn main() {
                     }
                 }
             }
+            tauri::RunEvent::WindowEvent {
+                label,
+                event: tauri::WindowEvent::Resized(size),
+                ..
+            } if label == "main" => window::note_resized(app_handle, size),
             tauri::RunEvent::Exit => run_exit_work(app_handle),
             _ => {}
         });

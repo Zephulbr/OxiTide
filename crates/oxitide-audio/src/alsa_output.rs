@@ -11,6 +11,19 @@ pub fn is_underrun(error: &alsa::Error) -> bool {
     std::io::Error::from_raw_os_error(error.errno()).kind() == std::io::ErrorKind::BrokenPipe
 }
 
+/// What a lost device reports, in the words WASAPI's status uses.
+pub const DEVICE_DISCONNECTED: &str = "output device disconnected";
+
+/// True when ALSA says the device itself is gone (a USB DAC unplugged):
+/// `ENODEV`, or `ESHUTDOWN` from some USB paths. Every later call on that PCM
+/// fails the same way, so the engine's device-loss path takes over.
+#[cfg(target_os = "linux")]
+pub fn is_device_gone(error: &alsa::Error) -> bool {
+    const ENODEV: i32 = 19;
+    const ESHUTDOWN: i32 = 108;
+    matches!(error.errno(), ENODEV | ESHUTDOWN)
+}
+
 /// Periods the ALSA open aims for.
 pub const ALSA_PERIODS: u32 = 4;
 
@@ -19,14 +32,88 @@ pub const ALSA_PERIODS: u32 = 4;
 /// controllers require that alignment of the period and the buffer.
 const PERIOD_ALIGN_FRAMES: i64 = 64;
 
-/// Frames the ALSA open asks for: about half a second, at least 1024,
-/// rounded down to [`ALSA_PERIODS`] aligned periods. A raw half second
-/// (22050 frames at 44.1 kHz) cannot be split into four periods, and the
-/// exact `set_periods(4)` that followed it answered EINVAL, so every 44.1 kHz
-/// exclusive open fell back to shared output.
+/// Frames the ALSA open asks for: about 150 ms, at least 1024, rounded down
+/// to [`ALSA_PERIODS`] aligned periods. The buffer is the lag of a pause and
+/// of a software volume change (ALSA has no ring of ours), so it stays short;
+/// half a second was audibly late (2026-11-05 Linux run, L3). The rounding
+/// matters: a raw size four periods cannot split (22050 frames at 44.1 kHz)
+/// made the exact `set_periods(4)` answer EINVAL.
 pub fn buffer_frames(sample_rate: u32) -> i64 {
     let step = ALSA_PERIODS as i64 * PERIOD_ALIGN_FRAMES;
-    ((sample_rate as i64 / 2).max(1024) / step) * step
+    ((sample_rate as i64 * 3 / 20).max(1024) / step) * step
+}
+
+/// The `/proc/asound` entry of the card a PCM name is on: `Pro` for
+/// `hw:CARD=Pro,DEV=0`, `plughw:CARD=Pro,DEV=0` or `sysdefault:CARD=Pro`,
+/// `card3` for `hw:3,0`. `None` for names on no particular card (`default`,
+/// `pipewire`, `null`), which a fallback never watches.
+pub fn card_dir(device: &str) -> Option<String> {
+    let (_, args) = device.split_once(':')?;
+    let first = args.split(',').next()?;
+    let card = first.strip_prefix("CARD=").unwrap_or(first);
+    if card.is_empty() {
+        return None;
+    }
+    if card.bytes().all(|b| b.is_ascii_digit()) {
+        Some(format!("card{card}"))
+    } else if card.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-') {
+        Some(card.to_string())
+    } else {
+        None
+    }
+}
+
+/// Whether the selected card, which a fallback replaced, has come back: it
+/// must have been seen missing first, so a card that is present but busy
+/// (another program holds it) never makes the engine reopen in a loop.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct CardReturn {
+    gone: bool,
+    back: bool,
+}
+
+impl CardReturn {
+    /// Start watching; `present` is whether the card exists right now.
+    pub fn new(present: bool) -> Self {
+        Self { gone: !present, back: false }
+    }
+    /// Record a check; returns whether the card is back.
+    pub fn observe(&mut self, present: bool) -> bool {
+        if !present {
+            self.gone = true;
+        } else if self.gone {
+            self.back = true;
+        }
+        self.back
+    }
+    pub fn is_back(&self) -> bool {
+        self.back
+    }
+}
+
+/// The fill level at which a prepared PCM starts by itself: the whole buffer
+/// but one period, so the first period plays with the rest already queued.
+pub fn start_threshold(buffer: i64, period: i64) -> i64 {
+    (buffer - period).max(period).max(1)
+}
+
+/// Frames `AlsaOutput` holds back from each write (10 ms), so a pause can end
+/// the written audio with a fade instead of cutting it mid-waveform.
+pub fn hold_frames(sample_rate: u32) -> usize {
+    (sample_rate as usize / 100).max(1)
+}
+
+/// Fade `samples` (interleaved, `channels` wide) linearly to silence over
+/// their length: the last frame ends at zero.
+pub fn fade_to_silence(samples: &mut [i32], channels: usize) {
+    let channels = channels.max(1);
+    let frames = samples.len() / channels;
+    for (i, frame) in samples.chunks_exact_mut(channels).enumerate() {
+        let gain = (frames - 1 - i) as f64 / frames as f64;
+        for sample in frame {
+            *sample = (*sample as f64 * gain) as i32;
+        }
+    }
 }
 
 /// The period to ask for once the device settled on `buffer` frames: a
@@ -51,6 +138,12 @@ pub fn shared_pcm_name(device: &str) -> String {
 /// Notice shown when the selected device cannot be opened and playback moved
 /// to the system default; matches WASAPI's wording.
 pub const DEVICE_UNAVAILABLE_NOTICE: &str = "selected output device unavailable; using system default";
+
+/// Error when an exclusive open fails because something holds the card
+/// (another player, or the sound server that has not released it yet), so
+/// it does not read as a device that cannot do exclusive mode.
+pub const DEVICE_BUSY: &str =
+    "output device is busy (another app or the sound server is using it)";
 
 /// One playback PCM device on a sound card, from the card's control interface
 /// and `/proc/asound`.
@@ -285,9 +378,24 @@ mod linux {
     const WAIT_SLICE: Duration = Duration::from_millis(100);
     /// Consecutive xrun/suspend recoveries tolerated within one `write` call.
     const MAX_CONSECUTIVE_RECOVERIES: u32 = 8;
-    /// Longest a drain waits: the buffer is about half a second, plus slack.
+    /// Longest a drain waits: the buffer (about 150 ms) and a sound server's, plus slack.
     const DRAIN_LIMIT: Duration = Duration::from_millis(1500);
     const DRAIN_STEP: Duration = Duration::from_millis(5);
+    /// Longest a flush or stop waits for the device to play up to the faded
+    /// end: the buffer (about 150 ms) plus slack.
+    const SETTLE_LIMIT: Duration = Duration::from_millis(300);
+    /// How often a fallback looks for the selected card (one `stat`).
+    const CARD_CHECK: Duration = Duration::from_secs(1);
+    /// How long an open after our own stream on `default` (a fallback, or
+    /// the user's choice) waits for the card to stop being busy. PipeWire
+    /// routes that stream to the card and keeps it until WirePlumber
+    /// suspends the idle sink (5 s by default).
+    const BUSY_WAIT: Duration = Duration::from_secs(7);
+    const BUSY_STEP: Duration = Duration::from_millis(100);
+
+    fn card_present(card: &str) -> bool {
+        std::path::Path::new("/proc/asound").join(card).exists()
+    }
 
     pub struct AlsaOutput {
         pcm: Option<PCM>,
@@ -311,6 +419,15 @@ mod linux {
         /// Scaled samples and packed bytes, kept between writes.
         scratch: Vec<i32>,
         bytes: Vec<u8>,
+        /// The last [`hold_frames`] of audio, not yet written: the next write
+        /// sends them first, a pause sends them faded ([`AudioOutput::fade_out`]),
+        /// and a drain sends them as they are.
+        held: Vec<i32>,
+        /// After a fallback to `default`: the selected card's `/proc/asound`
+        /// entry, and whether it has gone and come back
+        /// ([`AudioOutput::needs_reopen`]).
+        watch: Option<(String, std::cell::Cell<CardReturn>)>,
+        next_check: std::cell::Cell<Instant>,
     }
 
     impl AlsaOutput {
@@ -333,6 +450,9 @@ mod linux {
                 queued: None,
                 scratch: Vec::new(),
                 bytes: Vec::new(),
+                held: Vec::new(),
+                watch: None,
+                next_check: std::cell::Cell::new(Instant::now()),
             }
         }
 
@@ -360,6 +480,15 @@ mod linux {
                     .map_err(to_error)?;
                 pcm.hw_params(&hwp).map_err(to_error)?;
                 self.rate = hwp.get_rate().unwrap_or(spec.info.sample_rate);
+                let settled = hwp.get_buffer_size().unwrap_or(buffer);
+                let period = hwp.get_period_size().unwrap_or(period_frames(settled));
+                // Start only once the buffer is primed. With alsa-lib's
+                // default (one frame) the first write started the device
+                // nearly empty and it ran dry before the second: an underrun,
+                // and an audible tick, at every start, seek and resume.
+                let swp = pcm.sw_params_current().map_err(to_error)?;
+                swp.set_start_threshold(start_threshold(settled, period)).map_err(to_error)?;
+                pcm.sw_params(&swp).map_err(to_error)?;
             }
             pcm.prepare().map_err(to_error)?;
             self.pcm = Some(pcm);
@@ -378,8 +507,12 @@ mod linux {
             match self.open_pcm(&name, AlsaSampleFormat::S32Le, spec) {
                 Ok(()) => Ok(true),
                 Err(error) if name != "default" => {
-                    tracing::debug!(target: "alsa", "shared open of {name} failed: {error}");
+                    tracing::warn!(target: "alsa", "shared open of {name} failed ({error}); using the system default");
                     self.open_pcm("default", AlsaSampleFormat::S32Le, spec)?;
+                    self.watch = card_dir(device).map(|card| {
+                        let present = card_present(&card);
+                        (card, std::cell::Cell::new(CardReturn::new(present)))
+                    });
                     Ok(false)
                 }
                 Err(error) => Err(error),
@@ -388,8 +521,114 @@ mod linux {
 
         fn close(&mut self) {
             self.queued = None;
+            self.held.clear();
             if let Some(pcm) = self.pcm.take() {
                 let _ = pcm.drop();
+            }
+        }
+    }
+
+    impl AlsaOutput {
+        /// Pack `self.scratch` and write it all to the device, recovering
+        /// xruns, then refresh [`Self::queued`].
+        fn push_scratch(&mut self) -> Result<()> {
+            let Some(pcm) = self.pcm.as_ref() else {
+                return Err(Error::Output("output not open".into()));
+            };
+            pack_i32(self.format, &self.scratch, &mut self.bytes);
+            let bytes = &self.bytes;
+            let frame_bytes = self.format.store_bits() as usize / 8 * self.channels as usize;
+            let io = pcm.io_bytes();
+            let deadline = Instant::now() + WRITE_DEADLINE;
+            let mut recoveries = 0u32;
+            let mut offset = 0;
+            while offset < bytes.len() {
+                wait_writable(pcm, deadline)?;
+                match io.writei(&bytes[offset..]) {
+                    Ok(0) => return Err(Error::Output("alsa write made no progress".into())),
+                    Ok(frames) => {
+                        offset += frames * frame_bytes;
+                        recoveries = 0;
+                    }
+                    Err(error) => {
+                        recoveries += 1;
+                        if recoveries > MAX_CONSECUTIVE_RECOVERIES {
+                            return Err(Error::Output("audio device errored repeatedly".into()));
+                        }
+                        if is_underrun(&error) {
+                            self.underruns += 1;
+                        }
+                        // xrun / suspend: recover and retry; unrecoverable
+                        // errors are returned by `try_recover`.
+                        pcm.try_recover(error, true).map_err(to_error)?;
+                    }
+                }
+            }
+            let held_frames = self.held.len() as u64 / u64::from(self.channels.max(1));
+            self.queued = match pcm.delay() {
+                Ok(frames) if self.rate > 0 => {
+                    Some(((frames.max(0) as u64 + held_frames) * 1000 / self.rate as u64) as u32)
+                }
+                _ => None,
+            };
+            Ok(())
+        }
+
+        /// After our own stream on `default`, wait (bounded) until `device`
+        /// can be opened: the card may still be held by the sound server that
+        /// stream was routed through. Returns at once when the card is free
+        /// or missing, and gives up quietly; the open then fails or falls
+        /// back as usual.
+        fn wait_until_free(device: &str) {
+            let Some(card) = card_dir(device) else { return };
+            if !card_present(&card) {
+                return;
+            }
+            let give_up = Instant::now() + BUSY_WAIT;
+            loop {
+                match PCM::new(device, Direction::Playback, true) {
+                    Ok(_) => return,
+                    Err(error) if error.errno() == 16 && Instant::now() < give_up => {
+                        std::thread::sleep(BUSY_STEP);
+                    }
+                    Err(error) => {
+                        tracing::debug!(target: "alsa", "{device} still unavailable: {error}");
+                        return;
+                    }
+                }
+            }
+        }
+
+        /// The next write starts from silence and glides up to the volume,
+        /// so a start, resume or seek does not step in mid-waveform.
+        fn fade_in_next(&mut self) {
+            self.ramp = GainRamp::new(0.0, self.rate.max(1));
+        }
+
+        /// Before the device buffer is discarded (seek, stop, reopen): end
+        /// the audio on silence and wait (bounded) until the device has
+        /// played up to it. Dropping a running PCM cuts mid-waveform, an
+        /// audible click; alsa-lib's rewind is not reachable through the
+        /// `alsa` crate, so the queued audio plays out instead (at most the
+        /// buffer, about 150 ms). A PCM that is not running has nothing to
+        /// cut.
+        fn settle(&mut self) {
+            let running = |pcm: &PCM| pcm.state() == alsa::pcm::State::Running;
+            if !self.pcm.as_ref().is_some_and(running) {
+                return;
+            }
+            if self.fade_out().is_err() {
+                return;
+            }
+            let Some(pcm) = self.pcm.as_ref() else { return };
+            // Inside the trailing silence `fade_out` wrote.
+            let quiet = (hold_frames(self.rate.max(1)) / 2) as i64;
+            let give_up = Instant::now() + SETTLE_LIMIT;
+            while Instant::now() < give_up && running(pcm) {
+                match pcm.delay() {
+                    Ok(frames) if frames > quiet => std::thread::sleep(DRAIN_STEP),
+                    _ => break,
+                }
             }
         }
     }
@@ -408,7 +647,14 @@ mod linux {
         }
     }
 
+    /// An ALSA failure as an output error. A lost device gets the plain
+    /// [`DEVICE_DISCONNECTED`] (the UI shows this text), not alsa-lib's
+    /// `snd_pcm_recover … No such device (19)`; the raw error goes to the log.
     fn to_error(error: AlsaError) -> Error {
+        if is_device_gone(&error) {
+            tracing::debug!(target: "alsa", "device gone: {error}");
+            return Error::Output(DEVICE_DISCONNECTED.into());
+        }
         Error::Output(error.to_string())
     }
 
@@ -574,7 +820,18 @@ mod linux {
 
     impl AudioOutput for AlsaOutput {
         fn open(&mut self, spec: &AudioOutputSpec) -> Result<()> {
+            // Our last stream went through the sound server, which may still
+            // hold the card we are about to open directly.
+            let after_server = self.device == "default";
             self.close();
+            // Back from a fallback because the selected card returned (or was
+            // re-selected after returning): wait out the sound server's hold.
+            // A card that never left is left alone, so a busy DAC does not
+            // stall every reopen.
+            let rejoining = self.watch.take().is_some_and(|(card, state)| {
+                let mut seen = state.get();
+                seen.observe(card_present(&card))
+            });
             self.software_volume = true;
             // Reset before any fallible step so a failed reopen cannot leave
             // the previous session's exclusive/bit-perfect status visible.
@@ -592,6 +849,12 @@ mod linux {
             validate_device_name(&device)?;
             tracing::debug!(target: "alsa", "open requested={requested:?} device={device} rate={} bits={}",
                 spec.info.sample_rate, spec.info.bits_per_sample);
+            if rejoining {
+                tracing::info!(target: "alsa", "selected device {device} is back; waiting for it to be free");
+            }
+            if rejoining || (after_server && device != "default") {
+                Self::wait_until_free(&device);
+            }
             let mut status = OutputStatus {
                 mode: OutputMode::Shared,
                 bit_perfect: false,
@@ -633,9 +896,14 @@ mod linux {
                                 Some("exclusive mode unavailable; using shared output".into());
                         }
                         AlsaOpen::Fail | AlsaOpen::Exclusive => {
-                            return Err(Error::Output(
-                                "exclusive mode is not supported by this output device".into(),
-                            ));
+                            let busy = is_direct_hw(&device)
+                                && PCM::new(&device, Direction::Playback, true)
+                                    .is_err_and(|error| error.errno() == 16);
+                            return Err(Error::Output(if busy {
+                                DEVICE_BUSY.into()
+                            } else {
+                                "exclusive mode is not supported by this output device".into()
+                            }));
                         }
                     },
                 }
@@ -645,9 +913,10 @@ mod linux {
 
             self.status = status;
             self.set_volume(self.control.position())?;
-            // An open starts at the volume, never gliding to it.
-            let start = if self.software_volume { volume_gain(self.control.position()) } else { 1.0 };
-            self.ramp = GainRamp::new(start, self.rate);
+            // An open fades in from silence (a few ms of the 30 ms ramp), so
+            // starting mid-track does not click. Gapless advances keep the
+            // open device, so steady playback stays sample-exact.
+            self.fade_in_next();
             Ok(())
         }
 
@@ -671,70 +940,36 @@ mod linux {
         }
 
         fn write(&mut self, buf: &PcmBuffer) -> Result<()> {
-            let Some(pcm) = self.pcm.as_ref() else {
+            if self.pcm.is_none() {
                 return Err(Error::Output("output not open".into()));
-            };
+            }
             let target = if self.software_volume {
                 volume_gain(self.control.position())
             } else {
                 1.0
             };
             self.ramp.retarget(target);
-            let channels = self.channels as usize;
-            let samples: &[i32] = match buf {
-                PcmBuffer::I32(v) if self.ramp.is_identity() => v,
-                _ => {
-                    self.scratch.clear();
-                    match buf {
-                        PcmBuffer::I32(v) => self.scratch.extend_from_slice(v),
-                        PcmBuffer::F32(v) => {
-                            self.scratch.extend(v.iter().map(|&sample| f32_to_i32_one(sample)))
-                        }
-                    }
-                    self.ramp.apply_frames(&mut self.scratch, channels, scale_i32);
-                    &self.scratch
-                }
-            };
-            pack_i32(self.format, samples, &mut self.bytes);
-            let bytes = &self.bytes;
-            if bytes.is_empty() {
-                return Ok(());
-            }
-            let frame_bytes =
-                self.format.store_bits() as usize / 8 * self.channels as usize;
-            let io = pcm.io_bytes();
-            let deadline = Instant::now() + WRITE_DEADLINE;
-            let mut recoveries = 0u32;
-            let mut offset = 0;
-            while offset < bytes.len() {
-                wait_writable(pcm, deadline)?;
-                match io.writei(&bytes[offset..]) {
-                    Ok(0) => return Err(Error::Output("alsa write made no progress".into())),
-                    Ok(frames) => {
-                        offset += frames * frame_bytes;
-                        recoveries = 0;
-                    }
-                    Err(error) => {
-                        recoveries += 1;
-                        if recoveries > MAX_CONSECUTIVE_RECOVERIES {
-                            return Err(Error::Output("audio device errored repeatedly".into()));
-                        }
-                        if is_underrun(&error) {
-                            self.underruns += 1;
-                        }
-                        // xrun / suspend: recover and retry; unrecoverable
-                        // errors are returned by `try_recover`.
-                        pcm.try_recover(error, true).map_err(to_error)?;
-                    }
+            let channels = self.channels.max(1) as usize;
+            // The audio held back last time goes first; it was already scaled.
+            self.scratch.clear();
+            self.scratch.append(&mut self.held);
+            let fresh = self.scratch.len();
+            match buf {
+                PcmBuffer::I32(v) => self.scratch.extend_from_slice(v),
+                PcmBuffer::F32(v) => {
+                    self.scratch.extend(v.iter().map(|&sample| f32_to_i32_one(sample)))
                 }
             }
-            self.queued = match pcm.delay() {
-                Ok(frames) if self.rate > 0 => {
-                    Some((frames.max(0) as u64 * 1000 / self.rate as u64) as u32)
-                }
-                _ => None,
-            };
-            Ok(())
+            if !self.ramp.is_identity() {
+                self.ramp.apply_frames(&mut self.scratch[fresh..], channels, scale_i32);
+            }
+            // Hold back the newest 10 ms so a pause can fade them out.
+            let hold = (hold_frames(self.rate.max(1)) * channels).min(self.scratch.len());
+            let keep = (self.scratch.len() - hold) / channels * channels;
+            self.held.extend_from_slice(&self.scratch[keep..]);
+            self.scratch.truncate(keep);
+            // Even with everything held, this refreshes the reported lead.
+            self.push_scratch()
         }
 
         fn attach_volume(&mut self, control: Arc<VolumeControl>) {
@@ -764,16 +999,37 @@ mod linux {
         }
 
         fn flush(&mut self) -> Result<()> {
-            // Discard ring and device buffers but keep the negotiated handle,
-            // so a seek does not release and re-lock an exclusive DAC.
+            // Discard the held and device buffers but keep the negotiated
+            // handle, so a seek does not release and re-lock an exclusive DAC.
+            self.settle();
+            self.held.clear();
             if let Some(pcm) = self.pcm.as_ref() {
                 pcm.drop().map_err(to_error)?;
                 pcm.prepare().map_err(to_error)?;
             }
+            self.fade_in_next();
             Ok(())
         }
 
+        /// A pause: write the held-back audio faded to silence, then a little
+        /// silence, so the device plays out its buffer and stops on a zero
+        /// instead of mid-waveform. The resume fades in.
+        fn fade_out(&mut self) -> Result<()> {
+            if self.pcm.is_none() {
+                return Ok(());
+            }
+            let channels = self.channels.max(1) as usize;
+            self.scratch.clear();
+            self.scratch.append(&mut self.held);
+            fade_to_silence(&mut self.scratch, channels);
+            let silence = hold_frames(self.rate.max(1)) * channels;
+            self.scratch.resize(self.scratch.len() + silence, 0);
+            self.fade_in_next();
+            self.push_scratch()
+        }
+
         fn stop(&mut self) -> Result<()> {
+            self.settle();
             self.close();
             Ok(())
         }
@@ -790,12 +1046,40 @@ mod linux {
             Some(self.underruns)
         }
 
+        fn needs_reopen(&self) -> bool {
+            let Some((card, state)) = self.watch.as_ref() else {
+                return false;
+            };
+            let now = Instant::now();
+            if now >= self.next_check.get() {
+                self.next_check.set(now + CARD_CHECK);
+                let mut seen = state.get();
+                seen.observe(card_present(card));
+                state.set(seen);
+            }
+            state.get().is_back()
+        }
+
         /// Poll the frames still queued in the device until they have played
         /// (`snd_pcm_drain` would block without a way to cancel).
         fn drain(&mut self, cancel: &dyn Fn() -> bool) -> Result<()> {
+            if self.pcm.is_none() {
+                return Ok(());
+            }
+            // The held-back end of the audio is part of what must be heard.
+            if !self.held.is_empty() {
+                self.scratch.clear();
+                self.scratch.append(&mut self.held);
+                self.push_scratch()?;
+            }
             let Some(pcm) = self.pcm.as_ref() else {
                 return Ok(());
             };
+            // Less than the start threshold written (a short last track):
+            // the device never started, so start it to play what is queued.
+            if pcm.state() == alsa::pcm::State::Prepared && pcm.delay().is_ok_and(|frames| frames > 0) {
+                pcm.start().map_err(to_error)?;
+            }
             let give_up = Instant::now() + DRAIN_LIMIT;
             while !cancel() && Instant::now() < give_up && pcm.state() == alsa::pcm::State::Running {
                 match pcm.delay() {
@@ -854,6 +1138,16 @@ mod tests {
         assert!(!is_underrun(&AlsaError::new("snd_pcm_start", 0)));
     }
 
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn an_unplugged_device_is_recognised_by_errno() {
+        use alsa::Error as AlsaError;
+        assert!(is_device_gone(&AlsaError::new("snd_pcm_recover", 19)));
+        assert!(is_device_gone(&AlsaError::new("snd_pcm_writei", 108)));
+        assert!(!is_device_gone(&AlsaError::new("snd_pcm_writei", 32)));
+        assert!(!is_device_gone(&AlsaError::new("snd_pcm_open", 16)));
+    }
+
     #[test]
     fn buffer_frames_divide_evenly_into_aligned_periods_at_every_rate() {
         // 44.1 kHz is the case that used to fail: a raw half second is 22050
@@ -867,10 +1161,62 @@ mod tests {
             // 16-bit mono frame (2 bytes).
             assert_eq!(period * 2 % 128, 0, "{period}-frame period at {rate}");
             assert!(frames >= 1024, "{frames} frames at {rate}");
-            assert!(frames > rate as i64 / 2 - 256, "{frames} at {rate}");
+            assert!(frames > rate as i64 * 3 / 20 - 256, "{frames} at {rate}");
+            assert!(frames <= (rate as i64 * 3 / 20).max(1024), "{frames} at {rate}");
         }
-        assert_eq!(buffer_frames(44_100), 22_016);
-        assert_eq!(buffer_frames(48_000), 23_808);
+        assert_eq!(buffer_frames(44_100), 6_400);
+        assert_eq!(buffer_frames(48_000), 7_168);
+    }
+
+    #[test]
+    fn a_prepared_pcm_starts_once_all_but_one_period_is_queued() {
+        assert_eq!(start_threshold(6_400, 1_600), 4_800);
+        assert_eq!(start_threshold(16_384, 1_024), 15_360);
+        assert_eq!(start_threshold(1_024, 1_024), 1_024, "a one-period buffer still starts");
+        assert_eq!(start_threshold(0, 0), 1);
+    }
+
+    #[test]
+    fn card_dirs_come_from_card_ids_and_indexes() {
+        assert_eq!(card_dir("hw:CARD=Pro,DEV=0").as_deref(), Some("Pro"));
+        assert_eq!(card_dir("plughw:CARD=Pro,DEV=0").as_deref(), Some("Pro"));
+        assert_eq!(card_dir("sysdefault:CARD=Generic_1").as_deref(), Some("Generic_1"));
+        assert_eq!(card_dir("hw:3,0").as_deref(), Some("card3"));
+        assert_eq!(card_dir("default"), None);
+        assert_eq!(card_dir("pipewire"), None);
+        assert_eq!(card_dir("hw:CARD=../x,DEV=0"), None, "never a path outside /proc/asound");
+        assert_eq!(card_dir("hw:"), None);
+    }
+
+    #[test]
+    fn a_card_is_back_only_after_it_was_gone() {
+        // Present but busy at the fallback: never reported, no reopen loop.
+        let mut busy = CardReturn::new(true);
+        assert!(!busy.observe(true));
+        assert!(!busy.observe(true));
+        // Unplugged at the fallback, then replugged.
+        let mut unplugged = CardReturn::new(false);
+        assert!(!unplugged.observe(false));
+        assert!(unplugged.observe(true));
+        assert!(unplugged.is_back(), "stays back until the next open");
+        // Present at the fallback, unplugged, replugged.
+        let mut later = CardReturn::new(true);
+        assert!(!later.observe(false));
+        assert!(later.observe(true));
+    }
+
+    #[test]
+    fn a_fade_to_silence_ends_on_zero_and_starts_near_full() {
+        let mut stereo = vec![1_000_000i32; 8];
+        fade_to_silence(&mut stereo, 2);
+        assert_eq!(&stereo[6..], &[0, 0], "the last frame is silent");
+        assert_eq!(stereo[0], stereo[1], "both channels share a gain");
+        assert_eq!(stereo[0], 750_000, "4 frames: 3/4, 2/4, 1/4, 0");
+        assert!(stereo.chunks(2).map(|f| f[0]).collect::<Vec<_>>().windows(2).all(|w| w[0] > w[1]));
+        let mut empty: Vec<i32> = Vec::new();
+        fade_to_silence(&mut empty, 2);
+        assert_eq!(hold_frames(44_100), 441);
+        assert_eq!(hold_frames(48_000), 480);
     }
 
     #[test]
@@ -1035,6 +1381,11 @@ mod tests {
         out.start().unwrap();
         out.write(&PcmBuffer::F32(vec![0.5, -0.5, 0.25, -0.25])).unwrap();
         assert!(out.queued_ms().is_some(), "a write reports the device lead");
+        // More than the 10 ms hold-back: part goes to the device.
+        out.write(&PcmBuffer::F32(vec![0.25; 2 * 4_410])).unwrap();
+        out.fade_out().unwrap();
+        out.write(&PcmBuffer::F32(vec![0.25; 2 * 4_410])).unwrap();
+        out.drain(&|| false).unwrap();
         out.flush().unwrap();
         out.stop().unwrap();
         assert_eq!(out.queued_ms(), None, "a closed output has no lead");

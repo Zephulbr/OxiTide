@@ -2249,6 +2249,15 @@ fn run_session(
                 track_id: first_item.track_id,
             };
         }
+    } else if open_spec.is_some() {
+        // A skip or new context on the open device: the next track is written
+        // straight after the old one's buffered audio, so end that on silence
+        // (ALSA) instead of joining two waveforms with a step. A reopen's stop
+        // settles on its own. A failure is the device going away: the next
+        // write reports it.
+        if let Err(e) = output.fade_out() {
+            tracing::debug!("skip fade-out failed: {e}");
+        }
     }
     let mut first_write_of_track;
     // The track that last reached the output and when. Every write counts,
@@ -2636,6 +2645,12 @@ fn run_session(
                 // of the loop, before the next write.
                 let parked = Instant::now();
                 let mut released: Option<AudioOutputSpec> = None;
+                // End the written audio on silence, not mid-waveform (ALSA).
+                // A failure here is the device going away: the resume's
+                // write reports it.
+                if let Err(e) = output.fade_out() {
+                    tracing::debug!("pause fade-out failed: {e}");
+                }
                 while inner.paused.load(Ordering::SeqCst)
                     && inner.generation.load(Ordering::SeqCst) == gen
                     && !inner.shutdown.load(Ordering::SeqCst)
@@ -4436,6 +4451,20 @@ mod tests {
         engine.handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 }).unwrap();
         wait_for(|| output.samples().len() >= 176_400);
         assert!(output.samples().len() >= 176_400);
+    }
+
+    #[test]
+    fn skip_on_the_open_device_fades_out_the_old_track() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 }).unwrap();
+        wait_for(|| engine.state().position_ms > 100);
+        assert_eq!(output.fade_outs(), 0);
+        let before = output.samples().len();
+        engine.handle(EngineCmd::Next).unwrap();
+        wait_for(|| output.samples().len() > before && engine.state().current.is_some_and(|c| c.track_id == 2));
+        assert!(output.fade_outs() >= 1, "a skip must end the old track on silence");
+        assert_eq!(output.opens(), 1, "a same-format skip keeps the device");
     }
 
     #[test]

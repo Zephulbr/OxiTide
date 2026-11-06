@@ -193,6 +193,34 @@ full close: that rerun, DAC hotplug, AUR (the `v0.4.0` tag is now pushed and its
 the rendered `PKGBUILD`, so the row can run), the oldest-base checks, and MPRIS desktop-entry
 resolution.
 
+**Run 2026-10-28** (`2026-10-28-linux-v1-close-run.md`): gates, build and the no-DAC §14.3 rows
+passed; the DAC was not connected, and the AUR source host was unsettled.
+
+**Run 2026-11-05** (`2026-11-05-linux-v1-final-run.md`, `main` at `53cef6d`, 0.6.0): every open
+§14.3 and owner row ran.
+- **Passed:** deb + AppImage build and inspection; the direct-`hw:` picker with exclusive `✓ BP` on the Dawn
+  Pro and shared through `plughw:`; HDA `hw:` exclusive at 44.1 kHz; MPRIS volume both ways; SNI
+  `Title`; MPRIS `DesktopEntry` per package (AppImage/deb `OxiTide`, AUR `oxitide`); mix art (#8);
+  feed gray-out; phone pairing from a real phone; issue #10 (AT-SPI tree is populated; closed).
+- **AUR:** the published PKGBUILD fails to link under makepkg's default `lto`. With
+  `options=('!lto')` (now in `packaging/aur/PKGBUILD.in`) `v0.6.0` builds and runs. `makepkg -si`
+  stays with the owner, and the next release carries the fixed PKGBUILD.
+- **Found, then fixed and retested by the owner the same day:**
+  - L1: an unplug now reads "Output device disconnected".
+  - L2: a replug moves back to the DAC by itself.
+  - L4: Settings names `ufw` and gives the command.
+  - L5: the tray keeps the window size.
+  - L6: `sysdefault:` entries are labelled in the picker.
+  - L7: a busy DAC no longer reads "exclusive not supported".
+  - L3: clicks are gone on PipeWire `default` and direct `hw:` exclusive.
+- **Open:**
+  - L3 on `sysdefault:` (dmix) entries: fewer clicks but still present on skip and seek
+    (alsa-lib's resampler and mixer path).
+  - WirePlumber may lose the DAC after OxiTide held it directly, until a replug.
+  - Not run: the oldest-base checks and the AppImage updater path.
+- **Owner decision:** ship the dmix clicks and the replug quirk as known issues (or hide or warn
+  on `sysdefault:` first), and whether Linux is labelled "preview" in the 1.0 notes.
+
 ## 7. Tag `v1.0.0`
 
 - [ ] `docs/release.md` runbook; release notes list accepted debt (S4 gap, any renegotiated budgets).
