@@ -47,4 +47,4 @@ The page is tuned to hold the display's full frame rate (144 Hz on the dev machi
 
 ## Deploying
 
-Published at <https://zephulbr.github.io/OxiTide/> by `.github/workflows/pages.yml`. It runs on every push to `main` that touches `site/`, and can also be started by hand. It publishes this folder as is, without its `.md` notes. Every download link points at GitHub Releases. The site never hosts binaries. The share image (`assets/og-image.png`) is referenced by absolute URL in `og:image`, so a moved page needs its tags updated too.
+Published at <https://zephulbr.github.io/OxiTide/> by `.github/workflows/pages.yml`. It runs on every push to `main` that touches `site/`, and can also be started by hand. It publishes this folder as is, without its `.md` notes, and stamps the commit onto the style and script links in `index.html` (`?v=…`). Pages lets browsers keep files for 10 minutes, and without the stamp a reload showed the new page with old CSS. Every download link points at GitHub Releases. The site never hosts binaries. The share image (`assets/og-image.png`) is referenced by absolute URL in `og:image`, so a moved page needs its tags updated too.
