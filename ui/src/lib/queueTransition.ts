@@ -113,13 +113,62 @@ export function holdPage(
   // From the rail's *current* width, not an assumed one: the event may fire
   // with the rail anywhere between zero and full width.
   const railNow = rail.getBoundingClientRect().width;
-  const width = Math.max(0, page.getBoundingClientRect().width + railNow - railTarget);
+  const box = heldBox(main, page, page.getBoundingClientRect().width, mainRoom(main), railNow - railTarget);
   const movers = glide ? flipCandidates(main, page) : [];
-  applyHold(main, page, width, movers, movers.map((el) => el.getBoundingClientRect()), false);
+  applyHold(main, page, box, movers, movers.map((el) => el.getBoundingClientRect()), false);
 }
 
-let snapshot: { page: HTMLElement; width: number; movers: HTMLElement[]; rects: DOMRect[] } | null =
-  null;
+interface HeldBox {
+  width: number;
+  /// Pinned left margin for a page centred by auto margins, else null.
+  marginLeft: number | null;
+}
+
+/// `.main`'s content width.
+function mainRoom(main: HTMLElement): number {
+  const style = getComputedStyle(main);
+  return main.clientWidth - parseFloat(style.paddingLeft || "0") - parseFloat(style.paddingRight || "0");
+}
+
+/// Computed (not used) value of a property, e.g. "auto" for an auto margin.
+function computedKeyword(el: HTMLElement, property: string): string | null {
+  if (typeof el.computedStyleMap !== "function") return null;
+  try {
+    return String(el.computedStyleMap().get(property));
+  } catch {
+    return null;
+  }
+}
+
+/// The page's box once the rail has given back `delta` px of `.main`
+/// (negative while it opens). Most pages fill `.main`, so their width moves by
+/// the rail's. A page centred by auto margins under a max-width (Now Playing)
+/// is different twice over: its free space absorbs the rail before its width
+/// does, and its auto margins follow `.main`'s width *during* the glide. The
+/// rail sits at full width for one frame before its intro starts (when the
+/// glide measures), then drops to zero, so an auto margin would re-centre the
+/// held page half a rail to the right and the content would jump there before
+/// gliding back. Its left margin is pinned to the final one instead.
+function heldBox(main: HTMLElement, page: HTMLElement, width: number, room: number, delta: number): HeldBox {
+  const centred =
+    computedKeyword(page, "margin-left") === "auto" && computedKeyword(page, "margin-right") === "auto";
+  if (!centred) return { width: Math.max(0, width + delta), marginLeft: null };
+  const roomAfter = Math.max(0, room + delta);
+  let held = width;
+  if (computedKeyword(page, "width") === "auto") {
+    const max = parseFloat(getComputedStyle(page).maxWidth);
+    held = Math.min(Number.isFinite(max) ? max : Infinity, roomAfter);
+  }
+  return { width: held, marginLeft: Math.max(0, (roomAfter - held) / 2) };
+}
+
+let snapshot: {
+  page: HTMLElement;
+  width: number;
+  room: number;
+  movers: HTMLElement[];
+  rects: DOMRect[];
+} | null = null;
 
 /// Opening, step 1 (before the rail is inserted): remember the page.
 export function prepareOpenGlide(main: HTMLElement | null, { glide = true }: { glide?: boolean } = {}) {
@@ -130,6 +179,7 @@ export function prepareOpenGlide(main: HTMLElement | null, { glide = true }: { g
   snapshot = {
     page,
     width: page.getBoundingClientRect().width,
+    room: mainRoom(main),
     movers,
     rects: movers.map((el) => el.getBoundingClientRect()),
   };
@@ -142,7 +192,8 @@ export function commitOpenGlide(main: HTMLElement | null, railTarget: number) {
   snapshot = null;
   if (!main || !taken || !taken.page.isConnected) return;
   releasePageHold();
-  applyHold(main, taken.page, Math.max(0, taken.width - railTarget), taken.movers, taken.rects, true);
+  const box = heldBox(main, taken.page, taken.width, taken.room, -railTarget);
+  applyHold(main, taken.page, box, taken.movers, taken.rects, true);
 }
 
 /// Opening, step 3 (the rail's `introstart`): run the parked glide.
@@ -173,12 +224,13 @@ export function onPageResize(hook: () => void): () => void {
 function applyHold(
   main: HTMLElement,
   page: HTMLElement,
-  width: number,
+  box: HeldBox,
   movers: HTMLElement[],
   before: DOMRect[],
   parked: boolean,
 ) {
-  page.style.width = `${width}px`;
+  page.style.width = `${box.width}px`;
+  if (box.marginLeft !== null) page.style.marginLeft = `${box.marginLeft}px`;
   main.style.overflowX = "hidden";
   main.scrollLeft = 0;
   for (const hook of pageResizeHooks) hook();
@@ -195,6 +247,7 @@ function applyHold(
     release: () => {
       for (const ghost of ghosts) ghost.remove();
       page.style.width = "";
+      if (box.marginLeft !== null) page.style.marginLeft = "";
       main.style.overflowX = "";
       main.scrollLeft = 0;
     },
@@ -434,8 +487,12 @@ function flip(
     if (Math.abs(x) >= 0.5 || Math.abs(y) >= 0.5) {
       animations.push(
         el.animate(
-          [{ transform: `translate(${x}px, ${y}px)` }, { transform: "translate(0, 0)" }],
-          // `add` composes with any transform the element already has.
+          // The `translate` property, not `transform`: it applies before the
+          // element's own transform, so the offset stays in the parent's frame.
+          // Appended to `transform`, it would be rotated and scaled with it:
+          // the spinning Now Playing disc (`rotate()`) slid off at its angle.
+          // `add` sums with any `translate` the element already has.
+          [{ translate: `${x}px ${y}px` }, { translate: "0px 0px" }],
           { ...timing, composite: "add" },
         ),
       );
