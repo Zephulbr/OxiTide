@@ -1458,9 +1458,11 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn enumerate_reports_at_least_one_device() {
+    fn enumerate_lists_only_card_rows() {
+        // One row per card + PCM; a machine without cards (CI, WSL) lists
+        // none, and the picker's System default stands for `default`.
         let devices = enumerate().unwrap();
-        assert!(!devices.is_empty());
+        assert!(devices.iter().all(|d| d.id.starts_with("hw:CARD=")), "{devices:?}");
     }
 
     #[test]

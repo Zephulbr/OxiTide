@@ -908,7 +908,8 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn enumeration_is_wired_on_linux() {
+        // ALSA's card rows; none on a machine without cards (CI, WSL).
         let devices = enumerate_output_devices().unwrap();
-        assert!(!devices.is_empty());
+        assert!(devices.iter().all(|d| d.id.starts_with("hw:CARD=")), "{devices:?}");
     }
 }
