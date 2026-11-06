@@ -102,10 +102,22 @@ fn backup_path() -> Option<PathBuf> {
     crate::config::config_path()?.parent().map(|dir| dir.join("tidal-scheme.reg"))
 }
 
+/// `reg.exe` is a console program: without `CREATE_NO_WINDOW` each call from
+/// the GUI build flashes a console window (once per startup snapshot, and
+/// again on exit).
+#[cfg(windows)]
+fn reg() -> std::process::Command {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let mut command = std::process::Command::new("reg");
+    command.creation_flags(CREATE_NO_WINDOW);
+    command
+}
+
 #[cfg(windows)]
 fn detect_owner(exe_name: &str) -> KeyOwner {
     let command_key = format!("{KEY}\\shell\\open\\command");
-    match std::process::Command::new("reg")
+    match reg()
         .args(["query", &command_key, "/ve"])
         .output()
     {
@@ -119,7 +131,7 @@ fn detect_owner(exe_name: &str) -> KeyOwner {
 #[cfg(windows)]
 fn export_key(path: &Path) -> bool {
     let file = path.to_string_lossy().to_string();
-    std::process::Command::new("reg")
+    reg()
         .args(["export", KEY, &file, "/y"])
         .status()
         .map(|s| s.success())
@@ -159,7 +171,7 @@ fn restore(action: &SchemeAction) {
     match action {
         SchemeAction::Import(path) if path.exists() => {
             let file = path.to_string_lossy().to_string();
-            let ok = std::process::Command::new("reg")
+            let ok = reg()
                 .args(["import", &file])
                 .status()
                 .map(|s| s.success())
@@ -169,7 +181,7 @@ fn restore(action: &SchemeAction) {
             }
         }
         SchemeAction::Delete => {
-            let _ = std::process::Command::new("reg")
+            let _ = reg()
                 .args(["delete", KEY, "/f"])
                 .status();
         }
