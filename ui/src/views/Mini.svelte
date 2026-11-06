@@ -4,6 +4,7 @@
   import type { Mini } from "../lib/mini.svelte";
   import type { Player } from "../lib/player.svelte";
   import Cover from "../lib/components/Cover.svelte";
+  import FavoriteHeart, { toggledFx, type HeartFx } from "../lib/components/FavoriteHeart.svelte";
   import Icon from "../lib/components/Icon.svelte";
   import PlayPauseGlyph from "../lib/components/PlayPauseGlyph.svelte";
   import { focusTrap } from "../lib/focusTrap";
@@ -16,6 +17,9 @@
     favorites,
     mini,
   }: { player: Player; favorites: Favorites; mini: Mini } = $props();
+
+  /// The heart's last toggle (FavoriteHeart pops or breaks it).
+  let heartFx = $state<HeartFx | null>(null);
 
   function nextRepeat(mode: RepeatMode): RepeatMode {
     if (mode === "off") return "all";
@@ -51,10 +55,13 @@
       <button
         class="ibtn icon-heart"
         class:on={fav}
-        onclick={() => favorites.toggleTrack(current.track_id)}
+        onclick={() => {
+          heartFx = toggledFx(heartFx, fav);
+          void favorites.toggleTrack(current.track_id);
+        }}
         aria-label={fav ? "Unfavorite" : "Favorite"}
         title={fav ? "Unfavorite" : "Favorite"}
-      ><Icon name="heart" size={18} /></button>
+      ><FavoriteHeart fx={heartFx} /></button>
       <button
         class="ibtn"
         class:active={player.state.shuffle}
@@ -207,6 +214,8 @@
   .ibtn.active {
     color: var(--accent);
   }
+  /* The heart's motion is FavoriteHeart's; hovering takes the accent. */
+  .icon-heart:hover,
   .icon-heart.on {
     color: var(--accent);
   }

@@ -18,7 +18,7 @@
   import type { Nav, Route } from "../nav.svelte";
   import { playSource } from "../playSource.svelte";
   import { goToTargets } from "../queueLinks";
-  import { playArtistRadio, playTrackRadio } from "../radio";
+  import { playArtistRadio } from "../radio";
   import { resolveAlbum, resolveArtist, type ArtistTarget } from "../statsResolve";
   import type { Toasts } from "../toasts.svelte";
   import { trackFlags } from "../trackFlags.svelte";
@@ -145,7 +145,7 @@
     const [play, ...rest] = historyMenuItems({ play: () => void playTop(i), ...goToTargets(track, go, api.getTrack) });
     return [
       play,
-      { id: "radio", label: "Track radio", icon: "radio", run: () => void playTrackRadio(track.track_id, toasts, track.title) },
+      { id: "radio", label: "Track radio", icon: "radio", run: () => go({ name: "radio", id: track.track_id }) },
       ...rest,
     ];
   }

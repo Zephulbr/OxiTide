@@ -352,3 +352,35 @@ describe("TrackTable multi-level sorting", () => {
     );
   });
 });
+
+describe("TrackTable: row heart", () => {
+  it("animates only the toggled row: unfavoriting breaks its heart, favoriting pops it", async () => {
+    const rows = [track(1), track(2)];
+    const view = {
+      filter: "",
+      levels: [],
+      engaged: false,
+      preparing: false,
+      error: "",
+      items: rows,
+      sourceIndex: (index: number) => index,
+    } as unknown as TrackView;
+    const toggleTrack = vi.fn();
+    const favorites = { hasTrack: (id: number) => id === 1, toggleTrack } as unknown as Favorites;
+    render(TrackTable, { view, favorites, toasts: { show: vi.fn() } as unknown as Toasts });
+
+    // Mounting never animates.
+    expect(document.querySelector(".heart-ico.pop, .heart-break")).toBeNull();
+
+    const hearts = document.querySelectorAll<HTMLButtonElement>("button.act-fav");
+    await fireEvent.click(hearts[0]);
+    expect(toggleTrack).toHaveBeenCalledWith(1);
+    expect(hearts[0].querySelectorAll(".heart-break .half")).toHaveLength(2);
+    expect(hearts[1].querySelector(".heart-break, .pop")).toBeNull();
+
+    await fireEvent.click(hearts[1]);
+    expect(hearts[1].querySelector(".heart-ico.pop")).not.toBeNull();
+    expect(hearts[1].querySelector(".heart-break")).toBeNull();
+    expect(hearts[0].querySelector(".heart-break")).toBeNull();
+  });
+});

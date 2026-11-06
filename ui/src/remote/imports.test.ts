@@ -19,6 +19,8 @@ const SHARED = new Set([
   "src/lib/lyrics.ts",
   "src/lib/media.ts",
   "src/lib/components/Icon.svelte",
+  // The favorite heart's motion; it imports only svelte and Icon.
+  "src/lib/components/FavoriteHeart.svelte",
 ]);
 const BARE = new Set(["svelte", "svelte/reactivity", "svelte/transition"]);
 

@@ -13,6 +13,7 @@
   import Playlists from "../views/Playlists.svelte";
   import Mixes from "../views/Mixes.svelte";
   import Mix from "../views/Mix.svelte";
+  import Radio from "../views/Radio.svelte";
   import Purchases from "../views/Purchases.svelte";
   import SaveForLater from "../views/SaveForLater.svelte";
   import Settings from "../views/Settings.svelte";
@@ -159,6 +160,7 @@
     {:else if nav.route.name === "page"}<TidalPage path={nav.route.path} title={nav.route.title} {nav} {player} {toasts} />
     {:else if nav.route.name === "album"}<Album id={nav.route.id} {nav} {player} {favorites} {playlistActions} {toasts} />
     {:else if nav.route.name === "mix"}<Mix id={nav.route.id} {nav} {player} {favorites} {playlistActions} {toasts} />
+    {:else if nav.route.name === "radio"}<Radio id={nav.route.id} {nav} {player} {favorites} {playlistActions} {toasts} />
     {:else if nav.route.name === "playlist"}<Playlist {nav} id={nav.route.id} {player} {favorites} {playlistActions} {toasts} {collection} />
     {:else if nav.route.name === "artist"}<Artist id={nav.route.id} {nav} {player} {favorites} {playlistActions} {toasts} />
     {:else if nav.route.name === "artist-all"}{#key nav.route.id}<ArtistAll id={nav.route.id} tab={nav.route.tab} {nav} {player} {favorites} {playlistActions} {toasts} />{/key}

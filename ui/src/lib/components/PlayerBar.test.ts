@@ -137,9 +137,23 @@ describe("PlayerBar: track menu", () => {
     expect(labels).toContain("Go to album");
     expect(labels).toContain("Copy title");
     expect(labels).toContain("Track info");
-    // No toasts / picker passed: those entries are left out.
-    expect(labels).not.toContain("Track Radio");
+    // No picker passed: that entry is left out.
     expect(labels).not.toContain("Add to playlist");
+  });
+
+  it("opens the playing track's radio page from Track Radio, without playing it", async () => {
+    const { nav } = setup();
+    await fireEvent.contextMenu(screen.getByText("Track 1"));
+    menu.open?.items.find((item) => item.label === "Track Radio")?.run();
+    expect(nav.closeNowPlaying).toHaveBeenCalled();
+    expect(nav.goto).toHaveBeenCalledWith({ name: "radio", id: 1 });
+  });
+
+  it("links a radio's From line to its page", async () => {
+    playSource.set({ kind: "radio", name: "Track 1 radio", route: { name: "radio", id: 1 } }, [1]);
+    const { nav } = setup();
+    await fireEvent.click(screen.getByText("Track 1 radio"));
+    expect(nav.goto).toHaveBeenCalledWith({ name: "radio", id: 1 });
   });
 });
 

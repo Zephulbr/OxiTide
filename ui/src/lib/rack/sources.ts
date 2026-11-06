@@ -7,7 +7,7 @@ export type Source = "home" | "explore" | "feed" | "history" | "library" | "sett
 
 const LIBRARY: Route["name"][] = [
   "playlists", "folder", "playlist", "albums", "tracks", "later", "profiles", "mixes", "purchases",
-  "album", "artist", "artist-all", "mix",
+  "album", "artist", "artist-all", "mix", "radio",
 ];
 
 export function sourceOf(route: Route): Source | null {

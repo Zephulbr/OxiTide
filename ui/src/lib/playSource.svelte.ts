@@ -26,7 +26,7 @@ export type PlayFromKind =
 
 /// What started the current queue, for the player bar's "From …" line: the
 /// kind (its eyebrow word), the collection's name, and the page it opens
-/// (null when there is none, e.g. a track radio).
+/// (null when there is none, e.g. a section shelf without a page).
 export interface PlayFrom {
   kind: PlayFromKind;
   name: string;

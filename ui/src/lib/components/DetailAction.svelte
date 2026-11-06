@@ -1,4 +1,5 @@
 <script lang="ts">
+  import FavoriteHeart, { type HeartFx } from "./FavoriteHeart.svelte";
   import Icon, { type IconName } from "./Icon.svelte";
 
   let {
@@ -10,6 +11,7 @@
     disabled = false,
     title,
     onclick,
+    heartFx = null,
   }: {
     icon: IconName;
     label: string;
@@ -21,6 +23,10 @@
     disabled?: boolean;
     title?: string;
     onclick?: (event: MouseEvent) => void;
+    /// A favorite toggle's last change; with `icon="heart"` the heart is
+    /// FavoriteHeart (it beats on hover, pops on favorite, breaks on
+    /// unfavorite).
+    heartFx?: HeartFx | null;
   } = $props();
 </script>
 
@@ -29,11 +35,16 @@
   class:on={active}
   class:fill
   class:danger
+  class:heart={icon === "heart"}
   {title}
   {disabled}
   {onclick}
 >
-  <Icon name={icon} size={20} />
+  {#if icon === "heart"}
+    <FavoriteHeart size={20} fx={heartFx} />
+  {:else}
+    <Icon name={icon} size={20} />
+  {/if}
   <span>{label}</span>
 </button>
 
@@ -57,7 +68,8 @@
     color: var(--text);
     background: var(--surface-2);
   }
-  .action.on {
+  .action.on,
+  .action.heart:hover:not(:disabled) {
     color: var(--accent);
   }
   .action.on.fill :global(svg) {

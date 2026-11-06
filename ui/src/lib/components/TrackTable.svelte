@@ -39,6 +39,7 @@
   import Icon from "./Icon.svelte";
   import Cover from "./Cover.svelte";
   import NowPlayingMark from "./NowPlayingMark.svelte";
+  import FavoriteHeart, { toggledFx, type HeartFx } from "./FavoriteHeart.svelte";
   import TrackFilter from "./TrackFilter.svelte";
   import SortBar from "./SortBar.svelte";
   let {
@@ -461,6 +462,16 @@
   /// its sections, rows and cells carry their roles explicitly.
   const roleOf = (role: string) => (split ? role : undefined);
 
+  /// The last heart toggled here, so only that row's heart pops or breaks
+  /// (FavoriteHeart, as in the player bar); a row scrolled back into view
+  /// does not replay it.
+  let heartFx = $state<(HeartFx & { id: number }) | null>(null);
+
+  function toggleHeart(id: number) {
+    heartFx = { id, ...toggledFx(heartFx, favorites.hasTrack(id)) };
+    void favorites.toggleTrack(id);
+  }
+
   function onScroll(event: Event) {
     const element = event.currentTarget as HTMLElement;
     scrollTop = element.scrollTop;
@@ -767,7 +778,9 @@
                 favorites,
                 blocked: reasons.length > 0,
                 play: () => play(index),
-                startRadio: () => void playTrackRadio(t.id, toasts, t.title),
+                // Opens the radio's page; a table without navigation plays it.
+                startRadio: () =>
+                  nav ? nav.goto({ name: "radio", id: t.id }) : void playTrackRadio(t.id, toasts, t.title),
                 playNext: () => queueOne(t, true),
                 addToQueue: () => queueOne(t),
                 addToPlaylist: () => onAddToPlaylist?.(t),
@@ -784,7 +797,7 @@
             {#if !compact}
               <td class="muted tnum num-cell" role={roleOf("cell")}>
                 {#if playingTrackId !== null && t.id === playingTrackId}
-                  <span class="num-mark"><NowPlayingMark playing={playbackRunning} size={16} label={playbackRunning ? "Now playing" : "Paused"} /></span>
+                  <span class="num-mark"><NowPlayingMark playing={playbackRunning} size={20} label={playbackRunning ? "Now playing" : "Paused"} /></span>
                 {:else}
                   {row.number ?? index + 1}
                 {/if}
@@ -851,26 +864,27 @@
             {/if}
             <td class="actions-cell" role={roleOf("cell")}>
               <button
-                class="reveal"
+                class="act act-queue reveal"
                 onclick={() => queueOne(t)}
                 aria-label="Add to queue"
                 title="Add to queue"
-              ><Icon name="plus" size={14} /></button>
+              ><Icon name="plus" size={18} /></button>
               {#if onAddToPlaylist}
                 <button
-                  class="reveal"
+                  class="act act-playlist reveal"
                   onclick={() => onAddToPlaylist(t)}
                   aria-label="Add to playlist"
                   title="Add to playlist"
-                ><Icon name="list-plus" size={14} /></button>
+                ><Icon name="list-plus" size={18} /></button>
               {/if}
               <button
+                class="act act-fav"
                 class:on={favorites.hasTrack(t.id)}
                 class:reveal={kind === "favorites" && favorites.hasTrack(t.id)}
-                onclick={() => favorites.toggleTrack(t.id)}
+                onclick={() => toggleHeart(t.id)}
                 aria-label={favorites.hasTrack(t.id) ? "Unfavorite" : "Favorite"}
                 title={favorites.hasTrack(t.id) ? "Unfavorite" : "Favorite"}
-              ><Icon name="heart" size={14} /></button>
+              ><FavoriteHeart fx={heartFx?.id === t.id ? heartFx : null} /></button>
             </td>
           </tr>
         {/if}
@@ -1066,7 +1080,7 @@
     width: calc(var(--row-height) - 1px + 18px);
   }
   .col-actions {
-    width: calc(var(--actions) * 32px - 6px + var(--actions-inset));
+    width: calc(var(--actions) * 32px + var(--actions-inset));
   }
   .col-title {
     width: 42%;
@@ -1323,12 +1337,55 @@
     white-space: nowrap;
     text-align: right;
   }
-  /* Explicit (it is the UA default): `.col-actions` counts 26px per button. */
-  .actions-cell button {
-    padding: 1px 6px;
+  /* 32px targets, edge to edge (`.col-actions` counts 32px per button),
+     around an 18px glyph. No hover fill: the glyph's own motion is the
+     feedback. */
+  .actions-cell .act {
+    width: 32px;
+    height: 32px;
+    padding: 0;
   }
-  .actions-cell button + button {
-    margin-left: 6px;
+  /* One gesture per action, over --dur-state. The plus turns a quarter.
+     The playlist glyph's lines step right one after another while its plus
+     pops. The heart takes the accent; its beat, pop and break are
+     FavoriteHeart's, shared with the player bar. Pressing sinks the glyph.
+     Static under reduced motion. */
+  .actions-cell .act :global(svg),
+  .actions-cell .act-playlist :global(path) {
+    transition: transform var(--dur-state) var(--ease-enter);
+  }
+  .actions-cell .act-queue:hover :global(svg) {
+    transform: rotate(90deg);
+  }
+  .actions-cell .act-playlist :global(path) {
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+  .actions-cell .act-playlist:hover :global(path:nth-child(-n + 3)) {
+    transform: translateX(1.5px);
+  }
+  .actions-cell .act-playlist:hover :global(path:nth-child(2)) {
+    transition-delay: 40ms;
+  }
+  .actions-cell .act-playlist:hover :global(path:nth-child(3)) {
+    transition-delay: 80ms;
+  }
+  .actions-cell .act-playlist:hover :global(path:nth-child(n + 4)) {
+    transform: scale(1.3);
+  }
+  .actions-cell .act-fav:hover {
+    color: var(--accent);
+  }
+  .actions-cell .act:hover:active :global(svg) {
+    transform: scale(0.86);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .actions-cell .act :global(svg),
+    .actions-cell .act:hover :global(svg),
+    .actions-cell .act:hover :global(path),
+    .actions-cell .act:hover:active :global(svg) {
+      transform: none;
+    }
   }
   /* Queue/playlist actions hide until the row is hovered or focused; the
      heart stays visible except on the favorites list, where every row is a
@@ -1337,7 +1394,10 @@
   .actions-cell .reveal {
     opacity: 0;
     pointer-events: none;
-    transition: opacity var(--dur-micro);
+    transition:
+      opacity var(--dur-micro),
+      background-color var(--dur-micro),
+      color var(--dur-micro);
   }
   .row:hover .actions-cell .reveal,
   .row:focus-within .actions-cell .reveal {

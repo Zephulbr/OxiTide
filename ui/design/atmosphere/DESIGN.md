@@ -212,7 +212,13 @@ Only transform and opacity animate, plus the registered `--card-tint` colour (AR
 
 **Micro-interactions (AR-2):** toast overshoot; heart pop on favourite and a broken heart
 on unfavourite (the filled heart swells, splits down a jagged crack, and the halves tip
-apart and fall away over 700 ms while the outline fades back in); player-bar
+apart and fall away over 700 ms while the outline fades back in), and a two-beat
+heartbeat in the accent on hover. That heart is `FavoriteHeart.svelte`, and every favorite
+toggle uses it: the player bar, track rows, the album page's Favorite action, the artist
+profile's Favorite button, the mini player, Rack's favourite key and the phone remote
+(Now Playing, album and artist headers). Hovering takes the accent everywhere except on
+Rack's key and the phone. Only a toggle animates it, never a mount or a track change.
+Favorite entries in right-click menus have no glyph to animate. Player-bar
 controls rest at 78% text colour and come up to full on hover while the bar's floor light
 (below) gathers under them; no lift and no hover circle; they squash to 0.92 on press.
 Each transport press also moves its icon once: shuffle glides forward a touch with its

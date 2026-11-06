@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import type { RepeatMode } from "../api";
+  import FavoriteHeart, { toggledFx, type HeartFx } from "../components/FavoriteHeart.svelte";
   import Icon from "../components/Icon.svelte";
   import type { Favorites } from "../favorites.svelte";
   import type { Player } from "../player.svelte";
@@ -23,9 +24,11 @@
     extra?: Snippet;
   } = $props();
 
-  const state = $derived(player.state);
-  const current = $derived(state.current);
+  const ps = $derived(player.state);
+  const current = $derived(ps.current);
   const fav = $derived(current ? favorites.hasTrack(current.track_id) : false);
+  /// The favourite key's last toggle (FavoriteHeart pops or breaks it).
+  let heartFx = $state<HeartFx | null>(null);
 
   function nextRepeat(mode: RepeatMode): RepeatMode {
     return mode === "off" ? "all" : mode === "all" ? "one" : "off";
@@ -33,31 +36,35 @@
 </script>
 
 <div class="rk-tray transport-keys" role="group" aria-label="Transport">
-  <button class="rk-key" onclick={() => player.prev()} aria-label="Previous" disabled={state.queue.length === 0}><Icon name="skip-back-solid" size={14} /></button>
-  <button class="rk-key" class:lit={state.playing} onclick={() => player.playPause()} aria-label={state.playing ? "Pause" : "Play"} disabled={!current}>
-    <Icon name={state.playing ? "pause" : "play"} size={14} />
+  <button class="rk-key" onclick={() => player.prev()} aria-label="Previous" disabled={ps.queue.length === 0}><Icon name="skip-back-solid" size={14} /></button>
+  <button class="rk-key" class:lit={ps.playing} onclick={() => player.playPause()} aria-label={ps.playing ? "Pause" : "Play"} disabled={!current}>
+    <Icon name={ps.playing ? "pause" : "play"} size={14} />
   </button>
-  <button class="rk-key" onclick={() => player.next()} aria-label="Next" disabled={state.queue.length === 0}><Icon name="skip-forward-solid" size={14} /></button>
+  <button class="rk-key" onclick={() => player.next()} aria-label="Next" disabled={ps.queue.length === 0}><Icon name="skip-forward-solid" size={14} /></button>
 </div>
 <div class="rk-tray modes" role="group" aria-label="Play mode">
-  <button class="rk-key" aria-pressed={state.shuffle} onclick={() => player.setShuffle(!state.shuffle)} aria-label="Shuffle" title="Shuffle the rest of the queue">
+  <button class="rk-key" aria-pressed={ps.shuffle} onclick={() => player.setShuffle(!ps.shuffle)} aria-label="Shuffle" title="Shuffle the rest of the queue">
     <Icon name="shuffle" size={13} />
   </button>
   <button
     class="rk-key"
-    aria-pressed={state.repeat !== "off"}
-    onclick={() => player.setRepeat(nextRepeat(state.repeat))}
-    aria-label={state.repeat === "one" ? "Repeat one track" : state.repeat === "all" ? "Repeat all" : "Repeat off"}
-    title={state.repeat === "one" ? "Repeat one" : state.repeat === "all" ? "Repeat all" : "Repeat off"}
-  ><Icon name={state.repeat === "one" ? "repeat-1" : "repeat"} size={13} /></button>
+    aria-pressed={ps.repeat !== "off"}
+    onclick={() => player.setRepeat(nextRepeat(ps.repeat))}
+    aria-label={ps.repeat === "one" ? "Repeat one track" : ps.repeat === "all" ? "Repeat all" : "Repeat off"}
+    title={ps.repeat === "one" ? "Repeat one" : ps.repeat === "all" ? "Repeat all" : "Repeat off"}
+  ><Icon name={ps.repeat === "one" ? "repeat-1" : "repeat"} size={13} /></button>
   <button
     class="rk-key"
     aria-pressed={fav}
     disabled={!current}
-    onclick={() => current && favorites.toggleTrack(current.track_id)}
+    onclick={() => {
+      if (!current) return;
+      heartFx = toggledFx(heartFx, fav);
+      void favorites.toggleTrack(current.track_id);
+    }}
     aria-label={fav ? "Unfavorite" : "Favorite"}
     title={fav ? "Unfavorite" : "Favorite"}
-  ><Icon name="heart" size={13} /></button>
+  ><FavoriteHeart size={13} fx={heartFx} /></button>
   <button class="rk-key" aria-pressed={queueOpen} onclick={onQueue} aria-label="Queue" title="Queue">
     <Icon name="list-music" size={13} />
   </button>

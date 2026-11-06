@@ -7,7 +7,7 @@ export interface TrackMenuContext {
   index: number;
   favorites: Favorites;
   play(): void | Promise<void>;
-  /// Starts a TIDAL track radio, replacing the queue.
+  /// Opens the track's radio page (a table without navigation plays it).
   startRadio(): void;
   /// Inserts the track right after the playing one.
   playNext(): void;
@@ -193,7 +193,7 @@ function goToItems(ctx: GoToTargets): MenuItem[] {
 export function nowPlayingMenuItems(ctx: GoToTargets & {
   favorited: boolean;
   toggleFavorite(): void;
-  /// Absent where the bar has no toasts to report a radio failure.
+  /// Opens the track's radio page.
   startRadio?: () => void;
   /// Absent where the bar has no playlist picker.
   addToPlaylist?: () => void;
@@ -231,7 +231,7 @@ export function nowPlayingMenuItems(ctx: GoToTargets & {
 export function queueMenuItems(ctx: GoToTargets & {
   index: number;
   playNow(): void;
-  /// Absent where the rail has no toasts to report a radio failure.
+  /// Opens the track's radio page; absent where the rail cannot navigate.
   startRadio?: () => void;
   /// Move the row to right after the current track; absent when it is the
   /// current or already the next track.

@@ -27,7 +27,6 @@
   import { later } from "../later.svelte";
   import type { PlaylistActions } from "../playlists.svelte";
   import { glideActive } from "../queueTransition";
-  import { playTrackRadio } from "../radio";
   import type { Toasts } from "../toasts.svelte";
   import { trackFlags } from "../trackFlags.svelte";
   import NameLink from "./NameLink.svelte";
@@ -47,8 +46,7 @@
     /// Opens a page from a row's names (name-links spec); without it the names
     /// stay plain text (mini players).
     go?: (route: Route) => void;
-    /// Reports drops on the rail, and Track Radio in the row menu (left out
-    /// without); without it drops land silently.
+    /// Reports drops on the rail; without it they land silently.
     toasts?: Toasts;
     /// Favorite in the row menu; left out without.
     favorites?: Favorites;
@@ -60,14 +58,14 @@
   /// Save for Later state.
   function rowMenu(item: QueueItem, index: number) {
     const to = nextSlot(index);
-    const radioToasts = toasts;
+    const open = go;
     const picker = playlistActions;
     const favs = favorites;
     const id = item.track_id;
     return queueMenuItems({
       index,
       playNow: () => jump(index),
-      startRadio: radioToasts ? () => void playTrackRadio(id, radioToasts, item.title) : undefined,
+      startRadio: open ? () => open({ name: "radio", id }) : undefined,
       playNext: to === null ? undefined : () => reorder(index, to),
       addToPlaylist: picker ? () => void addToPlaylist(item, picker) : undefined,
       favorite: favs ? { active: favs.hasTrack(id), toggle: () => void favs.toggleTrack(id) } : undefined,

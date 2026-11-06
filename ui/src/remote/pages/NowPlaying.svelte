@@ -1,4 +1,5 @@
 <script lang="ts">
+  import FavoriteHeart, { toggledFx, type HeartFx } from "../../lib/components/FavoriteHeart.svelte";
   import Icon from "../../lib/components/Icon.svelte";
   import type { Track } from "../../lib/api";
   import { fade } from "svelte/transition";
@@ -52,6 +53,8 @@
   const duration = $derived(playback?.durationMs ?? 0);
   const shownVolume = $derived(volume ?? playback?.volume ?? 1);
   const favorite = $derived(current ? actions.favTracks.has(current.trackId) : false);
+  /// The heart's last toggle (the desktop's FavoriteHeart pops or breaks it).
+  let heartFx = $state<HeartFx | null>(null);
 
   // Live updates while swiping are throttled; the final value always goes.
   let volumeSent = 0;
@@ -148,9 +151,12 @@
         class:on={favorite}
         aria-pressed={favorite}
         aria-label={favorite ? "Remove from favorites" : "Add to favorites"}
-        onclick={() => actions.toggleTrack(current.trackId)}
+        onclick={() => {
+          heartFx = toggledFx(heartFx, favorite);
+          actions.toggleTrack(current.trackId);
+        }}
       >
-        <Icon name="heart" size={24} />
+        <FavoriteHeart size={24} fx={heartFx} />
       </button>
     </div>
 

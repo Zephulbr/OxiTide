@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "./api";
-import { playArtistRadio, playTrackRadio } from "./radio";
+import { playArtistRadio, playTrackRadio, trackRadioOrigin } from "./radio";
 import type { ToastSeverity, Toasts } from "./toasts.svelte";
 
 vi.mock("./api", () => ({
@@ -42,6 +42,14 @@ describe("playTrackRadio", () => {
     expect(api.getTrackRadio).toHaveBeenCalledWith(7);
     expect(api.playTracks).toHaveBeenCalledWith([{ track_id: 1 }, { track_id: 2 }], 0);
     expect(calls).toHaveLength(0);
+  });
+
+  it("credits its plays to the radio's page", () => {
+    expect(trackRadioOrigin(7, "Holy, Holy")).toEqual({
+      kind: "radio",
+      name: "Holy, Holy radio",
+      route: { name: "radio", id: 7 },
+    });
   });
 
   it("informs instead of playing when the radio is empty", async () => {

@@ -35,6 +35,14 @@ export const mixSource = (id: string) => ({
   fetch: () => api.getMix(id),
 });
 
+/// A track radio: the seed track (title, cover, artists for the header) and
+/// the station. Cached like a mix, so going back to it (the player bar's
+/// "From … radio" link) shows the list that is playing, not a fresh draw.
+export const radioSource = (trackId: number) => ({
+  key: `radio:${trackId}`,
+  fetch: () => Promise.all([api.getTrack(trackId), api.getTrackRadio(trackId)]),
+});
+
 /// Playlists are edited (here, in the sidebar, on a phone), so the header is
 /// always revalidated in the background; the cache only removes the wait.
 export const playlistSource = (id: string) => ({
@@ -90,6 +98,9 @@ export function prefetchRoute(route: Route | null | undefined) {
       break;
     case "mix":
       prefetch(mixSource(route.id));
+      break;
+    case "radio":
+      prefetch(radioSource(route.id));
       break;
     case "playlist":
       prefetch(playlistSource(route.id));

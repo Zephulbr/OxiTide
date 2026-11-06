@@ -10,6 +10,7 @@
   import BrandIcon from "./BrandIcon.svelte";
   import Cover from "./Cover.svelte";
   import DetailAction from "./DetailAction.svelte";
+  import FavoriteHeart, { toggledFx, type HeartFx } from "./FavoriteHeart.svelte";
   import Icon from "./Icon.svelte";
   import Modal from "./Modal.svelte";
 
@@ -34,6 +35,9 @@
     onOpenArtist?: (id: number) => void;
     actions?: Snippet;
   } = $props();
+
+  /// The Favorite button's last toggle (FavoriteHeart pops or breaks it).
+  let heartFx = $state<HeartFx | null>(null);
 
   let tint = $state<{ primary: string; secondary: string; tertiary: string } | null>(null);
   let bioModal = $state(false);
@@ -159,9 +163,12 @@
               aria-pressed={favorite.active}
               aria-label={favorite.active ? "Unfavorite artist" : "Favorite artist"}
               title={favorite.active ? "Unfavorite artist" : "Favorite artist"}
-              onclick={favorite.onToggle}
+              onclick={() => {
+                heartFx = toggledFx(heartFx, favorite.active);
+                favorite.onToggle();
+              }}
             >
-              <Icon name="heart" size={22} />
+              <FavoriteHeart size={22} fx={heartFx} />
             </button>
           {/if}
         </div>
@@ -381,8 +388,10 @@
     background: color-mix(in srgb, var(--surface-float) 70%, transparent);
     color: var(--text-muted);
   }
+  /* The heart's beat, pop and break are FavoriteHeart's; hovering takes the
+     accent, as everywhere a heart is. */
   .btn-favorite:hover {
-    color: var(--text);
+    color: var(--accent);
     background: var(--surface-2);
   }
   .btn-favorite.on {

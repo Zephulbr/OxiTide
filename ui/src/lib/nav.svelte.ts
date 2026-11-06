@@ -60,6 +60,8 @@ export type Route =
   | { name: "artist"; id: number }
   | { name: "artist-all"; id: number; tab: ArtistTab }
   | { name: "mix"; id: string }
+  /// A track radio (TIDAL's station seeded on track `id`), shown like a mix.
+  | { name: "radio"; id: number }
   | { name: "section"; source: SectionSource; title: string }
   | { name: "page"; path: PagePath; title: string }
   | { name: "settings" };
@@ -210,6 +212,10 @@ export function parseRoute(value: unknown): Route | null {
     case "artist":
       return typeof record.id === "number" && Number.isInteger(record.id) && record.id > 0
         ? { name: "artist", id: record.id }
+        : null;
+    case "radio":
+      return typeof record.id === "number" && Number.isInteger(record.id) && record.id > 0
+        ? { name: "radio", id: record.id }
         : null;
     case "artist-all": {
       const tab = record.tab;

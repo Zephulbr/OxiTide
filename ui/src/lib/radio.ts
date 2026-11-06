@@ -23,21 +23,30 @@ async function playRadio(
     playSource.set(from, prepared.items.map((t) => t.id));
     await api.playTracks(prepared.items.map(trackToQueueItem), prepared.start);
   } catch (e) {
-    const message =
-      String(e) === "forbidden"
-        ? "Radio isn't available for this track right now"
-        : errorMessage(e);
-    toasts.show(message, { severity: "error" });
+    toasts.show(radioErrorMessage(e), { severity: "error" });
   }
 }
 
-/// `title` / `name` name the station in the player bar ("Californication radio").
+/// The station's name, in the player bar's "From" line and the radio page
+/// ("Californication radio").
+export function trackRadioName(title?: string): string {
+  return title ? `${title} radio` : "Track radio";
+}
+
+/// What a track radio's plays come from: its page, so "From … radio" opens it.
+export function trackRadioOrigin(trackId: number, title?: string): PlayFrom {
+  return { kind: "radio", name: trackRadioName(title), route: { name: "radio", id: trackId } };
+}
+
+/// Plays a track radio at once (Home's radio cards). Menus open the radio's
+/// page instead (`{ name: "radio" }`), where it plays like a mix.
 export function playTrackRadio(trackId: number, toasts: Toasts, title?: string): Promise<void> {
-  return playRadio(() => api.getTrackRadio(trackId), toasts, {
-    kind: "radio",
-    name: title ? `${title} radio` : "Track radio",
-    route: null,
-  });
+  return playRadio(() => api.getTrackRadio(trackId), toasts, trackRadioOrigin(trackId, title));
+}
+
+/// The radio's error, worded for a person.
+export function radioErrorMessage(e: unknown): string {
+  return String(e) === "forbidden" ? "Radio isn't available for this track right now" : errorMessage(e);
 }
 
 export function playArtistRadio(artistId: number, toasts: Toasts, name?: string): Promise<void> {

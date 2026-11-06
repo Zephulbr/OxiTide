@@ -8,7 +8,6 @@
   import { nowPlayingMenuItems } from "../menus";
   import { copyText } from "../clipboard";
   import { errorMessage } from "../errors";
-  import { playTrackRadio } from "../radio";
   import { trackInfo } from "../trackInfo.svelte";
   import type { Toasts } from "../toasts.svelte";
   import type { PlaylistActions } from "../playlists.svelte";
@@ -30,6 +29,7 @@
   import type { Mini } from "../mini.svelte";
   import { appearance } from "../appearance.svelte";
   import CatJam from "./CatJam.svelte";
+  import FavoriteHeart, { toggledFx, type HeartFx } from "./FavoriteHeart.svelte";
   import Cover from "./Cover.svelte";
   import Icon from "./Icon.svelte";
   import PlayPauseGlyph from "./PlayPauseGlyph.svelte";
@@ -55,7 +55,7 @@
     nav: Nav;
     mini: Mini;
     sleepTimer: SleepTimer;
-    /// Track Radio and errors in the track menu; the entry is left out without.
+    /// Errors from the track menu's actions.
     toasts?: Toasts;
     /// "Add to playlist" in the track menu; left out without.
     playlistActions?: PlaylistActions;
@@ -122,15 +122,12 @@
   let repeatKicks = $state(0);
   let prevKicks = $state(0);
   let nextKicks = $state(0);
-  /// Unfavouriting breaks the heart: two halves split along a crack and fall.
-  let heartBreaks = $state(0);
-  let heartBreaking = $state(false);
+  /// The heart's last toggle: favoriting pops it, unfavoriting breaks it
+  /// (FavoriteHeart). A track change is not a toggle and does not animate.
+  let heartFx = $state<HeartFx | null>(null);
 
   function toggleFavorite(trackId: number, wasFavorite: boolean) {
-    if (wasFavorite) {
-      heartBreaks += 1;
-      heartBreaking = true;
-    }
+    heartFx = toggledFx(heartFx, wasFavorite);
     void favorites.toggleTrack(trackId);
   }
 
@@ -150,12 +147,11 @@
     const item = player.state.current;
     if (!item) return [];
     const favorited = favorites.hasTrack(item.track_id);
-    const radioToasts = toasts;
     const picker = playlistActions;
     return nowPlayingMenuItems({
       favorited,
       toggleFavorite: () => toggleFavorite(item.track_id, favorited),
-      startRadio: radioToasts ? () => void playTrackRadio(item.track_id, radioToasts, item.title) : undefined,
+      startRadio: () => go({ name: "radio", id: item.track_id }),
       addToPlaylist: picker ? () => void withTrack(item, (track) => picker.openPicker([track])) : undefined,
       later: { active: later.has("track", item.track_id), toggle: () => void later.toggle("track", item.track_id) },
       copyTitle: () => void copyText(item.title),
@@ -419,15 +415,7 @@
           aria-label={fav ? "Unfavorite" : "Favorite"}
           title={fav ? "Unfavorite" : "Favorite"}
         >
-          {#key fav}<span class="heart-ico" class:pop={fav} class:mend={!fav && heartBreaking}><Icon name="heart" size={18} /></span>{/key}
-          {#if heartBreaking}
-            {#key heartBreaks}
-              <span class="heart-break" aria-hidden="true">
-                <span class="half left"><Icon name="heart" size={18} /></span>
-                <span class="half right" onanimationend={() => (heartBreaking = false)}><Icon name="heart" size={18} /></span>
-              </span>
-            {/key}
-          {/if}
+          <FavoriteHeart fx={heartFx} />
         </button>
 
         <span class="muted tnum time">{formatDuration(position / 1000)} / {formatDuration(duration / 1000)}</span>
@@ -802,73 +790,14 @@
     transform: translateX(-50%) scale(1);
   }
 
+  /* The heart's motion lives in FavoriteHeart (shared with track rows);
+     hovering takes the accent, as on a row. */
+  .icon-heart:hover,
   .icon-heart.on {
     color: var(--accent);
   }
   .icon-heart.on :global(svg) {
     fill: currentColor;
-  }
-  /* Favoriting pops the heart; the keyed remount replays the animation. */
-  .heart-ico {
-    display: inline-grid;
-    place-items: center;
-  }
-  .heart-ico.pop {
-    animation: heart-pop var(--dur-state) var(--ease-enter);
-  }
-  @keyframes heart-pop {
-    0% { transform: scale(1); }
-    40% { transform: scale(1.35); }
-    100% { transform: scale(1); }
-  }
-  /* Unfavoriting breaks the heart: the filled heart cracks (a short swell),
-     splits along a jagged line, and the halves tip apart and fall away while
-     the outline fades back in underneath. */
-  .heart-ico.mend {
-    animation: heart-mend 700ms var(--ease-in-out) both;
-  }
-  @keyframes heart-mend {
-    0%, 55% { opacity: 0; }
-    100% { opacity: 1; }
-  }
-  .heart-break {
-    position: absolute;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    pointer-events: none;
-    animation: heart-crack 700ms var(--ease-enter) both;
-  }
-  @keyframes heart-crack {
-    0% { transform: scale(1); }
-    15% { transform: scale(1.12); }
-    30%, 100% { transform: scale(1); }
-  }
-  .half {
-    grid-area: 1 / 1;
-    display: inline-grid;
-    place-items: center;
-    color: var(--accent);
-    transform-origin: 50% 85%;
-  }
-  .half :global(svg) {
-    fill: currentColor;
-  }
-  .half.left {
-    clip-path: polygon(0 0, 52% 0, 44% 28%, 56% 46%, 42% 64%, 50% 100%, 0 100%);
-    animation: heart-half-left 700ms ease-in both;
-  }
-  .half.right {
-    clip-path: polygon(52% 0, 100% 0, 100% 100%, 50% 100%, 42% 64%, 56% 46%, 44% 28%);
-    animation: heart-half-right 700ms ease-in both;
-  }
-  @keyframes heart-half-left {
-    0%, 25% { transform: none; opacity: 1; }
-    100% { transform: translate(-5px, 9px) rotate(-28deg); opacity: 0; }
-  }
-  @keyframes heart-half-right {
-    0%, 25% { transform: none; opacity: 1; }
-    100% { transform: translate(5px, 9px) rotate(28deg); opacity: 0; }
   }
 
   /* Transport nudges, replayed by the keyed remount on each press: shuffle
@@ -921,26 +850,15 @@
     55% { transform: translateX(7px); opacity: 0; }
     100% { transform: none; opacity: 1; }
   }
-  /* Reduced motion: no movement; the broken heart just fades (its
-     animationend still clears the state) and the outline is there at once. */
+  /* Reduced motion: the transport nudges don't move. */
   @media (prefers-reduced-motion: reduce) {
     .ico.kick-shuffle,
     .ico.kick-shuffle :global(path),
     .ico.kick-repeat,
     .ico.kick-next,
-    .ico.kick-prev,
-    .heart-break,
-    .heart-ico.mend {
+    .ico.kick-prev {
       animation: none;
     }
-    .half.left,
-    .half.right {
-      animation: heart-fade var(--dur-state) ease-out both;
-    }
-  }
-  @keyframes heart-fade {
-    from { opacity: 1; }
-    to { opacity: 0; }
   }
 
   .ibtn.play {

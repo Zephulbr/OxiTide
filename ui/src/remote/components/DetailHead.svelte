@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import FavoriteHeart, { toggledFx, type HeartFx } from "../../lib/components/FavoriteHeart.svelte";
   import Icon from "../../lib/components/Icon.svelte";
   import Art from "./Art.svelte";
 
@@ -23,6 +24,9 @@
     ontogglefavorite?: () => void;
     children?: Snippet;
   } = $props();
+
+  /// The heart's last toggle (the desktop's FavoriteHeart pops or breaks it).
+  let heartFx = $state<HeartFx | null>(null);
 </script>
 
 <header class="head">
@@ -41,9 +45,12 @@
         class:on={favorite}
         aria-pressed={favorite}
         aria-label={favorite ? "Remove from favorites" : "Add to favorites"}
-        onclick={ontogglefavorite}
+        onclick={() => {
+          heartFx = toggledFx(heartFx, favorite === true);
+          ontogglefavorite?.();
+        }}
       >
-        <Icon name="heart" size={22} />
+        <FavoriteHeart size={22} fx={heartFx} />
       </button>
     {/if}
   </div>

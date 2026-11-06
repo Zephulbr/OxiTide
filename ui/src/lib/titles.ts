@@ -38,6 +38,8 @@ export function routeTitle(route: Route, nowPlaying = false): string {
       return "Artist · OxiTide";
     case "mix":
       return "Mix · OxiTide";
+    case "radio":
+      return "Track radio · OxiTide";
     case "section":
     case "page":
       return `${route.title} · OxiTide`;

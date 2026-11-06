@@ -119,7 +119,14 @@ among the listed rows, a quiet "Now playing" button (`circle-dot`, the queue's "
 controls scrolls it to the middle of the list (smooth unless reduced motion).
 Favorites arrive newest-favorited first, so the Tracks page's original order is "recently
 added". Row actions show on hover/focus; the heart stays visible except on the favorites
-list (Tracks), where every row is a favorite. The Tracks count line ends in a refresh icon
+list (Tracks), where every row is a favorite. They are 18px glyphs in 32px buttons set edge
+to edge, with no hover fill: each glyph's own gesture is the feedback, over `--dur-state`.
+The plus turns a quarter. The playlist glyph's three lines step 1.5px right one after
+another (40ms apart) while its plus pops to 1.3. The heart is the player bar's (`FavoriteHeart`):
+on hover it takes the accent and beats twice (640ms), favoriting pops it, and
+unfavoriting breaks it. Only the row toggled animates; a row scrolled back into view
+doesn't replay it. A press sinks the glyph to 0.86. All of it is static under reduced motion. The playing row's number gives way to a 20px
+now-playing mark. The Tracks count line ends in a refresh icon
 (spins while loading) and, when TIDAL counts favorites it no longer serves, an
 "N unavailable" info button whose tooltip and toast explain them (they can't be listed).
 
@@ -270,7 +277,7 @@ headings stay at 20/600; detail-page headers (album, playlist, artist) have thei
 scale. Rack's display is also `.main` but resets both variables (`.main.rack-main`), so it
 keeps its own page padding and small title labels (`rack/DESIGN.md`).
 
-**Detail headers** (`DetailHeader.svelte`: Album, Playlist, Mix) put the cover beside one
+**Detail headers** (`DetailHeader.svelte`: Album, Playlist, Mix, Track radio) put the cover beside one
 column as tall as the cover: the Play/Shuffle row (with the playlist's search pill) sits on
 the cover's bottom edge, and the title block sits 28px above it, 10px apart top to bottom:
 stats (counts like "702 TRACKS" and "2 FANS" in `--accent`), the byline, then the title
@@ -283,6 +290,15 @@ right below it. The header is a size container and fits narrower columns in step
 Play/Shuffle, the cover's bottom edge on the actions row; below 520px (a docked queue in a
 small window) the cover, the text and the actions stack. Rack's smaller `--hero-size` caps
 each step.
+
+**Track radio** (`views/Radio.svelte`, route `{ name: "radio", id }` with the seed track's
+id) is laid out like a mix page. The kicker is TRACK RADIO, the title is "{track} radio",
+the byline is the seed track's artists, and the cover is the seed track's album cover. It
+has one action, Add (the station to a playlist). The station is cached like a mix, so going
+back to it shows the list that is playing. Every Track Radio menu entry (track rows, the
+queue, the player bar's track, History's top tracks) opens this page instead of playing.
+Home's radio cards still play at once. Plays from either are credited "From {track} radio",
+and that line links back to this page.
 
 **Collection grids** share one recipe: `repeat(auto-fill, minmax(160–168px, 1fr))`, 12px
 card padding (Mixes, Feed releases). The two library collections, Playlists and Albums,

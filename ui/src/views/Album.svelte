@@ -4,6 +4,7 @@
   import ArtistLinks from "../lib/components/ArtistLinks.svelte";
   import Cover from "../lib/components/Cover.svelte";
   import DetailAction from "../lib/components/DetailAction.svelte";
+  import { toggledFx, type HeartFx } from "../lib/components/FavoriteHeart.svelte";
   import { later } from "../lib/later.svelte";
   import DetailHeader from "../lib/components/DetailHeader.svelte";
   import EmptyState from "../lib/components/EmptyState.svelte";
@@ -36,6 +37,9 @@
     playlistActions,
     toasts,
   }: { id: number; nav: Nav; player: Player; favorites: Favorites; playlistActions: PlaylistActions; toasts: Toasts } = $props();
+
+  /// The Favorite action's last toggle (FavoriteHeart pops or breaks it).
+  let heartFx = $state<HeartFx | null>(null);
   // A cached visit renders on the first frame (lib/viewCache.ts).
   // svelte-ignore state_referenced_locally
   const source = albumSource(id);
@@ -180,7 +184,11 @@
           label={favorites.hasAlbum(albumId) ? "Favorited" : "Favorite"}
           active={favorites.hasAlbum(albumId)}
           title={favorites.hasAlbum(albumId) ? "Unfavorite album" : "Favorite album"}
-          onclick={() => favorites.toggleAlbum(albumId)}
+          {heartFx}
+          onclick={() => {
+            heartFx = toggledFx(heartFx, favorites.hasAlbum(albumId));
+            void favorites.toggleAlbum(albumId);
+          }}
         />
         <DetailAction
           icon={later.has("album", albumId) ? "bookmark-minus" : "bookmark"}
