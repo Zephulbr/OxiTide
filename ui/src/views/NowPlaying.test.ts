@@ -2,7 +2,8 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import type { Nav } from "../lib/nav.svelte";
-import { fakePlayer } from "../lib/test/fakes";
+import { lyrics } from "../lib/lyrics.svelte";
+import { fakePlayer, queueItem } from "../lib/test/fakes";
 import NowPlaying from "./NowPlaying.svelte";
 
 vi.mock("../lib/api", () => ({
@@ -108,6 +109,41 @@ describe("NowPlaying tabs", () => {
     expect(navigation.goto).toHaveBeenCalledWith({ name: "artist", id: 7 });
     await fireEvent.keyDown(album, { key: "Enter" });
     await waitFor(() => expect(navigation.goto).toHaveBeenLastCalledWith({ name: "album", id: 9 }));
+  });
+
+  it("keeps the Next up fallback through a skip while the next lyrics load", async () => {
+    const { api } = await import("../lib/api");
+    const getLyrics = vi.mocked(api.getLyrics);
+    // Track 41 has no lyrics, settled before the view opens (jsdom never
+    // finishes outros, so the mount's own loading layout would linger). A
+    // miss is retried on open, and misses again.
+    getLyrics.mockImplementationOnce(async () => null).mockImplementationOnce(async () => null);
+    await lyrics.open(queueItem(41));
+    const view = render(NowPlaying, {
+      player: fakePlayer({ current: queueItem(41) }),
+      nav: nav(),
+      qualityDisplay: "compact",
+    });
+    // The Lyrics choice falls back to Next up.
+    await waitFor(() =>
+      expect(document.getElementById("np-tab-next")?.getAttribute("aria-selected")).toBe("true"),
+    );
+    expect(document.querySelector(".stage-details")).toBeNull();
+
+    // Skip to a track whose lyrics are still loading.
+    let settle: (value: Awaited<ReturnType<typeof api.getLyrics>>) => void = () => {};
+    getLyrics.mockImplementationOnce(() => new Promise((resolve) => (settle = resolve)));
+    await view.rerender({ player: fakePlayer({ current: queueItem(42) }) });
+    expect(document.querySelector(".stage-details")).toBeNull();
+    expect(document.getElementById("np-panel-next")).not.toBeNull();
+    expect(document.getElementById("np-tab-next")?.getAttribute("aria-selected")).toBe("true");
+
+    // Lyrics arrive: the saved Lyrics choice takes over again.
+    settle({ track_id: 42, source: "tidal", synced: false, rtl: false, lines: [] });
+    await waitFor(() =>
+      expect(document.getElementById("np-tab-lyrics")?.getAttribute("aria-selected")).toBe("true"),
+    );
+    expect(document.getElementById("np-panel-lyrics")).not.toBeNull();
   });
 
   it("marks handled key events so the global shortcut handler can ignore them", async () => {

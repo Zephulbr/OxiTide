@@ -114,7 +114,12 @@
     // must not make Next up restart from its first copy.
     const index = player.state.current_index ?? -1;
     if (index < 0 || player.state.queue[index]?.track_id !== current.track_id) return [];
-    return player.state.queue.slice(index + 1, index + 4);
+    // Keyed by queue slot as well as track: the same track can be queued
+    // twice in a row (a duplicate key throws), and an advance keeps each
+    // row's key so the rows glide up.
+    return player.state.queue
+      .slice(index + 1, index + 4)
+      .map((item, i) => ({ item, key: `${index + 1 + i}:${item.track_id}` }));
   });
 
   /// Lyrics belonging to the track on screen; null while the store is still
@@ -127,18 +132,30 @@
   const awaitingLyrics = $derived(
     track !== null && (lyrics.trackId !== track.track_id || lyrics.loading),
   );
-  /// While lyrics are pending the lyrics layout stays put with the loading
-  /// placeholder, so the Next Up column never flashes in between. A settled
-  /// miss (trackId matches, no lyrics, not loading) falls back to Next Up.
-  const showLyrics = $derived(lyrics.tab === "lyrics" && (awaitingLyrics || currentLyrics !== null));
+  /// Whether the last settled track showed lyrics. While the next track's
+  /// lyrics are pending, the layout on screen holds: the lyrics layout keeps
+  /// its loading placeholder (Next Up never flashes in between), and a Next Up
+  /// fallback (the previous track had none) stays Next Up instead of swapping
+  /// to the lyrics layout, details under the cover, until the fetch settles.
+  /// Opening Now Playing on a pending fetch starts in the lyrics layout.
+  let heldLyrics = $state(true);
+  /// A settled miss (trackId matches, no lyrics, not loading) falls back to
+  /// Next Up.
+  const showLyrics = $derived(
+    lyrics.tab === "lyrics" && (currentLyrics !== null || (awaitingLyrics && heldLyrics)),
+  );
+  $effect(() => {
+    if (!awaitingLyrics) heldLyrics = currentLyrics !== null;
+  });
   const hasLyrics = $derived(awaitingLyrics || currentLyrics !== null);
   /// The spine layout (cover + side column) belongs to lyrics.
   const wide = $derived(showLyrics);
-  /// Display-only tab: a settled no-lyrics miss shows the Next up fallback, so
-  /// the Lyrics tab must not claim selection over an absent panel. The store
-  /// keeps the user's choice, so a track with lyrics snaps back to Lyrics.
+  /// Display-only tab: a Next up fallback (no lyrics, or held through a
+  /// pending fetch) must not let the Lyrics tab claim selection over an absent
+  /// panel. The store keeps the user's choice, so a track with lyrics snaps
+  /// back to Lyrics.
   const effectiveTab = $derived(
-    track !== null && lyrics.tab === "lyrics" && !hasLyrics ? "next" : lyrics.tab,
+    track !== null && lyrics.tab === "lyrics" && !showLyrics ? "next" : lyrics.tab,
   );
 
   const NP_TABS = ["lyrics", "next"] as const;
@@ -449,7 +466,7 @@
           >
             {#if nextUp.length > 0}
               <ul class="next-up">
-                {#each nextUp as item (item.track_id)}
+                {#each nextUp as { item, key } (key)}
                   <!-- Queue advance: the finished top row fades in place (Svelte
                        fixes it out of flow), the rest glide up via FLIP, and the
                        incoming row rises in. The outro stays transform-free so it
