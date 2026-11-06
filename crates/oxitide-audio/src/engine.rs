@@ -518,7 +518,7 @@ impl Engine {
     }
 
     /// Analyze the playing audio for tempo and beats (`EngineEvent::Beat`).
-    /// On only while something shows them (CatJam is mounted). Turning it on
+    /// On only while something shows them (CatJam is mounted and visible). Turning it on
     /// re-sends the clock already known for the current track.
     pub fn set_beat_tracking(&self, enabled: bool) {
         if self.inner.beat_tap.is_enabled() == enabled {
@@ -998,6 +998,39 @@ impl TrackStream {
             }
             self.pending.push_back(event);
         }
+    }
+
+    /// Pre-read, without blocking, until at least `frames` frames of decoded
+    /// audio wait unconsumed, or the producer has nothing more ready yet.
+    /// Returns the frames waiting. Bounded by `frames`, like `prefill`: the
+    /// producer only runs that much further ahead of playback.
+    fn read_ahead(&mut self, frames: u64, channels: u16) -> u64 {
+        let mut queued: u64 = self.queued_samples().map(|buf| buf.frames(channels)).sum();
+        while queued < frames {
+            if matches!(self.pending.back(), Some(Err(_))) {
+                break;
+            }
+            let Ok(event) = self.rx.try_recv() else {
+                break;
+            };
+            if let Ok(StreamEvent::Samples(buf)) = &event {
+                queued += buf.frames(channels);
+            }
+            self.pending.push_back(event);
+        }
+        queued
+    }
+
+    /// The decoded buffers pre-read and not yet consumed, in order (up to any
+    /// error).
+    fn queued_samples(&self) -> impl Iterator<Item = &PcmBuffer> {
+        self.pending
+            .iter()
+            .map_while(|event| event.as_ref().ok())
+            .filter_map(|event| match event {
+                StreamEvent::Samples(buf) => Some(buf),
+                StreamEvent::Info(_) => None,
+            })
     }
 
     fn try_recv(&mut self) -> std::result::Result<Result<StreamEvent>, TryRecvError> {
@@ -2867,6 +2900,21 @@ fn run_session(
             }
             // CatJam's beats come from the track's own frames, before DSP, so
             // they map exactly onto the position (read-only; no-op when off).
+            // The first window comes from the audio already decoded ahead of
+            // playback (this buffer, the FIFO, then the stream's queue), so the
+            // cat is in time a moment after a start, seek or mount rather than
+            // `FIRST_WINDOW_S` later. A frame skip in progress would break the
+            // frames' continuity; the playback path below covers that case.
+            if skip_remaining == 0 && inner.beat_tap.wants_ahead(track_id, rate) {
+                let need = inner.beat_tap.first_window_frames(rate);
+                let held = buf.frames(channels) + fifo_frames;
+                if held >= need || held + stream.read_ahead(need - held, channels) >= need {
+                    let ahead = std::iter::once(&buf).chain(fifo.iter()).chain(stream.queued_samples());
+                    if let Some(window) = inner.beat_tap.push_ahead(track_id, frames, ahead, channels, rate) {
+                        submit_beat_window(inner, window);
+                    }
+                }
+            }
             if let Some(window) = inner.beat_tap.push(track_id, frames, &buf, channels, rate) {
                 submit_beat_window(inner, window);
             }
@@ -4672,6 +4720,42 @@ mod tests {
         assert_eq!(clock.track_id, 1);
         assert_eq!(clock.bpm, Some(120.0));
         assert_eq!(clock.anchor_ms, 0, "the first window starts at the track start");
+    }
+
+    /// The first window is read from the audio decoded ahead of playback, so
+    /// the clock does not wait for the window to be played.
+    #[test]
+    fn the_first_beat_window_does_not_wait_for_playback() {
+        let (plan, files) = fixture_plan();
+        let output = NullOutput::new();
+        let engine = build_engine(
+            Arc::new(FakeResolver { plan }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            // About real time: the 2 s fixture takes ~1.8 s to write.
+            Box::new(PacedOutput { inner: output.clone(), per_frame: Duration::from_micros(20) }),
+            Quality::Lossless,
+        );
+        engine.inner.beat_tap.set_window_ms(500, 1000);
+        let written_at = Arc::new(Mutex::new(Vec::new()));
+        let (record, seen) = (written_at.clone(), output.clone());
+        *engine.inner.beat_analyzer.lock().unwrap() = Arc::new(move |w: &BeatWindow| {
+            record.lock().unwrap().push((w.start_ms, seen.samples().len()));
+            fake_clock(w)
+        });
+        engine.set_beat_tracking(true);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        wait_for(|| written_at.lock().unwrap().len() >= 2);
+        let windows = written_at.lock().unwrap().clone();
+        // It starts at the buffer where enough audio was decoded ahead: the
+        // first, or one of the first few while the producer gets going.
+        let (start, written) = windows[0];
+        assert!(start < 100.0, "the first window starts at {start} ms");
+        // 0.18 s of stereo output; playing the 0.5 s window first would be
+        // ~0.45 s.
+        assert!(written < 2 * 8_000, "the first window waited for {written} samples of playback");
+        let (second, _) = windows[1];
+        assert!((second - start - 500.0).abs() < 1.0, "the second window follows the first: {second}");
+        engine.handle(EngineCmd::Clear).unwrap();
     }
 
     #[test]

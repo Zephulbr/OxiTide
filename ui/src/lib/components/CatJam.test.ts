@@ -43,6 +43,7 @@ const beat = (track_id: number): EngineEvent => ({
 });
 
 let raf: ReturnType<typeof vi.fn>;
+let hiddenSpy: { mockRestore: () => void } | null = null;
 
 beforeEach(() => {
   mocks.handlers.length = 0;
@@ -53,6 +54,8 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  hiddenSpy?.mockRestore();
+  hiddenSpy = null;
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
@@ -70,6 +73,29 @@ describe("CatJam", () => {
     view.unmount();
     expect(mocks.api.setBeatTracking).toHaveBeenLastCalledWith(false);
     expect(mocks.unlisten).toHaveBeenCalled();
+  });
+
+  it("turns beat tracking off while the window is hidden and back on when shown", async () => {
+    let hidden = false;
+    hiddenSpy = vi.spyOn(document, "hidden", "get").mockImplementation(() => hidden);
+    await mount(fakePlayer(true));
+    expect(mocks.api.setBeatTracking).toHaveBeenLastCalledWith(true);
+    hidden = true;
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(mocks.api.setBeatTracking).toHaveBeenLastCalledWith(false);
+    const calls = mocks.api.setBeatTracking.mock.calls.length;
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(mocks.api.setBeatTracking.mock.calls.length, "no repeat while still hidden").toBe(calls);
+    hidden = false;
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(mocks.api.setBeatTracking).toHaveBeenLastCalledWith(true);
+  });
+
+  it("starts with beat tracking off when mounted while hidden", async () => {
+    hiddenSpy = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+    await mount(fakePlayer(true));
+    expect(mocks.api.setBeatTracking).toHaveBeenCalledWith(false);
+    expect(mocks.api.setBeatTracking).not.toHaveBeenCalledWith(true);
   });
 
   it("is hidden from assistive tech", async () => {

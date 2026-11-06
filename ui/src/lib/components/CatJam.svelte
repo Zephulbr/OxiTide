@@ -8,7 +8,8 @@
 
   /// CatJam (spec 2026-10-21-oxitide-catjam-kuroneko-design.md §5.6): a cat in
   /// the player bar, beside the track title, that bobs to the beat. Beats come from the engine's
-  /// local analysis, which runs only while this is mounted. Per-frame work is a
+  /// local analysis, which runs only while this is mounted and the window is
+  /// visible. Per-frame work is a
   /// direct style write when the frame changes; no loop while paused, hidden,
   /// or without a beat clock.
   let { player, coat, scale = 100 }: { player: Player; coat: CatjamCoat; scale?: number } = $props();
@@ -93,8 +94,19 @@
       if (disposed) stop();
       else unlisten = stop;
     });
-    void api.setBeatTracking(true).catch(() => {});
-    const onVisibility = () => schedule();
+    // Analysis runs only while the cat can be seen: minimized or hidden to the
+    // tray it is off, and turning it back on re-sends the clock the engine
+    // already knows for the playing track (or reads it from the audio queued
+    // ahead of playback), so the cat is in time again at once.
+    let tracking = !document.hidden;
+    void api.setBeatTracking(tracking).catch(() => {});
+    const onVisibility = () => {
+      if (tracking === document.hidden) {
+        tracking = !document.hidden;
+        void api.setBeatTracking(tracking).catch(() => {});
+      }
+      schedule();
+    };
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
       disposed = true;

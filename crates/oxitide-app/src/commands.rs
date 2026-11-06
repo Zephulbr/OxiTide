@@ -2840,7 +2840,7 @@ pub fn set_catjam_scale(state: State<'_, AppState>, percent: u32) -> Result<u32,
 }
 
 /// CatJam: analyze the playing audio for beats (`beat` events) while the
-/// jamming cat is mounted. Kept on `AppState` so an engine rebuilt after
+/// jamming cat is mounted and the window visible. Kept on `AppState` so an engine rebuilt after
 /// re-login starts with the same setting.
 #[tauri::command]
 pub fn set_beat_tracking(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {

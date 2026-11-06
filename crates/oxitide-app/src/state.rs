@@ -61,7 +61,8 @@ pub struct AppState {
     pub discord: Mutex<Option<crate::discord::DiscordPresence>>,
     /// Hi-Fi Rack level meter emitter; idle unless the UI enables it.
     pub meter: crate::meter::MeterEmitter,
-    /// CatJam is mounted: the engine analyzes beats (applied to every player).
+    /// CatJam is mounted and the window visible: the engine analyzes beats
+    /// (applied to every player).
     beat_tracking: AtomicBool,
     /// The phone remote server; `None` while disabled (Track 11).
     pub remote: Mutex<Option<Arc<crate::remote::RemoteService>>>,

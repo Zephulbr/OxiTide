@@ -7,6 +7,13 @@
 //! runs [`analyze`] on a helper thread. Tempo and beats come only from the
 //! audio being played: nothing is fetched and nothing leaves the process.
 //!
+//! The first window of a track (or after a seek, or when the tap is turned
+//! on) is built from the decoded audio already queued ahead of playback
+//! ([`BeatTap::push_ahead`]), so the clock is ready a moment after the track
+//! starts instead of `FIRST_WINDOW_S` later; those frames are then skipped as
+//! they play. The second window follows the first directly; later ones are
+//! `REFRESH_S` apart.
+//!
 //! The tap only reads samples. `push` is a no-op while disabled and never
 //! blocks: if the lock is held, that buffer is skipped (and the window
 //! restarts at the next one, as after a seek).
@@ -121,9 +128,16 @@ impl TapState {
             return None;
         }
         let skip = self.collect_from.saturating_sub(start_frame) as usize;
+        let mut done = None;
         for (i, frame) in samples.chunks_exact(channels).enumerate().skip(skip) {
+            let at = start_frame + i as u64;
+            // After a window completes here, the next may start later in
+            // this same buffer (the second one follows the first directly).
+            if at < self.collect_from {
+                continue;
+            }
             if self.samples.is_empty() && self.acc_n == 0 {
-                self.window_start = start_frame + i as u64;
+                self.window_start = at;
             }
             self.acc += frame.iter().map(|&s| to_f64(s)).sum::<f64>() / channels as f64;
             self.acc_n += 1;
@@ -131,13 +145,13 @@ impl TapState {
                 self.samples.push(self.acc / self.factor as f64);
                 self.acc = 0.0;
                 self.acc_n = 0;
-                if self.samples.len() >= self.target {
-                    // The next window starts well past this buffer.
-                    return Some(self.finish(track_id, lengths));
+                // A window is far longer than a buffer: at most one ends here.
+                if self.samples.len() >= self.target && done.is_none() {
+                    done = Some(self.finish(track_id, lengths));
                 }
             }
         }
-        None
+        done
     }
 
     fn finish(&mut self, track_id: u64, lengths: (u64, u64)) -> Window {
@@ -147,8 +161,16 @@ impl TapState {
             rate: self.rate / self.factor,
             samples: std::mem::take(&mut self.samples),
         };
+        // The second window follows the first at once: a track whose opening
+        // has no steady beat (an intro) gets its clock from the next 12 s, not
+        // half a minute later. Later windows keep the refresh gap.
+        let next = if self.first_done {
+            self.window_start + REFRESH_S * self.rate as u64
+        } else {
+            self.window_start + (window.samples.len() as u64) * self.factor as u64
+        };
         self.first_done = true;
-        self.restart(self.window_start + REFRESH_S * self.rate as u64, lengths);
+        self.restart(next, lengths);
         window
     }
 }
@@ -194,6 +216,73 @@ impl BeatTap {
 
     pub fn is_enabled(&self) -> bool {
         self.enabled.load(Ordering::Relaxed)
+    }
+
+    /// Track frames the first window of a `rate` track needs.
+    pub fn first_window_frames(&self, rate: u32) -> u64 {
+        self.first_ms.load(Ordering::Relaxed) * rate as u64 / 1000
+    }
+
+    /// Whether `track_id` still waits for its first window, so the engine
+    /// should offer the decoded audio queued ahead of playback
+    /// ([`push_ahead`](Self::push_ahead)). One atomic load while disabled.
+    pub fn wants_ahead(&self, track_id: u64, rate: u32) -> bool {
+        if !self.is_enabled() {
+            return false;
+        }
+        match self.state.try_lock() {
+            Ok(state) => !(state.track_id == Some(track_id) && state.rate == rate && state.first_done),
+            Err(_) => false,
+        }
+    }
+
+    /// Build the first window of `track_id` from decoded audio not yet played:
+    /// `buffers` are consecutive, the first starting at track frame
+    /// `start_frame`, which is also where the next [`push`](Self::push) will
+    /// start. Without it the window fills only as fast as the audio plays
+    /// (`FIRST_WINDOW_S` of silence from the cat at every track start, seek or
+    /// mount). On success the tap continues as if those frames had been pushed:
+    /// the pushes that play them are skipped, so no sample is analyzed twice.
+    /// Returns `None`, changing nothing, when the buffers fall short.
+    pub fn push_ahead<'a>(
+        &self,
+        track_id: u64,
+        start_frame: u64,
+        buffers: impl IntoIterator<Item = &'a PcmBuffer>,
+        channels: u16,
+        rate: u32,
+    ) -> Option<Window> {
+        if !self.is_enabled() || channels == 0 || rate == 0 {
+            return None;
+        }
+        let mut state = self.state.try_lock().ok()?;
+        if state.track_id == Some(track_id) && state.rate == rate && state.first_done {
+            return None;
+        }
+        let ch = channels as usize;
+        let lengths = (self.first_ms.load(Ordering::Relaxed), self.window_ms.load(Ordering::Relaxed));
+        let mut ahead = TapState::default();
+        let mut frame = start_frame;
+        for buf in buffers {
+            let window = match buf {
+                PcmBuffer::F32(samples) => ahead.feed(track_id, frame, samples, ch, rate, lengths, |s| s as f64),
+                PcmBuffer::I32(samples) => ahead.feed(track_id, frame, samples, ch, rate, lengths, |s| {
+                    s as f64 / 2_147_483_648.0
+                }),
+            };
+            if let Some(window) = window {
+                // Playback resumes at `start_frame`; those pushes run up to the
+                // next window's start without collecting anything, so the
+                // next window begins empty (not with this buffer's rest).
+                let next = ahead.collect_from;
+                ahead.restart(next, lengths);
+                ahead.next_frame = start_frame;
+                *state = ahead;
+                return Some(window);
+            }
+            frame += buf.frames(channels);
+        }
+        None
     }
 
     /// Offer one decoded buffer of `track_id` whose first frame is track
@@ -359,9 +448,9 @@ mod tests {
     }
 
     #[test]
-    fn later_windows_are_longer_and_follow_the_refresh_gap() {
+    fn the_second_window_follows_the_first_and_later_ones_the_refresh_gap() {
         let tap = enabled();
-        let silence = vec![0.0f64; RATE as usize * 2 * 45];
+        let silence = vec![0.0f64; RATE as usize * 2 * 55];
         let mut completed = Vec::new();
         for (n, chunk) in silence.chunks(CHUNK * 2).enumerate() {
             let buf = PcmBuffer::F32(chunk.iter().map(|&s| s as f32).collect());
@@ -370,16 +459,75 @@ mod tests {
                 completed.push((start + (chunk.len() / 2) as u64, w));
             }
         }
-        assert_eq!(completed.len(), 2);
+        assert_eq!(completed.len(), 3);
         let (end_first, first) = &completed[0];
         let (end_second, second) = &completed[1];
+        let (end_third, third) = &completed[2];
         assert_eq!(first.samples.len(), FIRST_WINDOW_S as usize * 11_025);
         assert_eq!(second.samples.len(), WINDOW_S as usize * 11_025);
+        assert_eq!(third.samples.len(), WINDOW_S as usize * 11_025);
+        let first_s = FIRST_WINDOW_S as f64;
         assert!((first.start_ms - 0.0).abs() < 1.0);
-        assert!((second.start_ms - REFRESH_S as f64 * 1000.0).abs() < 1.0, "second starts at {}", second.start_ms);
+        assert!((second.start_ms - first_s * 1000.0).abs() < 1.0, "second starts at {}", second.start_ms);
+        let third_s = first_s + REFRESH_S as f64;
+        assert!((third.start_ms - third_s * 1000.0).abs() < 1.0, "third starts at {}", third.start_ms);
         let secs = |frame: &u64| *frame as f64 / RATE as f64;
-        assert!((secs(end_first) - FIRST_WINDOW_S as f64).abs() < 0.1);
-        assert!((secs(end_second) - (REFRESH_S + WINDOW_S) as f64).abs() < 0.1);
+        assert!((secs(end_first) - first_s).abs() < 0.1);
+        assert!((secs(end_second) - (first_s + WINDOW_S as f64)).abs() < 0.1);
+        assert!((secs(end_third) - (third_s + WINDOW_S as f64)).abs() < 0.1);
+    }
+
+    fn buffers(audio: &[f64]) -> Vec<PcmBuffer> {
+        audio.chunks(CHUNK * 2).map(|c| PcmBuffer::F32(c.iter().map(|&s| s as f32).collect())).collect()
+    }
+
+    #[test]
+    fn audio_queued_ahead_makes_the_first_window_without_waiting_for_playback() {
+        let (bpm, offset) = (128.0, 0.12);
+        let audio = drums(bpm, FIRST_WINDOW_S as f64 + 0.5, offset, 11);
+        let played = feed(&enabled(), 6, 0, &audio).pop().expect("window from playback");
+
+        let tap = enabled();
+        assert!(tap.wants_ahead(6, RATE));
+        let bufs = buffers(&audio);
+        let ahead = tap.push_ahead(6, 0, &bufs, 2, RATE).expect("window from the queued audio");
+        assert_eq!(ahead, played, "the same window as playback would have made");
+        assert!(!tap.wants_ahead(6, RATE), "the first window is done");
+        // Playing those frames analyzes nothing again.
+        assert!(feed(&tap, 6, 0, &audio).is_empty());
+    }
+
+    #[test]
+    fn after_a_window_from_ahead_the_next_starts_where_it_ended() {
+        let tap = enabled();
+        let silence = vec![0.0f64; RATE as usize * 2 * 22];
+        let first = tap.push_ahead(3, 0, &buffers(&silence[..RATE as usize * 2 * 9]), 2, RATE).expect("first");
+        assert_eq!(first.start_ms, 0.0);
+        let windows = feed(&tap, 3, 0, &silence);
+        assert_eq!(windows.len(), 1);
+        assert!((windows[0].start_ms - FIRST_WINDOW_S as f64 * 1000.0).abs() < 1.0, "starts at {}", windows[0].start_ms);
+    }
+
+    #[test]
+    fn too_little_audio_ahead_changes_nothing() {
+        let tap = enabled();
+        let audio = drums(120.0, 6.0, 0.0, 12);
+        // Playback has collected 6 s of the first window.
+        assert!(feed(&tap, 8, 0, &audio).is_empty());
+        let short = drums(120.0, 1.0, 0.0, 13);
+        assert!(tap.push_ahead(8, 6 * RATE as u64, &buffers(&short), 2, RATE).is_none());
+        assert!(tap.wants_ahead(8, RATE));
+        // The partial window is intact: 2.5 s more completes it.
+        let window = feed(&tap, 8, 6 * RATE as u64, &drums(120.0, 2.5, 0.0, 14)).pop().expect("window");
+        assert_eq!(window.start_ms, 0.0);
+    }
+
+    #[test]
+    fn a_disabled_tap_wants_nothing_ahead() {
+        let tap = BeatTap::new();
+        assert!(!tap.wants_ahead(1, RATE));
+        let bufs = buffers(&drums(120.0, 9.0, 0.0, 1));
+        assert!(tap.push_ahead(1, 0, &bufs, 2, RATE).is_none());
     }
 
     #[test]
