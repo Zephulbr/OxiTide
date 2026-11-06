@@ -417,10 +417,18 @@ mod tests {
                 ..DevicePrefs::default()
             },
         );
-        let devices = vec![
+        // In the group a plain id has on this platform (ALSA on Linux), as
+        // the drift match only looks within the saved id's group.
+        let devices: Vec<OutputDevice> = vec![
             wasapi("new", "DX5", "DX5 (TOPPING USB DAC)", Transport::Usb),
             wasapi("other", "DX5", "DX5 (TOPPING USB DAC)", Transport::Hdmi),
-        ];
+        ]
+        .into_iter()
+        .map(|mut d| {
+            d.group = group_of(&d.id);
+            d
+        })
+        .collect();
         let list = device_list_dto(devices, &audio, |_| None);
         assert_eq!(list.moved, vec![("old".to_string(), "new".to_string())]);
         assert!(list.devices.iter().all(|d| d.connected), "the moved id is not listed as missing");
