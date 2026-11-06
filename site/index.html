@@ -45,7 +45,8 @@
   <symbol id="i-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/></symbol>
   <symbol id="i-heart-on" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/></symbol>
   <symbol id="i-vol" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"/><path d="M16 9a5 5 0 0 1 0 6"/><path d="M19.364 18.364a9 9 0 0 0 0-12.728"/></symbol>
-  <symbol id="i-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v13"/><path d="m16 6-4-4-4 4"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/></symbol>
+  <symbol id="i-up"viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></symbol>
   <symbol id="i-github" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></symbol>
   <symbol id="i-fork" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"/><path d="M12 12v3"/></symbol>
   <symbol id="i-tag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></symbol>
@@ -78,10 +79,15 @@
         <h1 id="top-h">OxiTide</h1>
         <ul class="hc-badges" aria-label="What it does"><li class="max">Bit-perfect</li><li>Fast</li><li>Three looks</li><li>Phone remote</li><li>No telemetry</li></ul>
       </div>
+      <!-- On a phone or tablet (touch-only), the first row sends the page to
+           your computer with the phone's own share sheet (main.js); the
+           installers stay below it as plain rows. -->
       <ol class="dl-rows">
-        <li><a class="dl-row main" href="https://github.com/Zephulbr/OxiTide/releases/latest"><span class="n"><span>01</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><g class="ar"><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></g></svg></span><span class="tt"><b>OxiTide for Windows</b><small>Windows 10 and 11 · 64-bit installer</small></span><i class="lead"></i><span class="len">v0.5.0</span></a></li>
+        <li class="touch-only"><button type="button" class="dl-row main" data-share><span class="n" aria-hidden="true"><svg><use href="#i-share"/></svg></span><span class="tt"><b>Send to your computer</b><small>For Windows and Linux</small></span><i class="lead"></i><span class="len">v0.5.0</span></button></li>
+        <li><a class="dl-row main win" href="https://github.com/Zephulbr/OxiTide/releases/latest"><span class="n"><span>01</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><g class="ar"><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></g></svg></span><span class="tt"><b>OxiTide for Windows</b><small>Windows 10 and 11 · 64-bit installer</small></span><i class="lead"></i><span class="len">v0.5.0</span></a></li>
         <li><a class="dl-row" href="https://github.com/Zephulbr/OxiTide/releases/latest"><span class="n"><span>02</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><g class="ar"><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></g></svg></span><span class="tt"><b>OxiTide for Linux</b><small>AppImage and .deb · experimental</small></span><i class="lead"></i><span class="len">v0.5.0</span></a></li>
       </ol>
+      <p class="needs share-mail touch-only"><a href="mailto:?subject=OxiTide%2C%20for%20my%20computer&amp;body=OxiTide%2C%20an%20unofficial%20TIDAL%20desktop%20client%20for%20Windows%20and%20Linux%3A%20https%3A%2F%2Fzephulbr.github.io%2FOxiTide%2F">Or email yourself the link</a></p>
       <p class="needs">Needs a paid TIDAL plan.</p>
     </div>
     <!-- The record scene is the logo's own: it keeps the logo's colours
@@ -298,7 +304,7 @@
     <!-- The hero's main download row, so it reads as the same tracklist. The
          play mark turns into an up arrow on hover: it goes back up there. -->
     <div class="dl-rows again-rows">
-      <a class="dl-row main again-row" href="#top" data-to-downloads><span class="n" aria-hidden="true"><svg class="pl"><use href="#i-play"/></svg><svg class="up"><use href="#i-up"/></svg></span><span class="tt"><b>Download OxiTide</b><small>Windows and Linux · back up to the downloads</small></span><i class="lead"></i><span class="len">v0.5.0</span></a>
+      <a class="dl-row main again-row" href="#top" data-to-downloads><span class="n" aria-hidden="true"><svg class="pl desk-only"><use href="#i-play"/></svg><svg class="up desk-only"><use href="#i-up"/></svg><svg class="sh touch-only"><use href="#i-share"/></svg></span><span class="tt"><b><span class="desk-only">Download OxiTide</span><span class="touch-only">Send to your computer</span></b><small><span class="desk-only">Windows and Linux · back up to the downloads</span><span class="touch-only">For Windows and Linux</span></small></span><i class="lead"></i><span class="len">v0.5.0</span></a>
     </div>
   </div>
 </section>
@@ -331,6 +337,7 @@
 </footer>
 
 <nav class="dock" aria-label="Player and sections" data-follow data-room="oxi">
+  <div class="toast" data-toast role="status"></div>
   <div class="announce" data-announce aria-hidden="true"><span class="cover"></span><span><small></small><b></b><em></em></span></div>
   <div class="queue" data-queue role="dialog" aria-label="Sections"><small>Playing from OxiTide</small><ol data-qlist></ol></div>
   <div class="prog-tip" data-prog-tip aria-hidden="true"><b><span class="cover"></span><em></em></b></div>
@@ -349,7 +356,7 @@
       <span class="mini c-only" aria-hidden="true"><i></i><time>1:36</time></span>
       <div class="side r f-only">
         <button class="ib" type="button" data-qbtn aria-expanded="false" aria-label="Sections"><svg><use href="#i-queue"/></svg></button>
-        <a class="dl-s" href="#top" data-to-downloads aria-label="Download"><svg><use href="#i-dl"/></svg><span>Download</span></a>
+        <a class="dl-s" href="#top" data-to-downloads aria-label="Download"><svg class="desk-only"><use href="#i-dl"/></svg><svg class="touch-only"><use href="#i-share"/></svg><span><span class="desk-only">Download</span><span class="touch-only">Send to computer</span></span></a>
       </div>
     </div>
   </div>

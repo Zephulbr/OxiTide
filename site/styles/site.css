@@ -858,7 +858,10 @@ code { font: 500 .88em ui-monospace, Consolas, monospace; background: color-mix(
 @media (max-width: 640px) {
   .stage { padding: 80px 0 40px; }
   #looks > .stage { padding-top: 24px; }
-  #extras .stage { padding-top: 72px; }
+  /* Crossfade, the remote and the small things are all mockups, which run
+     together at 80: they get a little more room between them. */
+  #remote .stage { padding-top: 120px; }
+  #extras .stage { padding-top: 112px; }
   .duo { margin-top: 0; }
   .again { padding: 80px 0 24px; }
   /* The looks' frame pins at its own height, centred in the space above the
@@ -883,6 +886,29 @@ code { font: 500 .88em ui-monospace, Consolas, monospace; background: color-mix(
   }
 }
 @keyframes pull-up { from { transform: translateY(-64px); } to { transform: none; } }
+
+/* Send to your computer (2026-11-06): a phone or tablet can't run the app,
+   so there the downloads lead with a row that shares the page to a
+   computer (main.js: the share sheet, else copy the link). Its parts are
+   .touch-only, the ones they replace .desk-only. */
+@media not ((hover: none) and (pointer: coarse)) { .touch-only { display: none !important; } }
+@media (hover: none) and (pointer: coarse) {
+  .desk-only { display: none !important; }
+  /* The Windows installer steps back to a plain row under the share row. */
+  .hero .dl-row.main.win { background: none; border-color: transparent; }
+  .hero .dl-row.main.win .n { background: none; color: var(--ink-3); }
+  .hero .dl-row.main.win .n span { display: inline; }
+  .hero .dl-row.main.win .n svg { opacity: 0; }
+}
+button.dl-row { width: 100%; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.needs.share-mail { margin-top: 12px; }
+.share-mail a { color: var(--ink-2); text-underline-offset: 3px; text-decoration-color: color-mix(in oklab, var(--ink) 30%, transparent); }
+/* "Link copied", over the bar, where the section notices show. */
+.toast { position: absolute; left: 50%; bottom: calc(100% + 12px); padding: 12px 18px; border-radius: 14px; white-space: nowrap; font: 700 14px var(--disp);
+  background: color-mix(in oklab, var(--room) 94%, transparent); border: 1px solid var(--line); box-shadow: 0 20px 50px rgba(0,0,0,.35);
+  opacity: 0; transform: translate(-50%, 12px); pointer-events: none; transition: opacity .35s, transform .45s cubic-bezier(.2,.8,.2,1); }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.toast:empty { visibility: hidden; }
 
 @media (max-width: 980px) {
   .link { display: none; }

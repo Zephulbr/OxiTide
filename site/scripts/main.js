@@ -251,8 +251,35 @@ else new IntersectionObserver(([e]) => { if (e.isIntersecting) sprite.unpauseAni
 // Back to the downloads (the install button and the bar's Download): scroll
 // up to the hero's rows and light them once.
 const rows = $(".hero .dl-rows");
+// Send to your computer: on a phone or tablet (where the app can't run) the
+// share row, the install button and the bar's button send this page on with
+// the phone's own share sheet; without one, they copy the link. The page,
+// not an installer: on the computer it opens on the downloads.
+const touch = matchMedia("(hover: none) and (pointer: coarse)");
+const pageUrl = $('link[rel="canonical"]').href;
+const toast = $("[data-toast]");
+let toastTimer = 0;
+const say = (msg) => {
+  // It shows where the section notices do, so one gives way.
+  clearTimeout(announceWait);
+  $("[data-announce]").classList.remove("show");
+  toast.textContent = msg;
+  toast.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove("show"), 2600);
+};
+async function sendToComputer() {
+  const data = { title: "OxiTide", text: "OxiTide, an unofficial TIDAL desktop client for Windows and Linux. Open this on your computer to download it.", url: pageUrl };
+  if (navigator.share && (!navigator.canShare || navigator.canShare(data))) {
+    try { await navigator.share(data); return; } catch (err) { if (err.name === "AbortError") return; }
+  }
+  try { await navigator.clipboard.writeText(pageUrl); say("Link copied. Open it on your computer."); }
+  catch { say("Open " + pageUrl.replace(/^https:\/\//, "") + " on your computer"); }
+}
+$("[data-share]").addEventListener("click", sendToComputer);
 document.querySelectorAll("[data-to-downloads]").forEach((a) => a.addEventListener("click", (e) => {
   e.preventDefault();
+  if (touch.matches) { sendToComputer(); return; }
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
   rows.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
   rows.classList.remove("flash");
