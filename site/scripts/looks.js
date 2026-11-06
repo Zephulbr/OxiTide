@@ -199,9 +199,16 @@ for (const frame of document.querySelectorAll("[data-lk]")) {
   let raf = 0, near = true;
   new IntersectionObserver(([e]) => { near = e.isIntersecting; if (near) update(); }, { rootMargin: "300px 0px" }).observe(scroller);
   addEventListener("scroll", () => { if (near && !raf) raf = requestAnimationFrame(() => { raf = 0; update(); }); }, { passive: true });
-  // Layout changes (a resize, the fonts arriving) move the slots: re-measure.
+  // Layout changes (the frame resizing, the fonts arriving) move the slots:
+  // re-measure. Watched on the frame, not the window: a phone's toolbar
+  // showing or hiding fires a window resize mid-scroll, and rebuilding the
+  // parts there (a style read per element) stalled the scroll.
   const remeasure = () => { parts = []; partsLayer.innerHTML = ""; if (near) update(); };
-  addEventListener("resize", remeasure);
+  let size = "";
+  new ResizeObserver(([e]) => {
+    const s = `${Math.round(e.contentRect.width)}x${Math.round(e.contentRect.height)}`;
+    if (s !== size) { const first = !size; size = s; if (!first) remeasure(); }
+  }).observe(frame);
   document.fonts.ready.then(remeasure);
   update();
   caps.forEach((c) => c.addEventListener("click", () => {
