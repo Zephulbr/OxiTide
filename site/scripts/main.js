@@ -228,6 +228,10 @@ addEventListener("scroll", schedule, { passive: true });
 addEventListener("resize", () => { geo = null; sizeSegs(); tick(); });
 // The page can change height without a resize (fonts, the looks' frames).
 new ResizeObserver(() => { geo = null; schedule(); }).observe(document.body);
+// On a phone the looks' frame pins at its own height, centred above the bar
+// (site.css), so CSS needs that height. Set on the frame's box, not :root.
+const lkStick = lk.querySelector(".lk-stick");
+new ResizeObserver(([e]) => { lkStick.style.setProperty("--lk-h", Math.round(e.borderBoxSize[0].blockSize) + "px"); }).observe(lkStick);
 sizeSegs();
 setTimeout(tick, 60);
 

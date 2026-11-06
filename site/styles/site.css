@@ -853,6 +853,37 @@ code { font: 500 .88em ui-monospace, Consolas, monospace; background: color-mix(
   .duo-steps button { padding: 8px 11px; font-size: 12.5px; }
 }
 
+/* Phones (2026-11-06): less air between the sections. The desktop's
+   spacing left half a screen of empty background between them on a phone. */
+@media (max-width: 640px) {
+  .stage { padding: 80px 0 40px; }
+  #looks > .stage { padding-top: 24px; }
+  #extras .stage { padding-top: 72px; }
+  .duo { margin-top: 0; }
+  .again { padding: 80px 0 24px; }
+  /* The looks' frame pins at its own height, centred in the space above the
+     bar (main.js gives it --lk-h), rather than in a full-screen box. The
+     sections before and after it then sit right up to it. The scroll
+     through it is a little shorter to match. */
+  .lk-scroll { height: 300vh; }
+  .lk-stick { height: auto; padding: 0; top: max(12px, (100svh - 96px - var(--lk-h, 100svh)) / 2); }
+  /* As each section comes up the screen, it starts pulled up toward the one
+     before it and settles into its place as it rises: it moves a little
+     slower than the scroll, so the gap closes while both are on screen. A
+     scroll-driven animation runs this on the compositor, with transform only.
+     Looks uses a timeline on its scroller, since its frame is sticky. */
+  @supports (animation-timeline: view()) {
+    @media (prefers-reduced-motion: no-preference) {
+      :is(#sound, #remote, #extras, #install) > .stage, .foot .wrap {
+        animation: pull-up linear both; animation-timeline: view(); animation-range: cover 0px cover 60svh;
+      }
+      .lk-scroll { view-timeline: --lk block; }
+      .lk-stick { animation: pull-up linear both; animation-timeline: --lk; animation-range: cover 0px cover 60svh; }
+    }
+  }
+}
+@keyframes pull-up { from { transform: translateY(-64px); } to { transform: none; } }
+
 @media (max-width: 980px) {
   .link { display: none; }
   .dock .mc, .dock .meta small { display: none; }
