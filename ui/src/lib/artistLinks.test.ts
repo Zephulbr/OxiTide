@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { isHttpUrl, linkBrand, linkLabel } from "./artistLinks";
+import { isHttpUrl, isTidalLink, linkBrand, linkLabel } from "./artistLinks";
+
+describe("isTidalLink", () => {
+  it("spots TIDAL's link from a profile to itself", () => {
+    expect(isTidalLink("https://tidal.com/browse/artist/58912082")).toBe(true);
+    expect(isTidalLink("https://listen.tidal.com/artist/1")).toBe(true);
+    expect(isTidalLink("https://nottidal.com/x")).toBe(false);
+    expect(isTidalLink("not a url")).toBe(false);
+  });
+});
 
 describe("linkLabel", () => {
   it("maps known site keys", () => {

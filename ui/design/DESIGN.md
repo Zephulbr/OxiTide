@@ -339,6 +339,37 @@ tile padding and caption type) and draw each artist as a round portrait; in Rack
 (`appearance.vinylRecords`) it is a **record** (portrait as the label on a vinyl disc;
 `--vinyl*` material tokens, black in every theme). Hover only zooms the image inside its circle
 and underlines the name like a `NameLink` (no card wash or lift). In name order, letter groups are crate dividers.
+The account's **own profile** leads the page: the same record, captioned with the name over
+a muted 12px "Your profile" line. It is first in the grid in date order and on its own row
+above the dividers in name order. It opens the artist that is the profile's page. TIDAL
+keeps no separate user page, so an account without one gets a static card that does not
+react to hover. That artist page's hero kicker reads "Your profile". An "Edit profile"
+action (pencil) takes the place of the Favorite heart and opens the **profile editor**
+(`ProfileEditor.svelte`), a `Modal` 460px wide:
+- An 88px round picture preview with Change picture and Remove (JPEG or PNG, cropped
+  to a square on save).
+- Name.
+- Username (TIDAL's `handle`), with a muted "@" prefix and TIDAL's rule under it, "Use
+  only the letters a-z, numbers 0-9 and underscores." The rule turns `--danger`, with
+  the field's border, while the name breaks it.
+- Saving a username change first asks "Save username?" in the same dialog: "Your
+  username will be @…", then TIDAL's note about updating links elsewhere, with
+  Cancel/Save.
+- TIDAL's own link to the profile (`tidal.com/browse/artist/{id}`) is not shown.
+  TIDAL re-adds it to every profile, and the hero's Links list leaves it out too.
+- A new picture shows at once from the upload's file URL
+  (`profilePicture.svelte.ts`), until TIDAL's artist record stops showing the picture
+  it replaced.
+- Bio (a 4-row textarea). It is read-only, with a link to TIDAL's editor, until the
+  profile has a bio.
+- Links: one input per row with an x to remove it, then a quiet "Add link".
+
+Problems with the form show as one `--danger` line above Cancel and Save, and so do
+TIDAL's own rejections, such as a taken handle. With nothing to list, the page's empty
+state says "Your profile is empty".
+
+Any artist owned by a TIDAL user (`user_id`), the own profile included, shows a **Public
+playlists** carousel of playlist cards between Appears on and Similar artists.
 
 **Page-link tiles** (`PageLinkGrid.svelte`: Explore's genres, moods and decades, and the
 same rows on linked pages). TIDAL sends these without artwork, so they are not cards: a

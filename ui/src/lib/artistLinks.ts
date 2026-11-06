@@ -87,6 +87,17 @@ export function linkBrand(site: string, url: string): Brand | null {
   return null;
 }
 
+/// TIDAL's link from a profile to itself (`tidal.com/browse/artist/{id}`):
+/// TIDAL adds it to every profile, so the Links list leaves it out.
+export function isTidalLink(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host === "tidal.com" || host.endsWith(".tidal.com");
+  } catch {
+    return false;
+  }
+}
+
 export function isHttpUrl(url: string): boolean {
   try {
     const parsed = new URL(url);

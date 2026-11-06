@@ -23,6 +23,7 @@ vi.mock("../lib/api", async (importOriginal) => {
     getFavoriteArtists: [{ id: 3, name: "Artist One", picture: null }],
     getFavoriteMixes: [{ id: "m1", title: "Mix One", subTitle: null, image: null }],
     getForYou: [],
+    getMyProfile: null,
     getCollectionItems: [
       { kind: "playlist", uuid: "p1", title: "Playlist One", owned: true, squareImage: null, numberOfTracks: 1 },
     ],
@@ -32,7 +33,7 @@ vi.mock("../lib/api", async (importOriginal) => {
     {
       get: (_t, name: string) => async () => {
         calls.count += 1;
-        return data[name] ?? [];
+        return name in data ? data[name] : [];
       },
     },
   );

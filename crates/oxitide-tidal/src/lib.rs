@@ -13,6 +13,7 @@ pub mod models;
 pub mod pages;
 pub mod pkce;
 pub mod playlists;
+pub mod profiles;
 pub mod purchases;
 pub mod search;
 pub mod shares;

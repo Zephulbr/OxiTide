@@ -54,6 +54,9 @@ export interface Artist {
   /// Album cover shown when the artist has no picture (album sizes only).
   cover_fallback?: string | null;
   mixes?: ArtistMixes | null;
+  /// The TIDAL user who owns this artist (a user's profile is an artist);
+  /// their public playlists are the profile's.
+  user_id?: number | null;
 }
 export interface ArtistMixes {
   ARTIST_MIX?: string | null;
@@ -66,6 +69,36 @@ export interface ArtistProfile {
   externalLinks: ArtistLink[];
   bio?: string | null;
   bioSegments?: BioSegment[] | null;
+}
+/// The signed-in account's TIDAL profile (`profiles::UserProfile`). A profile
+/// is an artist: `artistId` is its page, absent when TIDAL has none.
+export interface UserProfile {
+  userId: number;
+  name?: string | null;
+  handle?: string | null;
+  picture?: string | null;
+  artistId?: number | null;
+  numberOfFollowers?: number | null;
+  numberOfFollows?: number | null;
+}
+/// One profile link (`profiles::ProfileLink`); `kind` is TIDAL's link type.
+export interface ProfileLink { href: string; kind: string }
+/// The profile editor's fields (`profiles::EditableProfile`).
+export interface EditableProfile {
+  artistId: number;
+  name: string;
+  handle?: string | null;
+  bio?: string | null;
+  /// Null when the profile has no biography yet: the bio is then read-only.
+  bioId?: string | null;
+  links: ProfileLink[];
+  hasPicture: boolean;
+}
+/// A save's changes (`profiles::ProfileEdit`); an absent field is unchanged.
+export interface ProfileEdit {
+  name?: string;
+  handle?: string;
+  links?: ProfileLink[];
 }
 export type ArtistDiscography = "albums" | "eps_and_singles" | "compilations";
 export interface Playlist {
@@ -789,6 +822,15 @@ export const api = {
   getFavoriteTracks: () => invoke<Track[]>("get_favorite_tracks"),
   getFavoriteAlbums: () => invoke<Album[]>("get_favorite_albums"),
   getFavoriteArtists: () => invoke<Artist[]>("get_favorite_artists"),
+  getMyProfile: () => invoke<UserProfile | null>("get_my_profile"),
+  getUserPublicPlaylists: (userId: number) => invoke<Playlist[]>("get_user_public_playlists", { userId }),
+  getEditableProfile: () => invoke<EditableProfile>("get_editable_profile"),
+  updateMyProfile: (edit: ProfileEdit, bio: string | null) =>
+    invoke<EditableProfile>("update_my_profile", { edit, bio }),
+  /// Answers the new picture's URL when TIDAL lists one.
+  uploadMyProfilePicture: (imageBase64: string) =>
+    invoke<string | null>("upload_my_profile_picture", { imageBase64 }),
+  removeMyProfilePicture: () => invoke<void>("remove_my_profile_picture"),
   getUserPlaylists: () => invoke<Playlist[]>("get_user_playlists"),
   createPlaylist: (name: string, description: string) =>
     invoke<Playlist>("create_playlist", { name, description }),

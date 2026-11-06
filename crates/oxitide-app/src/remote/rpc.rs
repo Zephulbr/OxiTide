@@ -511,6 +511,14 @@ mod tests {
         "get_feed",
         "get_page",
         "get_artist_profile",
+        // The own profile and its editor are desktop only; the phone's artist
+        // page has no public-playlists shelf.
+        "get_my_profile",
+        "get_user_public_playlists",
+        "get_editable_profile",
+        "update_my_profile",
+        "upload_my_profile_picture",
+        "remove_my_profile_picture",
         "get_artist_top_tracks",
         "get_artist_albums",
         // Desktop Explore's per-type paging; the phone's search uses `search`.

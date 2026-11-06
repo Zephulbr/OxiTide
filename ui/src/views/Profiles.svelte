@@ -2,8 +2,10 @@
   import { untrack } from "svelte";
   import type { Artist } from "../lib/api";
   import { load as loadCached, peek } from "../lib/viewCache";
-  import { favoriteArtistsSource } from "../lib/viewData";
+  import { favoriteArtistsSource, myProfileSource } from "../lib/viewData";
   import { groupArtists, visibleArtists, type ArtistSort } from "../lib/artistSort";
+  import { ownCard, type OwnCard, type OwnProfile } from "../lib/ownProfile";
+  import { profilePicture } from "../lib/profilePicture.svelte";
   import Cover from "../lib/components/Cover.svelte";
   import EmptyState from "../lib/components/EmptyState.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
@@ -25,7 +27,28 @@
   let query = $state("");
   let sortMode = $state<ArtistSort>("date");
 
-  const shown = $derived(visibleArtists(artists, query, sortMode));
+  // The account's own profile leads the page: it is never a favorite (TIDAL
+  // has no following yourself), so the favorites list alone never shows it.
+  // Optional: the page shows the favorites while it loads or if it fails.
+  const meSource = myProfileSource();
+  let me = $state<OwnProfile | null>(peek(meSource) ?? null);
+  // A picture just changed in the editor shows before TIDAL's record follows.
+  const mine = $derived(
+    ownCard(
+      me?.artist
+        ? { ...me, artist: { ...me.artist, picture: profilePicture.for(me.artist.id, me.artist.picture) } }
+        : me,
+    ),
+  );
+  const others = $derived.by(() => {
+    const ownId = mine?.artistId ?? null;
+    return ownId === null ? artists : artists.filter((artist) => artist.id !== ownId);
+  });
+  const mineShown = $derived(
+    mine && mine.name.toLowerCase().includes(query.trim().toLowerCase()) ? mine : null,
+  );
+
+  const shown = $derived(visibleArtists(others, query, sortMode));
   const groups = $derived(sortMode === "date" ? null : groupArtists(shown));
 
   async function load() {
@@ -40,14 +63,31 @@
     }
   }
 
+  async function loadMe() {
+    try {
+      await loadCached(meSource, (value) => (me = value));
+    } catch {
+      // No own card; the favorites still show.
+    }
+  }
+
   $effect(() => {
-    untrack(() => void load());
+    untrack(() => {
+      void load();
+      void loadMe();
+    });
   });
 </script>
 
 <!-- Each artist is a round portrait; in the Hi-Fi Rack it is a record, the
      portrait being the label on a vinyl disc. In name order the letters are
      crate dividers. -->
+{#snippet face(picture: string | null | undefined)}
+  <span class="record" aria-hidden="true">
+    <span class="label"><Cover uuid={picture} size={320} radius={160} alt="" /></span>
+  </span>
+{/snippet}
+
 {#snippet records(list: Artist[])}
   {#each list as artist (artist.id)}
     <button
@@ -55,12 +95,37 @@
       class:vinyl={appearance.vinylRecords}
       onclick={() => nav.goto({ name: "artist", id: artist.id })}
     >
-      <span class="record" aria-hidden="true">
-        <span class="label"><Cover uuid={artist.picture ?? artist.cover_fallback} size={320} radius={160} alt="" /></span>
-      </span>
+      {@render face(artist.picture ?? artist.cover_fallback)}
       <span class="title">{artist.name}</span>
     </button>
   {/each}
+{/snippet}
+
+<!-- The own profile: the first record, captioned "Your profile". Without an
+     artist TIDAL has no page for it, so the card is not a button. -->
+{#snippet own(card: OwnCard)}
+  {#if card.artistId != null}
+    {@const artistId = card.artistId}
+    <button
+      class="card own"
+      class:vinyl={appearance.vinylRecords}
+      onclick={() => nav.goto({ name: "artist", id: artistId })}
+    >
+      {@render face(card.picture)}
+      <span class="caption">
+        <span class="title">{card.name}</span>
+        <span class="you">Your profile</span>
+      </span>
+    </button>
+  {:else}
+    <div class="card own static" class:vinyl={appearance.vinylRecords}>
+      {@render face(card.picture)}
+      <span class="caption">
+        <span class="title">{card.name}</span>
+        <span class="you">Your profile</span>
+      </span>
+    </div>
+  {/if}
 {/snippet}
 
 <div class="profiles">
@@ -73,7 +138,7 @@
         class="summary tnum"
         class:arrive={arrive && !loading}
         style:visibility={loading || error ? "hidden" : undefined}
-      >{artists.length} {artists.length === 1 ? "artist" : "artists"}</span>
+      >{others.length} {others.length === 1 ? "artist" : "artists"}</span>
     </div>
     <input
       class="search-input filter"
@@ -98,11 +163,14 @@
     <Loading />
   {:else if error}
     <ErrorState message={error} onRetry={load} />
-  {:else if artists.length === 0}
+  {:else if others.length === 0 && !mine}
     <EmptyState message="No artists yet." />
-  {:else if shown.length === 0}
+  {:else if shown.length === 0 && !mineShown}
     <p class="muted empty">No artists match “{query.trim()}”.</p>
   {:else if groups}
+    {#if mineShown}
+      <div class="grid pane own-row" class:arrive>{@render own(mineShown)}</div>
+    {/if}
     {#each groups as group (group.letter)}
       <h3 class="divider" class:arrive>
         <span class="tab">{group.letter}</span>
@@ -111,7 +179,10 @@
       <div class="grid pane" class:arrive>{@render records(group.artists)}</div>
     {/each}
   {:else}
-    <div class="grid pane" class:arrive>{@render records(shown)}</div>
+    <div class="grid pane" class:arrive>
+      {#if mineShown}{@render own(mineShown)}{/if}
+      {@render records(shown)}
+    </div>
   {/if}
 </div>
 
@@ -318,5 +389,36 @@
   }
   .card:hover .title {
     text-decoration: underline;
+  }
+  /* The own card: the name over a quiet "Your profile" line. It has no page
+     without an artist, so it does not react to hover then. */
+  .caption {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    max-width: 100%;
+    min-width: 0;
+  }
+  .you {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+  }
+  .static {
+    cursor: default;
+  }
+  .static:hover .title {
+    text-decoration: none;
+  }
+  .static:hover .label :global(img) {
+    transform: none;
+  }
+  .vinyl.static:hover .record::before {
+    transform: none;
+  }
+  /* Name order: the own card on its own row above the crate dividers. */
+  .own-row + .divider {
+    margin-top: 28px;
   }
 </style>

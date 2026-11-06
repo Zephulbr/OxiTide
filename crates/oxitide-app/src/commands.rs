@@ -614,6 +614,7 @@ use oxitide_tidal::models::{
     TrackCredits,
 };
 use oxitide_tidal::pages::{MixDetail, PageItem, PageSection};
+use oxitide_tidal::profiles::{EditableProfile, ProfileEdit, UserProfile};
 
 #[tauri::command]
 pub async fn get_home(state: State<'_, AppState>) -> Result<Vec<PageSection>, String> {
@@ -1097,6 +1098,132 @@ pub async fn get_favorite_artists(state: State<'_, AppState>) -> Result<Vec<Arti
         .all_favorite_artists()
         .await
         .map_err(|e| state.fail_tidal(e))
+}
+
+/// The signed-in account's TIDAL profile; `None` when TIDAL has none.
+#[tauri::command]
+pub async fn get_my_profile(state: State<'_, AppState>) -> Result<Option<UserProfile>, String> {
+    require_client(&state)?
+        .my_profile()
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
+/// A user's public playlists (the "Public playlists" shelf of a profile).
+#[tauri::command]
+pub async fn get_user_public_playlists(
+    state: State<'_, AppState>,
+    user_id: u64,
+) -> Result<Vec<Playlist>, String> {
+    require_client(&state)?
+        .user_public_playlists(user_id)
+        .await
+        .map_err(|e| state.fail_tidal(e))
+}
+
+/// A rejected profile edit reads as TIDAL worded it ("handle already
+/// taken"); anything else as usual.
+fn profile_error(state: &State<'_, AppState>, error: Error) -> String {
+    match oxitide_tidal::profiles::api_error_detail(&error) {
+        Some(detail) => detail,
+        None => state.fail_tidal(error),
+    }
+}
+
+/// The signed-in account's own artist: every profile edit targets it, never
+/// an id the page passes.
+async fn own_artist_id(state: &State<'_, AppState>, client: &TidalClient) -> Result<u64, String> {
+    client
+        .my_profile()
+        .await
+        .map_err(|e| state.fail_tidal(e))?
+        .and_then(|profile| profile.artist_id)
+        .ok_or_else(|| "TIDAL has no editable profile for this account".to_string())
+}
+
+#[tauri::command]
+pub async fn get_editable_profile(state: State<'_, AppState>) -> Result<EditableProfile, String> {
+    let client = require_client(&state)?;
+    let artist_id = own_artist_id(&state, &client).await?;
+    client
+        .editable_profile(artist_id)
+        .await
+        .map_err(|e| profile_error(&state, e))
+}
+
+/// Save the profile editor: the name/handle/link change is validated with a
+/// dry run first (nothing is written if TIDAL rejects it), then written; the
+/// bio is written last. Answers the profile as TIDAL now has it.
+#[tauri::command]
+pub async fn update_my_profile(
+    state: State<'_, AppState>,
+    edit: ProfileEdit,
+    bio: Option<String>,
+) -> Result<EditableProfile, String> {
+    let client = require_client(&state)?;
+    let artist_id = own_artist_id(&state, &client).await?;
+    client
+        .update_profile(artist_id, &edit, true)
+        .await
+        .map_err(|e| profile_error(&state, e))?;
+    client
+        .update_profile(artist_id, &edit, false)
+        .await
+        .map_err(|e| profile_error(&state, e))?;
+    if let Some(text) = bio {
+        let current = client
+            .editable_profile(artist_id)
+            .await
+            .map_err(|e| profile_error(&state, e))?;
+        let bio_id = current
+            .bio_id
+            .ok_or_else(|| "This profile has no bio to edit yet; add one on TIDAL first".to_string())?;
+        client
+            .update_profile_bio(&bio_id, &text)
+            .await
+            .map_err(|e| profile_error(&state, e))?;
+    }
+    client
+        .editable_profile(artist_id)
+        .await
+        .map_err(|e| profile_error(&state, e))
+}
+
+/// Upload a new profile picture: `image_base64` is the chosen file (JPEG or
+/// PNG); it is cropped to a square JPEG here, then uploaded. Answers the new
+/// picture's URL when TIDAL lists one (the app shows it until TIDAL's artist
+/// record catches up).
+#[tauri::command]
+pub async fn upload_my_profile_picture(
+    state: State<'_, AppState>,
+    image_base64: String,
+) -> Result<Option<String>, String> {
+    use base64::Engine as _;
+    let client = require_client(&state)?;
+    let artist_id = own_artist_id(&state, &client).await?;
+    if image_base64.len() > crate::profile_picture::MAX_INPUT_BYTES / 3 * 4 + 4 {
+        return Err("That picture is too large (20 MB at most).".into());
+    }
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(image_base64.trim())
+        .map_err(|_| "could not read the picture".to_string())?;
+    let prepared = tauri::async_runtime::spawn_blocking(move || crate::profile_picture::prepare(&bytes))
+        .await
+        .map_err(|e| e.to_string())??;
+    client
+        .upload_profile_picture(artist_id, prepared.jpeg, &prepared.md5_hex, &prepared.md5_base64)
+        .await
+        .map_err(|e| profile_error(&state, e))
+}
+
+#[tauri::command]
+pub async fn remove_my_profile_picture(state: State<'_, AppState>) -> Result<(), String> {
+    let client = require_client(&state)?;
+    let artist_id = own_artist_id(&state, &client).await?;
+    client
+        .remove_profile_picture(artist_id)
+        .await
+        .map_err(|e| profile_error(&state, e))
 }
 
 #[tauri::command]

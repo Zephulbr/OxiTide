@@ -25,6 +25,12 @@ export const artistAlbumsSource = (id: number, filter: ArtistDiscography) => ({
   fetch: () => api.getArtistAlbums(id, filter, 50, 0),
 });
 
+/// A user's public playlists: the "Public playlists" shelf of a profile.
+export const userPublicPlaylistsSource = (userId: number) => ({
+  key: `user:${userId}:public-playlists`,
+  fetch: () => api.getUserPublicPlaylists(userId),
+});
+
 export const similarArtistsSource = (id: number) => ({
   key: `artist:${id}:similar`,
   fetch: () => api.getSimilarArtists(id),
@@ -72,6 +78,18 @@ export const favoriteArtistsSource = () => ({
   freshMs: 0,
 });
 
+/// The account's own profile and the artist that is its page (TIDAL keeps no
+/// separate user page). Either half may be null: an account without a
+/// profile, or a profile without an artist.
+export const myProfileSource = () => ({
+  key: "profile:me",
+  fetch: async () => {
+    const profile = await api.getMyProfile();
+    const artist = profile?.artistId ? await api.getArtist(profile.artistId).catch(() => null) : null;
+    return { profile, artist };
+  },
+});
+
 export const favoriteMixesSource = () => ({
   key: "favorites:mixes",
   fetch: () => api.getFavoriteMixes(),
@@ -113,6 +131,7 @@ export function prefetchRoute(route: Route | null | undefined) {
       break;
     case "profiles":
       prefetch(favoriteArtistsSource());
+      prefetch(myProfileSource());
       break;
     case "mixes":
       prefetch(forYouSource());

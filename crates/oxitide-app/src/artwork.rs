@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 use crate::palette::{extract_palette, Palette, Room};
 
 const ANALYSIS_SIZE: u32 = 160;
+/// The only host a cover given as a full URL may be fetched from.
+const TIDAL_IMAGE_HOST: &str = "https://resources.tidal.com/images/";
 const EXTRACT_SIDE: u32 = 48;
 /// Newest-N bound, mirroring `lyrics::CACHE_MAX_ENTRIES`; a palette entry is
 /// tiny, but the unbounded map also made every save an O(n) full-file rewrite.
@@ -109,7 +111,14 @@ impl ArtworkService {
         })
     }
 
+    /// A cover's analysis URL. A full URL is taken as is, but only on TIDAL's
+    /// image host (a just-uploaded profile picture is known by its file URL);
+    /// anything else is a uuid. The phone remote can reach this, so no other
+    /// host is ever fetched.
     fn url(base: &str, uuid: &str) -> String {
+        if uuid.starts_with(TIDAL_IMAGE_HOST) && !uuid.contains("..") {
+            return uuid.to_string();
+        }
         format!("{base}/{}/{ANALYSIS_SIZE}x{ANALYSIS_SIZE}.jpg", uuid.replace('-', "/"))
     }
 
@@ -295,6 +304,18 @@ mod tests {
         assert!(service.palette("missing-uuid", Room::Dark).await.is_err());
         assert!(service.palette("", Room::Dark).await.is_err());
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_full_url_is_used_only_on_tidals_image_host() {
+        let base = "https://resources.tidal.com/images";
+        let upload = "https://resources.tidal.com/images/ab/cd/750x750.jpg";
+        assert_eq!(ArtworkService::url(base, upload), upload);
+        assert_eq!(ArtworkService::url(base, "ab-cd"), format!("{base}/ab/cd/160x160.jpg"));
+        // Any other host (or a path escape) is never fetched as given.
+        for other in ["https://evil.example/x.jpg", "http://192.168.1.1/admin", "https://resources.tidal.com/images/../x"] {
+            assert!(!ArtworkService::url(base, other).starts_with(other), "{other}");
+        }
     }
 
     #[tokio::test]

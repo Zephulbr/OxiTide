@@ -5,6 +5,7 @@
     trackToQueueItem,
     type Album as AlbumT,
     type Artist as ArtistT,
+    type Playlist as PlaylistT,
     type ArtistProfile,
     type Track,
   } from "../lib/api";
@@ -26,7 +27,19 @@
   import { shareUrl } from "../lib/share";
   import { createTrackView } from "../lib/trackView.svelte";
   import { load as loadCached, peek, type Source } from "../lib/viewCache";
-  import { artistAlbumsSource, artistSource, artistTopTracksSource, similarArtistsSource } from "../lib/viewData";
+  import {
+    artistAlbumsSource,
+    artistSource,
+    artistTopTracksSource,
+    myProfileSource,
+    similarArtistsSource,
+    userPublicPlaylistsSource,
+  } from "../lib/viewData";
+  import { playlistCard } from "../lib/searchResults";
+  import { isOwnArtist, type OwnProfile } from "../lib/ownProfile";
+  import ProfileEditor from "../lib/components/ProfileEditor.svelte";
+  import { profilePicture } from "../lib/profilePicture.svelte";
+  import { fetchShared } from "../lib/viewCache";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { Nav } from "../lib/nav.svelte";
   import type { PlaylistActions } from "../lib/playlists.svelte";
@@ -49,7 +62,8 @@
     toasts: Toasts;
   } = $props();
 
-  type SectionKey = "tracks" | "albums" | "eps" | "comps" | "similar";
+  type SectionKey = "tracks" | "albums" | "eps" | "comps" | "playlists" | "similar";
+  type FixedKey = Exclude<SectionKey, "playlists">;
 
   // Every part reads through the page cache (lib/viewCache.ts): a cached
   // visit renders hero and shelves on the first frame.
@@ -65,6 +79,21 @@
   };
   const cachedHero = peek(heroSource);
 
+  /// The account's own profile is an artist page (TIDAL keeps no user page):
+  /// there Edit replaces Favorite, and an empty page says so.
+  const meSource = myProfileSource();
+  let me = $state<OwnProfile | null>(peek(meSource) ?? null);
+
+  /// A user-owned artist is a profile: its owner's public playlists are a
+  /// shelf of the page. The owner is known once the hero has loaded.
+  function playlistsSourceFor(a: ArtistT | null | undefined) {
+    // The own profile's owner is known from the profile even when the
+    // artist record leaves `userId` out.
+    const owner = a?.user_id ?? (a && isOwnArtist(me, a.id) ? me?.profile?.userId : null);
+    return owner ? userPublicPlaylistsSource(owner) : null;
+  }
+  const cachedPlaylistsSource = playlistsSourceFor(cachedHero?.[0]);
+
   let artist = $state<ArtistT | null>(cachedHero?.[0] ?? null);
   let profile = $state<ArtistProfile | null>(cachedHero?.[1] ?? null);
   let topTracks = $state<Track[]>(peek(sources.tracks) ?? []);
@@ -72,6 +101,9 @@
   let eps = $state<AlbumT[]>(peek(sources.eps) ?? []);
   let comps = $state<AlbumT[]>(peek(sources.comps) ?? []);
   let similar = $state<ArtistT[]>(peek(sources.similar) ?? []);
+  let publicPlaylists = $state<PlaylistT[]>(
+    (cachedPlaylistsSource ? peek(cachedPlaylistsSource) : undefined) ?? [],
+  );
   let loading = $state(cachedHero === undefined);
   let error = $state("");
   let loadToken = 0;
@@ -93,17 +125,24 @@
   /// it have settled (loaded, empty or failed). They load in parallel and
   /// answer in any order, so showing each on arrival inserted shelves above
   /// ones already on screen and shoved them down. Cached sections start settled.
-  const SECTION_ORDER: SectionKey[] = ["tracks", "albums", "eps", "comps", "similar"];
-  const settledFromCache = () => ({
-    tracks: peek(sources.tracks) !== undefined,
-    albums: peek(sources.albums) !== undefined,
-    eps: peek(sources.eps) !== undefined,
-    comps: peek(sources.comps) !== undefined,
-    similar: peek(sources.similar) !== undefined,
-  });
+  const SECTION_ORDER: SectionKey[] = ["tracks", "albums", "eps", "comps", "playlists", "similar"];
+  const FIXED_SECTIONS: FixedKey[] = ["tracks", "albums", "eps", "comps", "similar"];
+  const settledFromCache = () => {
+    const hero = peek(heroSource);
+    const playlistsSource = playlistsSourceFor(hero?.[0]);
+    return {
+      tracks: peek(sources.tracks) !== undefined,
+      albums: peek(sources.albums) !== undefined,
+      eps: peek(sources.eps) !== undefined,
+      comps: peek(sources.comps) !== undefined,
+      // Settled with the hero when the artist has no owner (nothing to load).
+      playlists: hero !== undefined && (playlistsSource === null || peek(playlistsSource) !== undefined),
+      similar: peek(sources.similar) !== undefined,
+    };
+  };
   let settled = $state<Record<SectionKey, boolean>>(settledFromCache());
   const shown = $derived.by(() => {
-    const out = { tracks: false, albums: false, eps: false, comps: false, similar: false };
+    const out = { tracks: false, albums: false, eps: false, comps: false, playlists: false, similar: false };
     for (const key of SECTION_ORDER) {
       if (!settled[key]) break;
       out[key] = true;
@@ -116,12 +155,19 @@
     albums: (list: AlbumT[]) => (albums = list),
     eps: (list: AlbumT[]) => (eps = list),
     comps: (list: AlbumT[]) => (comps = list),
+    playlists: (list: PlaylistT[]) => (publicPlaylists = list),
     similar: (list: ArtistT[]) => (similar = list),
   };
 
   function loadSection(key: SectionKey) {
     const token = loadToken;
-    const source = sources[key] as Source<never>;
+    const source = (key === "playlists" ? playlistsSourceFor(artist) : sources[key]) as Source<never> | null;
+    if (!source) {
+      // Not a profile (or the hero failed): nothing to list.
+      publicPlaylists = [];
+      settled[key] = true;
+      return;
+    }
     loadCached(source, (value) => {
       if (token !== loadToken) return;
       clearSectionError(key);
@@ -140,6 +186,42 @@
     loadSection(key);
   }
 
+  const mine = $derived(isOwnArtist(me, id));
+  const empty = $derived(
+    SECTION_ORDER.every((key) => settled[key] && sectionErrors[key] === undefined) &&
+      topTracks.length + albums.length + eps.length + comps.length + publicPlaylists.length === 0,
+  );
+
+  async function loadMe() {
+    try {
+      await loadCached(meSource, (value) => {
+        const before = playlistsSourceFor(artist)?.key;
+        me = value;
+        // The profile can name this page's owner after the hero settled.
+        if (artist && playlistsSourceFor(artist)?.key !== before) loadSection("playlists");
+      });
+    } catch {
+      // Not knowing the own profile only leaves the page as any artist's.
+    }
+  }
+
+  let editing = $state(false);
+
+  /// After a profile save: refetch the hero and the own-profile card
+  /// (Profiles) from TIDAL and store them, in place: the page never drops to
+  /// its loading state, so the editor (and any error it shows) stays put.
+  function afterProfileSave() {
+    void fetchShared(heroSource)
+      .then(([loadedArtist, loadedProfile]) => {
+        artist = loadedArtist;
+        profile = loadedProfile;
+      })
+      .catch(() => {});
+    void fetchShared(meSource)
+      .then((value) => (me = value))
+      .catch(() => {});
+  }
+
   // svelte-ignore state_referenced_locally
   const view = createTrackView(() => topTracks, undefined, { memoryKey: `artist:${id}` });
 
@@ -154,16 +236,20 @@
     error = "";
     sectionErrors = {};
     settled = settledFromCache();
-    // Sections load alongside the hero; they only show once it has.
-    for (const key of SECTION_ORDER) loadSection(key);
+    // Sections load alongside the hero; they only show once it has. The
+    // public playlists wait for it: the hero names the artist's owner.
+    for (const key of FIXED_SECTIONS) loadSection(key);
     try {
       await loadCached(heroSource, ([loadedArtist, loadedProfile]) => {
         if (token !== loadToken) return;
+        const ownerChanged = loadedArtist.user_id !== artist?.user_id || !settled.playlists;
         artist = loadedArtist;
         profile = loadedProfile;
+        if (ownerChanged) loadSection("playlists");
       });
     } catch (e) {
       if (token !== loadToken) return;
+      settled.playlists = true;
       error = String(e);
     } finally {
       if (token === loadToken) loading = false;
@@ -208,7 +294,10 @@
     // Untracked: a cached load applies synchronously (sections read and write
     // their error/settled state), so tracked reads made this mount effect
     // re-run on its own writes forever.
-    untrack(load);
+    untrack(() => {
+      void load();
+      void loadMe();
+    });
   });
 </script>
 
@@ -219,20 +308,32 @@
 {:else if artist}
   {@const artistId = artist.id}
   {@const mixId = artist.mixes?.ARTIST_MIX ?? null}
+  <!-- A picture just changed here shows before TIDAL's record catches up. -->
   <ArtistHero
-    {artist}
+    artist={{ ...artist, picture: profilePicture.for(artist.id, artist.picture) }}
     {profile}
+    kicker={mine ? "Your profile" : "Artist"}
     disabled={topTracks.length === 0}
-    favorite={{
-      active: favorites.hasArtist(artistId),
-      onToggle: () => favorites.toggleArtist(artistId),
-    }}
+    favorite={mine
+      ? undefined
+      : {
+          active: favorites.hasArtist(artistId),
+          onToggle: () => favorites.toggleArtist(artistId),
+        }}
     onPlay={() => queueTop(0)}
     onShuffle={() => queueTop(0, true)}
     onOpenLink={openLink}
     onOpenArtist={(artistId) => nav.goto({ name: "artist", id: artistId })}
   >
     {#snippet actions()}
+      {#if mine}
+        <DetailAction
+          icon="pencil"
+          label="Edit profile"
+          title="Edit your name, handle, bio, links and picture"
+          onclick={() => (editing = true)}
+        />
+      {/if}
       <DetailAction
         icon="radio"
         label="Radio"
@@ -257,6 +358,23 @@
       {/if}
     {/snippet}
   </ArtistHero>
+
+  {#if mine && empty}
+    <section class="shelf">
+      <EmptyState
+        message="Your profile is empty. Create playlists, add your social profiles or upload a track on TIDAL."
+        action={{ label: "Edit profile", run: () => (editing = true) }}
+      />
+    </section>
+  {/if}
+
+  {#if editing && mine}
+    <ProfileEditor
+      picture={artist.picture ?? null}
+      onsaved={afterProfileSave}
+      onclose={() => (editing = false)}
+    />
+  {/if}
 
   {#if shown.tracks && topTracks.length > 0}
     <section class="shelf">
@@ -355,6 +473,25 @@
     <section class="shelf">
       <div class="shelf-head"><h3>Appears on</h3></div>
       <ErrorState message={sectionErrors.comps} onRetry={() => retrySection("comps")} />
+    </section>
+  {/if}
+
+  {#if shown.playlists && publicPlaylists.length > 0}
+    <section class="shelf">
+      <Carousel title="Public playlists">
+        {#each publicPlaylists as playlist (playlist.uuid)}
+          <MediaCard
+            variant="carousel"
+            item={playlistCard(playlist)}
+            onclick={() => nav.goto({ name: "playlist", id: playlist.uuid })}
+          />
+        {/each}
+      </Carousel>
+    </section>
+  {:else if shown.playlists && sectionErrors.playlists}
+    <section class="shelf">
+      <div class="shelf-head"><h3>Public playlists</h3></div>
+      <ErrorState message={sectionErrors.playlists} onRetry={() => retrySection("playlists")} />
     </section>
   {/if}
 

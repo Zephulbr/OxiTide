@@ -146,6 +146,16 @@ pub struct Artist {
     pub cover_fallback: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mixes: Option<ArtistMixes>,
+    /// The TIDAL user who owns this artist, when one does: a user's profile
+    /// is an artist (`ownerType` USER or MIXED). Its public playlists are the
+    /// profile's playlists.
+    #[serde(
+        default,
+        rename(deserialize = "userId"),
+        alias = "user_id",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub user_id: Option<u64>,
 }
 
 /// TIDAL's artist mix ids (uppercase keys verbatim in the v1 payload).

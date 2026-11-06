@@ -294,6 +294,42 @@ impl TidalClient {
         decode_json(resp).await
     }
 
+    /// PATCH a JSON:API document on the public OpenAPI base, discarding the
+    /// response (profile edits). Callers pass `countryCode` explicitly.
+    pub async fn patch_openapi(
+        &self,
+        path: &str,
+        params: &[(&str, String)],
+        doc: &serde_json::Value,
+    ) -> Result<()> {
+        let key = idempotency_key();
+        self.mutate(
+            reqwest::Method::PATCH,
+            &self.openapi_base_url,
+            path,
+            params,
+            Body::JsonApi(doc, &key),
+            None,
+        )
+        .await
+        .map(|_| ())
+    }
+
+    /// PUT a JPEG to a pre-signed upload link TIDAL handed out (artwork
+    /// uploads). The link carries its own authorization, so no bearer token is
+    /// sent; `content_md5` is the base64 MD5 the link was signed for.
+    pub async fn put_upload(&self, url: &str, jpeg: Vec<u8>, content_md5: &str) -> Result<()> {
+        let resp = self
+            .http
+            .put(url)
+            .header(reqwest::header::CONTENT_TYPE, "image/jpeg")
+            .header("Content-MD5", content_md5)
+            .body(jpeg)
+            .send()
+            .await?;
+        Self::decode_status(resp).await.map(|_| ())
+    }
+
     /// DELETE on the public OpenAPI base, with a JSON:API document when the
     /// endpoint takes one (relationship removals), discarding the response.
     pub async fn delete_openapi(

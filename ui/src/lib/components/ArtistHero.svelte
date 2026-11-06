@@ -2,7 +2,7 @@
   import type { Snippet } from "svelte";
   import { api, type Artist, type ArtistProfile } from "../api";
   import { appearance } from "../appearance.svelte";
-  import { isHttpUrl, linkBrand, linkLabel } from "../artistLinks";
+  import { isHttpUrl, isTidalLink, linkBrand, linkLabel } from "../artistLinks";
   import { artistArt, coverUrl } from "../artwork";
   import { formatCount } from "../format";
   import { heroScrim } from "../heroScrim";
@@ -17,6 +17,7 @@
   let {
     artist,
     profile,
+    kicker = "Artist",
     disabled = false,
     favorite,
     onPlay,
@@ -27,6 +28,8 @@
   }: {
     artist: Artist;
     profile: ArtistProfile | null;
+    /// The line over the name; "Your profile" on the account's own artist.
+    kicker?: string;
     disabled?: boolean;
     favorite?: { active: boolean; onToggle: () => void };
     onPlay: () => void;
@@ -55,7 +58,9 @@
 
   const fans = $derived(profile?.numberOfFollowers ?? null);
   const bioSegments = $derived(profile?.bioSegments ?? []);
-  const links = $derived((profile?.externalLinks ?? []).filter((link) => isHttpUrl(link.url)));
+  const links = $derived(
+    (profile?.externalLinks ?? []).filter((link) => isHttpUrl(link.url) && !isTidalLink(link.url)),
+  );
   const art = $derived(artistArt(artist));
   const backdrop = $derived(art.uuid ? coverUrl(art.uuid, art.size) : "");
   const scrim = $derived(
@@ -124,7 +129,7 @@
       <Cover uuid={art.uuid} size={art.size} radius={999} alt={artist.name} />
     </span>
     <div class="meta">
-      <span class="kicker">Artist</span>
+      <span class="kicker">{kicker}</span>
       <div class="name-row">
         <h2>{artist.name}</h2>
         {#if fans !== null}
