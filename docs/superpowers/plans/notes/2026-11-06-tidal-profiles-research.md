@@ -105,12 +105,13 @@ from live calls, [3P] another client's code or docs, [?] open.
       `technicalFileStatus` is OK, then
       `PATCH artists/{id}/relationships/profileArt`. Removing the picture
       PATCHes the relationship to `[]`.
-    - The app crate makes the square JPEG (`profile_picture.rs`: centre
+    - The app crate makes the square JPEG (now `profile_art.rs`: centre
       crop, at most 1280 px, quality 90).
     - Edits always target the account's own artist, resolved on the Rust
       side from `v2/profiles/{userId}`.
   - Link types for new links are taken from the host: INSTAGRAM, TWITTER,
-    FACEBOOK, YOUTUBE or TIKTOK, else OFFICIAL_HOMEPAGE. Links that already
+    FACEBOOK or TIKTOK (later SNAPCHAT; YOUTUBE was dropped, see the
+    fourth round), else OFFICIAL_HOMEPAGE. Links that already
     exist keep the type TIDAL gave them.
 - Third round (owner, live, 2026-11-06):
   - Adding and removing links works, and the official app shows the
@@ -129,6 +130,43 @@ from live calls, [3P] another client's code or docs, [?] open.
     `resources.tidal.com/images/`.
   - Handle becomes "Username", with TIDAL's rule (a-z, 0-9, `_`) and its
     "Save username?" confirmation.
+- Fourth round (2026-11-07, from TIDAL's published OpenAPI spec,
+  `tidal-api-oas.json`; not yet checked live):
+  - **Social links are not separate.** TIDAL's "Social media" screen
+    edits the same `externalLinks`, one fixed field per type. The spec's
+    types (`External_Link_Meta`) are TIDAL_SHARING, TIDAL_USER_SHARING,
+    the TIDAL_AUTOPLAY_* set, TWITTER, FACEBOOK, INSTAGRAM, TIKTOK,
+    SNAPCHAT, OFFICIAL_HOMEPAGE, CASHAPP_CONTRIBUTIONS and three
+    *_REDIRECT types. There is **no YOUTUBE**: the editor used to send it,
+    and now types a YouTube link as OFFICIAL_HOMEPAGE. Snapchat links now
+    get SNAPCHAT.
+  - The editor's quick-adds put in fixed fields for the five social
+    types (`SOCIALS` in `lib/profileEdit.ts`). A bare username becomes
+    the site's profile link, and a link must be on the site's host.
+  - **Banner and logo:** artists have `bannerArt` ("the selected header
+    banner") and `logoArt` relationships beside `profileArt`. All three
+    take one owned IMAGE artwork through the same `artworks` flow, and
+    selecting a new one soft-deletes the one it replaces.
+    - `ProfileArt` (picture, banner, logo) picks the relationship.
+    - The commands are `upload_my_profile_art` and `remove_my_profile_art`;
+      they replace the picture-only pair.
+    - `profile_art.rs` shapes the file: the picture as before; the banner
+      at its own shape, ≤2560 px wide, JPEG; the logo ≤1280 px, PNG with
+      alpha. A prepared file must fit TIDAL's 8 MB.
+  - The spec gives no banner shape, so banners are not cropped.
+    `editable_profile` logs the sizes TIDAL made from the current banner
+    and logo ("read the profile's artwork sizes"; sizes only, no URLs).
+    One look at that line with the owner's banner tells us whether to
+    crop.
+  - **Answered (owner's banner, live 2026-11-07):** TIDAL made 1280x1280,
+    640x640, 320x320, 1280x720, 640x360 and 320x180 from it. TIDAL cuts a
+    banner to both 1:1 and 16:9 itself, so OxiTide keeps uploading it
+    uncropped: cutting to 16:9 first would leave TIDAL's square cut a
+    smaller crop of a crop. The editor now previews the 16:9 file
+    (`nearest_file` prefers a banner's wide files) in a 16:9 frame.
+  - `TidalClient::artist_art` reads any artist's picture, banner and
+    logo (`include=profileArt,bannerArt,logoArt`). Nothing calls it yet:
+    showing them would cost an extra request per artist page.
 - Not yet:
   - A Followers/Following count on the header, from the profile counts.
   - A list of followed users, if they turn out not to be in the

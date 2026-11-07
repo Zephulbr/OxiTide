@@ -614,7 +614,7 @@ use oxitide_tidal::models::{
     TrackCredits,
 };
 use oxitide_tidal::pages::{MixDetail, PageItem, PageSection};
-use oxitide_tidal::profiles::{EditableProfile, ProfileEdit, UserProfile};
+use oxitide_tidal::profiles::{EditableProfile, ProfileArt, ProfileEdit, UserProfile};
 
 #[tauri::command]
 pub async fn get_home(state: State<'_, AppState>) -> Result<Vec<PageSection>, String> {
@@ -1189,39 +1189,48 @@ pub async fn update_my_profile(
         .map_err(|e| profile_error(&state, e))
 }
 
-/// Upload a new profile picture: `image_base64` is the chosen file (JPEG or
-/// PNG); it is cropped to a square JPEG here, then uploaded. Answers the new
-/// picture's URL when TIDAL lists one (the app shows it until TIDAL's artist
-/// record catches up).
+/// Upload a new profile picture, banner or logo: `image_base64` is the
+/// chosen file (JPEG or PNG), shaped for `art` here (`profile_art.rs`), then
+/// uploaded. Answers the URL of the file the app shows when TIDAL lists one
+/// (a picture is shown from it until TIDAL's artist record catches up).
 #[tauri::command]
-pub async fn upload_my_profile_picture(
+pub async fn upload_my_profile_art(
     state: State<'_, AppState>,
+    art: ProfileArt,
     image_base64: String,
 ) -> Result<Option<String>, String> {
     use base64::Engine as _;
     let client = require_client(&state)?;
     let artist_id = own_artist_id(&state, &client).await?;
-    if image_base64.len() > crate::profile_picture::MAX_INPUT_BYTES / 3 * 4 + 4 {
+    if image_base64.len() > crate::profile_art::MAX_INPUT_BYTES / 3 * 4 + 4 {
         return Err("That picture is too large (20 MB at most).".into());
     }
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(image_base64.trim())
         .map_err(|_| "could not read the picture".to_string())?;
-    let prepared = tauri::async_runtime::spawn_blocking(move || crate::profile_picture::prepare(&bytes))
+    let prepared = tauri::async_runtime::spawn_blocking(move || crate::profile_art::prepare(&bytes, art))
         .await
         .map_err(|e| e.to_string())??;
     client
-        .upload_profile_picture(artist_id, prepared.jpeg, &prepared.md5_hex, &prepared.md5_base64)
+        .upload_profile_art(
+            artist_id,
+            art,
+            prepared.bytes,
+            prepared.content_type,
+            &prepared.md5_hex,
+            &prepared.md5_base64,
+        )
         .await
         .map_err(|e| profile_error(&state, e))
 }
 
+/// Clear the profile's picture, banner or logo.
 #[tauri::command]
-pub async fn remove_my_profile_picture(state: State<'_, AppState>) -> Result<(), String> {
+pub async fn remove_my_profile_art(state: State<'_, AppState>, art: ProfileArt) -> Result<(), String> {
     let client = require_client(&state)?;
     let artist_id = own_artist_id(&state, &client).await?;
     client
-        .remove_profile_picture(artist_id)
+        .remove_profile_art(artist_id, art)
         .await
         .map_err(|e| profile_error(&state, e))
 }

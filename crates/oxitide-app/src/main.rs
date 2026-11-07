@@ -19,7 +19,7 @@ mod panic_log;
 pub mod perf;
 mod player;
 mod position_feed;
-mod profile_picture;
+mod profile_art;
 mod remote;
 mod scheme;
 mod scrobble;
@@ -434,8 +434,8 @@ fn main() {
             commands::get_user_public_playlists,
             commands::get_editable_profile,
             commands::update_my_profile,
-            commands::upload_my_profile_picture,
-            commands::remove_my_profile_picture,
+            commands::upload_my_profile_art,
+            commands::remove_my_profile_art,
             commands::get_user_playlists,
             commands::get_favorite_tracks_page,
             commands::get_playlist_tracks_page,

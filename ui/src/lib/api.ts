@@ -93,7 +93,14 @@ export interface EditableProfile {
   bioId?: string | null;
   links: ProfileLink[];
   hasPicture: boolean;
+  /// The current banner and logo (`profiles::ArtFile`), for previews.
+  banner?: ArtFile | null;
+  logo?: ArtFile | null;
 }
+/// A profile's artwork slots (`profiles::ProfileArt`).
+export type ProfileArt = "picture" | "banner" | "logo";
+/// One file TIDAL made from an artwork (`profiles::ArtFile`).
+export interface ArtFile { href: string; width: number; height: number }
 /// A save's changes (`profiles::ProfileEdit`); an absent field is unchanged.
 export interface ProfileEdit {
   name?: string;
@@ -827,10 +834,10 @@ export const api = {
   getEditableProfile: () => invoke<EditableProfile>("get_editable_profile"),
   updateMyProfile: (edit: ProfileEdit, bio: string | null) =>
     invoke<EditableProfile>("update_my_profile", { edit, bio }),
-  /// Answers the new picture's URL when TIDAL lists one.
-  uploadMyProfilePicture: (imageBase64: string) =>
-    invoke<string | null>("upload_my_profile_picture", { imageBase64 }),
-  removeMyProfilePicture: () => invoke<void>("remove_my_profile_picture"),
+  /// Answers the URL of the file the app shows, when TIDAL lists one.
+  uploadMyProfileArt: (art: ProfileArt, imageBase64: string) =>
+    invoke<string | null>("upload_my_profile_art", { art, imageBase64 }),
+  removeMyProfileArt: (art: ProfileArt) => invoke<void>("remove_my_profile_art", { art }),
   getUserPlaylists: () => invoke<Playlist[]>("get_user_playlists"),
   createPlaylist: (name: string, description: string) =>
     invoke<Playlist>("create_playlist", { name, description }),

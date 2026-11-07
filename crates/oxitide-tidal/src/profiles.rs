@@ -8,13 +8,67 @@
 //! Editing goes through the public OpenAPI, as TIDAL's web editor does:
 //! `PATCH artists/{id}` (name, handle, links; `meta.dryRun` validates),
 //! `PATCH artistBiographies/{id}` (bio) and the `artworks` upload flow
-//! (picture). Shapes follow the `sone` client's working calls.
+//! (picture, banner, logo). Shapes follow the `sone` client's working calls
+//! and TIDAL's published OpenAPI spec.
 
 use serde::{Deserialize, Serialize};
 
 use crate::client::TidalClient;
 use crate::error::{Error, Result};
 use crate::models::Playlist;
+
+/// The artwork slots of a profile: OpenAPI `artists/{id}` relationships
+/// `profileArt` (the picture), `bannerArt` (the header banner) and `logoArt`.
+/// All three take one uploaded IMAGE artwork through the same flow.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ProfileArt {
+    Picture,
+    Banner,
+    Logo,
+}
+
+impl ProfileArt {
+    pub const ALL: [ProfileArt; 3] = [ProfileArt::Picture, ProfileArt::Banner, ProfileArt::Logo];
+
+    pub fn relationship(self) -> &'static str {
+        match self {
+            ProfileArt::Picture => "profileArt",
+            ProfileArt::Banner => "bannerArt",
+            ProfileArt::Logo => "logoArt",
+        }
+    }
+
+    /// The width of the file picked from an artwork's sizes: the 750 px the
+    /// artist pages show the picture at, a wide banner, a small logo.
+    fn shown_width(self) -> u64 {
+        match self {
+            ProfileArt::Picture => 750,
+            ProfileArt::Banner => 1280,
+            ProfileArt::Logo => 640,
+        }
+    }
+}
+
+/// One file TIDAL made from an artwork (`artworks` `files[]`).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtFile {
+    pub href: String,
+    pub width: u64,
+    pub height: u64,
+}
+
+/// An artist's uploaded artwork, read from OpenAPI `artists/{id}` with the
+/// three art relationships included. Not shown on artist pages yet: the v1
+/// artist they read carries none of it.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtistArt {
+    pub picture: Option<ArtFile>,
+    pub banner: Option<ArtFile>,
+    pub logo: Option<ArtFile>,
+}
 
 /// One link on a profile: TIDAL's `externalLinks[]` `{href, meta: {type}}`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -39,6 +93,9 @@ pub struct EditableProfile {
     pub bio_id: Option<String>,
     pub links: Vec<ProfileLink>,
     pub has_picture: bool,
+    /// The current banner and logo, for the editor's previews.
+    pub banner: Option<ArtFile>,
+    pub logo: Option<ArtFile>,
 }
 
 /// The fields a save changes; `None` leaves a field as it is.
@@ -129,7 +186,70 @@ fn editable_from(doc: &Value, artist_id: u64) -> EditableProfile {
         bio_id,
         links,
         has_picture,
+        banner: art_from(doc, ProfileArt::Banner),
+        logo: art_from(doc, ProfileArt::Logo),
     }
+}
+
+/// The artworks an `include=` names, by id.
+fn included_artwork<'a>(doc: &'a Value, id: &str) -> Option<&'a Value> {
+    doc.get("included")?.as_array()?.iter().find(|item| {
+        item.get("type").and_then(Value::as_str) == Some("artworks") && item.get("id").and_then(Value::as_str) == Some(id)
+    })
+}
+
+/// Every file of an artwork resource (`attributes.files[]`), with its size.
+fn art_files(artwork: &Value) -> Vec<ArtFile> {
+    let Some(files) = artwork.pointer("/attributes/files").and_then(Value::as_array) else { return Vec::new() };
+    files
+        .iter()
+        .filter_map(|file| {
+            let href = text(file.get("href"))?;
+            let width = number(file.pointer("/meta/width"))?;
+            let height = number(file.pointer("/meta/height")).unwrap_or(width);
+            Some(ArtFile { href, width, height })
+        })
+        .collect()
+}
+
+/// The selected artwork of one art relationship, as the file nearest the
+/// width it is shown at. `None` when nothing is selected or the artwork was
+/// not included.
+fn art_from(doc: &Value, art: ProfileArt) -> Option<ArtFile> {
+    let selected = doc
+        .pointer(&format!("/data/relationships/{}/data", art.relationship()))?
+        .as_array()?
+        .first()?;
+    let artwork = included_artwork(doc, selected.get("id")?.as_str()?)?;
+    nearest_file(art_files(artwork), art)
+}
+
+/// The file to show for `art`: the picture only from square files (an
+/// upload may not exist at every size the uuid-based artist sizes ask for);
+/// the banner from its wide files when it has any (TIDAL cuts a banner to
+/// both 1:1 and 16:9: 1280x1280 ... and 1280x720 ..., seen live 2026-11-07);
+/// the logo at any shape.
+fn nearest_file(files: Vec<ArtFile>, art: ProfileArt) -> Option<ArtFile> {
+    let has_wide = files.iter().any(|file| file.width > file.height);
+    files
+        .into_iter()
+        .filter(|file| match art {
+            ProfileArt::Picture => file.width == file.height,
+            ProfileArt::Banner => !has_wide || file.width > file.height,
+            ProfileArt::Logo => true,
+        })
+        .min_by_key(|file| file.width.abs_diff(art.shown_width()))
+}
+
+/// The sizes TIDAL made from an artwork, for the log (no URLs).
+fn art_sizes(doc: &Value, art: ProfileArt) -> Vec<String> {
+    let selected = doc
+        .pointer(&format!("/data/relationships/{}/data/0/id", art.relationship()))
+        .and_then(Value::as_str);
+    selected
+        .and_then(|id| included_artwork(doc, id))
+        .map(|artwork| art_files(artwork).iter().map(|f| format!("{}x{}", f.width, f.height)).collect())
+        .unwrap_or_default()
 }
 
 /// The link TIDAL keeps on every profile to the profile itself
@@ -150,22 +270,11 @@ fn is_tidal_own_link(link: &ProfileLink) -> bool {
     host == "tidal.com" || host.ends_with(".tidal.com")
 }
 
-/// The square image TIDAL made from an uploaded artwork, nearest 750 px
-/// (the size artist pages show): `data.attributes.files[]` of `artworks/{id}`.
-/// Kept as the exact file URL: an upload may not exist at every size the
-/// uuid-based artist sizes ask for (480), and `coverUrl` passes URLs through.
-fn artwork_picture_url(doc: &Value) -> Option<String> {
-    let files = doc.pointer("/data/attributes/files")?.as_array()?;
-    files
-        .iter()
-        .filter_map(|file| {
-            let href = text(file.get("href"))?;
-            let width = number(file.pointer("/meta/width"))?;
-            let height = number(file.pointer("/meta/height")).unwrap_or(width);
-            (width == height).then_some((width, href))
-        })
-        .min_by_key(|(width, _)| width.abs_diff(750))
-        .map(|(_, href)| href)
+/// The file TIDAL made from an upload that the app shows, from the
+/// processed `artworks/{id}` document. Kept as the exact file URL, which
+/// `coverUrl` passes through.
+fn uploaded_file_url(doc: &Value, art: ProfileArt) -> Option<String> {
+    nearest_file(art_files(doc.get("data")?), art).map(|file| file.href)
 }
 
 /// `items[].playlist` of `v2/user-playlists/{id}/public`, with the follower
@@ -327,11 +436,34 @@ impl TidalClient {
     /// The account's profile as the editor shows it.
     pub async fn editable_profile(&self, artist_id: u64) -> Result<EditableProfile> {
         let params = [
-            ("include", "biography,profileArt".to_string()),
+            ("include", "biography,profileArt,bannerArt,logoArt".to_string()),
             ("countryCode", self.session().country_code.clone()),
         ];
         let doc: Value = self.get_openapi(&format!("artists/{artist_id}"), &params).await?;
+        // The sizes TIDAL makes a banner and logo at (no URLs): what an
+        // upload should be shaped like is not documented.
+        tracing::info!(
+            banner = ?art_sizes(&doc, ProfileArt::Banner),
+            logo = ?art_sizes(&doc, ProfileArt::Logo),
+            "read the profile's artwork sizes"
+        );
         Ok(editable_from(&doc, artist_id))
+    }
+
+    /// Any artist's uploaded picture, banner and logo. Nothing calls this
+    /// yet: artist pages read v1, which has no banner or logo, and showing
+    /// them would cost this extra request per page.
+    pub async fn artist_art(&self, artist_id: u64) -> Result<ArtistArt> {
+        let params = [
+            ("include", "profileArt,bannerArt,logoArt".to_string()),
+            ("countryCode", self.session().country_code.clone()),
+        ];
+        let doc: Value = self.get_openapi(&format!("artists/{artist_id}"), &params).await?;
+        Ok(ArtistArt {
+            picture: art_from(&doc, ProfileArt::Picture),
+            banner: art_from(&doc, ProfileArt::Banner),
+            logo: art_from(&doc, ProfileArt::Logo),
+        })
     }
 
     /// Change the profile's name, handle or links. With `dry_run` TIDAL only
@@ -354,18 +486,21 @@ impl TidalClient {
         self.patch_openapi(&format!("artistBiographies/{bio_id}"), &params, &doc).await
     }
 
-    /// Upload `jpeg` (already square) as the profile picture: create an
-    /// artwork, PUT the file to its upload link, wait for TIDAL to process
-    /// it, then point the artist's `profileArt` at it. `md5_hex` and
-    /// `md5_base64` are the file's MD5 in both encodings TIDAL asks for.
+    /// Upload `file` (already shaped for `art`; `content_type` is its image
+    /// type) as the profile's picture, banner or logo: create an artwork, PUT
+    /// the file to its upload link, wait for TIDAL to process it, then point
+    /// the artist's relationship for `art` at it. `md5_hex` and `md5_base64`
+    /// are the file's MD5 in both encodings TIDAL asks for.
     ///
-    /// Answers the new picture's URL when TIDAL lists one: the v1 artist
-    /// record keeps the old picture for a while, so the app shows this one
-    /// until it catches up.
-    pub async fn upload_profile_picture(
+    /// Answers the URL of the file the app shows when TIDAL lists one: the
+    /// v1 artist record keeps an old picture for a while, so the app shows
+    /// this one until it catches up.
+    pub async fn upload_profile_art(
         &self,
         artist_id: u64,
-        jpeg: Vec<u8>,
+        art: ProfileArt,
+        file: Vec<u8>,
+        content_type: &str,
         md5_hex: &str,
         md5_base64: &str,
     ) -> Result<Option<String>> {
@@ -373,7 +508,7 @@ impl TidalClient {
         let create = serde_json::json!({
             "data": {"type": "artworks", "attributes": {
                 "mediaType": "IMAGE",
-                "sourceFile": {"md5Hash": md5_hex, "size": jpeg.len()}
+                "sourceFile": {"md5Hash": md5_hex, "size": file.len()}
             }}
         });
         let created: Value = self.post_openapi("artworks", &params, &create).await?;
@@ -381,32 +516,32 @@ impl TidalClient {
             .ok_or_else(|| Error::Api { status: 200, message: "TIDAL sent no artwork id".into() })?;
         let upload = text(created.pointer("/data/attributes/sourceFile/uploadLink/href"))
             .ok_or_else(|| Error::Api { status: 200, message: "TIDAL sent no upload link".into() })?;
-        self.put_upload(&upload, jpeg, md5_base64).await?;
-        let processed = self.wait_for_artwork(&artwork_id).await?;
-        self.set_profile_art(artist_id, Some(&artwork_id)).await?;
-        Ok(artwork_picture_url(&processed))
+        self.put_upload(&upload, file, content_type, md5_base64).await?;
+        let processed = self.wait_for_artwork(&artwork_id, art).await?;
+        self.set_profile_art(artist_id, art, Some(&artwork_id)).await?;
+        Ok(uploaded_file_url(&processed, art))
     }
 
-    /// Remove the profile picture.
-    pub async fn remove_profile_picture(&self, artist_id: u64) -> Result<()> {
-        self.set_profile_art(artist_id, None).await
+    /// Clear the profile's picture, banner or logo.
+    pub async fn remove_profile_art(&self, artist_id: u64, art: ProfileArt) -> Result<()> {
+        self.set_profile_art(artist_id, art, None).await
     }
 
-    async fn set_profile_art(&self, artist_id: u64, artwork_id: Option<&str>) -> Result<()> {
+    async fn set_profile_art(&self, artist_id: u64, art: ProfileArt, artwork_id: Option<&str>) -> Result<()> {
         let params = [("countryCode", self.session().country_code.clone())];
         let data: Vec<Value> = artwork_id
             .map(|id| serde_json::json!({"type": "artworks", "id": id}))
             .into_iter()
             .collect();
         let doc = serde_json::json!({ "data": data });
-        self.patch_openapi(&format!("artists/{artist_id}/relationships/profileArt"), &params, &doc)
-            .await
+        let path = format!("artists/{artist_id}/relationships/{}", art.relationship());
+        self.patch_openapi(&path, &params, &doc).await
     }
 
     /// Poll until TIDAL has processed the artwork; answers its final document
     /// (which lists the files made from it). Once processed, a few more polls
     /// wait for the file list if it is not there yet.
-    async fn wait_for_artwork(&self, artwork_id: &str) -> Result<Value> {
+    async fn wait_for_artwork(&self, artwork_id: &str, art: ProfileArt) -> Result<Value> {
         let params = [("countryCode", self.session().country_code.clone())];
         let mut processed: Option<Value> = None;
         let mut file_polls = 0;
@@ -415,7 +550,7 @@ impl TidalClient {
             let status = text(doc.pointer("/data/attributes/sourceFile/status/technicalFileStatus"));
             match status.as_deref() {
                 Some("OK") => {
-                    if artwork_picture_url(&doc).is_some() || file_polls >= ARTWORK_FILE_POLLS {
+                    if uploaded_file_url(&doc, art).is_some() || file_polls >= ARTWORK_FILE_POLLS {
                         return Ok(doc);
                     }
                     file_polls += 1;
@@ -592,9 +727,17 @@ mod tests {
                         ]},
                     "relationships": {
                         "biography": {"data": {"type": "artistBiographies", "id": "bio-1"}},
-                        "profileArt": {"data": [{"type": "artworks", "id": "art-1"}]}
+                        "profileArt": {"data": [{"type": "artworks", "id": "art-1"}]},
+                        "bannerArt": {"data": [{"type": "artworks", "id": "ban-1"}]},
+                        "logoArt": {"data": []}
                     }},
-                "included": [{"type": "artistBiographies", "id": "bio-1", "attributes": {"text": "Cheese?"}}]
+                "included": [
+                    {"type": "artistBiographies", "id": "bio-1", "attributes": {"text": "Cheese?"}},
+                    {"type": "artworks", "id": "ban-1", "attributes": {"files": [
+                        {"href": "https://img/ban/2400x800.jpg", "meta": {"width": 2400, "height": 800}},
+                        {"href": "https://img/ban/1200x400.jpg", "meta": {"width": 1200, "height": 400}}
+                    ]}}
+                ]
             })))
             .mount(&server)
             .await;
@@ -605,6 +748,9 @@ mod tests {
         assert_eq!(profile.bio_id.as_deref(), Some("bio-1"));
         assert_eq!(profile.links, vec![super::ProfileLink { href: "https://instagram.com/c".into(), kind: "INSTAGRAM".into() }]);
         assert!(profile.has_picture);
+        let banner = profile.banner.unwrap();
+        assert_eq!((banner.href.as_str(), banner.width, banner.height), ("https://img/ban/1200x400.jpg", 1200, 400));
+        assert_eq!(profile.logo, None);
     }
 
     #[test]
@@ -711,11 +857,105 @@ mod tests {
             .mount(&server)
             .await;
         let url = client(&server)
-            .upload_profile_picture(7, vec![1, 2, 3], "abc", "q83v")
+            .upload_profile_art(7, super::ProfileArt::Picture, vec![1, 2, 3], "image/jpeg", "abc", "q83v")
             .await
             .unwrap();
         // The square file nearest 750 px, for the app to show at once.
         assert_eq!(url.as_deref(), Some("https://resources.tidal.com/images/ab12/cd34/750x750.jpg"));
+    }
+
+    #[tokio::test]
+    async fn a_logo_uploads_as_png_and_links_logo_art() {
+        use wiremock::matchers::{body_string_contains, header};
+        let server = MockServer::start().await;
+        let upload = format!("{}/s3/logo", server.uri());
+        Mock::given(method("POST"))
+            .and(path("/openapi/v2/artworks"))
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+                "data": {"id": "art-5", "attributes": {"sourceFile": {"uploadLink": {"href": upload}}}}
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("PUT"))
+            .and(path("/s3/logo"))
+            .and(header("content-type", "image/png"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/openapi/v2/artworks/art-5"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": {"id": "art-5", "attributes": {
+                    "sourceFile": {"status": {"technicalFileStatus": "OK"}},
+                    "files": [
+                        {"href": "https://resources.tidal.com/images/l/o/1280x400.png", "meta": {"width": 1280, "height": 400}},
+                        {"href": "https://resources.tidal.com/images/l/o/640x200.png", "meta": {"width": 640, "height": 200}}
+                    ]
+                }}
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("PATCH"))
+            .and(path("/openapi/v2/artists/7/relationships/logoArt"))
+            .and(body_string_contains("\"id\":\"art-5\""))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let url = client(&server)
+            .upload_profile_art(7, super::ProfileArt::Logo, vec![1], "image/png", "abc", "q83v")
+            .await
+            .unwrap();
+        // Any shape: a logo is not a square.
+        assert_eq!(url.as_deref(), Some("https://resources.tidal.com/images/l/o/640x200.png"));
+    }
+
+    #[tokio::test]
+    async fn artist_art_reads_the_picture_banner_and_logo() {
+        let server = MockServer::start().await;
+        let artwork = |id: &str, w: u64, h: u64| serde_json::json!({
+            "type": "artworks", "id": id,
+            "attributes": {"mediaType": "IMAGE", "files": [
+                {"href": format!("https://img/{id}/{w}x{h}.jpg"), "meta": {"width": w, "height": h}},
+                {"href": format!("https://img/{id}/160x160.jpg"), "meta": {"width": 160, "height": 160}}
+            ]}
+        });
+        Mock::given(method("GET"))
+            .and(path("/openapi/v2/artists/7"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": {"type": "artists", "id": "7", "attributes": {"name": "C"},
+                    "relationships": {
+                        "profileArt": {"data": [{"type": "artworks", "id": "p"}]},
+                        "bannerArt": {"data": [{"type": "artworks", "id": "b"}]},
+                        "logoArt": {"data": []}
+                    }},
+                "included": [artwork("p", 750, 750), artwork("b", 1280, 427)]
+            })))
+            .mount(&server)
+            .await;
+        let art = client(&server).artist_art(7).await.unwrap();
+        assert_eq!(art.picture.unwrap().href, "https://img/p/750x750.jpg");
+        let banner = art.banner.unwrap();
+        assert_eq!((banner.width, banner.height), (1280, 427));
+        assert_eq!(art.logo, None);
+    }
+
+    #[test]
+    fn a_banner_shows_its_wide_cut() {
+        use super::{nearest_file, ArtFile, ProfileArt};
+        // The sizes TIDAL made from the owner's banner (log, 2026-11-07).
+        let files = || {
+            [(1280, 1280), (640, 640), (320, 320), (1280, 720), (640, 360), (320, 180)]
+                .map(|(width, height)| ArtFile { href: format!("{width}x{height}"), width, height })
+                .to_vec()
+        };
+        assert_eq!(nearest_file(files(), ProfileArt::Banner).unwrap().href, "1280x720");
+        // The picture still takes only square files.
+        assert_eq!(nearest_file(files(), ProfileArt::Picture).unwrap().href, "640x640");
+        // A banner with only square files still shows one.
+        let square = vec![ArtFile { href: "s".into(), width: 640, height: 640 }];
+        assert_eq!(nearest_file(square, ProfileArt::Banner).unwrap().href, "s");
     }
 
     #[test]
@@ -730,17 +970,22 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn remove_profile_picture_clears_the_relationship() {
+    async fn removing_art_clears_its_relationship() {
         use wiremock::matchers::body_string_contains;
         let server = MockServer::start().await;
-        Mock::given(method("PATCH"))
-            .and(path("/openapi/v2/artists/7/relationships/profileArt"))
-            .and(body_string_contains("\"data\":[]"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
-            .expect(1)
-            .mount(&server)
-            .await;
-        client(&server).remove_profile_picture(7).await.unwrap();
+        for relationship in ["profileArt", "bannerArt", "logoArt"] {
+            Mock::given(method("PATCH"))
+                .and(path(format!("/openapi/v2/artists/7/relationships/{relationship}")))
+                .and(body_string_contains("\"data\":[]"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
+                .expect(1)
+                .mount(&server)
+                .await;
+        }
+        let c = client(&server);
+        for art in super::ProfileArt::ALL {
+            c.remove_profile_art(7, art).await.unwrap();
+        }
     }
 
     #[tokio::test]

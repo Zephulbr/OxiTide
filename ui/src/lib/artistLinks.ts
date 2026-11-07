@@ -5,6 +5,7 @@ const LABELS: Record<string, string> = {
   INSTAGRAM: "Instagram",
   YOUTUBE: "YouTube",
   TIKTOK: "TikTok",
+  SNAPCHAT: "Snapchat",
   OFFICIAL_HOMEPAGE: "Website",
   WEBSITE: "Website",
   HOMEPAGE: "Website",
@@ -34,6 +35,7 @@ export type Brand =
   | "x"
   | "youtube"
   | "tiktok"
+  | "snapchat"
   | "lastfm"
   | "wikipedia"
   | "discogs"
@@ -47,6 +49,7 @@ const SITE_BRANDS: Record<string, Brand> = {
   INSTAGRAM: "instagram",
   YOUTUBE: "youtube",
   TIKTOK: "tiktok",
+  SNAPCHAT: "snapchat",
   LAST_FM: "lastfm",
   WIKIPEDIA: "wikipedia",
   DISCOGS: "discogs",
@@ -63,6 +66,7 @@ const HOST_BRANDS: [string, Brand][] = [
   ["youtube.com", "youtube"],
   ["youtu.be", "youtube"],
   ["tiktok.com", "tiktok"],
+  ["snapchat.com", "snapchat"],
   ["last.fm", "lastfm"],
   ["wikipedia.org", "wikipedia"],
   ["discogs.com", "discogs"],

@@ -6,8 +6,8 @@ import ProfileEditor from "./ProfileEditor.svelte";
 
 const calls = vi.hoisted(() => ({
   updates: [] as unknown[],
-  uploads: [] as string[],
-  removed: 0,
+  uploads: [] as [string, string][],
+  removed: [] as string[],
   failUpdate: "",
   bioId: "bio-1" as string | null,
 }));
@@ -22,6 +22,8 @@ vi.mock("../api", async (importOriginal) => {
     bioId: calls.bioId,
     links: [{ href: "https://instagram.com/c", kind: "INSTAGRAM" }],
     hasPicture: true,
+    banner: { href: "https://img/ban/1280x427.jpg", width: 1280, height: 427 },
+    logo: null,
   });
   return {
     ...actual,
@@ -32,12 +34,12 @@ vi.mock("../api", async (importOriginal) => {
         calls.updates.push({ edit, bio });
         return profile();
       },
-      uploadMyProfilePicture: async (b64: string) => {
-        calls.uploads.push(b64);
+      uploadMyProfileArt: async (art: string, b64: string) => {
+        calls.uploads.push([art, b64]);
         return "https://resources.tidal.com/images/ab/cd/750x750.jpg";
       },
-      removeMyProfilePicture: async () => {
-        calls.removed += 1;
+      removeMyProfileArt: async (art: string) => {
+        calls.removed.push(art);
       },
       openExternal: async () => {},
     },
@@ -51,7 +53,7 @@ beforeAll(() => {
 beforeEach(() => {
   calls.updates = [];
   calls.uploads = [];
-  calls.removed = 0;
+  calls.removed = [];
   calls.failUpdate = "";
   calls.bioId = "bio-1";
   profilePicture.reset();
@@ -70,7 +72,10 @@ describe("ProfileEditor", () => {
     const { onsaved, onclose } = open();
     const bio = (await screen.findByLabelText("Bio")) as HTMLTextAreaElement;
     expect(bio.value).toBe("Cheese?");
-    expect((screen.getByLabelText("Link 1") as HTMLInputElement).value).toBe("https://instagram.com/c");
+    // Nothing to save until something changes.
+    expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+    // TIDAL's Instagram link fills the Instagram field.
+    expect((screen.getByLabelText("Instagram") as HTMLInputElement).value).toBe("https://instagram.com/c");
     await fireEvent.input(bio, { target: { value: "Gouda." } });
     await fireEvent.click(screen.getByText("Add link"));
     await fireEvent.input(screen.getByLabelText("Link 2"), { target: { value: "x.com/cheese" } });
@@ -111,11 +116,14 @@ describe("ProfileEditor", () => {
   it("holds the username to a-z, 0-9 and underscores, with TIDAL's hint", async () => {
     open();
     const username = await screen.findByLabelText("Username");
-    const rule = screen.getByText("Use only the letters a-z, numbers 0-9 and underscores.");
-    expect(rule.classList.contains("rule-broken")).toBe(false);
+    const rule = "Use only the letters a-z, numbers 0-9 and underscores.";
+    // The rule is the field's placeholder, and shows under it only when broken.
+    expect(username.getAttribute("placeholder")).toBe(rule);
+    expect(screen.queryByText(rule)).toBeNull();
     await fireEvent.input(username, { target: { value: "Cheese-Man" } });
-    expect(rule.classList.contains("rule-broken")).toBe(true);
+    expect(screen.getByText(rule).classList.contains("rule-broken")).toBe(true);
     expect(username.getAttribute("aria-invalid")).toBe("true");
+    expect(username.getAttribute("aria-describedby")).toBe("profile-username-rule");
     expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -144,18 +152,63 @@ describe("ProfileEditor", () => {
     await fireEvent.change(input);
     await fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(onclose).toHaveBeenCalled());
-    expect(calls.uploads).toEqual(["AQID"]);
+    expect(calls.uploads).toEqual([["picture", "AQID"]]);
     expect(calls.updates).toEqual([]);
     // Shown at once, while TIDAL's record still has the old picture.
     expect(profilePicture.for(7, "pic")).toBe("https://resources.tidal.com/images/ab/cd/750x750.jpg");
 
     cleanup();
     const second = open();
-    await fireEvent.click(await screen.findByRole("button", { name: "Remove" }));
+    await fireEvent.click(await screen.findByRole("button", { name: "Remove picture" }));
     await fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(second.onclose).toHaveBeenCalled());
-    expect(calls.removed).toBe(1);
+    expect(calls.removed).toEqual(["picture"]);
     expect(profilePicture.for(7, "pic")).toBeNull();
+  });
+
+  it("uploads a logo and removes the banner, each to its own slot", async () => {
+    const { onclose } = open();
+    const logo = (await screen.findByLabelText("Logo")) as HTMLInputElement;
+    // TIDAL's banner shows; the logo slot is empty.
+    expect(screen.getByRole("button", { name: "Remove banner" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Change banner" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Remove logo" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Add logo" })).toBeTruthy();
+    const file = new File([new Uint8Array([4, 5, 6])], "logo.png", { type: "image/png" });
+    Object.defineProperty(logo, "files", { value: [file] });
+    await fireEvent.change(logo);
+    await fireEvent.click(screen.getByRole("button", { name: "Remove banner" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onclose).toHaveBeenCalled());
+    expect(calls.removed).toEqual(["banner"]);
+    expect(calls.uploads).toEqual([["logo", "BAUG"]]);
+    // Neither touches the profile picture.
+    expect(profilePicture.for(7, "pic")).toBe("pic");
+  });
+
+  it("adds a social field from its quick-add, which then hides", async () => {
+    const { onclose } = open();
+    await screen.findByLabelText("Bio");
+    // Instagram already has a field, so it has no quick-add.
+    expect(screen.queryByRole("button", { name: "Add Instagram" })).toBeNull();
+    await fireEvent.click(screen.getByRole("button", { name: "Add TikTok" }));
+    const tiktok = screen.getByLabelText("TikTok") as HTMLInputElement;
+    expect(document.activeElement).toBe(tiktok);
+    expect(screen.queryByRole("button", { name: "Add TikTok" })).toBeNull();
+    await fireEvent.input(tiktok, { target: { value: "@cheese" } });
+    await fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onclose).toHaveBeenCalled());
+    expect(calls.updates).toEqual([
+      {
+        edit: {
+          links: [
+            { href: "https://instagram.com/c", kind: "INSTAGRAM" },
+            { href: "https://www.tiktok.com/@cheese", kind: "TIKTOK" },
+          ],
+        },
+        bio: null,
+      },
+    ]);
   });
 
   it("keeps the bio read-only when the profile has none yet", async () => {

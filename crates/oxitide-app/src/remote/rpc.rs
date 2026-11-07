@@ -517,8 +517,8 @@ mod tests {
         "get_user_public_playlists",
         "get_editable_profile",
         "update_my_profile",
-        "upload_my_profile_picture",
-        "remove_my_profile_picture",
+        "upload_my_profile_art",
+        "remove_my_profile_art",
         "get_artist_top_tracks",
         "get_artist_albums",
         // Desktop Explore's per-type paging; the phone's search uses `search`.

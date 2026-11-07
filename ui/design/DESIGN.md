@@ -345,24 +345,53 @@ above the dividers in name order. It opens the artist that is the profile's page
 keeps no separate user page, so an account without one gets a static card that does not
 react to hover. That artist page's hero kicker reads "Your profile". An "Edit profile"
 action (pencil) takes the place of the Favorite heart and opens the **profile editor**
-(`ProfileEditor.svelte`), a `Modal` 460px wide:
-- An 88px round picture preview with Change picture and Remove (JPEG or PNG, cropped
-  to a square on save).
+(`ProfileEditor.svelte`), a `Modal` 460px wide. It shows the `Loading` disc while the
+profile loads, then the form rises in (`.arrive`). Fields are 16px apart, each under a
+13px semibold muted name. Every text field uses the app's field recipe (`.search-input`'s
+look: `--surface-2`, `--surface-3` on hover, a soft accent wash, border and glow on
+focus, no outline ring). A prefixed field (the username's "@", a link's logo) is the
+same box around its prefix and a bare input.
+- **Media panel** first: one `--radius-card` panel (`--line` border, a faint
+  `--surface-2` fill) holding three rows, Profile picture, Banner and Logo, split by
+  hairlines. Each row has a thumbnail in an 84px column, then the name (semibold) over
+  a muted 12px "PNG or JPEG", then its tools at the right edge. The thumbnails are a
+  56px circle for the picture, an 84px-wide 16:9 frame for the banner (covering; TIDAL
+  shows its 16:9 cut), and an 84×30 frame for the logo (contained). An empty slot shows a muted icon: a person for the picture, an image in
+  a dashed frame for the others. The tools are 32px square `.tool-btn`s: a pencil to
+  change, or a plus to add when the slot is empty, then a trash can to remove. The
+  remove button's hover tints it `--danger`. Both name their action in a tooltip. A
+  newly picked image fades and scales in (0.94 → 1, `--dur-state`). The picture is
+  cropped to a square on save, unannounced.
 - Name.
-- Username (TIDAL's `handle`), with a muted "@" prefix and TIDAL's rule under it, "Use
-  only the letters a-z, numbers 0-9 and underscores." The rule turns `--danger`, with
-  the field's border, while the name breaks it.
+- Username (TIDAL's `handle`), with a muted 1.15em semibold "@" inside the field.
+  TIDAL's rule, "Use only the letters a-z, numbers 0-9 and underscores.", is the
+  placeholder. While the name breaks it, the field's border and glow turn `--danger`,
+  and the rule shows under it in `--danger`.
 - Saving a username change first asks "Save username?" in the same dialog: "Your
-  username will be @…", then TIDAL's note about updating links elsewhere, with
-  Cancel/Save.
+  username will be @…" (15px semibold), then TIDAL's note about updating links
+  elsewhere, with Cancel/Save.
+- **Cancel and Save** follow the app's dialog pair (Playlist rename): 36px tall, 600
+  weight. Cancel is a quiet outline on `--surface-2`; Save is the `--accent` fill
+  with `--on-accent` text. Save stays disabled until something changes, and while the
+  form has a problem.
 - TIDAL's own link to the profile (`tidal.com/browse/artist/{id}`) is not shown.
   TIDAL re-adds it to every profile, and the hero's Links list leaves it out too.
 - A new picture shows at once from the upload's file URL
   (`profilePicture.svelte.ts`), until TIDAL's artist record stops showing the picture
   it replaced.
+- The banner and logo are written to TIDAL only; artist pages don't show banners or
+  logos yet.
 - Bio (a 4-row textarea). It is read-only, with a link to TIDAL's editor, until the
   profile has a bio.
-- Links: one input per row with an x to remove it, then a quiet "Add link".
+- Links: one field per row (8px apart), with a 15px muted mark inside it (the site's
+  `BrandIcon`, else a globe), then an x beside the field to remove the row. New rows
+  rise in. Under the list (6px further off once it has rows) come a 32px "Add link"
+  `.tool-btn`, then one quick-add per social field the form lacks (Instagram, TikTok,
+  Facebook, X, Snapchat, TIDAL's order). Each quick-add is the bare 17px brand logo,
+  muted, with no box; on hover it turns `--text` and lifts slightly (1px up, 1.08
+  scale). A quick-add adds a
+  fixed field for that site, focused, labelled with the site and taking "Username or
+  link", and hides while the field exists.
 
 Problems with the form show as one `--danger` line above Cancel and Save, and so do
 TIDAL's own rejections, such as a taken handle. With nothing to list, the page's empty

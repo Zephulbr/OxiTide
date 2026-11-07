@@ -318,13 +318,13 @@ impl TidalClient {
     /// PUT a JPEG to a pre-signed upload link TIDAL handed out (artwork
     /// uploads). The link carries its own authorization, so no bearer token is
     /// sent; `content_md5` is the base64 MD5 the link was signed for.
-    pub async fn put_upload(&self, url: &str, jpeg: Vec<u8>, content_md5: &str) -> Result<()> {
+    pub async fn put_upload(&self, url: &str, file: Vec<u8>, content_type: &str, content_md5: &str) -> Result<()> {
         let resp = self
             .http
             .put(url)
-            .header(reqwest::header::CONTENT_TYPE, "image/jpeg")
+            .header(reqwest::header::CONTENT_TYPE, content_type)
             .header("Content-MD5", content_md5)
-            .body(jpeg)
+            .body(file)
             .send()
             .await?;
         Self::decode_status(resp).await.map(|_| ())
