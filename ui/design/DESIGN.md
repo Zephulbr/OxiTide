@@ -248,6 +248,27 @@ stacked and holds a list instead of a Select, with one look in every mode and no
 - **Below the list:** "If exclusive fails" shows while any device is in Exclusive (one setting
   for all), then a Device icons toggle row.
 
+**Sidebar "My Collection"** (`Sidebar.svelte` + `lib/collectionLayout.svelte.ts`, spec
+`2026-11-07-oxitide-customizable-collection-design.md`). The user picks the order and a line:
+entries above it always show, those below fold away.
+- **Folding:** with entries on both sides, a "Show more / Show less" sub-row sits under the
+  visible ones. With all below, that row goes and the header itself becomes the chevron toggle.
+  With none below there is no toggle at all and the header is a plain label. The open state is
+  saved with the layout (localStorage `oxitide.collection-layout`); the default is
+  Playlists, Albums, Tracks, Save for Later above the line.
+- **Edit pencil:** a 24px `.mini` button in the header, left of the chevron (or where the
+  chevron would sit), at opacity 0 until the header is hovered or the button has focus.
+- **Edit mode:** the header swaps the pencil for Reset (undo) and Done (check, `--accent`); Esc
+  also ends it. Under a 12px muted hint, every entry and the line are 36px rows with a trailing
+  grip; entries below the line dim to 60% (full on hover/focus). The line is a 2px accent
+  rule with a "Hidden below" caption (11.5px/600 caps). Rows drag with the queue rail's
+  gesture: the lifted row follows the pointer on `--surface-2` with `--shadow-panel`, others
+  slide one pitch (`--dur-micro`; none under reduced motion) and snap into the new order on
+  release. Alt+↑/↓ moves the focused row (announced). Entry clicks never navigate here.
+- **Rail:** no edit mode (collapsing ends it). It shows the entries above the line, then a
+  chevron only while something is below it.
+- **Rack:** the library key tray follows the same order but keeps every key.
+
 **Page frame:** the main scroller pads every page `90px 28px` (`--page-top` on `.main`:
 32px of frame plus 58px of air above the title), with the floating player's clearance at
 the bottom. Now Playing is a full-window composition and keeps a bare 32px top. Page

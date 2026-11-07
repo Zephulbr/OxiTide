@@ -240,7 +240,8 @@ The display is open faceplate. Each section = printed label + glass pane (§5.5,
 Album/playlist/artist headers are one pane (cover 168px + title block + action keys in a
 tray); track lists one pane; shelves/grids one pane each; pairs sit side by side with
 equal heights. Library and search show a key tray (sub-sources / result types) and VFD
-inputs (filter, search) above the panes.
+inputs (filter, search) above the panes. The Library tray takes the sidebar's My Collection
+order (`orderedLibraryKeys`) but keeps every key: the rack has no "Show more".
 
 ## 7. Setup (Settings in Rack)
 

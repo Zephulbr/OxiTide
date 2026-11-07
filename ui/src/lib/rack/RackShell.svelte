@@ -33,7 +33,8 @@
   import SpectrumMeter from "./meters/SpectrumMeter.svelte";
   import ChangerUnit from "./ChangerUnit.svelte";
   import RackStrip from "./RackStrip.svelte";
-  import { LIBRARY_KEYS, libraryKeyOf, sourceOf, type Source } from "./sources";
+  import { libraryKeyOf, orderedLibraryKeys, sourceOf, type Source } from "./sources";
+  import { collectionLayout } from "../collectionLayout.svelte";
 
   /// The Hi-Fi Rack shell (RK-D1, RK-D4): selector unit across the top, the
   /// rack column (deck, amp, EQ) on the left, the display unit on the right.
@@ -98,6 +99,8 @@
   const expanded = $derived(nav.nowPlayingOpen);
   const source = $derived(sourceOf(nav.route));
   const libraryKey = $derived(libraryKeyOf(nav.route));
+  /// The tray follows the sidebar's My Collection order (every key stays).
+  const layout = collectionLayout();
   let column = $state<HTMLDivElement>();
 
   /// Narrow-window fold (9.5c): below 1000px the rack column folds into a
@@ -293,7 +296,7 @@
     <section class="rk-unit display" aria-label="Display">
       {#if libraryKey}
         <div class="rk-tray libkeys" role="group" aria-label="Library">
-          {#each LIBRARY_KEYS as k (k.label)}
+          {#each orderedLibraryKeys(layout.prefs.order) as k (k.key)}
             <button class="rk-key sm" aria-current={libraryKey === k.label ? "page" : undefined} onclick={() => nav.goto(k.route)}>{k.label}</button>
           {/each}
         </div>

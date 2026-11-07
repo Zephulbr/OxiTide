@@ -1,6 +1,16 @@
 <script lang="ts">
   import { prefetchIntent } from "../viewData";
-  import { untrack } from "svelte";
+  import { tick, untrack } from "svelte";
+  import {
+    COLLECTION_ITEMS,
+    collectionLayout,
+    hiddenKeys,
+    toRows,
+    visibleKeys,
+    type CollectionKey,
+    type LayoutRow,
+  } from "../collectionLayout.svelte";
+  import { DRAG_THRESHOLD, dragTarget, rowShift } from "../queueDrag";
   import { appearance } from "../appearance.svelte";
   import { createHoverIntent } from "../hoverIntent.svelte";
   import { edgeFade } from "../edgeFade";
@@ -90,8 +100,13 @@
     if (canPeek) peekIntent.enter(closing);
   }
 
-  let collectionOpen = $state(true);
-  let showMore = $state(false);
+  // "My Collection": entries above the line always show; those below sit
+  // under "Show more", or under the header's chevron when all are below.
+  const layout = collectionLayout();
+  const shown = $derived(visibleKeys(layout.prefs));
+  const hidden = $derived(hiddenKeys(layout.prefs));
+  const moreOpen = $derived(layout.prefs.open);
+  const allHidden = $derived(shown.length === 0);
 
   const view = playlistView();
 
@@ -127,34 +142,169 @@
     ]);
   }
 
-  const collectionItems: {
-    route: Route;
-    label: string;
-    icon: "list-music" | "disc-3" | "music" | "bookmark";
-  }[] = [
-    { route: { name: "playlists" }, label: "Playlists", icon: "list-music" },
-    { route: { name: "albums" }, label: "Albums", icon: "disc-3" },
-    { route: { name: "tracks" }, label: "Tracks", icon: "music" },
-    { route: { name: "later" }, label: "Save for Later", icon: "bookmark" },
-  ];
-
-  const moreItems: {
-    route: Route;
-    label: string;
-    icon: "disc-3" | "heart" | "copy";
-  }[] = [
-    { route: { name: "mixes" }, label: "Mixes & Radio", icon: "disc-3" },
-    { route: { name: "profiles" }, label: "Profiles", icon: "heart" },
-    { route: { name: "purchases" }, label: "Purchases", icon: "copy" },
-  ];
-
   function isActive(name: string): boolean {
     if (name === "playlists") {
       return nav.route.name === "playlists" || nav.route.name === "folder";
     }
     return nav.route.name === name;
   }
+
+  // ---- Edit mode: drag entries (and the line) above or below the line ----
+
+  let editing = $state(false);
+  // The rail has no edit mode; collapsing the sidebar ends it.
+  const edit = $derived(editing && !rail);
+  $effect(() => {
+    if (rail) editing = false;
+  });
+  const rows = $derived(toRows(layout.prefs));
+  const lineIndex = $derived(rows.indexOf("line"));
+
+  let editButton = $state<HTMLButtonElement | null>(null);
+  let doneButton = $state<HTMLButtonElement | null>(null);
+  let listEl = $state<HTMLElement | null>(null);
+  let announce = $state("");
+
+  async function startEditing() {
+    editing = true;
+    await tick();
+    doneButton?.focus();
+  }
+
+  async function stopEditing() {
+    endEditDrag();
+    editing = false;
+    announce = "";
+    await tick();
+    editButton?.focus();
+  }
+
+  function rowLabel(row: LayoutRow): string {
+    return row === "line" ? "The line" : COLLECTION_ITEMS[row].label;
+  }
+
+  function rowState(index: number): string {
+    if (index === lineIndex) return "entries below it are under Show more";
+    return index < lineIndex ? "always shown" : "under Show more";
+  }
+
+  async function moveBy(index: number, delta: number) {
+    const to = index + delta;
+    if (to < 0 || to >= rows.length) return;
+    const row = rows[index];
+    layout.move(index, to);
+    await tick();
+    const now = rows.indexOf(row);
+    announce = `${rowLabel(row)} moved to position ${now + 1} of ${rows.length}, ${rowState(now)}`;
+    listEl?.querySelector<HTMLElement>(`[data-row="${row}"]`)?.focus();
+  }
+
+  function onRowKey(event: KeyboardEvent, index: number) {
+    if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+      event.preventDefault();
+      void moveBy(index, event.key === "ArrowUp" ? -1 : 1);
+    }
+  }
+
+  function onEditKey(event: KeyboardEvent) {
+    if (!edit || event.key !== "Escape" || event.defaultPrevented) return;
+    event.preventDefault();
+    void stopEditing();
+  }
+
+  interface EditPress {
+    index: number;
+    y: number;
+    x: number;
+    /// Row pitch (height plus gap), and how far the row may travel each way.
+    stride: number;
+    minDy: number;
+    maxDy: number;
+    /// The pressed row's centre, relative to the list's top.
+    center: number;
+  }
+  let editPress: EditPress | null = null;
+  let editDrag = $state<{ from: number; to: number; dy: number; stride: number } | null>(null);
+  let settling = $state(false);
+
+  function onRowPointerDown(event: PointerEvent, index: number) {
+    if (event.button !== 0 || event.pointerType === "touch" || editPress || !listEl) return;
+    const row = event.currentTarget as HTMLElement;
+    const slots = listEl.querySelectorAll<HTMLElement>("[data-slot]");
+    const rect = row.getBoundingClientRect();
+    const list = listEl.getBoundingClientRect();
+    editPress = {
+      index,
+      x: event.clientX,
+      y: event.clientY,
+      stride: Math.max(1, slots.length > 1 ? slots[1].offsetTop - slots[0].offsetTop : rect.height),
+      minDy: list.top - rect.top,
+      maxDy: list.bottom - rect.bottom,
+      center: rect.top - list.top + rect.height / 2,
+    };
+    window.addEventListener("pointermove", onEditMove);
+    window.addEventListener("pointerup", onEditUp);
+    window.addEventListener("pointercancel", endEditDrag);
+    window.addEventListener("keydown", onEditDragKey, true);
+  }
+
+  function onEditMove(event: PointerEvent) {
+    const press = editPress;
+    if (!press) return;
+    if (!editDrag) {
+      if (Math.hypot(event.clientX - press.x, event.clientY - press.y) < DRAG_THRESHOLD) return;
+      editDrag = { from: press.index, to: press.index, dy: 0, stride: press.stride };
+    }
+    const dy = Math.max(press.minDy, Math.min(press.maxDy, event.clientY - press.y));
+    editDrag.dy = dy;
+    editDrag.to = dragTarget(press.center + dy, press.stride, rows.length);
+  }
+
+  function onEditUp() {
+    const done = editDrag;
+    endEditDrag();
+    if (!done || done.from === done.to) return;
+    const row = rows[done.from];
+    // Rows hold their shifted transforms; snap (no glide) into the new order.
+    settling = true;
+    requestAnimationFrame(() => requestAnimationFrame(() => (settling = false)));
+    layout.move(done.from, done.to);
+    announce = `${rowLabel(row)} moved to position ${done.to + 1} of ${rows.length}, ${rowState(done.to)}`;
+  }
+
+  function onEditDragKey(event: KeyboardEvent) {
+    if (event.key !== "Escape" || !editDrag) return;
+    event.preventDefault();
+    event.stopPropagation();
+    endEditDrag();
+  }
+
+  function endEditDrag() {
+    editPress = null;
+    editDrag = null;
+    window.removeEventListener("pointermove", onEditMove);
+    window.removeEventListener("pointerup", onEditUp);
+    window.removeEventListener("pointercancel", endEditDrag);
+    window.removeEventListener("keydown", onEditDragKey, true);
+  }
+
+  $effect(() => endEditDrag);
+
+  function slotTransform(index: number): string | undefined {
+    if (!editDrag) return undefined;
+    if (index === editDrag.from) return `translateY(${editDrag.dy}px)`;
+    const shift = rowShift(index, editDrag.from, editDrag.to);
+    return shift === 0 ? undefined : `translateY(${shift * editDrag.stride}px)`;
+  }
 </script>
+
+{#snippet entry(key: CollectionKey)}
+  {@const item = COLLECTION_ITEMS[key]}
+  {@const route = { name: key } as Route}
+  <button class="nav-item" class:active={isActive(key)} aria-current={isActive(key) ? "page" : undefined} onclick={() => nav.goto(route)} use:prefetchIntent={route} title={item.label} aria-label={item.label}>
+    <Icon name={item.icon} />{#if !rail}<span>{item.label}</span>{/if}
+  </button>
+{/snippet}
 
 <nav
   class="sidebar"
@@ -212,34 +362,94 @@
         <Icon name="library" />
       </button>
     {:else}
-      <button class="section-head" onclick={() => (collectionOpen = !collectionOpen)} aria-expanded={collectionOpen}>
-        <span>My Collection</span>
-        <Icon name={collectionOpen ? "chevron-down" : "chevron-right"} size={16} />
-      </button>
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="collection-head" class:editing={edit} onkeydown={onEditKey}>
+        {#if !edit && allHidden}
+          <button class="section-head" onclick={() => layout.setOpen(!moreOpen)} aria-expanded={moreOpen}>
+            <span>My Collection</span>
+            <Icon name={moreOpen ? "chevron-down" : "chevron-right"} size={16} />
+          </button>
+        {:else}
+          <div class="section-head static"><span>My Collection</span></div>
+        {/if}
+        <div class="head-actions" class:beside-chevron={!edit && allHidden}>
+          {#if edit}
+            <button class="mini" onclick={() => layout.reset()} title="Reset to default" aria-label="Reset My Collection to default">
+              <Icon name="undo-2" size={16} />
+            </button>
+            <button class="mini done" bind:this={doneButton} onclick={stopEditing} title="Done" aria-label="Done editing My Collection">
+              <Icon name="check" size={16} />
+            </button>
+          {:else}
+            <button class="mini edit-toggle" bind:this={editButton} onclick={startEditing} title="Edit My Collection" aria-label="Edit My Collection">
+              <Icon name="pencil" size={14} />
+            </button>
+          {/if}
+        </div>
+      </div>
     {/if}
 
-    {#if collectionOpen || rail}
-      {#each collectionItems as item (item.label)}
-        <button class="nav-item" class:active={isActive(item.route.name)} aria-current={isActive(item.route.name) ? "page" : undefined} onclick={() => nav.goto(item.route)} use:prefetchIntent={item.route} title={item.label} aria-label={item.label}>
-          <Icon name={item.icon} />{#if !rail}<span>{item.label}</span>{/if}
-        </button>
+    {#if edit}
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="edit" onkeydown={onEditKey}>
+        <p class="edit-hint" id="collection-edit-hint">Drag to arrange. Entries below the line stay under Show more.</p>
+        <ul class="edit-list" class:settling class:dragging={editDrag !== null} bind:this={listEl} aria-label="Arrange My Collection">
+          {#each rows as row, i (row)}
+            <li class="slot" data-slot class:lifted={editDrag?.from === i} style:transform={slotTransform(i)}>
+              {#if row === "line"}
+                <button
+                  class="edit-row line-row"
+                  data-row={row}
+                  aria-label="The line: entries below it are under Show more. Alt+Up or Alt+Down moves it"
+                  aria-describedby="collection-edit-hint"
+                  onpointerdown={(event) => onRowPointerDown(event, i)}
+                  onkeydown={(event) => onRowKey(event, i)}
+                >
+                  <span class="rule"></span>
+                  <span class="rule-label">Hidden below</span>
+                  <span class="rule"></span>
+                  <Icon name="grip-vertical" size={16} />
+                </button>
+              {:else}
+                <button
+                  class="edit-row"
+                  class:below={i > lineIndex}
+                  data-row={row}
+                  aria-label={`${COLLECTION_ITEMS[row].label}, ${rowState(i)}. Alt+Up or Alt+Down moves it`}
+                  aria-describedby="collection-edit-hint"
+                  onpointerdown={(event) => onRowPointerDown(event, i)}
+                  onkeydown={(event) => onRowKey(event, i)}
+                >
+                  <Icon name={COLLECTION_ITEMS[row].icon} />
+                  <span class="edit-label">{COLLECTION_ITEMS[row].label}</span>
+                  <Icon name="grip-vertical" size={16} />
+                </button>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+        <div class="sr-only" aria-live="polite">{announce}</div>
+      </div>
+    {:else}
+      {#each shown as key (key)}
+        {@render entry(key)}
       {/each}
-      {#if rail}
-        <button class="nav-item" onclick={() => (showMore = !showMore)} aria-expanded={showMore} title="Show more" aria-label="Show more">
-          <Icon name={showMore ? "chevron-up" : "chevron-down"} />
-        </button>
-      {:else}
-        <button class="section-head sub" onclick={() => (showMore = !showMore)} aria-expanded={showMore}>
-          <span>{showMore ? "Show less" : "Show more"}</span>
-          <Icon name={showMore ? "chevron-up" : "chevron-down"} size={16} />
-        </button>
-      {/if}
-      {#if showMore}
-        {#each moreItems as item (item.label)}
-          <button class="nav-item" class:active={isActive(item.route.name)} aria-current={isActive(item.route.name) ? "page" : undefined} onclick={() => nav.goto(item.route)} use:prefetchIntent={item.route} title={item.label} aria-label={item.label}>
-            <Icon name={item.icon} />{#if !rail}<span>{item.label}</span>{/if}
+      {#if hidden.length > 0}
+        {#if rail}
+          <button class="nav-item" onclick={() => layout.setOpen(!moreOpen)} aria-expanded={moreOpen} title={moreOpen ? "Show less" : "Show more"} aria-label={moreOpen ? "Show less" : "Show more"}>
+            <Icon name={moreOpen ? "chevron-up" : "chevron-down"} />
           </button>
-        {/each}
+        {:else if !allHidden}
+          <button class="section-head sub" onclick={() => layout.setOpen(!moreOpen)} aria-expanded={moreOpen}>
+            <span>{moreOpen ? "Show less" : "Show more"}</span>
+            <Icon name={moreOpen ? "chevron-up" : "chevron-down"} size={16} />
+          </button>
+        {/if}
+        {#if moreOpen}
+          {#each hidden as key (key)}
+            {@render entry(key)}
+          {/each}
+        {/if}
       {/if}
     {/if}
 
@@ -383,6 +593,153 @@
     text-transform: none;
     letter-spacing: normal;
     padding-left: 32px;
+  }
+  /* My Collection's header: the label (a chevron toggle only when every entry
+     is below the line) with the edit pencil, or Reset/Done while editing. */
+  .collection-head {
+    position: relative;
+  }
+  .section-head.static:hover {
+    color: var(--text-muted);
+  }
+  .head-actions {
+    position: absolute;
+    top: 50%;
+    /* Centred where the chevron would sit ((40px - 24px) / 2 from the edge),
+       or just left of it when the chevron is there. */
+    right: 5px;
+    display: flex;
+    gap: 2px;
+    transform: translateY(-50%);
+  }
+  .head-actions.beside-chevron {
+    right: 29px;
+  }
+  .edit-toggle {
+    opacity: 0;
+    transition: opacity var(--dur-micro) var(--ease-enter);
+  }
+  .collection-head:hover .edit-toggle,
+  .edit-toggle:focus-visible {
+    opacity: 1;
+  }
+  .mini.done {
+    color: var(--accent);
+  }
+  .edit-hint {
+    margin: 0 0 4px;
+    padding: 0 9px;
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .edit-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    user-select: none;
+    touch-action: none;
+  }
+  .slot {
+    position: relative;
+    transition: transform var(--dur-micro) var(--ease-enter);
+  }
+  .edit-list.settling .slot,
+  .slot.lifted {
+    transition: none;
+  }
+  .slot.lifted {
+    z-index: 1;
+  }
+  .edit-row {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    width: 100%;
+    height: 36px;
+    padding: 0 9px;
+    border-radius: var(--radius-control);
+    color: var(--text-muted);
+    text-align: left;
+    cursor: grab;
+  }
+  .edit-row > :global(svg:first-child) {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+  }
+  .edit-row > :global(svg:last-child) {
+    flex-shrink: 0;
+    color: var(--text-muted);
+    opacity: 0.7;
+  }
+  .edit-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .edit-row.below {
+    opacity: 0.6;
+  }
+  .edit-row:hover,
+  .edit-row:focus-visible {
+    background: var(--surface-2);
+    color: var(--text);
+    opacity: 1;
+  }
+  .edit-list.dragging .edit-row {
+    cursor: grabbing;
+  }
+  .edit-list.dragging .edit-row:hover {
+    background: none;
+  }
+  .slot.lifted .edit-row,
+  .edit-list.dragging .slot.lifted .edit-row:hover {
+    background: var(--surface-2);
+    color: var(--text);
+    opacity: 1;
+    box-shadow: var(--shadow-panel);
+  }
+  .line-row {
+    gap: 8px;
+    color: var(--accent);
+  }
+  .rule {
+    flex: 1;
+    height: 2px;
+    border-radius: 1px;
+    background: currentColor;
+    opacity: 0.55;
+  }
+  .rule-label {
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .line-row:hover,
+  .line-row:focus-visible,
+  .slot.lifted .line-row {
+    color: var(--accent);
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .slot,
+    .edit-toggle {
+      transition: none;
+    }
   }
   .playlist-head {
     display: flex;

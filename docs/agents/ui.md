@@ -36,6 +36,13 @@ Read before touching `ui/`: styling and modes, Hi-Fi Rack, Home/Explore/search, 
     the row (`player.reorder`) instead of inserting a copy.
   - **Track tables multi-select through `lib/selection.svelte.ts`**, keyed by row object
     (playlists repeat ids). A drag from a selected row carries the selection.
+  - **The sidebar's My Collection edit mode reorders with its own gesture** too (it moves
+    sidebar rows, not content): `Sidebar.svelte` reuses `lib/queueDrag.ts`'s geometry.
+- Sidebar My Collection (spec `2026-11-07-oxitide-customizable-collection-design.md`): order,
+  line and open state live in `lib/collectionLayout.svelte.ts` (localStorage
+  `oxitide.collection-layout`), shared with the Rack's library tray (`orderedLibraryKeys`).
+  Keys are route names. A new collection page needs an entry in `COLLECTION_KEYS` /
+  `COLLECTION_ITEMS`; saved layouts gain it below the line on load.
 - Output picker (spec `2026-11-05-oxitide-output-device-picker-design.md`):
   - `settings/OutputDevicePicker.svelte` renders from the pure `lib/outputDevices.ts`.
   - Rows are `role="radio"` buttons. The arrows only move focus, and Enter/Space selects,

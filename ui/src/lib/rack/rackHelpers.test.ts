@@ -34,7 +34,7 @@ import {
   upNext,
 } from "./deck";
 import { segGhost, segLit } from "./segment";
-import { libraryKeyOf, sourceOf } from "./sources";
+import { libraryKeyOf, orderedLibraryKeys, sourceOf } from "./sources";
 
 const item = (id: number, secs = 100): QueueItem => ({
   track_id: id,
@@ -60,6 +60,12 @@ describe("sourceOf", () => {
     expect(libraryKeyOf({ name: "folder", id: "f" })).toBe("Playlists");
     expect(libraryKeyOf({ name: "album", id: 1 })).toBeNull();
     expect(libraryKeyOf({ name: "playlist", id: "p" })).toBeNull();
+  });
+  it("orders the library tray like the sidebar, keeping every key", () => {
+    const order = ["tracks", "profiles", "playlists", "albums", "later", "mixes", "purchases"] as const;
+    expect(orderedLibraryKeys(order).map((k) => k.label)).toEqual([
+      "Tracks", "Profiles", "Playlists", "Albums", "Save for Later", "Mixes & Radio", "Purchases",
+    ]);
   });
 });
 

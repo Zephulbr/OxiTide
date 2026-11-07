@@ -1,3 +1,4 @@
+import { COLLECTION_ITEMS, COLLECTION_KEYS, type CollectionKey } from "../collectionLayout.svelte";
 import type { Route } from "../nav.svelte";
 
 /// The selector unit's lit source keys (RK-D4). They mirror the default
@@ -29,17 +30,29 @@ export function sourceOf(route: Route): Source | null {
   }
 }
 
+export interface LibraryKey {
+  key: CollectionKey;
+  label: string;
+  route: Route;
+  also?: Route["name"][];
+}
+
 /// Sub-source keys shown above the page while browsing the collection; the
 /// same entries as the sidebar's "My Collection" (including "Show more").
-export const LIBRARY_KEYS: { label: string; route: Route; also?: Route["name"][] }[] = [
-  { label: "Playlists", route: { name: "playlists" }, also: ["folder"] },
-  { label: "Albums", route: { name: "albums" } },
-  { label: "Tracks", route: { name: "tracks" } },
-  { label: "Save for Later", route: { name: "later" } },
-  { label: "Mixes & Radio", route: { name: "mixes" } },
-  { label: "Profiles", route: { name: "profiles" } },
-  { label: "Purchases", route: { name: "purchases" } },
-];
+export const LIBRARY_KEYS: LibraryKey[] = COLLECTION_KEYS.map((key) => ({
+  key,
+  label: COLLECTION_ITEMS[key].label,
+  route: { name: key } as Route,
+  ...(key === "playlists" ? { also: ["folder"] as Route["name"][] } : {}),
+}));
+
+/// The tray in the sidebar's custom order. Every key stays: the rack has no
+/// "Show more", so the line only orders it.
+export function orderedLibraryKeys(order: readonly CollectionKey[]): LibraryKey[] {
+  return order
+    .map((key) => LIBRARY_KEYS.find((k) => k.key === key))
+    .filter((k): k is LibraryKey => k !== undefined);
+}
 
 /// The library key lit for a route, or null when the tray should not show
 /// (detail pages keep the Library lamp but drop the tray).
