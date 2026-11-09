@@ -43,7 +43,11 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy
+          components: clippy, rustfmt
+
+      # Needs no build (or ui/dist), so it fails fast.
+      - name: Rustfmt
+        run: cargo fmt --all -- --check
 
       - uses: Swatinem/rust-cache@v2
 
