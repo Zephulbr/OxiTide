@@ -233,6 +233,21 @@ fn is_cover_uuid(uuid: &str) -> bool {
             .all(|(i, ch)| if [8, 13, 18, 23].contains(&i) { ch == '-' } else { ch.is_ascii_hexdigit() })
 }
 
+/// A playlist, mix or folder id as TIDAL issues them (UUIDs, hex mix ids,
+/// `root`). Playlist ids are spliced into API paths, so a phone must not be
+/// able to send `/`, `..`, `?` or `#` and reach an endpoint off the allowlist.
+fn is_safe_id(id: &str) -> bool {
+    (1..=64).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
+fn safe_id(id: String) -> Result<String, RpcError> {
+    if is_safe_id(&id) {
+        Ok(id)
+    } else {
+        Err(RpcError::bad_params("not a TIDAL id"))
+    }
+}
+
 /// Covers a phone sends ride into the desktop queue, the media overlay (which
 /// fetches them), Discord presence (which publishes them), and history. Keep
 /// only TIDAL image ids and TIDAL CDN URLs (mix artwork lives on
@@ -309,7 +324,7 @@ pub fn parse(method: &str, params: Value) -> Result<RemoteCommand, RpcError> {
         "get_explore" => C::GetExplore,
         "get_for_you" => C::GetForYou,
         "get_favorite_mixes" => C::GetFavoriteMixes,
-        "get_mix" => C::GetMix { id: args!(params, { id: String }) },
+        "get_mix" => C::GetMix { id: safe_id(args!(params, { id: String }))? },
         "get_track_radio" => C::GetTrackRadio { track_id: args!(params, { track_id: u64 }) },
         "get_artist_radio" => C::GetArtistRadio { artist_id: args!(params, { artist_id: u64 }) },
         "get_similar_artists" => {
@@ -318,10 +333,10 @@ pub fn parse(method: &str, params: Value) -> Result<RemoteCommand, RpcError> {
         "get_album" => C::GetAlbum { id: args!(params, { id: u64 }) },
         "get_album_tracks" => C::GetAlbumTracks { id: args!(params, { id: u64 }) },
         "get_album_info" => C::GetAlbumInfo { id: args!(params, { id: u64 }) },
-        "get_playlist" => C::GetPlaylist { id: args!(params, { id: String }) },
+        "get_playlist" => C::GetPlaylist { id: safe_id(args!(params, { id: String }))? },
         "get_playlist_tracks_page" => {
             let (id, offset, limit) = args!(params, { id: String, offset: u32, limit: u32 });
-            C::GetPlaylistTracksPage { id, offset, limit: page_limit(limit)? }
+            C::GetPlaylistTracksPage { id: safe_id(id)?, offset, limit: page_limit(limit)? }
         }
         "get_artist" => C::GetArtist { id: args!(params, { id: u64 }) },
         "get_artist_page" => C::GetArtistPage { artist_id: args!(params, { artist_id: u64 }) },
@@ -358,7 +373,7 @@ pub fn parse(method: &str, params: Value) -> Result<RemoteCommand, RpcError> {
         "get_user_playlists" => C::GetUserPlaylists,
         "get_collection_items" => {
             let (folder_id, order) = args!(params, { folder_id: Option<String>, order: Option<String> });
-            C::GetCollectionItems { folder_id, order }
+            C::GetCollectionItems { folder_id: folder_id.map(safe_id).transpose()?, order }
         }
         "get_history_page" => {
             let (offset, limit) = args!(params, { offset: usize, limit: usize });
@@ -379,7 +394,7 @@ pub fn parse(method: &str, params: Value) -> Result<RemoteCommand, RpcError> {
         "add_playlist_tracks" => {
             let (id, track_ids, allow_duplicates) =
                 args!(params, { id: String, track_ids: Vec<u64>, allow_duplicates: bool });
-            C::AddPlaylistTracks { id, track_ids: bounded(track_ids)?, allow_duplicates }
+            C::AddPlaylistTracks { id: safe_id(id)?, track_ids: bounded(track_ids)?, allow_duplicates }
         }
         _ => return Err(RpcError::new("unknown_method", method.to_string())),
     })
@@ -774,6 +789,26 @@ mod tests {
         }
         let sepia = json!({"uuid": "660f113b-e63f-4c2b-a021-33350ca6948b", "theme": "sepia"});
         assert!(parse("analyze_cover", sepia).is_err());
+    }
+
+    #[test]
+    fn string_ids_cannot_steer_the_api_path() {
+        let uuid = "660f113b-e63f-4c2b-a021-33350ca6948b";
+        for bad in ["", "../users/1/favorites", "abc?limit=1", "abc#", "a/b", "a b", "a%2F..", &"x".repeat(65)] {
+            for (method, params) in [
+                ("get_playlist", json!({"id": bad})),
+                ("get_mix", json!({"id": bad})),
+                ("get_playlist_tracks_page", json!({"id": bad, "offset": 0, "limit": 10})),
+                ("add_playlist_tracks", json!({"id": bad, "trackIds": [1], "allowDuplicates": false})),
+                ("get_collection_items", json!({"folderId": bad})),
+            ] {
+                assert_eq!(parse(method, params).unwrap_err().code, "bad_params", "{method} {bad:?}");
+            }
+        }
+        assert!(parse("get_playlist", json!({"id": uuid})).is_ok());
+        assert!(parse("get_mix", json!({"id": "0019a8e1b2e7b6c5c3e2b1a0f9e8d7"})).is_ok());
+        assert!(parse("get_collection_items", json!({"folderId": "root"})).is_ok());
+        assert!(parse("get_collection_items", json!({})).is_ok(), "no folder means root");
     }
 
     #[test]

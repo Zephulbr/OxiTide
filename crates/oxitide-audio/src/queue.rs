@@ -358,8 +358,12 @@ impl Queue {
         }
     }
 
+    /// A non-finite value is ignored: `clamp` passes NaN through, and a NaN
+    /// volume never compares as changed, so it would stick silently.
     pub fn set_volume(&mut self, v: f32) {
-        self.volume = v.clamp(0.0, 1.0);
+        if v.is_finite() {
+            self.volume = v.clamp(0.0, 1.0);
+        }
     }
 
     /// Enabling shuffles the items after the current index once; disabling
@@ -752,6 +756,11 @@ mod tests {
         assert_eq!(q.volume(), 1.0);
         q.set_volume(-1.0);
         assert_eq!(q.volume(), 0.0);
+        q.set_volume(0.4);
+        for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            q.set_volume(bad);
+            assert_eq!(q.volume(), 0.4, "{bad} is ignored");
+        }
     }
 
     #[test]

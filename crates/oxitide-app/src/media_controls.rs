@@ -333,6 +333,7 @@ mod tests {
             position_ms: 0,
             duration_ms: 0,
             volume: 1.0,
+            volume_fixed: false,
             shuffle: false,
             repeat: RepeatMode::Off,
             preferred_quality: Quality::Lossless,

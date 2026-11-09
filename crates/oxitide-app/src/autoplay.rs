@@ -205,9 +205,14 @@ impl Autoplay {
             return;
         };
         let now = player.engine.state();
-        // The user may have moved on (a new queue, a skip, repeat) while
-        // the radio loaded: append only after the same last track.
+        // The user may have moved on (a new queue, a skip, repeat, a pause)
+        // while the radio loaded: append only after the same last track.
+        // Keep the batch and forget the attempt, so a resume on this same
+        // track and queue revision fills from the pool instead of never.
         if fill_target(&now).map(|item| item.track_id) != Some(target.track_id) {
+            let mut run = self.run.lock().unwrap();
+            run.pool.splice(0..0, items);
+            run.attempted = None;
             return;
         }
         tracing::info!("autoplay: queued {} tracks after track {}", items.len(), target.track_id);

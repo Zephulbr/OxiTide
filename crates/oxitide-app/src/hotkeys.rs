@@ -199,6 +199,11 @@ fn adjust_volume(app: &AppHandle, delta: f32) {
     let Some(player) = state.player() else {
         return;
     };
+    // Held at 100% (ASIO): the engine ignores it, so do not rewrite the
+    // saved volume the next device will use.
+    if player.engine.state().volume_fixed {
+        return;
+    }
     let mut config = state.config();
     let volume = next_volume(config.audio.volume, delta);
     if let Err(e) = player.engine.handle(EngineCmd::SetVolume(volume)) {

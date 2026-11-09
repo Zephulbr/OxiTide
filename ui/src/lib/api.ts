@@ -307,7 +307,13 @@ export interface StreamMeta {
 export interface PlaybackState {
   playing: boolean; buffering: boolean; current?: QueueItem | null;
   current_index?: number | null;
-  position_ms: number; duration_ms: number; volume: number;
+  position_ms: number; duration_ms: number;
+  /** The volume being applied: 1 while `volume_fixed`. */
+  volume: number;
+  /** Volume is held at 100% for bit-perfect output (ASIO has no endpoint
+   *  volume); `set_volume` is ignored. Always sent by Rust; optional so
+   *  hand-built states in tests may omit it. */
+  volume_fixed?: boolean;
   shuffle: boolean; repeat: RepeatMode;
   preferred_quality: Quality;
   output_mode: "shared" | "exclusive";
@@ -664,6 +670,8 @@ export interface RemoteState {
   positionMs: number;
   durationMs: number;
   volume: number;
+  /** Volume is held at 100% for bit-perfect output (ASIO): the slider is off. */
+  volumeFixed: boolean;
   shuffle: boolean;
   repeat: RepeatMode;
   queueLen: number;

@@ -57,7 +57,13 @@ pub struct PlaybackState {
     pub current_index: Option<usize>,
     pub position_ms: u64,
     pub duration_ms: u64,
+    /// The volume being applied: 1.0 while `volume_fixed`, the user's
+    /// otherwise.
     pub volume: f32,
+    /// The output has no volume control that keeps it bit-perfect (ASIO has
+    /// no endpoint volume), so volume stays at 100% and `SetVolume` is
+    /// ignored; the user's volume returns with the next non-ASIO device.
+    pub volume_fixed: bool,
     pub shuffle: bool,
     pub repeat: RepeatMode,
     pub preferred_quality: Quality,
@@ -188,10 +194,14 @@ struct Inner {
     /// The stream actually served and decoded for the current track.
     stream_meta: Mutex<Option<StreamMeta>>,
     device_id: Mutex<Option<String>>,
-    /// Set when the device is (re)selected: the next track start reopens the
-    /// output even when the spec it wants is unchanged, so re-selecting the
-    /// device retries it after a fallback to the default.
+    /// Set when the device is (re)selected: the output reopens even when the
+    /// spec it wants is unchanged (in place in a running session, otherwise at
+    /// the next track start), so re-selecting the device retries it after a
+    /// fallback to the default.
     reselect_device: AtomicBool,
+    /// Bumped on every device selection; a running session swaps devices in
+    /// place when it moves (`switch_device`).
+    device_version: AtomicU64,
     output_mode: Mutex<OutputMode>,
     exclusive_fallback: Mutex<ExclusiveFallback>,
     output_status: Mutex<OutputStatus>,
@@ -294,8 +304,15 @@ fn seek_in_range(item: &QueueItem, position_ms: u64) -> bool {
     item.duration_secs == 0 || position_ms <= u64::from(item.duration_secs) * 1000
 }
 
+/// Whether the selected output keeps volume at 100% (see
+/// `PlaybackState::volume_fixed`).
+fn volume_fixed(inner: &Inner) -> bool {
+    inner.device_id.lock().unwrap().as_deref().is_some_and(crate::output::is_asio_device)
+}
+
 fn build_state(inner: &Inner) -> PlaybackState {
     let (status, dsp_stages) = effective_status(inner);
+    let fixed = volume_fixed(inner);
     let q = inner.queue.lock().unwrap();
     PlaybackState {
         playing: q.is_playing(),
@@ -305,7 +322,8 @@ fn build_state(inner: &Inner) -> PlaybackState {
         current_index: q.current_index(),
         position_ms: inner.position_ms.load(Ordering::SeqCst),
         duration_ms: q.current().map(|i| i.duration_secs as u64 * 1000).unwrap_or(0),
-        volume: q.volume(),
+        volume: if fixed { 1.0 } else { q.volume() },
+        volume_fixed: fixed,
         shuffle: q.shuffle(),
         repeat: q.repeat(),
         preferred_quality: *inner.quality.lock().unwrap(),
@@ -326,19 +344,24 @@ fn build_state(inner: &Inner) -> PlaybackState {
 /// The volume the output should have right now and whether a sleep fade is
 /// driving it. A fade overrides the user's volume until it completes or is
 /// cancelled; the output-reopen path uses this too, so a format change
-/// mid-fade never jumps back to full volume.
+/// mid-fade never jumps back to full volume. A fixed-volume output plays at
+/// 1.0; a sleep fade still ramps it down from there (the one deliberate
+/// departure from bit-perfect, right before the pause).
 fn current_volume(inner: &Inner) -> (f32, bool) {
     let fade = inner.fade.lock().unwrap();
     current_volume_locked(inner, &fade)
 }
 
 fn current_volume_locked(inner: &Inner, fade: &Option<FadeState>) -> (f32, bool) {
+    let fixed = volume_fixed(inner);
     match fade.as_ref() {
         Some(f) => {
             let duration = f.duration.as_secs_f32().max(0.001);
             let t = (f.started.elapsed().as_secs_f32() / duration).min(1.0);
-            (f.base_volume * (1.0 - t), true)
+            let base = if fixed { 1.0 } else { f.base_volume };
+            (base * (1.0 - t), true)
         }
+        None if fixed => (1.0, false),
         None => (f32::from_bits(inner.volume.load(Ordering::SeqCst)), false),
     }
 }
@@ -399,6 +422,7 @@ impl Engine {
             stream_meta: Mutex::new(None),
             device_id: Mutex::new(None),
             reselect_device: AtomicBool::new(false),
+            device_version: AtomicU64::new(0),
             output_mode: Mutex::new(OutputMode::Shared),
             exclusive_fallback: Mutex::new(ExclusiveFallback::Shared),
             output_status: Mutex::new(OutputStatus::default()),
@@ -475,15 +499,22 @@ impl Engine {
     }
 
     /// Select the output device. `None` means the system default. Applies
-    /// immediately (restarts the current track at its position).
+    /// immediately: a running session moves to the new device in place (or
+    /// restarts at its position when the output mode changes, see
+    /// `switch_device`); otherwise the next session opens it.
     pub fn set_output_device(&self, device: Option<String>) {
         *self.inner.device_id.lock().unwrap() = device;
         self.inner.reselect_device.store(true, Ordering::SeqCst);
-        self.restart_current_at_position();
+        self.inner.device_version.fetch_add(1, Ordering::SeqCst);
+        // Wakes a session parked on a pause, too.
+        self.inner.notify_worker();
+        // `volume_fixed` (and the applied volume) follow the device.
+        self.emit(EngineEvent::State(self.state()));
     }
 
     /// Select the output device and its mode together (each device keeps its
-    /// own Shared/Exclusive mode): one restart at the position, not two.
+    /// own Shared/Exclusive mode): one switch, not two. A mode change restarts
+    /// at the position (`switch_device`); otherwise the output moves in place.
     pub fn set_output(&self, device: Option<String>, mode: OutputMode) {
         *self.inner.output_mode.lock().unwrap() = mode;
         self.set_output_device(device);
@@ -814,6 +845,12 @@ impl Engine {
                 }
                 self.emit(EngineEvent::State(self.state()));
             }
+            EngineCmd::SetVolume(_) if volume_fixed(&self.inner) => {
+                // Fixed at 100% (ASIO): keep the user's volume for the next
+                // device. Re-send the state so a surface that moved its
+                // slider snaps back.
+                self.emit(EngineEvent::State(self.state()));
+            }
             EngineCmd::SetVolume(v) => {
                 // The new volume replaces any sleep fade. Store it and drop the
                 // fade under the fade lock, so the worker reads either the fade
@@ -886,7 +923,10 @@ impl Engine {
                 let playing = self.inner.queue.lock().unwrap().is_playing();
                 if playing {
                     let base = f32::from_bits(self.inner.volume.load(Ordering::SeqCst));
-                    if duration_ms == 0 || base <= 0.0 {
+                    // A fixed-volume output is audible at 100% whatever the
+                    // saved volume, so it always has something to ramp.
+                    let audible = if volume_fixed(&self.inner) { 1.0 } else { base };
+                    if duration_ms == 0 || audible <= 0.0 {
                         // Nothing to ramp: pause now.
                         self.inner.queue.lock().unwrap().stop();
                         self.inner.paused.store(true, Ordering::SeqCst);
@@ -1816,6 +1856,79 @@ fn output_refills(inner: &Inner, rate: u32) {
     inner.underruns.lock().unwrap().reset();
 }
 
+/// What a device selection meant for the running session.
+#[derive(Debug, PartialEq)]
+enum DeviceSwitch {
+    /// Nothing open to move (released by a long pause; the reopen picks the
+    /// new device), or the device is already the selected one.
+    Unchanged,
+    Moved,
+    /// The output mode changes with the device (e.g. WASAPI shared → ASIO),
+    /// and with it what the decoder produces: restart at the position.
+    Restart,
+}
+
+/// Move the open output to the selected device in place: same stream, same
+/// format, same position, no new manifest or download. Only the audio still
+/// queued in the old device (the ring plus its buffer, ~200–260 ms) is
+/// dropped. It used to restart the track like a seek (resolve, refetch,
+/// decode to the position) before even closing the old device.
+fn switch_device(
+    inner: &Arc<Inner>,
+    output: &mut dyn AudioOutput,
+    open_spec: &mut Option<AudioOutputSpec>,
+    mode: OutputMode,
+    last_volume: &mut f32,
+    rate: u32,
+) -> Result<DeviceSwitch> {
+    let device = inner.device_id.lock().unwrap().clone();
+    let wanted_mode = crate::output::effective_mode(*inner.output_mode.lock().unwrap(), device.as_deref());
+    if wanted_mode != mode {
+        return Ok(DeviceSwitch::Restart);
+    }
+    let Some(open) = open_spec.as_ref() else {
+        return Ok(DeviceSwitch::Unchanged);
+    };
+    // Re-selecting the device that is already wanted still reopens it: the
+    // open output may be a fallback standing in for it (`open_spec` names the
+    // selected id, not the one that actually opened).
+    let reselected = inner.reselect_device.swap(false, Ordering::SeqCst);
+    if open.device_id == device && !reselected {
+        return Ok(DeviceSwitch::Unchanged);
+    }
+    let spec = AudioOutputSpec { device_id: device, ..open.clone() };
+    let started = Instant::now();
+    let _ = output.stop();
+    *open_spec = None;
+    let (volume, _) = current_volume(inner);
+    output.open(&spec).and_then(|()| output.start()).and_then(|()| output.set_volume(volume))?;
+    *last_volume = volume;
+    *inner.output_status.lock().unwrap() = output.status();
+    tracing::info!(
+        "output moved to {} in {} ms",
+        spec.device_id.as_deref().unwrap_or("the system default"),
+        started.elapsed().as_millis()
+    );
+    *open_spec = Some(spec);
+    output_refills(inner, rate);
+    emit(inner, EngineEvent::State(build_state(inner)));
+    Ok(DeviceSwitch::Moved)
+}
+
+/// Restart the current track at its position from inside a session (an
+/// output mode change). Unlike `Engine::restart_current_at_position` it also
+/// works while paused: the worker starts the new session paused there.
+fn restart_at_position(inner: &Inner, track_id: u64) {
+    let position_ms = if inner.position_track.load(Ordering::SeqCst) == track_id {
+        inner.position_ms.load(Ordering::SeqCst)
+    } else {
+        0
+    };
+    *inner.seek_target.lock().unwrap() = Some(PendingSeek { track_id, position_ms, auto_start: true });
+    inner.generation.fetch_add(1, Ordering::SeqCst);
+    inner.notify_worker();
+}
+
 /// Let the written audio be heard before the output stops (end of queue, a
 /// reopen for the next track's format): a stop drops what the output still
 /// buffers, the last ~200 ms of the track and the device buffer. A command
@@ -2104,11 +2217,14 @@ const PAUSE_RELEASE: Duration = Duration::from_millis(300);
 /// `wait_for_stream_event`, so a notify cannot slip in between; the timeout
 /// is only a safety net. Returns after any wake so the caller re-runs its
 /// per-iteration checks (DSP version, volume) before parking again.
-fn park_while_paused(inner: &Inner, gen: u64) {
+/// `device_version`: the selection the caller has applied, for a caller that
+/// handles device changes (the session's pause loop); others pass `None`.
+fn park_while_paused(inner: &Inner, gen: u64, device_version: Option<u64>) {
     let guard = inner.wake_lock.lock().unwrap();
     if !inner.paused.load(Ordering::SeqCst)
         || inner.generation.load(Ordering::SeqCst) != gen
         || inner.shutdown.load(Ordering::SeqCst)
+        || device_version.is_some_and(|v| inner.device_version.load(Ordering::SeqCst) != v)
     {
         return;
     }
@@ -2138,7 +2254,7 @@ fn write_responsive(
             return Ok(false);
         }
         if inner.paused.load(Ordering::SeqCst) {
-            park_while_paused(inner, gen);
+            park_while_paused(inner, gen, None);
             continue;
         }
         let end = (start + slice).min(buf.len());
@@ -2238,6 +2354,9 @@ fn run_session(
     fallback: ExclusiveFallback,
     gen: u64,
     seek_ms: Option<u64>,
+    // The device selection `mode` was derived from; a later one is applied
+    // in place by `switch_device`.
+    mut device_version: u64,
 ) -> SessionOutcome {
     // A seek must not play the audio still buffered in the device ring. Flush
     // the open device instead of releasing it: reopening re-negotiates the
@@ -2573,6 +2692,23 @@ fn run_session(
             if inner.generation.load(Ordering::SeqCst) != gen {
                 return SessionOutcome::Superseded;
             }
+            let devices = inner.device_version.load(Ordering::SeqCst);
+            if devices != device_version {
+                device_version = devices;
+                match switch_device(inner, output, open_spec, mode, last_volume, rate) {
+                    Ok(DeviceSwitch::Restart) => {
+                        restart_at_position(inner, stream.item.track_id);
+                        return SessionOutcome::Superseded;
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        return SessionOutcome::OutputError {
+                            message: e.to_string(),
+                            track_id: stream.item.track_id,
+                        }
+                    }
+                }
+            }
             let version = inner.dsp_version.load(Ordering::SeqCst);
             if version != dsp_version {
                 dsp_version = version;
@@ -2653,6 +2789,7 @@ fn run_session(
                 }
                 while inner.paused.load(Ordering::SeqCst)
                     && inner.generation.load(Ordering::SeqCst) == gen
+                    && inner.device_version.load(Ordering::SeqCst) == device_version
                     && !inner.shutdown.load(Ordering::SeqCst)
                 {
                     // Volume still reaches an open output while paused: an
@@ -2669,7 +2806,7 @@ fn run_session(
                         *last_volume = volume;
                         *inner.output_status.lock().unwrap() = output.status();
                     }
-                    park_while_paused(inner, gen);
+                    park_while_paused(inner, gen, Some(device_version));
                     if released.is_none() && open_spec.is_some() && parked.elapsed() >= PAUSE_RELEASE {
                         let _ = output.stop();
                         released = open_spec.take();
@@ -2679,7 +2816,29 @@ fn run_session(
                 if inner.generation.load(Ordering::SeqCst) != gen {
                     return SessionOutcome::Superseded;
                 }
+                // A device picked while paused: move an open output now (a
+                // paused device is idle, so nothing is lost); a released one
+                // reopens on the new device below. Still paused afterwards,
+                // the loop parks again (and releases after `PAUSE_RELEASE`).
+                let devices = inner.device_version.load(Ordering::SeqCst);
+                if devices != device_version {
+                    device_version = devices;
+                    match switch_device(inner, output, open_spec, mode, last_volume, rate) {
+                        Ok(DeviceSwitch::Restart) => {
+                            restart_at_position(inner, stream.item.track_id);
+                            return SessionOutcome::Superseded;
+                        }
+                        Ok(_) => {}
+                        Err(e) => {
+                            return SessionOutcome::OutputError {
+                                message: e.to_string(),
+                                track_id: stream.item.track_id,
+                            }
+                        }
+                    }
+                }
                 if let Some(spec) = released {
+                    let spec = AudioOutputSpec { device_id: inner.device_id.lock().unwrap().clone(), ..spec };
                     let (volume, _) = current_volume(inner);
                     let reopened = output
                         .open(&spec)
@@ -3193,6 +3352,9 @@ fn worker_main(
         // A seek during playback or pause keeps the current paused flag.
         inner.position_ms.store(seek_ms.unwrap_or(0), Ordering::SeqCst);
         inner.position_track.store(item.track_id, Ordering::SeqCst);
+        // Read before the device, so a selection racing this start is seen
+        // by the session as a change.
+        let device_version = inner.device_version.load(Ordering::SeqCst);
         let mode = crate::output::effective_mode(
             *inner.output_mode.lock().unwrap(),
             inner.device_id.lock().unwrap().as_deref(),
@@ -3209,6 +3371,7 @@ fn worker_main(
             fallback,
             handled_gen,
             seek_ms,
+            device_version,
         );
         // The session is over; a resume from here must start a new one.
         inner.worker_busy.store(false, Ordering::SeqCst);
@@ -5751,6 +5914,58 @@ mod tests {
         assert!(engine.state().playing, "the fade must not pause after cancel");
     }
 
+    /// ASIO has no endpoint volume, so anything below 100% would be software
+    /// scaling: volume is held at unity there, and the user's comes back with
+    /// the next device.
+    #[test]
+    fn asio_holds_volume_at_unity_and_the_user_volume_returns() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        engine.handle(EngineCmd::SetVolume(0.4)).unwrap();
+        engine.set_output_device(Some("asio:Topping USB Audio Device".into()));
+        let state = engine.state();
+        assert!(state.volume_fixed);
+        assert_eq!(state.volume, 1.0, "the state reports what is applied");
+
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine.handle(EngineCmd::SetRepeat(RepeatMode::All)).unwrap();
+        wait_for(|| !output.samples().is_empty());
+        wait_for(|| output.volumes().last() == Some(&1.0));
+        engine.handle(EngineCmd::SetVolume(0.2)).unwrap();
+        std::thread::sleep(Duration::from_millis(200));
+        assert_eq!(output.volumes().last(), Some(&1.0), "SetVolume reached a fixed output");
+        assert_eq!(engine.state().volume, 1.0);
+
+        engine.set_output_device(None);
+        let state = engine.state();
+        assert!(!state.volume_fixed);
+        assert_eq!(state.volume, 0.4, "the user's volume survives the ASIO stint");
+        wait_for(|| output.volumes().last() == Some(&0.4));
+        assert_eq!(output.volumes().last(), Some(&0.4));
+    }
+
+    /// The sleep fade still works on ASIO: it ramps down from 100%, even when
+    /// the saved volume is 0 (the device is audible at unity regardless).
+    #[test]
+    fn a_sleep_fade_on_asio_ramps_from_unity() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        engine.handle(EngineCmd::SetVolume(0.0)).unwrap();
+        engine.set_output_device(Some("asio:Topping USB Audio Device".into()));
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine.handle(EngineCmd::SetRepeat(RepeatMode::All)).unwrap();
+        wait_for(|| !output.samples().is_empty());
+
+        engine.handle(EngineCmd::FadeAndPause { duration_ms: 150 }).unwrap();
+        wait_for(|| !engine.state().playing);
+        let volumes = output.volumes();
+        assert!(
+            volumes.iter().any(|v| *v > 0.05 && *v < 0.95),
+            "no ramp from unity: {volumes:?}"
+        );
+        assert_eq!(engine.state().volume, 1.0);
+    }
+
     /// A volume change that lands between two tracks on a kept device must
     /// still reach it: the next track compares against what the device was
     /// last set to, not the user volume (it once seeded from the latter and
@@ -6111,6 +6326,84 @@ mod tests {
 
         wait_for(|| !specs.lock().unwrap().is_empty());
         assert_eq!(specs.lock().unwrap()[0].mode, OutputMode::Exclusive);
+    }
+
+    fn opened_device(output: &NullOutput) -> Option<String> {
+        output.last_spec().and_then(|spec| spec.device_id)
+    }
+
+    /// A device picked while playing moves the open output in place: the
+    /// session (generation) and the stream's format are kept; no restart,
+    /// so no new manifest, download or decode to the position.
+    #[test]
+    fn a_device_switch_while_playing_moves_in_place() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        engine.set_output_device(Some("device-a".into()));
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine.handle(EngineCmd::SetRepeat(RepeatMode::All)).unwrap();
+        wait_for(|| !output.samples().is_empty());
+        let before = output.last_spec().unwrap();
+        let generation = engine.inner.generation.load(Ordering::SeqCst);
+
+        engine.set_output_device(Some("device-b".into()));
+        wait_for(|| opened_device(&output).as_deref() == Some("device-b"));
+        let after = output.last_spec().unwrap();
+        assert_eq!(after.device_id.as_deref(), Some("device-b"));
+        assert_eq!((after.info, after.mode), (before.info, before.mode), "same stream format");
+        assert_eq!(
+            engine.inner.generation.load(Ordering::SeqCst),
+            generation,
+            "the session was restarted instead of moved"
+        );
+        let written = output.samples().len();
+        wait_for(|| output.samples().len() > written);
+        assert!(engine.state().playing);
+    }
+
+    /// Shared → ASIO changes the output mode, and with it the samples the
+    /// decoder must produce (sample-exact integers): that restarts the track
+    /// at its position rather than feeding ASIO the shared-mode stream.
+    #[test]
+    fn a_device_switch_that_changes_the_mode_restarts_at_the_position() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine.handle(EngineCmd::SetRepeat(RepeatMode::All)).unwrap();
+        wait_for(|| !output.samples().is_empty());
+        assert_eq!(output.last_spec().unwrap().mode, OutputMode::Shared);
+        let generation = engine.inner.generation.load(Ordering::SeqCst);
+
+        engine.set_output_device(Some("asio:Topping USB Audio Device".into()));
+        wait_for(|| output.last_spec().is_some_and(|s| s.mode == OutputMode::Exclusive));
+        assert!(engine.inner.generation.load(Ordering::SeqCst) > generation);
+        assert_eq!(opened_device(&output).as_deref(), Some("asio:Topping USB Audio Device"));
+        wait_for(|| engine.state().playing);
+    }
+
+    /// Picking a device while paused used to do nothing until the next track
+    /// (the restart only ran for a playing queue): resume kept the old device.
+    #[test]
+    fn a_device_switch_while_paused_applies_before_resume() {
+        let (plan, files) = fixture_plan();
+        let (engine, output) = engine_with(plan, files);
+        engine.set_output_device(Some("device-a".into()));
+        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine.handle(EngineCmd::SetRepeat(RepeatMode::All)).unwrap();
+        wait_for(|| !output.samples().is_empty());
+        engine.handle(EngineCmd::PlayPause).unwrap();
+        assert!(!engine.state().playing);
+
+        engine.set_output_device(Some("device-b".into()));
+        wait_for(|| opened_device(&output).as_deref() == Some("device-b"));
+        assert!(!engine.state().playing, "a device switch must not resume playback");
+        let opens = output.opens();
+
+        engine.handle(EngineCmd::PlayPause).unwrap();
+        let written = output.samples().len();
+        wait_for(|| output.samples().len() > written);
+        assert_eq!(opened_device(&output).as_deref(), Some("device-b"));
+        assert_eq!(output.opens(), opens, "resume reopened instead of playing on");
     }
 
     #[test]

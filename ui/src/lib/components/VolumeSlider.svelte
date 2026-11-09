@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Player } from "../player.svelte";
   import { volumeIcon } from "../player.svelte";
+  import { FIXED_VOLUME_HINT } from "../volume";
   import Icon from "./Icon.svelte";
 
   let {
@@ -12,25 +13,29 @@
   const muted = $derived(player.state.volume === 0);
   const icon = $derived(volumeIcon(player.state.volume));
   const level = $derived(`${player.state.volume * 100}%`);
+  /// ASIO: held at 100% for bit-perfect output.
+  const fixed = $derived(player.state.volume_fixed);
 </script>
 
-<div class="volume" style:width={width}>
+<div class="volume" class:fixed style:width={width} title={fixed ? FIXED_VOLUME_HINT : undefined}>
   <button
     class="mute"
     class:on={muted}
     data-floor
+    disabled={fixed}
     onclick={() => player.toggleMute()}
     aria-label={muted ? "Unmute" : "Mute"}
-    title={muted ? "Unmute" : "Mute"}
+    title={fixed ? FIXED_VOLUME_HINT : muted ? "Unmute" : "Mute"}
     aria-pressed={muted}
   ><Icon name={icon} size={iconSize} /></button>
   <div class="track" style:--level={level}>
     <input
       type="range" min="0" max="1" step="0.01" value={player.state.volume} data-perf-volume
+      disabled={fixed}
       oninput={(e) => player.setVolume(Number((e.currentTarget as HTMLInputElement).value))}
       onchange={(e) => player.setVolume(Number((e.currentTarget as HTMLInputElement).value), true)}
       aria-label="Volume"
-      aria-valuetext={`${Math.round(player.state.volume * 100)}%`}
+      aria-valuetext={fixed ? FIXED_VOLUME_HINT : `${Math.round(player.state.volume * 100)}%`}
     />
   </div>
 </div>
@@ -113,5 +118,21 @@
   .track:has(input:focus-visible) {
     outline: 2px solid var(--accent);
     outline-offset: 3px;
+  }
+
+  /* Held at 100% (ASIO): the level reads full, dimmed, and takes no input. */
+  .fixed {
+    opacity: 0.55;
+  }
+  .fixed .mute,
+  .fixed .track input {
+    cursor: not-allowed;
+  }
+  .fixed .mute:hover {
+    background: none;
+    color: var(--text-muted);
+  }
+  .fixed .track:hover {
+    box-shadow: none;
   }
 </style>

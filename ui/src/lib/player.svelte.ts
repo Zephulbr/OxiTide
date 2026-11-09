@@ -12,6 +12,8 @@ export interface PlayerState {
   position_ms: number;
   duration_ms: number;
   volume: number;
+  /// Volume is held at 100% for bit-perfect output (ASIO): controls are off.
+  volume_fixed: boolean;
   shuffle: boolean;
   repeat: RepeatMode;
   preferred_quality: Quality;
@@ -34,7 +36,7 @@ export interface PlayerState {
 export function emptyState(): PlayerState {
   return {
     playing: false, buffering: false, current: null, current_index: null, position_ms: 0,
-    duration_ms: 0, volume: 1, shuffle: false, repeat: "off",
+    duration_ms: 0, volume: 1, volume_fixed: false, shuffle: false, repeat: "off",
     preferred_quality: "lossless", queue: [], queue_rev: 0, stream: null, error: "",
     error_code: "", output_mode: "shared", bit_perfect: false, bit_perfect_notice: null,
     dsp_active: false, dsp_stages: [], crossfade_ms: 0,
@@ -189,6 +191,8 @@ export function createPlayer(toasts?: Toasts) {
   /// persists once on release; `debounce` (wheel ticks) persists once the
   /// steps stop instead of rewriting the config per tick.
   function setVolume(v: number, persist = false, debounce = false) {
+    // Held at 100% (ASIO): the engine would ignore it anyway.
+    if (state.volume_fixed) return Promise.resolve();
     if (v > 0) lastVolume = v;
     if (persistTimer !== null) clearTimeout(persistTimer);
     persistTimer = null;

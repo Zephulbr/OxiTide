@@ -22,6 +22,7 @@ function remoteState(patch: Partial<RemoteState> = {}): RemoteState {
     positionMs: 1000,
     durationMs: 200_000,
     volume: 0.5,
+    volumeFixed: false,
     shuffle: false,
     repeat: "off",
     queueLen: 3,
