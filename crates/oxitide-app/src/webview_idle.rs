@@ -89,7 +89,9 @@ mod imp {
         // Resizing repeats WM_SIZE restored; only a change goes further.
         let changed = STATE.with(|state| {
             let mut state = state.borrow_mut();
-            let Some((controller, shown)) = state.as_mut() else { return false };
+            let Some((controller, shown)) = state.as_mut() else {
+                return false;
+            };
             if *shown == visible {
                 return false;
             }
@@ -114,7 +116,10 @@ mod imp {
                     Err(e) => tracing::debug!("webview memory target unavailable: {e}"),
                 }
             }
-            tracing::debug!("webview {}", if visible { "visible" } else { "hidden: idle" });
+            tracing::debug!(
+                "webview {}",
+                if visible { "visible" } else { "hidden: idle" }
+            );
             true
         });
         if !changed {
@@ -155,8 +160,16 @@ mod tests {
         assert_eq!(visibility_change(0x0005, 1), Some(false), "minimized");
         assert_eq!(visibility_change(0x0005, 0), Some(true), "restored");
         assert_eq!(visibility_change(0x0005, 2), Some(true), "maximized");
-        assert_eq!(visibility_change(0x0005, 3), None, "max-show (another window)");
-        assert_eq!(visibility_change(0x0018, 0), Some(false), "hidden to the tray");
+        assert_eq!(
+            visibility_change(0x0005, 3),
+            None,
+            "max-show (another window)"
+        );
+        assert_eq!(
+            visibility_change(0x0018, 0),
+            Some(false),
+            "hidden to the tray"
+        );
         assert_eq!(visibility_change(0x0018, 1), Some(true), "shown");
         assert_eq!(visibility_change(0x0010, 0), None, "unrelated message");
     }

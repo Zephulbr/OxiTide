@@ -107,8 +107,12 @@ impl DeviceCapsStore {
 
     fn persist(&self, played: &BTreeMap<String, DeviceCaps>) {
         let Some(path) = &self.path else { return };
-        let file = CapsFile { played: played.clone() };
-        let Ok(text) = serde_json::to_string_pretty(&file) else { return };
+        let file = CapsFile {
+            played: played.clone(),
+        };
+        let Ok(text) = serde_json::to_string_pretty(&file) else {
+            return;
+        };
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
@@ -127,7 +131,11 @@ impl DeviceCapsStore {
     /// The listed devices not yet checked this session, marked as checked.
     /// `skip` is left for later (the device playing exclusively right now: a
     /// check would see it busy and report no exclusive support).
-    pub fn take_unchecked(&self, devices: &[OutputDevice], skip: Option<&str>) -> Vec<OutputDevice> {
+    pub fn take_unchecked(
+        &self,
+        devices: &[OutputDevice],
+        skip: Option<&str>,
+    ) -> Vec<OutputDevice> {
         let mut attempted = self.attempted.lock().unwrap();
         devices
             .iter()
@@ -169,12 +177,21 @@ mod tests {
         let path = dir.join("device_caps.json");
         let store = DeviceCapsStore::with_path(Some(path.clone()));
         assert!(store.record_played("dac", 44_100, 16));
-        assert!(!store.record_played("dac", 44_100, 16), "same record, no write");
+        assert!(
+            !store.record_played("dac", 44_100, 16),
+            "same record, no write"
+        );
         assert!(store.record_played("dac", 96_000, 24));
-        assert!(!store.record_played("", 96_000, 24), "system default is not a device");
+        assert!(
+            !store.record_played("", 96_000, 24),
+            "system default is not a device"
+        );
         let reloaded = DeviceCapsStore::with_path(Some(path));
         let caps = reloaded.caps_for("dac").unwrap();
-        assert_eq!((caps.max_rate, caps.max_bits, caps.source), (Some(96_000), Some(24), CapsSource::Played));
+        assert_eq!(
+            (caps.max_rate, caps.max_bits, caps.source),
+            (Some(96_000), Some(24), CapsSource::Played)
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -198,10 +215,22 @@ mod tests {
             OutputDevice::new("b", "B", DeviceGroup::Wasapi),
             absent,
         ];
-        let first: Vec<String> = store.take_unchecked(&devices, Some("b")).into_iter().map(|d| d.id).collect();
-        assert_eq!(first, vec!["a"], "the playing device and empty outputs wait");
+        let first: Vec<String> = store
+            .take_unchecked(&devices, Some("b"))
+            .into_iter()
+            .map(|d| d.id)
+            .collect();
+        assert_eq!(
+            first,
+            vec!["a"],
+            "the playing device and empty outputs wait"
+        );
         assert!(store.take_unchecked(&devices, Some("b")).is_empty());
-        let next: Vec<String> = store.take_unchecked(&devices, None).into_iter().map(|d| d.id).collect();
+        let next: Vec<String> = store
+            .take_unchecked(&devices, None)
+            .into_iter()
+            .map(|d| d.id)
+            .collect();
         assert_eq!(next, vec!["b"]);
         store.invalidate();
         assert_eq!(store.take_unchecked(&devices, None).len(), 2);

@@ -25,7 +25,12 @@ pub struct CacheKey {
 impl CacheKey {
     /// `{track_id}-{quality}-{hash:016x}.fmp4`, e.g. `77646170-lossless-9f3c….fmp4`.
     pub fn file_name(&self) -> String {
-        format!("{}-{}-{:016x}.fmp4", self.track_id, self.quality.label(), self.manifest_hash)
+        format!(
+            "{}-{}-{:016x}.fmp4",
+            self.track_id,
+            self.quality.label(),
+            self.manifest_hash
+        )
     }
 }
 
@@ -56,7 +61,10 @@ impl DiskCache {
     pub fn new(dir: PathBuf, max_bytes: u64) -> Arc<Self> {
         let usable = fs::create_dir_all(&dir).is_ok() && probe_writable(&dir);
         if !usable {
-            tracing::warn!("cache directory {} is unusable; caching disabled", dir.display());
+            tracing::warn!(
+                "cache directory {} is unusable; caching disabled",
+                dir.display()
+            );
         }
         Arc::new(Self {
             dir,
@@ -114,7 +122,15 @@ impl DiskCache {
                 let path = entry.path();
                 let has_meta = meta_of(&path).is_file();
                 let modified = fs::metadata(&path).and_then(|m| m.modified()).ok()?;
-                Some(((has_meta, modified), CacheKey { track_id, quality, manifest_hash }, path))
+                Some((
+                    (has_meta, modified),
+                    CacheKey {
+                        track_id,
+                        quality,
+                        manifest_hash,
+                    },
+                    path,
+                ))
             })
             .max_by_key(|(rank, ..)| *rank)
             .map(|(_, key, path)| (key, path))?;
@@ -236,7 +252,9 @@ impl DiskCache {
         if !self.usable {
             return;
         }
-        let Ok(read) = fs::read_dir(&self.dir) else { return };
+        let Ok(read) = fs::read_dir(&self.dir) else {
+            return;
+        };
         for entry in read.flatten() {
             let name = entry.file_name();
             let name = name.to_string_lossy();
@@ -268,7 +286,9 @@ impl DiskCache {
             return;
         }
         let now = SystemTime::now();
-        let Ok(read) = fs::read_dir(&self.dir) else { return };
+        let Ok(read) = fs::read_dir(&self.dir) else {
+            return;
+        };
         for entry in read.flatten() {
             let name = entry.file_name();
             let name = name.to_string_lossy();
@@ -303,7 +323,9 @@ impl DiskCache {
         if !self.usable {
             return Vec::new();
         }
-        let Ok(read) = fs::read_dir(&self.dir) else { return Vec::new() };
+        let Ok(read) = fs::read_dir(&self.dir) else {
+            return Vec::new();
+        };
         read.flatten()
             .filter_map(|entry| {
                 let name = entry.file_name();
@@ -509,7 +531,11 @@ mod tests {
     }
 
     fn key(track_id: u64) -> CacheKey {
-        CacheKey { track_id, quality: Quality::Lossless, manifest_hash: 0x9f3c }
+        CacheKey {
+            track_id,
+            quality: Quality::Lossless,
+            manifest_hash: 0x9f3c,
+        }
     }
 
     fn write_entry(cache: &Arc<DiskCache>, key: &CacheKey, data: &[u8]) {
@@ -519,12 +545,21 @@ mod tests {
     }
 
     fn set_mtime(path: &Path, time: SystemTime) {
-        OpenOptions::new().write(true).open(path).unwrap().set_modified(time).unwrap();
+        OpenOptions::new()
+            .write(true)
+            .open(path)
+            .unwrap()
+            .set_modified(time)
+            .unwrap();
     }
 
     #[test]
     fn file_name_is_deterministic_and_readable() {
-        let key = CacheKey { track_id: 77646170, quality: Quality::Lossless, manifest_hash: 0x9f3c };
+        let key = CacheKey {
+            track_id: 77646170,
+            quality: Quality::Lossless,
+            manifest_hash: 0x9f3c,
+        };
         assert_eq!(key.file_name(), "77646170-lossless-0000000000009f3c.fmp4");
         assert_eq!(key.file_name(), key.file_name());
     }
@@ -563,7 +598,11 @@ mod tests {
         let mut writer = cache.begin_write(&key).unwrap();
         writer.write_all(b"12345").unwrap();
         assert_eq!(cache.pending_bytes(), 5);
-        assert_eq!(cache.size_bytes(), 0, "a .part must not count as a committed entry");
+        assert_eq!(
+            cache.size_bytes(),
+            0,
+            "a .part must not count as a committed entry"
+        );
         writer.commit();
         assert_eq!(cache.pending_bytes(), 0);
         assert_eq!(cache.size_bytes(), 5);
@@ -576,7 +615,11 @@ mod tests {
         let cache = DiskCache::new(dir.clone(), 1 << 20);
         let orphan = cache.part_for(&key(1));
         fs::write(&orphan, b"orphan").unwrap();
-        assert_eq!(cache.pending_bytes(), 0, "a part without a writer must not count");
+        assert_eq!(
+            cache.pending_bytes(),
+            0,
+            "a part without a writer must not count"
+        );
         assert_eq!(cache.size_bytes(), 0);
         fs::remove_file(&orphan).unwrap();
         let _ = fs::remove_dir_all(dir);
@@ -588,7 +631,9 @@ mod tests {
         let cache = DiskCache::new(dir.clone(), 1 << 20);
         let key = key(1);
         write_entry(&cache, &key, b"data");
-        let second = cache.begin_write(&key).expect("the key was not released after commit");
+        let second = cache
+            .begin_write(&key)
+            .expect("the key was not released after commit");
         second.abort();
         let _ = fs::remove_dir_all(dir);
     }
@@ -599,9 +644,15 @@ mod tests {
         let cache = DiskCache::new(dir.clone(), 1 << 20);
         let key = key(1);
         let first = cache.begin_write(&key).unwrap();
-        assert!(cache.begin_write(&key).is_none(), "a second writer was allowed");
+        assert!(
+            cache.begin_write(&key).is_none(),
+            "a second writer was allowed"
+        );
         first.abort();
-        assert!(cache.begin_write(&key).is_some(), "the key stayed in flight after abort");
+        assert!(
+            cache.begin_write(&key).is_some(),
+            "the key stayed in flight after abort"
+        );
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -617,7 +668,10 @@ mod tests {
             !dir.join(format!("{}.part", key.file_name())).exists(),
             "the part survived the drop"
         );
-        assert!(cache.begin_write(&key).is_some(), "the key stayed in flight after drop");
+        assert!(
+            cache.begin_write(&key).is_some(),
+            "the key stayed in flight after drop"
+        );
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -653,7 +707,10 @@ mod tests {
         cache.protect(&a);
         cache.set_max_bytes(25);
         assert!(cache.lookup(&a).is_some(), "protected entry was evicted");
-        assert!(cache.lookup(&b).is_none(), "the oldest unprotected entry survived");
+        assert!(
+            cache.lookup(&b).is_none(),
+            "the oldest unprotected entry survived"
+        );
         assert!(cache.lookup(&c).is_some());
         assert_eq!(cache.size_bytes(), 20);
         let _ = fs::remove_dir_all(dir);
@@ -678,7 +735,10 @@ mod tests {
         let stale_path = dir.join(format!("{}.part", key(1).file_name()));
         fs::write(&stale_path, b"stale").unwrap();
         let fresh = cache.begin_write(&key(2)).unwrap();
-        set_mtime(&stale_path, SystemTime::now() - Duration::from_secs(2 * 3600));
+        set_mtime(
+            &stale_path,
+            SystemTime::now() - Duration::from_secs(2 * 3600),
+        );
         cache.cleanup();
         assert!(!stale_path.exists(), "stale part survived cleanup");
         assert!(dir.join(format!("{}.part", key(2).file_name())).exists());
@@ -724,9 +784,17 @@ mod tests {
         let mut writer = cache.begin_write(&b).unwrap();
         writer.write_all(b"1234567").unwrap();
         cache.clear();
-        assert_eq!(cache.size_bytes(), 0, "clear must reset the committed total");
+        assert_eq!(
+            cache.size_bytes(),
+            0,
+            "clear must reset the committed total"
+        );
         writer.abort();
-        assert_eq!(cache.pending_bytes(), 0, "abort after clear must not underflow");
+        assert_eq!(
+            cache.pending_bytes(),
+            0,
+            "abort after clear must not underflow"
+        );
         assert_eq!(cache.size_bytes(), 0);
         let _ = fs::remove_dir_all(dir);
     }
@@ -757,9 +825,21 @@ mod tests {
     fn find_offline_prefers_a_sidecar_then_the_newest() {
         let dir = temp_dir();
         let cache = DiskCache::new(dir.clone(), 1 << 20);
-        let old = CacheKey { track_id: 5, quality: Quality::Lossless, manifest_hash: 1 };
-        let new = CacheKey { track_id: 5, quality: Quality::Lossless, manifest_hash: 2 };
-        let bare = CacheKey { track_id: 5, quality: Quality::Lossless, manifest_hash: 3 };
+        let old = CacheKey {
+            track_id: 5,
+            quality: Quality::Lossless,
+            manifest_hash: 1,
+        };
+        let new = CacheKey {
+            track_id: 5,
+            quality: Quality::Lossless,
+            manifest_hash: 2,
+        };
+        let bare = CacheKey {
+            track_id: 5,
+            quality: Quality::Lossless,
+            manifest_hash: 3,
+        };
         write_with_meta(&cache, &old, b"old");
         write_with_meta(&cache, &new, b"new");
         write_entry(&cache, &bare, b"no sidecar"); // newest, but no sidecar
@@ -773,13 +853,23 @@ mod tests {
         assert_eq!(meta.as_deref(), Some(&b"new"[..]));
 
         // An entry cached before sidecars is still found, without one.
-        let legacy = CacheKey { track_id: 6, quality: Quality::Lossless, manifest_hash: 9 };
+        let legacy = CacheKey {
+            track_id: 6,
+            quality: Quality::Lossless,
+            manifest_hash: 9,
+        };
         write_entry(&cache, &legacy, b"old cache");
         let (key, _, meta) = cache.find_offline(6, Quality::Lossless).unwrap();
         assert_eq!(key, legacy);
         assert!(meta.is_none());
-        assert!(cache.find_offline(5, Quality::Max).is_none(), "matched another quality");
-        assert!(cache.find_offline(55, Quality::Lossless).is_none(), "matched another track");
+        assert!(
+            cache.find_offline(5, Quality::Max).is_none(),
+            "matched another quality"
+        );
+        assert!(
+            cache.find_offline(55, Quality::Lossless).is_none(),
+            "matched another track"
+        );
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -797,7 +887,10 @@ mod tests {
         cache.remove(&a);
         assert!(!meta(&a).exists(), "remove left the sidecar");
 
-        set_mtime(&cache.path_for(&b), SystemTime::now() - Duration::from_secs(3600));
+        set_mtime(
+            &cache.path_for(&b),
+            SystemTime::now() - Duration::from_secs(3600),
+        );
         cache.set_max_bytes(5);
         assert!(cache.lookup(&b).is_none());
         assert!(!meta(&b).exists(), "eviction left the sidecar");
@@ -819,7 +912,10 @@ mod tests {
 
         cache.cleanup();
         assert!(!orphan.exists(), "an orphan sidecar survived");
-        assert!(meta_of(&cache.path_for(&key(1))).is_file(), "a live sidecar was removed");
+        assert!(
+            meta_of(&cache.path_for(&key(1))).is_file(),
+            "a live sidecar was removed"
+        );
         assert!(unrelated.is_file(), "cleanup touched an unrelated file");
         let _ = fs::remove_dir_all(dir);
     }

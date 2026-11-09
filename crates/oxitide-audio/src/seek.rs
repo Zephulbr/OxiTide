@@ -19,7 +19,11 @@ pub fn target_segment(plan: &StreamPlan, position_ms: u64, sample_rate: u32) -> 
     if plan.segments.is_empty() || plan.timescale == 0 {
         // A single-file source or unknown timing: decode from the start and
         // discard everything before the target.
-        return SeekTarget { segment_index: 0, discard_frames: frames, position_frames: frames };
+        return SeekTarget {
+            segment_index: 0,
+            discard_frames: frames,
+            position_frames: frames,
+        };
     }
     let mut index = 0;
     let mut start = 0u64;
@@ -32,7 +36,11 @@ pub fn target_segment(plan: &StreamPlan, position_ms: u64, sample_rate: u32) -> 
             break;
         }
     }
-    SeekTarget { segment_index: index, discard_frames: frames - start, position_frames: frames }
+    SeekTarget {
+        segment_index: index,
+        discard_frames: frames - start,
+        position_frames: frames,
+    }
 }
 
 /// Where a source begins on the track timeline. Keep manifest ticks until
@@ -74,7 +82,9 @@ pub struct Discarder {
 
 impl Discarder {
     pub fn new(frames: u64) -> Self {
-        Self { remaining_frames: frames }
+        Self {
+            remaining_frames: frames,
+        }
     }
 
     /// Returns `(offset, len)` for the part of an interleaved buffer that

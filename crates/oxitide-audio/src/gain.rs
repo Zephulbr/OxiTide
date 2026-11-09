@@ -23,7 +23,13 @@ pub(crate) struct GainRamp {
 impl GainRamp {
     pub(crate) fn new(gain: f32, rate: u32) -> Self {
         let ramp_frames = (u64::from(rate) * u64::from(RAMP_MS) / 1000).max(1) as u32;
-        Self { current: gain, target: gain, step: 0.0, remaining: 0, ramp_frames }
+        Self {
+            current: gain,
+            target: gain,
+            step: 0.0,
+            remaining: 0,
+            ramp_frames,
+        }
     }
 
     /// Glide from wherever the gain is now (mid-ramp included) to `target`.
@@ -46,7 +52,11 @@ impl GainRamp {
             self.remaining -= 1;
             // The last frame lands exactly on the target, so a ramp to unity
             // ends in a true pass-through.
-            self.current = if self.remaining == 0 { self.target } else { self.current + self.step };
+            self.current = if self.remaining == 0 {
+                self.target
+            } else {
+                self.current + self.step
+            };
         }
         self.current
     }
@@ -156,7 +166,11 @@ mod tests {
         assert!(ramp.is_identity());
         let mut words = vec![i32::MAX, i32::MIN, 12_345];
         ramp.apply_frames(&mut words, 1, scale_i32);
-        assert_eq!(words, vec![i32::MAX, i32::MIN, 12_345], "unity must be sample-exact");
+        assert_eq!(
+            words,
+            vec![i32::MAX, i32::MIN, 12_345],
+            "unity must be sample-exact"
+        );
     }
 
     #[test]
@@ -168,7 +182,11 @@ mod tests {
         assert!((midway - 0.5).abs() < 0.01, "{midway}");
         ramp.retarget(1.0);
         let second = run(&mut ramp, 30);
-        assert!(second[0] > midway && second[0] - midway < 0.02, "no jump: {}", second[0]);
+        assert!(
+            second[0] > midway && second[0] - midway < 0.02,
+            "no jump: {}",
+            second[0]
+        );
         assert_eq!(second[29], 1.0);
     }
 
@@ -177,7 +195,9 @@ mod tests {
         let mut ramp = GainRamp::new(1.0, 1000);
         ramp.retarget(0.0);
         let mut stereo = vec![1.0f32; 8];
-        ramp.apply_frames(&mut stereo, 2, |frame, gain| frame.iter_mut().for_each(|s| *s *= gain));
+        ramp.apply_frames(&mut stereo, 2, |frame, gain| {
+            frame.iter_mut().for_each(|s| *s *= gain)
+        });
         for pair in stereo.chunks(2) {
             assert_eq!(pair[0], pair[1]);
         }
@@ -195,6 +215,9 @@ mod tests {
         let mut bytes = Vec::new();
         bytes.extend_from_slice(&0.5f32.to_bits().to_le_bytes());
         scale_le_words(&mut bytes, 0.5, WordKind::F32);
-        assert_eq!(f32::from_bits(u32::from_le_bytes(bytes[..4].try_into().unwrap())), 0.25);
+        assert_eq!(
+            f32::from_bits(u32::from_le_bytes(bytes[..4].try_into().unwrap())),
+            0.25
+        );
     }
 }

@@ -99,7 +99,11 @@ impl<'a> Clip<'a> {
         let ch = self.channels.max(1);
         let end = end.min(self.frames());
         let start = start.min(end);
-        Clip { samples: &self.samples[start * ch..end * ch], channels: ch, rate: self.rate }
+        Clip {
+            samples: &self.samples[start * ch..end * ch],
+            channels: ch,
+            rate: self.rate,
+        }
     }
 }
 
@@ -136,7 +140,11 @@ fn levels(clip: &Clip) -> Levels {
             db(power[lo..hi].iter().sum::<f64>() / (hi - lo) as f64)
         })
         .collect();
-    Levels { smooth, raw: power.iter().map(|&p| db(p)).collect(), block }
+    Levels {
+        smooth,
+        raw: power.iter().map(|&p| db(p)).collect(),
+        block,
+    }
 }
 
 fn percentile(values: &[f64], q: f64) -> f64 {
@@ -268,7 +276,12 @@ fn ending(clip: &Clip) -> Option<Ending> {
     let sparse = held.len() as f64 >= SPARSE_MIN_S * per_second as f64
         && slope_db_per_s(held) > SPARSE_SLOPE_DB_S;
     let to_frames = |i: usize| (i * lv.block).min(clip.frames());
-    Some(Ending { fade_start: to_frames(fade), quiet: to_frames(quiet), sparse, body_db: body })
+    Some(Ending {
+        fade_start: to_frames(fade),
+        quiet: to_frames(quiet),
+        sparse,
+        body_db: body,
+    })
 }
 
 /// Mean level of `clip` in dB (power average).
@@ -313,7 +326,11 @@ fn opening(clip: &Clip) -> Option<Opening> {
     let body = percentile(&lv.smooth, 0.75);
     let entry = lv.smooth.iter().position(|&l| l >= body - ENTRY_DB)?;
     let cold = lv.raw.iter().take(3).any(|&l| l >= body - ENTRY_DB);
-    Some(Opening { entry: entry * lv.block, cold, body_db: body })
+    Some(Opening {
+        entry: entry * lv.block,
+        cold,
+        body_db: body,
+    })
 }
 
 /// A tempo estimate and beat positions for one clip.
@@ -356,8 +373,8 @@ fn condition(flux: &[f64], rate: f64) -> Option<Vec<f64>> {
         })
         .collect();
     let mean = detrended.iter().sum::<f64>() / detrended.len() as f64;
-    let std = (detrended.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / detrended.len() as f64)
-        .sqrt();
+    let std =
+        (detrended.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / detrended.len() as f64).sqrt();
     (std > 1e-9).then(|| detrended.iter().map(|v| v / std).collect())
 }
 
@@ -386,14 +403,21 @@ fn onset_envelope(clip: &Clip) -> Option<Envelope> {
     let mut low = Vec::with_capacity(frames);
     let mut full = Vec::with_capacity(frames);
     for (index, start) in (0..=mono.len() - FFT_SIZE).step_by(HOP).enumerate() {
-        for (slot, (sample, w)) in buffer.iter_mut().zip(mono[start..start + FFT_SIZE].iter().zip(&window)) {
+        for (slot, (sample, w)) in buffer
+            .iter_mut()
+            .zip(mono[start..start + FFT_SIZE].iter().zip(&window))
+        {
             *slot = Complex::new(sample * w, 0.0);
         }
         fft.process(&mut buffer);
         let (mut low_sum, mut full_sum) = (0.0, 0.0);
         for (k, (bin, prev)) in buffer[..bins].iter().zip(previous.iter_mut()).enumerate() {
             let magnitude = (1.0 + 1000.0 * bin.norm()).ln();
-            let rise = if index == 0 { 0.0 } else { (magnitude - *prev).max(0.0) };
+            let rise = if index == 0 {
+                0.0
+            } else {
+                (magnitude - *prev).max(0.0)
+            };
             *prev = magnitude;
             full_sum += rise;
             if k < low_bins {
@@ -426,7 +450,12 @@ fn estimate_period(env: &Envelope) -> Option<(f64, f64)> {
     let mean = env.values.iter().sum::<f64>() / n as f64;
     let centred: Vec<f64> = env.values.iter().map(|v| v - mean).collect();
     let acf = |lag: usize| {
-        centred[..n - lag].iter().zip(&centred[lag..]).map(|(a, b)| a * b).sum::<f64>() / (n - lag) as f64
+        centred[..n - lag]
+            .iter()
+            .zip(&centred[lag..])
+            .map(|(a, b)| a * b)
+            .sum::<f64>()
+            / (n - lag) as f64
     };
     let energy = acf(0);
     if energy <= 0.0 {
@@ -450,8 +479,15 @@ fn estimate_period(env: &Envelope) -> Option<(f64, f64)> {
     }
     let (a, b, c) = (weighted[best - 1], weighted[best], weighted[best + 1]);
     let denom = a - 2.0 * b + c;
-    let offset = if denom.abs() > 1e-12 { (0.5 * (a - c) / denom).clamp(-0.5, 0.5) } else { 0.0 };
-    Some(((min_lag - 1 + best) as f64 + offset, (raw[best] / energy).max(0.0)))
+    let offset = if denom.abs() > 1e-12 {
+        (0.5 * (a - c) / denom).clamp(-0.5, 0.5)
+    } else {
+        0.0
+    };
+    Some((
+        (min_lag - 1 + best) as f64 + offset,
+        (raw[best] / energy).max(0.0),
+    ))
 }
 
 /// Ellis-style dynamic-programming beat tracking: beat positions (envelope
@@ -511,7 +547,11 @@ fn confidence(periodicity: f64, impulsiveness: f64, beats: &[usize]) -> f64 {
     }
     let intervals: Vec<f64> = beats.windows(2).map(|w| (w[1] - w[0]) as f64).collect();
     let mean_ibi = intervals.iter().sum::<f64>() / intervals.len() as f64;
-    let cv = (intervals.iter().map(|i| (i - mean_ibi).powi(2)).sum::<f64>() / intervals.len() as f64)
+    let cv = (intervals
+        .iter()
+        .map(|i| (i - mean_ibi).powi(2))
+        .sum::<f64>()
+        / intervals.len() as f64)
         .sqrt()
         / mean_ibi;
     ((periodicity - 0.08) / 0.25).clamp(0.0, 1.0)
@@ -543,14 +583,28 @@ pub fn analyze_beats(clip: &Clip) -> Option<BeatGrid> {
     let intercept = mean_t - slope * mean_i;
     // Envelope frame k covers analysis samples [k*HOP, k*HOP + FFT_SIZE); its
     // onset sits near the window centre.
-    let to_seconds = |frame: f64| (frame * HOP as f64 + FFT_SIZE as f64 / 2.0) / (env.rate * HOP as f64);
+    let to_seconds =
+        |frame: f64| (frame * HOP as f64 + FFT_SIZE as f64 / 2.0) / (env.rate * HOP as f64);
     let period_s = slope / env.rate;
-    let beats_s: Vec<f64> = (0..beats.len()).map(|i| to_seconds(intercept + slope * i as f64)).collect();
+    let beats_s: Vec<f64> = (0..beats.len())
+        .map(|i| to_seconds(intercept + slope * i as f64))
+        .collect();
     let strength = beats
         .iter()
-        .map(|&b| env.values[b.saturating_sub(1)..(b + 2).min(env.values.len())].iter().copied().fold(0.0, f64::max))
+        .map(|&b| {
+            env.values[b.saturating_sub(1)..(b + 2).min(env.values.len())]
+                .iter()
+                .copied()
+                .fold(0.0, f64::max)
+        })
         .collect();
-    Some(BeatGrid { bpm: 60.0 / period_s, period_s, beats_s, strength, confidence })
+    Some(BeatGrid {
+        bpm: 60.0 / period_s,
+        period_s,
+        beats_s,
+        strength,
+        confidence,
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -632,10 +686,23 @@ struct Alignment {
 fn halve(grid: &BeatGrid) -> (Vec<f64>, f64) {
     let phase_strength = |phase: usize| grid.strength.iter().skip(phase).step_by(2).sum::<f64>();
     let phase = usize::from(phase_strength(1) > phase_strength(0));
-    (grid.beats_s.iter().skip(phase).step_by(2).copied().collect(), grid.period_s * 2.0)
+    (
+        grid.beats_s
+            .iter()
+            .skip(phase)
+            .step_by(2)
+            .copied()
+            .collect(),
+        grid.period_s * 2.0,
+    )
 }
 
-fn align(out: &BeatGrid, inn: &BeatGrid, target_s: f64, tail_end_s: f64) -> Result<Alignment, String> {
+fn align(
+    out: &BeatGrid,
+    inn: &BeatGrid,
+    target_s: f64,
+    tail_end_s: f64,
+) -> Result<Alignment, String> {
     if out.confidence < CONFIDENCE_FLOOR || inn.confidence < CONFIDENCE_FLOOR {
         return Err(format!(
             "beat confidence too low (out {:.2}, in {:.2})",
@@ -650,11 +717,17 @@ fn align(out: &BeatGrid, inn: &BeatGrid, target_s: f64, tail_end_s: f64) -> Resu
     } else if (ratio * 2.0 - 1.0).abs() <= MAX_TEMPO_DIFF {
         ((out.beats_s.clone(), out.period_s), halve(inn))
     } else {
-        ((out.beats_s.clone(), out.period_s), (inn.beats_s.clone(), inn.period_s))
+        (
+            (out.beats_s.clone(), out.period_s),
+            (inn.beats_s.clone(), inn.period_s),
+        )
     };
     let diff = (op - ip).abs();
     if diff / op > MAX_TEMPO_DIFF {
-        return Err(format!("tempos too far apart ({:.0} vs {:.0} BPM)", out.bpm, inn.bpm));
+        return Err(format!(
+            "tempos too far apart ({:.0} vs {:.0} BPM)",
+            out.bpm, inn.bpm
+        ));
     }
     for beats in [16usize, 8, 4] {
         let span = beats as f64 * op;
@@ -679,7 +752,13 @@ fn align(out: &BeatGrid, inn: &BeatGrid, target_s: f64, tail_end_s: f64) -> Resu
         if mix_s < 2.0 * op {
             continue;
         }
-        return Ok(Alignment { preroll_s, mix_s, skip_s, centre_s: ob[k + half], beats: beats as u32 });
+        return Ok(Alignment {
+            preroll_s,
+            mix_s,
+            skip_s,
+            centre_s: ob[k + half],
+            beats: beats as u32,
+        });
     }
     Err("beats drift too far for even a 4-beat overlap".into())
 }
@@ -721,12 +800,15 @@ fn pick_style(f: &TransitionFeatures) -> (Option<TransitionStyle>, &'static str)
             (None, "continuous recording")
         }
         Sparse => (Some(TransitionStyle::Quick), "sparse ending: let it finish"),
-        FadeOut if f.decline_s >= LONG_FADE_S => (Some(TransitionStyle::Blend), "long fade-out: cut it"),
+        FadeOut if f.decline_s >= LONG_FADE_S => {
+            (Some(TransitionStyle::Blend), "long fade-out: cut it")
+        }
         FadeOut => (Some(TransitionStyle::Quick), "short fade-out"),
         RingOut => (Some(TransitionStyle::Quick), "rings out"),
-        HardStop if !f.cold_open && f.intro_s >= SLOW_INTRO_S => {
-            (Some(TransitionStyle::Classic), "hard stop into a slow intro")
-        }
+        HardStop if !f.cold_open && f.intro_s >= SLOW_INTRO_S => (
+            Some(TransitionStyle::Classic),
+            "hard stop into a slow intro",
+        ),
         HardStop => (Some(TransitionStyle::Quick), "hard stop"),
     }
 }
@@ -752,11 +834,22 @@ fn plan_gapless(tail: &Clip, head: Option<&Clip>) -> TransitionPlan {
 /// opens. Silence is always trimmed. The report names the picked style.
 fn plan_auto(tail: &Clip, head: Option<&Clip>, settings: &CrossfadeSettings) -> TransitionPlan {
     let Some(f) = features(tail, head) else {
-        let mut plan = plan_classic(tail, head, &CrossfadeSettings { trim_silence: true, ..settings.clone() });
+        let mut plan = plan_classic(
+            tail,
+            head,
+            &CrossfadeSettings {
+                trim_silence: true,
+                ..settings.clone()
+            },
+        );
         plan.report.auto_reason = Some("next track not measured: crossfade".into());
         return plan;
     };
-    let with = |style| CrossfadeSettings { style, trim_silence: true, ..settings.clone() };
+    let with = |style| CrossfadeSettings {
+        style,
+        trim_silence: true,
+        ..settings.clone()
+    };
     let mut plan = None;
     if settings.beat_match && f.ending != EndingKind::Sparse {
         let blend = plan_blend(tail, head, &with(TransitionStyle::Blend));
@@ -766,11 +859,18 @@ fn plan_auto(tail: &Clip, head: Option<&Clip>, settings: &CrossfadeSettings) -> 
     }
     let (mut plan, reason) = plan.unwrap_or_else(|| {
         let (style, reason) = pick_style(&f);
-        let no_beats = |style| CrossfadeSettings { beat_match: false, ..with(style) };
+        let no_beats = |style| CrossfadeSettings {
+            beat_match: false,
+            ..with(style)
+        };
         let plan = match style {
             None => plan_gapless(tail, head),
-            Some(TransitionStyle::Quick) => plan_quick(tail, head, &no_beats(TransitionStyle::Quick)),
-            Some(TransitionStyle::Blend) => plan_blend(tail, head, &no_beats(TransitionStyle::Blend)),
+            Some(TransitionStyle::Quick) => {
+                plan_quick(tail, head, &no_beats(TransitionStyle::Quick))
+            }
+            Some(TransitionStyle::Blend) => {
+                plan_blend(tail, head, &no_beats(TransitionStyle::Blend))
+            }
             Some(_) => plan_classic(tail, head, &no_beats(TransitionStyle::Classic)),
         };
         (plan, reason)
@@ -788,7 +888,10 @@ fn edges(tail: &Clip, head: Option<&Clip>, trim: bool) -> (usize, usize) {
     let audible_end = audible_bounds(tail).map_or(0, |(_, end)| end);
     let lead = head.map_or(0, |head| {
         let cap = (MAX_LEAD_TRIM_S * head.rate as f64) as usize;
-        audible_bounds(head).map_or(cap, |(start, _)| start).min(cap).min(head.frames())
+        audible_bounds(head)
+            .map_or(cap, |(start, _)| start)
+            .min(cap)
+            .min(head.frames())
     });
     (audible_end, lead)
 }
@@ -912,7 +1015,12 @@ fn plan_quick(tail: &Clip, head: Option<&Clip>, settings: &CrossfadeSettings) ->
     let cold = head
         .and_then(|h| opening(&h.slice(lead, h.frames())))
         .is_some_and(|o| o.cold);
-    let attack_s = (if cold { QUICK_COLD_ATTACK_S } else { QUICK_ATTACK_S }).min(setting_s);
+    let attack_s = (if cold {
+        QUICK_COLD_ATTACK_S
+    } else {
+        QUICK_ATTACK_S
+    })
+    .min(setting_s);
     let (start, mix) = if hard {
         let len = frames_at(setting_s.min(QUICK_HARD_S), rate).min(audible_end);
         (audible_end - len, len)
@@ -971,7 +1079,11 @@ fn plan_blend(tail: &Clip, head: Option<&Clip>, settings: &CrossfadeSettings) ->
     plan
 }
 
-fn plan_blend_window(tail: &Clip, head: Option<&Clip>, settings: &CrossfadeSettings) -> TransitionPlan {
+fn plan_blend_window(
+    tail: &Clip,
+    head: Option<&Clip>,
+    settings: &CrossfadeSettings,
+) -> TransitionPlan {
     let rate = tail.rate;
     let (audible_end, lead) = edges(tail, head, true);
     let len = frames_at(settings.duration_ms as f64 / 1000.0, rate);
@@ -990,7 +1102,9 @@ fn plan_blend_window(tail: &Clip, head: Option<&Clip>, settings: &CrossfadeSetti
     let cut_in = head.map_or(0, |h| {
         let entry = opening(&h.slice(lead, h.frames())).map_or(0, |o| o.entry);
         let mix_in = frames_at(mix as f64 / rate as f64, h.rate);
-        entry.saturating_sub(mix_in).min(frames_at(MAX_CUT_IN_S, h.rate))
+        entry
+            .saturating_sub(mix_in)
+            .min(frames_at(MAX_CUT_IN_S, h.rate))
     });
     let head_rate = head.map_or(rate, |h| h.rate);
     let mut report = base_report(TransitionStyle::Blend, tail, head, audible_end, lead);
@@ -1007,7 +1121,11 @@ fn plan_blend_window(tail: &Clip, head: Option<&Clip>, settings: &CrossfadeSetti
         incoming_skip_frames: lead + cut_in,
         // A sparse ending has no low end to swap: the incoming bass would
         // just jump in at the centre.
-        shape: if sparse { MixShape::EqualPower } else { bass_swap(0.5, mix_s) },
+        shape: if sparse {
+            MixShape::EqualPower
+        } else {
+            bass_swap(0.5, mix_s)
+        },
         ride_db: 0.0,
         ride_frames: 0,
         report,
@@ -1085,7 +1203,11 @@ pub fn render_transition(tail: &Clip, head: &Clip, settings: &CrossfadeSettings)
     let same = tail.rate == head.rate && tail_ch == channels;
     plan.report.resampled = !same;
     let part = |from: usize, to: usize| {
-        let part = Tail::from_normalized(tail.samples[from * tail_ch..to * tail_ch].to_vec(), tail_ch, false);
+        let part = Tail::from_normalized(
+            tail.samples[from * tail_ch..to * tail_ch].to_vec(),
+            tail_ch,
+            false,
+        );
         if same {
             part
         } else {
@@ -1095,7 +1217,9 @@ pub fn render_transition(tail: &Clip, head: &Clip, settings: &CrossfadeSettings)
     let preroll = plan.preroll_frames.min(tail.frames());
     let mix_end = (preroll + plan.mix_frames).min(tail.frames());
     let context = frames_at(REPLAY_CONTEXT_S, tail.rate);
-    let mut out: Vec<f64> = part(preroll.saturating_sub(context), preroll).remaining().to_vec();
+    let mut out: Vec<f64> = part(preroll.saturating_sub(context), preroll)
+        .remaining()
+        .to_vec();
     let overlap_start = out.len() / channels;
     let mut overlap = part(preroll, mix_end);
     overlap.set_shape(plan.shape, rate);
@@ -1105,7 +1229,10 @@ pub fn render_transition(tail: &Clip, head: &Clip, settings: &CrossfadeSettings)
     let mut ride = GainRide::new(plan.ride_db, plan.ride_frames, channels);
     while pos < head.frames() && out.len() / channels < stop {
         let next = (pos + 4096).min(head.frames());
-        let chunk = head.samples[pos * channels..next * channels].iter().map(|&s| s as f32).collect();
+        let chunk = head.samples[pos * channels..next * channels]
+            .iter()
+            .map(|&s| s as f32)
+            .collect();
         let mut chunk = PcmBuffer::F32(chunk);
         if let Some(r) = ride.as_mut() {
             chunk = r.apply(chunk);
@@ -1137,7 +1264,10 @@ pub(crate) mod tests {
     pub(crate) const RATE: u32 = 44_100;
 
     fn settings(duration_ms: u32) -> CrossfadeSettings {
-        CrossfadeSettings { duration_ms, ..Default::default() }
+        CrossfadeSettings {
+            duration_ms,
+            ..Default::default()
+        }
     }
 
     /// A stereo drum loop: a decaying low kick on every beat, a noisy hat on
@@ -1163,8 +1293,13 @@ pub(crate) mod tests {
         let mut hat_rng = rand::rngs::StdRng::seed_from_u64(seed ^ 0xA5);
         let hats: Vec<f64> = (0..4096).map(|_| hat_rng.random::<f64>() - 0.5).collect();
         while t < seconds {
-            add(t, &|x| 0.8 * (2.0 * std::f64::consts::PI * 55.0 * x).sin() * (-x * 25.0).exp(), 0.15);
-            let hat = |x: f64| 0.25 * hats[((x * RATE as f64) as usize) % hats.len()] * (-x * 60.0).exp();
+            add(
+                t,
+                &|x| 0.8 * (2.0 * std::f64::consts::PI * 55.0 * x).sin() * (-x * 25.0).exp(),
+                0.15,
+            );
+            let hat =
+                |x: f64| 0.25 * hats[((x * RATE as f64) as usize) % hats.len()] * (-x * 60.0).exp();
             add(t + period / 2.0, &hat, 0.05);
             t += period;
         }
@@ -1202,7 +1337,11 @@ pub(crate) mod tests {
         let mut t = offset_s;
         while t < seconds {
             if beat.is_multiple_of(2) {
-                add(t, &|x| 0.9 * (2.0 * std::f64::consts::PI * 55.0 * x).sin() * (-x * 25.0).exp(), 0.15);
+                add(
+                    t,
+                    &|x| 0.9 * (2.0 * std::f64::consts::PI * 55.0 * x).sin() * (-x * 25.0).exp(),
+                    0.15,
+                );
             } else {
                 let snare = |x: f64| {
                     0.6 * (noise[((x * RATE as f64) as usize * 3) % noise.len()]
@@ -1212,13 +1351,18 @@ pub(crate) mod tests {
                 add(t, &snare, 0.12);
             }
             for half in [0.0, 0.5] {
-                let hat = |x: f64| 0.15 * noise[((x * RATE as f64) as usize * 7) % noise.len()] * (-x * 80.0).exp();
+                let hat = |x: f64| {
+                    0.15 * noise[((x * RATE as f64) as usize * 7) % noise.len()] * (-x * 80.0).exp()
+                };
                 add(t + half * period, &hat, 0.04);
             }
             beat += 1;
             t += period;
         }
-        mono.iter().map(|s| s.clamp(-1.0, 1.0)).flat_map(|s| [s, s]).collect()
+        mono.iter()
+            .map(|s| s.clamp(-1.0, 1.0))
+            .flat_map(|s| [s, s])
+            .collect()
     }
 
     #[test]
@@ -1241,11 +1385,17 @@ pub(crate) mod tests {
     }
 
     fn clip(samples: &[f64]) -> Clip<'_> {
-        Clip { samples, channels: 2, rate: RATE }
+        Clip {
+            samples,
+            channels: 2,
+            rate: RATE,
+        }
     }
 
     fn octave_match(found: f64, expected: f64) -> bool {
-        [0.5, 1.0, 2.0].iter().any(|m| (found / (expected * m) - 1.0).abs() < 0.01)
+        [0.5, 1.0, 2.0]
+            .iter()
+            .any(|m| (found / (expected * m) - 1.0).abs() < 0.01)
     }
 
     #[test]
@@ -1263,7 +1413,11 @@ pub(crate) mod tests {
             let audio = drums(bpm, 16.0, offset, bpm as u64);
             let grid = analyze_beats(&clip(&audio)).expect("grid");
             assert!(octave_match(grid.bpm, bpm), "{bpm}: found {:.2}", grid.bpm);
-            assert!(grid.confidence >= 0.5, "{bpm}: confidence {:.2}", grid.confidence);
+            assert!(
+                grid.confidence >= 0.5,
+                "{bpm}: confidence {:.2}",
+                grid.confidence
+            );
             // Every detected beat sits on (a multiple of) the true grid.
             let period = 60.0 / bpm;
             let grid_period = grid.period_s.min(period);
@@ -1281,7 +1435,9 @@ pub(crate) mod tests {
     #[test]
     fn noise_and_sustained_chords_are_not_confident() {
         let mut rng = rand::rngs::StdRng::seed_from_u64(7);
-        let noise: Vec<f64> = (0..RATE as usize * 12 * 2).map(|_| (rng.random::<f64>() - 0.5) * 0.4).collect();
+        let noise: Vec<f64> = (0..RATE as usize * 12 * 2)
+            .map(|_| (rng.random::<f64>() - 0.5) * 0.4)
+            .collect();
         // A held chord as strings or a synth pad play it: gentle vibrato, a
         // slow swell, and a breathy noise layer.
         let mut breath = rand::rngs::StdRng::seed_from_u64(8);
@@ -1294,13 +1450,17 @@ pub(crate) mod tests {
                     .enumerate()
                     .map(|(i, f)| (2.0 * std::f64::consts::PI * f * vibrato * t + i as f64).sin())
                     .sum::<f64>();
-                let s = (0.2 * tone + 0.02 * (breath.random::<f64>() - 0.5)) * (0.6 + 0.4 * (0.3 * t).sin());
+                let s = (0.2 * tone + 0.02 * (breath.random::<f64>() - 0.5))
+                    * (0.6 + 0.4 * (0.3 * t).sin());
                 [s, s]
             })
             .collect();
         for (name, audio) in [("noise", &noise), ("pad", &pad)] {
             let confidence = analyze_beats(&clip(audio)).map_or(0.0, |g| g.confidence);
-            assert!(confidence < CONFIDENCE_FLOOR, "{name}: confidence {confidence:.2}");
+            assert!(
+                confidence < CONFIDENCE_FLOOR,
+                "{name}: confidence {confidence:.2}"
+            );
         }
     }
 
@@ -1315,7 +1475,10 @@ pub(crate) mod tests {
         // A short tail (slow producer) overlaps all of it.
         let short = vec![0.3; 2 * RATE as usize * 3];
         let plan = plan_transition(&clip(&short), None, &settings(6000));
-        assert_eq!((plan.preroll_frames, plan.mix_frames), (0, 3 * RATE as usize));
+        assert_eq!(
+            (plan.preroll_frames, plan.mix_frames),
+            (0, 3 * RATE as usize)
+        );
     }
 
     #[test]
@@ -1343,11 +1506,20 @@ pub(crate) mod tests {
         let mut s = settings(4000);
         s.trim_silence = true;
         let plan = plan_transition(&clip(&tail), Some(&clip(&head)), &s);
-        assert_eq!(plan.incoming_skip_frames, (MAX_LEAD_TRIM_S * RATE as f64) as usize);
+        assert_eq!(
+            plan.incoming_skip_frames,
+            (MAX_LEAD_TRIM_S * RATE as f64) as usize
+        );
     }
 
     /// Beat positions of the incoming track, in tail time, after the plan.
-    fn aligned_error(tail_bpm: f64, tail_offset: f64, head_bpm: f64, head_offset: f64, plan: &TransitionPlan) -> f64 {
+    fn aligned_error(
+        tail_bpm: f64,
+        tail_offset: f64,
+        head_bpm: f64,
+        head_offset: f64,
+        plan: &TransitionPlan,
+    ) -> f64 {
         // The incoming frame at skip lands on tail frame preroll; its beats
         // follow at head positions offset + i * period.
         let skip_s = plan.incoming_skip_frames as f64 / RATE as f64;
@@ -1370,7 +1542,12 @@ pub(crate) mod tests {
         let mut s = settings(6000);
         s.beat_match = true;
         let plan = plan_transition(&clip(&tail), Some(&clip(&head)), &s);
-        assert_eq!(plan.report.kind, TransitionKind::BeatMatched, "{:?}", plan.report);
+        assert_eq!(
+            plan.report.kind,
+            TransitionKind::BeatMatched,
+            "{:?}",
+            plan.report
+        );
         let beats = plan.report.beats.unwrap();
         assert!((4..=16).contains(&beats));
         assert!(plan.preroll_frames + plan.mix_frames <= tail.len() / 2);
@@ -1385,7 +1562,12 @@ pub(crate) mod tests {
         let mut s = settings(6000);
         s.beat_match = true;
         let plan = plan_transition(&clip(&tail), Some(&clip(&head)), &s);
-        assert_eq!(plan.report.kind, TransitionKind::BeatMatched, "{:?}", plan.report);
+        assert_eq!(
+            plan.report.kind,
+            TransitionKind::BeatMatched,
+            "{:?}",
+            plan.report
+        );
     }
 
     #[test]
@@ -1396,17 +1578,36 @@ pub(crate) mod tests {
         s.beat_match = true;
         let plan = plan_transition(&clip(&tail), Some(&clip(&far)), &s);
         assert_eq!(plan.report.kind, TransitionKind::Crossfade);
-        assert!(plan.report.note.as_deref().unwrap().contains("too far apart"), "{:?}", plan.report);
-        assert_eq!(plan.mix_frames, 6 * RATE as usize, "fallback keeps the plain crossfade");
+        assert!(
+            plan.report
+                .note
+                .as_deref()
+                .unwrap()
+                .contains("too far apart"),
+            "{:?}",
+            plan.report
+        );
+        assert_eq!(
+            plan.mix_frames,
+            6 * RATE as usize,
+            "fallback keeps the plain crossfade"
+        );
 
         let mut rng = rand::rngs::StdRng::seed_from_u64(9);
-        let noise: Vec<f64> = (0..RATE as usize * 12 * 2).map(|_| (rng.random::<f64>() - 0.5) * 0.4).collect();
+        let noise: Vec<f64> = (0..RATE as usize * 12 * 2)
+            .map(|_| (rng.random::<f64>() - 0.5) * 0.4)
+            .collect();
         let plan = plan_transition(&clip(&tail), Some(&clip(&noise)), &s);
         assert_eq!(plan.report.kind, TransitionKind::Crossfade);
         assert!(plan.report.note.is_some());
 
         let plan = plan_transition(&clip(&tail), None, &s);
-        assert!(plan.report.note.as_deref().unwrap().contains("decoded ahead"));
+        assert!(plan
+            .report
+            .note
+            .as_deref()
+            .unwrap()
+            .contains("decoded ahead"));
     }
 
     #[test]
@@ -1428,15 +1629,20 @@ pub(crate) mod tests {
             .flat_map(|n| {
                 let t = n as f64 / RATE as f64;
                 let g = 0.3 * 10f64.powf(gain_db(t) / 20.0);
-                let s = g * (0.7 * (2.0 * std::f64::consts::PI * 220.0 * t).sin()
-                    + 0.3 * (2.0 * std::f64::consts::PI * 3000.0 * t).sin());
+                let s = g
+                    * (0.7 * (2.0 * std::f64::consts::PI * 220.0 * t).sin()
+                        + 0.3 * (2.0 * std::f64::consts::PI * 3000.0 * t).sin());
                 [s, s]
             })
             .collect()
     }
 
     fn style(style: TransitionStyle, duration_ms: u32) -> CrossfadeSettings {
-        CrossfadeSettings { duration_ms, style, ..Default::default() }
+        CrossfadeSettings {
+            duration_ms,
+            style,
+            ..Default::default()
+        }
     }
 
     fn secs(frames: usize) -> f64 {
@@ -1445,7 +1651,13 @@ pub(crate) mod tests {
 
     /// 10 s of body, then a 6 s fade of 40 dB, then 1 s of silence.
     fn fading_tail() -> Vec<f64> {
-        let mut tail = tone(16.0, |t| if t < 10.0 { 0.0 } else { -40.0 * (t - 10.0) / 6.0 });
+        let mut tail = tone(16.0, |t| {
+            if t < 10.0 {
+                0.0
+            } else {
+                -40.0 * (t - 10.0) / 6.0
+            }
+        });
         tail.extend(vec![0.0; 2 * RATE as usize]);
         tail
     }
@@ -1459,13 +1671,25 @@ pub(crate) mod tests {
     fn quick_lands_once_the_fade_has_died_down() {
         let tail = fading_tail();
         let head = slow_intro(1.0, 8.0);
-        let plan = plan_transition(&clip(&tail), Some(&clip(&head)), &style(TransitionStyle::Quick, 6000));
+        let plan = plan_transition(
+            &clip(&tail),
+            Some(&clip(&head)),
+            &style(TransitionStyle::Quick, 6000),
+        );
         // −18 dB is 2.7 s into the fade (12.7 s): the 3 s overlap starts there,
         // never on top of the louder part of the fade (AM-D17).
         let start = secs(plan.preroll_frames);
-        assert!((12.4..=13.0).contains(&start), "overlap starts at {start:.2} s");
+        assert!(
+            (12.4..=13.0).contains(&start),
+            "overlap starts at {start:.2} s"
+        );
         assert_eq!(plan.mix_frames, 3 * RATE as usize);
-        assert_eq!(plan.shape, MixShape::Quick { attack: QUICK_ATTACK_S / 3.0 });
+        assert_eq!(
+            plan.shape,
+            MixShape::Quick {
+                attack: QUICK_ATTACK_S / 3.0
+            }
+        );
         assert!(plan.report.cut_out_ms < 500, "{:?}", plan.report);
         assert_eq!(plan.report.style, TransitionStyle::Quick);
     }
@@ -1474,9 +1698,18 @@ pub(crate) mod tests {
     fn quick_does_not_fade_in_a_cold_opening() {
         let tail = fading_tail();
         let head = tone(8.0, |_| 0.0);
-        let plan = plan_transition(&clip(&tail), Some(&clip(&head)), &style(TransitionStyle::Quick, 6000));
-        let MixShape::Quick { attack } = plan.shape else { panic!("{:?}", plan.shape) };
-        assert!((attack - QUICK_COLD_ATTACK_S / 3.0).abs() < 1e-9, "{attack}");
+        let plan = plan_transition(
+            &clip(&tail),
+            Some(&clip(&head)),
+            &style(TransitionStyle::Quick, 6000),
+        );
+        let MixShape::Quick { attack } = plan.shape else {
+            panic!("{:?}", plan.shape)
+        };
+        assert!(
+            (attack - QUICK_COLD_ATTACK_S / 3.0).abs() < 1e-9,
+            "{attack}"
+        );
         assert!(plan.report.note.as_deref().unwrap().contains("opens loud"));
     }
 
@@ -1497,7 +1730,11 @@ pub(crate) mod tests {
     fn blend_cuts_the_fade_and_skips_a_slow_intro() {
         let tail = fading_tail();
         let head = slow_intro(10.0, 18.0);
-        let plan = plan_transition(&clip(&tail), Some(&clip(&head)), &style(TransitionStyle::Blend, 6000));
+        let plan = plan_transition(
+            &clip(&tail),
+            Some(&clip(&head)),
+            &style(TransitionStyle::Blend, 6000),
+        );
         // −4 dB is 0.6 s into the fade: the overlap ends there.
         let end = secs(plan.preroll_frames + plan.mix_frames);
         assert!((10.3..=11.0).contains(&end), "overlap ends at {end:.2} s");
@@ -1507,7 +1744,11 @@ pub(crate) mod tests {
         let skip = secs(plan.incoming_skip_frames);
         assert!((3.6..=4.4).contains(&skip), "incoming skip {skip:.2} s");
         assert_eq!(plan.report.cut_in_ms, ms(plan.incoming_skip_frames, RATE));
-        let MixShape::BassSwap { swap_start, swap_end } = plan.shape else {
+        let MixShape::BassSwap {
+            swap_start,
+            swap_end,
+        } = plan.shape
+        else {
             panic!("{:?}", plan.shape);
         };
         assert!(swap_start < 0.5 && swap_end > 0.5 && swap_end - swap_start < 0.1);
@@ -1516,10 +1757,23 @@ pub(crate) mod tests {
     #[test]
     fn blend_caps_how_much_it_cuts() {
         // A 20 s fade starting 2 s in: the cut stops at 12 s of audible ending.
-        let tail = tone(22.0, |t| if t < 2.0 { 0.0 } else { -40.0 * (t - 2.0) / 20.0 });
+        let tail = tone(22.0, |t| {
+            if t < 2.0 {
+                0.0
+            } else {
+                -40.0 * (t - 2.0) / 20.0
+            }
+        });
         let intro = slow_intro(30.0, 20.0);
-        let plan = plan_transition(&clip(&tail), Some(&clip(&intro)), &style(TransitionStyle::Blend, 6000));
-        assert!((secs(plan.preroll_frames + plan.mix_frames) - 10.0).abs() < 0.01, "{plan:?}");
+        let plan = plan_transition(
+            &clip(&tail),
+            Some(&clip(&intro)),
+            &style(TransitionStyle::Blend, 6000),
+        );
+        assert!(
+            (secs(plan.preroll_frames + plan.mix_frames) - 10.0).abs() < 0.01,
+            "{plan:?}"
+        );
         // An opening that never gets louder has nothing to skip.
         assert_eq!(plan.report.cut_in_ms, 0);
     }
@@ -1532,17 +1786,35 @@ pub(crate) mod tests {
         let mut tail = tone(17.0, |t| if t < 12.0 { 0.0 } else { -10.0 });
         tail.extend(vec![0.0; RATE as usize]);
         let head = tone(10.0, |_| 0.0);
-        let plan = plan_transition(&clip(&tail), Some(&clip(&head)), &style(TransitionStyle::Blend, 6000));
+        let plan = plan_transition(
+            &clip(&tail),
+            Some(&clip(&head)),
+            &style(TransitionStyle::Blend, 6000),
+        );
         let end = secs(plan.preroll_frames + plan.mix_frames);
-        assert!(end > 16.5, "overlap ends at {end:.2} s: the sparse ending was cut");
+        assert!(
+            end > 16.5,
+            "overlap ends at {end:.2} s: the sparse ending was cut"
+        );
         assert_eq!(plan.shape, MixShape::EqualPower);
-        assert!(plan.report.note.as_deref().unwrap().contains("sparse"), "{:?}", plan.report);
-        assert!(plan.ride_db <= -5.0 && plan.ride_db >= -RIDE_MAX_DB, "{plan:?}");
+        assert!(
+            plan.report.note.as_deref().unwrap().contains("sparse"),
+            "{:?}",
+            plan.report
+        );
+        assert!(
+            plan.ride_db <= -5.0 && plan.ride_db >= -RIDE_MAX_DB,
+            "{plan:?}"
+        );
         assert!(secs(plan.ride_frames) > secs(plan.mix_frames) + RIDE_RECOVER_S - 0.01);
     }
 
     fn auto(tail: &[f64], head: &[f64]) -> TransitionPlan {
-        plan_transition(&clip(tail), Some(&clip(head)), &style(TransitionStyle::Auto, 6000))
+        plan_transition(
+            &clip(tail),
+            Some(&clip(head)),
+            &style(TransitionStyle::Auto, 6000),
+        )
     }
 
     /// Auto's rules (AM-D18), one per kind of ending.
@@ -1551,28 +1823,55 @@ pub(crate) mod tests {
         let loud = tone(10.0, |_| 0.0);
         // A 6 s fade declines ~5.4 s before going silent: short, so Quick.
         let plan = auto(&fading_tail(), &loud);
-        assert_eq!(plan.report.style, TransitionStyle::Quick, "{:?}", plan.report);
+        assert_eq!(
+            plan.report.style,
+            TransitionStyle::Quick,
+            "{:?}",
+            plan.report
+        );
         assert_eq!(plan.report.auto_reason.as_deref(), Some("short fade-out"));
         let f = plan.report.features.as_ref().unwrap();
         assert_eq!(f.ending, EndingKind::FadeOut);
         assert!(f.cold_open && f.trailing_silence_s > 0.9, "{f:?}");
         // A 20 s fade is cut by Blend.
-        let long = tone(22.0, |t| if t < 2.0 { 0.0 } else { -40.0 * (t - 2.0) / 20.0 });
+        let long = tone(22.0, |t| {
+            if t < 2.0 {
+                0.0
+            } else {
+                -40.0 * (t - 2.0) / 20.0
+            }
+        });
         let plan = auto(&long, &loud);
-        assert_eq!(plan.report.style, TransitionStyle::Blend, "{:?}", plan.report);
+        assert_eq!(
+            plan.report.style,
+            TransitionStyle::Blend,
+            "{:?}",
+            plan.report
+        );
         // A hard stop into a slow intro: the intro rises under the end.
         let mut hard = tone(12.0, |_| 0.0);
         hard.extend(vec![0.0; RATE as usize]);
         let plan = auto(&hard, &slow_intro(4.0, 10.0));
-        assert_eq!(plan.report.style, TransitionStyle::Classic, "{:?}", plan.report);
-        assert_eq!(plan.report.features.as_ref().unwrap().ending, EndingKind::HardStop);
+        assert_eq!(
+            plan.report.style,
+            TransitionStyle::Classic,
+            "{:?}",
+            plan.report
+        );
+        assert_eq!(
+            plan.report.features.as_ref().unwrap().ending,
+            EndingKind::HardStop
+        );
         // ... into a loud opening: Quick.
         assert_eq!(auto(&hard, &loud).report.style, TransitionStyle::Quick);
         // A sparse ending finishes first.
         let mut sparse = tone(17.0, |t| if t < 12.0 { 0.0 } else { -10.0 });
         sparse.extend(vec![0.0; RATE as usize]);
         let plan = auto(&sparse, &loud);
-        assert_eq!(plan.report.auto_reason.as_deref(), Some("sparse ending: let it finish"));
+        assert_eq!(
+            plan.report.auto_reason.as_deref(),
+            Some("sparse ending: let it finish")
+        );
     }
 
     /// No silence at the join, full level into a loud opening: a continuous
@@ -1581,9 +1880,24 @@ pub(crate) mod tests {
     fn auto_plays_a_continuous_recording_gapless() {
         let tail = tone(12.0, |_| 0.0);
         let plan = auto(&tail, &tone(10.0, |_| 0.0));
-        assert_eq!(plan.report.kind, TransitionKind::Gapless, "{:?}", plan.report);
-        assert_eq!((plan.preroll_frames, plan.mix_frames, plan.incoming_skip_frames), (tail.len() / 2, 0, 0));
-        assert_eq!(plan.report.auto_reason.as_deref(), Some("continuous recording"));
+        assert_eq!(
+            plan.report.kind,
+            TransitionKind::Gapless,
+            "{:?}",
+            plan.report
+        );
+        assert_eq!(
+            (
+                plan.preroll_frames,
+                plan.mix_frames,
+                plan.incoming_skip_frames
+            ),
+            (tail.len() / 2, 0, 0)
+        );
+        assert_eq!(
+            plan.report.auto_reason.as_deref(),
+            Some("continuous recording")
+        );
     }
 
     /// Every AutoMix style carries the measurements for the log; Classic with
@@ -1591,7 +1905,11 @@ pub(crate) mod tests {
     #[test]
     fn features_ride_along_with_automix_plans() {
         let head = tone(10.0, |_| 0.0);
-        let blend = plan_transition(&clip(&fading_tail()), Some(&clip(&head)), &style(TransitionStyle::Blend, 6000));
+        let blend = plan_transition(
+            &clip(&fading_tail()),
+            Some(&clip(&head)),
+            &style(TransitionStyle::Blend, 6000),
+        );
         assert!(blend.report.features.is_some());
         let classic = plan_transition(&clip(&fading_tail()), Some(&clip(&head)), &settings(6000));
         assert!(classic.report.features.is_none());
@@ -1612,7 +1930,11 @@ pub(crate) mod tests {
     fn blend_does_not_ride_matched_levels() {
         let tail = fading_tail();
         let head = tone(10.0, |_| 0.0);
-        let plan = plan_transition(&clip(&tail), Some(&clip(&head)), &style(TransitionStyle::Blend, 6000));
+        let plan = plan_transition(
+            &clip(&tail),
+            Some(&clip(&head)),
+            &style(TransitionStyle::Blend, 6000),
+        );
         assert_eq!((plan.ride_db, plan.ride_frames), (0.0, 0), "{plan:?}");
         assert_eq!(plan.report.ride_db, 0.0);
     }
@@ -1624,8 +1946,17 @@ pub(crate) mod tests {
         let mut s = style(TransitionStyle::Blend, 6000);
         s.beat_match = true;
         let plan = plan_transition(&clip(&tail), Some(&clip(&head)), &s);
-        assert_eq!(plan.report.kind, TransitionKind::BeatMatched, "{:?}", plan.report);
-        let MixShape::BassSwap { swap_start, swap_end } = plan.shape else {
+        assert_eq!(
+            plan.report.kind,
+            TransitionKind::BeatMatched,
+            "{:?}",
+            plan.report
+        );
+        let MixShape::BassSwap {
+            swap_start,
+            swap_end,
+        } = plan.shape
+        else {
             panic!("{:?}", plan.shape);
         };
         assert!(swap_start > 0.2 && swap_end < 0.8, "{:?}", plan.shape);
@@ -1636,7 +1967,11 @@ pub(crate) mod tests {
     fn render_places_the_overlap_between_context() {
         let tail = fading_tail();
         let head = slow_intro(1.0, 20.0);
-        for style_ in [TransitionStyle::Classic, TransitionStyle::Quick, TransitionStyle::Blend] {
+        for style_ in [
+            TransitionStyle::Classic,
+            TransitionStyle::Quick,
+            TransitionStyle::Blend,
+        ] {
             let r = render_transition(&clip(&tail), &clip(&head), &style(style_, 6000));
             assert_eq!((r.rate, r.channels), (RATE, 2));
             assert!(!r.report.resampled);
@@ -1644,14 +1979,22 @@ pub(crate) mod tests {
             assert_eq!(overlap, r.report.overlap_ms, "{style_:?}");
             // Up to 6 s of lead-in (less when the overlap starts early in the tail).
             let plan = plan_transition(&clip(&tail), Some(&clip(&head)), &style(style_, 6000));
-            assert_eq!(r.overlap_start_ms, ms(plan.preroll_frames.min(6 * RATE as usize), RATE), "{style_:?}");
+            assert_eq!(
+                r.overlap_start_ms,
+                ms(plan.preroll_frames.min(6 * RATE as usize), RATE),
+                "{style_:?}"
+            );
             let total_ms = ms(r.samples.len() / 2, RATE);
             assert_eq!(total_ms, r.overlap_end_ms + 6_000, "{style_:?}");
             assert!(r.samples.iter().all(|s| s.is_finite() && s.abs() <= 1.0));
         }
         // A different incoming format renders in that format.
         let head48: Vec<f64> = slow_intro(1.0, 20.0);
-        let head48 = Clip { samples: &head48, channels: 2, rate: 48_000 };
+        let head48 = Clip {
+            samples: &head48,
+            channels: 2,
+            rate: 48_000,
+        };
         let r = render_transition(&clip(&tail), &head48, &style(TransitionStyle::Blend, 6000));
         assert_eq!(r.rate, 48_000);
         assert!(r.report.resampled);

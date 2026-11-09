@@ -31,7 +31,13 @@ impl TidalClient {
             .filter_map(|resource| {
                 let id = resource.id.parse::<u64>().ok()?;
                 let attributes = resource.attributes.unwrap_or_default();
-                Some((id, TrackFlags { explicit: attributes.explicit, ai: attributes.ai }))
+                Some((
+                    id,
+                    TrackFlags {
+                        explicit: attributes.explicit,
+                        ai: attributes.ai,
+                    },
+                ))
             })
             .collect())
     }
@@ -106,8 +112,20 @@ mod tests {
         assert_eq!(
             flags,
             vec![
-                (1, super::TrackFlags { explicit: Some(true), ai: Some(true) }),
-                (2, super::TrackFlags { explicit: Some(false), ai: None }),
+                (
+                    1,
+                    super::TrackFlags {
+                        explicit: Some(true),
+                        ai: Some(true)
+                    }
+                ),
+                (
+                    2,
+                    super::TrackFlags {
+                        explicit: Some(false),
+                        ai: None
+                    }
+                ),
             ]
         );
     }
@@ -151,7 +169,16 @@ mod tests {
             .mount(&server)
             .await;
         let flags = client(&server).track_flags(&[7]).await.unwrap();
-        assert_eq!(flags, vec![(7, super::TrackFlags { explicit: None, ai: None })]);
+        assert_eq!(
+            flags,
+            vec![(
+                7,
+                super::TrackFlags {
+                    explicit: None,
+                    ai: None
+                }
+            )]
+        );
     }
 
     #[tokio::test]

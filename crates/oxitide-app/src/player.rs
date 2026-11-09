@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use oxitide_audio::cache::DiskCache;
-use oxitide_audio::engine::{EngineEvent, PlaybackState, StreamResolver};
-use oxitide_audio::queue::QueueItem;
 use oxitide_audio::devices::{DeviceCaps, DeviceGroup, DeviceKind, Transport};
+use oxitide_audio::engine::{EngineEvent, PlaybackState, StreamResolver};
 use oxitide_audio::output::{self, AudioOutput, OutputDevice, OutputMode};
+use oxitide_audio::queue::QueueItem;
 use oxitide_audio::source;
 use oxitide_tidal::client::TidalClient;
 use oxitide_tidal::stream::Quality;
@@ -45,7 +45,10 @@ impl TidalResolver {
             .worker_threads(1)
             .enable_all()
             .build()?;
-        Ok(Self { client, runtime: Some(runtime) })
+        Ok(Self {
+            client,
+            runtime: Some(runtime),
+        })
     }
 }
 
@@ -122,11 +125,26 @@ impl QualityDto {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EngineEventDto {
     State(StateDto),
-    NowPlaying { item: Option<oxitide_audio::queue::QueueItem> },
-    Position { position_ms: u64, duration_ms: u64, lead_ms: u32 },
+    NowPlaying {
+        item: Option<oxitide_audio::queue::QueueItem>,
+    },
+    Position {
+        position_ms: u64,
+        duration_ms: u64,
+        lead_ms: u32,
+    },
     /// CatJam's beat clock (local analysis; `bpm` is null when not confident).
-    Beat { track_id: u64, bpm: Option<f32>, period_ms: f32, anchor_ms: u64, confidence: f32 },
-    Error { code: String, message: String },
+    Beat {
+        track_id: u64,
+        bpm: Option<f32>,
+        period_ms: f32,
+        anchor_ms: u64,
+        confidence: f32,
+    },
+    Error {
+        code: String,
+        message: String,
+    },
 }
 
 /// `PlaybackState` for the desktop UI. `queue` is present when the UI may not
@@ -173,9 +191,15 @@ pub fn to_dto(event: EngineEvent) -> EngineEventDto {
     match event {
         EngineEvent::State(s) => EngineEventDto::State(StateDto::full(s)),
         EngineEvent::NowPlaying(i) => EngineEventDto::NowPlaying { item: i },
-        EngineEvent::Position { position_ms, duration_ms, lead_ms } => {
-            EngineEventDto::Position { position_ms, duration_ms, lead_ms }
-        }
+        EngineEvent::Position {
+            position_ms,
+            duration_ms,
+            lead_ms,
+        } => EngineEventDto::Position {
+            position_ms,
+            duration_ms,
+            lead_ms,
+        },
         EngineEvent::Beat(clock) => EngineEventDto::Beat {
             track_id: clock.track_id,
             bpm: clock.bpm,
@@ -282,15 +306,29 @@ pub fn device_list_dto(
             mode: audio.mode_for(id),
         }
     };
-    let now = devices.iter().find(|device| device.is_default && device.group != DeviceGroup::Asio).map(|device| {
-        audio.devices.get(&device.id).map(|p| p.nickname.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| device.name.clone())
-    });
+    let now = devices
+        .iter()
+        .find(|device| device.is_default && device.group != DeviceGroup::Asio)
+        .map(|device| {
+            audio
+                .devices
+                .get(&device.id)
+                .map(|p| p.nickname.clone())
+                .filter(|n| !n.is_empty())
+                .unwrap_or_else(|| device.name.clone())
+        });
 
     // Saved ids with no connected device that someone cares about.
     let mut wanted: Vec<String> = Vec::new();
     for id in std::iter::once(&audio.output_device)
         .chain(audio.pinned.iter())
-        .chain(audio.devices.iter().filter(|(_, p)| !p.is_default_choice()).map(|(id, _)| id))
+        .chain(
+            audio
+                .devices
+                .iter()
+                .filter(|(_, p)| !p.is_default_choice())
+                .map(|(id, _)| id),
+        )
     {
         if !id.is_empty() && !devices.iter().any(|d| &d.id == id) && !wanted.contains(id) {
             wanted.push(id.clone());
@@ -298,7 +336,9 @@ pub fn device_list_dto(
     }
     let mut moved = Vec::new();
     for old in &wanted {
-        let Some(saved) = audio.devices.get(old) else { continue };
+        let Some(saved) = audio.devices.get(old) else {
+            continue;
+        };
         if saved.system_name.is_empty() {
             continue;
         }
@@ -340,11 +380,19 @@ pub fn device_list_dto(
         if !audio.pinned.contains(&id) && id != audio.output_device {
             continue;
         }
-        let name = if saved.name.is_empty() { id.clone() } else { saved.name.clone() };
+        let name = if saved.name.is_empty() {
+            id.clone()
+        } else {
+            saved.name.clone()
+        };
         rows.push(OutputDeviceDto {
             caps: caps(&id),
             prefs: prefs_for(&id),
-            system_name: if saved.system_name.is_empty() { name.clone() } else { saved.system_name.clone() },
+            system_name: if saved.system_name.is_empty() {
+                name.clone()
+            } else {
+                saved.system_name.clone()
+            },
             name,
             group: group_of(&id),
             kind: DeviceKind::Unknown,
@@ -357,7 +405,10 @@ pub fn device_list_dto(
         });
     }
     OutputDeviceListDto {
-        system_default: SystemDefaultDto { now, mode: audio.mode_for("") },
+        system_default: SystemDefaultDto {
+            now,
+            mode: audio.mode_for(""),
+        },
         devices: rows,
         pinned: audio.pinned.clone(),
         selected: audio.output_device.clone(),
@@ -373,7 +424,8 @@ mod tests {
     use std::time::{Duration, SystemTime};
 
     fn wasapi(id: &str, name: &str, system_name: &str, transport: Transport) -> OutputDevice {
-        let mut device = OutputDevice::new(id, name, DeviceGroup::Wasapi).with_system_name(system_name);
+        let mut device =
+            OutputDevice::new(id, name, DeviceGroup::Wasapi).with_system_name(system_name);
         device.transport = transport;
         device
     }
@@ -385,15 +437,46 @@ mod tests {
             pinned: vec!["speakers".into(), "gone-tv".into()],
             ..AudioConfig::default()
         };
-        audio.devices.insert("gone-dac".into(), DevicePrefs { name: "Living room DAC".into(), mode: OutputMode::Exclusive, ..DevicePrefs::default() });
-        audio.devices.insert("speakers".into(), DevicePrefs { nickname: "Desk".into(), ..DevicePrefs::default() });
-        let mut speakers = wasapi("speakers", "Speakers", "Speakers (Realtek(R) Audio)", Transport::Internal);
+        audio.devices.insert(
+            "gone-dac".into(),
+            DevicePrefs {
+                name: "Living room DAC".into(),
+                mode: OutputMode::Exclusive,
+                ..DevicePrefs::default()
+            },
+        );
+        audio.devices.insert(
+            "speakers".into(),
+            DevicePrefs {
+                nickname: "Desk".into(),
+                ..DevicePrefs::default()
+            },
+        );
+        let mut speakers = wasapi(
+            "speakers",
+            "Speakers",
+            "Speakers (Realtek(R) Audio)",
+            Transport::Internal,
+        );
         speakers.is_default = true;
-        let list = device_list_dto(vec![speakers], &audio, |id| (id == "speakers").then(|| DeviceCaps::from_formats(&[(192_000, 24)])));
-        assert_eq!(list.system_default.now.as_deref(), Some("Desk"), "the nickname names the default");
+        let list = device_list_dto(vec![speakers], &audio, |id| {
+            (id == "speakers").then(|| DeviceCaps::from_formats(&[(192_000, 24)]))
+        });
+        assert_eq!(
+            list.system_default.now.as_deref(),
+            Some("Desk"),
+            "the nickname names the default"
+        );
         assert_eq!(list.selected, "gone-dac");
-        let ids: Vec<(&str, bool)> = list.devices.iter().map(|d| (d.id.as_str(), d.connected)).collect();
-        assert_eq!(ids, vec![("speakers", true), ("gone-dac", false), ("gone-tv", false)]);
+        let ids: Vec<(&str, bool)> = list
+            .devices
+            .iter()
+            .map(|d| (d.id.as_str(), d.connected))
+            .collect();
+        assert_eq!(
+            ids,
+            vec![("speakers", true), ("gone-dac", false), ("gone-tv", false)]
+        );
         let speakers = &list.devices[0];
         assert!(speakers.prefs.pinned);
         assert_eq!(speakers.prefs.nickname, "Desk");
@@ -406,7 +489,11 @@ mod tests {
 
     #[test]
     fn a_device_on_a_new_id_is_offered_the_old_settings() {
-        let mut audio = AudioConfig { output_device: "old".into(), pinned: vec!["old".into()], ..AudioConfig::default() };
+        let mut audio = AudioConfig {
+            output_device: "old".into(),
+            pinned: vec!["old".into()],
+            ..AudioConfig::default()
+        };
         audio.devices.insert(
             "old".into(),
             DevicePrefs {
@@ -431,13 +518,24 @@ mod tests {
         .collect();
         let list = device_list_dto(devices, &audio, |_| None);
         assert_eq!(list.moved, vec![("old".to_string(), "new".to_string())]);
-        assert!(list.devices.iter().all(|d| d.connected), "the moved id is not listed as missing");
+        assert!(
+            list.devices.iter().all(|d| d.connected),
+            "the moved id is not listed as missing"
+        );
     }
 
     #[test]
     fn asio_rows_always_report_exclusive() {
         let audio = AudioConfig::default();
-        let list = device_list_dto(vec![OutputDevice::new("asio:Focusrite", "Focusrite USB ASIO", DeviceGroup::Asio)], &audio, |_| None);
+        let list = device_list_dto(
+            vec![OutputDevice::new(
+                "asio:Focusrite",
+                "Focusrite USB ASIO",
+                DeviceGroup::Asio,
+            )],
+            &audio,
+            |_| None,
+        );
         assert_eq!(list.devices[0].prefs.mode, OutputMode::Exclusive);
         assert_eq!(list.system_default.mode, OutputMode::Shared);
     }
@@ -450,7 +548,8 @@ mod tests {
         let part = dir.join("1-lossless-0000000000000001.fmp4.part");
         std::fs::write(&part, b"stale").unwrap();
         let file = std::fs::OpenOptions::new().write(true).open(&part).unwrap();
-        file.set_modified(SystemTime::now() - Duration::from_secs(2 * 3600)).unwrap();
+        file.set_modified(SystemTime::now() - Duration::from_secs(2 * 3600))
+            .unwrap();
         drop(file);
 
         let mut config = Config::default();
@@ -478,7 +577,11 @@ mod tests {
             reqwest::Client::new(),
             "http://127.0.0.1:9",
             "http://127.0.0.1:9/token",
-            SessionInfo { session_id: "s".into(), country_code: "GR".into(), user_id: 1 },
+            SessionInfo {
+                session_id: "s".into(),
+                country_code: "GR".into(),
+                user_id: 1,
+            },
             TokenSet {
                 access_token: "AT".into(),
                 refresh_token: Some("RT".into()),
@@ -493,12 +596,18 @@ mod tests {
     #[test]
     fn quality_dto_round_trips() {
         assert_eq!(QualityDto::Max.to_quality(), Quality::Max);
-        assert_eq!(serde_json::to_value(QualityDto::Lossless).unwrap(), serde_json::json!("lossless"));
+        assert_eq!(
+            serde_json::to_value(QualityDto::Lossless).unwrap(),
+            serde_json::json!("lossless")
+        );
     }
 
     #[test]
     fn engine_event_dto_is_tagged() {
-        let dto = to_dto(EngineEvent::Error { code: "auth".into(), message: "no".into() });
+        let dto = to_dto(EngineEvent::Error {
+            code: "auth".into(),
+            message: "no".into(),
+        });
         let value = serde_json::to_value(&dto).unwrap();
         assert_eq!(value["type"], "error");
         assert_eq!(value["code"], "auth");
@@ -506,7 +615,11 @@ mod tests {
 
     #[test]
     fn position_and_beat_events_carry_the_catjam_fields() {
-        let position = to_dto(EngineEvent::Position { position_ms: 5000, duration_ms: 9000, lead_ms: 215 });
+        let position = to_dto(EngineEvent::Position {
+            position_ms: 5000,
+            duration_ms: 9000,
+            lead_ms: 215,
+        });
         let value = serde_json::to_value(&position).unwrap();
         assert_eq!(value["type"], "position");
         assert_eq!(value["lead_ms"], 215);
@@ -549,10 +662,17 @@ mod tests {
         let json = |event| serde_json::to_value(gate.dto(event)).unwrap();
         let first = json(EngineEvent::State(state_with(&[1, 2, 3], 1.0, 4)));
         assert_eq!(first["type"], "state");
-        assert_eq!(first["queue"].as_array().map(Vec::len), Some(3), "first state must carry the queue");
+        assert_eq!(
+            first["queue"].as_array().map(Vec::len),
+            Some(3),
+            "first state must carry the queue"
+        );
         assert_eq!(first["queue_rev"], 4);
         let volume = json(EngineEvent::State(state_with(&[1, 2, 3], 0.5, 4)));
-        assert!(volume.get("queue").is_none(), "an unchanged queue was re-sent: {volume}");
+        assert!(
+            volume.get("queue").is_none(),
+            "an unchanged queue was re-sent: {volume}"
+        );
         assert_eq!(volume["volume"], 0.5);
         let edited = json(EngineEvent::State(state_with(&[1, 2], 0.5, 5)));
         assert_eq!(edited["queue"].as_array().map(Vec::len), Some(2));
@@ -572,7 +692,8 @@ mod tests {
         let ids: Vec<u64> = (1..=10_000).collect();
         let gate = QueueGate::default();
         let _ = gate.dto(EngineEvent::State(state_with(&ids, 1.0, 1)));
-        let tick = serde_json::to_vec(&gate.dto(EngineEvent::State(state_with(&ids, 0.4, 1)))).unwrap();
+        let tick =
+            serde_json::to_vec(&gate.dto(EngineEvent::State(state_with(&ids, 0.4, 1)))).unwrap();
         assert!(tick.len() < 4096, "volume state is {} bytes", tick.len());
     }
 

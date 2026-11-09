@@ -101,7 +101,11 @@ impl TapState {
         self.acc = 0.0;
         self.acc_n = 0;
         self.collect_from = at;
-        let ms = if self.first_done { lengths.1 } else { lengths.0 };
+        let ms = if self.first_done {
+            lengths.1
+        } else {
+            lengths.0
+        };
         self.target = (ms * (self.rate / self.factor) as u64 / 1000) as usize;
     }
 
@@ -231,7 +235,9 @@ impl BeatTap {
             return false;
         }
         match self.state.try_lock() {
-            Ok(state) => !(state.track_id == Some(track_id) && state.rate == rate && state.first_done),
+            Ok(state) => {
+                !(state.track_id == Some(track_id) && state.rate == rate && state.first_done)
+            }
             Err(_) => false,
         }
     }
@@ -260,15 +266,22 @@ impl BeatTap {
             return None;
         }
         let ch = channels as usize;
-        let lengths = (self.first_ms.load(Ordering::Relaxed), self.window_ms.load(Ordering::Relaxed));
+        let lengths = (
+            self.first_ms.load(Ordering::Relaxed),
+            self.window_ms.load(Ordering::Relaxed),
+        );
         let mut ahead = TapState::default();
         let mut frame = start_frame;
         for buf in buffers {
             let window = match buf {
-                PcmBuffer::F32(samples) => ahead.feed(track_id, frame, samples, ch, rate, lengths, |s| s as f64),
-                PcmBuffer::I32(samples) => ahead.feed(track_id, frame, samples, ch, rate, lengths, |s| {
-                    s as f64 / 2_147_483_648.0
-                }),
+                PcmBuffer::F32(samples) => {
+                    ahead.feed(track_id, frame, samples, ch, rate, lengths, |s| s as f64)
+                }
+                PcmBuffer::I32(samples) => {
+                    ahead.feed(track_id, frame, samples, ch, rate, lengths, |s| {
+                        s as f64 / 2_147_483_648.0
+                    })
+                }
             };
             if let Some(window) = window {
                 // Playback resumes at `start_frame`; those pushes run up to the
@@ -301,23 +314,40 @@ impl BeatTap {
         }
         let mut state = self.state.try_lock().ok()?;
         let channels = channels as usize;
-        let lengths = (self.first_ms.load(Ordering::Relaxed), self.window_ms.load(Ordering::Relaxed));
+        let lengths = (
+            self.first_ms.load(Ordering::Relaxed),
+            self.window_ms.load(Ordering::Relaxed),
+        );
         match buf {
-            PcmBuffer::F32(samples) => {
-                state.feed(track_id, start_frame, samples, channels, rate, lengths, |s| s as f64)
-            }
-            PcmBuffer::I32(samples) => {
-                state.feed(track_id, start_frame, samples, channels, rate, lengths, |s| {
-                    s as f64 / 2_147_483_648.0
-                })
-            }
+            PcmBuffer::F32(samples) => state.feed(
+                track_id,
+                start_frame,
+                samples,
+                channels,
+                rate,
+                lengths,
+                |s| s as f64,
+            ),
+            PcmBuffer::I32(samples) => state.feed(
+                track_id,
+                start_frame,
+                samples,
+                channels,
+                rate,
+                lengths,
+                |s| s as f64 / 2_147_483_648.0,
+            ),
         }
     }
 }
 
 /// The beat clock for one window, or `None` when it holds no usable onsets.
 pub fn analyze(window: &Window) -> Option<BeatClock> {
-    let clip = Clip { samples: &window.samples, channels: 1, rate: window.rate };
+    let clip = Clip {
+        samples: &window.samples,
+        channels: 1,
+        rate: window.rate,
+    };
     let grid = automix::analyze_beats(&clip)?;
     let last = *grid.beats_s.last()?;
     let confident = grid.confidence >= CONFIDENCE_FLOOR;
@@ -357,7 +387,9 @@ mod tests {
     }
 
     fn octave_match(found: f64, expected: f64) -> bool {
-        [0.5, 1.0, 2.0].iter().any(|m| (found / (expected * m) - 1.0).abs() < 0.01)
+        [0.5, 1.0, 2.0]
+            .iter()
+            .any(|m| (found / (expected * m) - 1.0).abs() < 0.01)
     }
 
     /// Distance (ms) from `anchor_ms` to the nearest beat of a grid with
@@ -383,7 +415,11 @@ mod tests {
             let tap = enabled();
             let audio = drums(bpm, FIRST_WINDOW_S as f64 + 0.5, offset, bpm as u64);
             let windows = feed(&tap, 7, 0, &audio);
-            assert_eq!(windows.len(), 1, "{bpm}: one window from the first {FIRST_WINDOW_S} s");
+            assert_eq!(
+                windows.len(),
+                1,
+                "{bpm}: one window from the first {FIRST_WINDOW_S} s"
+            );
             let window = &windows[0];
             assert_eq!(window.rate, 11_025);
             assert_eq!(window.samples.len(), FIRST_WINDOW_S as usize * 11_025);
@@ -393,7 +429,11 @@ mod tests {
             assert!(octave_match(found, bpm), "{bpm}: found {found:.2}");
             let period = (60_000.0 / bpm).min(clock.period_ms as f64);
             let error = phase_error_ms(clock.anchor_ms, offset * 1000.0, period);
-            assert!(error < 30.0, "{bpm}: anchor {} off by {error:.1} ms", clock.anchor_ms);
+            assert!(
+                error < 30.0,
+                "{bpm}: anchor {} off by {error:.1} ms",
+                clock.anchor_ms
+            );
         }
     }
 
@@ -414,13 +454,27 @@ mod tests {
         let start_s = 30.0;
         let (bpm, offset) = (128.0, 0.12);
         let audio = drums(bpm, FIRST_WINDOW_S as f64 + 0.5, offset, 3);
-        let window = feed(&tap, 2, (start_s * RATE as f64) as u64, &audio).pop().expect("window");
-        assert!((window.start_ms - 30_000.0).abs() < 1.0, "window starts at {}", window.start_ms);
+        let window = feed(&tap, 2, (start_s * RATE as f64) as u64, &audio)
+            .pop()
+            .expect("window");
+        assert!(
+            (window.start_ms - 30_000.0).abs() < 1.0,
+            "window starts at {}",
+            window.start_ms
+        );
         let clock = analyze(&window).expect("clock");
-        assert!(clock.anchor_ms >= 30_000, "anchor {} is track time", clock.anchor_ms);
+        assert!(
+            clock.anchor_ms >= 30_000,
+            "anchor {} is track time",
+            clock.anchor_ms
+        );
         let period = (60_000.0 / bpm).min(clock.period_ms as f64);
         let error = phase_error_ms(clock.anchor_ms, (start_s + offset) * 1000.0, period);
-        assert!(error < 30.0, "anchor {} off by {error:.1} ms", clock.anchor_ms);
+        assert!(
+            error < 30.0,
+            "anchor {} off by {error:.1} ms",
+            clock.anchor_ms
+        );
     }
 
     #[test]
@@ -431,18 +485,32 @@ mod tests {
         // 4 s played, then a seek to 60 s: the earlier 4 s must not count.
         let seek = 60 * RATE as u64;
         let after = drums(120.0, 6.0, 0.0, 5);
-        assert!(feed(&tap, 3, seek, &after).is_empty(), "pre-seek audio was counted");
+        assert!(
+            feed(&tap, 3, seek, &after).is_empty(),
+            "pre-seek audio was counted"
+        );
         let more = drums(120.0, 2.5, 0.0, 6);
-        let window = feed(&tap, 3, seek + 6 * RATE as u64, &more).pop().expect("window");
-        assert!((window.start_ms - 60_000.0).abs() < 1.0, "window starts at {}", window.start_ms);
+        let window = feed(&tap, 3, seek + 6 * RATE as u64, &more)
+            .pop()
+            .expect("window");
+        assert!(
+            (window.start_ms - 60_000.0).abs() < 1.0,
+            "window starts at {}",
+            window.start_ms
+        );
     }
 
     #[test]
     fn a_new_track_restarts_the_window() {
         let tap = enabled();
         assert!(feed(&tap, 1, 0, &drums(120.0, 6.0, 0.0, 1)).is_empty());
-        assert!(feed(&tap, 2, 0, &drums(120.0, 6.0, 0.0, 2)).is_empty(), "track 1 audio was counted");
-        let window = feed(&tap, 2, 6 * RATE as u64, &drums(120.0, 2.5, 0.0, 3)).pop().expect("window");
+        assert!(
+            feed(&tap, 2, 0, &drums(120.0, 6.0, 0.0, 2)).is_empty(),
+            "track 1 audio was counted"
+        );
+        let window = feed(&tap, 2, 6 * RATE as u64, &drums(120.0, 2.5, 0.0, 3))
+            .pop()
+            .expect("window");
         assert_eq!(window.track_id, 2);
         assert_eq!(window.start_ms, 0.0);
     }
@@ -468,9 +536,17 @@ mod tests {
         assert_eq!(third.samples.len(), WINDOW_S as usize * 11_025);
         let first_s = FIRST_WINDOW_S as f64;
         assert!((first.start_ms - 0.0).abs() < 1.0);
-        assert!((second.start_ms - first_s * 1000.0).abs() < 1.0, "second starts at {}", second.start_ms);
+        assert!(
+            (second.start_ms - first_s * 1000.0).abs() < 1.0,
+            "second starts at {}",
+            second.start_ms
+        );
         let third_s = first_s + REFRESH_S as f64;
-        assert!((third.start_ms - third_s * 1000.0).abs() < 1.0, "third starts at {}", third.start_ms);
+        assert!(
+            (third.start_ms - third_s * 1000.0).abs() < 1.0,
+            "third starts at {}",
+            third.start_ms
+        );
         let secs = |frame: &u64| *frame as f64 / RATE as f64;
         assert!((secs(end_first) - first_s).abs() < 0.1);
         assert!((secs(end_second) - (first_s + WINDOW_S as f64)).abs() < 0.1);
@@ -478,19 +554,26 @@ mod tests {
     }
 
     fn buffers(audio: &[f64]) -> Vec<PcmBuffer> {
-        audio.chunks(CHUNK * 2).map(|c| PcmBuffer::F32(c.iter().map(|&s| s as f32).collect())).collect()
+        audio
+            .chunks(CHUNK * 2)
+            .map(|c| PcmBuffer::F32(c.iter().map(|&s| s as f32).collect()))
+            .collect()
     }
 
     #[test]
     fn audio_queued_ahead_makes_the_first_window_without_waiting_for_playback() {
         let (bpm, offset) = (128.0, 0.12);
         let audio = drums(bpm, FIRST_WINDOW_S as f64 + 0.5, offset, 11);
-        let played = feed(&enabled(), 6, 0, &audio).pop().expect("window from playback");
+        let played = feed(&enabled(), 6, 0, &audio)
+            .pop()
+            .expect("window from playback");
 
         let tap = enabled();
         assert!(tap.wants_ahead(6, RATE));
         let bufs = buffers(&audio);
-        let ahead = tap.push_ahead(6, 0, &bufs, 2, RATE).expect("window from the queued audio");
+        let ahead = tap
+            .push_ahead(6, 0, &bufs, 2, RATE)
+            .expect("window from the queued audio");
         assert_eq!(ahead, played, "the same window as playback would have made");
         assert!(!tap.wants_ahead(6, RATE), "the first window is done");
         // Playing those frames analyzes nothing again.
@@ -501,11 +584,17 @@ mod tests {
     fn after_a_window_from_ahead_the_next_starts_where_it_ended() {
         let tap = enabled();
         let silence = vec![0.0f64; RATE as usize * 2 * 22];
-        let first = tap.push_ahead(3, 0, &buffers(&silence[..RATE as usize * 2 * 9]), 2, RATE).expect("first");
+        let first = tap
+            .push_ahead(3, 0, &buffers(&silence[..RATE as usize * 2 * 9]), 2, RATE)
+            .expect("first");
         assert_eq!(first.start_ms, 0.0);
         let windows = feed(&tap, 3, 0, &silence);
         assert_eq!(windows.len(), 1);
-        assert!((windows[0].start_ms - FIRST_WINDOW_S as f64 * 1000.0).abs() < 1.0, "starts at {}", windows[0].start_ms);
+        assert!(
+            (windows[0].start_ms - FIRST_WINDOW_S as f64 * 1000.0).abs() < 1.0,
+            "starts at {}",
+            windows[0].start_ms
+        );
     }
 
     #[test]
@@ -515,10 +604,14 @@ mod tests {
         // Playback has collected 6 s of the first window.
         assert!(feed(&tap, 8, 0, &audio).is_empty());
         let short = drums(120.0, 1.0, 0.0, 13);
-        assert!(tap.push_ahead(8, 6 * RATE as u64, &buffers(&short), 2, RATE).is_none());
+        assert!(tap
+            .push_ahead(8, 6 * RATE as u64, &buffers(&short), 2, RATE)
+            .is_none());
         assert!(tap.wants_ahead(8, RATE));
         // The partial window is intact: 2.5 s more completes it.
-        let window = feed(&tap, 8, 6 * RATE as u64, &drums(120.0, 2.5, 0.0, 14)).pop().expect("window");
+        let window = feed(&tap, 8, 6 * RATE as u64, &drums(120.0, 2.5, 0.0, 14))
+            .pop()
+            .expect("window");
         assert_eq!(window.start_ms, 0.0);
     }
 
@@ -563,7 +656,12 @@ mod tests {
         let audio = drums(128.0, FIRST_WINDOW_S as f64 + 0.5, 0.12, 128);
         let mut window = None;
         for (n, chunk) in audio.chunks(CHUNK * 2).enumerate() {
-            let buf = PcmBuffer::I32(chunk.iter().map(|&s| (s.clamp(-1.0, 1.0) * i32::MAX as f64) as i32).collect());
+            let buf = PcmBuffer::I32(
+                chunk
+                    .iter()
+                    .map(|&s| (s.clamp(-1.0, 1.0) * i32::MAX as f64) as i32)
+                    .collect(),
+            );
             window = window.or(tap.push(4, (n * CHUNK) as u64, &buf, 2, RATE));
         }
         let clock = analyze(&window.expect("window")).expect("clock");

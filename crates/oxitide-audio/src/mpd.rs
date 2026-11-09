@@ -133,7 +133,10 @@ impl Representation {
                 }
                 let reps = repeat_count(e, time, ts, total_secs);
                 for _ in 0..reps {
-                    timings.push(SegmentTiming { start_ticks: time, duration_ticks: e.d });
+                    timings.push(SegmentTiming {
+                        start_ticks: time,
+                        duration_ticks: e.d,
+                    });
                     time += e.d;
                 }
             }
@@ -144,7 +147,10 @@ impl Representation {
             .duration
             .ok_or_else(|| Error::Manifest("no segment duration".into()))?;
         Ok((0..n)
-            .map(|i| SegmentTiming { start_ticks: duration_ticks * i, duration_ticks })
+            .map(|i| SegmentTiming {
+                start_ticks: duration_ticks * i,
+                duration_ticks,
+            })
             .collect())
     }
 
@@ -166,7 +172,11 @@ impl Representation {
             .enumerate()
             .map(|(i, timing)| {
                 let number = t.start_number + i as u64;
-                let time = if t.timeline.is_empty() { 0 } else { timing.start_ticks };
+                let time = if t.timeline.is_empty() {
+                    0
+                } else {
+                    timing.start_ticks
+                };
                 resolve_template(&base, &t.media, &repr_id, bw, number, time)
             })
             .collect())
@@ -454,10 +464,22 @@ mod tests {
         assert_eq!(
             r.segment_timings(None).unwrap(),
             vec![
-                SegmentTiming { start_ticks: 0, duration_ticks: 176_128 },
-                SegmentTiming { start_ticks: 176_128, duration_ticks: 176_128 },
-                SegmentTiming { start_ticks: 352_256, duration_ticks: 176_128 },
-                SegmentTiming { start_ticks: 528_384, duration_ticks: 157_448 },
+                SegmentTiming {
+                    start_ticks: 0,
+                    duration_ticks: 176_128
+                },
+                SegmentTiming {
+                    start_ticks: 176_128,
+                    duration_ticks: 176_128
+                },
+                SegmentTiming {
+                    start_ticks: 352_256,
+                    duration_ticks: 176_128
+                },
+                SegmentTiming {
+                    start_ticks: 528_384,
+                    duration_ticks: 157_448
+                },
             ]
         );
     }
@@ -483,12 +505,20 @@ mod tests {
     fn segment_timings_match_number_template_durations() {
         let mpd = parse(NUMBER_MPD).unwrap();
         let r = mpd.audio_representation().unwrap();
-        let timings = r.segment_timings(mpd.media_presentation_duration.as_deref()).unwrap();
+        let timings = r
+            .segment_timings(mpd.media_presentation_duration.as_deref())
+            .unwrap();
         assert_eq!(
             timings,
             vec![
-                SegmentTiming { start_ticks: 0, duration_ticks: 4 },
-                SegmentTiming { start_ticks: 4, duration_ticks: 4 },
+                SegmentTiming {
+                    start_ticks: 0,
+                    duration_ticks: 4
+                },
+                SegmentTiming {
+                    start_ticks: 4,
+                    duration_ticks: 4
+                },
             ]
         );
     }
@@ -501,9 +531,18 @@ mod tests {
         assert_eq!(
             timings,
             vec![
-                SegmentTiming { start_ticks: 0, duration_ticks: 176_400 },
-                SegmentTiming { start_ticks: 176_400, duration_ticks: 176_400 },
-                SegmentTiming { start_ticks: 352_800, duration_ticks: 176_400 },
+                SegmentTiming {
+                    start_ticks: 0,
+                    duration_ticks: 176_400
+                },
+                SegmentTiming {
+                    start_ticks: 176_400,
+                    duration_ticks: 176_400
+                },
+                SegmentTiming {
+                    start_ticks: 352_800,
+                    duration_ticks: 176_400
+                },
             ]
         );
     }

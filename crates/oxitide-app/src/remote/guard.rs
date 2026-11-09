@@ -23,7 +23,10 @@ pub fn is_lan_peer(ip: IpAddr) -> bool {
 
 fn is_lan_v4(ip: Ipv4Addr) -> bool {
     let [a, b, ..] = ip.octets();
-    ip.is_loopback() || ip.is_private() || ip.is_link_local() || (a == 100 && (64..128).contains(&b))
+    ip.is_loopback()
+        || ip.is_private()
+        || ip.is_link_local()
+        || (a == 100 && (64..128).contains(&b))
 }
 
 fn is_lan_v6(ip: Ipv6Addr) -> bool {
@@ -35,7 +38,10 @@ fn is_lan_v6(ip: Ipv6Addr) -> bool {
 /// IPv4 peer) to plain IPv4.
 pub fn canonical(ip: IpAddr) -> IpAddr {
     match ip {
-        IpAddr::V6(v6) => v6.to_ipv4_mapped().map(IpAddr::V4).unwrap_or(IpAddr::V6(v6)),
+        IpAddr::V6(v6) => v6
+            .to_ipv4_mapped()
+            .map(IpAddr::V4)
+            .unwrap_or(IpAddr::V6(v6)),
         v4 => v4,
     }
 }
@@ -90,7 +96,9 @@ pub fn origin_allowed(origin: Option<&str>, host: &str) -> bool {
 pub fn cookie_value<'a>(header: &'a str, name: &str) -> Option<&'a str> {
     header.split(';').find_map(|pair| {
         let (key, value) = pair.trim().split_once('=')?;
-        (key.trim() == name).then(|| value.trim()).filter(|v| !v.is_empty())
+        (key.trim() == name)
+            .then(|| value.trim())
+            .filter(|v| !v.is_empty())
     })
 }
 
@@ -106,7 +114,13 @@ pub struct RateLimiter {
 
 impl RateLimiter {
     pub fn new(window: Duration, per_ip: usize, global: usize) -> Self {
-        Self { window, per_ip, global, by_ip: HashMap::new(), all: VecDeque::new() }
+        Self {
+            window,
+            per_ip,
+            global,
+            by_ip: HashMap::new(),
+            all: VecDeque::new(),
+        }
     }
 
     /// The spec default: 5 per minute per IP, 30 per minute overall.
@@ -133,7 +147,9 @@ impl RateLimiter {
         self.prune(now);
         let ip = canonical(ip);
         let retry = |oldest: Instant, window: Duration| {
-            window.saturating_sub(now.saturating_duration_since(oldest)).max(Duration::from_secs(1))
+            window
+                .saturating_sub(now.saturating_duration_since(oldest))
+                .max(Duration::from_secs(1))
         };
         if let Some(hits) = self.by_ip.get(&ip) {
             if hits.len() >= self.per_ip {
@@ -223,7 +239,11 @@ mod tests {
         assert!(!host_allowed("192.168.1.6:47820", local, 47820));
         assert!(!host_allowed("192.168.1.5:47821", local, 47820));
         // A dual-stack socket reports IPv4 arrivals as mapped IPv6.
-        assert!(host_allowed("192.168.1.5:47820", ip("::ffff:192.168.1.5"), 47820));
+        assert!(host_allowed(
+            "192.168.1.5:47820",
+            ip("::ffff:192.168.1.5"),
+            47820
+        ));
         assert!(host_allowed("[fe80::1]:47820", ip("fe80::1"), 47820));
     }
 
@@ -234,7 +254,10 @@ mod tests {
         assert!(!host_allowed("192.168.1.5.nip.io:47820", local, 47820));
         assert!(!host_allowed("", local, 47820));
         assert!(!host_allowed("[::1", local, 47820));
-        assert!(!host_allowed("localhost:47820", local, 47820), "localhost only over loopback");
+        assert!(
+            !host_allowed("localhost:47820", local, 47820),
+            "localhost only over loopback"
+        );
         assert!(host_allowed("localhost:47820", ip("127.0.0.1"), 47820));
         assert!(host_allowed("LOCALHOST:47820", ip("::1"), 47820));
     }
@@ -242,16 +265,28 @@ mod tests {
     #[test]
     fn origin_must_equal_the_host_origin() {
         assert!(origin_allowed(None, "192.168.1.5:47820"));
-        assert!(origin_allowed(Some("http://192.168.1.5:47820"), "192.168.1.5:47820"));
-        assert!(!origin_allowed(Some("https://192.168.1.5:47820"), "192.168.1.5:47820"));
-        assert!(!origin_allowed(Some("http://evil.example"), "192.168.1.5:47820"));
+        assert!(origin_allowed(
+            Some("http://192.168.1.5:47820"),
+            "192.168.1.5:47820"
+        ));
+        assert!(!origin_allowed(
+            Some("https://192.168.1.5:47820"),
+            "192.168.1.5:47820"
+        ));
+        assert!(!origin_allowed(
+            Some("http://evil.example"),
+            "192.168.1.5:47820"
+        ));
         assert!(!origin_allowed(Some("null"), "192.168.1.5:47820"));
     }
 
     #[test]
     fn cookie_parsing() {
         assert_eq!(cookie_value("oxi_remote=abc", COOKIE_NAME), Some("abc"));
-        assert_eq!(cookie_value("a=1; oxi_remote=xyz; b=2", COOKIE_NAME), Some("xyz"));
+        assert_eq!(
+            cookie_value("a=1; oxi_remote=xyz; b=2", COOKIE_NAME),
+            Some("xyz")
+        );
         assert_eq!(cookie_value("a=1;oxi_remote=", COOKIE_NAME), None);
         assert_eq!(cookie_value("xoxi_remote=1", COOKIE_NAME), None);
         assert_eq!(cookie_value("", COOKIE_NAME), None);
@@ -266,10 +301,18 @@ mod tests {
             assert!(limiter.check(peer, t0).is_ok(), "attempt {i}");
             limiter.record_failure(peer, t0 + Duration::from_secs(i));
         }
-        let retry = limiter.check(peer, t0 + Duration::from_secs(10)).unwrap_err();
+        let retry = limiter
+            .check(peer, t0 + Duration::from_secs(10))
+            .unwrap_err();
         assert_eq!(retry, Duration::from_secs(50));
-        assert!(limiter.check(ip("192.168.1.10"), t0).is_ok(), "other peers are unaffected");
-        assert!(limiter.check(peer, t0 + Duration::from_secs(61)).is_ok(), "window expires");
+        assert!(
+            limiter.check(ip("192.168.1.10"), t0).is_ok(),
+            "other peers are unaffected"
+        );
+        assert!(
+            limiter.check(peer, t0 + Duration::from_secs(61)).is_ok(),
+            "window expires"
+        );
     }
 
     #[test]
@@ -280,7 +323,9 @@ mod tests {
             limiter.record_failure(IpAddr::V4(Ipv4Addr::new(10, 0, 0, i)), t0);
         }
         assert!(limiter.check(ip("10.0.1.1"), t0).is_err());
-        assert!(limiter.check(ip("10.0.1.1"), t0 + Duration::from_secs(60)).is_ok());
+        assert!(limiter
+            .check(ip("10.0.1.1"), t0 + Duration::from_secs(60))
+            .is_ok());
     }
 
     #[test]
@@ -298,6 +343,10 @@ mod tests {
         assert_eq!(sanitize_device_name("  Pixel\n8\u{0007} "), "Pixel 8");
         assert_eq!(sanitize_device_name(""), "Phone");
         assert_eq!(sanitize_device_name(&"x".repeat(100)).chars().count(), 40);
-        assert_eq!(sanitize_device_name("<b>iPhone</b>"), "<b>iPhone</b>", "rendered as text only");
+        assert_eq!(
+            sanitize_device_name("<b>iPhone</b>"),
+            "<b>iPhone</b>",
+            "rendered as text only"
+        );
     }
 }

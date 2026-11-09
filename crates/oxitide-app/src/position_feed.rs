@@ -55,7 +55,10 @@ impl PositionFeed {
         Self {
             hidden: AtomicBool::new(false),
             live: AtomicBool::new(false),
-            held: Mutex::new(Held { position: None, beat: None }),
+            held: Mutex::new(Held {
+                position: None,
+                beat: None,
+            }),
         }
     }
 
@@ -134,11 +137,18 @@ mod tests {
     use super::*;
 
     fn tick(position_ms: u64) -> EngineEventDto {
-        EngineEventDto::Position { position_ms, duration_ms: 200_000, lead_ms: 0 }
+        EngineEventDto::Position {
+            position_ms,
+            duration_ms: 200_000,
+            lead_ms: 0,
+        }
     }
 
     fn error() -> EngineEventDto {
-        EngineEventDto::Error { code: "x".into(), message: "y".into() }
+        EngineEventDto::Error {
+            code: "x".into(),
+            message: "y".into(),
+        }
     }
 
     fn route(feed: &PositionFeed, event: EngineEventDto) -> Vec<EngineEventDto> {
@@ -192,7 +202,13 @@ mod tests {
     }
 
     fn beat(anchor_ms: u64) -> EngineEventDto {
-        EngineEventDto::Beat { track_id: 1, bpm: Some(120.0), period_ms: 500.0, anchor_ms, confidence: 0.9 }
+        EngineEventDto::Beat {
+            track_id: 1,
+            bpm: Some(120.0),
+            period_ms: 500.0,
+            anchor_ms,
+            confidence: 0.9,
+        }
     }
 
     #[test]

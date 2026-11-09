@@ -49,7 +49,10 @@ fn page(limit: u32, offset: u32) -> Vec<(&'static str, String)> {
 /// the Tracks page's original order and Profiles' "Date added" are both
 /// "recently added".
 fn newest_first() -> [(&'static str, String); 2] {
-    [("order", "DATE".to_string()), ("orderDirection", "DESC".to_string())]
+    [
+        ("order", "DATE".to_string()),
+        ("orderDirection", "DESC".to_string()),
+    ]
 }
 
 impl TidalClient {

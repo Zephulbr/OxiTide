@@ -99,7 +99,9 @@ pub fn restore_remembered() {
 
 #[cfg(windows)]
 fn backup_path() -> Option<PathBuf> {
-    crate::config::config_path()?.parent().map(|dir| dir.join("tidal-scheme.reg"))
+    crate::config::config_path()?
+        .parent()
+        .map(|dir| dir.join("tidal-scheme.reg"))
 }
 
 /// `reg.exe` is a console program: without `CREATE_NO_WINDOW` each call from
@@ -117,10 +119,7 @@ fn reg() -> std::process::Command {
 #[cfg(windows)]
 fn detect_owner(exe_name: &str) -> KeyOwner {
     let command_key = format!("{KEY}\\shell\\open\\command");
-    match reg()
-        .args(["query", &command_key, "/ve"])
-        .output()
-    {
+    match reg().args(["query", &command_key, "/ve"]).output() {
         Ok(out) if out.status.success() => {
             owner_from_query(&String::from_utf8_lossy(&out.stdout), exe_name)
         }
@@ -181,9 +180,7 @@ fn restore(action: &SchemeAction) {
             }
         }
         SchemeAction::Delete => {
-            let _ = reg()
-                .args(["delete", KEY, "/f"])
-                .status();
+            let _ = reg().args(["delete", KEY, "/f"]).status();
         }
         _ => {}
     }
@@ -200,7 +197,10 @@ mod tests {
     fn classifies_the_scheme_owner() {
         let self_text = r#"HKEY_CURRENT_USER\Software\Classes\tidal\shell\open\command
     (Default)    REG_SZ    "C:\Program Files\OxiTide\OxiTide.exe" "%1""#;
-        assert_eq!(owner_from_query(self_text, "oxitide.exe"), KeyOwner::SelfOwned);
+        assert_eq!(
+            owner_from_query(self_text, "oxitide.exe"),
+            KeyOwner::SelfOwned
+        );
         let other = r#"(Default)    REG_SZ    "C:\Program Files\TIDAL\TIDAL.exe" "%1""#;
         assert_eq!(owner_from_query(other, "oxitide.exe"), KeyOwner::Other);
         assert_eq!(owner_from_query("", "oxitide.exe"), KeyOwner::Absent);

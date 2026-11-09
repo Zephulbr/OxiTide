@@ -77,7 +77,9 @@ pub(crate) fn push_samples<T: Copy>(
             }
             let since = *stalled_since.get_or_insert_with(Instant::now);
             if since.elapsed() > STALL {
-                return Err(Error::Output("Audio device has been disconnected or stalled".into()));
+                return Err(Error::Output(
+                    "Audio device has been disconnected or stalled".into(),
+                ));
             }
             std::thread::sleep(wait_for(rest.len().min(quarter), samples_per_sec));
             continue;
@@ -152,7 +154,11 @@ pub(crate) fn queued_ms(capacity: usize, free_slots: usize, samples_per_sec: usi
 /// underrun never shifts the channels, and silence (all-zero bytes, which is
 /// 0.0 f32 and 0 i32) for whatever the ring cannot cover. `out` is reused by
 /// the caller across device periods. Returns the frames taken from the ring.
-pub(crate) fn pop_frames_le(consumer: &mut Consumer<u32>, channels: usize, out: &mut [u8]) -> usize {
+pub(crate) fn pop_frames_le(
+    consumer: &mut Consumer<u32>,
+    channels: usize,
+    out: &mut [u8],
+) -> usize {
     let channels = channels.max(1);
     let wanted = out.len() / 4;
     let available = consumer.slots().min(wanted);
@@ -160,7 +166,12 @@ pub(crate) fn pop_frames_le(consumer: &mut Consumer<u32>, channels: usize, out: 
     if count > 0 {
         if let Ok(chunk) = consumer.read_chunk(count) {
             let (first, second) = chunk.as_slices();
-            for (slot, word) in out.as_chunks_mut::<4>().0.iter_mut().zip(first.iter().chain(second)) {
+            for (slot, word) in out
+                .as_chunks_mut::<4>()
+                .0
+                .iter_mut()
+                .zip(first.iter().chain(second))
+            {
                 slot.copy_from_slice(&word.to_le_bytes());
             }
             chunk.commit_all();
@@ -181,7 +192,10 @@ mod tests {
         push_samples(&mut producer, &[1i32, 2, 3, 4], 44_100 * 2, |s| s as u32).unwrap();
         let mut out = vec![0xAAu8; 6 * 4];
         assert_eq!(pop_frames_le(&mut consumer, 2, &mut out), 2);
-        let words: Vec<u32> = out.chunks_exact(4).map(|b| u32::from_le_bytes(b.try_into().unwrap())).collect();
+        let words: Vec<u32> = out
+            .chunks_exact(4)
+            .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
+            .collect();
         assert_eq!(words, vec![1, 2, 3, 4, 0, 0]);
     }
 
@@ -190,7 +204,11 @@ mod tests {
         let (mut producer, mut consumer) = RingBuffer::<u32>::new(16);
         push_samples(&mut producer, &[1u32, 2, 3], 1000, |s| s).unwrap();
         let mut out = vec![0xAAu8; 4 * 4];
-        assert_eq!(pop_frames_le(&mut consumer, 2, &mut out), 1, "only one whole stereo frame");
+        assert_eq!(
+            pop_frames_le(&mut consumer, 2, &mut out),
+            1,
+            "only one whole stereo frame"
+        );
         assert_eq!(&out[8..], &[0u8; 8]);
         // The odd word stays queued and starts the next period on the left.
         push_samples(&mut producer, &[4u32], 1000, |s| s).unwrap();
@@ -207,7 +225,11 @@ mod tests {
         drop(consumer);
         let started = Instant::now();
         let err = push_samples(&mut producer, &[0u32; 32], 1_000, |s| s).unwrap_err();
-        assert!(started.elapsed() < Duration::from_millis(200), "waited {:?}", started.elapsed());
+        assert!(
+            started.elapsed() < Duration::from_millis(200),
+            "waited {:?}",
+            started.elapsed()
+        );
         assert_eq!(err.to_string(), DEVICE_STOPPED);
     }
 
@@ -237,7 +259,10 @@ mod tests {
         assert_eq!(queued_ms(19_200, 0, 0), 0);
         let (mut producer, _consumer) = RingBuffer::<u32>::new(8_820);
         push_samples(&mut producer, &[0u32; 4_410], 88_200, |s| s).unwrap();
-        assert_eq!(queued_ms(producer.buffer().capacity(), producer.slots(), 88_200), 50);
+        assert_eq!(
+            queued_ms(producer.buffer().capacity(), producer.slots(), 88_200),
+            50
+        );
     }
 
     #[test]
@@ -292,13 +317,19 @@ mod tests {
         push_samples(&mut producer, &[0u32; 8], 1_000, |s| s).unwrap();
         let started = Instant::now();
         wait_drained(&producer, 1_000, 0, &|| true);
-        assert!(started.elapsed() < Duration::from_millis(50), "cancel must return at once");
+        assert!(
+            started.elapsed() < Duration::from_millis(50),
+            "cancel must return at once"
+        );
 
         // Nobody consumes: give up after ring (64 ms) + device (10 ms) + slack.
         let started = Instant::now();
         wait_drained(&producer, 1_000, 10, &|| false);
         let took = started.elapsed();
-        assert!(took >= DRAIN_SLACK && took < DRAIN_SLACK + Duration::from_millis(400), "{took:?}");
+        assert!(
+            took >= DRAIN_SLACK && took < DRAIN_SLACK + Duration::from_millis(400),
+            "{took:?}"
+        );
     }
 
     #[test]

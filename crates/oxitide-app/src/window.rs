@@ -37,7 +37,10 @@ fn mark_shown() {
 }
 
 fn settling() -> bool {
-    SHOWN_AT.lock().unwrap().is_some_and(|at| at.elapsed() < REMAP_SETTLE)
+    SHOWN_AT
+        .lock()
+        .unwrap()
+        .is_some_and(|at| at.elapsed() < REMAP_SETTLE)
 }
 
 #[cfg(target_os = "linux")]
@@ -62,7 +65,10 @@ fn restore_last_size(app: &AppHandle, window: &WebviewWindow) {
             if !window.is_visible().unwrap_or(false) || window.is_maximized().unwrap_or(true) {
                 return;
             }
-            let now = window.inner_size().ok().map(|size| stored_extent(&window, size));
+            let now = window
+                .inner_size()
+                .ok()
+                .map(|size| stored_extent(&window, size));
             if now.is_some_and(|now| now != (width, height)) {
                 tracing::debug!(target: "window", "show: size is {now:?} after {delay} ms; restoring {width}x{height}");
                 let _ = window.set_size(stored_size(width, height));
@@ -154,7 +160,13 @@ pub fn note_resized(app: &AppHandle, size: PhysicalSize<u32>) {
     let minimized = window.is_minimized().unwrap_or(true);
     let settling = settling();
     let extent = stored_extent(&window, size);
-    let record = full && visible && !maximized && !minimized && !settling && size.width > 0 && size.height > 0;
+    let record = full
+        && visible
+        && !maximized
+        && !minimized
+        && !settling
+        && size.width > 0
+        && size.height > 0;
     tracing::debug!(target: "window",
         "resized {}x{} (logical {extent:?}) visible={visible} maximized={maximized} minimized={minimized} settling={settling} recorded={record}",
         size.width, size.height);
@@ -381,9 +393,15 @@ mod tests {
     fn first_show_fires_once_when_both_gates_are_in() {
         let gate = FirstShow::new();
         assert!(!gate.arrive(FirstShow::PAGE_LOADED), "page alone");
-        assert!(!gate.arrive(FirstShow::PAGE_LOADED), "a reload is still not enough");
+        assert!(
+            !gate.arrive(FirstShow::PAGE_LOADED),
+            "a reload is still not enough"
+        );
         assert!(gate.arrive(FirstShow::SETUP_DONE), "both in: show");
-        assert!(!gate.arrive(FirstShow::PAGE_LOADED), "a later reload never re-shows");
+        assert!(
+            !gate.arrive(FirstShow::PAGE_LOADED),
+            "a later reload never re-shows"
+        );
         assert!(!gate.arrive(FirstShow::SETUP_DONE));
 
         let gate = FirstShow::new();
@@ -411,20 +429,36 @@ mod tests {
         config.ui.instrument_tone = InstrumentTone::Neutral;
         assert_eq!(boot_background(&config, false), (0x12, 0x12, 0x12));
         config.ui.theme = Theme::Light;
-        assert_eq!(boot_background(&config, false), (0xf6, 0xf1, 0xea), "light keeps its paper");
+        assert_eq!(
+            boot_background(&config, false),
+            (0xf6, 0xf1, 0xea),
+            "light keeps its paper"
+        );
 
         config.ui.mode = UiMode::Rack;
-        assert_eq!(boot_background(&config, false), (0x05, 0x05, 0x05), "Rack is always dark");
+        assert_eq!(
+            boot_background(&config, false),
+            (0x05, 0x05, 0x05),
+            "Rack is always dark"
+        );
     }
 
     fn monitor(x: i32, y: i32, width: u32, height: u32) -> MonitorRect {
-        MonitorRect { x, y, width, height }
+        MonitorRect {
+            x,
+            y,
+            width,
+            height,
+        }
     }
 
     #[test]
     fn a_fully_visible_position_is_restored() {
         let monitors = [monitor(0, 0, 1920, 1080)];
-        assert_eq!(visible_position(100, 100, 1200, 800, &monitors), Some((100, 100)));
+        assert_eq!(
+            visible_position(100, 100, 1200, 800, &monitors),
+            Some((100, 100))
+        );
     }
 
     #[test]
@@ -437,7 +471,10 @@ mod tests {
     #[test]
     fn a_partially_visible_position_is_restored_when_enough_shows() {
         let monitors = [monitor(0, 0, 1920, 1080)];
-        assert_eq!(visible_position(1700, 900, 1200, 800, &monitors), Some((1700, 900)));
+        assert_eq!(
+            visible_position(1700, 900, 1200, 800, &monitors),
+            Some((1700, 900))
+        );
     }
 
     #[test]
@@ -456,7 +493,10 @@ mod tests {
     #[test]
     fn a_second_monitor_counts() {
         let monitors = [monitor(0, 0, 1920, 1080), monitor(1920, 0, 2560, 1440)];
-        assert_eq!(visible_position(2000, 100, 1200, 800, &monitors), Some((2000, 100)));
+        assert_eq!(
+            visible_position(2000, 100, 1200, 800, &monitors),
+            Some((2000, 100))
+        );
     }
 
     #[test]

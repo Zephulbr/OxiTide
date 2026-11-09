@@ -247,7 +247,9 @@ fn main() {
         )
         .manage(state)
         .on_page_load(|webview, payload| {
-            if webview.label() == "main" && payload.event() == tauri::webview::PageLoadEvent::Finished {
+            if webview.label() == "main"
+                && payload.event() == tauri::webview::PageLoadEvent::Finished
+            {
                 window::first_show_gate(webview.app_handle(), window::FirstShow::PAGE_LOADED);
             }
         })
@@ -323,9 +325,13 @@ fn main() {
                         tracing::warn!("failed to start in mini player: {e}");
                     }
                 }
-                let os_dark = window.theme().is_ok_and(|theme| theme == tauri::Theme::Dark);
+                let os_dark = window
+                    .theme()
+                    .is_ok_and(|theme| theme == tauri::Theme::Dark);
                 let (r, g, b) = window::boot_background(&config, os_dark);
-                if let Err(e) = window.set_background_color(Some(tauri::window::Color(r, g, b, 255))) {
+                if let Err(e) =
+                    window.set_background_color(Some(tauri::window::Color(r, g, b, 255)))
+                {
                     tracing::warn!("failed to set the window background: {e}");
                 }
             }

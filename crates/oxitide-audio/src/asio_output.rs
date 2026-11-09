@@ -40,12 +40,28 @@ pub fn devices() -> Vec<OutputDevice> {
     asio_sys::registered_drivers()
         .into_iter()
         .map(|d| {
-            let mut device = OutputDevice::new(format!("{ASIO_PREFIX}{}", d.key), asio_name(&d.description), DeviceGroup::Asio)
-                .with_system_name(d.description.clone());
+            let mut device = OutputDevice::new(
+                format!("{ASIO_PREFIX}{}", d.key),
+                asio_name(&d.description),
+                DeviceGroup::Asio,
+            )
+            .with_system_name(d.description.clone());
             device.wrapper = is_wrapper_asio(&d.key, &d.description);
             let usb = d.description.to_ascii_lowercase().contains("usb");
-            device.kind = if device.wrapper { DeviceKind::Virtual } else if usb { DeviceKind::Usb } else { DeviceKind::Unknown };
-            device.transport = if device.wrapper { Transport::Virtual } else if usb { Transport::Usb } else { Transport::Unknown };
+            device.kind = if device.wrapper {
+                DeviceKind::Virtual
+            } else if usb {
+                DeviceKind::Usb
+            } else {
+                DeviceKind::Unknown
+            };
+            device.transport = if device.wrapper {
+                Transport::Virtual
+            } else if usb {
+                Transport::Usb
+            } else {
+                Transport::Unknown
+            };
             device
         })
         .collect()
@@ -66,45 +82,52 @@ const PROBE_TIMEOUT: Duration = Duration::from_secs(3);
 pub fn probe_caps(device_id: &str) -> Option<crate::devices::DeviceCaps> {
     use crate::devices::{DeviceCaps, PROBE_RATES};
     let key = asio_device_key(device_id)?;
-    let driver = asio_sys::registered_drivers().into_iter().find(|d| d.key == key)?;
+    let driver = asio_sys::registered_drivers()
+        .into_iter()
+        .find(|d| d.key == key)?;
     let clsid = asio_sys::parse_clsid(&driver.clsid)?;
     if CLAIMED.swap(true, Ordering::SeqCst) {
         return None;
     }
     PROBING.store(true, Ordering::SeqCst);
     let (tx, rx) = std::sync::mpsc::channel();
-    let spawned = std::thread::Builder::new().name("oxitide-asio-probe".into()).spawn(move || {
-        // SAFETY: balanced by CoUninitialize below.
-        let com = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
-        let result = (|| {
-            let driver = asio_sys::Driver::create(&clsid).ok()?;
-            // SAFETY: plain Win32 call.
-            if !driver.init(unsafe { GetDesktopWindow() }) {
-                return None;
+    let spawned = std::thread::Builder::new()
+        .name("oxitide-asio-probe".into())
+        .spawn(move || {
+            // SAFETY: balanced by CoUninitialize below.
+            let com = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+            let result = (|| {
+                let driver = asio_sys::Driver::create(&clsid).ok()?;
+                // SAFETY: plain Win32 call.
+                if !driver.init(unsafe { GetDesktopWindow() }) {
+                    return None;
+                }
+                let rates: Vec<u32> = PROBE_RATES
+                    .into_iter()
+                    .filter(|&rate| driver.can_sample_rate(rate as f64))
+                    .collect();
+                let bits = driver
+                    .output_channel_type(0)
+                    .ok()
+                    .and_then(AsioFormat::from_type)
+                    .map(|format| match format {
+                        AsioFormat::Float32 => 24,
+                        AsioFormat::Float64 => 32,
+                        other => other.int_bits().unwrap_or(16),
+                    })?;
+                let formats: Vec<(u32, u16)> = rates.into_iter().map(|rate| (rate, bits)).collect();
+                let mut caps = DeviceCaps::from_formats(&formats);
+                caps.hw_volume = Some(false);
+                Some(caps)
+            })();
+            if com.is_ok() {
+                // SAFETY: matches the successful CoInitializeEx.
+                unsafe { CoUninitialize() };
             }
-            let rates: Vec<u32> = PROBE_RATES.into_iter().filter(|&rate| driver.can_sample_rate(rate as f64)).collect();
-            let bits = driver
-                .output_channel_type(0)
-                .ok()
-                .and_then(AsioFormat::from_type)
-                .map(|format| match format {
-                    AsioFormat::Float32 => 24,
-                    AsioFormat::Float64 => 32,
-                    other => other.int_bits().unwrap_or(16),
-                })?;
-            let formats: Vec<(u32, u16)> = rates.into_iter().map(|rate| (rate, bits)).collect();
-            let mut caps = DeviceCaps::from_formats(&formats);
-            caps.hw_volume = Some(false);
-            Some(caps)
-        })();
-        if com.is_ok() {
-            // SAFETY: matches the successful CoInitializeEx.
-            unsafe { CoUninitialize() };
-        }
-        PROBING.store(false, Ordering::SeqCst);
-        CLAIMED.store(false, Ordering::SeqCst);
-        let _ = tx.send(result);
-    });
+            PROBING.store(false, Ordering::SeqCst);
+            CLAIMED.store(false, Ordering::SeqCst);
+            let _ = tx.send(result);
+        });
     if spawned.is_err() {
         PROBING.store(false, Ordering::SeqCst);
         CLAIMED.store(false, Ordering::SeqCst);
@@ -135,7 +158,9 @@ pub enum AsioFormat {
     /// Packed 3-byte samples.
     Int24,
     /// A 32-bit container holding `bits` right-aligned bits (32 = full).
-    Int32 { bits: u8 },
+    Int32 {
+        bits: u8,
+    },
     Float32,
     Float64,
 }
@@ -189,9 +214,7 @@ impl AsioFormat {
                 out.copy_from_slice(&((word as i32) >> (32 - bits as u32)).to_le_bytes())
             }
             Self::Float32 => out.copy_from_slice(&word.to_le_bytes()),
-            Self::Float64 => {
-                out.copy_from_slice(&(f32::from_bits(word) as f64).to_le_bytes())
-            }
+            Self::Float64 => out.copy_from_slice(&(f32::from_bits(word) as f64).to_le_bytes()),
         }
     }
 }
@@ -216,7 +239,13 @@ fn i32_word(sample: i32, float_target: bool) -> u32 {
 
 /// Write channel `channel` of the interleaved whole frames in `words` into
 /// one driver buffer, padding with silence (all-zero bytes in every format).
-fn render_channel(words: &[u32], channels: usize, channel: usize, format: AsioFormat, out: &mut [u8]) {
+fn render_channel(
+    words: &[u32],
+    channels: usize,
+    channel: usize,
+    format: AsioFormat,
+    out: &mut [u8],
+) {
     let bytes = format.bytes();
     let frames = words.len() / channels;
     for (frame, slot) in out.chunks_exact_mut(bytes).enumerate() {
@@ -294,7 +323,12 @@ extern "C" fn sample_rate_did_change(rate: f64) {
     RATE_CHANGED.store(rate.to_bits(), Ordering::SeqCst);
 }
 
-extern "C" fn asio_message(selector: c_long, value: c_long, _msg: *mut c_void, _opt: *mut f64) -> c_long {
+extern "C" fn asio_message(
+    selector: c_long,
+    value: c_long,
+    _msg: *mut c_void,
+    _opt: *mut f64,
+) -> c_long {
     match selector {
         asio_sys::K_SELECTOR_SUPPORTED => matches!(
             value,
@@ -376,7 +410,11 @@ impl RenderState {
         // Volume is applied here, as the samples leave for the driver: a
         // short glide (no click), and a pass-through at unity (bit-perfect).
         ramp.retarget(volume_gain(self.control.position()));
-        let kind = if self.format.is_float() { WordKind::F32 } else { WordKind::I32 };
+        let kind = if self.format.is_float() {
+            WordKind::F32
+        } else {
+            WordKind::I32
+        };
         ramp.apply_frames(&mut scratch[..count], self.channels, |frame, gain| {
             scale_words(frame, gain, kind)
         });
@@ -526,7 +564,16 @@ impl AudioOutput for AsioOutput {
         let handle = std::thread::Builder::new()
             .name("oxitide-asio".into())
             .spawn(move || {
-                owner_main(clsid, rate, channels, ready_tx, &stop_thread, &lost_thread, starvation, control)
+                owner_main(
+                    clsid,
+                    rate,
+                    channels,
+                    ready_tx,
+                    &stop_thread,
+                    &lost_thread,
+                    starvation,
+                    control,
+                )
             })
             .map_err(|e| Error::Output(e.to_string()))?;
 
@@ -548,7 +595,9 @@ impl AudioOutput for AsioOutput {
             Err(_) => {
                 stop.store(true, Ordering::SeqCst);
                 // Do not join: a hung driver would hang the engine with it.
-                return Err(Error::Output("ASIO driver did not initialize in time".into()));
+                return Err(Error::Output(
+                    "ASIO driver did not initialize in time".into(),
+                ));
             }
         }
         self.input_bits = integer_input_bits(spec);
@@ -572,8 +621,12 @@ impl AudioOutput for AsioOutput {
             .as_mut()
             .ok_or_else(|| Error::Output("output not open".into()))?;
         let pushed = match buf {
-            PcmBuffer::F32(v) => push_samples(producer, v, rate, |sample| f32_word(sample, float_target)),
-            PcmBuffer::I32(v) => push_samples(producer, v, rate, |sample| i32_word(sample, float_target)),
+            PcmBuffer::F32(v) => {
+                push_samples(producer, v, rate, |sample| f32_word(sample, float_target))
+            }
+            PcmBuffer::I32(v) => {
+                push_samples(producer, v, rate, |sample| i32_word(sample, float_target))
+            }
         };
         self.starvation.arm();
         pushed
@@ -624,8 +677,15 @@ impl AudioOutput for AsioOutput {
 
     fn queued_ms(&self) -> Option<u32> {
         let producer = self.producer.as_ref()?;
-        let ring = ring::queued_ms(producer.buffer().capacity(), producer.slots(), self.samples_per_sec);
-        let driver = self.latency_ms.as_ref().map_or(0, |l| l.load(Ordering::Relaxed));
+        let ring = ring::queued_ms(
+            producer.buffer().capacity(),
+            producer.slots(),
+            self.samples_per_sec,
+        );
+        let driver = self
+            .latency_ms
+            .as_ref()
+            .map_or(0, |l| l.load(Ordering::Relaxed));
         Some(ring + driver)
     }
 
@@ -635,7 +695,10 @@ impl AudioOutput for AsioOutput {
 
     fn drain(&mut self, cancel: &dyn Fn() -> bool) -> Result<()> {
         if let Some(producer) = self.producer.as_ref() {
-            let driver_ms = self.latency_ms.as_ref().map_or(0, |l| l.load(Ordering::Relaxed));
+            let driver_ms = self
+                .latency_ms
+                .as_ref()
+                .map_or(0, |l| l.load(Ordering::Relaxed));
             let lost = &self.lost;
             ring::wait_drained(producer, self.samples_per_sec, driver_ms, &|| {
                 cancel() || lost.load(Ordering::SeqCst)
@@ -718,20 +781,31 @@ impl Session {
         }
         let (_, outputs) = driver.channels().map_err(asio_error("read channels"))?;
         if (outputs.max(0) as usize) < channels {
-            return Err(format!("ASIO driver has {outputs} outputs; {channels} needed"));
+            return Err(format!(
+                "ASIO driver has {outputs} outputs; {channels} needed"
+            ));
         }
         let wanted = rate as f64;
         if !driver.can_sample_rate(wanted) {
-            return Err(format!("ASIO driver does not support {}", format_rate(rate)));
+            return Err(format!(
+                "ASIO driver does not support {}",
+                format_rate(rate)
+            ));
         }
         let current = driver.sample_rate().unwrap_or(0.0);
         if (current - wanted).abs() > 0.5 {
-            driver.set_sample_rate(wanted).map_err(asio_error("set the sample rate"))?;
+            driver
+                .set_sample_rate(wanted)
+                .map_err(asio_error("set the sample rate"))?;
         }
-        let sample_type = driver.output_channel_type(0).map_err(asio_error("read the sample type"))?;
+        let sample_type = driver
+            .output_channel_type(0)
+            .map_err(asio_error("read the sample type"))?;
         let format = AsioFormat::from_type(sample_type)
             .ok_or_else(|| format!("ASIO sample type {sample_type} is not supported"))?;
-        let (_, _, preferred, _) = driver.buffer_size().map_err(asio_error("read the buffer size"))?;
+        let (_, _, preferred, _) = driver
+            .buffer_size()
+            .map_err(asio_error("read the buffer size"))?;
         if preferred <= 0 {
             return Err("ASIO driver reported no buffer size".into());
         }
@@ -778,24 +852,43 @@ impl Session {
         ACTIVE.store(state, Ordering::SeqCst);
         LATENCIES_CHANGED.store(false, Ordering::SeqCst);
         let latency_ms = Arc::new(AtomicU32::new(0));
-        let session = Session { driver, state, rate: wanted, buffer_frames, latency_ms: latency_ms.clone() };
+        let session = Session {
+            driver,
+            state,
+            rate: wanted,
+            buffer_frames,
+            latency_ms: latency_ms.clone(),
+        };
         session.read_latency();
         if let Err(code) = session.driver.start() {
             session.close();
-            return Err(format!("ASIO driver could not start ({})", asio_sys::error_text(code)));
+            return Err(format!(
+                "ASIO driver could not start ({})",
+                asio_sys::error_text(code)
+            ));
         }
         tracing::info!(
             "asio output open: {} Hz, {channels} ch, {format:?}, {buffer_frames} frames, {} ms output latency",
             rate,
             latency_ms.load(Ordering::SeqCst)
         );
-        Ok((session, Opened { producer, format, flush: FlushHandle(state), latency_ms }))
+        Ok((
+            session,
+            Opened {
+                producer,
+                format,
+                flush: FlushHandle(state),
+                latency_ms,
+            },
+        ))
     }
 
     fn read_latency(&self) {
         let reported = self.driver.latencies().ok().map(|(_, output)| output);
-        self.latency_ms
-            .store(output_latency_ms(reported, self.buffer_frames, self.rate), Ordering::SeqCst);
+        self.latency_ms.store(
+            output_latency_ms(reported, self.buffer_frames, self.rate),
+            Ordering::SeqCst,
+        );
     }
 
     fn run(&self, stop: &AtomicBool, lost: &AtomicBool) {
@@ -836,7 +929,12 @@ impl Session {
 }
 
 fn asio_error(action: &'static str) -> impl Fn(c_long) -> String {
-    move |code| format!("ASIO driver could not {action} ({})", asio_sys::error_text(code))
+    move |code| {
+        format!(
+            "ASIO driver could not {action} ({})",
+            asio_sys::error_text(code)
+        )
+    }
 }
 
 fn format_rate(rate: u32) -> String {
@@ -863,8 +961,14 @@ mod tests {
 
     #[test]
     fn maps_little_endian_pcm_types_only() {
-        assert_eq!(AsioFormat::from_type(18), Some(AsioFormat::Int32 { bits: 32 }));
-        assert_eq!(AsioFormat::from_type(27), Some(AsioFormat::Int32 { bits: 24 }));
+        assert_eq!(
+            AsioFormat::from_type(18),
+            Some(AsioFormat::Int32 { bits: 32 })
+        );
+        assert_eq!(
+            AsioFormat::from_type(27),
+            Some(AsioFormat::Int32 { bits: 24 })
+        );
         assert_eq!(AsioFormat::from_type(19), Some(AsioFormat::Float32));
         assert_eq!(AsioFormat::from_type(2), None, "MSB types are rejected");
         assert_eq!(AsioFormat::from_type(32), None, "DSD types are rejected");
@@ -931,17 +1035,29 @@ mod tests {
     fn bit_perfect_needs_integer_input_enough_bits_and_unity() {
         let int24 = AsioFormat::Int24;
         assert!(is_bit_perfect(Some(16), int24, true));
-        assert!(is_bit_perfect(Some(24), AsioFormat::Int32 { bits: 32 }, true));
+        assert!(is_bit_perfect(
+            Some(24),
+            AsioFormat::Int32 { bits: 32 },
+            true
+        ));
         assert!(!is_bit_perfect(Some(24), AsioFormat::Int16, true));
         assert!(!is_bit_perfect(Some(16), int24, false), "software volume");
         assert!(!is_bit_perfect(None, int24, true), "float input");
-        assert!(!is_bit_perfect(Some(16), AsioFormat::Float32, true), "float driver");
+        assert!(
+            !is_bit_perfect(Some(16), AsioFormat::Float32, true),
+            "float driver"
+        );
     }
 
     fn spec(mode: OutputMode, format: PcmFormat) -> AudioOutputSpec {
         AudioOutputSpec {
             device_id: Some("asio:Test".into()),
-            info: StreamInfo { sample_rate: 44100, channels: 2, bits_per_sample: 16, format },
+            info: StreamInfo {
+                sample_rate: 44100,
+                channels: 2,
+                bits_per_sample: 16,
+                format,
+            },
             mode,
             exclusive_fallback: ExclusiveFallback::Shared,
         }
@@ -950,9 +1066,15 @@ mod tests {
     #[test]
     fn integer_input_only_for_exclusive_integer_sources() {
         let int16 = PcmFormat::I32 { bits: 16 };
-        assert_eq!(integer_input_bits(&spec(OutputMode::Exclusive, int16)), Some(16));
+        assert_eq!(
+            integer_input_bits(&spec(OutputMode::Exclusive, int16)),
+            Some(16)
+        );
         assert_eq!(integer_input_bits(&spec(OutputMode::Shared, int16)), None);
-        assert_eq!(integer_input_bits(&spec(OutputMode::Exclusive, PcmFormat::F32)), None);
+        assert_eq!(
+            integer_input_bits(&spec(OutputMode::Exclusive, PcmFormat::F32)),
+            None
+        );
     }
 
     #[test]

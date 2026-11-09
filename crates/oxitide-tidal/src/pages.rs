@@ -988,7 +988,10 @@ mod tests {
             .await;
         let sections = client(&server).home_page().await.unwrap();
         assert_eq!(sections[0].items[0].artwork.as_deref(), Some("img-1"));
-        assert_eq!(sections[0].items[0].api_path.as_deref(), Some("pages/rising"));
+        assert_eq!(
+            sections[0].items[0].api_path.as_deref(),
+            Some("pages/rising")
+        );
     }
 
     /// Explore's genre/mood links carry no artwork; their `apiPath` is kept
@@ -1168,19 +1171,26 @@ mod tests {
             })))
             .mount(&server)
             .await;
-        assert!(client(&server).mix_page("m").await.unwrap().artwork.is_none());
+        assert!(client(&server)
+            .mix_page("m")
+            .await
+            .unwrap()
+            .artwork
+            .is_none());
     }
 
     #[tokio::test]
     async fn home_sections_carry_the_module_kind() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/pages/home"))
+        Mock::given(method("GET"))
+            .and(path("/pages/home"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "rows": [{"modules": [{"type": "MIX_LIST", "title": "Mixes", "items": [
                     {"id": "mix-1", "title": "Daily Mix"}
                 ]}]}]
             })))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let sections = client(&server).home_page().await.unwrap();
         assert_eq!(sections[0].kind, "MIX_LIST");
     }
@@ -1188,11 +1198,13 @@ mod tests {
     #[tokio::test]
     async fn home_sections_without_module_type_default_to_empty_kind() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/pages/home"))
+        Mock::given(method("GET"))
+            .and(path("/pages/home"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "rows": [{"modules": [{"title": "Untyped", "items": [{"id": 1, "title": "X"}]}]}]
             })))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let sections = client(&server).home_page().await.unwrap();
         assert_eq!(sections[0].kind, "");
     }

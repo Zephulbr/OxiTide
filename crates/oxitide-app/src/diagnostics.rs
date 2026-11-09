@@ -12,7 +12,14 @@ const RECENT_PROBLEMS: usize = 20;
 /// How much of the newest log is read, from its end.
 const LOG_TAIL_BYTES: u64 = 512 * 1024;
 /// Query parameters whose values are never quoted.
-const SECRET_PARAMS: &[&str] = &["token", "code", "state", "access_token", "refresh_token", "code_verifier"];
+const SECRET_PARAMS: &[&str] = &[
+    "token",
+    "code",
+    "state",
+    "access_token",
+    "refresh_token",
+    "code_verifier",
+];
 
 /// Everything the report shows, gathered by the command.
 #[derive(Debug, Default)]
@@ -43,21 +50,41 @@ pub struct Audio {
 
 pub fn report(inputs: &Inputs) -> String {
     let mut out = String::new();
-    let build = if inputs.debug_build { "debug" } else { "release" };
+    let build = if inputs.debug_build {
+        "debug"
+    } else {
+        "release"
+    };
     let _ = writeln!(out, "OxiTide {} ({build} build)", inputs.version);
     let _ = writeln!(out, "OS: {}", inputs.os);
     let _ = writeln!(out, "WebView: {}", inputs.webview);
-    let _ = writeln!(out, "Signed in: {}", if inputs.signed_in { "yes" } else { "no" });
+    let _ = writeln!(
+        out,
+        "Signed in: {}",
+        if inputs.signed_in { "yes" } else { "no" }
+    );
     match &inputs.audio {
         Some(audio) => {
             let _ = writeln!(out, "Output: {} on {}", audio.output, audio.device);
-            let _ = writeln!(out, "Bit-perfect: {}", if audio.bit_perfect { "yes" } else { "no" });
+            let _ = writeln!(
+                out,
+                "Bit-perfect: {}",
+                if audio.bit_perfect { "yes" } else { "no" }
+            );
             if let Some(notice) = &audio.notice {
                 let _ = writeln!(out, "Output notice: {notice}");
             }
             let _ = writeln!(out, "Preferred quality: {}", audio.quality);
-            let _ = writeln!(out, "Current stream: {}", audio.stream.as_deref().unwrap_or("none"));
-            let stages = if audio.dsp_stages.is_empty() { "none".to_string() } else { audio.dsp_stages.join(", ") };
+            let _ = writeln!(
+                out,
+                "Current stream: {}",
+                audio.stream.as_deref().unwrap_or("none")
+            );
+            let stages = if audio.dsp_stages.is_empty() {
+                "none".to_string()
+            } else {
+                audio.dsp_stages.join(", ")
+            };
             let _ = writeln!(out, "Sound processing: {stages}");
             let _ = writeln!(out, "Underruns this session: {}", audio.underruns);
         }
@@ -66,13 +93,30 @@ pub fn report(inputs: &Inputs) -> String {
         }
     }
     let _ = writeln!(out, "Appearance: {}", inputs.ui);
-    let on: Vec<&str> = inputs.switches.iter().filter(|(_, on)| *on).map(|(name, _)| *name).collect();
-    let _ = writeln!(out, "Enabled: {}", if on.is_empty() { "none".to_string() } else { on.join(", ") });
+    let on: Vec<&str> = inputs
+        .switches
+        .iter()
+        .filter(|(_, on)| *on)
+        .map(|(name, _)| *name)
+        .collect();
+    let _ = writeln!(
+        out,
+        "Enabled: {}",
+        if on.is_empty() {
+            "none".to_string()
+        } else {
+            on.join(", ")
+        }
+    );
     let _ = writeln!(out);
     if inputs.recent_problems.is_empty() {
         let _ = writeln!(out, "Recent problems: none in the current log");
     } else {
-        let _ = writeln!(out, "Recent problems (newest log, last {}):", inputs.recent_problems.len());
+        let _ = writeln!(
+            out,
+            "Recent problems (newest log, last {}):",
+            inputs.recent_problems.len()
+        );
         for line in &inputs.recent_problems {
             let _ = writeln!(out, "  {line}");
         }
@@ -101,9 +145,13 @@ pub fn redact(line: &str, home: Option<&str>) -> String {
         text = text.replace(home, "~");
     }
     for param in SECRET_PARAMS {
-        text = mask_after(&text, &format!("{param}="), |c| c == '&' || c == '"' || c == '\'' || c.is_whitespace());
+        text = mask_after(&text, &format!("{param}="), |c| {
+            c == '&' || c == '"' || c == '\'' || c.is_whitespace()
+        });
     }
-    mask_after(&text, "Bearer ", |c| c.is_whitespace() || c == '"' || c == '\'')
+    mask_after(&text, "Bearer ", |c| {
+        c.is_whitespace() || c == '"' || c == '\''
+    })
 }
 
 /// `https://host/path?query` → `https://host/path?…`.
@@ -116,7 +164,10 @@ fn strip_url_queries(text: &str) -> String {
         rest = &rest[at..];
         let url_end = rest.find(ends_url).unwrap_or(rest.len());
         let url = &rest[..url_end];
-        match url.find('?').filter(|_| url.starts_with("http://") || url.starts_with("https://")) {
+        match url
+            .find('?')
+            .filter(|_| url.starts_with("http://") || url.starts_with("https://"))
+        {
             Some(query) => {
                 out.push_str(&url[..=query]);
                 out.push('…');
@@ -135,7 +186,8 @@ fn mask_after(text: &str, marker: &str, end: impl Fn(char) -> bool) -> String {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     while let Some(at) = rest.find(marker) {
-        let starts_word = at == 0 || !rest[..at].ends_with(|c: char| c.is_alphanumeric() || c == '_');
+        let starts_word =
+            at == 0 || !rest[..at].ends_with(|c: char| c.is_alphanumeric() || c == '_');
         let value_start = at + marker.len();
         out.push_str(&rest[..value_start]);
         rest = &rest[value_start..];
@@ -181,7 +233,9 @@ pub fn log_tail(path: &Path) -> String {
     let _ = file.take(LOG_TAIL_BYTES).read_to_end(&mut bytes);
     let text = String::from_utf8_lossy(&bytes).into_owned();
     if start > 0 {
-        text.split_once('\n').map(|(_, rest)| rest.to_string()).unwrap_or_default()
+        text.split_once('\n')
+            .map(|(_, rest)| rest.to_string())
+            .unwrap_or_default()
     } else {
         text
     }
@@ -247,14 +301,23 @@ mod tests {
     fn secrets_and_the_home_directory_are_redacted() {
         let line = r#"2026-10-23T10:00:00Z  WARN oxitide_app: fetch failed for https://images.tidal.com/0/X?token=abc123&w=320 at C:\Users\V\AppData (Authorization: Bearer eyJhbG.x) code=XYZ state=s1"#;
         let out = redact(line, Some(r"C:\Users\V"));
-        assert!(!out.contains("abc123") && !out.contains("eyJhbG") && !out.contains("XYZ") && !out.contains("s1"), "{out}");
+        assert!(
+            !out.contains("abc123")
+                && !out.contains("eyJhbG")
+                && !out.contains("XYZ")
+                && !out.contains("s1"),
+            "{out}"
+        );
         assert!(out.contains("https://images.tidal.com/0/X?… at"), "{out}");
         assert!(out.contains(r"~\AppData"), "{out}");
         assert!(out.contains("Bearer …"), "{out}");
         // A word that merely ends in a secret name is left alone.
         assert_eq!(redact("mytoken=1 xcode=2", None), "mytoken=1 xcode=2");
         assert_eq!(
-            redact(r#"GET "https://api.tidal.com/v1/tracks/1?countryCode=SE&locale=en" failed; see https://docs.rs/x#y"#, None),
+            redact(
+                r#"GET "https://api.tidal.com/v1/tracks/1?countryCode=SE&locale=en" failed; see https://docs.rs/x#y"#,
+                None
+            ),
             r#"GET "https://api.tidal.com/v1/tracks/1?…" failed; see https://docs.rs/x#y"#
         );
     }
@@ -297,7 +360,10 @@ mod tests {
             recent_problems: vec![],
             ..Default::default()
         });
-        assert!(report.starts_with("OxiTide 0.4.0 (release build)\n"), "{report}");
+        assert!(
+            report.starts_with("OxiTide 0.4.0 (release build)\n"),
+            "{report}"
+        );
         assert!(report.contains("Output: Exclusive on system default\n"));
         assert!(report.contains("Sound processing: eq\n"));
         assert!(report.contains("Underruns this session: 2\n"));
@@ -312,11 +378,17 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("oxitide.2026-10-23.log");
         let line = "x".repeat(1000);
-        let text = (0..600).map(|i| format!("{i} {line}")).collect::<Vec<_>>().join("\n");
+        let text = (0..600)
+            .map(|i| format!("{i} {line}"))
+            .collect::<Vec<_>>()
+            .join("\n");
         std::fs::write(&path, &text).unwrap();
         let tail = log_tail(&path);
         assert!(tail.len() <= LOG_TAIL_BYTES as usize);
-        assert!(tail.lines().next().unwrap().ends_with(&line), "the first line must be whole");
+        assert!(
+            tail.lines().next().unwrap().ends_with(&line),
+            "the first line must be whole"
+        );
         assert!(tail.ends_with(&format!("599 {line}")));
         assert_eq!(newest_log(&dir), Some(path));
         let _ = std::fs::remove_dir_all(dir);

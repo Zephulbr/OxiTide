@@ -176,8 +176,7 @@ pub struct SystemKeyringProbe;
 
 impl KeyringProbe for SystemKeyringProbe {
     fn probe(&self) -> std::result::Result<(), String> {
-        let entry =
-            keyring::Entry::new(PROBE_SERVICE, PROBE_USER).map_err(|e| e.to_string())?;
+        let entry = keyring::Entry::new(PROBE_SERVICE, PROBE_USER).map_err(|e| e.to_string())?;
         probe_entry(&entry)
     }
 }

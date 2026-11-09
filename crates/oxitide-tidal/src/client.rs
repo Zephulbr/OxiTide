@@ -318,7 +318,13 @@ impl TidalClient {
     /// PUT a JPEG to a pre-signed upload link TIDAL handed out (artwork
     /// uploads). The link carries its own authorization, so no bearer token is
     /// sent; `content_md5` is the base64 MD5 the link was signed for.
-    pub async fn put_upload(&self, url: &str, file: Vec<u8>, content_type: &str, content_md5: &str) -> Result<()> {
+    pub async fn put_upload(
+        &self,
+        url: &str,
+        file: Vec<u8>,
+        content_type: &str,
+        content_md5: &str,
+    ) -> Result<()> {
         let resp = self
             .http
             .put(url)
@@ -436,7 +442,8 @@ impl TidalClient {
                 .collect();
             for group in offsets.chunks(PAGE_CONCURRENCY) {
                 let pages =
-                    futures_util::future::try_join_all(group.iter().map(|&offset| fetch(offset))).await?;
+                    futures_util::future::try_join_all(group.iter().map(|&offset| fetch(offset)))
+                        .await?;
                 let mut empty = false;
                 for page in pages {
                     empty |= page.items.is_empty();
@@ -1218,7 +1225,10 @@ mod tests {
                     .unwrap_or("")
                     .to_string();
                 keys.lock().unwrap().push(key);
-                let auth = req.headers.get("authorization").and_then(|v| v.to_str().ok());
+                let auth = req
+                    .headers
+                    .get("authorization")
+                    .and_then(|v| v.to_str().ok());
                 if auth == Some("Bearer old") {
                     ResponseTemplate::new(401)
                 } else {
@@ -1290,7 +1300,10 @@ mod tests {
             .delete_openapi("things/relationships/items", &[], Some(&doc))
             .await
             .unwrap();
-        client.delete_openapi("shares/s-1", &[], None).await.unwrap();
+        client
+            .delete_openapi("shares/s-1", &[], None)
+            .await
+            .unwrap();
     }
 
     #[test]
@@ -1543,7 +1556,10 @@ mod tests {
     async fn get_all_pages_without_a_total_walks_to_a_short_page() {
         let server = MockServer::start().await;
         for (offset, items) in [(0, vec![1, 2]), (2, vec![3, 4]), (4, vec![5])] {
-            let items: Vec<_> = items.into_iter().map(|v| serde_json::json!({ "value": v })).collect();
+            let items: Vec<_> = items
+                .into_iter()
+                .map(|v| serde_json::json!({ "value": v }))
+                .collect();
             Mock::given(method("GET"))
                 .and(path("/things"))
                 .and(query_param("offset", offset.to_string()))
@@ -1563,7 +1579,10 @@ mod tests {
             Arc::new(MemoryStore::default()),
         );
         let things: Vec<Thing> = client.get_all_pages("things", &[], 2).await.unwrap();
-        assert_eq!(things.iter().map(|t| t.value).collect::<Vec<_>>(), vec![1, 2, 3, 4, 5]);
+        assert_eq!(
+            things.iter().map(|t| t.value).collect::<Vec<_>>(),
+            vec![1, 2, 3, 4, 5]
+        );
     }
 
     #[tokio::test]

@@ -4,9 +4,9 @@ use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 
 use crate::decode::{PcmBuffer, PcmFormat, StreamInfo};
-use crate::error::Result;
 #[cfg(windows)]
 use crate::error::Error;
+use crate::error::Result;
 
 pub use crate::devices::{CapsSource, DeviceCaps, DeviceGroup, DeviceKind, Transport};
 
@@ -139,11 +139,14 @@ pub struct VolumeControl {
 
 impl VolumeControl {
     pub fn new(position: f32) -> Self {
-        Self { position: AtomicU32::new(position.clamp(0.0, 1.0).to_bits()) }
+        Self {
+            position: AtomicU32::new(position.clamp(0.0, 1.0).to_bits()),
+        }
     }
 
     pub fn set(&self, position: f32) {
-        self.position.store(position.clamp(0.0, 1.0).to_bits(), Ordering::SeqCst);
+        self.position
+            .store(position.clamp(0.0, 1.0).to_bits(), Ordering::SeqCst);
     }
 
     pub fn position(&self) -> f32 {
@@ -159,7 +162,9 @@ impl Default for VolumeControl {
 
 /// The ASIO driver key in an `asio:<key>` device id.
 pub fn asio_device_key(device_id: &str) -> Option<&str> {
-    device_id.strip_prefix(ASIO_PREFIX).filter(|key| !key.is_empty())
+    device_id
+        .strip_prefix(ASIO_PREFIX)
+        .filter(|key| !key.is_empty())
 }
 
 pub fn is_asio_device(device_id: &str) -> bool {
@@ -550,7 +555,9 @@ pub(crate) mod platform {
         if hr.is_ok() || hr == windows::Win32::Foundation::RPC_E_CHANGED_MODE {
             Ok(())
         } else {
-            Err(Error::Output(format!("failed to initialize COM (MTA): {hr:?}")))
+            Err(Error::Output(format!(
+                "failed to initialize COM (MTA): {hr:?}"
+            )))
         }
     }
 
@@ -576,10 +583,16 @@ pub(crate) mod platform {
                 .ok()
                 .and_then(|device| device.GetId().ok())
                 .map(|id| take_pwstr(id));
-            let collection = enumerator.EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE).map_err(to_err)?;
+            let collection = enumerator
+                .EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)
+                .map_err(to_err)?;
             for index in 0..collection.GetCount().map_err(to_err)? {
-                let Ok(device) = collection.Item(index) else { continue };
-                let Ok(id) = device.GetId().map(|id| take_pwstr(id)) else { continue };
+                let Ok(device) = collection.Item(index) else {
+                    continue;
+                };
+                let Ok(id) = device.GetId().map(|id| take_pwstr(id)) else {
+                    continue;
+                };
                 let props = match device.OpenPropertyStore(STGM_READ) {
                     Ok(store) => WasapiProps {
                         endpoint: read_string(&store, &keys::DEVICE_DESC),
@@ -591,8 +604,13 @@ pub(crate) mod platform {
                     Err(_) => WasapiProps::default(),
                 };
                 let (name, kind, transport) = wasapi_identity(&props);
-                let system_name = if props.friendly.is_empty() { name.clone() } else { props.friendly.clone() };
-                let mut entry = OutputDevice::new(id.clone(), name, DeviceGroup::Wasapi).with_system_name(system_name);
+                let system_name = if props.friendly.is_empty() {
+                    name.clone()
+                } else {
+                    props.friendly.clone()
+                };
+                let mut entry = OutputDevice::new(id.clone(), name, DeviceGroup::Wasapi)
+                    .with_system_name(system_name);
                 entry.kind = kind;
                 entry.transport = transport;
                 entry.is_default = default_id.as_deref() == Some(id.as_str());
@@ -611,13 +629,26 @@ pub(crate) mod platform {
         use windows::Win32::Foundation::PROPERTYKEY;
 
         const DEVICE: GUID = GUID::from_u128(0xa45c254e_df1c_4efd_8020_67d146a850e0);
-        pub const DEVICE_DESC: PROPERTYKEY = PROPERTYKEY { fmtid: DEVICE, pid: 2 };
-        pub const FRIENDLY_NAME: PROPERTYKEY = PROPERTYKEY { fmtid: DEVICE, pid: 14 };
-        pub const ENUMERATOR_NAME: PROPERTYKEY = PROPERTYKEY { fmtid: DEVICE, pid: 24 };
-        pub const INTERFACE_FRIENDLY_NAME: PROPERTYKEY =
-            PROPERTYKEY { fmtid: GUID::from_u128(0x026e516e_b814_414b_83cd_856d6fef4822), pid: 2 };
-        pub const FORM_FACTOR: PROPERTYKEY =
-            PROPERTYKEY { fmtid: GUID::from_u128(0x1da5d803_d492_4edd_8c23_e0c0ffee7f0e), pid: 0 };
+        pub const DEVICE_DESC: PROPERTYKEY = PROPERTYKEY {
+            fmtid: DEVICE,
+            pid: 2,
+        };
+        pub const FRIENDLY_NAME: PROPERTYKEY = PROPERTYKEY {
+            fmtid: DEVICE,
+            pid: 14,
+        };
+        pub const ENUMERATOR_NAME: PROPERTYKEY = PROPERTYKEY {
+            fmtid: DEVICE,
+            pid: 24,
+        };
+        pub const INTERFACE_FRIENDLY_NAME: PROPERTYKEY = PROPERTYKEY {
+            fmtid: GUID::from_u128(0x026e516e_b814_414b_83cd_856d6fef4822),
+            pid: 2,
+        };
+        pub const FORM_FACTOR: PROPERTYKEY = PROPERTYKEY {
+            fmtid: GUID::from_u128(0x1da5d803_d492_4edd_8c23_e0c0ffee7f0e),
+            pid: 0,
+        };
     }
 
     /// A property as text ("" when missing). Numbers come back as digits.
@@ -625,11 +656,15 @@ pub(crate) mod platform {
         store: &windows::Win32::UI::Shell::PropertiesSystem::IPropertyStore,
         key: &windows::Win32::Foundation::PROPERTYKEY,
     ) -> String {
-        use windows::Win32::System::Com::StructuredStorage::{PropVariantClear, PropVariantToStringAlloc};
+        use windows::Win32::System::Com::StructuredStorage::{
+            PropVariantClear, PropVariantToStringAlloc,
+        };
         let Ok(mut value) = store.GetValue(key) else {
             return String::new();
         };
-        let text = PropVariantToStringAlloc(&value).map(|s| take_pwstr(s)).unwrap_or_default();
+        let text = PropVariantToStringAlloc(&value)
+            .map(|s| take_pwstr(s))
+            .unwrap_or_default();
         let _ = PropVariantClear(&mut value);
         text
     }
@@ -652,8 +687,11 @@ pub(crate) mod platform {
         let mut formats = Vec::new();
         for rate in PROBE_RATES {
             for bits in PROBE_BITS {
-                let Ok(client) = device.get_iaudioclient() else { continue };
-                let wave = WaveFormat::new(32, bits as usize, &SampleType::Int, rate as usize, 2, None);
+                let Ok(client) = device.get_iaudioclient() else {
+                    continue;
+                };
+                let wave =
+                    WaveFormat::new(32, bits as usize, &SampleType::Int, rate as usize, 2, None);
                 if let Ok(accepted) = client.is_supported_exclusive_with_quirks(&wave) {
                     if accepted.get_samplespersec() == rate {
                         formats.push((rate, accepted.get_validbitspersample().min(bits)));
@@ -662,7 +700,10 @@ pub(crate) mod platform {
             }
         }
         let mut caps = DeviceCaps::from_formats(&formats);
-        if let Ok(mix) = device.get_iaudioclient().and_then(|client| client.get_mixformat()) {
+        if let Ok(mix) = device
+            .get_iaudioclient()
+            .and_then(|client| client.get_mixformat())
+        {
             caps.shared_rate = Some(mix.get_samplespersec());
             caps.shared_bits = Some(mix.get_validbitspersample());
         }
@@ -680,56 +721,64 @@ pub(crate) mod platform {
         use std::sync::mpsc;
         use std::time::Duration;
         let (tx, rx) = mpsc::channel::<()>();
-        let spawned = std::thread::Builder::new().name("oxitide-device-watch".into()).spawn(move || {
-            if ensure_com().is_err() {
-                return;
-            }
-            let Ok(enumerator) = DeviceEnumerator::new() else { return };
-            let mut callbacks = wasapi::DeviceEventCallbacks::new();
-            {
-                let tx = tx.clone();
-                callbacks.set_device_added_callback(move |_| {
-                    let _ = tx.send(());
-                });
-            }
-            {
-                let tx = tx.clone();
-                callbacks.set_device_removed_callback(move |_| {
-                    let _ = tx.send(());
-                });
-            }
-            {
-                let tx = tx.clone();
-                callbacks.set_device_state_callback(move |_, _| {
-                    let _ = tx.send(());
-                });
-            }
-            {
-                let tx = tx.clone();
-                callbacks.set_default_device_callback(move |direction, role, _| {
-                    if direction == Direction::Render && role == wasapi::Role::Console {
+        let spawned = std::thread::Builder::new()
+            .name("oxitide-device-watch".into())
+            .spawn(move || {
+                if ensure_com().is_err() {
+                    return;
+                }
+                let Ok(enumerator) = DeviceEnumerator::new() else {
+                    return;
+                };
+                let mut callbacks = wasapi::DeviceEventCallbacks::new();
+                {
+                    let tx = tx.clone();
+                    callbacks.set_device_added_callback(move |_| {
                         let _ = tx.send(());
-                    }
-                });
-            }
-            let Ok(_registration) = enumerator.register_notification_callback(callbacks) else {
-                tracing::warn!("device watch: registration failed; the picker refreshes when it opens");
-                return;
-            };
-            drop(tx);
-            loop {
-                std::thread::park();
-            }
-        });
+                    });
+                }
+                {
+                    let tx = tx.clone();
+                    callbacks.set_device_removed_callback(move |_| {
+                        let _ = tx.send(());
+                    });
+                }
+                {
+                    let tx = tx.clone();
+                    callbacks.set_device_state_callback(move |_, _| {
+                        let _ = tx.send(());
+                    });
+                }
+                {
+                    let tx = tx.clone();
+                    callbacks.set_default_device_callback(move |direction, role, _| {
+                        if direction == Direction::Render && role == wasapi::Role::Console {
+                            let _ = tx.send(());
+                        }
+                    });
+                }
+                let Ok(_registration) = enumerator.register_notification_callback(callbacks) else {
+                    tracing::warn!(
+                        "device watch: registration failed; the picker refreshes when it opens"
+                    );
+                    return;
+                };
+                drop(tx);
+                loop {
+                    std::thread::park();
+                }
+            });
         if spawned.is_err() {
             return;
         }
-        let _ = std::thread::Builder::new().name("oxitide-device-debounce".into()).spawn(move || {
-            while rx.recv().is_ok() {
-                while rx.recv_timeout(Duration::from_millis(300)).is_ok() {}
-                on_change();
-            }
-        });
+        let _ = std::thread::Builder::new()
+            .name("oxitide-device-debounce".into())
+            .spawn(move || {
+                while rx.recv().is_ok() {
+                    while rx.recv_timeout(Duration::from_millis(300)).is_ok() {}
+                    on_change();
+                }
+            });
     }
 }
 
@@ -739,7 +788,12 @@ mod tests {
     use crate::decode::PcmFormat;
 
     fn info(bits: u16, format: PcmFormat) -> StreamInfo {
-        StreamInfo { sample_rate: 44100, channels: 2, bits_per_sample: bits, format }
+        StreamInfo {
+            sample_rate: 44100,
+            channels: 2,
+            bits_per_sample: bits,
+            format,
+        }
     }
 
     fn spec(mode: OutputMode) -> AudioOutputSpec {
@@ -797,7 +851,11 @@ mod tests {
         }
         assert_eq!(lead.ms(), 210, "refill samples ignored, prior value kept");
         lead.observe(1024, Some(20));
-        assert_eq!(lead.ms(), 210, "the write that ends the settle is not sampled");
+        assert_eq!(
+            lead.ms(),
+            210,
+            "the write that ends the settle is not sampled"
+        );
         lead.observe(1024, Some(230));
         assert_eq!(lead.ms(), 212);
     }
@@ -860,8 +918,14 @@ mod tests {
             last = gain;
             // Loudness (doubling per +10 dB) tracks the slider position.
             let loudness = 2f32.powf(db(p) / 10.0);
-            assert!((loudness - p).abs() < 0.002, "{step}% sounds like {loudness}");
-            assert!((volume_position(gain) - p).abs() < 1e-5, "inverse at {step}%");
+            assert!(
+                (loudness - p).abs() < 0.002,
+                "{step}% sounds like {loudness}"
+            );
+            assert!(
+                (volume_position(gain) - p).abs() < 1e-5,
+                "inverse at {step}%"
+            );
         }
     }
 
@@ -889,7 +953,9 @@ mod tests {
             vec![24, 32]
         );
         assert!(exclusive_formats(&info(16, PcmFormat::F32)).is_empty());
-        assert!(sixteen.iter().all(|f| f.store_bits == 32 && f.sample_rate == 44100));
+        assert!(sixteen
+            .iter()
+            .all(|f| f.store_bits == 32 && f.sample_rate == 44100));
     }
 
     #[test]
@@ -901,8 +967,14 @@ mod tests {
             effective_mode(OutputMode::Shared, Some("asio:Realtek ASIO")),
             OutputMode::Exclusive
         );
-        assert_eq!(effective_mode(OutputMode::Shared, Some("wasapi-id")), OutputMode::Shared);
-        assert_eq!(effective_mode(OutputMode::Exclusive, None), OutputMode::Exclusive);
+        assert_eq!(
+            effective_mode(OutputMode::Shared, Some("wasapi-id")),
+            OutputMode::Shared
+        );
+        assert_eq!(
+            effective_mode(OutputMode::Exclusive, None),
+            OutputMode::Exclusive
+        );
     }
 
     #[cfg(target_os = "linux")]
@@ -910,6 +982,9 @@ mod tests {
     fn enumeration_is_wired_on_linux() {
         // ALSA's card rows; none on a machine without cards (CI, WSL).
         let devices = enumerate_output_devices().unwrap();
-        assert!(devices.iter().all(|d| d.id.starts_with("hw:CARD=")), "{devices:?}");
+        assert!(
+            devices.iter().all(|d| d.id.starts_with("hw:CARD=")),
+            "{devices:?}"
+        );
     }
 }

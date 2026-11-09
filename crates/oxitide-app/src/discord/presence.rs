@@ -35,8 +35,13 @@ pub struct Sent {
 }
 
 impl Sent {
-    pub const NEVER: Sent =
-        Sent { track_id: None, play: PlayState::Stopped, start_ms: 0, at_ms: 0, shown: false };
+    pub const NEVER: Sent = Sent {
+        track_id: None,
+        play: PlayState::Stopped,
+        start_ms: 0,
+        at_ms: 0,
+        shown: false,
+    };
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,27 +83,40 @@ pub fn assemble(
         return None;
     }
     let artist_empty = track.artist.trim().is_empty();
-    let details =
-        if track.title.trim().is_empty() { "Unknown track".to_string() } else { clip(&track.title) };
-    let artist =
-        if artist_empty { "Unknown artist".to_string() } else { clip(&track.artist) };
+    let details = if track.title.trim().is_empty() {
+        "Unknown track".to_string()
+    } else {
+        clip(&track.title)
+    };
+    let artist = if artist_empty {
+        "Unknown artist".to_string()
+    } else {
+        clip(&track.artist)
+    };
     let state = if play == PlayState::Paused {
-        if artist_empty { "Paused".to_string() } else { clip(&format!("Paused — {artist}")) }
+        if artist_empty {
+            "Paused".to_string()
+        } else {
+            clip(&format!("Paused — {artist}"))
+        }
     } else {
         artist
     };
-    let (large_image, large_text) =
-        match track.cover.as_deref().and_then(|cover| cover_url(cover, COVER_SIZE)) {
-            Some(url) => (
-                url,
-                if track.album.trim().is_empty() {
-                    "OxiTide".to_string()
-                } else {
-                    clip(&track.album)
-                },
-            ),
-            None => ("logo".to_string(), "OxiTide".to_string()),
-        };
+    let (large_image, large_text) = match track
+        .cover
+        .as_deref()
+        .and_then(|cover| cover_url(cover, COVER_SIZE))
+    {
+        Some(url) => (
+            url,
+            if track.album.trim().is_empty() {
+                "OxiTide".to_string()
+            } else {
+                clip(&track.album)
+            },
+        ),
+        None => ("logo".to_string(), "OxiTide".to_string()),
+    };
     let timestamps = if play == PlayState::Playing && track.duration_ms > 0 {
         let position = position_ms.min(track.duration_ms);
         let start = now_ms - position as i64;
@@ -118,7 +136,12 @@ pub fn assemble(
     })
 }
 
-pub fn should_rebase(last_start_ms: i64, last_sent_at_ms: i64, now_ms: i64, position_ms: u64) -> bool {
+pub fn should_rebase(
+    last_start_ms: i64,
+    last_sent_at_ms: i64,
+    now_ms: i64,
+    position_ms: u64,
+) -> bool {
     let position_at_send = last_sent_at_ms - last_start_ms;
     let expected = position_at_send + (now_ms - last_sent_at_ms);
     let drift = (position_ms as i64 - expected).unsigned_abs();
@@ -126,9 +149,17 @@ pub fn should_rebase(last_start_ms: i64, last_sent_at_ms: i64, now_ms: i64, posi
 }
 
 pub fn plan_action(desired: &Desired, sent: &Sent, now_ms: i64) -> Action {
-    let Some(spec) = assemble(desired.track.as_ref(), desired.play, desired.position_ms, now_ms)
-    else {
-        return if sent.shown { Action::Clear } else { Action::None };
+    let Some(spec) = assemble(
+        desired.track.as_ref(),
+        desired.play,
+        desired.position_ms,
+        now_ms,
+    ) else {
+        return if sent.shown {
+            Action::Clear
+        } else {
+            Action::None
+        };
     };
     let track_changed = sent.track_id != desired.track.as_ref().map(|track| track.track_id);
     let play_changed = sent.play != desired.play;
@@ -162,11 +193,21 @@ mod tests {
     }
 
     fn desired(track: Option<TrackMeta>, play: PlayState, position_ms: u64) -> Desired {
-        Desired { track, play, position_ms }
+        Desired {
+            track,
+            play,
+            position_ms,
+        }
     }
 
     fn shown(track_id: u64, play: PlayState, start_ms: i64, at_ms: i64) -> Sent {
-        Sent { track_id: Some(track_id), play, start_ms, at_ms, shown: true }
+        Sent {
+            track_id: Some(track_id),
+            play,
+            start_ms,
+            at_ms,
+            shown: true,
+        }
     }
 
     #[test]
@@ -187,7 +228,10 @@ mod tests {
         assert_eq!(spec.large_text, "Album");
         assert_eq!(spec.small_image, "logo");
         assert_eq!(spec.small_text, "OxiTide");
-        assert_eq!(spec.timestamps, Some((NOW - 30_000, NOW - 30_000 + 200_000)));
+        assert_eq!(
+            spec.timestamps,
+            Some((NOW - 30_000, NOW - 30_000 + 200_000))
+        );
         assert_eq!(spec.button_url, "https://tidal.com/track/7");
     }
 
@@ -204,7 +248,10 @@ mod tests {
     fn stopped_or_missing_track_is_none() {
         assert_eq!(assemble(None, PlayState::Stopped, 0, NOW), None);
         assert_eq!(assemble(None, PlayState::Playing, 0, NOW), None);
-        assert_eq!(assemble(Some(&meta(7, None)), PlayState::Stopped, 0, NOW), None);
+        assert_eq!(
+            assemble(Some(&meta(7, None)), PlayState::Stopped, 0, NOW),
+            None
+        );
     }
 
     #[test]
@@ -283,7 +330,10 @@ mod tests {
     #[test]
     fn plan_action_shows_first_and_suppresses_repeats() {
         let d = desired(Some(meta(7, None)), PlayState::Playing, 0);
-        assert!(matches!(plan_action(&d, &Sent::NEVER, NOW), Action::Send(_)));
+        assert!(matches!(
+            plan_action(&d, &Sent::NEVER, NOW),
+            Action::Send(_)
+        ));
         let s = shown(7, PlayState::Playing, NOW, NOW);
         assert_eq!(plan_action(&d, &s, NOW + 1_000), Action::None);
     }
@@ -300,9 +350,15 @@ mod tests {
     fn plan_action_sends_on_track_and_play_changes() {
         let s = shown(7, PlayState::Playing, NOW, NOW);
         let next_track = desired(Some(meta(8, None)), PlayState::Playing, 0);
-        assert!(matches!(plan_action(&next_track, &s, NOW + 1_000), Action::Send(_)));
+        assert!(matches!(
+            plan_action(&next_track, &s, NOW + 1_000),
+            Action::Send(_)
+        ));
         let paused = desired(Some(meta(7, None)), PlayState::Paused, 0);
-        assert!(matches!(plan_action(&paused, &s, NOW + 1_000), Action::Send(_)));
+        assert!(matches!(
+            plan_action(&paused, &s, NOW + 1_000),
+            Action::Send(_)
+        ));
     }
 
     #[test]
@@ -318,7 +374,10 @@ mod tests {
         let s = shown(7, PlayState::Playing, NOW - 30_000, NOW);
         let seeked = desired(Some(meta(7, None)), PlayState::Playing, 90_000);
         assert_eq!(plan_action(&seeked, &s, NOW + 1_000), Action::None);
-        assert!(matches!(plan_action(&seeked, &s, NOW + 5_000), Action::Send(_)));
+        assert!(matches!(
+            plan_action(&seeked, &s, NOW + 5_000),
+            Action::Send(_)
+        ));
     }
 
     #[test]

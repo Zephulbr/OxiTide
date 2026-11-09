@@ -67,8 +67,10 @@ pub fn build(app: &AppHandle) -> tauri::Result<TrayIcon> {
     let prev = MenuItem::with_id(app, "prev", "Previous", true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu =
-        Menu::with_items(app, &[&show_hide, &play_pause, &next, &prev, &separator, &quit])?;
+    let menu = Menu::with_items(
+        app,
+        &[&show_hide, &play_pause, &next, &prev, &separator, &quit],
+    )?;
     let mut builder = TrayIconBuilder::with_id("main")
         .tooltip("OxiTide")
         .menu(&menu)

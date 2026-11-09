@@ -80,10 +80,17 @@ pub enum AsioTime {}
 pub struct AsioCallbacks {
     pub buffer_switch: extern "C" fn(index: c_long, direct_process: AsioBool),
     pub sample_rate_did_change: extern "C" fn(rate: f64),
-    pub asio_message:
-        extern "C" fn(selector: c_long, value: c_long, message: *mut c_void, opt: *mut f64) -> c_long,
-    pub buffer_switch_time_info:
-        extern "C" fn(params: *mut AsioTime, index: c_long, direct_process: AsioBool) -> *mut AsioTime,
+    pub asio_message: extern "C" fn(
+        selector: c_long,
+        value: c_long,
+        message: *mut c_void,
+        opt: *mut f64,
+    ) -> c_long,
+    pub buffer_switch_time_info: extern "C" fn(
+        params: *mut AsioTime,
+        index: c_long,
+        direct_process: AsioBool,
+    ) -> *mut AsioTime,
 }
 
 type This = *mut IAsio;
@@ -100,8 +107,10 @@ pub struct IAsioVtbl {
     pub get_error_message: unsafe extern "C" fn(This, message: *mut c_char),
     pub start: unsafe extern "C" fn(This) -> AsioError,
     pub stop: unsafe extern "C" fn(This) -> AsioError,
-    pub get_channels: unsafe extern "C" fn(This, inputs: *mut c_long, outputs: *mut c_long) -> AsioError,
-    pub get_latencies: unsafe extern "C" fn(This, input: *mut c_long, output: *mut c_long) -> AsioError,
+    pub get_channels:
+        unsafe extern "C" fn(This, inputs: *mut c_long, outputs: *mut c_long) -> AsioError,
+    pub get_latencies:
+        unsafe extern "C" fn(This, input: *mut c_long, output: *mut c_long) -> AsioError,
     pub get_buffer_size: unsafe extern "C" fn(
         This,
         min: *mut c_long,
@@ -112,7 +121,8 @@ pub struct IAsioVtbl {
     pub can_sample_rate: unsafe extern "C" fn(This, rate: f64) -> AsioError,
     pub get_sample_rate: unsafe extern "C" fn(This, rate: *mut f64) -> AsioError,
     pub set_sample_rate: unsafe extern "C" fn(This, rate: f64) -> AsioError,
-    pub get_clock_sources: unsafe extern "C" fn(This, clocks: *mut c_void, count: *mut c_long) -> AsioError,
+    pub get_clock_sources:
+        unsafe extern "C" fn(This, clocks: *mut c_void, count: *mut c_long) -> AsioError,
     pub set_clock_source: unsafe extern "C" fn(This, reference: c_long) -> AsioError,
     pub get_sample_position:
         unsafe extern "C" fn(This, position: *mut AsioInt64, stamp: *mut AsioInt64) -> AsioError,
@@ -162,7 +172,13 @@ impl Driver {
         let mut out: *mut c_void = std::ptr::null_mut();
         // SAFETY: plain COM activation with valid out-pointer.
         let hr = unsafe {
-            CoCreateInstance(clsid, std::ptr::null_mut(), CLSCTX_INPROC_SERVER, clsid, &mut out)
+            CoCreateInstance(
+                clsid,
+                std::ptr::null_mut(),
+                CLSCTX_INPROC_SERVER,
+                clsid,
+                &mut out,
+            )
         };
         if hr.is_err() || out.is_null() {
             return Err(format!("could not load the ASIO driver ({hr:?})"));
@@ -212,7 +228,13 @@ impl Driver {
         let (mut min, mut max, mut preferred, mut granularity) = (0, 0, 0, 0);
         // SAFETY: valid out-pointers.
         check(unsafe {
-            (self.vtbl().get_buffer_size)(self.ptr, &mut min, &mut max, &mut preferred, &mut granularity)
+            (self.vtbl().get_buffer_size)(
+                self.ptr,
+                &mut min,
+                &mut max,
+                &mut preferred,
+                &mut granularity,
+            )
         })?;
         Ok((min, max, preferred, granularity))
     }
@@ -326,7 +348,11 @@ pub fn error_text(code: AsioError) -> &'static str {
 }
 
 fn c_string(buf: &[c_char]) -> String {
-    let bytes: Vec<u8> = buf.iter().take_while(|&&c| c != 0).map(|&c| c as u8).collect();
+    let bytes: Vec<u8> = buf
+        .iter()
+        .take_while(|&&c| c != 0)
+        .map(|&c| c as u8)
+        .collect();
     String::from_utf8_lossy(&bytes).trim().to_string()
 }
 
@@ -356,7 +382,16 @@ pub fn registered_drivers() -> Vec<RegisteredDriver> {
         let mut len = name.len() as u32;
         // SAFETY: buffer and length describe `name`.
         let rc = unsafe {
-            RegEnumKeyExW(root, index, Some(PWSTR(name.as_mut_ptr())), &mut len, None, None, None, None)
+            RegEnumKeyExW(
+                root,
+                index,
+                Some(PWSTR(name.as_mut_ptr())),
+                &mut len,
+                None,
+                None,
+                None,
+                None,
+            )
         };
         if rc != ERROR_SUCCESS {
             break;
@@ -369,7 +404,11 @@ pub fn registered_drivers() -> Vec<RegisteredDriver> {
         let description = read_string(root, &subkey, windows::core::w!("Description"))
             .filter(|d| !d.is_empty())
             .unwrap_or_else(|| key.clone());
-        out.push(RegisteredDriver { key, description, clsid });
+        out.push(RegisteredDriver {
+            key,
+            description,
+            clsid,
+        });
     }
     // SAFETY: opened above.
     unsafe {
@@ -417,7 +456,10 @@ mod tests {
         assert_eq!(std::mem::size_of::<AsioBufferInfo>(), 24);
         assert_eq!(std::mem::size_of::<AsioChannelInfo>(), 52);
         assert_eq!(std::mem::size_of::<AsioCallbacks>(), 32);
-        assert_eq!(std::mem::size_of::<IAsioVtbl>(), 24 * std::mem::size_of::<usize>());
+        assert_eq!(
+            std::mem::size_of::<IAsioVtbl>(),
+            24 * std::mem::size_of::<usize>()
+        );
     }
 
     #[test]

@@ -1,20 +1,20 @@
 use std::sync::Arc;
 
 use oxitide_audio::cache::DiskCache;
+use oxitide_audio::devices::DeviceGroup;
 use oxitide_audio::dsp::{DspSettings, TransitionStyle};
 use oxitide_audio::engine::{Engine, EngineCmd, EngineEvent};
 use oxitide_audio::fetch::HttpFetcher;
-use oxitide_audio::devices::DeviceGroup;
 use oxitide_audio::output::{ExclusiveFallback, OutputDevice, OutputMode};
 use oxitide_audio::queue::{ArtistRef, QueueItem, RepeatMode};
 use oxitide_tidal::auth::{self, SessionInfo};
 use oxitide_tidal::client::TidalClient;
 use oxitide_tidal::later::{LaterEntry, LaterIds, LaterKind};
 use oxitide_tidal::library::FavoriteIds;
-use oxitide_tidal::shares::{PlaylistInvite, PlaylistMember};
 use oxitide_tidal::pkce::{
     random_state, Pkce, PKCE_CLIENT_ID, PKCE_REDIRECT_DEEP_LINK, PKCE_REDIRECT_PASTE, TOKEN_URL,
 };
+use oxitide_tidal::shares::{PlaylistInvite, PlaylistMember};
 use oxitide_tidal::token_store::{KeyringStatus, TokenSet, TokenStore};
 use oxitide_tidal::Error;
 use serde::{Deserialize, Serialize};
@@ -22,8 +22,8 @@ use tauri::{Emitter, Manager, State};
 
 use crate::artwork::PaletteDto;
 use crate::config::{
-    clamp_catjam_scale, clamp_queue_width, CatjamCoat, Config, CoverShape, Density, DynamicColor, InstrumentTone,
-    ModeLook, PanelStyle, QualityDisplay, RackConfig, Theme, Typeface, UiMode,
+    clamp_catjam_scale, clamp_queue_width, CatjamCoat, Config, CoverShape, Density, DynamicColor,
+    InstrumentTone, ModeLook, PanelStyle, QualityDisplay, RackConfig, Theme, Typeface, UiMode,
 };
 use crate::lyrics::{LyricsDto, LyricsRequest};
 use crate::player::{device_list_dto, OutputDeviceListDto, QualityDto};
@@ -172,7 +172,10 @@ pub async fn finish_login(
         .ok_or_else(|| "token store unavailable".to_string())?;
     store.save(&tokens).map_err(|e| e.to_string())?;
     save_session(saved_session_path().as_deref(), &session);
-    if let (Some(live), Some(parked)) = (crate::session::session_path(), crate::session::parked_path()) {
+    if let (Some(live), Some(parked)) = (
+        crate::session::session_path(),
+        crate::session::parked_path(),
+    ) {
         crate::session::unpark(&live, &parked, session.user_id);
     }
     let client = TidalClient::new(http, API_BASE, TOKEN_URL, session.clone(), tokens, store);
@@ -237,7 +240,12 @@ pub fn auth_status(state: State<'_, AppState>) -> bool {
 pub fn auth_logout(state: State<'_, AppState>) -> Result<(), String> {
     // Set the queue aside for this account before the engine clears it; the
     // same account gets it back at its next login (`finish_login`).
-    let owner = state.client.read().unwrap().as_ref().map(|client| client.session().user_id);
+    let owner = state
+        .client
+        .read()
+        .unwrap()
+        .as_ref()
+        .map(|client| client.session().user_id);
     if let (Some(saver), Some(parked)) = (state.session_saver(), crate::session::parked_path()) {
         saver.park(parked, owner);
     }
@@ -325,7 +333,9 @@ async fn restore_tokens(
     let offline = |e: &Error, tokens: TokenSet| {
         if e.is_transient() || matches!(e, Error::Io(_)) {
             tracing::warn!("TIDAL unreachable at startup ({e}); starting offline");
-            saved.clone().map(|session| Restored::Offline(session, tokens))
+            saved
+                .clone()
+                .map(|session| Restored::Offline(session, tokens))
         } else {
             None
         }
@@ -436,7 +446,11 @@ fn build_player(
         config.streaming.allow_fallback,
     );
     engine.set_output(
-        if config.audio.output_device.is_empty() { None } else { Some(config.audio.output_device.clone()) },
+        if config.audio.output_device.is_empty() {
+            None
+        } else {
+            Some(config.audio.output_device.clone())
+        },
         config.audio.mode_for(&config.audio.output_device),
     );
     engine.set_exclusive_fallback(config.audio.exclusive_fallback);
@@ -505,7 +519,8 @@ fn build_player(
     // The tray tooltip only names the track; skip the shell call for state
     // events that keep it (volume, seek, flags).
     let tooltip_track: std::sync::Mutex<Option<Option<u64>>> = std::sync::Mutex::new(None);
-    let set_tooltip = move |handle: &tauri::AppHandle, item: Option<&oxitide_audio::queue::QueueItem>| {
+    let set_tooltip = move |handle: &tauri::AppHandle,
+                            item: Option<&oxitide_audio::queue::QueueItem>| {
         let id = item.map(|i| i.track_id);
         let mut last = tooltip_track.lock().unwrap();
         if *last != Some(id) {
@@ -569,7 +584,10 @@ fn build_player(
     // Autoplay: a no-op unless the last queued track is current.
     let autoplay_handle = app.clone();
     engine.subscribe(Arc::new(move |event| {
-        autoplay_handle.state::<AppState>().autoplay.on_event(&event, &autoplay_handle);
+        autoplay_handle
+            .state::<AppState>()
+            .autoplay
+            .on_event(&event, &autoplay_handle);
     }));
     // Phone remote (Track 11): a no-op unless the remote is on and a phone
     // is connected.
@@ -585,14 +603,18 @@ fn build_player(
     let caps_handle = app.clone();
     let last_learned = std::sync::Mutex::new(None::<(String, u32, u16)>);
     engine.subscribe(Arc::new(move |event| {
-        let EngineEvent::State(snapshot) = &event else { return };
+        let EngineEvent::State(snapshot) = &event else {
+            return;
+        };
         if !snapshot.bit_perfect
             || snapshot.output_mode != OutputMode::Exclusive
             || snapshot.bit_perfect_notice.is_some()
         {
             return;
         }
-        let Some(stream) = snapshot.stream.as_ref() else { return };
+        let Some(stream) = snapshot.stream.as_ref() else {
+            return;
+        };
         let state = caps_handle.state::<AppState>();
         let id = state.config.lock().unwrap().audio.output_device.clone();
         let key = (id, stream.sample_rate, stream.bit_depth);
@@ -610,8 +632,8 @@ fn build_player(
 use oxitide_tidal::feed::FeedActivity;
 use oxitide_tidal::folders::{CollectionEntry, CollectionFolder};
 use oxitide_tidal::models::{
-    Album, AlbumInfo, Artist, ArtistDiscography, ArtistProfile, Mix, Playlist, SearchResults, Track,
-    TrackCredits,
+    Album, AlbumInfo, Artist, ArtistDiscography, ArtistProfile, Mix, Playlist, SearchResults,
+    Track, TrackCredits,
 };
 use oxitide_tidal::pages::{MixDetail, PageItem, PageSection};
 use oxitide_tidal::profiles::{EditableProfile, ProfileArt, ProfileEdit, UserProfile};
@@ -635,7 +657,10 @@ pub async fn get_explore(state: State<'_, AppState>) -> Result<Vec<PageSection>,
 /// A page a page link opens (Explore's genres, moods, decades). The path is
 /// re-checked here: it comes back from the webview, not straight from TIDAL.
 #[tauri::command]
-pub async fn get_page(state: State<'_, AppState>, path: String) -> Result<Vec<PageSection>, String> {
+pub async fn get_page(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<Vec<PageSection>, String> {
     if !oxitide_tidal::pages::is_page_path(&path) {
         return Err("invalid page path".into());
     }
@@ -679,7 +704,9 @@ pub async fn get_lyrics(
 fn require_scrobbler(
     state: &State<'_, AppState>,
 ) -> Result<std::sync::Arc<crate::scrobble::ScrobblerService>, String> {
-    state.scrobbler().ok_or_else(|| "scrobbler unavailable".to_string())
+    state
+        .scrobbler()
+        .ok_or_else(|| "scrobbler unavailable".to_string())
 }
 
 #[tauri::command]
@@ -1175,9 +1202,9 @@ pub async fn update_my_profile(
             .editable_profile(artist_id)
             .await
             .map_err(|e| profile_error(&state, e))?;
-        let bio_id = current
-            .bio_id
-            .ok_or_else(|| "This profile has no bio to edit yet; add one on TIDAL first".to_string())?;
+        let bio_id = current.bio_id.ok_or_else(|| {
+            "This profile has no bio to edit yet; add one on TIDAL first".to_string()
+        })?;
         client
             .update_profile_bio(&bio_id, &text)
             .await
@@ -1208,9 +1235,10 @@ pub async fn upload_my_profile_art(
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(image_base64.trim())
         .map_err(|_| "could not read the picture".to_string())?;
-    let prepared = tauri::async_runtime::spawn_blocking(move || crate::profile_art::prepare(&bytes, art))
-        .await
-        .map_err(|e| e.to_string())??;
+    let prepared =
+        tauri::async_runtime::spawn_blocking(move || crate::profile_art::prepare(&bytes, art))
+            .await
+            .map_err(|e| e.to_string())??;
     client
         .upload_profile_art(
             artist_id,
@@ -1226,7 +1254,10 @@ pub async fn upload_my_profile_art(
 
 /// Clear the profile's picture, banner or logo.
 #[tauri::command]
-pub async fn remove_my_profile_art(state: State<'_, AppState>, art: ProfileArt) -> Result<(), String> {
+pub async fn remove_my_profile_art(
+    state: State<'_, AppState>,
+    art: ProfileArt,
+) -> Result<(), String> {
     let client = require_client(&state)?;
     let artist_id = own_artist_id(&state, &client).await?;
     client
@@ -1346,9 +1377,10 @@ pub async fn set_save_for_later(
         client.later_remove(&items).await
     };
     result.map_err(|e| match e {
-        Error::Api { status: 409, message } if message.contains("TOO_MANY_ITEMS") => {
-            "Save for Later is full".to_string()
-        }
+        Error::Api {
+            status: 409,
+            message,
+        } if message.contains("TOO_MANY_ITEMS") => "Save for Later is full".to_string(),
         e => state.fail_tidal(e),
     })
 }
@@ -1566,7 +1598,10 @@ impl PageTrackDto {
     /// the caller to resolve the track by id.
     fn embedded(&self) -> Option<QueueItem> {
         let title = self.title.as_deref().filter(|title| !title.is_empty())?;
-        let artists = self.artists.as_ref().filter(|artists| !artists.is_empty())?;
+        let artists = self
+            .artists
+            .as_ref()
+            .filter(|artists| !artists.is_empty())?;
         let duration = self.duration.filter(|duration| *duration > 0)?;
         Some(QueueItem {
             track_id: self.id,
@@ -1751,10 +1786,9 @@ pub async fn play_track_ids(
     let client = require_client(&state)?;
     let content = state.config().content;
     let store = state.track_flags();
-    let (items, kept_ids) =
-        resolve_playable_items(&client, &ids, store.as_deref(), &content)
-            .await
-            .map_err(|e| state.fail_tidal(e))?;
+    let (items, kept_ids) = resolve_playable_items(&client, &ids, store.as_deref(), &content)
+        .await
+        .map_err(|e| state.fail_tidal(e))?;
     if items.is_empty() {
         return Err("all tracks are hidden by your content filters".to_string());
     }
@@ -1800,7 +1834,10 @@ pub async fn play_page_items(
     let cmd = if shuffle.unwrap_or(false) {
         EngineCmd::PlayShuffled { items: queue }
     } else {
-        EngineCmd::PlayTracks { items: queue, start }
+        EngineCmd::PlayTracks {
+            items: queue,
+            start,
+        }
     };
     crate::perf::note_play_command();
     player.engine.handle(cmd).map_err(|e| e.to_string())
@@ -1906,11 +1943,19 @@ pub fn get_history_page(
         Some(store) => store.page(offset, limit),
         None => (Vec::new(), 0),
     };
-    Ok(HistoryPageDto { items, total, offset, limit })
+    Ok(HistoryPageDto {
+        items,
+        total,
+        offset,
+        limit,
+    })
 }
 
 #[tauri::command(async)]
-pub fn get_stats(state: State<'_, AppState>, offset_minutes: i32) -> Result<crate::history::Stats, String> {
+pub fn get_stats(
+    state: State<'_, AppState>,
+    offset_minutes: i32,
+) -> Result<crate::history::Stats, String> {
     Ok(match state.history() {
         Some(store) => store.stats(offset_minutes),
         None => crate::history::Stats::default(),
@@ -1938,7 +1983,10 @@ pub fn set_history_enabled(state: State<'_, AppState>, enabled: bool) -> Result<
 }
 
 #[tauri::command]
-pub fn set_history_max_entries(state: State<'_, AppState>, max_entries: usize) -> Result<(), String> {
+pub fn set_history_max_entries(
+    state: State<'_, AppState>,
+    max_entries: usize,
+) -> Result<(), String> {
     let max_entries = max_entries.clamp(1, 1_000_000);
     if let Some(store) = state.history() {
         store.set_max_entries(max_entries);
@@ -1953,11 +2001,20 @@ pub fn set_history_max_entries(state: State<'_, AppState>, max_entries: usize) -
 /// Local play counts for track sorting; every requested id is answered (0
 /// when unplayed or when history is unavailable).
 #[tauri::command(async)]
-pub fn get_play_counts(state: State<'_, AppState>, ids: Vec<u64>) -> Result<Vec<PlayCountDto>, String> {
-    let counts = state.history().map(|store| store.play_counts(&ids)).unwrap_or_default();
+pub fn get_play_counts(
+    state: State<'_, AppState>,
+    ids: Vec<u64>,
+) -> Result<Vec<PlayCountDto>, String> {
+    let counts = state
+        .history()
+        .map(|store| store.play_counts(&ids))
+        .unwrap_or_default();
     Ok(ids
         .into_iter()
-        .map(|track_id| PlayCountDto { track_id, plays: counts.get(&track_id).copied().unwrap_or(0) })
+        .map(|track_id| PlayCountDto {
+            track_id,
+            plays: counts.get(&track_id).copied().unwrap_or(0),
+        })
         .collect())
 }
 
@@ -1970,12 +2027,18 @@ pub async fn get_album_release_dates(
 ) -> Result<Vec<AlbumDateDto>, String> {
     let store = state.album_dates();
     let dates = match require_client(&state) {
-        Ok(client) => store.enrich(&client, &ids).await.map_err(|e| state.fail_tidal(e))?,
+        Ok(client) => store
+            .enrich(&client, &ids)
+            .await
+            .map_err(|e| state.fail_tidal(e))?,
         Err(_) => store.known(&ids),
     };
     Ok(dates
         .into_iter()
-        .map(|(album_id, release_date)| AlbumDateDto { album_id, release_date })
+        .map(|(album_id, release_date)| AlbumDateDto {
+            album_id,
+            release_date,
+        })
         .collect())
 }
 
@@ -2017,7 +2080,11 @@ pub fn set_block_explicit(state: State<'_, AppState>, enabled: bool) -> Result<(
 /// Autoplay on or off. Off drops the upcoming suggestions (the current track
 /// keeps playing); on fills at once when the last track is already current.
 #[tauri::command]
-pub fn set_autoplay(app: tauri::AppHandle, state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+pub fn set_autoplay(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    enabled: bool,
+) -> Result<(), String> {
     let mut config = state.config();
     config.playback.autoplay = enabled;
     config.save()?;
@@ -2151,7 +2218,8 @@ pub async fn apply_content_filters(
             )
         })
         .collect();
-    let outcome = crate::track_flags::plan_prune(snapshot.queue.len(), snapshot.current_index, &blocked);
+    let outcome =
+        crate::track_flags::plan_prune(snapshot.queue.len(), snapshot.current_index, &blocked);
     if outcome.remove.is_empty() {
         return Ok(());
     }
@@ -2278,7 +2346,9 @@ pub struct RestoredSessionDto {
 }
 
 #[tauri::command(async)]
-pub fn get_restored_session(state: State<'_, AppState>) -> Result<Option<RestoredSessionDto>, String> {
+pub fn get_restored_session(
+    state: State<'_, AppState>,
+) -> Result<Option<RestoredSessionDto>, String> {
     let Some(path) = crate::session::session_path() else {
         return Ok(None);
     };
@@ -2316,7 +2386,13 @@ pub fn restore_session(
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
     player
         .engine
-        .handle(EngineCmd::RestoreSession { items, start, position_ms, shuffle, repeat })
+        .handle(EngineCmd::RestoreSession {
+            items,
+            start,
+            position_ms,
+            shuffle,
+            repeat,
+        })
         .map_err(|e| e.to_string())
 }
 
@@ -2400,7 +2476,10 @@ fn perf_queue_build_items(items: Vec<QueueItem>, start: usize) -> Result<(), Str
 /// selected or pinned devices that are unplugged. Starts capability checks for
 /// devices not checked yet; `output_devices_changed` fires when they finish.
 #[tauri::command(async)]
-pub fn get_output_devices(app: tauri::AppHandle, state: State<'_, AppState>) -> OutputDeviceListDto {
+pub fn get_output_devices(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> OutputDeviceListDto {
     let devices = crate::player::enumerate_devices();
     *state.last_devices.lock().unwrap() = devices.clone();
     let config = state.config();
@@ -2409,7 +2488,11 @@ pub fn get_output_devices(app: tauri::AppHandle, state: State<'_, AppState>) -> 
         .player()
         .filter(|player| player.engine.audio_status().mode == OutputMode::Exclusive)
         .map(|_| match config.audio.output_device.as_str() {
-            "" => devices.iter().find(|d| d.is_default && d.group != DeviceGroup::Asio).map(|d| d.id.clone()).unwrap_or_default(),
+            "" => devices
+                .iter()
+                .find(|d| d.is_default && d.group != DeviceGroup::Asio)
+                .map(|d| d.id.clone())
+                .unwrap_or_default(),
             id => id.to_string(),
         });
     start_capability_checks(&app, &state, &devices, busy.as_deref());
@@ -2421,7 +2504,12 @@ pub fn get_output_devices(app: tauri::AppHandle, state: State<'_, AppState>) -> 
 /// Check the unchecked devices one at a time on a worker thread (a WASAPI
 /// format sweep is 20–80 ms; an ASIO driver load can take longer), then tell
 /// the UI to read the list again.
-fn start_capability_checks(app: &tauri::AppHandle, state: &AppState, devices: &[OutputDevice], skip: Option<&str>) {
+fn start_capability_checks(
+    app: &tauri::AppHandle,
+    state: &AppState,
+    devices: &[OutputDevice],
+    skip: Option<&str>,
+) {
     if !state.device_caps.begin_probing() {
         return;
     }
@@ -2431,20 +2519,22 @@ fn start_capability_checks(app: &tauri::AppHandle, state: &AppState, devices: &[
         return;
     }
     let app = app.clone();
-    let spawned = std::thread::Builder::new().name("oxitide-device-caps".into()).spawn(move || {
-        let state = app.state::<AppState>();
-        let mut found = false;
-        for device in pending {
-            if let Some(caps) = oxitide_audio::devices::probe_caps(&device) {
-                state.device_caps.store_probed(&device.id, caps);
-                found = true;
+    let spawned = std::thread::Builder::new()
+        .name("oxitide-device-caps".into())
+        .spawn(move || {
+            let state = app.state::<AppState>();
+            let mut found = false;
+            for device in pending {
+                if let Some(caps) = oxitide_audio::devices::probe_caps(&device) {
+                    state.device_caps.store_probed(&device.id, caps);
+                    found = true;
+                }
             }
-        }
-        state.device_caps.end_probing();
-        if found {
-            let _ = app.emit("output_devices_changed", ());
-        }
-    });
+            state.device_caps.end_probing();
+            if found {
+                let _ = app.emit("output_devices_changed", ());
+            }
+        });
     if spawned.is_err() {
         state.device_caps.end_probing();
     }
@@ -2471,8 +2561,14 @@ fn remember_device(state: &AppState, config: &mut Config, id: &str) {
 pub fn set_output_device(state: State<'_, AppState>, device_id: String) -> Result<(), String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
     let mut config = state.config();
-    let device = if device_id.is_empty() { None } else { Some(device_id.clone()) };
-    player.engine.set_output(device, config.audio.mode_for(&device_id));
+    let device = if device_id.is_empty() {
+        None
+    } else {
+        Some(device_id.clone())
+    };
+    player
+        .engine
+        .set_output(device, config.audio.mode_for(&device_id));
     config.audio.output_device = device_id.clone();
     remember_device(&state, &mut config, &device_id);
     config.audio.prune_devices();
@@ -2484,12 +2580,21 @@ pub fn set_output_device(state: State<'_, AppState>, device_id: String) -> Resul
 /// One device's Shared/Exclusive mode. Reopens only when it is the selected
 /// device. ASIO drivers are always exclusive.
 #[tauri::command]
-pub fn set_device_mode(state: State<'_, AppState>, device_id: String, mode: OutputMode) -> Result<(), String> {
+pub fn set_device_mode(
+    state: State<'_, AppState>,
+    device_id: String,
+    mode: OutputMode,
+) -> Result<(), String> {
     if oxitide_audio::output::is_asio_device(&device_id) {
         return Err("ASIO drivers are always exclusive".into());
     }
     let mut config = state.config();
-    config.audio.devices.entry(device_id.clone()).or_default().mode = mode;
+    config
+        .audio
+        .devices
+        .entry(device_id.clone())
+        .or_default()
+        .mode = mode;
     if config.audio.output_device == device_id {
         if let Some(player) = state.player() {
             player.engine.set_output_mode(mode);
@@ -2515,7 +2620,11 @@ pub struct DevicePrefsPatch {
 const NICKNAME_MAX: usize = 64;
 
 /// Apply a picker patch to `audio`. Pure, so its rules are tested here.
-fn apply_device_prefs(audio: &mut crate::config::AudioConfig, device_id: &str, patch: DevicePrefsPatch) -> Result<(), String> {
+fn apply_device_prefs(
+    audio: &mut crate::config::AudioConfig,
+    device_id: &str,
+    patch: DevicePrefsPatch,
+) -> Result<(), String> {
     if device_id.is_empty() {
         return Err("System default has no device settings".into());
     }
@@ -2539,7 +2648,9 @@ fn apply_device_prefs(audio: &mut crate::config::AudioConfig, device_id: &str, p
         prefs.hidden = hidden;
     }
     match patch.pinned {
-        Some(true) if !audio.pinned.iter().any(|id| id == device_id) => audio.pinned.push(device_id.to_string()),
+        Some(true) if !audio.pinned.iter().any(|id| id == device_id) => {
+            audio.pinned.push(device_id.to_string())
+        }
         Some(false) => audio.pinned.retain(|id| id != device_id),
         _ => {}
     }
@@ -2548,7 +2659,11 @@ fn apply_device_prefs(audio: &mut crate::config::AudioConfig, device_id: &str, p
 
 /// Nickname, icon, pin or hide one device (spec DP-D6–DP-D9).
 #[tauri::command]
-pub fn set_device_prefs(state: State<'_, AppState>, device_id: String, patch: DevicePrefsPatch) -> Result<(), String> {
+pub fn set_device_prefs(
+    state: State<'_, AppState>,
+    device_id: String,
+    patch: DevicePrefsPatch,
+) -> Result<(), String> {
     let mut config = state.config();
     apply_device_prefs(&mut config.audio, &device_id, patch)?;
     remember_device(&state, &mut config, &device_id);
@@ -2572,7 +2687,11 @@ pub fn set_device_icons(state: State<'_, AppState>, enabled: bool) -> Result<(),
 /// another port, offered by `get_output_devices` as `moved`). The selection
 /// follows when it was on the old id.
 #[tauri::command]
-pub fn move_device_prefs(state: State<'_, AppState>, from: String, to: String) -> Result<(), String> {
+pub fn move_device_prefs(
+    state: State<'_, AppState>,
+    from: String,
+    to: String,
+) -> Result<(), String> {
     if from.is_empty() || to.is_empty() || from == to {
         return Ok(());
     }
@@ -2592,7 +2711,9 @@ pub fn move_device_prefs(state: State<'_, AppState>, from: String, to: String) -
     if config.audio.output_device == from {
         config.audio.output_device = to.clone();
         if let Some(player) = state.player() {
-            player.engine.set_output(Some(to.clone()), config.audio.mode_for(&to));
+            player
+                .engine
+                .set_output(Some(to.clone()), config.audio.mode_for(&to));
         }
     }
     remember_device(&state, &mut config, &to);
@@ -2660,9 +2781,10 @@ pub fn automix_render(
     let player = state.player().ok_or("Playback is not ready")?;
     let mut settings = state.config().dsp.crossfade;
     settings.style = style;
-    let rendered = player.engine.render_last_transition(&settings).ok_or(
-        "Nothing to replay yet: let a track end on its own with AutoMix on.",
-    )?;
+    let rendered = player
+        .engine
+        .render_last_transition(&settings)
+        .ok_or("Nothing to replay yet: let a track end on its own with AutoMix on.")?;
     let header = serde_json::json!({
         "report": rendered.report,
         "overlap_start_ms": rendered.overlap_start_ms,
@@ -3084,7 +3206,12 @@ pub fn set_hotkey(
         }
         let previous = state.config();
         let mut next = previous.clone();
-        crate::hotkeys::apply_binding(&mut next.hotkeys, &action, &accelerator, replace.as_deref())?;
+        crate::hotkeys::apply_binding(
+            &mut next.hotkeys,
+            &action,
+            &accelerator,
+            replace.as_deref(),
+        )?;
         next.save()?;
         state.set_config(next.clone());
         if let Err(e) = crate::hotkeys::register_all(&app, &next.hotkeys) {
@@ -3184,7 +3311,9 @@ pub async fn set_remote_settings(
 }
 
 #[tauri::command]
-pub fn begin_remote_pairing(app: tauri::AppHandle) -> Result<crate::remote::host::PairingDto, String> {
+pub fn begin_remote_pairing(
+    app: tauri::AppHandle,
+) -> Result<crate::remote::host::PairingDto, String> {
     let pairing = crate::remote::host::begin_pairing(&app)?;
     crate::remote::host::emit_status(&app);
     Ok(pairing)
@@ -3221,7 +3350,9 @@ pub fn resolve_remote_pair_request(
     id: String,
     approve: bool,
 ) -> Result<bool, String> {
-    let service = state.remote().ok_or_else(|| "the phone remote is off".to_string())?;
+    let service = state
+        .remote()
+        .ok_or_else(|| "the phone remote is off".to_string())?;
     Ok(service.resolve_pair_request(&id, approve))
 }
 
@@ -3311,7 +3442,10 @@ pub fn get_diagnostics(state: State<'_, AppState>) -> Result<String, String> {
         };
         let stream = playback.stream.as_ref().map(|s| {
             let codec = s.codec.as_deref().unwrap_or("unknown codec");
-            let bitrate = s.bitrate_kbps.map(|kbps| format!(", {kbps} kbps")).unwrap_or_default();
+            let bitrate = s
+                .bitrate_kbps
+                .map(|kbps| format!(", {kbps} kbps"))
+                .unwrap_or_default();
             format!(
                 "{codec} {:.1} kHz / {}-bit, {} ch{bitrate}",
                 s.sample_rate as f64 / 1000.0,
@@ -3339,7 +3473,10 @@ pub fn get_diagnostics(state: State<'_, AppState>) -> Result<String, String> {
         audio,
         switches: vec![
             // The selected device's own mode (each device keeps one).
-            ("Exclusive mode", config.audio.mode_for(&config.audio.output_device) == OutputMode::Exclusive),
+            (
+                "Exclusive mode",
+                config.audio.mode_for(&config.audio.output_device) == OutputMode::Exclusive,
+            ),
             ("Media controls", config.integrations.smtc),
             ("Discord", config.integrations.discord),
             ("Last.fm", config.scrobbling.lastfm_enabled),
@@ -3377,38 +3514,108 @@ mod tests {
     /// Anything that blocks (disk scans, device enumeration, CPU work, long
     /// waits) and does not depend on ordering belongs in `async` instead.
     const SYNC_COMMANDS: &[&str] = &[
-        "auth_begin", "auth_take_result", "auth_status", "auth_logout", "get_keyring_status",
-        "get_scrobble_status", "lastfm_cancel_auth", "lastfm_disconnect", "listenbrainz_disconnect",
-        "set_scrobble_enabled", "open_external", "play_tracks", "play_pause", "next", "prev", "seek",
-        "set_volume", "fade_and_pause", "set_history_enabled", "set_history_max_entries",
-        "set_block_explicit", "set_block_ai", "set_show_labels", "set_shuffle", "set_repeat",
+        "auth_begin",
+        "auth_take_result",
+        "auth_status",
+        "auth_logout",
+        "get_keyring_status",
+        "get_scrobble_status",
+        "lastfm_cancel_auth",
+        "lastfm_disconnect",
+        "listenbrainz_disconnect",
+        "set_scrobble_enabled",
+        "open_external",
+        "play_tracks",
+        "play_pause",
+        "next",
+        "prev",
+        "seek",
+        "set_volume",
+        "fade_and_pause",
+        "set_history_enabled",
+        "set_history_max_entries",
+        "set_block_explicit",
+        "set_block_ai",
+        "set_show_labels",
+        "set_shuffle",
+        "set_repeat",
         // A config writer; turning it off removes queue items, ordered with
         // the user's own queue edits.
         "set_autoplay",
-        "queue_reorder", "queue_remove", "queue_clear", "retry", "queue_add", "queue_play_next",
-        "queue_insert", "restore_session", "set_play_source", "clear_session", "perf_mark", "perf_quit",
+        "queue_reorder",
+        "queue_remove",
+        "queue_clear",
+        "retry",
+        "queue_add",
+        "queue_play_next",
+        "queue_insert",
+        "restore_session",
+        "set_play_source",
+        "clear_session",
+        "perf_mark",
+        "perf_quit",
         // Window calls belong on the main thread.
         "perf_close_window",
-        "get_perf_snapshot", "perf_submit_ui_metrics", "perf_queue_build", "set_output_device",
+        "get_perf_snapshot",
+        "perf_submit_ui_metrics",
+        "perf_queue_build",
+        "set_output_device",
         // Output picker config writers (one also reopens the output).
-        "set_device_mode", "set_device_prefs", "set_device_icons", "move_device_prefs",
-        "set_preferred_quality", "set_exclusive_fallback", "set_dsp_settings",
-        "get_config", "get_audio_status", "get_cache_status", "set_allow_fallback",
-        "set_quality_display", "set_ui_mode", "set_theme", "set_instrument_tone", "set_typeface",
+        "set_device_mode",
+        "set_device_prefs",
+        "set_device_icons",
+        "move_device_prefs",
+        "set_preferred_quality",
+        "set_exclusive_fallback",
+        "set_dsp_settings",
+        "get_config",
+        "get_audio_status",
+        "get_cache_status",
+        "set_allow_fallback",
+        "set_quality_display",
+        "set_ui_mode",
+        "set_theme",
+        "set_instrument_tone",
+        "set_typeface",
         "set_custom_typeface",
-        "set_density", "set_cover_shape", "set_dynamic_color", "set_rack_settings",
-        "set_level_meter", "set_queue_width", "set_mini_mode", "set_start_in_mini", "set_oneko",
-        "set_catjam", "set_catjam_coat", "set_catjam_scale",
+        "set_density",
+        "set_cover_shape",
+        "set_dynamic_color",
+        "set_rack_settings",
+        "set_level_meter",
+        "set_queue_width",
+        "set_mini_mode",
+        "set_start_in_mini",
+        "set_oneko",
+        "set_catjam",
+        "set_catjam_coat",
+        "set_catjam_scale",
         // An atomic store plus one engine call; ordered with CatJam's mount
         // and unmount so a quick remount cannot end with tracking off.
         "set_beat_tracking",
         // An atomic store, ordered with the sleep timer's arm and cancel.
         "set_position_feed_live",
-        "set_hover_panels", "set_row_separators", "set_player_bar_style", "set_queue_style", "set_smtc", "set_discord", "set_close_to_tray", "set_cache_max_size_mb",
-        "set_cache_clear_on_exit", "get_remote_status", "begin_remote_pairing",
-        "cancel_remote_pairing", "list_remote_devices", "rename_remote_device",
-        "revoke_remote_device", "resolve_remote_pair_request", "get_custom_titlebar",
-        "set_snap_target", "get_update_support", "set_update_check_on_start", "get_logs_dir",
+        "set_hover_panels",
+        "set_row_separators",
+        "set_player_bar_style",
+        "set_queue_style",
+        "set_smtc",
+        "set_discord",
+        "set_close_to_tray",
+        "set_cache_max_size_mb",
+        "set_cache_clear_on_exit",
+        "get_remote_status",
+        "begin_remote_pairing",
+        "cancel_remote_pairing",
+        "list_remote_devices",
+        "rename_remote_device",
+        "revoke_remote_device",
+        "resolve_remote_pair_request",
+        "get_custom_titlebar",
+        "set_snap_target",
+        "get_update_support",
+        "set_update_check_on_start",
+        "get_logs_dir",
         "open_logs_folder",
     ];
 
@@ -3432,30 +3639,92 @@ mod tests {
 
     #[test]
     fn device_prefs_patches_follow_the_picker_rules() {
-        let mut audio = crate::config::AudioConfig { output_device: "dac".into(), ..Default::default() };
-        let hide = |hidden| DevicePrefsPatch { hidden: Some(hidden), ..Default::default() };
-        assert!(apply_device_prefs(&mut audio, "dac", hide(true)).is_err(), "the selected device can't hide");
-        assert!(apply_device_prefs(&mut audio, "", DevicePrefsPatch::default()).is_err(), "System default has none");
+        let mut audio = crate::config::AudioConfig {
+            output_device: "dac".into(),
+            ..Default::default()
+        };
+        let hide = |hidden| DevicePrefsPatch {
+            hidden: Some(hidden),
+            ..Default::default()
+        };
+        assert!(
+            apply_device_prefs(&mut audio, "dac", hide(true)).is_err(),
+            "the selected device can't hide"
+        );
+        assert!(
+            apply_device_prefs(&mut audio, "", DevicePrefsPatch::default()).is_err(),
+            "System default has none"
+        );
         apply_device_prefs(&mut audio, "tv", hide(true)).unwrap();
         assert!(audio.devices["tv"].hidden);
 
         let long = "x".repeat(100);
-        apply_device_prefs(&mut audio, "tv", DevicePrefsPatch { nickname: Some(format!("  {long} ")), ..Default::default() }).unwrap();
+        apply_device_prefs(
+            &mut audio,
+            "tv",
+            DevicePrefsPatch {
+                nickname: Some(format!("  {long} ")),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert_eq!(audio.devices["tv"].nickname.chars().count(), NICKNAME_MAX);
-        apply_device_prefs(&mut audio, "tv", DevicePrefsPatch { nickname: Some("   ".into()), ..Default::default() }).unwrap();
-        assert_eq!(audio.devices["tv"].nickname, "", "an empty nickname brings the device's own name back");
+        apply_device_prefs(
+            &mut audio,
+            "tv",
+            DevicePrefsPatch {
+                nickname: Some("   ".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            audio.devices["tv"].nickname, "",
+            "an empty nickname brings the device's own name back"
+        );
 
-        apply_device_prefs(&mut audio, "tv", DevicePrefsPatch { icon: Some("monitor".into()), ..Default::default() }).unwrap();
+        apply_device_prefs(
+            &mut audio,
+            "tv",
+            DevicePrefsPatch {
+                icon: Some("monitor".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert_eq!(audio.devices["tv"].icon, "monitor");
-        apply_device_prefs(&mut audio, "tv", DevicePrefsPatch { icon: Some("auto".into()), ..Default::default() }).unwrap();
+        apply_device_prefs(
+            &mut audio,
+            "tv",
+            DevicePrefsPatch {
+                icon: Some("auto".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert_eq!(audio.devices["tv"].icon, "");
-        assert!(apply_device_prefs(&mut audio, "tv", DevicePrefsPatch { icon: Some("rocket".into()), ..Default::default() }).is_err());
+        assert!(apply_device_prefs(
+            &mut audio,
+            "tv",
+            DevicePrefsPatch {
+                icon: Some("rocket".into()),
+                ..Default::default()
+            }
+        )
+        .is_err());
 
-        let pin = |pinned| DevicePrefsPatch { pinned: Some(pinned), ..Default::default() };
+        let pin = |pinned| DevicePrefsPatch {
+            pinned: Some(pinned),
+            ..Default::default()
+        };
         apply_device_prefs(&mut audio, "tv", pin(true)).unwrap();
         apply_device_prefs(&mut audio, "dac", pin(true)).unwrap();
         apply_device_prefs(&mut audio, "tv", pin(true)).unwrap();
-        assert_eq!(audio.pinned, vec!["tv".to_string(), "dac".to_string()], "pin order, no duplicates");
+        assert_eq!(
+            audio.pinned,
+            vec!["tv".to_string(), "dac".to_string()],
+            "pin order, no duplicates"
+        );
         apply_device_prefs(&mut audio, "tv", pin(false)).unwrap();
         assert_eq!(audio.pinned, vec!["dac".to_string()]);
     }
@@ -3463,14 +3732,22 @@ mod tests {
     #[test]
     fn every_main_thread_command_is_deliberate() {
         let found = sync_commands(include_str!("commands.rs"));
-        let unexpected: Vec<&String> =
-            found.iter().filter(|n| !SYNC_COMMANDS.contains(&n.as_str())).collect();
+        let unexpected: Vec<&String> = found
+            .iter()
+            .filter(|n| !SYNC_COMMANDS.contains(&n.as_str()))
+            .collect();
         assert!(
             unexpected.is_empty(),
             "new main-thread commands {unexpected:?}: make them #[tauri::command(async)] or add them to SYNC_COMMANDS with a reason"
         );
-        let stale: Vec<&&str> = SYNC_COMMANDS.iter().filter(|n| !found.iter().any(|f| f == *n)).collect();
-        assert!(stale.is_empty(), "SYNC_COMMANDS lists commands that are no longer sync: {stale:?}");
+        let stale: Vec<&&str> = SYNC_COMMANDS
+            .iter()
+            .filter(|n| !found.iter().any(|f| f == *n))
+            .collect();
+        assert!(
+            stale.is_empty(),
+            "SYNC_COMMANDS lists commands that are no longer sync: {stale:?}"
+        );
     }
 
     #[test]
@@ -3488,7 +3765,10 @@ mod tests {
         assert_eq!(u16::from_le_bytes([wav[22], wav[23]]), 2, "channels");
         assert_eq!(u32::from_le_bytes(wav[24..28].try_into().unwrap()), 48_000);
         assert_eq!(&wav[36..40], b"data");
-        let data: Vec<i16> = wav[44..].chunks(2).map(|b| i16::from_le_bytes([b[0], b[1]])).collect();
+        let data: Vec<i16> = wav[44..]
+            .chunks(2)
+            .map(|b| i16::from_le_bytes([b[0], b[1]]))
+            .collect();
         assert_eq!(data, vec![0, i16::MAX, -i16::MAX, 16_384]);
     }
 
@@ -3507,8 +3787,14 @@ mod tests {
         assert_eq!(
             item.artist_refs,
             vec![
-                ArtistRef { id: 1, name: "Crosby, Stills".into() },
-                ArtistRef { id: 2, name: "Nash".into() },
+                ArtistRef {
+                    id: 1,
+                    name: "Crosby, Stills".into()
+                },
+                ArtistRef {
+                    id: 2,
+                    name: "Nash".into()
+                },
             ]
         );
         assert_eq!(item.album_id, Some(9));
@@ -3663,7 +3949,12 @@ mod tests {
 
     #[test]
     fn history_page_dto_serializes_fields() {
-        let dto = HistoryPageDto { items: Vec::new(), total: 3, offset: 1, limit: 100 };
+        let dto = HistoryPageDto {
+            items: Vec::new(),
+            total: 3,
+            offset: 1,
+            limit: 100,
+        };
         let value = serde_json::to_value(&dto).unwrap();
         assert_eq!(value["total"], 3);
         assert_eq!(value["offset"], 1);
@@ -3690,12 +3981,20 @@ mod tests {
     }
 
     fn saved_session() -> SessionInfo {
-        SessionInfo { session_id: "saved".into(), country_code: "GR".into(), user_id: 42 }
+        SessionInfo {
+            session_id: "saved".into(),
+            country_code: "GR".into(),
+            user_id: 42,
+        }
     }
 
     /// A base URL nothing listens on: every request fails to connect.
     fn unreachable_base() -> String {
-        let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
         format!("http://127.0.0.1:{port}/")
     }
 
@@ -3727,10 +4026,15 @@ mod tests {
         let store = MemoryStore::default();
         store.save(&sample_tokens("good", Some("rt"))).unwrap();
         let base = unreachable_base();
-        let restored =
-            restore_tokens(&reqwest::Client::new(), &base, &format!("{base}token"), &store, None)
-                .await
-                .unwrap();
+        let restored = restore_tokens(
+            &reqwest::Client::new(),
+            &base,
+            &format!("{base}token"),
+            &store,
+            None,
+        )
+        .await
+        .unwrap();
         assert!(restored.is_none());
     }
 
@@ -3748,7 +4052,9 @@ mod tests {
             .mount(&server)
             .await;
         let store = MemoryStore::default();
-        store.save(&sample_tokens("stale", Some("revoked"))).unwrap();
+        store
+            .save(&sample_tokens("stale", Some("revoked")))
+            .unwrap();
         let base = format!("{}/", server.uri());
         let restored = restore_tokens(
             &reqwest::Client::new(),
@@ -3764,7 +4070,8 @@ mod tests {
 
     #[test]
     fn the_saved_session_round_trips() {
-        let dir = std::env::temp_dir().join(format!("oxitide-saved-session-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("oxitide-saved-session-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("tidal_session.json");
         save_session(Some(&path), &saved_session());
@@ -3780,9 +4087,15 @@ mod tests {
         let store = MemoryStore::default();
         let http = reqwest::Client::new();
         let base = format!("{}/", server.uri());
-        let restored = restore_tokens(&http, &base, &format!("{}/token", server.uri()), &store, None)
-            .await
-            .unwrap();
+        let restored = restore_tokens(
+            &http,
+            &base,
+            &format!("{}/token", server.uri()),
+            &store,
+            None,
+        )
+        .await
+        .unwrap();
         assert!(restored.is_none());
     }
 
@@ -3801,11 +4114,17 @@ mod tests {
         store.save(&sample_tokens("good", Some("rt"))).unwrap();
         let http = reqwest::Client::new();
         let base = format!("{}/", server.uri());
-        let restored = restore_tokens(&http, &base, &format!("{}/token", server.uri()), &store, None)
-            .await
-            .unwrap()
-            .map(online)
-            .unwrap();
+        let restored = restore_tokens(
+            &http,
+            &base,
+            &format!("{}/token", server.uri()),
+            &store,
+            None,
+        )
+        .await
+        .unwrap()
+        .map(online)
+        .unwrap();
         assert_eq!(restored.0.user_id, 7);
         assert_eq!(restored.1.access_token, "good");
     }
@@ -3838,11 +4157,17 @@ mod tests {
         store.save(&sample_tokens("stale", Some("old-rt"))).unwrap();
         let http = reqwest::Client::new();
         let base = format!("{}/", server.uri());
-        let restored = restore_tokens(&http, &base, &format!("{}/token", server.uri()), &store, None)
-            .await
-            .unwrap()
-            .map(online)
-            .unwrap();
+        let restored = restore_tokens(
+            &http,
+            &base,
+            &format!("{}/token", server.uri()),
+            &store,
+            None,
+        )
+        .await
+        .unwrap()
+        .map(online)
+        .unwrap();
         assert_eq!(restored.0.user_id, 9);
         assert_eq!(restored.1.access_token, "fresh");
         // Refresh response omitted refresh_token: the previous one is preserved
@@ -3868,9 +4193,15 @@ mod tests {
         store.save(&sample_tokens("stale", Some("bad-rt"))).unwrap();
         let http = reqwest::Client::new();
         let base = format!("{}/", server.uri());
-        let restored = restore_tokens(&http, &base, &format!("{}/token", server.uri()), &store, None)
-            .await
-            .unwrap();
+        let restored = restore_tokens(
+            &http,
+            &base,
+            &format!("{}/token", server.uri()),
+            &store,
+            None,
+        )
+        .await
+        .unwrap();
         assert!(restored.is_none());
     }
 
@@ -3933,7 +4264,10 @@ mod tests {
             autoplay: false,
         }];
         let result = perf_queue_build_items(items, 0);
-        assert!(result.is_err(), "the perf command must not run outside a session");
+        assert!(
+            result.is_err(),
+            "the perf command must not run outside a session"
+        );
         assert_eq!(result.unwrap_err(), "no perf session");
     }
 
@@ -3959,9 +4293,16 @@ mod tests {
 
     #[test]
     fn track_flag_dto_serializes_camel_case_free_fields() {
-        let dto = TrackFlagDto { track_id: 7, explicit: Some(true), ai: None };
+        let dto = TrackFlagDto {
+            track_id: 7,
+            explicit: Some(true),
+            ai: None,
+        };
         let json = serde_json::to_value(&dto).unwrap();
-        assert_eq!(json, serde_json::json!({"track_id": 7, "explicit": true, "ai": null}));
+        assert_eq!(
+            json,
+            serde_json::json!({"track_id": 7, "explicit": true, "ai": null})
+        );
     }
 
     #[tokio::test]
@@ -4022,7 +4363,11 @@ mod tests {
     }
 
     fn content(block_explicit: bool, block_ai: bool) -> crate::config::ContentConfig {
-        crate::config::ContentConfig { block_explicit, block_ai, ..Default::default() }
+        crate::config::ContentConfig {
+            block_explicit,
+            block_ai,
+            ..Default::default()
+        }
     }
 
     fn v1_track(id: u64, explicit: bool) -> serde_json::Value {
@@ -4048,14 +4393,10 @@ mod tests {
 
         let store = crate::track_flags::TrackFlagsStore::start(None);
         let client = tidal_client(&server);
-        let (items, kept) = resolve_playable_items(
-            &client,
-            &[1, 2],
-            Some(&store),
-            &content(true, false),
-        )
-        .await
-        .unwrap();
+        let (items, kept) =
+            resolve_playable_items(&client, &[1, 2], Some(&store), &content(true, false))
+                .await
+                .unwrap();
 
         assert_eq!(kept, vec![2]);
         assert_eq!(items.len(), 1);

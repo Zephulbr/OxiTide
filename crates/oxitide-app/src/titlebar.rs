@@ -31,7 +31,12 @@ fn overlay_rect(target: SnapTarget, client_width: i32, dpi: u32) -> (i32, i32, i
     let px = |v: f64| (v * scale).round() as i32;
     let width = px(target.width).max(1);
     let height = px(target.height).max(1);
-    (client_width - px(target.right), px(target.top), width, height)
+    (
+        client_width - px(target.right),
+        px(target.top),
+        width,
+        height,
+    )
 }
 
 /// Whether this platform uses the custom chrome.
@@ -64,10 +69,10 @@ mod imp {
     use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
     use windows::Win32::UI::WindowsAndMessaging::{
         CreateWindowExW, DefWindowProcW, GetClientRect, RegisterClassExW, SetWindowPos,
-        HTMAXBUTTON, HWND_TOP, SWP_ASYNCWINDOWPOS, SWP_HIDEWINDOW, SWP_NOACTIVATE,
-        SWP_SHOWWINDOW, WINDOW_EX_STYLE, WM_DPICHANGED, WM_NCDESTROY, WM_NCHITTEST,
-        WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_NCMOUSELEAVE, WM_NCMOUSEMOVE, WM_SIZE,
-        WNDCLASSEXW, WS_CHILD, WS_CLIPSIBLINGS,
+        HTMAXBUTTON, HWND_TOP, SWP_ASYNCWINDOWPOS, SWP_HIDEWINDOW, SWP_NOACTIVATE, SWP_SHOWWINDOW,
+        WINDOW_EX_STYLE, WM_DPICHANGED, WM_NCDESTROY, WM_NCHITTEST, WM_NCLBUTTONDOWN,
+        WM_NCLBUTTONUP, WM_NCMOUSELEAVE, WM_NCMOUSEMOVE, WM_SIZE, WNDCLASSEXW, WS_CHILD,
+        WS_CLIPSIBLINGS,
     };
 
     use super::{overlay_rect, SnapTarget};
@@ -183,7 +188,15 @@ mod imp {
             return;
         }
         let (x, y, width, height) = overlay_rect(target, client.right, GetDpiForWindow(parent));
-        let _ = SetWindowPos(overlay, Some(HWND_TOP), x, y, width, height, flags | SWP_SHOWWINDOW);
+        let _ = SetWindowPos(
+            overlay,
+            Some(HWND_TOP),
+            x,
+            y,
+            width,
+            height,
+            flags | SWP_SHOWWINDOW,
+        );
     }
 
     fn emit(kind: &'static str) {
@@ -296,7 +309,12 @@ mod imp {
 mod tests {
     use super::*;
 
-    const TARGET: SnapTarget = SnapTarget { right: 92.0, top: 0.0, width: 46.0, height: 32.0 };
+    const TARGET: SnapTarget = SnapTarget {
+        right: 92.0,
+        top: 0.0,
+        width: 46.0,
+        height: 32.0,
+    };
 
     #[test]
     fn overlay_is_anchored_to_the_right_edge() {
@@ -313,7 +331,12 @@ mod tests {
 
     #[test]
     fn overlay_never_collapses_to_zero() {
-        let tiny = SnapTarget { right: 0.0, top: 0.0, width: 0.1, height: 0.1 };
+        let tiny = SnapTarget {
+            right: 0.0,
+            top: 0.0,
+            width: 0.1,
+            height: 0.1,
+        };
         assert_eq!(overlay_rect(tiny, 100, 96), (100, 0, 1, 1));
     }
 }

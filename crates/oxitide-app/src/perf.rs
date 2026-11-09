@@ -81,9 +81,11 @@ impl PerfSession {
             .unwrap_or(0);
         let run_id = format!("{scenario}-{unix_secs}");
         let jsonl_path = dir.join(format!("{run_id}.jsonl"));
-        let file = OpenOptions::new().create(true).append(true).open(&jsonl_path)?;
-        let process_start_unix_ms =
-            process_creation_unix_ms().unwrap_or_else(now_unix_ms);
+        let file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&jsonl_path)?;
+        let process_start_unix_ms = process_creation_unix_ms().unwrap_or_else(now_unix_ms);
         let loader_offset_ms = now_unix_ms()
             .saturating_sub(process_start_unix_ms)
             .min(u64::MAX as u128) as u64;
@@ -115,7 +117,10 @@ impl PerfSession {
 
     fn write(&self, mut value: serde_json::Value) {
         if let serde_json::Value::Object(map) = &mut value {
-            map.insert("run_id".into(), serde_json::Value::String(self.run_id.clone()));
+            map.insert(
+                "run_id".into(),
+                serde_json::Value::String(self.run_id.clone()),
+            );
         }
         let mut out = self.out.lock().unwrap();
         let mut line = value.to_string();
@@ -133,7 +138,11 @@ impl PerfSession {
     pub fn mark(&self, name: &str) {
         let t_ms = self.elapsed_ms();
         let unix_ms = self.process_start_unix_ms + t_ms as u128;
-        let mark = PerfMark { name: name.to_string(), t_ms, unix_ms };
+        let mark = PerfMark {
+            name: name.to_string(),
+            t_ms,
+            unix_ms,
+        };
         self.marks.lock().unwrap().push(mark.clone());
         self.write(serde_json::json!({
             "kind": "mark",
@@ -501,8 +510,14 @@ fn process_creation_unix_ms() -> Option<u128> {
     let mut kernel = FILETIME::default();
     let mut user = FILETIME::default();
     unsafe {
-        GetProcessTimes(GetCurrentProcess(), &mut creation, &mut exit, &mut kernel, &mut user)
-            .ok()?;
+        GetProcessTimes(
+            GetCurrentProcess(),
+            &mut creation,
+            &mut exit,
+            &mut kernel,
+            &mut user,
+        )
+        .ok()?;
     }
     let ticks = ((creation.dwHighDateTime as u64) << 32) | creation.dwLowDateTime as u64;
     // FILETIME counts 100 ns intervals since 1601-01-01; unix epoch offset:
@@ -612,12 +627,12 @@ fn filetime_ticks(time: &windows::Win32::Foundation::FILETIME) -> u64 {
 /// helpers), in MiB, one row per process.
 #[cfg(windows)]
 fn process_memory_rows() -> Vec<ProcessSample> {
+    use windows::Win32::Foundation::FILETIME;
     use windows::Win32::Foundation::{CloseHandle, HANDLE};
     use windows::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
         TH32CS_SNAPPROCESS,
     };
-    use windows::Win32::Foundation::FILETIME;
     use windows::Win32::System::ProcessStatus::{
         GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS, PROCESS_MEMORY_COUNTERS_EX,
     };
@@ -652,7 +667,12 @@ fn process_memory_rows() -> Vec<ProcessSample> {
                     continue;
                 }
                 let created = creation_ms_for_pid(entry.th32ProcessID);
-                parents.push((entry.th32ProcessID, entry.th32ParentProcessID, name, created));
+                parents.push((
+                    entry.th32ProcessID,
+                    entry.th32ParentProcessID,
+                    name,
+                    created,
+                ));
                 if Process32NextW(snapshot, &mut entry).is_err() {
                     break;
                 }
@@ -678,11 +698,16 @@ fn process_memory_rows() -> Vec<ProcessSample> {
                 std::mem::size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32,
             )
         };
-        let (mut creation, mut exit, mut kernel, mut user) =
-            (FILETIME::default(), FILETIME::default(), FILETIME::default(), FILETIME::default());
-        let cpu_ms = unsafe { GetProcessTimes(handle, &mut creation, &mut exit, &mut kernel, &mut user) }
-            .ok()
-            .map(|()| (filetime_ticks(&kernel) + filetime_ticks(&user)) / 10_000);
+        let (mut creation, mut exit, mut kernel, mut user) = (
+            FILETIME::default(),
+            FILETIME::default(),
+            FILETIME::default(),
+            FILETIME::default(),
+        );
+        let cpu_ms =
+            unsafe { GetProcessTimes(handle, &mut creation, &mut exit, &mut kernel, &mut user) }
+                .ok()
+                .map(|()| (filetime_ticks(&kernel) + filetime_ticks(&user)) / 10_000);
         let cpu_cycle_ms = process_cycle_ms(handle);
         let _ = unsafe { CloseHandle(handle) };
         if ok.is_ok() {
@@ -899,8 +924,8 @@ mod tests {
     use oxitide_audio::perf::AudioPerfEvent;
 
     fn temp_dir(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir()
-            .join(format!("oxitide-perf-test-{}-{tag}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("oxitide-perf-test-{}-{tag}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         dir
     }
@@ -954,7 +979,10 @@ mod tests {
     #[test]
     fn underruns_are_written_with_their_count() {
         let session = PerfSession::create_in(&temp_dir("underrun"), "S4").unwrap();
-        session.audio_event(AudioPerfEvent::Underrun { track_id: 9, count: 2 });
+        session.audio_event(AudioPerfEvent::Underrun {
+            track_id: 9,
+            count: 2,
+        });
         let text = std::fs::read_to_string(session.jsonl_path()).unwrap();
         let row: serde_json::Value = text
             .lines()
@@ -1045,7 +1073,10 @@ mod tests {
 
     #[test]
     fn statm_resident_pages_are_parsed_and_zero_marks_a_zombie() {
-        assert_eq!(parse_statm_resident_pages("12345 678 90 0 0 0 0"), Some(678));
+        assert_eq!(
+            parse_statm_resident_pages("12345 678 90 0 0 0 0"),
+            Some(678)
+        );
         assert_eq!(parse_statm_resident_pages("0 0 0 0 0 0 0"), Some(0));
         assert_eq!(parse_statm_resident_pages("12345"), None);
         assert_eq!(parse_statm_resident_pages("12345 pages"), None);
@@ -1055,9 +1086,15 @@ mod tests {
     fn memory_kb_prefers_smaps_and_falls_back_to_statm() {
         let smaps = "Rss: 100 kB\n";
         let statm = "1000 200 0 0 0 0 0";
-        assert_eq!(memory_kb_from_proc(Some(smaps), Some(statm), 4096), Some(100));
+        assert_eq!(
+            memory_kb_from_proc(Some(smaps), Some(statm), 4096),
+            Some(100)
+        );
         assert_eq!(memory_kb_from_proc(None, Some(statm), 4096), Some(800));
-        assert_eq!(memory_kb_from_proc(Some("Pss: 1 kB\n"), Some(statm), 4096), Some(800));
+        assert_eq!(
+            memory_kb_from_proc(Some("Pss: 1 kB\n"), Some(statm), 4096),
+            Some(800)
+        );
         assert_eq!(memory_kb_from_proc(None, None, 4096), None);
         assert_eq!(memory_kb_from_proc(None, Some(statm), 0), None);
     }
@@ -1095,8 +1132,10 @@ mod tests {
         session.note_ipc_event(50);
         session.write_memory_sample();
         let text = std::fs::read_to_string(session.jsonl_path()).unwrap();
-        let lines: Vec<serde_json::Value> =
-            text.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+        let lines: Vec<serde_json::Value> = text
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
         let ipc = lines.iter().find(|l| l["kind"] == "ipc").expect("ipc row");
         assert_eq!(ipc["events"], 2);
         assert_eq!(ipc["bytes"], 150);
@@ -1113,7 +1152,10 @@ mod tests {
                 .iter()
                 .find(|l| l["kind"] == "memory_process" && l["self"] == true)
                 .expect("own process row");
-            assert!(own["cpu_cycle_ms"].as_u64().is_some(), "cycle cpu time missing: {own}");
+            assert!(
+                own["cpu_cycle_ms"].as_u64().is_some(),
+                "cycle cpu time missing: {own}"
+            );
         }
     }
 
@@ -1139,8 +1181,14 @@ mod tests {
         }
         let wall_ms = started.elapsed().as_secs_f64() * 1000.0;
         let cpu_ms = (read() - before) as f64 / rate;
-        assert!(cpu_ms <= wall_ms * 1.1, "charged {cpu_ms:.1} ms for {wall_ms:.1} ms of wall time");
-        assert!(cpu_ms >= wall_ms * 0.5, "charged {cpu_ms:.1} ms for {wall_ms:.1} ms of wall time");
+        assert!(
+            cpu_ms <= wall_ms * 1.1,
+            "charged {cpu_ms:.1} ms for {wall_ms:.1} ms of wall time"
+        );
+        assert!(
+            cpu_ms >= wall_ms * 0.5,
+            "charged {cpu_ms:.1} ms for {wall_ms:.1} ms of wall time"
+        );
     }
 
     #[test]
@@ -1162,7 +1210,10 @@ mod tests {
     fn linux_process_creation_is_recent() {
         let created = process_creation_unix_ms().expect("creation time from /proc");
         let now = now_unix_ms();
-        assert!(created <= now, "creation {created} must not be in the future");
+        assert!(
+            created <= now,
+            "creation {created} must not be in the future"
+        );
         assert!(
             now - created < 24 * 60 * 60 * 1000,
             "creation {created} must be less than a day old"
@@ -1212,11 +1263,19 @@ mod tests {
             .lines()
             .map(|l| serde_json::from_str(l).expect("valid JSON"))
             .collect();
-        let aggregate = lines.iter().find(|l| l["kind"] == "memory").expect("aggregate line");
+        let aggregate = lines
+            .iter()
+            .find(|l| l["kind"] == "memory")
+            .expect("aggregate line");
         assert!(aggregate["mb"].as_u64().unwrap() > 0);
-        let processes: Vec<_> =
-            lines.iter().filter(|l| l["kind"] == "memory_process").collect();
-        assert!(!processes.is_empty(), "at least the app process must be sampled");
+        let processes: Vec<_> = lines
+            .iter()
+            .filter(|l| l["kind"] == "memory_process")
+            .collect();
+        assert!(
+            !processes.is_empty(),
+            "at least the app process must be sampled"
+        );
         assert!(
             processes.iter().any(|l| l["self"].as_bool() == Some(true)
                 && l["mb"].as_u64().unwrap() > 0
@@ -1224,7 +1283,11 @@ mod tests {
             "the app process must be named and flagged"
         );
         let sum: u64 = processes.iter().map(|l| l["mb"].as_u64().unwrap()).sum();
-        assert_eq!(sum, aggregate["mb"].as_u64().unwrap(), "aggregate must be the row sum");
+        assert_eq!(
+            sum,
+            aggregate["mb"].as_u64().unwrap(),
+            "aggregate must be the row sum"
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 }

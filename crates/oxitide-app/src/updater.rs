@@ -178,7 +178,9 @@ mod tests {
     #[test]
     fn linux_needs_an_appimage() {
         assert_eq!(support_reason(false, true, true), None);
-        assert!(support_reason(false, true, false).unwrap().contains("package manager"));
+        assert!(support_reason(false, true, false)
+            .unwrap()
+            .contains("package manager"));
     }
 
     #[test]

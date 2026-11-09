@@ -83,12 +83,17 @@ fn candidates(
     let mut seen = HashSet::new();
     let (fresh, heard): (Vec<&Track>, Vec<&Track>) = tracks
         .iter()
-        .filter(|t| t.id != seed && !queued.contains(&t.id) && !picked.contains(&t.id) && seen.insert(t.id))
+        .filter(|t| {
+            t.id != seed && !queued.contains(&t.id) && !picked.contains(&t.id) && seen.insert(t.id)
+        })
         .partition(|t| !recent.contains(&t.id));
     fresh
         .into_iter()
         .chain(heard)
-        .map(|t| QueueItem { autoplay: true, ..crate::commands::queue_item_from_track(t) })
+        .map(|t| QueueItem {
+            autoplay: true,
+            ..crate::commands::queue_item_from_track(t)
+        })
         .collect()
 }
 
@@ -104,11 +109,17 @@ fn take_batch(pool: &mut Vec<QueueItem>, queued: &HashSet<u64>) -> Vec<QueueItem
 /// first, so removing them in order keeps the rest valid.
 pub fn prune_indices(queue: &[QueueItem], current: Option<usize>) -> Vec<usize> {
     let from = current.map_or(0, |c| c + 1);
-    (from..queue.len()).rev().filter(|&i| queue[i].autoplay).collect()
+    (from..queue.len())
+        .rev()
+        .filter(|&i| queue[i].autoplay)
+        .collect()
 }
 
 /// Track radio of `seed`, else artist radio of its first credited artist.
-async fn radio_for(client: &TidalClient, seed: &QueueItem) -> Result<Vec<Track>, oxitide_tidal::Error> {
+async fn radio_for(
+    client: &TidalClient,
+    seed: &QueueItem,
+) -> Result<Vec<Track>, oxitide_tidal::Error> {
     let first = client.track_radio(seed.track_id).await;
     match first {
         Ok(tracks) if !tracks.is_empty() => return Ok(tracks),
@@ -172,7 +183,13 @@ impl Autoplay {
         });
     }
 
-    async fn fill(&self, app: &AppState, handle: &AppHandle, target: QueueItem, queued: HashSet<u64>) {
+    async fn fill(
+        &self,
+        app: &AppState,
+        handle: &AppHandle,
+        target: QueueItem,
+        queued: HashSet<u64>,
+    ) {
         let result = self.suggest(app, &target, &queued).await;
         let items = {
             let mut run = self.run.lock().unwrap();
@@ -215,7 +232,11 @@ impl Autoplay {
             run.attempted = None;
             return;
         }
-        tracing::info!("autoplay: queued {} tracks after track {}", items.len(), target.track_id);
+        tracing::info!(
+            "autoplay: queued {} tracks after track {}",
+            items.len(),
+            target.track_id
+        );
         let _ = player.engine.handle(EngineCmd::Enqueue { items });
         if now.ended {
             // The queue played out while the radio loaded: carry on.
@@ -242,7 +263,9 @@ impl Autoplay {
             .map_err(|_| "state poisoned".to_string())?
             .clone()
             .ok_or_else(|| "not logged in".to_string())?;
-        let tracks = radio_for(&client, target).await.map_err(|e| app.fail_tidal(e))?;
+        let tracks = radio_for(&client, target)
+            .await
+            .map_err(|e| app.fail_tidal(e))?;
         let flags = app.track_flags();
         if let Some(store) = &flags {
             for track in &tracks {
@@ -251,7 +274,12 @@ impl Autoplay {
         }
         let recent: HashSet<u64> = match app.history() {
             Some(history) => tauri::async_runtime::spawn_blocking(move || {
-                history.page(0, RECENT_PLAYS).0.into_iter().map(|r| r.track_id).collect()
+                history
+                    .page(0, RECENT_PLAYS)
+                    .0
+                    .into_iter()
+                    .map(|r| r.track_id)
+                    .collect()
             })
             .await
             .unwrap_or_default(),
@@ -261,9 +289,15 @@ impl Autoplay {
         let items = candidates(&tracks, target.track_id, queued, &picked, &recent);
         let ids: Vec<u64> = items.iter().map(|item| item.track_id).collect();
         let content = app.config().content;
-        let (mut kept, _) = crate::commands::filter_playable_items(&client, &ids, items, flags.as_deref(), &content)
-            .await
-            .map_err(|e| app.fail_tidal(e))?;
+        let (mut kept, _) = crate::commands::filter_playable_items(
+            &client,
+            &ids,
+            items,
+            flags.as_deref(),
+            &content,
+        )
+        .await
+        .map_err(|e| app.fail_tidal(e))?;
         let mut run = self.run.lock().unwrap();
         run.picked.extend(kept.iter().map(|item| item.track_id));
         let rest = kept.split_off(kept.len().min(BATCH));
@@ -283,21 +317,23 @@ impl Autoplay {
 
 /// Wait (off the runtime) for the network, then try the fill again.
 fn retry_when_online(handle: AppHandle) {
-    let spawned = std::thread::Builder::new().name("oxitide-autoplay".into()).spawn(move || {
-        let conn = oxitide_audio::connectivity::global();
-        let started = Instant::now();
-        while conn.is_offline() && started.elapsed() < OFFLINE_WAIT {
-            conn.wait_change(Duration::from_secs(30));
-        }
-        if conn.is_offline() {
-            return;
-        }
-        let app = handle.state::<AppState>();
-        if let Some(player) = app.player() {
-            app.autoplay.run.lock().unwrap().attempted = None;
-            app.autoplay.consider(&player.engine.state(), &handle);
-        }
-    });
+    let spawned = std::thread::Builder::new()
+        .name("oxitide-autoplay".into())
+        .spawn(move || {
+            let conn = oxitide_audio::connectivity::global();
+            let started = Instant::now();
+            while conn.is_offline() && started.elapsed() < OFFLINE_WAIT {
+                conn.wait_change(Duration::from_secs(30));
+            }
+            if conn.is_offline() {
+                return;
+            }
+            let app = handle.state::<AppState>();
+            if let Some(player) = app.player() {
+                app.autoplay.run.lock().unwrap().attempted = None;
+                app.autoplay.consider(&player.engine.state(), &handle);
+            }
+        });
     if let Err(e) = spawned {
         tracing::warn!("autoplay: could not wait for the network: {e}");
     }
@@ -322,14 +358,20 @@ mod tests {
             album: "B".into(),
             duration_secs: 200,
             cover: None,
-            artist_refs: vec![ArtistRef { id: 90 + id, name: "A".into() }],
+            artist_refs: vec![ArtistRef {
+                id: 90 + id,
+                name: "A".into(),
+            }],
             album_id: None,
             autoplay: false,
         }
     }
 
     fn state(ids: &[u64], current: Option<usize>, playing: bool) -> PlaybackState {
-        let mut state = crate::remote::events::tests::playback(ids.iter().map(|&id| item(id)).collect(), current);
+        let mut state = crate::remote::events::tests::playback(
+            ids.iter().map(|&id| item(id)).collect(),
+            current,
+        );
         state.playing = playing;
         state.repeat = RepeatMode::Off;
         state
@@ -345,8 +387,14 @@ mod tests {
 
     #[test]
     fn fills_only_on_the_last_track() {
-        assert_eq!(fill_target(&state(&[1, 2, 3], Some(2), true)).map(|i| i.track_id), Some(3));
-        assert!(fill_target(&state(&[1, 2, 3], Some(1), true)).is_none(), "something follows");
+        assert_eq!(
+            fill_target(&state(&[1, 2, 3], Some(2), true)).map(|i| i.track_id),
+            Some(3)
+        );
+        assert!(
+            fill_target(&state(&[1, 2, 3], Some(1), true)).is_none(),
+            "something follows"
+        );
         assert!(fill_target(&state(&[], None, false)).is_none());
     }
 
@@ -354,14 +402,20 @@ mod tests {
     fn a_pause_on_the_last_track_waits_but_an_end_fills() {
         let paused = state(&[1, 2], Some(1), false);
         assert!(fill_target(&paused).is_none());
-        let ended = PlaybackState { ended: true, ..paused };
+        let ended = PlaybackState {
+            ended: true,
+            ..paused
+        };
         assert_eq!(fill_target(&ended).map(|i| i.track_id), Some(2));
     }
 
     #[test]
     fn repeat_never_autoplays() {
         for repeat in [RepeatMode::All, RepeatMode::One] {
-            let s = PlaybackState { repeat, ..state(&[1], Some(0), true) };
+            let s = PlaybackState {
+                repeat,
+                ..state(&[1], Some(0), true)
+            };
             assert!(fill_target(&s).is_none(), "{repeat:?}");
         }
     }
@@ -386,7 +440,10 @@ mod tests {
         let batch = take_batch(&mut pool, &HashSet::from([1, 2]));
         assert_eq!(batch.len(), BATCH);
         assert_eq!(batch[0].track_id, 3);
-        assert_eq!(pool.iter().map(|i| i.track_id).collect::<Vec<_>>(), vec![13, 14]);
+        assert_eq!(
+            pool.iter().map(|i| i.track_id).collect::<Vec<_>>(),
+            vec![13, 14]
+        );
     }
 
     #[test]
@@ -402,8 +459,14 @@ mod tests {
 
     #[test]
     fn a_failed_fill_retries_only_after_a_while() {
-        let mut run = Run { attempted: Some((1, 2)), ..Run::default() };
-        assert!(!run.may_start((1, 2)), "same track and queue: asked already");
+        let mut run = Run {
+            attempted: Some((1, 2)),
+            ..Run::default()
+        };
+        assert!(
+            !run.may_start((1, 2)),
+            "same track and queue: asked already"
+        );
         assert!(run.may_start((1, 3)), "the queue changed");
         run.failed_at = Some(Instant::now() - RETRY_AFTER);
         assert!(run.may_start((1, 2)));
@@ -416,7 +479,11 @@ mod tests {
             reqwest::Client::new(),
             server.uri(),
             format!("{}/token", server.uri()),
-            SessionInfo { session_id: "s".into(), country_code: "GR".into(), user_id: 1 },
+            SessionInfo {
+                session_id: "s".into(),
+                country_code: "GR".into(),
+                user_id: 1,
+            },
             TokenSet {
                 access_token: "AT".into(),
                 refresh_token: Some("RT".into()),
@@ -444,7 +511,10 @@ mod tests {
             .mount(&server)
             .await;
         let tracks = radio_for(&client(&server), &item(7)).await.unwrap();
-        assert_eq!(tracks.iter().map(|t| t.id).collect::<Vec<_>>(), vec![11, 12]);
+        assert_eq!(
+            tracks.iter().map(|t| t.id).collect::<Vec<_>>(),
+            vec![11, 12]
+        );
     }
 
     #[tokio::test]
@@ -463,7 +533,10 @@ mod tests {
         let tracks = radio_for(&client(&server), &item(7)).await.unwrap();
         assert_eq!(tracks[0].id, 21);
 
-        let no_artist = QueueItem { artist_refs: Vec::new(), ..item(7) };
+        let no_artist = QueueItem {
+            artist_refs: Vec::new(),
+            ..item(7)
+        };
         assert!(radio_for(&client(&server), &no_artist).await.is_err());
     }
 }

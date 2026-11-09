@@ -69,9 +69,17 @@ struct StoredRecord {
     started_at: i64,
     listened_ms: u64,
     completed: bool,
-    #[serde(default, skip_serializing_if = "Vec::is_empty", with = "crate::stored_ref::artist_refs")]
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        with = "crate::stored_ref::artist_refs"
+    )]
     artist_refs: Vec<ArtistRef>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "crate::stored_ref::opt_id")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "crate::stored_ref::opt_id"
+    )]
     album_id: Option<u64>,
 }
 
@@ -170,7 +178,11 @@ impl HistoryTracker {
                 }
                 None
             }
-            EngineEvent::Position { position_ms, duration_ms, .. } => {
+            EngineEvent::Position {
+                position_ms,
+                duration_ms,
+                ..
+            } => {
                 if let Some(play) = self.current.as_mut() {
                     let delta = position_ms.saturating_sub(play.last_pos_ms);
                     if delta > 0 && delta <= SEEK_MAX_MS {
@@ -190,7 +202,12 @@ impl HistoryTracker {
     /// The current play as a record for the first history page.
     pub fn in_flight(&self) -> Option<HistoryRecord> {
         let play = self.current.as_ref()?;
-        Some(record_from(&play.item, play.started_at, play.listened_ms, false))
+        Some(record_from(
+            &play.item,
+            play.started_at,
+            play.listened_ms,
+            false,
+        ))
     }
 
     /// Finalize the current play (exit / logout). No-op without one.
@@ -225,9 +242,18 @@ impl HistoryTracker {
         if !should_record(play.listened_ms, duration_ms) {
             return None;
         }
-        let completed =
-            is_completed(play.listened_ms, duration_ms, play.last_pos_ms, self.crossfade_ms);
-        Some(record_from(&play.item, play.started_at, play.listened_ms, completed))
+        let completed = is_completed(
+            play.listened_ms,
+            duration_ms,
+            play.last_pos_ms,
+            self.crossfade_ms,
+        );
+        Some(record_from(
+            &play.item,
+            play.started_at,
+            play.listened_ms,
+            completed,
+        ))
     }
 }
 
@@ -249,7 +275,12 @@ fn is_completed(listened_ms: u64, duration_ms: u64, last_pos_ms: u64, crossfade_
         || last_pos_ms.saturating_add(HISTORY_END_SLACK_MS + crossfade_ms) >= duration_ms
 }
 
-fn record_from(item: &QueueItem, started_at: i64, listened_ms: u64, completed: bool) -> HistoryRecord {
+fn record_from(
+    item: &QueueItem,
+    started_at: i64,
+    listened_ms: u64,
+    completed: bool,
+) -> HistoryRecord {
     HistoryRecord {
         track_id: item.track_id,
         title: item.title.clone(),
@@ -523,7 +554,10 @@ fn rewrite(path: &Path, records: &VecDeque<HistoryRecord>) {
         let _ = fs::create_dir_all(parent);
     }
     let tmp = path.with_extension("jsonl.tmp");
-    if fs::write(&tmp, text).and_then(|_| fs::rename(&tmp, path)).is_err() {
+    if fs::write(&tmp, text)
+        .and_then(|_| fs::rename(&tmp, path))
+        .is_err()
+    {
         tracing::warn!("failed to rewrite history at {}", path.display());
     }
 }
@@ -625,13 +659,19 @@ pub fn compute_stats(records: &VecDeque<HistoryRecord>, now: i64, offset_minutes
             stats.plays_30d += 1;
         }
         if !record.artist.is_empty() {
-            artists.entry(record.artist.clone()).or_default().add(record);
+            artists
+                .entry(record.artist.clone())
+                .or_default()
+                .add(record);
         }
         if !record.album.is_empty() {
             albums.entry(record.album.clone()).or_default().add(record);
         }
         let (track, newest) = tracks.entry(record.track_id).or_insert_with(|| {
-            let track = TopTrack { track_id: record.track_id, ..TopTrack::default() };
+            let track = TopTrack {
+                track_id: record.track_id,
+                ..TopTrack::default()
+            };
             (track, i64::MIN)
         });
         track.plays += 1;
@@ -661,7 +701,11 @@ pub fn compute_stats(records: &VecDeque<HistoryRecord>, now: i64, offset_minutes
     stats.daily = (0..DAILY_DAYS)
         .map(|i| {
             let day = today - (DAILY_DAYS - 1) + i;
-            DailyEntry { date: date_from_day(day), plays: 0, listened_ms: 0 }
+            DailyEntry {
+                date: date_from_day(day),
+                plays: 0,
+                listened_ms: 0,
+            }
         })
         .collect();
     for record in records {
@@ -713,7 +757,11 @@ fn streaks(days: &HashSet<i64>, today: i64) -> (u32, u32) {
         }
         longest = longest.max(len as u32);
     }
-    let end = if days.contains(&today) { today } else { today - 1 };
+    let end = if days.contains(&today) {
+        today
+    } else {
+        today - 1
+    };
     let mut current = 0;
     while days.contains(&(end - current)) {
         current += 1;
@@ -822,7 +870,11 @@ mod tests {
     }
 
     fn position(ms: u64, duration_ms: u64) -> EngineEvent {
-        EngineEvent::Position { position_ms: ms, duration_ms, lead_ms: 0 }
+        EngineEvent::Position {
+            position_ms: ms,
+            duration_ms,
+            lead_ms: 0,
+        }
     }
 
     /// Start a play and feed `seconds` of 1 s position ticks.
@@ -830,7 +882,10 @@ mod tests {
         tracker.on_event(&now_playing(item), 100);
         tracker.on_event(&state(true), 100);
         for step in 1..=seconds {
-            tracker.on_event(&position(step * 1000, item.duration_secs as u64 * 1000), 100);
+            tracker.on_event(
+                &position(step * 1000, item.duration_secs as u64 * 1000),
+                100,
+            );
         }
     }
 
@@ -845,7 +900,9 @@ mod tests {
     fn long_play_is_recorded_at_transition() {
         let mut tracker = HistoryTracker::default();
         play_seconds(&mut tracker, &item(1, 200), 40);
-        let record = tracker.on_event(&now_playing(&item(2, 200)), 200).expect("recorded");
+        let record = tracker
+            .on_event(&now_playing(&item(2, 200)), 200)
+            .expect("recorded");
         assert_eq!(record.track_id, 1);
         assert_eq!(record.listened_ms, 40_000);
         assert!(!record.completed);
@@ -860,7 +917,9 @@ mod tests {
 
         let mut tracker = HistoryTracker::default();
         play_seconds(&mut tracker, &item(1, 45), 23);
-        let record = tracker.on_event(&now_playing(&item(2, 45)), 200).expect("recorded");
+        let record = tracker
+            .on_event(&now_playing(&item(2, 45)), 200)
+            .expect("recorded");
         assert_eq!(record.listened_ms, 23_000);
     }
 
@@ -868,7 +927,9 @@ mod tests {
     fn queue_end_finalizes() {
         let mut tracker = HistoryTracker::default();
         play_seconds(&mut tracker, &item(1, 200), 40);
-        let record = tracker.on_event(&EngineEvent::NowPlaying(None), 200).expect("recorded");
+        let record = tracker
+            .on_event(&EngineEvent::NowPlaying(None), 200)
+            .expect("recorded");
         assert_eq!(record.track_id, 1);
     }
 
@@ -880,7 +941,9 @@ mod tests {
         for step in 41..=60 {
             tracker.on_event(&position(step * 1000, 200_000), 200);
         }
-        let record = tracker.on_event(&now_playing(&item(2, 200)), 300).expect("recorded");
+        let record = tracker
+            .on_event(&now_playing(&item(2, 200)), 300)
+            .expect("recorded");
         assert_eq!(record.listened_ms, 60_000);
     }
 
@@ -893,7 +956,9 @@ mod tests {
         for step in 31..=60 {
             tracker.on_event(&position(step * 1000, 200_000), 100);
         }
-        let record = tracker.on_event(&now_playing(&item(2, 200)), 200).expect("recorded");
+        let record = tracker
+            .on_event(&now_playing(&item(2, 200)), 200)
+            .expect("recorded");
         assert_eq!(record.listened_ms, 30_000, "the 30 s jump must not count");
     }
 
@@ -901,12 +966,16 @@ mod tests {
     fn completed_at_ninety_percent() {
         let mut tracker = HistoryTracker::default();
         play_seconds(&mut tracker, &item(1, 100), 90);
-        let record = tracker.on_event(&now_playing(&item(2, 100)), 200).expect("recorded");
+        let record = tracker
+            .on_event(&now_playing(&item(2, 100)), 200)
+            .expect("recorded");
         assert!(record.completed);
 
         let mut tracker = HistoryTracker::default();
         play_seconds(&mut tracker, &item(1, 100), 80);
-        let record = tracker.on_event(&now_playing(&item(2, 100)), 200).expect("recorded");
+        let record = tracker
+            .on_event(&now_playing(&item(2, 100)), 200)
+            .expect("recorded");
         assert!(!record.completed);
     }
 
@@ -920,20 +989,32 @@ mod tests {
         for step in 1..=50 {
             tracker.on_event(&position(step * 1000, 60_000), 100);
         }
-        let record = tracker.on_event(&now_playing(&item(2, 60)), 200).expect("recorded");
-        assert!(record.completed, "handing over 10 s early is still a full play");
+        let record = tracker
+            .on_event(&now_playing(&item(2, 60)), 200)
+            .expect("recorded");
+        assert!(
+            record.completed,
+            "handing over 10 s early is still a full play"
+        );
 
         let mut tracker = HistoryTracker::default();
         play_seconds(&mut tracker, &item(1, 60), 50);
-        let record = tracker.on_event(&now_playing(&item(2, 60)), 200).expect("recorded");
-        assert!(!record.completed, "without a crossfade, 50 of 60 s is a skip");
+        let record = tracker
+            .on_event(&now_playing(&item(2, 60)), 200)
+            .expect("recorded");
+        assert!(
+            !record.completed,
+            "without a crossfade, 50 of 60 s is a skip"
+        );
     }
 
     #[test]
     fn short_track_natural_end_is_completed() {
         let mut tracker = HistoryTracker::default();
         play_seconds(&mut tracker, &item(1, 4), 3);
-        let record = tracker.on_event(&EngineEvent::NowPlaying(None), 200).expect("recorded");
+        let record = tracker
+            .on_event(&EngineEvent::NowPlaying(None), 200)
+            .expect("recorded");
         assert!(record.completed, "a track played to its end is completed");
     }
 
@@ -941,9 +1022,13 @@ mod tests {
     fn repeat_one_records_two_plays() {
         let mut tracker = HistoryTracker::default();
         play_seconds(&mut tracker, &item(1, 200), 40);
-        let first = tracker.on_event(&now_playing(&item(1, 200)), 200).expect("first");
+        let first = tracker
+            .on_event(&now_playing(&item(1, 200)), 200)
+            .expect("first");
         play_seconds(&mut tracker, &item(1, 200), 40);
-        let second = tracker.on_event(&EngineEvent::NowPlaying(None), 400).expect("second");
+        let second = tracker
+            .on_event(&EngineEvent::NowPlaying(None), 400)
+            .expect("second");
         assert_eq!(first.track_id, 1);
         assert_eq!(second.track_id, 1);
     }
@@ -961,7 +1046,9 @@ mod tests {
         for step in 1..=40 {
             tracker.on_event(&position(step * 1000, 200_000), 300);
         }
-        let record = tracker.on_event(&now_playing(&item(2, 200)), 400).expect("recorded");
+        let record = tracker
+            .on_event(&now_playing(&item(2, 200)), 400)
+            .expect("recorded");
         assert_eq!(record.track_id, 1);
         assert_eq!(record.listened_ms, 40_000);
         assert_eq!(record.started_at, 300);
@@ -1035,7 +1122,10 @@ mod tests {
 
         let (items, total) = store.page(0, 10);
         assert_eq!(total, 2);
-        assert_eq!(items.iter().map(|r| r.track_id).collect::<Vec<_>>(), vec![2, 1]);
+        assert_eq!(
+            items.iter().map(|r| r.track_id).collect::<Vec<_>>(),
+            vec![2, 1]
+        );
         assert_eq!(items[0].listened_ms, 40_000);
         let lines = fs::read_to_string(dir.join("history.jsonl")).unwrap();
         assert_eq!(lines.lines().count(), 2);
@@ -1091,7 +1181,13 @@ mod tests {
         .unwrap();
         let store = store(&dir, 100, true);
         let (items, _) = store.page(0, 10);
-        assert_eq!(items[0].artist_refs, vec![ArtistRef { id: 7, name: "A".into() }]);
+        assert_eq!(
+            items[0].artist_refs,
+            vec![ArtistRef {
+                id: 7,
+                name: "A".into()
+            }]
+        );
         assert_eq!(items[0].album_id, Some(8));
 
         record_play(&store, 2, 40);
@@ -1111,7 +1207,8 @@ mod tests {
         // A rewrite (cap trim) turns the older line into the current form.
         rewrite(&path, &store.records.lock().unwrap().clone());
         let first: serde_json::Value =
-            serde_json::from_str(fs::read_to_string(&path).unwrap().lines().next().unwrap()).unwrap();
+            serde_json::from_str(fs::read_to_string(&path).unwrap().lines().next().unwrap())
+                .unwrap();
         assert_eq!(first["track_id"], "tidal:1");
         assert_eq!(first["artist_refs"][0]["ref"], "tidal:7");
         assert_eq!(first["album_id"], "tidal:8");
@@ -1129,7 +1226,10 @@ mod tests {
 
         let (items, total) = store.page(0, 10);
         assert_eq!(total, 2);
-        assert_eq!(items.iter().map(|r| r.track_id).collect::<Vec<_>>(), vec![3, 2]);
+        assert_eq!(
+            items.iter().map(|r| r.track_id).collect::<Vec<_>>(),
+            vec![3, 2]
+        );
         let lines = fs::read_to_string(dir.join("history.jsonl")).unwrap();
         assert_eq!(lines.lines().count(), 2, "the file must be pruned too");
         let _ = fs::remove_dir_all(dir);
@@ -1141,7 +1241,11 @@ mod tests {
         let store = store(&dir, 100, true);
         record_play(&store, 1, 40);
         store.record(&EngineEvent::NowPlaying(None));
-        assert_eq!(store.page(0, 10).1, 1, "the page read also drains the writer");
+        assert_eq!(
+            store.page(0, 10).1,
+            1,
+            "the page read also drains the writer"
+        );
         assert!(dir.join("history.jsonl").exists());
 
         store.clear();
@@ -1182,7 +1286,11 @@ mod tests {
 
         store.clear();
 
-        assert_eq!(store.page(0, 10).1, 0, "the in-flight play must not survive a clear");
+        assert_eq!(
+            store.page(0, 10).1,
+            0,
+            "the in-flight play must not survive a clear"
+        );
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -1202,7 +1310,11 @@ mod tests {
 
         store.set_enabled(false);
 
-        assert_eq!(store.page(0, 10).1, 0, "disabled history must not show the in-flight play");
+        assert_eq!(
+            store.page(0, 10).1,
+            0,
+            "disabled history must not show the in-flight play"
+        );
 
         store.set_enabled(true);
         store.record(&state_with_current(true, &track));
@@ -1246,7 +1358,10 @@ mod tests {
 
         let (items, total) = store.page(1, 1);
         assert_eq!(total, 3);
-        assert_eq!(items.iter().map(|r| r.track_id).collect::<Vec<_>>(), vec![2]);
+        assert_eq!(
+            items.iter().map(|r| r.track_id).collect::<Vec<_>>(),
+            vec![2]
+        );
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -1276,7 +1391,13 @@ mod tests {
 
     use std::collections::VecDeque;
 
-    fn record(id: u64, artist: &str, album: &str, started_at: i64, listened_ms: u64) -> HistoryRecord {
+    fn record(
+        id: u64,
+        artist: &str,
+        album: &str,
+        started_at: i64,
+        listened_ms: u64,
+    ) -> HistoryRecord {
         HistoryRecord {
             track_id: id,
             title: format!("T{id}"),
@@ -1375,7 +1496,11 @@ mod tests {
         let mut early = record(1, "A", "X", now - 12 * 3600 + 1800, 60_000); // 00:30Z
         early.completed = false;
         let stats = stats_of(
-            vec![record(2, "B", "Y", now, 60_000), record(2, "B", "Y", now - 86_400, 60_000), early],
+            vec![
+                record(2, "B", "Y", now, 60_000),
+                record(2, "B", "Y", now - 86_400, 60_000),
+                early,
+            ],
             now,
             -60,
         );
@@ -1385,7 +1510,14 @@ mod tests {
         assert_eq!(stats.hourly.iter().sum::<u64>(), 3);
         // Sunday (index 6) twice, Saturday once.
         assert_eq!(stats.weekdays, vec![0, 0, 0, 0, 0, 1, 2]);
-        assert_eq!((stats.distinct_tracks, stats.distinct_artists, stats.distinct_albums), (2, 2, 2));
+        assert_eq!(
+            (
+                stats.distinct_tracks,
+                stats.distinct_artists,
+                stats.distinct_albums
+            ),
+            (2, 2, 2)
+        );
         assert_eq!(stats.completed_plays, 2);
     }
 
@@ -1400,7 +1532,10 @@ mod tests {
         assert_eq!(stats.top_artists[0].track_id, 2);
         assert_eq!(stats.top_albums[0].cover.as_deref(), Some("new"));
         let track = stats.top_tracks.iter().find(|t| t.track_id == 1).unwrap();
-        assert_eq!((track.album.as_str(), track.cover.as_deref()), ("X", Some("old")));
+        assert_eq!(
+            (track.album.as_str(), track.cover.as_deref()),
+            ("X", Some("old"))
+        );
     }
 
     #[test]
@@ -1430,7 +1565,15 @@ mod tests {
     fn stats_over_ten_thousand_records_stays_fast() {
         let now = 2_000_000_000;
         let records: Vec<HistoryRecord> = (0..10_000)
-            .map(|i| record(i, "Artist", "Album", now - (i as i64 % 100) * 86_400, 60_000))
+            .map(|i| {
+                record(
+                    i,
+                    "Artist",
+                    "Album",
+                    now - (i as i64 % 100) * 86_400,
+                    60_000,
+                )
+            })
             .collect();
         let started = std::time::Instant::now();
         let stats = stats_of(records, now, 0);

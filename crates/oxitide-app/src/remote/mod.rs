@@ -101,7 +101,11 @@ impl RemoteService {
         ));
         tokio::spawn(server::serve(listener, ctx.clone(), shutdown_rx));
         tracing::info!("phone remote listening on port {port}");
-        Ok(Arc::new(Self { ctx, port, shutdown }))
+        Ok(Arc::new(Self {
+            ctx,
+            port,
+            shutdown,
+        }))
     }
 
     /// Close every stream with a final `revoked` and stop accepting.

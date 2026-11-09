@@ -28,9 +28,15 @@ pub struct SessionItem {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ai: Option<bool>,
     /// Name-link ids (see `QueueItem`); absent in sessions saved before them.
-    #[serde(skip_serializing_if = "Vec::is_empty", with = "crate::stored_ref::artist_refs")]
+    #[serde(
+        skip_serializing_if = "Vec::is_empty",
+        with = "crate::stored_ref::artist_refs"
+    )]
     pub artist_refs: Vec<ArtistRef>,
-    #[serde(skip_serializing_if = "Option::is_none", with = "crate::stored_ref::opt_id")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        with = "crate::stored_ref::opt_id"
+    )]
     pub album_id: Option<u64>,
     /// An Autoplay suggestion (`QueueItem::autoplay`).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -139,12 +145,17 @@ pub fn session_path() -> Option<PathBuf> {
 pub fn load(path: &Path) -> Option<Session> {
     let text = fs::read_to_string(path).ok()?;
     match serde_json::from_str::<Session>(&text) {
-        Ok(mut session) if (OLDEST_SESSION_VERSION..=SESSION_VERSION).contains(&session.version) => {
+        Ok(mut session)
+            if (OLDEST_SESSION_VERSION..=SESSION_VERSION).contains(&session.version) =>
+        {
             session.version = SESSION_VERSION;
             Some(session)
         }
         Ok(session) => {
-            tracing::warn!("unsupported session version {}; backing up", session.version);
+            tracing::warn!(
+                "unsupported session version {}; backing up",
+                session.version
+            );
             backup(path);
             None
         }
@@ -193,7 +204,12 @@ pub fn parked_path() -> Option<PathBuf> {
 /// account gets its queue back on the next login and no other account does.
 /// Without an owner (no client) the session is only cleared.
 pub fn park(live: &Path, parked: &Path, owner: Option<u64>) {
-    let session = owner.and_then(|owner| load(live).map(|session| Session { owner: Some(owner), ..session }));
+    let session = owner.and_then(|owner| {
+        load(live).map(|session| Session {
+            owner: Some(owner),
+            ..session
+        })
+    });
     clear(live);
     match session {
         Some(session) if !session.queue.is_empty() => {
@@ -213,7 +229,13 @@ pub fn unpark(live: &Path, parked: &Path, user: u64) {
     if session.owner != Some(user) {
         return;
     }
-    if let Err(e) = save(live, &Session { owner: None, ..session }) {
+    if let Err(e) = save(
+        live,
+        &Session {
+            owner: None,
+            ..session
+        },
+    ) {
         tracing::warn!("failed to restore the parked session: {e}");
     }
 }
@@ -245,7 +267,11 @@ enum SaverMsg {
     Event(EngineEvent),
     SetPlaySource(Option<String>, Option<PlayFrom>),
     Flush(Sender<()>),
-    Park { parked: PathBuf, owner: Option<u64>, ack: Sender<()> },
+    Park {
+        parked: PathBuf,
+        owner: Option<u64>,
+        ack: Sender<()>,
+    },
     Clear,
 }
 
@@ -358,7 +384,11 @@ pub fn filter_session_queue(
         .map(|item| is_blocked(item.explicit, item.ai, content))
         .collect();
     if !blocked.iter().any(|blocked| *blocked) {
-        return FilteredQueue { items: queue, current_index, position_ms };
+        return FilteredQueue {
+            items: queue,
+            current_index,
+            position_ms,
+        };
     }
     let kept: Vec<usize> = (0..queue.len()).filter(|index| !blocked[*index]).collect();
     let current_kept = current_index
@@ -372,12 +402,18 @@ pub fn filter_session_queue(
             .filter(|(_, blocked)| !**blocked)
             .map(|(item, _)| item)
             .collect();
-        return FilteredQueue { items, current_index: None, position_ms };
+        return FilteredQueue {
+            items,
+            current_index: None,
+            position_ms,
+        };
     };
     let new_current = if current_kept {
         kept.iter().position(|index| *index == current)
     } else {
-        kept.iter().position(|index| *index >= current).or(Some(kept.len().saturating_sub(1)))
+        kept.iter()
+            .position(|index| *index >= current)
+            .or(Some(kept.len().saturating_sub(1)))
     };
     let new_current = new_current.filter(|_| !kept.is_empty());
     let items = queue
@@ -386,7 +422,11 @@ pub fn filter_session_queue(
         .filter(|(_, blocked)| !**blocked)
         .map(|(item, _)| item)
         .collect();
-    FilteredQueue { items, current_index: new_current, position_ms }
+    FilteredQueue {
+        items,
+        current_index: new_current,
+        position_ms,
+    }
 }
 
 fn saver_main(
@@ -499,7 +539,13 @@ fn write_snapshot(
         .map(|d| d.as_secs())
         .unwrap_or(0);
     let source = flags.lock().unwrap().clone();
-    let session = session_from_state(state, play_source.clone(), play_from.clone(), saved_at, source.as_deref());
+    let session = session_from_state(
+        state,
+        play_source.clone(),
+        play_from.clone(),
+        saved_at,
+        source.as_deref(),
+    );
     if let Err(e) = save(path, &session) {
         tracing::warn!("failed to save session: {e}");
     }
@@ -582,11 +628,18 @@ mod tests {
 
         unpark(&live, &parked, 7);
         assert!(!parked.exists());
-        assert_eq!(load(&live), Some(session()), "the same account gets its queue back, untagged");
+        assert_eq!(
+            load(&live),
+            Some(session()),
+            "the same account gets its queue back, untagged"
+        );
 
         park(&live, &parked, Some(7));
         unpark(&live, &parked, 8);
-        assert!(!parked.exists(), "another account's login deletes the parked queue");
+        assert!(
+            !parked.exists(),
+            "another account's login deletes the parked queue"
+        );
         assert!(!live.exists(), "and never restores it");
         let _ = fs::remove_dir_all(dir);
     }
@@ -600,7 +653,14 @@ mod tests {
         park(&live, &parked, None);
         assert!(!live.exists() && !parked.exists());
 
-        save(&live, &Session { queue: Vec::new(), ..session() }).unwrap();
+        save(
+            &live,
+            &Session {
+                queue: Vec::new(),
+                ..session()
+            },
+        )
+        .unwrap();
         park(&live, &parked, Some(7));
         assert!(!live.exists() && !parked.exists());
         let _ = fs::remove_dir_all(dir);
@@ -654,30 +714,40 @@ mod tests {
         original.queue = vec![item(1), item(2), item(1), item(3)];
         save(&path, &original).unwrap();
         assert_eq!(load(&path), Some(original));
-        assert!(!dir.join("session.json.tmp").exists(), "temp file left behind");
+        assert!(
+            !dir.join("session.json.tmp").exists(),
+            "temp file left behind"
+        );
         let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
     fn name_link_ids_survive_a_save_and_old_items_load_without_them() {
         let queued = QueueItem {
-            artist_refs: vec![ArtistRef { id: 7, name: "A".into() }],
+            artist_refs: vec![ArtistRef {
+                id: 7,
+                name: "A".into(),
+            }],
             album_id: Some(8),
             ..QueueItem::from(item(1))
         };
         let restored = QueueItem::from(SessionItem::from(&queued));
         assert_eq!(restored, queued);
 
-        let legacy: SessionItem =
-            serde_json::from_str(r#"{"track_id":1,"title":"T","artist":"A","album":"B","duration_secs":3}"#)
-                .unwrap();
+        let legacy: SessionItem = serde_json::from_str(
+            r#"{"track_id":1,"title":"T","artist":"A","album":"B","duration_secs":3}"#,
+        )
+        .unwrap();
         assert!(legacy.artist_refs.is_empty());
         assert_eq!(legacy.album_id, None);
     }
 
     #[test]
     fn the_autoplay_mark_survives_a_save() {
-        let suggested = QueueItem { autoplay: true, ..QueueItem::from(item(1)) };
+        let suggested = QueueItem {
+            autoplay: true,
+            ..QueueItem::from(item(1))
+        };
         let stored = SessionItem::from(&suggested);
         let json = serde_json::to_string(&stored).unwrap();
         assert!(json.contains(r#""autoplay":true"#));
@@ -700,14 +770,21 @@ mod tests {
         let loaded = load(&path).expect("a version 1 session must load");
         assert_eq!(loaded.version, SESSION_VERSION);
         assert_eq!(loaded.queue[0].track_id, 101);
-        assert_eq!(loaded.queue[0].artist_refs, vec![ArtistRef { id: 7, name: "A".into() }]);
+        assert_eq!(
+            loaded.queue[0].artist_refs,
+            vec![ArtistRef {
+                id: 7,
+                name: "A".into()
+            }]
+        );
         assert_eq!(loaded.queue[0].album_id, Some(8));
         assert_eq!(loaded.queue[1].album_id, None);
         assert_eq!(loaded.current_index, Some(1));
         assert_eq!(loaded.play_from.as_ref().unwrap().track_ids, vec![101, 102]);
 
         save(&path, &loaded).unwrap();
-        let written: serde_json::Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        let written: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(written["version"], SESSION_VERSION);
         assert_eq!(written["queue"][0]["track_id"], "tidal:101");
         assert_eq!(written["queue"][0]["album_id"], "tidal:8");
@@ -815,8 +892,16 @@ mod tests {
         let dir = temp_dir();
         let path = dir.join("session.json");
         let saver = SessionSaver::start(path.clone(), Duration::from_secs(60));
-        saver.record(&EngineEvent::State(playback_state(&[1, 2, 3], Some(1), 1000)));
-        saver.record(&EngineEvent::Position { position_ms: 4200, duration_ms: 3000, lead_ms: 0 });
+        saver.record(&EngineEvent::State(playback_state(
+            &[1, 2, 3],
+            Some(1),
+            1000,
+        )));
+        saver.record(&EngineEvent::Position {
+            position_ms: 4200,
+            duration_ms: 3000,
+            lead_ms: 0,
+        });
         saver.flush_now();
         let session = load(&path).expect("session written");
         assert_eq!(
@@ -836,7 +921,12 @@ mod tests {
         let path = dir.join("session.json");
         let saver = SessionSaver::start(path.clone(), Duration::from_secs(60));
         saver.record(&EngineEvent::State(playback_state(&[1], Some(0), 0)));
-        let from = PlayFrom { kind: "album".into(), name: "Blood Sugar Sex Magik".into(), route: None, track_ids: vec![1] };
+        let from = PlayFrom {
+            kind: "album".into(),
+            name: "Blood Sugar Sex Magik".into(),
+            route: None,
+            track_ids: vec![1],
+        };
         saver.set_play_source(Some("pl-1".into()), Some(from.clone()));
         saver.flush_now();
         let saved = load(&path).unwrap();
@@ -869,13 +959,24 @@ mod tests {
         let saver = SessionSaver::start(path.clone(), Duration::from_secs(60));
         saver.record(&EngineEvent::State(playback_state(&[1, 2], Some(1), 0)));
         saver.flush_now();
-        saver.record(&EngineEvent::Position { position_ms: 9000, duration_ms: 3000, lead_ms: 0 });
+        saver.record(&EngineEvent::Position {
+            position_ms: 9000,
+            duration_ms: 3000,
+            lead_ms: 0,
+        });
         saver.park(parked.clone(), Some(7));
         assert!(!path.exists());
         let saved = load(&parked).expect("parked");
-        assert_eq!((saved.owner, saved.current_index, saved.position_ms), (Some(7), Some(1), 9000));
+        assert_eq!(
+            (saved.owner, saved.current_index, saved.position_ms),
+            (Some(7), Some(1), 9000)
+        );
         // A late tick from the old engine must not recreate the live file.
-        saver.record(&EngineEvent::Position { position_ms: 9500, duration_ms: 3000, lead_ms: 0 });
+        saver.record(&EngineEvent::Position {
+            position_ms: 9500,
+            duration_ms: 3000,
+            lead_ms: 0,
+        });
         saver.flush_now();
         assert!(!path.exists());
         let _ = fs::remove_dir_all(dir);
@@ -888,7 +989,11 @@ mod tests {
         let saver = SessionSaver::start(path.clone(), Duration::from_millis(50));
         saver.record(&EngineEvent::State(playback_state(&[1], Some(0), 100)));
         saver.flush_now();
-        saver.record(&EngineEvent::Position { position_ms: 9000, duration_ms: 3000, lead_ms: 0 });
+        saver.record(&EngineEvent::Position {
+            position_ms: 9000,
+            duration_ms: 3000,
+            lead_ms: 0,
+        });
         std::thread::sleep(Duration::from_millis(400));
         assert_eq!(load(&path).unwrap().position_ms, 9000);
         let _ = fs::remove_dir_all(dir);
@@ -907,7 +1012,10 @@ mod tests {
         saver.record(&EngineEvent::State(quiet));
         std::thread::sleep(Duration::from_millis(300));
         let after = fs::metadata(&path).unwrap().modified().unwrap();
-        assert_eq!(before, after, "a volume-only state must not rewrite the session");
+        assert_eq!(
+            before, after,
+            "a volume-only state must not rewrite the session"
+        );
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -921,7 +1029,11 @@ mod tests {
         assert_eq!(load(&path).unwrap().queue.len(), 1);
         saver.record(&EngineEvent::State(playback_state(&[1, 2], Some(0), 0)));
         std::thread::sleep(Duration::from_millis(300));
-        assert_eq!(load(&path).unwrap().queue.len(), 2, "queue edits must flush promptly");
+        assert_eq!(
+            load(&path).unwrap().queue.len(),
+            2,
+            "queue edits must flush promptly"
+        );
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -938,11 +1050,19 @@ mod tests {
     }
 
     fn content(block_explicit: bool, block_ai: bool) -> crate::config::ContentConfig {
-        crate::config::ContentConfig { block_explicit, block_ai, ..Default::default() }
+        crate::config::ContentConfig {
+            block_explicit,
+            block_ai,
+            ..Default::default()
+        }
     }
 
     fn flagged(id: u64, explicit: Option<bool>, ai: Option<bool>) -> SessionItem {
-        SessionItem { explicit, ai, ..item(id) }
+        SessionItem {
+            explicit,
+            ai,
+            ..item(id)
+        }
     }
 
     #[test]
@@ -956,7 +1076,11 @@ mod tests {
         // by the next kept item (track 3), with the position reset.
         let filtered = filter_session_queue(queue, Some(1), 5_000, &content(false, true));
         assert_eq!(
-            filtered.items.iter().map(|item| item.track_id).collect::<Vec<_>>(),
+            filtered
+                .items
+                .iter()
+                .map(|item| item.track_id)
+                .collect::<Vec<_>>(),
             vec![1, 3]
         );
         assert_eq!(filtered.current_index, Some(1));
@@ -967,7 +1091,14 @@ mod tests {
     fn filter_session_queue_falls_back_to_the_previous_kept_current() {
         let queue = vec![flagged(9, None, None), flagged(2, None, Some(true))];
         let filtered = filter_session_queue(queue, Some(1), 5_000, &content(false, true));
-        assert_eq!(filtered.items.iter().map(|item| item.track_id).collect::<Vec<_>>(), vec![9]);
+        assert_eq!(
+            filtered
+                .items
+                .iter()
+                .map(|item| item.track_id)
+                .collect::<Vec<_>>(),
+            vec![9]
+        );
         assert_eq!(filtered.current_index, Some(0));
         assert_eq!(filtered.position_ms, 0);
     }
@@ -976,7 +1107,14 @@ mod tests {
     fn filter_session_queue_keeps_position_when_the_current_item_survives() {
         let queue = vec![flagged(1, Some(true), None), flagged(2, Some(false), None)];
         let filtered = filter_session_queue(queue, Some(1), 42_000, &content(true, false));
-        assert_eq!(filtered.items.iter().map(|item| item.track_id).collect::<Vec<_>>(), vec![2]);
+        assert_eq!(
+            filtered
+                .items
+                .iter()
+                .map(|item| item.track_id)
+                .collect::<Vec<_>>(),
+            vec![2]
+        );
         assert_eq!(filtered.current_index, Some(0));
         assert_eq!(filtered.position_ms, 42_000);
     }

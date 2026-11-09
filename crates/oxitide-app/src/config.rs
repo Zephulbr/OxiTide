@@ -113,7 +113,10 @@ fn is_shared(mode: &OutputMode) -> bool {
 impl DevicePrefs {
     /// True when nothing the user chose is stored.
     pub fn is_default_choice(&self) -> bool {
-        self.nickname.is_empty() && self.icon.is_empty() && !self.hidden && self.mode == OutputMode::Shared
+        self.nickname.is_empty()
+            && self.icon.is_empty()
+            && !self.hidden
+            && self.mode == OutputMode::Shared
     }
 }
 
@@ -180,15 +183,23 @@ impl AudioConfig {
         if oxitide_audio::output::is_asio_device(id) {
             return OutputMode::Exclusive;
         }
-        self.devices.get(id).map(|prefs| prefs.mode).unwrap_or_default()
+        self.devices
+            .get(id)
+            .map(|prefs| prefs.mode)
+            .unwrap_or_default()
     }
 
     /// Drop entries that hold no choice and belong to no selected or pinned
     /// device.
     pub fn prune_devices(&mut self) {
-        let keep: std::collections::HashSet<String> =
-            self.pinned.iter().cloned().chain(std::iter::once(self.output_device.clone())).collect();
-        self.devices.retain(|id, prefs| !prefs.is_default_choice() || keep.contains(id));
+        let keep: std::collections::HashSet<String> = self
+            .pinned
+            .iter()
+            .cloned()
+            .chain(std::iter::once(self.output_device.clone()))
+            .collect();
+        self.devices
+            .retain(|id, prefs| !prefs.is_default_choice() || keep.contains(id));
     }
 
     /// The old global `exclusive = true` becomes the selected device's mode
@@ -210,7 +221,11 @@ impl AudioConfig {
         use oxitide_audio::devices::migrate_alsa_id;
         self.output_device = migrate_alsa_id(&self.output_device, card_ids);
         let mut pinned = Vec::new();
-        for id in self.pinned.drain(..).map(|id| migrate_alsa_id(&id, card_ids)) {
+        for id in self
+            .pinned
+            .drain(..)
+            .map(|id| migrate_alsa_id(&id, card_ids))
+        {
             if !id.is_empty() && !pinned.contains(&id) {
                 pinned.push(id);
             }
@@ -218,7 +233,9 @@ impl AudioConfig {
         self.pinned = pinned;
         let devices = std::mem::take(&mut self.devices);
         for (id, prefs) in devices {
-            self.devices.entry(migrate_alsa_id(&id, card_ids)).or_insert(prefs);
+            self.devices
+                .entry(migrate_alsa_id(&id, card_ids))
+                .or_insert(prefs);
         }
     }
 
@@ -248,7 +265,10 @@ pub struct StreamingConfig {
 
 impl Default for StreamingConfig {
     fn default() -> Self {
-        Self { quality: QualityDto::Lossless, allow_fallback: true }
+        Self {
+            quality: QualityDto::Lossless,
+            allow_fallback: true,
+        }
     }
 }
 
@@ -646,7 +666,11 @@ pub struct CacheConfig {
 
 impl Default for CacheConfig {
     fn default() -> Self {
-        Self { dir: String::new(), max_size_mb: 2048, clear_on_exit: false }
+        Self {
+            dir: String::new(),
+            max_size_mb: 2048,
+            clear_on_exit: false,
+        }
     }
 }
 
@@ -661,7 +685,10 @@ pub struct IntegrationsConfig {
 
 impl Default for IntegrationsConfig {
     fn default() -> Self {
-        Self { smtc: true, discord: false }
+        Self {
+            smtc: true,
+            discord: false,
+        }
     }
 }
 
@@ -695,10 +722,19 @@ impl ScrobblingConfig {
     pub fn lastfm_credentials(&self) -> (String, String) {
         Self::with_builtin(
             (
-                Self::pick(std::env::var("OXITIDE_LASTFM_API_KEY").ok(), &self.lastfm_api_key),
-                Self::pick(std::env::var("OXITIDE_LASTFM_API_SECRET").ok(), &self.lastfm_api_secret),
+                Self::pick(
+                    std::env::var("OXITIDE_LASTFM_API_KEY").ok(),
+                    &self.lastfm_api_key,
+                ),
+                Self::pick(
+                    std::env::var("OXITIDE_LASTFM_API_SECRET").ok(),
+                    &self.lastfm_api_secret,
+                ),
             ),
-            (crate::scrobble::lastfm::LASTFM_API_KEY, crate::scrobble::lastfm::LASTFM_API_SECRET),
+            (
+                crate::scrobble::lastfm::LASTFM_API_KEY,
+                crate::scrobble::lastfm::LASTFM_API_SECRET,
+            ),
         )
     }
 
@@ -724,7 +760,10 @@ pub struct HistoryConfig {
 
 impl Default for HistoryConfig {
     fn default() -> Self {
-        Self { enabled: true, max_entries: crate::history::DEFAULT_MAX_ENTRIES }
+        Self {
+            enabled: true,
+            max_entries: crate::history::DEFAULT_MAX_ENTRIES,
+        }
     }
 }
 
@@ -738,7 +777,9 @@ pub struct UpdatesConfig {
 
 impl Default for UpdatesConfig {
     fn default() -> Self {
-        Self { check_on_start: true }
+        Self {
+            check_on_start: true,
+        }
     }
 }
 
@@ -755,7 +796,11 @@ pub struct ContentConfig {
 
 impl Default for ContentConfig {
     fn default() -> Self {
-        Self { block_explicit: false, block_ai: false, show_labels: true }
+        Self {
+            block_explicit: false,
+            block_ai: false,
+            show_labels: true,
+        }
     }
 }
 
@@ -885,7 +930,10 @@ mod tests {
                 exclusive_fallback: ExclusiveFallback::WarnOnly,
                 volume: 0.42,
                 volume_tapered: true,
-                pinned: vec!["{0.0.0.00000000}.{dev-1}".into(), "asio:Focusrite USB ASIO".into()],
+                pinned: vec![
+                    "{0.0.0.00000000}.{dev-1}".into(),
+                    "asio:Focusrite USB ASIO".into(),
+                ],
                 devices: [(
                     "{0.0.0.00000000}.{dev-1}".to_string(),
                     DevicePrefs {
@@ -899,7 +947,10 @@ mod tests {
                 .into_iter()
                 .collect(),
             },
-            streaming: StreamingConfig { quality: QualityDto::Max, allow_fallback: false },
+            streaming: StreamingConfig {
+                quality: QualityDto::Max,
+                allow_fallback: false,
+            },
             ui: UiConfig {
                 quality_display: QualityDisplay::Detailed,
                 mode: UiMode::Instrument,
@@ -928,7 +979,10 @@ mod tests {
                 window_y: Some(60),
                 window_maximized: true,
                 looks: ModeLooks {
-                    rack: Some(ModeLook { density: Density::Compact, ..ModeLook::default() }),
+                    rack: Some(ModeLook {
+                        density: Density::Compact,
+                        ..ModeLook::default()
+                    }),
                     ..ModeLooks::default()
                 },
             },
@@ -937,7 +991,10 @@ mod tests {
                 max_size_mb: 512,
                 clear_on_exit: true,
             },
-            integrations: IntegrationsConfig { smtc: false, discord: true },
+            integrations: IntegrationsConfig {
+                smtc: false,
+                discord: true,
+            },
             scrobbling: ScrobblingConfig::default(),
             history: HistoryConfig::default(),
             content: ContentConfig::default(),
@@ -965,12 +1022,17 @@ mod tests {
                 interface: "192.168.1.5".into(),
                 approve_new_devices: false,
             },
-            updates: UpdatesConfig { check_on_start: false },
+            updates: UpdatesConfig {
+                check_on_start: false,
+            },
             playback: PlaybackConfig { autoplay: false },
         };
         config.save_to(&path).unwrap();
         assert_eq!(Config::load_from(&path), config);
-        assert!(!dir.join("config.toml.tmp").exists(), "temp file left behind");
+        assert!(
+            !dir.join("config.toml.tmp").exists(),
+            "temp file left behind"
+        );
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -1001,15 +1063,21 @@ mod tests {
     fn partial_dsp_table_fills_defaults() {
         let dir = temp_dir();
         let path = dir.join("config.toml");
-        fs::write(&path, "[dsp.replay_gain]
+        fs::write(
+            &path,
+            "[dsp.replay_gain]
 mode = \"track\"
 
 [dsp.crossfade]
 duration_ms = 4000
-")
-            .unwrap();
+",
+        )
+        .unwrap();
         let config = Config::load_from(&path);
-        assert_eq!(config.dsp.replay_gain.mode, oxitide_audio::dsp::ReplayGainMode::Track);
+        assert_eq!(
+            config.dsp.replay_gain.mode,
+            oxitide_audio::dsp::ReplayGainMode::Track
+        );
         assert!(config.dsp.replay_gain.prevent_clipping);
         assert_eq!(config.dsp.crossfade.duration_ms, 4000);
         assert!(config.dsp.crossfade.skip_same_album);
@@ -1022,15 +1090,29 @@ duration_ms = 4000
     fn the_global_exclusive_switch_moves_onto_the_selected_device() {
         let dir = temp_dir();
         let path = dir.join("config.toml");
-        fs::write(&path, "[audio]\noutput_device = \"dac\"\nexclusive = true\n").unwrap();
+        fs::write(
+            &path,
+            "[audio]\noutput_device = \"dac\"\nexclusive = true\n",
+        )
+        .unwrap();
         let config = Config::load_from(&path);
         assert_eq!(config.audio.mode_for("dac"), OutputMode::Exclusive);
         assert_eq!(config.audio.mode_for("speakers"), OutputMode::Shared);
-        assert_eq!(config.audio.mode_for("asio:Focusrite"), OutputMode::Exclusive, "ASIO always is");
+        assert_eq!(
+            config.audio.mode_for("asio:Focusrite"),
+            OutputMode::Exclusive,
+            "ASIO always is"
+        );
         config.save_to(&path).unwrap();
         let text = fs::read_to_string(&path).unwrap();
-        assert!(!text.contains("exclusive = true"), "the old switch is not written back:\n{text}");
-        assert_eq!(Config::load_from(&path).audio.mode_for("dac"), OutputMode::Exclusive);
+        assert!(
+            !text.contains("exclusive = true"),
+            "the old switch is not written back:\n{text}"
+        );
+        assert_eq!(
+            Config::load_from(&path).audio.mode_for("dac"),
+            OutputMode::Exclusive
+        );
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -1038,7 +1120,11 @@ duration_ms = 4000
     fn exclusive_off_leaves_every_device_shared() {
         let dir = temp_dir();
         let path = dir.join("config.toml");
-        fs::write(&path, "[audio]\noutput_device = \"dac\"\nexclusive = false\n").unwrap();
+        fs::write(
+            &path,
+            "[audio]\noutput_device = \"dac\"\nexclusive = false\n",
+        )
+        .unwrap();
         let config = Config::load_from(&path);
         assert_eq!(config.audio.mode_for("dac"), OutputMode::Shared);
         assert!(config.audio.devices.is_empty());
@@ -1049,26 +1135,55 @@ duration_ms = 4000
     fn alsa_routes_migrate_to_row_ids() {
         let mut audio = AudioConfig {
             output_device: "sysdefault:CARD=Pro".into(),
-            pinned: vec!["plughw:CARD=Pro,DEV=0".into(), "hw:0,3".into(), "default".into()],
+            pinned: vec![
+                "plughw:CARD=Pro,DEV=0".into(),
+                "hw:0,3".into(),
+                "default".into(),
+            ],
             ..AudioConfig::default()
         };
         audio.devices.insert(
             "plughw:CARD=Pro,DEV=0".into(),
-            DevicePrefs { nickname: "Desk DAC".into(), ..DevicePrefs::default() },
+            DevicePrefs {
+                nickname: "Desk DAC".into(),
+                ..DevicePrefs::default()
+            },
         );
         audio.migrate_alsa_ids(&["PCH".to_string(), "Pro".to_string()]);
         assert_eq!(audio.output_device, "hw:CARD=Pro,DEV=0");
-        assert_eq!(audio.pinned, vec!["hw:CARD=Pro,DEV=0".to_string(), "hw:CARD=PCH,DEV=3".to_string()]);
+        assert_eq!(
+            audio.pinned,
+            vec![
+                "hw:CARD=Pro,DEV=0".to_string(),
+                "hw:CARD=PCH,DEV=3".to_string()
+            ]
+        );
         assert_eq!(audio.devices["hw:CARD=Pro,DEV=0"].nickname, "Desk DAC");
     }
 
     #[test]
     fn prune_keeps_choices_and_selected_or_pinned_devices() {
-        let mut audio = AudioConfig { output_device: "sel".into(), pinned: vec!["pin".into()], ..AudioConfig::default() };
+        let mut audio = AudioConfig {
+            output_device: "sel".into(),
+            pinned: vec!["pin".into()],
+            ..AudioConfig::default()
+        };
         for id in ["sel", "pin", "gone"] {
-            audio.devices.insert(id.into(), DevicePrefs { name: id.into(), ..DevicePrefs::default() });
+            audio.devices.insert(
+                id.into(),
+                DevicePrefs {
+                    name: id.into(),
+                    ..DevicePrefs::default()
+                },
+            );
         }
-        audio.devices.insert("named".into(), DevicePrefs { nickname: "TV".into(), ..DevicePrefs::default() });
+        audio.devices.insert(
+            "named".into(),
+            DevicePrefs {
+                nickname: "TV".into(),
+                ..DevicePrefs::default()
+            },
+        );
         audio.prune_devices();
         let ids: Vec<&str> = audio.devices.keys().map(String::as_str).collect();
         assert_eq!(ids, vec!["named", "pin", "sel"]);
@@ -1137,8 +1252,14 @@ duration_ms = 4000
         let path = dir.join("config.toml");
         Config::default().save_to(&path).unwrap();
         let text = fs::read_to_string(&path).unwrap();
-        assert!(!text.contains("window_x"), "window_x written before the first save:\n{text}");
-        assert!(!text.contains("window_y"), "window_y written before the first save:\n{text}");
+        assert!(
+            !text.contains("window_x"),
+            "window_x written before the first save:\n{text}"
+        );
+        assert!(
+            !text.contains("window_y"),
+            "window_y written before the first save:\n{text}"
+        );
         assert!(text.contains("window_width = 1200"));
         assert!(text.contains("window_maximized = false"));
         let loaded = Config::load_from(&path);
@@ -1153,9 +1274,15 @@ duration_ms = 4000
     #[test]
     fn logs_dir_is_under_the_oxitide_app_dir() {
         let dir = logs_dir().expect("no project directories available");
-        assert!(dir.ends_with("logs"), "unexpected logs dir: {}", dir.display());
+        assert!(
+            dir.ends_with("logs"),
+            "unexpected logs dir: {}",
+            dir.display()
+        );
         assert_eq!(
-            dir.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str()),
+            dir.parent()
+                .and_then(|p| p.file_name())
+                .and_then(|n| n.to_str()),
             Some("OxiTide"),
             "logs must live directly under the app dir: {}",
             dir.display()
@@ -1272,7 +1399,11 @@ duration_ms = 4000
     fn plan10_configs_load_untouched() {
         let dir = temp_dir();
         let path = dir.join("config.toml");
-        fs::write(&path, "[ui]\nmode = \"instrument\"\ntypeface = \"manrope\"\n").unwrap();
+        fs::write(
+            &path,
+            "[ui]\nmode = \"instrument\"\ntypeface = \"manrope\"\n",
+        )
+        .unwrap();
         let config = Config::load_from(&path);
         assert_eq!(config.ui.mode, UiMode::Instrument);
         assert_eq!(config.ui.typeface, Typeface::Manrope);
@@ -1286,7 +1417,10 @@ duration_ms = 4000
         let dir = temp_dir();
         let path = dir.join("config.toml");
         fs::write(&path, "[ui]\ndynamic_color = \"auto\"\n").unwrap();
-        assert_eq!(Config::load_from(&path).ui.dynamic_color, DynamicColor::Full);
+        assert_eq!(
+            Config::load_from(&path).ui.dynamic_color,
+            DynamicColor::Full
+        );
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -1297,7 +1431,9 @@ duration_ms = 4000
         let mut config = Config::default();
         config.ui.dynamic_color = DynamicColor::Accent;
         config.save_to(&path).unwrap();
-        assert!(fs::read_to_string(&path).unwrap().contains("dynamic_color = \"accent\""));
+        assert!(fs::read_to_string(&path)
+            .unwrap()
+            .contains("dynamic_color = \"accent\""));
         assert_eq!(Config::load_from(&path), config);
         let _ = fs::remove_dir_all(dir);
     }
@@ -1309,7 +1445,9 @@ duration_ms = 4000
         let mut config = Config::default();
         config.ui.instrument_tone = InstrumentTone::Neutral;
         config.save_to(&path).unwrap();
-        assert!(fs::read_to_string(&path).unwrap().contains("instrument_tone = \"neutral\""));
+        assert!(fs::read_to_string(&path)
+            .unwrap()
+            .contains("instrument_tone = \"neutral\""));
         assert_eq!(Config::load_from(&path), config);
         let _ = fs::remove_dir_all(dir);
     }
@@ -1322,7 +1460,9 @@ duration_ms = 4000
         let mut config = Config::default();
         config.ui.start_in_mini = true;
         config.save_to(&path).unwrap();
-        assert!(fs::read_to_string(&path).unwrap().contains("start_in_mini = true"));
+        assert!(fs::read_to_string(&path)
+            .unwrap()
+            .contains("start_in_mini = true"));
         assert!(Config::load_from(&path).ui.start_in_mini);
         let _ = fs::remove_dir_all(dir);
     }
@@ -1379,7 +1519,13 @@ duration_ms = 4000
             CatjamCoat::Cream,
         ]
         .iter()
-        .map(|c| serde_json::to_value(c).unwrap().as_str().unwrap().to_string())
+        .map(|c| {
+            serde_json::to_value(c)
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .to_string()
+        })
         .collect();
         assert_eq!(ids, ["white", "black", "ginger", "grey", "tuxedo", "cream"]);
         assert!(serde_json::from_value::<CatjamCoat>(serde_json::json!("calico")).is_err());
@@ -1393,7 +1539,9 @@ duration_ms = 4000
         let mut config = Config::default();
         config.ui.hover_panels = true;
         config.save_to(&path).unwrap();
-        assert!(fs::read_to_string(&path).unwrap().contains("hover_panels = true"));
+        assert!(fs::read_to_string(&path)
+            .unwrap()
+            .contains("hover_panels = true"));
         assert!(Config::load_from(&path).ui.hover_panels);
         let _ = fs::remove_dir_all(dir);
     }
@@ -1406,7 +1554,9 @@ duration_ms = 4000
         let mut config = Config::default();
         config.ui.row_separators = false;
         config.save_to(&path).unwrap();
-        assert!(fs::read_to_string(&path).unwrap().contains("row_separators = false"));
+        assert!(fs::read_to_string(&path)
+            .unwrap()
+            .contains("row_separators = false"));
         assert!(!Config::load_from(&path).ui.row_separators);
         // A config written before the setting existed keeps the hairlines.
         fs::write(&path, "[ui]\nhover_panels = true\n").unwrap();
@@ -1526,10 +1676,22 @@ duration_ms = 4000
     #[test]
     fn user_lastfm_pair_wins_over_the_builtin_key() {
         let pair = |k: &str, s: &str| (k.to_string(), s.to_string());
-        assert_eq!(ScrobblingConfig::with_builtin(pair("k", "s"), ("bk", "bs")), pair("k", "s"));
-        assert_eq!(ScrobblingConfig::with_builtin(pair("k", ""), ("bk", "bs")), pair("bk", "bs"));
-        assert_eq!(ScrobblingConfig::with_builtin(pair("", "s"), ("bk", "bs")), pair("bk", "bs"));
-        assert_eq!(ScrobblingConfig::with_builtin(pair("", ""), ("bk", "bs")), pair("bk", "bs"));
+        assert_eq!(
+            ScrobblingConfig::with_builtin(pair("k", "s"), ("bk", "bs")),
+            pair("k", "s")
+        );
+        assert_eq!(
+            ScrobblingConfig::with_builtin(pair("k", ""), ("bk", "bs")),
+            pair("bk", "bs")
+        );
+        assert_eq!(
+            ScrobblingConfig::with_builtin(pair("", "s"), ("bk", "bs")),
+            pair("bk", "bs")
+        );
+        assert_eq!(
+            ScrobblingConfig::with_builtin(pair("", ""), ("bk", "bs")),
+            pair("bk", "bs")
+        );
     }
 
     #[test]
@@ -1567,7 +1729,10 @@ duration_ms = 4000
         let dir = temp_dir();
         let path = dir.join("config.toml");
         let config = Config {
-            history: HistoryConfig { enabled: false, max_entries: 500 },
+            history: HistoryConfig {
+                enabled: false,
+                max_entries: 500,
+            },
             ..Config::default()
         };
         config.save_to(&path).unwrap();
@@ -1595,7 +1760,11 @@ duration_ms = 4000
         fs::write(&path, "[audio]\nvolume = 0.316\n").unwrap();
         let loaded = Config::load_from(&path);
         // A linear 0.316 is -10 dB, which is 50% on the taper.
-        assert!((loaded.audio.volume - 0.5).abs() < 1e-3, "{}", loaded.audio.volume);
+        assert!(
+            (loaded.audio.volume - 0.5).abs() < 1e-3,
+            "{}",
+            loaded.audio.volume
+        );
         assert!(loaded.audio.volume_tapered);
 
         // Once saved, the position loads unchanged.
@@ -1651,7 +1820,9 @@ duration_ms = 4000
         let mut config = Config::default();
         config.ui.close_to_tray = false;
         config.save_to(&path).unwrap();
-        assert!(fs::read_to_string(&path).unwrap().contains("close_to_tray = false"));
+        assert!(fs::read_to_string(&path)
+            .unwrap()
+            .contains("close_to_tray = false"));
         assert!(!Config::load_from(&path).ui.close_to_tray);
         let _ = fs::remove_dir_all(dir);
     }
@@ -1677,9 +1848,13 @@ duration_ms = 4000
     fn rack_defaults_and_mode_parse() {
         let dir = temp_dir();
         let path = dir.join("config.toml");
-        fs::write(&path, "[ui]
+        fs::write(
+            &path,
+            "[ui]
 mode = \"rack\"
-").unwrap();
+",
+        )
+        .unwrap();
         let config = Config::load_from(&path);
         assert_eq!(config.ui.mode, UiMode::Rack);
         assert_eq!(config.rack, RackConfig::default());
@@ -1695,14 +1870,22 @@ mode = \"rack\"
     fn rack_section_parses_partial_values() {
         let dir = temp_dir();
         let path = dir.join("config.toml");
-        fs::write(&path, "[rack]
+        fs::write(
+            &path,
+            "[rack]
 deck_face = \"transport\"
 lamp = \"blue\"
 analyzer = \"waterfall\"
-").unwrap();
+",
+        )
+        .unwrap();
         let config = Config::load_from(&path);
         assert_eq!(config.rack.deck_face, DeckFace::Transport);
-        assert_eq!(config.rack.analyzer, AnalyzerStyle::Recorder, "retired analyzer values map to the recorder");
+        assert_eq!(
+            config.rack.analyzer,
+            AnalyzerStyle::Recorder,
+            "retired analyzer values map to the recorder"
+        );
         for (text, style) in [
             ("cassette", AnalyzerStyle::Auto),
             ("tuner", AnalyzerStyle::Tuner),
@@ -1746,7 +1929,11 @@ analyzer = \"waterfall\"
         assert_eq!(clamp_lamp_brightness(0), LAMP_BRIGHTNESS_MIN);
         assert_eq!(clamp_lamp_brightness(255), LAMP_BRIGHTNESS_MAX);
         assert_eq!(clamp_lamp_brightness(70), 70);
-        let rack = RackConfig { lamp_brightness: 5, ..RackConfig::default() }.clamped();
+        let rack = RackConfig {
+            lamp_brightness: 5,
+            ..RackConfig::default()
+        }
+        .clamped();
         assert_eq!(rack.lamp_brightness, LAMP_BRIGHTNESS_MIN);
     }
 }

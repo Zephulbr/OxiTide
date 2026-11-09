@@ -4,9 +4,7 @@
 
 use oxitide_audio::engine::EngineCmd;
 use tauri::{AppHandle, Manager};
-use tauri_plugin_global_shortcut::{
-    GlobalShortcutExt, Shortcut, ShortcutEvent, ShortcutState,
-};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutEvent, ShortcutState};
 
 use crate::config::HotkeysConfig;
 use crate::state::AppState;
@@ -26,8 +24,14 @@ pub enum HotkeyAction {
 
 /// Every action the UI can bind, in display order. `love` is absent while
 /// 10.4 is deferred.
-pub const ACTIONS: [&str; 6] =
-    ["play_pause", "next", "prev", "volume_up", "volume_down", "show_hide"];
+pub const ACTIONS: [&str; 6] = [
+    "play_pause",
+    "next",
+    "prev",
+    "volume_up",
+    "volume_down",
+    "show_hide",
+];
 
 /// Serializes hotkey config writes and re-registration across the Tauri
 /// commands: a capture release can never interleave with a save's
@@ -77,7 +81,10 @@ pub fn bindings(config: &HotkeysConfig) -> Vec<(&'static str, &str)> {
 /// Parse an accelerator in the plugin's format (`"Ctrl+Alt+KeyP"`,
 /// `"MediaPlayPause"`, `"VolumeUp"`).
 pub fn parse(accelerator: &str) -> Result<Shortcut, String> {
-    accelerator.trim().parse::<Shortcut>().map_err(|e| e.to_string())
+    accelerator
+        .trim()
+        .parse::<Shortcut>()
+        .map_err(|e| e.to_string())
 }
 
 /// Write one action's accelerator; unknown actions are rejected.
@@ -145,14 +152,16 @@ pub fn duplicate_binding(config: &HotkeysConfig) -> Option<(&'static str, &'stat
 
 /// The action bound to a triggered shortcut under the current config.
 pub fn action_for(config: &HotkeysConfig, shortcut: &Shortcut) -> Option<HotkeyAction> {
-    bindings(config).into_iter().find_map(|(name, accelerator)| {
-        let parsed = parse(accelerator).ok()?;
-        if parsed.matches(shortcut.mods, shortcut.key) {
-            action_from_name(name)
-        } else {
-            None
-        }
-    })
+    bindings(config)
+        .into_iter()
+        .find_map(|(name, accelerator)| {
+            let parsed = parse(accelerator).ok()?;
+            if parsed.matches(shortcut.mods, shortcut.key) {
+                action_from_name(name)
+            } else {
+                None
+            }
+        })
 }
 
 /// Plugin handler: fires for every registered accelerator press. Once a chord
@@ -233,7 +242,9 @@ pub fn register_all(app: &AppHandle, config: &HotkeysConfig) -> Result<(), Strin
         tracing::warn!("skipping malformed hotkey {name}: {error}");
     }
     for (name, shortcut) in parsed {
-        shortcuts.register(shortcut).map_err(|e| format!("{name}: {e}"))?;
+        shortcuts
+            .register(shortcut)
+            .map_err(|e| format!("{name}: {e}"))?;
     }
     Ok(())
 }
@@ -271,7 +282,10 @@ mod tests {
         config.next = "Ctrl+Alt+KeyN".into();
         config.show_hide = "  ".into();
         config.play_pause = "F9".into();
-        assert_eq!(bindings(&config), vec![("play_pause", "F9"), ("next", "Ctrl+Alt+KeyN")]);
+        assert_eq!(
+            bindings(&config),
+            vec![("play_pause", "F9"), ("next", "Ctrl+Alt+KeyN")]
+        );
     }
 
     #[test]
@@ -287,7 +301,13 @@ mod tests {
     fn apply_binding_clears_the_replaced_action() {
         let mut config = HotkeysConfig::default();
         set(&mut config, "volume_up", "Ctrl+Alt+Space").unwrap();
-        apply_binding(&mut config, "play_pause", "Ctrl+Alt+Space", Some("volume_up")).unwrap();
+        apply_binding(
+            &mut config,
+            "play_pause",
+            "Ctrl+Alt+Space",
+            Some("volume_up"),
+        )
+        .unwrap();
         assert_eq!(config.play_pause, "Ctrl+Alt+Space");
         assert_eq!(config.volume_up, "");
         assert!(duplicate_binding(&config).is_none());
@@ -354,7 +374,10 @@ mod tests {
     fn action_list_matches_the_ui_contract() {
         assert_eq!(ACTIONS.len(), 6);
         assert!(is_action("volume_down"));
-        assert!(!is_action("love"), "love ships with the deferred 10.4 slice");
+        assert!(
+            !is_action("love"),
+            "love ships with the deferred 10.4 slice"
+        );
         assert_eq!(action_from_name("show_hide"), Some(HotkeyAction::ShowHide));
     }
 

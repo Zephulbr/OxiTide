@@ -56,7 +56,10 @@ pub fn card_dir(device: &str) -> Option<String> {
     }
     if card.bytes().all(|b| b.is_ascii_digit()) {
         Some(format!("card{card}"))
-    } else if card.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-') {
+    } else if card
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+    {
         Some(card.to_string())
     } else {
         None
@@ -75,7 +78,10 @@ pub struct CardReturn {
 impl CardReturn {
     /// Start watching; `present` is whether the card exists right now.
     pub fn new(present: bool) -> Self {
-        Self { gone: !present, back: false }
+        Self {
+            gone: !present,
+            back: false,
+        }
     }
     /// Record a check; returns whether the card is back.
     pub fn observe(&mut self, present: bool) -> bool {
@@ -137,13 +143,13 @@ pub fn shared_pcm_name(device: &str) -> String {
 
 /// Notice shown when the selected device cannot be opened and playback moved
 /// to the system default; matches WASAPI's wording.
-pub const DEVICE_UNAVAILABLE_NOTICE: &str = "selected output device unavailable; using system default";
+pub const DEVICE_UNAVAILABLE_NOTICE: &str =
+    "selected output device unavailable; using system default";
 
 /// Error when an exclusive open fails because something holds the card
 /// (another player, or the sound server that has not released it yet), so
 /// it does not read as a device that cannot do exclusive mode.
-pub const DEVICE_BUSY: &str =
-    "output device is busy (another app or the sound server is using it)";
+pub const DEVICE_BUSY: &str = "output device is busy (another app or the sound server is using it)";
 
 /// One playback PCM device on a sound card, from the card's control interface
 /// and `/proc/asound`.
@@ -188,8 +194,12 @@ pub fn device_list(pcms: &[DirectPcm]) -> Vec<OutputDevice> {
                 eld: pcm.eld.clone(),
             };
             let (name, system_name, kind, transport, present) = alsa_identity(&info);
-            let mut device = OutputDevice::new(format!("hw:CARD={},DEV={}", pcm.card_id, pcm.device), name, DeviceGroup::Alsa)
-                .with_system_name(system_name);
+            let mut device = OutputDevice::new(
+                format!("hw:CARD={},DEV={}", pcm.card_id, pcm.device),
+                name,
+                DeviceGroup::Alsa,
+            )
+            .with_system_name(system_name);
             device.kind = kind;
             device.transport = transport;
             device.present = present;
@@ -469,8 +479,10 @@ mod linux {
             let pcm = PCM::new(name, Direction::Playback, false).map_err(to_error)?;
             {
                 let hwp = HwParams::any(&pcm).map_err(to_error)?;
-                hwp.set_channels(spec.info.channels as u32).map_err(to_error)?;
-                hwp.set_rate(spec.info.sample_rate, ValueOr::Nearest).map_err(to_error)?;
+                hwp.set_channels(spec.info.channels as u32)
+                    .map_err(to_error)?;
+                hwp.set_rate(spec.info.sample_rate, ValueOr::Nearest)
+                    .map_err(to_error)?;
                 hwp.set_format(alsa_format(format)).map_err(to_error)?;
                 hwp.set_access(Access::RWInterleaved).map_err(to_error)?;
                 let buffer = hwp
@@ -487,7 +499,8 @@ mod linux {
                 // nearly empty and it ran dry before the second: an underrun,
                 // and an audible tick, at every start, seek and resume.
                 let swp = pcm.sw_params_current().map_err(to_error)?;
-                swp.set_start_threshold(start_threshold(settled, period)).map_err(to_error)?;
+                swp.set_start_threshold(start_threshold(settled, period))
+                    .map_err(to_error)?;
                 pcm.sw_params(&swp).map_err(to_error)?;
             }
             pcm.prepare().map_err(to_error)?;
@@ -690,7 +703,9 @@ mod linux {
         let mut out = Vec::new();
         for card in CardIter::new().filter_map(|card| card.ok()) {
             let index = card.get_index().max(0) as usize;
-            let Ok(ctl) = Ctl::from_card(&card, false) else { continue };
+            let Ok(ctl) = Ctl::from_card(&card, false) else {
+                continue;
+            };
             let Ok(info) = ctl.card_info() else { continue };
             let Ok(id) = info.get_id() else { continue };
             if out.len() <= index {
@@ -708,7 +723,11 @@ mod linux {
         };
         let mut names: Vec<std::path::PathBuf> = entries
             .filter_map(|entry| entry.ok().map(|entry| entry.path()))
-            .filter(|path| path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("eld#")))
+            .filter(|path| {
+                path.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.starts_with("eld#"))
+            })
             .collect();
         names.sort();
         names
@@ -730,18 +749,33 @@ mod linux {
         let mut out = Vec::new();
         for card in CardIter::new().filter_map(|card| card.ok()) {
             let index = card.get_index();
-            let Ok(ctl) = Ctl::from_card(&card, false) else { continue };
+            let Ok(ctl) = Ctl::from_card(&card, false) else {
+                continue;
+            };
             let Ok(info) = ctl.card_info() else { continue };
-            let (Ok(card_id), Ok(card_name)) = (info.get_id(), info.get_name()) else { continue };
+            let (Ok(card_id), Ok(card_name)) = (info.get_id(), info.get_name()) else {
+                continue;
+            };
             let (card_id, card_name) = (card_id.to_string(), card_name.to_string());
             let usb = std::path::Path::new(&format!("/proc/asound/card{index}/usbid")).exists();
             let elds = card_elds(index);
             for device in DeviceIter::new(&ctl) {
-                let Ok(device) = u32::try_from(device) else { continue };
-                let Ok(pcm) = ctl.pcm_info(device, 0, Direction::Playback) else { continue };
+                let Ok(device) = u32::try_from(device) else {
+                    continue;
+                };
+                let Ok(pcm) = ctl.pcm_info(device, 0, Direction::Playback) else {
+                    continue;
+                };
                 let pcm_name = pcm.get_name().unwrap_or_default().to_string();
                 let eld = crate::devices::hdmi_index(&pcm_name).and_then(|n| elds.get(n).cloned());
-                out.push(DirectPcm { card_id: card_id.clone(), card_name: card_name.clone(), device, pcm_name, usb, eld });
+                out.push(DirectPcm {
+                    card_id: card_id.clone(),
+                    card_name: card_name.clone(),
+                    device,
+                    pcm_name,
+                    usb,
+                    eld,
+                });
             }
         }
         out
@@ -753,8 +787,15 @@ mod linux {
         use alsa::ctl::Ctl;
         let wanted = device.strip_prefix("hw:CARD=")?.split(',').next()?;
         for card in CardIter::new().filter_map(|card| card.ok()) {
-            let Ok(ctl) = Ctl::from_card(&card, false) else { continue };
-            if ctl.card_info().ok().and_then(|info| info.get_id().ok().map(|id| id == wanted)) == Some(true) {
+            let Ok(ctl) = Ctl::from_card(&card, false) else {
+                continue;
+            };
+            if ctl
+                .card_info()
+                .ok()
+                .and_then(|info| info.get_id().ok().map(|id| id == wanted))
+                == Some(true)
+            {
                 return Some(card.get_index());
             }
         }
@@ -769,17 +810,37 @@ mod linux {
         validate_device_name(device).ok()?;
         let index = card_index(device)?;
         let usb_stream = std::fs::read_to_string(format!("/proc/asound/card{index}/stream0")).ok();
-        let mut caps = if let Some((rate, bits)) = usb_stream.as_deref().and_then(crate::devices::parse_usb_stream) {
-            DeviceCaps { exclusive: true, max_rate: Some(rate), max_bits: Some(bits), source: CapsSource::Probed, ..DeviceCaps::default() }
+        let mut caps = if let Some((rate, bits)) = usb_stream
+            .as_deref()
+            .and_then(crate::devices::parse_usb_stream)
+        {
+            DeviceCaps {
+                exclusive: true,
+                max_rate: Some(rate),
+                max_bits: Some(bits),
+                source: CapsSource::Probed,
+                ..DeviceCaps::default()
+            }
         } else {
             let pcm = PCM::new(device, Direction::Playback, true).ok()?;
             let hwp = HwParams::any(&pcm).ok()?;
             let rate = hwp.get_rate_max().ok().filter(|&rate| rate > 0)?;
-            let bits = [(Format::S32LE, 32u16), (Format::S243LE, 24), (Format::S24LE, 24), (Format::S16LE, 16)]
-                .into_iter()
-                .find(|(format, _)| hwp.test_format(*format).is_ok())
-                .map(|(_, bits)| bits)?;
-            DeviceCaps { exclusive: true, max_rate: Some(rate), max_bits: Some(bits), source: CapsSource::Probed, ..DeviceCaps::default() }
+            let bits = [
+                (Format::S32LE, 32u16),
+                (Format::S243LE, 24),
+                (Format::S24LE, 24),
+                (Format::S16LE, 16),
+            ]
+            .into_iter()
+            .find(|(format, _)| hwp.test_format(*format).is_ok())
+            .map(|(_, bits)| bits)?;
+            DeviceCaps {
+                exclusive: true,
+                max_rate: Some(rate),
+                max_bits: Some(bits),
+                source: CapsSource::Probed,
+                ..DeviceCaps::default()
+            }
         };
         caps.hw_volume = Some(has_hardware_volume(device));
         Some(caps)
@@ -788,9 +849,13 @@ mod linux {
     /// Whether the card has a writable `Master` or `PCM` playback volume.
     fn has_hardware_volume(device: &str) -> bool {
         use alsa::mixer::{Mixer, SelemId};
-        let Ok(mixer) = Mixer::new(&ctl_name(device), false) else { return false };
+        let Ok(mixer) = Mixer::new(&ctl_name(device), false) else {
+            return false;
+        };
         ["Master", "PCM"].iter().any(|name| {
-            mixer.find_selem(&SelemId::new(name, 0)).is_some_and(|selem| selem.has_playback_volume())
+            mixer
+                .find_selem(&SelemId::new(name, 0))
+                .is_some_and(|selem| selem.has_playback_volume())
         })
     }
 
@@ -956,12 +1021,13 @@ mod linux {
             let fresh = self.scratch.len();
             match buf {
                 PcmBuffer::I32(v) => self.scratch.extend_from_slice(v),
-                PcmBuffer::F32(v) => {
-                    self.scratch.extend(v.iter().map(|&sample| f32_to_i32_one(sample)))
-                }
+                PcmBuffer::F32(v) => self
+                    .scratch
+                    .extend(v.iter().map(|&sample| f32_to_i32_one(sample))),
             }
             if !self.ramp.is_identity() {
-                self.ramp.apply_frames(&mut self.scratch[fresh..], channels, scale_i32);
+                self.ramp
+                    .apply_frames(&mut self.scratch[fresh..], channels, scale_i32);
             }
             // Hold back the newest 10 ms so a pause can fade them out.
             let hold = (hold_frames(self.rate.max(1)) * channels).min(self.scratch.len());
@@ -1077,11 +1143,14 @@ mod linux {
             };
             // Less than the start threshold written (a short last track):
             // the device never started, so start it to play what is queued.
-            if pcm.state() == alsa::pcm::State::Prepared && pcm.delay().is_ok_and(|frames| frames > 0) {
+            if pcm.state() == alsa::pcm::State::Prepared
+                && pcm.delay().is_ok_and(|frames| frames > 0)
+            {
                 pcm.start().map_err(to_error)?;
             }
             let give_up = Instant::now() + DRAIN_LIMIT;
-            while !cancel() && Instant::now() < give_up && pcm.state() == alsa::pcm::State::Running {
+            while !cancel() && Instant::now() < give_up && pcm.state() == alsa::pcm::State::Running
+            {
                 match pcm.delay() {
                     Ok(frames) if frames > 0 => std::thread::sleep(DRAIN_STEP),
                     _ => break,
@@ -1105,14 +1174,23 @@ mod tests {
     use crate::output::{AudioOutput, AudioOutputSpec, OutputMode, OutputStatus};
 
     fn info(bits: u16, format: PcmFormat) -> StreamInfo {
-        StreamInfo { sample_rate: 44_100, channels: 2, bits_per_sample: bits, format }
+        StreamInfo {
+            sample_rate: 44_100,
+            channels: 2,
+            bits_per_sample: bits,
+            format,
+        }
     }
 
     #[test]
     fn alsa_formats_step_down_for_narrow_sources() {
         assert_eq!(
             alsa_exclusive_formats(&info(16, PcmFormat::I32 { bits: 16 })),
-            vec![AlsaSampleFormat::S32Le, AlsaSampleFormat::S24_3Le, AlsaSampleFormat::S16Le]
+            vec![
+                AlsaSampleFormat::S32Le,
+                AlsaSampleFormat::S24_3Le,
+                AlsaSampleFormat::S16Le
+            ]
         );
         assert_eq!(
             alsa_exclusive_formats(&info(24, PcmFormat::I32 { bits: 24 })),
@@ -1152,7 +1230,9 @@ mod tests {
     fn buffer_frames_divide_evenly_into_aligned_periods_at_every_rate() {
         // 44.1 kHz is the case that used to fail: a raw half second is 22050
         // frames, which four periods cannot split, and ALSA answered EINVAL.
-        for rate in [44_100, 48_000, 88_200, 96_000, 176_400, 192_000, 352_800, 384_000, 8_000] {
+        for rate in [
+            44_100, 48_000, 88_200, 96_000, 176_400, 192_000, 352_800, 384_000, 8_000,
+        ] {
             let frames = buffer_frames(rate);
             let period = period_frames(frames);
             assert_eq!(frames % ALSA_PERIODS as i64, 0, "{frames} frames at {rate}");
@@ -1162,7 +1242,10 @@ mod tests {
             assert_eq!(period * 2 % 128, 0, "{period}-frame period at {rate}");
             assert!(frames >= 1024, "{frames} frames at {rate}");
             assert!(frames > rate as i64 * 3 / 20 - 256, "{frames} at {rate}");
-            assert!(frames <= (rate as i64 * 3 / 20).max(1024), "{frames} at {rate}");
+            assert!(
+                frames <= (rate as i64 * 3 / 20).max(1024),
+                "{frames} at {rate}"
+            );
         }
         assert_eq!(buffer_frames(44_100), 6_400);
         assert_eq!(buffer_frames(48_000), 7_168);
@@ -1172,7 +1255,11 @@ mod tests {
     fn a_prepared_pcm_starts_once_all_but_one_period_is_queued() {
         assert_eq!(start_threshold(6_400, 1_600), 4_800);
         assert_eq!(start_threshold(16_384, 1_024), 15_360);
-        assert_eq!(start_threshold(1_024, 1_024), 1_024, "a one-period buffer still starts");
+        assert_eq!(
+            start_threshold(1_024, 1_024),
+            1_024,
+            "a one-period buffer still starts"
+        );
         assert_eq!(start_threshold(0, 0), 1);
     }
 
@@ -1180,11 +1267,18 @@ mod tests {
     fn card_dirs_come_from_card_ids_and_indexes() {
         assert_eq!(card_dir("hw:CARD=Pro,DEV=0").as_deref(), Some("Pro"));
         assert_eq!(card_dir("plughw:CARD=Pro,DEV=0").as_deref(), Some("Pro"));
-        assert_eq!(card_dir("sysdefault:CARD=Generic_1").as_deref(), Some("Generic_1"));
+        assert_eq!(
+            card_dir("sysdefault:CARD=Generic_1").as_deref(),
+            Some("Generic_1")
+        );
         assert_eq!(card_dir("hw:3,0").as_deref(), Some("card3"));
         assert_eq!(card_dir("default"), None);
         assert_eq!(card_dir("pipewire"), None);
-        assert_eq!(card_dir("hw:CARD=../x,DEV=0"), None, "never a path outside /proc/asound");
+        assert_eq!(
+            card_dir("hw:CARD=../x,DEV=0"),
+            None,
+            "never a path outside /proc/asound"
+        );
         assert_eq!(card_dir("hw:"), None);
     }
 
@@ -1212,7 +1306,12 @@ mod tests {
         assert_eq!(&stereo[6..], &[0, 0], "the last frame is silent");
         assert_eq!(stereo[0], stereo[1], "both channels share a gain");
         assert_eq!(stereo[0], 750_000, "4 frames: 3/4, 2/4, 1/4, 0");
-        assert!(stereo.chunks(2).map(|f| f[0]).collect::<Vec<_>>().windows(2).all(|w| w[0] > w[1]));
+        assert!(stereo
+            .chunks(2)
+            .map(|f| f[0])
+            .collect::<Vec<_>>()
+            .windows(2)
+            .all(|w| w[0] > w[1]));
         let mut empty: Vec<i32> = Vec::new();
         fade_to_silence(&mut empty, 2);
         assert_eq!(hold_frames(44_100), 441);
@@ -1221,10 +1320,19 @@ mod tests {
 
     #[test]
     fn shared_opens_route_direct_devices_through_plughw() {
-        assert_eq!(shared_pcm_name("hw:CARD=Pro,DEV=0"), "plughw:CARD=Pro,DEV=0");
+        assert_eq!(
+            shared_pcm_name("hw:CARD=Pro,DEV=0"),
+            "plughw:CARD=Pro,DEV=0"
+        );
         assert_eq!(shared_pcm_name("hw:0,0"), "plughw:0,0");
-        assert_eq!(shared_pcm_name("plughw:CARD=Pro,DEV=0"), "plughw:CARD=Pro,DEV=0");
-        assert_eq!(shared_pcm_name("sysdefault:CARD=Pro"), "sysdefault:CARD=Pro");
+        assert_eq!(
+            shared_pcm_name("plughw:CARD=Pro,DEV=0"),
+            "plughw:CARD=Pro,DEV=0"
+        );
+        assert_eq!(
+            shared_pcm_name("sysdefault:CARD=Pro"),
+            "sysdefault:CARD=Pro"
+        );
         assert_eq!(shared_pcm_name("default"), "default");
     }
 
@@ -1247,24 +1355,38 @@ mod tests {
             pcm("Pro", "MOONDROP Dawn Pro", 0, "USB Audio", true),
             pcm("PCH", "HDA Intel PCH", 0, "ALC3246 Analog", false),
             DirectPcm {
-                eld: Some(Eld { monitor_present: true, monitor_name: "DELL U2723QE".into() }),
+                eld: Some(Eld {
+                    monitor_present: true,
+                    monitor_name: "DELL U2723QE".into(),
+                }),
                 ..pcm("PCH", "HDA Intel PCH", 3, "HDMI 0", false)
             },
             DirectPcm {
-                eld: Some(Eld { monitor_present: false, monitor_name: String::new() }),
+                eld: Some(Eld {
+                    monitor_present: false,
+                    monitor_name: String::new(),
+                }),
                 ..pcm("PCH", "HDA Intel PCH", 7, "HDMI 1", false)
             },
             pcm("Pro", "MOONDROP Dawn Pro", 0, "USB Audio", true),
         ]);
-        let rows: Vec<(&str, &str, bool)> = list.iter().map(|d| (d.id.as_str(), d.name.as_str(), d.present)).collect();
-        assert_eq!(rows, vec![
-            ("hw:CARD=Pro,DEV=0", "MOONDROP Dawn Pro", true),
-            ("hw:CARD=PCH,DEV=0", "Speakers", true),
-            ("hw:CARD=PCH,DEV=3", "DELL U2723QE", true),
-            ("hw:CARD=PCH,DEV=7", "HDMI 1", false),
-        ]);
+        let rows: Vec<(&str, &str, bool)> = list
+            .iter()
+            .map(|d| (d.id.as_str(), d.name.as_str(), d.present))
+            .collect();
+        assert_eq!(
+            rows,
+            vec![
+                ("hw:CARD=Pro,DEV=0", "MOONDROP Dawn Pro", true),
+                ("hw:CARD=PCH,DEV=0", "Speakers", true),
+                ("hw:CARD=PCH,DEV=3", "DELL U2723QE", true),
+                ("hw:CARD=PCH,DEV=7", "HDMI 1", false),
+            ]
+        );
         assert!(list.iter().all(|d| is_direct_hw(&d.id)));
-        assert!(list.iter().all(|d| d.group == crate::devices::DeviceGroup::Alsa));
+        assert!(list
+            .iter()
+            .all(|d| d.group == crate::devices::DeviceGroup::Alsa));
         assert_eq!(list[0].system_name, "MOONDROP Dawn Pro, USB Audio");
         assert_eq!(list[0].transport, crate::devices::Transport::Usb);
     }
@@ -1285,21 +1407,33 @@ mod tests {
     #[test]
     fn pack_s32le_preserves_left_aligned_words() {
         let mut out = Vec::new();
-        pack_i32(AlsaSampleFormat::S32Le, &[0x7fff_ff00u32 as i32, -256], &mut out);
+        pack_i32(
+            AlsaSampleFormat::S32Le,
+            &[0x7fff_ff00u32 as i32, -256],
+            &mut out,
+        );
         assert_eq!(out, vec![0x00, 0xff, 0xff, 0x7f, 0x00, 0xff, 0xff, 0xff]);
     }
 
     #[test]
     fn pack_s24_3le_keeps_the_top_three_bytes() {
         let mut out = Vec::new();
-        pack_i32(AlsaSampleFormat::S24_3Le, &[0x7fff_ff00u32 as i32], &mut out);
+        pack_i32(
+            AlsaSampleFormat::S24_3Le,
+            &[0x7fff_ff00u32 as i32],
+            &mut out,
+        );
         assert_eq!(out, vec![0xff, 0xff, 0x7f]);
     }
 
     #[test]
     fn pack_s16le_keeps_the_top_two_bytes() {
         let mut out = Vec::new();
-        pack_i32(AlsaSampleFormat::S16Le, &[0x7fff_0000u32 as i32, 0], &mut out);
+        pack_i32(
+            AlsaSampleFormat::S16Le,
+            &[0x7fff_0000u32 as i32, 0],
+            &mut out,
+        );
         assert_eq!(out, vec![0xff, 0x7f, 0x00, 0x00]);
     }
 
@@ -1346,7 +1480,10 @@ mod tests {
             exclusive_fallback_plan(ExclusiveFallback::Shared),
             AlsaOpen::SharedWithNotice
         );
-        assert_eq!(exclusive_fallback_plan(ExclusiveFallback::WarnOnly), AlsaOpen::Fail);
+        assert_eq!(
+            exclusive_fallback_plan(ExclusiveFallback::WarnOnly),
+            AlsaOpen::Fail
+        );
     }
 
     #[test]
@@ -1379,7 +1516,8 @@ mod tests {
         })
         .unwrap();
         out.start().unwrap();
-        out.write(&PcmBuffer::F32(vec![0.5, -0.5, 0.25, -0.25])).unwrap();
+        out.write(&PcmBuffer::F32(vec![0.5, -0.5, 0.25, -0.25]))
+            .unwrap();
         assert!(out.queued_ms().is_some(), "a write reports the device lead");
         // More than the 10 ms hold-back: part goes to the device.
         out.write(&PcmBuffer::F32(vec![0.25; 2 * 4_410])).unwrap();
@@ -1406,7 +1544,8 @@ mod tests {
         })
         .unwrap();
         out.start().unwrap();
-        out.write(&PcmBuffer::I32(vec![0x7fff_0000u32 as i32; 32])).unwrap();
+        out.write(&PcmBuffer::I32(vec![0x7fff_0000u32 as i32; 32]))
+            .unwrap();
         out.stop().unwrap();
         let status = out.status();
         assert_eq!(status.mode, OutputMode::Shared);
@@ -1462,7 +1601,10 @@ mod tests {
         // One row per card + PCM; a machine without cards (CI, WSL) lists
         // none, and the picker's System default stands for `default`.
         let devices = enumerate().unwrap();
-        assert!(devices.iter().all(|d| d.id.starts_with("hw:CARD=")), "{devices:?}");
+        assert!(
+            devices.iter().all(|d| d.id.starts_with("hw:CARD=")),
+            "{devices:?}"
+        );
     }
 
     #[test]

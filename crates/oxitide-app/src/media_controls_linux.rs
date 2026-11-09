@@ -16,8 +16,8 @@ use oxitide_audio::engine::EngineCmd;
 
 use super::{
     apply_session_update, control_for_pause, control_for_play, cover_url, desktop_entry,
-    request_stop, seek_target, to_engine_cmd, track_path, ControlCommand, MprisEffect, MprisState, PlayState,
-    SessionSender, SessionUpdate, TrackMeta,
+    request_stop, seek_target, to_engine_cmd, track_path, ControlCommand, MprisEffect, MprisState,
+    PlayState, SessionSender, SessionUpdate, TrackMeta,
 };
 
 const CHANNEL_CAPACITY: usize = 64;
@@ -52,7 +52,12 @@ impl MediaSession {
             .name("oxitide-mpris".into())
             .spawn(move || worker(engine, raise, rx, worker_flag, worker_shutdown))
             .map_err(|e| e.to_string())?;
-        Ok(Self { tx: Some(tx), enabled: flag, shutdown, handle: Some(handle) })
+        Ok(Self {
+            tx: Some(tx),
+            enabled: flag,
+            shutdown,
+            handle: Some(handle),
+        })
     }
 
     pub fn sender(&self) -> SessionSender {
@@ -81,7 +86,10 @@ fn worker(
     enabled: Arc<AtomicBool>,
     shutdown: Arc<AtomicBool>,
 ) {
-    let runtime = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+    let runtime = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
         Ok(runtime) => runtime,
         Err(e) => {
             tracing::warn!("MPRIS disabled: {e}");
@@ -117,7 +125,9 @@ async fn serve(
     connect(&player, &engine, &raise, &state, &effect_tx, &enabled);
     tokio::task::spawn_local(player.run());
     player.set_identity(IDENTITY).await?;
-    player.set_desktop_entry(desktop_entry(desktop_file_installed)).await?;
+    player
+        .set_desktop_entry(desktop_entry(desktop_file_installed))
+        .await?;
     player.set_can_raise(true).await?;
     player.set_can_seek(true).await?;
     player.set_volume(engine.state().volume as f64).await?;
@@ -353,7 +363,12 @@ fn connect(
             if current.map(track_path).as_deref() != Some(track_id.as_str()) {
                 return;
             }
-            issue_seek(&engine, &state, &effects, position.as_millis().max(0) as u64);
+            issue_seek(
+                &engine,
+                &state,
+                &effects,
+                position.as_millis().max(0) as u64,
+            );
         });
     }
     {
@@ -407,8 +422,10 @@ fn track_metadata(track: &TrackMeta) -> Metadata {
         .artist([track.artist.clone()])
         .album(track.album.clone())
         .length(Time::from_millis(track.duration_ms as i64));
-    if let Some(url) =
-        track.cover.as_deref().and_then(|cover| cover_url(cover, THUMBNAIL_SIZE))
+    if let Some(url) = track
+        .cover
+        .as_deref()
+        .and_then(|cover| cover_url(cover, THUMBNAIL_SIZE))
     {
         builder = builder.art_url(url);
     }
@@ -421,14 +438,25 @@ fn desktop_file_installed(name: &str) -> bool {
     let home = std::env::var_os("XDG_DATA_HOME")
         .filter(|dir| !dir.is_empty())
         .map(std::path::PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| std::path::Path::new(&home).join(".local/share")));
+        .or_else(|| {
+            std::env::var_os("HOME").map(|home| std::path::Path::new(&home).join(".local/share"))
+        });
     let system = std::env::var("XDG_DATA_DIRS")
         .ok()
         .filter(|dirs| !dirs.is_empty())
         .unwrap_or_else(|| "/usr/local/share:/usr/share".to_string());
     home.into_iter()
-        .chain(system.split(':').filter(|dir| !dir.is_empty()).map(std::path::PathBuf::from))
-        .any(|dir| dir.join("applications").join(format!("{name}.desktop")).is_file())
+        .chain(
+            system
+                .split(':')
+                .filter(|dir| !dir.is_empty())
+                .map(std::path::PathBuf::from),
+        )
+        .any(|dir| {
+            dir.join("applications")
+                .join(format!("{name}.desktop"))
+                .is_file()
+        })
 }
 
 fn empty_metadata() -> Metadata {

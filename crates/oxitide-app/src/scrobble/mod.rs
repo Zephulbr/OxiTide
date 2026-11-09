@@ -265,11 +265,21 @@ impl ScrobblerService {
     }
 
     fn lastfm_session(&self) -> Option<String> {
-        self.inner.lock().unwrap().lastfm.as_ref().map(|c| c.secret.clone())
+        self.inner
+            .lock()
+            .unwrap()
+            .lastfm
+            .as_ref()
+            .map(|c| c.secret.clone())
     }
 
     fn listenbrainz_token(&self) -> Option<String> {
-        self.inner.lock().unwrap().listenbrainz.as_ref().map(|c| c.secret.clone())
+        self.inner
+            .lock()
+            .unwrap()
+            .listenbrainz
+            .as_ref()
+            .map(|c| c.secret.clone())
     }
 
     pub async fn handle_intent(&self, intent: ScrobbleIntent) {
@@ -279,7 +289,10 @@ impl ScrobblerService {
                 let (lastfm, listenbrainz) = self.enabled_flags();
                 let (lastfm_reconnect, listenbrainz_reconnect) = {
                     let inner = self.inner.lock().unwrap();
-                    (inner.lastfm_needs_reconnect, inner.listenbrainz_needs_reconnect)
+                    (
+                        inner.lastfm_needs_reconnect,
+                        inner.listenbrainz_needs_reconnect,
+                    )
                 };
                 if lastfm && !lastfm_reconnect {
                     if let Some(session) = self.lastfm_session() {
@@ -413,13 +426,18 @@ impl ScrobblerService {
             {
                 return;
             }
-            (credentials.secret.clone(), inner.lastfm_queue.front_batch(50))
+            (
+                credentials.secret.clone(),
+                inner.lastfm_queue.front_batch(50),
+            )
         };
         if batch.is_empty() {
             return;
         }
-        let plays: Vec<(oxitide_audio::queue::QueueItem, i64)> =
-            batch.iter().map(|entry| (entry.item.clone(), entry.started_at)).collect();
+        let plays: Vec<(oxitide_audio::queue::QueueItem, i64)> = batch
+            .iter()
+            .map(|entry| (entry.item.clone(), entry.started_at))
+            .collect();
         match self.lastfm.scrobble(&session, &plays).await {
             Ok(()) => {
                 {
@@ -436,8 +454,9 @@ impl ScrobblerService {
             Err(LastFmError::Retryable) => {
                 self.lastfm_retryable("last.fm is temporarily unavailable", None)
             }
-            Err(LastFmError::RateLimited { retry_after_secs }) => self
-                .lastfm_retryable("last.fm rate limited the request", retry_after_secs),
+            Err(LastFmError::RateLimited { retry_after_secs }) => {
+                self.lastfm_retryable("last.fm rate limited the request", retry_after_secs)
+            }
             Err(LastFmError::Auth) | Err(LastFmError::NotAuthorized) => {
                 self.lastfm_auth_failed("last.fm needs reconnecting")
             }
@@ -499,10 +518,7 @@ impl ScrobblerService {
                     self.emit_scrobbled(entry.item.track_id);
                 }
                 Err(ListenBrainzError::Retryable) => {
-                    self.listenbrainz_retryable(
-                        "listenbrainz is temporarily unavailable",
-                        None,
-                    );
+                    self.listenbrainz_retryable("listenbrainz is temporarily unavailable", None);
                     break;
                 }
                 Err(ListenBrainzError::RateLimited { retry_after_secs }) => {
@@ -553,8 +569,10 @@ impl ScrobblerService {
             }
             Err(error) => return Err(error.to_string()),
         };
-        let credential =
-            StoredCredential { username: session.username, secret: session.key };
+        let credential = StoredCredential {
+            username: session.username,
+            secret: session.key,
+        };
         self.store.save(LASTFM_SERVICE, &credential)?;
         {
             let mut inner = self.inner.lock().unwrap();
@@ -589,16 +607,20 @@ impl ScrobblerService {
         Ok(())
     }
 
-    pub async fn listenbrainz_connect(
-        &self,
-        token: String,
-    ) -> Result<ScrobbleStatusDto, String> {
+    pub async fn listenbrainz_connect(&self, token: String) -> Result<ScrobbleStatusDto, String> {
         let token = token.trim().to_string();
         if token.is_empty() {
             return Err("token is empty".to_string());
         }
-        let username = self.listenbrainz.validate(&token).await.map_err(|e| e.to_string())?;
-        let credential = StoredCredential { username, secret: token };
+        let username = self
+            .listenbrainz
+            .validate(&token)
+            .await
+            .map_err(|e| e.to_string())?;
+        let credential = StoredCredential {
+            username,
+            secret: token,
+        };
         self.store.save(LISTENBRAINZ_SERVICE, &credential)?;
         {
             let mut inner = self.inner.lock().unwrap();
@@ -702,10 +724,17 @@ mod tests {
         let service = service(Arc::new(MemoryCredentialStore::default()));
         service.set_enabled(LASTFM_SERVICE, true);
         service
-            .handle_intent(ScrobbleIntent::Scrobble { item: queue_item(), started_at: 1 })
+            .handle_intent(ScrobbleIntent::Scrobble {
+                item: queue_item(),
+                started_at: 1,
+            })
             .await;
         assert_eq!(service.status().lastfm.queued, 1);
-        assert_eq!(service.status().listenbrainz.queued, 0, "disabled service must not enqueue");
+        assert_eq!(
+            service.status().listenbrainz.queued,
+            0,
+            "disabled service must not enqueue"
+        );
     }
 
     #[tokio::test]
@@ -724,7 +753,13 @@ mod tests {
 
         let store = Arc::new(MemoryCredentialStore::default());
         store
-            .save(LASTFM_SERVICE, &StoredCredential { username: "v".into(), secret: "sk".into() })
+            .save(
+                LASTFM_SERVICE,
+                &StoredCredential {
+                    username: "v".into(),
+                    secret: "sk".into(),
+                },
+            )
             .unwrap();
         let service = ScrobblerService::new(
             reqwest::Client::new(),
@@ -737,7 +772,10 @@ mod tests {
             false,
         );
         service
-            .handle_intent(ScrobbleIntent::Scrobble { item: queue_item(), started_at: 1 })
+            .handle_intent(ScrobbleIntent::Scrobble {
+                item: queue_item(),
+                started_at: 1,
+            })
             .await;
         service.flush_queues().await;
         let status = service.status();
@@ -760,7 +798,13 @@ mod tests {
 
         let store = Arc::new(MemoryCredentialStore::default());
         store
-            .save(LASTFM_SERVICE, &StoredCredential { username: "v".into(), secret: "sk".into() })
+            .save(
+                LASTFM_SERVICE,
+                &StoredCredential {
+                    username: "v".into(),
+                    secret: "sk".into(),
+                },
+            )
             .unwrap();
         let service = ScrobblerService::new(
             reqwest::Client::new(),
@@ -773,13 +817,19 @@ mod tests {
             false,
         );
         service
-            .handle_intent(ScrobbleIntent::Scrobble { item: queue_item(), started_at: 1 })
+            .handle_intent(ScrobbleIntent::Scrobble {
+                item: queue_item(),
+                started_at: 1,
+            })
             .await;
         service.flush_queues().await;
         let status = service.status();
         assert_eq!(status.lastfm.queued, 1, "429 must stay queued");
         assert!(!status.lastfm.needs_reconnect);
-        assert_eq!(status.lastfm.last_error.as_deref(), Some("last.fm rate limited the request"));
+        assert_eq!(
+            status.lastfm.last_error.as_deref(),
+            Some("last.fm rate limited the request")
+        );
     }
 
     #[tokio::test]
@@ -798,7 +848,13 @@ mod tests {
 
         let store = Arc::new(MemoryCredentialStore::default());
         store
-            .save(LASTFM_SERVICE, &StoredCredential { username: "v".into(), secret: "sk".into() })
+            .save(
+                LASTFM_SERVICE,
+                &StoredCredential {
+                    username: "v".into(),
+                    secret: "sk".into(),
+                },
+            )
             .unwrap();
         let service = ScrobblerService::new(
             reqwest::Client::new(),
@@ -811,7 +867,10 @@ mod tests {
             false,
         );
         service
-            .handle_intent(ScrobbleIntent::Scrobble { item: queue_item(), started_at: 1 })
+            .handle_intent(ScrobbleIntent::Scrobble {
+                item: queue_item(),
+                started_at: 1,
+            })
             .await;
         service.flush_queues().await;
         assert_eq!(service.status().lastfm.queued, 0);
@@ -833,7 +892,13 @@ mod tests {
 
         let store = Arc::new(MemoryCredentialStore::default());
         store
-            .save(LASTFM_SERVICE, &StoredCredential { username: "v".into(), secret: "sk".into() })
+            .save(
+                LASTFM_SERVICE,
+                &StoredCredential {
+                    username: "v".into(),
+                    secret: "sk".into(),
+                },
+            )
             .unwrap();
         let service = ScrobblerService::new(
             reqwest::Client::new(),
@@ -845,14 +910,16 @@ mod tests {
             true,
             false,
         );
-        let reported: Arc<std::sync::Mutex<Vec<u64>>> =
-            Arc::new(std::sync::Mutex::new(Vec::new()));
+        let reported: Arc<std::sync::Mutex<Vec<u64>>> = Arc::new(std::sync::Mutex::new(Vec::new()));
         let sink = reported.clone();
         service.set_scrobbled_sink(Arc::new(move |track_id| {
             sink.lock().unwrap().push(track_id);
         }));
         service
-            .handle_intent(ScrobbleIntent::Scrobble { item: queue_item(), started_at: 1 })
+            .handle_intent(ScrobbleIntent::Scrobble {
+                item: queue_item(),
+                started_at: 1,
+            })
             .await;
         service.flush_queues().await;
         assert_eq!(*reported.lock().unwrap(), vec![7]);
@@ -874,7 +941,10 @@ mod tests {
         store
             .save(
                 LISTENBRAINZ_SERVICE,
-                &StoredCredential { username: "v".into(), secret: "tok".into() },
+                &StoredCredential {
+                    username: "v".into(),
+                    secret: "tok".into(),
+                },
             )
             .unwrap();
         let service = ScrobblerService::new(
@@ -887,14 +957,16 @@ mod tests {
             false,
             true,
         );
-        let reported: Arc<std::sync::Mutex<Vec<u64>>> =
-            Arc::new(std::sync::Mutex::new(Vec::new()));
+        let reported: Arc<std::sync::Mutex<Vec<u64>>> = Arc::new(std::sync::Mutex::new(Vec::new()));
         let sink = reported.clone();
         service.set_scrobbled_sink(Arc::new(move |track_id| {
             sink.lock().unwrap().push(track_id);
         }));
         service
-            .handle_intent(ScrobbleIntent::Scrobble { item: queue_item(), started_at: 1 })
+            .handle_intent(ScrobbleIntent::Scrobble {
+                item: queue_item(),
+                started_at: 1,
+            })
             .await;
         service.flush_queues().await;
         assert_eq!(*reported.lock().unwrap(), vec![7]);
@@ -916,7 +988,10 @@ mod tests {
         store
             .save(
                 LISTENBRAINZ_SERVICE,
-                &StoredCredential { username: "v".into(), secret: "tok".into() },
+                &StoredCredential {
+                    username: "v".into(),
+                    secret: "tok".into(),
+                },
             )
             .unwrap();
         let service = ScrobblerService::new(
@@ -929,18 +1004,27 @@ mod tests {
             false,
             true,
         );
-        let reported: Arc<std::sync::Mutex<Vec<u64>>> =
-            Arc::new(std::sync::Mutex::new(Vec::new()));
+        let reported: Arc<std::sync::Mutex<Vec<u64>>> = Arc::new(std::sync::Mutex::new(Vec::new()));
         let sink = reported.clone();
         service.set_scrobbled_sink(Arc::new(move |track_id| {
             sink.lock().unwrap().push(track_id);
         }));
         service
-            .handle_intent(ScrobbleIntent::Scrobble { item: queue_item(), started_at: 1 })
+            .handle_intent(ScrobbleIntent::Scrobble {
+                item: queue_item(),
+                started_at: 1,
+            })
             .await;
         service.flush_queues().await;
-        assert!(reported.lock().unwrap().is_empty(), "a failed flush must not emit");
-        assert_eq!(service.status().listenbrainz.queued, 1, "500 must stay queued");
+        assert!(
+            reported.lock().unwrap().is_empty(),
+            "a failed flush must not emit"
+        );
+        assert_eq!(
+            service.status().listenbrainz.queued,
+            1,
+            "500 must stay queued"
+        );
     }
 
     #[tokio::test]
@@ -952,13 +1036,21 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(http_method("POST"))
             .and(path("/"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({ "error": 9 })))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({ "error": 9 })),
+            )
             .mount(&server)
             .await;
 
         let store = Arc::new(MemoryCredentialStore::default());
         store
-            .save(LASTFM_SERVICE, &StoredCredential { username: "v".into(), secret: "sk".into() })
+            .save(
+                LASTFM_SERVICE,
+                &StoredCredential {
+                    username: "v".into(),
+                    secret: "sk".into(),
+                },
+            )
             .unwrap();
         let service = ScrobblerService::new(
             reqwest::Client::new(),
@@ -977,14 +1069,20 @@ mod tests {
         }));
 
         service
-            .handle_intent(ScrobbleIntent::Scrobble { item: queue_item(), started_at: 1 })
+            .handle_intent(ScrobbleIntent::Scrobble {
+                item: queue_item(),
+                started_at: 1,
+            })
             .await;
         service.flush_queues().await;
         service.flush_queues().await;
         let status = service.status();
         assert!(status.lastfm.needs_reconnect);
         assert_eq!(calls.load(Ordering::SeqCst), 1, "toast must fire once");
-        assert!(!status.listenbrainz.needs_reconnect, "other service untouched");
+        assert!(
+            !status.listenbrainz.needs_reconnect,
+            "other service untouched"
+        );
     }
 
     #[tokio::test]
@@ -996,13 +1094,21 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(http_method("POST"))
             .and(path("/"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({ "error": 9 })))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({ "error": 9 })),
+            )
             .mount(&server)
             .await;
 
         let store = Arc::new(MemoryCredentialStore::default());
         store
-            .save(LASTFM_SERVICE, &StoredCredential { username: "v".into(), secret: "sk".into() })
+            .save(
+                LASTFM_SERVICE,
+                &StoredCredential {
+                    username: "v".into(),
+                    secret: "sk".into(),
+                },
+            )
             .unwrap();
         let service = ScrobblerService::new(
             reqwest::Client::new(),
@@ -1020,11 +1126,15 @@ mod tests {
             counter.fetch_add(1, Ordering::SeqCst);
         }));
 
-        service.handle_intent(ScrobbleIntent::NowPlaying(queue_item())).await;
+        service
+            .handle_intent(ScrobbleIntent::NowPlaying(queue_item()))
+            .await;
         assert!(service.status().lastfm.needs_reconnect);
         assert_eq!(calls.load(Ordering::SeqCst), 1, "auth toast must fire once");
 
-        service.handle_intent(ScrobbleIntent::NowPlaying(queue_item())).await;
+        service
+            .handle_intent(ScrobbleIntent::NowPlaying(queue_item()))
+            .await;
         assert_eq!(calls.load(Ordering::SeqCst), 1, "no second toast");
         assert_eq!(
             server.received_requests().await.unwrap().len(),
@@ -1043,7 +1153,10 @@ mod tests {
     fn retry_after_is_clamped_to_one_and_three_hundred_seconds() {
         let mut zero = Backoff::default();
         zero.fail_with(Some(0));
-        assert!(!zero.ready(), "a zero Retry-After must not retry immediately");
+        assert!(
+            !zero.ready(),
+            "a zero Retry-After must not retry immediately"
+        );
 
         let mut huge = Backoff::default();
         huge.fail_with(Some(u64::MAX));
@@ -1065,9 +1178,10 @@ mod tests {
             .await;
         Mock::given(http_method("GET"))
             .and(query_param("method", "auth.getSession"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(
-                serde_json::json!({ "session": { "name": "v", "key": "sk" } }),
-            ))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({ "session": { "name": "v", "key": "sk" } })),
+            )
             .mount(&server)
             .await;
 
@@ -1096,7 +1210,13 @@ mod tests {
     async fn lastfm_disconnect_clears_the_credential() {
         let store = Arc::new(MemoryCredentialStore::default());
         store
-            .save(LASTFM_SERVICE, &StoredCredential { username: "v".into(), secret: "sk".into() })
+            .save(
+                LASTFM_SERVICE,
+                &StoredCredential {
+                    username: "v".into(),
+                    secret: "sk".into(),
+                },
+            )
             .unwrap();
         let service = service(store.clone());
         assert!(
@@ -1116,7 +1236,10 @@ mod tests {
         }
 
         fn load(&self, _service: &str) -> Result<Option<StoredCredential>, String> {
-            Ok(Some(StoredCredential { username: "v".into(), secret: "sk".into() }))
+            Ok(Some(StoredCredential {
+                username: "v".into(),
+                secret: "sk".into(),
+            }))
         }
 
         fn clear(&self, _service: &str) -> Result<(), String> {
@@ -1127,9 +1250,15 @@ mod tests {
     #[test]
     fn disconnect_propagates_a_keyring_clear_failure_and_stays_connected() {
         let service = service(Arc::new(FailingClearStore));
-        assert!(service.status().lastfm.connected, "fixture starts connected");
+        assert!(
+            service.status().lastfm.connected,
+            "fixture starts connected"
+        );
         assert!(service.lastfm_disconnect().is_err());
-        assert!(service.status().lastfm.connected, "state unchanged on clear failure");
+        assert!(
+            service.status().lastfm.connected,
+            "state unchanged on clear failure"
+        );
     }
 
     #[tokio::test]
@@ -1162,7 +1291,10 @@ mod tests {
         assert!(status.listenbrainz.connected);
         assert!(status.listenbrainz.enabled);
         assert_eq!(status.listenbrainz.username.as_deref(), Some("v"));
-        assert_eq!(store.load(LISTENBRAINZ_SERVICE).unwrap().unwrap().secret, "tok");
+        assert_eq!(
+            store.load(LISTENBRAINZ_SERVICE).unwrap().unwrap().secret,
+            "tok"
+        );
     }
 
     #[tokio::test]
@@ -1218,7 +1350,13 @@ mod tests {
         });
         store
             .inner
-            .save(LASTFM_SERVICE, &StoredCredential { username: "v".into(), secret: "sk".into() })
+            .save(
+                LASTFM_SERVICE,
+                &StoredCredential {
+                    username: "v".into(),
+                    secret: "sk".into(),
+                },
+            )
             .unwrap();
         let service = ScrobblerService::new(
             reqwest::Client::new(),

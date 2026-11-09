@@ -44,7 +44,9 @@ impl CredentialStore for KeyringCredentialStore {
 
     fn load(&self, service: &str) -> Result<Option<StoredCredential>, String> {
         match Self::entry(service)?.get_password() {
-            Ok(json) => serde_json::from_str(&json).map(Some).map_err(|e| e.to_string()),
+            Ok(json) => serde_json::from_str(&json)
+                .map(Some)
+                .map_err(|e| e.to_string()),
             Err(keyring::Error::NoEntry) => Ok(None),
             Err(e) => Err(format!("keyring read failed: {e}")),
         }
@@ -100,7 +102,10 @@ mod tests {
     fn memory_store_round_trips() {
         let store = MemoryCredentialStore::default();
         assert!(store.load("lastfm").unwrap().is_none());
-        let cred = StoredCredential { username: "v".into(), secret: "s".into() };
+        let cred = StoredCredential {
+            username: "v".into(),
+            secret: "s".into(),
+        };
         store.save("lastfm", &cred).unwrap();
         assert_eq!(store.load("lastfm").unwrap(), Some(cred));
         store.clear("lastfm").unwrap();
@@ -109,7 +114,10 @@ mod tests {
 
     #[test]
     fn debug_redacts_the_secret() {
-        let cred = StoredCredential { username: "v".into(), secret: "super-secret".into() };
+        let cred = StoredCredential {
+            username: "v".into(),
+            secret: "super-secret".into(),
+        };
         let text = format!("{cred:?}");
         assert!(!text.contains("super-secret"), "{text}");
         assert!(text.contains("<redacted>"));

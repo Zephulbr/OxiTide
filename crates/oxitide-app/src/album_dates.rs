@@ -51,16 +51,26 @@ pub struct AlbumDatesStore {
 
 impl AlbumDatesStore {
     pub fn start(path: Option<PathBuf>) -> Self {
-        Self { memory: RwLock::new(HashMap::new()), loaded: AtomicBool::new(false), path }
+        Self {
+            memory: RwLock::new(HashMap::new()),
+            loaded: AtomicBool::new(false),
+            path,
+        }
     }
 
     fn ensure_loaded(&self) {
         if self.loaded.swap(true, Ordering::SeqCst) {
             return;
         }
-        let Some(path) = self.path.as_ref() else { return };
-        let Ok(text) = std::fs::read_to_string(path) else { return };
-        let Ok(cache) = serde_json::from_str::<DiskCache>(&text) else { return };
+        let Some(path) = self.path.as_ref() else {
+            return;
+        };
+        let Ok(text) = std::fs::read_to_string(path) else {
+            return;
+        };
+        let Ok(cache) = serde_json::from_str::<DiskCache>(&text) else {
+            return;
+        };
         if cache.version != ALBUM_DATES_VERSION {
             return;
         }
@@ -123,27 +133,49 @@ impl AlbumDatesStore {
         let now = now_secs();
         let mut memory = self.memory.write().unwrap();
         for id in requested {
-            memory.insert(*id, AlbumDateEntry { date: None, fetched_at: now });
+            memory.insert(
+                *id,
+                AlbumDateEntry {
+                    date: None,
+                    fetched_at: now,
+                },
+            );
         }
         for (id, date) in rows {
-            memory.insert(id, AlbumDateEntry { date, fetched_at: now });
+            memory.insert(
+                id,
+                AlbumDateEntry {
+                    date,
+                    fetched_at: now,
+                },
+            );
         }
     }
 
     fn save(&self) {
-        let Some(path) = self.path.as_ref() else { return };
+        let Some(path) = self.path.as_ref() else {
+            return;
+        };
         let mut memory = self.memory.write().unwrap();
         prune(&mut memory);
         let cache = DiskCache {
             version: ALBUM_DATES_VERSION,
-            albums: memory.iter().map(|(id, entry)| (id.to_string(), entry.clone())).collect(),
+            albums: memory
+                .iter()
+                .map(|(id, entry)| (id.to_string(), entry.clone()))
+                .collect(),
         };
-        let Ok(text) = serde_json::to_string(&cache) else { return };
+        let Ok(text) = serde_json::to_string(&cache) else {
+            return;
+        };
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
         let tmp = path.with_extension("json.tmp");
-        if std::fs::write(&tmp, text).and_then(|_| std::fs::rename(&tmp, path)).is_err() {
+        if std::fs::write(&tmp, text)
+            .and_then(|_| std::fs::rename(&tmp, path))
+            .is_err()
+        {
             tracing::warn!("failed to save album dates at {}", path.display());
         }
     }
@@ -154,7 +186,10 @@ fn prune(map: &mut HashMap<u64, AlbumDateEntry>) {
     if map.len() <= ALBUM_DATES_MAX_ENTRIES {
         return;
     }
-    let mut by_age: Vec<(u64, u64)> = map.iter().map(|(id, entry)| (*id, entry.fetched_at)).collect();
+    let mut by_age: Vec<(u64, u64)> = map
+        .iter()
+        .map(|(id, entry)| (*id, entry.fetched_at))
+        .collect();
     by_age.sort_by_key(|(_, fetched_at)| *fetched_at);
     let excess = map.len() - ALBUM_DATES_MAX_ENTRIES;
     for (id, _) in by_age.into_iter().take(excess) {
@@ -196,7 +231,11 @@ mod tests {
             reqwest::Client::new(),
             server.uri(),
             format!("{}/token", server.uri()),
-            SessionInfo { session_id: "s".into(), country_code: "GR".into(), user_id: 1 },
+            SessionInfo {
+                session_id: "s".into(),
+                country_code: "GR".into(),
+                user_id: 1,
+            },
             TokenSet {
                 access_token: "AT".into(),
                 refresh_token: Some("RT".into()),
@@ -253,10 +292,17 @@ mod tests {
         assert_eq!(dates[6], (7, None), "an omitted id is settled as unknown");
 
         store.enrich(&client(&server), &ids).await.unwrap();
-        assert_eq!(requests.load(Ordering::SeqCst), 3, "cached dates were refetched");
+        assert_eq!(
+            requests.load(Ordering::SeqCst),
+            3,
+            "cached dates were refetched"
+        );
 
         let reloaded = AlbumDatesStore::start(Some(dir.join("album_dates.json")));
-        assert_eq!(reloaded.known(&[1, 7]), vec![(1, Some("2000-01-02".to_string())), (7, None)]);
+        assert_eq!(
+            reloaded.known(&[1, 7]),
+            vec![(1, Some("2000-01-02".to_string())), (7, None)]
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -269,15 +315,22 @@ mod tests {
             .mount(&server)
             .await;
         let store = AlbumDatesStore::start(None);
-        assert!(store.enrich(&client(&server), &[1, 2]).await.unwrap().is_empty());
+        assert!(store
+            .enrich(&client(&server), &[1, 2])
+            .await
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
     fn version_mismatch_discards_the_disk_cache() {
         let dir = temp_dir();
         let path = dir.join("album_dates.json");
-        std::fs::write(&path, r#"{"version":99,"albums":{"5":{"date":"2001-01-01","fetched_at":1}}}"#)
-            .unwrap();
+        std::fs::write(
+            &path,
+            r#"{"version":99,"albums":{"5":{"date":"2001-01-01","fetched_at":1}}}"#,
+        )
+        .unwrap();
         assert!(AlbumDatesStore::start(Some(path)).known(&[5]).is_empty());
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -285,7 +338,15 @@ mod tests {
     #[test]
     fn prune_keeps_the_newest() {
         let mut map: HashMap<u64, AlbumDateEntry> = (0..(ALBUM_DATES_MAX_ENTRIES as u64 + 5))
-            .map(|id| (id, AlbumDateEntry { date: None, fetched_at: id }))
+            .map(|id| {
+                (
+                    id,
+                    AlbumDateEntry {
+                        date: None,
+                        fetched_at: id,
+                    },
+                )
+            })
             .collect();
         prune(&mut map);
         assert_eq!(map.len(), ALBUM_DATES_MAX_ENTRIES);

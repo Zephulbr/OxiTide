@@ -25,7 +25,10 @@ struct State {
 
 impl Connectivity {
     pub fn new() -> Arc<Self> {
-        Arc::new(Self { state: Mutex::new(State::default()), cond: Condvar::new() })
+        Arc::new(Self {
+            state: Mutex::new(State::default()),
+            cond: Condvar::new(),
+        })
     }
 
     /// True only when the system reports the network down.
@@ -61,7 +64,10 @@ impl Connectivity {
     pub fn wait_change(&self, timeout: Duration) {
         let state = self.state.lock().unwrap();
         let epoch = state.epoch;
-        let _ = self.cond.wait_timeout_while(state, timeout, |s| s.epoch == epoch).unwrap();
+        let _ = self
+            .cond
+            .wait_timeout_while(state, timeout, |s| s.epoch == epoch)
+            .unwrap();
     }
 }
 
@@ -90,7 +96,10 @@ mod platform {
         NetworkConnectivityLevelHintNone, NL_NETWORK_CONNECTIVITY_HINT,
     };
 
-    unsafe extern "system" fn on_hint(context: *const core::ffi::c_void, hint: NL_NETWORK_CONNECTIVITY_HINT) {
+    unsafe extern "system" fn on_hint(
+        context: *const core::ffi::c_void,
+        hint: NL_NETWORK_CONNECTIVITY_HINT,
+    ) {
         // SAFETY: `context` is the `Connectivity` leaked in `watch`, which
         // lives for the rest of the process.
         let conn = unsafe { &*(context as *const Connectivity) };
@@ -132,10 +141,12 @@ mod platform {
     use std::time::Duration;
 
     pub fn watch(conn: Arc<Connectivity>) {
-        let spawned = std::thread::Builder::new().name("oxitide-netwatch".into()).spawn(move || loop {
-            conn.set_online(super::has_default_route());
-            std::thread::sleep(Duration::from_secs(2));
-        });
+        let spawned = std::thread::Builder::new()
+            .name("oxitide-netwatch".into())
+            .spawn(move || loop {
+                conn.set_online(super::has_default_route());
+                std::thread::sleep(Duration::from_secs(2));
+            });
         if let Err(e) = spawned {
             tracing::warn!("network watcher unavailable ({e}); using timers");
         }
@@ -173,10 +184,7 @@ fn v4_has_default(table: &str) -> bool {
 fn v6_has_default(table: &str) -> bool {
     table.lines().any(|line| {
         let cols: Vec<&str> = line.split_whitespace().collect();
-        cols.len() >= 10
-            && cols[0].chars().all(|c| c == '0')
-            && cols[1] == "00"
-            && cols[9] != "lo"
+        cols.len() >= 10 && cols[0].chars().all(|c| c == '0') && cols[1] == "00" && cols[9] != "lo"
     })
 }
 
@@ -198,7 +206,8 @@ mod tests {
 
     #[test]
     fn parses_an_ipv4_default_route() {
-        let table = "Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT\n\
+        let table =
+            "Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT\n\
                      eth0\t00000000\t0101A8C0\t0003\t0\t0\t100\t00000000\t0\t0\t0\n\
                      eth0\t0001A8C0\t00000000\t0001\t0\t0\t100\t00FFFFFF\t0\t0\t0\n";
         assert!(v4_has_default(table));

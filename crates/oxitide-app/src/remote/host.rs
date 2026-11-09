@@ -12,7 +12,9 @@ use super::events::SessionKind;
 use super::net::{self, InterfaceDto};
 use super::pairing::{devices_path, DeviceStore, PairRequestDto};
 use super::rpc::{self, RemoteCommand};
-use super::{qr, Asset, AssetSource, BoxFuture, RemoteEvents, RemoteOptions, RemoteService, RemoteSession};
+use super::{
+    qr, Asset, AssetSource, BoxFuture, RemoteEvents, RemoteOptions, RemoteService, RemoteSession,
+};
 use crate::config::RemoteConfig;
 use crate::state::AppState;
 
@@ -72,11 +74,18 @@ impl<R: Runtime> RemoteSession for TauriSession<R> {
     }
 
     fn playback(&self) -> Option<PlaybackState> {
-        self.app.state::<AppState>().player().map(|p| p.engine.state())
+        self.app
+            .state::<AppState>()
+            .player()
+            .map(|p| p.engine.state())
     }
 
     fn explicit(&self, track_id: u64) -> Option<bool> {
-        self.app.state::<AppState>().track_flags()?.get(track_id)?.explicit
+        self.app
+            .state::<AppState>()
+            .track_flags()?
+            .get(track_id)?
+            .explicit
     }
 
     fn command(&self, command: RemoteCommand) -> BoxFuture<'static, Result<Value, String>> {
@@ -189,16 +198,24 @@ pub fn status<R: Runtime>(app: &AppHandle<R>) -> RemoteStatusDto {
         listening: service.is_some(),
         port: service.as_ref().map(|s| s.port()),
         address: address.map(|ip| ip.to_string()),
-        url: service.as_ref().zip(address).map(|(s, ip)| qr::base_url(ip, s.port())),
+        url: service
+            .as_ref()
+            .zip(address)
+            .map(|(s, ip)| qr::base_url(ip, s.port())),
         error,
         connected: service.as_ref().map(|s| s.connected()).unwrap_or(0),
         interfaces,
-        pending: service.as_ref().map(|s| s.pending_requests()).unwrap_or_default(),
+        pending: service
+            .as_ref()
+            .map(|s| s.pending_requests())
+            .unwrap_or_default(),
         pairing_expires_in_secs: service
             .as_ref()
             .and_then(|s| s.pairing_remaining())
             .map(|d| d.as_secs()),
-        firewall: super::firewall::detect(service.as_ref().map(|s| s.port()).unwrap_or(settings.port)),
+        firewall: super::firewall::detect(
+            service.as_ref().map(|s| s.port()).unwrap_or(settings.port),
+        ),
         settings,
     }
 }
@@ -217,14 +234,24 @@ pub async fn start<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     }
     let settings = state.config().remote;
     let dev = if cfg!(debug_assertions) {
-        app.config().build.dev_url.clone().map(|url| (reqwest::Client::new(), url))
+        app.config()
+            .build
+            .dev_url
+            .clone()
+            .map(|url| (reqwest::Client::new(), url))
     } else {
         None
     };
     let started = RemoteService::start(
-        RemoteOptions { port: settings.port, approve_new_devices: settings.approve_new_devices },
+        RemoteOptions {
+            port: settings.port,
+            approve_new_devices: settings.approve_new_devices,
+        },
         Arc::new(TauriSession { app: app.clone() }),
-        Arc::new(TauriAssets { app: app.clone(), dev }),
+        Arc::new(TauriAssets {
+            app: app.clone(),
+            dev,
+        }),
         Arc::new(TauriEvents { app: app.clone() }),
         devices(app),
     )
@@ -266,14 +293,27 @@ pub fn stop_now<R: Runtime>(app: &AppHandle<R>) {
 
 pub fn begin_pairing<R: Runtime>(app: &AppHandle<R>) -> Result<PairingDto, String> {
     let state = app.state::<AppState>();
-    let service = state.remote().ok_or_else(|| "turn the phone remote on first".to_string())?;
+    let service = state
+        .remote()
+        .ok_or_else(|| "turn the phone remote on first".to_string())?;
     let token = service.begin_pairing()?;
     let interfaces = net::list_interfaces();
-    let ip = net::pick(&interfaces, &state.config().remote.interface, net::default_route_ip());
+    let ip = net::pick(
+        &interfaces,
+        &state.config().remote.interface,
+        net::default_route_ip(),
+    );
     let url = qr::pairing_url(ip, service.port(), &token);
     let qr_svg = qr::qr_svg(&url)?;
-    let expires_in_secs = service.pairing_remaining().map(|d| d.as_secs()).unwrap_or(0);
-    Ok(PairingDto { url, qr_svg, expires_in_secs })
+    let expires_in_secs = service
+        .pairing_remaining()
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    Ok(PairingDto {
+        url,
+        qr_svg,
+        expires_in_secs,
+    })
 }
 
 pub fn list_devices<R: Runtime>(app: &AppHandle<R>) -> Vec<RemoteDeviceDto> {

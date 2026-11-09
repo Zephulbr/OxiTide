@@ -163,10 +163,21 @@ pub struct Approvals {
 }
 
 impl Approvals {
-    pub fn register(&self, name: String, ip: String) -> Result<(PairRequestDto, oneshot::Receiver<bool>), String> {
-        let request = PairRequestDto { id: random_token(9)?, name, ip };
+    pub fn register(
+        &self,
+        name: String,
+        ip: String,
+    ) -> Result<(PairRequestDto, oneshot::Receiver<bool>), String> {
+        let request = PairRequestDto {
+            id: random_token(9)?,
+            name,
+            ip,
+        };
         let (tx, rx) = oneshot::channel();
-        self.pending.lock().unwrap().insert(request.id.clone(), (request.clone(), tx));
+        self.pending
+            .lock()
+            .unwrap()
+            .insert(request.id.clone(), (request.clone(), tx));
         Ok((request, rx))
     }
 
@@ -183,7 +194,12 @@ impl Approvals {
     }
 
     pub fn list(&self) -> Vec<PairRequestDto> {
-        self.pending.lock().unwrap().values().map(|(r, _)| r.clone()).collect()
+        self.pending
+            .lock()
+            .unwrap()
+            .values()
+            .map(|(r, _)| r.clone())
+            .collect()
     }
 }
 
@@ -233,14 +249,20 @@ impl DeviceStore {
     /// renamed `.bak` so it can never block the feature.
     pub fn load(path: Option<PathBuf>) -> Self {
         let devices = path.as_deref().map(read_devices).unwrap_or_default();
-        Self { path, devices: Mutex::new(devices) }
+        Self {
+            path,
+            devices: Mutex::new(devices),
+        }
     }
 
     fn persist(&self, devices: &[DeviceRecord]) -> Result<(), String> {
         let Some(path) = &self.path else {
             return Ok(());
         };
-        let file = DeviceFile { version: FILE_VERSION, devices: devices.to_vec() };
+        let file = DeviceFile {
+            version: FILE_VERSION,
+            devices: devices.to_vec(),
+        };
         let text = serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?;
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -323,13 +345,20 @@ fn read_devices(path: &Path) -> Vec<DeviceRecord> {
     match serde_json::from_str::<DeviceFile>(&text) {
         Ok(file) if file.version == FILE_VERSION => file.devices,
         Ok(file) => {
-            tracing::warn!("remote.json has unsupported version {}; set aside", file.version);
+            tracing::warn!(
+                "remote.json has unsupported version {}; set aside",
+                file.version
+            );
             let _ = fs::rename(path, path.with_extension("json.bak"));
             Vec::new()
         }
         Err(e) => {
             // Line/column only: serde messages can quote stored values.
-            tracing::warn!("malformed remote.json (line {}, column {}); set aside", e.line(), e.column());
+            tracing::warn!(
+                "malformed remote.json (line {}, column {}); set aside",
+                e.line(),
+                e.column()
+            );
             let _ = fs::rename(path, path.with_extension("json.bak"));
             Vec::new()
         }
@@ -359,7 +388,9 @@ mod tests {
         let b = random_token(16).unwrap();
         assert_ne!(a, b);
         assert_eq!(a.len(), 22, "128 bits in base64url without padding");
-        assert!(a.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'));
+        assert!(a
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'));
         assert_eq!(random_token(32).unwrap().len(), 43);
     }
 
@@ -389,9 +420,17 @@ mod tests {
         let t0 = Instant::now();
         let token = pairing.begin(t0).unwrap();
         assert_eq!(pairing.reserve(&token, t0), Ok(()));
-        assert_eq!(pairing.reserve(&token, t0), Err(PairError::Busy), "one attempt at a time");
+        assert_eq!(
+            pairing.reserve(&token, t0),
+            Err(PairError::Busy),
+            "one attempt at a time"
+        );
         pairing.consume(&token);
-        assert_eq!(pairing.reserve(&token, t0), Err(PairError::Invalid), "replay is rejected");
+        assert_eq!(
+            pairing.reserve(&token, t0),
+            Err(PairError::Invalid),
+            "replay is rejected"
+        );
     }
 
     #[test]
@@ -419,20 +458,29 @@ mod tests {
     #[tokio::test]
     async fn approvals_accept_deny_and_timeout() {
         let approvals = Approvals::default();
-        let (accept, rx) = approvals.register("Pixel".into(), "192.168.1.9".into()).unwrap();
+        let (accept, rx) = approvals
+            .register("Pixel".into(), "192.168.1.9".into())
+            .unwrap();
         assert_eq!(approvals.list(), vec![accept.clone()]);
         assert!(approvals.resolve(&accept.id, true));
         assert_eq!(rx.await, Ok(true));
 
-        let (deny, rx) = approvals.register("iPhone".into(), "192.168.1.8".into()).unwrap();
+        let (deny, rx) = approvals
+            .register("iPhone".into(), "192.168.1.8".into())
+            .unwrap();
         assert!(approvals.resolve(&deny.id, false));
         assert_eq!(rx.await, Ok(false));
 
-        let (late, rx) = approvals.register("Tab".into(), "192.168.1.7".into()).unwrap();
+        let (late, rx) = approvals
+            .register("Tab".into(), "192.168.1.7".into())
+            .unwrap();
         let waited = tokio::time::timeout(Duration::from_millis(20), rx).await;
         assert!(waited.is_err(), "no decision means the phone times out");
         approvals.remove(&late.id);
-        assert!(!approvals.resolve(&late.id, true), "a timed-out request cannot be approved");
+        assert!(
+            !approvals.resolve(&late.id, true),
+            "a timed-out request cannot be approved"
+        );
     }
 
     #[test]
@@ -453,7 +501,10 @@ mod tests {
         let (device, token) = store.create("Phone".into(), 1_000).unwrap();
         assert!(store.rename(&device.id, "Kitchen tablet".into()).unwrap());
         assert_eq!(store.list()[0].name, "Kitchen tablet");
-        assert_eq!(store.authenticate(&token, 2_000).unwrap().name, "Kitchen tablet");
+        assert_eq!(
+            store.authenticate(&token, 2_000).unwrap().name,
+            "Kitchen tablet"
+        );
         assert!(!store.rename("missing", "x".into()).unwrap());
     }
 
@@ -461,8 +512,14 @@ mod tests {
     fn last_seen_updates_at_most_once_a_minute() {
         let store = DeviceStore::load(None);
         let (_, token) = store.create("Pixel".into(), 1_000).unwrap();
-        assert_eq!(store.authenticate(&token, 30_000).unwrap().last_seen_ms, 1_000);
-        assert_eq!(store.authenticate(&token, 61_000).unwrap().last_seen_ms, 61_000);
+        assert_eq!(
+            store.authenticate(&token, 30_000).unwrap().last_seen_ms,
+            1_000
+        );
+        assert_eq!(
+            store.authenticate(&token, 61_000).unwrap().last_seen_ms,
+            61_000
+        );
     }
 
     #[test]
@@ -472,7 +529,10 @@ mod tests {
         let store = DeviceStore::load(Some(path.clone()));
         let (device, token) = store.create("Pixel".into(), 1_000).unwrap();
         let text = fs::read_to_string(&path).unwrap();
-        assert!(!text.contains(&token), "the clear token must never be written");
+        assert!(
+            !text.contains(&token),
+            "the clear token must never be written"
+        );
         assert!(text.contains("\"version\": 1"), "{text}");
         assert!(!dir.join("remote.json.tmp").exists());
         let reloaded = DeviceStore::load(Some(path));

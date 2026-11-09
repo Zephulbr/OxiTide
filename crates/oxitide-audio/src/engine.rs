@@ -1,20 +1,19 @@
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender, TryRecvError};
 use std::sync::{Arc, Condvar, Mutex, OnceLock, Weak};
 use std::time::{Duration, Instant};
 
+use crate::automix::{self, Clip, Rendered, TransitionKind, TransitionPlan, TransitionReport};
 use crate::beat::{self, BeatClock, BeatTap, Window as BeatWindow};
 use crate::cache::{CacheKey, DiskCache};
 use crate::decode::{PcmBuffer, PcmFormat, PcmSink, StreamInfo};
-use crate::automix::{self, Clip, Rendered, TransitionKind, TransitionPlan, TransitionReport};
 use crate::dsp::{
     extend_normalized, replay_gain_linear, CrossfadeSettings, DspSettings, GainRide, MixShape,
     StreamResampler, Tail, TrackDsp, TransitionStyle, STAGE_CROSSFADE,
 };
 use crate::error::{Error, Result};
 use crate::fetch::{self, AheadGate, AheadSink, AheadTicket, Fetcher, ScratchFile, StreamBuffer};
-use crate::retry::{self, Backoff};
 use crate::meter::LevelTap;
 use crate::output::{
     AudioOutput, AudioOutputSpec, ExclusiveFallback, LeadEstimate, OutputMode, OutputStatus,
@@ -22,6 +21,7 @@ use crate::output::{
 };
 use crate::perf::{AudioPerfEvent, PerfHook};
 use crate::queue::{Queue, QueueItem, RepeatMode};
+use crate::retry::{self, Backoff};
 use crate::seek::{self, Discarder, SourceStart};
 use crate::source::StreamPlan;
 use oxitide_tidal::stream::{Quality, ReplayGain};
@@ -99,18 +99,30 @@ pub enum EngineEvent {
     NowPlaying(Option<QueueItem>),
     /// `lead_ms`: how far `position_ms` runs ahead of what is heard (audio
     /// queued in the output), smoothed; 0 when the output cannot tell.
-    Position { position_ms: u64, duration_ms: u64, lead_ms: u32 },
+    Position {
+        position_ms: u64,
+        duration_ms: u64,
+        lead_ms: u32,
+    },
     /// Tempo and phase of the playing track, from local analysis while beat
     /// tracking is on (CatJam). A few per track; never fetched.
     Beat(BeatClock),
-    Error { code: String, message: String },
+    Error {
+        code: String,
+        message: String,
+    },
 }
 
 #[derive(Debug, Clone)]
 pub enum EngineCmd {
-    PlayTracks { items: Vec<QueueItem>, start: usize },
+    PlayTracks {
+        items: Vec<QueueItem>,
+        start: usize,
+    },
     /// Replace the queue with a fully shuffled context (header Shuffle).
-    PlayShuffled { items: Vec<QueueItem> },
+    PlayShuffled {
+        items: Vec<QueueItem>,
+    },
     /// Replace the queue with a persisted session and start paused: no output
     /// is opened and no media is fetched until the user presses play. The
     /// saved queue order is preserved even when `shuffle` is true.
@@ -128,22 +140,34 @@ pub enum EngineCmd {
     SetVolume(f32),
     SetShuffle(bool),
     SetRepeat(RepeatMode),
-    Reorder { from: usize, to: usize },
+    Reorder {
+        from: usize,
+        to: usize,
+    },
     Remove(usize),
-    Enqueue { items: Vec<QueueItem> },
+    Enqueue {
+        items: Vec<QueueItem>,
+    },
     /// Insert right after the current track ("Play next"). Like any queue
     /// edit, the playing session re-targets its prefetch at the new next
     /// track while the current one has not reached its end.
-    EnqueueNext { items: Vec<QueueItem> },
+    EnqueueNext {
+        items: Vec<QueueItem>,
+    },
     /// Insert at queue slot `index` (a drop on the queue); past the end
     /// appends. The current track keeps playing; the prefetch follows the
     /// edit, as for `EnqueueNext`.
-    EnqueueAt { index: usize, items: Vec<QueueItem> },
+    EnqueueAt {
+        index: usize,
+        items: Vec<QueueItem>,
+    },
     Clear,
     /// Fade the output to silence over `duration_ms`, then pause at the current
     /// position. The pre-fade volume is restored for the next play; a
     /// play/pause or volume change cancels the fade.
-    FadeAndPause { duration_ms: u64 },
+    FadeAndPause {
+        duration_ms: u64,
+    },
     /// Restart the current track at its last position (after an error).
     Retry,
 }
@@ -307,7 +331,12 @@ fn seek_in_range(item: &QueueItem, position_ms: u64) -> bool {
 /// Whether the selected output keeps volume at 100% (see
 /// `PlaybackState::volume_fixed`).
 fn volume_fixed(inner: &Inner) -> bool {
-    inner.device_id.lock().unwrap().as_deref().is_some_and(crate::output::is_asio_device)
+    inner
+        .device_id
+        .lock()
+        .unwrap()
+        .as_deref()
+        .is_some_and(crate::output::is_asio_device)
 }
 
 fn build_state(inner: &Inner) -> PlaybackState {
@@ -321,7 +350,10 @@ fn build_state(inner: &Inner) -> PlaybackState {
         current: q.current().cloned(),
         current_index: q.current_index(),
         position_ms: inner.position_ms.load(Ordering::SeqCst),
-        duration_ms: q.current().map(|i| i.duration_secs as u64 * 1000).unwrap_or(0),
+        duration_ms: q
+            .current()
+            .map(|i| i.duration_secs as u64 * 1000)
+            .unwrap_or(0),
         volume: if fixed { 1.0 } else { q.volume() },
         volume_fixed: fixed,
         shuffle: q.shuffle(),
@@ -464,7 +496,9 @@ impl Engine {
             .name("oxitide-worker".into())
             .spawn(move || worker_main(worker_inner, make_fetcher, ready_tx, output))
             .expect("spawn playback worker");
-        ready_rx.recv().expect("playback worker failed to initialize");
+        ready_rx
+            .recv()
+            .expect("playback worker failed to initialize");
         Self { inner }
     }
 
@@ -599,8 +633,16 @@ impl Engine {
         let tail: Vec<f64> = capture.tail.iter().map(|&s| s as f64).collect();
         let head: Vec<f64> = capture.head.iter().map(|&s| s as f64).collect();
         Some(automix::render_transition(
-            &Clip { samples: &tail, channels: capture.tail_channels, rate: capture.tail_rate },
-            &Clip { samples: &head, channels: capture.head_channels, rate: capture.head_rate },
+            &Clip {
+                samples: &tail,
+                channels: capture.tail_channels,
+                rate: capture.tail_rate,
+            },
+            &Clip {
+                samples: &head,
+                channels: capture.head_channels,
+                rate: capture.head_rate,
+            },
             settings,
         ))
     }
@@ -692,7 +734,10 @@ impl Engine {
     /// Like `mutate_playing_queue`, but only bumps the generation when `mutate`
     /// actually moved the current index or stopped playback (a no-op `Prev` at
     /// the first track must leave the running session untouched).
-    fn mutate_queue_if_changed(&self, mutate: impl FnOnce(&mut Queue)) -> (Option<QueueItem>, bool) {
+    fn mutate_queue_if_changed(
+        &self,
+        mutate: impl FnOnce(&mut Queue),
+    ) -> (Option<QueueItem>, bool) {
         let _guard = self.inner.playback_lock.lock().unwrap();
         let mut queue = self.inner.queue.lock().unwrap();
         let before = queue.current_index();
@@ -738,7 +783,13 @@ impl Engine {
             EngineCmd::PlayShuffled { items } => {
                 self.start_context(|q| q.play_context_shuffled(items));
             }
-            EngineCmd::RestoreSession { items, start, position_ms, shuffle, repeat } => {
+            EngineCmd::RestoreSession {
+                items,
+                start,
+                position_ms,
+                shuffle,
+                repeat,
+            } => {
                 *self.inner.stream_meta.lock().unwrap() = None;
                 let item = self.mutate_playing_queue(|q| {
                     q.restore(items, start, shuffle, repeat);
@@ -836,7 +887,9 @@ impl Engine {
                     // Show the target immediately; the worker restarts there,
                     // staying paused if the queue is paused.
                     self.inner.position_ms.store(ms, Ordering::SeqCst);
-                    self.inner.position_track.store(item.track_id, Ordering::SeqCst);
+                    self.inner
+                        .position_track
+                        .store(item.track_id, Ordering::SeqCst);
                     // A seek back into the ended track is the user's choice
                     // of what to hear, not an end to continue from.
                     self.inner.ended.store(false, Ordering::SeqCst);
@@ -1099,7 +1152,10 @@ impl TrackStream {
             .pending
             .iter()
             .find_map(|event| match event {
-                Ok(StreamEvent::Info(start)) => Some(replay_gain_linear(&settings.replay_gain, &start.replay_gain)),
+                Ok(StreamEvent::Info(start)) => Some(replay_gain_linear(
+                    &settings.replay_gain,
+                    &start.replay_gain,
+                )),
                 _ => None,
             })
             .unwrap_or(1.0);
@@ -1213,16 +1269,37 @@ fn decode_track(
     ticket: AheadTicket,
 ) {
     let quality = *inner.quality.lock().unwrap();
-    fire_perf(&inner, AudioPerfEvent::ResolveStart { track_id: item.track_id });
+    fire_perf(
+        &inner,
+        AudioPerfEvent::ResolveStart {
+            track_id: item.track_id,
+        },
+    );
     let plan = match inner.resolver.resolve(item.track_id, quality) {
         Ok(plan) => plan,
         Err(e) => {
             let e = if e.is_transient() {
-                match play_cached_offline(&inner, &item, quality, mode, generation, seek_ms, &tx, &cache_key_slot) {
+                match play_cached_offline(
+                    &inner,
+                    &item,
+                    quality,
+                    mode,
+                    generation,
+                    seek_ms,
+                    &tx,
+                    &cache_key_slot,
+                ) {
                     Some(Ok(())) => return,
                     Some(Err((cache_error, emitted_pcm))) => {
-                        tracing::warn!("offline copy of track {} failed ({cache_error})", item.track_id);
-                        if emitted_pcm { cache_error } else { e }
+                        tracing::warn!(
+                            "offline copy of track {} failed ({cache_error})",
+                            item.track_id
+                        );
+                        if emitted_pcm {
+                            cache_error
+                        } else {
+                            e
+                        }
                     }
                     None => e,
                 }
@@ -1255,7 +1332,12 @@ fn decode_track(
             return;
         }
     }
-    fire_perf(&inner, AudioPerfEvent::DecodeStart { track_id: item.track_id });
+    fire_perf(
+        &inner,
+        AudioPerfEvent::DecodeStart {
+            track_id: item.track_id,
+        },
+    );
     let cache_key = plan.manifest_hash.map(|manifest_hash| CacheKey {
         track_id: item.track_id,
         quality,
@@ -1268,7 +1350,12 @@ fn decode_track(
     match cache_key {
         Some(key) => match inner.cache.lookup(&key) {
             Some(path) => {
-                fire_perf(&inner, AudioPerfEvent::CacheHit { track_id: item.track_id });
+                fire_perf(
+                    &inner,
+                    AudioPerfEvent::CacheHit {
+                        track_id: item.track_id,
+                    },
+                );
                 let result = decode_from_file(
                     &inner,
                     &item,
@@ -1304,15 +1391,32 @@ fn decode_track(
                             inner.notify_worker();
                             return;
                         }
-                        fire_perf(&inner, AudioPerfEvent::CacheMiss { track_id: item.track_id });
+                        fire_perf(
+                            &inner,
+                            AudioPerfEvent::CacheMiss {
+                                track_id: item.track_id,
+                            },
+                        );
                     }
                 }
             }
-            None => fire_perf(&inner, AudioPerfEvent::CacheMiss { track_id: item.track_id }),
+            None => fire_perf(
+                &inner,
+                AudioPerfEvent::CacheMiss {
+                    track_id: item.track_id,
+                },
+            ),
         },
-        None => fire_perf(&inner, AudioPerfEvent::CacheMiss { track_id: item.track_id }),
+        None => fire_perf(
+            &inner,
+            AudioPerfEvent::CacheMiss {
+                track_id: item.track_id,
+            },
+        ),
     }
-    decode_from_network(inner, item, mode, generation, seek_ms, tx, buffer, plan, cache_key, ticket);
+    decode_from_network(
+        inner, item, mode, generation, seek_ms, tx, buffer, plan, cache_key, ticket,
+    );
 }
 
 /// Play a cached copy of `item` at `quality` when TIDAL cannot be reached to
@@ -1345,10 +1449,18 @@ fn play_cached_offline(
             .map_err(|e| tracing::warn!("cache entry {} cannot be probed: {e}", key.file_name()))
             .ok()?,
     };
-    tracing::info!("TIDAL unreachable; playing track {} from the cache", item.track_id);
+    tracing::info!(
+        "TIDAL unreachable; playing track {} from the cache",
+        item.track_id
+    );
     *cache_key_slot.lock().unwrap() = Some(key);
     inner.cache.protect(&key);
-    fire_perf(inner, AudioPerfEvent::CacheHit { track_id: item.track_id });
+    fire_perf(
+        inner,
+        AudioPerfEvent::CacheHit {
+            track_id: item.track_id,
+        },
+    );
     let result = decode_from_file(
         inner,
         item,
@@ -1462,11 +1574,20 @@ fn decode_from_network(
         })
     };
     let fetch_buffer = buffer.clone();
-    let fetcher = inner.fetcher.get().expect("fetcher initialized by the worker").clone();
+    let fetcher = inner
+        .fetcher
+        .get()
+        .expect("fetcher initialized by the worker")
+        .clone();
     let downloader = std::thread::spawn(move || match sink {
-        Some(sink) => {
-            fetch::download_ahead(fetch_buffer, fetcher, download_plan, sink, ticket, Some(refresh))
-        }
+        Some(sink) => fetch::download_ahead(
+            fetch_buffer,
+            fetcher,
+            download_plan,
+            sink,
+            ticket,
+            Some(refresh),
+        ),
         None => {
             // A paced stream must not hold the line for run-ahead downloads.
             drop(ticket);
@@ -1650,7 +1771,10 @@ impl PcmSink for ChannelSink {
             sample_rate: info.sample_rate,
             bit_depth: info.bits_per_sample,
             channels: info.channels,
-            bitrate_kbps: self.plan.bitrate_kbps.or_else(|| self.computed_bitrate_kbps()),
+            bitrate_kbps: self
+                .plan
+                .bitrate_kbps
+                .or_else(|| self.computed_bitrate_kbps()),
             replay_gain_db: None,
         };
         self.send(Ok(StreamEvent::Info(StreamStart {
@@ -1790,7 +1914,9 @@ fn publish_stall(inner: &Arc<Inner>, stalled: bool) {
 /// caller then reports the error).
 fn next_reconnect_wait(inner: &Inner) -> Option<Duration> {
     let mut reconnect = inner.reconnect.lock().unwrap();
-    let state = reconnect.get_or_insert_with(|| Reconnect { backoff: Backoff::network() });
+    let state = reconnect.get_or_insert_with(|| Reconnect {
+        backoff: Backoff::network(),
+    });
     state.backoff.next_wait()
 }
 
@@ -1807,14 +1933,19 @@ fn reconnect_sleep(inner: &Arc<Inner>, gen: u64, wait: Duration) -> bool {
 /// automatic resume, or a play press after a pause during the wait) picks
 /// up there. `auto_start` makes the idle worker start it by itself.
 fn record_resume_point(inner: &Inner, auto_start: bool) {
-    let Some(item) = inner.queue.lock().unwrap().current().cloned() else { return };
+    let Some(item) = inner.queue.lock().unwrap().current().cloned() else {
+        return;
+    };
     let position_ms = if inner.position_track.load(Ordering::SeqCst) == item.track_id {
         inner.position_ms.load(Ordering::SeqCst)
     } else {
         0
     };
-    *inner.seek_target.lock().unwrap() =
-        Some(PendingSeek { track_id: item.track_id, position_ms, auto_start });
+    *inner.seek_target.lock().unwrap() = Some(PendingSeek {
+        track_id: item.track_id,
+        position_ms,
+        auto_start,
+    });
 }
 
 /// Start the current track again at its last position (the `Retry` path),
@@ -1836,7 +1967,11 @@ fn emit_position_if_due(inner: &Arc<Inner>, frames: u64, rate: u32, last: &mut I
         return;
     }
     *last = Instant::now();
-    let position_ms = if rate == 0 { 0 } else { frames.saturating_mul(1000) / rate as u64 };
+    let position_ms = if rate == 0 {
+        0
+    } else {
+        frames.saturating_mul(1000) / rate as u64
+    };
     let duration_ms = inner
         .queue
         .lock()
@@ -1845,7 +1980,14 @@ fn emit_position_if_due(inner: &Arc<Inner>, frames: u64, rate: u32, last: &mut I
         .map(|i| i.duration_secs as u64 * 1000)
         .unwrap_or(0);
     let lead_ms = inner.lead.lock().unwrap().ms();
-    emit(inner, EngineEvent::Position { position_ms, duration_ms, lead_ms });
+    emit(
+        inner,
+        EngineEvent::Position {
+            position_ms,
+            duration_ms,
+            lead_ms,
+        },
+    );
 }
 
 /// The output starts refilling (opened, flushed, resumed): skip its first
@@ -1882,7 +2024,8 @@ fn switch_device(
     rate: u32,
 ) -> Result<DeviceSwitch> {
     let device = inner.device_id.lock().unwrap().clone();
-    let wanted_mode = crate::output::effective_mode(*inner.output_mode.lock().unwrap(), device.as_deref());
+    let wanted_mode =
+        crate::output::effective_mode(*inner.output_mode.lock().unwrap(), device.as_deref());
     if wanted_mode != mode {
         return Ok(DeviceSwitch::Restart);
     }
@@ -1896,12 +2039,18 @@ fn switch_device(
     if open.device_id == device && !reselected {
         return Ok(DeviceSwitch::Unchanged);
     }
-    let spec = AudioOutputSpec { device_id: device, ..open.clone() };
+    let spec = AudioOutputSpec {
+        device_id: device,
+        ..open.clone()
+    };
     let started = Instant::now();
     let _ = output.stop();
     *open_spec = None;
     let (volume, _) = current_volume(inner);
-    output.open(&spec).and_then(|()| output.start()).and_then(|()| output.set_volume(volume))?;
+    output
+        .open(&spec)
+        .and_then(|()| output.start())
+        .and_then(|()| output.set_volume(volume))?;
     *last_volume = volume;
     *inner.output_status.lock().unwrap() = output.status();
     tracing::info!(
@@ -1924,7 +2073,11 @@ fn restart_at_position(inner: &Inner, track_id: u64) {
     } else {
         0
     };
-    *inner.seek_target.lock().unwrap() = Some(PendingSeek { track_id, position_ms, auto_start: true });
+    *inner.seek_target.lock().unwrap() = Some(PendingSeek {
+        track_id,
+        position_ms,
+        auto_start: true,
+    });
     inner.generation.fetch_add(1, Ordering::SeqCst);
     inner.notify_worker();
 }
@@ -1934,7 +2087,8 @@ fn restart_at_position(inner: &Inner, track_id: u64) {
 /// buffers, the last ~200 ms of the track and the device buffer. A command
 /// that supersedes the session cuts the wait short.
 fn drain_output(inner: &Inner, output: &mut dyn AudioOutput, gen: u64) {
-    let cancel = || inner.generation.load(Ordering::SeqCst) != gen || inner.shutdown.load(Ordering::SeqCst);
+    let cancel =
+        || inner.generation.load(Ordering::SeqCst) != gen || inner.shutdown.load(Ordering::SeqCst);
     if let Err(e) = output.drain(&cancel) {
         tracing::debug!("output drain failed: {e}");
     }
@@ -1948,7 +2102,13 @@ fn note_underruns(inner: &Inner, output: &dyn AudioOutput) {
         let track_id = inner.position_track.load(Ordering::SeqCst);
         inner.underrun_count.fetch_add(new, Ordering::SeqCst);
         tracing::warn!("output underrun during track {track_id} ({new})");
-        fire_perf(inner, AudioPerfEvent::Underrun { track_id, count: new });
+        fire_perf(
+            inner,
+            AudioPerfEvent::Underrun {
+                track_id,
+                count: new,
+            },
+        );
     }
 }
 
@@ -1976,7 +2136,11 @@ fn submit_beat_window(inner: &Arc<Inner>, window: BeatWindow) {
 /// track either way, but only sent while that track is still the one
 /// playing and tracking is still on. Ends with the engine.
 fn beat_worker(inner: Weak<Inner>, jobs: Arc<BeatJobs>) {
-    let gone = |inner: &Weak<Inner>| inner.upgrade().is_none_or(|i| i.shutdown.load(Ordering::SeqCst));
+    let gone = |inner: &Weak<Inner>| {
+        inner
+            .upgrade()
+            .is_none_or(|i| i.shutdown.load(Ordering::SeqCst))
+    };
     loop {
         let window = {
             let mut slot = jobs.slot.lock().unwrap();
@@ -1987,7 +2151,11 @@ fn beat_worker(inner: Weak<Inner>, jobs: Arc<BeatJobs>) {
                 if gone(&inner) {
                     return;
                 }
-                slot = jobs.cond.wait_timeout(slot, Duration::from_secs(5)).unwrap().0;
+                slot = jobs
+                    .cond
+                    .wait_timeout(slot, Duration::from_secs(5))
+                    .unwrap()
+                    .0;
             }
         };
         let Some(inner) = inner.upgrade() else { return };
@@ -1995,7 +2163,9 @@ fn beat_worker(inner: Weak<Inner>, jobs: Arc<BeatJobs>) {
             return;
         }
         let analyzer = inner.beat_analyzer.lock().unwrap().clone();
-        let Some(clock) = analyzer(&window) else { continue };
+        let Some(clock) = analyzer(&window) else {
+            continue;
+        };
         remember_beat(&inner, clock.clone());
         let current = inner.position_track.load(Ordering::SeqCst) == clock.track_id;
         if current && inner.beat_tap.is_enabled() {
@@ -2084,7 +2254,9 @@ fn drop_front_frames(buf: PcmBuffer, frames: usize, channels: u16) -> PcmBuffer 
 /// The queue item that would play after the current one (prefetch target).
 fn upcoming_track(inner: &Inner) -> Option<u64> {
     let q = inner.queue.lock().unwrap();
-    q.peek_next_index().and_then(|i| q.items().get(i)).map(|item| item.track_id)
+    q.peek_next_index()
+        .and_then(|i| q.items().get(i))
+        .map(|item| item.track_id)
 }
 
 /// What the prefetch target depends on besides the current index (which a
@@ -2108,11 +2280,17 @@ fn rebase_plan(
 ) -> TransitionPlan {
     let written = written as usize;
     if written <= plan.preroll_frames {
-        return TransitionPlan { preroll_frames: plan.preroll_frames - written, ..plan };
+        return TransitionPlan {
+            preroll_frames: plan.preroll_frames - written,
+            ..plan
+        };
     }
     if let Some(fallback) = fallback.filter(|f| written <= f.preroll_frames) {
         let preroll_frames = fallback.preroll_frames - written;
-        return TransitionPlan { preroll_frames, ..late_fallback(fallback) };
+        return TransitionPlan {
+            preroll_frames,
+            ..late_fallback(fallback)
+        };
     }
     let mut late = plain_plan(
         remaining,
@@ -2185,7 +2363,11 @@ fn plan_from(
     head: Option<&(Vec<f64>, StreamInfo)>,
     settings: &CrossfadeSettings,
 ) -> TransitionPlan {
-    let tail = Clip { samples: tail, channels, rate };
+    let tail = Clip {
+        samples: tail,
+        channels,
+        rate,
+    };
     let head = head.map(|(samples, info)| Clip {
         samples,
         channels: info.channels as usize,
@@ -2228,7 +2410,10 @@ fn park_while_paused(inner: &Inner, gen: u64, device_version: Option<u64>) {
     {
         return;
     }
-    let _ = inner.wake.wait_timeout(guard, Duration::from_secs(1)).unwrap();
+    let _ = inner
+        .wake
+        .wait_timeout(guard, Duration::from_secs(1))
+        .unwrap();
 }
 
 /// Write `buf` in short slices so a long preroll (up to the AutoMix hold)
@@ -2304,7 +2489,11 @@ fn restart_current_at_position(inner: &Inner) {
     };
     if let Some(item) = current {
         let same_track = inner.position_track.load(Ordering::SeqCst) == item.track_id;
-        let position = if same_track { inner.position_ms.load(Ordering::SeqCst) } else { 0 };
+        let position = if same_track {
+            inner.position_ms.load(Ordering::SeqCst)
+        } else {
+            0
+        };
         *inner.seek_target.lock().unwrap() = Some(PendingSeek {
             track_id: item.track_id,
             position_ms: position,
@@ -2461,8 +2650,18 @@ fn run_session(
             tracing::info!("network is back; playback resumed");
             emit(inner, EngineEvent::State(build_state(inner)));
         }
-        let StreamStart { info, start_frames, mut meta, replay_gain } = start;
-        fire_perf(inner, AudioPerfEvent::InfoReady { track_id: stream.item.track_id });
+        let StreamStart {
+            info,
+            start_frames,
+            mut meta,
+            replay_gain,
+        } = start;
+        fire_perf(
+            inner,
+            AudioPerfEvent::InfoReady {
+                track_id: stream.item.track_id,
+            },
+        );
         let want = AudioOutputSpec {
             device_id: inner.device_id.lock().unwrap().clone(),
             info,
@@ -2476,7 +2675,10 @@ fn run_session(
         // middle of the transition (an audible cut and click).
         let (automix_on, resample) = {
             let settings = inner.dsp.lock().unwrap();
-            (automix::active(&settings.crossfade), settings.crossfade.resample)
+            (
+                automix::active(&settings.crossfade),
+                settings.crossfade.resample,
+            )
         };
         let mut resampler: Option<StreamResampler> = None;
         // The open device stands in for the selected one, which is back:
@@ -2493,14 +2695,19 @@ fn run_session(
                     && open.mode == want.mode
                     && open.exclusive_fallback == want.exclusive_fallback
                     && open.info.channels == want.info.channels
-                    && if same_rate { automix_on || resample } else { resample }
+                    && if same_rate {
+                        automix_on || resample
+                    } else {
+                        resample
+                    }
             })
             && {
                 let open_rate = open_spec.as_ref().map_or(0, |open| open.info.sample_rate);
                 if open_rate == info.sample_rate {
                     true
                 } else {
-                    resampler = StreamResampler::new(info.sample_rate, open_rate, info.channels as usize);
+                    resampler =
+                        StreamResampler::new(info.sample_rate, open_rate, info.channels as usize);
                     resampler.is_some()
                 }
             };
@@ -2518,8 +2725,15 @@ fn run_session(
         // Blend's level ride on this track, from the overlap start.
         let mut ride: Option<GainRide> = None;
         if let Some(handoff) = pending_handoff.take() {
-            let Handoff { mut tail, rate: tail_rate, skip_frames, head_track, ride_db, ride_frames, mut report } =
-                handoff;
+            let Handoff {
+                mut tail,
+                rate: tail_rate,
+                skip_frames,
+                head_track,
+                ride_db,
+                ride_frames,
+                mut report,
+            } = handoff;
             let planned_for_this = head_track == Some(stream.item.track_id);
             let overlap = if keep_device {
                 report.resampled = resampler.is_some() || tail_rate != device_rate;
@@ -2538,7 +2752,15 @@ fn run_session(
                     // Still the previous track's output: its layout and rate.
                     report.kind = TransitionKind::FadeOut;
                     let (ch, rate) = (previous.info.channels, previous.info.sample_rate);
-                    match write_responsive(inner, output, &tail.fade_out_remaining(), ch, rate, gen, &mut |_| {}) {
+                    match write_responsive(
+                        inner,
+                        output,
+                        &tail.fade_out_remaining(),
+                        ch,
+                        rate,
+                        gen,
+                        &mut |_| {},
+                    ) {
                         Ok(true) => {
                             if let Some((_, at)) = last_write.as_mut() {
                                 *at = Instant::now();
@@ -2612,11 +2834,14 @@ fn run_session(
         // The stream's absolute starting frame (non-zero only for a seek).
         frames = start_frames;
         last_emit = Instant::now() - Duration::from_secs(1);
-        inner.position_track.store(stream.item.track_id, Ordering::SeqCst);
+        inner
+            .position_track
+            .store(stream.item.track_id, Ordering::SeqCst);
         if info.sample_rate > 0 {
-            inner
-                .position_ms
-                .store(frames.saturating_mul(1000) / info.sample_rate as u64, Ordering::SeqCst);
+            inner.position_ms.store(
+                frames.saturating_mul(1000) / info.sample_rate as u64,
+                Ordering::SeqCst,
+            );
         }
         if rejoin || (!keep_device && open_spec.as_ref() != Some(&want)) {
             if device_back {
@@ -2645,7 +2870,12 @@ fn run_session(
                     track_id: stream.item.track_id,
                 };
             }
-            fire_perf(inner, AudioPerfEvent::OutputOpened { track_id: stream.item.track_id });
+            fire_perf(
+                inner,
+                AudioPerfEvent::OutputOpened {
+                    track_id: stream.item.track_id,
+                },
+            );
             refill = true;
             // A format change mid-fade must not jump back to the user volume.
             let (volume, _) = current_volume(inner);
@@ -2807,7 +3037,10 @@ fn run_session(
                         *inner.output_status.lock().unwrap() = output.status();
                     }
                     park_while_paused(inner, gen, Some(device_version));
-                    if released.is_none() && open_spec.is_some() && parked.elapsed() >= PAUSE_RELEASE {
+                    if released.is_none()
+                        && open_spec.is_some()
+                        && parked.elapsed() >= PAUSE_RELEASE
+                    {
                         let _ = output.stop();
                         released = open_spec.take();
                         tracing::debug!("paused for {PAUSE_RELEASE:?}: output released");
@@ -2838,7 +3071,10 @@ fn run_session(
                     }
                 }
                 if let Some(spec) = released {
-                    let spec = AudioOutputSpec { device_id: inner.device_id.lock().unwrap().clone(), ..spec };
+                    let spec = AudioOutputSpec {
+                        device_id: inner.device_id.lock().unwrap().clone(),
+                        ..spec
+                    };
                     let (volume, _) = current_volume(inner);
                     let reopened = output
                         .open(&spec)
@@ -2893,7 +3129,12 @@ fn run_session(
             let base = if fading {
                 0
             } else {
-                crossfade_frames(&crossfade, &stream.item, prefetch.as_ref().map(|p| &p.item), rate)
+                crossfade_frames(
+                    &crossfade,
+                    &stream.item,
+                    prefetch.as_ref().map(|p| &p.item),
+                    rate,
+                )
             };
             // AutoMix needs room to move the overlap earlier (trimmed silence,
             // beat windows) and the next track's opening to plan against.
@@ -2996,7 +3237,8 @@ fn run_session(
                     // Plan on what is heard: the tail with its ReplayGain, like
                     // the head (AM-D14 compares their levels).
                     let gain = dsp.replay_gain_factor();
-                    let mut tail_audio = Vec::with_capacity(fifo_frames as usize * channels as usize);
+                    let mut tail_audio =
+                        Vec::with_capacity(fifo_frames as usize * channels as usize);
                     for buf in &fifo {
                         extend_normalized(&mut tail_audio, buf);
                     }
@@ -3005,7 +3247,9 @@ fn run_session(
                             *s = (*s * gain).clamp(-1.0, 1.0);
                         }
                     }
-                    if let Some((samples, info)) = head.as_ref().filter(|_| automix::active(&crossfade)) {
+                    if let Some((samples, info)) =
+                        head.as_ref().filter(|_| automix::active(&crossfade))
+                    {
                         *inner.last_capture.lock().unwrap() = Some(Arc::new(Capture {
                             tail: tail_audio.iter().map(|&s| s as f32).collect(),
                             tail_channels: channels as usize,
@@ -3019,8 +3263,12 @@ fn run_session(
                     if crossfade.beat_match {
                         // The style without beats is cheap: plan it now as the
                         // stand-in for a late analysis.
-                        let no_beats = CrossfadeSettings { beat_match: false, ..crossfade.clone() };
-                        let mut fallback = plan_from(&tail_audio, ch, rate, head.as_ref(), &no_beats);
+                        let no_beats = CrossfadeSettings {
+                            beat_match: false,
+                            ..crossfade.clone()
+                        };
+                        let mut fallback =
+                            plan_from(&tail_audio, ch, rate, head.as_ref(), &no_beats);
                         // Beat analysis can take longer than the device ring
                         // holds; run it aside while the tail keeps playing.
                         let (tx, rx) = std::sync::mpsc::sync_channel(1);
@@ -3033,11 +3281,22 @@ fn run_session(
                                 std::thread::sleep(Duration::from_millis(
                                     tests::ANALYSIS_DELAY_MS.load(Ordering::SeqCst),
                                 ));
-                                let _ = tx.send(plan_from(&tail_audio, ch, rate, head.as_ref(), &settings));
+                                let _ = tx.send(plan_from(
+                                    &tail_audio,
+                                    ch,
+                                    rate,
+                                    head.as_ref(),
+                                    &settings,
+                                ));
                                 notify.notify_worker();
                             });
                         if spawned.is_ok() {
-                            analysis = Some(PendingPlan { rx, written: 0, head_track, fallback });
+                            analysis = Some(PendingPlan {
+                                rx,
+                                written: 0,
+                                head_track,
+                                fallback,
+                            });
                             // Re-check before the next buffer goes out: a short
                             // tail may leave no room to wait at all.
                             continue;
@@ -3083,8 +3342,13 @@ fn run_session(
                 let need = inner.beat_tap.first_window_frames(rate);
                 let held = buf.frames(channels) + fifo_frames;
                 if held >= need || held + stream.read_ahead(need - held, channels) >= need {
-                    let ahead = std::iter::once(&buf).chain(fifo.iter()).chain(stream.queued_samples());
-                    if let Some(window) = inner.beat_tap.push_ahead(track_id, frames, ahead, channels, rate) {
+                    let ahead = std::iter::once(&buf)
+                        .chain(fifo.iter())
+                        .chain(stream.queued_samples());
+                    if let Some(window) = inner
+                        .beat_tap
+                        .push_ahead(track_id, frames, ahead, channels, rate)
+                    {
                         submit_beat_window(inner, window);
                     }
                 }
@@ -3121,7 +3385,11 @@ fn run_session(
             note_underruns(inner, output);
             // The meter sees what the device plays (converted, when kept).
             inner.level_tap.push(&buf, channels, device_rate);
-            inner.lead.lock().unwrap().observe(source_frames, output.queued_ms());
+            inner
+                .lead
+                .lock()
+                .unwrap()
+                .observe(source_frames, output.queued_ms());
             frames += source_frames;
             if first_write_of_track {
                 first_write_of_track = false;
@@ -3152,20 +3420,46 @@ fn run_session(
         // (then the converter carries on through the overlap below).
         if planned.is_none() {
             if let Some(mut rs) = resampler.take() {
-                match write_responsive(inner, output, &rs.flush(), channels, device_rate, gen, &mut |_| {}) {
+                match write_responsive(
+                    inner,
+                    output,
+                    &rs.flush(),
+                    channels,
+                    device_rate,
+                    gen,
+                    &mut |_| {},
+                ) {
                     Ok(true) => last_write = Some((track_id, Instant::now())),
                     Ok(false) => return SessionOutcome::Superseded,
-                    Err(e) => return SessionOutcome::OutputError { message: e.to_string(), track_id },
+                    Err(e) => {
+                        return SessionOutcome::OutputError {
+                            message: e.to_string(),
+                            track_id,
+                        }
+                    }
                 }
             }
         }
         // A track shorter than the crossfade ends before the previous tail
         // finished; let the rest of that tail fade out on its own.
         if let Some(mut tail) = incoming.take() {
-            match write_responsive(inner, output, &tail.fade_out_remaining(), channels, device_rate, gen, &mut |_| {}) {
+            match write_responsive(
+                inner,
+                output,
+                &tail.fade_out_remaining(),
+                channels,
+                device_rate,
+                gen,
+                &mut |_| {},
+            ) {
                 Ok(true) => last_write = Some((track_id, Instant::now())),
                 Ok(false) => return SessionOutcome::Superseded,
-                Err(e) => return SessionOutcome::OutputError { message: e.to_string(), track_id },
+                Err(e) => {
+                    return SessionOutcome::OutputError {
+                        message: e.to_string(),
+                        track_id,
+                    }
+                }
             }
         }
         // Split the held-back tail: the preroll plays now as this track's own
@@ -3200,14 +3494,29 @@ fn run_session(
                     written_out += n;
                     let at = start + (written_out as f64 * scale) as u64;
                     if rate > 0 {
-                        inner.position_ms.store(at.saturating_mul(1000) / rate as u64, Ordering::SeqCst);
+                        inner
+                            .position_ms
+                            .store(at.saturating_mul(1000) / rate as u64, Ordering::SeqCst);
                     }
                     emit_position_if_due(inner, at, rate, &mut last_emit);
                 };
-                match write_responsive(inner, output, &preroll, channels, device_rate, gen, &mut progress) {
+                match write_responsive(
+                    inner,
+                    output,
+                    &preroll,
+                    channels,
+                    device_rate,
+                    gen,
+                    &mut progress,
+                ) {
                     Ok(true) => last_write = Some((track_id, Instant::now())),
                     Ok(false) => return SessionOutcome::Superseded,
-                    Err(e) => return SessionOutcome::OutputError { message: e.to_string(), track_id },
+                    Err(e) => {
+                        return SessionOutcome::OutputError {
+                            message: e.to_string(),
+                            track_id,
+                        }
+                    }
                 }
                 frames = start + preroll_frames;
                 if rate > 0 {
@@ -3265,10 +3574,23 @@ fn run_session(
                 if let Some(mut handoff) = handoff {
                     let frames_left = handoff.tail.frames();
                     let rest = handoff.tail.take_front(frames_left);
-                    match write_responsive(inner, output, &rest, channels, device_rate, gen, &mut |_| {}) {
+                    match write_responsive(
+                        inner,
+                        output,
+                        &rest,
+                        channels,
+                        device_rate,
+                        gen,
+                        &mut |_| {},
+                    ) {
                         Ok(true) => {}
                         Ok(false) => return SessionOutcome::Superseded,
-                        Err(e) => return SessionOutcome::OutputError { message: e.to_string(), track_id },
+                        Err(e) => {
+                            return SessionOutcome::OutputError {
+                                message: e.to_string(),
+                                track_id,
+                            }
+                        }
                     }
                 }
                 // The worker stops the output next: play out the end first.
@@ -3303,14 +3625,9 @@ fn worker_main(
         let gen_now = inner.generation.load(Ordering::SeqCst);
         let ready = {
             let q = inner.queue.lock().unwrap();
-            let seeking = inner
-                .seek_target
-                .lock()
-                .unwrap()
-                .as_ref()
-                .is_some_and(|t| {
-                    t.auto_start && q.current().is_some_and(|i| i.track_id == t.track_id)
-                });
+            let seeking = inner.seek_target.lock().unwrap().as_ref().is_some_and(|t| {
+                t.auto_start && q.current().is_some_and(|i| i.track_id == t.track_id)
+            });
             gen_now != handled_gen && q.current().is_some() && (q.is_playing() || seeking)
         };
         if !ready {
@@ -3320,7 +3637,10 @@ fn worker_main(
             }
             inner.worker_busy.store(false, Ordering::SeqCst);
             let guard = inner.wake_lock.lock().unwrap();
-            let _ = inner.wake.wait_timeout(guard, Duration::from_millis(200)).unwrap();
+            let _ = inner
+                .wake
+                .wait_timeout(guard, Duration::from_millis(200))
+                .unwrap();
             continue;
         }
         handled_gen = gen_now;
@@ -3350,7 +3670,9 @@ fn worker_main(
             inner.paused.store(true, Ordering::SeqCst);
         }
         // A seek during playback or pause keeps the current paused flag.
-        inner.position_ms.store(seek_ms.unwrap_or(0), Ordering::SeqCst);
+        inner
+            .position_ms
+            .store(seek_ms.unwrap_or(0), Ordering::SeqCst);
         inner.position_track.store(item.track_id, Ordering::SeqCst);
         // Read before the device, so a selection racing this start is seen
         // by the session as a change.
@@ -3404,7 +3726,13 @@ fn worker_main(
                     status.bit_perfect = false;
                     status.notice = Some(message.clone());
                 }
-                emit(&inner, EngineEvent::Error { code: "output".into(), message });
+                emit(
+                    &inner,
+                    EngineEvent::Error {
+                        code: "output".into(),
+                        message,
+                    },
+                );
                 emit(&inner, EngineEvent::State(build_state(&inner)));
             }
             SessionOutcome::UnavailableChain { skipped, last } => {
@@ -3428,12 +3756,17 @@ fn worker_main(
                 emit(&inner, EngineEvent::State(build_state(&inner)));
             }
             SessionOutcome::StreamError(e) => {
-                let wait = if e.is_transient() { next_reconnect_wait(&inner) } else { None };
+                let wait = if e.is_transient() {
+                    next_reconnect_wait(&inner)
+                } else {
+                    None
+                };
                 if let Some(wait) = wait {
                     // The network went away: keep the queue, release the
                     // device, and resume where playback stopped once it is
                     // back.
-                    tracing::warn!("playback lost the network ({e}); resuming in {wait:?}");                    record_resume_point(&inner, false);
+                    tracing::warn!("playback lost the network ({e}); resuming in {wait:?}");
+                    record_resume_point(&inner, false);
                     *inner.stream_meta.lock().unwrap() = None;
                     let _ = output.stop();
                     open_spec = None;
@@ -3460,7 +3793,13 @@ fn worker_main(
                     Error::Tidal(oxitide_tidal::Error::Unauthorized) => "auth",
                     _ => "playback",
                 };
-                emit(&inner, EngineEvent::Error { code: code.into(), message: e.to_string() });
+                emit(
+                    &inner,
+                    EngineEvent::Error {
+                        code: code.into(),
+                        message: e.to_string(),
+                    },
+                );
                 emit(&inner, EngineEvent::State(build_state(&inner)));
             }
         }
@@ -3546,7 +3885,11 @@ mod tests {
         let bytes = std::fs::read("tests/fixtures/tone.mp4").unwrap();
         let plan = StreamPlan {
             init_url: None,
-            segments: vec![Segment { url: "mem://tone".into(), start_ticks: 0, duration_ticks: 0 }],
+            segments: vec![Segment {
+                url: "mem://tone".into(),
+                start_ticks: 0,
+                duration_ticks: 0,
+            }],
             timescale: 0,
             codec: Some("flac".into()),
             sample_rate: Some(44100),
@@ -3581,7 +3924,10 @@ mod tests {
             }
             offset += len;
         }
-        assert_eq!(atoms, [b"ftyp", b"moov", b"moof", b"mdat", b"moof", b"mdat"]);
+        assert_eq!(
+            atoms,
+            [b"ftyp", b"moov", b"moof", b"mdat", b"moof", b"mdat"]
+        );
         let count = if version == 1 { 73 } else { 74 };
         let plan = StreamPlan {
             init_url: Some("mem://init".into()),
@@ -3619,7 +3965,10 @@ mod tests {
         };
         let files = HashMap::from([
             ("mem://init".into(), bytes[..fragments[0]].to_vec()),
-            ("mem://head".into(), bytes[fragments[0]..fragments[1]].to_vec()),
+            (
+                "mem://head".into(),
+                bytes[fragments[0]..fragments[1]].to_vec(),
+            ),
             ("mem://tail".into(), bytes[fragments[1]..].to_vec()),
         ]);
         (plan, files)
@@ -3678,13 +4027,24 @@ mod tests {
         output: Box<dyn AudioOutput>,
         quality: Quality,
     ) -> Engine {
-        Engine::new(resolver, move || fetcher, output, quality, test_cache(), true)
+        Engine::new(
+            resolver,
+            move || fetcher,
+            output,
+            quality,
+            test_cache(),
+            true,
+        )
     }
 
     fn cached_plan(url: &str, manifest_hash: u64) -> StreamPlan {
         StreamPlan {
             init_url: None,
-            segments: vec![Segment { url: url.into(), start_ticks: 0, duration_ticks: 0 }],
+            segments: vec![Segment {
+                url: url.into(),
+                start_ticks: 0,
+                duration_ticks: 0,
+            }],
             timescale: 0,
             codec: Some("flac".into()),
             sample_rate: Some(44100),
@@ -3711,10 +4071,7 @@ mod tests {
         }
     }
 
-    fn engine_with(
-        plan: StreamPlan,
-        files: HashMap<String, Vec<u8>>,
-    ) -> (Engine, NullOutput) {
+    fn engine_with(plan: StreamPlan, files: HashMap<String, Vec<u8>>) -> (Engine, NullOutput) {
         let output = NullOutput::new();
         let engine = build_engine(
             Arc::new(FakeResolver { plan }),
@@ -3752,10 +4109,18 @@ mod tests {
         let seen_ref = seen.clone();
         engine.subscribe(Arc::new(move |e| seen_ref.lock().unwrap().push(e)));
 
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
 
         wait_for(|| {
-            seen.lock().unwrap().iter().any(|e| matches!(e, EngineEvent::Error { .. }))
+            seen.lock()
+                .unwrap()
+                .iter()
+                .any(|e| matches!(e, EngineEvent::Error { .. }))
         });
         let message = seen
             .lock()
@@ -3772,7 +4137,10 @@ mod tests {
         );
         assert!(!engine.state().playing);
         assert_eq!(engine.state().queue.len(), 1, "the queue must be kept");
-        assert!(output.samples().is_empty(), "a rejected stream must not write audio");
+        assert!(
+            output.samples().is_empty(),
+            "a rejected stream must not write audio"
+        );
     }
 
     #[test]
@@ -3781,7 +4149,12 @@ mod tests {
         plan.quality = Some(Quality::Low);
         let (engine, output) = engine_with_policy(plan, files, true);
 
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| !engine.state().playing && output.samples().len() >= 176_400);
 
         let meta = engine.state().stream.expect("no stream metadata");
@@ -3993,14 +4366,25 @@ mod tests {
         let (plan, files) = he_aac_fixture(1, "hierarchical");
         // A populated cache must not bypass the online fallback policy either.
         let cache = test_cache();
-        let key = CacheKey { track_id: 1, quality: Quality::High, manifest_hash: 0x96 };
+        let key = CacheKey {
+            track_id: 1,
+            quality: Quality::High,
+            manifest_hash: 0x96,
+        };
         let mut writer = cache.begin_write(&key).unwrap();
-        for url in plan.init_url.iter().chain(plan.segments.iter().map(|s| &s.url)) {
+        for url in plan
+            .init_url
+            .iter()
+            .chain(plan.segments.iter().map(|s| &s.url))
+        {
             writer.write_all(&files[url]).unwrap();
         }
         writer.commit();
         let calls = Arc::new(AtomicUsize::new(0));
-        let fetcher: Arc<dyn Fetcher> = Arc::new(CountingFetcher { files, calls: calls.clone() });
+        let fetcher: Arc<dyn Fetcher> = Arc::new(CountingFetcher {
+            files,
+            calls: calls.clone(),
+        });
         let engine = Engine::new(
             Arc::new(FakeResolver { plan }),
             move || fetcher,
@@ -4023,7 +4407,10 @@ mod tests {
             Ok(Err(Error::Unavailable(_)))
         ));
         assert_eq!(calls.load(Ordering::SeqCst), 0);
-        assert!(cache.lookup(&key).is_some(), "rejection must not remove the cache entry");
+        assert!(
+            cache.lookup(&key).is_some(),
+            "rejection must not remove the cache entry"
+        );
     }
 
     #[test]
@@ -4101,15 +4488,21 @@ mod tests {
         let cache = test_cache();
         if cached {
             for (track_id, bytes) in [(1, &corrupt), (2, &clean)] {
-                let key = CacheKey { track_id, quality: Quality::Low, manifest_hash: 0x96 };
+                let key = CacheKey {
+                    track_id,
+                    quality: Quality::Low,
+                    manifest_hash: 0x96,
+                };
                 let mut writer = cache.begin_write(&key).unwrap();
                 writer.set_meta(serde_json::to_vec(&plan.without_urls()).unwrap());
                 writer.write_all(bytes).unwrap();
                 writer.commit();
             }
         }
-        let offline_resolver =
-            Arc::new(SwitchableResolver { plan: plan.clone(), offline: AtomicBool::new(true) });
+        let offline_resolver = Arc::new(SwitchableResolver {
+            plan: plan.clone(),
+            offline: AtomicBool::new(true),
+        });
         let resolver: Arc<dyn StreamResolver> = if offline {
             offline_resolver.clone()
         } else {
@@ -4122,7 +4515,10 @@ mod tests {
         // A cached failure must not retry even when a clean network copy exists.
         let network_bad = if cached { clean.clone() } else { corrupt };
         let fetcher: Arc<dyn Fetcher> = Arc::new(CountingFetcher {
-            files: HashMap::from([("mem://bad".into(), network_bad), ("mem://good".into(), clean)]),
+            files: HashMap::from([
+                ("mem://bad".into(), network_bad),
+                ("mem://good".into(), clean),
+            ]),
             calls: calls.clone(),
         });
         let output = NullOutput::new();
@@ -4155,11 +4551,25 @@ mod tests {
         );
         assert_eq!(engine.state().current.unwrap().track_id, 1);
         if cached {
-            assert_eq!(calls.load(Ordering::SeqCst), 0, "a mid-track cache error must not fetch");
-            let key = CacheKey { track_id: 1, quality: Quality::Low, manifest_hash: 0x96 };
-            assert!(cache.lookup(&key).is_none(), "the corrupt entry must be evicted");
+            assert_eq!(
+                calls.load(Ordering::SeqCst),
+                0,
+                "a mid-track cache error must not fetch"
+            );
+            let key = CacheKey {
+                track_id: 1,
+                quality: Quality::Low,
+                manifest_hash: 0x96,
+            };
             assert!(
-                !cache.dir().join(format!("{}.meta", key.file_name())).exists(),
+                cache.lookup(&key).is_none(),
+                "the corrupt entry must be evicted"
+            );
+            assert!(
+                !cache
+                    .dir()
+                    .join(format!("{}.meta", key.file_name()))
+                    .exists(),
                 "the corrupt entry's sidecar must be evicted"
             );
         }
@@ -4182,22 +4592,55 @@ mod tests {
             "the failed track's decoder state leaked into the next track"
         );
         if cached {
-            assert_eq!(calls.load(Ordering::SeqCst), 0, "both tracks must stay cache-only");
+            assert_eq!(
+                calls.load(Ordering::SeqCst),
+                0,
+                "both tracks must stay cache-only"
+            );
             offline_resolver.offline.store(false, Ordering::SeqCst);
             let before = output.samples().len();
-            engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+            engine
+                .handle(EngineCmd::PlayTracks {
+                    items: vec![item(1)],
+                    start: 0,
+                })
+                .unwrap();
             wait_for(|| {
                 !engine.state().playing && output.samples().len() >= before + reference.len()
             });
             assert_eq!(output.samples().len(), before + reference.len());
-            assert!(output.samples()[before..] == reference, "the later play must start clean");
-            assert_eq!(calls.load(Ordering::SeqCst), 1, "only a later play may refetch");
-            let key = CacheKey { track_id: 1, quality: Quality::Low, manifest_hash: 0x96 };
-            assert!(cache.lookup(&key).is_some(), "the clean refetch must be cached");
-            assert!(cache.dir().join(format!("{}.meta", key.file_name())).is_file());
+            assert!(
+                output.samples()[before..] == reference,
+                "the later play must start clean"
+            );
+            assert_eq!(
+                calls.load(Ordering::SeqCst),
+                1,
+                "only a later play may refetch"
+            );
+            let key = CacheKey {
+                track_id: 1,
+                quality: Quality::Low,
+                manifest_hash: 0x96,
+            };
+            assert!(
+                cache.lookup(&key).is_some(),
+                "the clean refetch must be cached"
+            );
+            assert!(cache
+                .dir()
+                .join(format!("{}.meta", key.file_name()))
+                .is_file());
             let (_, replay) = collect_track(&engine, None);
-            assert!(replay == reference, "the repaired entry must replay cleanly");
-            assert_eq!(calls.load(Ordering::SeqCst), 1, "the repaired entry must not refetch");
+            assert!(
+                replay == reference,
+                "the repaired entry must replay cleanly"
+            );
+            assert_eq!(
+                calls.load(Ordering::SeqCst),
+                1,
+                "the repaired entry must not refetch"
+            );
             assert_eq!(
                 seen.lock()
                     .unwrap()
@@ -4224,7 +4667,11 @@ mod tests {
         let (plan, files) = he_aac_fixture(1, "hierarchical");
         let reference = decoded_plan(&plan, &files).samples;
         let cache = test_cache();
-        let key = CacheKey { track_id: 1, quality: Quality::Low, manifest_hash: 0x96 };
+        let key = CacheKey {
+            track_id: 1,
+            quality: Quality::Low,
+            manifest_hash: 0x96,
+        };
         let meta = serde_json::to_vec(&plan.without_urls()).unwrap();
         let clean = [
             files["mem://init"].clone(),
@@ -4237,9 +4684,15 @@ mod tests {
         writer.write_all(&clean).unwrap();
         writer.commit();
         let calls = Arc::new(AtomicUsize::new(0));
-        let fetcher: Arc<dyn Fetcher> = Arc::new(CountingFetcher { files, calls: calls.clone() });
+        let fetcher: Arc<dyn Fetcher> = Arc::new(CountingFetcher {
+            files,
+            calls: calls.clone(),
+        });
         let engine = Engine::new(
-            Arc::new(SwitchableResolver { plan, offline: AtomicBool::new(offline) }),
+            Arc::new(SwitchableResolver {
+                plan,
+                offline: AtomicBool::new(offline),
+            }),
             move || fetcher,
             Box::new(NullOutput::new()),
             Quality::Low,
@@ -4316,18 +4769,30 @@ mod tests {
                     drop(rx);
                 }
                 wait_for(|| producer.is_finished());
-                assert!(producer.is_finished(), "cancelled cached decode did not finish");
+                assert!(
+                    producer.is_finished(),
+                    "cancelled cached decode did not finish"
+                );
                 producer.join().unwrap();
                 cache.unprotect(&key);
-                let path = cache.lookup(&key).expect("cancellation must keep the healthy entry");
+                let path = cache
+                    .lookup(&key)
+                    .expect("cancellation must keep the healthy entry");
                 assert_eq!(std::fs::read(path).unwrap(), clean);
                 assert_eq!(
                     std::fs::read(cache.dir().join(format!("{}.meta", key.file_name()))).unwrap(),
                     meta
                 );
                 let (_, replay) = collect_track(&engine, None);
-                assert!(replay == reference, "cancellation must leave a clean replay");
-                assert_eq!(calls.load(Ordering::SeqCst), 0, "cancellation must not refetch");
+                assert!(
+                    replay == reference,
+                    "cancellation must leave a clean replay"
+                );
+                assert_eq!(
+                    calls.load(Ordering::SeqCst),
+                    0,
+                    "cancellation must not refetch"
+                );
             }
         }
     }
@@ -4338,7 +4803,12 @@ mod tests {
         plan.quality = None;
         let (engine, output) = engine_with_policy(plan, files, false);
 
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| !engine.state().playing && output.samples().len() >= 176_400);
         assert_eq!(output.samples().len(), 176_400);
         assert_eq!(engine.state().stream.and_then(|m| m.quality), None);
@@ -4384,7 +4854,9 @@ mod tests {
         // stranded feeder before asserting, rather than leak a blocked thread.
         buffer.cancel();
         if !completed {
-            done_rx.recv_timeout(Duration::from_secs(5)).expect("cancel did not release the feeder");
+            done_rx
+                .recv_timeout(Duration::from_secs(5))
+                .expect("cancel did not release the feeder");
         }
         producer.join().unwrap();
         assert!(
@@ -4440,7 +4912,12 @@ mod tests {
         let bytes = files["mem://tone"].len() as u64;
         let (engine, output) = engine_with_policy(plan, files, true);
 
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| !engine.state().playing && output.samples().len() >= 176_400);
 
         let meta = engine.state().stream.expect("no stream metadata");
@@ -4453,9 +4930,17 @@ mod tests {
         plan.bitrate_kbps = Some(828);
         let (engine, output) = engine_with_policy(plan, files, true);
 
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| !engine.state().playing && output.samples().len() >= 176_400);
-        assert_eq!(engine.state().stream.and_then(|m| m.bitrate_kbps), Some(828));
+        assert_eq!(
+            engine.state().stream.and_then(|m| m.bitrate_kbps),
+            Some(828)
+        );
     }
 
     #[test]
@@ -4465,7 +4950,12 @@ mod tests {
         let (engine, output) = engine_with_policy(plan, files, false);
         engine.set_allow_fallback(true);
 
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| !engine.state().playing && output.samples().len() >= 176_400);
         assert_eq!(output.samples().len(), 176_400);
     }
@@ -4506,10 +4996,18 @@ mod tests {
         let seen = Arc::new(Mutex::new(Vec::new()));
         let seen_ref = seen.clone();
         engine.subscribe(Arc::new(move |e| seen_ref.lock().unwrap().push(e)));
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         let events = seen.lock().unwrap();
         assert!(matches!(events[0], EngineEvent::NowPlaying(Some(_))));
-        assert!(events.iter().take(4).any(|e| matches!(e, EngineEvent::State(_))));
+        assert!(events
+            .iter()
+            .take(4)
+            .any(|e| matches!(e, EngineEvent::State(_))));
     }
 
     #[test]
@@ -4538,46 +5036,82 @@ mod tests {
     fn enqueue_appends_without_restarting_playback() {
         let (plan, files) = fixture_plan();
         let (engine, output) = engine_with(plan, files);
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| !output.samples().is_empty());
         let opens = output.opens();
 
-        engine.handle(EngineCmd::Enqueue { items: vec![item(2), item(3)] }).unwrap();
+        engine
+            .handle(EngineCmd::Enqueue {
+                items: vec![item(2), item(3)],
+            })
+            .unwrap();
 
         let state = engine.state();
         assert_eq!(state.queue.len(), 3);
         assert_eq!(state.current.map(|i| i.track_id), Some(1));
         assert!(state.playing);
-        assert_eq!(output.opens(), opens, "enqueue must not restart the session");
+        assert_eq!(
+            output.opens(),
+            opens,
+            "enqueue must not restart the session"
+        );
     }
 
     #[test]
     fn enqueue_next_inserts_after_current_without_restarting_playback() {
         let (plan, files) = fixture_plan();
         let (engine, output) = engine_with(plan, files);
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1), item(2)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| !output.samples().is_empty());
         let opens = output.opens();
 
-        engine.handle(EngineCmd::EnqueueNext { items: vec![item(3)] }).unwrap();
+        engine
+            .handle(EngineCmd::EnqueueNext {
+                items: vec![item(3)],
+            })
+            .unwrap();
 
         let state = engine.state();
         let ids: Vec<_> = state.queue.iter().map(|i| i.track_id).collect();
         assert_eq!(ids, vec![1, 3, 2]);
         assert_eq!(state.current_index, Some(0));
         assert!(state.playing);
-        assert_eq!(output.opens(), opens, "play next must not restart the session");
+        assert_eq!(
+            output.opens(),
+            opens,
+            "play next must not restart the session"
+        );
     }
 
     #[test]
     fn enqueue_at_before_current_keeps_playing_without_restarting() {
         let (plan, files) = fixture_plan();
         let (engine, output) = engine_with(plan, files);
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1), item(2)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| !output.samples().is_empty());
         let opens = output.opens();
 
-        engine.handle(EngineCmd::EnqueueAt { index: 0, items: vec![item(3), item(4)] }).unwrap();
+        engine
+            .handle(EngineCmd::EnqueueAt {
+                index: 0,
+                items: vec![item(3), item(4)],
+            })
+            .unwrap();
 
         let state = engine.state();
         let ids: Vec<_> = state.queue.iter().map(|i| i.track_id).collect();
@@ -4585,7 +5119,11 @@ mod tests {
         assert_eq!(state.current_index, Some(2));
         assert_eq!(state.current.map(|i| i.track_id), Some(1));
         assert!(state.playing);
-        assert_eq!(output.opens(), opens, "a queue insert must not restart the session");
+        assert_eq!(
+            output.opens(),
+            opens,
+            "a queue insert must not restart the session"
+        );
     }
 
     #[test]
@@ -4593,9 +5131,18 @@ mod tests {
         let (plan, files) = fixture_plan();
         let (engine, output) = engine_with(plan, files);
         let tap = engine.level_tap();
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| !output.samples().is_empty());
-        assert_eq!(tap.read(), crate::meter::LevelFrame::silent(), "disabled tap must stay silent");
+        assert_eq!(
+            tap.read(),
+            crate::meter::LevelFrame::silent(),
+            "disabled tap must stay silent"
+        );
 
         tap.set_enabled(true);
         let mut peak = 0.0f32;
@@ -4611,7 +5158,12 @@ mod tests {
     fn worker_writes_samples_and_advances() {
         let (plan, files) = fixture_plan();
         let (engine, output) = engine_with(plan, files);
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1), item(2)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| output.samples().len() >= 176_400);
         assert!(output.samples().len() >= 176_400);
     }
@@ -4620,13 +5172,24 @@ mod tests {
     fn skip_on_the_open_device_fades_out_the_old_track() {
         let (plan, files) = fixture_plan();
         let (engine, output) = engine_with(plan, files);
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1), item(2)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| engine.state().position_ms > 100);
         assert_eq!(output.fade_outs(), 0);
         let before = output.samples().len();
         engine.handle(EngineCmd::Next).unwrap();
-        wait_for(|| output.samples().len() > before && engine.state().current.is_some_and(|c| c.track_id == 2));
-        assert!(output.fade_outs() >= 1, "a skip must end the old track on silence");
+        wait_for(|| {
+            output.samples().len() > before
+                && engine.state().current.is_some_and(|c| c.track_id == 2)
+        });
+        assert!(
+            output.fade_outs() >= 1,
+            "a skip must end the old track on silence"
+        );
         assert_eq!(output.opens(), 1, "a same-format skip keeps the device");
     }
 
@@ -4634,7 +5197,12 @@ mod tests {
     fn seek_restarts_at_the_requested_offset() {
         let (plan, files) = fixture_plan();
         let (engine, output) = engine_with(plan, files);
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| engine.state().position_ms > 100);
 
         engine.handle(EngineCmd::Seek(1000)).unwrap();
@@ -4643,7 +5211,11 @@ mod tests {
         wait_for(|| output.flushes() >= 1);
         wait_for(|| engine.state().position_ms >= 1000);
         let state = engine.state();
-        assert!(state.position_ms >= 1000, "seek did not land at 1000ms: {}", state.position_ms);
+        assert!(
+            state.position_ms >= 1000,
+            "seek did not land at 1000ms: {}",
+            state.position_ms
+        );
         assert!(state.playing);
         assert_eq!(
             output.opens(),
@@ -4658,7 +5230,12 @@ mod tests {
     fn seek_while_paused_applies_and_resumes_from_the_target() {
         let (plan, files) = fixture_plan();
         let (engine, output) = engine_with(plan, files);
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| engine.state().position_ms > 100);
 
         engine.handle(EngineCmd::PlayPause).unwrap();
@@ -4666,7 +5243,10 @@ mod tests {
 
         engine.handle(EngineCmd::Seek(1500)).unwrap();
         wait_for(|| engine.state().position_ms >= 1500);
-        assert!(!engine.state().playing, "seek while paused must not resume playback");
+        assert!(
+            !engine.state().playing,
+            "seek while paused must not resume playback"
+        );
 
         // Let the superseded session's in-flight buffer land, then require the
         // sample count to be stable: a paused seek must not write audio.
@@ -4697,7 +5277,12 @@ mod tests {
     fn ended_marks_a_natural_end_only() {
         let (plan, files) = fixture_plan();
         let (engine, output) = engine_with(plan, files);
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1), item(2)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| !output.samples().is_empty());
         engine.handle(EngineCmd::PlayPause).unwrap();
         wait_for(|| !engine.state().playing);
@@ -4707,13 +5292,26 @@ mod tests {
         assert!(engine.state().ended, "the last track played out");
 
         engine.handle(EngineCmd::Seek(500)).unwrap();
-        assert!(!engine.state().ended, "a seek into the last track clears it");
+        assert!(
+            !engine.state().ended,
+            "a seek into the last track clears it"
+        );
 
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         assert!(!engine.state().ended);
         wait_for(|| engine.state().ended);
         assert!(engine.state().ended);
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         assert!(!engine.state().ended, "a new context clears it");
     }
 
@@ -4723,12 +5321,20 @@ mod tests {
     fn seek_after_queue_end_stays_paused_until_resumed() {
         let (plan, files) = fixture_plan();
         let (engine, output) = engine_with(plan, files);
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| !engine.state().playing && output.samples().len() >= 176_400);
 
         engine.handle(EngineCmd::Seek(1000)).unwrap();
         wait_for(|| engine.state().position_ms >= 1000);
-        assert!(!engine.state().playing, "seek after queue end must not report playing");
+        assert!(
+            !engine.state().playing,
+            "seek after queue end must not report playing"
+        );
 
         let mut settled = output.samples().len();
         for _ in 0..40 {
@@ -4757,7 +5363,12 @@ mod tests {
         let (plan, files) = fixture_plan();
         let (engine, output) = engine_with(plan, files);
         engine.handle(EngineCmd::PlayPause).unwrap();
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| output.samples().len() >= 176_400);
         assert!(output.samples().len() >= 176_400);
     }
@@ -4771,7 +5382,12 @@ mod tests {
         let seen = Arc::new(Mutex::new(Vec::new()));
         let seen_ref = seen.clone();
         engine.subscribe(Arc::new(move |e| seen_ref.lock().unwrap().push(e)));
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
 
         wait_for(|| !engine.state().playing);
         assert!(!engine.state().playing, "single track did not finish");
@@ -4786,7 +5402,11 @@ mod tests {
         std::thread::sleep(Duration::from_millis(600));
         let before = positions();
         std::thread::sleep(Duration::from_millis(1200));
-        assert_eq!(positions(), before, "position events kept coming after the queue ended");
+        assert_eq!(
+            positions(),
+            before,
+            "position events kept coming after the queue ended"
+        );
     }
 
     /// Regression: a session paused (or playing) when the engine is shut down
@@ -4804,7 +5424,12 @@ mod tests {
                 counter.fetch_add(1, Ordering::SeqCst);
             }
         }));
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| !output.samples().is_empty());
         engine.handle(EngineCmd::PlayPause).unwrap();
         assert!(!engine.state().playing);
@@ -4812,11 +5437,18 @@ mod tests {
 
         engine.shutdown();
         wait_for(|| output.stops() > stops_before);
-        assert!(output.stops() > stops_before, "the paused session survived shutdown");
+        assert!(
+            output.stops() > stops_before,
+            "the paused session survived shutdown"
+        );
 
         let after = positions.load(Ordering::SeqCst);
         std::thread::sleep(Duration::from_millis(1200));
-        assert_eq!(positions.load(Ordering::SeqCst), after, "position events kept coming after shutdown");
+        assert_eq!(
+            positions.load(Ordering::SeqCst),
+            after,
+            "position events kept coming after shutdown"
+        );
     }
 
     /// Track 13 (EF-D4): a paused session is idle. It emits no `Position`
@@ -4832,7 +5464,12 @@ mod tests {
                 counter.fetch_add(1, Ordering::SeqCst);
             }
         }));
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| !output.samples().is_empty());
         engine.handle(EngineCmd::PlayPause).unwrap();
         assert!(!engine.state().playing);
@@ -4840,12 +5477,24 @@ mod tests {
         let paused_at = positions.load(Ordering::SeqCst);
         let written = output.samples().len();
         std::thread::sleep(Duration::from_millis(1200));
-        assert_eq!(positions.load(Ordering::SeqCst), paused_at, "position events while paused");
-        assert_eq!(output.samples().len(), written, "audio was written while paused");
+        assert_eq!(
+            positions.load(Ordering::SeqCst),
+            paused_at,
+            "position events while paused"
+        );
+        assert_eq!(
+            output.samples().len(),
+            written,
+            "audio was written while paused"
+        );
 
         engine.handle(EngineCmd::PlayPause).unwrap();
         wait_for(|| output.samples().len() >= 176_400);
-        assert_eq!(output.samples().len(), 176_400, "resume did not finish the track");
+        assert_eq!(
+            output.samples().len(),
+            176_400,
+            "resume did not finish the track"
+        );
     }
 
     /// CatJam (CJ-D9): the audio the output reports as queued reaches
@@ -4863,21 +5512,33 @@ mod tests {
                 seen.lock().unwrap().push(lead_ms);
             }
         }));
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| !engine.state().playing);
         assert_eq!(engine.output_lead_ms(), 230);
 
         leads.lock().unwrap().clear();
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| !leads.lock().unwrap().is_empty());
-        assert_eq!(leads.lock().unwrap().first(), Some(&230), "the first position of a new session");
+        assert_eq!(
+            leads.lock().unwrap().first(),
+            Some(&230),
+            "the first position of a new session"
+        );
     }
 
     /// A beat engine whose tap completes a 1 s window (the fixture is 2 s)
     /// and whose analyzer is `analyzer`; returns the beats it sends.
-    fn beat_engine(
-        analyzer: BeatAnalyzer,
-    ) -> (Engine, NullOutput, Arc<Mutex<Vec<BeatClock>>>) {
+    fn beat_engine(analyzer: BeatAnalyzer) -> (Engine, NullOutput, Arc<Mutex<Vec<BeatClock>>>) {
         let (plan, files) = fixture_plan();
         let (engine, output) = engine_with(plan, files);
         engine.inner.beat_tap.set_window_ms(1000, 1000);
@@ -4906,7 +5567,12 @@ mod tests {
     fn beat_tracking_sends_a_clock_for_the_playing_track() {
         let (engine, _output, beats) = beat_engine(Arc::new(fake_clock));
         engine.set_beat_tracking(true);
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| !beats.lock().unwrap().is_empty());
         let clock = beats.lock().unwrap()[0].clone();
         assert_eq!(clock.track_id, 1);
@@ -4914,7 +5580,11 @@ mod tests {
         // The first window comes from the audio decoded ahead, so it starts
         // at the track start or a few buffers in while the producer gets
         // going (139 ms on a slow CI runner); well under half a window.
-        assert!(clock.anchor_ms < 500, "the first window starts near the track start, not at {} ms", clock.anchor_ms);
+        assert!(
+            clock.anchor_ms < 500,
+            "the first window starts near the track start, not at {} ms",
+            clock.anchor_ms
+        );
     }
 
     /// The first window is read from the audio decoded ahead of playback, so
@@ -4927,18 +5597,29 @@ mod tests {
             Arc::new(FakeResolver { plan }),
             Arc::new(crate::fetch::MapFetcher { files }),
             // About real time: the 2 s fixture takes ~1.8 s to write.
-            Box::new(PacedOutput { inner: output.clone(), per_frame: Duration::from_micros(20) }),
+            Box::new(PacedOutput {
+                inner: output.clone(),
+                per_frame: Duration::from_micros(20),
+            }),
             Quality::Lossless,
         );
         engine.inner.beat_tap.set_window_ms(500, 1000);
         let written_at = Arc::new(Mutex::new(Vec::new()));
         let (record, seen) = (written_at.clone(), output.clone());
         *engine.inner.beat_analyzer.lock().unwrap() = Arc::new(move |w: &BeatWindow| {
-            record.lock().unwrap().push((w.start_ms, seen.samples().len()));
+            record
+                .lock()
+                .unwrap()
+                .push((w.start_ms, seen.samples().len()));
             fake_clock(w)
         });
         engine.set_beat_tracking(true);
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| written_at.lock().unwrap().len() >= 2);
         let windows = written_at.lock().unwrap().clone();
         // It starts at the buffer where enough audio was decoded ahead: the
@@ -4948,9 +5629,15 @@ mod tests {
         assert!(start < 500.0, "the first window starts at {start} ms");
         // 0.18 s of stereo output; playing the 0.5 s window first would be
         // ~0.45 s.
-        assert!(written < 2 * 8_000, "the first window waited for {written} samples of playback");
+        assert!(
+            written < 2 * 8_000,
+            "the first window waited for {written} samples of playback"
+        );
         let (second, _) = windows[1];
-        assert!((second - start - 500.0).abs() < 1.0, "the second window follows the first: {second}");
+        assert!(
+            (second - start - 500.0).abs() < 1.0,
+            "the second window follows the first: {second}"
+        );
         engine.handle(EngineCmd::Clear).unwrap();
     }
 
@@ -4962,7 +5649,12 @@ mod tests {
             counter.fetch_add(1, Ordering::SeqCst);
             fake_clock(w)
         }));
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| output.samples().len() >= 176_400);
         std::thread::sleep(Duration::from_millis(200));
         assert_eq!(calls.load(Ordering::SeqCst), 0);
@@ -4978,14 +5670,27 @@ mod tests {
         let (engine, _output, beats) = beat_engine(Arc::new(move |w: &BeatWindow| {
             if w.track_id == 1 {
                 flag.store(true, Ordering::SeqCst);
-                let _ = release_rx.lock().unwrap().recv_timeout(Duration::from_secs(5));
+                let _ = release_rx
+                    .lock()
+                    .unwrap()
+                    .recv_timeout(Duration::from_secs(5));
             }
             fake_clock(w)
         }));
         engine.set_beat_tracking(true);
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| started.load(Ordering::SeqCst));
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(2)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(2)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| engine.inner.position_track.load(Ordering::SeqCst) == 2);
         release_tx.send(()).unwrap();
         wait_for(|| beats.lock().unwrap().iter().any(|c| c.track_id == 2));
@@ -4993,32 +5698,56 @@ mod tests {
             beats.lock().unwrap().iter().all(|c| c.track_id != 1),
             "a stale clock for track 1 was sent"
         );
-        assert!(cached_beat(&engine.inner, 1).is_some(), "the stale clock is still remembered");
+        assert!(
+            cached_beat(&engine.inner, 1).is_some(),
+            "the stale clock is still remembered"
+        );
     }
 
     #[test]
     fn turning_tracking_back_on_resends_the_known_clock() {
         let (engine, _output, beats) = beat_engine(Arc::new(fake_clock));
         engine.set_beat_tracking(true);
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| !beats.lock().unwrap().is_empty());
         engine.set_beat_tracking(false);
         beats.lock().unwrap().clear();
         engine.set_beat_tracking(true);
-        assert_eq!(beats.lock().unwrap().len(), 1, "sent at once, without new analysis");
+        assert_eq!(
+            beats.lock().unwrap().len(),
+            1,
+            "sent at once, without new analysis"
+        );
         assert_eq!(beats.lock().unwrap()[0].track_id, 1);
     }
 
     #[test]
     fn the_beat_cache_keeps_the_most_recent_tracks() {
         let (engine, _output, _beats) = beat_engine(Arc::new(fake_clock));
-        let clock = |id: u64| BeatClock { track_id: id, bpm: None, period_ms: 500.0, anchor_ms: 0, confidence: 0.1 };
+        let clock = |id: u64| BeatClock {
+            track_id: id,
+            bpm: None,
+            period_ms: 500.0,
+            anchor_ms: 0,
+            confidence: 0.1,
+        };
         for id in 1..=BEAT_CACHE as u64 {
             remember_beat(&engine.inner, clock(id));
         }
-        assert!(cached_beat(&engine.inner, 1).is_some(), "track 1 is now the most recent");
+        assert!(
+            cached_beat(&engine.inner, 1).is_some(),
+            "track 1 is now the most recent"
+        );
         remember_beat(&engine.inner, clock(1000));
-        assert!(cached_beat(&engine.inner, 2).is_none(), "the oldest entry made room");
+        assert!(
+            cached_beat(&engine.inner, 2).is_none(),
+            "the oldest entry made room"
+        );
         assert!(cached_beat(&engine.inner, 1).is_some());
         assert_eq!(engine.inner.beat_cache.lock().unwrap().len(), BEAT_CACHE);
     }
@@ -5040,9 +5769,18 @@ mod tests {
                 repeat: RepeatMode::Off,
             })
             .unwrap();
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| output.samples().len() >= 176_400);
-        assert_eq!(output.samples().len(), 176_400, "the track did not play from its start");
+        assert_eq!(
+            output.samples().len(),
+            176_400,
+            "the track did not play from its start"
+        );
     }
 
     /// A seek that reaches the engine right after a new context, before the
@@ -5061,12 +5799,23 @@ mod tests {
                 repeat: RepeatMode::Off,
             })
             .unwrap();
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         // Cleared by the command itself, not later by the worker.
-        assert!(!engine.inner.paused.load(Ordering::SeqCst), "a new context must clear the pause");
+        assert!(
+            !engine.inner.paused.load(Ordering::SeqCst),
+            "a new context must clear the pause"
+        );
         engine.handle(EngineCmd::Seek(500)).unwrap();
         wait_for(|| !output.samples().is_empty());
-        assert!(!output.samples().is_empty(), "the seek left the new session paused");
+        assert!(
+            !output.samples().is_empty(),
+            "the seek left the new session paused"
+        );
     }
 
     /// Track 13 (EF-D4): a long pause stops the output; resume reopens the
@@ -5075,21 +5824,42 @@ mod tests {
     fn a_long_pause_releases_the_output_and_resume_reopens_it() {
         let (plan, files) = fixture_plan();
         let (engine, output) = engine_with(plan, files);
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| !output.samples().is_empty());
         engine.handle(EngineCmd::PlayPause).unwrap();
         let (opens, stops) = (output.opens(), output.stops());
         std::thread::sleep(PAUSE_RELEASE / 2);
-        assert_eq!(output.stops(), stops, "a short pause must keep the output open");
+        assert_eq!(
+            output.stops(),
+            stops,
+            "a short pause must keep the output open"
+        );
         wait_for(|| output.stops() > stops);
         assert!(output.stops() > stops, "the output was not released");
         engine.handle(EngineCmd::SetVolume(0.5)).unwrap();
 
         engine.handle(EngineCmd::PlayPause).unwrap();
         wait_for(|| output.samples().len() >= 176_400);
-        assert_eq!(output.opens(), opens + 1, "resume must reopen the output once");
-        assert_eq!(output.samples().len(), 176_400, "audio was lost across the release");
-        assert_eq!(output.volumes().last(), Some(&0.5), "the reopened output lost the volume");
+        assert_eq!(
+            output.opens(),
+            opens + 1,
+            "resume must reopen the output once"
+        );
+        assert_eq!(
+            output.samples().len(),
+            176_400,
+            "audio was lost across the release"
+        );
+        assert_eq!(
+            output.volumes().last(),
+            Some(&0.5),
+            "the reopened output lost the volume"
+        );
     }
 
     struct Gate {
@@ -5099,7 +5869,10 @@ mod tests {
 
     impl Gate {
         fn new() -> Self {
-            Self { released: Mutex::new(std::collections::HashSet::new()), cond: std::sync::Condvar::new() }
+            Self {
+                released: Mutex::new(std::collections::HashSet::new()),
+                cond: std::sync::Condvar::new(),
+            }
         }
         fn wait(&self, id: u64) {
             let mut released = self.released.lock().unwrap();
@@ -5129,7 +5902,10 @@ mod tests {
 
     fn wait_for_order(order: &Arc<Mutex<Vec<u64>>>, id: u64) {
         wait_for(|| order.lock().unwrap().contains(&id));
-        assert!(order.lock().unwrap().contains(&id), "track {id} was never resolved");
+        assert!(
+            order.lock().unwrap().contains(&id),
+            "track {id} was never resolved"
+        );
     }
 
     /// Regression: a `Next` issued while a track is playing must not cause a
@@ -5144,7 +5920,11 @@ mod tests {
         let order = Arc::new(Mutex::new(Vec::new()));
         let output = NullOutput::new();
         let engine = build_engine(
-            Arc::new(GatedResolver { plan, gate: gate.clone(), order: order.clone() }),
+            Arc::new(GatedResolver {
+                plan,
+                gate: gate.clone(),
+                order: order.clone(),
+            }),
             Arc::new(crate::fetch::MapFetcher { files }),
             Box::new(output),
             Quality::Lossless,
@@ -5158,7 +5938,10 @@ mod tests {
         }));
 
         engine
-            .handle(EngineCmd::PlayTracks { items: vec![item(1), item(2), item(3)], start: 0 })
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1), item(2), item(3)],
+                start: 0,
+            })
             .unwrap();
         wait_for_order(&order, 1);
         // Let track 1 complete and auto-advance to track 2, then press Next.
@@ -5187,16 +5970,30 @@ mod tests {
         let seen = Arc::new(Mutex::new(Vec::new()));
         let seen_ref = seen.clone();
         engine.subscribe(Arc::new(move |e| seen_ref.lock().unwrap().push(e)));
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
 
         wait_for(|| {
-            seen.lock().unwrap().iter().any(|e| matches!(e, EngineEvent::Error { .. }))
+            seen.lock()
+                .unwrap()
+                .iter()
+                .any(|e| matches!(e, EngineEvent::Error { .. }))
         });
         assert!(
-            seen.lock().unwrap().iter().any(|e| matches!(e, EngineEvent::Error { .. })),
+            seen.lock()
+                .unwrap()
+                .iter()
+                .any(|e| matches!(e, EngineEvent::Error { .. })),
             "no error event emitted"
         );
-        assert!(!engine.state().playing, "queue still reports playing after an error");
+        assert!(
+            !engine.state().playing,
+            "queue still reports playing after an error"
+        );
     }
 
     #[test]
@@ -5219,13 +6016,22 @@ mod tests {
         let seen_ref = seen.clone();
         engine.subscribe(Arc::new(move |e| seen_ref.lock().unwrap().push(e)));
 
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
 
         wait_for(|| output.samples().len() > 0);
         assert!(output.samples().len() > 0, "the track never started");
         assert_eq!(resolver.calls.load(Ordering::SeqCst), 3);
         assert!(
-            !seen.lock().unwrap().iter().any(|e| matches!(e, EngineEvent::Error { .. })),
+            !seen
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|e| matches!(e, EngineEvent::Error { .. })),
             "a recovered blip must not surface an error"
         );
     }
@@ -5245,7 +6051,10 @@ mod tests {
                 self.outage.fetch_sub(1, Ordering::SeqCst);
                 return Err(Error::Fetch("network is unreachable".into()));
             }
-            self.files.get(url).cloned().ok_or_else(|| Error::Fetch(format!("no fixture for {url}")))
+            self.files
+                .get(url)
+                .cloned()
+                .ok_or_else(|| Error::Fetch(format!("no fixture for {url}")))
         }
     }
 
@@ -5262,7 +6071,11 @@ mod tests {
             .map(|(i, chunk)| {
                 let url = format!("mem://part{i}");
                 parts.insert(url.clone(), chunk.to_vec());
-                Segment { url, start_ticks: 0, duration_ticks: 0 }
+                Segment {
+                    url,
+                    start_ticks: 0,
+                    duration_ticks: 0,
+                }
             })
             .collect();
         let output = NullOutput::new();
@@ -5282,12 +6095,29 @@ mod tests {
         let seen_ref = seen.clone();
         engine.subscribe(Arc::new(move |e| seen_ref.lock().unwrap().push(e)));
 
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| !engine.state().playing && output.samples().len() >= 176_400);
 
-        assert_eq!(output.samples().len(), 176_400, "audio was lost across the outage");
-        assert_eq!(output.opens(), 1, "the device was reopened: playback restarted");
-        assert!(!seen.lock().unwrap().iter().any(|e| matches!(e, EngineEvent::Error { .. })));
+        assert_eq!(
+            output.samples().len(),
+            176_400,
+            "audio was lost across the outage"
+        );
+        assert_eq!(
+            output.opens(),
+            1,
+            "the device was reopened: playback restarted"
+        );
+        assert!(!seen
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| matches!(e, EngineEvent::Error { .. })));
     }
 
     #[test]
@@ -5312,18 +6142,33 @@ mod tests {
         let seen_ref = seen.clone();
         engine.subscribe(Arc::new(move |e| seen_ref.lock().unwrap().push(e)));
 
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
 
         wait_for(|| output.samples().len() > 0);
         assert!(output.samples().len() > 0, "playback never resumed");
         let events = seen.lock().unwrap();
         assert!(
-            events.iter().any(|e| matches!(e, EngineEvent::State(s) if s.buffering && s.playing)),
+            events
+                .iter()
+                .any(|e| matches!(e, EngineEvent::State(s) if s.buffering && s.playing)),
             "the wait was not published as buffering"
         );
-        assert!(!events.iter().any(|e| matches!(e, EngineEvent::Error { .. })), "an error surfaced");
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, EngineEvent::Error { .. })),
+            "an error surfaced"
+        );
         drop(events);
-        assert!(!engine.state().buffering, "buffering stayed on after the resume");
+        assert!(
+            !engine.state().buffering,
+            "buffering stayed on after the resume"
+        );
     }
 
     #[test]
@@ -5344,10 +6189,24 @@ mod tests {
         let seen_ref = seen.clone();
         engine.subscribe(Arc::new(move |e| seen_ref.lock().unwrap().push(e)));
 
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
 
-        wait_for(|| seen.lock().unwrap().iter().any(|e| matches!(e, EngineEvent::Error { .. })));
-        assert!(seen.lock().unwrap().iter().any(|e| matches!(e, EngineEvent::Error { .. })));
+        wait_for(|| {
+            seen.lock()
+                .unwrap()
+                .iter()
+                .any(|e| matches!(e, EngineEvent::Error { .. }))
+        });
+        assert!(seen
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| matches!(e, EngineEvent::Error { .. })));
         assert!(!engine.state().playing);
         assert!(!engine.state().buffering);
     }
@@ -5380,9 +6239,18 @@ mod tests {
         assert!(engine.state().buffering, "never entered the network wait");
 
         engine.handle(EngineCmd::PlayPause).unwrap();
-        assert!(!engine.state().playing, "the wait had already ended; the press did not pause");
+        assert!(
+            !engine.state().playing,
+            "the wait had already ended; the press did not pause"
+        );
         wait_for(|| !engine.state().buffering);
-        let target = engine.inner.seek_target.lock().unwrap().as_ref().map(|t| t.position_ms);
+        let target = engine
+            .inner
+            .seek_target
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|t| t.position_ms);
         assert_eq!(target, Some(1200), "the resume point was lost");
     }
 
@@ -5404,8 +6272,11 @@ mod tests {
             }
         }
         let (plan, files) = fixture_plan();
-        let resolver =
-            Arc::new(PrefetchBlip { plan, failed: AtomicBool::new(false), calls: Mutex::new(Vec::new()) });
+        let resolver = Arc::new(PrefetchBlip {
+            plan,
+            failed: AtomicBool::new(false),
+            calls: Mutex::new(Vec::new()),
+        });
         let output = NullOutput::new();
         let engine = build_engine(
             resolver.clone(),
@@ -5418,16 +6289,27 @@ mod tests {
         engine.subscribe(Arc::new(move |e| seen_ref.lock().unwrap().push(e)));
 
         engine
-            .handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 })
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1), item(2)],
+                start: 0,
+            })
             .unwrap();
 
         wait_for(|| !engine.state().playing && output.samples().len() >= 176_400 * 2);
-        assert_eq!(output.samples().len(), 176_400 * 2, "track 2 did not play in full");
+        assert_eq!(
+            output.samples().len(),
+            176_400 * 2,
+            "track 2 did not play in full"
+        );
         // Track 1 and the prefetch resolve concurrently, so compare counts.
         let calls = resolver.calls.lock().unwrap().clone();
         assert_eq!(calls.iter().filter(|&&t| t == 1).count(), 1, "{calls:?}");
         assert_eq!(calls.iter().filter(|&&t| t == 2).count(), 2, "{calls:?}");
-        assert!(!seen.lock().unwrap().iter().any(|e| matches!(e, EngineEvent::Error { .. })));
+        assert!(!seen
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| matches!(e, EngineEvent::Error { .. })));
     }
 
     #[test]
@@ -5450,9 +6332,22 @@ mod tests {
         let seen_ref = seen.clone();
         engine.subscribe(Arc::new(move |e| seen_ref.lock().unwrap().push(e)));
 
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
-        wait_for(|| seen.lock().unwrap().iter().any(|e| matches!(e, EngineEvent::Error { .. })));
-        assert!(!engine.state().playing, "a stream error must stop the queue");
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
+        wait_for(|| {
+            seen.lock()
+                .unwrap()
+                .iter()
+                .any(|e| matches!(e, EngineEvent::Error { .. }))
+        });
+        assert!(
+            !engine.state().playing,
+            "a stream error must stop the queue"
+        );
 
         engine.retry().unwrap();
 
@@ -5471,10 +6366,18 @@ mod tests {
         let engine = build_engine(
             Arc::new(FakeResolver { plan }),
             Arc::new(crate::fetch::MapFetcher { files }),
-            Box::new(ThrottledOutput { inner: output.clone(), delay: Duration::from_millis(100) }),
+            Box::new(ThrottledOutput {
+                inner: output.clone(),
+                delay: Duration::from_millis(100),
+            }),
             Quality::Lossless,
         );
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| output.samples().len() > 0);
 
         engine.handle(EngineCmd::Seek(500)).unwrap();
@@ -5495,14 +6398,20 @@ mod tests {
         engine.inner.notify_worker();
         // Once the worker is idle, every later sample comes from the retry.
         wait_for(|| !engine.inner.worker_busy.load(Ordering::SeqCst));
-        assert!(!engine.inner.worker_busy.load(Ordering::SeqCst), "the failed session never ended");
+        assert!(
+            !engine.inner.worker_busy.load(Ordering::SeqCst),
+            "the failed session never ended"
+        );
         let before = output.samples().len();
 
         engine.retry().unwrap();
         assert!(engine.state().playing, "retry did not resume the queue");
 
         wait_for(|| output.samples().len() > before);
-        assert!(output.samples().len() > before, "retry did not resume playback");
+        assert!(
+            output.samples().len() > before,
+            "retry did not resume playback"
+        );
         assert!(
             engine.state().position_ms >= 500,
             "retry restarted from the beginning: {}",
@@ -5516,7 +6425,12 @@ mod tests {
     fn retry_waits_for_the_playback_lock() {
         let (plan, files) = fixture_plan();
         let (engine, _output) = engine_with(plan, files);
-        engine.inner.queue.lock().unwrap().play_context(vec![item(1)], 0);
+        engine
+            .inner
+            .queue
+            .lock()
+            .unwrap()
+            .play_context(vec![item(1)], 0);
         engine.inner.queue.lock().unwrap().stop();
         let before = engine.inner.generation.load(Ordering::SeqCst);
 
@@ -5524,7 +6438,11 @@ mod tests {
         std::thread::scope(|scope| {
             let retry = scope.spawn(|| engine.retry().unwrap());
             std::thread::sleep(Duration::from_millis(50));
-            assert_eq!(engine.inner.generation.load(Ordering::SeqCst), before, "retry ran under the lock");
+            assert_eq!(
+                engine.inner.generation.load(Ordering::SeqCst),
+                before,
+                "retry ran under the lock"
+            );
             assert!(!engine.inner.queue.lock().unwrap().is_playing());
             drop(guard);
             retry.join().unwrap();
@@ -5559,9 +6477,19 @@ mod tests {
         let seen_ref = seen.clone();
         engine.subscribe(Arc::new(move |e| seen_ref.lock().unwrap().push(e)));
 
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
 
-        wait_for(|| seen.lock().unwrap().iter().any(|e| matches!(e, EngineEvent::Error { .. })));
+        wait_for(|| {
+            seen.lock()
+                .unwrap()
+                .iter()
+                .any(|e| matches!(e, EngineEvent::Error { .. }))
+        });
         let code = seen
             .lock()
             .unwrap()
@@ -5752,7 +6680,10 @@ mod tests {
     fn restore_session_starts_paused_and_fetches_nothing() {
         let (plan, files) = fixture_plan();
         let calls = Arc::new(AtomicUsize::new(0));
-        let fetcher = Arc::new(CountingFetcher { files, calls: calls.clone() });
+        let fetcher = Arc::new(CountingFetcher {
+            files,
+            calls: calls.clone(),
+        });
         let engine = build_engine(
             Arc::new(FakeResolver { plan }),
             fetcher,
@@ -5780,7 +6711,11 @@ mod tests {
             "restore must keep the saved order even with shuffle on"
         );
         std::thread::sleep(Duration::from_millis(200));
-        assert_eq!(calls.load(Ordering::SeqCst), 0, "restore must not fetch media");
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            0,
+            "restore must not fetch media"
+        );
     }
 
     /// Regression (2026-10-11): an SMTC client replayed a stale 8:18 on a
@@ -5799,14 +6734,26 @@ mod tests {
                 repeat: RepeatMode::Off,
             })
             .unwrap();
-        assert_eq!(engine.state().position_ms, 0, "a saved position past the end restarts the track");
+        assert_eq!(
+            engine.state().position_ms,
+            0,
+            "a saved position past the end restarts the track"
+        );
 
         engine.handle(EngineCmd::Seek(1500)).unwrap();
         assert_eq!(engine.state().position_ms, 1500);
         engine.handle(EngineCmd::Seek(498_690)).unwrap();
-        assert_eq!(engine.state().position_ms, 1500, "a seek past the end must be ignored");
+        assert_eq!(
+            engine.state().position_ms,
+            1500,
+            "a seek past the end must be ignored"
+        );
         engine.handle(EngineCmd::Seek(2000)).unwrap();
-        assert_eq!(engine.state().position_ms, 2000, "seeking to the exact end is allowed");
+        assert_eq!(
+            engine.state().position_ms,
+            2000,
+            "seeking to the exact end is allowed"
+        );
     }
 
     #[test]
@@ -5839,18 +6786,31 @@ mod tests {
             let events = events.clone();
             move |event| events.lock().unwrap().push(event)
         }));
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
-        engine.handle(EngineCmd::SetRepeat(RepeatMode::All)).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
+        engine
+            .handle(EngineCmd::SetRepeat(RepeatMode::All))
+            .unwrap();
         wait_for(|| !output.samples().is_empty());
 
-        engine.handle(EngineCmd::FadeAndPause { duration_ms: 150 }).unwrap();
+        engine
+            .handle(EngineCmd::FadeAndPause { duration_ms: 150 })
+            .unwrap();
         wait_for(|| !engine.state().playing);
 
         assert!(
             output.flushes() >= 1,
             "completion must discard the audio staged at the faded volume"
         );
-        assert_eq!(engine.state().volume, 1.0, "pre-fade volume must be restored");
+        assert_eq!(
+            engine.state().volume,
+            1.0,
+            "pre-fade volume must be restored"
+        );
         wait_for(|| output.volumes().last() == Some(&1.0));
         let volumes = output.volumes();
         assert!(
@@ -5861,7 +6821,11 @@ mod tests {
             volumes.iter().any(|v| v.abs() <= f32::EPSILON),
             "the ramp never reached silence: {volumes:?}"
         );
-        assert_eq!(volumes.last(), Some(&1.0), "volume not restored after the fade");
+        assert_eq!(
+            volumes.last(),
+            Some(&1.0),
+            "volume not restored after the fade"
+        );
         let done = events.lock().unwrap().iter().any(|event| {
             matches!(event, EngineEvent::State(state) if !state.playing && state.volume == 1.0)
         });
@@ -5873,11 +6837,22 @@ mod tests {
     fn play_pause_cancels_an_active_fade_and_restores_volume() {
         let (plan, files) = fixture_plan();
         let (engine, output) = engine_with(plan, files);
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
-        engine.handle(EngineCmd::SetRepeat(RepeatMode::All)).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
+        engine
+            .handle(EngineCmd::SetRepeat(RepeatMode::All))
+            .unwrap();
         wait_for(|| !output.samples().is_empty());
 
-        engine.handle(EngineCmd::FadeAndPause { duration_ms: 60_000 }).unwrap();
+        engine
+            .handle(EngineCmd::FadeAndPause {
+                duration_ms: 60_000,
+            })
+            .unwrap();
         wait_for(|| output.volumes().iter().any(|v| *v < 0.95));
 
         engine.handle(EngineCmd::PlayPause).unwrap();
@@ -5889,7 +6864,10 @@ mod tests {
         engine.handle(EngineCmd::PlayPause).unwrap();
         wait_for(|| engine.state().playing);
         std::thread::sleep(Duration::from_millis(300));
-        assert!(engine.state().playing, "the cancelled fade must not pause later");
+        assert!(
+            engine.state().playing,
+            "the cancelled fade must not pause later"
+        );
         // A stale ramp step can land just after the cancel; the worker restores
         // the user volume on its next pass, so wait rather than race the sleep.
         wait_for(|| output.volumes().last() == Some(&1.0));
@@ -5900,18 +6878,36 @@ mod tests {
     fn set_volume_cancels_an_active_fade() {
         let (plan, files) = fixture_plan();
         let (engine, output) = engine_with(plan, files);
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
-        engine.handle(EngineCmd::SetRepeat(RepeatMode::All)).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
+        engine
+            .handle(EngineCmd::SetRepeat(RepeatMode::All))
+            .unwrap();
         wait_for(|| !output.samples().is_empty());
 
-        engine.handle(EngineCmd::FadeAndPause { duration_ms: 60_000 }).unwrap();
+        engine
+            .handle(EngineCmd::FadeAndPause {
+                duration_ms: 60_000,
+            })
+            .unwrap();
         wait_for(|| output.volumes().iter().any(|v| *v < 0.95));
 
         engine.handle(EngineCmd::SetVolume(0.25)).unwrap();
         wait_for(|| output.volumes().last() == Some(&0.25));
         std::thread::sleep(Duration::from_millis(300));
-        assert_eq!(output.volumes().last(), Some(&0.25), "the fade kept ramping");
-        assert!(engine.state().playing, "the fade must not pause after cancel");
+        assert_eq!(
+            output.volumes().last(),
+            Some(&0.25),
+            "the fade kept ramping"
+        );
+        assert!(
+            engine.state().playing,
+            "the fade must not pause after cancel"
+        );
     }
 
     /// ASIO has no endpoint volume, so anything below 100% would be software
@@ -5927,19 +6923,33 @@ mod tests {
         assert!(state.volume_fixed);
         assert_eq!(state.volume, 1.0, "the state reports what is applied");
 
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
-        engine.handle(EngineCmd::SetRepeat(RepeatMode::All)).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
+        engine
+            .handle(EngineCmd::SetRepeat(RepeatMode::All))
+            .unwrap();
         wait_for(|| !output.samples().is_empty());
         wait_for(|| output.volumes().last() == Some(&1.0));
         engine.handle(EngineCmd::SetVolume(0.2)).unwrap();
         std::thread::sleep(Duration::from_millis(200));
-        assert_eq!(output.volumes().last(), Some(&1.0), "SetVolume reached a fixed output");
+        assert_eq!(
+            output.volumes().last(),
+            Some(&1.0),
+            "SetVolume reached a fixed output"
+        );
         assert_eq!(engine.state().volume, 1.0);
 
         engine.set_output_device(None);
         let state = engine.state();
         assert!(!state.volume_fixed);
-        assert_eq!(state.volume, 0.4, "the user's volume survives the ASIO stint");
+        assert_eq!(
+            state.volume, 0.4,
+            "the user's volume survives the ASIO stint"
+        );
         wait_for(|| output.volumes().last() == Some(&0.4));
         assert_eq!(output.volumes().last(), Some(&0.4));
     }
@@ -5952,11 +6962,20 @@ mod tests {
         let (engine, output) = engine_with(plan, files);
         engine.handle(EngineCmd::SetVolume(0.0)).unwrap();
         engine.set_output_device(Some("asio:Topping USB Audio Device".into()));
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
-        engine.handle(EngineCmd::SetRepeat(RepeatMode::All)).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
+        engine
+            .handle(EngineCmd::SetRepeat(RepeatMode::All))
+            .unwrap();
         wait_for(|| !output.samples().is_empty());
 
-        engine.handle(EngineCmd::FadeAndPause { duration_ms: 150 }).unwrap();
+        engine
+            .handle(EngineCmd::FadeAndPause { duration_ms: 150 })
+            .unwrap();
         wait_for(|| !engine.state().playing);
         let volumes = output.volumes();
         assert!(
@@ -5991,8 +7010,15 @@ mod tests {
                 }
             }
         }));
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
-        engine.handle(EngineCmd::SetRepeat(RepeatMode::All)).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
+        engine
+            .handle(EngineCmd::SetRepeat(RepeatMode::All))
+            .unwrap();
 
         let (state, cond) = &*gate;
         {
@@ -6007,7 +7033,12 @@ mod tests {
         cond.notify_all();
 
         wait_for(|| output.volumes().last() == Some(&0.25));
-        assert_eq!(output.volumes().last(), Some(&0.25), "volume lost at the track change: {:?}", output.volumes());
+        assert_eq!(
+            output.volumes().last(),
+            Some(&0.25),
+            "volume lost at the track change: {:?}",
+            output.volumes()
+        );
         assert_eq!(output.opens(), 1, "the repeat must keep the device");
     }
 
@@ -6016,18 +7047,31 @@ mod tests {
     fn fade_and_pause_on_a_paused_queue_changes_nothing() {
         let (plan, files) = fixture_plan();
         let (engine, output) = engine_with(plan, files);
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
-        engine.handle(EngineCmd::SetRepeat(RepeatMode::All)).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
+        engine
+            .handle(EngineCmd::SetRepeat(RepeatMode::All))
+            .unwrap();
         wait_for(|| !output.samples().is_empty());
         engine.handle(EngineCmd::PlayPause).unwrap();
         assert!(!engine.state().playing);
         let before = output.volumes().len();
 
-        engine.handle(EngineCmd::FadeAndPause { duration_ms: 50 }).unwrap();
+        engine
+            .handle(EngineCmd::FadeAndPause { duration_ms: 50 })
+            .unwrap();
         std::thread::sleep(Duration::from_millis(200));
 
         let volumes = output.volumes();
-        assert_eq!(volumes.len(), before, "a paused queue must not fade: {volumes:?}");
+        assert_eq!(
+            volumes.len(),
+            before,
+            "a paused queue must not fade: {volumes:?}"
+        );
         assert_eq!(volumes.last(), Some(&1.0));
         assert!(!engine.state().playing);
     }
@@ -6037,11 +7081,20 @@ mod tests {
     fn fade_and_pause_with_zero_duration_pauses_immediately() {
         let (plan, files) = fixture_plan();
         let (engine, output) = engine_with(plan, files);
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
-        engine.handle(EngineCmd::SetRepeat(RepeatMode::All)).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
+        engine
+            .handle(EngineCmd::SetRepeat(RepeatMode::All))
+            .unwrap();
         wait_for(|| !output.samples().is_empty());
 
-        engine.handle(EngineCmd::FadeAndPause { duration_ms: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::FadeAndPause { duration_ms: 0 })
+            .unwrap();
         wait_for(|| !engine.state().playing);
         assert!(
             output.volumes().iter().all(|v| *v == 1.0),
@@ -6056,12 +7109,23 @@ mod tests {
     fn current_volume_reads_the_fade_target_while_fading() {
         let (plan, files) = fixture_plan();
         let (engine, output) = engine_with(plan, files);
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
-        engine.handle(EngineCmd::SetRepeat(RepeatMode::All)).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
+        engine
+            .handle(EngineCmd::SetRepeat(RepeatMode::All))
+            .unwrap();
         engine.handle(EngineCmd::SetVolume(0.8)).unwrap();
         wait_for(|| !output.samples().is_empty());
 
-        engine.handle(EngineCmd::FadeAndPause { duration_ms: 60_000 }).unwrap();
+        engine
+            .handle(EngineCmd::FadeAndPause {
+                duration_ms: 60_000,
+            })
+            .unwrap();
         wait_for(|| current_volume(&engine.inner).0 < 0.8);
         let (volume, fading) = current_volume(&engine.inner);
         assert!(fading, "the fade must drive the output volume");
@@ -6070,7 +7134,10 @@ mod tests {
         engine.handle(EngineCmd::PlayPause).unwrap();
         let (volume, fading) = current_volume(&engine.inner);
         assert!(!fading, "play/pause must cancel the fade");
-        assert!((volume - 0.8).abs() < f32::EPSILON, "user volume not restored: {volume}");
+        assert!(
+            (volume - 0.8).abs() < f32::EPSILON,
+            "user volume not restored: {volume}"
+        );
     }
 
     /// Test output that blocks on the zero-volume call so the test can cancel
@@ -6136,17 +7203,28 @@ mod tests {
             }),
             Quality::Lossless,
         );
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
-        engine.handle(EngineCmd::SetRepeat(RepeatMode::All)).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
+        engine
+            .handle(EngineCmd::SetRepeat(RepeatMode::All))
+            .unwrap();
         wait_for(|| !output.samples().is_empty());
 
-        engine.handle(EngineCmd::FadeAndPause { duration_ms: 1 }).unwrap();
+        engine
+            .handle(EngineCmd::FadeAndPause { duration_ms: 1 })
+            .unwrap();
         {
             let (flag, cond) = &*entered;
             let mut blocked = flag.lock().unwrap();
             let deadline = Instant::now() + Duration::from_secs(5);
             while !*blocked && Instant::now() < deadline {
-                let (guard, _) = cond.wait_timeout(blocked, Duration::from_millis(50)).unwrap();
+                let (guard, _) = cond
+                    .wait_timeout(blocked, Duration::from_millis(50))
+                    .unwrap();
                 blocked = guard;
             }
             assert!(*blocked, "the fade never reached the output");
@@ -6161,12 +7239,23 @@ mod tests {
         }
 
         std::thread::sleep(Duration::from_millis(200));
-        assert!(engine.state().playing, "the cancelled fade must not stop playback");
-        assert_eq!(engine.state().volume, 0.5, "the cancelled fade must not zero the volume");
+        assert!(
+            engine.state().playing,
+            "the cancelled fade must not stop playback"
+        );
+        assert_eq!(
+            engine.state().volume,
+            0.5,
+            "the cancelled fade must not zero the volume"
+        );
         // The worker's zero (read before the command) reached the output
         // after it; the device-side control must still end on the command.
         let control = output.volume_control().expect("attached");
-        assert_eq!(control.position(), 0.5, "a stale worker volume overwrote the command");
+        assert_eq!(
+            control.position(),
+            0.5,
+            "a stale worker volume overwrote the command"
+        );
     }
 
     /// The fix for laggy volume: a command reaches the output's device thread
@@ -6176,21 +7265,36 @@ mod tests {
     fn set_volume_reaches_the_device_control_at_once() {
         let (plan, files) = fixture_plan();
         let (engine, output) = engine_with(plan, files);
-        let control = output.volume_control().expect("the engine attaches its control");
+        let control = output
+            .volume_control()
+            .expect("the engine attaches its control");
         assert_eq!(control.position(), 1.0);
         engine.handle(EngineCmd::SetVolume(0.3)).unwrap();
         assert_eq!(control.position(), 0.3);
 
         // A cancelled sleep fade restores the user's volume there too.
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
-        engine.handle(EngineCmd::SetRepeat(RepeatMode::All)).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
+        engine
+            .handle(EngineCmd::SetRepeat(RepeatMode::All))
+            .unwrap();
         wait_for(|| !output.samples().is_empty());
-        engine.handle(EngineCmd::FadeAndPause { duration_ms: 6_000 }).unwrap();
+        engine
+            .handle(EngineCmd::FadeAndPause { duration_ms: 6_000 })
+            .unwrap();
         wait_for(|| control.position() < 0.3);
         engine.handle(EngineCmd::PlayPause).unwrap();
         // The worker may be mid-step; it re-asserts the command's volume.
         wait_for(|| control.position() == 0.3);
-        assert_eq!(control.position(), 0.3, "the fade's last step must not outlive the cancel");
+        assert_eq!(
+            control.position(),
+            0.3,
+            "the fade's last step must not outlive the cancel"
+        );
     }
 
     /// Regression: `Next` at the end of the queue with repeat off must not
@@ -6199,7 +7303,12 @@ mod tests {
     fn next_at_end_with_repeat_off_does_not_restart() {
         let (plan, files) = fixture_plan();
         let (engine, output) = engine_with(plan, files);
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| !engine.state().playing);
         assert!(!engine.state().playing, "single track did not finish");
 
@@ -6207,8 +7316,15 @@ mod tests {
         assert!(before >= 176_400);
         engine.handle(EngineCmd::Next).unwrap();
         std::thread::sleep(Duration::from_millis(300));
-        assert_eq!(output.samples().len(), before, "Next at the end restarted playback");
-        assert!(!engine.state().playing, "Next at the end left the queue playing");
+        assert_eq!(
+            output.samples().len(),
+            before,
+            "Next at the end restarted playback"
+        );
+        assert!(
+            !engine.state().playing,
+            "Next at the end left the queue playing"
+        );
     }
 
     struct GatedFetcher {
@@ -6236,12 +7352,19 @@ mod tests {
         let output = NullOutput::new();
         let engine = build_engine(
             Arc::new(FakeResolver { plan }),
-            Arc::new(GatedFetcher { files, gate: gate.clone(), id: 1 }),
+            Arc::new(GatedFetcher {
+                files,
+                gate: gate.clone(),
+                id: 1,
+            }),
             Box::new(output.clone()),
             Quality::Lossless,
         );
         engine
-            .handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 })
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1), item(2)],
+                start: 0,
+            })
             .unwrap();
         // Playback is parked in the fetcher, so nothing has been written yet.
         std::thread::sleep(Duration::from_millis(200));
@@ -6304,10 +7427,18 @@ mod tests {
             Quality::Lossless,
         );
         engine.set_output_device(Some("device-x".into()));
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
 
         wait_for(|| !specs.lock().unwrap().is_empty());
-        assert_eq!(specs.lock().unwrap()[0].device_id.as_deref(), Some("device-x"));
+        assert_eq!(
+            specs.lock().unwrap()[0].device_id.as_deref(),
+            Some("device-x")
+        );
         assert_eq!(specs.lock().unwrap()[0].mode, OutputMode::Shared);
     }
 
@@ -6318,11 +7449,18 @@ mod tests {
         let engine = build_engine(
             Arc::new(FakeResolver { plan }),
             Arc::new(crate::fetch::MapFetcher { files }),
-            Box::new(RecordingOutput { specs: specs.clone() }),
+            Box::new(RecordingOutput {
+                specs: specs.clone(),
+            }),
             Quality::Lossless,
         );
         engine.set_output_device(Some("asio:Topping USB Audio Device".into()));
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
 
         wait_for(|| !specs.lock().unwrap().is_empty());
         assert_eq!(specs.lock().unwrap()[0].mode, OutputMode::Exclusive);
@@ -6340,8 +7478,15 @@ mod tests {
         let (plan, files) = fixture_plan();
         let (engine, output) = engine_with(plan, files);
         engine.set_output_device(Some("device-a".into()));
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
-        engine.handle(EngineCmd::SetRepeat(RepeatMode::All)).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
+        engine
+            .handle(EngineCmd::SetRepeat(RepeatMode::All))
+            .unwrap();
         wait_for(|| !output.samples().is_empty());
         let before = output.last_spec().unwrap();
         let generation = engine.inner.generation.load(Ordering::SeqCst);
@@ -6350,7 +7495,11 @@ mod tests {
         wait_for(|| opened_device(&output).as_deref() == Some("device-b"));
         let after = output.last_spec().unwrap();
         assert_eq!(after.device_id.as_deref(), Some("device-b"));
-        assert_eq!((after.info, after.mode), (before.info, before.mode), "same stream format");
+        assert_eq!(
+            (after.info, after.mode),
+            (before.info, before.mode),
+            "same stream format"
+        );
         assert_eq!(
             engine.inner.generation.load(Ordering::SeqCst),
             generation,
@@ -6368,16 +7517,30 @@ mod tests {
     fn a_device_switch_that_changes_the_mode_restarts_at_the_position() {
         let (plan, files) = fixture_plan();
         let (engine, output) = engine_with(plan, files);
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
-        engine.handle(EngineCmd::SetRepeat(RepeatMode::All)).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
+        engine
+            .handle(EngineCmd::SetRepeat(RepeatMode::All))
+            .unwrap();
         wait_for(|| !output.samples().is_empty());
         assert_eq!(output.last_spec().unwrap().mode, OutputMode::Shared);
         let generation = engine.inner.generation.load(Ordering::SeqCst);
 
         engine.set_output_device(Some("asio:Topping USB Audio Device".into()));
-        wait_for(|| output.last_spec().is_some_and(|s| s.mode == OutputMode::Exclusive));
+        wait_for(|| {
+            output
+                .last_spec()
+                .is_some_and(|s| s.mode == OutputMode::Exclusive)
+        });
         assert!(engine.inner.generation.load(Ordering::SeqCst) > generation);
-        assert_eq!(opened_device(&output).as_deref(), Some("asio:Topping USB Audio Device"));
+        assert_eq!(
+            opened_device(&output).as_deref(),
+            Some("asio:Topping USB Audio Device")
+        );
         wait_for(|| engine.state().playing);
     }
 
@@ -6388,22 +7551,36 @@ mod tests {
         let (plan, files) = fixture_plan();
         let (engine, output) = engine_with(plan, files);
         engine.set_output_device(Some("device-a".into()));
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
-        engine.handle(EngineCmd::SetRepeat(RepeatMode::All)).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
+        engine
+            .handle(EngineCmd::SetRepeat(RepeatMode::All))
+            .unwrap();
         wait_for(|| !output.samples().is_empty());
         engine.handle(EngineCmd::PlayPause).unwrap();
         assert!(!engine.state().playing);
 
         engine.set_output_device(Some("device-b".into()));
         wait_for(|| opened_device(&output).as_deref() == Some("device-b"));
-        assert!(!engine.state().playing, "a device switch must not resume playback");
+        assert!(
+            !engine.state().playing,
+            "a device switch must not resume playback"
+        );
         let opens = output.opens();
 
         engine.handle(EngineCmd::PlayPause).unwrap();
         let written = output.samples().len();
         wait_for(|| output.samples().len() > written);
         assert_eq!(opened_device(&output).as_deref(), Some("device-b"));
-        assert_eq!(output.opens(), opens, "resume reopened instead of playing on");
+        assert_eq!(
+            output.opens(),
+            opens,
+            "resume reopened instead of playing on"
+        );
     }
 
     #[test]
@@ -6418,7 +7595,12 @@ mod tests {
             Quality::Lossless,
         );
         engine.set_perf_hook(Arc::new(move |event| sink.lock().unwrap().push(event)));
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
 
         wait_for(|| {
             events
@@ -6486,7 +7668,12 @@ mod tests {
             Quality::Lossless,
         );
         engine.set_output_mode(OutputMode::Exclusive);
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
 
         wait_for(|| engine.audio_status().mode == OutputMode::Exclusive);
         assert_eq!(engine.audio_status().mode, OutputMode::Exclusive);
@@ -6508,7 +7695,12 @@ mod tests {
             Quality::Lossless,
         );
         engine.set_output_mode(OutputMode::Exclusive);
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
 
         wait_for(|| engine.state().bit_perfect_notice.is_some());
         let state = engine.state();
@@ -6527,7 +7719,9 @@ mod tests {
 
     impl AudioOutput for FailingOpenOutput {
         fn open(&mut self, _spec: &AudioOutputSpec) -> Result<()> {
-            Err(Error::Output("exclusive mode is not supported by this output device".into()))
+            Err(Error::Output(
+                "exclusive mode is not supported by this output device".into(),
+            ))
         }
         fn start(&mut self) -> Result<()> {
             Ok(())
@@ -6559,11 +7753,19 @@ mod tests {
             Quality::Lossless,
         );
         engine.set_output_mode(OutputMode::Exclusive);
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
 
         wait_for(|| engine.state().bit_perfect_notice.is_some());
         let state = engine.state();
-        assert!(!state.playing, "open failure must pause, not stop the queue");
+        assert!(
+            !state.playing,
+            "open failure must pause, not stop the queue"
+        );
         assert_eq!(state.current.map(|i| i.track_id), Some(1));
         assert_eq!(state.queue.len(), 1);
         assert!(state.bit_perfect_notice.is_some());
@@ -6645,7 +7847,12 @@ mod tests {
                 }
             }
         }));
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
 
         wait_for(|| engine.state().bit_perfect_notice.is_some());
         let state = engine.state();
@@ -6665,7 +7872,10 @@ mod tests {
         assert!(engine.state().playing, "recovery did not resume playback");
         wait_for(|| !engine.state().playing);
         assert_eq!(samples.lock().unwrap().len(), 176_400);
-        assert!(opens.load(Ordering::SeqCst) >= 2, "recovery must reopen the output");
+        assert!(
+            opens.load(Ordering::SeqCst) >= 2,
+            "recovery must reopen the output"
+        );
     }
 
     /// Writes until `remaining` samples are consumed, then fails every write.
@@ -6717,10 +7927,18 @@ mod tests {
         let engine = build_engine(
             Arc::new(FakeResolver { plan }),
             Arc::new(crate::fetch::MapFetcher { files }),
-            Box::new(FailAfterOutput { remaining: remaining.clone(), samples: samples.clone() }),
+            Box::new(FailAfterOutput {
+                remaining: remaining.clone(),
+                samples: samples.clone(),
+            }),
             Quality::Lossless,
         );
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| engine.state().bit_perfect_notice.is_some());
         assert!(!engine.state().playing);
         let first = samples.lock().unwrap().len();
@@ -6729,7 +7947,12 @@ mod tests {
         // Device is back; a new play context must start at 0, not resume the
         // failed track's position.
         *remaining.lock().unwrap() = usize::MAX;
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(2)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(2)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| !engine.state().playing && samples.lock().unwrap().len() > first);
         assert_eq!(
             samples.lock().unwrap().len(),
@@ -6756,7 +7979,12 @@ mod tests {
             }),
             Quality::Lossless,
         );
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| engine.state().bit_perfect_notice.is_some());
 
         let opens_at_notice = opens.load(Ordering::SeqCst);
@@ -6834,7 +8062,12 @@ mod tests {
             }),
             Quality::Lossless,
         );
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| engine.state().bit_perfect_notice.is_some());
 
         let opens_at_notice = opens.load(Ordering::SeqCst);
@@ -6863,15 +8096,27 @@ mod tests {
         let engine = build_engine(
             Arc::new(FakeResolver { plan }),
             Arc::new(crate::fetch::MapFetcher { files }),
-            Box::new(FailAfterOutput { remaining: remaining.clone(), samples: samples.clone() }),
+            Box::new(FailAfterOutput {
+                remaining: remaining.clone(),
+                samples: samples.clone(),
+            }),
             Quality::Lossless,
         );
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1), item(2)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| engine.state().bit_perfect_notice.is_some());
         assert_eq!(engine.state().current.map(|i| i.track_id), Some(2));
         assert!(!engine.state().playing);
         let first = samples.lock().unwrap().len();
-        assert_eq!(first, 176_400 + 22_050, "the failure did not land mid-track-2");
+        assert_eq!(
+            first,
+            176_400 + 22_050,
+            "the failure did not land mid-track-2"
+        );
         let failure_ms = engine.state().position_ms;
         assert!(failure_ms > 0, "the failure position was not recorded");
 
@@ -6938,7 +8183,12 @@ mod tests {
             }),
             Quality::Lossless,
         );
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| !engine.state().playing);
         // The worker is still inside the slow stop; press play immediately.
         engine.handle(EngineCmd::PlayPause).unwrap();
@@ -6968,7 +8218,11 @@ mod tests {
     fn plan_for(url: &str, sample_rate: u32, bit_depth: u32) -> StreamPlan {
         StreamPlan {
             init_url: None,
-            segments: vec![Segment { url: url.into(), start_ticks: 0, duration_ticks: 0 }],
+            segments: vec![Segment {
+                url: url.into(),
+                start_ticks: 0,
+                duration_ticks: 0,
+            }],
             timescale: 0,
             codec: Some("flac".into()),
             sample_rate: Some(sample_rate),
@@ -6985,16 +8239,31 @@ mod tests {
         let (plan, files) = fixture_plan();
         let (engine, output) = engine_with(plan, files);
         engine
-            .handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 })
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1), item(2)],
+                start: 0,
+            })
             .unwrap();
 
         wait_for(|| !engine.state().playing && output.samples().len() >= 176_400 * 2);
         assert_eq!(output.samples().len(), 176_400 * 2);
         // One open for both tracks; a reopen between tracks would make this 2.
-        assert_eq!(output.opens(), 1, "gapless playback must not reopen between matching tracks");
-        assert_eq!(output.stops(), 1, "gapless playback must not stop between matching tracks");
+        assert_eq!(
+            output.opens(),
+            1,
+            "gapless playback must not reopen between matching tracks"
+        );
+        assert_eq!(
+            output.stops(),
+            1,
+            "gapless playback must not stop between matching tracks"
+        );
         wait_for(|| output.calls().len() >= 3);
-        assert_eq!(output.calls(), vec!["open", "drain", "stop"], "the queue's end plays out before the stop");
+        assert_eq!(
+            output.calls(),
+            vec!["open", "drain", "stop"],
+            "the queue's end plays out before the stop"
+        );
     }
 
     #[test]
@@ -7017,7 +8286,10 @@ mod tests {
         );
 
         engine
-            .handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 })
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1), item(2)],
+                start: 0,
+            })
             .unwrap();
 
         wait_for(|| !engine.state().playing && output.samples().len() >= 176_400 + 192_000);
@@ -7047,17 +8319,36 @@ mod tests {
         files.insert("mem://t48".to_string(), tone48);
         let output = NullOutput::new();
         let engine = build_engine(
-            Arc::new(PerTrackResolver { plans, order: Arc::new(Mutex::new(Vec::new())) }),
+            Arc::new(PerTrackResolver {
+                plans,
+                order: Arc::new(Mutex::new(Vec::new())),
+            }),
             Arc::new(crate::fetch::MapFetcher { files }),
-            Box::new(ThrottledOutput { inner: output.clone(), delay: Duration::from_millis(30) }),
+            Box::new(ThrottledOutput {
+                inner: output.clone(),
+                delay: Duration::from_millis(30),
+            }),
             Quality::Lossless,
         );
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| output.samples().len() > 0);
 
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(2)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(2)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| output.calls().len() >= 5);
-        assert_eq!(output.calls(), vec!["open", "stop", "open", "drain", "stop"]);
+        assert_eq!(
+            output.calls(),
+            vec!["open", "stop", "open", "drain", "stop"]
+        );
     }
 
     #[test]
@@ -7069,13 +8360,19 @@ mod tests {
         plans.insert(2, plan);
         let output = NullOutput::new();
         let engine = build_engine(
-            Arc::new(PerTrackResolver { plans, order: order.clone() }),
+            Arc::new(PerTrackResolver {
+                plans,
+                order: order.clone(),
+            }),
             Arc::new(crate::fetch::MapFetcher { files }),
             Box::new(output.clone()),
             Quality::Lossless,
         );
         engine
-            .handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 })
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1), item(2)],
+                start: 0,
+            })
             .unwrap();
         wait_for(|| !engine.state().playing && output.samples().len() >= 176_400 * 2);
         let resolved = order.lock().unwrap().clone();
@@ -7099,9 +8396,15 @@ mod tests {
         let plans = ids.iter().map(|&id| (id, plan.clone())).collect();
         let output = NullOutput::new();
         let engine = build_engine(
-            Arc::new(PerTrackResolver { plans, order: order.clone() }),
+            Arc::new(PerTrackResolver {
+                plans,
+                order: order.clone(),
+            }),
             Arc::new(crate::fetch::MapFetcher { files }),
-            Box::new(ThrottledOutput { inner: output.clone(), delay: Duration::from_millis(delay_ms) }),
+            Box::new(ThrottledOutput {
+                inner: output.clone(),
+                delay: Duration::from_millis(delay_ms),
+            }),
             Quality::Lossless,
         );
         (engine, output, order)
@@ -7112,20 +8415,40 @@ mod tests {
     #[test]
     fn a_track_enqueued_during_the_last_track_is_prefetched() {
         let (engine, output, order) = queue_edit_engine(&[1, 2], 10);
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| !output.samples().is_empty());
-        engine.handle(EngineCmd::Enqueue { items: vec![item(2)] }).unwrap();
+        engine
+            .handle(EngineCmd::Enqueue {
+                items: vec![item(2)],
+            })
+            .unwrap();
         wait_for(|| order.lock().unwrap().contains(&2));
-        assert!(order.lock().unwrap().contains(&2), "track 2 was never resolved");
+        assert!(
+            order.lock().unwrap().contains(&2),
+            "track 2 was never resolved"
+        );
         assert!(
             output.samples().len() < 176_400,
             "track 2 must be prefetched while track 1 still plays"
         );
         wait_for(|| !engine.state().playing && output.samples().len() >= 2 * 176_400);
         assert_eq!(output.samples().len(), 2 * 176_400);
-        assert_eq!(output.opens(), 1, "the prefetched track reuses the open output");
+        assert_eq!(
+            output.opens(),
+            1,
+            "the prefetched track reuses the open output"
+        );
         let resolved = order.lock().unwrap().clone();
-        assert_eq!(resolved.iter().filter(|&&t| t == 2).count(), 1, "{resolved:?}");
+        assert_eq!(
+            resolved.iter().filter(|&&t| t == 2).count(),
+            1,
+            "{resolved:?}"
+        );
     }
 
     /// Play next on a queue that already has a prefetch swaps it for the
@@ -7133,11 +8456,23 @@ mod tests {
     #[test]
     fn play_next_retargets_a_stale_prefetch() {
         let (engine, output, order) = queue_edit_engine(&[1, 2, 3], 10);
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1), item(2)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| order.lock().unwrap().contains(&2));
-        engine.handle(EngineCmd::EnqueueNext { items: vec![item(3)] }).unwrap();
+        engine
+            .handle(EngineCmd::EnqueueNext {
+                items: vec![item(3)],
+            })
+            .unwrap();
         wait_for(|| order.lock().unwrap().contains(&3));
-        assert!(order.lock().unwrap().contains(&3), "track 3 was never resolved");
+        assert!(
+            order.lock().unwrap().contains(&3),
+            "track 3 was never resolved"
+        );
         assert!(
             output.samples().len() < 176_400,
             "the inserted track must be prefetched while track 1 still plays"
@@ -7159,15 +8494,33 @@ mod tests {
             }
         }));
         engine.set_dsp(crossfade(1000, true));
-        engine.handle(EngineCmd::PlayTracks { items: vec![album_item(1, "A")], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![album_item(1, "A")],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| !output.samples().is_empty());
-        engine.handle(EngineCmd::Enqueue { items: vec![album_item(2, "B")] }).unwrap();
-        wait_for(|| !engine.state().playing && output.samples().len() >= 2 * 176_400 - 2 * 44_100 - 2 * 8192);
+        engine
+            .handle(EngineCmd::Enqueue {
+                items: vec![album_item(2, "B")],
+            })
+            .unwrap();
+        wait_for(|| {
+            !engine.state().playing && output.samples().len() >= 2 * 176_400 - 2 * 44_100 - 2 * 8192
+        });
         std::thread::sleep(Duration::from_millis(50));
         let total = output.samples().len();
-        assert!(total < 2 * 176_400 - 2 * 44_100 + 2 * 4096, "expected an overlap, got {total} samples");
+        assert!(
+            total < 2 * 176_400 - 2 * 44_100 + 2 * 4096,
+            "expected an overlap, got {total} samples"
+        );
         assert_eq!(output.opens(), 1, "a crossfade must not reopen the output");
-        assert!(stages.lock().unwrap().iter().any(|s| s.contains(&"crossfade")));
+        assert!(stages
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|s| s.contains(&"crossfade")));
     }
 
     /// Sleeps in `write` so playback takes real time, making mid-track state
@@ -7219,7 +8572,12 @@ mod tests {
     fn a_returned_device_reopens_the_output_mid_track_without_pausing() {
         let (engine, output) = throttled_engine();
         engine.set_output_device(Some("dac".into()));
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| engine.state().position_ms >= 300);
         let opens = output.opens();
         let at = engine.state().position_ms;
@@ -7227,10 +8585,17 @@ mod tests {
         output.request_reopen();
         wait_for(|| output.opens() > opens);
         assert_eq!(output.opens(), opens + 1, "one reopen per notice");
-        assert_eq!(output.last_spec().unwrap().device_id.as_deref(), Some("dac"));
+        assert_eq!(
+            output.last_spec().unwrap().device_id.as_deref(),
+            Some("dac")
+        );
         let state = engine.state();
         assert!(state.playing, "a returned device must not pause playback");
-        assert!(state.bit_perfect_notice.is_none(), "{:?}", state.bit_perfect_notice);
+        assert!(
+            state.bit_perfect_notice.is_none(),
+            "{:?}",
+            state.bit_perfect_notice
+        );
         assert!(
             state.position_ms + 100 >= at,
             "the reopen restarted the track: {} ms, was {at} ms",
@@ -7245,14 +8610,22 @@ mod tests {
     fn reselecting_the_same_device_reopens_the_output() {
         let (engine, output) = throttled_engine();
         engine.set_output_device(Some("dac".into()));
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| engine.state().position_ms >= 300);
         let opens = output.opens();
 
         engine.set_output_device(Some("dac".into()));
         wait_for(|| output.opens() > opens);
         assert!(engine.state().playing);
-        assert!(engine.state().position_ms >= 200, "re-selecting restarted the track");
+        assert!(
+            engine.state().position_ms >= 200,
+            "re-selecting restarted the track"
+        );
     }
 
     fn throttled_engine() -> (Engine, NullOutput) {
@@ -7261,7 +8634,10 @@ mod tests {
         let engine = build_engine(
             Arc::new(FakeResolver { plan }),
             Arc::new(crate::fetch::MapFetcher { files }),
-            Box::new(ThrottledOutput { inner: output.clone(), delay: Duration::from_millis(30) }),
+            Box::new(ThrottledOutput {
+                inner: output.clone(),
+                delay: Duration::from_millis(30),
+            }),
             Quality::Lossless,
         );
         (engine, output)
@@ -7270,7 +8646,12 @@ mod tests {
     #[test]
     fn a_dry_out_during_playback_counts_as_an_underrun() {
         let (engine, output) = throttled_engine();
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| engine.state().position_ms >= 200);
         assert_eq!(engine.underrun_count(), 0);
 
@@ -7282,7 +8663,12 @@ mod tests {
     #[test]
     fn the_dry_out_a_pause_leaves_is_not_an_underrun() {
         let (engine, output) = throttled_engine();
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| engine.state().position_ms >= 200);
         engine.handle(EngineCmd::PlayPause).unwrap();
         // Let the worker reach its park before the ring "drains".
@@ -7305,13 +8691,24 @@ mod tests {
         let engine = build_engine(
             Arc::new(FakeResolver { plan }),
             Arc::new(crate::fetch::MapFetcher { files }),
-            Box::new(ThrottledOutput { inner: output.clone(), delay: Duration::from_millis(30) }),
+            Box::new(ThrottledOutput {
+                inner: output.clone(),
+                delay: Duration::from_millis(30),
+            }),
             Quality::Lossless,
         );
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| engine.state().position_ms >= 300 && engine.state().playing);
         let before = engine.state().position_ms;
-        assert!(before < 1900, "track finished before the setting change: {before}");
+        assert!(
+            before < 1900,
+            "track finished before the setting change: {before}"
+        );
 
         engine.set_output_mode(OutputMode::Exclusive);
         wait_for(|| output.opens() >= 2);
@@ -7333,12 +8730,21 @@ mod tests {
         let order = Arc::new(Mutex::new(Vec::new()));
         let output = NullOutput::new();
         let engine = build_engine(
-            Arc::new(GatedResolver { plan, gate: gate.clone(), order: order.clone() }),
+            Arc::new(GatedResolver {
+                plan,
+                gate: gate.clone(),
+                order: order.clone(),
+            }),
             Arc::new(crate::fetch::MapFetcher { files }),
             Box::new(output.clone()),
             Quality::Lossless,
         );
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1), item(2)],
+                start: 0,
+            })
+            .unwrap();
         wait_for_order(&order, 1);
         gate.release(1);
         // Track 2's prefetch blocks inside resolve, so the worker is parked at
@@ -7404,24 +8810,50 @@ mod tests {
         let seen_ref = seen.clone();
         engine.subscribe(Arc::new(move |e| seen_ref.lock().unwrap().push(e)));
 
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| !engine.state().playing && output.samples().len() >= 176_400);
         let fetched = calls.load(Ordering::SeqCst);
 
         resolver.offline.store(true, Ordering::SeqCst);
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| !engine.state().playing && output.samples().len() >= 176_400 * 2);
 
-        assert_eq!(output.samples().len(), 176_400 * 2, "the cached copy did not play in full");
-        assert_eq!(calls.load(Ordering::SeqCst), fetched, "played offline but still fetched");
-        assert!(!seen.lock().unwrap().iter().any(|e| matches!(e, EngineEvent::Error { .. })));
+        assert_eq!(
+            output.samples().len(),
+            176_400 * 2,
+            "the cached copy did not play in full"
+        );
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            fetched,
+            "played offline but still fetched"
+        );
+        assert!(!seen
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| matches!(e, EngineEvent::Error { .. })));
     }
 
     #[test]
     fn a_track_cached_before_sidecars_plays_offline_from_its_headers() {
         let (_, files) = fixture_plan();
         let cache = test_cache();
-        let key = CacheKey { track_id: 1, quality: Quality::Lossless, manifest_hash: 0x77 };
+        let key = CacheKey {
+            track_id: 1,
+            quality: Quality::Lossless,
+            manifest_hash: 0x77,
+        };
         {
             // Written the old way: the audio only, no `.meta` sidecar.
             let mut writer = cache.begin_write(&key).unwrap();
@@ -7444,11 +8876,24 @@ mod tests {
         let seen_ref = seen.clone();
         engine.subscribe(Arc::new(move |e| seen_ref.lock().unwrap().push(e)));
 
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| !engine.state().playing && output.samples().len() >= 176_400);
 
-        assert_eq!(output.samples().len(), 176_400, "the legacy entry did not play");
-        assert!(!seen.lock().unwrap().iter().any(|e| matches!(e, EngineEvent::Error { .. })));
+        assert_eq!(
+            output.samples().len(),
+            176_400,
+            "the legacy entry did not play"
+        );
+        assert!(!seen
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| matches!(e, EngineEvent::Error { .. })));
     }
 
     #[test]
@@ -7458,7 +8903,9 @@ mod tests {
         let output = NullOutput::new();
         let cache = test_cache();
         let engine = Engine::new(
-            Arc::new(FakeResolver { plan: cached_plan("mem://tone", 0xabcd) }),
+            Arc::new(FakeResolver {
+                plan: cached_plan("mem://tone", 0xabcd),
+            }),
             {
                 let calls = calls.clone();
                 let files = files.clone();
@@ -7469,17 +8916,38 @@ mod tests {
             cache.clone(),
             true,
         );
-        let key = CacheKey { track_id: 1, quality: Quality::Lossless, manifest_hash: 0xabcd };
+        let key = CacheKey {
+            track_id: 1,
+            quality: Quality::Lossless,
+            manifest_hash: 0xabcd,
+        };
 
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| !engine.state().playing && output.samples().len() >= 176_400);
-        assert!(cache.lookup(&key).is_some(), "a cache miss did not write the entry");
+        assert!(
+            cache.lookup(&key).is_some(),
+            "a cache miss did not write the entry"
+        );
         let first = calls.load(Ordering::SeqCst);
         assert_eq!(first, 1, "the first play should fetch exactly once");
 
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| !engine.state().playing && output.samples().len() >= 176_400 * 2);
-        assert_eq!(calls.load(Ordering::SeqCst), first, "a cache hit still fetched");
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            first,
+            "a cache hit still fetched"
+        );
     }
 
     #[test]
@@ -7488,7 +8956,9 @@ mod tests {
         let output = NullOutput::new();
         let cache = test_cache();
         let engine = Engine::new(
-            Arc::new(FakeResolver { plan: cached_plan("mem://tone", 0xabcd) }),
+            Arc::new(FakeResolver {
+                plan: cached_plan("mem://tone", 0xabcd),
+            }),
             move || Arc::new(crate::fetch::MapFetcher { files }),
             Box::new(output),
             Quality::Lossless,
@@ -7518,14 +8988,20 @@ mod tests {
         let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let output = NullOutput::new();
         let cache = test_cache();
-        let key = CacheKey { track_id: 1, quality: Quality::Lossless, manifest_hash: 0xabcd };
+        let key = CacheKey {
+            track_id: 1,
+            quality: Quality::Lossless,
+            manifest_hash: 0xabcd,
+        };
         {
             let mut writer = cache.begin_write(&key).unwrap();
             writer.write_all(b"this is not an mp4").unwrap();
             writer.commit();
         }
         let engine = Engine::new(
-            Arc::new(FakeResolver { plan: cached_plan("mem://tone", 0xabcd) }),
+            Arc::new(FakeResolver {
+                plan: cached_plan("mem://tone", 0xabcd),
+            }),
             {
                 let calls = calls.clone();
                 let files = files.clone();
@@ -7537,11 +9013,22 @@ mod tests {
             true,
         );
 
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| !engine.state().playing && output.samples().len() >= 176_400);
         assert_eq!(output.samples().len(), 176_400);
-        assert_eq!(calls.load(Ordering::SeqCst), 1, "the network retry must run exactly once");
-        let replaced = cache.lookup(&key).expect("the corrupt entry was not replaced");
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "the network retry must run exactly once"
+        );
+        let replaced = cache
+            .lookup(&key)
+            .expect("the corrupt entry was not replaced");
         assert_eq!(
             std::fs::metadata(replaced).unwrap().len(),
             files["mem://tone"].len() as u64,
@@ -7572,28 +9059,58 @@ mod tests {
                 let files = files.clone();
                 move || -> Arc<dyn Fetcher> { Arc::new(CountingFetcher { files, calls }) }
             },
-            Box::new(ThrottledOutput { inner: output.clone(), delay: Duration::from_millis(20) }),
+            Box::new(ThrottledOutput {
+                inner: output.clone(),
+                delay: Duration::from_millis(20),
+            }),
             Quality::Lossless,
             cache.clone(),
             true,
         );
-        let key1 = CacheKey { track_id: 1, quality: Quality::Lossless, manifest_hash: 0x1111 };
-        let key2 = CacheKey { track_id: 2, quality: Quality::Lossless, manifest_hash: 0x2222 };
+        let key1 = CacheKey {
+            track_id: 1,
+            quality: Quality::Lossless,
+            manifest_hash: 0x1111,
+        };
+        let key2 = CacheKey {
+            track_id: 2,
+            quality: Quality::Lossless,
+            manifest_hash: 0x2222,
+        };
 
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1), item(2)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| cache.lookup(&key2).is_some());
-        assert!(cache.lookup(&key2).is_some(), "the prefetch never filled track 2's entry");
+        assert!(
+            cache.lookup(&key2).is_some(),
+            "the prefetch never filled track 2's entry"
+        );
         assert!(
             output.samples().len() < 176_400,
             "track 1 finished before the prefetch was observable"
         );
         wait_for(|| !engine.state().playing && output.samples().len() >= 176_400 * 2);
-        assert!(cache.lookup(&key1).is_some(), "track 1 was not cached when it finished");
+        assert!(
+            cache.lookup(&key1).is_some(),
+            "track 1 was not cached when it finished"
+        );
         let after_first_play = calls.load(Ordering::SeqCst);
-        assert_eq!(after_first_play, 2, "each track should be fetched exactly once");
+        assert_eq!(
+            after_first_play, 2,
+            "each track should be fetched exactly once"
+        );
 
         // Replaying the queue is a pure cache read.
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1), item(2)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1), item(2)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| !engine.state().playing && output.samples().len() >= 176_400 * 4);
         assert_eq!(
             calls.load(Ordering::SeqCst),
@@ -7627,7 +9144,10 @@ mod tests {
         });
         let started = std::time::Instant::now();
         let result = wait_for_stream_event(&lock, &wake, &rx, || None);
-        assert!(matches!(result, StreamWait::Woken), "expected a bare wake, got {result:?}");
+        assert!(
+            matches!(result, StreamWait::Woken),
+            "expected a bare wake, got {result:?}"
+        );
         assert!(started.elapsed() < Duration::from_millis(1000));
     }
 
@@ -7701,7 +9221,11 @@ mod tests {
         let (tone_plan, files) = fixture_plan();
         let tone = files.get("mem://tone").cloned().expect("fixture bytes");
         let cache = test_cache();
-        let key = CacheKey { track_id: 1, quality: Quality::Lossless, manifest_hash: HASH };
+        let key = CacheKey {
+            track_id: 1,
+            quality: Quality::Lossless,
+            manifest_hash: HASH,
+        };
         let mut writer = cache.begin_write(&key).unwrap();
         writer.write_all(&tone).unwrap();
         writer.commit();
@@ -7721,13 +9245,24 @@ mod tests {
             true,
         );
 
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| cache.is_protected(&key));
-        assert!(cache.is_protected(&key), "the playing stream must hold its protection");
+        assert!(
+            cache.is_protected(&key),
+            "the playing stream must hold its protection"
+        );
 
         engine.handle(EngineCmd::Clear).unwrap();
         wait_for(|| !cache.is_protected(&key));
-        assert!(!cache.is_protected(&key), "dropping the stream must release protection");
+        assert!(
+            !cache.is_protected(&key),
+            "dropping the stream must release protection"
+        );
     }
 
     /// Review Focus: seeking a fully cached multi-segment track must discard
@@ -7741,7 +9276,11 @@ mod tests {
         let (tone_plan, files) = fixture_plan();
         let tone = files.get("mem://tone").cloned().expect("fixture bytes");
         let cache = test_cache();
-        let key = CacheKey { track_id: 1, quality: Quality::Lossless, manifest_hash: HASH };
+        let key = CacheKey {
+            track_id: 1,
+            quality: Quality::Lossless,
+            manifest_hash: HASH,
+        };
         let mut writer = cache.begin_write(&key).unwrap();
         writer.write_all(&tone).unwrap();
         writer.commit();
@@ -7749,8 +9288,16 @@ mod tests {
         let mut plan = cached_plan("mem://tone", HASH);
         plan.timescale = 44100;
         plan.segments = vec![
-            Segment { url: "mem://tone".into(), start_ticks: 0, duration_ticks: 44100 },
-            Segment { url: "mem://tone".into(), start_ticks: 44100, duration_ticks: 44100 },
+            Segment {
+                url: "mem://tone".into(),
+                start_ticks: 0,
+                duration_ticks: 44100,
+            },
+            Segment {
+                url: "mem://tone".into(),
+                start_ticks: 44100,
+                duration_ticks: 44100,
+            },
         ];
         plan.sample_rate = tone_plan.sample_rate;
 
@@ -7767,7 +9314,12 @@ mod tests {
             true,
         );
 
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| output.samples().len() > 0);
         let before = output.samples().len();
         engine.handle(EngineCmd::Seek(1500)).unwrap();
@@ -7786,7 +9338,11 @@ mod tests {
         let v = vec![1, 2, 3, 4, 5, 6];
         let ptr = v.as_ptr();
         let whole = keep_range(v, 0, 6);
-        assert_eq!(whole.as_ptr(), ptr, "an untrimmed buffer must not be copied");
+        assert_eq!(
+            whole.as_ptr(),
+            ptr,
+            "an untrimmed buffer must not be copied"
+        );
         assert_eq!(keep_range(whole.clone(), 2, 3), vec![3, 4, 5]);
         assert_eq!(keep_range(whole, 0, 2), vec![1, 2]);
     }
@@ -7826,11 +9382,20 @@ mod tests {
         settings.eq.enabled = true;
         settings.replay_gain.mode = crate::dsp::ReplayGainMode::Track;
         engine.set_dsp(settings);
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
 
         let reference = reference_i32();
         wait_for(|| output.i32_samples().len() >= reference.len());
-        assert_eq!(output.i32_samples(), reference, "identity DSP altered samples");
+        assert_eq!(
+            output.i32_samples(),
+            reference,
+            "identity DSP altered samples"
+        );
         assert!(engine.audio_status().bit_perfect);
         assert!(!engine.state().dsp_active);
     }
@@ -7838,7 +9403,10 @@ mod tests {
     #[test]
     fn replay_gain_scales_exclusive_output_and_clears_bit_perfect() {
         let (mut plan, files) = fixture_plan();
-        plan.replay_gain = ReplayGain { track_gain_db: Some(-6.0), ..Default::default() };
+        plan.replay_gain = ReplayGain {
+            track_gain_db: Some(-6.0),
+            ..Default::default()
+        };
         let (engine, output) = engine_with(plan, files);
         let applied = Arc::new(Mutex::new(None));
         let applied_ref = applied.clone();
@@ -7853,7 +9421,12 @@ mod tests {
         let mut settings = DspSettings::default();
         settings.replay_gain.mode = crate::dsp::ReplayGainMode::Track;
         engine.set_dsp(settings);
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
 
         let reference = reference_i32();
         wait_for(|| output.i32_samples().len() >= reference.len());
@@ -7862,14 +9435,23 @@ mod tests {
         let gain = 10f64.powf(-6.0 / 20.0);
         for (index, (&got, &src)) in out.iter().zip(&reference).enumerate() {
             let want = src as f64 * gain;
-            assert!((got as f64 - want).abs() <= 1.0, "sample {index}: {got} vs {want}");
+            assert!(
+                (got as f64 - want).abs() <= 1.0,
+                "sample {index}: {got} vs {want}"
+            );
         }
         let status = engine.audio_status();
         assert!(!status.bit_perfect);
-        assert_eq!(status.notice, None, "DSP is a choice, not an output warning");
+        assert_eq!(
+            status.notice, None,
+            "DSP is a choice, not an output warning"
+        );
         assert!(engine.state().dsp_active);
         assert_eq!(engine.state().dsp_stages, vec!["ReplayGain"]);
-        let db = applied.lock().unwrap().expect("replay gain published in the stream meta");
+        let db = applied
+            .lock()
+            .unwrap()
+            .expect("replay gain published in the stream meta");
         assert!((db + 6.0).abs() < 1e-3, "{db}");
     }
 
@@ -7882,11 +9464,19 @@ mod tests {
         let engine = build_engine(
             Arc::new(FakeResolver { plan }),
             Arc::new(crate::fetch::MapFetcher { files }),
-            Box::new(ThrottledOutput { inner: output.clone(), delay: Duration::from_millis(60) }),
+            Box::new(ThrottledOutput {
+                inner: output.clone(),
+                delay: Duration::from_millis(60),
+            }),
             Quality::Lossless,
         );
         engine.set_output_mode(OutputMode::Exclusive);
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| engine.state().position_ms >= 200 && engine.state().playing);
         assert!(engine.state().bit_perfect);
         let opens = output.opens();
@@ -7902,12 +9492,25 @@ mod tests {
 
         engine.set_dsp(DspSettings::default());
         wait_for(|| engine.state().bit_perfect);
-        assert!(engine.state().bit_perfect, "flat settings must restore bit-perfect");
-        assert!(engine.state().position_ms < 1900, "track ended before the checks finished");
-        assert_eq!(output.opens(), opens, "a DSP change must not reopen the output");
+        assert!(
+            engine.state().bit_perfect,
+            "flat settings must restore bit-perfect"
+        );
+        assert!(
+            engine.state().position_ms < 1900,
+            "track ended before the checks finished"
+        );
+        assert_eq!(
+            output.opens(),
+            opens,
+            "a DSP change must not reopen the output"
+        );
     }
     fn album_item(id: u64, album: &str) -> QueueItem {
-        QueueItem { album: album.into(), ..item(id) }
+        QueueItem {
+            album: album.into(),
+            ..item(id)
+        }
     }
 
     fn crossfade(duration_ms: u32, skip_same_album: bool) -> DspSettings {
@@ -7931,7 +9534,10 @@ mod tests {
         let engine = build_engine(
             Arc::new(FakeResolver { plan }),
             Arc::new(crate::fetch::MapFetcher { files }),
-            Box::new(ThrottledOutput { inner: output.clone(), delay: Duration::from_millis(3) }),
+            Box::new(ThrottledOutput {
+                inner: output.clone(),
+                delay: Duration::from_millis(3),
+            }),
             Quality::Lossless,
         );
         let stages = Arc::new(Mutex::new(Vec::new()));
@@ -7942,7 +9548,9 @@ mod tests {
             }
         }));
         engine.set_dsp(settings);
-        engine.handle(EngineCmd::PlayTracks { items, start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks { items, start: 0 })
+            .unwrap();
         wait_for(|| !engine.state().playing && output.samples().len() >= expected_samples);
         std::thread::sleep(Duration::from_millis(50));
         let seen = stages.lock().unwrap().clone();
@@ -7972,8 +9580,14 @@ mod tests {
             2 * 176_400 - overlap
         );
         assert_eq!(output.opens(), 1, "a crossfade must not reopen the output");
-        assert!(stages.iter().any(|s| s.contains(&"crossfade")), "{stages:?}");
-        assert!(engine.state().dsp_stages.is_empty(), "the crossfade stage must clear");
+        assert!(
+            stages.iter().any(|s| s.contains(&"crossfade")),
+            "{stages:?}"
+        );
+        assert!(
+            engine.state().dsp_stages.is_empty(),
+            "the crossfade stage must clear"
+        );
         assert!(output.samples().iter().all(|s| s.abs() <= 1.0));
     }
 
@@ -8015,9 +9629,18 @@ mod tests {
             2 * 176_400,
         );
         assert_eq!(output.samples().len(), 2 * 176_400);
-        let (_engine, output, _) =
-            play_to_end(plan, files, crossfade(3000, false), vec![album_item(1, "A")], 176_400);
-        assert_eq!(output.samples().len(), 176_400, "nothing follows, so nothing is held back");
+        let (_engine, output, _) = play_to_end(
+            plan,
+            files,
+            crossfade(3000, false),
+            vec![album_item(1, "A")],
+            176_400,
+        );
+        assert_eq!(
+            output.samples().len(),
+            176_400,
+            "nothing follows, so nothing is held back"
+        );
     }
 
     /// Different output specs cannot overlap: the tail fades out, the output
@@ -8034,9 +9657,15 @@ mod tests {
         files.insert("mem://t48".to_string(), tone48);
         let output = NullOutput::new();
         let engine = build_engine(
-            Arc::new(PerTrackResolver { plans, order: Arc::new(Mutex::new(Vec::new())) }),
+            Arc::new(PerTrackResolver {
+                plans,
+                order: Arc::new(Mutex::new(Vec::new())),
+            }),
             Arc::new(crate::fetch::MapFetcher { files }),
-            Box::new(ThrottledOutput { inner: output.clone(), delay: Duration::from_millis(3) }),
+            Box::new(ThrottledOutput {
+                inner: output.clone(),
+                delay: Duration::from_millis(3),
+            }),
             Quality::Lossless,
         );
         engine.set_dsp(crossfade(1000, true));
@@ -8063,7 +9692,10 @@ mod tests {
         let engine = build_engine(
             Arc::new(FakeResolver { plan }),
             Arc::new(crate::fetch::MapFetcher { files }),
-            Box::new(ThrottledOutput { inner: output.clone(), delay: Duration::from_millis(60) }),
+            Box::new(ThrottledOutput {
+                inner: output.clone(),
+                delay: Duration::from_millis(60),
+            }),
             Quality::Lossless,
         );
         // 1.5 s of a 2 s track: armed, the hand-off would come at 0.5 s.
@@ -8077,25 +9709,47 @@ mod tests {
             .unwrap();
         wait_for(|| engine.state().position_ms >= 100);
         // ~33 writes of ~26 ms of audio each: the fade runs well past 0.5 s.
-        engine.handle(EngineCmd::FadeAndPause { duration_ms: 2000 }).unwrap();
+        engine
+            .handle(EngineCmd::FadeAndPause { duration_ms: 2000 })
+            .unwrap();
         wait_for(|| !engine.state().playing);
         let state = engine.state();
         assert!(!state.playing);
-        assert_eq!(state.current.map(|i| i.track_id), Some(1), "the fade crossed into track 2");
-        assert!(state.position_ms > 600, "paused before the would-be hand-off: {}", state.position_ms);
+        assert_eq!(
+            state.current.map(|i| i.track_id),
+            Some(1),
+            "the fade crossed into track 2"
+        );
+        assert!(
+            state.position_ms > 600,
+            "paused before the would-be hand-off: {}",
+            state.position_ms
+        );
     }
     #[test]
     fn idle_engine_reports_no_dsp_stages() {
         let (mut plan, files) = fixture_plan();
-        plan.replay_gain = ReplayGain { track_gain_db: Some(-6.0), ..Default::default() };
+        plan.replay_gain = ReplayGain {
+            track_gain_db: Some(-6.0),
+            ..Default::default()
+        };
         let (engine, output) = engine_with(plan, files);
         let mut settings = DspSettings::default();
         settings.replay_gain.mode = crate::dsp::ReplayGainMode::Track;
         engine.set_dsp(settings);
-        engine.handle(EngineCmd::PlayTracks { items: vec![item(1)], start: 0 }).unwrap();
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1)],
+                start: 0,
+            })
+            .unwrap();
         wait_for(|| !engine.state().playing && output.samples().len() >= 176_400);
         wait_for(|| !engine.inner.worker_busy.load(Ordering::SeqCst));
-        assert_eq!(engine.state().dsp_stages, vec!["ReplayGain"], "the last track's stages stay visible");
+        assert_eq!(
+            engine.state().dsp_stages,
+            vec!["ReplayGain"],
+            "the last track's stages stay visible"
+        );
 
         engine.set_dsp(DspSettings::default());
         assert!(engine.state().dsp_stages.is_empty());
@@ -8123,7 +9777,10 @@ mod tests {
         );
         let report = engine.state().last_transition.expect("report");
         assert_eq!(report.kind, TransitionKind::Crossfade);
-        assert!(report.overlap_ms > 800 && report.overlap_ms <= 1000, "{report:?}");
+        assert!(
+            report.overlap_ms > 800 && report.overlap_ms <= 1000,
+            "{report:?}"
+        );
         assert!(!report.resampled && report.note.is_none() && report.out_bpm.is_none());
         assert!(output.samples().len() < 2 * 176_400);
     }
@@ -8146,11 +9803,21 @@ mod tests {
         assert_eq!(report.style, TransitionStyle::Blend);
         assert!(report.overlap_ms > 800, "{report:?}");
         assert!(output.samples().iter().all(|s| s.abs() <= 1.0));
-        for style in [TransitionStyle::Classic, TransitionStyle::Quick, TransitionStyle::Blend] {
-            let replay = CrossfadeSettings { style, ..settings.crossfade.clone() };
+        for style in [
+            TransitionStyle::Classic,
+            TransitionStyle::Quick,
+            TransitionStyle::Blend,
+        ] {
+            let replay = CrossfadeSettings {
+                style,
+                ..settings.crossfade.clone()
+            };
             let rendered = engine.render_last_transition(&replay).expect("capture");
             assert_eq!(rendered.report.style, style);
-            assert!(rendered.overlap_end_ms > rendered.overlap_start_ms, "{style:?}");
+            assert!(
+                rendered.overlap_end_ms > rendered.overlap_start_ms,
+                "{style:?}"
+            );
             assert!(!rendered.samples.is_empty());
         }
         engine.set_dsp(crossfade(1000, true));
@@ -8171,7 +9838,10 @@ mod tests {
         );
         let report = engine.state().last_transition.expect("report");
         assert_eq!(report.kind, TransitionKind::Crossfade);
-        assert!(report.trimmed_out_ms < 50 && report.trimmed_in_ms < 50, "{report:?}");
+        assert!(
+            report.trimmed_out_ms < 50 && report.trimmed_in_ms < 50,
+            "{report:?}"
+        );
         let total = output.samples().len();
         let overlap = 2 * 44_100;
         assert!(
@@ -8197,7 +9867,10 @@ mod tests {
         let report = engine.state().last_transition.expect("report");
         assert_eq!(report.kind, TransitionKind::Crossfade, "{report:?}");
         assert!(report.note.is_some(), "{report:?}");
-        assert!(output.samples().len() < 2 * 176_400, "the fallback still overlaps");
+        assert!(
+            output.samples().len() < 2 * 176_400,
+            "the fallback still overlaps"
+        );
     }
 
     /// A 44.1 kHz track followed by a 48 kHz one, with `settings`, on an
@@ -8213,9 +9886,15 @@ mod tests {
         files.insert("mem://t48".to_string(), tone48);
         let output = NullOutput::new();
         let engine = build_engine(
-            Arc::new(PerTrackResolver { plans, order: Arc::new(Mutex::new(Vec::new())) }),
+            Arc::new(PerTrackResolver {
+                plans,
+                order: Arc::new(Mutex::new(Vec::new())),
+            }),
             Arc::new(crate::fetch::MapFetcher { files }),
-            Box::new(ThrottledOutput { inner: output.clone(), delay: Duration::from_millis(3) }),
+            Box::new(ThrottledOutput {
+                inner: output.clone(),
+                delay: Duration::from_millis(3),
+            }),
             Quality::Lossless,
         );
         engine.set_output_mode(mode);
@@ -8234,7 +9913,8 @@ mod tests {
     /// the tail overlaps it with no reopen in the middle of the transition.
     #[test]
     fn resample_keeps_the_shared_device_across_a_rate_change() {
-        let (engine, output) = play_rate_change(automix(1000, false, true, false), OutputMode::Shared);
+        let (engine, output) =
+            play_rate_change(automix(1000, false, true, false), OutputMode::Shared);
         // Track 1 plays its first second alone (88_200 samples at 44.1 kHz);
         // its last second overlaps track 2, whose 2 s at 48 kHz arrive at
         // 44.1 kHz (176_400 samples).
@@ -8242,7 +9922,10 @@ mod tests {
         wait_for(|| !engine.state().playing && output.samples().len() >= expected - 2 * 8192);
         std::thread::sleep(Duration::from_millis(50));
         let total = output.samples().len();
-        assert!(total.abs_diff(expected) <= 2 * 4096, "expected ~{expected}, got {total}");
+        assert!(
+            total.abs_diff(expected) <= 2 * 4096,
+            "expected ~{expected}, got {total}"
+        );
         assert_eq!(output.opens(), 1, "no reopen at the rate change");
         assert_eq!(output.last_spec().unwrap().info.sample_rate, 44_100);
         let report = engine.state().last_transition.expect("report");
@@ -8255,7 +9938,8 @@ mod tests {
     /// resampled and overlaps after the reopen.
     #[test]
     fn resample_reopens_an_exclusive_device_at_a_rate_change() {
-        let (engine, output) = play_rate_change(automix(1000, false, true, false), OutputMode::Exclusive);
+        let (engine, output) =
+            play_rate_change(automix(1000, false, true, false), OutputMode::Exclusive);
         wait_for(|| !engine.state().playing && output.opens() >= 2);
         wait_for(|| !engine.state().playing);
         assert_eq!(output.opens(), 2);
@@ -8308,14 +9992,20 @@ mod tests {
             Arc::new(FakeResolver { plan }),
             Arc::new(crate::fetch::MapFetcher { files }),
             // ~0.9 s for the 1 s preroll.
-            Box::new(PacedOutput { inner: output.clone(), per_frame: Duration::from_micros(20) }),
+            Box::new(PacedOutput {
+                inner: output.clone(),
+                per_frame: Duration::from_micros(20),
+            }),
             Quality::Lossless,
         );
         let mut settings = crossfade(1000, false);
         settings.crossfade.style = TransitionStyle::Blend;
         engine.set_dsp(settings);
         engine
-            .handle(EngineCmd::PlayTracks { items: vec![album_item(1, "A"), album_item(2, "B")], start: 0 })
+            .handle(EngineCmd::PlayTracks {
+                items: vec![album_item(1, "A"), album_item(2, "B")],
+                start: 0,
+            })
             .unwrap();
         wait_for(|| output.samples().len() >= 2 * 20_000);
         engine.handle(EngineCmd::PlayPause).unwrap();
@@ -8323,8 +10013,14 @@ mod tests {
         let paused_at = output.samples().len();
         std::thread::sleep(Duration::from_millis(400));
         let grown = output.samples().len() - paused_at;
-        assert!(grown <= 2 * 2048, "kept writing {grown} samples while paused");
-        assert!(paused_at < 2 * 88_200, "the pause landed after the preroll ({paused_at})");
+        assert!(
+            grown <= 2 * 2048,
+            "kept writing {grown} samples while paused"
+        );
+        assert!(
+            paused_at < 2 * 88_200,
+            "the pause landed after the preroll ({paused_at})"
+        );
         engine.handle(EngineCmd::Clear).unwrap();
     }
 
@@ -8343,7 +10039,10 @@ mod tests {
             let engine = build_engine(
                 Arc::new(FakeResolver { plan }),
                 Arc::new(crate::fetch::MapFetcher { files }),
-                Box::new(PacedOutput { inner: output.clone(), per_frame: Duration::from_micros(10) }),
+                Box::new(PacedOutput {
+                    inner: output.clone(),
+                    per_frame: Duration::from_micros(10),
+                }),
                 Quality::Lossless,
             );
             let mut settings = crossfade(duration_ms, false);
@@ -8352,7 +10051,10 @@ mod tests {
             engine.set_dsp(settings);
             ANALYSIS_DELAY_MS.store(3000, Ordering::SeqCst);
             engine
-                .handle(EngineCmd::PlayTracks { items: vec![album_item(1, "A"), album_item(2, "B")], start: 0 })
+                .handle(EngineCmd::PlayTracks {
+                    items: vec![album_item(1, "A"), album_item(2, "B")],
+                    start: 0,
+                })
                 .unwrap();
             wait_for(|| engine.state().last_transition.is_some());
             ANALYSIS_DELAY_MS.store(0, Ordering::SeqCst);
@@ -8388,13 +10090,25 @@ mod tests {
             style: TransitionStyle::Blend,
             ..Default::default()
         };
-        let plan = plan_from(&tail, 2, 44_100, Some(&(head, StreamInfo {
-            sample_rate: 44_100,
-            channels: 2,
-            bits_per_sample: 16,
-            format: PcmFormat::F32,
-        })), &settings);
-        assert!((plan.ride_db + 6.0).abs() < 1e-6, "18 dB louder caps at -6 dB: {plan:?}");
+        let plan = plan_from(
+            &tail,
+            2,
+            44_100,
+            Some(&(
+                head,
+                StreamInfo {
+                    sample_rate: 44_100,
+                    channels: 2,
+                    bits_per_sample: 16,
+                    format: PcmFormat::F32,
+                },
+            )),
+            &settings,
+        );
+        assert!(
+            (plan.ride_db + 6.0).abs() < 1e-6,
+            "18 dB louder caps at -6 dB: {plan:?}"
+        );
         assert!(plan.ride_frames > plan.mix_frames, "{plan:?}");
         assert_eq!(plan.report.ride_db, plan.ride_db as f32);
     }
@@ -8412,9 +10126,15 @@ mod tests {
         files.insert("mem://t48".to_string(), tone48);
         let output = NullOutput::new();
         let engine = build_engine(
-            Arc::new(PerTrackResolver { plans, order: Arc::new(Mutex::new(Vec::new())) }),
+            Arc::new(PerTrackResolver {
+                plans,
+                order: Arc::new(Mutex::new(Vec::new())),
+            }),
             Arc::new(crate::fetch::MapFetcher { files }),
-            Box::new(ThrottledOutput { inner: output.clone(), delay: Duration::from_millis(3) }),
+            Box::new(ThrottledOutput {
+                inner: output.clone(),
+                delay: Duration::from_millis(3),
+            }),
             Quality::Lossless,
         );
         engine.set_dsp(crossfade(1000, true));
@@ -8445,20 +10165,32 @@ mod tests {
         let events: Arc<Mutex<Vec<crate::perf::AudioPerfEvent>>> = Arc::new(Mutex::new(Vec::new()));
         let sink = events.clone();
         let engine = build_engine(
-            Arc::new(PerTrackResolver { plans, order: Arc::new(Mutex::new(Vec::new())) }),
+            Arc::new(PerTrackResolver {
+                plans,
+                order: Arc::new(Mutex::new(Vec::new())),
+            }),
             Arc::new(crate::fetch::MapFetcher { files }),
             // ~0.9 s for the 1 s tail.
-            Box::new(PacedOutput { inner: NullOutput::new(), per_frame: Duration::from_micros(20) }),
+            Box::new(PacedOutput {
+                inner: NullOutput::new(),
+                per_frame: Duration::from_micros(20),
+            }),
             Quality::Lossless,
         );
         engine.set_perf_hook(Arc::new(move |event| sink.lock().unwrap().push(event)));
         engine.set_dsp(crossfade(1000, true));
         engine
-            .handle(EngineCmd::PlayTracks { items: vec![album_item(1, "A"), album_item(2, "B")], start: 0 })
+            .handle(EngineCmd::PlayTracks {
+                items: vec![album_item(1, "A"), album_item(2, "B")],
+                start: 0,
+            })
             .unwrap();
         let gap = || {
             events.lock().unwrap().iter().find_map(|e| match e {
-                crate::perf::AudioPerfEvent::Advance { track_id: 2, gap_ms } => Some(*gap_ms),
+                crate::perf::AudioPerfEvent::Advance {
+                    track_id: 2,
+                    gap_ms,
+                } => Some(*gap_ms),
                 _ => None,
             })
         };

@@ -8,8 +8,9 @@ use serde::{Deserialize, Serialize};
 use crate::decode::{PcmBuffer, StreamInfo};
 
 /// ISO octave band centres, in Hz.
-pub const EQ_BANDS_HZ: [f64; 10] =
-    [31.0, 62.0, 125.0, 250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0, 16000.0];
+pub const EQ_BANDS_HZ: [f64; 10] = [
+    31.0, 62.0, 125.0, 250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0, 16000.0,
+];
 /// Band and EQ preamp range, in dB (symmetric).
 pub const EQ_MAX_DB: f32 = 12.0;
 /// ReplayGain preamp / untagged gain range, in dB (symmetric).
@@ -305,7 +306,9 @@ impl Equalizer {
             .zip(bands_db)
             .enumerate()
             .filter(|(_, (&freq, &gain))| gain != 0.0 && freq < limit)
-            .map(|(band, (&freq, &gain))| (band, Coeffs::peaking(self.rate, freq, gain as f64, EQ_Q)))
+            .map(|(band, (&freq, &gain))| {
+                (band, Coeffs::peaking(self.rate, freq, gain as f64, EQ_Q))
+            })
             .collect();
         // A band that was off has stale state from an older run; start it clean.
         for (band, _) in &self.active {
@@ -436,7 +439,9 @@ impl TrackDsp {
 /// A left-aligned 32-bit sample from a float in [-1, 1].
 #[inline]
 pub fn f64_to_i32(x: f64) -> i32 {
-    (x * I32_SCALE).round().clamp(i32::MIN as f64, i32::MAX as f64) as i32
+    (x * I32_SCALE)
+        .round()
+        .clamp(i32::MIN as f64, i32::MAX as f64) as i32
 }
 
 /// Equal-power crossfade gains at `t` in [0, 1]: `(outgoing, incoming)`.
@@ -491,10 +496,17 @@ impl MixShape {
             }
             MixShape::Quick { attack } => {
                 let (out, _) = equal_power(t);
-                let inc = if attack <= 0.0 { 1.0 } else { equal_power(t / attack).1 };
+                let inc = if attack <= 0.0 {
+                    1.0
+                } else {
+                    equal_power(t / attack).1
+                };
                 [out, out, inc, inc]
             }
-            MixShape::BassSwap { swap_start, swap_end } => {
+            MixShape::BassSwap {
+                swap_start,
+                swap_end,
+            } => {
                 let (out_high, in_high) = equal_power(t);
                 let u = if swap_end > swap_start {
                     (t - swap_start) / (swap_end - swap_start)
@@ -826,7 +838,8 @@ impl StreamResampler {
         use rubato::Resampler;
         let channels = channels.max(1);
         let resampler =
-            rubato::FftFixedIn::<f64>::new(from_rate as usize, to_rate as usize, 1024, 2, channels).ok()?;
+            rubato::FftFixedIn::<f64>::new(from_rate as usize, to_rate as usize, 1024, 2, channels)
+                .ok()?;
         let delay_left = resampler.output_delay();
         Some(Self {
             resampler,
@@ -883,8 +896,8 @@ impl StreamResampler {
     /// long as its input (at the new rate).
     pub fn flush(&mut self) -> PcmBuffer {
         use rubato::Resampler;
-        let expected =
-            (self.frames_in as f64 * self.to_rate as f64 / self.from_rate.max(1) as f64).round() as u64;
+        let expected = (self.frames_in as f64 * self.to_rate as f64 / self.from_rate.max(1) as f64)
+            .round() as u64;
         let mut out = Vec::new();
         if !self.pending[0].is_empty() {
             let pending = std::mem::replace(&mut self.pending, vec![Vec::new(); self.channels]);
@@ -921,7 +934,12 @@ pub struct GainRide {
 impl GainRide {
     /// `None` when there is nothing to ride (under 0.5 dB, or no length).
     pub fn new(start_db: f64, frames: usize, channels: usize) -> Option<Self> {
-        (start_db < -0.5 && frames > 0).then_some(Self { start_db, frames, pos: 0, channels: channels.max(1) })
+        (start_db < -0.5 && frames > 0).then_some(Self {
+            start_db,
+            frames,
+            pos: 0,
+            channels: channels.max(1),
+        })
     }
 
     pub fn is_done(&self) -> bool {
@@ -962,13 +980,19 @@ mod tests {
     use crate::decode::PcmFormat;
 
     fn info(rate: u32) -> StreamInfo {
-        StreamInfo { sample_rate: rate, channels: 2, bits_per_sample: 16, format: PcmFormat::F32 }
+        StreamInfo {
+            sample_rate: rate,
+            channels: 2,
+            bits_per_sample: 16,
+            format: PcmFormat::F32,
+        }
     }
 
     fn sine(rate: u32, freq: f64, frames: usize, amp: f64) -> Vec<f32> {
         let mut out = Vec::with_capacity(frames * 2);
         for n in 0..frames {
-            let s = (amp * (2.0 * std::f64::consts::PI * freq * n as f64 / rate as f64).sin()) as f32;
+            let s =
+                (amp * (2.0 * std::f64::consts::PI * freq * n as f64 / rate as f64).sin()) as f32;
             out.push(s);
             out.push(s);
         }
@@ -1016,7 +1040,10 @@ mod tests {
             let input = sine(rate, 1000.0, rate as usize / 2, 0.1);
             let out = dsp.process(PcmBuffer::F32(input.clone()));
             let ratio_db = 20.0 * (rms_tail(out.as_f32().unwrap()) / rms_tail(&input)).log10();
-            assert!((ratio_db - gain as f64).abs() < 0.3, "{gain} dB at {rate}: got {ratio_db}");
+            assert!(
+                (ratio_db - gain as f64).abs() < 0.3,
+                "{gain} dB at {rate}: got {ratio_db}"
+            );
         }
     }
 
@@ -1037,7 +1064,10 @@ mod tests {
 
     #[test]
     fn auto_preamp_cancels_the_loudest_boost() {
-        let mut eq = EqSettings { enabled: true, ..Default::default() };
+        let mut eq = EqSettings {
+            enabled: true,
+            ..Default::default()
+        };
         eq.bands_db[2] = 4.0;
         eq.bands_db[7] = 9.0;
         eq.bands_db[8] = -3.0;
@@ -1063,7 +1093,11 @@ mod tests {
         assert!((replay_gain_linear(&s, &data) - db_to_linear(-6.0)).abs() < 1e-9);
         s.mode = ReplayGainMode::Album;
         assert!((replay_gain_linear(&s, &data) - db_to_linear(-3.0)).abs() < 1e-9);
-        let track_only = ReplayGain { album_gain_db: None, album_peak: None, ..data };
+        let track_only = ReplayGain {
+            album_gain_db: None,
+            album_peak: None,
+            ..data
+        };
         assert!((replay_gain_linear(&s, &track_only) - db_to_linear(-6.0)).abs() < 1e-9);
     }
 
@@ -1075,7 +1109,11 @@ mod tests {
             untagged_db: -5.0,
             prevent_clipping: true,
         };
-        let quiet = ReplayGain { track_gain_db: Some(9.0), track_peak: Some(0.5), ..Default::default() };
+        let quiet = ReplayGain {
+            track_gain_db: Some(9.0),
+            track_peak: Some(0.5),
+            ..Default::default()
+        };
         // +12 dB would push a 0.5 peak to ~2.0; the cap holds it at full scale.
         assert!((replay_gain_linear(&s, &quiet) - 2.0).abs() < 1e-9);
         s.prevent_clipping = false;
@@ -1087,7 +1125,10 @@ mod tests {
     fn replay_gain_scales_i32_samples_and_reports_its_stage() {
         let mut settings = DspSettings::default();
         settings.replay_gain.mode = ReplayGainMode::Track;
-        let data = ReplayGain { track_gain_db: Some(-6.020_6), ..Default::default() };
+        let data = ReplayGain {
+            track_gain_db: Some(-6.020_6),
+            ..Default::default()
+        };
         let mut dsp = TrackDsp::new(&info(44100), data, &settings);
         assert_eq!(dsp.active_stages(), vec![STAGE_REPLAY_GAIN]);
         assert!((dsp.replay_gain_db().unwrap() + 6.0206).abs() < 1e-3);
@@ -1101,7 +1142,10 @@ mod tests {
     fn zero_db_replay_gain_stays_identity_but_reports_its_value() {
         let mut settings = DspSettings::default();
         settings.replay_gain.mode = ReplayGainMode::Track;
-        let data = ReplayGain { track_gain_db: Some(0.0), ..Default::default() };
+        let data = ReplayGain {
+            track_gain_db: Some(0.0),
+            ..Default::default()
+        };
         let dsp = TrackDsp::new(&info(44100), data, &settings);
         assert!(dsp.is_identity());
         assert_eq!(dsp.replay_gain_db(), Some(0.0));
@@ -1112,7 +1156,11 @@ mod tests {
         let mut settings = DspSettings::default();
         settings.replay_gain.mode = ReplayGainMode::Track;
         settings.replay_gain.prevent_clipping = false;
-        let data = ReplayGain { track_gain_db: Some(12.0), track_peak: Some(1.0), ..Default::default() };
+        let data = ReplayGain {
+            track_gain_db: Some(12.0),
+            track_peak: Some(1.0),
+            ..Default::default()
+        };
         let mut dsp = TrackDsp::new(&info(44100), data, &settings);
         let out = dsp.process(PcmBuffer::F32(vec![0.9, -0.9]));
         assert_eq!(out.as_f32().unwrap(), &[1.0, -1.0]);
@@ -1231,7 +1279,11 @@ mod tests {
         let tail = Tail::new(&[PcmBuffer::F32(vec![0.2, 0.4, -0.2, -0.4])], 2);
         let mono = tail.converted(44_100, 44_100, 1);
         assert_eq!(mono.channels(), 1);
-        assert!(mono.remaining().iter().zip([0.3, -0.3]).all(|(a, b)| (a - b).abs() < 1e-6));
+        assert!(mono
+            .remaining()
+            .iter()
+            .zip([0.3, -0.3])
+            .all(|(a, b)| (a - b).abs() < 1e-6));
         let stereo = Tail::new(&[PcmBuffer::F32(vec![0.5, -0.5])], 1).converted(48_000, 48_000, 2);
         assert_eq!(stereo.remaining(), &[0.5, 0.5, -0.5, -0.5]);
     }
@@ -1241,7 +1293,10 @@ mod tests {
         let mono: Vec<f64> = samples.iter().step_by(channels).copied().collect();
         let skip = mono.len() / 10;
         let body = &mono[skip..mono.len() - skip];
-        let crossings = body.windows(2).filter(|w| w[0] < 0.0 && w[1] >= 0.0).count();
+        let crossings = body
+            .windows(2)
+            .filter(|w| w[0] < 0.0 && w[1] >= 0.0)
+            .count();
         crossings as f64 / (body.len() as f64 / rate as f64)
     }
 
@@ -1250,15 +1305,31 @@ mod tests {
         let close = |a: [f64; 4], b: [f64; 4]| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-9);
         assert!(close(MixShape::EqualPower.gains(0.0), [1.0, 1.0, 0.0, 0.0]));
         // A cold opening is at full level from the first frame.
-        assert!(close(MixShape::Quick { attack: 0.0 }.gains(0.0), [1.0, 1.0, 1.0, 1.0]));
+        assert!(close(
+            MixShape::Quick { attack: 0.0 }.gains(0.0),
+            [1.0, 1.0, 1.0, 1.0]
+        ));
         let quick = MixShape::Quick { attack: 0.35 };
         assert!((quick.gains(0.35)[3] - 1.0).abs() < 1e-9 && quick.gains(0.1)[3] < 1.0);
-        let swap = MixShape::BassSwap { swap_start: 0.45, swap_end: 0.55 };
+        let swap = MixShape::BassSwap {
+            swap_start: 0.45,
+            swap_end: 0.55,
+        };
         let before = swap.gains(0.3);
-        assert_eq!((before[0], before[2]), (1.0, 0.0), "lows stay with the outgoing track");
-        assert!(before[1] < 1.0 && before[3] > 0.0, "highs are already crossing");
+        assert_eq!(
+            (before[0], before[2]),
+            (1.0, 0.0),
+            "lows stay with the outgoing track"
+        );
+        assert!(
+            before[1] < 1.0 && before[3] > 0.0,
+            "highs are already crossing"
+        );
         let after = swap.gains(0.7);
-        assert!(after[0].abs() < 1e-9 && (after[2] - 1.0).abs() < 1e-9, "{after:?}");
+        assert!(
+            after[0].abs() < 1e-9 && (after[2] - 1.0).abs() < 1e-9,
+            "{after:?}"
+        );
     }
 
     /// RMS of `samples`' first channel low-passed at about 100 Hz (crude
@@ -1285,35 +1356,63 @@ mod tests {
             .flat_map(|n| {
                 let t = n as f64 / rate as f64;
                 let s = (0.4 * (2.0 * std::f64::consts::PI * 50.0 * t).sin()
-                    + 0.2 * (2.0 * std::f64::consts::PI * 2000.0 * t).sin()) as f32;
+                    + 0.2 * (2.0 * std::f64::consts::PI * 2000.0 * t).sin())
+                    as f32;
                 [s, s]
             })
             .collect();
         let mut tail = Tail::from_normalized(vec![0.0; frames * 2], 2, false);
-        tail.set_shape(MixShape::BassSwap { swap_start: 0.5, swap_end: 0.5 }, rate);
+        tail.set_shape(
+            MixShape::BassSwap {
+                swap_start: 0.5,
+                swap_end: 0.5,
+            },
+            rate,
+        );
         let out = tail.mix_into(PcmBuffer::F32(incoming.clone()));
         let v = out.as_f32().unwrap();
         let quarter = frames / 4 * 2;
         let early = bass_rms(&v[quarter..2 * quarter], 2, rate);
         let late = bass_rms(&v[3 * quarter..], 2, rate);
-        assert!(early < 0.05, "incoming bass leaked before the swap: {early:.3}");
-        assert!(late > 0.15, "incoming bass missing after the swap: {late:.3}");
+        assert!(
+            early < 0.05,
+            "incoming bass leaked before the swap: {early:.3}"
+        );
+        assert!(
+            late > 0.15,
+            "incoming bass missing after the swap: {late:.3}"
+        );
         // The outgoing side mirrors it: its bass stays until the swap, then
         // leaves while its highs keep fading.
         let outgoing: Vec<f64> = incoming.iter().map(|&s| s as f64).collect();
         let mut tail = Tail::from_normalized(outgoing, 2, false);
-        tail.set_shape(MixShape::BassSwap { swap_start: 0.5, swap_end: 0.5 }, rate);
+        tail.set_shape(
+            MixShape::BassSwap {
+                swap_start: 0.5,
+                swap_end: 0.5,
+            },
+            rate,
+        );
         let out = tail.mix_into(PcmBuffer::F32(vec![0.0; frames * 2]));
         let v = out.as_f32().unwrap();
         let early = bass_rms(&v[quarter..2 * quarter], 2, rate);
         let late = bass_rms(&v[3 * quarter..], 2, rate);
-        assert!(early > 0.2, "outgoing bass dropped before the swap: {early:.3}");
+        assert!(
+            early > 0.2,
+            "outgoing bass dropped before the swap: {early:.3}"
+        );
         assert!(late < 0.03, "outgoing bass kept after the swap: {late:.3}");
         // Before any gain moves, the split sums back to the tail exactly.
         assert!((v[0] as f64 - incoming[0] as f64).abs() < 1e-6);
         // Past the overlap the incoming track is untouched.
         let mut done = Tail::from_normalized(vec![0.0; 4], 2, false);
-        done.set_shape(MixShape::BassSwap { swap_start: 0.5, swap_end: 0.5 }, rate);
+        done.set_shape(
+            MixShape::BassSwap {
+                swap_start: 0.5,
+                swap_end: 0.5,
+            },
+            rate,
+        );
         let out = done.mix_into(PcmBuffer::F32(incoming[..12].to_vec()));
         assert_eq!(&out.as_f32().unwrap()[4..], &incoming[4..12]);
     }
@@ -1321,7 +1420,10 @@ mod tests {
     #[test]
     fn converted_keeps_the_mix_shape() {
         let mut tail = Tail::new(&[PcmBuffer::F32(sine(44_100, 440.0, 4_410, 0.5))], 2);
-        let shape = MixShape::BassSwap { swap_start: 0.4, swap_end: 0.6 };
+        let shape = MixShape::BassSwap {
+            swap_start: 0.4,
+            swap_end: 0.6,
+        };
         tail.set_shape(shape, 44_100);
         assert_eq!(tail.converted(44_100, 48_000, 2).shape(), shape);
     }
@@ -1333,7 +1435,11 @@ mod tests {
         for to in [48_000u32, 96_000, 32_000] {
             let out = tail.converted(44_100, to, 2);
             let expected = 2 * to as usize;
-            assert!(out.frames().abs_diff(expected) <= 1, "{to}: {} frames", out.frames());
+            assert!(
+                out.frames().abs_diff(expected) <= 1,
+                "{to}: {} frames",
+                out.frames()
+            );
             let f = frequency(out.remaining(), 2, to);
             assert!((f - 440.0).abs() < 2.0, "{to}: {f:.1} Hz");
         }
@@ -1350,7 +1456,11 @@ mod tests {
             extend_normalized(&mut out, &rs.process(&PcmBuffer::F32(chunk.to_vec())));
         }
         extend_normalized(&mut out, &rs.flush());
-        assert!((out.len() / 2).abs_diff(88_200) <= 1, "{} frames", out.len() / 2);
+        assert!(
+            (out.len() / 2).abs_diff(88_200) <= 1,
+            "{} frames",
+            out.len() / 2
+        );
         let f = frequency(&out, 2, 44_100);
         assert!((f - 440.0).abs() < 2.0, "{f:.1} Hz");
     }

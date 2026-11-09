@@ -92,54 +92,152 @@ pub enum RemoteCommand {
     PlayPause,
     Next,
     Prev,
-    Seek { position_ms: u64 },
-    SetVolume { volume: f32 },
-    SetShuffle { enabled: bool },
-    SetRepeat { mode: RepeatMode },
-    FadeAndPause { duration_ms: u64 },
+    Seek {
+        position_ms: u64,
+    },
+    SetVolume {
+        volume: f32,
+    },
+    SetShuffle {
+        enabled: bool,
+    },
+    SetRepeat {
+        mode: RepeatMode,
+    },
+    FadeAndPause {
+        duration_ms: u64,
+    },
     Retry,
-    PlayTrackIds { ids: Vec<u64>, start: usize, shuffle: Option<bool> },
-    PlayPageItems { items: Vec<PageTrackDto>, start: usize, shuffle: Option<bool> },
-    QueueAdd { items: Vec<QueueItem> },
-    QueuePlayNext { items: Vec<QueueItem> },
-    QueueRemove { index: usize },
-    QueueReorder { from: usize, to: usize },
+    PlayTrackIds {
+        ids: Vec<u64>,
+        start: usize,
+        shuffle: Option<bool>,
+    },
+    PlayPageItems {
+        items: Vec<PageTrackDto>,
+        start: usize,
+        shuffle: Option<bool>,
+    },
+    QueueAdd {
+        items: Vec<QueueItem>,
+    },
+    QueuePlayNext {
+        items: Vec<QueueItem>,
+    },
+    QueueRemove {
+        index: usize,
+    },
+    QueueReorder {
+        from: usize,
+        to: usize,
+    },
     QueueClear,
-    GetQueuePage { offset: usize, limit: usize },
-    QueueJump { index: usize },
+    GetQueuePage {
+        offset: usize,
+        limit: usize,
+    },
+    QueueJump {
+        index: usize,
+    },
     GetRemoteState,
-    Search { query: String },
+    Search {
+        query: String,
+    },
     GetHome,
     GetExplore,
     GetForYou,
     GetFavoriteMixes,
-    GetMix { id: String },
-    GetTrackRadio { track_id: u64 },
-    GetArtistRadio { artist_id: u64 },
-    GetSimilarArtists { artist_id: u64 },
-    GetAlbum { id: u64 },
-    GetAlbumTracks { id: u64 },
-    GetAlbumInfo { id: u64 },
-    GetPlaylist { id: String },
-    GetPlaylistTracksPage { id: String, offset: u32, limit: u32 },
-    GetArtist { id: u64 },
-    GetArtistPage { artist_id: u64 },
-    GetArtistTopTracksPage { artist_id: u64, limit: u32, offset: u32 },
-    GetArtistAlbumsAll { artist_id: u64, filter: ArtistDiscography },
-    GetTrack { id: u64 },
-    GetLyrics { track_id: u64, title: String, artist: String, album: Option<String>, duration_secs: u64 },
-    AnalyzeCover { uuid: String, theme: crate::palette::Room },
-    GetFavoriteTracksPage { offset: u32, limit: u32 },
+    GetMix {
+        id: String,
+    },
+    GetTrackRadio {
+        track_id: u64,
+    },
+    GetArtistRadio {
+        artist_id: u64,
+    },
+    GetSimilarArtists {
+        artist_id: u64,
+    },
+    GetAlbum {
+        id: u64,
+    },
+    GetAlbumTracks {
+        id: u64,
+    },
+    GetAlbumInfo {
+        id: u64,
+    },
+    GetPlaylist {
+        id: String,
+    },
+    GetPlaylistTracksPage {
+        id: String,
+        offset: u32,
+        limit: u32,
+    },
+    GetArtist {
+        id: u64,
+    },
+    GetArtistPage {
+        artist_id: u64,
+    },
+    GetArtistTopTracksPage {
+        artist_id: u64,
+        limit: u32,
+        offset: u32,
+    },
+    GetArtistAlbumsAll {
+        artist_id: u64,
+        filter: ArtistDiscography,
+    },
+    GetTrack {
+        id: u64,
+    },
+    GetLyrics {
+        track_id: u64,
+        title: String,
+        artist: String,
+        album: Option<String>,
+        duration_secs: u64,
+    },
+    AnalyzeCover {
+        uuid: String,
+        theme: crate::palette::Room,
+    },
+    GetFavoriteTracksPage {
+        offset: u32,
+        limit: u32,
+    },
     GetFavoriteAlbums,
     GetFavoriteArtists,
     GetFavoriteIds,
     GetUserPlaylists,
-    GetCollectionItems { folder_id: Option<String>, order: Option<String> },
-    GetHistoryPage { offset: usize, limit: usize },
-    SetFavoriteTrack { track_id: u64, favorite: bool },
-    SetFavoriteAlbum { album_id: u64, favorite: bool },
-    SetFavoriteArtist { artist_id: u64, favorite: bool },
-    AddPlaylistTracks { id: String, track_ids: Vec<u64>, allow_duplicates: bool },
+    GetCollectionItems {
+        folder_id: Option<String>,
+        order: Option<String>,
+    },
+    GetHistoryPage {
+        offset: usize,
+        limit: usize,
+    },
+    SetFavoriteTrack {
+        track_id: u64,
+        favorite: bool,
+    },
+    SetFavoriteAlbum {
+        album_id: u64,
+        favorite: bool,
+    },
+    SetFavoriteArtist {
+        artist_id: u64,
+        favorite: bool,
+    },
+    AddPlaylistTracks {
+        id: String,
+        track_ids: Vec<u64>,
+        allow_duplicates: bool,
+    },
 }
 
 /// A failed call, sent as `"<code>: <message>"`.
@@ -151,7 +249,10 @@ pub struct RpcError {
 
 impl RpcError {
     pub fn new(code: &'static str, message: impl Into<String>) -> Self {
-        Self { code, message: message.into() }
+        Self {
+            code,
+            message: message.into(),
+        }
     }
 
     fn bad_params(message: impl Into<String>) -> Self {
@@ -185,16 +286,28 @@ pub struct RpcResponse {
 
 impl RpcResponse {
     pub fn ok(result: Value) -> Self {
-        Self { ok: true, result: Some(result), error: None }
+        Self {
+            ok: true,
+            result: Some(result),
+            error: None,
+        }
     }
 
     pub fn err(error: &RpcError) -> Self {
-        Self { ok: false, result: None, error: Some(error.to_string()) }
+        Self {
+            ok: false,
+            result: None,
+            error: Some(error.to_string()),
+        }
     }
 }
 
 fn from_params<T: DeserializeOwned>(params: Value) -> Result<T, RpcError> {
-    let params = if params.is_null() { Value::Object(Default::default()) } else { params };
+    let params = if params.is_null() {
+        Value::Object(Default::default())
+    } else {
+        params
+    };
     serde_json::from_value(params).map_err(|e| RpcError::bad_params(e.to_string()))
 }
 
@@ -211,14 +324,18 @@ macro_rules! args {
 
 fn page_limit<T: Into<u64> + Copy>(limit: T) -> Result<T, RpcError> {
     if limit.into() > MAX_PAGE_LIMIT as u64 {
-        return Err(RpcError::bad_params(format!("limit must be at most {MAX_PAGE_LIMIT}")));
+        return Err(RpcError::bad_params(format!(
+            "limit must be at most {MAX_PAGE_LIMIT}"
+        )));
     }
     Ok(limit)
 }
 
 fn bounded<T>(items: Vec<T>) -> Result<Vec<T>, RpcError> {
     if items.len() > MAX_PLAY_ITEMS {
-        return Err(RpcError::bad_params(format!("at most {MAX_PLAY_ITEMS} items per call")));
+        return Err(RpcError::bad_params(format!(
+            "at most {MAX_PLAY_ITEMS} items per call"
+        )));
     }
     Ok(items)
 }
@@ -227,17 +344,23 @@ fn bounded<T>(items: Vec<T>) -> Result<Vec<T>, RpcError> {
 /// fetch and analyse, so it cannot steer the request elsewhere.
 fn is_cover_uuid(uuid: &str) -> bool {
     uuid.len() == 36
-        && uuid
-            .chars()
-            .enumerate()
-            .all(|(i, ch)| if [8, 13, 18, 23].contains(&i) { ch == '-' } else { ch.is_ascii_hexdigit() })
+        && uuid.chars().enumerate().all(|(i, ch)| {
+            if [8, 13, 18, 23].contains(&i) {
+                ch == '-'
+            } else {
+                ch.is_ascii_hexdigit()
+            }
+        })
 }
 
 /// A playlist, mix or folder id as TIDAL issues them (UUIDs, hex mix ids,
 /// `root`). Playlist ids are spliced into API paths, so a phone must not be
 /// able to send `/`, `..`, `?` or `#` and reach an endpoint off the allowlist.
 fn is_safe_id(id: &str) -> bool {
-    (1..=64).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    (1..=64).contains(&id.len())
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
 fn safe_id(id: String) -> Result<String, RpcError> {
@@ -270,36 +393,60 @@ pub fn parse(method: &str, params: Value) -> Result<RemoteCommand, RpcError> {
         "play_pause" => C::PlayPause,
         "next" => C::Next,
         "prev" => C::Prev,
-        "seek" => C::Seek { position_ms: args!(params, { position_ms: u64 }) },
+        "seek" => C::Seek {
+            position_ms: args!(params, { position_ms: u64 }),
+        },
         "set_volume" => {
             let volume = args!(params, { volume: f32 });
             if !volume.is_finite() {
                 return Err(RpcError::bad_params("volume must be a number"));
             }
-            C::SetVolume { volume: volume.clamp(0.0, 1.0) }
+            C::SetVolume {
+                volume: volume.clamp(0.0, 1.0),
+            }
         }
-        "set_shuffle" => C::SetShuffle { enabled: args!(params, { enabled: bool }) },
-        "set_repeat" => C::SetRepeat { mode: args!(params, { mode: RepeatMode }) },
-        "fade_and_pause" => C::FadeAndPause { duration_ms: args!(params, { duration_ms: u64 }) },
+        "set_shuffle" => C::SetShuffle {
+            enabled: args!(params, { enabled: bool }),
+        },
+        "set_repeat" => C::SetRepeat {
+            mode: args!(params, { mode: RepeatMode }),
+        },
+        "fade_and_pause" => C::FadeAndPause {
+            duration_ms: args!(params, { duration_ms: u64 }),
+        },
         "retry" => C::Retry,
         "play_track_ids" => {
             let (ids, start, shuffle) =
                 args!(params, { ids: Vec<u64>, start: usize, shuffle: Option<bool> });
-            C::PlayTrackIds { ids: bounded(ids)?, start, shuffle }
+            C::PlayTrackIds {
+                ids: bounded(ids)?,
+                start,
+                shuffle,
+            }
         }
         "play_page_items" => {
             let (items, start, shuffle) =
                 args!(params, { items: Vec<PageTrackDto>, start: usize, shuffle: Option<bool> });
             let items = bounded(items)?
                 .into_iter()
-                .map(|item| PageTrackDto { cover: trusted_cover(item.cover), ..item })
+                .map(|item| PageTrackDto {
+                    cover: trusted_cover(item.cover),
+                    ..item
+                })
                 .collect();
-            C::PlayPageItems { items, start, shuffle }
+            C::PlayPageItems {
+                items,
+                start,
+                shuffle,
+            }
         }
         "queue_add" | "queue_play_next" => {
             let items = bounded(args!(params, { items: Vec<QueueItem> }))?
                 .into_iter()
-                .map(|item| QueueItem { cover: trusted_cover(item.cover), ..item })
+                .map(|item| QueueItem {
+                    cover: trusted_cover(item.cover),
+                    ..item
+                })
                 .collect();
             if method == "queue_add" {
                 C::QueueAdd { items }
@@ -307,7 +454,9 @@ pub fn parse(method: &str, params: Value) -> Result<RemoteCommand, RpcError> {
                 C::QueuePlayNext { items }
             }
         }
-        "queue_remove" => C::QueueRemove { index: args!(params, { index: usize }) },
+        "queue_remove" => C::QueueRemove {
+            index: args!(params, { index: usize }),
+        },
         "queue_reorder" => {
             let (from, to) = args!(params, { from: usize, to: usize });
             C::QueueReorder { from, to }
@@ -315,46 +464,87 @@ pub fn parse(method: &str, params: Value) -> Result<RemoteCommand, RpcError> {
         "queue_clear" => C::QueueClear,
         "get_queue_page" => {
             let (offset, limit) = args!(params, { offset: usize, limit: usize });
-            C::GetQueuePage { offset, limit: page_limit(limit as u64)? as usize }
+            C::GetQueuePage {
+                offset,
+                limit: page_limit(limit as u64)? as usize,
+            }
         }
-        "queue_jump" => C::QueueJump { index: args!(params, { index: usize }) },
+        "queue_jump" => C::QueueJump {
+            index: args!(params, { index: usize }),
+        },
         "get_remote_state" => C::GetRemoteState,
-        "search" => C::Search { query: args!(params, { query: String }) },
+        "search" => C::Search {
+            query: args!(params, { query: String }),
+        },
         "get_home" => C::GetHome,
         "get_explore" => C::GetExplore,
         "get_for_you" => C::GetForYou,
         "get_favorite_mixes" => C::GetFavoriteMixes,
-        "get_mix" => C::GetMix { id: safe_id(args!(params, { id: String }))? },
-        "get_track_radio" => C::GetTrackRadio { track_id: args!(params, { track_id: u64 }) },
-        "get_artist_radio" => C::GetArtistRadio { artist_id: args!(params, { artist_id: u64 }) },
-        "get_similar_artists" => {
-            C::GetSimilarArtists { artist_id: args!(params, { artist_id: u64 }) }
-        }
-        "get_album" => C::GetAlbum { id: args!(params, { id: u64 }) },
-        "get_album_tracks" => C::GetAlbumTracks { id: args!(params, { id: u64 }) },
-        "get_album_info" => C::GetAlbumInfo { id: args!(params, { id: u64 }) },
-        "get_playlist" => C::GetPlaylist { id: safe_id(args!(params, { id: String }))? },
+        "get_mix" => C::GetMix {
+            id: safe_id(args!(params, { id: String }))?,
+        },
+        "get_track_radio" => C::GetTrackRadio {
+            track_id: args!(params, { track_id: u64 }),
+        },
+        "get_artist_radio" => C::GetArtistRadio {
+            artist_id: args!(params, { artist_id: u64 }),
+        },
+        "get_similar_artists" => C::GetSimilarArtists {
+            artist_id: args!(params, { artist_id: u64 }),
+        },
+        "get_album" => C::GetAlbum {
+            id: args!(params, { id: u64 }),
+        },
+        "get_album_tracks" => C::GetAlbumTracks {
+            id: args!(params, { id: u64 }),
+        },
+        "get_album_info" => C::GetAlbumInfo {
+            id: args!(params, { id: u64 }),
+        },
+        "get_playlist" => C::GetPlaylist {
+            id: safe_id(args!(params, { id: String }))?,
+        },
         "get_playlist_tracks_page" => {
             let (id, offset, limit) = args!(params, { id: String, offset: u32, limit: u32 });
-            C::GetPlaylistTracksPage { id: safe_id(id)?, offset, limit: page_limit(limit)? }
+            C::GetPlaylistTracksPage {
+                id: safe_id(id)?,
+                offset,
+                limit: page_limit(limit)?,
+            }
         }
-        "get_artist" => C::GetArtist { id: args!(params, { id: u64 }) },
-        "get_artist_page" => C::GetArtistPage { artist_id: args!(params, { artist_id: u64 }) },
+        "get_artist" => C::GetArtist {
+            id: args!(params, { id: u64 }),
+        },
+        "get_artist_page" => C::GetArtistPage {
+            artist_id: args!(params, { artist_id: u64 }),
+        },
         "get_artist_top_tracks_page" => {
             let (artist_id, limit, offset) =
                 args!(params, { artist_id: u64, limit: u32, offset: u32 });
-            C::GetArtistTopTracksPage { artist_id, limit: page_limit(limit)?, offset }
+            C::GetArtistTopTracksPage {
+                artist_id,
+                limit: page_limit(limit)?,
+                offset,
+            }
         }
         "get_artist_albums_all" => {
             let (artist_id, filter) = args!(params, { artist_id: u64, filter: ArtistDiscography });
             C::GetArtistAlbumsAll { artist_id, filter }
         }
-        "get_track" => C::GetTrack { id: args!(params, { id: u64 }) },
+        "get_track" => C::GetTrack {
+            id: args!(params, { id: u64 }),
+        },
         "get_lyrics" => {
             let (track_id, title, artist, album, duration_secs) = args!(params, {
                 track_id: u64, title: String, artist: String, album: Option<String>, duration_secs: u64,
             });
-            C::GetLyrics { track_id, title, artist, album, duration_secs }
+            C::GetLyrics {
+                track_id,
+                title,
+                artist,
+                album,
+                duration_secs,
+            }
         }
         "analyze_cover" => {
             let (uuid, theme) = args!(params, { uuid: String, theme: crate::palette::Room });
@@ -365,19 +555,29 @@ pub fn parse(method: &str, params: Value) -> Result<RemoteCommand, RpcError> {
         }
         "get_favorite_tracks_page" => {
             let (offset, limit) = args!(params, { offset: u32, limit: u32 });
-            C::GetFavoriteTracksPage { offset, limit: page_limit(limit)? }
+            C::GetFavoriteTracksPage {
+                offset,
+                limit: page_limit(limit)?,
+            }
         }
         "get_favorite_albums" => C::GetFavoriteAlbums,
         "get_favorite_artists" => C::GetFavoriteArtists,
         "get_favorite_ids" => C::GetFavoriteIds,
         "get_user_playlists" => C::GetUserPlaylists,
         "get_collection_items" => {
-            let (folder_id, order) = args!(params, { folder_id: Option<String>, order: Option<String> });
-            C::GetCollectionItems { folder_id: folder_id.map(safe_id).transpose()?, order }
+            let (folder_id, order) =
+                args!(params, { folder_id: Option<String>, order: Option<String> });
+            C::GetCollectionItems {
+                folder_id: folder_id.map(safe_id).transpose()?,
+                order,
+            }
         }
         "get_history_page" => {
             let (offset, limit) = args!(params, { offset: usize, limit: usize });
-            C::GetHistoryPage { offset, limit: page_limit(limit as u64)? as usize }
+            C::GetHistoryPage {
+                offset,
+                limit: page_limit(limit as u64)? as usize,
+            }
         }
         "set_favorite_track" => {
             let (track_id, favorite) = args!(params, { track_id: u64, favorite: bool });
@@ -389,12 +589,19 @@ pub fn parse(method: &str, params: Value) -> Result<RemoteCommand, RpcError> {
         }
         "set_favorite_artist" => {
             let (artist_id, favorite) = args!(params, { artist_id: u64, favorite: bool });
-            C::SetFavoriteArtist { artist_id, favorite }
+            C::SetFavoriteArtist {
+                artist_id,
+                favorite,
+            }
         }
         "add_playlist_tracks" => {
             let (id, track_ids, allow_duplicates) =
                 args!(params, { id: String, track_ids: Vec<u64>, allow_duplicates: bool });
-            C::AddPlaylistTracks { id: safe_id(id)?, track_ids: bounded(track_ids)?, allow_duplicates }
+            C::AddPlaylistTracks {
+                id: safe_id(id)?,
+                track_ids: bounded(track_ids)?,
+                allow_duplicates,
+            }
         }
         _ => return Err(RpcError::new("unknown_method", method.to_string())),
     })
@@ -406,7 +613,10 @@ fn json<T: Serialize>(result: Result<T, String>) -> Result<Value, String> {
 
 /// Run a command against the desktop app. `GetRemoteState` and
 /// `GetQueuePage` are answered by the event hub and never reach here.
-pub async fn execute<R: Runtime>(app: &AppHandle<R>, command: RemoteCommand) -> Result<Value, String> {
+pub async fn execute<R: Runtime>(
+    app: &AppHandle<R>,
+    command: RemoteCommand,
+) -> Result<Value, String> {
     use RemoteCommand as C;
     let state = app.state::<AppState>();
     match command {
@@ -420,12 +630,16 @@ pub async fn execute<R: Runtime>(app: &AppHandle<R>, command: RemoteCommand) -> 
         C::SetRepeat { mode } => json(commands::set_repeat(state, mode)),
         C::FadeAndPause { duration_ms } => json(commands::fade_and_pause(state, duration_ms)),
         C::Retry => json(commands::retry(state)),
-        C::PlayTrackIds { ids, start, shuffle } => {
-            json(commands::play_track_ids(state, ids, start, shuffle).await)
-        }
-        C::PlayPageItems { items, start, shuffle } => {
-            json(commands::play_page_items(state, items, start, shuffle).await)
-        }
+        C::PlayTrackIds {
+            ids,
+            start,
+            shuffle,
+        } => json(commands::play_track_ids(state, ids, start, shuffle).await),
+        C::PlayPageItems {
+            items,
+            start,
+            shuffle,
+        } => json(commands::play_page_items(state, items, start, shuffle).await),
         C::QueueAdd { items } => json(commands::queue_add(state, items)),
         C::QueuePlayNext { items } => json(commands::queue_play_next(state, items)),
         C::QueueRemove { index } => json(commands::queue_remove(state, index)),
@@ -439,12 +653,11 @@ pub async fn execute<R: Runtime>(app: &AppHandle<R>, command: RemoteCommand) -> 
             if index >= queue.len() {
                 return Err("queue index out of range".to_string());
             }
-            let items = std::sync::Arc::try_unwrap(queue).unwrap_or_else(|shared| (*shared).clone());
+            let items =
+                std::sync::Arc::try_unwrap(queue).unwrap_or_else(|shared| (*shared).clone());
             json(commands::play_tracks(state, items, index, None))
         }
-        C::GetQueuePage { .. } | C::GetRemoteState => {
-            Err("answered by the event hub".to_string())
-        }
+        C::GetQueuePage { .. } | C::GetRemoteState => Err("answered by the event hub".to_string()),
         C::Search { query } => json(commands::search(state, query).await),
         C::GetHome => json(commands::get_home(state).await),
         C::GetExplore => json(commands::get_explore(state).await),
@@ -465,16 +678,22 @@ pub async fn execute<R: Runtime>(app: &AppHandle<R>, command: RemoteCommand) -> 
         }
         C::GetArtist { id } => json(commands::get_artist(state, id).await),
         C::GetArtistPage { artist_id } => json(commands::get_artist_page(state, artist_id).await),
-        C::GetArtistTopTracksPage { artist_id, limit, offset } => {
-            json(commands::get_artist_top_tracks_page(state, artist_id, limit, offset).await)
-        }
+        C::GetArtistTopTracksPage {
+            artist_id,
+            limit,
+            offset,
+        } => json(commands::get_artist_top_tracks_page(state, artist_id, limit, offset).await),
         C::GetArtistAlbumsAll { artist_id, filter } => {
             json(commands::get_artist_albums_all(state, artist_id, filter).await)
         }
         C::GetTrack { id } => json(commands::get_track(state, id).await),
-        C::GetLyrics { track_id, title, artist, album, duration_secs } => json(
-            commands::get_lyrics(state, track_id, title, artist, album, duration_secs).await,
-        ),
+        C::GetLyrics {
+            track_id,
+            title,
+            artist,
+            album,
+            duration_secs,
+        } => json(commands::get_lyrics(state, track_id, title, artist, album, duration_secs).await),
         C::AnalyzeCover { uuid, theme } => json(commands::analyze_cover(state, uuid, theme).await),
         C::GetFavoriteTracksPage { offset, limit } => {
             json(commands::get_favorite_tracks_page(state, offset, limit).await)
@@ -486,19 +705,24 @@ pub async fn execute<R: Runtime>(app: &AppHandle<R>, command: RemoteCommand) -> 
         C::GetCollectionItems { folder_id, order } => {
             json(commands::get_collection_items(state, folder_id, order).await)
         }
-        C::GetHistoryPage { offset, limit } => json(commands::get_history_page(state, offset, limit)),
+        C::GetHistoryPage { offset, limit } => {
+            json(commands::get_history_page(state, offset, limit))
+        }
         C::SetFavoriteTrack { track_id, favorite } => {
             json(commands::set_favorite_track(state, track_id, favorite).await)
         }
         C::SetFavoriteAlbum { album_id, favorite } => {
             json(commands::set_favorite_album(state, album_id, favorite).await)
         }
-        C::SetFavoriteArtist { artist_id, favorite } => {
-            json(commands::set_favorite_artist(state, artist_id, favorite).await)
-        }
-        C::AddPlaylistTracks { id, track_ids, allow_duplicates } => {
-            json(commands::add_playlist_tracks(state, id, track_ids, allow_duplicates).await)
-        }
+        C::SetFavoriteArtist {
+            artist_id,
+            favorite,
+        } => json(commands::set_favorite_artist(state, artist_id, favorite).await),
+        C::AddPlaylistTracks {
+            id,
+            track_ids,
+            allow_duplicates,
+        } => json(commands::add_playlist_tracks(state, id, track_ids, allow_duplicates).await),
     }
 }
 
@@ -663,7 +887,9 @@ mod tests {
     /// The command names inside `generate_handler![...]` in `main.rs`.
     fn handler_commands() -> Vec<String> {
         let main = include_str!("../main.rs");
-        let start = main.find("generate_handler![").expect("generate_handler! in main.rs");
+        let start = main
+            .find("generate_handler![")
+            .expect("generate_handler! in main.rs");
         let body = &main[start..];
         let end = body.find(']').unwrap();
         body[..end]
@@ -692,7 +918,9 @@ mod tests {
             "search" => json!({"query": "x"}),
             "get_mix" | "get_playlist" => json!({"id": "abc"}),
             "get_track_radio" => json!({"trackId": 1}),
-            "get_artist_radio" | "get_similar_artists" | "get_artist_page" => json!({"artistId": 1}),
+            "get_artist_radio" | "get_similar_artists" | "get_artist_page" => {
+                json!({"artistId": 1})
+            }
             "get_album" | "get_album_tracks" | "get_album_info" | "get_track" | "get_artist" => {
                 json!({"id": 7})
             }
@@ -703,11 +931,15 @@ mod tests {
                 "trackId": 1, "title": "T", "artist": "A", "album": null, "durationSecs": 200
             }),
             "get_collection_items" => json!({"folderId": "root"}),
-            "analyze_cover" => json!({"uuid": "660f113b-e63f-4c2b-a021-33350ca6948b", "theme": "dark"}),
+            "analyze_cover" => {
+                json!({"uuid": "660f113b-e63f-4c2b-a021-33350ca6948b", "theme": "dark"})
+            }
             "set_favorite_track" => json!({"trackId": 1, "favorite": true}),
             "set_favorite_album" => json!({"albumId": 1, "favorite": false}),
             "set_favorite_artist" => json!({"artistId": 1, "favorite": true}),
-            "add_playlist_tracks" => json!({"id": "abc", "trackIds": [1], "allowDuplicates": false}),
+            "add_playlist_tracks" => {
+                json!({"id": "abc", "trackIds": [1], "allowDuplicates": false})
+            }
             _ => Value::Null,
         }
     }
@@ -741,29 +973,47 @@ mod tests {
             );
         }
         for name in ALLOWLIST.iter().filter(|m| !REMOTE_ONLY.contains(m)) {
-            assert!(handlers.iter().any(|h| h == name), "`{name}` is not a registered command");
+            assert!(
+                handlers.iter().any(|h| h == name),
+                "`{name}` is not a registered command"
+            );
         }
         for name in REMOTE_ONLY {
-            assert!(!handlers.iter().any(|h| h == name), "`{name}` must stay remote-only");
+            assert!(
+                !handlers.iter().any(|h| h == name),
+                "`{name}` must stay remote-only"
+            );
         }
     }
 
     #[test]
     fn params_map_from_camel_case() {
         match parse("get_lyrics", sample_params("get_lyrics")).unwrap() {
-            RemoteCommand::GetLyrics { track_id, duration_secs, album, .. } => {
+            RemoteCommand::GetLyrics {
+                track_id,
+                duration_secs,
+                album,
+                ..
+            } => {
                 assert_eq!((track_id, duration_secs, album), (1, 200, None));
             }
             other => panic!("unexpected {other:?}"),
         }
         let err = parse("seek", json!({"position_ms": 5})).unwrap_err();
-        assert_eq!(err.code, "bad_params", "snake_case params are not the wire format");
+        assert_eq!(
+            err.code, "bad_params",
+            "snake_case params are not the wire format"
+        );
         assert_eq!(parse("seek", Value::Null).unwrap_err().code, "bad_params");
     }
 
     #[test]
     fn limits_are_capped() {
-        for method in ["get_queue_page", "get_history_page", "get_favorite_tracks_page"] {
+        for method in [
+            "get_queue_page",
+            "get_history_page",
+            "get_favorite_tracks_page",
+        ] {
             assert!(parse(method, json!({"offset": 0, "limit": 200})).is_ok());
             let err = parse(method, json!({"offset": 0, "limit": 201})).unwrap_err();
             assert_eq!(err.code, "bad_params", "{method}");
@@ -794,21 +1044,43 @@ mod tests {
     #[test]
     fn string_ids_cannot_steer_the_api_path() {
         let uuid = "660f113b-e63f-4c2b-a021-33350ca6948b";
-        for bad in ["", "../users/1/favorites", "abc?limit=1", "abc#", "a/b", "a b", "a%2F..", &"x".repeat(65)] {
+        for bad in [
+            "",
+            "../users/1/favorites",
+            "abc?limit=1",
+            "abc#",
+            "a/b",
+            "a b",
+            "a%2F..",
+            &"x".repeat(65),
+        ] {
             for (method, params) in [
                 ("get_playlist", json!({"id": bad})),
                 ("get_mix", json!({"id": bad})),
-                ("get_playlist_tracks_page", json!({"id": bad, "offset": 0, "limit": 10})),
-                ("add_playlist_tracks", json!({"id": bad, "trackIds": [1], "allowDuplicates": false})),
+                (
+                    "get_playlist_tracks_page",
+                    json!({"id": bad, "offset": 0, "limit": 10}),
+                ),
+                (
+                    "add_playlist_tracks",
+                    json!({"id": bad, "trackIds": [1], "allowDuplicates": false}),
+                ),
                 ("get_collection_items", json!({"folderId": bad})),
             ] {
-                assert_eq!(parse(method, params).unwrap_err().code, "bad_params", "{method} {bad:?}");
+                assert_eq!(
+                    parse(method, params).unwrap_err().code,
+                    "bad_params",
+                    "{method} {bad:?}"
+                );
             }
         }
         assert!(parse("get_playlist", json!({"id": uuid})).is_ok());
         assert!(parse("get_mix", json!({"id": "0019a8e1b2e7b6c5c3e2b1a0f9e8d7"})).is_ok());
         assert!(parse("get_collection_items", json!({"folderId": "root"})).is_ok());
-        assert!(parse("get_collection_items", json!({})).is_ok(), "no folder means root");
+        assert!(
+            parse("get_collection_items", json!({})).is_ok(),
+            "no folder means root"
+        );
     }
 
     #[test]
@@ -854,7 +1126,10 @@ mod tests {
     fn rpc_error_wire_format() {
         let error = RpcError::new("not_logged_in", "sign in on the PC");
         let body = serde_json::to_value(RpcResponse::err(&error)).unwrap();
-        assert_eq!(body, json!({"ok": false, "error": "not_logged_in: sign in on the PC"}));
+        assert_eq!(
+            body,
+            json!({"ok": false, "error": "not_logged_in: sign in on the PC"})
+        );
         let body = serde_json::to_value(RpcResponse::ok(json!([1]))).unwrap();
         assert_eq!(body, json!({"ok": true, "result": [1]}));
     }

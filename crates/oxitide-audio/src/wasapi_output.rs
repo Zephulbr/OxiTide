@@ -38,7 +38,12 @@ struct EndpointGlide {
 impl EndpointGlide {
     /// Starts settled at `position` (already set on the device).
     fn new(position: f32, now: Instant) -> Self {
-        Self { applied: position, from: position, target: position, started: now }
+        Self {
+            applied: position,
+            from: position,
+            target: position,
+            started: now,
+        }
     }
 
     /// The value to set now for `target`, or `None` when the device already
@@ -54,7 +59,11 @@ impl EndpointGlide {
         }
         let t = now.saturating_duration_since(self.started).as_secs_f32()
             / ENDPOINT_GLIDE.as_secs_f32();
-        let value = if t >= 1.0 { self.target } else { self.from + (self.target - self.from) * t };
+        let value = if t >= 1.0 {
+            self.target
+        } else {
+            self.from + (self.target - self.from) * t
+        };
         self.applied = value;
         Some(value)
     }
@@ -200,21 +209,23 @@ impl AudioOutput for WasapiOutput {
 
         let handle = std::thread::Builder::new()
             .name("oxitide-wasapi".into())
-            .spawn(move || match setup_device(&spec_thread, &lost, &rejoin, starvation, control, software) {
-                Ok((mut session, ready)) => {
-                    let _ = ready_tx.send(Ok(ready));
-                    if let Err(e) = session.pump(&mut consumer, &stop_thread, &flush_thread) {
-                        tracing::error!("wasapi output stopped: {e}");
-                        // Seen as AUDCLNT_E_DEVICE_INVALIDATED (0x88890004)
-                        // when a USB DAC drops off: report the device lost now;
-                        // the engine heard nothing for 2 s (the ring's stall
-                        // timeout) before.
-                        lost.store(true, Ordering::SeqCst);
+            .spawn(move || {
+                match setup_device(&spec_thread, &lost, &rejoin, starvation, control, software) {
+                    Ok((mut session, ready)) => {
+                        let _ = ready_tx.send(Ok(ready));
+                        if let Err(e) = session.pump(&mut consumer, &stop_thread, &flush_thread) {
+                            tracing::error!("wasapi output stopped: {e}");
+                            // Seen as AUDCLNT_E_DEVICE_INVALIDATED (0x88890004)
+                            // when a USB DAC drops off: report the device lost now;
+                            // the engine heard nothing for 2 s (the ring's stall
+                            // timeout) before.
+                            lost.store(true, Ordering::SeqCst);
+                        }
                     }
-                }
-                Err(e) => {
-                    // Setup failed before any audio was written.
-                    let _ = ready_tx.send(Err(e.to_string()));
+                    Err(e) => {
+                        // Setup failed before any audio was written.
+                        let _ = ready_tx.send(Err(e.to_string()));
+                    }
                 }
             })
             .map_err(|e| Error::Output(e.to_string()))?;
@@ -237,7 +248,9 @@ impl AudioOutput for WasapiOutput {
             Err(_) => {
                 stop.store(true, Ordering::SeqCst);
                 let _ = handle.join();
-                return Err(Error::Output("audio device did not initialize in time".into()));
+                return Err(Error::Output(
+                    "audio device did not initialize in time".into(),
+                ));
             }
         }
         // The device thread applies the volume from `control` from its first
@@ -316,7 +329,9 @@ impl AudioOutput for WasapiOutput {
             && self.control.position() < 1.0
         {
             status.bit_perfect = false;
-            status.notice.get_or_insert_with(|| SOFTWARE_VOLUME_NOTICE.into());
+            status
+                .notice
+                .get_or_insert_with(|| SOFTWARE_VOLUME_NOTICE.into());
         }
         if self.device_lost.load(Ordering::SeqCst) {
             status.bit_perfect = false;
@@ -327,7 +342,11 @@ impl AudioOutput for WasapiOutput {
 
     fn queued_ms(&self) -> Option<u32> {
         let producer = self.producer.as_ref()?;
-        let ring = ring::queued_ms(producer.buffer().capacity(), producer.slots(), self.samples_per_sec);
+        let ring = ring::queued_ms(
+            producer.buffer().capacity(),
+            producer.slots(),
+            self.samples_per_sec,
+        );
         Some(ring + self.device_ms)
     }
 
@@ -463,9 +482,10 @@ impl DeviceSession {
         };
         self.ramp.retarget(target);
         let kind = self.kind;
-        self.ramp.apply_frames(&mut self.scratch, self.channels * 4, |frame, gain| {
-            scale_le_words(frame, gain, kind)
-        });
+        self.ramp
+            .apply_frames(&mut self.scratch, self.channels * 4, |frame, gain| {
+                scale_le_words(frame, gain, kind)
+            });
         self.render
             .write_to_device(frames, &self.scratch, None)
             .map_err(to_error)
@@ -506,7 +526,9 @@ fn resolve_device(
             }
         }
     }
-    let device = enumerator.get_default_device(&Direction::Render).map_err(to_error)?;
+    let device = enumerator
+        .get_default_device(&Direction::Render)
+        .map_err(to_error)?;
     Ok((device, wanted.is_some()))
 }
 
@@ -515,7 +537,11 @@ fn resolve_device(
 enum DeviceNotice<'a> {
     Added(&'a str),
     State(&'a str, DeviceState),
-    Default { direction: Direction, role: wasapi::Role, id: Option<&'a str> },
+    Default {
+        direction: Direction,
+        role: wasapi::Role,
+        id: Option<&'a str>,
+    },
 }
 
 /// True when a session playing on the default in place of `wanted` should
@@ -526,9 +552,11 @@ fn fallback_rejoins(wanted: &str, our_id: Option<&str>, notice: DeviceNotice<'_>
     match notice {
         DeviceNotice::Added(id) => id == wanted,
         DeviceNotice::State(id, state) => id == wanted && state == DeviceState::Active,
-        DeviceNotice::Default { direction, role, id } => {
-            direction == Direction::Render && role == wasapi::Role::Console && id != our_id
-        }
+        DeviceNotice::Default {
+            direction,
+            role,
+            id,
+        } => direction == Direction::Render && role == wasapi::Role::Console && id != our_id,
     }
 }
 
@@ -575,7 +603,10 @@ fn try_exclusive(
             buffer_duration_hns: def_time * 4,
             period_hns: def_time,
         };
-        if client.initialize_client(&accepted, &Direction::Render, &mode).is_ok() {
+        if client
+            .initialize_client(&accepted, &Direction::Render, &mode)
+            .is_ok()
+        {
             return Ok(client);
         }
     }
@@ -596,8 +627,13 @@ fn open_shared(
         spec.info.channels as usize,
         None,
     );
-    let mode = StreamMode::EventsShared { autoconvert: true, buffer_duration_hns: def_time };
-    client.initialize_client(&wave, &Direction::Render, &mode).map_err(to_error)?;
+    let mode = StreamMode::EventsShared {
+        autoconvert: true,
+        buffer_duration_hns: def_time,
+    };
+    client
+        .initialize_client(&wave, &Direction::Render, &mode)
+        .map_err(to_error)?;
     let event = client.set_get_eventhandle().map_err(to_error)?;
     Ok((client, Some(event)))
 }
@@ -622,7 +658,10 @@ fn open_endpoint(device_id: Option<&str>, position: f32) -> Option<EndpointStepp
         tracing::debug!("endpoint volume failed ({e}); using software volume");
         return None;
     }
-    Some(EndpointStepper { volume, glide: EndpointGlide::new(position, Instant::now()) })
+    Some(EndpointStepper {
+        volume,
+        glide: EndpointGlide::new(position, Instant::now()),
+    })
 }
 
 fn setup_device(
@@ -644,7 +683,11 @@ fn setup_device(
         .get_device_period()
         .map_err(to_error)?;
 
-    let mut status = OutputStatus { mode: OutputMode::Shared, bit_perfect: false, notice: None };
+    let mut status = OutputStatus {
+        mode: OutputMode::Shared,
+        bit_perfect: false,
+        notice: None,
+    };
     let (client, event) = match spec.mode {
         OutputMode::Exclusive => match try_exclusive(&device, spec, def_time) {
             Ok(client) => {
@@ -729,7 +772,11 @@ fn setup_device(
                     lost.store(true, Ordering::SeqCst);
                 }
                 if let Some(wanted) = wanted.as_deref() {
-                    let notice = DeviceNotice::Default { direction, role, id: id.as_deref() };
+                    let notice = DeviceNotice::Default {
+                        direction,
+                        role,
+                        id: id.as_deref(),
+                    };
                     if fallback_rejoins(wanted, our_id.as_deref(), notice) {
                         rejoin.store(true, Ordering::SeqCst);
                     }
@@ -741,7 +788,10 @@ fn setup_device(
     // The selected device may have come up between the resolve and the
     // registration, with no notification left to tell us.
     if fell_back {
-        let back = spec.device_id.as_deref().and_then(|id| enumerator.get_device(id).ok());
+        let back = spec
+            .device_id
+            .as_deref()
+            .and_then(|id| enumerator.get_device(id).ok());
         if back.is_some_and(|device| matches!(device.get_state(), Ok(DeviceState::Active))) {
             rejoin.store(true, Ordering::SeqCst);
         }
@@ -749,9 +799,17 @@ fn setup_device(
 
     let exclusive = status.mode == OutputMode::Exclusive;
     let position = control.position();
-    let endpoint = if exclusive { open_endpoint(resolved_id.as_deref(), position) } else { None };
+    let endpoint = if exclusive {
+        open_endpoint(resolved_id.as_deref(), position)
+    } else {
+        None
+    };
     software.store(endpoint.is_none(), Ordering::SeqCst);
-    let start_gain = if endpoint.is_some() { 1.0 } else { volume_gain(position) };
+    let start_gain = if endpoint.is_some() {
+        1.0
+    } else {
+        volume_gain(position)
+    };
     let session = DeviceSession {
         client,
         render,
@@ -764,11 +822,22 @@ fn setup_device(
         ramp: GainRamp::new(start_gain, spec.info.sample_rate),
         // Exclusive streams take the engine's left-aligned integers; shared
         // ones take floats.
-        kind: if exclusive { WordKind::I32 } else { WordKind::F32 },
+        kind: if exclusive {
+            WordKind::I32
+        } else {
+            WordKind::F32
+        },
         endpoint,
         _registration: registration,
     };
-    Ok((session, DeviceReady { device_id: resolved_id, status, buffer_frames }))
+    Ok((
+        session,
+        DeviceReady {
+            device_id: resolved_id,
+            status,
+            buffer_frames,
+        },
+    ))
 }
 
 fn to_error(e: wasapi::WasapiError) -> Error {
@@ -825,20 +894,52 @@ mod tests {
         let ours = Some("{monitor}");
         assert!(fallback_rejoins(dac, ours, DeviceNotice::Added(dac)));
         assert!(!fallback_rejoins(dac, ours, DeviceNotice::Added("{other}")));
-        assert!(fallback_rejoins(dac, ours, DeviceNotice::State(dac, DeviceState::Active)));
-        assert!(!fallback_rejoins(dac, ours, DeviceNotice::State(dac, DeviceState::Unplugged)));
-        assert!(!fallback_rejoins(dac, ours, DeviceNotice::State("{other}", DeviceState::Active)));
+        assert!(fallback_rejoins(
+            dac,
+            ours,
+            DeviceNotice::State(dac, DeviceState::Active)
+        ));
+        assert!(!fallback_rejoins(
+            dac,
+            ours,
+            DeviceNotice::State(dac, DeviceState::Unplugged)
+        ));
+        assert!(!fallback_rejoins(
+            dac,
+            ours,
+            DeviceNotice::State("{other}", DeviceState::Active)
+        ));
     }
 
     #[test]
     fn a_fallback_follows_a_new_render_console_default() {
         let dac = "{dac}";
         let ours = Some("{monitor}");
-        let default = |direction, role, id| DeviceNotice::Default { direction, role, id };
-        assert!(fallback_rejoins(dac, ours, default(Direction::Render, wasapi::Role::Console, Some(dac))));
-        assert!(fallback_rejoins(dac, ours, default(Direction::Render, wasapi::Role::Console, Some("{tv}"))));
-        assert!(!fallback_rejoins(dac, ours, default(Direction::Render, wasapi::Role::Console, ours)));
-        assert!(!fallback_rejoins(dac, ours, default(Direction::Capture, wasapi::Role::Console, Some(dac))));
+        let default = |direction, role, id| DeviceNotice::Default {
+            direction,
+            role,
+            id,
+        };
+        assert!(fallback_rejoins(
+            dac,
+            ours,
+            default(Direction::Render, wasapi::Role::Console, Some(dac))
+        ));
+        assert!(fallback_rejoins(
+            dac,
+            ours,
+            default(Direction::Render, wasapi::Role::Console, Some("{tv}"))
+        ));
+        assert!(!fallback_rejoins(
+            dac,
+            ours,
+            default(Direction::Render, wasapi::Role::Console, ours)
+        ));
+        assert!(!fallback_rejoins(
+            dac,
+            ours,
+            default(Direction::Capture, wasapi::Role::Console, Some(dac))
+        ));
         assert!(!fallback_rejoins(
             dac,
             ours,
@@ -859,8 +960,14 @@ mod tests {
             }
         }
         assert!(steps.len() >= 8, "too few steps: {steps:?}");
-        assert!(steps.windows(2).all(|w| w[1] <= w[0]), "not monotonic: {steps:?}");
-        assert!(steps.windows(2).all(|w| w[0] - w[1] <= 0.11), "a step jumped: {steps:?}");
+        assert!(
+            steps.windows(2).all(|w| w[1] <= w[0]),
+            "not monotonic: {steps:?}"
+        );
+        assert!(
+            steps.windows(2).all(|w| w[0] - w[1] <= 0.11),
+            "a step jumped: {steps:?}"
+        );
         assert_eq!(*steps.last().unwrap(), 0.1, "the glide ends on the target");
         assert_eq!(glide.next(0.1, start + Duration::from_millis(100)), None);
     }
@@ -874,7 +981,10 @@ mod tests {
         let halfway = glide.next(0.0, start + Duration::from_millis(20)).unwrap();
         assert!((halfway - 0.5).abs() < 0.01, "{halfway}");
         let resumed = glide.next(1.0, start + Duration::from_millis(20)).unwrap();
-        assert!((resumed - halfway).abs() < 1e-6, "jumped from {halfway} to {resumed}");
+        assert!(
+            (resumed - halfway).abs() < 1e-6,
+            "jumped from {halfway} to {resumed}"
+        );
         let end = glide.next(1.0, start + Duration::from_millis(60)).unwrap();
         assert_eq!(end, 1.0);
     }
@@ -936,11 +1046,20 @@ mod tests {
         let started = std::time::Instant::now();
         out.drain(&|| false).unwrap();
         let took = started.elapsed();
-        eprintln!("queued after write: {queued} ms; drain took {took:?} (device {} ms)", out.device_ms);
+        eprintln!(
+            "queued after write: {queued} ms; drain took {took:?} (device {} ms)",
+            out.device_ms
+        );
         let ring_left = out.queued_ms().unwrap().saturating_sub(out.device_ms);
         out.stop().unwrap();
-        assert!(queued > 100, "the ring should be nearly full after the write: {queued} ms");
-        assert!(took >= Duration::from_millis(100), "drain returned before the audio played: {took:?}");
+        assert!(
+            queued > 100,
+            "the ring should be nearly full after the write: {queued} ms"
+        );
+        assert!(
+            took >= Duration::from_millis(100),
+            "drain returned before the audio played: {took:?}"
+        );
         assert!(took < Duration::from_secs(1), "drain overran: {took:?}");
         assert_eq!(ring_left, 0, "the ring still held audio after the drain");
     }

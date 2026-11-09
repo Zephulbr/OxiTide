@@ -37,7 +37,6 @@ impl HttpFetcher {
             .map_err(|e| Error::Fetch(describe(e)))?;
         Ok(Self { client })
     }
-
 }
 
 /// reqwest's message plus each distinct cause, without the URL: segment URLs
@@ -67,17 +66,26 @@ impl Fetcher for HttpFetcher {
     /// One attempt. 429 and 5xx are `Fetch` (worth retrying); any other
     /// non-success is `FetchRejected` (the URL itself is no good).
     fn get(&self, url: &str) -> Result<Vec<u8>> {
-        let resp = self.client.get(url).send().map_err(|e| Error::Fetch(describe(e)))?;
+        let resp = self
+            .client
+            .get(url)
+            .send()
+            .map_err(|e| Error::Fetch(describe(e)))?;
         let status = resp.status();
         if !status.is_success() {
-            let message = format!("status {status} for {}", url.split('?').next().unwrap_or(url));
+            let message = format!(
+                "status {status} for {}",
+                url.split('?').next().unwrap_or(url)
+            );
             return Err(if status.as_u16() == 429 || status.is_server_error() {
                 Error::Fetch(message)
             } else {
                 Error::FetchRejected(message)
             });
         }
-        resp.bytes().map(|b| b.to_vec()).map_err(|e| Error::Fetch(describe(e)))
+        resp.bytes()
+            .map(|b| b.to_vec())
+            .map_err(|e| Error::Fetch(describe(e)))
     }
 }
 
@@ -159,7 +167,12 @@ pub struct StreamBuffer {
 impl StreamBuffer {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
-            state: Mutex::new(State { data: Vec::new(), start: 0, done: false, error: None }),
+            state: Mutex::new(State {
+                data: Vec::new(),
+                start: 0,
+                done: false,
+                error: None,
+            }),
             cond: Condvar::new(),
             cancelled: AtomicBool::new(false),
             total_pushed: AtomicU64::new(0),
@@ -186,7 +199,8 @@ impl StreamBuffer {
             return;
         }
         s.data.extend_from_slice(bytes);
-        self.total_pushed.fetch_add(bytes.len() as u64, Ordering::SeqCst);
+        self.total_pushed
+            .fetch_add(bytes.len() as u64, Ordering::SeqCst);
         self.cond.notify_all();
     }
 
@@ -217,7 +231,12 @@ impl StreamBuffer {
         if self.is_cancelled() {
             return None;
         }
-        self.state.lock().unwrap().error.as_ref().map(Failure::to_error)
+        self.state
+            .lock()
+            .unwrap()
+            .error
+            .as_ref()
+            .map(Failure::to_error)
     }
 
     /// Cancel the stream: blocked readers/downloaders wake and exit. Used when
@@ -232,7 +251,6 @@ impl StreamBuffer {
     pub fn is_cancelled(&self) -> bool {
         self.cancelled.load(Ordering::SeqCst)
     }
-
 
     pub fn is_done(&self) -> bool {
         self.state.lock().unwrap().done
@@ -315,7 +333,9 @@ fn get_with_retry(fetcher: &dyn Fetcher, url: &str, buffer: &StreamBuffer) -> Re
             Ok(bytes) => return Ok(bytes),
             Err(e @ Error::FetchRejected(_)) => return Err(e),
             Err(e) => {
-                let Some(wait) = backoff.next_wait() else { return Err(e) };
+                let Some(wait) = backoff.next_wait() else {
+                    return Err(e);
+                };
                 tracing::warn!("segment fetch failed ({e}); retrying in {wait:?}");
                 if !backoff.sleep(wait, || buffer.is_cancelled()) {
                     return Err(e);
@@ -413,9 +433,15 @@ pub struct AheadGate {
 
 impl AheadGate {
     pub fn register(self: &Arc<Self>, priority: bool) -> AheadTicket {
-        let key = (u8::from(!priority), self.next.fetch_add(1, Ordering::SeqCst));
+        let key = (
+            u8::from(!priority),
+            self.next.fetch_add(1, Ordering::SeqCst),
+        );
         self.active.lock().unwrap().insert(key);
-        AheadTicket { gate: self.clone(), key }
+        AheadTicket {
+            gate: self.clone(),
+            key,
+        }
     }
 }
 
@@ -448,11 +474,20 @@ pub struct ScratchFile {
 impl ScratchFile {
     pub fn create(dir: &Path) -> io::Result<Self> {
         static NEXT: AtomicU64 = AtomicU64::new(0);
-        let name =
-            format!("spill-{}-{}.part", std::process::id(), NEXT.fetch_add(1, Ordering::SeqCst));
+        let name = format!(
+            "spill-{}-{}.part",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::SeqCst)
+        );
         let path = dir.join(name);
-        let file = OpenOptions::new().write(true).create_new(true).open(&path)?;
-        Ok(Self { path, file: Some(file) })
+        let file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)?;
+        Ok(Self {
+            path,
+            file: Some(file),
+        })
     }
 }
 
@@ -567,9 +602,19 @@ pub fn download_ahead(
     let network = {
         let buffer = buffer.clone();
         let progress = progress.clone();
-        std::thread::Builder::new().name("oxitide-fetch".into()).spawn(move || {
-            run_network(&buffer, fetcher.as_ref(), &plan, sink, ticket, refresh.as_ref(), &progress)
-        })
+        std::thread::Builder::new()
+            .name("oxitide-fetch".into())
+            .spawn(move || {
+                run_network(
+                    &buffer,
+                    fetcher.as_ref(),
+                    &plan,
+                    sink,
+                    ticket,
+                    refresh.as_ref(),
+                    &progress,
+                )
+            })
     };
     if let Err(e) = network {
         buffer.fail(&Error::Fetch(format!("failed to start the download: {e}")));
@@ -596,8 +641,8 @@ fn run_network(
                 return; // dropping `sink` aborts a partial cache entry
             }
             let state = progress.state.lock().unwrap();
-            let needed = state.fed == state.downloaded
-                && buffer.buffered_bytes() < MAX_BUFFERED_BYTES;
+            let needed =
+                state.fed == state.downloaded && buffer.buffered_bytes() < MAX_BUFFERED_BYTES;
             if needed || ticket.first_in_line() {
                 break;
             }
@@ -693,7 +738,9 @@ fn refresh_urls(refresh: &Refresh, plan: &StreamPlan, expected: usize) -> Result
     let fresh = refresh()?;
     let urls = plan_urls(&fresh);
     if fresh.manifest_hash != plan.manifest_hash || urls.len() != expected {
-        return Err(Error::FetchRejected("the stream changed while it was downloading".into()));
+        return Err(Error::FetchRejected(
+            "the stream changed while it was downloading".into(),
+        ));
     }
     tracing::info!("refreshed the stream's links; continuing the download");
     Ok(urls)
@@ -757,15 +804,27 @@ mod tests {
     }
 
     fn cache_key() -> CacheKey {
-        CacheKey { track_id: 1, quality: Quality::Lossless, manifest_hash: 7 }
+        CacheKey {
+            track_id: 1,
+            quality: Quality::Lossless,
+            manifest_hash: 7,
+        }
     }
 
     fn small_plan() -> StreamPlan {
         StreamPlan {
             init_url: Some("init".into()),
             segments: vec![
-                Segment { url: "a".into(), start_ticks: 0, duration_ticks: 0 },
-                Segment { url: "b".into(), start_ticks: 0, duration_ticks: 0 },
+                Segment {
+                    url: "a".into(),
+                    start_ticks: 0,
+                    duration_ticks: 0,
+                },
+                Segment {
+                    url: "b".into(),
+                    start_ticks: 0,
+                    duration_ticks: 0,
+                },
             ],
             timescale: 0,
             codec: None,
@@ -785,7 +844,10 @@ mod tests {
         let key = cache_key();
         let writer = cache.begin_write(&key).unwrap();
         let fetcher = Arc::new(
-            MapFetcher::default().with("init", b"INIT".to_vec()).with("a", b"AAA".to_vec()).with("b", b"BB".to_vec()),
+            MapFetcher::default()
+                .with("init", b"INIT".to_vec())
+                .with("a", b"AAA".to_vec())
+                .with("b", b"BB".to_vec()),
         );
         let buf = StreamBuffer::new();
         download(buf.clone(), fetcher, small_plan(), Some(writer));
@@ -822,8 +884,16 @@ mod tests {
         let plan = StreamPlan {
             init_url: Some("init".into()),
             segments: vec![
-                Segment { url: "a".into(), start_ticks: 0, duration_ticks: 0 },
-                Segment { url: "b".into(), start_ticks: 0, duration_ticks: 0 },
+                Segment {
+                    url: "a".into(),
+                    start_ticks: 0,
+                    duration_ticks: 0,
+                },
+                Segment {
+                    url: "b".into(),
+                    start_ticks: 0,
+                    duration_ticks: 0,
+                },
             ],
             timescale: 0,
             codec: None,
@@ -846,7 +916,11 @@ mod tests {
         let fetcher = Arc::new(MapFetcher::default());
         let plan = StreamPlan {
             init_url: None,
-            segments: vec![Segment { url: "missing".into(), start_ticks: 0, duration_ticks: 0 }],
+            segments: vec![Segment {
+                url: "missing".into(),
+                start_ticks: 0,
+                duration_ticks: 0,
+            }],
             timescale: 0,
             codec: None,
             sample_rate: None,
@@ -868,7 +942,10 @@ mod tests {
 
     impl FlakyFetcher {
         fn new(fail_first: usize) -> Self {
-            Self { fail_first, calls: Mutex::new(0) }
+            Self {
+                fail_first,
+                calls: Mutex::new(0),
+            }
         }
         fn calls(&self) -> usize {
             *self.calls.lock().unwrap()
@@ -892,7 +969,11 @@ mod tests {
         let fetcher = Arc::new(FlakyFetcher::new(2));
         let plan = StreamPlan {
             init_url: None,
-            segments: vec![Segment { url: "a".into(), start_ticks: 0, duration_ticks: 0 }],
+            segments: vec![Segment {
+                url: "a".into(),
+                start_ticks: 0,
+                duration_ticks: 0,
+            }],
             timescale: 0,
             codec: None,
             sample_rate: None,
@@ -915,7 +996,11 @@ mod tests {
         let fetcher = Arc::new(FlakyFetcher::new(usize::MAX));
         let plan = StreamPlan {
             init_url: None,
-            segments: vec![Segment { url: "a".into(), start_ticks: 0, duration_ticks: 0 }],
+            segments: vec![Segment {
+                url: "a".into(),
+                start_ticks: 0,
+                duration_ticks: 0,
+            }],
             timescale: 0,
             codec: None,
             sample_rate: None,
@@ -946,7 +1031,9 @@ mod tests {
 
     #[test]
     fn a_rejected_url_is_not_retried() {
-        let fetcher = Arc::new(RejectingFetcher { calls: Mutex::new(0) });
+        let fetcher = Arc::new(RejectingFetcher {
+            calls: Mutex::new(0),
+        });
         let mut plan = small_plan();
         plan.init_url = None;
         let buf = StreamBuffer::new();
@@ -962,7 +1049,11 @@ mod tests {
         buf.push(b"AAAA");
         buf.fail(&Error::Fetch("connection reset".into()));
         let mut out = [0u8; 4];
-        assert_eq!(buf.read_at(0, &mut out).unwrap(), 4, "buffered audio was dropped");
+        assert_eq!(
+            buf.read_at(0, &mut out).unwrap(),
+            4,
+            "buffered audio was dropped"
+        );
         assert_eq!(&out, b"AAAA");
         assert!(matches!(buf.read_at(4, &mut out), Err(Error::Fetch(_))));
     }
@@ -973,7 +1064,11 @@ mod tests {
         StreamPlan {
             init_url: None,
             segments: (0..segments)
-                .map(|i| Segment { url: format!("s{i}"), start_ticks: 0, duration_ticks: 0 })
+                .map(|i| Segment {
+                    url: format!("s{i}"),
+                    start_ticks: 0,
+                    duration_ticks: 0,
+                })
                 .collect(),
             timescale: 0,
             codec: None,
@@ -1029,19 +1124,35 @@ mod tests {
         let key = cache_key();
         let writer = cache.begin_write(&key).unwrap();
         let gate = Arc::new(AheadGate::default());
-        let fetcher = Arc::new(ChunkFetcher { chunk: vec![7u8; AHEAD_CHUNK], calls: Mutex::new(0) });
+        let fetcher = Arc::new(ChunkFetcher {
+            chunk: vec![7u8; AHEAD_CHUNK],
+            calls: Mutex::new(0),
+        });
         let buf = StreamBuffer::new();
         let handle = {
             let (buf, fetcher, ticket) = (buf.clone(), fetcher.clone(), gate.register(true));
             std::thread::spawn(move || {
-                download_ahead(buf, fetcher, chunk_plan(64), AheadSink::Cache(writer), ticket, None)
+                download_ahead(
+                    buf,
+                    fetcher,
+                    chunk_plan(64),
+                    AheadSink::Cache(writer),
+                    ticket,
+                    None,
+                )
             })
         };
 
         // Nothing reads, yet all 4 MiB arrive and are published to the cache.
-        assert!(wait_until(|| cache.lookup(&key).is_some()), "the entry was never published");
+        assert!(
+            wait_until(|| cache.lookup(&key).is_some()),
+            "the entry was never published"
+        );
         assert_eq!(fetcher.calls(), 64);
-        assert!(buf.buffered_bytes() <= MAX_BUFFERED_BYTES + FEED_CHUNK, "memory grew past the cap");
+        assert!(
+            buf.buffered_bytes() <= MAX_BUFFERED_BYTES + FEED_CHUNK,
+            "memory grew past the cap"
+        );
 
         assert_eq!(drain(&buf).ok(), Some(64 * AHEAD_CHUNK));
         handle.join().unwrap();
@@ -1053,23 +1164,38 @@ mod tests {
         let dir = temp_dir();
         let gate = Arc::new(AheadGate::default());
         let playing = gate.register(true);
-        let fetcher = Arc::new(ChunkFetcher { chunk: vec![7u8; AHEAD_CHUNK], calls: Mutex::new(0) });
+        let fetcher = Arc::new(ChunkFetcher {
+            chunk: vec![7u8; AHEAD_CHUNK],
+            calls: Mutex::new(0),
+        });
         let buf = StreamBuffer::new();
         let handle = {
             let (buf, fetcher, ticket) = (buf.clone(), fetcher.clone(), gate.register(false));
             let sink = AheadSink::Scratch(ScratchFile::create(&dir).unwrap());
-            std::thread::spawn(move || download_ahead(buf, fetcher, chunk_plan(64), sink, ticket, None))
+            std::thread::spawn(move || {
+                download_ahead(buf, fetcher, chunk_plan(64), sink, ticket, None)
+            })
         };
 
         std::thread::sleep(Duration::from_millis(300));
         let paced = MAX_BUFFERED_BYTES / AHEAD_CHUNK + 2;
-        assert!(fetcher.calls() <= paced, "a prefetch ran ahead: {} fetches", fetcher.calls());
+        assert!(
+            fetcher.calls() <= paced,
+            "a prefetch ran ahead: {} fetches",
+            fetcher.calls()
+        );
 
         drop(playing);
-        assert!(wait_until(|| fetcher.calls() == 64), "it never ran ahead once first in line");
+        assert!(
+            wait_until(|| fetcher.calls() == 64),
+            "it never ran ahead once first in line"
+        );
         assert_eq!(drain(&buf).ok(), Some(64 * AHEAD_CHUNK));
         handle.join().unwrap();
-        assert!(wait_until(|| spill_files(&dir) == 0), "the scratch file was left behind");
+        assert!(
+            wait_until(|| spill_files(&dir) == 0),
+            "the scratch file was left behind"
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -1094,10 +1220,20 @@ mod tests {
     fn downloaded_audio_plays_out_before_a_network_failure() {
         let dir = temp_dir();
         let gate = Arc::new(AheadGate::default());
-        let fetcher = Arc::new(FailAfter { ok: 3, calls: Mutex::new(0) });
+        let fetcher = Arc::new(FailAfter {
+            ok: 3,
+            calls: Mutex::new(0),
+        });
         let buf = StreamBuffer::new();
         let sink = AheadSink::Scratch(ScratchFile::create(&dir).unwrap());
-        download_ahead(buf.clone(), fetcher, chunk_plan(6), sink, gate.register(true), None);
+        download_ahead(
+            buf.clone(),
+            fetcher,
+            chunk_plan(6),
+            sink,
+            gate.register(true),
+            None,
+        );
         match drain(&buf) {
             Err((Error::NetworkLost(_), read)) => assert_eq!(read, 3 * AHEAD_CHUNK),
             other => panic!("expected a fetch error after 3 segments, got {other:?}"),
@@ -1125,14 +1261,27 @@ mod tests {
         let handle = {
             let (buf, ticket) = (buf.clone(), gate.register(true));
             std::thread::spawn(move || {
-                download_ahead(buf, Arc::new(SlowFetcher), chunk_plan(500), AheadSink::Cache(writer), ticket, None)
+                download_ahead(
+                    buf,
+                    Arc::new(SlowFetcher),
+                    chunk_plan(500),
+                    AheadSink::Cache(writer),
+                    ticket,
+                    None,
+                )
             })
         };
         std::thread::sleep(Duration::from_millis(30));
         buf.cancel();
         handle.join().unwrap();
-        assert!(wait_until(|| spill_files(&dir) == 0), "the partial entry was left behind");
-        assert!(cache.lookup(&key).is_none(), "a partial download was published");
+        assert!(
+            wait_until(|| spill_files(&dir) == 0),
+            "the partial entry was left behind"
+        );
+        assert!(
+            cache.lookup(&key).is_none(),
+            "a partial download was published"
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -1196,9 +1345,23 @@ mod tests {
         let buf = StreamBuffer::new();
         *fetcher.buffer.lock().unwrap() = Some(buf.clone());
         let sink = AheadSink::Scratch(ScratchFile::create(&dir).unwrap());
-        download_ahead(buf.clone(), fetcher.clone(), chunk_plan(6), sink, gate.register(true), None);
-        assert_eq!(drain(&buf).ok(), Some(6 * AHEAD_CHUNK), "the stream did not continue");
-        assert!(fetcher.stalled_seen.load(Ordering::SeqCst), "the stall was not published");
+        download_ahead(
+            buf.clone(),
+            fetcher.clone(),
+            chunk_plan(6),
+            sink,
+            gate.register(true),
+            None,
+        );
+        assert_eq!(
+            drain(&buf).ok(),
+            Some(6 * AHEAD_CHUNK),
+            "the stream did not continue"
+        );
+        assert!(
+            fetcher.stalled_seen.load(Ordering::SeqCst),
+            "the stall was not published"
+        );
         assert!(!buf.is_stalled(), "the stall flag stayed on");
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -1218,9 +1381,20 @@ mod tests {
         };
         let buf = StreamBuffer::new();
         let sink = AheadSink::Scratch(ScratchFile::create(&dir).unwrap());
-        download_ahead(buf.clone(), fetcher, chunk_plan(4), sink, gate.register(true), Some(refresh));
+        download_ahead(
+            buf.clone(),
+            fetcher,
+            chunk_plan(4),
+            sink,
+            gate.register(true),
+            Some(refresh),
+        );
         assert_eq!(drain(&buf).ok(), Some(4 * AHEAD_CHUNK));
-        assert_eq!(refreshes.load(Ordering::SeqCst), 1, "one refresh renews every link");
+        assert_eq!(
+            refreshes.load(Ordering::SeqCst),
+            1,
+            "one refresh renews every link"
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -1233,7 +1407,14 @@ mod tests {
         let refresh: Refresh = Arc::new(|| Ok(fresh_plan(5)));
         let buf = StreamBuffer::new();
         let sink = AheadSink::Scratch(ScratchFile::create(&dir).unwrap());
-        download_ahead(buf.clone(), fetcher, chunk_plan(4), sink, gate.register(true), Some(refresh));
+        download_ahead(
+            buf.clone(),
+            fetcher,
+            chunk_plan(4),
+            sink,
+            gate.register(true),
+            Some(refresh),
+        );
         match drain(&buf) {
             Err((e @ Error::FetchRejected(_), _)) => assert!(e.is_transient()),
             other => panic!("expected a rejected stream, got {other:?}"),
@@ -1248,7 +1429,10 @@ mod tests {
         buf.cancel();
         assert!(buf.failure().is_none());
         let mut out = [0u8; 4];
-        assert!(buf.read_at(0, &mut out).is_err(), "a cancel must stop readers at once");
+        assert!(
+            buf.read_at(0, &mut out).is_err(),
+            "a cancel must stop readers at once"
+        );
     }
 
     #[test]
@@ -1304,11 +1488,18 @@ mod tests {
     fn download_is_backpressured_and_bounded() {
         const CHUNK: usize = 64 * 1024;
         const SEGMENTS: usize = 64; // 4 MiB total, twice the cap
-        let fetcher = Arc::new(ChunkFetcher { chunk: vec![7u8; CHUNK], calls: Mutex::new(0) });
+        let fetcher = Arc::new(ChunkFetcher {
+            chunk: vec![7u8; CHUNK],
+            calls: Mutex::new(0),
+        });
         let plan = StreamPlan {
             init_url: None,
             segments: (0..SEGMENTS)
-                .map(|i| Segment { url: format!("s{i}"), start_ticks: 0, duration_ticks: 0 })
+                .map(|i| Segment {
+                    url: format!("s{i}"),
+                    start_ticks: 0,
+                    duration_ticks: 0,
+                })
                 .collect(),
             timescale: 0,
             codec: None,

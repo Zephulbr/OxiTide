@@ -35,8 +35,7 @@ pub struct TrackFlagEntry {
 
 /// True when the active filters hide this track. Unknown values never block.
 pub fn is_blocked(explicit: Option<bool>, ai: Option<bool>, content: &ContentConfig) -> bool {
-    (content.block_explicit && explicit == Some(true))
-        || (content.block_ai && ai == Some(true))
+    (content.block_explicit && explicit == Some(true)) || (content.block_ai && ai == Some(true))
 }
 
 /// Which queue action a Settings toggle change should trigger.
@@ -107,7 +106,11 @@ pub fn plan_prune(len: usize, current_index: Option<usize>, blocked: &[bool]) ->
     } else {
         current_index
     };
-    PruneOutcome { remove, new_current, current_removed }
+    PruneOutcome {
+        remove,
+        new_current,
+        current_removed,
+    }
 }
 
 fn kept_before(blocked: &[bool], index: usize) -> usize {
@@ -137,16 +140,26 @@ pub struct TrackFlagsStore {
 
 impl TrackFlagsStore {
     pub fn start(path: Option<PathBuf>) -> Self {
-        Self { memory: RwLock::new(HashMap::new()), loaded: AtomicBool::new(false), path }
+        Self {
+            memory: RwLock::new(HashMap::new()),
+            loaded: AtomicBool::new(false),
+            path,
+        }
     }
 
     fn ensure_loaded(&self) {
         if self.loaded.swap(true, Ordering::SeqCst) {
             return;
         }
-        let Some(path) = self.path.as_ref() else { return };
-        let Ok(text) = std::fs::read_to_string(path) else { return };
-        let Ok(cache) = serde_json::from_str::<DiskCache>(&text) else { return };
+        let Some(path) = self.path.as_ref() else {
+            return;
+        };
+        let Ok(text) = std::fs::read_to_string(path) else {
+            return;
+        };
+        let Ok(cache) = serde_json::from_str::<DiskCache>(&text) else {
+            return;
+        };
         if cache.version != TRACK_FLAGS_VERSION {
             return;
         }
@@ -259,7 +272,9 @@ impl TrackFlagsStore {
     }
 
     fn save(&self) {
-        let Some(path) = self.path.as_ref() else { return };
+        let Some(path) = self.path.as_ref() else {
+            return;
+        };
         let mut memory = self.memory.write().unwrap();
         // Prune only when persisting: a large enrich keeps every requested id
         // in memory for the rest of the session, so callers can mark them
@@ -272,12 +287,17 @@ impl TrackFlagsStore {
                 .map(|(id, entry)| (id.to_string(), *entry))
                 .collect(),
         };
-        let Ok(text) = serde_json::to_string(&cache) else { return };
+        let Ok(text) = serde_json::to_string(&cache) else {
+            return;
+        };
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
         let tmp = path.with_extension("json.tmp");
-        if std::fs::write(&tmp, text).and_then(|_| std::fs::rename(&tmp, path)).is_err() {
+        if std::fs::write(&tmp, text)
+            .and_then(|_| std::fs::rename(&tmp, path))
+            .is_err()
+        {
             tracing::warn!("failed to save track flags at {}", path.display());
         }
     }
@@ -288,8 +308,10 @@ fn prune(map: &mut HashMap<u64, TrackFlagEntry>) {
     if map.len() <= TRACK_FLAGS_MAX_ENTRIES {
         return;
     }
-    let mut by_age: Vec<(u64, u64)> =
-        map.iter().map(|(id, entry)| (*id, entry.fetched_at)).collect();
+    let mut by_age: Vec<(u64, u64)> = map
+        .iter()
+        .map(|(id, entry)| (*id, entry.fetched_at))
+        .collect();
     by_age.sort_by_key(|(_, fetched_at)| *fetched_at);
     for (id, _) in by_age {
         if map.len() <= TRACK_FLAGS_MAX_ENTRIES {
@@ -376,14 +398,20 @@ mod tests {
 
     #[test]
     fn is_blocked_respects_each_toggle_and_fails_open() {
-        let content =
-            ContentConfig { block_explicit: true, block_ai: false, ..Default::default() };
+        let content = ContentConfig {
+            block_explicit: true,
+            block_ai: false,
+            ..Default::default()
+        };
         assert!(is_blocked(Some(true), Some(true), &content));
         assert!(!is_blocked(None, Some(true), &content));
         assert!(!is_blocked(Some(false), Some(false), &content));
 
-        let ai_only =
-            ContentConfig { block_explicit: false, block_ai: true, ..Default::default() };
+        let ai_only = ContentConfig {
+            block_explicit: false,
+            block_ai: true,
+            ..Default::default()
+        };
         assert!(is_blocked(Some(true), Some(true), &ai_only));
         assert!(!is_blocked(Some(true), None, &ai_only));
 
@@ -414,7 +442,11 @@ mod tests {
         let next = plan_prune(4, Some(1), &[true, true, false, false]);
         assert!(next.current_removed);
         assert_eq!(next.remove, vec![1, 0]);
-        assert_eq!(next.new_current, Some(0), "first kept item is index 0 of the kept list");
+        assert_eq!(
+            next.new_current,
+            Some(0),
+            "first kept item is index 0 of the kept list"
+        );
 
         let mid = plan_prune(3, Some(1), &[false, true, false]);
         assert!(mid.current_removed);
@@ -449,7 +481,11 @@ mod tests {
         assert_eq!(store.get(1).unwrap().ai, Some(false));
 
         let again = store.enrich(&client(&server), &ids).await.unwrap();
-        assert_eq!(requests.load(Ordering::SeqCst), 3, "cached flags were refetched");
+        assert_eq!(
+            requests.load(Ordering::SeqCst),
+            3,
+            "cached flags were refetched"
+        );
         assert_eq!(again.len(), 45);
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -489,7 +525,11 @@ mod tests {
 
         let again = store.enrich(&client(&server), &[1, 2]).await.unwrap();
         assert_eq!(again.len(), 2);
-        assert_eq!(requests.load(Ordering::SeqCst), 1, "fetched ids were refetched");
+        assert_eq!(
+            requests.load(Ordering::SeqCst),
+            1,
+            "fetched ids were refetched"
+        );
     }
 
     #[test]
@@ -508,7 +548,11 @@ mod tests {
         {
             let store = TrackFlagsStore::start(Some(path.clone()));
             store.record_explicit(5, true);
-            let entry = TrackFlagEntry { explicit: Some(true), ai: Some(true), fetched_at: 9 };
+            let entry = TrackFlagEntry {
+                explicit: Some(true),
+                ai: Some(true),
+                fetched_at: 9,
+            };
             *store.memory.write().unwrap() = [(5, entry)].into_iter().collect();
             store.save();
         }
@@ -529,7 +573,11 @@ mod tests {
         for id in 0..(TRACK_FLAGS_MAX_ENTRIES as u64 + 10) {
             map.insert(
                 id,
-                TrackFlagEntry { explicit: None, ai: Some(false), fetched_at: id },
+                TrackFlagEntry {
+                    explicit: None,
+                    ai: Some(false),
+                    fetched_at: id,
+                },
             );
         }
         prune(&mut map);
@@ -540,13 +588,19 @@ mod tests {
 
     #[test]
     fn filter_action_scopes_the_clear_to_the_explicit_toggle() {
-        let both =
-            ContentConfig { block_explicit: true, block_ai: true, ..Default::default() };
+        let both = ContentConfig {
+            block_explicit: true,
+            block_ai: true,
+            ..Default::default()
+        };
         assert_eq!(filter_action("ai", &both), FilterAction::Prune);
         assert_eq!(filter_action("explicit", &both), FilterAction::Clear);
 
-        let ai_only =
-            ContentConfig { block_explicit: false, block_ai: true, ..Default::default() };
+        let ai_only = ContentConfig {
+            block_explicit: false,
+            block_ai: true,
+            ..Default::default()
+        };
         assert_eq!(filter_action("ai", &ai_only), FilterAction::Prune);
         assert_eq!(filter_action("explicit", &ai_only), FilterAction::Noop);
 

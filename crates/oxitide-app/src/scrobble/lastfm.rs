@@ -83,7 +83,10 @@ impl LastFmClient {
     }
 
     pub fn auth_url(&self, token: &str) -> String {
-        format!("https://www.last.fm/api/auth/?api_key={}&token={}", self.api_key, token)
+        format!(
+            "https://www.last.fm/api/auth/?api_key={}&token={}",
+            self.api_key, token
+        )
     }
 
     fn signed(&self, method: &str, mut params: Vec<(String, String)>) -> Vec<(String, String)> {
@@ -130,7 +133,9 @@ impl LastFmClient {
     async fn parse(&self, response: reqwest::Response) -> Result<serde_json::Value, LastFmError> {
         let status = response.status();
         if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-            return Err(LastFmError::RateLimited { retry_after_secs: retry_after_secs(&response) });
+            return Err(LastFmError::RateLimited {
+                retry_after_secs: retry_after_secs(&response),
+            });
         }
         if status.is_server_error() {
             return Err(LastFmError::Retryable);
@@ -255,7 +260,12 @@ mod tests {
     }
 
     fn client(server: &MockServer) -> LastFmClient {
-        LastFmClient::new(reqwest::Client::new(), server.uri(), "abc123".into(), "s3cr3t".into())
+        LastFmClient::new(
+            reqwest::Client::new(),
+            server.uri(),
+            "abc123".into(),
+            "s3cr3t".into(),
+        )
     }
 
     fn item() -> QueueItem {
@@ -280,7 +290,10 @@ mod tests {
             ("method".to_string(), "auth.getToken".to_string()),
             ("token".to_string(), "tok".to_string()),
         ];
-        assert_eq!(api_sig(&params, "s3cr3t"), "50d433db8fa2c45553410dd8d1230608");
+        assert_eq!(
+            api_sig(&params, "s3cr3t"),
+            "50d433db8fa2c45553410dd8d1230608"
+        );
     }
 
     #[test]
@@ -313,21 +326,26 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(http_method("GET"))
             .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(serde_json::json!({ "error": 14, "message": "unauthorized token" })),
+                ResponseTemplate::new(200).set_body_json(
+                    serde_json::json!({ "error": 14, "message": "unauthorized token" }),
+                ),
             )
             .mount(&server)
             .await;
-        assert_eq!(client(&server).get_session("tok").await, Err(LastFmError::NotAuthorized));
+        assert_eq!(
+            client(&server).get_session("tok").await,
+            Err(LastFmError::NotAuthorized)
+        );
     }
 
     #[tokio::test]
     async fn get_session_parses_the_session() {
         let server = MockServer::start().await;
         Mock::given(http_method("GET"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(
-                serde_json::json!({ "session": { "name": "v", "key": "sk" } }),
-            ))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({ "session": { "name": "v", "key": "sk" } })),
+            )
             .mount(&server)
             .await;
         let session = client(&server).get_session("tok").await.unwrap();
@@ -353,7 +371,10 @@ mod tests {
         );
         Mock::given(http_method("POST"))
             .and(path("/"))
-            .and(body_string_contains(format!("api_sig={}", encode(&expected_sig))))
+            .and(body_string_contains(format!(
+                "api_sig={}",
+                encode(&expected_sig)
+            )))
             .and(body_string_contains("method=track.scrobble"))
             .and(body_string_contains("artist%5B0%5D=Band"))
             .respond_with(
@@ -399,7 +420,9 @@ mod tests {
             .await;
         assert_eq!(
             client(&server).now_playing("sk", &item()).await,
-            Err(LastFmError::RateLimited { retry_after_secs: Some(42) })
+            Err(LastFmError::RateLimited {
+                retry_after_secs: Some(42)
+            })
         );
 
         let server = MockServer::start().await;
@@ -409,7 +432,9 @@ mod tests {
             .await;
         assert_eq!(
             client(&server).now_playing("sk", &item()).await,
-            Err(LastFmError::RateLimited { retry_after_secs: None })
+            Err(LastFmError::RateLimited {
+                retry_after_secs: None
+            })
         );
     }
 
@@ -417,28 +442,39 @@ mod tests {
     async fn non_json_client_error_is_retryable() {
         let server = MockServer::start().await;
         Mock::given(http_method("POST"))
-            .respond_with(
-                ResponseTemplate::new(403).set_body_string("<html>forbidden</html>"),
-            )
+            .respond_with(ResponseTemplate::new(403).set_body_string("<html>forbidden</html>"))
             .mount(&server)
             .await;
-        assert_eq!(client(&server).now_playing("sk", &item()).await, Err(LastFmError::Retryable));
+        assert_eq!(
+            client(&server).now_playing("sk", &item()).await,
+            Err(LastFmError::Retryable)
+        );
     }
 
     #[tokio::test]
     async fn error_9_is_auth_and_16_is_retryable() {
         let server = MockServer::start().await;
         Mock::given(http_method("POST"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({ "error": 9 })))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({ "error": 9 })),
+            )
             .mount(&server)
             .await;
-        assert_eq!(client(&server).now_playing("sk", &item()).await, Err(LastFmError::Auth));
+        assert_eq!(
+            client(&server).now_playing("sk", &item()).await,
+            Err(LastFmError::Auth)
+        );
 
         let server = MockServer::start().await;
         Mock::given(http_method("POST"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({ "error": 16 })))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({ "error": 16 })),
+            )
             .mount(&server)
             .await;
-        assert_eq!(client(&server).now_playing("sk", &item()).await, Err(LastFmError::Retryable));
+        assert_eq!(
+            client(&server).now_playing("sk", &item()).await,
+            Err(LastFmError::Retryable)
+        );
     }
 }

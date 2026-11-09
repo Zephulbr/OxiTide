@@ -26,7 +26,12 @@ pub struct RoutedOutput {
 
 impl RoutedOutput {
     pub fn new(system: Box<dyn AudioOutput>, asio: Box<dyn AudioOutput>) -> Self {
-        Self { system, asio, active: None, fallback_notice: None }
+        Self {
+            system,
+            asio,
+            active: None,
+            fallback_notice: None,
+        }
     }
 
     /// WASAPI plus ASIO.
@@ -90,7 +95,8 @@ impl AudioOutput for RoutedOutput {
                 };
                 self.system.open(&shared)?;
                 self.active = Some(Backend::System);
-                self.fallback_notice = Some(format!("ASIO unavailable ({reason}); using shared output"));
+                self.fallback_notice =
+                    Some(format!("ASIO unavailable ({reason}); using shared output"));
                 Ok(())
             }
         }
@@ -230,15 +236,20 @@ mod tests {
     fn routes_by_device_id_and_stops_the_other_backend() {
         let (system, asio) = (NullOutput::new(), NullOutput::new());
         let mut out = RoutedOutput::new(Box::new(system.clone()), Box::new(asio.clone()));
-        out.open(&spec("asio:Topping", ExclusiveFallback::Shared)).unwrap();
+        out.open(&spec("asio:Topping", ExclusiveFallback::Shared))
+            .unwrap();
         out.write(&PcmBuffer::I32(vec![7, 8])).unwrap();
         assert_eq!((system.opens(), asio.opens()), (0, 1));
         assert_eq!(asio.i32_samples(), vec![7, 8]);
 
-        out.open(&spec("wasapi-endpoint", ExclusiveFallback::Shared)).unwrap();
+        out.open(&spec("wasapi-endpoint", ExclusiveFallback::Shared))
+            .unwrap();
         assert_eq!(asio.stops(), 1, "switching backends releases ASIO");
         assert_eq!(system.opens(), 1);
-        assert_eq!(system.last_spec().unwrap().device_id.as_deref(), Some("wasapi-endpoint"));
+        assert_eq!(
+            system.last_spec().unwrap().device_id.as_deref(),
+            Some("wasapi-endpoint")
+        );
     }
 
     #[test]
@@ -248,9 +259,11 @@ mod tests {
         asio.set_queued_ms(230);
         let mut out = RoutedOutput::new(Box::new(system.clone()), Box::new(asio.clone()));
         assert_eq!(out.queued_ms(), None, "nothing open");
-        out.open(&spec("asio:Topping", ExclusiveFallback::Shared)).unwrap();
+        out.open(&spec("asio:Topping", ExclusiveFallback::Shared))
+            .unwrap();
         assert_eq!(out.queued_ms(), Some(230));
-        out.open(&spec("wasapi-endpoint", ExclusiveFallback::Shared)).unwrap();
+        out.open(&spec("wasapi-endpoint", ExclusiveFallback::Shared))
+            .unwrap();
         assert_eq!(out.queued_ms(), Some(210));
     }
 
@@ -258,19 +271,25 @@ mod tests {
     fn asio_failure_falls_back_to_shared_default_with_a_notice() {
         let system = NullOutput::new();
         let mut out = RoutedOutput::new(Box::new(system.clone()), Box::new(Failing));
-        out.open(&spec("asio:Topping", ExclusiveFallback::Shared)).unwrap();
+        out.open(&spec("asio:Topping", ExclusiveFallback::Shared))
+            .unwrap();
         let opened = system.last_spec().unwrap();
         assert_eq!(opened.device_id, None);
         assert_eq!(opened.mode, OutputMode::Shared);
         let notice = out.status().notice.unwrap();
-        assert!(notice.starts_with("ASIO unavailable (ASIO driver does not support 96 kHz)"), "{notice}");
+        assert!(
+            notice.starts_with("ASIO unavailable (ASIO driver does not support 96 kHz)"),
+            "{notice}"
+        );
     }
 
     #[test]
     fn asio_failure_with_warn_only_is_an_error() {
         let system = NullOutput::new();
         let mut out = RoutedOutput::new(Box::new(system.clone()), Box::new(Failing));
-        let err = out.open(&spec("asio:Topping", ExclusiveFallback::WarnOnly)).unwrap_err();
+        let err = out
+            .open(&spec("asio:Topping", ExclusiveFallback::WarnOnly))
+            .unwrap_err();
         assert!(err.to_string().contains("96 kHz"));
         assert_eq!(system.opens(), 0);
         assert!(out.write(&PcmBuffer::F32(vec![0.0])).is_err());

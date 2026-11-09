@@ -64,9 +64,14 @@ impl ListenBrainzClient {
         if !status.is_success() {
             return Err(ListenBrainzError::Permanent);
         }
-        let value: serde_json::Value =
-            response.json().await.map_err(|_| ListenBrainzError::Permanent)?;
-        let valid = value.get("valid").and_then(|field| field.as_bool()).unwrap_or(false);
+        let value: serde_json::Value = response
+            .json()
+            .await
+            .map_err(|_| ListenBrainzError::Permanent)?;
+        let valid = value
+            .get("valid")
+            .and_then(|field| field.as_bool())
+            .unwrap_or(false);
         if !valid {
             return Err(ListenBrainzError::Auth);
         }
@@ -105,11 +110,7 @@ impl ListenBrainzClient {
         self.submit(token, &body).await
     }
 
-    async fn submit(
-        &self,
-        token: &str,
-        body: &serde_json::Value,
-    ) -> Result<(), ListenBrainzError> {
+    async fn submit(&self, token: &str, body: &serde_json::Value) -> Result<(), ListenBrainzError> {
         let response = self
             .http
             .post(self.url("/submit-listens"))
@@ -141,7 +142,10 @@ pub fn track_metadata(item: &QueueItem) -> serde_json::Value {
     let mut info = serde_json::Map::new();
     info.insert("listening_from".into(), serde_json::json!("OxiTide"));
     if item.duration_secs > 0 {
-        info.insert("duration_ms".into(), serde_json::json!(u64::from(item.duration_secs) * 1000));
+        info.insert(
+            "duration_ms".into(),
+            serde_json::json!(u64::from(item.duration_secs) * 1000),
+        );
     }
     let mut metadata = serde_json::Map::new();
     metadata.insert("artist_name".into(), serde_json::json!(item.artist));
@@ -202,7 +206,10 @@ mod tests {
             )
             .mount(&server)
             .await;
-        assert_eq!(client(&server).validate("tok").await, Err(ListenBrainzError::Auth));
+        assert_eq!(
+            client(&server).validate("tok").await,
+            Err(ListenBrainzError::Auth)
+        );
     }
 
     #[tokio::test]
@@ -212,7 +219,10 @@ mod tests {
             .respond_with(ResponseTemplate::new(401))
             .mount(&server)
             .await;
-        assert_eq!(client(&server).validate("tok").await, Err(ListenBrainzError::Auth));
+        assert_eq!(
+            client(&server).validate("tok").await,
+            Err(ListenBrainzError::Auth)
+        );
     }
 
     #[tokio::test]
@@ -278,7 +288,9 @@ mod tests {
             .await;
         assert_eq!(
             client(&server).submit_listen("tok", &item(), 1).await,
-            Err(ListenBrainzError::RateLimited { retry_after_secs: Some(42) })
+            Err(ListenBrainzError::RateLimited {
+                retry_after_secs: Some(42)
+            })
         );
 
         let server = MockServer::start().await;
@@ -288,7 +300,9 @@ mod tests {
             .await;
         assert_eq!(
             client(&server).submit_listen("tok", &item(), 1).await,
-            Err(ListenBrainzError::RateLimited { retry_after_secs: None })
+            Err(ListenBrainzError::RateLimited {
+                retry_after_secs: None
+            })
         );
     }
 }

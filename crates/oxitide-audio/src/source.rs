@@ -52,7 +52,11 @@ impl StreamPlan {
     pub fn single(url: String) -> Self {
         Self {
             init_url: None,
-            segments: vec![Segment { url, start_ticks: 0, duration_ticks: 0 }],
+            segments: vec![Segment {
+                url,
+                start_ticks: 0,
+                duration_ticks: 0,
+            }],
             timescale: 0,
             codec: None,
             sample_rate: None,
@@ -142,11 +146,19 @@ fn derive_quality(
     let codec = codec?.to_ascii_lowercase();
     if codec.contains("flac") || codec.contains("alac") {
         let hi_res = bit_depth.unwrap_or(0) >= 24 || sample_rate.unwrap_or(0) > 48_000;
-        Some(if hi_res { Quality::Max } else { Quality::Lossless })
+        Some(if hi_res {
+            Quality::Max
+        } else {
+            Quality::Lossless
+        })
     } else if is_he_aac(&codec) {
         Some(Quality::Low)
     } else if codec.contains("mp4a") || codec.contains("aac") {
-        Some(if bandwidth.is_some_and(|b| b < 192_000) { Quality::Low } else { Quality::High })
+        Some(if bandwidth.is_some_and(|b| b < 192_000) {
+            Quality::Low
+        } else {
+            Quality::High
+        })
     } else {
         None
     }
@@ -191,11 +203,18 @@ pub fn plan_from_info(info: &PlaybackInfo) -> Result<StreamPlan> {
                 })
                 .collect::<Vec<_>>();
             if segments.is_empty() {
-                return Err(Error::Manifest("dash manifest has no media segments".into()));
+                return Err(Error::Manifest(
+                    "dash manifest has no media segments".into(),
+                ));
             }
             let bitrate_kbps = repr.bandwidth.map(|b| (b / 1000) as u32);
             let quality = info.actual_quality.or_else(|| {
-                derive_quality(repr.codecs.as_deref(), repr.bit_depth, repr.sample_rate, repr.bandwidth)
+                derive_quality(
+                    repr.codecs.as_deref(),
+                    repr.bit_depth,
+                    repr.sample_rate,
+                    repr.bandwidth,
+                )
             });
             let hash = manifest_hash(
                 init_url.as_deref(),
@@ -227,7 +246,11 @@ pub fn plan_from_info(info: &PlaybackInfo) -> Result<StreamPlan> {
             let segments: Vec<Segment> = parsed
                 .urls
                 .into_iter()
-                .map(|url| Segment { url, start_ticks: 0, duration_ticks: 0 })
+                .map(|url| Segment {
+                    url,
+                    start_ticks: 0,
+                    duration_ticks: 0,
+                })
                 .collect();
             let quality = info
                 .actual_quality
@@ -246,7 +269,9 @@ pub fn plan_from_info(info: &PlaybackInfo) -> Result<StreamPlan> {
                 replay_gain: info.replay_gain,
             })
         }
-        other => Err(Error::Manifest(format!("unsupported manifest mime type: {other}"))),
+        other => Err(Error::Manifest(format!(
+            "unsupported manifest mime type: {other}"
+        ))),
     }
 }
 
@@ -302,7 +327,10 @@ mod tests {
           </Representation></AdaptationSet></Period></MPD>"#;
         let plan = plan_from_info(&info(DASH_MIME, mpd.as_bytes())).unwrap();
         assert_eq!(plan.init_url.as_deref(), Some("https://cdn/x/init.mp4"));
-        assert_eq!(plan.media_urls(), vec!["https://cdn/x/seg-1.mp4", "https://cdn/x/seg-2.mp4"]);
+        assert_eq!(
+            plan.media_urls(),
+            vec!["https://cdn/x/seg-1.mp4", "https://cdn/x/seg-2.mp4"]
+        );
         assert_eq!(plan.sample_rate, Some(48000));
         assert_eq!(plan.bit_depth, Some(24));
     }
@@ -318,7 +346,10 @@ mod tests {
         let mut dash = info(DASH_MIME, flac_mpd("flac", 44100, 16).as_bytes());
         dash.replay_gain = gain;
         assert_eq!(plan_from_info(&dash).unwrap().replay_gain, gain);
-        let mut bts = info(BTS_MIME, br#"{"codecs":"flac","urls":["https://cdn/a.flac"]}"#);
+        let mut bts = info(
+            BTS_MIME,
+            br#"{"codecs":"flac","urls":["https://cdn/a.flac"]}"#,
+        );
         bts.replay_gain = gain;
         assert_eq!(plan_from_info(&bts).unwrap().replay_gain, gain);
     }
@@ -332,8 +363,14 @@ mod tests {
             Some("https://cdn.example/mediatracks/TRACK/0.mp4?token=T")
         );
         assert_eq!(plan.media_urls().len(), 121);
-        assert_eq!(plan.media_urls()[0], "https://cdn.example/mediatracks/TRACK/1.mp4?token=T");
-        assert_eq!(plan.media_urls()[120], "https://cdn.example/mediatracks/TRACK/121.mp4?token=T");
+        assert_eq!(
+            plan.media_urls()[0],
+            "https://cdn.example/mediatracks/TRACK/1.mp4?token=T"
+        );
+        assert_eq!(
+            plan.media_urls()[120],
+            "https://cdn.example/mediatracks/TRACK/121.mp4?token=T"
+        );
         assert_eq!(plan.codec.as_deref(), Some("flac"));
         assert_eq!(plan.sample_rate, Some(44100));
         assert_eq!(plan.timescale, 44100);
@@ -361,12 +398,18 @@ mod tests {
     }
     #[test]
     fn unknown_mime_is_a_typed_error() {
-        assert!(matches!(plan_from_info(&info("application/nope", b"{}")), Err(Error::Manifest(_))));
+        assert!(matches!(
+            plan_from_info(&info("application/nope", b"{}")),
+            Err(Error::Manifest(_))
+        ));
     }
 
     #[test]
     fn bts_without_urls_is_a_typed_error() {
-        assert!(matches!(plan_from_info(&info(BTS_MIME, b"{}")), Err(Error::Manifest(_))));
+        assert!(matches!(
+            plan_from_info(&info(BTS_MIME, b"{}")),
+            Err(Error::Manifest(_))
+        ));
     }
 
     #[test]
@@ -387,8 +430,12 @@ mod tests {
     #[test]
     fn explicit_audio_quality_wins_over_derivation() {
         let mpd = flac_mpd("flac", 44100, 16);
-        let plan =
-            plan_from_info(&info_with_quality(DASH_MIME, mpd.as_bytes(), Some(Quality::High))).unwrap();
+        let plan = plan_from_info(&info_with_quality(
+            DASH_MIME,
+            mpd.as_bytes(),
+            Some(Quality::High),
+        ))
+        .unwrap();
         assert_eq!(plan.quality, Some(Quality::High));
     }
 
@@ -396,23 +443,33 @@ mod tests {
     fn quality_is_derived_when_audio_quality_is_absent() {
         let hi_res = flac_mpd("flac", 48000, 24);
         let lossless = flac_mpd("flac", 44100, 16);
-        let aac_low = flac_mpd("mp4a.40.2", 44100, 16).replace("bitDepth=\"16\"", "bandwidth=\"128000\"");
-        let aac_high = flac_mpd("mp4a.40.2", 44100, 16).replace("bitDepth=\"16\"", "bandwidth=\"320000\"");
+        let aac_low =
+            flac_mpd("mp4a.40.2", 44100, 16).replace("bitDepth=\"16\"", "bandwidth=\"128000\"");
+        let aac_high =
+            flac_mpd("mp4a.40.2", 44100, 16).replace("bitDepth=\"16\"", "bandwidth=\"320000\"");
 
         assert_eq!(
-            plan_from_info(&info(DASH_MIME, hi_res.as_bytes())).unwrap().quality,
+            plan_from_info(&info(DASH_MIME, hi_res.as_bytes()))
+                .unwrap()
+                .quality,
             Some(Quality::Max)
         );
         assert_eq!(
-            plan_from_info(&info(DASH_MIME, lossless.as_bytes())).unwrap().quality,
+            plan_from_info(&info(DASH_MIME, lossless.as_bytes()))
+                .unwrap()
+                .quality,
             Some(Quality::Lossless)
         );
         assert_eq!(
-            plan_from_info(&info(DASH_MIME, aac_low.as_bytes())).unwrap().quality,
+            plan_from_info(&info(DASH_MIME, aac_low.as_bytes()))
+                .unwrap()
+                .quality,
             Some(Quality::Low)
         );
         assert_eq!(
-            plan_from_info(&info(DASH_MIME, aac_high.as_bytes())).unwrap().quality,
+            plan_from_info(&info(DASH_MIME, aac_high.as_bytes()))
+                .unwrap()
+                .quality,
             Some(Quality::High)
         );
     }
@@ -442,7 +499,12 @@ mod tests {
         let mut plan = StreamPlan::single("mem://aac".into());
         for codec in [None, Some("mp4a"), Some("mp4a.40.2")] {
             plan.codec = codec.map(str::to_string);
-            for quality in [None, Some(Quality::High), Some(Quality::Lossless), Some(Quality::Max)] {
+            for quality in [
+                None,
+                Some(Quality::High),
+                Some(Quality::Lossless),
+                Some(Quality::Max),
+            ] {
                 plan.quality = quality;
                 assert!(!plan.needs_he_aac(), "{codec:?}/{quality:?}");
             }
@@ -478,14 +540,16 @@ mod tests {
 
     #[test]
     fn bitrate_comes_from_dash_bandwidth() {
-        let mpd = flac_mpd("flac", 44100, 16).replace("bitDepth=\"16\"", "bitDepth=\"16\" bandwidth=\"828801\"");
+        let mpd = flac_mpd("flac", 44100, 16)
+            .replace("bitDepth=\"16\"", "bitDepth=\"16\" bandwidth=\"828801\"");
         let plan = plan_from_info(&info(DASH_MIME, mpd.as_bytes())).unwrap();
         assert_eq!(plan.bitrate_kbps, Some(828));
     }
 
     #[test]
     fn bts_plan_has_no_bitrate() {
-        let json = r#"{"mimeType":"audio/flac","codecs":"flac","urls":["https://cdn/a.flac?token=A"]}"#;
+        let json =
+            r#"{"mimeType":"audio/flac","codecs":"flac","urls":["https://cdn/a.flac?token=A"]}"#;
         let plan = plan_from_info(&info(BTS_MIME, json.as_bytes())).unwrap();
         assert_eq!(plan.bitrate_kbps, None);
         assert_eq!(plan.quality, Some(Quality::Lossless));
@@ -496,7 +560,10 @@ mod tests {
         let a = plan_from_info(&info(DASH_MIME, mpd_with_token("A").as_bytes())).unwrap();
         let b = plan_from_info(&info(DASH_MIME, mpd_with_token("B").as_bytes())).unwrap();
         assert!(a.manifest_hash.is_some());
-        assert_eq!(a.manifest_hash, b.manifest_hash, "token rotation changed the cache key");
+        assert_eq!(
+            a.manifest_hash, b.manifest_hash,
+            "token rotation changed the cache key"
+        );
     }
 
     #[test]

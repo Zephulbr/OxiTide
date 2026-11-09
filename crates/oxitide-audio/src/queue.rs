@@ -134,7 +134,11 @@ impl Queue {
     }
 
     /// One Fisher–Yates shuffle of the whole list. Seeded by tests via `StdRng`.
-    fn play_context_shuffled_with<R: Rng + ?Sized>(&mut self, mut items: Vec<QueueItem>, rng: &mut R) {
+    fn play_context_shuffled_with<R: Rng + ?Sized>(
+        &mut self,
+        mut items: Vec<QueueItem>,
+        rng: &mut R,
+    ) {
         items.shuffle(rng);
         self.replace_items(items);
         self.shuffle = true;
@@ -176,7 +180,9 @@ impl Queue {
     }
 
     fn advance(&mut self) -> bool {
-        let Some(cur) = self.current else { return false };
+        let Some(cur) = self.current else {
+            return false;
+        };
         if self.items.is_empty() {
             return false;
         }
@@ -200,7 +206,9 @@ impl Queue {
     }
 
     pub fn prev(&mut self) -> bool {
-        let Some(cur) = self.current else { return false };
+        let Some(cur) = self.current else {
+            return false;
+        };
         if cur == 0 {
             return false;
         }
@@ -396,14 +404,27 @@ mod tests {
     use super::*;
 
     fn item(id: u64) -> QueueItem {
-        QueueItem { track_id: id, title: format!("T{id}"), artist: String::new(), album: String::new(), duration_secs: 1, cover: None, artist_refs: Vec::new(), album_id: None, autoplay: false }
+        QueueItem {
+            track_id: id,
+            title: format!("T{id}"),
+            artist: String::new(),
+            album: String::new(),
+            duration_secs: 1,
+            cover: None,
+            artist_refs: Vec::new(),
+            album_id: None,
+            autoplay: false,
+        }
     }
 
     #[test]
     fn autoplay_flag_is_written_only_when_set() {
         let plain = serde_json::to_value(item(1)).unwrap();
         assert!(plain.get("autoplay").is_none());
-        let suggested = QueueItem { autoplay: true, ..item(1) };
+        let suggested = QueueItem {
+            autoplay: true,
+            ..item(1)
+        };
         let json = serde_json::to_string(&suggested).unwrap();
         assert!(json.contains(r#""autoplay":true"#));
         assert_eq!(serde_json::from_str::<QueueItem>(&json).unwrap(), suggested);
@@ -429,7 +450,11 @@ mod tests {
         q.stop();
         q.resume();
         q.set_shuffle(false);
-        assert_eq!(q.rev(), rev, "navigation and flags must not change the revision");
+        assert_eq!(
+            q.rev(),
+            rev,
+            "navigation and flags must not change the revision"
+        );
         for edit in [
             |q: &mut Queue| q.push(vec![item(9)]),
             |q: &mut Queue| q.insert_next(vec![item(8)]),
@@ -454,7 +479,10 @@ mod tests {
     fn a_shared_snapshot_is_unaffected_by_later_edits() {
         let mut q = queue(3);
         let snapshot = q.shared_items();
-        assert!(Arc::ptr_eq(&snapshot, &q.shared_items()), "a snapshot must not copy");
+        assert!(
+            Arc::ptr_eq(&snapshot, &q.shared_items()),
+            "a snapshot must not copy"
+        );
         q.push(vec![item(4)]);
         assert_eq!(snapshot.len(), 3);
         assert_eq!(q.items().len(), 4);
@@ -773,12 +801,18 @@ mod tests {
         q.shuffle_tail_with(&mut rand::rngs::StdRng::seed_from_u64(7));
         let head_after: Vec<u64> = q.items()[..=1].iter().map(|i| i.track_id).collect();
         let tail_after: Vec<u64> = q.items()[2..].iter().map(|i| i.track_id).collect();
-        assert_eq!(head_after, head, "shuffle moved the current item or the head");
+        assert_eq!(
+            head_after, head,
+            "shuffle moved the current item or the head"
+        );
         let mut sorted_before = tail_before.clone();
         sorted_before.sort();
         let mut sorted_after = tail_after.clone();
         sorted_after.sort();
-        assert_eq!(sorted_after, sorted_before, "shuffle changed the tail's items");
+        assert_eq!(
+            sorted_after, sorted_before,
+            "shuffle changed the tail's items"
+        );
         assert_ne!(
             tail_after, tail_before,
             "seed 7 produced the identity order; pick another seed"
@@ -792,7 +826,13 @@ mod tests {
         let head: Vec<u64> = q.items()[..=1].iter().map(|i| i.track_id).collect();
         q.set_shuffle(true);
         assert!(q.shuffle());
-        assert_eq!(q.items()[..=1].iter().map(|i| i.track_id).collect::<Vec<_>>(), head);
+        assert_eq!(
+            q.items()[..=1]
+                .iter()
+                .map(|i| i.track_id)
+                .collect::<Vec<_>>(),
+            head
+        );
         assert_eq!(q.current().unwrap().track_id, 2);
     }
 
@@ -804,7 +844,10 @@ mod tests {
         let shuffled: Vec<u64> = q.items().iter().map(|i| i.track_id).collect();
         q.set_shuffle(false);
         assert!(!q.shuffle());
-        assert_eq!(q.items().iter().map(|i| i.track_id).collect::<Vec<_>>(), shuffled);
+        assert_eq!(
+            q.items().iter().map(|i| i.track_id).collect::<Vec<_>>(),
+            shuffled
+        );
     }
 
     #[test]

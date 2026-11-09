@@ -37,7 +37,10 @@ mod tests {
     #[test]
     fn urls_carry_the_token_in_the_fragment() {
         let ip: IpAddr = "192.168.1.5".parse().unwrap();
-        assert_eq!(pairing_url(ip, 47820, "abc"), "http://192.168.1.5:47820/remote#p=abc");
+        assert_eq!(
+            pairing_url(ip, 47820, "abc"),
+            "http://192.168.1.5:47820/remote#p=abc"
+        );
         let v6: IpAddr = "fe80::1".parse().unwrap();
         assert_eq!(base_url(v6, 47820), "http://[fe80::1]:47820/remote");
     }

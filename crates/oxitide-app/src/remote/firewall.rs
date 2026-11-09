@@ -81,7 +81,11 @@ pub fn detect(port: u16) -> Option<FirewallDto> {
             (Some(v4), None) => Some(ufw_allows(&v4, port)),
             _ => None,
         };
-        return Some(FirewallDto { name: "ufw".into(), port_open: open, command: ufw_command(port) });
+        return Some(FirewallDto {
+            name: "ufw".into(),
+            port_open: open,
+            command: ufw_command(port),
+        });
     }
     if firewalld_running() {
         return Some(FirewallDto {
@@ -104,7 +108,10 @@ fn firewalld_running() -> bool {
         return false;
     };
     entries.flatten().any(|entry| {
-        entry.file_name().to_str().is_some_and(|name| name.bytes().all(|b| b.is_ascii_digit()))
+        entry
+            .file_name()
+            .to_str()
+            .is_some_and(|name| name.bytes().all(|b| b.is_ascii_digit()))
             && std::fs::read_to_string(entry.path().join("comm"))
                 .is_ok_and(|comm| comm.trim() == "firewalld")
     })

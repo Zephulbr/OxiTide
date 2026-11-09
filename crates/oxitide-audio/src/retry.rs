@@ -60,12 +60,22 @@ pub struct Backoff {
 impl Backoff {
     /// Recovery from a lost network, bounded by [`NETWORK_LIMIT`].
     pub fn network() -> Self {
-        Self { waits: &NETWORK_WAITS, limit: Some(NETWORK_LIMIT), attempt: 0, since: Instant::now() }
+        Self {
+            waits: &NETWORK_WAITS,
+            limit: Some(NETWORK_LIMIT),
+            attempt: 0,
+            since: Instant::now(),
+        }
     }
 
     /// A short, fixed number of retries.
     pub fn quick() -> Self {
-        Self { waits: &QUICK_WAITS, limit: None, attempt: 0, since: Instant::now() }
+        Self {
+            waits: &QUICK_WAITS,
+            limit: None,
+            attempt: 0,
+            since: Instant::now(),
+        }
     }
 
     /// The failed attempts so far.
@@ -96,7 +106,12 @@ impl Backoff {
     /// comes back; a network backoff also keeps waiting while the network is
     /// known to be down. False when `cancelled` reports true first.
     pub fn sleep(&self, wait: Duration, cancelled: impl Fn() -> bool) -> bool {
-        sleep_on(connectivity::global(), wait, self.limit.is_some(), cancelled)
+        sleep_on(
+            connectivity::global(),
+            wait,
+            self.limit.is_some(),
+            cancelled,
+        )
     }
 }
 
@@ -153,7 +168,10 @@ mod tests {
         assert_eq!(backoff.attempts(), 10);
         std::thread::sleep(NETWORK_LIMIT + Duration::from_millis(20));
         if !connectivity::global().is_offline() {
-            assert!(backoff.next_wait().is_none(), "the limit did not end the backoff");
+            assert!(
+                backoff.next_wait().is_none(),
+                "the limit did not end the backoff"
+            );
         }
     }
 
@@ -170,7 +188,10 @@ mod tests {
             })
         };
         assert!(sleep_on(&conn, Duration::from_secs(10), true, || false));
-        assert!(started.elapsed() < Duration::from_secs(2), "the wait was not cut short");
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "the wait was not cut short"
+        );
         waker.join().unwrap();
     }
 
@@ -187,7 +208,10 @@ mod tests {
             })
         };
         std::thread::sleep(Duration::from_millis(150));
-        assert!(!done.load(std::sync::atomic::Ordering::SeqCst), "waited out the timer while offline");
+        assert!(
+            !done.load(std::sync::atomic::Ordering::SeqCst),
+            "waited out the timer while offline"
+        );
         conn.set_online(Some(true));
         sleeper.join().unwrap();
         assert!(done.load(std::sync::atomic::Ordering::SeqCst));

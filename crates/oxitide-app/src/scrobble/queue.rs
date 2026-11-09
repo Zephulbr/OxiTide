@@ -30,7 +30,10 @@ impl ScrobbleQueue {
             for _ in 0..dropped {
                 self.items.pop_front();
             }
-            tracing::warn!(dropped, "scrobble queue full; dropped oldest queued scrobble(s)");
+            tracing::warn!(
+                dropped,
+                "scrobble queue full; dropped oldest queued scrobble(s)"
+            );
         }
     }
 
@@ -110,7 +113,10 @@ mod tests {
         queue.push(entry(2, 2));
         queue.push(entry(3, 3));
         let batch = queue.front_batch(2);
-        assert_eq!(batch.iter().map(|e| e.item.track_id).collect::<Vec<_>>(), vec![1, 2]);
+        assert_eq!(
+            batch.iter().map(|e| e.item.track_id).collect::<Vec<_>>(),
+            vec![1, 2]
+        );
         queue.remove_front(2);
         assert_eq!(queue.front_batch(1)[0].item.track_id, 3);
         queue.clear();

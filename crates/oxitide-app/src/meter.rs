@@ -52,7 +52,11 @@ pub struct LevelFrameDto {
 
 impl From<LevelFrame> for LevelFrameDto {
     fn from(frame: LevelFrame) -> Self {
-        Self { peak: frame.peak, rms: frame.rms, bands: frame.bands.to_vec() }
+        Self {
+            peak: frame.peak,
+            rms: frame.rms,
+            bands: frame.bands.to_vec(),
+        }
     }
 }
 
@@ -150,7 +154,10 @@ mod tests {
         std::thread::sleep(TICK * 4);
         emitter.stop();
         emitter.stop();
-        assert!(ticks.load(Ordering::SeqCst) < 100, "second start must not spawn a thread");
+        assert!(
+            ticks.load(Ordering::SeqCst) < 100,
+            "second start must not spawn a thread"
+        );
     }
 
     #[test]
@@ -161,7 +168,10 @@ mod tests {
         loud.peak = [0.5, 0.4];
         loud.rms = [0.2, 0.1];
         assert!(gate.admit(&loud));
-        assert!(gate.admit(&silent), "first silent frame lets the meters fall");
+        assert!(
+            gate.admit(&silent),
+            "first silent frame lets the meters fall"
+        );
         assert!(gate.admit(&silent));
         assert!(!gate.idle());
         assert!(!gate.admit(&silent));

@@ -59,8 +59,12 @@ pub mod opt_id {
         id.map(to_ref).serialize(serializer)
     }
 
-    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<u64>, D::Error> {
-        Option::<RawId>::deserialize(deserializer)?.map(RawId::into_id).transpose()
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Option<u64>, D::Error> {
+        Option::<RawId>::deserialize(deserializer)?
+            .map(RawId::into_id)
+            .transpose()
     }
 }
 
@@ -86,10 +90,15 @@ pub mod artist_refs {
     }
 
     pub fn serialize<S: Serializer>(refs: &[ArtistRef], serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.collect_seq(refs.iter().map(|a| LinkOut { reference: to_ref(a.id), name: &a.name }))
+        serializer.collect_seq(refs.iter().map(|a| LinkOut {
+            reference: to_ref(a.id),
+            name: &a.name,
+        }))
     }
 
-    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<ArtistRef>, D::Error> {
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Vec<ArtistRef>, D::Error> {
         Vec::<LinkIn>::deserialize(deserializer)?
             .into_iter()
             .map(|link| {
@@ -97,7 +106,10 @@ pub mod artist_refs {
                     .reference
                     .or(link.id)
                     .ok_or_else(|| D::Error::custom("artist link without an id"))?;
-                Ok(ArtistRef { id: raw.into_id()?, name: link.name })
+                Ok(ArtistRef {
+                    id: raw.into_id()?,
+                    name: link.name,
+                })
             })
             .collect()
     }
@@ -122,7 +134,10 @@ mod tests {
         Sample {
             track_id: 12,
             album_id: Some(34),
-            artist_refs: vec![ArtistRef { id: 56, name: "A".into() }],
+            artist_refs: vec![ArtistRef {
+                id: 56,
+                name: "A".into(),
+            }],
         }
     }
 
@@ -159,7 +174,10 @@ mod tests {
 
     #[test]
     fn rejects_ids_1x_cannot_play() {
-        for bad in [json!({ "track_id": "local:abc" }), json!({ "track_id": "tidal:x" })] {
+        for bad in [
+            json!({ "track_id": "local:abc" }),
+            json!({ "track_id": "tidal:x" }),
+        ] {
             assert!(serde_json::from_value::<Sample>(bad).is_err());
         }
         let no_id = json!({ "track_id": 1, "artist_refs": [{ "name": "A" }] });

@@ -92,13 +92,22 @@ mod tests {
             })))
             .mount(&server)
             .await;
-        let r = client(&server).search("beck", &["artists"], 20, 0).await.unwrap();
+        let r = client(&server)
+            .search("beck", &["artists"], 20, 0)
+            .await
+            .unwrap();
         assert_eq!(r.artists.total_number_of_items, 41);
         match r.top_hit {
             Some(TopHit::Artist(artist)) => assert_eq!(artist.name, "Beck"),
             other => panic!("expected an artist top hit, got {other:?}"),
         }
-        let json = serde_json::to_value(&client(&server).search("beck", &["artists"], 20, 0).await.unwrap()).unwrap();
+        let json = serde_json::to_value(
+            &client(&server)
+                .search("beck", &["artists"], 20, 0)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
         assert_eq!(json["topHit"]["kind"], "artist");
         assert_eq!(json["topHit"]["item"]["name"], "Beck");
     }
@@ -114,7 +123,10 @@ mod tests {
             })))
             .mount(&server)
             .await;
-        let r = client(&server).search("beck", &["tracks"], 20, 0).await.unwrap();
+        let r = client(&server)
+            .search("beck", &["tracks"], 20, 0)
+            .await
+            .unwrap();
         assert!(r.top_hit.is_none());
         assert_eq!(r.track_items()[0].title, "Loser");
     }

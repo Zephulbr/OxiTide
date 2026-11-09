@@ -95,7 +95,10 @@ impl RemoteState {
 
 fn quality_name(state: &PlaybackState) -> Option<String> {
     let quality = state.stream.as_ref()?.quality?;
-    serde_json::to_value(quality).ok()?.as_str().map(str::to_string)
+    serde_json::to_value(quality)
+        .ok()?
+        .as_str()
+        .map(str::to_string)
 }
 
 fn track(item: &QueueItem, explicit: Option<bool>, audio_quality: Option<String>) -> RemoteTrack {
@@ -118,7 +121,10 @@ pub fn slim(state: &PlaybackState, explicit: Option<bool>, queue_rev: u64) -> Re
         logged_in: true,
         playing: state.playing,
         buffering: state.buffering,
-        current: state.current.as_ref().map(|item| track(item, explicit, quality_name(state))),
+        current: state
+            .current
+            .as_ref()
+            .map(|item| track(item, explicit, quality_name(state))),
         current_index: state.current_index,
         position_ms: state.position_ms,
         duration_ms: state.duration_ms,
@@ -176,7 +182,10 @@ pub struct Throttle {
 
 impl Throttle {
     pub fn new(interval: Duration) -> Self {
-        Self { interval, last: None }
+        Self {
+            interval,
+            last: None,
+        }
     }
 
     /// `Ok` (and record the send) when allowed now, else how long to wait.
@@ -213,8 +222,14 @@ pub struct FavoriteChange {
 #[derive(Debug, Clone)]
 pub enum HubEvent {
     State(Arc<RemoteState>),
-    Position { position_ms: u64, duration_ms: u64 },
-    Error { code: String, message: String },
+    Position {
+        position_ms: u64,
+        duration_ms: u64,
+    },
+    Error {
+        code: String,
+        message: String,
+    },
     Session(SessionKind),
     /// A favorite changed on any surface (desktop or a phone).
     Favorite(FavoriteChange),
@@ -252,7 +267,10 @@ pub struct Hub {
 impl Hub {
     /// `runtime` runs the deferred send of a coalesced state; it is captured
     /// at start because engine events arrive on non-runtime threads.
-    pub fn new(session: Arc<dyn RemoteSession>, runtime: Option<tokio::runtime::Handle>) -> Arc<Self> {
+    pub fn new(
+        session: Arc<dyn RemoteSession>,
+        runtime: Option<tokio::runtime::Handle>,
+    ) -> Arc<Self> {
         let (tx, _) = broadcast::channel(CHANNEL_CAPACITY);
         Arc::new(Self {
             session,
@@ -286,7 +304,10 @@ impl Hub {
         let Some(playback) = self.session.playback().filter(|_| logged_in) else {
             return RemoteState::idle(logged_in);
         };
-        let explicit = playback.current.as_ref().and_then(|c| self.session.explicit(c.track_id));
+        let explicit = playback
+            .current
+            .as_ref()
+            .and_then(|c| self.session.explicit(c.track_id));
         let mut inner = self.inner.lock().unwrap();
         let rev = inner.rev.observe(fingerprint(&playback.queue));
         let state = slim(&playback, explicit, rev);
@@ -302,7 +323,14 @@ impl Hub {
         };
         let rev = self.inner.lock().unwrap().rev.observe(fingerprint(&queue));
         let items = queue.iter().skip(offset).take(limit).cloned().collect();
-        QueuePage { items, total: queue.len(), offset, limit, current_index, queue_rev: rev }
+        QueuePage {
+            items,
+            total: queue.len(),
+            offset,
+            limit,
+            current_index,
+            queue_rev: rev,
+        }
     }
 
     /// The engine subscriber. Does nothing without a connected client.
@@ -312,24 +340,35 @@ impl Hub {
         }
         match event {
             EngineEvent::State(playback) => {
-                let explicit =
-                    playback.current.as_ref().and_then(|c| self.session.explicit(c.track_id));
+                let explicit = playback
+                    .current
+                    .as_ref()
+                    .and_then(|c| self.session.explicit(c.track_id));
                 let mut inner = self.inner.lock().unwrap();
                 let rev = inner.rev.observe(fingerprint(&playback.queue));
                 inner.latest = Some(slim(playback, explicit, rev));
                 self.schedule_state(&mut inner);
             }
             EngineEvent::NowPlaying(item) => {
-                let explicit = item.as_ref().and_then(|c| self.session.explicit(c.track_id));
+                let explicit = item
+                    .as_ref()
+                    .and_then(|c| self.session.explicit(c.track_id));
                 let mut inner = self.inner.lock().unwrap();
                 if let Some(latest) = inner.latest.as_mut() {
                     latest.current = item.as_ref().map(|i| track(i, explicit, None));
-                    latest.duration_ms = item.as_ref().map(|i| i.duration_secs as u64 * 1000).unwrap_or(0);
+                    latest.duration_ms = item
+                        .as_ref()
+                        .map(|i| i.duration_secs as u64 * 1000)
+                        .unwrap_or(0);
                     latest.position_ms = 0;
                     self.schedule_state(&mut inner);
                 }
             }
-            EngineEvent::Position { position_ms, duration_ms, .. } => {
+            EngineEvent::Position {
+                position_ms,
+                duration_ms,
+                ..
+            } => {
                 let mut inner = self.inner.lock().unwrap();
                 if let Some(latest) = inner.latest.as_mut() {
                     latest.position_ms = *position_ms;
@@ -410,7 +449,11 @@ pub struct SseMessage {
 }
 
 fn message<T: Serialize>(event: &'static str, id: u64, data: &T) -> SseMessage {
-    SseMessage { event, id, data: serde_json::to_string(data).unwrap_or_else(|_| "null".into()) }
+    SseMessage {
+        event,
+        id,
+        data: serde_json::to_string(data).unwrap_or_else(|_| "null".into()),
+    }
 }
 
 struct ClientState<G> {
@@ -586,7 +629,10 @@ pub(crate) mod tests {
             self.lookups.fetch_add(1, Ordering::SeqCst);
             Some(true)
         }
-        fn command(&self, command: RemoteCommand) -> BoxFuture<'static, Result<serde_json::Value, String>> {
+        fn command(
+            &self,
+            command: RemoteCommand,
+        ) -> BoxFuture<'static, Result<serde_json::Value, String>> {
             self.commands.lock().unwrap().push(format!("{command:?}"));
             Box::pin(async { Ok(serde_json::Value::Null) })
         }
@@ -594,7 +640,11 @@ pub(crate) mod tests {
 
     #[test]
     fn slim_state_strips_the_queue() {
-        let state = slim(&playback((1..=3).map(item).collect(), Some(1)), Some(true), 4);
+        let state = slim(
+            &playback((1..=3).map(item).collect(), Some(1)),
+            Some(true),
+            4,
+        );
         let value = serde_json::to_value(&state).unwrap();
         assert!(value.get("queue").is_none(), "{value}");
         assert_eq!(value["queueLen"], 3);
@@ -625,7 +675,10 @@ pub(crate) mod tests {
         let mut throttle = Throttle::new(Duration::from_secs(1));
         let t0 = Instant::now();
         assert!(throttle.ready(t0).is_ok());
-        assert_eq!(throttle.ready(t0 + Duration::from_millis(300)), Err(Duration::from_millis(700)));
+        assert_eq!(
+            throttle.ready(t0 + Duration::from_millis(300)),
+            Err(Duration::from_millis(700))
+        );
         assert!(throttle.ready(t0 + Duration::from_secs(1)).is_ok());
     }
 
@@ -633,8 +686,15 @@ pub(crate) mod tests {
     fn nothing_is_computed_without_clients() {
         let session = FakeSession::with(playback((1..=3).map(item).collect(), Some(0)));
         let hub = Hub::new(session.clone(), None);
-        hub.on_engine_event(&EngineEvent::State(playback((1..=3).map(item).collect(), Some(0))));
-        hub.on_engine_event(&EngineEvent::Position { position_ms: 1, duration_ms: 2, lead_ms: 0 });
+        hub.on_engine_event(&EngineEvent::State(playback(
+            (1..=3).map(item).collect(),
+            Some(0),
+        )));
+        hub.on_engine_event(&EngineEvent::Position {
+            position_ms: 1,
+            duration_ms: 2,
+            lead_ms: 0,
+        });
         assert_eq!(session.lookups.load(Ordering::SeqCst), 0);
         assert!(hub.inner.lock().unwrap().latest.is_none());
     }
@@ -648,22 +708,42 @@ pub(crate) mod tests {
         hub.on_engine_event(&EngineEvent::State(state.clone()));
         hub.on_engine_event(&EngineEvent::State(state.clone()));
         hub.on_engine_event(&EngineEvent::State(state));
-        hub.on_engine_event(&EngineEvent::Position { position_ms: 10, duration_ms: 20, lead_ms: 0 });
-        hub.on_engine_event(&EngineEvent::Position { position_ms: 11, duration_ms: 20, lead_ms: 0 });
+        hub.on_engine_event(&EngineEvent::Position {
+            position_ms: 10,
+            duration_ms: 20,
+            lead_ms: 0,
+        });
+        hub.on_engine_event(&EngineEvent::Position {
+            position_ms: 11,
+            duration_ms: 20,
+            lead_ms: 0,
+        });
 
-        assert!(matches!(rx.recv().await.unwrap(), HubEvent::State(_)), "first state is immediate");
+        assert!(
+            matches!(rx.recv().await.unwrap(), HubEvent::State(_)),
+            "first state is immediate"
+        );
         assert!(matches!(
             rx.recv().await.unwrap(),
-            HubEvent::Position { position_ms: 10, .. }
+            HubEvent::Position {
+                position_ms: 10,
+                ..
+            }
         ));
         // The two later states collapse into one deferred send carrying the
         // latest position.
-        match tokio::time::timeout(Duration::from_secs(1), rx.recv()).await.unwrap().unwrap() {
+        match tokio::time::timeout(Duration::from_secs(1), rx.recv())
+            .await
+            .unwrap()
+            .unwrap()
+        {
             HubEvent::State(state) => assert_eq!(state.position_ms, 11),
             other => panic!("unexpected {other:?}"),
         }
         assert!(
-            tokio::time::timeout(Duration::from_millis(250), rx.recv()).await.is_err(),
+            tokio::time::timeout(Duration::from_millis(250), rx.recv())
+                .await
+                .is_err(),
             "exactly one deferred state and no second position within 1 s"
         );
     }
@@ -677,7 +757,10 @@ pub(crate) mod tests {
         let first = stream.next().await.unwrap();
         assert_eq!((first.event, first.id), ("snapshot", 1));
         assert!(first.data.contains("\"queueLen\":2"));
-        hub.on_engine_event(&EngineEvent::Error { code: "net".into(), message: "x".into() });
+        hub.on_engine_event(&EngineEvent::Error {
+            code: "net".into(),
+            message: "x".into(),
+        });
         let second = stream.next().await.unwrap();
         assert_eq!((second.event, second.id), ("error", 2));
     }
@@ -687,15 +770,27 @@ pub(crate) mod tests {
         let session = FakeSession::with(playback(vec![item(1)], Some(0)));
         let hub = Hub::new(session, None);
         let (_tx, shutdown) = watch::channel(false);
-        let mut mine = Box::pin(client_stream(hub.clone(), "d1".into(), shutdown.clone(), ()));
+        let mut mine = Box::pin(client_stream(
+            hub.clone(),
+            "d1".into(),
+            shutdown.clone(),
+            (),
+        ));
         let mut other = Box::pin(client_stream(hub.clone(), "d2".into(), shutdown, ()));
         mine.next().await.unwrap();
         other.next().await.unwrap();
         hub.revoke(Some("d1".into()));
         assert_eq!(mine.next().await.unwrap().event, "revoked");
         assert!(mine.next().await.is_none());
-        hub.on_engine_event(&EngineEvent::Error { code: "c".into(), message: "m".into() });
-        assert_eq!(other.next().await.unwrap().event, "error", "d2 skips d1's revoke");
+        hub.on_engine_event(&EngineEvent::Error {
+            code: "c".into(),
+            message: "m".into(),
+        });
+        assert_eq!(
+            other.next().await.unwrap().event,
+            "error",
+            "d2 skips d1's revoke"
+        );
     }
 
     #[tokio::test]
@@ -718,7 +813,10 @@ pub(crate) mod tests {
         let mut stream = Box::pin(client_stream(hub.clone(), "d1".into(), shutdown, ()));
         stream.next().await.unwrap();
         for i in 0..(CHANNEL_CAPACITY as u64 + 5) {
-            hub.on_engine_event(&EngineEvent::Error { code: i.to_string(), message: String::new() });
+            hub.on_engine_event(&EngineEvent::Error {
+                code: i.to_string(),
+                message: String::new(),
+            });
         }
         assert!(stream.next().await.is_none(), "lag ends the stream");
     }
@@ -727,11 +825,19 @@ pub(crate) mod tests {
     async fn favorite_changes_reach_connected_phones() {
         let session = FakeSession::with(playback(vec![item(1)], Some(0)));
         let hub = Hub::new(session, None);
-        hub.notify_favorite(FavoriteChange { kind: "track", id: 9, favorite: true });
+        hub.notify_favorite(FavoriteChange {
+            kind: "track",
+            id: 9,
+            favorite: true,
+        });
         let (_tx, shutdown) = watch::channel(false);
         let mut stream = Box::pin(client_stream(hub.clone(), "d1".into(), shutdown, ()));
         stream.next().await.unwrap();
-        hub.notify_favorite(FavoriteChange { kind: "album", id: 7, favorite: false });
+        hub.notify_favorite(FavoriteChange {
+            kind: "album",
+            id: 7,
+            favorite: false,
+        });
         let frame = stream.next().await.unwrap();
         assert_eq!(frame.event, "favorite");
         assert_eq!(frame.data, r#"{"kind":"album","id":7,"favorite":false}"#);
@@ -753,7 +859,10 @@ pub(crate) mod tests {
         let hub = Hub::new(session, None);
         let page = hub.queue_page(8, 5);
         assert_eq!(page.total, 10);
-        assert_eq!(page.items.iter().map(|i| i.track_id).collect::<Vec<_>>(), vec![9, 10]);
+        assert_eq!(
+            page.items.iter().map(|i| i.track_id).collect::<Vec<_>>(),
+            vec![9, 10]
+        );
         assert_eq!(page.current_index, Some(4));
     }
 }

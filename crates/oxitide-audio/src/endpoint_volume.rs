@@ -26,7 +26,9 @@ impl EndpointVolume {
                     let id = HSTRING::from(id);
                     enumerator.GetDevice(&id).map_err(to_error)?
                 }
-                None => enumerator.GetDefaultAudioEndpoint(eRender, eMultimedia).map_err(to_error)?,
+                None => enumerator
+                    .GetDefaultAudioEndpoint(eRender, eMultimedia)
+                    .map_err(to_error)?,
             };
             let endpoint: IAudioEndpointVolume =
                 device.Activate(CLSCTX_ALL, None).map_err(to_error)?;

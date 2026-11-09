@@ -21,8 +21,19 @@ pub struct InterfaceDto {
 pub fn is_virtual(name: &str) -> bool {
     let name = name.to_ascii_lowercase();
     [
-        "vethernet", "wsl", "hyper-v", "virtualbox", "vmware", "vmnet", "docker", "veth", "br-",
-        "virbr", "loopback", "zerotier", "npcap",
+        "vethernet",
+        "wsl",
+        "hyper-v",
+        "virtualbox",
+        "vmware",
+        "vmnet",
+        "docker",
+        "veth",
+        "br-",
+        "virbr",
+        "loopback",
+        "zerotier",
+        "npcap",
     ]
     .iter()
     .any(|needle| name.contains(needle))
@@ -104,7 +115,11 @@ mod tests {
     use super::*;
 
     fn iface(name: &str, ip: &str) -> InterfaceDto {
-        InterfaceDto { name: name.into(), ip: ip.into(), virtual_adapter: is_virtual(name) }
+        InterfaceDto {
+            name: name.into(),
+            ip: ip.into(),
+            virtual_adapter: is_virtual(name),
+        }
     }
 
     #[test]
@@ -119,16 +134,29 @@ mod tests {
 
     #[test]
     fn explicit_choice_wins() {
-        let list = [iface("Wi-Fi", "192.168.1.5"), iface("Tailscale", "100.70.1.2")];
+        let list = [
+            iface("Wi-Fi", "192.168.1.5"),
+            iface("Tailscale", "100.70.1.2"),
+        ];
         assert_eq!(pick(&list, "100.70.1.2", None).to_string(), "100.70.1.2");
-        assert_eq!(pick(&list, "10.9.9.9", None).to_string(), "192.168.1.5", "stale override");
+        assert_eq!(
+            pick(&list, "10.9.9.9", None).to_string(),
+            "192.168.1.5",
+            "stale override"
+        );
     }
 
     #[test]
     fn default_route_wins_unless_virtual() {
         let list = [iface("Wi-Fi", "192.168.1.5"), iface("Ethernet", "10.0.0.4")];
-        assert_eq!(pick(&list, "", Some("10.0.0.4".parse().unwrap())).to_string(), "10.0.0.4");
-        let list = [iface("Wi-Fi", "192.168.1.5"), iface("vEthernet (WSL)", "172.20.0.1")];
+        assert_eq!(
+            pick(&list, "", Some("10.0.0.4".parse().unwrap())).to_string(),
+            "10.0.0.4"
+        );
+        let list = [
+            iface("Wi-Fi", "192.168.1.5"),
+            iface("vEthernet (WSL)", "172.20.0.1"),
+        ];
         assert_eq!(
             pick(&list, "", Some("172.20.0.1".parse().unwrap())).to_string(),
             "192.168.1.5"
@@ -144,7 +172,11 @@ mod tests {
 
     #[test]
     fn ranges_rank_home_networks_first() {
-        assert!(range_rank("192.168.0.2".parse().unwrap()) < range_rank("10.0.0.2".parse().unwrap()));
-        assert!(range_rank("10.0.0.2".parse().unwrap()) < range_rank("172.16.0.2".parse().unwrap()));
+        assert!(
+            range_rank("192.168.0.2".parse().unwrap()) < range_rank("10.0.0.2".parse().unwrap())
+        );
+        assert!(
+            range_rank("10.0.0.2".parse().unwrap()) < range_rank("172.16.0.2".parse().unwrap())
+        );
     }
 }

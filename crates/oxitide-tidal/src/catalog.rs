@@ -81,12 +81,19 @@ impl TidalClient {
     /// long credit list never costs the first page.
     pub async fn track_credits(&self, id: u64) -> Result<TrackCredits> {
         let country = self.session().country_code.clone();
-        let params = [("countryCode", country.clone()), ("include", "credits.artist".to_string())];
+        let params = [
+            ("countryCode", country.clone()),
+            ("include", "credits.artist".to_string()),
+        ];
         let raw: OpenApiTrackCredits = self.get_openapi(&format!("tracks/{id}"), &params).await?;
-        let credits = raw.data.and_then(|data| data.relationships).and_then(|r| r.credits);
+        let credits = raw
+            .data
+            .and_then(|data| data.relationships)
+            .and_then(|r| r.credits);
         let mut cursor = credits.as_ref().and_then(OpenApiCreditRefs::next_cursor);
-        let mut referenced: Vec<String> =
-            credits.map(|c| c.data.into_iter().map(|entry| entry.id).collect()).unwrap_or_default();
+        let mut referenced: Vec<String> = credits
+            .map(|c| c.data.into_iter().map(|entry| entry.id).collect())
+            .unwrap_or_default();
         let mut included = raw.included;
         let mut pages = 1;
         while let Some(next) = cursor.take() {
@@ -99,16 +106,30 @@ impl TidalClient {
                 ("include", "credits".to_string()),
                 ("page[cursor]", next.clone()),
             ];
-            let page: OpenApiCreditPage =
-                match self.get_openapi(&format!("tracks/{id}/relationships/credits"), &params).await {
-                    Ok(page) => page,
-                    Err(e) => {
-                        tracing::warn!(track = id, pages, "credits: a later page failed, keeping what was read: {e}");
-                        break;
-                    }
-                };
-            if !page.included.iter().any(|resource| resource.resource_type == "credits") {
-                tracing::warn!(track = id, pages, "credits: a later page named no credits; keeping what was read");
+            let page: OpenApiCreditPage = match self
+                .get_openapi(&format!("tracks/{id}/relationships/credits"), &params)
+                .await
+            {
+                Ok(page) => page,
+                Err(e) => {
+                    tracing::warn!(
+                        track = id,
+                        pages,
+                        "credits: a later page failed, keeping what was read: {e}"
+                    );
+                    break;
+                }
+            };
+            if !page
+                .included
+                .iter()
+                .any(|resource| resource.resource_type == "credits")
+            {
+                tracing::warn!(
+                    track = id,
+                    pages,
+                    "credits: a later page named no credits; keeping what was read"
+                );
                 break;
             }
             pages += 1;
@@ -138,10 +159,7 @@ impl TidalClient {
         let page: ItemPage<Track> = self
             .get(
                 &format!("artists/{id}/toptracks"),
-                &[
-                    ("limit", limit.to_string()),
-                    ("offset", offset.to_string()),
-                ],
+                &[("limit", limit.to_string()), ("offset", offset.to_string())],
             )
             .await?;
         Ok((page.items, page.total_number_of_items))
@@ -188,9 +206,7 @@ impl TidalClient {
             ("countryCode", self.session().country_code.clone()),
             ("include", "biography".to_string()),
         ];
-        let raw: OpenApiArtistProfile = self
-            .get_openapi(&format!("artists/{id}"), &params)
-            .await?;
+        let raw: OpenApiArtistProfile = self.get_openapi(&format!("artists/{id}"), &params).await?;
 
         let attributes = raw.data.and_then(|data| data.attributes);
         let mut seen = std::collections::HashSet::new();
@@ -469,7 +485,8 @@ const CREDIT_PAGES_MAX: usize = 10;
 /// Non-credit or unreferenced `included` entries, blank rows, and duplicate
 /// (role, name, artist) rows are dropped.
 fn group_credits(referenced: &[String], included: Vec<OpenApiCreditResource>) -> TrackCredits {
-    let referenced: std::collections::HashSet<&str> = referenced.iter().map(String::as_str).collect();
+    let referenced: std::collections::HashSet<&str> =
+        referenced.iter().map(String::as_str).collect();
     let mut order: Vec<String> = Vec::new();
     let mut roles: std::collections::HashMap<String, Vec<CreditContributor>> =
         std::collections::HashMap::new();
@@ -479,7 +496,9 @@ fn group_credits(referenced: &[String], included: Vec<OpenApiCreditResource>) ->
         if resource.resource_type != "credits" || !referenced.contains(resource.id.as_str()) {
             continue;
         }
-        let Some(attributes) = resource.attributes else { continue };
+        let Some(attributes) = resource.attributes else {
+            continue;
+        };
         if attributes.name.trim().is_empty() || attributes.role.trim().is_empty() {
             continue;
         }
@@ -494,10 +513,13 @@ fn group_credits(referenced: &[String], included: Vec<OpenApiCreditResource>) ->
         if !roles.contains_key(&attributes.role) {
             order.push(attributes.role.clone());
         }
-        roles.entry(attributes.role).or_default().push(CreditContributor {
-            name: attributes.name,
-            artist_id,
-        });
+        roles
+            .entry(attributes.role)
+            .or_default()
+            .push(CreditContributor {
+                name: attributes.name,
+                artist_id,
+            });
     }
     TrackCredits {
         roles: order
@@ -574,7 +596,12 @@ struct OpenApiCursorMeta {
 }
 
 fn cursor_of(links: Option<&OpenApiCursorLinks>) -> Option<String> {
-    links?.meta.as_ref()?.next_cursor.clone().filter(|cursor| !cursor.is_empty())
+    links?
+        .meta
+        .as_ref()?
+        .next_cursor
+        .clone()
+        .filter(|cursor| !cursor.is_empty())
 }
 
 #[derive(Debug, Deserialize)]
@@ -788,7 +815,10 @@ mod tests {
             .await;
         let info = client(&server).album_info(9).await.unwrap();
         assert_eq!(info.release_date.as_deref(), Some("2017-06-30"));
-        assert_eq!(info.copyright.as_deref(), Some("(C) 2017 S. Carter Enterprises"));
+        assert_eq!(
+            info.copyright.as_deref(),
+            Some("(C) 2017 S. Carter Enterprises")
+        );
         assert_eq!(info.barcode_id.as_deref(), Some("00881377068540"));
         assert_eq!(info.number_of_volumes, Some(2));
         assert_eq!(info.number_of_items, Some(24));
@@ -818,9 +848,16 @@ mod tests {
             })
             .mount(&server)
             .await;
-        let dates = client(&server).album_release_dates(&[1, 2, 3]).await.unwrap();
+        let dates = client(&server)
+            .album_release_dates(&[1, 2, 3])
+            .await
+            .unwrap();
         assert_eq!(dates, vec![(1, Some("1992-09-21".to_string())), (2, None)]);
-        assert!(client(&server).album_release_dates(&[]).await.unwrap().is_empty());
+        assert!(client(&server)
+            .album_release_dates(&[])
+            .await
+            .unwrap()
+            .is_empty());
     }
 
     #[tokio::test]
@@ -905,7 +942,10 @@ mod tests {
     fn bio_segments_capture_artist_links() {
         let segments =
             bio_segments("See [wimpLink artistId=\"13\"]Band[/wimpLink]. <br/>Then more.");
-        let texts: Vec<&str> = segments.iter().map(|segment| segment.text.as_str()).collect();
+        let texts: Vec<&str> = segments
+            .iter()
+            .map(|segment| segment.text.as_str())
+            .collect();
         assert_eq!(texts, vec!["See ", "Band", ". \nThen more."]);
         let ids: Vec<Option<u64>> = segments.iter().map(|segment| segment.artist_id).collect();
         assert_eq!(ids, vec![None, Some(13), None]);
@@ -930,8 +970,14 @@ mod tests {
     #[test]
     fn discography_filter_params_match_tidal() {
         assert_eq!(ArtistDiscography::Albums.tidal_param(), "ALBUMS");
-        assert_eq!(ArtistDiscography::EpsAndSingles.tidal_param(), "EPSANDSINGLES");
-        assert_eq!(ArtistDiscography::Compilations.tidal_param(), "COMPILATIONS");
+        assert_eq!(
+            ArtistDiscography::EpsAndSingles.tidal_param(),
+            "EPSANDSINGLES"
+        );
+        assert_eq!(
+            ArtistDiscography::Compilations.tidal_param(),
+            "COMPILATIONS"
+        );
     }
 
     #[tokio::test]
@@ -1293,11 +1339,19 @@ mod tests {
         let roles: Vec<(&str, Vec<&str>)> = credits
             .roles
             .iter()
-            .map(|r| (r.role.as_str(), r.contributors.iter().map(|c| c.name.as_str()).collect()))
+            .map(|r| {
+                (
+                    r.role.as_str(),
+                    r.contributors.iter().map(|c| c.name.as_str()).collect(),
+                )
+            })
             .collect();
         assert_eq!(
             roles,
-            vec![("Producer", vec!["Aaron Dessner", "Jack Antonoff"]), ("Banjo", vec!["Aaron Dessner"])]
+            vec![
+                ("Producer", vec!["Aaron Dessner", "Jack Antonoff"]),
+                ("Banjo", vec!["Aaron Dessner"])
+            ]
         );
         assert_eq!(credits.roles[0].contributors[0].artist_id, Some(5957579));
     }
@@ -1331,7 +1385,10 @@ mod tests {
             .expect(1)
             .mount(&server)
             .await;
-        assert_eq!(client(&server).track_credits(1).await.unwrap().roles.len(), 2);
+        assert_eq!(
+            client(&server).track_credits(1).await.unwrap().roles.len(),
+            2
+        );
     }
 
     #[tokio::test]
@@ -1344,6 +1401,11 @@ mod tests {
             })))
             .mount(&server)
             .await;
-        assert!(client(&server).track_credits(1).await.unwrap().roles.is_empty());
+        assert!(client(&server)
+            .track_credits(1)
+            .await
+            .unwrap()
+            .roles
+            .is_empty());
     }
 }

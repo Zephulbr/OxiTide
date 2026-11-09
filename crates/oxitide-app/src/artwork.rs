@@ -119,7 +119,10 @@ impl ArtworkService {
         if uuid.starts_with(TIDAL_IMAGE_HOST) && !uuid.contains("..") {
             return uuid.to_string();
         }
-        format!("{base}/{}/{ANALYSIS_SIZE}x{ANALYSIS_SIZE}.jpg", uuid.replace('-', "/"))
+        format!(
+            "{base}/{}/{ANALYSIS_SIZE}x{ANALYSIS_SIZE}.jpg",
+            uuid.replace('-', "/")
+        )
     }
 
     /// `Err` means "no palette available right now" (empty uuid, HTTP error, or
@@ -169,7 +172,12 @@ impl ArtworkService {
             image::imageops::FilterType::Triangle,
         );
         let pixels: Vec<(u8, u8, u8)> = small.pixels().map(|p| (p[0], p[1], p[2])).collect();
-        Ok(extract_palette(&pixels, EXTRACT_SIDE as usize, EXTRACT_SIDE as usize, room))
+        Ok(extract_palette(
+            &pixels,
+            EXTRACT_SIDE as usize,
+            EXTRACT_SIDE as usize,
+            room,
+        ))
     }
 
     fn save_disk(&self) {
@@ -180,7 +188,10 @@ impl ArtworkService {
             entries.truncate(PALETTE_MAX_ENTRIES);
             memory.extend(entries);
         }
-        let Ok(text) = serde_json::to_string_pretty(&DiskCacheRef { version: CACHE_VERSION, palettes: &memory }) else {
+        let Ok(text) = serde_json::to_string_pretty(&DiskCacheRef {
+            version: CACHE_VERSION,
+            palettes: &memory,
+        }) else {
             return;
         };
         let tmp = self.disk_path.with_extension("json.tmp");
@@ -207,7 +218,11 @@ mod tests {
     }
 
     fn service(server: &MockServer, dir: &std::path::Path) -> ArtworkService {
-        ArtworkService::new(reqwest::Client::new(), server.uri(), dir.join("palettes.json"))
+        ArtworkService::new(
+            reqwest::Client::new(),
+            server.uri(),
+            dir.join("palettes.json"),
+        )
     }
 
     fn temp_dir() -> std::path::PathBuf {
@@ -237,7 +252,11 @@ mod tests {
     fn write_palettes(path: &std::path::Path, uuid: &str, dto: &PaletteDto) {
         let mut palettes = std::collections::HashMap::new();
         palettes.insert(uuid.to_string(), dto.clone());
-        let text = serde_json::to_string(&DiskCache { version: CACHE_VERSION, palettes }).unwrap();
+        let text = serde_json::to_string(&DiskCache {
+            version: CACHE_VERSION,
+            palettes,
+        })
+        .unwrap();
         std::fs::write(path, text).unwrap();
     }
 
@@ -264,12 +283,17 @@ mod tests {
     #[tokio::test]
     async fn fetches_and_extracts_a_real_cover() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/ab/cd/160x160.jpg"))
+        Mock::given(method("GET"))
+            .and(path("/ab/cd/160x160.jpg"))
             .respond_with(ResponseTemplate::new(200).set_body_bytes(png_bytes([200, 30, 40])))
             .expect(1)
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let dir = temp_dir();
-        let palette = service(&server, &dir).palette("ab-cd", Room::Dark).await.unwrap();
+        let palette = service(&server, &dir)
+            .palette("ab-cd", Room::Dark)
+            .await
+            .unwrap();
         assert_ne!(palette.primary, fallback_palette(Room::Dark).primary);
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -279,10 +303,12 @@ mod tests {
     #[tokio::test]
     async fn rooms_cache_separately_and_extract_differently() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/ab/cd/160x160.jpg"))
+        Mock::given(method("GET"))
+            .and(path("/ab/cd/160x160.jpg"))
             .respond_with(ResponseTemplate::new(200).set_body_bytes(png_bytes([200, 30, 40])))
             .expect(2) // once per room; neither may serve the other's entry
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let dir = temp_dir();
         let service = service(&server, &dir);
         let dark = service.palette("ab-cd", Room::Dark).await.unwrap();
@@ -298,7 +324,8 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .respond_with(ResponseTemplate::new(404))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let dir = temp_dir();
         let service = service(&server, &dir);
         assert!(service.palette("missing-uuid", Room::Dark).await.is_err());
@@ -311,20 +338,32 @@ mod tests {
         let base = "https://resources.tidal.com/images";
         let upload = "https://resources.tidal.com/images/ab/cd/750x750.jpg";
         assert_eq!(ArtworkService::url(base, upload), upload);
-        assert_eq!(ArtworkService::url(base, "ab-cd"), format!("{base}/ab/cd/160x160.jpg"));
+        assert_eq!(
+            ArtworkService::url(base, "ab-cd"),
+            format!("{base}/ab/cd/160x160.jpg")
+        );
         // Any other host (or a path escape) is never fetched as given.
-        for other in ["https://evil.example/x.jpg", "http://192.168.1.1/admin", "https://resources.tidal.com/images/../x"] {
-            assert!(!ArtworkService::url(base, other).starts_with(other), "{other}");
+        for other in [
+            "https://evil.example/x.jpg",
+            "http://192.168.1.1/admin",
+            "https://resources.tidal.com/images/../x",
+        ] {
+            assert!(
+                !ArtworkService::url(base, other).starts_with(other),
+                "{other}"
+            );
         }
     }
 
     #[tokio::test]
     async fn the_memory_cache_serves_repeats_without_http() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/ab/cd/160x160.jpg"))
+        Mock::given(method("GET"))
+            .and(path("/ab/cd/160x160.jpg"))
             .respond_with(ResponseTemplate::new(200).set_body_bytes(png_bytes([200, 30, 40])))
             .expect(1) // second call must not hit the server
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let dir = temp_dir();
         let service = service(&server, &dir);
         let first = service.palette("ab-cd", Room::Dark).await.unwrap();
@@ -336,14 +375,22 @@ mod tests {
     #[tokio::test]
     async fn the_disk_cache_survives_a_restart() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/ab/cd/160x160.jpg"))
+        Mock::given(method("GET"))
+            .and(path("/ab/cd/160x160.jpg"))
             .respond_with(ResponseTemplate::new(200).set_body_bytes(png_bytes([200, 30, 40])))
             .expect(1)
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let dir = temp_dir();
-        let first = service(&server, &dir).palette("ab-cd", Room::Dark).await.unwrap();
+        let first = service(&server, &dir)
+            .palette("ab-cd", Room::Dark)
+            .await
+            .unwrap();
         drop(server); // server gone; a fresh service must read the disk cache
-        let second = service(&MockServer::start().await, &dir).palette("ab-cd", Room::Dark).await.unwrap();
+        let second = service(&MockServer::start().await, &dir)
+            .palette("ab-cd", Room::Dark)
+            .await
+            .unwrap();
         assert_eq!(first, second);
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -354,17 +401,22 @@ mod tests {
     #[tokio::test]
     async fn stale_cache_entries_are_discarded_on_version_mismatch() {
         let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/ab/cd/160x160.jpg"))
+        Mock::given(method("GET"))
+            .and(path("/ab/cd/160x160.jpg"))
             .respond_with(ResponseTemplate::new(200).set_body_bytes(png_bytes([200, 30, 40])))
             .expect(1) // the stale entry must not suppress the refetch
-            .mount(&server).await;
+            .mount(&server)
+            .await;
         let dir = temp_dir();
         std::fs::write(
             dir.join("palettes.json"),
             r##"{"palettes":{"ab-cd":{"primary":"#ffffff","on_primary":"#000000","secondary":"#111111","tertiary":"#222222","backdrop":"#333333","ceiling_l":0.1}}}"##,
         )
         .unwrap();
-        let palette = service(&server, &dir).palette("ab-cd", Room::Dark).await.unwrap();
+        let palette = service(&server, &dir)
+            .palette("ab-cd", Room::Dark)
+            .await
+            .unwrap();
         assert_ne!(palette.primary, "#ffffff");
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -391,8 +443,14 @@ mod tests {
 
         let memory = service.memory().lock().unwrap();
         assert_eq!(memory.len(), PALETTE_MAX_ENTRIES);
-        assert!(memory.contains_key("uuid-02004"), "the newest entry was pruned");
-        assert!(!memory.contains_key("uuid-00000"), "the oldest entry survived");
+        assert!(
+            memory.contains_key("uuid-02004"),
+            "the newest entry was pruned"
+        );
+        assert!(
+            !memory.contains_key("uuid-00000"),
+            "the oldest entry survived"
+        );
         drop(memory);
         let text = std::fs::read_to_string(dir.join("palettes.json")).unwrap();
         let cache: DiskCache = serde_json::from_str(&text).unwrap();
@@ -414,7 +472,10 @@ mod tests {
             r##"{{"version":{CACHE_VERSION},"palettes":{{"dark|ab-cd":{{"primary":"#aaaaaa","on_primary":"#000000","secondary":"#111111","tertiary":"#222222","backdrop":"#333333","ceiling_l":0.5}}}}}}"##
         );
         std::fs::write(&path, text).unwrap();
-        let palette = service(&server, &dir).palette("ab-cd", Room::Dark).await.unwrap();
+        let palette = service(&server, &dir)
+            .palette("ab-cd", Room::Dark)
+            .await
+            .unwrap();
         assert_eq!(palette.primary, "#aaaaaa");
         let _ = std::fs::remove_dir_all(dir);
     }

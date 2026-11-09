@@ -20,7 +20,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, PeekMessageW, TranslateMessage, MSG, PM_REMOVE,
 };
 
-use super::{cover_url, to_engine_cmd, ControlCommand, PlayState, SessionSender, SessionUpdate, TrackMeta};
+use super::{
+    cover_url, to_engine_cmd, ControlCommand, PlayState, SessionSender, SessionUpdate, TrackMeta,
+};
 
 const THUMBNAIL_SIZE: u32 = 320;
 const CHANNEL_CAPACITY: usize = 64;
@@ -43,7 +45,12 @@ impl MediaSession {
             .name("oxitide-smtc".into())
             .spawn(move || worker(engine, hwnd, rx, worker_flag, worker_shutdown))
             .map_err(|e| e.to_string())?;
-        Ok(Self { tx: Some(tx), enabled: flag, shutdown, handle: Some(handle) })
+        Ok(Self {
+            tx: Some(tx),
+            enabled: flag,
+            shutdown,
+            handle: Some(handle),
+        })
     }
 
     pub fn sender(&self) -> SessionSender {
@@ -83,13 +90,18 @@ fn setup(engine: &Engine, hwnd: isize) -> windows::core::Result<Smtc> {
     updater.SetType(MediaPlaybackType::Music)?;
 
     let buttons = engine.clone();
-    let button_handler = TypedEventHandler::new(
-        move |_, args: windows::core::Ref<'_, SystemMediaTransportControlsButtonPressedEventArgs>| {
-            let args = args.ok()?;
-            dispatch_button(&buttons, args.Button()?);
-            Ok(())
-        },
-    );
+    let button_handler =
+        TypedEventHandler::new(
+            move |_,
+                  args: windows::core::Ref<
+                '_,
+                SystemMediaTransportControlsButtonPressedEventArgs,
+            >| {
+                let args = args.ok()?;
+                dispatch_button(&buttons, args.Button()?);
+                Ok(())
+            },
+        );
     controls.ButtonPressed(&button_handler)?;
 
     let seeker = engine.clone();
@@ -97,7 +109,9 @@ fn setup(engine: &Engine, hwnd: isize) -> windows::core::Result<Smtc> {
         move |_, args: windows::core::Ref<'_, PlaybackPositionChangeRequestedEventArgs>| {
             let args = args.ok()?;
             let requested = Duration::from(args.RequestedPlaybackPosition()?);
-            let _ = seeker.handle(to_engine_cmd(ControlCommand::Seek(requested.as_millis() as u64)));
+            let _ = seeker.handle(to_engine_cmd(ControlCommand::Seek(
+                requested.as_millis() as u64
+            )));
             Ok(())
         },
     );
@@ -194,7 +208,10 @@ fn worker(
                                 tracing::warn!("SMTC status failed: {e}");
                             }
                         }
-                        SessionUpdate::Position { position_ms, duration_ms } => {
+                        SessionUpdate::Position {
+                            position_ms,
+                            duration_ms,
+                        } => {
                             if let Err(e) = apply_position(s, *position_ms, *duration_ms) {
                                 tracing::warn!("SMTC timeline failed: {e}");
                             }
@@ -204,7 +221,10 @@ fn worker(
                 match update {
                     SessionUpdate::Track(track) => last_track = track,
                     SessionUpdate::Playback(state) => last_play = state,
-                    SessionUpdate::Position { position_ms, duration_ms } => {
+                    SessionUpdate::Position {
+                        position_ms,
+                        duration_ms,
+                    } => {
                         last_position = (position_ms, duration_ms);
                     }
                 }
@@ -237,7 +257,11 @@ fn apply_track(smtc: &mut Smtc, track: Option<&TrackMeta>) -> windows::core::Res
     properties.SetTitle(&HSTRING::from(track.title.as_str()))?;
     properties.SetArtist(&HSTRING::from(track.artist.as_str()))?;
     properties.SetAlbumTitle(&HSTRING::from(track.album.as_str()))?;
-    if let Some(url) = track.cover.as_deref().and_then(|cover| cover_url(cover, THUMBNAIL_SIZE)) {
+    if let Some(url) = track
+        .cover
+        .as_deref()
+        .and_then(|cover| cover_url(cover, THUMBNAIL_SIZE))
+    {
         if let Ok(uri) = Uri::CreateUri(&HSTRING::from(url.as_str())) {
             if let Ok(stream) = RandomAccessStreamReference::CreateFromUri(&uri) {
                 let _ = smtc.updater.SetThumbnail(&stream);
@@ -247,7 +271,11 @@ fn apply_track(smtc: &mut Smtc, track: Option<&TrackMeta>) -> windows::core::Res
     smtc.updater.Update()
 }
 
-fn apply_position(smtc: &mut Smtc, position_ms: u64, duration_ms: u64) -> windows::core::Result<()> {
+fn apply_position(
+    smtc: &mut Smtc,
+    position_ms: u64,
+    duration_ms: u64,
+) -> windows::core::Result<()> {
     let start = TimeSpan::default();
     let end = TimeSpan::from(Duration::from_millis(duration_ms));
     let position = TimeSpan::from(Duration::from_millis(position_ms));

@@ -14,7 +14,11 @@ pub struct AlbumRef {
     pub cover: Option<String>,
     /// Embedded only in playlist track payloads (multi-sort probe); other
     /// lists resolve it through the album release-date store.
-    #[serde(default, rename = "releaseDate", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        rename = "releaseDate",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub release_date: Option<String>,
 }
 
@@ -340,7 +344,9 @@ pub enum TopHit {
 
 /// `{"type": "ARTISTS", "value": {...}}`. Anything unexpected (a video, a
 /// missing or malformed value) is no top hit rather than a failed search.
-fn lenient_top_hit<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<Option<TopHit>, D::Error> {
+fn lenient_top_hit<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> std::result::Result<Option<TopHit>, D::Error> {
     let raw: Option<serde_json::Value> = Option::deserialize(d)?;
     let Some(mut raw) = raw else { return Ok(None) };
     let kind = raw
@@ -348,7 +354,10 @@ fn lenient_top_hit<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Resul
         .and_then(|t| t.as_str())
         .unwrap_or_default()
         .to_ascii_uppercase();
-    let value = raw.get_mut("value").map(serde_json::Value::take).unwrap_or_default();
+    let value = raw
+        .get_mut("value")
+        .map(serde_json::Value::take)
+        .unwrap_or_default();
     let hit = match kind.trim_end_matches('S') {
         "ARTIST" => serde_json::from_value(value).map(TopHit::Artist).ok(),
         "ALBUM" => serde_json::from_value(value).map(TopHit::Album).ok(),
@@ -467,8 +476,14 @@ mod tests {
         }"#;
         let t: Track = serde_json::from_str(raw).unwrap();
         assert_eq!(t.popularity, Some(71));
-        assert_eq!(t.date_added.as_deref(), Some("2025-08-06T17:50:35.372+0000"));
-        assert_eq!(t.album.as_ref().unwrap().release_date.as_deref(), Some("1992-09-21"));
+        assert_eq!(
+            t.date_added.as_deref(),
+            Some("2025-08-06T17:50:35.372+0000")
+        );
+        assert_eq!(
+            t.album.as_ref().unwrap().release_date.as_deref(),
+            Some("1992-09-21")
+        );
         let value = serde_json::to_value(&t).unwrap();
         assert_eq!(value["dateAdded"], "2025-08-06T17:50:35.372+0000");
         assert_eq!(value["popularity"], 71);

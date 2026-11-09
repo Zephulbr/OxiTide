@@ -123,7 +123,9 @@ impl AppState {
     }
 
     pub fn set_player(&self, player: Player) {
-        player.engine.set_beat_tracking(self.beat_tracking.load(Ordering::SeqCst));
+        player
+            .engine
+            .set_beat_tracking(self.beat_tracking.load(Ordering::SeqCst));
         let old = self.player.write().unwrap().replace(Arc::new(player));
         // Dropped after the lock is released: tearing down the old engine must
         // never run under (or poison) the player lock.
@@ -512,10 +514,7 @@ mod tests {
     fn session_saver_starts_unset_and_is_set_once() {
         let state = AppState::default();
         assert!(state.session_saver().is_none());
-        let dir = std::env::temp_dir().join(format!(
-            "oxitide-state-saver-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("oxitide-state-saver-{}", std::process::id()));
         let saver = Arc::new(crate::session::SessionSaver::start(
             dir.join("session.json"),
             std::time::Duration::from_secs(60),
@@ -528,7 +527,8 @@ mod tests {
     fn history_starts_unset_and_is_set_once() {
         let state = AppState::default();
         assert!(state.history().is_none());
-        let dir = std::env::temp_dir().join(format!("oxitide-state-history-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("oxitide-state-history-{}", std::process::id()));
         let store = Arc::new(crate::history::HistoryStore::start(
             dir.join("history.jsonl"),
             100,

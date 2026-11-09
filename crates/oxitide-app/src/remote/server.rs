@@ -29,7 +29,9 @@ use tokio::sync::{watch, Semaphore};
 
 use super::events::{self, Hub};
 use super::guard::{self, RateLimiter, COOKIE_NAME};
-use super::pairing::{now_ms, Approvals, DeviceRecord, DeviceStore, PairError, Pairing, APPROVAL_TIMEOUT};
+use super::pairing::{
+    now_ms, Approvals, DeviceRecord, DeviceStore, PairError, Pairing, APPROVAL_TIMEOUT,
+};
 use super::rpc::{self, RemoteCommand, RpcError, RpcRequest, RpcResponse, MAX_RESPONSE_BYTES};
 use super::{AssetSource, RemoteEvents, RemoteSession};
 
@@ -68,7 +70,11 @@ impl Connections {
             return None;
         }
         *map.entry(device.to_string()).or_default() += 1;
-        Some(StreamGuard { connections: self.clone(), device: device.to_string(), events })
+        Some(StreamGuard {
+            connections: self.clone(),
+            device: device.to_string(),
+            events,
+        })
     }
 }
 
@@ -287,23 +293,41 @@ async fn guard_layer(
     let headers = request.headers();
     let host = header_str(headers, header::HOST).unwrap_or("");
     if !guard::host_allowed(host, conn.local.ip(), ctx.port) {
-        return error_response(StatusCode::FORBIDDEN, &RpcError::new("forbidden", "unexpected host"));
+        return error_response(
+            StatusCode::FORBIDDEN,
+            &RpcError::new("forbidden", "unexpected host"),
+        );
     }
     if !guard::origin_allowed(header_str(headers, header::ORIGIN), host) {
-        return error_response(StatusCode::FORBIDDEN, &RpcError::new("forbidden", "cross-origin request"));
+        return error_response(
+            StatusCode::FORBIDDEN,
+            &RpcError::new("forbidden", "cross-origin request"),
+        );
     }
     if request.method() == Method::POST {
-        let json = header_str(headers, header::CONTENT_TYPE)
-            .is_some_and(|ct| ct.split(';').next().is_some_and(|m| m.trim().eq_ignore_ascii_case("application/json")));
+        let json = header_str(headers, header::CONTENT_TYPE).is_some_and(|ct| {
+            ct.split(';')
+                .next()
+                .is_some_and(|m| m.trim().eq_ignore_ascii_case("application/json"))
+        });
         let marked = headers.get("x-oxi-remote").is_some_and(|v| v == "1");
         if !json || !marked {
-            return error_response(StatusCode::FORBIDDEN, &RpcError::new("forbidden", "not a remote request"));
+            return error_response(
+                StatusCode::FORBIDDEN,
+                &RpcError::new("forbidden", "not a remote request"),
+            );
         }
     }
     let mut response = next.run(request).await;
     let headers = response.headers_mut();
-    headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
-    headers.insert(header::REFERRER_POLICY, HeaderValue::from_static("no-referrer"));
+    headers.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        header::REFERRER_POLICY,
+        HeaderValue::from_static("no-referrer"),
+    );
     headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
     response
 }
@@ -355,12 +379,11 @@ impl IntoResponse for Denied {
 
 async fn dispatch(ctx: &Ctx, request: RpcRequest) -> Result<Value, RpcError> {
     let command = rpc::parse(&request.method, request.params)?;
-    let to_value = |v: Result<Value, serde_json::Error>| v.map_err(|e| RpcError::new("failed", e.to_string()));
+    let to_value =
+        |v: Result<Value, serde_json::Error>| v.map_err(|e| RpcError::new("failed", e.to_string()));
     match command {
         RemoteCommand::GetRemoteState => to_value(serde_json::to_value(ctx.hub.snapshot())),
-        _ if !ctx.session.logged_in() => {
-            Err(RpcError::new("not_logged_in", "sign in on the PC"))
-        }
+        _ if !ctx.session.logged_in() => Err(RpcError::new("not_logged_in", "sign in on the PC")),
         RemoteCommand::GetQueuePage { offset, limit } => {
             to_value(serde_json::to_value(ctx.hub.queue_page(offset, limit)))
         }
@@ -390,7 +413,10 @@ async fn rpc_call(
     let request = match serde_json::from_slice::<RpcRequest>(&body) {
         Ok(request) => request,
         Err(e) => {
-            return error_response(StatusCode::BAD_REQUEST, &RpcError::new("bad_params", e.to_string()))
+            return error_response(
+                StatusCode::BAD_REQUEST,
+                &RpcError::new("bad_params", e.to_string()),
+            )
         }
     };
     let body = match dispatch(&ctx, request).await {
@@ -436,7 +462,11 @@ async fn pair(
         return too_many(retry);
     }
     let Ok(body) = serde_json::from_slice::<PairBody>(&body) else {
-        return pair_error(StatusCode::BAD_REQUEST, "bad_params", "expected {token, deviceName}");
+        return pair_error(
+            StatusCode::BAD_REQUEST,
+            "bad_params",
+            "expected {token, deviceName}",
+        );
     };
     match ctx.pairing.reserve(&body.token, now) {
         Ok(()) => {}
@@ -449,7 +479,11 @@ async fn pair(
             );
         }
         Err(PairError::Busy) => {
-            return pair_error(StatusCode::CONFLICT, "busy", "another phone is pairing with this code")
+            return pair_error(
+                StatusCode::CONFLICT,
+                "busy",
+                "another phone is pairing with this code",
+            )
         }
     }
     let name = guard::sanitize_device_name(&body.device_name);
@@ -478,7 +512,11 @@ async fn pair(
             Some(true) => {}
             Some(false) => {
                 ctx.pairing.consume(&body.token);
-                return pair_error(StatusCode::FORBIDDEN, "denied", "pairing was declined on the PC");
+                return pair_error(
+                    StatusCode::FORBIDDEN,
+                    "denied",
+                    "pairing was declined on the PC",
+                );
             }
             None => {
                 ctx.pairing.release(&body.token);
@@ -496,7 +534,8 @@ async fn pair(
         Err(e) => return pair_error(StatusCode::INTERNAL_SERVER_ERROR, "failed", &e),
     };
     ctx.events.changed();
-    let cookie = format!("{COOKIE_NAME}={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000");
+    let cookie =
+        format!("{COOKIE_NAME}={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000");
     let mut response = (
         StatusCode::OK,
         axum::Json(json!({"ok": true, "result": {"deviceId": device.id, "name": device.name}})),
@@ -526,16 +565,15 @@ async fn event_stream(
         );
     };
     ctx.events.changed();
-    let stream = events::client_stream(ctx.hub.clone(), device.id, ctx.shutdown.clone(), guard).map(
-        |message| {
+    let stream = events::client_stream(ctx.hub.clone(), device.id, ctx.shutdown.clone(), guard)
+        .map(|message| {
             Ok::<_, Infallible>(
                 Event::default()
                     .event(message.event)
                     .id(message.id.to_string())
                     .data(message.data),
             )
-        },
-    );
+        });
     let mut response = Sse::new(stream)
         .keep_alive(KeepAlive::new().interval(KEEP_ALIVE).text("keep-alive"))
         .into_response();
@@ -570,7 +608,11 @@ async fn asset(State(ctx): State<Arc<Ctx>>, method: Method, uri: Uri) -> Respons
     let (lookup, is_entry) = match path {
         "remote" | "remote/" | "remote.html" => ("remote.html".to_string(), true),
         _ => (
-            uri.path_and_query().map(|pq| pq.as_str()).unwrap_or(path).trim_start_matches('/').to_string(),
+            uri.path_and_query()
+                .map(|pq| pq.as_str())
+                .unwrap_or(path)
+                .trim_start_matches('/')
+                .to_string(),
             false,
         ),
     };
@@ -583,7 +625,10 @@ async fn asset(State(ctx): State<Arc<Ctx>>, method: Method, uri: Uri) -> Respons
         headers.insert(header::CONTENT_TYPE, mime);
     }
     let cache = if is_entry || file.mime.starts_with("text/html") {
-        headers.insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static(PAGE_CSP));
+        headers.insert(
+            header::CONTENT_SECURITY_POLICY,
+            HeaderValue::from_static(PAGE_CSP),
+        );
         "no-store"
     } else if path.starts_with("assets/") {
         "public, max-age=31536000, immutable"
@@ -607,8 +652,14 @@ mod tests {
     impl AssetSource for FakeAssets {
         fn get(&self, path: &str) -> BoxFuture<'static, Option<Asset>> {
             let found = match path {
-                "remote.html" => Some(Asset { bytes: b"<!doctype html>remote".to_vec(), mime: "text/html".into() }),
-                "assets/app.js" => Some(Asset { bytes: b"js".to_vec(), mime: "text/javascript".into() }),
+                "remote.html" => Some(Asset {
+                    bytes: b"<!doctype html>remote".to_vec(),
+                    mime: "text/html".into(),
+                }),
+                "assets/app.js" => Some(Asset {
+                    bytes: b"js".to_vec(),
+                    mime: "text/javascript".into(),
+                }),
                 _ => None,
             };
             Box::pin(async move { found })
@@ -645,7 +696,10 @@ mod tests {
         let events = Arc::new(FakeEvents::default());
         let devices = Arc::new(DeviceStore::load(None));
         let service = RemoteService::start(
-            RemoteOptions { port: 0, approve_new_devices: approve },
+            RemoteOptions {
+                port: 0,
+                approve_new_devices: approve,
+            },
             session.clone(),
             Arc::new(FakeAssets),
             events.clone(),
@@ -682,8 +736,14 @@ mod tests {
                 .await
                 .unwrap();
             assert_eq!(response.status(), 200);
-            let cookie = response.headers()[header::SET_COOKIE].to_str().unwrap().to_string();
-            assert!(cookie.contains("HttpOnly") && cookie.contains("SameSite=Strict"), "{cookie}");
+            let cookie = response.headers()[header::SET_COOKIE]
+                .to_str()
+                .unwrap()
+                .to_string();
+            assert!(
+                cookie.contains("HttpOnly") && cookie.contains("SameSite=Strict"),
+                "{cookie}"
+            );
             cookie.split(';').next().unwrap().to_string()
         }
 
@@ -741,7 +801,9 @@ mod tests {
         let (_, body) = h.rpc(&cookie, "play_pause", Value::Null).await;
         assert_eq!(body["ok"], true);
         assert_eq!(h.session.commands.lock().unwrap().as_slice(), ["PlayPause"]);
-        let (_, body) = h.rpc(&cookie, "get_queue_page", json!({"offset": 1, "limit": 1})).await;
+        let (_, body) = h
+            .rpc(&cookie, "get_queue_page", json!({"offset": 1, "limit": 1}))
+            .await;
         assert_eq!(body["result"]["items"][0]["track_id"], 2);
         let (_, body) = h.rpc(&cookie, "get_config", Value::Null).await;
         assert_eq!(body["error"], "unknown_method: get_config");
@@ -752,11 +814,23 @@ mod tests {
     async fn bad_token_and_replay_are_rejected() {
         let h = harness(false).await;
         let token = h.service.begin_pairing().unwrap();
-        let bad = h.post("/api/pair", json!({"token": "nope"})).send().await.unwrap();
+        let bad = h
+            .post("/api/pair", json!({"token": "nope"}))
+            .send()
+            .await
+            .unwrap();
         assert_eq!(bad.status(), 403);
-        let ok = h.post("/api/pair", json!({"token": token})).send().await.unwrap();
+        let ok = h
+            .post("/api/pair", json!({"token": token}))
+            .send()
+            .await
+            .unwrap();
         assert_eq!(ok.status(), 200);
-        let replay = h.post("/api/pair", json!({"token": token})).send().await.unwrap();
+        let replay = h
+            .post("/api/pair", json!({"token": token}))
+            .send()
+            .await
+            .unwrap();
         assert_eq!(replay.status(), 403);
         h.service.stop();
     }
@@ -766,10 +840,18 @@ mod tests {
         let h = harness(false).await;
         h.service.begin_pairing().unwrap();
         for _ in 0..5 {
-            let r = h.post("/api/pair", json!({"token": "nope"})).send().await.unwrap();
+            let r = h
+                .post("/api/pair", json!({"token": "nope"}))
+                .send()
+                .await
+                .unwrap();
             assert_eq!(r.status(), 403);
         }
-        let locked = h.post("/api/pair", json!({"token": "nope"})).send().await.unwrap();
+        let locked = h
+            .post("/api/pair", json!({"token": "nope"}))
+            .send()
+            .await
+            .unwrap();
         assert_eq!(locked.status(), 429);
         assert!(locked.headers().contains_key(header::RETRY_AFTER));
         h.service.stop();
@@ -779,7 +861,9 @@ mod tests {
     async fn approval_gates_new_devices() {
         let h = harness(true).await;
         let token = h.service.begin_pairing().unwrap();
-        let request = h.post("/api/pair", json!({"token": token, "deviceName": "iPhone"})).send();
+        let request = h
+            .post("/api/pair", json!({"token": token, "deviceName": "iPhone"}))
+            .send();
         let pending = tokio::spawn(request);
         let id = loop {
             if let Some(r) = h.events.requests.lock().unwrap().first() {
@@ -792,7 +876,11 @@ mod tests {
         let denied = pending.await.unwrap().unwrap();
         assert_eq!(denied.status(), 403);
         assert!(h.devices.list().is_empty());
-        let reuse = h.post("/api/pair", json!({"token": token})).send().await.unwrap();
+        let reuse = h
+            .post("/api/pair", json!({"token": token}))
+            .send()
+            .await
+            .unwrap();
         assert_eq!(reuse.status(), 403, "a denied token is burned");
         h.service.stop();
     }
@@ -803,7 +891,9 @@ mod tests {
         let (status, body) = h.rpc("", "get_remote_state", Value::Null).await;
         assert_eq!(status, 401);
         assert_eq!(body["ok"], false);
-        let (status, _) = h.rpc("oxi_remote=forged", "get_remote_state", Value::Null).await;
+        let (status, _) = h
+            .rpc("oxi_remote=forged", "get_remote_state", Value::Null)
+            .await;
         assert_eq!(status, 401);
         h.service.stop();
     }
@@ -841,7 +931,10 @@ mod tests {
             .unwrap();
         assert_eq!(no_marker.status(), 403);
         let oversize = h
-            .post("/api/rpc", json!({"method": "search", "params": {"query": "x".repeat(70_000)}}))
+            .post(
+                "/api/rpc",
+                json!({"method": "search", "params": {"query": "x".repeat(70_000)}}),
+            )
             .header(header::COOKIE, &cookie)
             .send()
             .await
@@ -853,10 +946,20 @@ mod tests {
     #[tokio::test]
     async fn page_is_served_with_its_csp() {
         let h = harness(false).await;
-        let page = h.http.get(format!("{}/remote", h.base)).send().await.unwrap();
+        let page = h
+            .http
+            .get(format!("{}/remote", h.base))
+            .send()
+            .await
+            .unwrap();
         assert_eq!(page.status(), 200);
-        let csp = page.headers()[header::CONTENT_SECURITY_POLICY].to_str().unwrap().to_string();
-        assert!(csp.contains("https://resources.tidal.com") && csp.contains("frame-ancestors 'none'"));
+        let csp = page.headers()[header::CONTENT_SECURITY_POLICY]
+            .to_str()
+            .unwrap()
+            .to_string();
+        assert!(
+            csp.contains("https://resources.tidal.com") && csp.contains("frame-ancestors 'none'")
+        );
         let root = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .build()
@@ -866,13 +969,37 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(root.status(), 303);
-        let js = h.http.get(format!("{}/assets/app.js", h.base)).send().await.unwrap();
+        let js = h
+            .http
+            .get(format!("{}/assets/app.js", h.base))
+            .send()
+            .await
+            .unwrap();
         assert_eq!(js.status(), 200);
-        assert!(js.headers()[header::CACHE_CONTROL].to_str().unwrap().contains("immutable"));
-        let shell = h.http.get(format!("{}/index.html", h.base)).send().await.unwrap();
+        assert!(js.headers()[header::CACHE_CONTROL]
+            .to_str()
+            .unwrap()
+            .contains("immutable"));
+        let shell = h
+            .http
+            .get(format!("{}/index.html", h.base))
+            .send()
+            .await
+            .unwrap();
         assert_eq!(shell.status(), 404);
-        for probe in ["/%2e%2e/secret", "/assets/%2E%2E%2Fx", "/@fs/C:/Users/x.txt", "/.env", "/assets/.git/config"] {
-            let r = h.http.get(format!("{}{probe}", h.base)).send().await.unwrap();
+        for probe in [
+            "/%2e%2e/secret",
+            "/assets/%2E%2E%2Fx",
+            "/@fs/C:/Users/x.txt",
+            "/.env",
+            "/assets/.git/config",
+        ] {
+            let r = h
+                .http
+                .get(format!("{}{probe}", h.base))
+                .send()
+                .await
+                .unwrap();
             assert_eq!(r.status(), 404, "{probe}");
         }
         h.service.stop();
@@ -907,10 +1034,11 @@ mod tests {
         assert!(first[0].1.contains("\"queueLen\":3"));
         assert_eq!(h.service.connected(), 1);
 
-        h.service.on_engine_event(&oxitide_audio::engine::EngineEvent::Error {
-            code: "net".into(),
-            message: "down".into(),
-        });
+        h.service
+            .on_engine_event(&oxitide_audio::engine::EngineEvent::Error {
+                code: "net".into(),
+                message: "down".into(),
+            });
         let delta = read_events(&mut stream, 1).await;
         assert_eq!(delta[0].0, "error");
 
@@ -939,7 +1067,9 @@ mod tests {
         h.service.stop();
         let last = read_events(&mut stream, 1).await;
         assert_eq!(last[0].0, "revoked");
-        let end = tokio::time::timeout(Duration::from_secs(5), stream.chunk()).await.unwrap();
+        let end = tokio::time::timeout(Duration::from_secs(5), stream.chunk())
+            .await
+            .unwrap();
         assert!(matches!(end, Ok(None) | Err(_)), "the stream ends");
     }
 

@@ -65,12 +65,18 @@ mod tests {
 
     #[test]
     fn manifest_error_has_stable_message() {
-        assert_eq!(Error::Manifest("bad".into()).to_string(), "manifest error: bad");
+        assert_eq!(
+            Error::Manifest("bad".into()).to_string(),
+            "manifest error: bad"
+        );
     }
 
     #[test]
     fn tap_error_includes_message() {
-        assert_eq!(Error::Decode("boom".into()).to_string(), "decode error: boom");
+        assert_eq!(
+            Error::Decode("boom".into()).to_string(),
+            "decode error: boom"
+        );
     }
 
     #[test]
@@ -134,6 +140,9 @@ mod tests {
         assert!(!Error::Decode("boom".into()).is_transient());
         assert!(!Error::Manifest("bad".into()).is_transient());
         assert!(!Error::Unavailable("low".into()).is_transient());
-        assert!(!Error::NetworkLost("5 min".into()).is_transient(), "a spent wait must not restart");
+        assert!(
+            !Error::NetworkLost("5 min".into()).is_transient(),
+            "a spent wait must not restart"
+        );
     }
 }

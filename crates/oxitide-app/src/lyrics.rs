@@ -426,7 +426,10 @@ mod tests {
         write_lyrics(&path, 7, "old");
         let service = LyricsService::new(reqwest::Client::new(), lrclib.uri(), path.clone());
         write_lyrics(&path, 7, "new");
-        let got = service.get(&tidal_client(&tidal), &request(7)).await.unwrap();
+        let got = service
+            .get(&tidal_client(&tidal), &request(7))
+            .await
+            .unwrap();
         assert_eq!(got.lines[0].text, "new");
         let _ = std::fs::remove_dir_all(dir);
     }

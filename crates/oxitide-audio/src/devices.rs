@@ -103,7 +103,9 @@ impl DeviceCaps {
 }
 
 /// Rates an active check tries, highest first.
-pub const PROBE_RATES: [u32; 8] = [384_000, 352_800, 192_000, 176_400, 96_000, 88_200, 48_000, 44_100];
+pub const PROBE_RATES: [u32; 8] = [
+    384_000, 352_800, 192_000, 176_400, 96_000, 88_200, 48_000, 44_100,
+];
 /// Integer depths an active check tries, highest first.
 pub const PROBE_BITS: [u16; 3] = [32, 24, 16];
 
@@ -187,7 +189,10 @@ pub fn wasapi_identity(props: &WasapiProps) -> (String, DeviceKind, Transport) {
         Transport::Bluetooth
     } else if display {
         Transport::Hdmi
-    } else if enumerator.contains("HDAUDIO") || enumerator.contains("INTELAUDIO") || enumerator == "ACPI" {
+    } else if enumerator.contains("HDAUDIO")
+        || enumerator.contains("INTELAUDIO")
+        || enumerator == "ACPI"
+    {
         Transport::Internal
     } else if matches!(enumerator.as_str(), "ROOT" | "SW" | "SWD" | "MMDEVAPI") {
         Transport::Virtual
@@ -212,7 +217,10 @@ pub fn wasapi_identity(props: &WasapiProps) -> (String, DeviceKind, Transport) {
     let adapter = strip_number_prefix(&props.adapter);
     let name = if display && !endpoint.is_empty() {
         endpoint.to_string()
-    } else if is_generic_endpoint_name(endpoint) && transport != Transport::Internal && !adapter.is_empty() {
+    } else if is_generic_endpoint_name(endpoint)
+        && transport != Transport::Internal
+        && !adapter.is_empty()
+    {
         adapter.to_string()
     } else if !endpoint.is_empty() {
         endpoint.to_string()
@@ -224,7 +232,13 @@ pub fn wasapi_identity(props: &WasapiProps) -> (String, DeviceKind, Transport) {
 
 /// ASIO drivers that wrap the Windows audio engine instead of a device.
 pub fn is_wrapper_asio(key: &str, description: &str) -> bool {
-    const WRAPPERS: &[&str] = &["asio4all", "flexasio", "realtek asio", "asio2wasapi", "generic low latency"];
+    const WRAPPERS: &[&str] = &[
+        "asio4all",
+        "flexasio",
+        "realtek asio",
+        "asio2wasapi",
+        "generic low latency",
+    ];
     let text = format!("{key} {description}").to_ascii_lowercase();
     WRAPPERS.iter().any(|w| text.contains(w))
 }
@@ -249,10 +263,13 @@ pub fn dedupe_names(devices: &mut [OutputDevice]) {
     use std::collections::HashMap;
     let mut counts: HashMap<(DeviceGroup, String), usize> = HashMap::new();
     for device in devices.iter() {
-        *counts.entry((device.group, device.name.to_lowercase())).or_default() += 1;
+        *counts
+            .entry((device.group, device.name.to_lowercase()))
+            .or_default() += 1;
     }
     for device in devices.iter_mut() {
-        if counts[&(device.group, device.name.to_lowercase())] > 1 && !device.system_name.is_empty() {
+        if counts[&(device.group, device.name.to_lowercase())] > 1 && !device.system_name.is_empty()
+        {
             device.name = strip_number_prefix(&device.system_name).to_string();
         }
     }
@@ -279,7 +296,10 @@ pub fn parse_eld(text: &str) -> Option<Eld> {
             _ => {}
         }
     }
-    present.map(|monitor_present| Eld { monitor_present, monitor_name: name })
+    present.map(|monitor_present| Eld {
+        monitor_present,
+        monitor_name: name,
+    })
 }
 
 /// The best playback rate and depth a USB card advertises in
@@ -302,7 +322,10 @@ pub fn parse_usb_stream(text: &str) -> Option<(u32, u16)> {
             continue;
         }
         if let Some(format) = line.strip_prefix("Format:") {
-            for token in format.split(|c: char| c == ',' || c.is_whitespace()).filter(|t| !t.is_empty()) {
+            for token in format
+                .split(|c: char| c == ',' || c.is_whitespace())
+                .filter(|t| !t.is_empty())
+            {
                 best_bits = best_bits.max(alsa_format_bits(token));
             }
         } else if let Some(bits) = line.strip_prefix("Bits:") {
@@ -310,7 +333,10 @@ pub fn parse_usb_stream(text: &str) -> Option<(u32, u16)> {
                 best_bits = best_bits.max(bits);
             }
         } else if let Some(rates) = line.strip_prefix("Rates:") {
-            for number in rates.split(|c: char| !c.is_ascii_digit()).filter(|t| !t.is_empty()) {
+            for number in rates
+                .split(|c: char| !c.is_ascii_digit())
+                .filter(|t| !t.is_empty())
+            {
                 if let Ok(rate) = number.parse::<u32>() {
                     best_rate = best_rate.max(rate);
                 }
@@ -346,9 +372,17 @@ pub struct AlsaPcmInfo {
 
 /// Name, system name, kind, connection and presence of an ALSA PCM row.
 pub fn alsa_identity(pcm: &AlsaPcmInfo) -> (String, String, DeviceKind, Transport, bool) {
-    let card = if pcm.card_name.trim().is_empty() { pcm.card_id.trim() } else { pcm.card_name.trim() };
+    let card = if pcm.card_name.trim().is_empty() {
+        pcm.card_id.trim()
+    } else {
+        pcm.card_name.trim()
+    };
     let pcm_name = pcm.pcm_name.trim();
-    let system_name = if pcm_name.is_empty() { card.to_string() } else { format!("{card}, {pcm_name}") };
+    let system_name = if pcm_name.is_empty() {
+        card.to_string()
+    } else {
+        format!("{card}, {pcm_name}")
+    };
     let upper = pcm_name.to_ascii_uppercase();
     let hdmi = upper.contains("HDMI") || upper.contains("DISPLAYPORT") || upper.starts_with("DP ");
     let transport = if pcm.usb {
@@ -370,7 +404,9 @@ pub fn alsa_identity(pcm: &AlsaPcmInfo) -> (String, String, DeviceKind, Transpor
     };
     let present = pcm.eld.as_ref().is_none_or(|eld| eld.monitor_present);
     let name = match &pcm.eld {
-        Some(eld) if eld.monitor_present && !eld.monitor_name.trim().is_empty() => eld.monitor_name.trim().to_string(),
+        Some(eld) if eld.monitor_present && !eld.monitor_name.trim().is_empty() => {
+            eld.monitor_name.trim().to_string()
+        }
         _ if hdmi => {
             if pcm.multi && !pcm_name.is_empty() {
                 pcm_name.to_string()
@@ -391,7 +427,12 @@ pub fn alsa_identity(pcm: &AlsaPcmInfo) -> (String, String, DeviceKind, Transpor
 pub fn hdmi_index(pcm_name: &str) -> Option<usize> {
     let upper = pcm_name.to_ascii_uppercase();
     let at = upper.find("HDMI")?;
-    upper[at + 4..].trim().split(|c: char| !c.is_ascii_digit()).next()?.parse().ok()
+    upper[at + 4..]
+        .trim()
+        .split(|c: char| !c.is_ascii_digit())
+        .next()?
+        .parse()
+        .ok()
 }
 
 /// Map a saved ALSA device name onto the one-row-per-PCM id
@@ -484,7 +525,10 @@ mod tests {
     #[test]
     fn number_prefixes_are_stripped() {
         assert_eq!(strip_number_prefix("4 - LG TV"), "LG TV");
-        assert_eq!(strip_number_prefix("2- MOONDROP Dawn Pro"), "MOONDROP Dawn Pro");
+        assert_eq!(
+            strip_number_prefix("2- MOONDROP Dawn Pro"),
+            "MOONDROP Dawn Pro"
+        );
         assert_eq!(strip_number_prefix("DX5"), "DX5");
         assert_eq!(strip_number_prefix("1080p"), "1080p");
         assert_eq!(strip_number_prefix("3 -"), "3 -");
@@ -494,12 +538,26 @@ mod tests {
     fn wasapi_names_follow_the_spike_rules() {
         // Values from the 2026-11-05 property spike.
         assert_eq!(
-            wasapi_identity(&props("4 - LG TV", "AMD High Definition Audio Device", "HDAUDIO", 9)),
+            wasapi_identity(&props(
+                "4 - LG TV",
+                "AMD High Definition Audio Device",
+                "HDAUDIO",
+                9
+            )),
             ("LG TV".into(), DeviceKind::Hdmi, Transport::Hdmi)
         );
         assert_eq!(
-            wasapi_identity(&props("Realtek Digital Output", "Realtek(R) Audio", "HDAUDIO", 8)),
-            ("Realtek Digital Output".into(), DeviceKind::Spdif, Transport::Internal)
+            wasapi_identity(&props(
+                "Realtek Digital Output",
+                "Realtek(R) Audio",
+                "HDAUDIO",
+                8
+            )),
+            (
+                "Realtek Digital Output".into(),
+                DeviceKind::Spdif,
+                Transport::Internal
+            )
         );
         assert_eq!(
             wasapi_identity(&props("Speakers", "HyperX DuoCast", "USB", 1)),
@@ -515,19 +573,29 @@ mod tests {
         );
         assert_eq!(
             wasapi_identity(&props("Headphones", "WH-1000XM5", "BTHENUM", 3)),
-            ("WH-1000XM5".into(), DeviceKind::Headphones, Transport::Bluetooth)
+            (
+                "WH-1000XM5".into(),
+                DeviceKind::Headphones,
+                Transport::Bluetooth
+            )
         );
         assert_eq!(
             wasapi_identity(&props("CABLE Input", "VB-Audio Virtual Cable", "ROOT", 10)),
-            ("CABLE Input".into(), DeviceKind::Virtual, Transport::Virtual)
+            (
+                "CABLE Input".into(),
+                DeviceKind::Virtual,
+                Transport::Virtual
+            )
         );
     }
 
     #[test]
     fn colliding_names_fall_back_to_the_system_name() {
         let mut devices = vec![
-            OutputDevice::new("a", "Speakers", DeviceGroup::Wasapi).with_system_name("Speakers (Realtek(R) Audio)"),
-            OutputDevice::new("b", "Speakers", DeviceGroup::Wasapi).with_system_name("Speakers (2- Realtek(R) Audio)"),
+            OutputDevice::new("a", "Speakers", DeviceGroup::Wasapi)
+                .with_system_name("Speakers (Realtek(R) Audio)"),
+            OutputDevice::new("b", "Speakers", DeviceGroup::Wasapi)
+                .with_system_name("Speakers (2- Realtek(R) Audio)"),
             OutputDevice::new("c", "Speakers", DeviceGroup::Asio),
         ];
         dedupe_names(&mut devices);
@@ -544,16 +612,28 @@ mod tests {
         assert!(!is_wrapper_asio("Focusrite USB ASIO", "Focusrite USB ASIO"));
         assert_eq!(asio_name("Focusrite USB ASIO"), "Focusrite USB ASIO");
         assert_eq!(asio_name("TOPPING USB DAC (ASIO)"), "TOPPING USB DAC");
-        assert_eq!(asio_name("Yamaha Steinberg USB ASIO Driver"), "Yamaha Steinberg USB");
+        assert_eq!(
+            asio_name("Yamaha Steinberg USB ASIO Driver"),
+            "Yamaha Steinberg USB"
+        );
     }
 
     #[test]
     fn parses_eld() {
         let text = "monitor_present\t\t1\neld_valid\t\t1\nmonitor_name\t\tDELL U2723QE\nconnection_type\t\tHDMI\n";
-        assert_eq!(parse_eld(text), Some(Eld { monitor_present: true, monitor_name: "DELL U2723QE".into() }));
+        assert_eq!(
+            parse_eld(text),
+            Some(Eld {
+                monitor_present: true,
+                monitor_name: "DELL U2723QE".into()
+            })
+        );
         assert_eq!(
             parse_eld("monitor_present\t\t0\neld_valid\t\t0\n"),
-            Some(Eld { monitor_present: false, monitor_name: String::new() })
+            Some(Eld {
+                monitor_present: false,
+                monitor_name: String::new()
+            })
         );
         assert_eq!(parse_eld("garbage"), None);
     }
@@ -585,11 +665,24 @@ Capture:
     Rates: 768000
 ";
         assert_eq!(parse_usb_stream(text), Some((384_000, 32)));
-        assert_eq!(parse_usb_stream("Playback:\n  Format: S24_3LE\n  Rates: 8000 - 96000 (continuous)\n"), Some((96_000, 24)));
-        assert_eq!(parse_usb_stream("Capture:\n  Format: S16_LE\n  Rates: 48000\n"), None);
+        assert_eq!(
+            parse_usb_stream("Playback:\n  Format: S24_3LE\n  Rates: 8000 - 96000 (continuous)\n"),
+            Some((96_000, 24))
+        );
+        assert_eq!(
+            parse_usb_stream("Capture:\n  Format: S16_LE\n  Rates: 48000\n"),
+            None
+        );
     }
 
-    fn pcm(card: &str, pcm_name: &str, device: u32, usb: bool, multi: bool, eld: Option<Eld>) -> AlsaPcmInfo {
+    fn pcm(
+        card: &str,
+        pcm_name: &str,
+        device: u32,
+        usb: bool,
+        multi: bool,
+        eld: Option<Eld>,
+    ) -> AlsaPcmInfo {
         AlsaPcmInfo {
             card_id: card.split_whitespace().next().unwrap_or(card).into(),
             card_name: card.into(),
@@ -604,8 +697,24 @@ Capture:
     #[test]
     fn alsa_rows_get_clean_names() {
         let dac = alsa_identity(&pcm("MOONDROP Dawn Pro", "USB Audio", 0, true, false, None));
-        assert_eq!(dac, ("MOONDROP Dawn Pro".into(), "MOONDROP Dawn Pro, USB Audio".into(), DeviceKind::Usb, Transport::Usb, true));
-        let analog = alsa_identity(&pcm("HDA Intel PCH", "ALC3246 Analog", 0, false, true, None));
+        assert_eq!(
+            dac,
+            (
+                "MOONDROP Dawn Pro".into(),
+                "MOONDROP Dawn Pro, USB Audio".into(),
+                DeviceKind::Usb,
+                Transport::Usb,
+                true
+            )
+        );
+        let analog = alsa_identity(&pcm(
+            "HDA Intel PCH",
+            "ALC3246 Analog",
+            0,
+            false,
+            true,
+            None,
+        ));
         assert_eq!(analog.0, "Speakers");
         assert_eq!(analog.2, DeviceKind::Speakers);
         assert_eq!(analog.3, Transport::Internal);
@@ -615,16 +724,25 @@ Capture:
             7,
             false,
             true,
-            Some(Eld { monitor_present: true, monitor_name: "DELL U2723QE".into() }),
+            Some(Eld {
+                monitor_present: true,
+                monitor_name: "DELL U2723QE".into(),
+            }),
         ));
-        assert_eq!((monitor.0.as_str(), monitor.2, monitor.3, monitor.4), ("DELL U2723QE", DeviceKind::Hdmi, Transport::Hdmi, true));
+        assert_eq!(
+            (monitor.0.as_str(), monitor.2, monitor.3, monitor.4),
+            ("DELL U2723QE", DeviceKind::Hdmi, Transport::Hdmi, true)
+        );
         let empty = alsa_identity(&pcm(
             "HDA Intel PCH",
             "HDMI 2",
             8,
             false,
             true,
-            Some(Eld { monitor_present: false, monitor_name: String::new() }),
+            Some(Eld {
+                monitor_present: false,
+                monitor_name: String::new(),
+            }),
         ));
         assert_eq!((empty.0.as_str(), empty.4), ("HDMI 2", false));
     }
@@ -640,13 +758,29 @@ Capture:
     fn migrates_saved_alsa_ids() {
         let cards = vec!["PCH".to_string(), "Pro".to_string()];
         assert_eq!(migrate_alsa_id("default", &cards), "");
-        assert_eq!(migrate_alsa_id("sysdefault:CARD=Pro", &cards), "hw:CARD=Pro,DEV=0");
-        assert_eq!(migrate_alsa_id("plughw:CARD=Pro,DEV=0", &cards), "hw:CARD=Pro,DEV=0");
-        assert_eq!(migrate_alsa_id("hw:CARD=PCH,DEV=3", &cards), "hw:CARD=PCH,DEV=3");
+        assert_eq!(
+            migrate_alsa_id("sysdefault:CARD=Pro", &cards),
+            "hw:CARD=Pro,DEV=0"
+        );
+        assert_eq!(
+            migrate_alsa_id("plughw:CARD=Pro,DEV=0", &cards),
+            "hw:CARD=Pro,DEV=0"
+        );
+        assert_eq!(
+            migrate_alsa_id("hw:CARD=PCH,DEV=3", &cards),
+            "hw:CARD=PCH,DEV=3"
+        );
         assert_eq!(migrate_alsa_id("hw:1,0", &cards), "hw:CARD=Pro,DEV=0");
-        assert_eq!(migrate_alsa_id("hw:7,0", &cards), "hw:7,0", "an absent card stays as it was");
+        assert_eq!(
+            migrate_alsa_id("hw:7,0", &cards),
+            "hw:7,0",
+            "an absent card stays as it was"
+        );
         assert_eq!(migrate_alsa_id("asio:Foo", &cards), "asio:Foo");
-        assert_eq!(migrate_alsa_id("{0.0.0.00000000}.{abc}", &cards), "{0.0.0.00000000}.{abc}");
+        assert_eq!(
+            migrate_alsa_id("{0.0.0.00000000}.{abc}", &cards),
+            "{0.0.0.00000000}.{abc}"
+        );
     }
 
     #[test]
@@ -657,6 +791,9 @@ Capture:
         assert!(!DeviceCaps::from_formats(&[]).exclusive);
         let mut learned = DeviceCaps::played(44_100, 16);
         learned.widen(&DeviceCaps::played(96_000, 24));
-        assert_eq!((learned.max_rate, learned.max_bits), (Some(96_000), Some(24)));
+        assert_eq!(
+            (learned.max_rate, learned.max_bits),
+            (Some(96_000), Some(24))
+        );
     }
 }

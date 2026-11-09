@@ -41,7 +41,12 @@ impl DiscordPresence {
             .name("oxitide-discord".into())
             .spawn(move || worker(rx, worker_flag, worker_shutdown))
             .map_err(|e| e.to_string())?;
-        Ok(Self { tx: Some(tx), enabled: flag, shutdown, handle: Some(handle) })
+        Ok(Self {
+            tx: Some(tx),
+            enabled: flag,
+            shutdown,
+            handle: Some(handle),
+        })
     }
 
     pub fn sender(&self) -> SessionSender {
@@ -64,7 +69,10 @@ impl Drop for DiscordPresence {
 }
 
 fn now_ms() -> i64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 fn apply(desired: &mut Desired, update: SessionUpdate) {
@@ -91,10 +99,7 @@ fn drain_one(client: &mut DiscordIpcClient) -> Result<(), Error> {
     Ok(())
 }
 
-fn set_activity(
-    client: &mut DiscordIpcClient,
-    spec: &ActivitySpec,
-) -> Result<(), Error> {
+fn set_activity(client: &mut DiscordIpcClient, spec: &ActivitySpec) -> Result<(), Error> {
     let mut activity = Activity::new()
         .activity_type(ActivityType::Listening)
         .details(spec.details.as_str())
@@ -128,7 +133,11 @@ fn worker(rx: Receiver<SessionUpdate>, enabled: Arc<AtomicBool>, shutdown: Arc<A
     }
 
     let mut client: Option<DiscordIpcClient> = None;
-    let mut desired = Desired { track: None, play: PlayState::Stopped, position_ms: 0 };
+    let mut desired = Desired {
+        track: None,
+        play: PlayState::Stopped,
+        position_ms: 0,
+    };
     let mut sent = Sent::NEVER;
     let mut backoff = BACKOFF_START;
     let mut next_connect = Instant::now();
@@ -181,39 +190,35 @@ fn worker(rx: Receiver<SessionUpdate>, enabled: Arc<AtomicBool>, shutdown: Arc<A
             let now = now_ms();
             match plan_action(&desired, &sent, now) {
                 Action::None => {}
-                Action::Clear => {
-                    match client.as_mut().map(|c| c.clear_activity()) {
-                        Some(Ok(())) => sent = Sent::NEVER,
-                        Some(Err(e)) => {
-                            tracing::debug!("Discord presence clear failed: {e}");
-                            client = None;
-                            next_connect = Instant::now() + SEND_FAILURE_DELAY;
-                        }
-                        None => {}
+                Action::Clear => match client.as_mut().map(|c| c.clear_activity()) {
+                    Some(Ok(())) => sent = Sent::NEVER,
+                    Some(Err(e)) => {
+                        tracing::debug!("Discord presence clear failed: {e}");
+                        client = None;
+                        next_connect = Instant::now() + SEND_FAILURE_DELAY;
                     }
-                }
-                Action::Send(spec) => {
-                    match client.as_mut().map(|c| set_activity(c, &spec)) {
-                        Some(Ok(())) => {
-                            sent = Sent {
-                                track_id: desired.track.as_ref().map(|track| track.track_id),
-                                play: desired.play,
-                                start_ms: spec
-                                    .timestamps
-                                    .map(|(start, _)| start)
-                                    .unwrap_or(now - desired.position_ms as i64),
-                                at_ms: now,
-                                shown: true,
-                            };
-                        }
-                        Some(Err(e)) => {
-                            tracing::debug!("Discord presence update failed: {e}");
-                            client = None;
-                            next_connect = Instant::now() + SEND_FAILURE_DELAY;
-                        }
-                        None => {}
+                    None => {}
+                },
+                Action::Send(spec) => match client.as_mut().map(|c| set_activity(c, &spec)) {
+                    Some(Ok(())) => {
+                        sent = Sent {
+                            track_id: desired.track.as_ref().map(|track| track.track_id),
+                            play: desired.play,
+                            start_ms: spec
+                                .timestamps
+                                .map(|(start, _)| start)
+                                .unwrap_or(now - desired.position_ms as i64),
+                            at_ms: now,
+                            shown: true,
+                        };
                     }
-                }
+                    Some(Err(e)) => {
+                        tracing::debug!("Discord presence update failed: {e}");
+                        client = None;
+                        next_connect = Instant::now() + SEND_FAILURE_DELAY;
+                    }
+                    None => {}
+                },
             }
         }
     }
@@ -233,7 +238,9 @@ mod tests {
     #[test]
     fn disabled_service_spawns_sends_and_drops() {
         let service = DiscordPresence::spawn(false).expect("spawn");
-        service.sender().send(SessionUpdate::Playback(PlayState::Paused));
+        service
+            .sender()
+            .send(SessionUpdate::Playback(PlayState::Paused));
         let started = Instant::now();
         drop(service);
         assert!(started.elapsed() < Duration::from_secs(1));

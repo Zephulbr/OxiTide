@@ -32,7 +32,11 @@ pub struct LevelFrame {
 
 impl LevelFrame {
     pub fn silent() -> Self {
-        Self { peak: [0.0; 2], rms: [0.0; 2], bands: [FLOOR_DB; BANDS] }
+        Self {
+            peak: [0.0; 2],
+            rms: [0.0; 2],
+            bands: [FLOOR_DB; BANDS],
+        }
     }
 }
 
@@ -104,9 +108,9 @@ impl LevelTap {
         }
         match buf {
             PcmBuffer::F32(samples) => accumulate(&mut state, samples, channels, |s| s),
-            PcmBuffer::I32(samples) => {
-                accumulate(&mut state, samples, channels, |s| s as f32 / 2_147_483_648.0)
-            }
+            PcmBuffer::I32(samples) => accumulate(&mut state, samples, channels, |s| {
+                s as f32 / 2_147_483_648.0
+            }),
         }
     }
 
@@ -121,7 +125,10 @@ impl LevelTap {
                 return LevelFrame::silent();
             }
             let n = state.count as f64;
-            let rms = [(state.sum_sq[0] / n).sqrt() as f32, (state.sum_sq[1] / n).sqrt() as f32];
+            let rms = [
+                (state.sum_sq[0] / n).sqrt() as f32,
+                (state.sum_sq[1] / n).sqrt() as f32,
+            ];
             let peak = state.peak;
             // Oldest to newest; a partly filled ring is zero-padded at the front.
             let mut window = vec![0.0f32; FFT_SIZE];
@@ -134,11 +141,20 @@ impl LevelTap {
             state.count = 0;
             (peak, rms, window, state.rate)
         };
-        LevelFrame { peak, rms, bands: spectrum_bands(&window, rate) }
+        LevelFrame {
+            peak,
+            rms,
+            bands: spectrum_bands(&window, rate),
+        }
     }
 }
 
-fn accumulate<T: Copy>(state: &mut TapState, samples: &[T], channels: u16, to_f32: impl Fn(T) -> f32) {
+fn accumulate<T: Copy>(
+    state: &mut TapState,
+    samples: &[T],
+    channels: u16,
+    to_f32: impl Fn(T) -> f32,
+) {
     let channels = channels as usize;
     for frame in samples.chunks_exact(channels) {
         let l = to_f32(frame[0]);
@@ -199,7 +215,9 @@ pub fn fft_in_place(re: &mut [f32], im: &mut [f32]) {
 /// `bands + 1` log-spaced edges in Hz; the top edge never passes Nyquist.
 pub fn band_edges(rate: u32, bands: usize, lo: f32, hi: f32) -> Vec<f32> {
     let hi = hi.min(rate as f32 / 2.0).max(lo * 1.01);
-    (0..=bands).map(|i| lo * (hi / lo).powf(i as f32 / bands as f32)).collect()
+    (0..=bands)
+        .map(|i| lo * (hi / lo).powf(i as f32 / bands as f32))
+        .collect()
 }
 
 /// Hann-windowed spectrum of `window` summed into [`BANDS`] log bands, in
@@ -221,14 +239,20 @@ pub fn spectrum_bands(window: &[f32], rate: u32) -> [f32; BANDS] {
     let mut out = [FLOOR_DB; BANDS];
     for (band, slot) in out.iter_mut().enumerate() {
         let lo_bin = (edges[band] / bin_hz).floor() as usize;
-        let hi_bin = ((edges[band + 1] / bin_hz).ceil() as usize).max(lo_bin + 1).min(n / 2);
+        let hi_bin = ((edges[band + 1] / bin_hz).ceil() as usize)
+            .max(lo_bin + 1)
+            .min(n / 2);
         let mut energy = 0.0f32;
         for k in lo_bin.max(1)..hi_bin {
             let mag = (re[k] * re[k] + im[k] * im[k]).sqrt() * scale;
             energy += mag * mag;
         }
         let amp = energy.sqrt();
-        *slot = if amp > 0.0 { (20.0 * amp.log10()).max(FLOOR_DB) } else { FLOOR_DB };
+        *slot = if amp > 0.0 {
+            (20.0 * amp.log10()).max(FLOOR_DB)
+        } else {
+            FLOOR_DB
+        };
     }
     out
 }
@@ -257,11 +281,23 @@ mod tests {
     #[test]
     fn full_scale_sine_reads_unit_peak_and_root_half_rms() {
         let tap = enabled_tap();
-        tap.push(&PcmBuffer::F32(sine(1000.0, 48_000, 4800, 1.0, 2)), 2, 48_000);
+        tap.push(
+            &PcmBuffer::F32(sine(1000.0, 48_000, 4800, 1.0, 2)),
+            2,
+            48_000,
+        );
         let frame = tap.read();
         for ch in 0..2 {
-            assert!((frame.peak[ch] - 1.0).abs() < 1e-3, "peak {}", frame.peak[ch]);
-            assert!((frame.rms[ch] - std::f32::consts::FRAC_1_SQRT_2).abs() < 1e-2, "rms {}", frame.rms[ch]);
+            assert!(
+                (frame.peak[ch] - 1.0).abs() < 1e-3,
+                "peak {}",
+                frame.peak[ch]
+            );
+            assert!(
+                (frame.rms[ch] - std::f32::consts::FRAC_1_SQRT_2).abs() < 1e-2,
+                "rms {}",
+                frame.rms[ch]
+            );
         }
     }
 
@@ -318,10 +354,17 @@ mod tests {
     fn sine_lands_in_its_band() {
         let rate = 48_000;
         let tap = enabled_tap();
-        tap.push(&PcmBuffer::F32(sine(1000.0, rate, FFT_SIZE, 0.5, 2)), 2, rate);
+        tap.push(
+            &PcmBuffer::F32(sine(1000.0, rate, FFT_SIZE, 0.5, 2)),
+            2,
+            rate,
+        );
         let frame = tap.read();
         let edges = band_edges(rate, BANDS, BAND_LO_HZ, BAND_HI_HZ);
-        let band = edges.windows(2).position(|e| e[0] <= 1000.0 && 1000.0 < e[1]).unwrap();
+        let band = edges
+            .windows(2)
+            .position(|e| e[0] <= 1000.0 && 1000.0 < e[1])
+            .unwrap();
         let loudest = frame
             .bands
             .iter()
@@ -331,7 +374,11 @@ mod tests {
             .unwrap();
         assert_eq!(loudest, band);
         // Amplitude 0.5 ≈ -6 dBFS (window leakage keeps it within a couple dB).
-        assert!((frame.bands[band] + 6.0).abs() < 2.5, "band level {}", frame.bands[band]);
+        assert!(
+            (frame.bands[band] + 6.0).abs() < 2.5,
+            "band level {}",
+            frame.bands[band]
+        );
     }
 
     #[test]

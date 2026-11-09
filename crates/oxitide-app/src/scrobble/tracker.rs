@@ -34,9 +34,11 @@ impl ScrobbleTracker {
                 *self = Self::default();
                 Vec::new()
             }
-            EngineEvent::Position { position_ms, duration_ms, .. } => {
-                self.position(*position_ms as i64, *duration_ms as i64)
-            }
+            EngineEvent::Position {
+                position_ms,
+                duration_ms,
+                ..
+            } => self.position(*position_ms as i64, *duration_ms as i64),
             EngineEvent::State(state) => self.state(state.playing, now),
             EngineEvent::Beat(_) | EngineEvent::Error { .. } => Vec::new(),
         }
@@ -76,12 +78,19 @@ impl ScrobbleTracker {
         if self.scrobbled {
             return Vec::new();
         }
-        let duration = if duration_ms > 0 { duration_ms } else { duration_secs as i64 * 1000 };
+        let duration = if duration_ms > 0 {
+            duration_ms
+        } else {
+            duration_secs as i64 * 1000
+        };
         let threshold = (duration / 2).min(SCROBBLE_MIN_MS);
         if duration_secs > MIN_TRACK_SECS && self.listened_ms >= threshold {
             self.scrobbled = true;
             let item = self.current.clone().expect("current is present");
-            return vec![ScrobbleIntent::Scrobble { item, started_at: self.started_at }];
+            return vec![ScrobbleIntent::Scrobble {
+                item,
+                started_at: self.started_at,
+            }];
         }
         Vec::new()
     }
@@ -98,7 +107,9 @@ impl ScrobbleTracker {
             self.started_at = now;
             return vec![ScrobbleIntent::NowPlaying(item)];
         }
-        let Some(paused_since) = self.paused_since.take() else { return Vec::new() };
+        let Some(paused_since) = self.paused_since.take() else {
+            return Vec::new();
+        };
         if now - paused_since >= PAUSE_RESEND_SECS {
             if let Some(item) = self.current.clone() {
                 return vec![ScrobbleIntent::NowPlaying(item)];
@@ -132,13 +143,18 @@ mod tests {
 
     fn pos(tracker: &mut ScrobbleTracker, ms: i64, dur_ms: i64) -> Vec<ScrobbleIntent> {
         tracker.on_event(
-            &EngineEvent::Position { position_ms: ms as u64, duration_ms: dur_ms as u64, lead_ms: 0 },
+            &EngineEvent::Position {
+                position_ms: ms as u64,
+                duration_ms: dur_ms as u64,
+                lead_ms: 0,
+            },
             0,
         )
     }
 
     fn scrobbled(out: &[ScrobbleIntent]) -> bool {
-        out.iter().any(|i| matches!(i, ScrobbleIntent::Scrobble { .. }))
+        out.iter()
+            .any(|i| matches!(i, ScrobbleIntent::Scrobble { .. }))
     }
 
     #[test]
@@ -203,7 +219,10 @@ mod tests {
         assert!(!scrobbled(&pos(&mut tracker, 30_000, 200_000)));
         // Nine forward seconds still fall short of the 100 s threshold.
         for step in 31..=39 {
-            assert!(!scrobbled(&pos(&mut tracker, step * 1000, 200_000)), "step {step}");
+            assert!(
+                !scrobbled(&pos(&mut tracker, step * 1000, 200_000)),
+                "step {step}"
+            );
         }
         assert!(scrobbled(&pos(&mut tracker, 40_000, 200_000)));
     }
@@ -221,7 +240,10 @@ mod tests {
         for _ in 0..200 {
             out.extend(pos(&mut tracker, 5_000, 200_000));
         }
-        assert!(!scrobbled(&out), "paused stretch must not accumulate: {out:?}");
+        assert!(
+            !scrobbled(&out),
+            "paused stretch must not accumulate: {out:?}"
+        );
     }
 
     #[test]
@@ -259,9 +281,15 @@ mod tests {
         start(&mut tracker, item(1, 200), 100);
         let state = |playing: bool| EngineEvent::State(playback_state(playing));
         let out = tracker.on_event(&state(true), 110);
-        assert!(matches!(out.as_slice(), [ScrobbleIntent::NowPlaying(_)]), "playback start pings");
+        assert!(
+            matches!(out.as_slice(), [ScrobbleIntent::NowPlaying(_)]),
+            "playback start pings"
+        );
         assert!(tracker.on_event(&state(false), 1_000).is_empty());
-        assert!(tracker.on_event(&state(true), 1_010).is_empty(), "short pause should not re-ping");
+        assert!(
+            tracker.on_event(&state(true), 1_010).is_empty(),
+            "short pause should not re-ping"
+        );
         tracker.on_event(&state(false), 2_000);
         let out = tracker.on_event(&state(true), 2_100);
         assert!(matches!(out.as_slice(), [ScrobbleIntent::NowPlaying(_)]));
@@ -270,16 +298,27 @@ mod tests {
     #[test]
     fn paused_restore_does_not_ping_until_playback_starts() {
         let mut tracker = ScrobbleTracker::default();
-        assert!(tracker
-            .on_event(&EngineEvent::NowPlaying(Some(item(1, 200))), 100)
-            .is_empty(), "restore must not ping");
-        assert!(tracker
-            .on_event(&EngineEvent::State(playback_state(false)), 110)
-            .is_empty(), "restored-paused must not ping");
-        let out = tracker.on_event(&EngineEvent::State(playback_state(true)), 5_000);
-        assert!(matches!(out.as_slice(), [ScrobbleIntent::NowPlaying(_)]), "first play emits one ping");
         assert!(
-            tracker.on_event(&EngineEvent::State(playback_state(true)), 5_100).is_empty(),
+            tracker
+                .on_event(&EngineEvent::NowPlaying(Some(item(1, 200))), 100)
+                .is_empty(),
+            "restore must not ping"
+        );
+        assert!(
+            tracker
+                .on_event(&EngineEvent::State(playback_state(false)), 110)
+                .is_empty(),
+            "restored-paused must not ping"
+        );
+        let out = tracker.on_event(&EngineEvent::State(playback_state(true)), 5_000);
+        assert!(
+            matches!(out.as_slice(), [ScrobbleIntent::NowPlaying(_)]),
+            "first play emits one ping"
+        );
+        assert!(
+            tracker
+                .on_event(&EngineEvent::State(playback_state(true)), 5_100)
+                .is_empty(),
             "no duplicate ping"
         );
     }

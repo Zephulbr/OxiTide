@@ -85,7 +85,10 @@ fn random_unique_key() -> String {
 
 /// A URL-safe anti-forgery `state` value (16 random bytes, hex).
 pub fn random_state() -> String {
-    os_random::<16>().iter().map(|b| format!("{b:02x}")).collect()
+    os_random::<16>()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 #[cfg(test)]

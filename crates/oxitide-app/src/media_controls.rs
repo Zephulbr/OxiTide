@@ -98,16 +98,26 @@ pub fn plan(event: &EngineEvent, last_track: Option<u64>) -> (Vec<SessionUpdate>
             if last_track == Some(item.track_id) {
                 (Vec::new(), last_track)
             } else {
-                (vec![SessionUpdate::Track(Some(track_meta(item)))], Some(item.track_id))
+                (
+                    vec![SessionUpdate::Track(Some(track_meta(item)))],
+                    Some(item.track_id),
+                )
             }
         }
         EngineEvent::NowPlaying(None) => (
-            vec![SessionUpdate::Track(None), SessionUpdate::Playback(PlayState::Stopped)],
+            vec![
+                SessionUpdate::Track(None),
+                SessionUpdate::Playback(PlayState::Stopped),
+            ],
             None,
         ),
         EngineEvent::State(snapshot) => match &snapshot.current {
             Some(item) => {
-                let play = if snapshot.playing { PlayState::Playing } else { PlayState::Paused };
+                let play = if snapshot.playing {
+                    PlayState::Playing
+                } else {
+                    PlayState::Paused
+                };
                 let mut updates = vec![SessionUpdate::Playback(play)];
                 if last_track == Some(item.track_id) {
                     (updates, last_track)
@@ -117,15 +127,28 @@ pub fn plan(event: &EngineEvent, last_track: Option<u64>) -> (Vec<SessionUpdate>
                 }
             }
             None => (
-                vec![SessionUpdate::Track(None), SessionUpdate::Playback(PlayState::Stopped)],
+                vec![
+                    SessionUpdate::Track(None),
+                    SessionUpdate::Playback(PlayState::Stopped),
+                ],
                 None,
             ),
         },
-        EngineEvent::Position { position_ms, duration_ms, .. } => {
-            let position =
-                if *duration_ms > 0 { (*position_ms).min(*duration_ms) } else { *position_ms };
+        EngineEvent::Position {
+            position_ms,
+            duration_ms,
+            ..
+        } => {
+            let position = if *duration_ms > 0 {
+                (*position_ms).min(*duration_ms)
+            } else {
+                *position_ms
+            };
             (
-                vec![SessionUpdate::Position { position_ms: position, duration_ms: *duration_ms }],
+                vec![SessionUpdate::Position {
+                    position_ms: position,
+                    duration_ms: *duration_ms,
+                }],
                 last_track,
             )
         }
@@ -200,10 +223,17 @@ pub fn apply_session_update(
             if *play != PlayState::Paused {
                 state.stopped = false;
             }
-            state.status = if state.stopped { PlayState::Stopped } else { *play };
+            state.status = if state.stopped {
+                PlayState::Stopped
+            } else {
+                *play
+            };
             MprisEffect::Playback
         }
-        SessionUpdate::Position { position_ms, duration_ms } => {
+        SessionUpdate::Position {
+            position_ms,
+            duration_ms,
+        } => {
             let seeked = is_seek(state.status, state.position_ms, elapsed_ms, *position_ms);
             state.position_ms = *position_ms;
             state.duration_ms = *duration_ms;
@@ -266,7 +296,10 @@ pub const DESKTOP_ENTRIES: [&str; 3] = ["OxiTide", "oxitide", "oxitide-app-handl
 /// The first desktop entry `installed` reports, else the bundle's name.
 #[cfg(any(target_os = "linux", test))]
 pub fn desktop_entry(installed: impl Fn(&str) -> bool) -> &'static str {
-    DESKTOP_ENTRIES.into_iter().find(|name| installed(name)).unwrap_or(DESKTOP_ENTRIES[0])
+    DESKTOP_ENTRIES
+        .into_iter()
+        .find(|name| installed(name))
+        .unwrap_or(DESKTOP_ENTRIES[0])
 }
 
 /// D-Bus object path for `mpris:trackid`. Object-path elements may not start
@@ -389,7 +422,10 @@ mod tests {
         let (updates, last) = plan(&EngineEvent::NowPlaying(None), Some(7));
         assert_eq!(
             updates,
-            vec![SessionUpdate::Track(None), SessionUpdate::Playback(PlayState::Stopped)]
+            vec![
+                SessionUpdate::Track(None),
+                SessionUpdate::Playback(PlayState::Stopped)
+            ]
         );
         assert_eq!(last, None);
     }
@@ -420,29 +456,66 @@ mod tests {
         let (updates, last) = plan(&state(false, None), Some(3));
         assert_eq!(
             updates,
-            vec![SessionUpdate::Track(None), SessionUpdate::Playback(PlayState::Stopped)]
+            vec![
+                SessionUpdate::Track(None),
+                SessionUpdate::Playback(PlayState::Stopped)
+            ]
         );
         assert_eq!(last, None);
     }
 
     #[test]
     fn position_is_clamped_to_duration() {
-        let (updates, _) =
-            plan(&EngineEvent::Position { position_ms: 250_000, duration_ms: 200_000, lead_ms: 0 }, None);
+        let (updates, _) = plan(
+            &EngineEvent::Position {
+                position_ms: 250_000,
+                duration_ms: 200_000,
+                lead_ms: 0,
+            },
+            None,
+        );
         assert_eq!(
             updates,
-            vec![SessionUpdate::Position { position_ms: 200_000, duration_ms: 200_000 }]
+            vec![SessionUpdate::Position {
+                position_ms: 200_000,
+                duration_ms: 200_000
+            }]
         );
-        let (updates, _) = plan(&EngineEvent::Position { position_ms: 5, duration_ms: 0, lead_ms: 0 }, None);
-        assert_eq!(updates, vec![SessionUpdate::Position { position_ms: 5, duration_ms: 0 }]);
+        let (updates, _) = plan(
+            &EngineEvent::Position {
+                position_ms: 5,
+                duration_ms: 0,
+                lead_ms: 0,
+            },
+            None,
+        );
+        assert_eq!(
+            updates,
+            vec![SessionUpdate::Position {
+                position_ms: 5,
+                duration_ms: 0
+            }]
+        );
     }
 
     #[test]
     fn control_commands_map_to_engine_commands() {
-        assert!(matches!(to_engine_cmd(ControlCommand::PlayPause), EngineCmd::PlayPause));
-        assert!(matches!(to_engine_cmd(ControlCommand::Next), EngineCmd::Next));
-        assert!(matches!(to_engine_cmd(ControlCommand::Prev), EngineCmd::Prev));
-        assert!(matches!(to_engine_cmd(ControlCommand::Seek(42)), EngineCmd::Seek(42)));
+        assert!(matches!(
+            to_engine_cmd(ControlCommand::PlayPause),
+            EngineCmd::PlayPause
+        ));
+        assert!(matches!(
+            to_engine_cmd(ControlCommand::Next),
+            EngineCmd::Next
+        ));
+        assert!(matches!(
+            to_engine_cmd(ControlCommand::Prev),
+            EngineCmd::Prev
+        ));
+        assert!(matches!(
+            to_engine_cmd(ControlCommand::Seek(42)),
+            EngineCmd::Seek(42)
+        ));
     }
 
     fn meta(track_id: u64) -> TrackMeta {
@@ -468,7 +541,11 @@ mod tests {
         assert_eq!(snapshot.position_ms, 0);
 
         assert_eq!(
-            apply_session_update(&mut snapshot, &SessionUpdate::Playback(PlayState::Playing), 0),
+            apply_session_update(
+                &mut snapshot,
+                &SessionUpdate::Playback(PlayState::Playing),
+                0
+            ),
             MprisEffect::Playback
         );
         assert_eq!(snapshot.status, PlayState::Playing);
@@ -476,7 +553,10 @@ mod tests {
         assert_eq!(
             apply_session_update(
                 &mut snapshot,
-                &SessionUpdate::Position { position_ms: 500, duration_ms: 200_000 },
+                &SessionUpdate::Position {
+                    position_ms: 500,
+                    duration_ms: 200_000
+                },
                 500,
             ),
             MprisEffect::Position { seeked: false }
@@ -490,7 +570,10 @@ mod tests {
         apply_session_update(&mut snapshot, &SessionUpdate::Track(Some(meta(1))), 0);
         apply_session_update(
             &mut snapshot,
-            &SessionUpdate::Position { position_ms: 60_000, duration_ms: 200_000 },
+            &SessionUpdate::Position {
+                position_ms: 60_000,
+                duration_ms: 200_000,
+            },
             0,
         );
         assert_eq!(
@@ -506,17 +589,27 @@ mod tests {
     #[test]
     fn mpris_state_flags_external_seeks_but_not_progress_or_pauses() {
         let mut snapshot = MprisState::default();
-        apply_session_update(&mut snapshot, &SessionUpdate::Playback(PlayState::Playing), 0);
         apply_session_update(
             &mut snapshot,
-            &SessionUpdate::Position { position_ms: 10_000, duration_ms: 200_000 },
+            &SessionUpdate::Playback(PlayState::Playing),
+            0,
+        );
+        apply_session_update(
+            &mut snapshot,
+            &SessionUpdate::Position {
+                position_ms: 10_000,
+                duration_ms: 200_000,
+            },
             0,
         );
         // 600 ms later, 10.6 s of progress is not a seek.
         assert_eq!(
             apply_session_update(
                 &mut snapshot,
-                &SessionUpdate::Position { position_ms: 10_600, duration_ms: 200_000 },
+                &SessionUpdate::Position {
+                    position_ms: 10_600,
+                    duration_ms: 200_000
+                },
                 600,
             ),
             MprisEffect::Position { seeked: false }
@@ -525,17 +618,27 @@ mod tests {
         assert_eq!(
             apply_session_update(
                 &mut snapshot,
-                &SessionUpdate::Position { position_ms: 60_000, duration_ms: 200_000 },
+                &SessionUpdate::Position {
+                    position_ms: 60_000,
+                    duration_ms: 200_000
+                },
                 600,
             ),
             MprisEffect::Position { seeked: true }
         );
         // A paused gap resumes where it left off: not a seek.
-        apply_session_update(&mut snapshot, &SessionUpdate::Playback(PlayState::Paused), 0);
+        apply_session_update(
+            &mut snapshot,
+            &SessionUpdate::Playback(PlayState::Paused),
+            0,
+        );
         assert_eq!(
             apply_session_update(
                 &mut snapshot,
-                &SessionUpdate::Position { position_ms: 60_000, duration_ms: 200_000 },
+                &SessionUpdate::Position {
+                    position_ms: 60_000,
+                    duration_ms: 200_000
+                },
                 5_000,
             ),
             MprisEffect::Position { seeked: false }
@@ -554,14 +657,23 @@ mod tests {
         assert_eq!(seek_target(&snapshot, -45_000), 0);
         assert_eq!(seek_target(&snapshot, 10_000), 40_000);
         assert_eq!(seek_target(&snapshot, 500_000), 200_000);
-        let unknown = MprisState { duration_ms: 0, ..snapshot };
+        let unknown = MprisState {
+            duration_ms: 0,
+            ..snapshot
+        };
         assert_eq!(seek_target(&unknown, 500_000), 530_000);
     }
 
     #[test]
     fn mpris_controls_gate_on_playback_state() {
-        let playing = MprisState { status: PlayState::Playing, ..Default::default() };
-        let paused = MprisState { status: PlayState::Paused, ..Default::default() };
+        let playing = MprisState {
+            status: PlayState::Playing,
+            ..Default::default()
+        };
+        let paused = MprisState {
+            status: PlayState::Paused,
+            ..Default::default()
+        };
         assert_eq!(control_for_play(&playing), None);
         assert_eq!(control_for_pause(&playing), Some(ControlCommand::PlayPause));
         assert_eq!(control_for_play(&paused), Some(ControlCommand::PlayPause));
@@ -583,9 +695,16 @@ mod tests {
         );
         assert_eq!(playing.status, PlayState::Stopped);
         assert_eq!(playing.position_ms, 0);
-        assert!(playing.track.is_some(), "stop keeps the track so Play resumes it");
+        assert!(
+            playing.track.is_some(),
+            "stop keeps the track so Play resumes it"
+        );
 
-        let mut paused = MprisState { status: PlayState::Paused, stopped: false, ..playing.clone() };
+        let mut paused = MprisState {
+            status: PlayState::Paused,
+            stopped: false,
+            ..playing.clone()
+        };
         assert_eq!(request_stop(&mut paused), vec![ControlCommand::Seek(0)]);
 
         let mut empty = MprisState::default();
@@ -602,32 +721,57 @@ mod tests {
         };
         request_stop(&mut snapshot);
         // The engine reports the pause the stop issued: still Stopped.
-        apply_session_update(&mut snapshot, &SessionUpdate::Playback(PlayState::Paused), 0);
+        apply_session_update(
+            &mut snapshot,
+            &SessionUpdate::Playback(PlayState::Paused),
+            0,
+        );
         assert_eq!(snapshot.status, PlayState::Stopped);
         assert_eq!(control_for_play(&snapshot), Some(ControlCommand::PlayPause));
         // Play resumes: the stop is over.
-        apply_session_update(&mut snapshot, &SessionUpdate::Playback(PlayState::Playing), 0);
-        apply_session_update(&mut snapshot, &SessionUpdate::Playback(PlayState::Paused), 0);
+        apply_session_update(
+            &mut snapshot,
+            &SessionUpdate::Playback(PlayState::Playing),
+            0,
+        );
+        apply_session_update(
+            &mut snapshot,
+            &SessionUpdate::Playback(PlayState::Paused),
+            0,
+        );
         assert_eq!(snapshot.status, PlayState::Paused);
 
         // A track change also ends it.
         request_stop(&mut snapshot);
         apply_session_update(&mut snapshot, &SessionUpdate::Track(Some(meta(2))), 0);
-        apply_session_update(&mut snapshot, &SessionUpdate::Playback(PlayState::Paused), 0);
+        apply_session_update(
+            &mut snapshot,
+            &SessionUpdate::Playback(PlayState::Paused),
+            0,
+        );
         assert_eq!(snapshot.status, PlayState::Paused);
     }
 
     #[test]
     fn mpris_desktop_entry_follows_the_installed_package() {
-        assert_eq!(desktop_entry(|name| name == "OxiTide" || name == "oxitide"), "OxiTide");
+        assert_eq!(
+            desktop_entry(|name| name == "OxiTide" || name == "oxitide"),
+            "OxiTide"
+        );
         assert_eq!(desktop_entry(|name| name == "oxitide"), "oxitide");
-        assert_eq!(desktop_entry(|name| name == "oxitide-app-handler"), "oxitide-app-handler");
+        assert_eq!(
+            desktop_entry(|name| name == "oxitide-app-handler"),
+            "oxitide-app-handler"
+        );
         assert_eq!(desktop_entry(|_| false), "OxiTide");
     }
 
     #[test]
     fn mpris_track_path_is_a_valid_dbus_object_path() {
         assert_eq!(track_path(7), "/com/oxitide/track/t7");
-        assert_eq!(track_path(u64::MAX), "/com/oxitide/track/t18446744073709551615");
+        assert_eq!(
+            track_path(u64::MAX),
+            "/com/oxitide/track/t18446744073709551615"
+        );
     }
 }

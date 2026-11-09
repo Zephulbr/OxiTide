@@ -59,7 +59,9 @@ pub struct BytesSource {
 
 impl BytesSource {
     pub fn new(bytes: Vec<u8>) -> Self {
-        Self { cursor: io::Cursor::new(bytes) }
+        Self {
+            cursor: io::Cursor::new(bytes),
+        }
     }
 }
 

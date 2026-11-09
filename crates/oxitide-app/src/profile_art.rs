@@ -37,7 +37,9 @@ fn jpeg(image: &DynamicImage) -> Result<Vec<u8>, String> {
     let mut out = Vec::new();
     image
         .to_rgb8()
-        .write_with_encoder(image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 90))
+        .write_with_encoder(image::codecs::jpeg::JpegEncoder::new_with_quality(
+            &mut out, 90,
+        ))
         .map_err(|e| format!("could not encode the picture: {e}"))?;
     Ok(out)
 }
@@ -65,18 +67,29 @@ pub fn prepare(bytes: &[u8], art: ProfileArt) -> Result<PreparedArt, String> {
             let side = image.width().min(image.height());
             let x = (image.width() - side) / 2;
             let y = (image.height() - side) / 2;
-            (jpeg(&fit(image.crop_imm(x, y, side, side), 1280, 1280))?, "image/jpeg")
+            (
+                jpeg(&fit(image.crop_imm(x, y, side, side), 1280, 1280))?,
+                "image/jpeg",
+            )
         }
         ProfileArt::Banner => (jpeg(&fit(image, 2560, 2560))?, "image/jpeg"),
         ProfileArt::Logo => (png(&fit(image, 1280, 1280))?, "image/png"),
     };
     if bytes.len() > MAX_UPLOAD_BYTES {
-        return Err("That picture is still over TIDAL's 8 MB limit once resized; try a simpler image.".into());
+        return Err(
+            "That picture is still over TIDAL's 8 MB limit once resized; try a simpler image."
+                .into(),
+        );
     }
     let digest = Md5::digest(&bytes);
     let md5_hex = digest.iter().map(|b| format!("{b:02x}")).collect();
     let md5_base64 = base64::engine::general_purpose::STANDARD.encode(digest);
-    Ok(PreparedArt { bytes, content_type, md5_hex, md5_base64 })
+    Ok(PreparedArt {
+        bytes,
+        content_type,
+        md5_hex,
+        md5_base64,
+    })
 }
 
 #[cfg(test)]
@@ -86,7 +99,9 @@ mod tests {
     fn png_of(width: u32, height: u32) -> Vec<u8> {
         let img = image::RgbaImage::from_pixel(width, height, image::Rgba([200, 10, 10, 128]));
         let mut buf = std::io::Cursor::new(Vec::new());
-        DynamicImage::ImageRgba8(img).write_to(&mut buf, image::ImageFormat::Png).unwrap();
+        DynamicImage::ImageRgba8(img)
+            .write_to(&mut buf, image::ImageFormat::Png)
+            .unwrap();
         buf.into_inner()
     }
 
@@ -99,10 +114,15 @@ mod tests {
     fn a_picture_is_a_centered_square_jpeg_with_its_md5() {
         let prepared = prepare(&png_of(300, 200), ProfileArt::Picture).unwrap();
         assert_eq!(size(&prepared.bytes), (200, 200));
-        assert_eq!(image::guess_format(&prepared.bytes).unwrap(), image::ImageFormat::Jpeg);
+        assert_eq!(
+            image::guess_format(&prepared.bytes).unwrap(),
+            image::ImageFormat::Jpeg
+        );
         assert_eq!(prepared.content_type, "image/jpeg");
         assert_eq!(prepared.md5_hex.len(), 32);
-        let raw = base64::engine::general_purpose::STANDARD.decode(&prepared.md5_base64).unwrap();
+        let raw = base64::engine::general_purpose::STANDARD
+            .decode(&prepared.md5_base64)
+            .unwrap();
         let hex: String = raw.iter().map(|b| format!("{b:02x}")).collect();
         assert_eq!(hex, prepared.md5_hex);
     }
