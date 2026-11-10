@@ -284,6 +284,7 @@ runes only, semantic design tokens, how Tauri commands are registered).
 Third-party attributions (vendored fonts, assets and Rust dependencies) are in
 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
+Shoutout to the [TidalLuna Plug-Ins](https://github.com/Inrixia/luna-plugins) : [CoverTheme](https://github.com/Inrixia/luna-plugins#CoverTheme) from [n1ckoates](https://github.com/n1ckoates) and [cover-colored-ui](https://github.com/jxnxsdev/luna-plugins) from [jxnxsdev](https://github.com/jxnxsdev) that inspired the Atmosphere theme
 ## License
 
 [AGPL-3.0-or-later](LICENSE).
