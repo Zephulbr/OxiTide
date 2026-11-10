@@ -229,7 +229,12 @@ const minutesFlag = (fallback) => {
 };
 
 const scenarioFallback = async (id) => {
-  const targetMode = id.startsWith("S5-atmosphere") || id === "S14"
+  // S8/S9 (memory over long playback) are pinned to Atmosphere dark, the
+  // default and everyday look and the heaviest one (backdrop, dynamic colour,
+  // the now-playing mark): otherwise their ceilings move with the owner's
+  // last look (2026-11-04: Studio in the morning, Atmosphere at night).
+  const memorySoak = id.startsWith("S8") || id.startsWith("S9");
+  const targetMode = id.startsWith("S5-atmosphere") || id === "S14" || memorySoak
     ? "atmosphere"
     : id.startsWith("S5") || id.startsWith("S6")
       ? "instrument"
@@ -258,7 +263,7 @@ const scenarioFallback = async (id) => {
       console.error(`mode switch to ${targetMode} failed: ${e.message}`);
     }
   };
-  const targetTheme = id.endsWith("-light") ? "light" : null;
+  const targetTheme = id.endsWith("-light") ? "light" : memorySoak ? "dark" : null;
   let originalTheme = null;
   let themeApplied = false;
   const applyScenarioTheme = async () => {
@@ -277,6 +282,20 @@ const scenarioFallback = async (id) => {
     } catch (e) {
       console.error(`theme switch to ${targetTheme} failed: ${e.message}`);
     }
+  };
+  /// S8/S9: pin the look before playback starts, and wait until it shows.
+  const applySoakLook = async () => {
+    await until("!!window.__perf", "__perf bridge");
+    await applyScenarioMode();
+    await applyScenarioTheme();
+    await until(
+      `document.documentElement.dataset.mode === ${JSON.stringify(targetMode)} && document.documentElement.dataset.theme === ${JSON.stringify(targetTheme)}`,
+      `${targetMode} ${targetTheme} look pin`,
+    );
+    const look = await evaluate(
+      "({ mode: document.documentElement.dataset.mode ?? null, w: innerWidth, h: innerHeight, dpr: devicePixelRatio })",
+    );
+    console.log(`${id}: look ${JSON.stringify(look)}`);
   };
   try {
     // Whole-run window for scenarios without a `measure_start`.
@@ -472,6 +491,7 @@ const scenarioFallback = async (id) => {
       await delay(1500);
     } else if (id.startsWith("S8")) {
       await awaitLoggedIn();
+      await applySoakLook();
       const originalQuality = await evaluate(
         'window.__TAURI_INTERNALS__.invoke("get_config").then((c) => c.streaming.quality)',
       ).catch(() => null);
@@ -499,6 +519,7 @@ const scenarioFallback = async (id) => {
       const minutesRaw = Number(flag("--minutes", "120"));
       const minutes = Number.isFinite(minutesRaw) && minutesRaw > 0 ? minutesRaw : 120;
       await awaitLoggedIn();
+      await applySoakLook();
       const originalQuality = await evaluate(
         'window.__TAURI_INTERNALS__.invoke("get_config").then((c) => c.streaming.quality)',
       ).catch(() => null);
