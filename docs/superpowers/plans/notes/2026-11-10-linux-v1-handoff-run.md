@@ -87,7 +87,7 @@ Playing, hidden to the tray for 61 s:
 |---|---|
 | MPRIS `Position` while hidden | **PASS**: 150.47 → 170.53 → 190.59 → 210.65 s at +1, +21, +41, +61 s. |
 | Progress on show | **PASS**: the `Playback position` slider read 211 208 ms 0.3 s after Show, the same as MPRIS (211.21 s), and 212 323 ms a second later. |
-| CatJam back in time | Not run: Cat is off on this profile (**owner**, if wanted). |
+| CatJam back in time | **PASS** (owner, 2026-11-11). |
 
 ### C5: now-playing mark (`a1c1a2b`)
 
@@ -100,7 +100,7 @@ screenshot). Per-thread CPU over 10 s from `/proc/<pid>/task/*/stat`:
 | Playing row with the mark on screen | **8.4 %** (the 30 fps figure, ~8 %; 60 fps was ~25 %) **PASS** |
 | Full Now Playing (spinning disc + lyrics), for reference | 10.1 % |
 
-Smoothness and the pause/play ease: **owner** eye check.
+Smoothness and the pause/play ease: **PASS** (owner eye check, 2026-11-11).
 
 ### C6: colour and lamp glides (`9af1a67`)
 

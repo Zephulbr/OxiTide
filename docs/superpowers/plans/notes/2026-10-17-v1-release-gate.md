@@ -275,16 +275,19 @@ agent drove the GUI itself over AT-SPI, a uinput pointer and KWin D-Bus.
     deb launch, play shared, and render Atmosphere/Studio light and dark plus Hi-Fi Rack like the
     host. The deb registers MPRIS and `tidal://`.
 - **New:** L8 (`default` → the same DAC's exclusive entry is silent for ~5 s while WirePlumber
-  releases the card). Known issue. No code changed in this run, so there is nothing to re-check on
-  Windows.
+  releases the card). Known issue. The run itself changed no code; the 11-11 fixes below touch only
+  Linux code (`cfg(target_os = "linux")` in `alsa_output.rs`, the AUR desktop entry), and the
+  Windows gates (`fmt`, `clippy`, `oxitide-audio` tests) pass on `2d72847`.
 - **Owner decisions:**
   - dmix clicks and the WirePlumber replug quirk ship as known issues.
   - The ~150 ms ALSA skip/seek lag is acceptable for 1.0 (revisit for 2.0).
   - Linux is labelled **Supported**.
 - **Done 2026-11-11:** the C2 unplug (an `EIO` unplug showed raw ALSA text; fixed) and the AUR
   `pacman -U` install (the packaged entry lacked `%u` for `tidal://`; fixed).
+- **Done by the owner 2026-11-11:** the C5 now-playing mark eye check (smoothness and the
+  pause/play ease) and the C4 CatJam timing after a tray hide.
 - **Left for the owner** (hands or `sudo`; none blocks the label unless it fails):
-  - the eye checks on C5/C6 smoothness;
+  - the eye check on C6 glide smoothness;
   - optionally a real profile-picture upload.
 
 - [x] Linux bare-metal run. **Closed 2026-11-10**, apart from the owner rows above.
