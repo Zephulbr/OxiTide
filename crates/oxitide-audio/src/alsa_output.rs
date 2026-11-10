@@ -24,6 +24,17 @@ pub fn is_device_gone(error: &alsa::Error) -> bool {
     matches!(error.errno(), ENODEV | ESHUTDOWN)
 }
 
+/// True for the errors an unplug can also surface as, before the PCM reports
+/// `ENODEV`: `EIO` (seen from `snd_pcm_recover` on the Dawn Pro, 2026-11-10)
+/// and `EBADFD`. They mean a lost device only when its card is gone too; a
+/// card still present keeps the raw error.
+#[cfg(target_os = "linux")]
+pub fn may_be_device_loss(error: &alsa::Error) -> bool {
+    const EIO: i32 = 5;
+    const EBADFD: i32 = 77;
+    matches!(error.errno(), EIO | EBADFD)
+}
+
 /// Periods the ALSA open aims for.
 pub const ALSA_PERIODS: u32 = 4;
 
@@ -573,7 +584,9 @@ mod linux {
                         }
                         // xrun / suspend: recover and retry; unrecoverable
                         // errors are returned by `try_recover`.
-                        pcm.try_recover(error, true).map_err(to_error)?;
+                        let device = &self.device;
+                        pcm.try_recover(error, true)
+                            .map_err(|e| device_error(device, e))?;
                     }
                 }
             }
@@ -669,6 +682,33 @@ mod linux {
             return Error::Output(DEVICE_DISCONNECTED.into());
         }
         Error::Output(error.to_string())
+    }
+
+    /// How long an `EIO`/`EBADFD` waits for the card to leave `/proc/asound`
+    /// before it is taken as a real I/O error.
+    const LOSS_CHECK: Duration = Duration::from_millis(500);
+    const LOSS_STEP: Duration = Duration::from_millis(50);
+
+    /// [`to_error`] for a failure on the open PCM of `device`: an unplug that
+    /// answers `EIO` (not `ENODEV`) also reads [`DEVICE_DISCONNECTED`], once
+    /// the card is seen gone. Names on no card (`default`) keep the raw error.
+    fn device_error(device: &str, error: AlsaError) -> Error {
+        if may_be_device_loss(&error) {
+            if let Some(card) = card_dir(device) {
+                let give_up = Instant::now() + LOSS_CHECK;
+                loop {
+                    if !card_present(&card) {
+                        tracing::debug!(target: "alsa", "device gone ({card} removed): {error}");
+                        return Error::Output(DEVICE_DISCONNECTED.into());
+                    }
+                    if Instant::now() >= give_up {
+                        break;
+                    }
+                    std::thread::sleep(LOSS_STEP);
+                }
+            }
+        }
+        to_error(error)
     }
 
     /// Poll until the PCM can accept frames, bounded by `deadline`. A blocking
@@ -998,9 +1038,9 @@ mod linux {
                 // the start threshold, so re-prepare and let it.
                 Err(error) if is_underrun(&error) => {
                     tracing::debug!(target: "alsa", "start underran on {}; the first write starts it", self.device);
-                    pcm.prepare().map_err(to_error)
+                    pcm.prepare().map_err(|e| device_error(&self.device, e))
                 }
-                Err(error) => Err(to_error(error)),
+                Err(error) => Err(device_error(&self.device, error)),
             }
         }
 
@@ -1070,8 +1110,8 @@ mod linux {
             self.settle();
             self.held.clear();
             if let Some(pcm) = self.pcm.as_ref() {
-                pcm.drop().map_err(to_error)?;
-                pcm.prepare().map_err(to_error)?;
+                pcm.drop().map_err(|e| device_error(&self.device, e))?;
+                pcm.prepare().map_err(|e| device_error(&self.device, e))?;
             }
             self.fade_in_next();
             Ok(())
@@ -1224,6 +1264,11 @@ mod tests {
         assert!(is_device_gone(&AlsaError::new("snd_pcm_writei", 108)));
         assert!(!is_device_gone(&AlsaError::new("snd_pcm_writei", 32)));
         assert!(!is_device_gone(&AlsaError::new("snd_pcm_open", 16)));
+        // EIO and EBADFD only count once the card is gone (`device_error`).
+        assert!(may_be_device_loss(&AlsaError::new("snd_pcm_recover", 5)));
+        assert!(may_be_device_loss(&AlsaError::new("snd_pcm_writei", 77)));
+        assert!(!may_be_device_loss(&AlsaError::new("snd_pcm_writei", 32)));
+        assert!(!may_be_device_loss(&AlsaError::new("snd_pcm_recover", 19)));
     }
 
     #[test]

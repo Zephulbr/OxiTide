@@ -54,8 +54,18 @@ Every open logged `start underran …; the first write starts it` (expected). Tw
 
 ### C2: unplug on direct `hw:` exclusive (`2e25fc1`)
 
-**Owner, not run.** The agent cannot unplug the DAC without root (USB `authorized`/unbind). This is
-the L1 row again (PASS on 11-05); `2e25fc1` changed the shared `ring.rs`.
+**FAIL, fixed (issue L9), then PASS** (owner unplugs). The agent cannot unplug the DAC without root
+(USB `authorized`/unbind), so the owner pulled the cable.
+
+- First unplug (0.7.0): the error showed as raw ALSA text, `ALSA function 'snd_pcm_recover' failed
+  with error 'I/O error (5)'`. The kernel logged the USB disconnect in the same second. On 11-05 the
+  same unplug surfaced as `ENODEV (19)`, which already maps to "Output device disconnected".
+- Fix: `EIO`/`EBADFD` from the write, start and flush paths now map to "output device disconnected"
+  when the card's `/proc/asound` entry is gone within 500 ms (`device_error` in `alsa_output.rs`); a
+  card still present keeps the raw error.
+- Retest with the fix build: "Output device disconnected", queue and position kept
+  (`device gone: … 'No such device (19)'` in the log; this unplug came as `ENODEV` again, so the
+  `EIO` branch is covered by the unit test, not by this run).
 
 ### C3: boot screen (`9963b88`) and L5 window rows
 
@@ -169,6 +179,7 @@ No CSS feature failed to render on WebKitGTK 2.50.4, so the floor stays where it
 | # | Issue | Next step |
 |---|---|---|
 | L8 | Switching from `default` (PipeWire) to the same DAC's direct `hw:` exclusive entry plays nothing for ~5 s. PipeWire holds the card until WirePlumber suspends the idle sink (its default `session.suspend-timeout-seconds` is 5); the L2/L7 card wait (up to 7 s) covers it, so it ends bit-perfect with no error. A switch between different cards, or from a direct entry, is immediate (30–139 ms in place). | Known issue for 1.0 (the wait is the designed recovery). For 2.0: ask the sound server to release the card (e.g. suspend that sink over the Pulse/PipeWire API) before the exclusive open, or show "waiting for the sound server" during the wait. |
+| L9 | An unplug on direct `hw:` exclusive can surface as `EIO (5)` from `snd_pcm_recover` instead of `ENODEV`, and showed the raw ALSA message. | Fixed in this run (`device_error`, see C2). Windows is unaffected (Linux-only code). |
 | — | With no ALSA `default` PCM at all (seen only in the bare 22.04 container) the playback error is the raw `ALSA function 'snd_pcm_open' failed with error 'No such file or directory (2)'`. | Cosmetic, container only. Optional: map `ENOENT` on `default` to "no system audio output found". |
 | — | The startup update check announces a found update only by toast; the Settings card shows "Check for updates" until it is clicked. | By design; noted only. |
 
