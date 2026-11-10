@@ -95,5 +95,7 @@ The three apparent regressions, pinned (`2026-11-04-v1-perf-regressions-webview.
   memory 719 worst. S8: memory 775 (11-04: 896), drift −34, cache hit rate 1.0, zero underruns.
   The 36-step glide stays (no need for 24). **R2 applied:** S8 `memory_max_mb` 895, S9 830 (worst
   run + 15 %, rounded up to 5 MB). Every S1–S9 and S11–S14 ceiling is now set from release runs.
+  The release gate's §4 final run checks against these as they are:
+  `2026-11-10-v1-final-perf-run.md`.
 - **S9** is real: the dynamic-colour glide restyles the whole page every frame for 1.2 s per track
   change and Blink's GC heap keeps the space. Every fix changes how the glide looks (owner).

@@ -18,15 +18,21 @@ Branch `track13-efficiency` (unmerged). Plan `plans/2026-10-16-track13-efficienc
 
 - [x] Finish and merge Track 13; run its smoke. Merged (`ee6135c`); the smoke
       (`2026-10-16-track13-smoke.md`) was marked done by the owner on 2026-10-26.
-- [ ] Settle the PM-D1 debt (fix or renegotiate the budgets in `scripts/perf/budgets.json`).
+- [x] Settle the PM-D1 debt (fix or renegotiate the budgets in `scripts/perf/budgets.json`).
       **Ruled 2026-10-23** (`2026-10-23-v1-perf-rulings.md`: release reference, memory = worst run
-      + 15 %, S4 re-measure then debt, S6 p99 re-measure then relax); waits on the release corpus:
-  - [ ] the seven pre-existing breaches listed in `2026-10-10-track11-completion.md`;
-  - [ ] the 9.3 S5/S6/S7 and Rack S1/S5 re-runs never recorded (`2026-10-13-track9-completion.md`);
-  - [ ] the 9.1 `S5-light` `memory_max_mb` 681 vs 675 ruling and the S1/S2 quiet re-run;
-  - [ ] `S4.advance_max_gap_ms` (105 vs 100): accept as documented debt in the 1.0 notes, or fix.
-- [ ] Measure the shipped artifact at least once (release + LTO profile for S1/S3/memory); the
-      harness drives the debug exe today.
+      + 15 %, S4 re-measure then debt, S6 p99 re-measure then relax). **Closed 2026-11-10:** every
+      S1–S9 and S11–S14 budget is set from release corpora (results in the rulings note; last
+      `413462a`, S8/S9), and `node scripts/perf/check.mjs` exits 0.
+  - [x] the seven pre-existing breaches listed in `2026-10-10-track11-completion.md` (R1/R2/R5;
+        corpus `corpus-20261104-025308`);
+  - [x] the 9.3 S5/S6/S7 and Rack S1/S5 re-runs never recorded (R6: release corpus; Rack
+        superseded by S13);
+  - [x] the 9.1 `S5-light` `memory_max_mb` 681 vs 675 ruling and the S1/S2 quiet re-run (R6);
+  - [x] `S4.advance_max_gap_ms` (105 vs 100): **no debt**, 42 median / 43 worst on release (R3).
+        S6 `frame_p99_ms` set to 72 (R4).
+- [x] Measure the shipped artifact at least once (release + LTO profile for S1/S3/memory).
+      **Done 2026-11-04:** the corpora run `app:build:perf` (`[profile.release]`, fat LTO, UI
+      embedded), the reference build since R1.
 - [x] Fix the flaky `oxitide-audio engine::tests::retry_resumes_at_the_recorded_position`
       (`2026-10-13-track12-completion.md`).
       - **Done 2026-10-23** (test-only). The test simulated a stream error with a bare
@@ -173,6 +179,11 @@ Candidates (pick per value; none block 1.0 on their own):
 
 - [ ] Full scripted scenarios on a quiet machine after the UI pass, ideally against the release build;
       `node scripts/perf/check.mjs` green (or breaches ruled on).
+      **Runbook ready** (`2026-11-10-v1-final-perf-run.md`): one unattended `run-corpus.ps1`
+      against the release exe of the commit to be tagged, about 5–6 h, overnight when the owner
+      says. Budgets stay as they are; a breach is a regression to fix. Run it after the last
+      code change that touches audio, output or the UI (the §3b follow-up smoke, the Linux fixes
+      if any land on shared code).
 
 ## 5. Remaining smokes
 
@@ -242,6 +253,11 @@ passed; the DAC was not connected, and the AUR source host was unsettled.
   - Not run: the oldest-base checks and the AppImage updater path.
 - **Owner decision:** ship the dmix clicks and the replug quirk as known issues (or hide or warn
   on `sysdefault:` first), and whether Linux is labelled "preview" in the 1.0 notes.
+
+**Next session (handoff `2026-11-10-linux-v1-handoff.md`):** gates and build on current `main`,
+re-checks of what landed since `53cef6d` (in-place device switch, boot screen, hidden-window
+feed hold, now-playing mark), the AppImage updater path (published 0.6.0 → 0.7.0), AUR
+`makepkg -si` on `v0.7.0`, the Ubuntu 22.04 floor, and the owner decisions above.
 
 ## 7. Tag `v1.0.0`
 
