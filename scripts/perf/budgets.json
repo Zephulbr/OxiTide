@@ -62,13 +62,13 @@
   ],
   "S8": [
     { "metric": "cache_hit_rate_last10", "min": 0.9 },
-    { "metric": "memory_max_mb", "max": 660 }
+    { "metric": "memory_max_mb", "max": 895 }
   ],
   "S9": [
     { "metric": "memory_drift_mb", "max": 50 },
     { "metric": "memory_drift_app_mb", "max": 25, "required": true },
     { "metric": "underrun_count", "max": 0, "required": true },
-    { "metric": "memory_max_mb", "max": 755 }
+    { "metric": "memory_max_mb", "max": 830 }
   ],
   "S11": [
     { "metric": "cpu_app_pct", "max": 0.9, "of": "median" },

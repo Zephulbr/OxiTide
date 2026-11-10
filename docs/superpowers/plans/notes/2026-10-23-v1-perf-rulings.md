@@ -85,5 +85,15 @@ The three apparent regressions, pinned (`2026-11-04-v1-perf-regressions-webview.
   the renderer's slow growth halved (~0.6 MB/min) but it now jumps 195 → 358 MB in the first 10 min,
   which the morning corpus did not show (216 → 230); S8 peaks at 896 with the renderer at 360 MB in
   its first minute. R2 for S8/S9 waits until that jump is explained.
+- **S8/S9 closed** (`corpus-20261110-032608`, release exe of `038dce6`, driver `dac29da`; both now
+  pinned to Atmosphere dark, ran at 2164×1293, dpr 1). The 11-04 re-run was built from `9af1a67`:
+  in Atmosphere, maximized, with the now-playing mark still rewriting an SVG `transform` every
+  frame (a layout per frame while playing; fixed in `08c2815` / `a1c1a2b`). With the mark on the
+  compositor the early jump is gone: total memory peaks at start-up (715 MB) and settles at ~625 by
+  10 min; the largest WebView2 process stays at 248–312 MB for the whole 2 h. **S9 drift +37
+  (≤ 50, PASS; was +72, and +138 before the stepped glide)**, app drift +11 (≤ 25), zero underruns,
+  memory 719 worst. S8: memory 775 (11-04: 896), drift −34, cache hit rate 1.0, zero underruns.
+  The 36-step glide stays (no need for 24). **R2 applied:** S8 `memory_max_mb` 895, S9 830 (worst
+  run + 15 %, rounded up to 5 MB). Every S1–S9 and S11–S14 ceiling is now set from release runs.
 - **S9** is real: the dynamic-colour glide restyles the whole page every frame for 1.2 s per track
   change and Blink's GC heap keeps the space. Every fix changes how the glide looks (owner).
