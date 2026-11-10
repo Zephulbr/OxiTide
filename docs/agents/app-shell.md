@@ -1,6 +1,6 @@
 # App shell notes
 
-Read before touching `crates/oxitide-app`: efficiency rules, the phone remote, the taskbar toolbar, persisted state files, Save for Later/collaborators, and distribution/updater. Linked from `AGENTS.md`.
+Read before touching `crates/oxitide-app`: efficiency rules, the phone remote, the taskbar toolbar, persisted state files, the output picker, Save for Later/collaborators, own-profile edits, and distribution/updater. Linked from `AGENTS.md`.
 
 - Efficiency rules (Track 13, spec `2026-10-16-oxitide-track13-efficiency-design.md`):
   - the queue is copy-on-write (`Arc<Vec>`) with a revision; `PlaybackState.queue` is not serialized, and the desktop `StateDto` carries it only when `queue_rev` moved (`get_playback_state` always does). The UI keeps its queue when a `state` event omits it. Code that needs the queue on every state must read `queue_rev`, not compare lists.
@@ -40,4 +40,14 @@ Read before touching `crates/oxitide-app`: efficiency rules, the phone remote, t
     grants yet, so there is no "remove collaborator".
   - **Collaborator editing is not built yet.** `Playlist.owned` still means "creator";
     plan Task 1 settles it.
+- Own profile (research `plans/notes/2026-11-06-tidal-profiles-research.md`):
+  - **Reads and edits** live in `oxitide-tidal/src/profiles.rs`. Edits are `patch_openapi`
+    (JSON:API `PATCH`, e.g. `artistBiographies/{id}`).
+  - **Picture, banner and logo** use TIDAL's `artworks` flow. `profile_art.rs` shapes the file
+    and computes the MD5 the link is signed for (picture: square JPEG ≤ 1280 px; banner: JPEG
+    ≤ 2560 px wide, uncropped; logo: PNG, keeps transparency). The client then creates the
+    artwork and `put_upload`s the bytes to the pre-signed link TIDAL returns. That link carries
+    its own authorization, so no bearer token is sent. Finally it polls until TIDAL has
+    processed the file.
+  - **UI:** `ProfileEditor.svelte`, `lib/profileEdit.ts`, `lib/ownProfile.ts`.
 - Distribution (Track 12, spec `2026-10-13-oxitide-track12-distribution-design.md`, runbook `docs/release.md`): `.github/workflows/ci.yml` runs the Rust and UI gates on Windows + Ubuntu 22.04 (UI build first: `generate_context!` needs `ui/dist`); `release.yml` turns a `vX.Y.Z` tag into a **draft** release via `scripts/release/` (`check-version.mjs`, `make-manifest.mjs`; tests: `node --test scripts/release/release.test.mjs`). The version lives only in the workspace `Cargo.toml` (`[workspace.package]`): `tauri.conf.json` and `ui/package.json` carry none (Tauri falls back to Cargo's), and `check-version.mjs` fails if either gains one. The AUR recipe is a template (`packaging/aur/PKGBUILD.in`) that `make-pkgbuild.mjs` renders from the tag and attaches to the draft release. Updater artifacts come only from the `tauri.release.conf.json` overlay (so local `app:build` needs no key). Self-update lives in `crates/oxitide-app/src/updater.rs` (`tauri-plugin-updater`, called from Rust; thin commands in `commands.rs`, all `NOT_EXPOSED` to the phone remote; `[updates] check_on_start`). Windows shutdown work is `run_exit_work` in `main.rs` — the Windows updater ends the process without `RunEvent::Exit`, so install calls it first. The updater minisign key is not a code-signing certificate; Windows code signing is deferred.

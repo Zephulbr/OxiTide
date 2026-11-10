@@ -164,6 +164,10 @@ Candidates (pick per value; none block 1.0 on their own):
       2026-10-27.** The four review-fix commits can go to `main` on their own first.
 - [ ] Smoke the two follow-ups it raised (ASIO volume held at 100 %, in-place device switching;
       rows in the review note), then merge `wasapi-0.26`.
+      - **2026-11-10:** `wasapi-0.26` is merged (`7a0368e`); the ten follow-up rows in the review
+        note are still unticked. `github/exclusive-fixed-volume` (`80e54e1`, exclusive output at
+        a fixed 100 %) is unmerged and touches the same volume rows: decide on it first, then
+        run the smoke once.
 
 ## 4. Final perf run
 
@@ -187,6 +191,12 @@ Candidates (pick per value; none block 1.0 on their own):
 - [x] Updater: latest pre-1.0 bump installs over the previous one. **PASS 2026-10-24:** publishing
       `v0.3.1` updated the installed copy in-app, and the published `v0.4.0` then updated 0.3.1 to
       0.4.0 (§1).
+
+- [ ] Features added after the 2026-10-24 smoke pass (listed 2026-11-10):
+  - [ ] Customizable My Collection (spec `specs/2026-11-07-oxitide-customizable-collection-design.md`;
+        the owner smoke is pending per the roadmap).
+  - [ ] Own profile and profile editor (`fa9bb53`, `fbffa7f`: bio, handle, links, picture /
+        banner / logo uploads). No smoke checklist exists yet.
 
 ## 6. Linux bare-metal run
 
@@ -216,7 +226,7 @@ passed; the DAC was not connected, and the AUR source host was unsettled.
   feed gray-out; phone pairing from a real phone; issue #10 (AT-SPI tree is populated; closed).
 - **AUR:** the published PKGBUILD fails to link under makepkg's default `lto`. With
   `options=('!lto')` (now in `packaging/aur/PKGBUILD.in`) `v0.6.0` builds and runs. `makepkg -si`
-  stays with the owner, and the next release carries the fixed PKGBUILD.
+  stays with the owner. `v0.7.0` is the first release whose PKGBUILD carries the fix.
 - **Found, then fixed and retested by the owner the same day:**
   - L1: an unplug now reads "Output device disconnected".
   - L2: a replug moves back to the DAC by itself.
@@ -235,7 +245,7 @@ passed; the DAC was not connected, and the AUR source host was unsettled.
 
 ## 7. Tag `v1.0.0`
 
-- [ ] Bump `[workspace.package] version` in `Cargo.toml` from `0.4.0` to `1.0.0` (the only place
+- [ ] Bump `[workspace.package] version` in `Cargo.toml` from `0.7.0` to `1.0.0` (the only place
       the version lives; `check-version.mjs` checks the tag against it).
 - [ ] `docs/release.md` runbook; release notes list accepted debt (S4 gap, any renegotiated budgets)
       and the known limits in `2026-10-27-v1-security-review.md` (remote over plain HTTP, debug

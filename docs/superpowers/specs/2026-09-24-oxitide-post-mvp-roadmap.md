@@ -27,6 +27,7 @@
 - **Revised:** 2026-10-17 — V2.0 scope drafted with the owner: architecture + Local files (internal/USB drives) on Windows + Linux; Jellyfin first 2.x source, Qobuz research-gated; `release/1.x` keeps 1.x alive until parity (spec `2026-10-17-oxitide-v2-modular-sources-design.md`, research `plans/notes/2026-10-17-v2-source-research.md`).
 - **Revised:** 2026-11-05 — Output device picker redesign added to the v1.0 gate (§3 "Gaps and deferred items" of `plans/notes/2026-10-17-v1-release-gate.md`): one row per output on Windows and Linux, a Shared/Exclusive mode per device, nickname/pin/hide/icon, a per-device "Up to …" format line, and pinned devices in the quality menu (spec `2026-11-05-oxitide-output-device-picker-design.md`, plan `plans/2026-11-05-output-device-picker.md`). Done the same day; the owner smoke passed on Windows and Linux.
 - **Revised:** 2026-11-07 — Customizable "My Collection" (UI-only): the owner orders the sidebar's collection entries and drags a line; entries below it fold under "Show more" (spec `2026-11-07-oxitide-customizable-collection-design.md`, plan `plans/2026-11-07-customizable-collection.md`). Implemented the same day with the UI gates green; the owner smoke is pending.
+- **Revised:** 2026-11-10 — Docs pass: the Track 7 and Track 12 status cells and the ASIO smoke line brought up to date (AutoMix/ASIO merged and smoked; releases and the in-app update proven). The release gate lists the unsmoked post-2026-10-24 features (My Collection, own profile/editor) and the state of `wasapi-0.26` / `exclusive-fixed-volume`.
 - **Owner:** V
 - **Parent:** `2026-09-21-oxitide-design.md` (§9 Phasing)
 - **Supersedes:** the parent's Phase 2–4 ordering. The shipped Phase 1 MVP (v0.2.0) is
@@ -60,9 +61,9 @@ refreshed 2026-10-01.
 | 5 | Track 9 | UI completion: Hi-Fi Rack mode, light mode, artist/credits/album-info surfaces, a11y pass, i18n, remaining UI polish and bug fixes | Done (2026-10-13) - 9.0-9.5c all merged; owner closed the 9.2/9.3/9.5 smokes without row-by-row ticks; i18n handed off as its own track; Linux items batched for later (`plans/notes/2026-10-13-track9-completion.md`) |
 | 6 | Track 8 | Linux support: ALSA output backend, MPRIS media controls, Secret Service keyring, deb/AppImage/AUR packaging | Done (2026-10-04) — WSL2-verified; bare-metal checks exempted (`plans/notes/2026-10-04-track8-completion.md`) |
 | 7 | Track 10 | Daily-driver QoL: session/queue persistence, playback history + stats, sleep timer, scrobble love (deferred 2026-10-05), AI/explicit content blocking; Phase 2 tray + global hotkeys | Done (2026-10-05) — merged at `446e054` with follow-up fixes through `70d0bc9`; owner smoke passed; 10.4 deferred |
-| 8 | Track 7 | Advanced audio: DSP/EQ + ReplayGain (opt-in, mutually exclusive with bit-perfect); crossfade/automix; casting/TIDAL Connect; Dolby Atmos; 360 RA (difficulty-gated); optional ASIO output (maybe, see `plans/notes/2026-10-01-asio-spike.md`); **potential post-casting group listen-along** (see `plans/notes/2026-10-02-listen-along-assessment.md`) | DSP core done 2026-10-07 (ReplayGain, EQ, crossfade; owner smoke passed — `plans/notes/2026-10-07-track7-completion.md`); casting/Atmos/360 RA/ASIO/listen-along/automix parked |
+| 8 | Track 7 | Advanced audio: DSP/EQ + ReplayGain (opt-in, mutually exclusive with bit-perfect); crossfade/automix; casting/TIDAL Connect; Dolby Atmos; 360 RA (difficulty-gated); optional ASIO output (maybe, see `plans/notes/2026-10-01-asio-spike.md`); **potential post-casting group listen-along** (see `plans/notes/2026-10-02-listen-along-assessment.md`) | DSP core done 2026-10-07 (ReplayGain, EQ, crossfade; owner smoke passed — `plans/notes/2026-10-07-track7-completion.md`); AutoMix (7b) and ASIO (7.3) merged, ASIO smoke done 2026-10-26; casting/Atmos/360 RA parked, listen-along shelved |
 | 9 | Track 11 | Phone remote: opt-in LAN server, QR pairing, a phone web page for playback, queue, search, and library (replaces "control OxiTide from the phone" from Track 7's casting item) | Done (2026-10-11) — owner smoke passed (Linux item deferred), merged to `main`; `plans/notes/2026-10-10-track11-completion.md` |
-| 10 | Track 12 | Distribution: GitHub Actions CI, tag-driven draft releases, in-app auto-update (minisign); Windows code signing deferred | Implemented (2026-10-13), unmerged workflows unproven on GitHub — `plans/notes/2026-10-13-track12-completion.md` |
+| 10 | Track 12 | Distribution: GitHub Actions CI, tag-driven draft releases, in-app auto-update (minisign); Windows code signing deferred | Done — merged; releases `v0.2.0`–`v0.7.0` built from tags, and the installed-app update proven 2026-10-24 (0.3.1 → 0.4.0); `plans/notes/2026-10-13-track12-completion.md` |
 
 Track 2b is closed; its remainder (Hi-Fi Rack, light mode, leftover polish) is Track 9,
 which carries a normal completion gate.
@@ -214,7 +215,7 @@ which carries a normal completion gate.
   is decided by difficulty when Track 7 is scoped.
 - **ASIO output (called 2026-10-11, Plan 7.3):** implemented and merged to `main` per
   `specs/2026-10-11-oxitide-track7-asio-output-design.md` (hand-written IASIO binding, no LLVM);
-  owner smoke `plans/notes/2026-10-11-asio-smoke.md` pending. Original assessment: feature-parity option, assessed by the
+  owner smoke `plans/notes/2026-10-11-asio-smoke.md` marked done 2026-10-26. Original assessment: feature-parity option, assessed by the
   2026-10-01 spike (`plans/notes/2026-10-01-asio-spike.md`). WASAPI-only today; a contained
   `asio-sys` backend is feasible and AGPL-compatible (SDK GPLv3 option), but costs LLVM at
   build time, in-process driver crash risk, software-only volume (breaks bit-perfect below

@@ -3,8 +3,9 @@
 Track 8's pinned Linux build base is **WSL2 Ubuntu 22.04 LTS** (the WebKitGTK
 4.1 floor and AppImage's oldest-supported-base guidance; Track 8 spec §4.7).
 Builds must run on Linux: Tauri does not cross-compile Windows → Linux.
-Bare-metal audio/desktop smoke is deferred (spec §5.3), but every build and
-cargo gate can be run here.
+Every build and cargo gate can be run here; audio/desktop checks that need real
+hardware ran on bare metal (CachyOS, `plans/notes/2026-10-23-linux-bare-metal-run.md`
+and `plans/notes/2026-11-05-linux-v1-final-run.md`).
 
 ## 1. Install WSL2 + Ubuntu 22.04 (from Windows)
 
@@ -80,6 +81,7 @@ Linux-side clone or worktree for speed and to avoid file-watching issues.
 ## 5. Build and test gates
 
 ```bash
+cargo fmt --all -- --check
 cargo test --workspace
 cargo clippy --workspace -- -D warnings
 cargo build -p oxitide-app
@@ -100,8 +102,8 @@ npm --prefix ui run app:dev
 - Blank/black WebKitGTK window in a VM? Retry with
   `WEBKIT_DISABLE_COMPOSITING_MODE=1 npm --prefix ui run app:dev` (software
   compositing). This is a WSLg/VM rendering workaround, not a product setting.
-- Exclusive/bit-perfect output and hardware mixers cannot be verified here; they
-  are on the deferred bare-metal checklist (spec §5.3).
+- Exclusive/bit-perfect output and hardware mixers cannot be verified here; use
+  bare metal with a real DAC (see the run notes above).
 
 ## Profiling WebKitGTK
 
@@ -177,16 +179,19 @@ directory after chdir, not from this CWD):
 
     npm --prefix ui run app:build
 
-Artifacts (unsigned; version from the workspace `Cargo.toml`):
+Artifacts (unsigned; `<version>` is the workspace `Cargo.toml` version):
 
-- `target/release/bundle/deb/OxiTide_0.2.0_amd64.deb`
-- `target/release/bundle/appimage/OxiTide_0.2.0_amd64.AppImage`
+- `target/release/bundle/deb/OxiTide_<version>_amd64.deb`
+- `target/release/bundle/appimage/OxiTide_<version>_amd64.AppImage`
+
+The commands below set `V` to that version first.
 
 Inspect the deb metadata and desktop entry:
 
-    dpkg-deb -f target/release/bundle/deb/OxiTide_0.2.0_amd64.deb Depends
+    V=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+    dpkg-deb -f target/release/bundle/deb/OxiTide_${V}_amd64.deb Depends
     rm -rf /tmp/oxitide-deb
-    dpkg-deb -x target/release/bundle/deb/OxiTide_0.2.0_amd64.deb /tmp/oxitide-deb
+    dpkg-deb -x target/release/bundle/deb/OxiTide_${V}_amd64.deb /tmp/oxitide-deb
     grep -E '^(Name|Exec|Icon|Categories|MimeType)=' /tmp/oxitide-deb/usr/share/applications/OxiTide.desktop
 
 Expected: `Categories=AudioVideo;Audio;Music;`,
@@ -195,17 +200,17 @@ Expected: `Categories=AudioVideo;Audio;Music;`,
 
 Inspect the AppImage entry without FUSE:
 
-    ./target/release/bundle/appimage/OxiTide_0.2.0_amd64.AppImage --appimage-extract
+    ./target/release/bundle/appimage/OxiTide_${V}_amd64.AppImage --appimage-extract
     cat squashfs-root/usr/share/applications/OxiTide.desktop
 
 Launch under WSLg:
 
-    sudo apt-get install -y ./target/release/bundle/deb/OxiTide_0.2.0_amd64.deb
+    sudo apt-get install -y ./target/release/bundle/deb/OxiTide_${V}_amd64.deb
     oxitide-app
 
-    chmod +x target/release/bundle/appimage/OxiTide_0.2.0_amd64.AppImage
-    ./target/release/bundle/appimage/OxiTide_0.2.0_amd64.AppImage || \
-      ./target/release/bundle/appimage/OxiTide_0.2.0_amd64.AppImage --appimage-extract-and-run
+    chmod +x target/release/bundle/appimage/OxiTide_${V}_amd64.AppImage
+    ./target/release/bundle/appimage/OxiTide_${V}_amd64.AppImage || \
+      ./target/release/bundle/appimage/OxiTide_${V}_amd64.AppImage --appimage-extract-and-run
 
 Fact: direct AppImage execution needs FUSE2 (`libfuse2` on Ubuntu 22.04) and
 `/dev/fuse`; `--appimage-extract-and-run` bypasses FUSE. Record which path was
@@ -214,4 +219,5 @@ used in `plans/notes/2026-10-03-track8-packaging-smoke.md`.
 AUR: build/install the `PKGBUILD` attached to a release (rendered from the
 `packaging/aur/PKGBUILD.in` template; `node scripts/release/make-pkgbuild.mjs vX.Y.Z <dir>`
 renders it locally for an existing tag) on Arch against `webkit2gtk-4.1`
-(`makepkg -si`); verification is deferred to the bare-metal checklist.
+(`makepkg -si`). The recipe sets `options=('!lto')`: under makepkg's default `lto`
+the link fails (found and verified on `v0.6.0`, `plans/notes/2026-11-05-linux-v1-final-run.md`).

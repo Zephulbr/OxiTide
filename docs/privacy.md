@@ -8,6 +8,7 @@ how to control each one. The short version is in the [README](../README.md#priva
 | Destination | When | Control |
 |---|---|---|
 | TIDAL (login, catalog, streams, images) | Always, to function | n/a |
+| TIDAL (your public profile: name, handle, bio, links, and the picture, banner or logo you pick) | Only when you save a profile edit; images go to an upload link TIDAL issues | Edit profile |
 | GitHub (update manifest) | Shortly after start and on "Check for updates" | Settings → System → Updates |
 | Last.fm / ListenBrainz | Only if you connect an account | Settings → Connections |
 | Discord (local IPC) | Only if enabled | Settings → Connections |

@@ -127,6 +127,7 @@ A hardware-style skin with needle and spectrum meters.
 
 ### Desktop integration
 
+- Listening history and stats, kept on your machine only, and a sleep timer that can fade out or stop at the end of a track.
 - System tray with close-to-tray, and a native Windows 11 title bar with Snap Layouts.
 - Windows taskbar thumbnail controls, and media keys through SMTC (Windows) or MPRIS (Linux).
 - Discord Rich Presence (optional), and global hotkeys you define yourself.
@@ -190,14 +191,17 @@ into the app. Turn the startup check off in the same place. deb and AUR installs
 | `M` | Mute |
 | `Ctrl+F` or `/` | Search |
 | `Alt+←` / `Alt+→` | Back / forward |
+| `Ctrl+B` | Collapse / expand the sidebar |
+| `Q` | Show / hide the queue |
 | `Esc` | Close the top-most panel |
 
 Global hotkeys are defined in **Settings → System**.
 
 ## Privacy and security
 
-- **No telemetry, no accounts of its own.** The only services OxiTide contacts are TIDAL (to function), and the
-  optional services you turn on (GitHub for update checks, Last.fm, ListenBrainz, Discord, LRCLIB for lyrics).
+- **No telemetry, no accounts of its own.** The only services OxiTide contacts are TIDAL (to function), GitHub for
+  update checks (on by default; turn it off in **Settings → System**), LRCLIB when you open lyrics, and the services
+  you connect (Last.fm, ListenBrainz, Discord).
 - **Credentials** are stored in the OS keyring (Windows Credential Manager, or the Secret Service on Linux) and never logged.
 - **Phone remote** is off by default. When on, it accepts only devices on your local network, requires QR pairing,
   and exposes a fixed allowlist of actions.
@@ -205,7 +209,8 @@ Global hotkeys are defined in **Settings → System**.
 
 The full list of network destinations and where each is controlled is in [`docs/privacy.md`](docs/privacy.md).
 
-Found a vulnerability? Please report it privately to the maintainer rather than opening a public issue.
+Found a vulnerability? Please report it privately as described in [`SECURITY.md`](SECURITY.md) rather than opening a
+public issue.
 
 ## Platform status
 
@@ -217,7 +222,7 @@ Found a vulnerability? Please report it privately to the maintainer rather than 
 | Credential storage | Credential Manager | Secret Service |
 | Packaging | NSIS, MSI | AppImage, deb, AUR recipe (not available yet)|
 
-macOS is not planned. ASIO output is merged, and its hardware smoke test is still pending.
+macOS is not planned.
 
 ## Build from source
 
@@ -230,6 +235,7 @@ npm --prefix ui install        # also installs the Tauri CLI
 npm --prefix ui run app:dev    # development: starts Vite, then the app window
 npm --prefix ui run app:build  # installers under target/release/bundle/
 
+cargo fmt --all -- --check
 cargo test --workspace
 cargo clippy --workspace -- -D warnings
 npm --prefix ui run check
@@ -264,7 +270,7 @@ Continuous integration runs the same checks on Windows and Ubuntu 22.04 for ever
 
 ## Contributing
 
-Issues and pull requests are welcome. Before opening a pull request, run the four checks above; they are what CI runs.
+Issues and pull requests are welcome. Before opening a pull request, run the five checks above; they are what CI runs.
 Larger features start as a short spec under `docs/superpowers/specs/`. Read `AGENTS.md` for the conventions (Svelte 5
 runes only, semantic design tokens, how Tauri commands are registered).
 
