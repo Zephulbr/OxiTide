@@ -285,10 +285,9 @@ agent drove the GUI itself over AT-SPI, a uinput pointer and KWin D-Bus.
 - **Done 2026-11-11:** the C2 unplug (an `EIO` unplug showed raw ALSA text; fixed) and the AUR
   `pacman -U` install (the packaged entry lacked `%u` for `tidal://`; fixed).
 - **Done by the owner 2026-11-11:** the C5 now-playing mark eye check (smoothness and the
-  pause/play ease) and the C4 CatJam timing after a tray hide.
-- **Left for the owner** (hands or `sudo`; none blocks the label unless it fails):
-  - the eye check on C6 glide smoothness;
-  - optionally a real profile-picture upload.
+  pause/play ease), the C6 glide smoothness eye check, and the C4 CatJam timing after a tray
+  hide.
+- **Left for the owner** (optional, does not block the label): a real profile-picture upload.
 
 - [x] Linux bare-metal run. **Closed 2026-11-10**, apart from the owner rows above.
 

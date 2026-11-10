@@ -109,7 +109,7 @@ Skipped with the window visible and took six screenshots across the 1.2 s glide.
 - **Atmosphere: PASS.** The background moves gray → olive → gold in steps, with no flash.
 - **Hi-Fi Rack: PASS.** The lamps and meters go amber → green → teal → blue, with no flash.
 
-Whether it reads as smooth is an **owner** eye check.
+Smoothness: **PASS** (owner eye check, 2026-11-11).
 
 ### C8: My Collection edit mode and profile editor (`040fcd7`, `fa9bb53`, `fbffa7f`)
 
