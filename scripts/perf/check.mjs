@@ -115,6 +115,40 @@ export function perMinute(samples, key) {
   return (last[key] - first[key]) / minutes;
 }
 
+/// How long after a track starts its `playback_event`s still count as that
+/// track change (`state`, `now_playing`, the next track's prefetch state; S12
+/// sees them land in the 2 s counter samples up to ~5 s after `first_pcm`).
+export const TRACK_CHANGE_WINDOW_MS = 10_000;
+/// And how long before: a transition that drains and reopens the output sends
+/// `now_playing` / `state` before the new track's first PCM write (S12 saw it
+/// ~10 ms ahead of `first_pcm`).
+export const TRACK_CHANGE_LEAD_MS = 2_000;
+
+/// `playback_event`s outside every track change: the counter's growth over
+/// sample intervals that do not overlap `[start - lead, start + window]` of
+/// any track start. A hidden window (S12) or a paused one (S11) should read 0:
+/// only a track change may reach it.
+export function idleEvents(
+  samples,
+  trackStarts,
+  windowMs = TRACK_CHANGE_WINDOW_MS,
+  leadMs = TRACK_CHANGE_LEAD_MS,
+) {
+  if (samples.length < 2) return null;
+  let idle = 0;
+  for (let i = 1; i < samples.length; i += 1) {
+    const prev = samples[i - 1];
+    const cur = samples[i];
+    const delta = cur.events - prev.events;
+    if (delta <= 0) continue;
+    const nearChange = trackStarts.some(
+      (s) => s - leadMs <= cur.t_ms && s + windowMs > prev.t_ms,
+    );
+    if (!nearChange) idle += delta;
+  }
+  return idle;
+}
+
 /// Page work per minute from the driver's CDP counter rows (Track 13 harness
 /// follow-up): style recalcs, layouts, and main-thread script/task time. A
 /// settled idle window should be near zero on all of them; `animations_max`
@@ -149,6 +183,7 @@ export function metricsFor(run) {
   const privates = []; // all-process private MiB
   const pageRows = []; // the driver's cumulative CDP page counters
   const underruns = []; // {t_ms, count}: output underruns during playback
+  const trackStarts = []; // first_pcm times
   let played = false;
   let advanceMax = 0;
   for (const line of run.lines) {
@@ -173,7 +208,10 @@ export function metricsFor(run) {
         cacheDecisions.push(0);
       }
       if (line.event === "advance") advanceMax = Math.max(advanceMax, line.gap_ms ?? 0);
-      if (line.event === "first_pcm") played = true;
+      if (line.event === "first_pcm") {
+        played = true;
+        trackStarts.push(line.t_ms);
+      }
       if (line.event === "underrun") underruns.push({ t_ms: line.t_ms, count: line.count ?? 1 });
       const first = (key) => {
         const metric = `${key}_ms`;
@@ -252,6 +290,8 @@ export function metricsFor(run) {
   if (events !== null) metrics.ipc_events_per_min = events;
   const bytes = perMinute(ipcWindow, "bytes");
   if (bytes !== null) metrics.ipc_kb_per_min = bytes / 1024;
+  const idle = idleEvents(ipcWindow, trackStarts);
+  if (idle !== null) metrics.ipc_idle_events = idle;
   Object.assign(metrics, pageMetrics(pageRows.filter((r) => r.t_ms >= from)));
   // Any run that played reports a count, so a 0 budget can pass.
   if (played || underruns.length > 0) {

@@ -63,6 +63,24 @@ The three apparent regressions, pinned (`2026-11-04-v1-perf-regressions-webview.
   16.7 (median 14.5), app 2.0 (1.5). **S11 re-baselined** (`corpus-20261104-202535`): WebView2 0.9
   (median 0.35, the +0.5 pt floor), app 0.9 (0.42). **S13 re-baselined**: meters stay at ~48 Hz
   (owner: visibly smoother than 30 Hz), WebView2 23.5 (median 20.4), app 1.9 (1.4). S12 from its run.
+- **S12 re-baselined** (owner, 2026-11-06). S12 runs unattended since `1e126aa` (the driver closes the
+  window to the tray). Corpora, 5 runs each: `corpus-20261105-174717` (app CPU 1.2, 109.7
+  events/min: position ticks every 500 ms), `corpus-20261106-080459` (5.6/min: CatJam beat clocks),
+  then `corpus-20261106-090933` with `c56cc34` (ticks and beat clocks held while hidden): app 0.6,
+  WebView2 0.1, 2.1 events/min, memory 668 worst. What is left is ~7 events per track change (5 at
+  the change, 2 within ~5 s; at a reopening transition they land ~10 ms before `first_pcm`), none
+  between. Holding those too was rejected: a held `state` can carry a queue change that a later one
+  omits (`queue_rev`), error toasts and the output-error clear react to them, and the saving is
+  ~2 KB per track at 0.1 % WebView2 CPU. Budgets: `ipc_idle_events` 0 (required; events outside
+  2 s before to 10 s after any `first_pcm`) replaces `ipc_events_per_min` 0, which now stays as a
+  median row at 2.4 (median + 15 %); CPU on cycle CPU under the same rule as S11/S13/S14: app 1.1
+  (median 0.6, the +0.5 pt floor), WebView2 0.6 (0.1). On `corpus-20261106-090933` every S12 row
+  passes; `-080459` fails `ipc_idle_events` (32: the beat clocks), as it should.
+- **S12 advance gap** 93–95 ms (unbudgeted on S12) on the change into `112839624`, every run, against
+  11–13 ms on 11-05: the favourites S12 plays had changed (its first ten), not the build. S4 on
+  `4c95a3f` (`corpus-20261106-133324`, 3 runs, same three tracks as the 11-04 corpus) reads 23–24 /
+  37–42 ms, max 42 (11-04: 42 median / 43 worst), zero underruns, memory 710: PASS. S4 and S12 take
+  whatever the favourites are, so a new favourite can move their gaps; pinning their tracks is open.
 - **S8/S9 re-run with the stepped glide** (`corpus-20261104-175831`): S9 drift +72 (≤ 50; was +138);
   the renderer's slow growth halved (~0.6 MB/min) but it now jumps 195 → 358 MB in the first 10 min,
   which the morning corpus did not show (216 → 230); S8 peaks at 896 with the renderer at 360 MB in

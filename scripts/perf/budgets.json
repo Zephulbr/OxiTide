@@ -78,9 +78,10 @@
     { "metric": "memory_max_mb", "max": 718 }
   ],
   "S12": [
-    { "metric": "cpu_app_pct", "max": 0.9, "of": "median" },
+    { "metric": "cpu_app_pct", "max": 1.1, "of": "median" },
     { "metric": "cpu_webview_pct", "max": 0.6, "of": "median" },
-    { "metric": "ipc_events_per_min", "max": 0, "required": true },
+    { "metric": "ipc_idle_events", "max": 0, "required": true },
+    { "metric": "ipc_events_per_min", "max": 2.4, "of": "median" },
     { "metric": "long_task_max_ms", "max": 100 },
     { "metric": "memory_max_mb", "max": 690 }
   ],

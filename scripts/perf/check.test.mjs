@@ -4,6 +4,7 @@ import {
   aggregate,
   cpuPercent,
   evaluate,
+  idleEvents,
   metricsFor,
   metricsTable,
   pageMetrics,
@@ -491,6 +492,45 @@ test("metricsFor derives cpu, private and ipc rates from the measure_start mark"
   assert.ok(Math.abs(metrics.cpu_app_pct - 200 / 60_000 * 100) < 1e-9);
   assert.equal(metrics.ipc_events_per_min, 120);
   assert.equal(metrics.ipc_kb_per_min, 100);
+  // Nothing played, so every event in the window is idle.
+  assert.equal(metrics.ipc_idle_events, 120);
+});
+
+test("idleEvents counts only growth outside the window after each track start", () => {
+  // S12's shape: a burst in the samples just after a track starts, then flat.
+  const samples = [
+    { events: 8, t_ms: 24_000 },
+    { events: 8, t_ms: 198_000 },
+    { events: 13, t_ms: 200_000 }, // first_pcm at 199_500
+    { events: 15, t_ms: 204_000 }, // still within 10 s of it
+    { events: 15, t_ms: 300_000 },
+    { events: 16, t_ms: 302_000 }, // a stray event, no track change near
+  ];
+  assert.equal(idleEvents(samples, [3_000, 199_500]), 1);
+  // A track start just before an interval still covers it.
+  assert.equal(idleEvents(samples, [3_000, 199_500, 295_000]), 0);
+  // A start just after the interval does too (a reopening transition sends
+  // its events before the first PCM write), but not one beyond the lead.
+  assert.equal(idleEvents(samples, [3_000, 199_500, 302_010]), 0);
+  assert.equal(idleEvents(samples, [3_000, 199_500, 305_000]), 1);
+  assert.equal(idleEvents(samples.slice(0, 1), []), null);
+});
+
+test("metricsFor reads S12 track-change bursts as not idle", () => {
+  const file = runFile([
+    { kind: "session", run_id: "S12-1", scenario: "S12" },
+    { kind: "audio", event: "first_pcm", track_id: 1, t_ms: 3_000 },
+    { kind: "ipc", events: 8, bytes: 6_000, t_ms: 4_000 },
+    { kind: "mark", name: "measure_start", t_ms: 24_000, unix_ms: 1 },
+    { kind: "ipc", events: 8, bytes: 6_000, t_ms: 26_000 },
+    { kind: "audio", event: "first_pcm", track_id: 2, t_ms: 199_500 },
+    { kind: "ipc", events: 13, bytes: 8_000, t_ms: 200_000 },
+    { kind: "ipc", events: 15, bytes: 9_000, t_ms: 204_000 },
+    { kind: "ipc", events: 15, bytes: 9_000, t_ms: 600_000 },
+  ]);
+  const metrics = metricsFor(readRuns([file])[0]);
+  assert.equal(metrics.ipc_idle_events, 0);
+  assert.ok(metrics.ipc_events_per_min > 0);
 });
 test("page counter rows become per-minute rates from the measure_start mark", () => {
   const page = (t_ms, label, n, animations) => ({
