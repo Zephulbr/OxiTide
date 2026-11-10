@@ -13,7 +13,7 @@
   <a href="https://github.com/Zephulbr/OxiTide/actions/workflows/ci.yml"><img src="https://github.com/Zephulbr/OxiTide/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/Zephulbr/OxiTide/releases"><img src="https://img.shields.io/github/v/release/Zephulbr/OxiTide" alt="Latest release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg" alt="License: AGPL-3.0-or-later"></a>
-  <img src="https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20(experimental)-lightgrey.svg" alt="Platforms: Windows, Linux (experimental)">
+  <img src="https://img.shields.io/badge/platforms-Windows%20%7C%20Linux-lightgrey.svg" alt="Platforms: Windows, Linux">
 </p>
 
 <p align="center">
@@ -146,7 +146,7 @@ A hardware-style skin with needle and spectrum meters.
   transitions, and you can clear it at any time.
 - **Not affiliated with TIDAL.** It does not bypass subscriptions, and it does not play anything your account cannot stream.
 - **No music video playback** and no native mobile app. The phone remote is a web page.
-- **Windows first.** Linux is experimental (see [Platform status](#platform-status)). macOS is not planned.
+- **Windows first.** Linux is supported, with a few known differences (see [Platform status](#platform-status)). macOS is not planned.
 
 ## Install
 
@@ -156,7 +156,7 @@ repository (mirrored on [Codeberg](https://codeberg.org/Zephulbr/OxiTide)).
 | Platform | Download | Notes |
 |---|---|---|
 | Windows 10/11 (x64) | `OxiTide_<version>_x64-setup.exe` (recommended) or the `.msi` | The `.exe` installs per user without admin rights. The `.msi` installs per machine. WebView2 is downloaded at install time if missing. |
-| Linux (x86_64), experimental | `.AppImage` or `.deb`; AUR recipe in `packaging/aur/` | See [Platform status](#platform-status). |
+| Linux (x86_64) | `.AppImage` or `.deb`; AUR recipe in `packaging/aur/` | See [Platform status](#platform-status). |
 
 **Windows SmartScreen.** The installers are not code-signed yet, so Windows shows *"Windows protected your PC"*
 on first run. Choose **More info → Run anyway** after verifying the download.
@@ -214,13 +214,18 @@ public issue.
 
 ## Platform status
 
-| | Windows | Linux (experimental) |
+| | Windows | Linux |
 |---|---|---|
-| Playback and library | Supported, primary target | Experimental |
+| Playback and library | Supported, primary target | Supported (tested on KDE Wayland + PipeWire; Ubuntu 22.04 is the oldest base) |
 | Output | WASAPI shared/exclusive, ASIO | ALSA |
 | Media controls | SMTC and media keys | MPRIS |
 | Credential storage | Credential Manager | Secret Service |
-| Packaging | NSIS, MSI | AppImage, deb, AUR recipe (not available yet)|
+| Packaging | NSIS, MSI | AppImage, deb, AUR recipe (`PKGBUILD` attached to each release) |
+
+Known Linux differences: the "ALSA default, may resample" output entries can click on skip and seek (use
+"System default" or the direct-hardware entry), switching from "System default" to the same DAC in exclusive mode
+takes about 5 s while PipeWire lets go of it, and the tray icon has no tooltip. Details in
+[`docs/linux-build.md`](docs/linux-build.md#desktop-behaviour-worth-knowing).
 
 macOS is not planned.
 

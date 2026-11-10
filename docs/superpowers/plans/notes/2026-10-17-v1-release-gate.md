@@ -259,6 +259,45 @@ re-checks of what landed since `53cef6d` (in-place device switch, boot screen, h
 feed hold, now-playing mark), the AppImage updater path (published 0.6.0 → 0.7.0), AUR
 `makepkg -si` on `v0.7.0`, the Ubuntu 22.04 floor, and the owner decisions above.
 
+**Run 2026-11-10** (`2026-11-10-linux-v1-handoff-run.md`, `main` at `2c564c3`, 0.7.0). The
+agent drove the GUI itself over AT-SPI, a uinput pointer and KWin D-Bus.
+- **Passed:**
+  - Gates and build; deb and AppImage inspection.
+  - C1 in-place output switch: 139 ms and, paused, 30 ms; mode changes restart at the position.
+  - C3 boot screen (dark and light) and the L5 tray and second-launch rows; C4 hidden-window
+    position (MPRIS and the UI slider).
+  - C5 mark at 8.4 % main thread (the 30 fps figure); C6 glides with no flash.
+  - C8 WebKitGTK pointer drag and the GTK file chooser.
+  - **AppImage updater** 0.6.0 → 0.7.0: found at startup, replaced in place, still executable,
+    SHA-256 equal to the release, restarted in 31–42 s.
+  - The `v0.7.0` PKGBUILD builds under the stock `lto` `makepkg.conf`.
+  - **Ubuntu 22.04 floor** (distrobox; WebKitGTK 2.50.4, glibc 2.35): the release AppImage and
+    deb launch, play shared, and render Atmosphere/Studio light and dark plus Hi-Fi Rack like the
+    host. The deb registers MPRIS and `tidal://`.
+- **New:** L8 (`default` → the same DAC's exclusive entry is silent for ~5 s while WirePlumber
+  releases the card). Known issue. No code changed in this run, so there is nothing to re-check on
+  Windows.
+- **Owner decisions:**
+  - dmix clicks and the WirePlumber replug quirk ship as known issues.
+  - The ~150 ms ALSA skip/seek lag is acceptable for 1.0 (revisit for 2.0).
+  - Linux is labelled **Supported**.
+- **Left for the owner** (hands or `sudo`; none blocks the label unless it fails):
+  - C2 unplug on direct `hw:` exclusive (the L1 row);
+  - `sudo pacman -U` of the built AUR package, with its menu launch and `tidal://` login;
+  - the eye checks on C5/C6 smoothness;
+  - optionally a real profile-picture upload.
+
+- [x] Linux bare-metal run. **Closed 2026-11-10**, apart from the owner rows above.
+
+  **Known issues for the 1.0 release notes (Linux):**
+  - Clicks on skip and seek through the "ALSA default, may resample" (`sysdefault:`/dmix)
+    entries. Use "System default" or the "(direct hardware)" entry.
+  - After OxiTide held a DAC directly, PipeWire can lose that DAC until a replug or
+    `systemctl --user restart wireplumber`.
+  - Switching from "System default" to the same DAC's exclusive entry takes ~5 s (L8).
+  - Skip and seek on ALSA lag by up to ~150 ms (the buffer plays out to a faded end).
+  - The tray icon has no tooltip (libappindicator has no API for it).
+
 ## 7. Tag `v1.0.0`
 
 - [ ] Bump `[workspace.package] version` in `Cargo.toml` from `0.7.0` to `1.0.0` (the only place

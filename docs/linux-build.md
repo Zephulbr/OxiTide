@@ -221,3 +221,28 @@ AUR: build/install the `PKGBUILD` attached to a release (rendered from the
 renders it locally for an existing tag) on Arch against `webkit2gtk-4.1`
 (`makepkg -si`). The recipe sets `options=('!lto')`: under makepkg's default `lto`
 the link fails (found and verified on `v0.6.0`, `plans/notes/2026-11-05-linux-v1-final-run.md`).
+
+## Desktop behaviour worth knowing
+
+Seen on bare metal (CachyOS, KDE Wayland, PipeWire; `plans/notes/2026-11-10-linux-v1-handoff-run.md`):
+
+- **AppImage updates.** Only the AppImage updates itself (Settings → System → Updates); deb and
+  AUR installs update through the package manager. Run the AppImage directly (AppRun sets
+  `$APPIMAGE`, the file the updater replaces), not with `--appimage-extract-and-run`, from a
+  folder the user can write (e.g. `~/Applications`). The file is replaced in place and keeps its
+  name, so desktop entries pointing at it keep working.
+- **Exclusive after PipeWire.** Switching from "System default" to the same DAC's "(direct
+  hardware)" entry in exclusive mode plays nothing for ~5 s: PipeWire holds the card until
+  WirePlumber suspends the idle sink, and the open waits for it (up to 7 s). Other switches move
+  in place in well under a second.
+- **WirePlumber after a direct open.** After OxiTide held a card directly, PipeWire can lose that
+  card (no sink) until the device is replugged or WirePlumber restarts:
+  `systemctl --user restart wireplumber`.
+- **`sysdefault:` entries** ("ALSA default, may resample") go through `dmix` and alsa-lib's
+  resampler, which can click on skip and seek. Prefer "System default" or the direct entry.
+
+**Oldest base in a container.** A 22.04 distrobox (see the handoff run note) checks the library
+floor with the host's Wayland and PipeWire. A bare 22.04 image has no ALSA `default` PCM. Add
+`pcm.!default { type pulse }` and `ctl.!default { type pulse }` to
+`/etc/alsa/conf.d/99-pulse-default.conf` (`libasound2-plugins`), as a stock 22.04 desktop's
+PulseAudio does, then restart the app.

@@ -247,7 +247,11 @@ which carries a normal completion gate.
   `main` at `d14f5f4`, and WSL2-verified; the deferred bare-metal checks were exempted by
   the owner at closure — see `plans/notes/2026-10-04-track8-completion.md` for the
   verified/exempted split. Findings, distro/WM/kernel sensitivity, and effort estimate:
-  `plans/notes/2026-10-01-linux-support-spike.md`.
+  `plans/notes/2026-10-01-linux-support-spike.md`. The exempted bare-metal checks ran later on
+  CachyOS (KDE Wayland, PipeWire, a USB DAC): 2026-10-23, 10-28, 11-05, and the closing run on
+  2026-11-10 (`plans/notes/2026-11-10-linux-v1-handoff-run.md`), which also covered the
+  AppImage updater and the Ubuntu 22.04 floor. Linux is labelled Supported for 1.0, with the
+  known issues listed in the v1 release gate §6.
 
 ### Track 9 — UI completion
 
