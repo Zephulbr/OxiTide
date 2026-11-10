@@ -141,7 +141,9 @@ replaces `$APPIMAGE`), so desktop entries pointing at it keep working.
 | Row | Result |
 |---|---|
 | `makepkg` of the `v0.7.0` release `PKGBUILD` (this host's stock `makepkg.conf`, `lto` in `OPTIONS`) | **PASS**. Built with `--nodeps` only because cargo is a user rustup; `options=('!lto')` took effect. `oxitide-0.7.0-1-x86_64.pkg.tar.zst` (9.2 MB) contains `/usr/bin/oxitide`, `oxitide.desktop` (`Exec=oxitide`, `StartupWMClass=oxitide`, `MimeType=x-scheme-handler/tidal;`), the four icons and both license files. |
-| `sudo pacman -U` / `makepkg -si`, menu launch, MPRIS `DesktopEntry=oxitide`, `tidal://` login | **Owner** (needs `sudo`). The package is in `~/aur-oxitide/`. |
+| `sudo pacman -U` (2026-11-11, `oxitide 0.7.0-1`) | **PASS**. The old user-level installs went first (the `~/Applications` AppImage, `~/.local/bin/oxitide`, four `~/.local/share/applications` entries and the user icons); config and login kept. Launched through the packaged entry (`gtk-launch oxitide`): the session restored with no login prompt, and the window looks right (Atmosphere dark, sidebar, player bar). MPRIS `DesktopEntry=oxitide`, `Identity=OxiTide`. |
+| `tidal://` handler | **FAIL, fixed (`2c84d0f`)**. The packaged entry declared `MimeType=x-scheme-handler/tidal;` with `Exec=oxitide` and no `%u`, so a login redirect opened before the app's first run would launch it without the link. After its first run the app writes its own `oxitide-handler.desktop` (`Exec="/usr/bin/oxitide" %u`), which `xdg-mime` then picks, so a login works from then on. `packaging/aur/oxitide.desktop` now has `Exec=oxitide %u`. No live login was sent (no fake auth codes). |
+| Upgrade to a build of `main` (`oxitide 0.7.0-2`, commit `2c84d0f`, `makepkg -d` of the release `PKGBUILD` with a local `git+file` source) | **PASS**. `pacman -U` upgraded in place; the entry has `Exec=oxitide %u`; the binary has the C2 unplug fix; launch, session and MPRIS as above. Left installed as the day-to-day app until the next release replaces it. |
 | `namcap` | Not installed. Not run. |
 
 ## 5. Oldest base: Ubuntu 22.04 (distrobox)
@@ -187,8 +189,10 @@ No CSS feature failed to render on WebKitGTK 2.50.4, so the floor stays where it
 
 - `config.toml`: back to `output_device = "hw:CARD=Pro,DEV=0"` exclusive and Atmosphere dark.
   My Collection order restored. Nothing uploaded to the TIDAL profile.
-- `~/Applications/OxiTide_0.6.0_amd64.AppImage` now holds the 0.7.0 release (updated in place) and
-  was left running. The `tidal://` handler (`oxitide-app-handler.desktop`) points at it again.
+- `~/Applications/OxiTide_0.6.0_amd64.AppImage` (0.7.0 after the update) was removed on 11-11 in
+  favour of the AUR package.
 - distrobox `u2204` is left in place (with the deb installed and the pulse `default` config), for
   re-runs. Remove it with `distrobox rm u2204`.
-- `~/aur-oxitide/` holds the built package (not installed).
+- `~/aur-oxitide/` holds the `0.7.0-1` package. The installed app is the pacman package
+  `oxitide 0.7.0-2`, built from `main` at `2c84d0f`; the user-level AppImage and `~/.local/bin`
+  installs are removed.
