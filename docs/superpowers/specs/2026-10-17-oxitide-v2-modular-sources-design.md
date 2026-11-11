@@ -70,6 +70,9 @@ plugins, network renderers (UPnP / Chromecast / AirPlay), downloads/sync.
   pre-releases are published as GitHub **prereleases**; the updater endpoint
   (`releases/latest/download/latest.json`) ignores prereleases, so 1.x installs are never offered
   them.
+  - **2026-11-12:** cut at `v1.0.1` instead of `v1.0.0`. 1.0.1 (the zip-less updater, plus the
+    post-1.0 test and CI fixes) shipped from `main` first, so the 1.x line starts on the
+    CI-gated release. Workflow in `docs/release.md` ("Branches").
 - **V2-D4 — side-by-side preview identity.** Until 2.0 ships, preview builds must not touch the
   daily 1.x install:
   - own Tauri `identifier`, product name ("OxiTide Preview"), data root (`%APPDATA%\OxiTide

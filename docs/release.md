@@ -52,6 +52,19 @@ built by `.github/workflows/release.yml` from a version tag; nothing is uploaded
    backed by a machine record, that record's id (a perf corpus id with `check.mjs`'s exit code, a
    CI run id). A tick without its id does not count as evidence (`AGENTS.md`, Workflow).
 
+## Branches (from v1.0.1)
+
+`release/1.x` was cut at `v1.0.1` (V2 spec, V2-D3); `main` is V2 from there.
+
+- A 1.x fix goes on `release/1.x` (branch from it, or commit there directly). Bump the version
+  there and tag `v1.0.x` on that branch; the release workflow runs on any `v*` tag.
+- Then **merge `release/1.x` forward into `main`**, never the other way: `main` carries V2 work
+  that 1.x must not get. Bookkeeping for a 1.x release (its gate note, retro entries) is also
+  committed on `release/1.x` and reaches `main` through the merge.
+- CI runs on pushes to `release/**`, the same as on `main`.
+- 2.0 pre-releases are published as GitHub **prereleases**, which the updater endpoint ignores, so
+  1.x installs are never offered them (V2-D3).
+
 ## Notes
 
 - Windows installers are not Authenticode-signed (SmartScreen warns: *More info → Run anyway*);

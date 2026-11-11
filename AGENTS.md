@@ -63,6 +63,7 @@ Details are in the topic guides; these bite in any task:
 
 ## Workflow
 
+- Branches: `main` is V2 (from `v1.0.1`); `release/1.x` is the 1.x line. A fix meant for 1.x goes on `release/1.x`, is released (tagged `v1.0.x`) from there, and `release/1.x` is then merged forward into `main` — never `main` into `release/1.x` (`docs/release.md`, "Branches").
 - Feature work is spec'd/planned as dated files in `docs/superpowers/specs/` and `docs/superpowers/plans/`; extend that series instead of inventing new structure. `.superpowers/` is gitignored brainstorm/session state: nothing a doc or a later run depends on may live only there.
 - Notes in `plans/notes/` carry their status in a `**Status:**` line at the top; the `DONE-` filename prefix is historical (pre-2026-10-08 notes) and is not used for new ones. A release's gate note indexes what is open.
 - Sign-offs: the owner may pass a smoke as a whole, but the tick says what was exercised in one line. An item whose evidence is a machine record (a perf corpus, a CI or release run) is ticked only with that record's id (and for a corpus, `check.mjs`'s exit code); "marked done" without it is not evidence.
