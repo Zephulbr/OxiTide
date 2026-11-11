@@ -5000,9 +5000,36 @@ mod tests {
         assert_eq!(output.samples().len(), 176_400);
     }
 
+    /// `PacedOutput` pace for about real time at 44.1 kHz (22.7 us a frame):
+    /// the 2 s fixture takes ~1.8 s to write. Tests that read `playing` after
+    /// the first samples need it; unpaced, the fixture can play out before
+    /// the read on a loaded runner.
+    const ABOUT_REAL_TIME: Duration = Duration::from_micros(20);
+
+    /// Whether `output` has received any audio. Exclusive and ASIO playback
+    /// write integer samples, which `NullOutput` keeps apart from the float
+    /// ones: a wait on `samples()` alone never ends there.
+    fn wrote_audio(output: &NullOutput) -> bool {
+        !output.samples().is_empty() || !output.i32_samples().is_empty()
+    }
+
+    /// How long `wait_for` waits before it fails the test. A ceiling only: a
+    /// passing wait returns as soon as its condition holds, so a loaded CI
+    /// runner gets the room it needs without slowing a quiet machine.
+    const WAIT_LIMIT: Duration = Duration::from_secs(30);
+
+    /// Waits for `ready`, failing the test at the caller's line if it never
+    /// holds. It used to give up silently after 5 s, so a slow runner failed
+    /// on whatever assert came next, with a message that named the wrong
+    /// cause. To wait for something that must *not* happen, sleep instead.
+    #[track_caller]
     fn wait_for(mut ready: impl FnMut() -> bool) {
-        let deadline = std::time::Instant::now() + Duration::from_secs(5);
-        while !ready() && std::time::Instant::now() < deadline {
+        let caller = std::panic::Location::caller();
+        let deadline = std::time::Instant::now() + WAIT_LIMIT;
+        while !ready() {
+            if std::time::Instant::now() >= deadline {
+                panic!("wait_for at {caller} timed out after {WAIT_LIMIT:?}");
+            }
             std::thread::sleep(Duration::from_millis(10));
         }
     }
@@ -5236,7 +5263,18 @@ mod tests {
     #[test]
     fn seek_restarts_at_the_requested_offset() {
         let (plan, files) = fixture_plan();
-        let (engine, output) = engine_with(plan, files);
+        // Paced, so the second left after the seek is still playing when the
+        // state is read.
+        let output = NullOutput::new();
+        let engine = build_engine(
+            Arc::new(FakeResolver { plan }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(PacedOutput {
+                inner: output.clone(),
+                per_frame: ABOUT_REAL_TIME,
+            }),
+            Quality::Lossless,
+        );
         engine
             .handle(EngineCmd::PlayTracks {
                 items: vec![item(1)],
@@ -5605,7 +5643,31 @@ mod tests {
 
     #[test]
     fn beat_tracking_sends_a_clock_for_the_playing_track() {
-        let (engine, _output, beats) = beat_engine(Arc::new(fake_clock));
+        // Played at about real time, as a device would. Unpaced, the whole
+        // fixture played out in milliseconds, so the second window could
+        // replace the first in the analyzer's single slot (latest wins, on
+        // purpose) before the just-spawned beat thread took it: a loaded CI
+        // runner then saw the 1000 ms window first.
+        let (plan, files) = fixture_plan();
+        let output = NullOutput::new();
+        let engine = build_engine(
+            Arc::new(FakeResolver { plan }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(PacedOutput {
+                inner: output,
+                per_frame: ABOUT_REAL_TIME,
+            }),
+            Quality::Lossless,
+        );
+        engine.inner.beat_tap.set_window_ms(1000, 1000);
+        *engine.inner.beat_analyzer.lock().unwrap() = Arc::new(fake_clock);
+        let beats = Arc::new(Mutex::new(Vec::new()));
+        let seen = beats.clone();
+        engine.subscribe(Arc::new(move |e| {
+            if let EngineEvent::Beat(clock) = e {
+                seen.lock().unwrap().push(clock);
+            }
+        }));
         engine.set_beat_tracking(true);
         engine
             .handle(EngineCmd::PlayTracks {
@@ -5625,6 +5687,7 @@ mod tests {
             "the first window starts near the track start, not at {} ms",
             clock.anchor_ms
         );
+        engine.handle(EngineCmd::Clear).unwrap();
     }
 
     /// The first window is read from the audio decoded ahead of playback, so
@@ -5639,7 +5702,7 @@ mod tests {
             // About real time: the 2 s fixture takes ~1.8 s to write.
             Box::new(PacedOutput {
                 inner: output.clone(),
-                per_frame: Duration::from_micros(20),
+                per_frame: ABOUT_REAL_TIME,
             }),
             Quality::Lossless,
         );
@@ -5667,10 +5730,13 @@ mod tests {
         // slow CI runner can be 100+ ms in).
         let (start, written) = windows[0];
         assert!(start < 500.0, "the first window starts at {start} ms");
-        // 0.18 s of stereo output; playing the 0.5 s window first would be
-        // ~0.45 s.
+        // Waiting to play the 0.5 s window first would mean ~0.45 s of stereo
+        // output (~40k samples) before the analyzer ran; reading it ahead
+        // takes a few buffers (0.18 s was the old bound; 0.21-0.23 s with three
+        // test binaries sharing the CPU). The bound sits between the two, so
+        // it still tells them apart without failing a loaded runner.
         assert!(
-            written < 2 * 8_000,
+            written < 30_000,
             "the first window waited for {written} samples of playback"
         );
         let (second, _) = windows[1];
@@ -6365,7 +6431,10 @@ mod tests {
                 error: || Error::Manifest("bad manifest".into()),
             }),
             Arc::new(crate::fetch::MapFetcher { files }),
-            Box::new(output.clone()),
+            Box::new(PacedOutput {
+                inner: output.clone(),
+                per_frame: ABOUT_REAL_TIME,
+            }),
             Quality::Lossless,
         );
         let seen = Arc::new(Mutex::new(Vec::new()));
@@ -6973,7 +7042,7 @@ mod tests {
         engine
             .handle(EngineCmd::SetRepeat(RepeatMode::All))
             .unwrap();
-        wait_for(|| !output.samples().is_empty());
+        wait_for(|| wrote_audio(&output));
         wait_for(|| output.volumes().last() == Some(&1.0));
         engine.handle(EngineCmd::SetVolume(0.2)).unwrap();
         std::thread::sleep(Duration::from_millis(200));
@@ -7017,7 +7086,7 @@ mod tests {
         engine
             .handle(EngineCmd::SetRepeat(RepeatMode::All))
             .unwrap();
-        wait_for(|| !output.samples().is_empty());
+        wait_for(|| wrote_audio(&output));
 
         engine
             .handle(EngineCmd::FadeAndPause { duration_ms: 150 })
@@ -7368,7 +7437,7 @@ mod tests {
         engine
             .handle(EngineCmd::SetRepeat(RepeatMode::All))
             .unwrap();
-        wait_for(|| !output.samples().is_empty());
+        wait_for(|| wrote_audio(&output));
         assert_eq!(output.last_spec().unwrap().mode, OutputMode::Exclusive);
         assert_eq!(control.position(), 1.0);
         let volumes = output.volumes();
@@ -7414,7 +7483,7 @@ mod tests {
         engine
             .handle(EngineCmd::SetRepeat(RepeatMode::All))
             .unwrap();
-        wait_for(|| !output.samples().is_empty());
+        wait_for(|| wrote_audio(&output));
 
         engine
             .handle(EngineCmd::FadeAndPause { duration_ms: 150 })
@@ -7958,6 +8027,9 @@ mod tests {
             if self.failing.load(Ordering::SeqCst) {
                 return Err(Error::Output("output device unavailable".into()));
             }
+            // About real time, so `playing` is still true when a test reads
+            // it after the first recovered samples.
+            std::thread::sleep(ABOUT_REAL_TIME * (buf.len() / 2) as u32);
             if let PcmBuffer::F32(v) = buf {
                 self.samples.lock().unwrap().extend_from_slice(v);
             }
@@ -8188,6 +8260,9 @@ mod tests {
             if self.failing.load(Ordering::SeqCst) {
                 return Err(Error::Output("output device unavailable".into()));
             }
+            // About real time, so `playing` is still true when a test reads
+            // it after the first recovered samples.
+            std::thread::sleep(ABOUT_REAL_TIME * (buf.len() / 2) as u32);
             if let PcmBuffer::F32(v) = buf {
                 self.samples.lock().unwrap().extend_from_slice(v);
             }
@@ -9687,9 +9762,18 @@ mod tests {
         settings
     }
 
-    /// Plays `items` to the end through a lightly throttled output (so the
-    /// producer runs ahead like real playback) and returns the engine, output,
-    /// and every `dsp_stages` list published.
+    /// Output pace for the transition tests: about real time, like a device.
+    /// A crossfade can only overlap the tail the producer has queued ahead
+    /// when the track ends, so the producer must stay well ahead of the
+    /// output. The old 3 ms per write was ~30x real time, which a debug-build
+    /// decoder on a loaded CI runner could not keep ahead of: the overlap came
+    /// out short and the totals long (CI, 2026-11-10/11). 2x real time still
+    /// came up short with three test binaries sharing the CPU.
+    const TRANSITION_PACE: Duration = ABOUT_REAL_TIME;
+
+    /// Plays `items` to the end through a paced output (so the producer runs
+    /// ahead like real playback) and returns the engine, output, and every
+    /// `dsp_stages` list published.
     fn play_to_end(
         plan: StreamPlan,
         files: HashMap<String, Vec<u8>>,
@@ -9701,9 +9785,9 @@ mod tests {
         let engine = build_engine(
             Arc::new(FakeResolver { plan }),
             Arc::new(crate::fetch::MapFetcher { files }),
-            Box::new(ThrottledOutput {
+            Box::new(PacedOutput {
                 inner: output.clone(),
-                delay: Duration::from_millis(3),
+                per_frame: TRANSITION_PACE,
             }),
             Quality::Lossless,
         );
@@ -9829,9 +9913,9 @@ mod tests {
                 order: Arc::new(Mutex::new(Vec::new())),
             }),
             Arc::new(crate::fetch::MapFetcher { files }),
-            Box::new(ThrottledOutput {
+            Box::new(PacedOutput {
                 inner: output.clone(),
-                delay: Duration::from_millis(3),
+                per_frame: TRANSITION_PACE,
             }),
             Quality::Lossless,
         );
@@ -10058,9 +10142,9 @@ mod tests {
                 order: Arc::new(Mutex::new(Vec::new())),
             }),
             Arc::new(crate::fetch::MapFetcher { files }),
-            Box::new(ThrottledOutput {
+            Box::new(PacedOutput {
                 inner: output.clone(),
-                delay: Duration::from_millis(3),
+                per_frame: TRANSITION_PACE,
             }),
             Quality::Lossless,
         );
@@ -10161,7 +10245,7 @@ mod tests {
             // ~0.9 s for the 1 s preroll.
             Box::new(PacedOutput {
                 inner: output.clone(),
-                per_frame: Duration::from_micros(20),
+                per_frame: ABOUT_REAL_TIME,
             }),
             Quality::Lossless,
         );
@@ -10298,9 +10382,9 @@ mod tests {
                 order: Arc::new(Mutex::new(Vec::new())),
             }),
             Arc::new(crate::fetch::MapFetcher { files }),
-            Box::new(ThrottledOutput {
+            Box::new(PacedOutput {
                 inner: output.clone(),
-                delay: Duration::from_millis(3),
+                per_frame: TRANSITION_PACE,
             }),
             Quality::Lossless,
         );
@@ -10340,7 +10424,7 @@ mod tests {
             // ~0.9 s for the 1 s tail.
             Box::new(PacedOutput {
                 inner: NullOutput::new(),
-                per_frame: Duration::from_micros(20),
+                per_frame: ABOUT_REAL_TIME,
             }),
             Quality::Lossless,
         );
