@@ -168,12 +168,16 @@ Candidates (pick per value; none block 1.0 on their own):
       the reasons in the note.
 - [x] Owner smoke for wasapi 0.26 (shared + exclusive rows in the review note). **Passed
       2026-10-27.** The four review-fix commits can go to `main` on their own first.
-- [ ] Smoke the two follow-ups it raised (ASIO volume held at 100 %, in-place device switching;
+- [x] Smoke the two follow-ups it raised (ASIO volume held at 100 %, in-place device switching;
       rows in the review note), then merge `wasapi-0.26`.
       - **2026-11-10:** `wasapi-0.26` is merged (`7a0368e`); the ten follow-up rows in the review
         note are still unticked. `github/exclusive-fixed-volume` (`80e54e1`, exclusive output at
         a fixed 100 %) is unmerged and touches the same volume rows: decide on it first, then
         run the smoke once.
+      - **2026-11-11:** the owner merged `80e54e1` (merge `0aabe08`; the exclusive-volume
+        caution now opens from the output picker, which replaced the Exclusive toggle) and marked
+        the ten follow-up rows and the fixed-volume smoke
+        (`2026-11-05-exclusive-fixed-volume-smoke.md`) passed, as a whole.
 
 ## 4. Final perf run
 
@@ -183,6 +187,9 @@ Candidates (pick per value; none block 1.0 on their own):
       S9 passed on re-run, S12 after a checker fix (track changes open at `info_ready`), S13
       re-baselined for WebView2 157 (owner). Result in `2026-11-10-v1-final-perf-run.md`.
       Re-run it if audio, output or UI code changes before the tag (e.g. `80e54e1`).
+      **2026-11-11:** `80e54e1` is merged (`0aabe08`, audio + output + UI), and S4/S12/S13 now
+      play pinned tracks (`d4ba33c`, the tracks this corpus played). The `v1.0.0` draft is cut
+      without a re-run; run the corpus against the tagged commit before publishing the draft.
       **Runbook ready** (`2026-11-10-v1-final-perf-run.md`): one unattended `run-corpus.ps1`
       against the release exe of the commit to be tagged, about 5–6 h, overnight when the owner
       says. Budgets stay as they are; a breach is a regression to fix. Run it after the last
@@ -207,11 +214,11 @@ Candidates (pick per value; none block 1.0 on their own):
       `v0.3.1` updated the installed copy in-app, and the published `v0.4.0` then updated 0.3.1 to
       0.4.0 (§1).
 
-- [ ] Features added after the 2026-10-24 smoke pass (listed 2026-11-10):
-  - [ ] Customizable My Collection (spec `specs/2026-11-07-oxitide-customizable-collection-design.md`;
-        the owner smoke is pending per the roadmap).
-  - [ ] Own profile and profile editor (`fa9bb53`, `fbffa7f`: bio, handle, links, picture /
-        banner / logo uploads). No smoke checklist exists yet.
+- [x] Features added after the 2026-10-24 smoke pass (listed 2026-11-10). **Passed 2026-11-11**
+      (owner):
+  - [x] Customizable My Collection (spec `specs/2026-11-07-oxitide-customizable-collection-design.md`).
+  - [x] Own profile and profile editor (`fa9bb53`, `fbffa7f`: bio, handle, links, picture /
+        banner / logo uploads). No row checklist was written; the owner passed it as a whole.
 
 ## 6. Linux bare-metal run
 
@@ -285,7 +292,8 @@ agent drove the GUI itself over AT-SPI, a uinput pointer and KWin D-Bus.
 - **Owner decisions:**
   - dmix clicks and the WirePlumber replug quirk ship as known issues.
   - The ~150 ms ALSA skip/seek lag is acceptable for 1.0 (revisit for 2.0).
-  - Linux is labelled **Supported**.
+  - Linux is labelled **Supported**. **Changed 2026-11-11 (owner):** Linux is labelled **Work in
+    progress** for 1.0 (README and release notes), with the known issues below.
 - **Done 2026-11-11:** the C2 unplug (an `EIO` unplug showed raw ALSA text; fixed) and the AUR
   `pacman -U` install (the packaged entry lacked `%u` for `tidal://`; fixed).
 - **Done by the owner 2026-11-11:** the C5 now-playing mark eye check (smoothness and the
@@ -306,11 +314,16 @@ agent drove the GUI itself over AT-SPI, a uinput pointer and KWin D-Bus.
 
 ## 7. Tag `v1.0.0`
 
-- [ ] Bump `[workspace.package] version` in `Cargo.toml` from `0.7.0` to `1.0.0` (the only place
-      the version lives; `check-version.mjs` checks the tag against it).
-- [ ] `docs/release.md` runbook; release notes list accepted debt (S4 gap, any renegotiated budgets)
+- [x] Bump `[workspace.package] version` in `Cargo.toml` from `0.7.0` to `1.0.0` (the only place
+      the version lives; `check-version.mjs` checks the tag against it). **Done 2026-11-11.**
+- [x] `docs/release.md` runbook; release notes list accepted debt (S4 gap, any renegotiated budgets)
       and the known limits in `2026-10-27-v1-security-review.md` (remote over plain HTTP, debug
-      builds proxy Vite, unsigned Windows build).
+      builds proxy Vite, unsigned Windows build). **Done 2026-11-11:** `docs/release-notes/v1.0.0.md`
+      (the release workflow now uses `docs/release-notes/<tag>.md` as the draft's notes when it
+      exists). The owner accepted the debt and the three known limits for 1.0.
+- [ ] Tag `v1.0.0` and push: the workflow builds the **draft** release. **2026-11-11:** pushed
+      (see the release run). Before publishing: the perf re-run (§4) and a clean-machine install
+      of the draft's installer (`docs/release.md` step 4).
 
 ## After 1.0 (not gated)
 

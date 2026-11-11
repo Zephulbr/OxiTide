@@ -146,7 +146,8 @@ A hardware-style skin with needle and spectrum meters.
   transitions, and you can clear it at any time.
 - **Not affiliated with TIDAL.** It does not bypass subscriptions, and it does not play anything your account cannot stream.
 - **No music video playback** and no native mobile app. The phone remote is a web page.
-- **Windows first.** Linux is supported, with a few known differences (see [Platform status](#platform-status)). macOS is not planned.
+- **Windows first.** Linux is a work in progress: it builds, installs and plays, with known issues (see
+  [Platform status](#platform-status)). macOS is not planned.
 
 ## Install
 
@@ -216,16 +217,17 @@ public issue.
 
 | | Windows | Linux |
 |---|---|---|
-| Playback and library | Supported, primary target | Supported (tested on KDE Wayland + PipeWire; Ubuntu 22.04 is the oldest base) |
+| Playback and library | Supported, primary target | Work in progress (tested on KDE Wayland + PipeWire; Ubuntu 22.04 is the oldest base) |
 | Output | WASAPI shared/exclusive, ASIO | ALSA |
 | Media controls | SMTC and media keys | MPRIS |
 | Credential storage | Credential Manager | Secret Service |
 | Packaging | NSIS, MSI | AppImage, deb, AUR recipe (`PKGBUILD` attached to each release) |
 
-Known Linux differences: the "ALSA default, may resample" output entries can click on skip and seek (use
-"System default" or the direct-hardware entry), switching from "System default" to the same DAC in exclusive mode
-takes about 5 s while PipeWire lets go of it, and the tray icon has no tooltip. Details in
-[`docs/linux-build.md`](docs/linux-build.md#desktop-behaviour-worth-knowing).
+Known Linux issues: the "ALSA default, may resample" output entries can click on skip and seek (use
+"System default" or the direct-hardware entry); after OxiTide held a DAC directly, PipeWire can lose that DAC until
+a replug or `systemctl --user restart wireplumber`; switching from "System default" to the same DAC in exclusive
+mode takes about 5 s while PipeWire lets go of it; skip and seek lag by up to ~150 ms; and the tray icon has no
+tooltip. Details in [`docs/linux-build.md`](docs/linux-build.md#desktop-behaviour-worth-knowing).
 
 macOS is not planned.
 

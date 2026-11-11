@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Unofficial TIDAL desktop client (Tauri 2 + Rust + Svelte 5), personal use. Windows comes first; Linux is supported (bare-metal checks closed 2026-11-10, known issues in the v1 release gate §6). Track status, sequencing and completion/smoke notes live in `docs/superpowers/specs/2026-09-24-oxitide-post-mvp-roadmap.md` and `docs/superpowers/plans/notes/`. CI (GitHub Actions) runs the Rust/UI gates; smoke checks, the perf harness, and releases' final sign-off stay manual.
+Unofficial TIDAL desktop client (Tauri 2 + Rust + Svelte 5), personal use. Windows comes first; Linux is labelled "work in progress" for 1.0 (bare-metal checks closed 2026-11-10, known issues in the v1 release gate §6). Track status, sequencing and completion/smoke notes live in `docs/superpowers/specs/2026-09-24-oxitide-post-mvp-roadmap.md` and `docs/superpowers/plans/notes/`. CI (GitHub Actions) runs the Rust/UI gates; smoke checks, the perf harness, and releases' final sign-off stay manual.
 
 ## Commands
 

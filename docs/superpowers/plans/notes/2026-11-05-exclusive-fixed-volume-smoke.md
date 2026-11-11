@@ -19,36 +19,38 @@ VolumeSlider / VolumeKnob component tests.
 
 ## Before you start
 
-- [ ] Reset the DAC's volume once: past exclusive sessions may have left the Windows device
+- [x] Reset the DAC's volume once: past exclusive sessions may have left the Windows device
       volume (or the ALSA `PCM` element) at an old slider value. Set it where you want it in
       the system mixer.
 
 ## Windows (Dawn Pro, WASAPI)
 
-- [ ] Shared, app slider at 40%: turning exclusive on shows the caution dialog. Cancel leaves
+- [x] Shared, app slider at 40%: turning exclusive on shows the caution dialog. Cancel leaves
       exclusive off and the toggle off.
-- [ ] Confirm: playback restarts in exclusive at the system volume's level (no jump to the
+- [x] Confirm: playback restarts in exclusive at the system volume's level (no jump to the
       DAC's maximum unless the system volume is at 100%). The player-bar slider shows full
       with a lock, the Windows volume mixer value does **not** move, and `✓ BP` is lit.
-- [ ] While exclusive: the Windows volume slider (or the DAC's own control) changes the level.
+- [x] While exclusive: the Windows volume slider (or the DAC's own control) changes the level.
       App arrow keys, volume hotkeys, media keys and the phone remote do nothing; the phone
       shows a lock.
-- [ ] Turn exclusive off: the slider returns to 40% and the level drops accordingly.
-- [ ] With the slider at 100%, shared vs exclusive sound the same (or measure with `record` /
+- [x] Turn exclusive off: the slider returns to 40% and the level drops accordingly.
+- [x] With the slider at 100%, shared vs exclusive sound the same (or measure with `record` /
       `compare` through a line-in).
-- [ ] Turn exclusive on again with "Don't show again" ticked: confirm it. The next time, no
+- [x] Turn exclusive on again with "Don't show again" ticked: confirm it. The next time, no
       dialog appears.
-- [ ] Sleep timer fade-to-pause in exclusive: fades out, pauses, and plays at full level on resume.
-- [ ] A device without hardware volume (e.g. HDMI or S/PDIF), fallback "Use shared": exclusive
+- [x] Sleep timer fade-to-pause in exclusive: fades out, pauses, and plays at full level on resume.
+- [x] A device without hardware volume (e.g. HDMI or S/PDIF), fallback "Use shared": exclusive
       opens, the slider stays active, and below 100% the "volume applied in software" notice
       shows. With fallback "Warn only": playback fails with the "no volume control of its own"
       message.
-- [ ] An ASIO device: the slider is locked at 100% and the level follows the interface's knob or mixer.
+- [x] An ASIO device: the slider is locked at 100% and the level follows the interface's knob or mixer.
 
 ## Linux (Dawn Pro, ALSA)
 
-- [ ] `node scripts/audio/level-probe.mjs snapshot` in shared (`default`), `sysdefault:` and
+- [x] `node scripts/audio/level-probe.mjs snapshot` in shared (`default`), `sysdefault:` and
       exclusive `hw:`: with the app slider at 100% every row totals the same, and the `PCM`
       element / PipeWire volume does not change when exclusive opens or closes.
-- [ ] The desktop volume (KDE/GNOME) for the Dawn Pro still changes the level during exclusive
+- [x] The desktop volume (KDE/GNOME) for the Dawn Pro still changes the level during exclusive
       playback on `hw:` (PipeWire drives the same `PCM` element).
+
+

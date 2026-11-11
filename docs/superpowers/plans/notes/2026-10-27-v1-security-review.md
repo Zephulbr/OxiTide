@@ -103,22 +103,24 @@ Run with `npm --prefix ui run app:dev` and a real account; the DAC used for the 
 
 ### Smoke: the follow-ups (owner)
 
-- [ ] ASIO selected: every volume control (player bar, mini player, Rack knob, phone) reads 100 %,
+- [x] ASIO selected: every volume control (player bar, mini player, Rack knob, phone) reads 100 %,
       is dimmed and does nothing; hovering says why; bit-perfect stays on; volume hotkeys do nothing.
-- [ ] Back to a WASAPI device: the previous volume returns and the controls work again.
-- [ ] Sleep timer "fade and pause" on ASIO: fades out, pauses; the next play is at 100 %.
-- [ ] Switch WASAPI → WASAPI (same mode) while playing: audio continues within a fraction of a
+- [x] Back to a WASAPI device: the previous volume returns and the controls work again.
+- [x] Sleep timer "fade and pause" on ASIO: fades out, pauses; the next play is at 100 %.
+- [x] Switch WASAPI → WASAPI (same mode) while playing: audio continues within a fraction of a
       second at the same place (a skip of about 0.2 s is expected).
-- [ ] Switch WASAPI exclusive ↔ Topping ASIO with Bit-perfect on (both exclusive): moves in place
+- [x] Switch WASAPI exclusive ↔ Topping ASIO with Bit-perfect on (both exclusive): moves in place
       the same way, bit-perfect shown after.
-- [ ] Switch WASAPI shared → ASIO (mode change): restarts at the position as before.
-- [ ] Switch while paused, then Play: resumes on the new device.
-- [ ] The log (`Settings → Open logs folder`) shows `output moved to … in … ms` for the in-place
+- [x] Switch WASAPI shared → ASIO (mode change): restarts at the position as before.
+- [x] Switch while paused, then Play: resumes on the new device.
+- [x] The log (`Settings → Open logs folder`) shows `output moved to … in … ms` for the in-place
       switches.
-- [ ] Reload the window while playing (F5, or let Vite reload in `app:dev`): the app signs back
+- [x] Reload the window while playing (F5, or let Vite reload in `app:dev`): the app signs back
       in and plays; no `panic` lines in the log.
-- [ ] Unplug the DAC while playing on its WASAPI endpoint: the device notice appears within a
+- [x] Unplug the DAC while playing on its WASAPI endpoint: the device notice appears within a
       fraction of a second (not after ~2 s); replug + Play resumes.
+
+**Passed 2026-11-11 (owner, marked as a whole, not row by row).** With `80e54e1` merged (`0aabe08`), every exclusive output with its own volume control is held at 100 % like ASIO, not only ASIO.
 
 ## Accepted advisories (open at 1.0)
 

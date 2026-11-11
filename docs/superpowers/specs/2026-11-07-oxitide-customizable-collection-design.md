@@ -1,6 +1,6 @@
 # OxiTide — Customizable "My Collection"
 
-- **Status:** Implemented 2026-11-07 (UI gates green); owner smoke pending.
+- **Status:** Implemented 2026-11-07 (UI gates green); owner smoke passed 2026-11-11.
 - **Date:** 2026-11-07
 - **Owner:** V
 - **References:** `ui/design/DESIGN.md` (Sidebar "My Collection") · `docs/agents/ui.md`
