@@ -1,17 +1,10 @@
 # cargo-audit settings, read by `cargo audit` and the Audit workflow
 # (.github/workflows/audit.yml). Every ignored advisory needs a written
 # reason; remove an entry as soon as the dependency moves past it.
+#
+# Empty since 2026-11-11: the four zip 4.6.1 advisories (RUSTSEC-2026-0367,
+# -0368, -0369, -0429) went with the zip crate itself, which
+# tauri-plugin-updater now builds without (crates/oxitide-app/Cargo.toml;
+# docs/superpowers/plans/notes/2026-10-27-v1-security-review.md).
 [advisories]
-ignore = [
-    # zip 4.6.1, only through tauri-plugin-updater 2.13.1 (the latest 2.x).
-    # Accepted for 1.0 in docs/superpowers/plans/notes/2026-10-27-v1-security-review.md
-    # ("Accepted advisories"): update archives are verified against the
-    # minisign key before they are opened, and the advisories concern
-    # extraction. Drop these with the first updater release on zip >= 9.
-    "RUSTSEC-2026-0367",
-    "RUSTSEC-2026-0368",
-    "RUSTSEC-2026-0369",
-    # Same crate and path; published after that review, accepted on the same
-    # reasoning on 2026-11-11 (pending the owner's confirmation in that note).
-    "RUSTSEC-2026-0429",
-]
+ignore = []

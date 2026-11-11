@@ -142,6 +142,14 @@ Run with `npm --prefix ui run app:dev` and a real account; the DAC used for the 
     symlink entry with a large declared size). Same crate, same path, same reasoning (only a
     signed archive is ever extracted), so it is ignored too. **Owner to confirm.**
     `tauri-plugin-updater` 2.13.1 is still the latest 2.x (3.0 is in alpha).
+  - **Resolved 2026-11-11 (owner's call):** the zip code was never reached. The release overlay
+    sets `createUpdaterArtifacts: true`, so update payloads are the bare `.exe` / `.msi` /
+    `.AppImage`; the plugin's `zip` feature only adds `.zip` (Windows) and `.tar.gz`-wrapped
+    AppImage (Linux) extraction. `tauri-plugin-updater` is now built with
+    `default-features = false, features = ["rustls-tls", "system-proxy"]`: the `zip` crate is out
+    of `Cargo.lock`, all four advisories with it, and `.cargo/audit.toml` ignores nothing.
+    Caveat (also in `docs/agents/app-shell.md`): "v1Compatible" artifacts would need the feature
+    back. First real proof: an installed build with this change updating to the release after it.
 - **Linux desktop stack (warnings, not vulnerabilities):** `glib` 0.18.5 unsound
   `VariantStrIter` (RUSTSEC-2024-0429) and unmaintained `proc-macro-error` (RUSTSEC-2024-0370)
   come from Tauri's GTK 0.18 bindings (`tauri` → `muda`/`tray-icon` → `gtk`); unmaintained

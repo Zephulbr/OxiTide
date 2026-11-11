@@ -37,7 +37,12 @@ getrandom = "0.3"
 futures-util = "0.3"
 if-addrs = "0.15.0"
 socket2 = "0.6"
-tauri-plugin-updater = "2"
+# No `zip` feature: our update artifacts are the bare NSIS/MSI installers and
+# AppImage (`createUpdaterArtifacts: true` in tauri.release.conf.json), which
+# the plugin installs without unpacking. The feature only adds `.zip` /
+# `.tar.gz` extraction (and the `zip` crate, with its advisories). Switching
+# the release config to "v1Compatible" (archived) artifacts would need it back.
+tauri-plugin-updater = { version = "2", default-features = false, features = ["rustls-tls", "system-proxy"] }
 
 [dev-dependencies]
 wiremock = "0.6"
