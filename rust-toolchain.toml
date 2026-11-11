@@ -1,3 +1,6 @@
 [toolchain]
-channel = "stable"
+# Pinned, so CI and every machine run the same rustc/clippy and a new stable's
+# lints never turn CI red on unchanged code. Bump it deliberately in its own
+# commit (fix any new clippy lints there); CI reads the version from here.
+channel = "1.99.1"
 components = ["rustfmt", "clippy"]

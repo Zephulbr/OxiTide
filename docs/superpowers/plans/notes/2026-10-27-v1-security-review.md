@@ -136,6 +136,12 @@ Run with `npm --prefix ui run app:dev` and a real account; the DAC used for the 
   - **Action:** take a `tauri-plugin-updater` release that moves to zip ≥ 9 with a plain `cargo
     update` when one ships. If `cargo audit` is ever added to CI, ignore these three IDs in
     `.cargo/audit.toml` with a pointer to this note.
+  - **2026-11-11:** `cargo audit` is now in CI (`.github/workflows/audit.yml`, weekly and on
+    lockfile changes) with these IDs in `.cargo/audit.toml`. A fourth zip advisory has appeared
+    since this review, **RUSTSEC-2026-0429** (`ZipArchive::extract` aborts the process on a
+    symlink entry with a large declared size). Same crate, same path, same reasoning (only a
+    signed archive is ever extracted), so it is ignored too. **Owner to confirm.**
+    `tauri-plugin-updater` 2.13.1 is still the latest 2.x (3.0 is in alpha).
 - **Linux desktop stack (warnings, not vulnerabilities):** `glib` 0.18.5 unsound
   `VariantStrIter` (RUSTSEC-2024-0429) and unmaintained `proc-macro-error` (RUSTSEC-2024-0370)
   come from Tauri's GTK 0.18 bindings (`tauri` → `muda`/`tray-icon` → `gtk`); unmaintained

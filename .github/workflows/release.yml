@@ -3,6 +3,9 @@ name: Release
 # Push a tag vX.Y.Z (matching the workspace Cargo.toml version) to build a draft
 # GitHub Release. Publishing the draft by hand is what exposes latest.json to
 # installed copies. See docs/release.md.
+#
+# Nothing is built until the full CI gates pass on the tagged commit itself
+# (job `gates`): v1.0.0 was tagged on a commit whose CI run had failed.
 on:
   push:
     tags: ["v*"]
@@ -24,9 +27,15 @@ jobs:
       - run: node --test scripts/release/release.test.mjs
       - run: node scripts/release/check-version.mjs "$GITHUB_REF_NAME"
 
+  # The same jobs as a push to main (fmt, UI check and tests, Rust tests with
+  # flaky reporting, doctests, clippy, script tests), on Windows and Linux.
+  gates:
+    needs: check-version
+    uses: ./.github/workflows/ci.yml
+
   build:
     name: Build (${{ matrix.name }})
-    needs: check-version
+    needs: gates
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: true
@@ -59,7 +68,16 @@ jobs:
             libasound2-dev libasound2-plugins libdbus-1-dev \
             patchelf xdg-utils desktop-file-utils
 
-      - uses: dtolnay/rust-toolchain@stable
+      # The release is built with the toolchain the gates ran on
+      # (rust-toolchain.toml).
+      - name: Read the pinned toolchain
+        id: rust
+        shell: bash
+        run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)".*/\1/p' rust-toolchain.toml | tr -d '\r')" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.rust.outputs.channel }}
 
       - uses: Swatinem/rust-cache@v2
 

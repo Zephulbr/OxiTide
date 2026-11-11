@@ -1,0 +1,15 @@
+# cargo-nextest profiles. CI runs `cargo nextest run --workspace --profile ci`;
+# locally, `cargo test --workspace` stays the gate (AGENTS.md).
+
+[profile.ci]
+# A failed test is re-run up to twice. One that then passes is reported as
+# FLAKY (a warning on the CI run, see ci.yml) instead of failing the build:
+# it still needs a fix. A test that fails all three times fails CI.
+retries = 2
+# Report every failure, not just the first.
+fail-fast = false
+# Print a failure's output when it happens and again in the final summary.
+failure-output = "immediate-final"
+# Flag a test after 60 s and stop it after 5 min, so a hang fails the run
+# with its name instead of hitting the job timeout.
+slow-timeout = { period = "60s", terminate-after = 5 }

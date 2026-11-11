@@ -1,0 +1,51 @@
+name: Audit
+
+# Known-vulnerability checks for the dependency trees. Advisories appear
+# without any code change, so this runs weekly as well as when a lockfile
+# changes; it is separate from CI so a new advisory does not block unrelated
+# work. Accepted advisories live in .cargo/audit.toml, each with its reason.
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  push:
+    branches: [main, "release/**"]
+    paths:
+      - Cargo.lock
+      - ui/package-lock.json
+      - .cargo/audit.toml
+      - .github/workflows/audit.yml
+  pull_request:
+    paths:
+      - Cargo.lock
+      - ui/package-lock.json
+      - .cargo/audit.toml
+      - .github/workflows/audit.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cargo:
+    name: cargo audit
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      # Vulnerabilities fail the job; unmaintained/unsound/yanked notices are
+      # printed as warnings (cargo-audit's default).
+      - run: cargo audit
+
+  npm:
+    name: npm audit (shipped UI)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      # Only what ships in the app. Dev tooling (vitest and its deps) has open
+      # advisories that do not reach users; see the v1 security review.
+      - run: npm --prefix ui audit --omit=dev

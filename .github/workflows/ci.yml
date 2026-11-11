@@ -2,8 +2,12 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # release/** is the 1.x maintenance line once V2 work starts on main.
+    branches: [main, "release/**"]
   pull_request:
+  # The release workflow runs these same gates on the tagged commit before it
+  # builds anything (release.yml, job `gates`).
+  workflow_call:
 
 permissions:
   contents: read
@@ -41,8 +45,16 @@ jobs:
             libasound2-dev libasound2-plugins libdbus-1-dev \
             patchelf
 
-      - uses: dtolnay/rust-toolchain@stable
+      # The toolchain is pinned in rust-toolchain.toml (the one place it
+      # lives), so a new stable's lints never turn CI red on unchanged code.
+      - name: Read the pinned toolchain
+        id: rust
+        shell: bash
+        run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)".*/\1/p' rust-toolchain.toml | tr -d '\r')" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: ${{ steps.rust.outputs.channel }}
           components: clippy, rustfmt
 
       # Needs no build (or ui/dist), so it fails fast.
@@ -50,6 +62,10 @@ jobs:
         run: cargo fmt --all -- --check
 
       - uses: Swatinem/rust-cache@v2
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
 
       - uses: actions/setup-node@v5
         with:
@@ -71,18 +87,40 @@ jobs:
       - name: UI tests
         run: npm --prefix ui test
 
+      # nextest's `ci` profile (.config/nextest.toml) retries a failed test
+      # twice. A test that passes only on a retry is flaky: it is listed as a
+      # warning on the run, and it still needs a fix.
       - name: Rust tests
-        run: cargo test --workspace
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo nextest run --workspace --profile ci 2>&1 | tee nextest.log
+          # nextest prints each flaky test twice (inline and in the summary).
+          flaky=$(sed 's/\x1b\[[0-9;]*m//g' nextest.log | grep -E '^\s*FLAKY ' | sed -E 's/^\s+//' | sort -u || true)
+          if [ -n "$flaky" ]; then
+            echo "### Flaky tests (passed on a retry)" >> "$GITHUB_STEP_SUMMARY"
+            while IFS= read -r line; do
+              echo "::warning title=Flaky test::$line"
+              echo "- \`$line\`" >> "$GITHUB_STEP_SUMMARY"
+            done <<< "$flaky"
+          fi
+
+      # nextest does not run doctests.
+      - name: Rust doctests
+        run: cargo test --workspace --doc
 
       - name: Clippy
         run: cargo clippy --workspace -- -D warnings
 
-  release-scripts:
-    name: Release scripts
+  scripts:
+    name: Node scripts
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-      - run: node --test scripts/release/release.test.mjs
+      - name: Release scripts
+        run: node --test scripts/release/release.test.mjs
+      - name: Perf checker
+        run: node --test scripts/perf/check.test.mjs
