@@ -26,13 +26,21 @@ built by `.github/workflows/release.yml` from a version tag; nothing is uploaded
 
 1. Bump `version` in the workspace `Cargo.toml` (`[workspace.package]`) — the only place the
    version lives — and refresh `Cargo.lock` (any `cargo build`/`cargo check` does it). Commit, push
-   to `main`, and wait for CI to pass.
+   to `main`, and wait for CI to pass. A red run is not noise: if a test is flaky, fix it (or
+   record why not) before tagging. The release workflow re-runs the gates on the tag anyway
+   (step 3), so a red commit cannot ship.
    - `tauri.conf.json` has no `version` on purpose: Tauri then uses `Cargo.toml`'s, and the Rust
      code (updater, lyrics user agent) reads the same value through `CARGO_PKG_VERSION`.
      `ui/package.json` has none either. The release check fails if either file gains one.
-2. `git tag vX.Y.Z && git push origin vX.Y.Z`.
-3. The workflow checks the tag against `Cargo.toml`, builds Windows (NSIS, MSI) and Linux
-   (deb, AppImage) bundles, signs the updater artifacts, and creates a **draft** release containing
+2. `git tag -a vX.Y.Z -m "OxiTide X.Y.Z"`, then push the tag to **GitHub** (Actions and the
+   releases live there) and to the Codeberg mirror. Remote names depend on the clone: in the
+   owner's, `github` is GitHub and `origin` is Codeberg, so
+   `git push github vX.Y.Z; git push origin vX.Y.Z`. Check with `git remote -v`. Make the tag
+   annotated from the start: re-creating it starts a second release run.
+3. The workflow checks the tag against `Cargo.toml`, runs the full CI gates on the tagged commit
+   (job `gates`, the same jobs as `ci.yml`; nothing is built if they fail), builds Windows (NSIS,
+   MSI) and Linux (deb, AppImage) bundles, signs the updater artifacts, and creates a **draft**
+   release containing
    the bundles, `latest.json`, `SHA256SUMS.txt`, and the AUR `PKGBUILD` (rendered from
    `packaging/aur/PKGBUILD.in` by `make-pkgbuild.mjs`, building the tagged source).
    The notes come from `docs/release-notes/vX.Y.Z.md` when that file exists at the tag (write it
@@ -40,6 +48,9 @@ built by `.github/workflows/release.yml` from a version tag; nothing is uploaded
 4. Smoke the draft's installer on a clean machine, edit the notes if needed, then **publish**.
    Publishing is what makes `…/releases/latest/download/latest.json` resolve — installed copies
    only see the update after this step.
+5. Record the evidence in the release's gate note: the release run id, and for any gate item
+   backed by a machine record, that record's id (a perf corpus id with `check.mjs`'s exit code, a
+   CI run id). A tick without its id does not count as evidence (`AGENTS.md`, Workflow).
 
 ## Notes
 

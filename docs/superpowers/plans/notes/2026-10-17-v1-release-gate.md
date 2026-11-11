@@ -192,6 +192,10 @@ Candidates (pick per value; none block 1.0 on their own):
       without a re-run; run the corpus against the tagged commit before publishing the draft.
       **Marked done by the owner 2026-11-11:** the re-run against the tagged commit (`d017cdc`).
       No corpus id or check output was recorded with it.
+      **Correction 2026-11-11 (retro, `2026-11-11-v1-retro.md`):** no corpus for `d017cdc` exists.
+      The tick came 47 min after the tag; the newest corpus is `corpus-20261111-144938` (the S13
+      A/B, done 15:03), and the release exe on disk was still `a332ed2`'s. So `0aabe08` shipped
+      unmeasured. The run against `v1.0.0` is recorded in the retro note's "Open" section.
       **Runbook ready** (`2026-11-10-v1-final-perf-run.md`): one unattended `run-corpus.ps1`
       against the release exe of the commit to be tagged, about 5–6 h, overnight when the owner
       says. Budgets stay as they are; a breach is a regression to fix. Run it after the last

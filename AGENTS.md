@@ -4,12 +4,14 @@ Unofficial TIDAL desktop client (Tauri 2 + Rust + Svelte 5), personal use. Windo
 
 ## Commands
 
-Prereqs: Rust stable (`rust-toolchain.toml` pins it, with clippy/rustfmt), Node `^22.22.2 || ^24.15 || >=26` (jsdom 30's range; Node 20 breaks the UI tests; CI uses 24), and a one-time `npm --prefix ui install` (also installs the Tauri CLI locally).
+Prereqs: Rust 1.99.1 (`rust-toolchain.toml` pins the exact version, with clippy/rustfmt; CI reads it from there; bump it deliberately in its own commit; run `rustup install` in the repo after a bump, since rustup's implicit auto-install is deprecated), Node `^22.22.2 || ^24.15 || >=26` (jsdom 30's range; Node 20 breaks the UI tests; CI uses 24), and a one-time `npm --prefix ui install` (also installs the Tauri CLI locally).
 
 - Dev run: `npm --prefix ui run app:dev` (starts Vite on port 1420, then the Tauri window).
   - `cargo run -p oxitide-app` is a trap: the debug build loads `devUrl` (http://localhost:1420) and fails with "localhost refused to connect" unless Vite is already running.
 - Package installer: `npm --prefix ui run app:build` (NSIS per-user + MSI; artifacts under `target/release/bundle/`). Unsigned; WebView2 downloads at install time.
 - Rust: `cargo fmt --all` (CI runs `cargo fmt --all -- --check`, rustfmt defaults, no `rustfmt.toml`); `cargo test --workspace`; `cargo clippy --workspace -- -D warnings`. Single test: `cargo test -p oxitide-tidal <test_name>`.
+  - CI runs the tests with `cargo nextest run --workspace --profile ci` (`.config/nextest.toml`: up to two retries) plus `cargo test --workspace --doc`. A test that passes only on a retry shows as a "Flaky test" warning on the run: treat it as a bug to fix, not noise.
+  - Dependency advisories: `cargo audit` (accepted ones in `.cargo/audit.toml`, each with its reason) and `npm --prefix ui audit --omit=dev`; the Audit workflow runs both weekly and on lockfile changes.
 - UI: `npm --prefix ui run check` (svelte-check); `npm --prefix ui test` (vitest). Single test: `npm --prefix ui test -- src/lib/format.test.ts`.
 - Linux (WSL2 Ubuntu 22.04): environment, apt prerequisites, and build/package commands live in `docs/linux-build.md`; run the same `cargo test --workspace` and `cargo clippy --workspace -- -D warnings` gates there — they compile the `cfg(target_os = "linux")` code.
 
@@ -56,10 +58,12 @@ Details are in the topic guides; these bite in any task:
 
 - HTTP tests use `wiremock` and must never hit the live TIDAL API.
 - Tokens live in Windows Credential Manager via `KeyringStore` (service `oxitide`, user `tidal`); unit tests must use `MemoryStore`. Never log token values (`TokenSet` has a redacting `Debug` impl). On Linux the backend is the Secret Service (a session-only fallback when none is running); note that keyring v3 silently falls back to its mock store if no platform feature is enabled.
-- GUI smoke checks require a human, a real account, and a browser login; record them as checklists in `docs/superpowers/plans/notes/`.
+- GUI smoke checks require a human, a real account, and a browser login; record them as checklists in `docs/superpowers/plans/notes/`. Reusable smoke helpers (network toggle, cache and log watchers) live in `scripts/smoke/`.
 - Component tests are jsdom per file (`// @vitest-environment jsdom`) via `@testing-library/svelte`; pure-logic tests stay on node. Modal focus handling lives in `lib/focusTrap.ts`, `lib/portal.ts` and `lib/dialogs.svelte.ts`; route titles in `lib/titles.ts` (with the skip link in `App.svelte`).
 
 ## Workflow
 
-- Feature work is spec'd/planned as dated files in `docs/superpowers/specs/` and `docs/superpowers/plans/`; extend that series instead of inventing new structure. `.superpowers/` is gitignored brainstorm/session state.
+- Feature work is spec'd/planned as dated files in `docs/superpowers/specs/` and `docs/superpowers/plans/`; extend that series instead of inventing new structure. `.superpowers/` is gitignored brainstorm/session state: nothing a doc or a later run depends on may live only there.
+- Notes in `plans/notes/` carry their status in a `**Status:**` line at the top; the `DONE-` filename prefix is historical (pre-2026-10-08 notes) and is not used for new ones. A release's gate note indexes what is open.
+- Sign-offs: the owner may pass a smoke as a whole, but the tick says what was exercised in one line. An item whose evidence is a machine record (a perf corpus, a CI or release run) is ticked only with that record's id (and for a corpus, `check.mjs`'s exit code); "marked done" without it is not evidence.
 - Legal/security surface: root `LICENSE` (AGPL-3.0-or-later) and `THIRD_PARTY_NOTICES.md`; the webview CSP lives in `crates/oxitide-app/tauri.conf.json` (`csp` + `devCsp`) — update the allowlist when adding a remote origin.

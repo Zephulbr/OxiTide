@@ -7,7 +7,11 @@
 #   so check.mjs sees only this corpus.
 # - Backs up config.toml, session.json and history.jsonl, turns scrobbling off for
 #   the run (no perf plays reach Last.fm/ListenBrainz), and restores all three at
-#   the end, so the perf plays leave no trace in history or the saved queue.
+#   the end, so the perf plays leave no trace in history or the saved queue. The
+#   backup is deleted once the restore is verified, and kept (with a RESTORE
+#   INCOMPLETE line in corpus.log) if it is not.
+# - Copies the corpus's raw JSONL into corpus-<stamp>\runs\ at the end, so each
+#   corpus folder can be re-checked on its own.
 # - Keeps the display on and the PC awake while it runs (SetThreadExecutionState):
 #   a display that powers off marks the WebView occluded and throttles its frames.
 # - Each scenario runs in a child process with a timeout; a hung one is killed
@@ -143,12 +147,26 @@ try {
         if ($drift.Count -eq 0) { break }
         Log "state changed after restore ($($drift -join ', ')); restoring again"
     }
-    Log "restored $($stateFiles -join ', ') (scrobbling back as it was)"
+    if ($drift.Count -eq 0) {
+        Log "restored $($stateFiles -join ', ') (scrobbling back as it was)"
+        # The backup is a copy of the owner's history and config (Last.fm key
+        # included); once the restore is verified it has no further use.
+        Remove-Item -LiteralPath $backupDir -Recurse -Force
+        Log "removed $backupDir (restore verified)"
+    } else {
+        Log "RESTORE INCOMPLETE: $($drift -join ', ') still differ after 3 attempts; the backup stays in $backupDir. Copy it to $cfgDir by hand once nothing is running."
+    }
     [OxiPerf.Power]::SetThreadExecutionState([uint32]"0x80000000") | Out-Null
     $summary | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $outDir "summary.json") -Encoding utf8
     $summary | Format-Table -AutoSize | Out-String | ForEach-Object { Log $_ }
 }
 
+# Keep this corpus's raw rows with it, so it can be re-checked later
+# (`node scripts/perf/check.mjs --dir <corpus>\runs`) after the next corpus
+# has moved them out of runs\.
+$corpusRuns = Join-Path $outDir "runs"
+New-Item -ItemType Directory -Force -Path $corpusRuns | Out-Null
+Get-ChildItem -LiteralPath $runsDir -Filter *.jsonl -File | Copy-Item -Destination $corpusRuns
 node (Join-Path $PSScriptRoot "check.mjs") --dir $runsDir --metrics 2>&1 | Out-File -LiteralPath (Join-Path $outDir "metrics.txt") -Encoding utf8
 node (Join-Path $PSScriptRoot "check.mjs") --dir $runsDir 2>&1 | Out-File -LiteralPath (Join-Path $outDir "check.txt") -Encoding utf8
-Log "check.mjs exit $LASTEXITCODE; results in $outDir"
+Log "check.mjs exit $LASTEXITCODE; results in $outDir (record the corpus id and this exit code in the gate note)"
