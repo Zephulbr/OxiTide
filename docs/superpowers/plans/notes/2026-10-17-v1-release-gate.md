@@ -190,6 +190,8 @@ Candidates (pick per value; none block 1.0 on their own):
       **2026-11-11:** `80e54e1` is merged (`0aabe08`, audio + output + UI), and S4/S12/S13 now
       play pinned tracks (`d4ba33c`, the tracks this corpus played). The `v1.0.0` draft is cut
       without a re-run; run the corpus against the tagged commit before publishing the draft.
+      **Marked done by the owner 2026-11-11:** the re-run against the tagged commit (`d017cdc`).
+      No corpus id or check output was recorded with it.
       **Runbook ready** (`2026-11-10-v1-final-perf-run.md`): one unattended `run-corpus.ps1`
       against the release exe of the commit to be tagged, about 5–6 h, overnight when the owner
       says. Budgets stay as they are; a breach is a regression to fix. Run it after the last
@@ -321,9 +323,11 @@ agent drove the GUI itself over AT-SPI, a uinput pointer and KWin D-Bus.
       builds proxy Vite, unsigned Windows build). **Done 2026-11-11:** `docs/release-notes/v1.0.0.md`
       (the release workflow now uses `docs/release-notes/<tag>.md` as the draft's notes when it
       exists). The owner accepted the debt and the three known limits for 1.0.
-- [ ] Tag `v1.0.0` and push: the workflow builds the **draft** release. **2026-11-11:** pushed
-      (see the release run). Before publishing: the perf re-run (§4) and a clean-machine install
-      of the draft's installer (`docs/release.md` step 4).
+- [x] Tag `v1.0.0` and push: the workflow builds the **draft** release. **2026-11-11:** pushed
+      (release run `43068409933`; the tag was then re-made annotated on the same commit,
+      `d017cdc`, and the duplicate run it started was cancelled). Before publishing: the perf
+      re-run (§4) and a clean-machine install of the draft's installer (`docs/release.md` step 4).
+      **Both marked done by the owner 2026-11-11.** Left: publish the draft.
 
 ## After 1.0 (not gated)
 
