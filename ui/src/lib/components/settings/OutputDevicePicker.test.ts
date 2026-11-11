@@ -124,6 +124,46 @@ describe("OutputDevicePicker", () => {
     expect(screen.getByText("Always exclusive", { selector: ".always" })).toBeTruthy();
   });
 
+  it("routes a switch from shared to exclusive output through beforeExclusive", async () => {
+    setList({ selected: "spk" });
+    const beforeExclusive = vi.fn();
+    render(OutputDevicePicker, { icons: true, onerror: vi.fn(), beforeExclusive });
+    await screen.findByRole("radio", { name: /Desk DAC/ });
+
+    // Shared → an exclusive device: held until the warning lets it through.
+    await fireEvent.click(screen.getByRole("radio", { name: /Desk DAC/ }));
+    expect(beforeExclusive).toHaveBeenCalledTimes(1);
+    expect(mocks.api.setOutputDevice).not.toHaveBeenCalled();
+    beforeExclusive.mock.calls[0][0]();
+    expect(mocks.api.setOutputDevice).toHaveBeenCalledWith("dac");
+
+    // ASIO is always exclusive.
+    cleanup();
+    setList({ selected: "spk" });
+    render(OutputDevicePicker, { icons: true, onerror: vi.fn(), beforeExclusive });
+    await screen.findByRole("radio", { name: /Topping/ });
+    await fireEvent.click(screen.getByRole("radio", { name: /Topping/ }));
+    expect(beforeExclusive).toHaveBeenCalledTimes(2);
+
+    // Turning the selected shared device exclusive.
+    await fireEvent.click(screen.getByRole("button", { name: "Exclusive" }));
+    expect(beforeExclusive).toHaveBeenCalledTimes(3);
+    expect(mocks.api.setDeviceMode).not.toHaveBeenCalled();
+    beforeExclusive.mock.calls[2][0]();
+    expect(mocks.api.setDeviceMode).toHaveBeenCalledWith("spk", "exclusive");
+  });
+
+  it("switches exclusive to shared, or exclusive to exclusive, without asking", async () => {
+    setList();
+    const beforeExclusive = vi.fn();
+    render(OutputDevicePicker, { icons: true, onerror: vi.fn(), beforeExclusive });
+    await screen.findByRole("radio", { name: /Desk DAC/ });
+    await fireEvent.click(screen.getByRole("radio", { name: /Topping/ }));
+    await fireEvent.click(screen.getByRole("radio", { name: /^Speakers/ }));
+    expect(beforeExclusive).not.toHaveBeenCalled();
+    expect(mocks.api.setOutputDevice).toHaveBeenCalledWith("asio:Topping");
+  });
+
   it("edits the nickname in a dialog; saving it empty brings the device name back", async () => {
     setList();
     await renderPicker();

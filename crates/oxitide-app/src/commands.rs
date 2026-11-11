@@ -1900,6 +1900,12 @@ pub fn seek(state: State<'_, AppState>, position_ms: u64) -> Result<(), String> 
 #[tauri::command]
 pub fn set_volume(state: State<'_, AppState>, volume: f32, persist: bool) -> Result<(), String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
+    // Fixed (exclusive on a device with its own volume control): the engine
+    // ignores the command, and the saved slider must stay what shared mode
+    // will apply again.
+    if player.engine.state().volume_fixed {
+        return Ok(());
+    }
     player
         .engine
         .handle(EngineCmd::SetVolume(volume))
@@ -2737,6 +2743,19 @@ pub fn set_preferred_quality(
     Ok(())
 }
 
+/// "Don't show again" on the exclusive-mode volume warning.
+#[tauri::command]
+pub fn set_exclusive_volume_warning(
+    state: State<'_, AppState>,
+    enabled: bool,
+) -> Result<(), String> {
+    let mut config = state.config();
+    config.audio.exclusive_volume_warning = enabled;
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
 #[tauri::command]
 pub fn set_exclusive_fallback(
     state: State<'_, AppState>,
@@ -3567,6 +3586,7 @@ mod tests {
         "move_device_prefs",
         "set_preferred_quality",
         "set_exclusive_fallback",
+        "set_exclusive_volume_warning",
         "set_dsp_settings",
         "get_config",
         "get_audio_status",

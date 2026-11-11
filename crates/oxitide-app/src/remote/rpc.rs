@@ -822,6 +822,7 @@ mod tests {
         "move_device_prefs",
         "set_preferred_quality",
         "set_exclusive_fallback",
+        "set_exclusive_volume_warning",
         "set_dsp_settings",
         // AutoMix replay lab: desktop A/B tool returning WAV bytes.
         "automix_render",

@@ -45,7 +45,8 @@ desktop-entry resolution per package (issue #4 in the run note).
       again; default-device switch mid-playback and resume behave as on
       Windows. (On-demand enumeration only; no hotplug events is accepted.)
       Status 2026-10-23: not exercised (needs the cable).
-- [x] **Hardware mixer volume.** With a writable card Master/PCM element the
+- [x] **Hardware mixer volume.** (Superseded 2026-11-05: exclusive output no longer sets the device's volume (it plays at a fixed 100%); see `specs/2026-11-05-oxitide-exclusive-fixed-volume-design.md`.)
+      With a writable card Master/PCM element the
       slider drives the mixer and stays bit-perfect; with none, software
       scaling applies the "volume in software" notice.
       Done 2026-10-23 (Dawn Pro): one `PCM` element, slider drag set it to

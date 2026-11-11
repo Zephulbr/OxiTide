@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Player } from "../player.svelte";
-  import { FIXED_VOLUME_HINT } from "../volume";
+  import { shownVolume } from "../player.svelte";
+  import { FIXED_VOLUME_HINT as FIXED_HINT } from "../volume";
 
   /// Amp volume knob with a 23-dot LED ring (DESIGN §5.7). A slider: drag up
   /// or down, wheel, arrows ±2 %, Page keys ±10 %, Home/End; double-click
@@ -17,16 +18,16 @@
   $effect(() => {
     if (stepVolume !== null && player.state.volume === stepVolume) stepVolume = null;
   });
-  const volume = $derived(dragVolume ?? stepVolume ?? player.state.volume);
+  /// Exclusive output plays at 100% and leaves the level to the device: the
+  /// knob sits at full, dimmed, and ignores input.
+  const fixed = $derived(player.state.volume_fixed);
+  const volume = $derived(fixed ? 1 : (dragVolume ?? stepVolume ?? shownVolume(player.state)));
   const angle = $derived(-SWEEP / 2 + volume * SWEEP);
   const lit = $derived(Math.round(volume * (RING - 1)));
   const dots = Array.from({ length: RING }, (_, i) => {
     const a = ((-SWEEP / 2 + (i * SWEEP) / (RING - 1)) * Math.PI) / 180;
     return { x: 38 + 35 * Math.sin(a), y: 38 - 35 * Math.cos(a) };
   });
-
-  /// ASIO: held at 100% for bit-perfect output; the knob is inert.
-  const fixed = $derived(player.state.volume_fixed);
 
   const clamp = (v: number) => Math.min(1, Math.max(0, Math.round(v * 100) / 100));
 
@@ -62,8 +63,8 @@
     stepTo(next);
   }
   function onWheel(event: WheelEvent) {
-    event.preventDefault();
     if (fixed) return;
+    event.preventDefault();
     stepTo(clamp(volume - Math.sign(event.deltaY) * 0.02));
   }
   /// Live now, persisted once the steps stop.
@@ -73,7 +74,7 @@
   }
 </script>
 
-<div class="frame" style:--s={scale}>
+<div class="frame" class:fixed style:--s={scale} title={fixed ? FIXED_HINT : undefined}>
 <div class="knobbox">
   <svg class="ring" viewBox="0 0 76 76" aria-hidden="true">
     {#each dots as d, i (i)}
@@ -85,13 +86,11 @@
     role="slider"
     tabindex="0"
     aria-label="Volume"
-    aria-disabled={fixed}
-    title={fixed ? FIXED_VOLUME_HINT : undefined}
-    class:fixed
     aria-valuemin={0}
     aria-valuemax={100}
     aria-valuenow={Math.round(volume * 100)}
-    aria-valuetext={fixed ? FIXED_VOLUME_HINT : volume === 0 ? "Muted" : `${Math.round(volume * 100)} percent`}
+    aria-valuetext={fixed ? "100 percent, fixed in exclusive mode" : volume === 0 ? "Muted" : `${Math.round(volume * 100)} percent`}
+    aria-disabled={fixed || undefined}
     style:--angle="{angle}deg"
     onpointerdown={onPointerDown}
     onpointermove={onPointerMove}
@@ -99,7 +98,7 @@
     onpointercancel={() => (dragVolume = null)}
     onkeydown={onKeydown}
     onwheel={onWheel}
-    ondblclick={() => player.toggleMute()}
+    ondblclick={() => !fixed && player.toggleMute()}
   ></div>
 </div>
 </div>
@@ -168,9 +167,11 @@
     background: var(--rack-lamp);
     box-shadow: 0 0 6px var(--rack-lamp-glow);
   }
-  .knob.fixed {
-    cursor: not-allowed;
-    opacity: 0.6;
+  .fixed .knob {
+    cursor: default;
+  }
+  .fixed .ring circle.on {
+    opacity: 0.45;
   }
   .knob:focus-visible {
     outline: 2px solid var(--accent);

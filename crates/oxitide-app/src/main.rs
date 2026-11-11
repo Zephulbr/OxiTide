@@ -507,6 +507,7 @@ fn main() {
             commands::move_device_prefs,
             commands::set_preferred_quality,
             commands::set_exclusive_fallback,
+            commands::set_exclusive_volume_warning,
             commands::set_dsp_settings,
             commands::automix_render,
             commands::get_audio_status,

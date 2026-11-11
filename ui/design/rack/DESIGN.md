@@ -191,9 +191,9 @@ rgba(255,255,255,.045)` highlight. Optional meta (count, key tray) after the rul
 58px knob (skirt `repeating-conic-gradient(#2b2a28 0 2deg, #121110 2deg 4deg)`, cap
 radial highlight at 35% 30%, 11px pointer in `--rack-lamp`), inside a 76px box with a
 23-dot LED ring (radius 35px, −135°…+135°): dots up to the value lit. `role="slider"`.
-While volume is fixed (ASIO, `volume_fixed`) the ring reads full, the knob dims to 0.6 with a
-`not-allowed` cursor, ignores drag/wheel/keys, and carries the shared `FIXED_VOLUME_HINT`
-(`lib/volume.ts`) as its title and value text.
+With a fixed volume (exclusive output or ASIO, `volume_fixed`) it sits at full with the lit
+dots at 45% opacity, `aria-disabled`, a plain cursor, and the shared `FIXED_VOLUME_HINT`
+(`lib/volume.ts`) as tooltip, and ignores drag, wheel, keys and double-click.
 
 ### 5.8 Faders
 

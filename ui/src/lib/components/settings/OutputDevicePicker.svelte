@@ -12,6 +12,7 @@
     displayName,
     numberRuns,
     pickerView,
+    playsExclusive,
     supportsLine,
   } from "../../outputDevices";
   import Icon from "../Icon.svelte";
@@ -30,13 +31,25 @@
     icons,
     onlist,
     onerror,
+    beforeExclusive,
   }: {
     /// `ui.device_icons`.
     icons: boolean;
     /// Every list the picker receives (Settings derives the fallback row from it).
     onlist?: (list: OutputDeviceList) => void;
     onerror: (error: unknown) => void;
+    /// Runs a switch from shared to exclusive output (selecting an exclusive
+    /// or ASIO device, or turning the selected one exclusive), so Settings can
+    /// warn first that the in-app volume goes to 100%. Absent: runs it now.
+    beforeExclusive?: (change: () => void) => void;
   } = $props();
+
+  /// Run `change` now, or through `beforeExclusive` when it makes the playing
+  /// output exclusive.
+  function guarded(becomesExclusive: boolean, change: () => void) {
+    if (becomesExclusive && beforeExclusive) beforeExclusive(change);
+    else change();
+  }
 
   const uid = $props.id();
   let list = $state<OutputDeviceList | null>(null);
@@ -101,6 +114,12 @@
 
   function select(id: string) {
     if (!list || id === list.selected) return;
+    const current = list;
+    guarded(playsExclusive(current, id) && !playsExclusive(current, current.selected), () => switchTo(id));
+  }
+
+  function switchTo(id: string) {
+    if (!list || id === list.selected) return;
     const device = list.devices.find((d) => d.id === id);
     const name = device ? displayName(device) : "System default";
     commit({ ...list, selected: id });
@@ -113,6 +132,12 @@
   }
 
   function setMode(id: string, mode: OutputMode) {
+    if (!list) return;
+    const becomesExclusive = mode === "exclusive" && id === list.selected && !playsExclusive(list, id);
+    guarded(becomesExclusive, () => applyMode(id, mode));
+  }
+
+  function applyMode(id: string, mode: OutputMode) {
     if (!list) return;
     if (id === "") commit({ ...list, system_default: { ...list.system_default, mode } });
     else update(id, (d) => ({ ...d, prefs: { ...d.prefs, mode } }));

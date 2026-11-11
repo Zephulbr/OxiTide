@@ -12,7 +12,8 @@ export interface PlayerState {
   position_ms: number;
   duration_ms: number;
   volume: number;
-  /// Volume is held at 100% for bit-perfect output (ASIO): controls are off.
+  /// Exclusive output plays at 100% (the device sets the level); see
+  /// `shownVolume`.
   volume_fixed: boolean;
   shuffle: boolean;
   repeat: RepeatMode;
@@ -91,6 +92,12 @@ export function reconcileSeek(pending: number | null, event: EngineEvent): numbe
 export function muteTarget(volume: number, lastVolume: number): number {
   if (volume > 0) return 0;
   return lastVolume > 0 ? lastVolume : 0.5;
+}
+
+/** What a volume control shows: 100% while the volume is fixed (exclusive
+ *  output leaves the level to the device), else the user's slider. */
+export function shownVolume(state: Pick<PlayerState, "volume" | "volume_fixed">): number {
+  return state.volume_fixed ? 1 : state.volume;
 }
 
 /** Speaker icon for a volume level: crossed when muted, one wave below half, two at/above half. */
@@ -191,7 +198,7 @@ export function createPlayer(toasts?: Toasts) {
   /// persists once on release; `debounce` (wheel ticks) persists once the
   /// steps stop instead of rewriting the config per tick.
   function setVolume(v: number, persist = false, debounce = false) {
-    // Held at 100% (ASIO): the engine would ignore it anyway.
+    // Fixed: the device sets the level, and the saved slider stays as it is.
     if (state.volume_fixed) return Promise.resolve();
     if (v > 0) lastVolume = v;
     if (persistTimer !== null) clearTimeout(persistTimer);

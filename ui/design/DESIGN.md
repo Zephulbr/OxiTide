@@ -646,6 +646,16 @@ run for as long as playback does (the discs, the now-playing mark, Rack's meters
 platter) draw at 30 fps through `lib/frameGate.ts`: WebKitGTK pays for every presented
 frame in the app's main thread.
 
+**Fixed volume (exclusive output).** While exclusive output plays at 100% and the device
+sets the level (`volume_fixed`, spec `2026-11-05-oxitide-exclusive-fixed-volume-design.md`),
+every volume control shows full and is locked, in every mode. The player-bar slider's
+fill turns `--text-muted` at 50% opacity, without the hover glow. The mute button becomes
+a disabled `lock` icon, with the hint "Volume fixed at 100% in exclusive mode; set the
+level on your DAC or with the system volume" as tooltip and label. The Rack knob and the
+phone remote follow their own sections. Turning on a fixed volume while the slider is
+below 100% opens a non-destructive `ConfirmDialog` (accent confirm "Use exclusive
+mode") with a "Don't show again" checkbox (`optOutLabel`).
+
 ### 2.4 Accessibility floors (all modes)
 
 - Text ≥ 4.5:1; large text and UI glyphs ≥ 3:1.
@@ -719,8 +729,9 @@ The phone page served by the LAN remote is a separate entry, not a fourth mode.
   Swiping up/down on the artwork changes the PC's volume (full cover height = 100%,
   6px dead zone so taps never change it) with a level overlay; the artwork is a keyboard /
   screen-reader slider (arrows step 5%). A small speaker button shows the level and mutes.
-  While the PC plays ASIO (`volumeFixed`) the level reads 100%, the speaker button is
-  disabled, and a swipe changes nothing but shows `FIXED_VOLUME_HINT` once on release.
+  While the PC's volume is fixed (exclusive output or ASIO, `volumeFixed`) the swipe and
+  keys do nothing (a swipe shows `FIXED_VOLUME_HINT` once on release), the level reads
+  100%, and the speaker button becomes a disabled `lock`.
 - **Touch:** every control is at least 44×44px (`--remote-touch`); presses scale to 0.92;
   row menus open a bottom sheet; queue reorder uses a drag handle (`touch-action: none`).
 - **Icons:** the shared `Icon.svelte` (Lucide only, no glyphs). Covers load straight from

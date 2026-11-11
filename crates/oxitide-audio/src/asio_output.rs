@@ -25,7 +25,7 @@ use crate::error::{Error, Result};
 use crate::gain::{scale_words, GainRamp, WordKind};
 use crate::output::{
     asio_device_key, volume_gain, AudioOutput, AudioOutputSpec, OutputDevice, OutputMode,
-    OutputStatus, VolumeControl, ASIO_PREFIX, SOFTWARE_VOLUME_NOTICE,
+    OutputStatus, VolumeControl, ASIO_PREFIX,
 };
 use crate::ring::{self, push_samples, Starvation};
 
@@ -520,11 +520,14 @@ impl AsioOutput {
         let bit_perfect = self
             .format
             .is_some_and(|f| is_bit_perfect(self.input_bits, f, unity));
-        let software = !unity && self.input_bits.is_some();
+        // ASIO cannot report a volume control of its own, but its
+        // interfaces have one (an output knob, the driver's mixer): the app's
+        // volume is fixed at 100%, so only a sleep fade scales the samples.
         self.status = OutputStatus {
             mode: OutputMode::Exclusive,
             bit_perfect,
-            notice: software.then(|| SOFTWARE_VOLUME_NOTICE.to_string()),
+            notice: None,
+            volume_fixed: true,
         };
     }
 }
@@ -632,8 +635,8 @@ impl AudioOutput for AsioOutput {
         pushed
     }
 
-    /// ASIO has no endpoint volume: anything below 100% is software, applied
-    /// by the render callback within one driver buffer.
+    /// The engine hands a fixed ASIO output unity; below it (a sleep fade)
+    /// the render callback scales in software within one driver buffer.
     fn set_volume(&mut self, volume: f32) -> Result<()> {
         self.control.set(volume);
         self.refresh_status();

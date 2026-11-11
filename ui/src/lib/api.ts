@@ -308,11 +308,11 @@ export interface PlaybackState {
   playing: boolean; buffering: boolean; current?: QueueItem | null;
   current_index?: number | null;
   position_ms: number; duration_ms: number;
-  /** The volume being applied: 1 while `volume_fixed`. */
+  /** The user's slider; kept while `volume_fixed`. */
   volume: number;
-  /** Volume is held at 100% for bit-perfect output (ASIO has no endpoint
-   *  volume); `set_volume` is ignored. Always sent by Rust; optional so
-   *  hand-built states in tests may omit it. */
+  /** Exclusive output plays at 100% and the device sets the level: show
+   *  100% and lock the control (the engine ignores volume commands). Always
+   *  sent by Rust; optional so hand-built states in tests may omit it. */
   volume_fixed?: boolean;
   shuffle: boolean; repeat: RepeatMode;
   preferred_quality: Quality;
@@ -514,6 +514,8 @@ export interface Config {
     output_device: string;
     exclusive_fallback: "shared" | "warn_only";
     volume: number;
+    /** Ask before exclusive mode sets the in-app volume to 100%. */
+    exclusive_volume_warning: boolean;
     pinned?: string[];
     devices?: Record<string, Partial<{ nickname: string; icon: string; hidden: boolean; mode: OutputMode }>>;
   };
@@ -669,9 +671,11 @@ export interface RemoteState {
   currentIndex: number | null;
   positionMs: number;
   durationMs: number;
+  /** What the volume control shows: 100% while `volumeFixed`. */
   volume: number;
-  /** Volume is held at 100% for bit-perfect output (ASIO): the slider is off. */
-  volumeFixed: boolean;
+  /** Exclusive output on the PC plays at 100% and the device sets the
+   *  level: the phone locks its volume control. Optional for older PCs. */
+  volumeFixed?: boolean;
   shuffle: boolean;
   repeat: RepeatMode;
   queueLen: number;
@@ -941,6 +945,7 @@ export const api = {
   moveDevicePrefs: (from: string, to: string) => invoke<void>("move_device_prefs", { from, to }),
   setPreferredQuality: (quality: Quality) => invoke<void>("set_preferred_quality", { quality }),
   setExclusiveFallback: (mode: "shared" | "warn_only") => invoke<void>("set_exclusive_fallback", { mode }),
+  setExclusiveVolumeWarning: (enabled: boolean) => invoke<void>("set_exclusive_volume_warning", { enabled }),
   getAudioStatus: () => invoke<AudioStatus>("get_audio_status"),
   setDspSettings: (settings: DspSettings) =>
     invoke<DspSettings>("set_dsp_settings", { settings }),

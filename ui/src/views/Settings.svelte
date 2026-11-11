@@ -128,6 +128,9 @@
   let confirmingHistoryClear = $state(false);
   let confirmingBlockExplicit = $state(false);
   let confirmingLogout = $state(false);
+  /// A change that turns on a fixed volume (exclusive mode, an ASIO device),
+  /// held while the volume warning asks first.
+  let pendingFixedVolume = $state<(() => void) | null>(null);
   let hotkeyConflict = $state<
     { action: HotkeyAction; accelerator: string; other: HotkeyAction } | null
   >(null);
@@ -599,6 +602,26 @@
   function onDeviceList(list: OutputDeviceList) {
     deviceList = list;
     if (config && config.audio.output_device !== list.selected) saveAudio({ output_device: list.selected });
+  }
+
+  /// Exclusive output sets the in-app volume to 100% and leaves the level to
+  /// the DAC or system: ask first when that is louder than the slider now,
+  /// unless the user chose "Don't show again". The picker calls it for a
+  /// switch from shared to exclusive output.
+  function withVolumeWarning(change: () => void) {
+    const louder = !player.state.volume_fixed && player.state.volume < 1;
+    if (config?.audio.exclusive_volume_warning !== false && louder) pendingFixedVolume = change;
+    else change();
+  }
+
+  function confirmFixedVolume(optedOut: boolean) {
+    const change = pendingFixedVolume;
+    pendingFixedVolume = null;
+    if (optedOut) {
+      saveAudio({ exclusive_volume_warning: false });
+      api.setExclusiveVolumeWarning(false).catch(apply);
+    }
+    change?.();
   }
 
   function setDeviceIcons(enabled: boolean) {
@@ -1271,18 +1294,19 @@
             <SettingsSection title="Output" icon="headphones">
               <SettingRow
                 id="device" label="Audio device" stacked
-                description="Where OxiTide plays. Exclusive bypasses the system mixer so samples reach the device unchanged; other apps can't use it meanwhile. Pinned devices also appear in the player bar's quality menu."
+                description="Where OxiTide plays. Exclusive bypasses the system mixer so samples reach the device unchanged; other apps can't use it meanwhile, and the in-app volume stays at 100% (set the level on your DAC or with the system volume). Pinned devices also appear in the player bar's quality menu."
               >
                 <OutputDevicePicker
                   icons={config.ui.device_icons ?? true}
                   onlist={onDeviceList}
                   onerror={apply}
+                  beforeExclusive={withVolumeWarning}
                 />
               </SettingRow>
               {#if anyExclusive}
                 <SettingRow
                   id="exclusive-fallback" label="If exclusive fails"
-                  description="For every device in Exclusive mode."
+                  description="For every device in Exclusive mode: when the device refuses exclusive mode, or has no volume control of its own (exclusive would then play at full volume; the fallback uses the in-app volume instead, which is not bit-perfect)."
                 >
                   <Segmented
                     label="If exclusive fails"
@@ -1295,8 +1319,9 @@
               {#if config.audio.output_device.startsWith("asio:")}
                 <SettingRow label="ASIO driver" stacked>
                   <Notice kind="info">
-                    ASIO drivers are always exclusive and bit-perfect at 100% volume; lower volume is
-                    applied in software. The buffer size follows the driver's own control panel.
+                    ASIO drivers are always exclusive and bit-perfect: the in-app volume stays at 100%, so
+                    set the level on the interface or in its mixer. The buffer size follows the driver's
+                    own control panel.
                   </Notice>
                 </SettingRow>
               {/if}
@@ -1307,6 +1332,17 @@
                 onchange={setDeviceIcons}
               />
             </SettingsSection>
+            {#if pendingFixedVolume}
+              <ConfirmDialog
+                title="Exclusive mode volume"
+                message="Caution: exclusive mode sets the in-app volume to 100%, which can be much louder than now. Turn the volume down on your DAC or with the system volume first; the in-app volume returns when you leave exclusive mode."
+                confirmLabel="Use exclusive mode"
+                destructive={false}
+                optOutLabel="Don't show again"
+                onconfirm={confirmFixedVolume}
+                oncancel={() => (pendingFixedVolume = null)}
+              />
+            {/if}
 
             <SettingsSection
               title="Volume leveling"

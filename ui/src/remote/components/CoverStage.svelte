@@ -10,11 +10,14 @@
     cover,
     playing,
     volume,
+    fixed = false,
     onvolume,
   }: {
     cover: string | null;
     playing: boolean;
     volume: number;
+    /// Exclusive output on the PC plays at 100%: swipes and keys do nothing.
+    fixed?: boolean;
     /// `final` marks the end of a gesture (commit) vs. a live update.
     onvolume: (volume: number, final: boolean) => void;
   } = $props();
@@ -66,7 +69,7 @@
   }
 
   function down(event: PointerEvent) {
-    if (!event.isPrimary || drag) return;
+    if (fixed || !event.isPrimary || drag) return;
     drag = { id: event.pointerId, y: event.clientY, start: volume, swiping: false };
   }
 
@@ -94,6 +97,7 @@
   }
 
   function key(event: KeyboardEvent) {
+    if (fixed) return;
     const direction =
       event.key === "ArrowUp" || event.key === "ArrowRight"
         ? 1
@@ -115,7 +119,10 @@
   bind:this={stage}
   role="slider"
   tabindex="0"
-  aria-label="Volume — swipe up or down on the artwork"
+  aria-label={fixed
+    ? "Volume fixed at 100% in exclusive mode"
+    : "Volume — swipe up or down on the artwork"}
+  aria-disabled={fixed || undefined}
   aria-valuemin={0}
   aria-valuemax={100}
   aria-valuenow={percent}

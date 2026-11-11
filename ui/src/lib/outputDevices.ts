@@ -138,6 +138,15 @@ export function modeLabel(device: OutputDevice): string {
   return device.prefs.mode === "exclusive" ? "Exclusive" : "Shared";
 }
 
+/** Whether output `id` ("" = System default) plays exclusive: ASIO always,
+ *  others by their own mode. */
+export function playsExclusive(list: OutputDeviceList, id: string): boolean {
+  if (id === "") return list.system_default.mode === "exclusive";
+  const device = list.devices.find((d) => d.id === id);
+  if (!device) return false;
+  return device.group === "asio" || device.prefs.mode === "exclusive";
+}
+
 export interface DeviceGroupView {
   group: DeviceGroup;
   label: string;

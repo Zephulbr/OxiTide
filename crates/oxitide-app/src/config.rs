@@ -156,6 +156,10 @@ pub struct AudioConfig {
     /// a fresh config starts tapered.
     #[serde(default)]
     pub volume_tapered: bool,
+    /// Ask before turning exclusive mode on: it sets the in-app volume to
+    /// 100% and leaves the level to the device. Off once the user ticks
+    /// "Don't show again".
+    pub exclusive_volume_warning: bool,
     /// Devices in the quality menu, in pin order.
     pub pinned: Vec<String>,
     /// Per-device settings, by device id (`""` is System default). Last, so
@@ -171,6 +175,7 @@ impl Default for AudioConfig {
             exclusive_fallback: ExclusiveFallback::Shared,
             volume: 1.0,
             volume_tapered: true,
+            exclusive_volume_warning: true,
             pinned: Vec::new(),
             devices: std::collections::BTreeMap::new(),
         }
@@ -930,6 +935,7 @@ mod tests {
                 exclusive_fallback: ExclusiveFallback::WarnOnly,
                 volume: 0.42,
                 volume_tapered: true,
+                exclusive_volume_warning: false,
                 pinned: vec![
                     "{0.0.0.00000000}.{dev-1}".into(),
                     "asio:Focusrite USB ASIO".into(),

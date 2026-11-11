@@ -208,8 +208,8 @@ fn adjust_volume(app: &AppHandle, delta: f32) {
     let Some(player) = state.player() else {
         return;
     };
-    // Held at 100% (ASIO): the engine ignores it, so do not rewrite the
-    // saved volume the next device will use.
+    // Exclusive output with a fixed volume: the device sets the level, and
+    // the saved slider must not drift for when shared mode applies it again.
     if player.engine.state().volume_fixed {
         return;
     }

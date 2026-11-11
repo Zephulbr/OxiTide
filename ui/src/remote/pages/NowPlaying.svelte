@@ -52,9 +52,9 @@
 
   const position = $derived(seeking ?? store.positionAt(now));
   const duration = $derived(playback?.durationMs ?? 0);
-  const shownVolume = $derived(volume ?? playback?.volume ?? 1);
-  /// The PC plays ASIO at a fixed 100% (bit-perfect); volume is the DAC's.
+  /// Exclusive output on the PC plays at 100%; the level is set on its DAC.
   const volumeFixed = $derived(playback?.volumeFixed ?? false);
+  const shownVolume = $derived(volumeFixed ? 1 : (volume ?? playback?.volume ?? 1));
   const favorite = $derived(current ? actions.favTracks.has(current.trackId) : false);
   /// The heart's last toggle (the desktop's FavoriteHeart pops or breaks it).
   let heartFx = $state<HeartFx | null>(null);
@@ -81,6 +81,7 @@
   }
 
   function toggleMute() {
+    if (volumeFixed) return;
     if (shownVolume > 0) {
       unmuteTo = shownVolume;
       onVolume(0, true);
@@ -128,6 +129,7 @@
         cover={current.cover ?? null}
         playing={playback?.playing ?? false}
         volume={shownVolume}
+        fixed={volumeFixed}
         onvolume={onVolume}
       />
     {/if}
@@ -242,7 +244,7 @@
         onclick={toggleMute}
         disabled={volumeFixed}
       >
-        <Icon name={shownVolume === 0 ? "volume-x" : shownVolume < 0.5 ? "volume-1" : "volume-2"} size={20} />
+        <Icon name={volumeFixed ? "lock" : shownVolume === 0 ? "volume-x" : shownVolume < 0.5 ? "volume-1" : "volume-2"} size={20} />
         <span class="pct">{Math.round(shownVolume * 100)}</span>
       </button>
       <button

@@ -5,6 +5,7 @@
     message,
     confirmLabel = "Confirm",
     destructive = true,
+    optOutLabel,
     onconfirm,
     oncancel,
   }: {
@@ -13,20 +14,42 @@
     confirmLabel?: string;
     /// `false` draws the confirm in the accent instead of the danger colour.
     destructive?: boolean;
-    onconfirm: () => void;
+    /// Shows a checkbox (e.g. "Don't show again"); its state reaches
+    /// `onconfirm`. Cancelling ignores it.
+    optOutLabel?: string;
+    onconfirm: (optedOut: boolean) => void;
     oncancel: () => void;
   } = $props();
+
+  let optedOut = $state(false);
 </script>
 
 <Modal {title} onclose={oncancel}>
   <p>{message}</p>
+  {#if optOutLabel}
+    <label class="opt-out">
+      <input type="checkbox" bind:checked={optedOut} />
+      {optOutLabel}
+    </label>
+  {/if}
   <p class="actions">
     <button class="cancel" onclick={oncancel}>Cancel</button>
-    <button class="confirm" class:safe={!destructive} onclick={onconfirm}>{confirmLabel}</button>
+    <button class="confirm" class:safe={!destructive} onclick={() => onconfirm(optedOut)}>{confirmLabel}</button>
   </p>
 </Modal>
 
 <style>
+  .opt-out {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+  .opt-out input {
+    accent-color: var(--accent);
+  }
   .actions {
     display: flex;
     justify-content: flex-end;
