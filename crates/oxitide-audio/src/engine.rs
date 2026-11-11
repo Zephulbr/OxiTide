@@ -4122,6 +4122,27 @@ mod tests {
         (engine, output)
     }
 
+    /// `engine_with`, played at about real time: for tests that read
+    /// `playing` or `current` after the first samples. Unpaced, the 2 s
+    /// fixture can end (or move on to a queued track) before the read on a
+    /// loaded runner (CI flagged the enqueue test as flaky, 2026-11-11).
+    fn paced_engine_with(
+        plan: StreamPlan,
+        files: HashMap<String, Vec<u8>>,
+    ) -> (Engine, NullOutput) {
+        let output = NullOutput::new();
+        let engine = build_engine(
+            Arc::new(FakeResolver { plan }),
+            Arc::new(crate::fetch::MapFetcher { files }),
+            Box::new(PacedOutput {
+                inner: output.clone(),
+                per_frame: ABOUT_REAL_TIME,
+            }),
+            Quality::Lossless,
+        );
+        (engine, output)
+    }
+
     fn engine_with_policy(
         plan: StreamPlan,
         files: HashMap<String, Vec<u8>>,
@@ -5102,7 +5123,7 @@ mod tests {
     #[test]
     fn enqueue_appends_without_restarting_playback() {
         let (plan, files) = fixture_plan();
-        let (engine, output) = engine_with(plan, files);
+        let (engine, output) = paced_engine_with(plan, files);
         engine
             .handle(EngineCmd::PlayTracks {
                 items: vec![item(1)],
@@ -5132,7 +5153,7 @@ mod tests {
     #[test]
     fn enqueue_next_inserts_after_current_without_restarting_playback() {
         let (plan, files) = fixture_plan();
-        let (engine, output) = engine_with(plan, files);
+        let (engine, output) = paced_engine_with(plan, files);
         engine
             .handle(EngineCmd::PlayTracks {
                 items: vec![item(1), item(2)],
@@ -5163,7 +5184,7 @@ mod tests {
     #[test]
     fn enqueue_at_before_current_keeps_playing_without_restarting() {
         let (plan, files) = fixture_plan();
-        let (engine, output) = engine_with(plan, files);
+        let (engine, output) = paced_engine_with(plan, files);
         engine
             .handle(EngineCmd::PlayTracks {
                 items: vec![item(1), item(2)],
