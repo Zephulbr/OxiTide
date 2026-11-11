@@ -35,7 +35,9 @@ built by `.github/workflows/release.yml` from a version tag; nothing is uploaded
    (deb, AppImage) bundles, signs the updater artifacts, and creates a **draft** release containing
    the bundles, `latest.json`, `SHA256SUMS.txt`, and the AUR `PKGBUILD` (rendered from
    `packaging/aur/PKGBUILD.in` by `make-pkgbuild.mjs`, building the tagged source).
-4. Smoke the draft's installer on a clean machine, edit the generated notes, then **publish**.
+   The notes come from `docs/release-notes/vX.Y.Z.md` when that file exists at the tag (write it
+   before tagging), otherwise GitHub generates a list of changes.
+4. Smoke the draft's installer on a clean machine, edit the notes if needed, then **publish**.
    Publishing is what makes `…/releases/latest/download/latest.json` resolve — installed copies
    only see the update after this step.
 

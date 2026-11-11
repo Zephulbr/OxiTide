@@ -111,8 +111,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mapfile -t files < <(find artifacts -type f \( -name '*.exe' -o -name '*.msi' -o -name '*.deb' -o -name '*.AppImage' \))
+          # Hand-written notes for the tag when they exist, else GitHub's list.
+          notes=(--generate-notes)
+          if [ -f "docs/release-notes/$GITHUB_REF_NAME.md" ]; then
+            notes=(--notes-file "docs/release-notes/$GITHUB_REF_NAME.md")
+          fi
           gh release create "$GITHUB_REF_NAME" \
             --draft --verify-tag \
             --title "OxiTide ${GITHUB_REF_NAME#v}" \
-            --generate-notes \
+            "${notes[@]}" \
             "${files[@]}" out/latest.json out/SHA256SUMS.txt out/PKGBUILD
