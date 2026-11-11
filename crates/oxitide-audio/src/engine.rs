@@ -6129,8 +6129,8 @@ mod tests {
             })
             .unwrap();
 
-        wait_for(|| output.samples().len() > 0);
-        assert!(output.samples().len() > 0, "the track never started");
+        wait_for(|| !output.samples().is_empty());
+        assert!(!output.samples().is_empty(), "the track never started");
         assert_eq!(resolver.calls.load(Ordering::SeqCst), 3);
         assert!(
             !seen
@@ -6255,8 +6255,8 @@ mod tests {
             })
             .unwrap();
 
-        wait_for(|| output.samples().len() > 0);
-        assert!(output.samples().len() > 0, "playback never resumed");
+        wait_for(|| !output.samples().is_empty());
+        assert!(!output.samples().is_empty(), "playback never resumed");
         let events = seen.lock().unwrap();
         assert!(
             events
@@ -6460,7 +6460,7 @@ mod tests {
 
         engine.retry().unwrap();
 
-        wait_for(|| output.samples().len() > 0);
+        wait_for(|| !output.samples().is_empty());
         assert!(engine.state().playing, "retry did not resume playback");
         assert_eq!(engine.state().current.map(|i| i.track_id), Some(1));
     }
@@ -6487,7 +6487,7 @@ mod tests {
                 start: 0,
             })
             .unwrap();
-        wait_for(|| output.samples().len() > 0);
+        wait_for(|| !output.samples().is_empty());
 
         engine.handle(EngineCmd::Seek(500)).unwrap();
         // Past the target, so the seeked session is the one playing: until
@@ -8103,7 +8103,7 @@ mod tests {
         // The device comes back; the next user action recovers the track.
         failing.store(false, Ordering::SeqCst);
         engine.handle(EngineCmd::PlayPause).unwrap();
-        wait_for(|| samples.lock().unwrap().len() > 0);
+        wait_for(|| !samples.lock().unwrap().is_empty());
         assert!(
             watch.lock().unwrap().1,
             "recovery must publish a state with the output notice cleared"
@@ -8323,7 +8323,7 @@ mod tests {
 
         failing.store(false, Ordering::SeqCst);
         engine.handle(EngineCmd::PlayPause).unwrap();
-        wait_for(|| samples.lock().unwrap().len() > 0);
+        wait_for(|| !samples.lock().unwrap().is_empty());
         assert!(engine.state().playing, "recovery did not resume playback");
     }
 
@@ -8578,7 +8578,7 @@ mod tests {
                 start: 0,
             })
             .unwrap();
-        wait_for(|| output.samples().len() > 0);
+        wait_for(|| !output.samples().is_empty());
 
         engine
             .handle(EngineCmd::PlayTracks {
@@ -9562,7 +9562,7 @@ mod tests {
                 start: 0,
             })
             .unwrap();
-        wait_for(|| output.samples().len() > 0);
+        wait_for(|| !output.samples().is_empty());
         let before = output.samples().len();
         engine.handle(EngineCmd::Seek(1500)).unwrap();
         wait_for(|| output.flushes() >= 1 && !engine.state().playing);

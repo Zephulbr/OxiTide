@@ -9,11 +9,11 @@ Prereqs: Rust 1.99.1 (`rust-toolchain.toml` pins the exact version, with clippy/
 - Dev run: `npm --prefix ui run app:dev` (starts Vite on port 1420, then the Tauri window).
   - `cargo run -p oxitide-app` is a trap: the debug build loads `devUrl` (http://localhost:1420) and fails with "localhost refused to connect" unless Vite is already running.
 - Package installer: `npm --prefix ui run app:build` (NSIS per-user + MSI; artifacts under `target/release/bundle/`). Unsigned; WebView2 downloads at install time.
-- Rust: `cargo fmt --all` (CI runs `cargo fmt --all -- --check`, rustfmt defaults, no `rustfmt.toml`); `cargo test --workspace`; `cargo clippy --workspace -- -D warnings`. Single test: `cargo test -p oxitide-tidal <test_name>`.
+- Rust: `cargo fmt --all` (CI runs `cargo fmt --all -- --check`, rustfmt defaults, no `rustfmt.toml`); `cargo test --workspace`; `cargo clippy --workspace --all-targets -- -D warnings`. Single test: `cargo test -p oxitide-tidal <test_name>`.
   - CI runs the tests with `cargo nextest run --workspace --profile ci` (`.config/nextest.toml`: up to two retries) plus `cargo test --workspace --doc`. A test that passes only on a retry shows as a "Flaky test" warning on the run: treat it as a bug to fix, not noise.
   - Dependency advisories: `cargo audit` (accepted ones in `.cargo/audit.toml`, each with its reason) and `npm --prefix ui audit --omit=dev`; the Audit workflow runs both weekly and on lockfile changes.
 - UI: `npm --prefix ui run check` (svelte-check); `npm --prefix ui test` (vitest). Single test: `npm --prefix ui test -- src/lib/format.test.ts`.
-- Linux (WSL2 Ubuntu 22.04): environment, apt prerequisites, and build/package commands live in `docs/linux-build.md`; run the same `cargo test --workspace` and `cargo clippy --workspace -- -D warnings` gates there — they compile the `cfg(target_os = "linux")` code.
+- Linux (WSL2 Ubuntu 22.04): environment, apt prerequisites, and build/package commands live in `docs/linux-build.md`; run the same `cargo test --workspace` and `cargo clippy --workspace --all-targets -- -D warnings` gates there — they compile the `cfg(target_os = "linux")` code.
 
 ## Topic guides
 

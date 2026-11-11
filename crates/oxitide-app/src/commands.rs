@@ -3530,6 +3530,7 @@ mod tests {
     ///   concurrent saves could drop one of them;
     /// - window/titlebar, auth-flow and perf hooks are trivial or main-thread
     ///   by nature.
+    ///
     /// Anything that blocks (disk scans, device enumeration, CPU work, long
     /// waits) and does not depend on ordering belongs in `async` instead.
     const SYNC_COMMANDS: &[&str] = &[

@@ -102,7 +102,7 @@ mod tests {
             other => panic!("expected an artist top hit, got {other:?}"),
         }
         let json = serde_json::to_value(
-            &client(&server)
+            client(&server)
                 .search("beck", &["artists"], 20, 0)
                 .await
                 .unwrap(),

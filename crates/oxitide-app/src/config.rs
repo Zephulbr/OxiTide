@@ -1270,7 +1270,7 @@ duration_ms = 4000
         assert!(text.contains("window_maximized = false"));
         let loaded = Config::load_from(&path);
         assert_eq!(loaded.ui.window_x, None);
-        assert_eq!(loaded.ui.window_maximized, false);
+        assert!(!loaded.ui.window_maximized);
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -1572,9 +1572,11 @@ duration_ms = 4000
 
     #[test]
     fn each_mode_remembers_its_own_look() {
-        let mut ui = UiConfig::default();
-        ui.density = Density::Compact;
-        ui.dynamic_color = DynamicColor::Accent;
+        let mut ui = UiConfig {
+            density: Density::Compact,
+            dynamic_color: DynamicColor::Accent,
+            ..UiConfig::default()
+        };
         // A first visit keeps the look it arrives with (Studio starts on the sleeve)...
         let first = ui.switch_mode(UiMode::Instrument);
         assert_eq!(first.density, Density::Compact);

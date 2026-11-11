@@ -278,10 +278,12 @@ mod tests {
 
     #[test]
     fn bindings_skip_empty_entries_and_keep_action_order() {
-        let mut config = HotkeysConfig::default();
-        config.next = "Ctrl+Alt+KeyN".into();
-        config.show_hide = "  ".into();
-        config.play_pause = "F9".into();
+        let config = HotkeysConfig {
+            next: "Ctrl+Alt+KeyN".into(),
+            show_hide: "  ".into(),
+            play_pause: "F9".into(),
+            ..HotkeysConfig::default()
+        };
         assert_eq!(
             bindings(&config),
             vec![("play_pause", "F9"), ("next", "Ctrl+Alt+KeyN")]
@@ -329,8 +331,10 @@ mod tests {
 
     #[test]
     fn action_for_matches_case_insensitively() {
-        let mut config = HotkeysConfig::default();
-        config.play_pause = "ctrl+alt+KeyP".into();
+        let config = HotkeysConfig {
+            play_pause: "ctrl+alt+KeyP".into(),
+            ..HotkeysConfig::default()
+        };
         assert_eq!(
             action_for(&config, &parse("CTRL+ALT+KeyP").unwrap()),
             Some(HotkeyAction::PlayPause)
@@ -340,22 +344,28 @@ mod tests {
 
     #[test]
     fn duplicate_binding_detects_same_chord_ignoring_case_and_format() {
-        let mut config = HotkeysConfig::default();
-        config.play_pause = "Ctrl+Alt+KeyP".into();
-        config.next = "ctrl+alt+keyp".into();
+        let config = HotkeysConfig {
+            play_pause: "Ctrl+Alt+KeyP".into(),
+            next: "ctrl+alt+keyp".into(),
+            ..HotkeysConfig::default()
+        };
         assert_eq!(duplicate_binding(&config), Some(("play_pause", "next")));
-        let mut distinct = HotkeysConfig::default();
-        distinct.play_pause = "Ctrl+Alt+KeyP".into();
-        distinct.next = "Ctrl+Alt+KeyN".into();
+        let distinct = HotkeysConfig {
+            play_pause: "Ctrl+Alt+KeyP".into(),
+            next: "Ctrl+Alt+KeyN".into(),
+            ..HotkeysConfig::default()
+        };
         assert_eq!(duplicate_binding(&distinct), None);
         assert_eq!(duplicate_binding(&HotkeysConfig::default()), None);
     }
 
     #[test]
     fn parsed_bindings_split_malformed_entries_and_keep_later_valid_ones() {
-        let mut config = HotkeysConfig::default();
-        config.next = "Bogus+Key".into();
-        config.prev = "F9".into();
+        let config = HotkeysConfig {
+            next: "Bogus+Key".into(),
+            prev: "F9".into(),
+            ..HotkeysConfig::default()
+        };
         let (parsed, malformed) = parsed_bindings(&config);
         assert_eq!(parsed, vec![("prev", parse("F9").unwrap())]);
         assert_eq!(malformed.len(), 1);

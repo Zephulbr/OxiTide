@@ -83,7 +83,7 @@ Linux-side clone or worktree for speed and to avoid file-watching issues.
 ```bash
 cargo fmt --all -- --check
 cargo test --workspace
-cargo clippy --workspace -- -D warnings
+cargo clippy --workspace --all-targets -- -D warnings
 cargo build -p oxitide-app
 npm --prefix ui run check
 npm --prefix ui test

@@ -244,7 +244,7 @@ npm --prefix ui run app:build  # installers under target/release/bundle/
 
 cargo fmt --all -- --check
 cargo test --workspace
-cargo clippy --workspace -- -D warnings
+cargo clippy --workspace --all-targets -- -D warnings
 npm --prefix ui run check
 npm --prefix ui test
 ```

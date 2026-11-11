@@ -193,8 +193,10 @@ mod tests {
         let mut out = vec![0xAAu8; 6 * 4];
         assert_eq!(pop_frames_le(&mut consumer, 2, &mut out), 2);
         let words: Vec<u32> = out
-            .chunks_exact(4)
-            .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|b| u32::from_le_bytes(*b))
             .collect();
         assert_eq!(words, vec![1, 2, 3, 4, 0, 0]);
     }

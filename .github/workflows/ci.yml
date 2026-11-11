@@ -109,8 +109,10 @@ jobs:
       - name: Rust doctests
         run: cargo test --workspace --doc
 
+      # Test code included (--all-targets): its 22-warning backlog was cleared
+      # on 2026-11-11 so it cannot build up again.
       - name: Clippy
-        run: cargo clippy --workspace -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
   scripts:
     name: Node scripts

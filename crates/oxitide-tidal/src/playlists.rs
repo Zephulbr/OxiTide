@@ -697,7 +697,7 @@ mod tests {
             .and(path("/playlists/p-uuid/items"))
             .and(header("if-none-match", "\"e1\""))
             .and(query_param("limit", "100"))
-            .and(body_string_contains(&format!("trackIds={first_chunk}")))
+            .and(body_string_contains(format!("trackIds={first_chunk}")))
             .and(body_string_contains("toIndex=5"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "addedItemIds": ids[..100].to_vec()
