@@ -128,6 +128,38 @@ const trackToQueueItem = (t) => ({
 
 const getFavoriteTracks = () => invoke("get_favorite_tracks");
 
+/// Fixed tracks for the scenarios whose numbers follow the music: S4's gaps
+/// and S12's track changes follow the tracks' formats (a crossfade across a
+/// format change drains and reopens), and S13's IPC bytes follow the level
+/// frames. They used to take whatever the favourites were, so a new favourite
+/// moved them (2026-11-11 S12/S13). These are the tracks the passing v1 final
+/// corpus played (`corpus-20261111-043215`), in its order, so the budgets set
+/// on it still apply. `--favorites` restores the old behaviour.
+const PINNED_TRACKS = {
+  // The three shortest favourites then (49 s, 50 s, 66 s).
+  S4: [41352612, 458258760, 458258761],
+  // Four play inside the 10 min window; the fifth is the prefetch.
+  S12: [31848667, 273827986, 31848669, 171907446, 3524513],
+  S13: [31848667],
+};
+
+/// The scenario's pinned tracks, fetched by id, or the favourites when
+/// `--favorites` is given.
+const scenarioTracks = async (scenario) => {
+  const ids = PINNED_TRACKS[scenario];
+  if (!ids || process.argv.includes("--favorites")) return getFavoriteTracks();
+  const tracks = [];
+  for (const id of ids) {
+    try {
+      tracks.push(await invoke("get_track", { id }));
+    } catch (e) {
+      throw new Error(`${scenario}: pinned track ${id} is unavailable (${e}); re-pin it in drive.mjs or pass --favorites`);
+    }
+  }
+  console.log(`${scenario}: pinned tracks ${ids.join(", ")}`);
+  return tracks;
+};
+
 const playItems = (items, args = {}) => invoke("play_tracks", { items, start: 0, shuffle: false, ...args });
 
 /// Playing means the position moves. `playing && position_ms > 0` alone also
@@ -388,7 +420,7 @@ const scenarioFallback = async (id) => {
       await awaitLoggedIn();
       const config = await invoke("get_config");
       if (!config.ui.close_to_tray) throw new Error("S12 needs close to tray on (Settings)");
-      const items = requireTracks(await getFavoriteTracks(), 10).slice(0, 10).map(trackToQueueItem);
+      const items = requireTracks(await scenarioTracks("S12"), 5).slice(0, 10).map(trackToQueueItem);
       await invoke("set_repeat", { mode: "all" });
       await playItems(items);
       await awaitPlaying("S12 playback");
@@ -406,7 +438,7 @@ const scenarioFallback = async (id) => {
       await awaitLoggedIn();
       await until("!!window.__perf", "__perf bridge");
       await applyScenarioMode();
-      const first = requireTracks(await getFavoriteTracks(), 1)[0];
+      const first = requireTracks(await scenarioTracks("S13"), 1)[0];
       // Repeat, so a short track cannot end inside the window.
       await invoke("set_repeat", { mode: "all" });
       await playItems([trackToQueueItem(first)]);
@@ -468,7 +500,7 @@ const scenarioFallback = async (id) => {
     } else if (id.startsWith("S4")) {
       await awaitLoggedIn();
       await invoke("set_repeat", { mode: "off" });
-      const items = requireTracks(await getFavoriteTracks(), 3)
+      const items = requireTracks(await scenarioTracks("S4"), 3)
         .slice()
         .sort((a, b) => (a.duration ?? 0) - (b.duration ?? 0))
         .slice(0, 3)

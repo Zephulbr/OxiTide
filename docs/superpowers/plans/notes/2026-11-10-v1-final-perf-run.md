@@ -119,5 +119,7 @@ then copy the three files from `corpus-<stamp>\state-backup\` back to
 | S11/S12 idle | PASS (S12 idle events 0 with the checker fix) |
 | S13 Rack | PASS on the re-baselined memory/IPC rows; CPU and frames within budget |
 
-Open follow-up (not a gate item): pin S4/S12/S13 to fixed tracks so the favourites stop moving
-their gaps and IPC bytes.
+Follow-up (not a gate item): pin S4/S12/S13 to fixed tracks so the favourites stop moving
+their gaps and IPC bytes. **Done 2026-11-11:** `PINNED_TRACKS` in `drive.mjs` holds the tracks
+this corpus played (S4 `41352612, 458258760, 458258761`; S12 `31848667, 273827986, 31848669,
+171907446, 3524513`; S13 `31848667`), so the budgets set on it apply unchanged.
