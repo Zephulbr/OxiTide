@@ -177,8 +177,12 @@ Candidates (pick per value; none block 1.0 on their own):
 
 ## 4. Final perf run
 
-- [ ] Full scripted scenarios on a quiet machine after the UI pass, ideally against the release build;
+- [x] Full scripted scenarios on a quiet machine after the UI pass, ideally against the release build;
       `node scripts/perf/check.mjs` green (or breaches ruled on).
+      **PASS 2026-11-11** (`corpus-20261111-043215`, release exe of `a332ed2`, WebView2 157):
+      S9 passed on re-run, S12 after a checker fix (track changes open at `info_ready`), S13
+      re-baselined for WebView2 157 (owner). Result in `2026-11-10-v1-final-perf-run.md`.
+      Re-run it if audio, output or UI code changes before the tag (e.g. `80e54e1`).
       **Runbook ready** (`2026-11-10-v1-final-perf-run.md`): one unattended `run-corpus.ps1`
       against the release exe of the commit to be tagged, about 5–6 h, overnight when the owner
       says. Budgets stay as they are; a breach is a regression to fix. Run it after the last

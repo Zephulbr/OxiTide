@@ -516,6 +516,41 @@ test("idleEvents counts only growth outside the window after each track start", 
   assert.equal(idleEvents(samples.slice(0, 1), []), null);
 });
 
+test("idleEvents opens a track change at its info_ready", () => {
+  // 2026-11-11 S12: a 4 s crossfade across a format change fades the old
+  // tail out, then reopens; now_playing lands ~4 s before first_pcm.
+  const samples = [
+    { events: 8, t_ms: 24_000 },
+    { events: 8, t_ms: 202_428 },
+    { events: 11, t_ms: 204_433 }, // info_ready at 204_853
+    { events: 12, t_ms: 206_438 },
+    { events: 13, t_ms: 208_443 }, // first_pcm at 208_646
+    { events: 13, t_ms: 300_000 },
+  ];
+  assert.equal(idleEvents(samples, [3_000, 208_646]), 4);
+  assert.equal(idleEvents(samples, [3_000, { at: 208_646, from: 204_853 }]), 0);
+  // An info_ready after first_pcm never moves the start later.
+  assert.equal(idleEvents(samples, [3_000, { at: 208_646, from: 209_000 }]), 4);
+});
+
+test("metricsFor starts a track change at info_ready, within the cap", () => {
+  const lines = (infoAt) => [
+    { kind: "mark", name: "measure_start", t_ms: 20_000 },
+    { kind: "audio", event: "info_ready", t_ms: 3_000 },
+    { kind: "audio", event: "first_pcm", t_ms: 3_100 },
+    { kind: "ipc", events: 8, bytes: 0, t_ms: 24_000 },
+    { kind: "ipc", events: 8, bytes: 0, t_ms: 202_428 },
+    { kind: "audio", event: "info_ready", t_ms: infoAt },
+    { kind: "ipc", events: 11, bytes: 0, t_ms: 204_433 },
+    { kind: "ipc", events: 13, bytes: 0, t_ms: 208_443 },
+    { kind: "audio", event: "first_pcm", t_ms: 208_646 },
+    { kind: "ipc", events: 13, bytes: 0, t_ms: 300_000 },
+  ];
+  assert.equal(metricsFor({ scenario: "S12", lines: lines(204_853) }).ipc_idle_events, 0);
+  // An announcement more than 15 s back is not this change.
+  assert.equal(metricsFor({ scenario: "S12", lines: lines(150_000) }).ipc_idle_events, 3);
+});
+
 test("metricsFor reads S12 track-change bursts as not idle", () => {
   const file = runFile([
     { kind: "session", run_id: "S12-1", scenario: "S12" },

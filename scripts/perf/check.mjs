@@ -123,11 +123,19 @@ export const TRACK_CHANGE_WINDOW_MS = 10_000;
 /// `now_playing` / `state` before the new track's first PCM write (S12 saw it
 /// ~10 ms ahead of `first_pcm`).
 export const TRACK_CHANGE_LEAD_MS = 2_000;
+/// A track change starts when the engine announces the next track
+/// (`info_ready`), which can come well before its first PCM write: a crossfade
+/// across a format change fades the old tail out for the whole crossfade, then
+/// reopens the output (2026-11-11 final run: `now_playing` ~4 s ahead of
+/// `first_pcm` at a 4 s crossfade). An announcement further back than this is
+/// not the same change.
+export const TRACK_CHANGE_ANNOUNCE_MAX_MS = 15_000;
 
 /// `playback_event`s outside every track change: the counter's growth over
-/// sample intervals that do not overlap `[start - lead, start + window]` of
-/// any track start. A hidden window (S12) or a paused one (S11) should read 0:
-/// only a track change may reach it.
+/// sample intervals that do not overlap `[from - lead, at + window]` of any
+/// track change. A change is a `first_pcm` time `at` (a bare number) or
+/// `{ at, from }`, `from` being its `info_ready`. A hidden window (S12) or a
+/// paused one (S11) should read 0: only a track change may reach it.
 export function idleEvents(
   samples,
   trackStarts,
@@ -135,14 +143,17 @@ export function idleEvents(
   leadMs = TRACK_CHANGE_LEAD_MS,
 ) {
   if (samples.length < 2) return null;
+  const changes = trackStarts.map((s) =>
+    typeof s === "number" ? { at: s, from: s } : { at: s.at, from: Math.min(s.from ?? s.at, s.at) },
+  );
   let idle = 0;
   for (let i = 1; i < samples.length; i += 1) {
     const prev = samples[i - 1];
     const cur = samples[i];
     const delta = cur.events - prev.events;
     if (delta <= 0) continue;
-    const nearChange = trackStarts.some(
-      (s) => s - leadMs <= cur.t_ms && s + windowMs > prev.t_ms,
+    const nearChange = changes.some(
+      (c) => c.from - leadMs <= cur.t_ms && c.at + windowMs > prev.t_ms,
     );
     if (!nearChange) idle += delta;
   }
@@ -183,7 +194,8 @@ export function metricsFor(run) {
   const privates = []; // all-process private MiB
   const pageRows = []; // the driver's cumulative CDP page counters
   const underruns = []; // {t_ms, count}: output underruns during playback
-  const trackStarts = []; // first_pcm times
+  const trackStarts = []; // {at: first_pcm, from: its info_ready}
+  let announced = null; // the latest info_ready since the last first_pcm
   let played = false;
   let advanceMax = 0;
   for (const line of run.lines) {
@@ -208,9 +220,15 @@ export function metricsFor(run) {
         cacheDecisions.push(0);
       }
       if (line.event === "advance") advanceMax = Math.max(advanceMax, line.gap_ms ?? 0);
+      if (line.event === "info_ready") announced = line.t_ms;
       if (line.event === "first_pcm") {
         played = true;
-        trackStarts.push(line.t_ms);
+        const from =
+          announced !== null && line.t_ms - announced <= TRACK_CHANGE_ANNOUNCE_MAX_MS
+            ? announced
+            : line.t_ms;
+        trackStarts.push({ at: line.t_ms, from });
+        announced = null;
       }
       if (line.event === "underrun") underruns.push({ t_ms: line.t_ms, count: line.count ?? 1 });
       const first = (key) => {

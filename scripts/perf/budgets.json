@@ -89,11 +89,11 @@
     { "metric": "cpu_app_pct", "max": 1.9, "of": "median" },
     { "metric": "cpu_webview_pct", "max": 23.5, "of": "median" },
     { "metric": "ipc_events_per_min", "max": 2191, "of": "median" },
-    { "metric": "ipc_kb_per_min", "max": 546, "of": "median" },
+    { "metric": "ipc_kb_per_min", "max": 760, "of": "median" },
     { "metric": "frame_p95_ms:rack", "max": 16.7 },
     { "metric": "frame_p99_ms:rack", "max": 33 },
     { "metric": "long_task_max_ms", "max": 100 },
-    { "metric": "memory_max_mb", "max": 707 }
+    { "metric": "memory_max_mb", "max": 865 }
   ],
   "S14": [
     { "metric": "cpu_app_pct", "max": 2.0, "of": "median" },

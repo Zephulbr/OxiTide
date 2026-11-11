@@ -99,3 +99,22 @@ The three apparent regressions, pinned (`2026-11-04-v1-perf-regressions-webview.
   `2026-11-10-v1-final-perf-run.md`.
 - **S9** is real: the dynamic-colour glide restyles the whole page every frame for 1.2 s per track
   change and Blink's GC heap keeps the space. Every fix changes how the glide looks (owner).
+
+## Final run rulings (2026-11-11)
+
+From the §4 final run (`2026-11-10-v1-final-perf-run.md`, `corpus-20261111-043215`, `a332ed2`,
+WebView2 157.0.4341.42):
+
+- **S12 track-change window (checker):** a crossfade across a format change fades the old tail
+  out for the full crossfade and then reopens, so the change's `now_playing` / `state` arrive up
+  to the crossfade length before `first_pcm`. `check.mjs` now opens each track change at its
+  `info_ready` (the engine announcing the next track, at most 15 s back) instead of 2 s before
+  `first_pcm`. Budget unchanged (`ipc_idle_events` 0); `corpus-20261106-080459` still fails it
+  with 32.
+- **S13 re-baselined** (owner): `memory_max_mb` 707 → **865** (worst run 749 + 15 %, R2),
+  `ipc_kb_per_min` 546 → **760** (median 660 + 15 %). A/B on WebView2 157 with the 11-04 UI
+  (`06a9c8e`) read 745 / 641, so the rise is WebView2 157 and the track S13 plays, not the UI;
+  event counts are unchanged (1914 vs 1905/min).
+- **S9** first-run drift +106 (app +1) was noise: re-run +23. No change.
+- **Open:** S4/S12/S13 take whatever the favourites are; pinning their tracks would keep gaps and
+  IPC bytes comparable between runs.
