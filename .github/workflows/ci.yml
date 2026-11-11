@@ -8,6 +8,11 @@ on:
   # The release workflow runs these same gates on the tagged commit before it
   # builds anything (release.yml, job `gates`).
   workflow_call:
+  # A manual run (Actions tab, or `gh workflow run CI --ref main`) for when
+  # GitHub drops a push's run: on 2026-11-11 a run created during an Actions
+  # incident stayed "queued" with no jobs and could be neither cancelled nor
+  # re-run.
+  workflow_dispatch:
 
 permissions:
   contents: read
