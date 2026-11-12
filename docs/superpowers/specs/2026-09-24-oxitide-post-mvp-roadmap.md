@@ -30,6 +30,7 @@
 - **Revised:** 2026-11-10 — Docs pass: the Track 7 and Track 12 status cells and the ASIO smoke line brought up to date (AutoMix/ASIO merged and smoked; releases and the in-app update proven). The release gate lists the unsmoked post-2026-10-24 features (My Collection, own profile/editor) and the state of `wasapi-0.26` / `exclusive-fixed-volume`.
 - **Revised:** 2026-11-11 — v1.0 release candidate: the final perf run passed; `exclusive-fixed-volume` merged (`0aabe08`); the owner marked the remaining smokes passed (the §3b follow-ups, exclusive fixed volume, Customizable My Collection, own profile/editor); S4/S12/S13 pinned to fixed tracks; Linux labelled "Work in progress" for 1.0; version 1.0.0 and the release notes (`docs/release-notes/v1.0.0.md`).
 - **Revised:** 2026-11-12 — After 1.0: the v1 retro (`plans/notes/2026-11-11-v1-retro.md`: flaky engine tests fixed, releases gated on CI, nextest/audit/pinned toolchain, sign-off evidence rules), then **v1.0.1** (zip-less updater; gate `plans/notes/2026-11-12-v1.0.1-release.md`) and `release/1.x` cut at its tag (V2-D3). `main` is V2 from here; 1.x fixes follow `docs/release.md` "Branches". Still open from 1.0: the v1.0.0 perf corpus (retro, "Open").
+- **Revised:** 2026-11-12 — **v1.1.0 on `release/1.x`: i18n + an a11y follow-up.** The i18n track split out of Track 9 is specced (`2026-11-12-oxitide-v1.1-i18n-a11y-design.md`): ICU JSON catalogs, 23 machine-drafted left-to-right languages (Chinese drafted by DeepSeek and cross-checked; Greek owner-reviewed), status metadata and a volunteer workflow; plus `lang`, Windows contrast themes, track-change announcements and interface zoom. Right-to-left languages deferred.
 - **Owner:** V
 - **Parent:** `2026-09-21-oxitide-design.md` (§9 Phasing)
 - **Supersedes:** the parent's Phase 2–4 ordering. The shipped Phase 1 MVP (v0.2.0) is
@@ -266,7 +267,7 @@ which carries a normal completion gate.
   close.
 - **i18n** (owner-confirmed placement): locale infrastructure and string extraction; if it
   outgrows this track it becomes its own track.
-- **Status:** Done (2026-10-13) - see `plans/notes/2026-10-13-track9-completion.md`; i18n was split out and has no spec yet. Track 3 budgets
+- **Status:** Done (2026-10-13) - see `plans/notes/2026-10-13-track9-completion.md`; i18n was split out and is specced for v1.1.0 (`2026-11-12-oxitide-v1.1-i18n-a11y-design.md`). Track 3 budgets
   (PM-D1) apply to every new surface.
 
 ### Track 10 — Daily-driver QoL
