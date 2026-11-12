@@ -4122,10 +4122,12 @@ mod tests {
         (engine, output)
     }
 
-    /// `engine_with`, played at about real time: for tests that read
-    /// `playing` or `current` after the first samples. Unpaced, the 2 s
-    /// fixture can end (or move on to a queued track) before the read on a
-    /// loaded runner (CI flagged the enqueue test as flaky, 2026-11-11).
+    /// `engine_with`, played at about real time: for tests that, after the
+    /// first samples, read `playing` or `current`, or send a command that
+    /// assumes the track is still playing (pause, seek). Unpaced, the 2 s
+    /// fixture can end (or move on to a queued track) first: then a pause
+    /// becomes a restart, and the end's own output stop looks like a release
+    /// (CI, 2026-11-11 and 11-12).
     fn paced_engine_with(
         plan: StreamPlan,
         files: HashMap<String, Vec<u8>>,
@@ -5375,7 +5377,7 @@ mod tests {
     #[test]
     fn ended_marks_a_natural_end_only() {
         let (plan, files) = fixture_plan();
-        let (engine, output) = engine_with(plan, files);
+        let (engine, output) = paced_engine_with(plan, files);
         engine
             .handle(EngineCmd::PlayTracks {
                 items: vec![item(1), item(2)],
@@ -5515,7 +5517,7 @@ mod tests {
     #[test]
     fn shutdown_ends_a_live_paused_session() {
         let (plan, files) = fixture_plan();
-        let (engine, output) = engine_with(plan, files);
+        let (engine, output) = paced_engine_with(plan, files);
         let positions = Arc::new(AtomicUsize::new(0));
         let counter = positions.clone();
         engine.subscribe(Arc::new(move |e| {
@@ -5555,7 +5557,7 @@ mod tests {
     #[test]
     fn a_paused_session_is_silent_and_resumes() {
         let (plan, files) = fixture_plan();
-        let (engine, output) = engine_with(plan, files);
+        let (engine, output) = paced_engine_with(plan, files);
         let positions = Arc::new(AtomicUsize::new(0));
         let counter = positions.clone();
         engine.subscribe(Arc::new(move |e| {
@@ -5950,7 +5952,7 @@ mod tests {
     #[test]
     fn a_long_pause_releases_the_output_and_resume_reopens_it() {
         let (plan, files) = fixture_plan();
-        let (engine, output) = engine_with(plan, files);
+        let (engine, output) = paced_engine_with(plan, files);
         engine
             .handle(EngineCmd::PlayTracks {
                 items: vec![item(1)],
