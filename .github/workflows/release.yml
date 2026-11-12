@@ -97,7 +97,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npm --prefix ui run app:build -- --config crates/oxitide-app/tauri.release.conf.json
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: bundles-${{ runner.os }}
           path: ${{ matrix.artifacts }}
@@ -114,7 +114,7 @@ jobs:
         with:
           node-version: 24
 
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
 
