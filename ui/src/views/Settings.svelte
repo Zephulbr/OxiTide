@@ -85,7 +85,7 @@
   import { outputDevices } from "../lib/outputDeviceStore.svelte";
   import { SETTINGS_TABS, nextTab, type SettingsTab } from "../lib/settingsTabs";
   import { TAB_META, formatSize, usageFraction } from "../lib/settingsView";
-  import { sentenceCase } from "../lib/format";
+  import { engineNotice } from "../lib/engineNotices";
   import { copyText } from "../lib/clipboard";
   import type { Toasts } from "../lib/toasts.svelte";
   import type { Player } from "../lib/player.svelte";
@@ -1244,7 +1244,7 @@
         {:else if tab === "playback"}
           <div id="settings-panel-playback" role="tabpanel" aria-labelledby="settings-tab-playback">
             {#if player.state.bit_perfect_notice}
-              <Notice kind="warning">{sentenceCase(player.state.bit_perfect_notice)}</Notice>
+              <Notice kind="warning">{engineNotice(player.state.bit_perfect_notice)}</Notice>
             {/if}
             {#if player.state.dsp_active}
               <Notice kind="info">

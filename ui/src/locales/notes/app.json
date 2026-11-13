@@ -1216,5 +1216,18 @@
   "rack.volumeFixed": "Screen-reader value of the volume knob.",
   "rack.muted": "Screen-reader value of the volume knob.",
   "rack.volumePercent": "Screen-reader value of the volume knob.",
-  "rack.seek": "Hi-Fi Rack: accessible name of the deck display's seek slider."
+  "rack.seek": "Hi-Fi Rack: accessible name of the deck display's seek slider.",
+
+  "error.forbidden": "TIDAL refused a playlist change.",
+  "error.rateLimited": "Error.",
+  "error.playlistChanged": "Error: someone changed the playlist meanwhile.",
+  "error.apiDrift": "Error. \"Settings → System\" names the settings tab; use the app's own words for it.",
+  "error.detail": "An error the app has no sentence for. {detail} is the technical message and stays English. The English shows the detail alone; translations should put a short headline before it, e.g. \"Something went wrong: {detail}\".",
+
+  "notice.deviceUnavailable": "Audio output notice.",
+  "notice.exclusiveUnavailable": "Audio output notice.",
+  "notice.softwareVolume": "Audio output notice: the volume is applied digitally, so the output is no longer bit-perfect.",
+  "notice.deviceDisconnected": "Audio output notice.",
+  "notice.asioLost": "Audio output notice.",
+  "notice.asioUnavailable": "Audio output notice. {reason} is a driver message and stays English."
 }

@@ -1216,5 +1216,18 @@
   "rack.volumeFixed": "100 percent, fixed in exclusive mode",
   "rack.muted": "Muted",
   "rack.volumePercent": "{percent} percent",
-  "rack.seek": "Seek"
+  "rack.seek": "Seek",
+
+  "error.forbidden": "You can only edit your own playlists",
+  "error.rateLimited": "TIDAL is rate-limiting requests — try again in a moment",
+  "error.playlistChanged": "The playlist changed on TIDAL — refresh and try again",
+  "error.apiDrift": "TIDAL changed something on its side — check for an OxiTide update (Settings → System)",
+  "error.detail": "{detail}",
+
+  "notice.deviceUnavailable": "Selected output device unavailable; using system default",
+  "notice.exclusiveUnavailable": "Exclusive mode unavailable; using shared output",
+  "notice.softwareVolume": "Volume applied in software; bit-perfect compromised",
+  "notice.deviceDisconnected": "Output device disconnected",
+  "notice.asioLost": "ASIO driver was reset or disconnected",
+  "notice.asioUnavailable": "ASIO unavailable ({reason}); using shared output"
 }

@@ -1,20 +1,21 @@
+import { t } from "./i18n.svelte";
+
 /// Map the client's exact backend error strings (crates/oxitide-tidal/src/error.rs)
-/// to user-facing copy; anything unrecognized falls through unchanged.
+/// to user-facing copy. Anything else is a backend detail that stays English
+/// (v1.1 i18n spec §10.3); it goes through `error.detail`, whose English is
+/// the detail alone and whose translations put a headline in front of it.
 export function errorMessage(e: unknown): string {
   const raw = String(e);
-  if (raw === "forbidden") return "You can only edit your own playlists";
-  if (raw === "rate limited") {
-    return "TIDAL is rate-limiting requests — try again in a moment";
-  }
-  if (raw.startsWith("api error 412")) {
-    return "The playlist changed on TIDAL — refresh and try again";
-  }
-  if (isApiDrift(raw)) return API_DRIFT_MESSAGE;
-  return raw;
+  if (raw === "forbidden") return t("error.forbidden");
+  if (raw === "rate limited") return t("error.rateLimited");
+  if (raw.startsWith("api error 412")) return t("error.playlistChanged");
+  if (isApiDrift(raw)) return apiDriftMessage();
+  return t("error.detail", { detail: raw });
 }
 
-export const API_DRIFT_MESSAGE =
-  "TIDAL changed something on its side — check for an OxiTide update (Settings → System)";
+export function apiDriftMessage(): string {
+  return t("error.apiDrift");
+}
 
 /// TIDAL answered in a shape the client no longer understands: a 2xx body
 /// that does not decode (`oxitide-tidal`'s `Error::Json`, possibly wrapped

@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import type { Player } from "../player.svelte";
-  import { sentenceCase } from "../format";
+  import { engineNotice } from "../engineNotices";
   import { clock, currentIndex, repeatAnnunciator } from "./deck";
   import SevenSeg from "./SevenSeg.svelte";
   import VfdSeek from "./VfdSeek.svelte";
@@ -22,7 +22,7 @@
   const current = $derived(state.current);
   const position = $derived(player.pendingSeek ?? state.position_ms);
   const index = $derived(currentIndex(state));
-  const message = $derived(state.error || sentenceCase(state.bit_perfect_notice ?? ""));
+  const message = $derived(state.error || engineNotice(state.bit_perfect_notice ?? ""));
 </script>
 
 <div class="rk-vfd deckvfd" class:tall>

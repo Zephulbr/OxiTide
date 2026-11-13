@@ -2,7 +2,8 @@
   import { dspBadgeTitle } from "../dsp";
   import { dragSource } from "../dragDrop.svelte";
   import type { DragPayload } from "../dragPayload";
-  import { formatDuration, sentenceCase } from "../format";
+  import { formatDuration } from "../format";
+  import { engineNotice } from "../engineNotices";
   import { t } from "../i18n.svelte";
   import { menu, menuButton, menuFor, type MenuItem } from "../menu.svelte";
   import { later } from "../later.svelte";
@@ -514,8 +515,8 @@
           <span
             class="notice"
             role="img"
-            aria-label={sentenceCase(player.state.bit_perfect_notice)}
-            title={sentenceCase(player.state.bit_perfect_notice)}
+            aria-label={engineNotice(player.state.bit_perfect_notice)}
+            title={engineNotice(player.state.bit_perfect_notice)}
           ><Icon name="alert-triangle" size={16} /></span>
         {/if}
       </div>
