@@ -132,6 +132,19 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
   copied from simple-icons 16.35.0 (https://simpleicons.org, CC0-1.0). The
   logos themselves remain trademarks of their respective owners.
 
+## UI runtime dependencies (npm)
+
+Bundled into the webview build (`ui/`); dev-only packages (build, test) are not
+shipped.
+
+- `@tauri-apps/api`, `@tauri-apps/plugin-opener` — MIT OR Apache-2.0.
+- `intl-messageformat` 12 — Copyright (c) 2023, Oath Inc. New BSD license
+  (BSD-3-Clause); the full text is `ui/node_modules/intl-messageformat/LICENSE.md`
+  and <https://github.com/formatjs/formatjs/blob/main/LICENSE.md>. Added
+  2026-11-12 for translations (v1.1 i18n). Its dependencies
+  `@formatjs/icu-messageformat-parser`, `@formatjs/icu-skeleton-parser` and
+  `@formatjs/fast-memoize` are MIT.
+
 ## Rust dependencies
 
 Dependencies come from crates.io and are linked into the binary. The set is

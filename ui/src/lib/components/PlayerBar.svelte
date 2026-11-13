@@ -3,6 +3,7 @@
   import { dragSource } from "../dragDrop.svelte";
   import type { DragPayload } from "../dragPayload";
   import { formatDuration, sentenceCase } from "../format";
+  import { t } from "../i18n.svelte";
   import { menu, menuButton, menuFor, type MenuItem } from "../menu.svelte";
   import { later } from "../later.svelte";
   import { nowPlayingMenuItems } from "../menus";
@@ -363,7 +364,7 @@
       {#if readout.spec}<span class="np-spec tnum">{readout.spec}</span>{/if}
     </span>
   {:else}
-    <span class="np-idle">Nothing streaming yet</span>
+    <span class="np-idle">{t("player.nothingStreaming")}</span>
   {/if}
 {/snippet}
 
@@ -379,11 +380,11 @@
         <button
           class="thumb"
           onclick={() => nav.toggleNowPlaying()}
-          aria-label="Open now playing"
-          title="Open now playing"
+          aria-label={t("player.openNowPlaying")}
+          title={t("player.openNowPlaying")}
           use:dragSource={dragCurrent}
         >
-          <Cover uuid={current.cover} size={160} radius={6} alt={`${current.title} artwork`} />
+          <Cover uuid={current.cover} size={160} radius={6} alt={t("player.artwork", { title: current.title })} />
           <span class="thumb-hint" aria-hidden="true"><Icon name="chevron-up" size={18} /></span>
         </button>
 
@@ -412,14 +413,14 @@
           data-floor
           class:on={fav}
           onclick={() => toggleFavorite(current.track_id, fav)}
-          aria-label={fav ? "Unfavorite" : "Favorite"}
-          title={fav ? "Unfavorite" : "Favorite"}
+          aria-label={t(fav ? "player.unfavorite" : "player.favorite")}
+          title={t(fav ? "player.unfavorite" : "player.favorite")}
         >
           <FavoriteHeart fx={heartFx} />
         </button>
 
         <span class="muted tnum time">{formatDuration(position / 1000)} / {formatDuration(duration / 1000)}</span>
-        {#if player.state.buffering}<span class="muted buffering" role="status">waiting for network…</span>{/if}
+        {#if player.state.buffering}<span class="muted buffering" role="status">{t("player.waitingForNetwork")}</span>{/if}
       </div>
 
       <div class="zone center">
@@ -428,33 +429,33 @@
           data-floor
           class:active={player.state.shuffle}
           onclick={() => { shuffleKicks += 1; player.setShuffle(!player.state.shuffle); }}
-          aria-label="Shuffle"
+          aria-label={t("player.shuffle")}
           aria-pressed={player.state.shuffle}
-          title="Shuffle the rest of the queue"
+          title={t("player.shuffleHint")}
         >{#key shuffleKicks}<span class="ico" class:kick-shuffle={shuffleKicks > 0}><Icon name="shuffle" size={18} /></span>{/key}</button>
-        <button class="ibtn" data-floor onclick={() => { prevKicks += 1; player.prev(); }} aria-label="Previous" title="Previous">{#key prevKicks}<span class="ico" class:kick-prev={prevKicks > 0}><Icon name="skip-back-solid" size={22} /></span>{/key}</button>
+        <button class="ibtn" data-floor onclick={() => { prevKicks += 1; player.prev(); }} aria-label={t("player.previous")} title={t("player.previous")}>{#key prevKicks}<span class="ico" class:kick-prev={prevKicks > 0}><Icon name="skip-back-solid" size={22} /></span>{/key}</button>
         <button
           class="ibtn play"
           data-floor
           onclick={() => player.playPause()}
-          aria-label={player.state.playing ? "Pause" : "Play"}
-          title={player.state.playing ? "Pause" : "Play"}
+          aria-label={t(player.state.playing ? "player.pause" : "player.play")}
+          title={t(player.state.playing ? "player.pause" : "player.play")}
         >
           <PlayPauseGlyph playing={player.state.playing} size={32} />
         </button>
-        <button class="ibtn" data-floor onclick={() => { nextKicks += 1; player.next(); }} aria-label="Next" title="Next">{#key nextKicks}<span class="ico" class:kick-next={nextKicks > 0}><Icon name="skip-forward-solid" size={22} /></span>{/key}</button>
+        <button class="ibtn" data-floor onclick={() => { nextKicks += 1; player.next(); }} aria-label={t("player.next")} title={t("player.next")}>{#key nextKicks}<span class="ico" class:kick-next={nextKicks > 0}><Icon name="skip-forward-solid" size={22} /></span>{/key}</button>
         <button
           class="ibtn mode"
           data-floor
           class:active={player.state.repeat !== "off"}
           onclick={() => { repeatKicks += 1; player.setRepeat(nextRepeat(player.state.repeat)); }}
-          aria-label={player.state.repeat === "one"
-            ? "Repeat one track"
+          aria-label={t(player.state.repeat === "one"
+            ? "player.repeatOneLabel"
             : player.state.repeat === "all"
-              ? "Repeat all"
-              : "Repeat off"}
+              ? "player.repeatAll"
+              : "player.repeatOff")}
           aria-pressed={player.state.repeat !== "off"}
-          title={player.state.repeat === "one" ? "Repeat one" : player.state.repeat === "all" ? "Repeat all" : "Repeat off"}
+          title={t(player.state.repeat === "one" ? "player.repeatOne" : player.state.repeat === "all" ? "player.repeatAll" : "player.repeatOff")}
         >{#key repeatKicks}<span class="ico" class:kick-repeat={repeatKicks > 0}><Icon name={player.state.repeat === "one" ? "repeat-1" : "repeat"} size={18} /></span>{/key}</button>
       </div>
 
@@ -464,8 +465,8 @@
           data-floor
           class:active={nav.queueOpen}
           onclick={() => nav.toggleQueue()}
-          aria-label="Queue"
-          title="Queue (Q)"
+          aria-label={t("player.queue")}
+          title={t("player.queueHint", { key: "Q" })}
           aria-pressed={nav.queueOpen}
         ><Icon name="list-music" size={18} /></button>
 
@@ -482,13 +483,17 @@
           use:menuButton={openQuality}
           aria-haspopup="menu"
           aria-expanded={menu.open !== null && menu.open.opener === plateButton}
-          aria-label={`Streaming quality: ${plate.tier}${plate.spec ? `, ${plate.spec}` : ""}${player.state.bit_perfect ? ", bit-perfect" : player.state.dsp_active ? ", DSP active" : ""}`}
-          title={player.state.stream ? "Streaming quality" : "Preferred quality"}
+          aria-label={t("player.qualityLabel", {
+            tier: plate.tier,
+            spec: plate.spec || "none",
+            path: player.state.bit_perfect ? "bitPerfect" : player.state.dsp_active ? "dsp" : "none",
+          })}
+          title={t(player.state.stream ? "player.streamingQuality" : "player.preferredQuality")}
         >
           <span class="tier">{plate.tier}</span>
           {#if plate.spec}<span class="seg spec tnum">{plate.spec}</span>{/if}
           {#if player.state.bit_perfect}
-            <span class="seg bp" title="Bit Perfect"><Icon name="check" size={11} />BP</span>
+            <span class="seg bp" title={t("player.bitPerfect")}><Icon name="check" size={11} />BP</span>
           {:else if player.state.dsp_active}
             <span class="seg dsp" title={dspBadgeTitle(player.state.dsp_stages)}>DSP</span>
           {/if}
@@ -499,8 +504,8 @@
           class="ibtn mini"
           data-floor
           onclick={() => void mini.enter()}
-          aria-label="Mini player"
-          title="Mini player"
+          aria-label={t("player.miniPlayer")}
+          title={t("player.miniPlayer")}
         ><Icon name="minimize-2" size={18} /></button>
 
         {#if player.state.bit_perfect_notice && !player.state.error}
@@ -516,7 +521,7 @@
       </div>
     </div>
   {:else}
-    <span class="idle muted"><Icon name="music" size={16} /> Nothing playing</span>
+    <span class="idle muted"><Icon name="music" size={16} /> {t("player.nothingPlaying")}</span>
   {/if}
 </div>
 

@@ -44,6 +44,7 @@
     QUEUE_WIDTH_MIN,
   } from "./lib/appearance.svelte";
   import { routeTitle } from "./lib/titles";
+  import { t } from "./lib/i18n.svelte";
   import { perf } from "./lib/perf.svelte";
   import { dismissBootScreen } from "./lib/bootScreen";
   import { perfHooks } from "./lib/perfHooks";
@@ -858,7 +859,7 @@
     data-player={barFloats ? "floating" : "docked"}
     inert={dialogs.count > 0}
   >
-    <a class="skip-link" href="#main">Skip to content</a>
+    <a class="skip-link" href="#main">{t("app.skipToContent")}</a>
     <Sidebar
       {nav}
       rail={sidebarRail}

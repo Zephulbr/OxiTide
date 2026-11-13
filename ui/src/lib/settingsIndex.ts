@@ -33,6 +33,7 @@ const e = (
 /// checked against the page sources by `settingsIndex.test.ts`, so a renamed
 /// or removed row cannot silently leave a dead result.
 export const SETTINGS_INDEX: SettingEntry[] = [
+  e("language", "appearance", "Look & feel", "Language", "translation translate locale english international i18n help translate"),
   e("theme", "appearance", "Look & feel", "Theme", "dark light system night day colour color scheme"),
   e("mode", "appearance", "Look & feel", "Mode", "atmosphere studio instrument hi-fi rack style skin"),
   e("studio-tone", "appearance", "Look & feel", "Tone", "studio warm neutral grey gray black amoled oled dark colour color", "studio"),

@@ -43,6 +43,12 @@ Read before touching `ui/`: styling and modes, Hi-Fi Rack, Home/Explore/search, 
   `oxitide.collection-layout`), shared with the Rack's library tray (`orderedLibraryKeys`).
   Keys are route names. A new collection page needs an entry in `COLLECTION_KEYS` /
   `COLLECTION_ITEMS`; saved layouts gain it below the line on load.
+- Translations (spec `2026-11-12-oxitide-v1.1-i18n-a11y-design.md`):
+  - `lib/i18n.svelte.ts`: `t(key, params)` over flat ICU MessageFormat catalogs (`intl-messageformat`, `ignoreTag`, so `<Enter>` is text). Keys are typed from `locales/en/app.json`, so a typo fails `npm run check`. English is bundled; other languages are lazy chunks (`import.meta.glob`), and the pseudo-locale `en-XA` is bundled only in dev.
+  - `t()` reads the language state, so templates and `$derived`/`$effect` readers re-run on a switch. Module-level `.ts` tables must store keys and call `t()` when the text is shown, never translate at import time.
+  - `lib/language.svelte.ts`: the `[ui] language` setting (`"system"` or a code), resolved through `lib/languages.ts` `matchLanguage` (Chinese by script, `pt-*` → `pt-BR`, `no`/`nn` → `nb`). `appearance.init` applies the saved value; `main.ts` loads the mirrored language (`oxitide.language`) before mounting, and `index.html` sets `<html lang>` from it on the first frame.
+  - Catalog files: `locales/<code>/{app,remote,shell}.json`, translator notes in `locales/notes/`, `glossary.json`, `languages.json` (code, endonym, script, `ship`, status), and per-message status in `locales/_meta/`. Scripts in `scripts/i18n/`: `check.mjs` (CI gate), `status.mjs`, `apply-draft.mjs` (machine drafts; never overwrites a person's edit), `sync.mjs` (stamps edits as reviewed), `review-sheet.mjs`, `pseudo.mjs` (writes the gitignored `en-XA`).
+  - Unshipped languages (`ship: false`) appear in the picker only in dev builds.
 - Output picker (spec `2026-11-05-oxitide-output-device-picker-design.md`):
   - `settings/OutputDevicePicker.svelte` renders from the pure `lib/outputDevices.ts`.
   - Rows are `role="radio"` buttons. The arrows only move focus, and Enter/Space selects,

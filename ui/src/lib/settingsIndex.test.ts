@@ -5,6 +5,7 @@ import settingsView from "../views/Settings.svelte?raw";
 import remote from "./components/RemoteSettings.svelte?raw";
 import updates from "./components/UpdatesSection.svelte?raw";
 import autoMix from "./components/settings/AutoMixPanel.svelte?raw";
+import languagePicker from "./components/settings/LanguagePicker.svelte?raw";
 
 const ctx = { rack: false, studio: false, exclusive: false };
 
@@ -18,7 +19,7 @@ describe("settings index", () => {
   // Every result must point at an element the page really renders: the id is
   // a literal `id="…"` on a row/card (hotkey rows build theirs from the action).
   it("only points at ids present in the page sources", () => {
-    const sources = [settingsView, remote, updates, autoMix].join("\n");
+    const sources = [settingsView, remote, updates, autoMix, languagePicker].join("\n");
     const missing = SETTINGS_INDEX.filter(
       (entry) => !entry.id.startsWith("hotkey-") && !sources.includes(`id="${entry.id}"`),
     ).map((entry) => entry.id);

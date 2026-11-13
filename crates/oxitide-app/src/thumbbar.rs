@@ -12,6 +12,7 @@
 //! The glyphs are rasterized here at the DPI's small-icon size instead of
 //! shipping icon files, so they stay crisp at any scale.
 
+use crate::shell_text::ShellText;
 use crate::tray::TrayAction;
 
 /// What the buttons show: the player's state as far as the taskbar cares.
@@ -35,7 +36,8 @@ enum Glyph {
 struct Button {
     id: u32,
     glyph: Glyph,
-    tip: &'static str,
+    /// Resolved in the current shell language when the buttons are pushed.
+    tip: ShellText,
     enabled: bool,
 }
 
@@ -51,16 +53,16 @@ const ID_NEXT: u32 = 3;
 #[cfg_attr(not(windows), allow(dead_code))]
 fn buttons(view: View) -> [Button; 3] {
     let (glyph, tip) = if view.playing {
-        (Glyph::Pause, "Pause")
+        (Glyph::Pause, ShellText::TaskbarPause)
     } else {
-        (Glyph::Play, "Play")
+        (Glyph::Play, ShellText::TaskbarPlay)
     };
     let enabled = view.has_track;
     [
         Button {
             id: ID_PREV,
             glyph: Glyph::Prev,
-            tip: "Previous",
+            tip: ShellText::TaskbarPrevious,
             enabled,
         },
         Button {
@@ -72,7 +74,7 @@ fn buttons(view: View) -> [Button; 3] {
         Button {
             id: ID_NEXT,
             glyph: Glyph::Next,
-            tip: "Next",
+            tip: ShellText::TaskbarNext,
             enabled,
         },
     ]
@@ -152,13 +154,16 @@ fn rasterize(glyph: Glyph, size: u32) -> Vec<u8> {
 }
 
 #[cfg(windows)]
-pub use imp::{install, set_view};
+pub use imp::{install, refresh_text, set_view};
 
 #[cfg(not(windows))]
 pub fn install(_window: &tauri::WebviewWindow) {}
 
 #[cfg(not(windows))]
 pub fn set_view(_app: &tauri::AppHandle, _view: View) {}
+
+#[cfg(not(windows))]
+pub fn refresh_text(_app: &tauri::AppHandle) {}
 
 #[cfg(windows)]
 mod imp {
@@ -232,6 +237,11 @@ mod imp {
             }
             *current = view;
         }
+        let _ = app.run_on_main_thread(|| unsafe { sync() });
+    }
+
+    /// Re-push the buttons so their tooltips follow a language switch.
+    pub fn refresh_text(app: &AppHandle) {
         let _ = app.run_on_main_thread(|| unsafe { sync() });
     }
 
@@ -312,7 +322,9 @@ mod imp {
             .iter()
             .map(|b| {
                 let mut tip = [0u16; 260];
-                for (slot, unit) in tip.iter_mut().zip(b.tip.encode_utf16()) {
+                // At most 259 units, so the tip stays NUL-terminated.
+                let text = crate::shell_text::text(b.tip);
+                for (slot, unit) in tip.iter_mut().take(259).zip(text.encode_utf16()) {
                     *slot = unit;
                 }
                 let icon = bar
@@ -407,12 +419,26 @@ mod tests {
             playing: false,
             has_track: true,
         });
-        assert_eq!((paused[1].glyph, paused[1].tip), (Glyph::Play, "Play"));
+        assert_eq!(
+            (paused[1].glyph, paused[1].tip),
+            (Glyph::Play, ShellText::TaskbarPlay)
+        );
         let playing = buttons(View {
             playing: true,
             has_track: true,
         });
-        assert_eq!((playing[1].glyph, playing[1].tip), (Glyph::Pause, "Pause"));
+        assert_eq!(
+            (playing[1].glyph, playing[1].tip),
+            (Glyph::Pause, ShellText::TaskbarPause)
+        );
+        assert_eq!(
+            playing.map(|b| b.tip),
+            [
+                ShellText::TaskbarPrevious,
+                ShellText::TaskbarPause,
+                ShellText::TaskbarNext
+            ]
+        );
         assert_eq!(playing.map(|b| b.id), [ID_PREV, ID_PLAY_PAUSE, ID_NEXT]);
     }
 

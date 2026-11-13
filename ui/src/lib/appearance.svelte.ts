@@ -3,6 +3,7 @@ import {
   type RackSettings,
 } from "./api";
 import { DEFAULT_CATJAM_SCALE, DEFAULT_COAT, clampCatjamScale, isCoat } from "./catjamSprite";
+import { language } from "./language.svelte";
 import {
   MODE_STORAGE_KEY, readMirror, readThemeMirror, resolveTheme, TONE_STORAGE_KEY, writeMirror,
   writeThemeMirror, type ResolvedTheme, type ThemeSetting,
@@ -203,8 +204,10 @@ export function createAppearance(): Appearance {
     });
     // The mirrored look (and its default typeface) holds until the config lands.
     apply();
+    let savedLanguage: string | undefined;
     try {
       const config = await api.getConfig();
+      savedLanguage = config.ui.language;
       if (UI_MODES.includes(config.ui.mode)) mode = config.ui.mode;
       theme = config.ui.theme;
       if (isInstrumentTone(config.ui.instrument_tone)) instrumentTone = config.ui.instrument_tone;
@@ -230,6 +233,9 @@ export function createAppearance(): Appearance {
     writeMirror(themeStorage(), MODE_STORAGE_KEY, mode);
     writeMirror(themeStorage(), TONE_STORAGE_KEY, instrumentTone);
     apply();
+    // The config is the source of truth for the language too: this corrects
+    // the boot mirror and tells the shell (tray, taskbar).
+    void language.apply(savedLanguage);
   }
 
   /// Each mode keeps its own Typography & layout and Dynamic color; the

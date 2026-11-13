@@ -24,6 +24,7 @@ mod remote;
 mod scheme;
 mod scrobble;
 mod session;
+mod shell_text;
 mod state;
 mod stored_ref;
 mod thumbbar;
@@ -278,8 +279,11 @@ fn main() {
                 }
             }
             app.state::<AppState>().set_handle(app.handle().clone());
+            // An explicit saved language labels the tray from the start;
+            // "system" waits for the UI's `set_shell_language`.
+            shell_text::set_language(&app.state::<AppState>().config().ui.language);
             match tray::build(app.handle()) {
-                Ok(icon) => app.state::<AppState>().set_tray(icon),
+                Ok((icon, items)) => app.state::<AppState>().set_tray(icon, items),
                 Err(e) => tracing::warn!("system tray unavailable: {e}"),
             }
             let config = app.state::<AppState>().config();
@@ -531,6 +535,8 @@ fn main() {
             commands::set_oneko,
             commands::set_catjam,
             commands::set_catjam_coat,
+            commands::set_language,
+            commands::set_shell_language,
             commands::set_catjam_scale,
             commands::set_beat_tracking,
             commands::set_position_feed_live,

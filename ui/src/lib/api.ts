@@ -545,6 +545,8 @@ export interface Config {
     close_to_tray: boolean;
     /// Icons on the output picker rows and the quality menu (default on).
     device_icons?: boolean;
+    /// "system" or a catalog code (`de`, `zh-Hant`…); see `lib/language.svelte.ts`.
+    language?: string;
     window_width: number;
     window_height: number;
     window_x?: number | null;
@@ -980,6 +982,9 @@ export const api = {
   setOneko: (enabled: boolean) => invoke<void>("set_oneko", { enabled }),
   setCatjam: (enabled: boolean) => invoke<void>("set_catjam", { enabled }),
   setCatjamCoat: (coat: CatjamCoat) => invoke<void>("set_catjam_coat", { coat }),
+  setLanguage: (language: string) => invoke<void>("set_language", { language }),
+  /// The resolved language for the tray and taskbar; returns the code applied.
+  setShellLanguage: (code: string) => invoke<string>("set_shell_language", { code }),
   setCatjamScale: (percent: number) => invoke<number>("set_catjam_scale", { percent }),
   setBeatTracking: (enabled: boolean) => invoke<void>("set_beat_tracking", { enabled }),
   /// Position ticks keep reaching the hidden window (end-of-track sleep timer).

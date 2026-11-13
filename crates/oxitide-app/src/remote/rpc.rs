@@ -848,6 +848,9 @@ mod tests {
         "set_catjam",
         "set_catjam_coat",
         "set_catjam_scale",
+        // Desktop language; the phone follows its own browser's language.
+        "set_language",
+        "set_shell_language",
         "set_beat_tracking",
         "set_position_feed_live",
         "set_hover_panels",

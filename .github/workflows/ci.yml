@@ -92,6 +92,14 @@ jobs:
       - name: UI tests
         run: npm --prefix ui test
 
+      # Translation catalogs (spec 2026-11-12 v1.1 §7.1). Both load the ICU
+      # parser from ui/node_modules, so they run here, after `npm ci`.
+      - name: Translation catalogs
+        run: node scripts/i18n/check.mjs
+
+      - name: Translation scripts
+        run: node --test scripts/i18n/i18n.test.mjs
+
       # nextest's `ci` profile (.config/nextest.toml) retries a failed test
       # twice. A test that passes only on a retry is flaky: it is listed as a
       # warning on the run, and it still needs a fix.

@@ -41,6 +41,7 @@
   import Segmented from "../lib/components/settings/Segmented.svelte";
   import { sortMemory, type SortMemoryMode } from "../lib/sortMemory.svelte";
   import Select from "../lib/components/settings/Select.svelte";
+  import LanguagePicker from "../lib/components/settings/LanguagePicker.svelte";
   import SettingRow from "../lib/components/settings/SettingRow.svelte";
   import SettingsSection from "../lib/components/settings/SettingsSection.svelte";
   import SettingsSearch from "../lib/components/settings/SettingsSearch.svelte";
@@ -974,6 +975,7 @@
             <div class="cols">
             <div class="col">
             <SettingsSection title="Look & feel" icon="palette">
+              <LanguagePicker onerror={apply} />
               <SettingRow
                 id="theme" label="Theme"
                 description={appearance.theme === "system"

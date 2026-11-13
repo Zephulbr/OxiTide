@@ -3106,6 +3106,35 @@ pub fn set_catjam_coat(state: State<'_, AppState>, coat: CatjamCoat) -> Result<(
     Ok(())
 }
 
+/// Stores the UI language (`"system"` or a catalog code). The UI applies it
+/// and reports the resolved code through `set_shell_language`.
+#[tauri::command]
+pub fn set_language(state: State<'_, AppState>, language: String) -> Result<(), String> {
+    if !crate::config::valid_language(&language) {
+        return Err(format!("invalid language: {language}"));
+    }
+    let mut config = state.config();
+    config.ui.language = language;
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
+/// The language the UI resolved: relabels the tray menu and the taskbar
+/// buttons (spec §10.1). Not persisted; returns the code now in effect
+/// (English when the shell has no text for `code`).
+#[tauri::command]
+pub fn set_shell_language(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    code: String,
+) -> &'static str {
+    let applied = crate::shell_text::set_language(&code);
+    state.relabel_tray();
+    crate::thumbbar::refresh_text(&app);
+    applied
+}
+
 /// Stores the cat's size clamped to 100–200 % and returns what was stored.
 #[tauri::command]
 pub fn set_catjam_scale(state: State<'_, AppState>, percent: u32) -> Result<u32, String> {
@@ -3611,6 +3640,10 @@ mod tests {
         "set_catjam",
         "set_catjam_coat",
         "set_catjam_scale",
+        // A config writer (read-modify-write of the whole config).
+        "set_language",
+        // Tray menu relabels are cheap and must keep the order of switches.
+        "set_shell_language",
         // An atomic store plus one engine call; ordered with CatJam's mount
         // and unmount so a quick remount cannot end with tracking off.
         "set_beat_tracking",

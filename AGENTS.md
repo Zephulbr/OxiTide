@@ -37,6 +37,7 @@ Read the guide for the area you touch before changing it:
 
 Details are in the topic guides; these bite in any task:
 
+- User-visible text goes through `t()` (`ui/src/lib/i18n.svelte.ts`): a key in `ui/src/locales/en/<ns>.json` (ICU MessageFormat) with a translator note in `locales/notes/`. Whole sentences with placeholders, never concatenated translated fragments; `Intl` calls take `i18n.locale`. Tray and taskbar text is `shell.json` (`shell_text.rs`). `node scripts/i18n/check.mjs` gates the catalogs. Extraction of older text is in progress (v1.1 plan); any text you touch moves to `t()`.
 - Components consume **semantic tokens only** (`--surface-*`, `--text`, `--accent`, …), never base or `--dyn-*` values, and must not branch on mode (flags live on `appearance`). Icons are inlined Lucide paths — no unicode glyphs. Update `ui/design/DESIGN.md` / `ui/design/<mode>/DESIGN.md` with any visual change.
 - Pages that load through `lib/viewCache.ts` must call their load inside `untrack` in the mount effect (else `effect_update_depth_exceeded`), and writes must invalidate what they change.
 - Width-driven layout must be CSS (container/media queries), not a JS width count (it breaks the queue dock glide).

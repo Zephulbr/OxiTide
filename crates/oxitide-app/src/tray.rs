@@ -2,6 +2,7 @@
 //! mirrors the current track. The tray is created once at startup and
 //! survives player rebuilds; the engine subscriber pushes tooltip updates.
 
+use crate::shell_text::{self, ShellText};
 use oxitide_audio::engine::EngineCmd;
 use oxitide_audio::queue::QueueItem;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
@@ -59,18 +60,32 @@ pub fn set_application_name() {
     unsafe { g_set_application_name(c"OxiTide".as_ptr()) }
 }
 
+/// The menu's items with the text each shows, kept so a language switch can
+/// relabel them (`relabel`).
+pub type TrayItems = Vec<(ShellText, MenuItem<tauri::Wry>)>;
+
 /// Create the tray icon and menu. Called once at startup, before login.
-pub fn build(app: &AppHandle) -> tauri::Result<TrayIcon> {
-    let show_hide = MenuItem::with_id(app, "show_hide", "Show / Hide", true, None::<&str>)?;
-    let play_pause = MenuItem::with_id(app, "play_pause", "Play / Pause", true, None::<&str>)?;
-    let next = MenuItem::with_id(app, "next", "Next", true, None::<&str>)?;
-    let prev = MenuItem::with_id(app, "prev", "Previous", true, None::<&str>)?;
+pub fn build(app: &AppHandle) -> tauri::Result<(TrayIcon, TrayItems)> {
+    let item = |id: &str, label: ShellText| {
+        MenuItem::with_id(app, id, shell_text::text(label), true, None::<&str>)
+    };
+    let show_hide = item("show_hide", ShellText::TrayShowHide)?;
+    let play_pause = item("play_pause", ShellText::TrayPlayPause)?;
+    let next = item("next", ShellText::TrayNext)?;
+    let prev = item("prev", ShellText::TrayPrevious)?;
     let separator = PredefinedMenuItem::separator(app)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+    let quit = item("quit", ShellText::TrayQuit)?;
     let menu = Menu::with_items(
         app,
         &[&show_hide, &play_pause, &next, &prev, &separator, &quit],
     )?;
+    let items = vec![
+        (ShellText::TrayShowHide, show_hide.clone()),
+        (ShellText::TrayPlayPause, play_pause.clone()),
+        (ShellText::TrayNext, next.clone()),
+        (ShellText::TrayPrevious, prev.clone()),
+        (ShellText::TrayQuit, quit.clone()),
+    ];
     let mut builder = TrayIconBuilder::with_id("main")
         .tooltip("OxiTide")
         .menu(&menu)
@@ -93,7 +108,16 @@ pub fn build(app: &AppHandle) -> tauri::Result<TrayIcon> {
     if let Some(icon) = app.default_window_icon() {
         builder = builder.icon(icon.clone());
     }
-    builder.build(app)
+    Ok((builder.build(app)?, items))
+}
+
+/// Re-read every menu item's text in the current shell language.
+pub fn relabel(items: &TrayItems) {
+    for (label, item) in items {
+        if let Err(e) = item.set_text(shell_text::text(*label)) {
+            tracing::debug!("tray label update failed: {e}");
+        }
+    }
 }
 
 /// Dispatch one tray action. Transport is a no-op without a player.

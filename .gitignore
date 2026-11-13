@@ -11,6 +11,8 @@ node_modules/
 /ui/dist
 /ui/.vite
 /ui/build
+# Development-only pseudo-locale (node scripts/i18n/pseudo.mjs)
+/ui/src/locales/en-XA/
 
 # Visual companion (brainstorm mockups, session state)
 .superpowers/
