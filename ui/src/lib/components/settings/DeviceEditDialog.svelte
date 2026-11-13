@@ -3,6 +3,7 @@
   import { DEVICE_ICON_CHOICES, kindIcon } from "../../outputDevices";
   import Icon from "../Icon.svelte";
   import Modal from "../Modal.svelte";
+  import { t } from "../../i18n.svelte";
 
   /// Settings → Output: a device's nickname and icon, edited in a dialog like
   /// the playlist and folder edits, so the row's menu stays a short list of
@@ -56,16 +57,16 @@
   }
 </script>
 
-<Modal title="Edit output" {onclose}>
+<Modal title={t("device.editTitle")} {onclose}>
   <form onsubmit={save}>
     <label>
-      Nickname
-      <input bind:value={name} aria-label="Nickname" placeholder={device.name} maxlength="64" />
-      <span class="muted hint">Leave empty to show the device's own name.</span>
+      {t("device.nickname")}
+      <input bind:value={name} aria-label={t("device.nickname")} placeholder={device.name} maxlength="64" />
+      <span class="muted hint">{t("device.nicknameHint")}</span>
     </label>
     {#if icons}
       <div class="field">
-        <span id="device-icon-label">Icon</span>
+        <span id="device-icon-label">{t("device.iconLabel")}</span>
         <div class="tiles" role="radiogroup" aria-labelledby="device-icon-label">
           {#each DEVICE_ICON_CHOICES as choice, i (choice.value)}
             {@const glyph = choice.value === "" ? kindIcon(device.kind) : choice.icon}
@@ -90,8 +91,8 @@
       </div>
     {/if}
     <p class="actions">
-      <button type="button" onclick={onclose}>Cancel</button>
-      <button type="submit">Save</button>
+      <button type="button" onclick={onclose}>{t("common.cancel")}</button>
+      <button type="submit">{t("common.save")}</button>
     </p>
   </form>
 </Modal>

@@ -1,15 +1,23 @@
 import { HOTKEY_ACTIONS } from "./hotkeys";
+import { i18n, t, tEn, type MessageKey } from "./i18n.svelte";
 import type { SettingsTab } from "./settingsTabs";
+
+/// One setting's searchable text in one language.
+export interface EntryText {
+  section: string;
+  label: string;
+  keywords: string;
+}
 
 /// One searchable setting. `id` is the row's `data-setting` (or a card's, for
 /// `shortcuts`); `needs` hides entries whose control is not on the page in the
 /// current state, so a result never lands on a row that is not there.
-export interface SettingEntry {
+/// `section` / `label` / `keywords` follow the language; `en` is the English,
+/// which search also matches (spec §4.5).
+export interface SettingEntry extends EntryText {
   id: string;
   tab: SettingsTab;
-  section: string;
-  label: string;
-  keywords?: string;
+  en: EntryText;
   needs?: "rack" | "notRack" | "studio" | "exclusive";
 }
 
@@ -20,98 +28,122 @@ export interface SearchContext {
   exclusive: boolean;
 }
 
+type Text = (tr: (key: MessageKey, params?: Record<string, string>) => string) => string;
+
+function entry(id: string, tab: SettingsTab, section: Text, label: Text, keywords: Text, needs?: SettingEntry["needs"]): SettingEntry {
+  return {
+    id,
+    tab,
+    needs,
+    get section() { return section(t); },
+    get label() { return label(t); },
+    get keywords() { return keywords(t); },
+    en: {
+      get section() { return section(tEn); },
+      get label() { return label(tEn); },
+      get keywords() { return keywords(tEn); },
+    },
+  };
+}
+
 const e = (
   id: string,
   tab: SettingsTab,
-  section: string,
-  label: string,
-  keywords = "",
+  section: MessageKey,
+  label: MessageKey,
+  keywords: MessageKey,
   needs?: SettingEntry["needs"],
-): SettingEntry => ({ id, tab, section, label, keywords, needs });
+): SettingEntry => entry(id, tab, (tr) => tr(section), (tr) => tr(label), (tr) => tr(keywords), needs);
 
 /// Every setting, in page order (ties in search keep this order). The ids are
 /// checked against the page sources by `settingsIndex.test.ts`, so a renamed
 /// or removed row cannot silently leave a dead result.
 export const SETTINGS_INDEX: SettingEntry[] = [
-  e("language", "appearance", "Look & feel", "Language", "translation translate locale english international i18n help translate"),
-  e("theme", "appearance", "Look & feel", "Theme", "dark light system night day colour color scheme"),
-  e("mode", "appearance", "Look & feel", "Mode", "atmosphere studio instrument hi-fi rack style skin"),
-  e("studio-tone", "appearance", "Look & feel", "Tone", "studio warm neutral grey gray black amoled oled dark colour color", "studio"),
-  e("dynamic-color", "appearance", "Look & feel", "Dynamic color", "album art cover tint accent colour", "notRack"),
-  e("typeface", "appearance", "Typography & layout", "Typeface", "font text manrope inter system custom"),
-  e("density", "appearance", "Typography & layout", "Density", "compact comfortable spacing rows size"),
-  e("row-separators", "appearance", "Typography & layout", "Row separators", "lines dividers hairlines rules borders track list rows"),
-  e("cover-shape", "appearance", "Typography & layout", "Cover shape", "disc sleeve artwork album art now playing"),
-  e("track-sort-memory", "appearance", "Typography & layout", "Remember track sorting", "sort order playlist favorites columns reset"),
-  e("player-bar-style", "appearance", "Typography & layout", "Player bar", "floating docked card layout bottom", "notRack"),
-  e("queue-style", "appearance", "Typography & layout", "Queue", "floating docked card overlay rail panel layout", "notRack"),
-  e("hover-panels", "appearance", "Typography & layout", "Expand panels on hover", "sidebar queue rail peek mouse collapse auto", "notRack"),
-  e("rack-deck", "appearance", "Hi-Fi Rack", "Deck face", "transport cd player display", "rack"),
-  e("rack-meters", "appearance", "Hi-Fi Rack", "Amp meters", "needles bars led spectrum vu", "rack"),
-  e("rack-analyzer", "appearance", "Hi-Fi Rack", "Now Playing analyzer", "spectrum recorder tuner eq", "rack"),
-  e("rack-lamp", "appearance", "Hi-Fi Rack", "Lamp color", "amber blue green red white cover glow colour", "rack"),
-  e("rack-brightness", "appearance", "Hi-Fi Rack", "Lamp brightness", "dim glow", "rack"),
-  e("rack-eq", "appearance", "Hi-Fi Rack", "Show the graphic EQ unit", "equalizer rack", "rack"),
-  e("cat", "appearance", "Cat", "Cat", "oneko pet fun cursor extras"),
-  e("catjam", "appearance", "Cat", "Jamming cat", "catjam bob beat dance tempo coat colour color size scale bigger fun extras"),
+  e("language", "appearance", "settings.section.lookAndFeel", "settings.language.label", "settings.keywords.language"),
+  e("theme", "appearance", "settings.section.lookAndFeel", "settings.theme.label", "settings.keywords.theme"),
+  e("mode", "appearance", "settings.section.lookAndFeel", "settings.mode.label", "settings.keywords.mode"),
+  e("studio-tone", "appearance", "settings.section.lookAndFeel", "settings.studioTone.label", "settings.keywords.studioTone", "studio"),
+  e("dynamic-color", "appearance", "settings.section.lookAndFeel", "settings.dynamicColor.label", "settings.keywords.dynamicColor", "notRack"),
+  e("typeface", "appearance", "settings.section.typographyAndLayout", "settings.typeface.label", "settings.keywords.typeface"),
+  e("density", "appearance", "settings.section.typographyAndLayout", "settings.density.label", "settings.keywords.density"),
+  e("row-separators", "appearance", "settings.section.typographyAndLayout", "settings.rowSeparators.label", "settings.keywords.rowSeparators"),
+  e("cover-shape", "appearance", "settings.section.typographyAndLayout", "settings.coverShape.label", "settings.keywords.coverShape"),
+  e("track-sort-memory", "appearance", "settings.section.typographyAndLayout", "settings.trackSortMemory.label", "settings.keywords.trackSortMemory"),
+  e("player-bar-style", "appearance", "settings.section.typographyAndLayout", "settings.playerBarStyle.label", "settings.keywords.playerBarStyle", "notRack"),
+  e("queue-style", "appearance", "settings.section.typographyAndLayout", "settings.queueStyle.label", "settings.keywords.queueStyle", "notRack"),
+  e("hover-panels", "appearance", "settings.section.typographyAndLayout", "settings.hoverPanels.label", "settings.keywords.hoverPanels", "notRack"),
+  e("rack-deck", "appearance", "settings.section.hiFiRack", "settings.rackDeck.label", "settings.keywords.rackDeck", "rack"),
+  e("rack-meters", "appearance", "settings.section.hiFiRack", "settings.rackMeters.label", "settings.keywords.rackMeters", "rack"),
+  e("rack-analyzer", "appearance", "settings.section.hiFiRack", "settings.rackAnalyzer.label", "settings.keywords.rackAnalyzer", "rack"),
+  e("rack-lamp", "appearance", "settings.section.hiFiRack", "settings.rackLamp.label", "settings.keywords.rackLamp", "rack"),
+  e("rack-brightness", "appearance", "settings.section.hiFiRack", "settings.rackBrightness.label", "settings.keywords.rackBrightness", "rack"),
+  e("rack-eq", "appearance", "settings.section.hiFiRack", "settings.rackEq.label", "settings.keywords.rackEq", "rack"),
+  e("cat", "appearance", "settings.section.cat", "settings.cat.label", "settings.keywords.cat"),
+  e("catjam", "appearance", "settings.section.cat", "settings.catjam.label", "settings.keywords.catjam"),
 
-  e("quality", "playback", "Streaming", "Streaming quality", "audio hifi hi-res lossless max high aac flac bitrate"),
-  e("allow-fallback", "playback", "Streaming", "Use the best available quality", "fallback unavailable"),
-  e("quality-badge", "playback", "Streaming", "Quality badge", "display compact detailed bit depth sample rate"),
-  e("autoplay", "playback", "Queue", "Autoplay", "similar radio continue keep playing queue ends recommendations"),
-  e("device", "playback", "Output", "Audio device", "output speakers dac headphones sound card wasapi asio alsa exclusive bit-perfect shared mixer nickname pin hide"),
-  e("exclusive-fallback", "playback", "Output", "If exclusive fails", "exclusive fallback shared unsupported", "exclusive"),
-  e("device-icons", "playback", "Output", "Device icons", "output picker icons speaker headphones"),
-  e("replaygain", "playback", "Volume leveling", "ReplayGain", "loudness normalize normalise volume leveling track album gain"),
-  e("rg-preamp", "playback", "Volume leveling", "Preamp", "replaygain gain boost"),
-  e("rg-untagged", "playback", "Volume leveling", "Tracks without data", "replaygain untagged missing"),
-  e("rg-clipping", "playback", "Volume leveling", "Prevent clipping", "replaygain peak distortion"),
-  e("crossfade", "playback", "Crossfade", "Crossfade", "fade overlap transition seconds gapless"),
-  e("gapless", "playback", "Crossfade", "Keep albums gapless", "album crossfade"),
-  e("eq-preset", "playback", "Equalizer", "Equalizer", "eq preset bass treble vocal loudness tone sound"),
-  e("eq-bands", "playback", "Equalizer", "Equalizer bands", "eq faders frequency hz gain"),
-  e("eq-auto-preamp", "playback", "Equalizer", "Automatic preamp", "eq clip headroom"),
-  e("eq-preamp", "playback", "Equalizer", "Equalizer preamp", "eq gain"),
-  e("automix-style", "playback", "AutoMix", "AutoMix transition style", "classic quick blend auto crossfade"),
-  e("automix-trim", "playback", "AutoMix", "Skip silence at track edges", "automix trim"),
-  e("automix-resample", "playback", "AutoMix", "Overlap across sample-rate changes", "automix resample"),
-  e("automix-beat", "playback", "AutoMix", "Beat-match when tempos fit", "automix bpm tempo"),
-  e("automix-replay", "playback", "AutoMix", "Replay last transition", "automix lab compare"),
+  e("quality", "playback", "settings.section.streaming", "settings.quality.label", "settings.keywords.quality"),
+  e("allow-fallback", "playback", "settings.section.streaming", "settings.allowFallback.label", "settings.keywords.allowFallback"),
+  e("quality-badge", "playback", "settings.section.streaming", "settings.qualityBadge.label", "settings.keywords.qualityBadge"),
+  e("autoplay", "playback", "settings.section.queue", "settings.autoplay.label", "settings.keywords.autoplay"),
+  e("device", "playback", "settings.section.output", "settings.device.label", "settings.keywords.device"),
+  e("exclusive-fallback", "playback", "settings.section.output", "settings.exclusiveFallback.label", "settings.keywords.exclusiveFallback", "exclusive"),
+  e("device-icons", "playback", "settings.section.output", "settings.deviceIcons.label", "settings.keywords.deviceIcons"),
+  e("replaygain", "playback", "settings.section.volumeLeveling", "settings.replaygain.label", "settings.keywords.replaygain"),
+  e("rg-preamp", "playback", "settings.section.volumeLeveling", "settings.rgPreamp.label", "settings.keywords.rgPreamp"),
+  e("rg-untagged", "playback", "settings.section.volumeLeveling", "settings.rgUntagged.label", "settings.keywords.rgUntagged"),
+  e("rg-clipping", "playback", "settings.section.volumeLeveling", "settings.rgClipping.label", "settings.keywords.rgClipping"),
+  e("crossfade", "playback", "settings.section.crossfade", "settings.crossfade.label", "settings.keywords.crossfade"),
+  e("gapless", "playback", "settings.section.crossfade", "settings.gapless.label", "settings.keywords.gapless"),
+  e("eq-preset", "playback", "settings.section.equalizer", "settings.section.equalizer", "settings.keywords.eqPreset"),
+  e("eq-bands", "playback", "settings.section.equalizer", "settings.eqBandsLabel", "settings.keywords.eqBands"),
+  e("eq-auto-preamp", "playback", "settings.section.equalizer", "settings.eqAutoPreamp.label", "settings.keywords.eqAutoPreamp"),
+  e("eq-preamp", "playback", "settings.section.equalizer", "settings.eqPreampLabel", "settings.keywords.eqPreamp"),
+  e("automix-style", "playback", "settings.section.automix", "settings.search.automixStyle", "settings.keywords.automixStyle"),
+  e("automix-trim", "playback", "settings.section.automix", "settings.automixTrim.label", "settings.keywords.automixTrim"),
+  e("automix-resample", "playback", "settings.section.automix", "settings.automixResample.label", "settings.keywords.automixResample"),
+  e("automix-beat", "playback", "settings.section.automix", "settings.automixBeat.label", "settings.keywords.automixBeat"),
+  e("automix-replay", "playback", "settings.section.automix", "settings.search.automixReplay", "settings.keywords.automixReplay"),
 
-  e("block-explicit", "content", "Filters & labels", "Block explicit content", "filter parental clean"),
-  e("block-ai", "content", "Filters & labels", "Block AI-generated content", "filter artificial"),
-  e("show-labels", "content", "Filters & labels", "Show content labels", "explicit ai badge tag e"),
+  e("block-explicit", "content", "settings.section.filtersAndLabels", "settings.blockExplicit.label", "settings.keywords.blockExplicit"),
+  e("block-ai", "content", "settings.section.filtersAndLabels", "settings.blockAi.label", "settings.keywords.blockAi"),
+  e("show-labels", "content", "settings.section.filtersAndLabels", "settings.showLabels.label", "settings.keywords.showLabels"),
 
-  e("lastfm", "connections", "Scrobbling", "Last.fm", "scrobble lastfm listening profile connect"),
-  e("listenbrainz", "connections", "Scrobbling", "ListenBrainz", "scrobble token listening profile connect"),
-  e("discord", "connections", "Presence & controls", "Discord Rich Presence", "status activity"),
-  e("media-controls", "connections", "Presence & controls", "Media controls", "smtc media keys hardware overlay"),
-  e("remote-enable", "connections", "Phone remote", "Control OxiTide from your phone", "remote phone lan web"),
-  e("remote-pair", "connections", "Phone remote", "Pair a phone", "remote qr code"),
-  e("remote-address", "connections", "Phone remote", "Address in the QR code", "remote network interface ip"),
-  e("remote-port", "connections", "Phone remote", "Port", "remote network"),
-  e("remote-approve", "connections", "Phone remote", "Approve new phones on this PC", "remote security"),
-  e("remote-devices", "connections", "Phone remote", "Paired phones", "remote revoke rename devices"),
+  e("lastfm", "connections", "settings.section.scrobbling", "settings.lastfm.label", "settings.keywords.lastfm"),
+  e("listenbrainz", "connections", "settings.section.scrobbling", "settings.listenbrainz.label", "settings.keywords.listenbrainz"),
+  e("discord", "connections", "settings.section.presenceAndControls", "settings.discord.label", "settings.keywords.discord"),
+  e("media-controls", "connections", "settings.section.presenceAndControls", "settings.mediaControls.label", "settings.keywords.mediaControls"),
+  e("remote-enable", "connections", "settings.section.phoneRemote", "settings.remoteEnable.label", "settings.keywords.remoteEnable"),
+  e("remote-pair", "connections", "settings.section.phoneRemote", "settings.remotePair.label", "settings.keywords.remotePair"),
+  e("remote-address", "connections", "settings.section.phoneRemote", "settings.remoteAddress.label", "settings.keywords.remoteAddress"),
+  e("remote-port", "connections", "settings.section.phoneRemote", "settings.remotePort.label", "settings.keywords.remotePort"),
+  e("remote-approve", "connections", "settings.section.phoneRemote", "settings.remoteApprove.label", "settings.keywords.remoteApprove"),
+  e("remote-devices", "connections", "settings.section.phoneRemote", "settings.remoteDevices.label", "settings.keywords.remoteDevices"),
 
-  e("cache-usage", "storage", "Cache", "Disk usage", "cache clear refresh space downloads"),
-  e("cache-max", "storage", "Cache", "Maximum cache size", "cache limit mb gb"),
-  e("cache-clear-exit", "storage", "Cache", "Clear cache on exit", "cache"),
-  e("cache-location", "storage", "Cache", "Cache location", "cache directory folder path"),
-  e("history-record", "storage", "Listening history", "Record listening history", "stats plays privacy"),
-  e("history-max", "storage", "Listening history", "Maximum history entries", "plays limit"),
-  e("history-clear", "storage", "Listening history", "Clear history", "delete plays stats"),
+  e("cache-usage", "storage", "settings.section.cache", "settings.cacheUsage.label", "settings.keywords.cacheUsage"),
+  e("cache-max", "storage", "settings.section.cache", "settings.cacheMaxLabel", "settings.keywords.cacheMax"),
+  e("cache-clear-exit", "storage", "settings.section.cache", "settings.cacheClearExit.label", "settings.keywords.cacheClearExit"),
+  e("cache-location", "storage", "settings.section.cache", "settings.search.cacheLocation", "settings.keywords.cacheLocation"),
+  e("history-record", "storage", "settings.section.listeningHistory", "settings.historyRecord.label", "settings.keywords.historyRecord"),
+  e("history-max", "storage", "settings.section.listeningHistory", "settings.historyMaxLabel", "settings.keywords.historyMax"),
+  e("history-clear", "storage", "settings.section.listeningHistory", "settings.historyClear.label", "settings.keywords.historyClear"),
 
-  e("close-to-tray", "system", "Window & startup", "Close to tray", "minimize background quit"),
-  e("start-mini", "system", "Window & startup", "Start in mini player", "startup launch compact"),
-  e("updates-check", "system", "Updates", "Check for updates", "version upgrade release install"),
-  e("updates-start", "system", "Updates", "Check for updates when OxiTide starts", "startup automatic"),
+  e("close-to-tray", "system", "settings.section.windowAndStartup", "settings.closeToTray.label", "settings.keywords.closeToTray"),
+  e("start-mini", "system", "settings.section.windowAndStartup", "settings.startMini.label", "settings.keywords.startMini"),
+  e("updates-check", "system", "settings.section.updates", "settings.updatesCheck.label", "settings.keywords.updatesCheck"),
+  e("updates-start", "system", "settings.section.updates", "settings.updatesStart.label", "settings.keywords.updatesStart"),
   ...HOTKEY_ACTIONS.map((a) =>
-    e(`hotkey-${a.id}`, "system", "Global hotkeys", `Hotkey: ${a.label}`, "global shortcut keybinding record"),
+    entry(
+      `hotkey-${a.id}`,
+      "system",
+      (tr) => tr("settings.section.globalHotkeys"),
+      (tr) => tr("settings.search.hotkey", { action: tr(a.key) }),
+      (tr) => tr("settings.keywords.hotkey"),
+    ),
   ),
-  e("shortcuts", "system", "Keyboard shortcuts", "Keyboard shortcuts", "keys bindings reference seek volume mute sidebar queue"),
-  e("logs", "system", "Troubleshooting", "Logs", "debug folder"),
-  e("diagnostics", "system", "Troubleshooting", "Diagnostics", "copy bug report support system version"),
-  e("logout", "system", "Account", "Log out", "sign out account tidal"),
+  e("shortcuts", "system", "settings.section.keyboardShortcuts", "settings.section.keyboardShortcuts", "settings.keywords.shortcuts"),
+  e("logs", "system", "settings.section.troubleshooting", "settings.logs.label", "settings.keywords.logs"),
+  e("diagnostics", "system", "settings.section.troubleshooting", "settings.diagnostics.label", "settings.keywords.diagnostics"),
+  e("logout", "system", "settings.section.account", "settings.logout.label", "settings.keywords.logout"),
 ];
 
 function visible(entry: SettingEntry, ctx: SearchContext): boolean {
@@ -124,26 +156,33 @@ function visible(entry: SettingEntry, ctx: SearchContext): boolean {
 
 function words(text: string): string[] {
   return text
-    .toLowerCase()
+    .toLocaleLowerCase(i18n.locale)
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .split(" ")
     .filter(Boolean);
 }
 
-/// How well one query token matches an entry, 0 = not at all. A label word
-/// beats a keyword beats the section name; a prefix beats a mid-word hit.
-function tokenScore(token: string, entry: SettingEntry): number {
+/// How well one query token matches an entry's text, 0 = not at all. A label
+/// word beats a keyword beats the section name; a prefix beats a mid-word hit.
+/// The substring checks also cover scripts written without spaces (CJK).
+function textScore(token: string, entry: EntryText): number {
   const label = words(entry.label);
   if (label.some((w) => w === token)) return 6;
   if (label.some((w) => w.startsWith(token))) return 5;
-  if (entry.label.toLowerCase().includes(token)) return 3;
-  const keys = words(entry.keywords ?? "");
+  if (entry.label.toLocaleLowerCase(i18n.locale).includes(token)) return 3;
+  const keys = words(entry.keywords);
   if (keys.some((w) => w === token)) return 4;
   if (keys.some((w) => w.startsWith(token))) return 3;
   const section = words(entry.section);
   if (section.some((w) => w.startsWith(token))) return 2;
   if (keys.join(" ").includes(token)) return 1;
   return 0;
+}
+
+/// The better of the current language's and the English text.
+function tokenScore(token: string, entry: SettingEntry): number {
+  const own = textScore(token, entry);
+  return i18n.language === "en" ? own : Math.max(own, textScore(token, entry.en));
 }
 
 /// The settings that match every word of `query`, best first (page order

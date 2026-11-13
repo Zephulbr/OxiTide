@@ -89,6 +89,18 @@ export function createI18n<K extends string>(source: Catalog, loaders: Record<st
     }
   }
 
+  /// The English message for `key`, whatever the language (search matches
+  /// English terms in every language, spec §4.5).
+  function english(key: K, params?: MessageParams): string {
+    const message = source[key];
+    if (message === undefined) return key;
+    try {
+      return format("en", key, message, params);
+    } catch {
+      return message;
+    }
+  }
+
   /// The message split around one placeholder, for a sentence that wraps
   /// markup (a styled name, a link): `[before, after]` the `slot` param.
   /// Word order stays the translation's; only the slot's text is markup.
@@ -112,6 +124,7 @@ export function createI18n<K extends string>(source: Catalog, loaders: Record<st
     setLanguage,
     t,
     split,
+    english,
   };
 }
 
@@ -137,6 +150,9 @@ export const t = i18n.t;
 
 /// Shorthand for `i18n.split`.
 export const tSplit = i18n.split;
+
+/// Shorthand for `i18n.english`.
+export const tEn = i18n.english;
 
 /// Languages the picker offers in this build: shipped ones with a catalog,
 /// plus unshipped ones and the pseudo-locale in development builds.

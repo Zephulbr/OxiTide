@@ -18,6 +18,7 @@
   import SettingRow from "./settings/SettingRow.svelte";
   import SettingsSection from "./settings/SettingsSection.svelte";
   import ToggleRow from "./settings/ToggleRow.svelte";
+  import { t, tSplit } from "../i18n.svelte";
 
   let status = $state<RemoteStatus | null>(null);
   let devices = $state<RemoteDevice[]>([]);
@@ -105,7 +106,7 @@
     const port = parsePort(portText);
     if (port === null) {
       portText = String(status?.settings.port ?? "");
-      error = "Use a port between 1024 and 65526.";
+      error = t("remoteSettings.portRange", { min: 1024, max: 65526 });
       return;
     }
     if (port !== status?.settings.port) void saveSettings({ port });
@@ -176,16 +177,14 @@
 
   const summary = $derived.by(() => {
     if (status?.listening && status.url) {
-      return `Listening on ${status.url} · ${
-        status.connected === 1 ? "1 phone connected" : `${status.connected} phones connected`
-      }`;
+      return t("remoteSettings.listening", { url: status.url, count: status.connected });
     }
     if (status?.enabled && status.error) return "";
-    return "Off. A phone on the same network opens a remote page — nothing to install.";
+    return t("remoteSettings.off");
   });
 
   const interfaceOptions = $derived([
-    { value: "", label: `Automatic${status?.address ? ` (${status.address})` : ""}` },
+    { value: "", label: status?.address ? t("remoteSettings.autoAddress", { address: status.address }) : t("device.icon.auto") },
     ...(status?.interfaces ?? []).map((iface) => ({
       value: iface.ip,
       label: `${iface.ip} — ${iface.name}`,
@@ -195,23 +194,24 @@
 
 {#snippet approvals()}
   {#each status?.pending ?? [] as request (request.id)}
+    {@const [before, after] = tSplit("remoteSettings.pairRequest", "name", { ip: request.ip })}
     <div class="approval" role="alert">
-      <span>Pair <strong>{request.name}</strong> from {request.ip}?</span>
+      <span>{before}<strong>{request.name}</strong>{after}</span>
       <span class="actions">
-        <Button onclick={() => resolve(request.id, false)}>Decline</Button>
-        <Button variant="primary" onclick={() => resolve(request.id, true)}>Allow</Button>
+        <Button onclick={() => resolve(request.id, false)}>{t("remoteSettings.decline")}</Button>
+        <Button variant="primary" onclick={() => resolve(request.id, true)}>{t("remoteSettings.allow")}</Button>
       </span>
     </div>
   {/each}
 {/snippet}
 
 <SettingsSection
-  title="Phone remote"
-  description="Control playback from a phone on the same network. Nothing to install on the phone."
+  title={t("settings.section.phoneRemote")}
+  description={t("settings.section.phoneRemote.description")}
   icon="smartphone"
 >
   <ToggleRow
-    id="remote-enable" label="Control OxiTide from your phone"
+    id="remote-enable" label={t("settings.remoteEnable.label")}
     description={summary}
     checked={status?.enabled ?? false}
     disabled={busy || !status}
@@ -219,14 +219,14 @@
   >
     {#snippet below()}
       {#if status?.enabled && status.error && !status.listening}
-        <Notice kind="warning">Not listening: {status.error}</Notice>
+        <Notice kind="warning">{t("remoteSettings.notListening", { error: status.error })}</Notice>
       {/if}
     {/snippet}
   </ToggleRow>
 
   {#if status?.listening}
-    <SettingRow id="remote-pair" label="Pair a phone" description="Scan a QR code with the phone's camera.">
-      <Button variant="primary" icon="smartphone" onclick={beginPairing}>Pair a phone</Button>
+    <SettingRow id="remote-pair" label={t("settings.remotePair.label")} description={t("settings.remotePair.description")}>
+      <Button variant="primary" icon="smartphone" onclick={beginPairing}>{t("settings.remotePair.label")}</Button>
     </SettingRow>
   {/if}
 
@@ -236,11 +236,11 @@
 
   {#if status}
     <SettingRow
-      id="remote-address" label="Address in the QR code"
-      description="Which of this PC's network addresses the phone connects to."
+      id="remote-address" label={t("settings.remoteAddress.label")}
+      description={t("settings.remoteAddress.description")}
     >
       <Select
-        label="Address in the QR code"
+        label={t("settings.remoteAddress.label")}
         width={280}
         value={status.settings.interface}
         options={interfaceOptions}
@@ -248,30 +248,30 @@
       />
     </SettingRow>
     <SettingRow
-      id="remote-port" label="Port"
+      id="remote-port" label={t("settings.remotePort.label")}
       description={status.port && status.port !== status.settings.port
-        ? `In use; listening on ${status.port}.`
-        : "Between 1024 and 65526."}
+        ? t("remoteSettings.portInUse", { port: status.port })
+        : t("remoteSettings.portHelp", { min: 1024, max: 65526 })}
     >
       <input
         class="search-input port"
         inputmode="numeric"
-        aria-label="Port"
+        aria-label={t("settings.remotePort.label")}
         bind:value={portText}
         onchange={commitPort}
       />
     </SettingRow>
     <ToggleRow
-      id="remote-approve" label="Approve new phones on this PC"
-      description="A new phone must be allowed here before it can connect."
+      id="remote-approve" label={t("settings.remoteApprove.label")}
+      description={t("settings.remoteApprove.description")}
       checked={status.settings.approve_new_devices}
       onchange={(approve) => saveSettings({ approve })}
     />
   {/if}
 
-  <SettingRow id="remote-devices" label="Paired phones" stacked>
+  <SettingRow id="remote-devices" label={t("settings.remoteDevices.label")} stacked>
     {#if devices.length === 0}
-      <p class="muted none">No phones paired yet.</p>
+      <p class="muted none">{t("remoteSettings.noDevices")}</p>
     {:else}
       <ul class="devices">
         {#each devices as device (device.id)}
@@ -281,7 +281,7 @@
               <input
                 class="search-input rename"
                 maxlength="40"
-                aria-label={`Name for ${device.name}`}
+                aria-label={t("remoteSettings.nameFor", { name: device.name })}
                 bind:value={renaming.name}
                 use:focusSelect
                 onblur={commitRename}
@@ -294,18 +294,18 @@
               <span class="name">{device.name}</span>
               <button
                 class="icon"
-                aria-label={`Rename ${device.name}`}
-                title="Rename"
+                aria-label={t("remoteSettings.renameNamed", { name: device.name })}
+                title={t("menu.rename")}
                 onclick={() => (renaming = { id: device.id, name: device.name })}
               >
                 <Icon name="pencil" size={14} />
               </button>
             {/if}
             <span class="muted seen">
-              {device.connected ? "Connected" : `Last seen ${lastSeenLabel(device.last_seen_ms, now)}`}
+              {device.connected ? t("remoteSettings.connected") : t("remoteSettings.lastSeen", { when: lastSeenLabel(device.last_seen_ms, now) })}
             </span>
-            <Button variant="danger" aria-label={`Revoke ${device.name}`} onclick={() => revoke(device)}>
-              Revoke
+            <Button variant="danger" aria-label={t("remoteSettings.revokeNamed", { name: device.name })} onclick={() => revoke(device)}>
+              {t("remoteSettings.revoke")}
             </Button>
           </li>
         {/each}
@@ -323,33 +323,30 @@
         <p class="fw-text">{firewall.text}</p>
         <div class="fw-command">
           <code>{command}</code>
-          <Button onclick={() => copyCommand(command)}>{commandCopied ? "Copied" : "Copy"}</Button>
+          <Button onclick={() => copyCommand(command)}>{commandCopied ? t("remoteSettings.copied") : t("remoteSettings.copy")}</Button>
         </div>
       </Notice>
     </div>
   {/if}
   <div class="foot muted">
     <p>{firewall?.ok ? firewall.text : hint}</p>
-    <p>
-      The remote works on your home network only. Artwork loads from TIDAL's servers, so the phone
-      needs internet access. Keep the phone screen on while you use it.
-    </p>
+    <p>{t("remoteSettings.footer")}</p>
   </div>
 </SettingsSection>
 
 {#if pairing}
-  <Modal title="Pair a phone" onclose={closePairing}>
+  <Modal title={t("settings.remotePair.label")} onclose={closePairing}>
     <div class="pairing">
       <!-- The SVG is generated by OxiTide itself (qrcode crate), not remote input. -->
-      <div class="qr" aria-label="Pairing QR code" role="img">{@html pairing.qr_svg}</div>
-      <p>Scan with your phone's camera, or open:</p>
+      <div class="qr" aria-label={t("remoteSettings.qr")} role="img">{@html pairing.qr_svg}</div>
+      <p>{t("remoteSettings.scan")}</p>
       <code class="url">{pairing.url}</code>
       <p class="muted">
-        Same Wi-Fi as this PC. Expires in {countdownLabel(remaining)}.
+        {t("remoteSettings.expires", { time: countdownLabel(remaining) })}
       </p>
       {@render approvals()}
       <p class="actions">
-        <Button onclick={closePairing}>Cancel</Button>
+        <Button onclick={closePairing}>{t("common.cancel")}</Button>
       </p>
     </div>
   </Modal>

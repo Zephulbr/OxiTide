@@ -1,3 +1,5 @@
+import { t } from "./i18n.svelte";
+
 export type ShortcutAction =
   | "play-pause"
   | "seek-back"
@@ -41,16 +43,16 @@ export interface ShortcutHint {
 }
 
 export const SHORTCUTS: ShortcutHint[] = [
-  { keys: "Space", description: "Play / pause" },
-  { keys: "← / →", description: "Seek −5 s / +5 s" },
-  { keys: "Shift+← / Shift+→", description: "Previous / next track" },
-  { keys: "↑ / ↓", description: "Volume +5% / −5%" },
-  { keys: "M", description: "Mute / unmute" },
-  { keys: "Ctrl+F or /", description: "Focus search" },
-  { keys: "Alt+← / Alt+→", description: "History back / forward" },
-  { keys: "Ctrl+B", description: "Collapse / expand the sidebar" },
-  { keys: "Q", description: "Show / hide the queue" },
-  { keys: "Esc", description: "Close the menu, mini queue, mini player, now playing, or queue" },
+  { keys: "Space", get description() { return t("shortcuts.playPause"); } },
+  { keys: "← / →", get description() { return t("shortcuts.seek"); } },
+  { keys: "Shift+← / Shift+→", get description() { return t("shortcuts.track"); } },
+  { keys: "↑ / ↓", get description() { return t("shortcuts.volume"); } },
+  { keys: "M", get description() { return t("shortcuts.mute"); } },
+  { get keys() { return t("shortcuts.searchKeys"); }, get description() { return t("shortcuts.search"); } },
+  { keys: "Alt+← / Alt+→", get description() { return t("shortcuts.history"); } },
+  { keys: "Ctrl+B", get description() { return t("shortcuts.sidebar"); } },
+  { keys: "Q", get description() { return t("shortcuts.queue"); } },
+  { keys: "Esc", get description() { return t("shortcuts.escape"); } },
 ];
 
 /// Duck-typed so the matcher stays testable without a DOM environment.

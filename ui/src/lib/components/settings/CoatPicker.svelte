@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { CatjamCoat } from "../../api";
   import { COAT_IDS, COAT_LABELS, renderIdle } from "../../catjamSprite";
+  import { t } from "../../i18n.svelte";
 
   /// The jamming cat's coat (CJ-D12): one button per coat showing the cat in
   /// it. Same semantics as `Segmented` (a labelled group of pressed-state
@@ -27,7 +28,7 @@
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<div class="coats" role="group" aria-label="Coat" onkeydown={onKeydown}>
+<div class="coats" role="group" aria-label={t("settings.catjamCoat.label")} onkeydown={onKeydown}>
   {#each swatches as swatch (swatch.id)}
     <button
       type="button"

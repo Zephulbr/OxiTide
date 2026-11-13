@@ -1,4 +1,5 @@
 import type { DspSettings, EqSettings, TransitionReport, TransitionStyle } from "./api";
+import { t, type MessageKey } from "./i18n.svelte";
 
 /// Mirrors `oxitide_audio::dsp`: band centres and ranges.
 export const EQ_BANDS_HZ = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000] as const;
@@ -15,12 +16,12 @@ export interface EqPreset {
 }
 
 export const EQ_PRESETS: EqPreset[] = [
-  { id: "flat", label: "Flat", bands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
-  { id: "bass", label: "Bass boost", bands: [6, 5, 4, 2, 0, 0, 0, 0, 0, 0] },
-  { id: "bass-cut", label: "Bass cut", bands: [-6, -5, -4, -2, 0, 0, 0, 0, 0, 0] },
-  { id: "treble", label: "Treble boost", bands: [0, 0, 0, 0, 0, 0, 2, 4, 5, 6] },
-  { id: "vocal", label: "Vocal", bands: [-2, -2, -1, 0, 2, 4, 4, 2, 0, -1] },
-  { id: "loudness", label: "Loudness", bands: [5, 4, 2, 0, -1, -1, 0, 2, 4, 5] },
+  { id: "flat", get label() { return t("eq.preset.flat"); }, bands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
+  { id: "bass", get label() { return t("eq.preset.bass"); }, bands: [6, 5, 4, 2, 0, 0, 0, 0, 0, 0] },
+  { id: "bass-cut", get label() { return t("eq.preset.bassCut"); }, bands: [-6, -5, -4, -2, 0, 0, 0, 0, 0, 0] },
+  { id: "treble", get label() { return t("eq.preset.treble"); }, bands: [0, 0, 0, 0, 0, 0, 2, 4, 5, 6] },
+  { id: "vocal", get label() { return t("eq.preset.vocal"); }, bands: [-2, -2, -1, 0, 2, 4, 4, 2, 0, -1] },
+  { id: "loudness", get label() { return t("eq.preset.loudness"); }, bands: [5, 4, 2, 0, -1, -1, 0, 2, 4, 5] },
 ];
 
 export function defaultDspSettings(): DspSettings {
@@ -39,14 +40,10 @@ export function defaultDspSettings(): DspSettings {
 }
 
 export const TRANSITION_STYLES: { id: TransitionStyle; label: string; hint: string }[] = [
-  { id: "classic", label: "Classic", hint: "Equal-power fade over the last seconds of the track" },
-  { id: "quick", label: "Quick", hint: "Short overlap once the track has died down; keeps endings" },
-  {
-    id: "blend",
-    label: "Blend",
-    hint: "Apple-style: cuts the fade-out and slow intros, swaps the bass mid-way",
-  },
-  { id: "auto", label: "Auto", hint: "Picks a style per pair from how one track ends and the next begins" },
+  { id: "classic", get label() { return t("automix.style.classic"); }, get hint() { return t("automix.style.classicHint"); } },
+  { id: "quick", get label() { return t("automix.style.quick"); }, get hint() { return t("automix.style.quickHint"); } },
+  { id: "blend", get label() { return t("automix.style.blend"); }, get hint() { return t("automix.style.blendHint"); } },
+  { id: "auto", get label() { return t("automix.style.auto"); }, get hint() { return t("automix.style.autoHint"); } },
 ];
 
 function styleLabel(style: TransitionStyle): string {
@@ -99,14 +96,14 @@ export function formatDbShort(db: number): string {
 }
 
 export function formatCrossfade(ms: number): string {
-  return ms <= 0 ? "Off" : `${(ms / 1000).toFixed(ms % 1000 === 0 ? 0 : 1)} s`;
+  return ms <= 0 ? t("sleep.off") : `${(ms / 1000).toFixed(ms % 1000 === 0 ? 0 : 1)} s`;
 }
 
-const KIND_LABELS: Record<TransitionReport["kind"], string> = {
-  crossfade: "Crossfade",
-  beat_matched: "Beat-matched",
-  fade_out: "Fade-out (no overlap)",
-  gapless: "Gapless",
+const KIND_LABELS: Record<TransitionReport["kind"], MessageKey> = {
+  crossfade: "automix.kind.crossfade",
+  beat_matched: "automix.kind.beatMatched",
+  fade_out: "automix.kind.fadeOut",
+  gapless: "automix.kind.gapless",
 };
 
 function seconds(ms: number): string {
@@ -116,42 +113,46 @@ function seconds(ms: number): string {
 /// The readout headline: the kind for Classic, the style (and whether it was
 /// beat-matched) otherwise.
 function styleTitle(report: TransitionReport): string {
-  if (report.kind === "fade_out" || report.kind === "gapless") return KIND_LABELS[report.kind];
-  if (report.style === "classic" && !report.auto_reason) return KIND_LABELS[report.kind];
+  if (report.kind === "fade_out" || report.kind === "gapless") return t(KIND_LABELS[report.kind]);
+  if (report.style === "classic" && !report.auto_reason) return t(KIND_LABELS[report.kind]);
   const style = styleLabel(report.style);
-  return report.kind === "beat_matched" ? `${style} (beat-matched)` : style;
+  return report.kind === "beat_matched" ? t("automix.styleBeatMatched", { style }) : style;
 }
 
 /// Auto names the style it picked.
 function transitionTitle(report: TransitionReport): string {
   const title = styleTitle(report);
-  return report.auto_reason ? `Auto → ${title}` : title;
+  return report.auto_reason ? t("automix.autoPicked", { title }) : title;
 }
 
 /// The "Last transition" readout: a headline plus detail lines, for A/B
 /// listening notes.
 export function describeTransition(report: TransitionReport): { title: string; details: string[] } {
   const details: string[] = [];
-  if (report.auto_reason) details.push(`Why: ${report.auto_reason}`);
+  if (report.auto_reason) details.push(t("automix.why", { reason: report.auto_reason }));
   if (report.kind !== "fade_out" && report.kind !== "gapless") {
     details.push(
-      report.beats ? `${seconds(report.overlap_ms)} overlap (${report.beats} beats)` : `${seconds(report.overlap_ms)} overlap`,
+      report.beats
+        ? t("automix.overlapBeats", { time: seconds(report.overlap_ms), beats: report.beats })
+        : t("automix.overlap", { time: seconds(report.overlap_ms) }),
     );
   }
   if (report.trimmed_out_ms > 0 || report.trimmed_in_ms > 0) {
-    details.push(`Silence skipped: ${seconds(report.trimmed_out_ms)} end, ${seconds(report.trimmed_in_ms)} start`);
+    details.push(t("automix.trimmed", { end: seconds(report.trimmed_out_ms), start: seconds(report.trimmed_in_ms) }));
   }
   if (report.cut_out_ms > 0 || report.cut_in_ms > 0) {
-    details.push(`Cut: ${seconds(report.cut_out_ms)} of the ending, ${seconds(report.cut_in_ms)} of the intro`);
+    details.push(t("automix.cut", { ending: seconds(report.cut_out_ms), intro: seconds(report.cut_in_ms) }));
   }
   if (report.ride_db && report.ride_db < 0) {
-    details.push(`Level ride: next track came in ${(-report.ride_db).toFixed(1)} dB lower`);
+    details.push(t("automix.ride", { db: (-report.ride_db).toFixed(1) }));
   }
-  if (report.resampled) details.push("Resampled across a format change");
+  if (report.resampled) details.push(t("automix.resampled"));
   if (report.out_bpm != null || report.in_bpm != null) {
     const bpm = (value?: number | null, confidence?: number | null) =>
-      value == null ? "no grid" : `${value.toFixed(1)} BPM (${Math.round((confidence ?? 0) * 100)}%)`;
-    details.push(`Tempo: ${bpm(report.out_bpm, report.out_confidence)} → ${bpm(report.in_bpm, report.in_confidence)}`);
+      value == null
+        ? t("automix.noGrid")
+        : t("automix.bpm", { bpm: value.toFixed(1), confidence: Math.round((confidence ?? 0) * 100) });
+    details.push(t("automix.tempo", { out: bpm(report.out_bpm, report.out_confidence), in: bpm(report.in_bpm, report.in_confidence) }));
   }
   if (report.note) details.push(report.note);
   return { title: transitionTitle(report), details };
@@ -172,5 +173,5 @@ export function formatReplayTime(ms: number): string {
 
 /// Tooltip for the player-bar DSP badge.
 export function dspBadgeTitle(stages: string[]): string {
-  return `${stages.join(", ")} active — bit-perfect off`;
+  return t("player.dspBadge", { stages: stages.join(", ") });
 }

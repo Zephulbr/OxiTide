@@ -1,4 +1,5 @@
 import type { CatjamCoat } from "./api";
+import { t } from "./i18n.svelte";
 
 export const CATJAM_SIZE = 32;
 
@@ -17,12 +18,12 @@ export const COAT_IDS = ["white", "black", "ginger", "grey", "tuxedo", "cream"] 
 export const DEFAULT_COAT: CoatId = "white";
 
 export const COAT_LABELS: Record<CoatId, string> = {
-  white: "White",
-  black: "Black",
-  ginger: "Ginger tabby",
-  grey: "Grey tabby",
-  tuxedo: "Tuxedo",
-  cream: "Cream",
+  get white() { return t("catjam.coat.white"); },
+  get black() { return t("catjam.coat.black"); },
+  get ginger() { return t("catjam.coat.ginger"); },
+  get grey() { return t("catjam.coat.grey"); },
+  get tuxedo() { return t("catjam.coat.tuxedo"); },
+  get cream() { return t("catjam.coat.cream"); },
 };
 
 export type Palette = Record<string, string | null>;

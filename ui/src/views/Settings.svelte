@@ -100,6 +100,7 @@
   } from "../lib/hotkeys";
   import { createHotkeyCapture } from "../lib/hotkeyCapture.svelte";
   import { onPageResize } from "../lib/queueTransition";
+  import { t, tSplit } from "../lib/i18n.svelte";
   let {
     player,
     toasts,
@@ -144,109 +145,109 @@
   // Option lists. Typed here so each control's value type is the setting's own
   // union rather than a widened string.
   const THEME_OPTIONS: { value: ThemeSetting; label: string; icon: "moon" | "sun" | "monitor" }[] = [
-    { value: "dark", label: "Dark", icon: "moon" },
-    { value: "light", label: "Light", icon: "sun" },
-    { value: "system", label: "System", icon: "monitor" },
+    { value: "dark", get label() { return t("settings.opt.theme.dark"); }, icon: "moon" },
+    { value: "light", get label() { return t("settings.opt.theme.light"); }, icon: "sun" },
+    { value: "system", get label() { return t("settings.opt.theme.system"); }, icon: "monitor" },
   ];
   const MODE_OPTIONS: { value: UiMode; label: string }[] = [
-    { value: "atmosphere", label: "Atmosphere" },
-    { value: "instrument", label: "Studio" },
+    { value: "atmosphere", get label() { return t("settings.opt.mode.atmosphere"); } },
+    { value: "instrument", get label() { return t("settings.opt.mode.instrument"); } },
     { value: "rack", label: "Hi-Fi Rack" },
   ];
   const MODE_HELP: Record<UiMode, string> = {
-    atmosphere: "Glass over the album art, with motion that follows the music.",
-    instrument: "Solid surfaces with minimal animation and visual effects.",
-    rack: "Swaps the sidebar and player bar for a component stack. Always dark, whatever the theme.",
+    get atmosphere() { return t("settings.opt.modeHelp.atmosphere"); },
+    get instrument() { return t("settings.opt.modeHelp.instrument"); },
+    get rack() { return t("settings.opt.modeHelp.rack"); },
   };
   const TONE_OPTIONS: { value: InstrumentTone; label: string }[] = [
-    { value: "warm", label: "Warm" },
-    { value: "neutral", label: "Neutral" },
-    { value: "black", label: "Black" },
+    { value: "warm", get label() { return t("settings.opt.tone.warm"); } },
+    { value: "neutral", get label() { return t("settings.opt.tone.neutral"); } },
+    { value: "black", get label() { return t("settings.opt.tone.black"); } },
   ];
   const TONE_HELP: Record<InstrumentTone, string> = {
-    warm: "Warm brown surfaces.",
-    neutral: "Neutral dark greys.",
-    black: "Pure black, for OLED screens.",
+    get warm() { return t("settings.opt.toneHelp.warm"); },
+    get neutral() { return t("settings.opt.toneHelp.neutral"); },
+    get black() { return t("settings.opt.toneHelp.black"); },
   };
   const DYNAMIC_OPTIONS: { value: DynamicColorSetting; label: string }[] = [
-    { value: "full", label: "Full" },
-    { value: "accent", label: "Accent-only" },
-    { value: "off", label: "Off" },
+    { value: "full", get label() { return t("settings.opt.dynamic.full"); } },
+    { value: "accent", get label() { return t("settings.opt.dynamic.accent"); } },
+    { value: "off", get label() { return t("settings.opt.dynamic.off"); } },
   ];
   const TYPEFACE_OPTIONS: { value: TypefaceSetting; label: string; hint?: string }[] = [
-    { value: "auto", label: "Default", hint: "Chosen by the mode" },
+    { value: "auto", get label() { return t("settings.opt.typeface.auto"); }, get hint() { return t("settings.opt.typeface.autoHint"); } },
     { value: "manrope", label: "Manrope" },
     { value: "inter", label: "Inter" },
-    { value: "system", label: "System", hint: "Your operating system's UI font" },
-    { value: "custom", label: "Custom…", hint: "Any installed font" },
+    { value: "system", get label() { return t("settings.opt.typeface.system"); }, get hint() { return t("settings.opt.typeface.systemHint"); } },
+    { value: "custom", get label() { return t("settings.opt.typeface.custom"); }, get hint() { return t("settings.opt.typeface.customHint"); } },
   ];
   const DENSITY_OPTIONS: { value: Density; label: string }[] = [
-    { value: "comfortable", label: "Comfortable" },
-    { value: "compact", label: "Compact" },
+    { value: "comfortable", get label() { return t("settings.opt.density.comfortable"); } },
+    { value: "compact", get label() { return t("settings.opt.density.compact"); } },
   ];
   const SORT_MEMORY_OPTIONS: { value: SortMemoryMode; label: string }[] = [
-    { value: "page", label: "Until I leave" },
-    { value: "session", label: "Until restart" },
-    { value: "always", label: "Always" },
+    { value: "page", get label() { return t("settings.opt.sortMemory.page"); } },
+    { value: "session", get label() { return t("settings.opt.sortMemory.session"); } },
+    { value: "always", get label() { return t("settings.opt.sortMemory.always"); } },
   ];
   const SORT_MEMORY_HELP: Record<SortMemoryMode, string> = {
-    page: "Track lists open in their original order every time.",
-    session: "Each page keeps its track sort until OxiTide closes.",
-    always: "Each page keeps its track sort, even after a restart.",
+    get page() { return t("settings.opt.sortMemoryHelp.page"); },
+    get session() { return t("settings.opt.sortMemoryHelp.session"); },
+    get always() { return t("settings.opt.sortMemoryHelp.always"); },
   };
   const sortMemoryStore = sortMemory();
   const COVER_OPTIONS: { value: CoverShape; label: string }[] = [
-    { value: "disc", label: "Disc" },
-    { value: "sleeve", label: "Sleeve" },
+    { value: "disc", get label() { return t("settings.opt.cover.disc"); } },
+    { value: "sleeve", get label() { return t("settings.opt.cover.sleeve"); } },
   ];
   const PANEL_STYLE_OPTIONS: { value: PanelStyle; label: string }[] = [
-    { value: "docked", label: "Docked" },
-    { value: "floating", label: "Floating" },
+    { value: "docked", get label() { return t("settings.opt.panelStyle.docked"); } },
+    { value: "floating", get label() { return t("settings.opt.panelStyle.floating"); } },
   ];
   const DECK_OPTIONS: { value: DeckFace; label: string }[] = [
-    { value: "transport", label: "Transport" },
-    { value: "cd", label: "CD player" },
-    { value: "display", label: "Display" },
+    { value: "transport", get label() { return t("settings.opt.deck.transport"); } },
+    { value: "cd", get label() { return t("settings.opt.deck.cd"); } },
+    { value: "display", get label() { return t("settings.opt.deck.display"); } },
   ];
   const METER_OPTIONS: { value: MeterStyle; label: string }[] = [
-    { value: "needles", label: "Needles" },
-    { value: "bars", label: "Bars" },
+    { value: "needles", get label() { return t("settings.opt.meter.needles"); } },
+    { value: "bars", get label() { return t("settings.opt.meter.bars"); } },
     { value: "led", label: "LED" },
-    { value: "spectrum", label: "Spectrum" },
+    { value: "spectrum", get label() { return t("settings.opt.meter.spectrum"); } },
   ];
   const ANALYZER_OPTIONS: { value: AnalyzerStyle; label: string }[] = [
-    { value: "auto", label: "Auto" },
-    { value: "spectrum", label: "Spectrum" },
-    { value: "recorder", label: "Recorder" },
-    { value: "tuner", label: "Tuner" },
+    { value: "auto", get label() { return t("settings.opt.analyzer.auto"); } },
+    { value: "spectrum", get label() { return t("settings.opt.analyzer.spectrum"); } },
+    { value: "recorder", get label() { return t("settings.opt.analyzer.recorder"); } },
+    { value: "tuner", get label() { return t("settings.opt.analyzer.tuner"); } },
     { value: "eq", label: "EQ" },
   ];
   const LAMP_OPTIONS: { value: LampColor; label: string }[] = [
-    { value: "amber", label: "Amber" },
-    { value: "blue", label: "Blue" },
-    { value: "green", label: "Green" },
-    { value: "red", label: "Red" },
-    { value: "white", label: "White" },
-    { value: "cover", label: "Cover" },
+    { value: "amber", get label() { return t("settings.opt.lamp.amber"); } },
+    { value: "blue", get label() { return t("settings.opt.lamp.blue"); } },
+    { value: "green", get label() { return t("settings.opt.lamp.green"); } },
+    { value: "red", get label() { return t("settings.opt.lamp.red"); } },
+    { value: "white", get label() { return t("settings.opt.lamp.white"); } },
+    { value: "cover", get label() { return t("settings.opt.lamp.cover"); } },
   ];
   const QUALITY_OPTIONS: { value: Quality; label: string; hint: string }[] = [
     { value: "low", label: "Low", hint: "HE-AAC 96 kbps" },
     { value: "high", label: "High", hint: "AAC 320 kbps" },
-    { value: "lossless", label: "Lossless", hint: "CD quality" },
-    { value: "max", label: "Max (Hi-Res)", hint: "Highest available, up to 24-bit" },
+    { value: "lossless", get label() { return t("settings.opt.quality.lossless"); }, get hint() { return t("settings.opt.quality.losslessHint"); } },
+    { value: "max", get label() { return t("settings.opt.quality.max"); }, get hint() { return t("settings.opt.quality.maxHint"); } },
   ];
   const QUALITY_DISPLAY_OPTIONS: { value: QualityDisplay; label: string }[] = [
-    { value: "compact", label: "Compact" },
-    { value: "detailed", label: "Detailed" },
+    { value: "compact", get label() { return t("settings.opt.qualityDisplay.compact"); } },
+    { value: "detailed", get label() { return t("settings.opt.qualityDisplay.detailed"); } },
   ];
   const REPLAY_GAIN_OPTIONS: { value: ReplayGainSettings["mode"]; label: string }[] = [
-    { value: "off", label: "Off" },
-    { value: "track", label: "Track" },
-    { value: "album", label: "Album" },
+    { value: "off", get label() { return t("settings.opt.replayGain.off"); } },
+    { value: "track", get label() { return t("settings.opt.replayGain.track"); } },
+    { value: "album", get label() { return t("settings.opt.replayGain.album"); } },
   ];
   const FALLBACK_OPTIONS: { value: Config["audio"]["exclusive_fallback"]; label: string }[] = [
-    { value: "shared", label: "Use shared output" },
-    { value: "warn_only", label: "Stop with a message" },
+    { value: "shared", get label() { return t("settings.opt.fallback.shared"); } },
+    { value: "warn_only", get label() { return t("settings.opt.fallback.warnOnly"); } },
   ];
 
   /// Any device set to Exclusive, or an ASIO driver selected (always exclusive).
@@ -265,7 +266,7 @@
   );
   const presetOptions = $derived([
     ...EQ_PRESETS.map((p) => ({ value: p.id, label: p.label })),
-    { value: "custom", label: "Custom", disabled: true },
+    { value: "custom", label: t("settings.eqCustom"), disabled: true },
   ]);
 
   async function refreshScrobble() {
@@ -333,7 +334,7 @@
     }
     if (lastfmAuth === "waiting") {
       lastfmAuth = "idle";
-      lastfmAuthNote = "Authorization timed out — try again.";
+      lastfmAuthNote = t("settings.lastfmTimedOut");
     }
   }
 
@@ -491,7 +492,7 @@
 
   function validateFont(name: string) {
     const clean = name.trim().replace(/["\\]/g, "");
-    customNote = clean && !document.fonts.check(`12px "${clean}"`) ? "not found — using fallback" : "";
+    customNote = clean && !document.fonts.check(`12px "${clean}"`) ? t("settings.fontNotFound") : "";
   }
 
   async function applyCustomFont() {
@@ -520,7 +521,7 @@
   async function copyDiagnostics() {
     try {
       const copied = await copyText(await api.getDiagnostics());
-      toasts.show(copied ? "Diagnostics copied" : "Couldn't copy diagnostics", {
+      toasts.show(copied ? t("settings.diagnosticsCopied") : t("settings.diagnosticsCopyFailed"), {
         severity: copied ? "success" : "error",
       });
     } catch (e) {
@@ -700,7 +701,7 @@
     value: String(percent),
     label: `${percent}%`,
   }));
-  const REDUCED_MOTION_PAUSED = "Paused while your system's reduced-motion setting is on.";
+  const REDUCED_MOTION_PAUSED = $derived(t("settings.reducedMotionPaused"));
 
   function setCatjamCoat(coat: CatjamCoat) {
     appearance.setCatjamCoat(coat).catch(apply);
@@ -765,9 +766,9 @@
   function hotkeyErrorMessage(failure: unknown, accelerator: string): string {
     const shown = displayAccelerator(accelerator);
     if (errorMessage(failure).includes("duplicates")) {
-      return `"${shown}" is already in use by another shortcut.`;
+      return t("settings.hotkeyDuplicate", { keys: shown });
     }
-    return `Couldn't register "${shown}" — another app may be using it.`;
+    return t("settings.hotkeyTaken", { keys: shown });
   }
 
   /// Optimistic update; passing `replace` clears that action's binding in the
@@ -914,7 +915,7 @@
 
 <div class="settings">
   <header class="page-head">
-    <h2>Settings</h2>
+    <h2>{t("route.settings")}</h2>
     {#if config}
       <SettingsSearch
         scope={{
@@ -940,7 +941,7 @@
         class="nav"
         role="tablist"
         aria-orientation="vertical"
-        aria-label="Settings categories"
+        aria-label={t("settings.categories")}
       >
         <span
           bind:this={indicator}
@@ -974,24 +975,24 @@
           <div id="settings-panel-appearance" role="tabpanel" aria-labelledby="settings-tab-appearance">
             <div class="cols">
             <div class="col">
-            <SettingsSection title="Look & feel" icon="palette">
+            <SettingsSection title={t("settings.section.lookAndFeel")} icon="palette">
               <LanguagePicker onerror={apply} />
               <SettingRow
-                id="theme" label="Theme"
+                id="theme" label={t("settings.theme.label")}
                 description={appearance.theme === "system"
-                  ? "Follows the operating system's app theme."
-                  : "Light or dark surfaces."}
+                  ? t("settings.theme.systemHelp")
+                  : t("settings.theme.description")}
               >
                 <Segmented
-                  label="Theme"
+                  label={t("settings.theme.label")}
                   value={appearance.theme}
                   options={THEME_OPTIONS}
                   onchange={(value) => appearance.setTheme(value).catch(apply)}
                 />
               </SettingRow>
-              <SettingRow id="mode" label="Mode" description={MODE_HELP[appearance.mode]}>
+              <SettingRow id="mode" label={t("settings.mode.label")} description={MODE_HELP[appearance.mode]}>
                 <Segmented
-                  label="Mode"
+                  label={t("settings.mode.label")}
                   value={appearance.mode}
                   options={MODE_OPTIONS}
                   onchange={(value) => appearance.setMode(value).catch(apply)}
@@ -999,13 +1000,13 @@
               </SettingRow>
               {#if appearance.mode === "instrument"}
                 <SettingRow
-                  id="studio-tone" label="Tone"
+                  id="studio-tone" label={t("settings.studioTone.label")}
                   description={appearance.resolvedTheme === "light"
-                    ? "Applies with the dark theme; light keeps its warm paper."
+                    ? t("settings.studioTone.lightHelp")
                     : TONE_HELP[appearance.instrumentTone]}
                 >
                   <Segmented
-                    label="Tone"
+                    label={t("settings.studioTone.label")}
                     value={appearance.instrumentTone}
                     options={TONE_OPTIONS}
                     onchange={(value) => appearance.setInstrumentTone(value).catch(apply)}
@@ -1014,11 +1015,11 @@
               {/if}
               {#if appearance.mode !== "rack"}
                 <SettingRow
-                  id="dynamic-color" label="Dynamic color"
-                  description="Tints the interface with the colors of the album art."
+                  id="dynamic-color" label={t("settings.dynamicColor.label")}
+                  description={t("settings.dynamicColor.description")}
                 >
                   <Segmented
-                    label="Dynamic color"
+                    label={t("settings.dynamicColor.label")}
                     value={appearance.dynamicColorSetting}
                     options={DYNAMIC_OPTIONS}
                     onchange={setDynamicColor}
@@ -1032,54 +1033,54 @@
             {#if appearance.mode === "rack"}
               <div class="col wide" style="order: 3">
               <SettingsSection
-                title="Hi-Fi Rack"
-                description="The component stack's units, meters and lamp."
+                title={t("settings.section.hiFiRack")}
+                description={t("settings.section.hiFiRack.description")}
                 icon="audio-lines"
               >
                 <SettingRow
-                  id="rack-deck" label="Deck face"
-                  description="What the compact deck shows. Now Playing always opens the turntable."
+                  id="rack-deck" label={t("settings.rackDeck.label")}
+                  description={t("settings.rackDeck.description")}
                 >
                   <Segmented
-                    label="Deck face"
+                    label={t("settings.rackDeck.label")}
                     value={appearance.rack.deck_face}
                     options={DECK_OPTIONS}
                     onchange={(deck_face) => appearance.setRack({ deck_face }).catch(apply)}
                   />
                 </SettingRow>
-                <SettingRow id="rack-meters" label="Amp meters">
+                <SettingRow id="rack-meters" label={t("settings.rackMeters.label")}>
                   <Segmented
-                    label="Amp meters"
+                    label={t("settings.rackMeters.label")}
                     value={appearance.rack.meters}
                     options={METER_OPTIONS}
                     onchange={(meters) => appearance.setRack({ meters }).catch(apply)}
                   />
                 </SettingRow>
                 <SettingRow
-                  id="rack-analyzer" label="Now Playing analyzer"
-                  description="The extra unit in Now Playing. Auto shows the level recorder when the amp's meters are already a spectrum, otherwise the spectrum."
+                  id="rack-analyzer" label={t("settings.rackAnalyzer.label")}
+                  description={t("settings.rackAnalyzer.description")}
                 >
                   <Segmented
-                    label="Now Playing analyzer"
+                    label={t("settings.rackAnalyzer.label")}
                     value={appearance.rack.analyzer}
                     options={ANALYZER_OPTIONS}
                     onchange={(analyzer) => appearance.setRack({ analyzer }).catch(apply)}
                   />
                 </SettingRow>
                 <SettingRow
-                  id="rack-lamp" label="Lamp color"
-                  description="Cover takes the hue of the album art but keeps the brightness of a lit screen; grey covers fall back to amber."
+                  id="rack-lamp" label={t("settings.rackLamp.label")}
+                  description={t("settings.rackLamp.description")}
                 >
                   <Segmented
-                    label="Lamp color"
+                    label={t("settings.rackLamp.label")}
                     value={appearance.rack.lamp}
                     options={LAMP_OPTIONS}
                     onchange={(lamp) => appearance.setRack({ lamp }).catch(apply)}
                   />
                 </SettingRow>
-                <SettingRow id="rack-brightness" label="Lamp brightness">
+                <SettingRow id="rack-brightness" label={t("settings.rackBrightness.label")}>
                   <Slider
-                    label="Lamp brightness"
+                    label={t("settings.rackBrightness.label")}
                     min={40}
                     max={100}
                     step={5}
@@ -1089,7 +1090,7 @@
                   />
                 </SettingRow>
                 <ToggleRow
-                  id="rack-eq" label="Show the graphic EQ unit"
+                  id="rack-eq" label={t("settings.rackEq.label")}
                   checked={appearance.rack.eq_unit}
                   onchange={(eq_unit) => appearance.setRack({ eq_unit }).catch(apply)}
                 />
@@ -1098,23 +1099,23 @@
             {/if}
 
             <div class="col" style="order: 2">
-            <SettingsSection title="Typography & layout" icon="type">
-              <SettingRow id="typeface" label="Typeface" description="The font used across the interface.">
+            <SettingsSection title={t("settings.section.typographyAndLayout")} icon="type">
+              <SettingRow id="typeface" label={t("settings.typeface.label")} description={t("settings.typeface.description")}>
                 <Select
-                  label="Typeface"
+                  label={t("settings.typeface.label")}
                   value={appearance.typeface}
                   options={TYPEFACE_OPTIONS}
                   onchange={setTypeface}
                 />
               </SettingRow>
               {#if appearance.typeface === "custom"}
-                <SettingRow label="Custom font" description="Type an installed font family name." stacked>
+                <SettingRow label={t("settings.customFont.label")} description={t("settings.customFont.description")} stacked>
                   <div class="custom-font">
                     <input
                       class="search-input"
                       list="font-choices"
-                      placeholder="Font family name"
-                      aria-label="Custom font family"
+                      placeholder={t("settings.customFont.placeholder")}
+                      aria-label={t("settings.customFont.field")}
                       bind:value={customDraft}
                       oninput={() => validateFont(customDraft)}
                     />
@@ -1122,33 +1123,33 @@
                       {#each fontChoices as family (family)}<option value={family}></option>{/each}
                     </datalist>
                     {#if queryLocalFonts}
-                      <Button onclick={browseFonts}>Browse installed fonts…</Button>
+                      <Button onclick={browseFonts}>{t("settings.customFont.browse")}</Button>
                     {/if}
-                    <Button variant="primary" onclick={applyCustomFont}>Apply</Button>
+                    <Button variant="primary" onclick={applyCustomFont}>{t("settings.apply")}</Button>
                   </div>
                   <p style:font-family={fontStack("custom", customDraft)} class="font-preview">
-                    The quick brown fox — 0123456789
+                    {t("settings.customFont.preview")}
                   </p>
                   {#if customNote}<p class="muted note">{customNote}</p>{/if}
                 </SettingRow>
               {/if}
-              <SettingRow id="density" label="Density" description="How tightly lists and rows are spaced.">
+              <SettingRow id="density" label={t("settings.density.label")} description={t("settings.density.description")}>
                 <Segmented
-                  label="Density"
+                  label={t("settings.density.label")}
                   value={appearance.density}
                   options={DENSITY_OPTIONS}
                   onchange={(value) => appearance.setDensity(value).catch(apply)}
                 />
               </SettingRow>
               <ToggleRow
-                id="row-separators" label="Row separators"
-                description="Thin lines between the rows of track lists."
+                id="row-separators" label={t("settings.rowSeparators.label")}
+                description={t("settings.rowSeparators.description")}
                 checked={appearance.rowSeparators}
                 onchange={(enabled) => appearance.setRowSeparators(enabled).catch(apply)}
               />
-              <SettingRow id="cover-shape" label="Cover shape" description="How artwork is drawn on Now Playing.">
+              <SettingRow id="cover-shape" label={t("settings.coverShape.label")} description={t("settings.coverShape.description")}>
                 <Segmented
-                  label="Cover shape"
+                  label={t("settings.coverShape.label")}
                   value={appearance.coverShape}
                   options={COVER_OPTIONS}
                   onchange={(value) => appearance.setCoverShape(value).catch(apply)}
@@ -1157,11 +1158,11 @@
               {#if sortMemoryStore}
                 <SettingRow
                   id="track-sort-memory"
-                  label="Remember track sorting"
+                  label={t("settings.trackSortMemory.label")}
                   description={SORT_MEMORY_HELP[sortMemoryStore.mode]}
                 >
                   <Segmented
-                    label="Remember track sorting"
+                    label={t("settings.trackSortMemory.label")}
                     value={sortMemoryStore.mode}
                     options={SORT_MEMORY_OPTIONS}
                     onchange={(value) => sortMemoryStore.setMode(value)}
@@ -1171,11 +1172,11 @@
               {#if appearance.mode !== "rack"}
                 <SettingRow
                   id="player-bar-style"
-                  label="Player bar"
-                  description="Docked runs along the bottom of the window. Floating sits beside the sidebar as a rounded card."
+                  label={t("settings.playerBarStyle.label")}
+                  description={t("settings.playerBarStyle.description")}
                 >
                   <Segmented
-                    label="Player bar"
+                    label={t("settings.playerBarStyle.label")}
                     value={appearance.playerBarStyle}
                     options={PANEL_STYLE_OPTIONS}
                     onchange={(value) => appearance.setPlayerBarStyle(value).catch(apply)}
@@ -1183,19 +1184,19 @@
                 </SettingRow>
                 <SettingRow
                   id="queue-style"
-                  label="Queue"
-                  description="Docked makes room beside the page. Floating opens over the page as a card, so the page keeps its width."
+                  label={t("settings.queueStyle.label")}
+                  description={t("settings.queueStyle.description")}
                 >
                   <Segmented
-                    label="Queue"
+                    label={t("settings.queueStyle.label")}
                     value={appearance.queueStyle}
                     options={PANEL_STYLE_OPTIONS}
                     onchange={(value) => appearance.setQueueStyle(value).catch(apply)}
                   />
                 </SettingRow>
                 <ToggleRow
-                  id="hover-panels" label="Expand panels on hover"
-                  description="Hovering the collapsed sidebar opens it over the page, and resting the pointer on the window's right edge slides the queue in. Both close when the pointer leaves."
+                  id="hover-panels" label={t("settings.hoverPanels.label")}
+                  description={t("settings.hoverPanels.description")}
                   checked={appearance.hoverPanels}
                   onchange={setHoverPanels}
                 />
@@ -1204,37 +1205,37 @@
             </div>
 
             <div class="col wide" style="order: 4">
-            <SettingsSection title="Cat" icon="paw-print">
+            <SettingsSection title={t("settings.section.cat")} icon="paw-print">
               <ToggleRow
-                id="cat" label="Cat"
+                id="cat" label={t("settings.cat.label")}
                 description={appearance.reducedMotion ? REDUCED_MOTION_PAUSED : undefined}
                 checked={config.ui.oneko}
                 onchange={setOneko}
               />
               <ToggleRow
-                id="catjam" label="Jamming cat"
+                id="catjam" label={t("settings.catjam.label")}
                 description={appearance.reducedMotion ? REDUCED_MOTION_PAUSED : undefined}
                 checked={config.ui.catjam}
                 onchange={setCatjam}
               />
               {#if config.ui.catjam}
-                <SettingRow id="catjam-coat" label="Coat">
+                <SettingRow id="catjam-coat" label={t("settings.catjamCoat.label")}>
                   <CoatPicker value={appearance.catjamCoat} onchange={setCatjamCoat} />
                 </SettingRow>
-                <SettingRow id="catjam-size" label="Size">
+                <SettingRow id="catjam-size" label={t("settings.catjamSize.label")}>
                   <Segmented
-                    label="Jamming cat size"
+                    label={t("settings.catjamSizeLabel")}
                     value={String(appearance.catjamScale)}
                     options={CATJAM_SIZE_OPTIONS}
                     onchange={(value) => appearance.setCatjamScale(Number(value)).catch(apply)}
                   />
                 </SettingRow>
               {/if}
-              <SettingRow label="Credits" stacked>
+              <SettingRow label={t("settings.credits.label")} stacked>
                 <span class="muted credits">
-                  <button class="link" type="button" onclick={() => openCredit("https://github.com/adryd325/oneko.js")}>oneko.js by adryd325</button>
+                  <button class="link" type="button" onclick={() => openCredit("https://github.com/adryd325/oneko.js")}>{t("settings.creditBy", { work: "oneko.js", author: "adryd325" })}</button>
                   &amp;
-                  <button class="link" type="button" onclick={() => openCredit("https://github.com/kyrie25/spicetify-oneko")}>spicetify-oneko by kyrie25</button>
+                  <button class="link" type="button" onclick={() => openCredit("https://github.com/kyrie25/spicetify-oneko")}>{t("settings.creditBy", { work: "spicetify-oneko", author: "kyrie25" })}</button>
                 </span>              </SettingRow>
             </SettingsSection>
             </div>
@@ -1247,36 +1248,33 @@
             {/if}
             {#if player.state.dsp_active}
               <Notice kind="info">
-                Sound processing is active ({player.state.dsp_stages.join(", ")}), so bit-perfect
-                output is off{selectedExclusive
-                  ? "; exclusive mode still keeps the device to itself"
-                  : ""}.
+                {t("settings.dspActive", { stages: player.state.dsp_stages.join(", "), exclusive: selectedExclusive ? "yes" : "no" })}
               </Notice>
             {/if}
 
             <div class="cols">
             <div class="col">
-            <SettingsSection title="Streaming" icon="radio">
-              <SettingRow id="quality" label="Streaming quality" description="The quality OxiTide asks TIDAL for.">
+            <SettingsSection title={t("settings.section.streaming")} icon="radio">
+              <SettingRow id="quality" label={t("settings.quality.label")} description={t("settings.quality.description")}>
                 <Select
-                  label="Streaming quality"
+                  label={t("settings.quality.label")}
                   value={config.streaming.quality}
                   options={QUALITY_OPTIONS}
                   onchange={setQuality}
                 />
               </SettingRow>
               <ToggleRow
-                id="allow-fallback" label="Use the best available quality"
-                description="When a track isn't offered at the quality you chose, play the best available and report it."
+                id="allow-fallback" label={t("settings.allowFallback.label")}
+                description={t("settings.allowFallback.description")}
                 checked={config.streaming.allow_fallback}
                 onchange={setAllowFallback}
               />
               <SettingRow
-                id="quality-badge" label="Quality badge"
-                description="Compact shows MAX / LOSSLESS / AAC; Detailed shows bit depth, sample rate and bitrate."
+                id="quality-badge" label={t("settings.qualityBadge.label")}
+                description={t("settings.qualityBadge.description")}
               >
                 <Segmented
-                  label="Quality display"
+                  label={t("settings.qualityBadge.label")}
                   value={config.ui.quality_display}
                   options={QUALITY_DISPLAY_OPTIONS}
                   onchange={setDisplay}
@@ -1284,19 +1282,19 @@
               </SettingRow>
             </SettingsSection>
 
-            <SettingsSection title="Queue" icon="list-music">
+            <SettingsSection title={t("settings.section.queue")} icon="list-music">
               <ToggleRow
-                id="autoplay" label="Autoplay"
-                description="Keep playing similar content when your queue ends."
+                id="autoplay" label={t("settings.autoplay.label")}
+                description={t("settings.autoplay.description")}
                 checked={config.playback.autoplay}
                 onchange={setAutoplay}
               />
             </SettingsSection>
 
-            <SettingsSection title="Output" icon="headphones">
+            <SettingsSection title={t("settings.section.output")} icon="headphones">
               <SettingRow
-                id="device" label="Audio device" stacked
-                description="Where OxiTide plays. Exclusive bypasses the system mixer so samples reach the device unchanged; other apps can't use it meanwhile, and the in-app volume stays at 100% (set the level on your DAC or with the system volume). Pinned devices also appear in the player bar's quality menu."
+                id="device" label={t("settings.device.label")} stacked
+                description={t("settings.device.description")}
               >
                 <OutputDevicePicker
                   icons={config.ui.device_icons ?? true}
@@ -1307,11 +1305,11 @@
               </SettingRow>
               {#if anyExclusive}
                 <SettingRow
-                  id="exclusive-fallback" label="If exclusive fails"
-                  description="For every device in Exclusive mode: when the device refuses exclusive mode, or has no volume control of its own (exclusive would then play at full volume; the fallback uses the in-app volume instead, which is not bit-perfect)."
+                  id="exclusive-fallback" label={t("settings.exclusiveFallback.label")}
+                  description={t("settings.exclusiveFallback.description")}
                 >
                   <Segmented
-                    label="If exclusive fails"
+                    label={t("settings.exclusiveFallback.label")}
                     value={config.audio.exclusive_fallback}
                     options={FALLBACK_OPTIONS}
                     onchange={setFallback}
@@ -1319,58 +1317,56 @@
                 </SettingRow>
               {/if}
               {#if config.audio.output_device.startsWith("asio:")}
-                <SettingRow label="ASIO driver" stacked>
+                <SettingRow label={t("settings.asioDriver.label")} stacked>
                   <Notice kind="info">
-                    ASIO drivers are always exclusive and bit-perfect: the in-app volume stays at 100%, so
-                    set the level on the interface or in its mixer. The buffer size follows the driver's
-                    own control panel.
+                    {t("settings.asioNotice")}
                   </Notice>
                 </SettingRow>
               {/if}
               <ToggleRow
-                id="device-icons" label="Device icons"
-                description="Icons come from the device type; change one from its ⋯ menu."
+                id="device-icons" label={t("settings.deviceIcons.label")}
+                description={t("settings.deviceIcons.description")}
                 checked={config.ui.device_icons ?? true}
                 onchange={setDeviceIcons}
               />
             </SettingsSection>
             {#if pendingFixedVolume}
               <ConfirmDialog
-                title="Exclusive mode volume"
-                message="Caution: exclusive mode sets the in-app volume to 100%, which can be much louder than now. Turn the volume down on your DAC or with the system volume first; the in-app volume returns when you leave exclusive mode."
-                confirmLabel="Use exclusive mode"
+                title={t("settings.exclusiveVolume.title")}
+                message={t("settings.exclusiveVolume.message")}
+                confirmLabel={t("settings.exclusiveVolume.confirm")}
                 destructive={false}
-                optOutLabel="Don't show again"
+                optOutLabel={t("settings.dontShowAgain")}
                 onconfirm={confirmFixedVolume}
                 oncancel={() => (pendingFixedVolume = null)}
               />
             {/if}
 
             <SettingsSection
-              title="Volume leveling"
-              description="ReplayGain evens out loudness between tracks using TIDAL's gain data."
+              title={t("settings.section.volumeLeveling")}
+              description={t("settings.section.volumeLeveling.description")}
               icon="volume-2"
             >
               <SettingRow
-                id="replaygain" label="ReplayGain"
+                id="replaygain" label={t("settings.replaygain.label")}
                 description={dsp.replay_gain.mode === "album"
-                  ? "Album keeps the dynamics between tracks of one album and falls back to the track gain."
-                  : "Off by default; any leveling changes the samples."}
+                  ? t("settings.replaygain.albumHelp")
+                  : t("settings.replaygain.description")}
               >
                 <Segmented
-                  label="ReplayGain"
+                  label={t("settings.replaygain.label")}
                   value={dsp.replay_gain.mode}
                   options={REPLAY_GAIN_OPTIONS}
                   onchange={(mode) => setReplayGain({ mode })}
                 />
               </SettingRow>
               <SettingRow
-                id="rg-preamp" label="Preamp"
-                description="Raises or lowers every track after leveling."
+                id="rg-preamp" label={t("settings.rgPreamp.label")}
+                description={t("settings.rgPreamp.description")}
                 disabled={dsp.replay_gain.mode === "off"}
               >
                 <Slider
-                  label="Preamp"
+                  label={t("settings.rgPreamp.label")}
                   origin="center"
                   disabled={dsp.replay_gain.mode === "off"}
                   min={-REPLAY_GAIN_MAX_DB}
@@ -1382,12 +1378,12 @@
                 />
               </SettingRow>
               <SettingRow
-                id="rg-untagged" label="Tracks without data"
-                description="The gain applied to tracks TIDAL has no ReplayGain data for."
+                id="rg-untagged" label={t("settings.rgUntagged.label")}
+                description={t("settings.rgUntagged.description")}
                 disabled={dsp.replay_gain.mode === "off"}
               >
                 <Slider
-                  label="Tracks without data"
+                  label={t("settings.rgUntagged.label")}
                   origin="center"
                   disabled={dsp.replay_gain.mode === "off"}
                   min={-REPLAY_GAIN_MAX_DB}
@@ -1399,10 +1395,10 @@
                 />
               </SettingRow>
               <ToggleRow
-                id="rg-clipping" label="Prevent clipping"
+                id="rg-clipping" label={t("settings.rgClipping.label")}
                 description={player.state.stream?.replay_gain_db != null && dsp.replay_gain.mode !== "off"
-                  ? `Never raise a track past its peak. Current track: ${formatDb(Math.round(player.state.stream.replay_gain_db * 10) / 10)}.`
-                  : "Never raise a track past its peak."}
+                  ? t("settings.rgClipping.current", { gain: formatDb(Math.round(player.state.stream.replay_gain_db * 10) / 10) })
+                  : t("settings.rgClipping.description")}
                 disabled={dsp.replay_gain.mode === "off"}
                 checked={dsp.replay_gain.prevent_clipping}
                 onchange={(prevent_clipping) => setReplayGain({ prevent_clipping })}
@@ -1411,16 +1407,16 @@
             </div>
             <div class="col">
             <SettingsSection
-              title="Equalizer"
-              description="Ten bands. Active processing turns bit-perfect off."
+              title={t("settings.section.equalizer")}
+              description={t("settings.section.equalizer.description")}
               icon="sliders-vertical"
             >
               {#snippet actions()}
-                <Toggle label="Equalizer" checked={dsp.eq.enabled} onchange={(enabled) => setEq({ enabled })} />
+                <Toggle label={t("settings.section.equalizer")} checked={dsp.eq.enabled} onchange={(enabled) => setEq({ enabled })} />
               {/snippet}
-              <SettingRow id="eq-preset" label="Preset" disabled={!dsp.eq.enabled}>
+              <SettingRow id="eq-preset" label={t("settings.eqPreset.label")} disabled={!dsp.eq.enabled}>
                 <Select
-                  label="Equalizer preset"
+                  label={t("settings.eqPresetLabel")}
                   disabled={!dsp.eq.enabled}
                   value={matchPreset(dsp.eq.bands_db)}
                   options={presetOptions}
@@ -1431,24 +1427,24 @@
                   icon="undo-2"
                   disabled={!dsp.eq.enabled || matchPreset(dsp.eq.bands_db) === "flat"}
                   onclick={() => setPreset("flat")}
-                >Reset</Button>
+                >{t("settings.reset")}</Button>
               </SettingRow>
-              <SettingRow id="eq-bands" label="Bands" disabled={!dsp.eq.enabled} stacked>
+              <SettingRow id="eq-bands" label={t("settings.eqBands.label")} disabled={!dsp.eq.enabled} stacked>
                 <EqBands bands={dsp.eq.bands_db} disabled={!dsp.eq.enabled} onband={setBand} />
               </SettingRow>
               <ToggleRow
-                id="eq-auto-preamp" label="Automatic preamp"
-                description="Lowers the level by the largest boost so it cannot clip."
+                id="eq-auto-preamp" label={t("settings.eqAutoPreamp.label")}
+                description={t("settings.eqAutoPreamp.description")}
                 disabled={!dsp.eq.enabled}
                 checked={dsp.eq.auto_preamp}
                 onchange={(auto_preamp) => setEq({ auto_preamp })}
               />
-              <SettingRow id="eq-preamp" label="Preamp" disabled={!dsp.eq.enabled}>
+              <SettingRow id="eq-preamp" label={t("settings.eqPreamp.label")} disabled={!dsp.eq.enabled}>
                 {#if dsp.eq.auto_preamp}
                   <span class="readout">{formatDb(effectivePreamp(dsp.eq))}</span>
                 {:else}
                   <Slider
-                    label="Equalizer preamp"
+                    label={t("settings.eqPreampLabel")}
                     origin="center"
                     disabled={!dsp.eq.enabled}
                     min={-EQ_MAX_DB}
@@ -1463,13 +1459,13 @@
             </SettingsSection>
 
             <!-- Crossfade sits right above AutoMix, which builds on its length. -->
-            <SettingsSection title="Crossfade" icon="waves">
+            <SettingsSection title={t("settings.section.crossfade")} icon="waves">
               <SettingRow
-                id="crossfade" label="Crossfade"
-                description="Crossfades when a track ends on its own; skipping and seeking cut straight over."
+                id="crossfade" label={t("settings.crossfade.label")}
+                description={t("settings.crossfade.description")}
               >
                 <Slider
-                  label="Crossfade"
+                  label={t("settings.crossfade.label")}
                   min={0}
                   max={CROSSFADE_MAX_MS}
                   step={500}
@@ -1479,8 +1475,8 @@
                 />
               </SettingRow>
               <ToggleRow
-                id="gapless" label="Keep albums gapless"
-                description="No crossfade between consecutive tracks of one album."
+                id="gapless" label={t("settings.gapless.label")}
+                description={t("settings.gapless.description")}
                 disabled={dsp.crossfade.duration_ms === 0}
                 checked={dsp.crossfade.skip_same_album}
                 onchange={(skip_same_album) => setCrossfade({ skip_same_album })}
@@ -1488,10 +1484,10 @@
             </SettingsSection>
 
             <SettingsSection
-              title="AutoMix (experimental)"
+              title={t("settings.section.automixExperimental")}
               description={dsp.crossfade.duration_ms > 0
-                ? "Smarter transitions on top of the crossfade. Each option works on its own so you can A/B them."
-                : "Smarter transitions on top of the crossfade. Set a crossfade length to use it."}
+                ? t("settings.automix.description")
+                : t("settings.automix.needsCrossfade")}
               icon="sparkles"
             >
               <AutoMixPanel
@@ -1507,34 +1503,32 @@
         {:else if tab === "content"}
           <div id="settings-panel-content" role="tabpanel" aria-labelledby="settings-tab-content">
             <Notice kind="info">
-              OxiTide enforces these client-side: TIDAL does not expose its own filters to
-              third-party clients, and blocked tracks can still appear in TIDAL recommendations.
-              Flagged rows are grayed out and skipped; unknown flags always play.
+              {t("settings.contentNotice")}
             </Notice>
-            <SettingsSection title="Filters & labels" icon="shield-check">
+            <SettingsSection title={t("settings.section.filtersAndLabels")} icon="shield-check">
               <ToggleRow
-                id="block-explicit" label="Block explicit content"
-                description="Hides explicit tracks and blocks them from playing. Enabling clears the current queue, matching the official app."
+                id="block-explicit" label={t("settings.blockExplicit.label")}
+                description={t("settings.blockExplicit.description")}
                 checked={config.content.block_explicit}
                 onchange={setBlockExplicit}
               />
               <ToggleRow
-                id="block-ai" label="Block AI-generated content"
-                description="Hides tracks TIDAL labels as AI-generated and removes them from the queue. Labels may be missing for some tracks or regions; those play normally."
+                id="block-ai" label={t("settings.blockAi.label")}
+                description={t("settings.blockAi.description")}
                 checked={config.content.block_ai}
                 onchange={setBlockAi}
               />
               <ToggleRow
-                id="show-labels" label="Show content labels"
-                description="Tags explicit tracks with E and AI-generated tracks with AI, even when not blocking them. Turning this off stops the background label lookups too."
+                id="show-labels" label={t("settings.showLabels.label")}
+                description={t("settings.showLabels.description")}
                 checked={config.content.show_labels}
                 onchange={setShowLabels}
               />
             </SettingsSection>
             {#if confirmingBlockExplicit}
               <ConfirmDialog
-                title="Block explicit content"
-                message="This clears the current queue, matching the TIDAL app. Playback will stop."
+                title={t("settings.blockExplicit.label")}
+                message={t("settings.blockExplicit.confirm")}
                 onconfirm={() => applyBlockExplicit(true)}
                 oncancel={() => (confirmingBlockExplicit = false)}
               />
@@ -1549,13 +1543,13 @@
             <div class="cols">
             <div class="col">
             <SettingsSection
-              title="Scrobbling"
-              description="Send what you play to your listening profile."
+              title={t("settings.section.scrobbling")}
+              description={t("settings.section.scrobbling.description")}
               icon="audio-lines"
             >
               {#if scrobble}
                 <SettingRow
-                  id="lastfm" label="Last.fm"
+                  id="lastfm" label={t("settings.lastfm.label")}
                   description={[
                     serviceLabel(scrobble.lastfm),
                     queuedLabel(scrobble.lastfm.queued),
@@ -1566,27 +1560,27 @@
                     .join(" · ")}
                 >
                   {#if lastfmAuth === "waiting"}
-                    <Loading label="Waiting for authorization in your browser…" />
-                    <Button variant="primary" onclick={() => void pollLastfm()}>I've authorized</Button>
-                    <Button onclick={cancelLastfm}>Cancel</Button>
+                    <Loading label={t("settings.lastfmWaiting")} />
+                    <Button variant="primary" onclick={() => void pollLastfm()}>{t("settings.lastfmAuthorized")}</Button>
+                    <Button onclick={cancelLastfm}>{t("common.cancel")}</Button>
                   {:else if scrobble.lastfm.connected}
                     <Toggle
-                      label="Scrobble to Last.fm"
+                      label={t("settings.scrobbleTo", { service: "Last.fm" })}
                       checked={scrobble.lastfm.enabled}
                       disabled={!canToggle(scrobble.lastfm)}
                       onchange={(enabled) => toggleService("lastfm", enabled)}
                     />
-                    <Button onclick={disconnectLastfm}>Disconnect</Button>
+                    <Button onclick={disconnectLastfm}>{t("settings.disconnect")}</Button>
                   {:else}
                     <Button
                       variant="primary"
                       disabled={!scrobble.lastfm.configured}
                       onclick={() => void connectLastfm()}
-                    >Connect</Button>
+                    >{t("settings.connect")}</Button>
                   {/if}
                 </SettingRow>
                 <SettingRow
-                  id="listenbrainz" label="ListenBrainz"
+                  id="listenbrainz" label={t("settings.listenbrainz.label")}
                   description={[
                     serviceLabel(scrobble.listenbrainz),
                     queuedLabel(scrobble.listenbrainz.queued),
@@ -1598,54 +1592,54 @@
                 >
                   {#if scrobble.listenbrainz.connected}
                     <Toggle
-                      label="Scrobble to ListenBrainz"
+                      label={t("settings.scrobbleTo", { service: "ListenBrainz" })}
                       checked={scrobble.listenbrainz.enabled}
                       disabled={!canToggle(scrobble.listenbrainz)}
                       onchange={(enabled) => toggleService("listenbrainz", enabled)}
                     />
-                    <Button onclick={disconnectListenbrainz}>Disconnect</Button>
+                    <Button onclick={disconnectListenbrainz}>{t("settings.disconnect")}</Button>
                   {:else}
                     <input
                       class="search-input token"
                       type="password"
-                      placeholder="ListenBrainz token"
-                      aria-label="ListenBrainz token"
+                      placeholder={t("settings.listenbrainzToken")}
+                      aria-label={t("settings.listenbrainzToken")}
                       bind:value={lbToken}
                     />
                     <Button
                       variant="primary"
                       disabled={lbBusy || !lbToken.trim()}
                       onclick={() => void connectListenbrainz()}
-                    >Connect</Button>
+                    >{t("settings.connect")}</Button>
                   {/if}
                   {#snippet below()}
                     {#if !scrobble?.listenbrainz.connected}
+                      {@const [before, after] = tSplit("settings.listenbrainzTokenHint", "profile")}
                       <span class="muted help-line">
-                        Get a token from
-                        <button
+                        {before}<button
                           class="link"
                           type="button"
                           onclick={() => openCredit("https://listenbrainz.org/profile/")}
-                        >your ListenBrainz profile</button>.
+                        >{t("settings.listenbrainzProfile")}</button>{after}
                       </span>
                     {/if}
                   {/snippet}
                 </SettingRow>
               {:else}
-                <SettingRow label="Loading scrobbling status…" />
+                <SettingRow label={t("settings.loadingScrobblingStatus.label")} />
               {/if}
             </SettingsSection>
 
-            <SettingsSection title="Presence & controls" icon="radio">
+            <SettingsSection title={t("settings.section.presenceAndControls")} icon="radio">
               <ToggleRow
-                id="discord" label="Discord Rich Presence"
-                description="Shows the current track on your Discord profile. Requires the Discord desktop client."
+                id="discord" label={t("settings.discord.label")}
+                description={t("settings.discord.description")}
                 checked={config.integrations.discord}
                 onchange={setDiscord}
               />
               <ToggleRow
-                id="media-controls" label="Media controls"
-                description="Hardware media keys and the system media overlay."
+                id="media-controls" label={t("settings.mediaControls.label")}
+                description={t("settings.mediaControls.description")}
                 checked={config.integrations.smtc}
                 onchange={setSmtc}
               />
@@ -1661,34 +1655,34 @@
             <div class="cols">
             <div class="col">
             <SettingsSection
-              title="Cache"
-              description="Downloaded audio kept on disk so replays and offline playback start instantly."
+              title={t("settings.section.cache")}
+              description={t("settings.section.cache.description")}
               icon="database"
             >
               {#snippet actions()}
-                <Button icon="refresh-cw" onclick={refreshCacheStatus}>Refresh</Button>
-                <Button variant="danger" icon="trash-2" onclick={clearCache}>Clear cache</Button>
+                <Button icon="refresh-cw" onclick={refreshCacheStatus}>{t("playlist.refresh")}</Button>
+                <Button variant="danger" icon="trash-2" onclick={clearCache}>{t("settings.clearCache")}</Button>
               {/snippet}
               {#if cacheStatus}
                 {#if !cacheStatus.usable}
                   <div class="inset">
                     <Notice kind="warning">
-                      Cache is disabled: the directory is not writable. Streaming is unaffected.
+                      {t("settings.cacheDisabled")}
                     </Notice>
                   </div>
                 {:else if cacheStatus.configured_dir && cacheStatus.dir !== cacheStatus.configured_dir}
                   <div class="inset">
                     <Notice kind="warning">
-                      The configured cache directory is unusable; using {cacheStatus.dir}.
+                      {t("settings.cacheFallbackDir", { dir: cacheStatus.dir })}
                     </Notice>
                   </div>
                 {/if}
-                <SettingRow id="cache-usage" label="Disk usage" stacked>
+                <SettingRow id="cache-usage" label={t("settings.cacheUsage.label")} stacked>
                   <div class="usage">
                     <div
                       class="meter"
                       role="meter"
-                      aria-label="Cache usage"
+                      aria-label={t("settings.cacheUsage.label")}
                       aria-valuemin="0"
                       aria-valuemax="100"
                       aria-valuenow={Math.round(cacheFraction * 100)}
@@ -1696,62 +1690,62 @@
                       <span class="fill" class:full={cacheFraction > 0.9} style:width="{cacheFraction * 100}%"></span>
                     </div>
                     <span class="muted">
-                      {formatSize(cacheStatus.used_bytes)} used{#if cacheStatus.pending_bytes > 0}
-                        (+{formatSize(cacheStatus.pending_bytes)} downloading){/if}
-                      of {formatSize(cacheStatus.max_bytes)}
+                      {cacheStatus.pending_bytes > 0
+                        ? t("settings.cacheUsedPending", { used: formatSize(cacheStatus.used_bytes), pending: formatSize(cacheStatus.pending_bytes), max: formatSize(cacheStatus.max_bytes) })
+                        : t("settings.cacheUsed", { used: formatSize(cacheStatus.used_bytes), max: formatSize(cacheStatus.max_bytes) })}
                     </span>
                   </div>
                 </SettingRow>
-                <SettingRow id="cache-max" label="Maximum size" description="The oldest tracks are removed when the cache grows past this.">
+                <SettingRow id="cache-max" label={t("settings.cacheMax.label")} description={t("settings.cacheMax.description")}>
                   <NumberField
-                    label="Maximum cache size"
+                    label={t("settings.cacheMaxLabel")}
                     min={0}
-                    unit="MB"
+                    unit={t("settings.unitMb")}
                     value={config.cache.max_size_mb}
                     onchange={setCacheMaxMb}
                   />
                 </SettingRow>
                 <ToggleRow
-                  id="cache-clear-exit" label="Clear cache on exit"
+                  id="cache-clear-exit" label={t("settings.cacheClearExit.label")}
                   checked={config.cache.clear_on_exit}
                   onchange={setClearOnExit}
                 />
                 <SettingRow
-                  id="cache-location" label="Location"
-                  description="To move the cache, edit cache.dir in config.toml."
+                  id="cache-location" label={t("settings.cacheLocation.label")}
+                  description={t("settings.cacheLocation.description")}
                   stacked
                 >
                   <code class="path">{cacheStatus.dir}</code>
                 </SettingRow>
               {:else}
-                <SettingRow label="Cache status unavailable" />
+                <SettingRow label={t("settings.cacheStatusUnavailable.label")} />
               {/if}
             </SettingsSection>
             </div>
             <div class="col">
             <SettingsSection
-              title="Listening history"
-              description="Recorded locally in history.jsonl and used by the History view and stats."
+              title={t("settings.section.listeningHistory")}
+              description={t("settings.section.listeningHistory.description")}
               icon="history"
             >
               <ToggleRow
-                id="history-record" label="Record listening history"
+                id="history-record" label={t("settings.historyRecord.label")}
                 checked={config.history.enabled}
                 onchange={setHistoryEnabled}
               />
-              <SettingRow id="history-max" label="Maximum entries" description="Older plays are dropped beyond this.">
+              <SettingRow id="history-max" label={t("settings.historyMax.label")} description={t("settings.historyMax.description")}>
                 <NumberField
-                  label="Maximum history entries"
+                  label={t("settings.historyMaxLabel")}
                   min={100}
                   max={100000}
-                  unit="plays"
+                  unit={t("settings.unitPlays")}
                   value={config.history.max_entries}
                   onchange={setHistoryMaxEntries}
                 />
               </SettingRow>
-              <SettingRow id="history-clear" label="Clear history" description="Permanently deletes your local play history and stats.">
+              <SettingRow id="history-clear" label={t("settings.historyClear.label")} description={t("settings.historyClear.description")}>
                 <Button variant="danger" icon="trash-2" onclick={() => (confirmingHistoryClear = true)}>
-                  Clear history
+                  {t("settings.historyClear.label")}
                 </Button>
               </SettingRow>
             </SettingsSection>
@@ -1759,8 +1753,8 @@
             </div>
             {#if confirmingHistoryClear}
               <ConfirmDialog
-                title="Clear listening history"
-                message="This permanently deletes your local play history and stats."
+                title={t("settings.historyClear.title")}
+                message={t("settings.historyClear.description")}
                 onconfirm={clearHistory}
                 oncancel={() => (confirmingHistoryClear = false)}
               />
@@ -1772,50 +1766,50 @@
 
             <div class="cols">
             <div class="col">
-            <SettingsSection title="Window & startup" icon="app-window">
+            <SettingsSection title={t("settings.section.windowAndStartup")} icon="app-window">
               <ToggleRow
-                id="close-to-tray" label="Close to tray"
-                description="Closing the window hides it and keeps playback running; Quit lives in the tray menu."
+                id="close-to-tray" label={t("settings.closeToTray.label")}
+                description={t("settings.closeToTray.description")}
                 checked={config.ui.close_to_tray}
                 onchange={setCloseToTray}
               />
               <ToggleRow
-                id="start-mini" label="Start in mini player"
-                description="Open as the compact mini player instead of the full window."
+                id="start-mini" label={t("settings.startMini.label")}
+                description={t("settings.startMini.description")}
                 checked={config.ui.start_in_mini}
                 onchange={setStartInMini}
               />
             </SettingsSection>
 
             <SettingsSection
-              title="Global hotkeys"
-              description="Work while OxiTide is in the background. Press Backspace or Delete while recording to clear one; a shortcut already used by another action asks before reassigning, and one another app owns keeps the old binding."
+              title={t("settings.section.globalHotkeys")}
+              description={t("settings.section.globalHotkeys.description")}
               icon="keyboard"
             >
               {#each HOTKEY_ACTIONS as entry (entry.id)}
                 <SettingRow id={`hotkey-${entry.id}`} label={entry.label}>
                   <kbd class:unset={!config.hotkeys[entry.id]}>
                     {capture.recording === entry.id
-                      ? "Press keys…"
-                      : displayAccelerator(config.hotkeys[entry.id]) || "Not set"}
+                      ? t("settings.hotkeyPress")
+                      : displayAccelerator(config.hotkeys[entry.id]) || t("settings.hotkeyUnset")}
                   </kbd>
                   <Button
                     id={`hotkey-${entry.id}`}
                     variant={capture.recording === entry.id ? "primary" : "secondary"}
                     onclick={() => void capture.start(entry.id)}
-                  >{capture.recording === entry.id ? "Recording…" : "Record"}</Button>
+                  >{capture.recording === entry.id ? t("settings.hotkeyRecording") : t("settings.hotkeyRecord")}</Button>
                   <Button
                     disabled={!config.hotkeys[entry.id]}
                     onclick={() => void saveHotkey(entry.id, "")}
-                  >Clear</Button>
+                  >{t("sort.clear")}</Button>
                 </SettingRow>
               {/each}
             </SettingsSection>
             {#if hotkeyConflict}
               <ConfirmDialog
-                title="Shortcut already in use"
-                message={`"${displayAccelerator(hotkeyConflict.accelerator)}" is already used by "${actionLabel(hotkeyConflict.other)}". Reassign it to "${actionLabel(hotkeyConflict.action)}"?`}
-                confirmLabel="Reassign"
+                title={t("settings.hotkeyConflict.title")}
+                message={t("settings.hotkeyConflict.message", { keys: displayAccelerator(hotkeyConflict.accelerator), other: actionLabel(hotkeyConflict.other), action: actionLabel(hotkeyConflict.action) })}
+                confirmLabel={t("settings.hotkeyConflict.confirm")}
                 onconfirm={confirmReassign}
                 oncancel={cancelReassign}
               />
@@ -1826,8 +1820,8 @@
 
             <SettingsSection
               id="shortcuts"
-              title="Keyboard shortcuts"
-              description="Available while OxiTide is focused."
+              title={t("settings.section.keyboardShortcuts")}
+              description={t("settings.section.keyboardShortcuts.description")}
               icon="keyboard"
             >
               <ul class="shortcuts">
@@ -1837,31 +1831,31 @@
               </ul>
             </SettingsSection>
 
-            <SettingsSection title="Troubleshooting" icon="file-text">
-              <SettingRow id="logs" label="Logs" description={logsDir || "Directory unavailable"}>
+            <SettingsSection title={t("settings.section.troubleshooting")} icon="file-text">
+              <SettingRow id="logs" label={t("settings.logs.label")} description={logsDir || t("settings.logsUnavailable")}>
                 <Button icon="folder" onclick={() => api.openLogsFolder().catch(apply)}>
-                  Open logs folder
+                  {t("settings.openLogs")}
                 </Button>
               </SettingRow>
               <SettingRow
                 id="diagnostics"
-                label="Diagnostics"
-                description="Version, system, audio output and recent problems, for a bug report. No account details or keys."
+                label={t("settings.diagnostics.label")}
+                description={t("settings.diagnostics.description")}
               >
-                <Button icon="copy" onclick={copyDiagnostics}>Copy diagnostics</Button>
+                <Button icon="copy" onclick={copyDiagnostics}>{t("settings.copyDiagnostics")}</Button>
               </SettingRow>
             </SettingsSection>
 
-            <SettingsSection title="Account" icon="user">
-              <SettingRow id="logout" label="Log out" description="Signs out of TIDAL on this device. Your settings are kept.">
-                <Button variant="danger" icon="log-out" onclick={() => (confirmingLogout = true)}>Log out</Button>
+            <SettingsSection title={t("settings.section.account")} icon="user">
+              <SettingRow id="logout" label={t("settings.logout.label")} description={t("settings.logout.description")}>
+                <Button variant="danger" icon="log-out" onclick={() => (confirmingLogout = true)}>{t("settings.logout.label")}</Button>
               </SettingRow>
             </SettingsSection>
             {#if confirmingLogout}
               <ConfirmDialog
-                title="Log out of TIDAL?"
-                message="Playback stops. Your queue comes back when you sign in to this account again."
-                confirmLabel="Log out"
+                title={t("settings.logout.title")}
+                message={t("settings.logout.message")}
+                confirmLabel={t("settings.logout.label")}
                 onconfirm={() => {
                   confirmingLogout = false;
                   onLogout();
