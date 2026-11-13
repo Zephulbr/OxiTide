@@ -89,6 +89,15 @@ export function createI18n<K extends string>(source: Catalog, loaders: Record<st
     }
   }
 
+  /// The message split around one placeholder, for a sentence that wraps
+  /// markup (a styled name, a link): `[before, after]` the `slot` param.
+  /// Word order stays the translation's; only the slot's text is markup.
+  function split(key: K, slot: string, params?: MessageParams): [string, string] {
+    const text = t(key, { ...params, [slot]: SLOT });
+    const at = text.indexOf(SLOT);
+    return at < 0 ? [text, ""] : [text.slice(0, at), text.slice(at + SLOT.length)];
+  }
+
   return {
     /// The resolved language code (`en`, `de`, `zh-Hant`…), for `Intl` calls
     /// and `<html lang>`. Reading it in a template or `$derived` tracks it.
@@ -102,8 +111,12 @@ export function createI18n<K extends string>(source: Catalog, loaders: Record<st
     available,
     setLanguage,
     t,
+    split,
   };
 }
+
+/// Stands in for a `split` slot; a private-use character no message contains.
+const SLOT = "";
 
 // `notes/` sits next to the language folders but is not one; the
 // pseudo-locale (generated, gitignored) is only bundled in development.
@@ -121,6 +134,9 @@ export const i18n = createI18n<MessageKey>(en, appLoaders);
 
 /// Shorthand for `i18n.t`.
 export const t = i18n.t;
+
+/// Shorthand for `i18n.split`.
+export const tSplit = i18n.split;
 
 /// Languages the picker offers in this build: shipped ones with a catalog,
 /// plus unshipped ones and the pseudo-locale in development builds.

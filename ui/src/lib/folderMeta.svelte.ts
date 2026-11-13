@@ -1,3 +1,5 @@
+import { t } from "./i18n.svelte";
+
 export const FOLDER_META_KEY = "oxitide.folder-meta";
 /// The colours-only key this store replaced; read once as a fallback.
 const LEGACY_COLORS_KEY = "oxitide.folder-colors";
@@ -5,14 +7,14 @@ const LEGACY_COLORS_KEY = "oxitide.folder-colors";
 /// The folder palette: a hue each, drawn through the theme's `--folder-l` /
 /// `--folder-c` (tokens.css) so every colour stays readable in both themes.
 export const FOLDER_COLORS = [
-  { id: "red", label: "Red", hue: 25 },
-  { id: "orange", label: "Orange", hue: 60 },
-  { id: "yellow", label: "Yellow", hue: 95 },
-  { id: "green", label: "Green", hue: 150 },
-  { id: "teal", label: "Teal", hue: 190 },
-  { id: "blue", label: "Blue", hue: 250 },
-  { id: "purple", label: "Purple", hue: 300 },
-  { id: "pink", label: "Pink", hue: 350 },
+  { id: "red", get label() { return t("folder.color.red"); }, hue: 25 },
+  { id: "orange", get label() { return t("folder.color.orange"); }, hue: 60 },
+  { id: "yellow", get label() { return t("folder.color.yellow"); }, hue: 95 },
+  { id: "green", get label() { return t("folder.color.green"); }, hue: 150 },
+  { id: "teal", get label() { return t("folder.color.teal"); }, hue: 190 },
+  { id: "blue", get label() { return t("folder.color.blue"); }, hue: 250 },
+  { id: "purple", get label() { return t("folder.color.purple"); }, hue: 300 },
+  { id: "pink", get label() { return t("folder.color.pink"); }, hue: 350 },
 ] as const;
 
 export type FolderColorId = (typeof FOLDER_COLORS)[number]["id"];

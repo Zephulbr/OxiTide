@@ -6,6 +6,7 @@
   import Cover from "./Cover.svelte";
   import Icon from "./Icon.svelte";
   import Modal from "./Modal.svelte";
+  import { t, tSplit } from "../i18n.svelte";
 
   let {
     actions,
@@ -70,35 +71,35 @@
 <!-- Keep one / Add both, for one duplicate (`label` names it) or all of them.
      Neither half is pressed when the rows are mixed. -->
 {#snippet segmented(keep: boolean, both: boolean, onKeep: () => void, onBoth: () => void, label?: string)}
-  <span class="seg" role="group" aria-label={label ? `${label}: keep one or add both` : "All duplicates"}>
-    <button class:on={keep} aria-pressed={keep} onclick={onKeep}>Keep one</button>
-    <button class:on={both} aria-pressed={both} onclick={onBoth}>Add both</button>
+  <span class="seg" role="group" aria-label={label ? t("picker.duplicateChoice", { title: label }) : t("picker.allDuplicates")}>
+    <button class:on={keep} aria-pressed={keep} onclick={onKeep}>{t("picker.keepOne")}</button>
+    <button class:on={both} aria-pressed={both} onclick={onBoth}>{t("picker.addBoth")}</button>
   </span>
 {/snippet}
 
 {#if actions.open}
-  <Modal title={actions.step === "create" ? "Create playlist" : "Add to playlist"} onclose={close}>
+  <Modal title={actions.step === "create" ? t("picker.createTitle") : t("picker.addTitle")} onclose={close}>
     {#if actions.step === "confirm" && actions.confirming}
       <!-- A drop of more than one track asks first (drag-to-playlist DD-D15). -->
       {@const c = actions.confirming}
       <div class="confirm">
-        <p class="lead">Add {c.count} tracks?</p>
+        <p class="lead">{t("picker.confirmLead", { count: c.count })}</p>
         <dl class="route">
           {#if c.from}
             <div class="leg">
-              <dt>From</dt>
+              <dt>{t("picker.from")}</dt>
               <dd title={c.from}>{c.from}</dd>
             </div>
           {/if}
           <div class="leg">
-            <dt>To</dt>
+            <dt>{t("picker.to")}</dt>
             <dd title={c.playlist.title}>{c.playlist.title}</dd>
           </div>
         </dl>
         <p class="footer">
-          <button class="cancel" onclick={close}>Cancel</button>
+          <button class="cancel" onclick={close}>{t("common.cancel")}</button>
           <button class="save" disabled={actions.busy} onclick={() => void actions.confirmAdd()}>
-            {actions.busy ? "Adding…" : `Add ${c.count} tracks`}
+            {actions.busy ? t("picker.adding") : t("picker.addTracks", { count: c.count })}
           </button>
         </p>
       </div>
@@ -106,25 +107,25 @@
       <div class="list-step">
         <button class="new" disabled={actions.busy} onclick={() => actions.startCreate()}>
           <span class="new-icon"><Icon name="plus" size={16} /></span>
-          New playlist…
+          {t("picker.newPlaylist")}
         </button>
         <div class="sep" role="separator"></div>
         <div class="list">
           {#if loading}
-            <p class="muted pad">Loading…</p>
+            <p class="muted pad">{t("common.loading")}</p>
           {:else if listError}
             <p class="error pad">{listError}</p>
-            <button class="retry" onclick={loadPlaylists}>Retry</button>
+            <button class="retry" onclick={loadPlaylists}>{t("common.retry")}</button>
           {:else}
             {#each sorted as p (p.uuid)}
               <button class="row" disabled={actions.busy} onclick={() => void actions.addTo(p)}>
                 <span class="title">{p.title}</span>
                 <span class="count">
-                  {p.numberOfTracks} {p.numberOfTracks === 1 ? "track" : "tracks"}
+                  {t("common.trackCount", { count: p.numberOfTracks })}
                 </span>
               </button>
             {/each}
-            {#if playlists.length === 0}<p class="muted pad">No playlists yet</p>{/if}
+            {#if playlists.length === 0}<p class="muted pad">{t("picker.noPlaylists")}</p>{/if}
           {/if}
         </div>
       </div>
@@ -139,31 +140,31 @@
         <div class="create-body">
           <div class="cover-col">
             <div class="cover-placeholder"><Icon name="music" size={30} /></div>
-            <button type="button" class="change-image" disabled title="Coming later">
-              Change image
+            <button type="button" class="change-image" disabled title={t("picker.comingLater")}>
+              {t("picker.changeImage")}
             </button>
           </div>
           <div class="fields">
             <input
               class="title-input"
               bind:value={name}
-              placeholder="Title"
-              aria-label="Playlist title"
+              placeholder={t("picker.titlePlaceholder")}
+              aria-label={t("picker.titleLabel")}
               use:autofocus
             />
             <div class="desc-wrap">
               <textarea
                 bind:value={description}
-                placeholder="Write a description"
-                aria-label="Playlist description"
+                placeholder={t("picker.descriptionPlaceholder")}
+                aria-label={t("picker.descriptionLabel")}
                 maxlength="500"
               ></textarea>
-              <span class="counter">{description.length}/500 characters</span>
+              <span class="counter">{t("picker.characterCount", { count: description.length, max: 500 })}</span>
             </div>
             <div class="public-row">
               <span class="public-text">
-                <strong>Make it public</strong>
-                <span class="muted">Your playlist will be visible on your Profile and accessible by anyone.</span>
+                <strong>{t("picker.makePublic")}</strong>
+                <span class="muted">{t("picker.makePublicHint")}</span>
               </span>
               <button
                 type="button"
@@ -171,7 +172,7 @@
                 class:on={isPublic}
                 role="switch"
                 aria-checked={isPublic}
-                aria-label="Make it public"
+                aria-label={t("picker.makePublic")}
                 onclick={() => (isPublic = !isPublic)}
               >
                 <span class="knob"></span>
@@ -184,38 +185,42 @@
             type="submit"
             class="save"
             disabled={actions.busy || name.trim() === ""}
-          >Save</button>
+          >{t("common.save")}</button>
         </p>
       </form>
     {:else}
       {@const dupes = actions.duplicates}
-      {@const copies = dupes.filter((t) => choice(t.id)).length}
+      {@const copies = dupes.filter((track) => choice(track.id)).length}
       <div class="dupes-step">
         <p class="lead">
-          {dupes.length === 1 ? "1 track is" : `${dupes.length} tracks are`} already in
-          {#if actions.target}<span class="name" title={actions.target.title}>{actions.target.title}</span>{:else}this playlist{/if}
+          {#if actions.target}
+            {@const [before, after] = tSplit("picker.duplicatesIn", "playlist", { count: dupes.length })}
+            {before}<span class="name" title={actions.target.title}>{actions.target.title}</span>{after}
+          {:else}
+            {t("picker.duplicatesHere", { count: dupes.length })}
+          {/if}
         </p>
-        <p class="muted hint">Keep the copy that's there, or add another.</p>
+        <p class="muted hint">{t("picker.duplicatesHint")}</p>
         <div class="bulk">
-          <span class="muted">All</span>
+          <span class="muted">{t("picker.all")}</span>
           {@render segmented(copies === 0, copies === dupes.length, () => actions.setAllChoices(false), () => actions.setAllChoices(true))}
         </div>
         <ul class="dupes">
-          {#each dupes as t (t.id)}
+          {#each dupes as track (track.id)}
             <li class="dupe">
-              <span class="dupe-cover"><Cover uuid={t.album?.cover} size={80} radius={4} /></span>
+              <span class="dupe-cover"><Cover uuid={track.album?.cover} size={80} radius={4} /></span>
               <span class="dupe-text">
-                <span class="dupe-title" title={t.title}>{t.title}</span>
-                <span class="muted dupe-artist">{t.artists.map((a) => a.name).join(", ")}</span>
+                <span class="dupe-title" title={track.title}>{track.title}</span>
+                <span class="muted dupe-artist">{track.artists.map((a) => a.name).join(", ")}</span>
               </span>
-              {@render segmented(!choice(t.id), choice(t.id), () => actions.setChoice(t.id, false), () => actions.setChoice(t.id, true), t.title)}
+              {@render segmented(!choice(track.id), choice(track.id), () => actions.setChoice(track.id, false), () => actions.setChoice(track.id, true), track.title)}
             </li>
           {/each}
         </ul>
         <p class="footer">
-          <button class="cancel" onclick={close}>Skip duplicates</button>
+          <button class="cancel" onclick={close}>{t("picker.skipDuplicates")}</button>
           <button class="save" disabled={actions.busy || copies === 0} onclick={() => void actions.confirmDuplicates()}>
-            {copies === 0 ? "Add copies" : copies === 1 ? "Add 1 copy" : `Add ${copies} copies`}
+            {t("picker.addCopies", { count: copies })}
           </button>
         </p>
       </div>

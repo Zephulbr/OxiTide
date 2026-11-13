@@ -53,6 +53,14 @@ describe("createI18n", () => {
     expect(tr.t("greet", { name: "V" })).toBe("Hallo, V");
   });
 
+  it("splits a message around a slot for markup, in the translation's order", async () => {
+    const tr = make({ ja: { greet: "{name}さん、こんにちは" } });
+    expect(tr.split("greet", "name")).toEqual(["Hello, ", ""]);
+    expect(tr.split("hello", "name")).toEqual(["Hello", ""]);
+    await tr.setLanguage("ja");
+    expect(tr.split("greet", "name")).toEqual(["", "さん、こんにちは"]);
+  });
+
   it("uses each language's plural rules", async () => {
     const tr = make();
     await tr.setLanguage("pl");

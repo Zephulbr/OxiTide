@@ -1,5 +1,6 @@
 <script lang="ts">
   import { errorMessage } from "../errors";
+  import { t } from "../i18n.svelte";
   import Icon from "./Icon.svelte";
 
   let { message, onRetry }: { message: string; onRetry?: () => void } = $props();
@@ -8,7 +9,7 @@
 <div class="error-state" role="alert">
   <p class="message"><Icon name="alert-triangle" size={16} /><span>{errorMessage(message)}</span></p>
   {#if onRetry}
-    <button class="tool-btn" onclick={onRetry}><Icon name="rotate-cw" size={16} /> Retry</button>
+    <button class="tool-btn" onclick={onRetry}><Icon name="rotate-cw" size={16} /> {t("common.retry")}</button>
   {/if}
 </div>
 

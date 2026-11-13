@@ -341,7 +341,7 @@
   $effect(() => {
     const unlisten = listen<string>(SCROBBLE_AUTH_ERROR_EVENT, (event) => {
       const name = event.payload === "lastfm" ? "Last.fm" : "ListenBrainz";
-      toasts.show(`${name} scrobbling needs reconnecting.`, { severity: "error" });
+      toasts.show(t("app.scrobbleReconnect", { service: name }), { severity: "error" });
     });
     return () => {
       unlisten.then((off) => off());
@@ -350,8 +350,8 @@
 
   $effect(() => {
     const unlisten = listen<UpdateInfo>(UPDATE_AVAILABLE_EVENT, (event) => {
-      toasts.show(`OxiTide ${event.payload.version} is available.`, {
-        action: { label: "Open Settings", run: () => nav.goto({ name: "settings" }) },
+      toasts.show(t("app.updateAvailable", { version: event.payload.version }), {
+        action: { label: t("app.openSettings"), run: () => nav.goto({ name: "settings" }) },
       });
     });
     return () => {
@@ -800,7 +800,7 @@
   {#if error}<p style="color:var(--danger);padding:0 24px">{error}</p>{/if}
   <Login
     onLogin={onLogin}
-    message={expired ? "Session expired — sign in to continue" : ""}
+    message={expired ? t("app.sessionExpired") : ""}
     {authError}
   />
 {:else}
@@ -845,11 +845,11 @@
       onkeydown={onQueueResizeKeydown}
       tabindex="0"
       role="slider"
-      aria-label="Queue width"
+      aria-label={t("app.queueWidth")}
       aria-valuemin={QUEUE_WIDTH_MIN}
       aria-valuemax={QUEUE_WIDTH_MAX}
       aria-valuenow={appearance.queueWidth}
-      aria-valuetext={`${appearance.queueWidth} pixels`}
+      aria-valuetext={t("app.pixels", { count: appearance.queueWidth })}
     ></div>
   {/snippet}
   <div
