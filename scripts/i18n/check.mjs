@@ -1,10 +1,10 @@
 // CI gate for the translation catalogs (spec §7.1). Exit 1 on any error;
 // warnings (stale messages, missing ones in unshipped languages, glossary
-// misses) are printed but do not fail.
+// misses, English messages no source uses) are printed but do not fail.
 //
 //   node scripts/i18n/check.mjs [--quiet]
 
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -115,7 +115,43 @@ export function check() {
     if (!folders.includes(lang)) errors.push(`_meta/${lang}/ has no catalog folder`);
   }
 
+  warnings.push(...unusedMessages());
+
   return { errors, warnings };
+}
+
+/// English messages no UI source names (as a quoted key), so nobody is asked
+/// to translate dead text. Keys are always written out in full (`t("a.b")`,
+/// or a key table), never assembled, which is what makes this check work.
+/// Shell text is looked up from Rust (`shell_text.rs` has its own test).
+function unusedMessages() {
+  // The UI sources next to the catalogs; with throwaway catalogs
+  // (I18N_LOCALES) only an explicit I18N_SRC is scanned.
+  const src = process.env.I18N_SRC ?? (process.env.I18N_LOCALES ? null : join(LOCALES, ".."));
+  if (!src || !existsSync(src)) return [];
+  const text = sourceFiles(src)
+    .map((file) => readFileSync(file, "utf8"))
+    .join("\n");
+  const out = [];
+  for (const ns of NAMESPACES.filter((n) => n !== "shell")) {
+    for (const key of Object.keys(catalog(SOURCE, ns))) {
+      if (!text.includes(`"${key}"`)) out.push(`en/${ns}.json ${key}: not used by any source file`);
+    }
+  }
+  return out;
+}
+
+function sourceFiles(dir) {
+  const files = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name !== "locales" && entry.name !== "node_modules") files.push(...sourceFiles(path));
+    } else if (/\.(ts|svelte)$/.test(entry.name) && !/\.test\.ts$/.test(entry.name)) {
+      files.push(path);
+    }
+  }
+  return files;
 }
 
 function subfolders(dir) {

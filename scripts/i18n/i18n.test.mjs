@@ -79,6 +79,22 @@ describe("i18n scripts", () => {
     assert.ok(errors.some((e) => e.includes("pl/app.json a.tracks") && e.includes("few") && e.includes("many")));
   });
 
+  it("warns about English messages no source file names", () => {
+    const src = mkdtempSync(join(tmpdir(), "oxitide-i18n-src-"));
+    try {
+      mkdirSync(join(src, "lib"));
+      writeFileSync(join(src, "lib", "a.ts"), 't("a.hello"); t("a.greet");\nconst K = ["a.tracks"];\n');
+      // Tests don't count as use.
+      writeFileSync(join(src, "lib", "a.test.ts"), 't("a.path");\n');
+      process.env.I18N_SRC = src;
+      const unused = check().warnings.filter((w) => w.includes("not used"));
+      assert.deepEqual(unused, ["en/app.json a.path: not used by any source file"]);
+    } finally {
+      delete process.env.I18N_SRC;
+      rmSync(src, { recursive: true, force: true });
+    }
+  });
+
   it("rejects unknown keys and unlisted folders", () => {
     write("de/app.json", { "a.gone": "weg" });
     write("xx/app.json", {});
