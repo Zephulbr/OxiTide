@@ -1,4 +1,5 @@
 import type { Artist } from "./api";
+import { compareText } from "./locale.svelte";
 
 export type ArtistSort = "date" | "name" | "name-desc";
 
@@ -16,7 +17,7 @@ export function visibleArtists(
     needle === "" ? [...artists] : artists.filter((a) => a.name.toLowerCase().includes(needle));
   if (mode === "date") return filtered;
   const byName = (a: Artist, b: Artist) =>
-    a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    compareText(a.name, b.name);
   filtered.sort(mode === "name-desc" ? (a, b) => byName(b, a) : byName);
   return filtered;
 }

@@ -1,4 +1,5 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect } from "vitest";
+import { setFormatLocale } from "./locale.svelte";
 import {
   formatCount,
   formatDuration,
@@ -7,6 +8,25 @@ import {
   formatTotalDuration,
   sentenceCase,
 } from "./format";
+
+describe("in other languages", () => {
+  afterEach(() => setFormatLocale("en"));
+
+  it("formats dates, counts and listening time in German", () => {
+    setFormatLocale("de");
+    expect(formatReleaseDate("2014-02-11")).toBe("11. Feb. 2014");
+    expect(formatCount(9672)).toBe("9.672");
+    expect(formatCount(1_106_540)).toBe("1,1 Mio.");
+    expect(formatListenTime((3 * 60 + 5) * 60_000)).toBe("3 Std. 05 Min.");
+    expect(formatDuration(65)).toBe("1:05");
+  });
+
+  it("formats dates and counts in Japanese", () => {
+    setFormatLocale("ja");
+    expect(formatReleaseDate("2014-02-11")).toBe("2014年2月11日");
+    expect(formatCount(12_000)).toBe("1.2万");
+  });
+});
 
 describe("sentenceCase", () => {
   it("capitalizes an engine notice's first letter only", () => {

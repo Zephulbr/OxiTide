@@ -20,6 +20,7 @@ const SHARED = new Set([
   // remote.json (src/remote/i18n.svelte.ts), never the app's.
   "src/lib/i18nCore.svelte.ts",
   "src/lib/languages.ts",
+  "src/lib/locale.svelte.ts",
   "src/lib/lyrics.ts",
   "src/lib/media.ts",
 

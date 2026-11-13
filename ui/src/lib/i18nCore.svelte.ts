@@ -1,5 +1,6 @@
 import { IntlMessageFormat } from "intl-messageformat";
 import { PSEUDO_LANGUAGE } from "./languages";
+import { setFormatLocale } from "./locale.svelte";
 
 /// Translation core (spec `2026-11-12-oxitide-v1.1-i18n-a11y-design.md` §4),
 /// shared by the desktop app (`i18n.svelte.ts`, `app.json`) and the phone
@@ -48,6 +49,7 @@ export function createI18n<K extends string>(source: Catalog, loaders: Record<st
       }
     }
     language = next;
+    setFormatLocale(next === PSEUDO_LANGUAGE ? "en" : next);
     return next;
   }
 

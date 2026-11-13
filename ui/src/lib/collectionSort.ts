@@ -1,4 +1,5 @@
 import type { CollectionEntry } from "./api";
+import { compareText } from "./locale.svelte";
 import { parseTidalTime } from "./playlistSort";
 
 export type CollectionSort = "date" | "name" | "played";
@@ -18,7 +19,7 @@ export function sortEntries(
   if (mode === "name") {
     const nameOf = (entry: CollectionEntry) => (entry.kind === "folder" ? entry.name : entry.title);
     const byName = (a: CollectionEntry, b: CollectionEntry) =>
-      nameOf(a).localeCompare(nameOf(b), undefined, { sensitivity: "base" });
+      compareText(nameOf(a), nameOf(b));
     const folders = entries.filter((entry) => entry.kind === "folder").sort(byName);
     const playlists = entries.filter((entry) => entry.kind === "playlist").sort(byName);
     return [...folders, ...playlists];

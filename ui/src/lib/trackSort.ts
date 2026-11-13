@@ -1,5 +1,6 @@
 import type { Track } from "./api";
 import { t } from "./i18n.svelte";
+import { compareText } from "./locale.svelte";
 import { parseTidalTime } from "./playlistSort";
 
 /// Multi-level track sorting (spec 2026-10-19-oxitide-multi-sort-design.md).
@@ -188,10 +189,8 @@ export function sortValue(track: Track, key: SortKey, context: SortContext): Val
   }
 }
 
-const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
-
 function compareValues(a: Value, b: Value): number {
-  if (typeof a === "string" && typeof b === "string") return collator.compare(a, b);
+  if (typeof a === "string" && typeof b === "string") return compareText(a, b);
   return (a as number) - (b as number);
 }
 
