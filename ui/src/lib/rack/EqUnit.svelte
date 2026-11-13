@@ -3,6 +3,7 @@
   import { dspStore } from "../dspStore.svelte";
   import { errorMessage } from "../errors";
   import type { Toasts } from "../toasts.svelte";
+  import { t } from "../i18n.svelte";
 
   /// Graphic EQ unit (spec §6.3): dimple presets + ten faders bound to the
   /// shared DSP store. Moving a fader while EQ is off turns it on.
@@ -66,14 +67,14 @@
   }
 </script>
 
-<section class="eq" class:rk-unit={!embedded} class:embedded aria-label="Graphic equalizer">
+<section class="eq" class:rk-unit={!embedded} class:embedded aria-label={t("rack.graphicEq")}>
   {#if !embedded}
     <div class="rk-head">
       <h2 class="rk-name">Graphic equalizer</h2>
       {#if preset === "custom"}<span class="rk-silk">Custom</span>{/if}
     </div>
   {/if}
-  <div class="presets" role="radiogroup" aria-label="EQ preset">
+  <div class="presets" role="radiogroup" aria-label={t("settings.eqPresetLabel")}>
     {#each PRESETS as p (p.id)}
       <button class="preset" role="radio" aria-checked={preset === p.id} disabled={!dsp} onclick={() => setPreset(p.id)}>
         <span class="dimple"></span>{p.label}
@@ -87,7 +88,7 @@
           class="slot"
           role="slider"
           tabindex="0"
-          aria-label="{bandLabel(hz)} Hz"
+          aria-label={t("settings.eqBand", { band: bandLabel(hz) })}
           aria-orientation="vertical"
           aria-valuemin={-EQ_MAX_DB}
           aria-valuemax={EQ_MAX_DB}

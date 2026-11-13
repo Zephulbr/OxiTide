@@ -35,6 +35,7 @@
   import RackStrip from "./RackStrip.svelte";
   import { libraryKeyOf, orderedLibraryKeys, sourceOf, type Source } from "./sources";
   import { collectionLayout } from "../collectionLayout.svelte";
+  import { t } from "../i18n.svelte";
 
   /// The Hi-Fi Rack shell (RK-D1, RK-D4): selector unit across the top, the
   /// rack column (deck, amp, EQ) on the left, the display unit on the right.
@@ -146,15 +147,15 @@
 </script>
 
 <div class="rack" class:expanded class:fold>
-  <a class="skip-link" href="#main">Skip to content</a>
+  <a class="skip-link" href="#main">{t("app.skipToContent")}</a>
 
   <header class="rk-unit selector">
     <div class="brand"><span class="mark"><Logo size={30} /></span><span class="rk-name wordmark">OxiTide</span><span class="rk-silk">Network audio player</span></div>
-    <div class="rk-tray history" role="group" aria-label="History">
-      <button class="rk-key sm" disabled={!nav.canBack} onclick={() => nav.back()} aria-label="Back" title="Back (Alt+←)"><Icon name="chevron-left" size={12} /></button>
-      <button class="rk-key sm" disabled={!nav.canForward} onclick={() => nav.forward()} aria-label="Forward" title="Forward (Alt+→)"><Icon name="chevron-right" size={12} /></button>
+    <div class="rk-tray history" role="group" aria-label={t("rack.pageHistory")}>
+      <button class="rk-key sm" disabled={!nav.canBack} onclick={() => nav.back()} aria-label={t("nav.back")} title={t("nav.backHint", { key: "Alt+←" })}><Icon name="chevron-left" size={12} /></button>
+      <button class="rk-key sm" disabled={!nav.canForward} onclick={() => nav.forward()} aria-label={t("nav.forward")} title={t("nav.forwardHint", { key: "Alt+→" })}><Icon name="chevron-right" size={12} /></button>
     </div>
-    <nav class="sources" aria-label="Source">
+    <nav class="sources" aria-label={t("rack.source")}>
       {#each SOURCES as s (s.source)}
         <button class="src" aria-current={source === s.source && !expanded ? "page" : undefined} onclick={() => go(s.route)}>
           <span class="lamp"></span><span class="rk-key">{s.label}</span>
@@ -167,7 +168,7 @@
         <span class="lamp"></span>
         <span class="sleep"><SleepTimerControl {sleepTimer} /></span>
       </div>
-      <button class="src util" onclick={() => void mini.enter()} title="Mini player">
+      <button class="src util" onclick={() => void mini.enter()} title={t("player.miniPlayer")}>
         <span class="lamp"></span><span class="rk-key">Mini</span>
       </button>
       <button class="src util" aria-current={source === "settings" && !expanded ? "page" : undefined} onclick={() => go({ name: "settings" })}>
@@ -185,7 +186,7 @@
         <section class="rk-unit extra" aria-label={SLOT[analyzer].name}>
           <div class="rk-head"><h2 class="rk-name">{SLOT[analyzer].name}</h2>
             <div class="headkeys">
-              <div class="rk-tray slotkeys" role="group" aria-label="Extra unit">
+              <div class="rk-tray slotkeys" role="group" aria-label={t("rack.extraUnit")}>
                 {#each SLOT_OPTIONS as o (o.id)}
                   <button class="rk-key sm" aria-pressed={analyzer === o.id} onclick={() => appearance.setRack({ analyzer: o.id }).catch(() => {})}>{o.key}</button>
                 {/each}
@@ -211,8 +212,8 @@
             {/if}
           </div>
         </section>
-      <section class="rk-unit lyricsunit" aria-label="Now playing">
-        <div class="rk-head"><h2 class="rk-name">Now playing</h2><span class="rk-silk">{lyrics.lyrics?.synced ? "Synced lyrics" : ""}</span></div>
+      <section class="rk-unit lyricsunit" aria-label={t("table.nowPlaying")}>
+        <div class="rk-head"><h2 class="rk-name">Now playing</h2><span class="rk-silk">{lyrics.lyrics?.synced ? t("rack.syncedLyrics") : ""}</span></div>
         <div class="np">
         <div class="rk-vfd lyrics">
           {#if lines.length > 0 && active >= 0}
@@ -228,36 +229,36 @@
         <div class="info">
           <div class="rk-win infowin">
             <dl class="facts">
-              <dt>Title</dt><dd>{player.state.current?.title ?? "—"}</dd>
-              <dt>Artist</dt><dd>{player.state.current?.artist ?? "—"}</dd>
-              <dt>Album</dt><dd>{player.state.current?.album ?? "—"}</dd>
-              <dt>Track</dt><dd>{queueIndex >= 0 ? `${queueIndex + 1} of ${player.state.queue.length}` : "—"}</dd>
-              <dt>Length</dt><dd class="tnum">{player.state.duration_ms > 0 ? clock(player.state.duration_ms) : "—"}</dd>
-              <dt>Quality</dt><dd>{formatQuality(player.state.stream, "detailed", player.state.preferred_quality)}</dd>
+              <dt>{t("table.column.title")}</dt><dd>{player.state.current?.title ?? "—"}</dd>
+              <dt>{t("table.column.artist")}</dt><dd>{player.state.current?.artist ?? "—"}</dd>
+              <dt>{t("table.column.album")}</dt><dd>{player.state.current?.album ?? "—"}</dd>
+              <dt>{t("search.track")}</dt><dd>{queueIndex >= 0 ? t("rack.nOfTotal", { n: queueIndex + 1, total: player.state.queue.length }) : "—"}</dd>
+                        <dt>{t("rack.length")}</dt><dd class="tnum">{player.state.duration_ms > 0 ? clock(player.state.duration_ms) : "—"}</dd>
+              <dt>{t("table.column.quality")}</dt><dd>{formatQuality(player.state.stream, "detailed", player.state.preferred_quality)}</dd>
               {#if player.state.stream?.replay_gain_db != null}
                 <dt>ReplayGain</dt><dd class="tnum">{player.state.stream.replay_gain_db > 0 ? "+" : ""}{player.state.stream.replay_gain_db.toFixed(1)} dB</dd>
               {/if}
             </dl>
           </div>
           <div class="pathlabel rk-silk">Signal path</div>
-          <ol class="path" aria-label="Signal path">
+          <ol class="path" aria-label={t("rack.signalPath")}>
             <li><span class="rk-led on">TIDAL</span><small>{formatQuality(player.state.stream, "compact", player.state.preferred_quality)}</small></li>
             <li><span class="rk-led" class:on={!!player.state.stream?.codec}>Decoder</span><small>{player.state.stream?.codec?.toUpperCase() ?? "—"}</small></li>
-            <li><span class="rk-led" class:on={player.state.dsp_active}>DSP</span><small>{player.state.dsp_active ? player.state.dsp_stages.join(", ") : "Bypass"}</small></li>
-            <li><span class="rk-led on">Output</span><small>{player.state.output_mode === "exclusive" ? "Exclusive" : "Shared"}</small></li>
-            <li><span class="rk-led" class:on={player.state.bit_perfect} class:green={player.state.bit_perfect}>Bit-perfect</span><small>{player.state.bit_perfect ? "Yes" : "No"}</small></li>
+            <li><span class="rk-led" class:on={player.state.dsp_active}>DSP</span><small>{player.state.dsp_active ? player.state.dsp_stages.join(", ") : t("rack.bypass")}</small></li>
+            <li><span class="rk-led on">Output</span><small>{player.state.output_mode === "exclusive" ? t("device.mode.exclusive") : t("device.mode.shared")}</small></li>
+            <li><span class="rk-led" class:on={player.state.bit_perfect} class:green={player.state.bit_perfect}>Bit-perfect</span><small>{player.state.bit_perfect ? t("rack.yes") : t("rack.no")}</small></li>
           </ol>
         </div>
         </div>
       </section>
-      <section class="rk-unit changer" aria-label="Up next">
+      <section class="rk-unit changer" aria-label={t("home.upNext")}>
         <div class="rk-head"><h2 class="rk-name">Up next</h2>
-          <span class="rk-silk">{queueIndex >= 0 ? `Track ${queueIndex + 1} of ${player.state.queue.length}` : ""}</span>
+          <span class="rk-silk">{queueIndex >= 0 ? t("rack.trackNOfTotal", { n: queueIndex + 1, total: player.state.queue.length }) : ""}</span>
         </div>
         <ol class="rk-win slots">
           {#each upcoming as item, i (item.track_id + ":" + i)}
             <li>
-              <button class="slot" onclick={() => api.playTracks(player.state.queue, queueIndex + 1 + i)} title={`Play ${item.title}`}>
+              <button class="slot" onclick={() => api.playTracks(player.state.queue, queueIndex + 1 + i)} title={t("card.play", { title: item.title })}>
                 <span class="num">{String(queueIndex + 2 + i).padStart(2, "0")}</span>
                 <span class="thumb"><Cover uuid={item.cover} size={80} radius={2} alt="" /></span>
                 <span class="meta"><b>{item.title}</b><i>{item.artist}</i></span>
@@ -265,7 +266,7 @@
               </button>
             </li>
           {:else}
-            <li class="end">End of queue</li>
+            <li class="end">{t("rack.endOfQueue")}</li>
           {/each}
         </ol>
       </section>
@@ -274,9 +275,9 @@
       {#if nav.queueOpen}
         <ChangerUnit {player} {toasts} {favorites} {playlistActions} onClose={() => nav.toggleQueue()} {go} />
       {:else}
-      <section class="rk-unit library" aria-label="Playlists">
+      <section class="rk-unit library" aria-label={t("route.playlists")}>
         <div class="rk-head"><h2 class="rk-name">Playlists</h2>
-          <button class="rk-key sm" onclick={() => go({ name: "playlists" })} title="All playlists">All</button>
+          <button class="rk-key sm" onclick={() => go({ name: "playlists" })} title={t("playlists.filter.all")}>All</button>
         </div>
         <!-- Auto-scrolls under a drag headed for one of its playlists. -->
         <div class="rk-win tree" bind:this={treeWin} use:dropZone={{ key: "rack-tree", scroller: () => treeWin }}>
@@ -293,9 +294,9 @@
   {/if}
 
   {#if !expanded}
-    <section class="rk-unit display" aria-label="Display">
+    <section class="rk-unit display" aria-label={t("rack.display")}>
       {#if libraryKey}
-        <div class="rk-tray libkeys" role="group" aria-label="Library">
+        <div class="rk-tray libkeys" role="group" aria-label={t("rack.library")}>
           {#each orderedLibraryKeys(layout.prefs.order) as k (k.key)}
             <button class="rk-key sm" aria-current={libraryKey === k.label ? "page" : undefined} onclick={() => nav.goto(k.route)}>{k.label}</button>
           {/each}
@@ -318,9 +319,9 @@
         />
       </main>
       {#if queueDrawer}
-        <aside class="drawer right rk-unit" aria-label="Queue">
-          <div class="rk-head"><h2 class="rk-name">Queue</h2>
-            <button class="rk-key sm" onclick={() => nav.toggleQueue()} aria-label="Close queue" title="Close"><Icon name="x" size={12} /></button>
+        <aside class="drawer right rk-unit" aria-label={t("player.queue")}>
+     <div class="rk-head"><h2 class="rk-name">Queue</h2>
+     <button class="rk-key sm" onclick={() => nav.toggleQueue()} aria-label={t("rack.closeQueue")} title={t("common.close")}><Icon name="x" size={12} /></button>
           </div>
           <div class="rk-win drawerwin"><QueueRail {player} {toasts} {favorites} {playlistActions} title={false} {go} /></div>
         </aside>
@@ -328,9 +329,9 @@
     </section>
     {#if fold}<RackStrip {player} {nav} {favorites} />{/if}
   {:else if queueDrawer}
-    <aside class="drawer right floating rk-unit" aria-label="Queue">
-      <div class="rk-head"><h2 class="rk-name">Queue</h2>
-        <button class="rk-key sm" onclick={() => nav.toggleQueue()} aria-label="Close queue" title="Close"><Icon name="x" size={12} /></button>
+    <aside class="drawer right floating rk-unit" aria-label={t("player.queue")}>
+     <div class="rk-head"><h2 class="rk-name">Queue</h2>
+     <button class="rk-key sm" onclick={() => nav.toggleQueue()} aria-label={t("rack.closeQueue")} title={t("common.close")}><Icon name="x" size={12} /></button>
       </div>
       <div class="rk-win drawerwin"><QueueRail {player} {toasts} {favorites} {playlistActions} title={false} {go} /></div>
     </aside>

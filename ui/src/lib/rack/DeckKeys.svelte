@@ -5,6 +5,7 @@
   import Icon from "../components/Icon.svelte";
   import type { Favorites } from "../favorites.svelte";
   import type { Player } from "../player.svelte";
+  import { t } from "../i18n.svelte";
 
   /// The deck's two key trays (DESIGN §5.1): transport (46×34) and play mode
   /// (38×34: shuffle, repeat, favourite, queue). Fixed-size keys; a key is a
@@ -35,23 +36,23 @@
   }
 </script>
 
-<div class="rk-tray transport-keys" role="group" aria-label="Transport">
-  <button class="rk-key" onclick={() => player.prev()} aria-label="Previous" disabled={ps.queue.length === 0}><Icon name="skip-back-solid" size={14} /></button>
-  <button class="rk-key" class:lit={ps.playing} onclick={() => player.playPause()} aria-label={ps.playing ? "Pause" : "Play"} disabled={!current}>
+<div class="rk-tray transport-keys" role="group" aria-label={t("rack.transport")}>
+  <button class="rk-key" onclick={() => player.prev()} aria-label={t("player.previous")} disabled={ps.queue.length === 0}><Icon name="skip-back-solid" size={14} /></button>
+  <button class="rk-key" class:lit={ps.playing} onclick={() => player.playPause()} aria-label={ps.playing ? t("player.pause") : t("player.play")} disabled={!current}>
     <Icon name={ps.playing ? "pause" : "play"} size={14} />
   </button>
-  <button class="rk-key" onclick={() => player.next()} aria-label="Next" disabled={ps.queue.length === 0}><Icon name="skip-forward-solid" size={14} /></button>
+  <button class="rk-key" onclick={() => player.next()} aria-label={t("player.next")} disabled={ps.queue.length === 0}><Icon name="skip-forward-solid" size={14} /></button>
 </div>
-<div class="rk-tray modes" role="group" aria-label="Play mode">
-  <button class="rk-key" aria-pressed={ps.shuffle} onclick={() => player.setShuffle(!ps.shuffle)} aria-label="Shuffle" title="Shuffle the rest of the queue">
+<div class="rk-tray modes" role="group" aria-label={t("rack.playMode")}>
+  <button class="rk-key" aria-pressed={ps.shuffle} onclick={() => player.setShuffle(!ps.shuffle)} aria-label={t("player.shuffle")} title={t("player.shuffleHint")}>
     <Icon name="shuffle" size={13} />
   </button>
   <button
     class="rk-key"
     aria-pressed={ps.repeat !== "off"}
     onclick={() => player.setRepeat(nextRepeat(ps.repeat))}
-    aria-label={ps.repeat === "one" ? "Repeat one track" : ps.repeat === "all" ? "Repeat all" : "Repeat off"}
-    title={ps.repeat === "one" ? "Repeat one" : ps.repeat === "all" ? "Repeat all" : "Repeat off"}
+    aria-label={ps.repeat === "one" ? t("player.repeatOneLabel") : ps.repeat === "all" ? t("player.repeatAll") : t("player.repeatOff")}
+          title={ps.repeat === "one" ? t("player.repeatOne") : ps.repeat === "all" ? t("player.repeatAll") : t("player.repeatOff")}
   ><Icon name={ps.repeat === "one" ? "repeat-1" : "repeat"} size={13} /></button>
   <button
     class="rk-key"
@@ -62,10 +63,10 @@
       heartFx = toggledFx(heartFx, fav);
       void favorites.toggleTrack(current.track_id);
     }}
-    aria-label={fav ? "Unfavorite" : "Favorite"}
-    title={fav ? "Unfavorite" : "Favorite"}
+    aria-label={fav ? t("menu.unfavorite") : t("menu.favorite")}
+    title={fav ? t("menu.unfavorite") : t("menu.favorite")}
   ><FavoriteHeart size={13} fx={heartFx} /></button>
-  <button class="rk-key" aria-pressed={queueOpen} onclick={onQueue} aria-label="Queue" title="Queue">
+  <button class="rk-key" aria-pressed={queueOpen} onclick={onQueue} aria-label={t("player.queue")} title={t("player.queue")}>
     <Icon name="list-music" size={13} />
   </button>
   {@render extra?.()}

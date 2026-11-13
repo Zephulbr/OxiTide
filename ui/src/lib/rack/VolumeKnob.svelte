@@ -2,6 +2,7 @@
   import type { Player } from "../player.svelte";
   import { shownVolume } from "../player.svelte";
   import { FIXED_VOLUME_HINT as FIXED_HINT } from "../volume";
+  import { t } from "../i18n.svelte";
 
   /// Amp volume knob with a 23-dot LED ring (DESIGN §5.7). A slider: drag up
   /// or down, wheel, arrows ±2 %, Page keys ±10 %, Home/End; double-click
@@ -85,11 +86,11 @@
     class="knob"
     role="slider"
     tabindex="0"
-    aria-label="Volume"
+    aria-label={t("volume.label")}
     aria-valuemin={0}
     aria-valuemax={100}
     aria-valuenow={Math.round(volume * 100)}
-    aria-valuetext={fixed ? "100 percent, fixed in exclusive mode" : volume === 0 ? "Muted" : `${Math.round(volume * 100)} percent`}
+    aria-valuetext={fixed ? t("rack.volumeFixed") : volume === 0 ? t("rack.muted") : t("rack.volumePercent", { percent: Math.round(volume * 100) })}
     aria-disabled={fixed || undefined}
     style:--angle="{angle}deg"
     onpointerdown={onPointerDown}

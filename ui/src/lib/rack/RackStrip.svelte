@@ -7,6 +7,7 @@
   import DeckKeys from "./DeckKeys.svelte";
   import DeckVfd from "./DeckVfd.svelte";
   import VolumeKnob from "./VolumeKnob.svelte";
+  import { t } from "../i18n.svelte";
 
   /// Narrow-window fold (Track 9.5c): below ~1000px the rack column folds into
   /// this strip under the display — deck and amp in one row: cover window,
@@ -17,15 +18,15 @@
   const current = $derived(player.state.current);
 </script>
 
-<section class="rk-unit strip" aria-label="Deck">
-  <button class="rk-win art" onclick={() => nav.toggleNowPlaying()} aria-label="Open now playing" disabled={!current}>
+<section class="rk-unit strip" aria-label={t("rack.deck")}>
+  <button class="rk-win art" onclick={() => nav.toggleNowPlaying()} aria-label={t("player.openNowPlaying")} disabled={!current}>
     {#if current}<Cover uuid={current.cover} size={160} radius={2} alt={`${current.title} artwork`} />{/if}
   </button>
   <div class="vfd"><DeckVfd {player} segHeight={20} /></div>
   <div class="keys">
     <DeckKeys {player} {favorites} queueOpen={nav.queueOpen} onQueue={() => nav.toggleQueue()}>
       {#snippet extra()}
-        <button class="rk-key" onclick={() => nav.toggleNowPlaying()} disabled={!current} aria-label="Open now playing" title="Open now playing">
+        <button class="rk-key" onclick={() => nav.toggleNowPlaying()} disabled={!current} aria-label={t("player.openNowPlaying")} title={t("player.openNowPlaying")}>
           <Icon name="chevron-up" size={13} />
         </button>
       {/snippet}

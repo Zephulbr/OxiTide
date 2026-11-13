@@ -14,6 +14,7 @@
   import { levels } from "./levels.svelte";
   import BarMeter from "./meters/BarMeter.svelte";
   import SevenSeg from "./SevenSeg.svelte";
+  import { t } from "../i18n.svelte";
 
   /// The deck (spec §6.1): a compact face per the Deck face setting, or the
   /// turntable when expanded (Now Playing in Rack). Every player-bar duty
@@ -41,7 +42,7 @@
   });
 </script>
 
-<section class="rk-unit deck" class:expanded aria-label={expanded ? "Turntable" : "Deck"}>
+<section class="rk-unit deck" class:expanded aria-label={expanded ? t("rack.turntable") : t("rack.deck")}>
   <div class="rk-head">
     <h2 class="rk-name">{expanded ? "Direct drive deck" : face === "cd" ? "Compact disc player" : "Network transport"}</h2>
     <div class="headright">
@@ -49,15 +50,15 @@
       <button
         class="rk-key sm"
         onclick={() => nav.toggleNowPlaying()}
-        aria-label={expanded ? "Close now playing" : "Open now playing"}
-        title={expanded ? "Close now playing" : "Open now playing"}
+        aria-label={expanded ? t("nowPlaying.close") : t("player.openNowPlaying")}
+        title={expanded ? t("nowPlaying.close") : t("player.openNowPlaying")}
         disabled={!current && !expanded}
       ><Icon name={expanded ? "chevron-down" : "chevron-up"} size={12} /></button>
     </div>
   </div>
 
   {#if expanded}
-    <button class="turntable" onclick={() => nav.toggleNowPlaying()} aria-label="Close now playing">
+    <button class="turntable" onclick={() => nav.toggleNowPlaying()} aria-label={t("nowPlaying.close")}>
       <span class="plinth">
         <span class="record">
           <span class="label" class:spin={spinning} use:gatedSpin={{ spinning, turnMs: 1800 }}>
@@ -82,7 +83,7 @@
     </button>
   {:else if face === "transport"}
     <div class="faceplate transport">
-      <button class="rk-win art" onclick={() => nav.toggleNowPlaying()} aria-label="Open now playing" disabled={!current}>
+      <button class="rk-win art" onclick={() => nav.toggleNowPlaying()} aria-label={t("player.openNowPlaying")} disabled={!current}>
         {#if current}<Cover uuid={current.cover} size={160} radius={2} alt={`${current.title} artwork`} />{/if}
       </button>
       <div class="rk-win nextup">
@@ -91,7 +92,7 @@
           {#each next as item, i (item.track_id + ":" + i)}
             <li><span>{index + i + 2}</span><b>{item.title}</b><i>{clock(item.duration_secs * 1000)}</i></li>
           {:else}
-            <li class="empty">End of queue</li>
+            <li class="empty">{t("rack.endOfQueue")}</li>
           {/each}
         </ol>
       </div>
@@ -100,7 +101,7 @@
     <div class="faceplate cd">
       <div class="rk-tray tray">
         <div class="drawer"><span>Digital audio</span></div>
-        <button class="rk-key eject" onclick={() => nav.toggleQueue()} aria-label="Queue" title="Queue" aria-pressed={nav.queueOpen}>
+        <button class="rk-key eject" onclick={() => nav.toggleQueue()} aria-label={t("player.queue")} title={t("player.queue")} aria-pressed={nav.queueOpen}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><polygon points="12 4 21 15 3 15" fill="currentColor" /><rect x="3" y="18" width="18" height="2.6" fill="currentColor" /></svg>
         </button>
       </div>

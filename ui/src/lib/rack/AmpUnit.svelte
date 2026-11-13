@@ -9,6 +9,7 @@
   import { formatBadge } from "./deck";
   import Meters from "./meters/Meters.svelte";
   import VolumeKnob from "./VolumeKnob.svelte";
+  import { t } from "../i18n.svelte";
 
   /// Stereo amplifier (spec §6.2): meters, volume knob, status LEDs and the
   /// DSP keys (long-form settings stay in Setup).
@@ -50,10 +51,10 @@
   }
 </script>
 
-<section class="rk-unit amp" class:wide aria-label="Amplifier">
+<section class="rk-unit amp" class:wide aria-label={t("rack.amplifier")}>
   <div class="rk-head">
     <h2 class="rk-name">Stereo amplifier</h2>
-    <div class="status" role="group" aria-label="Signal">
+    <div class="status" role="group" aria-label={t("rack.signal")}>
       <span class="rk-led" class:on={player.state.current !== null}>{quality}</span>
       {#if player.state.bit_perfect}
         <span class="rk-led on green">Bit-perfect</span>
@@ -69,7 +70,7 @@
       <VolumeKnob {player} scale={wide ? 1.35 : 1} />
       <span class="rk-silk">Volume</span>
     </div>
-    <div class="rk-tray dsp" role="group" aria-label="Sound processing">
+    <div class="rk-tray dsp" role="group" aria-label={t("rack.soundProcessing")}>
       <button class="rk-key sm" aria-pressed={dsp?.eq.enabled ?? false} disabled={!dsp} onclick={toggleEq}>EQ</button>
       <button class="rk-key sm" aria-pressed={(dsp?.replay_gain.mode ?? "off") !== "off"} disabled={!dsp} onclick={toggleRg}>ReplayGain</button>
       <button class="rk-key sm" aria-pressed={(dsp?.crossfade.duration_ms ?? 0) > 0} disabled={!dsp} onclick={toggleCrossfade}>Crossfade</button>
