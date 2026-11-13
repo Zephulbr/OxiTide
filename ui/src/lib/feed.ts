@@ -1,4 +1,5 @@
 import type { FeedActivity } from "./api";
+import { t, type MessageKey } from "./i18n.svelte";
 
 export interface FeedGroup {
   label: string;
@@ -7,18 +8,18 @@ export interface FeedGroup {
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
-const LABELS = ["New updates", "Last week", "This month", "Earlier"] as const;
+const LABELS = ["feed.group.new", "feed.group.lastWeek", "feed.group.thisMonth", "feed.group.earlier"] as const satisfies readonly MessageKey[];
 
 function bucketFor(entry: FeedActivity, now: Date): (typeof LABELS)[number] {
   const occurred = new Date(entry.occurredAt);
-  if (Number.isNaN(occurred.getTime())) return "Earlier";
+  if (Number.isNaN(occurred.getTime())) return "feed.group.earlier";
   const age = now.getTime() - occurred.getTime();
-  if (age < WEEK_MS) return "New updates";
-  if (age < 2 * WEEK_MS) return "Last week";
+  if (age < WEEK_MS) return "feed.group.new";
+  if (age < 2 * WEEK_MS) return "feed.group.lastWeek";
   const sameMonth =
     occurred.getUTCFullYear() === now.getUTCFullYear() &&
     occurred.getUTCMonth() === now.getUTCMonth();
-  return sameMonth ? "This month" : "Earlier";
+  return sameMonth ? "feed.group.thisMonth" : "feed.group.earlier";
 }
 
 /// Group the flattened feed activities into the official client's date
@@ -33,5 +34,5 @@ export function groupActivities(activities: FeedActivity[], now: Date): FeedGrou
   }
   return [...buckets.entries()]
     .filter(([, entries]) => entries.length > 0)
-    .map(([label, entries]) => ({ label, activities: entries }));
+    .map(([label, entries]) => ({ label: t(label as MessageKey), activities: entries }));
 }

@@ -1,6 +1,7 @@
 import type { CollectionFolder, Playlist, Track } from "./api";
 import type { Favorites } from "./favorites.svelte";
 import type { MenuItem } from "./menu.svelte";
+import { t } from "./i18n.svelte";
 
 export interface TrackMenuContext {
   track: Track;
@@ -41,42 +42,42 @@ export function trackMenuItems(ctx: TrackMenuContext): MenuItem[] {
   const items: MenuItem[] = [
     {
       id: "play",
-      label: "Play",
+      label: t("menu.play"),
       icon: "play",
       disabled: playbackBlocked,
       run: () => void ctx.play(),
     },
     {
       id: "radio",
-      label: "Track Radio",
+      label: t("menu.trackRadio"),
       icon: "radio",
       disabled: playbackBlocked,
       run: () => ctx.startRadio(),
     },
     {
       id: "play-next",
-      label: "Play next",
+      label: t("menu.playNext"),
       icon: "skip-forward",
       disabled: playbackBlocked,
       run: () => ctx.playNext(),
     },
     {
       id: "add-queue",
-      label: "Add to queue",
+      label: t("menu.addToQueue"),
       icon: "plus",
       disabled: playbackBlocked,
       run: () => ctx.addToQueue(),
     },
     {
       id: "add-playlist",
-      label: "Add to playlist",
+      label: t("menu.addToPlaylist"),
       icon: "list-plus",
       divider: true,
       run: () => ctx.addToPlaylist(),
     },
     {
       id: "favorite",
-      label: favorited ? "Unfavorite" : "Favorite",
+      label: favorited ? t("menu.unfavorite") : t("menu.favorite"),
       icon: favorited ? "heart-crack" : "heart",
       run: () => void ctx.favorites.toggleTrack(ctx.track.id),
     },
@@ -84,18 +85,18 @@ export function trackMenuItems(ctx: TrackMenuContext): MenuItem[] {
     ...goToItems(ctx),
     {
       id: "copy-title",
-      label: "Copy title",
+      label: t("menu.copyTitle"),
       icon: "copy",
       divider: true,
       run: () => ctx.copyTitle(),
     },
-    { id: "track-info", label: "Track info", icon: "info", run: () => ctx.trackInfo() },
+    { id: "track-info", label: t("menu.trackInfo"), icon: "info", run: () => ctx.trackInfo() },
   ];
   const playlist = ctx.playlist;
   if (playlist && !playlist.busy && !playlist.disabled) {
     items.push({
       id: "remove",
-      label: "Remove",
+      label: t("menu.remove"),
       icon: "trash-2",
       danger: true,
       divider: true,
@@ -117,14 +118,14 @@ export function selectionMenuItems(ctx: {
 }): MenuItem[] {
   const n = ctx.count;
   const items: MenuItem[] = [
-    { id: "play-next", label: `Play ${n} next`, icon: "skip-forward", run: () => ctx.playNext() },
-    { id: "add-queue", label: `Add ${n} to queue`, icon: "plus", run: () => ctx.addToQueue() },
+    { id: "play-next", label: t("menu.selection.playNext", { count: n }), icon: "skip-forward", run: () => ctx.playNext() },
+    { id: "add-queue", label: t("menu.selection.addToQueue", { count: n }), icon: "plus", run: () => ctx.addToQueue() },
   ];
   const addToPlaylist = ctx.addToPlaylist;
   if (addToPlaylist) {
     items.push({
       id: "add-playlist",
-      label: `Add ${n} to playlist`,
+      label: t("menu.selection.addToPlaylist", { count: n }),
       icon: "list-plus",
       divider: true,
       run: () => addToPlaylist(),
@@ -134,7 +135,7 @@ export function selectionMenuItems(ctx: {
   if (remove) {
     items.push({
       id: "remove",
-      label: `Remove ${n} from playlist`,
+      label: t("menu.selection.remove", { count: n }),
       icon: "trash-2",
       danger: true,
       divider: true,
@@ -162,7 +163,7 @@ export function laterItems(later: LaterToggle | undefined): MenuItem[] {
   return [
     {
       id: "later",
-      label: later.active ? "Remove from Save for later" : "Save for later",
+      label: later.active ? t("menu.laterRemove") : t("menu.laterAdd"),
       icon: later.active ? "bookmark-minus" : "bookmark",
       run: () => later.toggle(),
     },
@@ -174,12 +175,12 @@ export function laterItems(later: LaterToggle | undefined): MenuItem[] {
 function goToItems(ctx: GoToTargets): MenuItem[] {
   const items: MenuItem[] = [];
   const goToAlbum = ctx.goToAlbum;
-  if (goToAlbum) items.push({ id: "go-album", label: "Go to album", icon: "disc-3", run: () => goToAlbum() });
+  if (goToAlbum) items.push({ id: "go-album", label: t("menu.goToAlbum"), icon: "disc-3", run: () => goToAlbum() });
   const artists = ctx.goToArtists ?? [];
   artists.forEach((artist, i) => {
     items.push({
       id: artists.length === 1 ? "go-artist" : `go-artist-${i}`,
-      label: artists.length === 1 ? "Go to artist" : `Go to ${artist.name}`,
+      label: artists.length === 1 ? t("menu.goToArtist") : t("menu.goToNamed", { name: artist.name }),
       icon: "user",
       run: () => artist.open(),
     });
@@ -203,14 +204,14 @@ export function nowPlayingMenuItems(ctx: GoToTargets & {
 }): MenuItem[] {
   const items: MenuItem[] = [];
   const startRadio = ctx.startRadio;
-  if (startRadio) items.push({ id: "radio", label: "Track Radio", icon: "radio", run: () => startRadio() });
+  if (startRadio) items.push({ id: "radio", label: t("menu.trackRadio"), icon: "radio", run: () => startRadio() });
   const addToPlaylist = ctx.addToPlaylist;
   if (addToPlaylist) {
-    items.push({ id: "add-playlist", label: "Add to playlist", icon: "list-plus", run: () => addToPlaylist() });
+    items.push({ id: "add-playlist", label: t("menu.addToPlaylist"), icon: "list-plus", run: () => addToPlaylist() });
   }
   items.push({
     id: "favorite",
-    label: ctx.favorited ? "Unfavorite" : "Favorite",
+    label: ctx.favorited ? t("menu.unfavorite") : t("menu.favorite"),
     icon: ctx.favorited ? "heart-crack" : "heart",
     divider: items.length > 0,
     run: () => ctx.toggleFavorite(),
@@ -218,8 +219,8 @@ export function nowPlayingMenuItems(ctx: GoToTargets & {
   items.push(
     ...laterItems(ctx.later),
     ...goToItems(ctx),
-    { id: "copy-title", label: "Copy title", icon: "copy", divider: true, run: () => ctx.copyTitle() },
-    { id: "track-info", label: "Track info", icon: "info", run: () => ctx.trackInfo() },
+    { id: "copy-title", label: t("menu.copyTitle"), icon: "copy", divider: true, run: () => ctx.copyTitle() },
+    { id: "track-info", label: t("menu.trackInfo"), icon: "info", run: () => ctx.trackInfo() },
   );
   return items;
 }
@@ -244,24 +245,24 @@ export function queueMenuItems(ctx: GoToTargets & {
   remove(): void;
 }): MenuItem[] {
   const items: MenuItem[] = [
-    { id: "play-now", label: "Play now", icon: "play", run: () => ctx.playNow() },
+    { id: "play-now", label: t("menu.playNow"), icon: "play", run: () => ctx.playNow() },
   ];
   const startRadio = ctx.startRadio;
-  if (startRadio) items.push({ id: "radio", label: "Track Radio", icon: "radio", run: () => startRadio() });
+  if (startRadio) items.push({ id: "radio", label: t("menu.trackRadio"), icon: "radio", run: () => startRadio() });
   const playNext = ctx.playNext;
   if (playNext) {
-    items.push({ id: "play-next", label: "Play next", icon: "skip-forward", run: () => playNext() });
+    items.push({ id: "play-next", label: t("menu.playNext"), icon: "skip-forward", run: () => playNext() });
   }
   const library: MenuItem[] = [];
   const addToPlaylist = ctx.addToPlaylist;
   if (addToPlaylist) {
-    library.push({ id: "add-playlist", label: "Add to playlist", icon: "list-plus", run: () => addToPlaylist() });
+    library.push({ id: "add-playlist", label: t("menu.addToPlaylist"), icon: "list-plus", run: () => addToPlaylist() });
   }
   const favorite = ctx.favorite;
   if (favorite) {
     library.push({
       id: "favorite",
-      label: favorite.active ? "Unfavorite" : "Favorite",
+      label: favorite.active ? t("menu.unfavorite") : t("menu.favorite"),
       icon: favorite.active ? "heart-crack" : "heart",
       run: () => favorite.toggle(),
     });
@@ -270,8 +271,8 @@ export function queueMenuItems(ctx: GoToTargets & {
   if (library.length > 0) library[0].divider = true;
   items.push(...library, ...goToItems(ctx));
   items.push(
-    { id: "copy-title", label: "Copy title", icon: "copy", divider: true, run: () => ctx.copyTitle() },
-    { id: "remove", label: "Remove", icon: "trash-2", danger: true, divider: true, run: () => ctx.remove() },
+    { id: "copy-title", label: t("menu.copyTitle"), icon: "copy", divider: true, run: () => ctx.copyTitle() },
+    { id: "remove", label: t("menu.remove"), icon: "trash-2", danger: true, divider: true, run: () => ctx.remove() },
   );
   return items;
 }
@@ -290,13 +291,13 @@ export function collectionCardMenuItems(ctx: GoToTargets & {
   copyLink(): void;
 }): MenuItem[] {
   const items: MenuItem[] = [
-    { id: "play", label: "Play", icon: "play", run: () => ctx.play() },
-    { id: "shuffle", label: "Shuffle", icon: "shuffle", run: () => ctx.shuffle() },
-    { id: "play-next", label: "Play next", icon: "skip-forward", run: () => ctx.playNext() },
-    { id: "add-queue", label: "Add to queue", icon: "plus", run: () => ctx.addToQueue() },
+    { id: "play", label: t("menu.play"), icon: "play", run: () => ctx.play() },
+    { id: "shuffle", label: t("menu.shuffle"), icon: "shuffle", run: () => ctx.shuffle() },
+    { id: "play-next", label: t("menu.playNext"), icon: "skip-forward", run: () => ctx.playNext() },
+    { id: "add-queue", label: t("menu.addToQueue"), icon: "plus", run: () => ctx.addToQueue() },
     {
       id: "add-playlist",
-      label: "Add to playlist",
+      label: t("menu.addToPlaylist"),
       icon: "list-plus",
       divider: true,
       run: () => ctx.addToPlaylist(),
@@ -306,7 +307,7 @@ export function collectionCardMenuItems(ctx: GoToTargets & {
   if (favorite) {
     items.push({
       id: "favorite",
-      label: favorite.active ? "Unfavorite" : "Favorite",
+      label: favorite.active ? t("menu.unfavorite") : t("menu.favorite"),
       icon: favorite.active ? "heart-crack" : "heart",
       run: () => favorite.toggle(),
     });
@@ -314,7 +315,7 @@ export function collectionCardMenuItems(ctx: GoToTargets & {
   items.push(
     ...laterItems(ctx.later),
     ...goToItems(ctx),
-    { id: "copy-link", label: "Copy link", icon: "link", divider: true, run: () => ctx.copyLink() },
+    { id: "copy-link", label: t("menu.copyLink"), icon: "link", divider: true, run: () => ctx.copyLink() },
   );
   return items;
 }
@@ -322,7 +323,7 @@ export function collectionCardMenuItems(ctx: GoToTargets & {
 /// History rows: play plus the "Go to" group, the keyboard path to the row's
 /// nested name links (name-links spec NL-D10).
 export function historyMenuItems(ctx: GoToTargets & { play(): void }): MenuItem[] {
-  return [{ id: "play", label: "Play", icon: "play", run: () => ctx.play() }, ...goToItems(ctx)];
+  return [{ id: "play", label: t("menu.play"), icon: "play", run: () => ctx.play() }, ...goToItems(ctx)];
 }
 
 export function libraryPlaylistMenuItems(ctx: {
@@ -333,12 +334,12 @@ export function libraryPlaylistMenuItems(ctx: {
   remove(): void;
 }): MenuItem[] {
   const items: MenuItem[] = [
-    { id: "open", label: "Open", icon: "external-link", run: () => ctx.open() },
+    { id: "open", label: t("menu.open"), icon: "external-link", run: () => ctx.open() },
   ];
   if (ctx.editable) {
     items.push(
-      { id: "rename", label: "Rename", icon: "pencil", run: () => ctx.rename() },
-      { id: "delete", label: "Delete", icon: "trash-2", danger: true, divider: true, run: () => ctx.remove() },
+      { id: "rename", label: t("menu.rename"), icon: "pencil", run: () => ctx.rename() },
+      { id: "delete", label: t("menu.delete"), icon: "trash-2", danger: true, divider: true, run: () => ctx.remove() },
     );
   }
   return items;
@@ -351,10 +352,10 @@ export function collectionFolderMenuItems(ctx: {
   remove(): void;
 }): MenuItem[] {
   return [
-    { id: "open", label: "Open", icon: "external-link", run: () => ctx.open() },
+    { id: "open", label: t("menu.open"), icon: "external-link", run: () => ctx.open() },
     // Name and the (local) description edit together.
-    { id: "rename", label: "Edit folder…", icon: "pencil", run: () => ctx.rename() },
-    { id: "remove", label: "Remove", icon: "trash-2", danger: true, divider: true, run: () => ctx.remove() },
+    { id: "rename", label: t("menu.editFolder"), icon: "pencil", run: () => ctx.rename() },
+    { id: "remove", label: t("menu.remove"), icon: "trash-2", danger: true, divider: true, run: () => ctx.remove() },
   ];
 }
 
@@ -369,23 +370,23 @@ export function collectionPlaylistMenuItems(ctx: {
   collaborators?: () => void;
 }): MenuItem[] {
   const items: MenuItem[] = [
-    { id: "open", label: "Open", icon: "external-link", run: () => ctx.open() },
-    { id: "move", label: "Move to folder…", icon: "folder", run: () => ctx.move() },
+    { id: "open", label: t("menu.open"), icon: "external-link", run: () => ctx.open() },
+    { id: "move", label: t("menu.moveToFolder"), icon: "folder", run: () => ctx.move() },
     ...laterItems(ctx.later),
   ];
   const collaborators = ctx.collaborators;
   if (ctx.playlist.owned && collaborators) {
-    items.push({ id: "collaborators", label: "Collaborators…", icon: "users", run: () => collaborators() });
+    items.push({ id: "collaborators", label: t("menu.collaborators"), icon: "users", run: () => collaborators() });
   }
   if (ctx.playlist.owned) {
     items.push(
-      { id: "rename", label: "Rename", icon: "pencil", run: () => ctx.rename() },
-      { id: "delete", label: "Delete", icon: "trash-2", danger: true, divider: true, run: () => ctx.remove() },
+      { id: "rename", label: t("menu.rename"), icon: "pencil", run: () => ctx.rename() },
+      { id: "delete", label: t("menu.delete"), icon: "trash-2", danger: true, divider: true, run: () => ctx.remove() },
     );
   } else {
     items.push({
       id: "remove",
-      label: "Remove from collection",
+      label: t("menu.removeFromCollection"),
       icon: "trash-2",
       danger: true,
       divider: true,

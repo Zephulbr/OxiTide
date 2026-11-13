@@ -7,8 +7,8 @@ import {
   pageTrackInput,
   playableTrackIds,
   shapeForItemType,
-  shortcutEntries,
 } from "./media";
+import { shortcutEntries } from "./homeShortcuts";
 
 function item(item_type: string, id = "1"): PageItem {
   return { id, title: "Item", item_type };

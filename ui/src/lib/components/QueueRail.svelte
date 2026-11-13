@@ -31,6 +31,7 @@
   import { trackFlags } from "../trackFlags.svelte";
   import NameLink from "./NameLink.svelte";
   import QueueArtistLinks from "./QueueArtistLinks.svelte";
+  import { t } from "../i18n.svelte";
 
   let {
     player,
@@ -277,14 +278,17 @@
     try {
       const prepared = await trackFlags.filterPlayable(await resolveTracks(payload), 0);
       if (!prepared) {
-        toasts?.show("Everything here is hidden by your content filters.", { severity: "info" });
+        toasts?.show(t("queue.dropHidden"), { severity: "info" });
         return;
       }
       const queued = prepared.items.map(trackToQueueItem);
       if (slot >= items.length) await api.queueAdd(queued);
       else await api.queueInsert(slot, queued);
-      const noun = queued.length === 1 ? `"${queued[0].title}"` : `${queued.length} tracks`;
-      toasts?.show(`Added ${noun} to the queue`);
+      toasts?.show(
+        queued.length === 1
+          ? t("table.oneQueued", { title: queued[0].title })
+          : t("table.manyQueued", { count: queued.length }),
+      );
     } catch (e) {
       toasts?.show(errorMessage(e), { severity: "error" });
     }
@@ -308,8 +312,8 @@
     key: "queue",
     accepts: (payload) =>
       glideActive()
-        ? { ok: false, reason: "The queue is moving" }
-        : { ok: true, hint: fromRail(payload) ? "Move here" : "Add to queue" },
+        ? { ok: false, reason: t("queue.drag.moving") }
+        : { ok: true, hint: fromRail(payload) ? t("queue.drag.moveHere") : t("menu.addToQueue") },
     hover: (_payload, point) => {
       const slot = items.length === 0 ? 0 : slotAt(point.y);
       dropSlot = slot;
@@ -574,13 +578,13 @@
   use:dropZone={queueZone}
 >
   <header class="q-head">
-    {#if title}<h2 class="q-title">Queue</h2>{/if}
+    {#if title}<h2 class="q-title">{t("player.queue")}</h2>{/if}
     {#if items.length > 0}
       <span class="q-meta tnum">
         {#if currentIndex === null}
-          {items.length} {items.length === 1 ? "track" : "tracks"} · {formatListenTime(upcomingSecs * 1000)}
+          {t("queue.summary", { count: items.length, time: formatListenTime(upcomingSecs * 1000) })}
         {:else}
-          {upcoming} up next · {formatListenTime(remainingMs)} left
+          {t("queue.summaryPlaying", { count: upcoming, time: formatListenTime(remainingMs) })}
         {/if}
       </span>
     {/if}
@@ -589,15 +593,15 @@
         class="q-tool"
         onclick={() => currentIndex !== null && scrollToRow(currentIndex, true)}
         disabled={currentIndex === null}
-        aria-label="Show the current track"
-        title="Show the current track"
+        aria-label={t("queue.showCurrent")}
+        title={t("queue.showCurrent")}
       ><Icon name="circle-dot" size={16} /></button>
       <button
         class="q-tool"
         onclick={() => (confirmingClear = true)}
         disabled={items.length === 0}
-        aria-label="Clear queue"
-        title="Clear queue"
+        aria-label={t("queue.clear")}
+        title={t("queue.clear")}
       ><Icon name="trash-2" size={16} /></button>
     </div>
   </header>
@@ -605,8 +609,8 @@
   {#if items.length === 0}
     <div class="q-empty">
       <Icon name="list-music" size={28} />
-      <p>Your queue is empty</p>
-      <p class="muted">Play something, or use “Play next” and “Add to queue” on any track.</p>
+      <p>{t("queue.empty")}</p>
+      <p class="muted">{t("queue.emptyHint", { playNext: t("menu.playNext"), addToQueue: t("menu.addToQueue") })}</p>
     </div>
   {:else}
     <div class="q-list" bind:this={listEl}>
@@ -642,16 +646,16 @@
             >
               {#if index === autoplayFrom && !drag && dropSlot === null}
                 <!-- Rides with the row into the gap gapBefore leaves above it. -->
-                <span class="q-autoplay" aria-hidden="true" style:height="{AUTOPLAY_GAP}px">Autoplay</span>
+                <span class="q-autoplay" aria-hidden="true" style:height="{AUTOPLAY_GAP}px">{t("queue.autoplay")}</span>
               {/if}
               <span class="grip" aria-hidden="true"><Icon name="grip-vertical" size={14} /></span>
               <button
                 type="button"
                 class="row-main"
                 tabindex={index === tabIndex ? 0 : -1}
-                aria-label={`${item.title} — ${item.artist}${item.autoplay ? " (Autoplay)" : ""}`}
+                aria-label={t(item.autoplay ? "queue.rowAutoplay" : "queue.row", { title: item.title, artist: item.artist })}
                 aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown Delete"
-                title="Play"
+                title={t("menu.play")}
                 use:menuFor={() => rowMenu(item, index)}
                 onfocus={() => (focusIndex = index)}
                 onkeydown={(event) => onRowKey(event, index)}
@@ -674,8 +678,8 @@
                 class="remove"
                 tabindex="-1"
                 onclick={() => player.remove(index)}
-                aria-label={`Remove ${item.title}`}
-                title="Remove"
+                aria-label={t("queue.removeTrack", { title: item.title })}
+                title={t("menu.remove")}
               ><Icon name="x" size={14} /></button>
             </div>
           {/if}
@@ -701,8 +705,8 @@
 
   {#if confirmingClear}
     <ConfirmDialog
-      title="Clear queue"
-      message="Remove all tracks from the queue?"
+      title={t("queue.clear")}
+      message={t("queue.clearMessage")}
       onconfirm={() => {
         confirmingClear = false;
         playSource.set(null);

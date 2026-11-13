@@ -3,6 +3,7 @@ import { errorMessage } from "./errors";
 import { playSource, type PlayFrom } from "./playSource.svelte";
 import { trackFlags } from "./trackFlags.svelte";
 import type { Toasts } from "./toasts.svelte";
+import { t } from "./i18n.svelte";
 
 async function playRadio(
   fetchTracks: () => Promise<Track[]>,
@@ -18,7 +19,7 @@ async function playRadio(
     }
     const prepared = await trackFlags.filterPlayable(tracks, 0);
     if (!prepared) {
-      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      toasts.show(t("queue.dropHidden"), { severity: "info" });
       return;
     }
     playSource.set(from, prepared.items.map((t) => t.id));
@@ -38,15 +39,13 @@ function isNotFound(e: unknown): boolean {
 }
 
 function noRadioMessage(subject: RadioSubject): string {
-  return subject === "artist"
-    ? "There's no radio for this artist yet. TIDAL builds one once they have tracks to play."
-    : "There's no radio for this track yet.";
+  return subject === "artist" ? t("radio.noArtistRadio") : t("radio.noTrackRadio");
 }
 
 /// The station's name, in the player bar's "From" line and the radio page
 /// ("Californication radio").
 export function trackRadioName(title?: string): string {
-  return title ? `${title} radio` : "Track radio";
+  return title ? t("radio.named", { name: title }) : t("route.radio");
 }
 
 /// What a track radio's plays come from: its page, so "From … radio" opens it.
@@ -64,7 +63,7 @@ export function playTrackRadio(trackId: number, toasts: Toasts, title?: string):
 /// and "forbidden" never reach the screen.
 export function radioErrorMessage(e: unknown, subject: RadioSubject = "track"): string {
   if (isNotFound(e)) return noRadioMessage(subject);
-  if (String(e) === "forbidden") return `Radio isn't available for this ${subject} right now`;
+  if (String(e) === "forbidden") return t("radio.unavailable", { subject });
   return errorMessage(e);
 }
 
@@ -72,7 +71,7 @@ export function playArtistRadio(artistId: number, toasts: Toasts, name?: string)
   return playRadio(
     () => api.getArtistRadio(artistId),
     toasts,
-    { kind: "radio", name: name ? `${name} radio` : "Artist radio", route: { name: "artist", id: artistId } },
+    { kind: "radio", name: name ? t("radio.named", { name }) : t("radio.artistRadio"), route: { name: "artist", id: artistId } },
     "artist",
   );
 }

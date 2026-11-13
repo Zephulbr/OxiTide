@@ -1,4 +1,5 @@
 import type { Artist, HistoryEntry, Track } from "./api";
+import { t } from "./i18n.svelte";
 
 /// Home's history-driven shelves. History records carry names only, so one
 /// representative track per distinct album is resolved to real album/artist ids
@@ -153,8 +154,8 @@ export async function buildSuggestions(
     key: `artist-${artist.id}`,
     kind: "artist",
     id: artist.id,
-    title: `${artist.name} Radio`,
-    subtitle: "Artist radio",
+    title: t("radio.named", { name: artist.name }),
+    subtitle: t("radio.artistRadio"),
     cover: artist.cover,
   }));
   const latest = history[0];
@@ -163,8 +164,8 @@ export async function buildSuggestions(
       key: `track-${latest.track_id}`,
       kind: "track",
       id: latest.track_id,
-      title: `${latest.title} Radio`,
-      subtitle: "Track radio",
+      title: t("radio.named", { name: latest.title }),
+      subtitle: t("route.radio"),
       cover: latest.cover ?? null,
     });
   }

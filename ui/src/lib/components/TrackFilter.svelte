@@ -2,6 +2,7 @@
   import type { TrackView } from "../trackView.svelte";
   import Icon from "./Icon.svelte";
   import Loading from "./Loading.svelte";
+  import { t } from "../i18n.svelte";
 
   let { view }: { view: TrackView } = $props();
 </script>
@@ -9,17 +10,17 @@
 <div class="track-filter">
   <input
     class="filter search-input"
-    placeholder="Filter tracks"
-    aria-label="Filter tracks"
+    placeholder={t("filter.tracks")}
+    aria-label={t("filter.tracks")}
     data-perf-filter
     value={view.filter}
     oninput={(event) => view.setFilter(event.currentTarget.value)}
   />
   {#if view.filter.trim() !== ""}
-    <button onclick={() => view.setFilter("")} aria-label="Clear filter"><Icon name="x" size={14} /></button>
+    <button onclick={() => view.setFilter("")} aria-label={t("filter.clear")}><Icon name="x" size={14} /></button>
   {/if}
   {#if view.preparing}
-    <Loading label="Loading all tracks…" />
+    <Loading label={t("filter.loadingAll")} />
   {/if}
   {#if view.error}
     <span class="muted">{view.error}</span>

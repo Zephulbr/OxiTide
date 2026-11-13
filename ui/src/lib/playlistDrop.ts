@@ -2,6 +2,7 @@ import type { Playlist } from "./api";
 import type { DropZone } from "./dragDrop.svelte";
 import { payloadSourcePlaylist, resolveTracks } from "./dragPayload";
 import type { PlaylistActions } from "./playlists.svelte";
+import { t } from "./i18n.svelte";
 
 /// The drop-zone key of a playlist, shared by its tree row and its grid card
 /// so both show the same target and pending state.
@@ -21,9 +22,9 @@ export function playlistDropZone(
   return {
     key: playlistDropKey(playlist.uuid),
     accepts(payload) {
-      if (!playlist.owned) return { ok: false, reason: "You can't edit this playlist" };
-      if (payloadSourcePlaylist(payload) === playlist.uuid) return { ok: false, reason: "Already in this playlist" };
-      return { ok: true, hint: `Add to ${playlist.title}` };
+      if (!playlist.owned) return { ok: false, reason: t("playlist.drop.notEditable") };
+      if (payloadSourcePlaylist(payload) === playlist.uuid) return { ok: false, reason: t("playlist.drop.alreadyHere") };
+      return { ok: true, hint: t("playlist.drop.addTo", { playlist: playlist.title }) };
     },
     drop: (payload) =>
       actions.addTracks(playlist, () => resolveTracks(payload), {

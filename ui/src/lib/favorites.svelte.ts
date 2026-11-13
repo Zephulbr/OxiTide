@@ -3,6 +3,7 @@ import { api } from "./api";
 import { errorMessage } from "./errors";
 import { invalidatePager, removePagerItem } from "./pager.svelte";
 import type { Toasts } from "./toasts.svelte";
+import { t } from "./i18n.svelte";
 
 export interface Favorites {
   readonly hydrated: boolean;
@@ -106,10 +107,10 @@ export function createFavorites(toasts: Toasts): Favorites {
       // An unfavorite is a one-click loss (the row leaves the favorites list);
       // Undo favorites it again, now dated as just added.
       if (!next) {
-        toasts.show("Removed from Favorites", {
+        toasts.show(t("favorites.removed"), {
           severity: "success",
           action: {
-            label: "Undo",
+            label: t("common.undo"),
             run: () => {
               if (!set.has(id)) void toggle(kind, id);
             },

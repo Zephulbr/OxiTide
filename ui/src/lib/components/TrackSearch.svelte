@@ -2,6 +2,7 @@
   import type { TrackView } from "../trackView.svelte";
   import Icon from "./Icon.svelte";
   import Loading from "./Loading.svelte";
+  import { t } from "../i18n.svelte";
 
   let { view }: { view: TrackView } = $props();
 
@@ -54,15 +55,15 @@
       class="toggle"
       bind:this={toggleButton}
       onclick={toggle}
-      aria-label={open ? "Close filter" : "Filter tracks"}
-      title="Filter tracks"
+      aria-label={open ? t("filter.close") : t("filter.tracks")}
+      title={t("filter.tracks")}
     >
       <Icon name="search" size={18} />
     </button>
     <input
       bind:this={input}
       class="field"
-      placeholder="Filter tracks"
+      placeholder={t("filter.tracks")}
       data-perf-filter
       tabindex={open ? 0 : -1}
       aria-hidden={!open}
@@ -71,13 +72,13 @@
       onkeydown={onkeydown}
     />
     {#if view.filter.trim() !== ""}
-      <button class="clear" onclick={() => close()} aria-label="Clear and close filter">
+      <button class="clear" onclick={() => close()} aria-label={t("filter.clearAndClose")}>
         <Icon name="x" size={14} />
       </button>
     {/if}
   </div>
   {#if view.preparing}
-    <Loading label="Loading all tracks…" />
+    <Loading label={t("filter.loadingAll")} />
   {/if}
   {#if view.error}
     <span class="muted">{view.error}</span>

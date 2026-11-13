@@ -3,6 +3,7 @@ import { api, type EngineEvent, type PlaybackState, type Quality, type QueueItem
 import { errorMessage } from "./errors";
 import type { Toasts } from "./toasts.svelte";
 import { latestPerFrame } from "./latestPerFrame";
+import { t } from "./i18n.svelte";
 
 export interface PlayerState {
   playing: boolean;
@@ -131,7 +132,7 @@ export function createPlayer(toasts?: Toasts) {
         dismissErrorToast();
         errorToastId = toasts.show(event.payload.message, {
           severity: "error",
-          action: { label: "Retry", run: () => void retry() },
+          action: { label: t("common.retry"), run: () => void retry() },
         });
       } else if (event.payload.type === "now_playing") {
         dismissErrorToast();
@@ -227,9 +228,9 @@ export function createPlayer(toasts?: Toasts) {
     await api.queueRemove(index);
     if (item === undefined || toasts === undefined) return;
     const shown = toasts;
-    shown.show(`Removed "${item.title}" from the queue`, {
+    shown.show(t("queue.removed", { title: item.title }), {
       action: {
-        label: "Undo",
+        label: t("common.undo"),
         run: () =>
           void api
             .queueInsert(index, [item])

@@ -1,4 +1,5 @@
 import type { LaterEntry, LaterKind, PageItem } from "./api";
+import { t } from "./i18n.svelte";
 
 /// Page cap for one walk of the Save for Later list (the Rust id walk uses
 /// the same bound), so a broken cursor can never loop forever.
@@ -6,11 +7,11 @@ export const MAX_LATER_PAGES = 50;
 
 /// The page's type chips in TIDAL's order (Videos are not shown).
 export const LATER_CHIPS: readonly { kind: LaterKind; label: string }[] = [
-  { kind: "album", label: "Albums" },
-  { kind: "track", label: "Tracks" },
-  { kind: "artist", label: "Artists" },
-  { kind: "playlist", label: "Playlists" },
-  { kind: "mix", label: "Mixes & Radio" },
+  { kind: "album", get label() { return t("route.albums"); } },
+  { kind: "track", get label() { return t("route.tracks"); } },
+  { kind: "artist", get label() { return t("route.profiles"); } },
+  { kind: "playlist", get label() { return t("route.playlists"); } },
+  { kind: "mix", get label() { return t("nav.mixesAndRadio"); } },
 ];
 
 /// The id Save for Later stores for an entry (playlists by uuid).
@@ -53,7 +54,7 @@ export function laterPageItem(entry: LaterEntry): PageItem {
       return {
         id: String(artist.id),
         title: artist.name,
-        subtitle: "Artist",
+        subtitle: t("card.artist"),
         item_type: "ARTIST",
         artwork: artist.picture ?? artist.cover_fallback ?? null,
       };

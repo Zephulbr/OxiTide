@@ -10,7 +10,7 @@
   import { errorMessage } from "../lib/errors";
   import { editorialSections, feedAlbumItems, greeting, madeForYou, startPrompt, unseenCount } from "../lib/homeData";
   import { buildSuggestions, type HomeSuggestions, type RadioSeed } from "../lib/homeSuggest";
-  import { shortcutEntries, type ShortcutEntry } from "../lib/media";
+  import { shortcutEntries, type ShortcutEntry } from "../lib/homeShortcuts";
   import { routeForPageItem, type Nav } from "../lib/nav.svelte";
   import { playlistRecency } from "../lib/playlistRecency.svelte";
   import type { Player } from "../lib/player.svelte";

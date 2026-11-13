@@ -21,6 +21,7 @@
   import NowPlayingMark from "./NowPlayingMark.svelte";
   import PlaylistCover from "./PlaylistCover.svelte";
   import PlaylistTree from "./PlaylistTree.svelte";
+  import { t } from "../i18n.svelte";
 
   let {
     entries,
@@ -134,7 +135,7 @@
       {#if collection.isLoading(entry.id)}
         <div class="tree-note"><Loading /></div>
       {:else if collection.children(entry.id)?.length === 0}
-        <p class="muted tree-note">No playlists</p>
+        <p class="muted tree-note">{t("tree.empty")}</p>
       {:else if collection.children(entry.id) !== null}
         <div class="nested">
           <PlaylistTree

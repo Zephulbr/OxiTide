@@ -1,4 +1,5 @@
 import type { Track } from "./api";
+import { t } from "./i18n.svelte";
 import { parseTidalTime } from "./playlistSort";
 
 /// Multi-level track sorting (spec 2026-10-19-oxitide-multi-sort-design.md).
@@ -36,16 +37,17 @@ export const SORT_KEYS: readonly SortKey[] = [
   "plays",
 ];
 
+/// Column and sort names; getters, so they follow the language.
 export const SORT_LABELS: Record<SortKey, string> = {
-  title: "Title",
-  artist: "Artist",
-  album: "Album",
-  duration: "Time",
-  quality: "Quality",
-  added: "Date added",
-  released: "Release date",
-  popularity: "Popularity",
-  plays: "Plays",
+  get title() { return t("table.column.title"); },
+  get artist() { return t("table.column.artist"); },
+  get album() { return t("table.column.album"); },
+  get duration() { return t("table.column.duration"); },
+  get quality() { return t("table.column.quality"); },
+  get added() { return t("table.column.added"); },
+  get released() { return t("table.column.released"); },
+  get popularity() { return t("table.column.popularity"); },
+  get plays() { return t("table.column.plays"); },
 };
 
 /// Text, time and quality ascend; dates and counts start newest/most (MS-D8).

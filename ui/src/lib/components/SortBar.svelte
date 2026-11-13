@@ -4,6 +4,7 @@
   import { SORT_LABELS, type SortKey } from "../trackSort";
   import type { TrackView } from "../trackView.svelte";
   import Icon from "./Icon.svelte";
+  import { t } from "../i18n.svelte";
 
   /// The active sort as chips (MS-D7): click flips a level, × removes it,
   /// Alt+←/→ reorders, "Add sort" offers the table's unused keys.
@@ -20,7 +21,7 @@
     const items: MenuItem[] = unused.map((key) => ({
       id: key,
       label: SORT_LABELS[key],
-      section: first ? "Sort by" : "Then by",
+      section: first ? t("sort.sortBy") : t("sort.thenBy"),
       run: () => (first ? view.toggleSort(key) : view.addSort(key)),
     }));
     menu.show(rect.left, rect.bottom + 4, items, opener);
@@ -37,13 +38,13 @@
   }
 </script>
 
-<div class="sort-bar" bind:this={root} role="group" aria-label="Sort">
+<div class="sort-bar" bind:this={root} role="group" aria-label={t("sort.label")}>
   {#if view.levels.length === 0}
     <button class="quiet" type="button" onclick={openAdd} disabled={view.preparing || unused.length === 0}>
-      <Icon name="arrow-up-down" size={14} /> Sort
+      <Icon name="arrow-up-down" size={14} /> {t("sort.label")}
     </button>
   {:else}
-    <span class="lead">Sorted by</span>
+    <span class="lead">{t("sort.sortedBy")}</span>
     {#each view.levels as level, i (level.key)}
       <span class="chip" class:primary={i === 0}>
         <button
@@ -51,8 +52,8 @@
           class="chip-main"
           data-level={i}
           disabled={view.preparing}
-          title="Reverse order (Alt+←/→ to reorder)"
-          aria-label={`${SORT_LABELS[level.key]}, ${level.dir === "asc" ? "ascending" : "descending"}, level ${i + 1} of ${view.levels.length}. Reverse order.`}
+          title={t("sort.chipHint")}
+          aria-label={t("sort.chipLabel", { column: SORT_LABELS[level.key], dir: level.dir, level: i + 1, total: view.levels.length })}
           onclick={() => view.flipSort(i)}
           onkeydown={(event) => onChipKeydown(event, i)}
         >
@@ -64,19 +65,19 @@
           type="button"
           class="chip-remove"
           disabled={view.preparing}
-          aria-label={`Remove ${SORT_LABELS[level.key]} sort`}
-          title="Remove"
+          aria-label={t("sort.removeLevel", { column: SORT_LABELS[level.key] })}
+          title={t("menu.remove")}
           onclick={() => view.removeSort(i)}
         ><Icon name="x" size={12} /></button>
       </span>
     {/each}
     {#if unused.length > 0}
       <button class="quiet" type="button" onclick={openAdd} disabled={view.preparing}>
-        <Icon name="plus" size={14} /> Add sort
+        <Icon name="plus" size={14} /> {t("sort.add")}
       </button>
     {/if}
     {#if view.levels.length > 1}
-      <button class="quiet" type="button" onclick={() => view.clearSort()} disabled={view.preparing}>Clear</button>
+      <button class="quiet" type="button" onclick={() => view.clearSort()} disabled={view.preparing}>{t("sort.clear")}</button>
     {/if}
   {/if}
 </div>
