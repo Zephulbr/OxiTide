@@ -2,7 +2,7 @@
   import FavoriteHeart, { toggledFx, type HeartFx } from "../../lib/components/FavoriteHeart.svelte";
   import Icon from "../../lib/components/Icon.svelte";
   import type { Track } from "../../lib/api";
-  import { FIXED_VOLUME_HINT } from "../../lib/volume";
+  import { t } from "../i18n.svelte";
   import { fade } from "svelte/transition";
   import CoverStage from "../components/CoverStage.svelte";
   import Lyrics from "../components/Lyrics.svelte";
@@ -63,7 +63,7 @@
   let volumeSent = 0;
   function onVolume(value: number, final: boolean) {
     if (volumeFixed) {
-      if (final) actions.notify(FIXED_VOLUME_HINT);
+      if (final) actions.notify(t("volume.fixed"));
       return;
     }
     volume = value;
@@ -99,7 +99,7 @@
     } catch {
       return;
     }
-    actions.notify("Tip: swipe up or down on the artwork to change the volume");
+    actions.notify(t("np.swipeTip"));
   });
 
   function commitSeek(value: number) {
@@ -116,12 +116,12 @@
 {#if !current}
   <div class="empty">
     <Icon name="disc-3" size={40} />
-    <p>Nothing is playing on the PC.</p>
-    <a class="pill primary" href="#/home">Browse</a>
-    <a class="pill" href="#/search">Search</a>
+    <p>{t("np.nothing")}</p>
+    <a class="pill primary" href="#/home">{t("np.browse")}</a>
+    <a class="pill" href="#/search">{t("tab.search")}</a>
   </div>
 {:else}
-  <section class="np" aria-label="Now playing">
+  <section class="np" aria-label={t("np.label")}>
     {#if showLyrics}
       <Lyrics track={current} positionMs={position} />
     {:else}
@@ -159,7 +159,7 @@
         class="icon-btn fill"
         class:on={favorite}
         aria-pressed={favorite}
-        aria-label={favorite ? "Remove from favorites" : "Add to favorites"}
+        aria-label={favorite ? t("np.unfavorite") : t("np.favorite")}
         onclick={() => {
           heartFx = toggledFx(heartFx, favorite);
           actions.toggleTrack(current.trackId);
@@ -170,10 +170,10 @@
     </div>
 
     <div class="badges">
-      {#if current.explicit}<span class="badge">E</span>{/if}
+      {#if current.explicit}<span class="badge">{t("np.explicitBadge")}</span>{/if}
       {#if badges?.label}<span class="badge accent">{badges.label}</span>{/if}
       {#if badges?.detail}<span class="badge">{badges.detail}</span>{/if}
-      {#if playback?.bitPerfect}<span class="badge accent">BIT-PERFECT</span>{/if}
+      {#if playback?.bitPerfect}<span class="badge accent">{t("np.bitPerfect")}</span>{/if}
       {#each playback?.dspStages ?? [] as stage (stage)}<span class="badge">{stage}</span>{/each}
     </div>
 
@@ -184,8 +184,8 @@
         max={Math.max(duration, 1)}
         step="1000"
         value={position}
-        aria-label="Seek"
-        aria-valuetext={`${clock(position)} of ${clock(duration)}`}
+        aria-label={t("np.seek")}
+        aria-valuetext={t("np.positionOf", { position: clock(position), duration: clock(duration) })}
         oninput={(e) => (seeking = Number((e.target as HTMLInputElement).value))}
         onchange={(e) => commitSeek(Number((e.target as HTMLInputElement).value))}
       />
@@ -200,28 +200,28 @@
         class="icon-btn"
         class:on={playback?.shuffle}
         aria-pressed={playback?.shuffle ?? false}
-        aria-label="Shuffle"
+        aria-label={t("np.shuffle")}
         onclick={() => run(api.setShuffle(!playback?.shuffle))}
       >
         <Icon name="shuffle" size={22} />
       </button>
-      <button class="icon-btn big" aria-label="Previous" onclick={() => run(api.prev())}>
+      <button class="icon-btn big" aria-label={t("np.previous")} onclick={() => run(api.prev())}>
         <Icon name="skip-back-solid" size={30} />
       </button>
       <button
         class="play"
-        aria-label={playback?.playing ? "Pause" : "Play"}
+        aria-label={playback?.playing ? t("np.pause") : t("np.play")}
         onclick={() => run(api.playPause())}
       >
         <Icon name={playback?.playing ? "pause" : "play"} size={32} />
       </button>
-      <button class="icon-btn big" aria-label="Next" onclick={() => run(api.next())}>
+      <button class="icon-btn big" aria-label={t("np.next")} onclick={() => run(api.next())}>
         <Icon name="skip-forward-solid" size={30} />
       </button>
       <button
         class="icon-btn"
         class:on={playback?.repeat !== "off"}
-        aria-label={`Repeat: ${playback?.repeat ?? "off"}`}
+        aria-label={t("np.repeat", { mode: playback?.repeat ?? "off" })}
         onclick={() => run(api.setRepeat(nextRepeat(playback?.repeat ?? "off")))}
       >
         <Icon name={playback?.repeat === "one" ? "repeat-1" : "repeat"} size={22} />
@@ -239,8 +239,8 @@
     <div class="extras">
       <button
         class="icon-btn level"
-        aria-label={volumeFixed ? FIXED_VOLUME_HINT : shownVolume === 0 ? "Unmute" : `Mute (volume ${Math.round(shownVolume * 100)}%)`}
-        title={volumeFixed ? FIXED_VOLUME_HINT : "Swipe the artwork to change the volume"}
+        aria-label={volumeFixed ? t("volume.fixed") : shownVolume === 0 ? t("np.unmute") : t("np.mute", { percent: Math.round(shownVolume * 100) })}
+        title={volumeFixed ? t("volume.fixed") : t("np.swipeHint")}
         onclick={toggleMute}
         disabled={volumeFixed}
       >
@@ -249,8 +249,8 @@
       </button>
       <button
         class="icon-btn"
-        aria-label="Pause with fade"
-        title="Pause with fade"
+        aria-label={t("np.fadePause")}
+        title={t("np.fadePause")}
         onclick={() => run(api.fadeAndPause(REMOTE_FADE_MS))}
         disabled={!playback?.playing}
       >
@@ -260,14 +260,14 @@
         class="icon-btn"
         class:on={showLyrics}
         aria-pressed={showLyrics}
-        aria-label="Lyrics"
+        aria-label={t("np.lyrics")}
         onclick={() => (showLyrics = !showLyrics)}
       >
         <Icon name="music" size={20} />
       </button>
       <button
         class="icon-btn"
-        aria-label="More"
+        aria-label={t("np.more")}
         onclick={() =>
           actions.openTrack({
             id: current.trackId,
@@ -283,7 +283,7 @@
       >
         <Icon name="ellipsis" size={20} />
       </button>
-      <a class="icon-btn" href="#/queue" aria-label="Queue">
+      <a class="icon-btn" href="#/queue" aria-label={t("tab.queue")}>
         <Icon name="list-music" size={20} />
       </a>
     </div>

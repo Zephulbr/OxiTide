@@ -4,6 +4,7 @@
   import TrackList from "../components/TrackList.svelte";
   import { useRemote } from "../context";
   import { fromHistory } from "../convert";
+  import { t } from "../i18n.svelte";
 
   const { api } = useRemote();
   const PAGE = 100;
@@ -28,11 +29,11 @@
 </script>
 
 <div class="page">
-  <header class="page-head"><h1>Recently played</h1></header>
+  <header class="page-head"><h1>{t("library.recent")}</h1></header>
   <Loader load={first}>
     {#snippet children()}
       {#if total === 0}
-        <p class="muted">Nothing played yet (or history is off on the PC).</p>
+        <p class="muted">{t("history.empty")}</p>
       {:else}
         <TrackList tracks={rows} {total} {more} />
       {/if}

@@ -4,6 +4,7 @@
   import TrackList from "../components/TrackList.svelte";
   import { useRemote } from "../context";
   import { art, fromTrack } from "../convert";
+  import { t } from "../i18n.svelte";
 
   let { id }: { id: string } = $props();
   const { api } = useRemote();
@@ -17,7 +18,7 @@
 <div class="page">
   <Loader {load} key={id}>
     {#snippet children({ mix, rows })}
-      <DetailHead image={art(mix.artwork, 640)} title={mix.title} kind="Mix" subtitle={`${rows.length} tracks`} />
+      <DetailHead image={art(mix.artwork, 640)} title={mix.title} kind={t("kind.mix")} subtitle={t("common.trackCount", { count: rows.length })} />
       <TrackList tracks={rows} />
     {/snippet}
   </Loader>

@@ -2,6 +2,7 @@
   import type { LyricsDto, RemoteTrack } from "../../lib/api";
   import { activeLine } from "../../lib/lyrics";
   import { useRemote } from "../context";
+  import { t } from "../i18n.svelte";
 
   let { track, positionMs }: { track: RemoteTrack; positionMs: number } = $props();
   const { api } = useRemote();
@@ -36,11 +37,11 @@
 
 <div class="lyrics" aria-live="off">
   {#if status === "loading"}
-    <p class="muted">Loading lyrics…</p>
+    <p class="muted">{t("lyrics.loading")}</p>
   {:else if status === "none"}
-    <p class="muted">No lyrics for this track.</p>
+    <p class="muted">{t("lyrics.none")}</p>
   {:else if status === "error"}
-    <p class="muted">Lyrics are unavailable right now.</p>
+    <p class="muted">{t("lyrics.unavailable")}</p>
   {:else if lyrics}
     <ol bind:this={list} dir={lyrics.rtl ? "rtl" : "auto"} class:synced={lyrics.synced}>
       {#each lyrics.lines as line, i (i)}

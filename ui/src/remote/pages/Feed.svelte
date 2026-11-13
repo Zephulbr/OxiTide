@@ -2,15 +2,16 @@
   import Loader from "../components/Loader.svelte";
   import Sections from "../components/Sections.svelte";
   import { useRemote } from "../context";
+  import { t } from "../i18n.svelte";
 
   let { source }: { source: "home" | "explore" | "foryou" } = $props();
   const { api } = useRemote();
 
   const TABS = [
-    { id: "home", label: "Home" },
-    { id: "foryou", label: "For You" },
-    { id: "explore", label: "Explore" },
-    { id: "mixes", label: "My Mixes" },
+    { id: "home", label: "tab.home" },
+    { id: "foryou", label: "feed.forYou" },
+    { id: "explore", label: "feed.explore" },
+    { id: "mixes", label: "library.mixes" },
   ] as const;
 
   function load() {
@@ -19,10 +20,10 @@
 </script>
 
 <div class="page">
-  <nav class="chips" aria-label="Browse">
+  <nav class="chips" aria-label={t("feed.browse")}>
     {#each TABS as tab (tab.id)}
       <a href={`#/${tab.id}`} class:active={tab.id === source} aria-current={tab.id === source ? "page" : undefined}>
-        {tab.label}
+        {t(tab.label)}
       </a>
     {/each}
   </nav>

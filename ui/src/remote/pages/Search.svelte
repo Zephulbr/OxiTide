@@ -5,6 +5,7 @@
   import TrackRow from "../components/TrackRow.svelte";
   import { useRemote } from "../context";
   import { albumTile, artistTile, fromTrack, playlistTile } from "../convert";
+  import { t } from "../i18n.svelte";
 
   const { api, actions, store } = useRemote();
 
@@ -57,13 +58,13 @@
       bind:this={input}
       bind:value={query}
       type="search"
-      placeholder="Artists, songs, albums"
-      aria-label="Search TIDAL"
+      placeholder={t("search.placeholder")}
+      aria-label={t("search.label")}
       enterkeyhint="search"
       autocomplete="off"
     />
     {#if query}
-      <button type="button" class="icon-btn" aria-label="Clear search" onclick={() => (query = "")}>
+      <button type="button" class="icon-btn" aria-label={t("search.clear")} onclick={() => (query = "")}>
         <Icon name="x" size={18} />
       </button>
     {/if}
@@ -72,10 +73,10 @@
   {#if error}
     <p class="muted">{error}</p>
   {:else if busy && !results}
-    <p class="muted">Searching…</p>
+    <p class="muted">{t("search.searching")}</p>
   {:else if results}
     {#if tracks.length > 0}
-      <h2 class="section-title">Tracks</h2>
+      <h2 class="section-title">{t("library.tracks")}</h2>
       {#each tracks as row, i (row.id)}
         <TrackRow
           track={row}
@@ -87,16 +88,16 @@
       {/each}
     {/if}
     {#if results.artists.items.length > 0}
-      <Shelf title="Artists" tiles={results.artists.items.map(artistTile)} />
+      <Shelf title={t("library.artists")} tiles={results.artists.items.map(artistTile)} />
     {/if}
     {#if results.albums.items.length > 0}
-      <Shelf title="Albums" tiles={results.albums.items.map(albumTile)} />
+      <Shelf title={t("library.albums")} tiles={results.albums.items.map(albumTile)} />
     {/if}
     {#if results.playlists.items.length > 0}
-      <Shelf title="Playlists" tiles={results.playlists.items.map(playlistTile)} />
+      <Shelf title={t("library.playlists")} tiles={results.playlists.items.map(playlistTile)} />
     {/if}
     {#if tracks.length + results.artists.items.length + results.albums.items.length + results.playlists.items.length === 0}
-      <p class="muted">No results for “{query.trim()}”.</p>
+      <p class="muted">{t("search.noResults", { query: query.trim() })}</p>
     {/if}
   {/if}
 </div>

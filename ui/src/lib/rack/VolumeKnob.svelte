@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Player } from "../player.svelte";
   import { shownVolume } from "../player.svelte";
-  import { FIXED_VOLUME_HINT as FIXED_HINT } from "../volume";
+
   import { t } from "../i18n.svelte";
 
   /// Amp volume knob with a 23-dot LED ring (DESIGN §5.7). A slider: drag up
@@ -75,7 +75,7 @@
   }
 </script>
 
-<div class="frame" class:fixed style:--s={scale} title={fixed ? FIXED_HINT : undefined}>
+<div class="frame" class:fixed style:--s={scale} title={fixed ? t("volume.fixed") : undefined}>
 <div class="knobbox">
   <svg class="ring" viewBox="0 0 76 76" aria-hidden="true">
     {#each dots as d, i (i)}

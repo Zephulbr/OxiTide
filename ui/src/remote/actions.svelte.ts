@@ -3,6 +3,7 @@ import type { FavoriteChange, Playlist } from "../lib/api";
 import type { RemoteApi } from "./api";
 import { fromTrack, toPageInput, toQueueItem, type RowTrack } from "./convert";
 import { hrefFor } from "./routes";
+import { t } from "./i18n.svelte";
 
 export interface SheetItem {
   label: string;
@@ -61,7 +62,7 @@ export class RemoteActions {
     else set.delete(id);
     try {
       await write(favorite);
-      this.notify(favorite ? "Added to your collection" : "Removed from your collection");
+      this.notify(favorite ? t("toast.addedToCollection") : t("toast.removedFromCollection"));
     } catch (e) {
       if (favorite) set.delete(id);
       else set.add(id);
@@ -101,7 +102,7 @@ export class RemoteActions {
   async enqueue(rows: RowTrack[]) {
     try {
       await this.api.queueAdd(rows.slice(0, MAX_TRACKS).map(toQueueItem));
-      this.notify(rows.length === 1 ? "Added to queue" : `Added ${rows.length} tracks to queue`);
+      this.notify(t("toast.queued", { count: rows.length }));
     } catch (e) {
       this.fail(e);
     }
@@ -120,22 +121,22 @@ export class RemoteActions {
   openTrack(row: RowTrack) {
     void this.ensureFavorites();
     const items: SheetItem[] = [
-      { label: "Add to queue", icon: "list-plus", run: () => this.enqueue([row]) },
-      { label: "Add to playlist…", icon: "plus", run: () => this.pickPlaylist([row]) },
+      { label: t("menu.addToQueue"), icon: "list-plus", run: () => this.enqueue([row]) },
+      { label: t("menu.addToPlaylist"), icon: "plus", run: () => this.pickPlaylist([row]) },
       {
-        label: this.favTracks.has(row.id) ? "Remove from favorites" : "Add to favorites",
+        label: this.favTracks.has(row.id) ? t("np.unfavorite") : t("np.favorite"),
         icon: "heart",
         run: () => this.toggleTrack(row.id),
       },
-      { label: "Track radio", icon: "radio", run: () => this.radio(row) },
+      { label: t("menu.trackRadio"), icon: "radio", run: () => this.radio(row) },
     ];
     if (row.albumId !== null) {
       const albumId = row.albumId;
-      items.push({ label: "Go to album", icon: "disc-3", run: () => go(hrefFor({ name: "album", id: albumId })) });
+      items.push({ label: t("menu.goToAlbum"), icon: "disc-3", run: () => go(hrefFor({ name: "album", id: albumId })) });
     }
     if (row.artistId !== null) {
       const artistId = row.artistId;
-      items.push({ label: "Go to artist", icon: "music", run: () => go(hrefFor({ name: "artist", id: artistId })) });
+      items.push({ label: t("menu.goToArtist"), icon: "music", run: () => go(hrefFor({ name: "artist", id: artistId })) });
     }
     this.sheet = { title: row.title, subtitle: row.artist, items };
   }
@@ -149,19 +150,19 @@ export class RemoteActions {
       return;
     }
     if (this.playlists.length === 0) {
-      this.notify("You have no playlists of your own yet.");
+      this.notify(t("toast.noPlaylists"));
       return;
     }
     this.sheet = {
-      title: "Add to playlist",
-      subtitle: rows.length === 1 ? rows[0].title : `${rows.length} tracks`,
+      title: t("menu.addToPlaylistTitle"),
+      subtitle: rows.length === 1 ? rows[0].title : t("common.trackCount", { count: rows.length }),
       items: this.playlists.map((playlist) => ({
         label: playlist.title,
         icon: "plus",
         run: async () => {
           try {
             await this.api.addPlaylistTracks(playlist.uuid, rows.map((r) => r.id));
-            this.notify(`Added to ${playlist.title}`);
+            this.notify(t("toast.addedTo", { playlist: playlist.title }));
           } catch (e) {
             this.fail(e);
           }

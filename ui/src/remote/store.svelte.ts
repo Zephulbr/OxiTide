@@ -1,6 +1,7 @@
 import type { FavoriteChange, QueueItem, RemoteQueuePage, RemoteState } from "../lib/api";
 import { QUEUE_PAGE, QueueCache } from "./queueCache";
 import { RemoteError, type Call } from "./rpc";
+import { t } from "./i18n.svelte";
 
 /// connecting → live; reconnecting while the stream is down; unpaired when
 /// the PC no longer knows this phone (never paired, or revoked).
@@ -156,9 +157,9 @@ export class RemoteStore {
         const kind = payload as "loggedOut" | "expired" | "ok";
         this.session =
           kind === "loggedOut"
-            ? "Signed out on the PC."
+            ? t("session.loggedOut")
             : kind === "expired"
-              ? "The TIDAL session expired on the PC."
+              ? t("session.expired")
               : "";
         break;
       }
@@ -179,7 +180,7 @@ export class RemoteStore {
       this.queueVersion += 1;
     }
     if (next.loggedIn) this.session = "";
-    else if (!this.session) this.session = "Sign in on the PC to use the remote.";
+    else if (!this.session) this.session = t("session.signIn");
     if (next.playing) this.playbackError = "";
     this.state = next;
     this.anchor = { positionMs: next.positionMs, at: this.deps.now() };

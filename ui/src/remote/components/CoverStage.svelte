@@ -2,6 +2,7 @@
   import Icon from "../../lib/components/Icon.svelte";
   import { art } from "../convert";
   import { stepVolume, SWIPE_THRESHOLD_PX, volumeFromDrag } from "../nowPlaying";
+  import { t } from "../i18n.svelte";
 
   /// Now Playing artwork. Covers crossfade on track change and settle back
   /// slightly while paused. Swiping up/down on it sets the PC's volume (phone
@@ -119,9 +120,7 @@
   bind:this={stage}
   role="slider"
   tabindex="0"
-  aria-label={fixed
-    ? "Volume fixed at 100% in exclusive mode"
-    : "Volume — swipe up or down on the artwork"}
+  aria-label={fixed ? t("np.volumeFixedShort") : t("np.volumeSwipe")}
   aria-disabled={fixed || undefined}
   aria-valuemin={0}
   aria-valuemax={100}

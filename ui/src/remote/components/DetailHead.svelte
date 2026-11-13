@@ -3,6 +3,7 @@
   import FavoriteHeart, { toggledFx, type HeartFx } from "../../lib/components/FavoriteHeart.svelte";
   import Icon from "../../lib/components/Icon.svelte";
   import Art from "./Art.svelte";
+  import { t } from "../i18n.svelte";
 
   let {
     image,
@@ -30,7 +31,7 @@
 </script>
 
 <header class="head">
-  <button class="icon-btn back" aria-label="Back" onclick={() => history.back()}>
+  <button class="icon-btn back" aria-label={t("common.back")} onclick={() => history.back()}>
     <Icon name="chevron-left" size={22} />
   </button>
   <div class="art"><Art src={image} size="100%" {round} eager /></div>
@@ -44,7 +45,7 @@
         class="icon-btn fill"
         class:on={favorite}
         aria-pressed={favorite}
-        aria-label={favorite ? "Remove from favorites" : "Add to favorites"}
+        aria-label={favorite ? t("np.unfavorite") : t("np.favorite")}
         onclick={() => {
           heartFx = toggledFx(heartFx, favorite === true);
           ontogglefavorite?.();

@@ -6,6 +6,7 @@
   import TrackRow from "../components/TrackRow.svelte";
   import { useRemote } from "../context";
   import { albumTile, artistImage, artistTile, fromTrack } from "../convert";
+  import { t } from "../i18n.svelte";
 
   let { id }: { id: number } = $props();
   const { api, actions, store } = useRemote();
@@ -39,18 +40,18 @@
       <DetailHead
         image={artistImage(artist)}
         title={artist.name}
-        kind="Artist"
+        kind={t("kind.artist")}
         round
         favorite={actions.favArtists.has(artist.id)}
         ontogglefavorite={() => actions.toggleArtist(artist.id)}
       >
         <button class="pill primary" disabled={top.length === 0} onclick={() => actions.play(top, 0)}>
-          <Icon name="play" size={18} /> Play
+          <Icon name="play" size={18} /> {t("np.play")}
         </button>
-        <button class="pill" onclick={radio}><Icon name="radio" size={18} /> Radio</button>
+        <button class="pill" onclick={radio}><Icon name="radio" size={18} /> {t("artist.radio")}</button>
       </DetailHead>
       {#if top.length > 0}
-        <h2 class="section-title">Top tracks</h2>
+        <h2 class="section-title">{t("artist.topTracks")}</h2>
         {#each top as row, i (row.id)}
           <TrackRow
             track={row}
@@ -61,9 +62,9 @@
           />
         {/each}
       {/if}
-      {#if albums.length > 0}<Shelf title="Albums" tiles={albums.map(albumTile)} />{/if}
-      {#if singles.length > 0}<Shelf title="EPs & singles" tiles={singles.map(albumTile)} />{/if}
-      {#if similar.length > 0}<Shelf title="Fans also like" tiles={similar.map(artistTile)} />{/if}
+      {#if albums.length > 0}<Shelf title={t("library.albums")} tiles={albums.map(albumTile)} />{/if}
+      {#if singles.length > 0}<Shelf title={t("artist.singles")} tiles={singles.map(albumTile)} />{/if}
+      {#if similar.length > 0}<Shelf title={t("artist.fansAlsoLike")} tiles={similar.map(artistTile)} />{/if}
     {/snippet}
   </Loader>
 </div>
