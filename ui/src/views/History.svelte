@@ -19,6 +19,7 @@
   import HistoryStats from "../lib/components/HistoryStats.svelte";
   import Loading from "../lib/components/Loading.svelte";
   import { edgeFade } from "../lib/edgeFade";
+  import { t, type MessageKey } from "../lib/i18n.svelte";
 
   let {
     nav,
@@ -27,9 +28,9 @@
     tab,
   }: { nav: Nav; player: Player; toasts: Toasts; tab: HistoryTab } = $props();
 
-  const TABS: { id: HistoryTab; label: string }[] = [
-    { id: "stats", label: "Stats" },
-    { id: "recent", label: "Recently played" },
+  const TABS: { id: HistoryTab; label: MessageKey }[] = [
+    { id: "stats", label: "route.stats" },
+    { id: "recent", label: "home.recentlyPlayed" },
   ];
   const PAGE = 100;
 
@@ -87,11 +88,11 @@
     const items = entries.map((e) => ({ entry: e, id: e.track_id, explicit: undefined }));
     const prepared = await trackFlags.filterPlayable(items, index);
     if (!prepared) {
-      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      toasts.show(t("queue.dropHidden"), { severity: "info" });
       return;
     }
     playSource.set(
-      { kind: "history", name: "Listening history", route: { name: "history", tab: "recent" } },
+      { kind: "history", name: t("history.playFrom"), route: { name: "history", tab: "recent" } },
       prepared.items.map((item) => item.id),
     );
     void api
@@ -117,17 +118,17 @@
 
 <div class="view-fill">
   <header class="page-head">
-    <h2>History</h2>
+    <h2>{t("route.history")}</h2>
     {#if tab === "recent" && total > 0}<span class="muted count tnum">{total} {total === 1 ? "play" : "plays"}</span>{/if}
   </header>
-  <nav class="tabs" aria-label="History sections">
+  <nav class="tabs" aria-label={t("history.sections")}>
     {#each TABS as entry (entry.id)}
       <button
         class="tab"
         class:active={tab === entry.id}
         aria-current={tab === entry.id ? "page" : undefined}
         onclick={() => selectTab(entry.id)}
-      >{entry.label}</button>
+      >{t(entry.label)}</button>
     {/each}
   </nav>
 
@@ -138,7 +139,7 @@
       {:else if recentLoading && entries.length === 0}
         <Loading />
       {:else if entries.length === 0}
-        <EmptyState message="Nothing played yet." />
+        <EmptyState message={t("history.empty")} />
       {:else}
         {#each groups as group (group.entries[0].started_at)}
           {@const listened = group.entries.reduce((sum, e) => sum + e.listened_ms, 0)}
@@ -157,7 +158,7 @@
                   class:playing
                   class:partial={!playing && !entry.completed && entry.listened_ms < entry.duration_secs * 500}
                   onclick={() => playEntry(entry)}
-                  title={`Play ${entry.title} (${relativeTime(entry.started_at, Date.now())})`}
+                  title={t("history.playEntry", { title: entry.title, when: relativeTime(entry.started_at, Date.now()) })}
                   use:menuFor={() =>
                     historyMenuItems({ play: () => void playEntry(entry), ...goToTargets(entry, go, api.getTrack) })}
                 >
@@ -177,7 +178,7 @@
         {/each}
         {#if entries.length < total}
           <p class="more">
-            <button class="tool-btn" onclick={() => void loadRecent(false)} disabled={recentLoading}>Load more</button>
+            <button class="tool-btn" onclick={() => void loadRecent(false)} disabled={recentLoading}>{t("search.loadMore")}</button>
           </p>
         {/if}
       {/if}

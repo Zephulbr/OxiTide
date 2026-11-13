@@ -10,8 +10,9 @@
     hourLabel,
     peakIndex,
     percentOf,
-    WEEKDAYS,
+    weekdayName,
   } from "../historyChart";
+  import { t, type MessageKey } from "../i18n.svelte";
   import { getCardActions } from "../cardActions";
   import { menuFor, type MenuItem } from "../menu.svelte";
   import { historyMenuItems } from "../menus";
@@ -34,36 +35,37 @@
   let metric = $state<Metric>("time");
   let hovered = $state<number | null>(null);
 
-  const plural = (n: number, word: string) => `${formatCount(n)} ${n === 1 ? word : `${word}s`}`;
+  const plays = (count: number) => t("stats.plays", { count });
 
-  /// The masthead's count line; the numbers take the accent.
+  /// The masthead's count line; the numbers take the accent, the word after
+  /// each is its own plural message.
   const counts = $derived([
-    { n: stats.total_plays, word: "play" },
-    { n: stats.distinct_tracks, word: "track" },
-    { n: stats.distinct_artists, word: "artist" },
-    { n: stats.distinct_albums, word: "album" },
+    { n: stats.total_plays, word: "stats.word.plays" as MessageKey },
+    { n: stats.distinct_tracks, word: "stats.word.tracks" as MessageKey },
+    { n: stats.distinct_artists, word: "stats.word.artists" as MessageKey },
+    { n: stats.distinct_albums, word: "stats.word.albums" as MessageKey },
   ]);
   const fan = $derived(stats.top_albums.filter((album) => album.cover).slice(0, 5));
   const figures = $derived([
     {
-      label: "Last 7 days",
+      label: t("stats.last7"),
       value: formatListenTime(stats.listened_ms_7d),
-      note: `${formatListenTime(stats.listened_ms_7d / 7)} a day`,
+      note: t("stats.perDay", { time: formatListenTime(stats.listened_ms_7d / 7) }),
     },
     {
-      label: "Last 30 days",
+      label: t("stats.last30"),
       value: formatListenTime(stats.listened_ms_30d),
-      note: `${formatListenTime(stats.listened_ms_30d / 30)} a day`,
+      note: t("stats.perDay", { time: formatListenTime(stats.listened_ms_30d / 30) }),
     },
     {
-      label: "Streak",
-      value: plural(stats.current_streak_days, "day"),
-      note: `Best ${plural(stats.longest_streak_days, "day")}`,
+      label: t("stats.streak"),
+      value: t("stats.days", { count: stats.current_streak_days }),
+      note: t("stats.bestStreak", { count: stats.longest_streak_days }),
     },
     {
-      label: "Played through",
-      value: `${percentOf(stats.completed_plays, stats.total_plays)}%`,
-      note: `${formatCount(stats.completed_plays)} of ${plural(stats.total_plays, "play")}`,
+      label: t("stats.playedThrough"),
+      value: t("stats.percent", { percent: percentOf(stats.completed_plays, stats.total_plays) }),
+      note: t("stats.completedOf", { completed: stats.completed_plays, count: stats.total_plays }),
     },
   ]);
 
@@ -72,7 +74,7 @@
   const average = $derived(values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length));
   const averagePercent = $derived(Math.min(100, (average / Math.max(1, ...values)) * 100));
   const formatValue = (value: number) =>
-    metric === "time" ? formatListenTime(value) : plural(Math.round(value), "play");
+    metric === "time" ? formatListenTime(value) : plays(Math.round(value));
   const tip = $derived(hovered === null ? null : stats.daily[hovered]);
 
   const hourHeights = $derived(barPercents(stats.hourly));
@@ -134,10 +136,10 @@
   }
 
   function artistMenu(name: string, target: ArtistTarget | null | undefined): MenuItem[] {
-    if (!target) return pendingItem(`Go to ${name}`);
+    if (!target) return pendingItem(t("menu.goToNamed", { name }));
     return [
-      { id: "go-artist", label: "Go to artist", icon: "user", run: () => go({ name: "artist", id: target.id }) },
-      { id: "radio", label: "Artist radio", icon: "radio", run: () => void playArtistRadio(target.id, toasts, name) },
+      { id: "go-artist", label: t("menu.goToArtist"), icon: "user", run: () => go({ name: "artist", id: target.id }) },
+      { id: "radio", label: t("radio.artistRadio"), icon: "radio", run: () => void playArtistRadio(target.id, toasts, name) },
     ];
   }
 
@@ -145,14 +147,14 @@
     const [play, ...rest] = historyMenuItems({ play: () => void playTop(i), ...goToTargets(track, go, api.getTrack) });
     return [
       play,
-      { id: "radio", label: "Track radio", icon: "radio", run: () => go({ name: "radio", id: track.track_id }) },
+      { id: "radio", label: t("route.radio"), icon: "radio", run: () => go({ name: "radio", id: track.track_id }) },
       ...rest,
     ];
   }
 
   /// Albums get the same menu as album cards (play, queue, favorite, link).
   function albumMenu(name: string, cover: string | null, id: number | null | undefined): MenuItem[] {
-    if (!id || !cardActions) return pendingItem(`Go to ${name}`);
+    if (!id || !cardActions) return pendingItem(t("menu.goToNamed", { name }));
     const item = { id: String(id), title: name, item_type: "ALBUM", artwork: cover };
     return cardActions.menu(item, { kind: "album", id, title: name });
   }
@@ -164,11 +166,11 @@
       start,
     );
     if (!prepared) {
-      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      toasts.show(t("queue.dropHidden"), { severity: "info" });
       return;
     }
     playSource.set(
-      { kind: "history", name: "Your top tracks", route: { name: "history", tab: "stats" } },
+      { kind: "history", name: t("stats.yourTopTracks"), route: { name: "history", tab: "stats" } },
       prepared.items.map((item) => item.id),
     );
     const items = prepared.items.map(({ track }: { track: StatsTopTrack }) => ({
@@ -185,9 +187,10 @@
 
   const columns = $derived([
     {
-      title: "Top artists",
-      lead: "Most played artist",
-      total: plural(stats.distinct_artists, "artist"),
+      key: "artists",
+      title: t("stats.topArtists"),
+      lead: t("stats.mostPlayedArtist"),
+      total: t("profiles.count", { count: stats.distinct_artists }),
       rows: stats.top_artists.map((entry): Row => {
         const target = artistTargets[entry.name];
         return {
@@ -201,15 +204,16 @@
           sleeve: false,
           picture: !!target?.picture,
           open: target ? () => nav.goto({ name: "artist", id: target.id }) : null,
-          label: `Open ${entry.name}`,
+          label: t("card.open", { title: entry.name }),
           menu: () => artistMenu(entry.name, artistTargets[entry.name]),
         };
       }),
     },
     {
-      title: "Top tracks",
-      lead: "Most played track",
-      total: plural(stats.distinct_tracks, "track"),
+      key: "tracks",
+      title: t("stats.topTracks"),
+      lead: t("stats.mostPlayedTrack"),
+      total: t("common.trackCount", { count: stats.distinct_tracks }),
       rows: stats.top_tracks.map(
         (track, i): Row => ({
           key: String(track.track_id),
@@ -222,15 +226,16 @@
           sleeve: false,
           picture: false,
           open: () => void playTop(i),
-          label: `Play ${track.title}`,
+          label: t("card.play", { title: track.title }),
           menu: () => trackMenu(track, i),
         }),
       ),
     },
     {
-      title: "Top albums",
-      lead: "Most played album",
-      total: plural(stats.distinct_albums, "album"),
+      key: "albums",
+      title: t("stats.topAlbums"),
+      lead: t("stats.mostPlayedAlbum"),
+      total: t("albums.count", { count: stats.distinct_albums }),
       rows: stats.top_albums.map((entry): Row => {
         const id = albumIds[entry.name];
         return {
@@ -244,7 +249,7 @@
           sleeve: true,
           picture: false,
           open: id ? () => nav.goto({ name: "album", id }) : null,
-          label: `Open ${entry.name}`,
+          label: t("card.open", { title: entry.name }),
           menu: () => albumMenu(entry.name, entry.cover ?? null, albumIds[entry.name]),
         };
       }),
@@ -261,12 +266,12 @@
 {/snippet}
 
 {#if stats.total_plays === 0}
-  <p class="muted">No plays yet.</p>
+  <p class="muted">{t("stats.empty")}</p>
 {:else}
 <div class="stats">
-  <section class="hero lit-tint pane" aria-label="All-time listening">
+  <section class="hero lit-tint pane" aria-label={t("stats.allTimeLabel")}>
     <div class="headline">
-      <span class="eyebrow">All time</span>
+      <span class="eyebrow">{t("stats.allTime")}</span>
       <strong class="total tnum">{formatListenTime(stats.total_listened_ms)}</strong>
       <dl class="figures">
         {#each figures as figure (figure.label)}
@@ -279,11 +284,11 @@
       </dl>
     </div>
     <!-- All-time counts, stacked in the middle of the masthead. -->
-    <ul class="counts" aria-label="All-time counts">
+    <ul class="counts" aria-label={t("stats.allTimeCounts")}>
       {#each counts as count (count.word)}
         <li class="tnum">
           <span class="n">{formatCount(count.n)}</span>
-          <span class="muted">{count.n === 1 ? count.word : `${count.word}s`}</span>
+          <span class="muted">{t(count.word, { count: count.n })}</span>
         </li>
       {/each}
     </ul>
@@ -300,18 +305,18 @@
     <section class="panel lit pane daily">
       <header class="panel-head">
         <div>
-          <h3>Last 30 days</h3>
-          <span class="muted tnum sub">Average {formatValue(average)} a day</span>
+          <h3>{t("stats.last30")}</h3>
+          <span class="muted tnum sub">{t("stats.average", { value: formatValue(average) })}</span>
         </div>
-        <div class="segmented" role="group" aria-label="Chart value">
-          <button type="button" aria-pressed={metric === "time"} onclick={() => (metric = "time")}>Time</button>
-          <button type="button" aria-pressed={metric === "plays"} onclick={() => (metric = "plays")}>Plays</button>
+        <div class="segmented" role="group" aria-label={t("stats.chartValue")}>
+          <button type="button" aria-pressed={metric === "time"} onclick={() => (metric = "time")}>{t("stats.time")}</button>
+          <button type="button" aria-pressed={metric === "plays"} onclick={() => (metric = "plays")}>{t("table.column.plays")}</button>
         </div>
       </header>
       <div
         class="chart"
         role="img"
-        aria-label={`${metric === "time" ? "Listening time" : "Plays"} per day over the last 30 days`}
+        aria-label={t("stats.chartLabel", { metric })}
         onpointerleave={() => (hovered = null)}
       >
         <div class="grid-lines" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
@@ -331,8 +336,8 @@
         {/each}
         {#if tip && hovered !== null}
           <div class="tip tnum" style:--x={(hovered + 0.5) / stats.daily.length}>
-            <strong>{hovered === stats.daily.length - 1 ? "Today" : dayTick(tip.date)}</strong>
-            <span>{formatListenTime(tip.listened_ms)} · {plural(tip.plays, "play")}</span>
+            <strong>{hovered === stats.daily.length - 1 ? t("history.today") : dayTick(tip.date)}</strong>
+            <span>{formatListenTime(tip.listened_ms)} · {plays(tip.plays)}</span>
           </div>
         {/if}
       </div>
@@ -340,7 +345,7 @@
         <div class="axis muted tnum" aria-hidden="true">
           <span>{dayTick(stats.daily[0].date)}</span>
           <span>{dayTick(stats.daily[Math.floor(stats.daily.length / 2)].date)}</span>
-          <span>Today</span>
+          <span>{t("history.today")}</span>
         </div>
       {/if}
     </section>
@@ -348,15 +353,15 @@
     <section class="panel lit pane rhythm">
       <header class="panel-head">
         <div>
-          <h3>When you listen</h3>
+          <h3>{t("stats.whenYouListen")}</h3>
           {#if peakHour >= 0}
-            <span class="muted sub">Mostly {dayPart(peakHour)} · peak around {hourLabel(peakHour)}</span>
+            <span class="muted sub">{t("stats.mostly", { part: dayPart(peakHour), hour: hourLabel(peakHour) })}</span>
           {/if}
         </div>
       </header>
-      <div class="hours" role="img" aria-label="Plays by hour of day">
+      <div class="hours" role="img" aria-label={t("stats.byHour")}>
         {#each stats.hourly as plays, hour (hour)}
-          <span class="bar" class:peak={hour === peakHour} title={`${hourLabel(hour)}: ${plural(plays, "play")}`}>
+          <span class="bar" class:peak={hour === peakHour} title={`${hourLabel(hour)}: ${t("stats.plays", { count: plays })}`}>
             <i class:empty={plays === 0} style:height={`${hourHeights[hour]}%`}></i>
           </span>
         {/each}
@@ -366,8 +371,8 @@
       </div>
       <div class="week">
         {#each stats.weekdays as plays, day (day)}
-          <div class="weekday" class:peak={day === peakDay} title={`${WEEKDAYS[day]}: ${plural(plays, "play")}`}>
-            <span class="muted day">{WEEKDAYS[day].slice(0, 3)}</span>
+          <div class="weekday" class:peak={day === peakDay} title={`${weekdayName(day)}: ${t("stats.plays", { count: plays })}`}>
+            <span class="muted day">{weekdayName(day, "short")}</span>
             <span class="track"><i style:width={`${dayHeights[day]}%`}></i></span>
           </div>
         {/each}
@@ -376,7 +381,7 @@
   </div>
 
   <div class="tops">
-    {#each columns as column (column.title)}
+    {#each columns as column (column.key)}
       {@const top = column.rows[0]}
       {@const max = Math.max(1, ...column.rows.map((row) => row.plays))}
       <section class="panel lit pane column">
@@ -398,7 +403,7 @@
               <span class="eyebrow">{column.lead}</span>
               <strong class="lead-name">{top.name}</strong>
               {#if top.by}<span class="lead-by">{top.by}</span>{/if}
-              <span class="muted tnum lead-meta">{plural(top.plays, "play")} · {formatListenTime(top.listened)}</span>
+              <span class="muted tnum lead-meta">{plays(top.plays)} · {formatListenTime(top.listened)}</span>
             </span>
           </button>
         {/if}

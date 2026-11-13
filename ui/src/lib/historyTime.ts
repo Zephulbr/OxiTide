@@ -1,6 +1,8 @@
 /// Local-day grouping and relative timestamps for the History view. `nowMs`
 /// is injected so the logic is testable in any timezone.
 
+import { i18n, t } from "./i18n.svelte";
+
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
@@ -8,15 +10,15 @@ const DAY = 24 * HOUR;
 /// "just now", "24 min ago", "3 h ago", "2 d ago".
 export function relativeTime(startedAtSecs: number, nowMs: number): string {
   const age = Math.max(0, nowMs - startedAtSecs * 1000);
-  if (age < MINUTE) return "just now";
-  if (age < HOUR) return `${Math.floor(age / MINUTE)} min ago`;
-  if (age < DAY) return `${Math.floor(age / HOUR)} h ago`;
-  return `${Math.floor(age / DAY)} d ago`;
+  if (age < MINUTE) return t("remoteSettings.seen.now");
+  if (age < HOUR) return t("remoteSettings.seen.minutes", { count: Math.floor(age / MINUTE) });
+  if (age < DAY) return t("remoteSettings.seen.hours", { count: Math.floor(age / HOUR) });
+  return t("history.daysAgo", { count: Math.floor(age / DAY) });
 }
 
 /// Local clock time of a play, e.g. "14:32" (or "2:32 PM" in 12-hour locales).
 export function clockTime(startedAtSecs: number): string {
-  return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(
+  return new Intl.DateTimeFormat(i18n.locale, { hour: "numeric", minute: "2-digit" }).format(
     new Date(startedAtSecs * 1000),
   );
 }
@@ -29,9 +31,9 @@ function startOfLocalDay(ms: number): number {
 /// "Today" / "Yesterday" / "Thu, Oct 1" for a local calendar day.
 export function dayLabel(dayMs: number, nowMs: number): string {
   const today = startOfLocalDay(nowMs);
-  if (dayMs === today) return "Today";
-  if (dayMs === today - DAY) return "Yesterday";
-  return new Intl.DateTimeFormat("en-US", {
+  if (dayMs === today) return t("history.today");
+  if (dayMs === today - DAY) return t("history.yesterday");
+  return new Intl.DateTimeFormat(i18n.locale, {
     weekday: "short",
     month: "short",
     day: "numeric",
