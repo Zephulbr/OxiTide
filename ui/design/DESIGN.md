@@ -483,6 +483,13 @@ A single type shows its full table, or a `minmax(168px, 1fr)` tile grid, and pag
   The sidebar wordmark is fixed Manrope 800 (+0.01em). Rack uses **Manrope 700** for titles.
 - UI: Manrope (default) / Inter (Instrument default) / System / Custom, user-selectable;
   fallback always ends in `system-ui`.
+- Scripts (v1.1): Manrope and Inter ship Latin, Latin Extended, Cyrillic (+ext) and Greek
+  subsets, each a `@font-face` with its `unicode-range`, so a subset loads only when text
+  uses it. CJK is not bundled: the fallback is `var(--font-cjk, system-ui)`, and
+  `:root:lang(ja|ko|zh-Hans|zh-Hant)` in `tokens.css` sets `--font-cjk` to the system CJK
+  faces (Yu Gothic UI / Malgun Gothic / Microsoft YaHei UI / Microsoft JhengHei UI, then
+  Noto Sans CJK). Latin in CJK titles keeps the chosen face. Japanese uses
+  `line-break: strict`; Korean headings `word-break: keep-all`.
 - Weights 400/500/600/700; tabular numerals for all times and readouts.
 
 ### 2.3 Motion

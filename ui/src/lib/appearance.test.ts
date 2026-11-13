@@ -150,23 +150,23 @@ describe("clampQueueWidth", () => {
 
 describe("fontStack", () => {
   it("bundled and system picks", () => {
-    expect(fontStack("manrope", "")).toBe('"Manrope", system-ui, sans-serif');
-    expect(fontStack("inter", "")).toBe('"Inter", system-ui, sans-serif');
-    expect(fontStack("system", "")).toBe("system-ui, sans-serif");
+    expect(fontStack("manrope", "")).toBe('"Manrope", var(--font-cjk, system-ui), sans-serif');
+    expect(fontStack("inter", "")).toBe('"Inter", var(--font-cjk, system-ui), sans-serif');
+    expect(fontStack("system", "")).toBe("var(--font-cjk, system-ui), sans-serif");
   });
 
   it("custom names get quoted and fall back to system-ui", () => {
-    expect(fontStack("custom", "Commit Mono")).toBe('"Commit Mono", system-ui, sans-serif');
-    expect(fontStack("custom", "  ")).toBe("system-ui, sans-serif");
+    expect(fontStack("custom", "Commit Mono")).toBe('"Commit Mono", var(--font-cjk, system-ui), sans-serif');
+    expect(fontStack("custom", "  ")).toBe("var(--font-cjk, system-ui), sans-serif");
   });
 
   /// Review Focus: quotes and backslashes in a custom name must not break
   /// out of the CSS value.
   it("strips css-breaking characters from custom names", () => {
     expect(fontStack("custom", 'Evil"; } * { display:none')).toBe(
-      '"Evil; } * { display:none", system-ui, sans-serif',
+      '"Evil; } * { display:none", var(--font-cjk, system-ui), sans-serif',
     );
-    expect(fontStack("custom", "a\\b")).toBe('"ab", system-ui, sans-serif');
+    expect(fontStack("custom", "a\\b")).toBe('"ab", var(--font-cjk, system-ui), sans-serif');
   });
 });
 

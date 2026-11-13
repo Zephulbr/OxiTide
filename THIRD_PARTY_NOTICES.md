@@ -28,7 +28,9 @@ The UI vendors the following fonts under the SIL Open Font License 1.1:
   (<http://www.keshikan.net>, <https://github.com/keshikan/DSEG>), with Reserved
   Font Name "DSEG"
 
-Font files: `ui/src/assets/fonts/`. The showcase site carries unmodified copies
+Font files: `ui/src/assets/fonts/`. Manrope and Inter are the unmodified Latin,
+Latin Extended, Cyrillic, Cyrillic Extended and Greek subsets of the
+`@fontsource-variable` 5.2.8 packages. The showcase site carries unmodified copies
 of Manrope, Inter and DSEG7 Classic in `site/assets/fonts/`.
 
 ### SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007

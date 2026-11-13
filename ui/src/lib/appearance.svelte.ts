@@ -66,18 +66,22 @@ export function resolveDynamicColor(s: DynamicColorSetting, mode: UiMode): Dynam
   return mode === "rack" ? "off" : s;
 }
 
-/// The fallback chain always ends in system-ui (spec §6).
+/// The fallback after the chosen face: the language's CJK system fonts when
+/// the UI is in Japanese, Korean or Chinese (`--font-cjk`, set per `:lang()`
+/// in tokens.css), then system-ui (spec §6; v1.1 i18n spec §9).
+const FALLBACK = "var(--font-cjk, system-ui), sans-serif";
+
 export function fontStack(typeface: Typeface, custom: string): string {
   switch (typeface) {
     case "manrope":
-      return '"Manrope", system-ui, sans-serif';
+      return `"Manrope", ${FALLBACK}`;
     case "inter":
-      return '"Inter", system-ui, sans-serif';
+      return `"Inter", ${FALLBACK}`;
     case "system":
-      return "system-ui, sans-serif";
+      return FALLBACK;
     case "custom": {
       const name = custom.trim().replace(/["\\]/g, "");
-      return name ? `"${name}", system-ui, sans-serif` : "system-ui, sans-serif";
+      return name ? `"${name}", ${FALLBACK}` : FALLBACK;
     }
   }
 }
