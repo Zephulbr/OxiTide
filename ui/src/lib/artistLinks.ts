@@ -1,4 +1,7 @@
+import { t } from "./i18n.svelte";
+
 /// Display labels for TIDAL external-link site keys, plus a host fallback.
+/// Brand names stay as they are; the generic ones are getters.
 const LABELS: Record<string, string> = {
   TWITTER: "Twitter",
   FACEBOOK: "Facebook",
@@ -6,9 +9,9 @@ const LABELS: Record<string, string> = {
   YOUTUBE: "YouTube",
   TIKTOK: "TikTok",
   SNAPCHAT: "Snapchat",
-  OFFICIAL_HOMEPAGE: "Website",
-  WEBSITE: "Website",
-  HOMEPAGE: "Website",
+  get OFFICIAL_HOMEPAGE() { return t("artist.website"); },
+  get WEBSITE() { return t("artist.website"); },
+  get HOMEPAGE() { return t("artist.website"); },
   LAST_FM: "Last.fm",
   WIKIPEDIA: "Wikipedia",
   DISCOGS: "Discogs",
@@ -25,7 +28,7 @@ export function linkLabel(site: string, url: string): string {
   try {
     return new URL(url).hostname.replace(/^www\./, "");
   } catch {
-    return site || "Link";
+    return site || t("artist.link");
   }
 }
 

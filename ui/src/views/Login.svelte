@@ -4,6 +4,7 @@
   import Logo from "../lib/components/Logo.svelte";
   import Loading from "../lib/components/Loading.svelte";
   import KeyringNotice from "../lib/components/KeyringNotice.svelte";
+  import { t } from "../lib/i18n.svelte";
   let {
     onLogin,
     message = "",
@@ -60,20 +61,20 @@
 <div class="login">
   <div class="card lit">
     <Logo size={64} />
-    <h1>{message || "Sign in to TIDAL"}</h1>
+    <h1>{message || t("login.title")}</h1>
     <p class="intro muted">
-      OxiTide opens TIDAL in your browser. Sign in — the app unlocks automatically when you return.
+      {t("login.intro")}
     </p>
     <KeyringNotice />
 
     {#if waiting}
       <div class="waiting">
-        <Loading label="Waiting for your browser…" />
-        <button class="secondary" onclick={reset} disabled={busy}>Cancel</button>
+        <Loading label={t("login.waiting")} />
+        <button class="secondary" onclick={reset} disabled={busy}>{t("common.cancel")}</button>
       </div>
     {:else}
       <button class="primary" onclick={() => begin("deep")} disabled={busy}>
-        Log in with TIDAL
+        {t("login.button")}
       </button>
     {/if}
 
@@ -82,22 +83,22 @@
       onclick={() => (showFallback = !showFallback)}
       aria-expanded={showFallback}
     >
-      Browser didn't open the app?
+      {t("login.fallbackToggle")}
     </button>
 
     {#if showFallback}
       <div class="fallback">
         <button class="secondary" onclick={() => begin("paste")} disabled={busy}>
-          Open browser (paste-back)
+          {t("login.pasteBack")}
         </button>
         {#if url && !waiting}
           <p class="muted">
-            After logging in you'll land on an "Oops" page. Paste its full URL below.
+            {t("login.pasteHint")}
           </p>
         {/if}
-        <input placeholder="Paste the redirect URL" bind:value={redirect} />
+        <input placeholder={t("login.pastePlaceholder")} aria-label={t("login.pastePlaceholder")} bind:value={redirect} />
         <button class="secondary" onclick={complete} disabled={busy || !redirect}>
-          Complete login
+          {t("login.complete")}
         </button>
       </div>
     {/if}

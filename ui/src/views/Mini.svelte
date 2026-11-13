@@ -11,6 +11,7 @@
   import QueueRail from "../lib/components/QueueRail.svelte";
   import SeekBar from "../lib/components/SeekBar.svelte";
   import VolumeSlider from "../lib/components/VolumeSlider.svelte";
+  import { t } from "../lib/i18n.svelte";
 
   let {
     player,
@@ -41,13 +42,13 @@
     </div>
     <SeekBar {player} variant="inline" />
     <div class="transport">
-      <button class="ibtn" onclick={() => player.prev()} aria-label="Previous">
+      <button class="ibtn" onclick={() => player.prev()} aria-label={t("player.previous")}>
         <Icon name="skip-back-solid" size={20} />
       </button>
-      <button class="ibtn play" onclick={() => player.playPause()} aria-label="Play/Pause">
+      <button class="ibtn play" onclick={() => player.playPause()} aria-label={t("mini.playPause")}>
         <PlayPauseGlyph playing={player.state.playing} size={28} />
       </button>
-      <button class="ibtn" onclick={() => player.next()} aria-label="Next">
+      <button class="ibtn" onclick={() => player.next()} aria-label={t("player.next")}>
         <Icon name="skip-forward-solid" size={20} />
       </button>
     </div>
@@ -59,16 +60,16 @@
           heartFx = toggledFx(heartFx, fav);
           void favorites.toggleTrack(current.track_id);
         }}
-        aria-label={fav ? "Unfavorite" : "Favorite"}
-        title={fav ? "Unfavorite" : "Favorite"}
+        aria-label={fav ? t("menu.unfavorite") : t("menu.favorite")}
+        title={fav ? t("menu.unfavorite") : t("menu.favorite")}
       ><FavoriteHeart fx={heartFx} /></button>
       <button
         class="ibtn"
         class:active={player.state.shuffle}
         onclick={() => player.setShuffle(!player.state.shuffle)}
-        aria-label="Shuffle"
+        aria-label={t("menu.shuffle")}
         aria-pressed={player.state.shuffle}
-        title="Shuffle the rest of the queue"
+        title={t("player.shuffleHint")}
       ><Icon name="shuffle" size={18} /></button>
       <button
         class="ibtn"
@@ -90,22 +91,22 @@
         class="ibtn"
         class:active={mini.queueOpen}
         onclick={() => mini.toggleQueue()}
-        aria-label="Queue"
-        title="Queue"
+        aria-label={t("player.queue")}
+        title={t("player.queue")}
         aria-pressed={mini.queueOpen}
       ><Icon name="list-music" size={18} /></button>
       <button
         class="ibtn"
         onclick={() => void mini.exit()}
-        aria-label="Restore full window"
-        title="Restore full window"
+        aria-label={t("mini.restore")}
+        title={t("mini.restore")}
       ><Icon name="maximize-2" size={18} /></button>
     </div>
     <VolumeSlider {player} iconSize={16} width="calc(5 * 30px + 4 * 4px)" />
   {:else}
     <div class="empty">
       <Icon name="music" size={40} />
-      <p class="muted">Nothing playing</p>
+      <p class="muted">{t("player.nothingPlaying")}</p>
     </div>
   {/if}
 
@@ -117,7 +118,7 @@
       class="queue-sheet"
       role="dialog"
       aria-modal="true"
-      aria-label="Queue"
+      aria-label={t("player.queue")}
       tabindex="-1"
       use:focusTrap
     >

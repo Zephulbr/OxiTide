@@ -30,6 +30,7 @@
   import { dragDrop, dragSource, dropZone } from "../lib/dragDrop.svelte";
   import NameLink from "../lib/components/NameLink.svelte";
   import { playlistDropKey, playlistDropZone } from "../lib/playlistDrop";
+  import { t } from "../lib/i18n.svelte";
 
   let {
     nav,
@@ -69,9 +70,9 @@
   const summary = $derived.by(() => {
     const folders = entries.filter((entry) => entry.kind === "folder").length;
     const playlists = entries.length - folders;
-    const parts = [`${playlists} ${playlists === 1 ? "playlist" : "playlists"}`];
-    if (folders > 0) parts.push(`${folders} ${folders === 1 ? "folder" : "folders"}`);
-    return parts.join(" · ");
+    return folders > 0
+      ? t("playlists.summaryFolders", { playlists, folders })
+      : t("artist.playlistCount", { count: playlists });
   });
 
   /// A sort change or a refresh after an edit (`force`: fetch now, skip the
@@ -128,8 +129,8 @@
 
 <div class="playlists">
 {#if folderId}
-  <nav class="crumbs" aria-label="Breadcrumb">
-    <button onclick={() => nav.goto({ name: "playlists" })}>All playlists</button>
+  <nav class="crumbs" aria-label={t("playlists.breadcrumb")}>
+    <button onclick={() => nav.goto({ name: "playlists" })}>{t("playlists.filter.all")}</button>
     <Icon name="chevron-right" size={12} />
   </nav>
 {/if}
@@ -140,19 +141,19 @@
     {#if !loading && !error && entries.length > 0}<span class="summary tnum">{summary}</span>{/if}
   </div>
   <button class="tool-btn" onclick={() => playlistActions.openCreate()}>
-    <Icon name="plus" size={15} />New playlist
+    <Icon name="plus" size={15} />{t("playlists.newPlaylist")}
   </button>
   <button class="tool-btn" onclick={() => actions.openCreateFolder(folderId ?? "root")}>
-    <Icon name="folder-plus" size={15} />New folder
+    <Icon name="folder-plus" size={15} />{t("collection.newFolder")}
   </button>
   <SortSelect
     value={sortMode}
     options={[
-      { value: "date", label: "Recently updated" },
-      { value: "played", label: "Recently played" },
-      { value: "name", label: "Name A–Z" },
+      { value: "date", label: t("sort.option.recentlyUpdated") },
+      { value: "played", label: t("playlists.sort.recent") },
+      { value: "name", label: t("sort.option.nameAz") },
     ]}
-    label="Sort playlists"
+    label={t("playlists.sortLabel")}
     onchange={(value) => (sortMode = value as CollectionSort)}
   />
 </header>
@@ -165,7 +166,7 @@
 {:else if error}
   <ErrorState message={error} onRetry={load} />
 {:else if rows.length === 0}
-  <EmptyState message={folderId ? "This folder is empty." : "No playlists yet."} />
+  <EmptyState message={folderId ? t("playlists.folderEmpty") : t("picker.noPlaylists")} />
 {:else}
   <div class="grid pane" class:arrive role="list">
     {#each rows as entry (entry.kind === "folder" ? `f:${entry.id}` : `p:${entry.uuid}`)}
@@ -200,8 +201,7 @@
             <span class="art"><span class="clip"><FolderArt folderId={entry.id} /></span></span>
             <span class="title">{entry.name}</span>
             <span class="sub">
-              Folder · {entry.totalNumberOfItems}
-              {entry.totalNumberOfItems === 1 ? "playlist" : "playlists"}
+              {t("playlists.folderSub", { count: entry.totalNumberOfItems })}
             </span>
           </button>
         {:else}
@@ -232,7 +232,7 @@
               <button
                 type="button"
                 class="clip cover-hit"
-                aria-label={`Open ${entry.title}`}
+                aria-label={t("card.open", { title: entry.title })}
                 onclick={() => openPlaylist(entry.uuid)}
               >
                 <PlaylistCover
@@ -253,15 +253,15 @@
                   <button
                     type="button"
                     class="act shuffle"
-                    aria-label={`Shuffle ${entry.title}`}
-                    title="Shuffle"
+                    aria-label={t("card.shuffle", { title: entry.title })}
+                    title={t("menu.shuffle")}
                     onclick={() => play(entry.uuid, entry.title, true)}
                   ><Icon name="shuffle" size={16} /></button>
                   <button
                     type="button"
                     class="act play"
-                    aria-label={`Play ${entry.title}`}
-                    title="Play"
+                    aria-label={t("card.play", { title: entry.title })}
+                    title={t("menu.play")}
                     onclick={() => play(entry.uuid, entry.title, false)}
                   ><Icon name="play" size={18} /></button>
                 </span>
@@ -269,8 +269,7 @@
             </span>
             <span class="title"><NameLink label={entry.title} onOpen={() => openPlaylist(entry.uuid)} focusable={false} /></span>
             <span class="sub tnum">
-              {entry.numberOfTracks}
-              {entry.numberOfTracks === 1 ? "track" : "tracks"}
+              {t("common.trackCount", { count: entry.numberOfTracks })}
             </span>
           </div>
         {/if}

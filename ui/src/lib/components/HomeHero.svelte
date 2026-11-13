@@ -12,6 +12,7 @@
   import Cover from "./Cover.svelte";
   import Icon from "./Icon.svelte";
   import PlayPauseGlyph from "./PlayPauseGlyph.svelte";
+  import { t } from "../i18n.svelte";
 
   /// "Continue listening" as the first tiles of Home's Jump back in grid: the
   /// current (or restored) track spanning two slots, and the next queued
@@ -76,7 +77,7 @@
 <div class="continue">
   <section
     class="resume"
-    aria-label={playing ? "Now playing" : "Continue listening"}
+    aria-label={playing ? t("table.nowPlaying") : t("home.continueListening")}
     use:menuFor={() => menuItems(current, index)}
   >
     <div class="art">
@@ -86,8 +87,8 @@
         type="button"
         class="play-glyph"
         onclick={toggle}
-        aria-label={playing ? "Pause" : "Resume"}
-        title={playing ? "Pause" : "Resume"}
+        aria-label={playing ? t("player.pause") : t("home.resume")}
+        title={playing ? t("player.pause") : t("home.resume")}
       ><PlayPauseGlyph {playing} size={14} /></button>
     </div>
     <div class="meta">
@@ -105,7 +106,7 @@
         <div
           class="track"
           role="progressbar"
-          aria-label="Track progress"
+          aria-label={t("home.trackProgress")}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={Math.round(progress * 100)}
@@ -123,7 +124,7 @@
       type="button"
       class="next"
       onclick={playNext}
-      aria-label={`Play next: ${upNext.title}`}
+      aria-label={t("home.playUpNext", { title: upNext.title })}
       use:menuFor={() => menuItems(upNext, index + 1)}
     >
       <span class="next-thumb">
@@ -131,7 +132,7 @@
         <span class="play-glyph" aria-hidden="true"><Icon name="play" size={12} /></span>
       </span>
       <span class="next-text">
-        <span class="eyebrow">Up next</span>
+        <span class="eyebrow">{t("home.upNext")}</span>
         <span class="next-title">{upNext.title}</span>
         <span class="muted">{upNext.artist}</span>
       </span>

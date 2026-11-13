@@ -22,6 +22,7 @@
   import type { Player } from "../lib/player.svelte";
   import type { Toasts } from "../lib/toasts.svelte";
   import type { Nav } from "../lib/nav.svelte";
+  import { t } from "../lib/i18n.svelte";
 
   let {
     id,
@@ -77,7 +78,7 @@
     if (view.items.length === 0) return;
     const prepared = await trackFlags.filterPlayable(view.items, 0);
     if (!prepared) {
-      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      toasts.show(t("queue.dropHidden"), { severity: "info" });
       return;
     }
     playSource.set(origin, prepared.items.map((t) => t.id));
@@ -88,7 +89,7 @@
     if (view.items.length === 0) return;
     const prepared = await trackFlags.filterPlayable(view.items, 0);
     if (!prepared) {
-      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      toasts.show(t("queue.dropHidden"), { severity: "info" });
       return;
     }
     playSource.set(origin, prepared.items.map((t) => t.id));
@@ -98,7 +99,7 @@
   async function playFrom(index: number) {
     const prepared = await trackFlags.filterPlayable(view.items, index);
     if (!prepared) {
-      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      toasts.show(t("queue.dropHidden"), { severity: "info" });
       return;
     }
     playSource.set(origin, prepared.items.map((t) => t.id));
@@ -107,7 +108,7 @@
 
   async function share() {
     const copied = await copyText(shareUrl("mix", id));
-    toasts.show(copied ? "Link copied" : "Couldn't copy link", {
+    toasts.show(copied ? t("card.linkCopied") : t("card.linkCopyFailed"), {
       severity: copied ? "success" : "error",
     });
   }
@@ -135,18 +136,18 @@
       {#snippet actions()}
         <DetailAction
           icon={later.has("mix", id) ? "bookmark-minus" : "bookmark"}
-          label={later.has("mix", id) ? "Saved" : "Save"}
+          label={later.has("mix", id) ? t("detail.saved") : t("detail.save")}
           active={later.has("mix", id)}
-          title={later.has("mix", id) ? "Remove from Save for later" : "Save for later"}
+          title={later.has("mix", id) ? t("menu.laterRemove") : t("menu.laterAdd")}
           onclick={() => void later.toggle("mix", id)}
         />
         <DetailAction
           icon="list-plus"
-          label="Add"
-          title="Add mix to playlist"
+          label={t("detail.add")}
+          title={t("mix.addToPlaylist")}
           onclick={() => playlistActions.openPicker(view.items)}
         />
-        <DetailAction icon="share-2" label="Share" title="Copy link" onclick={share} />
+        <DetailAction icon="share-2" label={t("detail.share")} title={t("menu.copyLink")} onclick={share} />
       {/snippet}
     </DetailHeader>
     <TrackTable
@@ -165,7 +166,7 @@
     />
   </div>
 {:else}
-  <EmptyState message="Mix not found." />
+  <EmptyState message={t("mix.notFound")} />
 {/if}
 
 

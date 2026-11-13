@@ -1,8 +1,9 @@
 <script lang="ts">
   import type { Player } from "../player.svelte";
   import { shownVolume, volumeIcon } from "../player.svelte";
-  import { FIXED_VOLUME_HINT as FIXED_HINT } from "../volume";
+
   import Icon from "./Icon.svelte";
+  import { t } from "../i18n.svelte";
 
   let {
     player,
@@ -16,7 +17,8 @@
   const volume = $derived(shownVolume(player.state));
   const muted = $derived(volume === 0);
   const icon = $derived(fixed ? "lock" : volumeIcon(volume));
-  const level = $derived(`${volume * 100}%`);</script>
+  const level = $derived(`${volume * 100}%`);
+  const FIXED_HINT = $derived(t("volume.fixed"));</script>
 
 <div class="volume" class:fixed style:width={width} title={fixed ? FIXED_HINT : undefined}>
   <button
@@ -25,8 +27,8 @@
     data-floor
     disabled={fixed}
     onclick={() => player.toggleMute()}
-    aria-label={fixed ? FIXED_HINT : muted ? "Unmute" : "Mute"}
-    title={fixed ? FIXED_HINT : muted ? "Unmute" : "Mute"}
+    aria-label={fixed ? FIXED_HINT : muted ? t("volume.unmute") : t("volume.mute")}
+    title={fixed ? FIXED_HINT : muted ? t("volume.unmute") : t("volume.mute")}
     aria-pressed={fixed ? undefined : muted}
   ><Icon name={icon} size={iconSize} /></button>
   <div class="track" style:--level={level}>
@@ -35,7 +37,7 @@
       disabled={fixed}
       oninput={(e) => player.setVolume(Number((e.currentTarget as HTMLInputElement).value))}
       onchange={(e) => player.setVolume(Number((e.currentTarget as HTMLInputElement).value), true)}
-      aria-label="Volume"
+      aria-label={t("volume.label")}
       aria-valuetext={fixed ? "100%, fixed in exclusive mode" : `${Math.round(volume * 100)}%`}
     />
   </div>

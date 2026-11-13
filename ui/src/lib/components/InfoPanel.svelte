@@ -6,6 +6,7 @@
   import { trackQualityLabel } from "../quality";
   import ErrorState from "./ErrorState.svelte";
   import NameLink from "./NameLink.svelte";
+  import { t } from "../i18n.svelte";
 
   let {
     trackId,
@@ -31,14 +32,14 @@
 </script>
 
 {#if loading}
-  <p class="muted pad">Loading track info…</p>
+  <p class="muted pad">{t("info.loading")}</p>
 {:else if error}
   <ErrorState message={error} onRetry={() => info.retry()} />
 {:else if track}
   <div class="info-panel">
     <dl class="facts">
       <div>
-        <dt>Album</dt>
+        <dt>{t("table.column.album")}</dt>
         <dd>
           {#if track.album}
             {@const album = track.album}
@@ -49,7 +50,7 @@
         </dd>
       </div>
       <div>
-        <dt>Artists</dt>
+        <dt>{t("info.artists")}</dt>
         <dd>
           {#each track.artists as artist, i (artist.id)}
             {#if i > 0}<span class="sep">·</span>{/if}<NameLink label={artist.name} onOpen={() => go({ name: "artist", id: artist.id })} />
@@ -57,18 +58,18 @@
         </dd>
       </div>
       <div>
-        <dt>Duration</dt>
+        <dt>{t("info.duration")}</dt>
         <dd>{formatDuration(track.duration)}</dd>
       </div>
       {#if quality}
         <div>
-          <dt>Quality</dt>
+          <dt>{t("table.column.quality")}</dt>
           <dd>{quality}</dd>
         </div>
       {/if}
     </dl>
 
-    <section class="credits" aria-label="Credits">
+    <section class="credits" aria-label={t("info.credits")}>
       {#if creditsError}
         <p class="error">{creditsError}</p>
         <button class="retry" onclick={() => info.retry()}>Retry</button>
@@ -84,12 +85,12 @@
           </div>
         {/each}
       {:else if credits}
-        <p class="muted">No credits available for this track.</p>
+        <p class="muted">{t("info.noCredits")}</p>
       {/if}
     </section>
   </div>
 {:else}
-  <p class="muted pad">Track not found.</p>
+  <p class="muted pad">{t("info.notFound")}</p>
 {/if}
 
 <style>

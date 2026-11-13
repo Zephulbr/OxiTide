@@ -13,6 +13,7 @@
   import Cover from "./Cover.svelte";
   import Icon from "./Icon.svelte";
   import PlaylistCover from "./PlaylistCover.svelte";
+  import { t } from "../i18n.svelte";
 
   let { hit, nav, toasts }: { hit: TopHit; nav: Nav; toasts: Toasts } = $props();
 
@@ -24,7 +25,7 @@
       case "artist":
         return {
           title: hit.item.name,
-          label: "Artist",
+          label: t("card.artist"),
           artists: [] as ArtistRef[],
           detail: "",
           route: { name: "artist", id: hit.item.id } as Route,
@@ -34,7 +35,7 @@
         const type = hit.item.type?.toUpperCase();
         return {
           title: hit.item.title,
-          label: type === "EP" ? "EP" : type === "SINGLE" ? "Single" : "Album",
+          label: type === "EP" ? t("release.ep") : type === "SINGLE" ? t("release.single") : t("route.album"),
           artists: hit.item.artists,
           detail: /^\d{4}$/.test(year) ? year : "",
           route: { name: "album", id: hit.item.id } as Route,
@@ -43,7 +44,7 @@
       case "track":
         return {
           title: hit.item.title,
-          label: "Track",
+          label: t("search.track"),
           artists: hit.item.artists,
           detail: hit.item.album?.title ?? "",
           route: hit.item.album ? ({ name: "album", id: hit.item.album.id } as Route) : null,
@@ -51,9 +52,9 @@
       case "playlist":
         return {
           title: hit.item.title,
-          label: "Playlist",
+          label: t("route.playlist"),
           artists: [] as ArtistRef[],
-          detail: `${hit.item.numberOfTracks} ${hit.item.numberOfTracks === 1 ? "track" : "tracks"}`,
+          detail: t("common.trackCount", { count: hit.item.numberOfTracks }),
           route: { name: "playlist", id: hit.item.uuid } as Route,
         };
     }
@@ -62,7 +63,7 @@
   async function playTracks(tracks: Track[], from: PlayFrom | null) {
     const prepared = await trackFlags.filterPlayable(tracks, 0);
     if (!prepared) {
-      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      toasts.show(t("queue.dropHidden"), { severity: "info" });
       return;
     }
     playSource.set(from, prepared.items.map((t) => t.id));
@@ -125,7 +126,7 @@
 <!-- One card, several targets: the card opens the page (a stretched button
      under the rest), the artists open theirs, and Play plays. -->
 <div class="top-hit" class:round={hit.kind === "artist"} style:--hit-tint={tint ?? undefined}>
-  <button type="button" class="open" aria-label={`Open ${view.title}`} onclick={open} disabled={!view.route}></button>
+  <button type="button" class="open" aria-label={t("card.open", { title: view.title })} onclick={open} disabled={!view.route}></button>
   <span class="art-box">
     <span class="art" aria-hidden="true">
       {#if hit.kind === "artist"}
@@ -138,7 +139,7 @@
         <PlaylistCover owned={hit.item.owned} playlist={hit.item.uuid} image={hit.item.squareImage} size={320} radius={6} alt="" />
       {/if}
     </span>
-    <button type="button" class="play" aria-label={`Play ${view.title}`} title="Play" onclick={play}>
+    <button type="button" class="play" aria-label={t("card.play", { title: view.title })} title={t("menu.play")} onclick={play}>
       <Icon name="play" size={20} />
     </button>
   </span>

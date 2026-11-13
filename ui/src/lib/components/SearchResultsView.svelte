@@ -25,6 +25,7 @@
   import MediaCard from "./MediaCard.svelte";
   import SearchTopHit from "./SearchTopHit.svelte";
   import TrackTable from "./TrackTable.svelte";
+  import { t, type MessageKey } from "../i18n.svelte";
 
   let {
     results,
@@ -61,7 +62,7 @@
   const full = createTrackView(() => allTracks);
 
   const shelves = $derived(shelfOrder(top));
-  const SHELF_TITLES: Record<ShelfKind, string> = { artists: "Artists", albums: "Albums", playlists: "Playlists" };
+  const SHELF_TITLES: Record<ShelfKind, MessageKey> = { artists: "route.profiles", albums: "route.albums", playlists: "route.playlists" };
   const cards = $derived({
     artists: artistRow(results.artists.items).map(artistCard),
     albums: results.albums.items.map(albumCard),
@@ -75,7 +76,7 @@
     const start = track ? Math.max(0, allTracks.indexOf(track)) : 0;
     const prepared = await trackFlags.filterPlayable(allTracks, start);
     if (!prepared) {
-      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      toasts.show(t("queue.dropHidden"), { severity: "info" });
       return;
     }
     playSource.set(
@@ -97,14 +98,14 @@
   <button
     class="list-action"
     onclick={() => playFrom(undefined, true)}
-    aria-label="Shuffle"
-    title="Shuffle"
+    aria-label={t("menu.shuffle")}
+    title={t("menu.shuffle")}
   ><Icon name="shuffle" size={16} /></button>
   <button
     class="list-action"
     onclick={() => playFrom(undefined)}
-    aria-label="Play all"
-    title="Play all"
+    aria-label={t("artist.playAll")}
+    title={t("artist.playAll")}
   ><Icon name="play" size={16} /></button>
 {/snippet}
 
@@ -114,7 +115,7 @@
   {:else if pages.hasMore(type)}
     <div class="more">
       <button class="tool-btn" onclick={() => void pages.more(type)} disabled={pages.loading(type)}>
-        {pages.loading(type) ? "Loading…" : "Load more"}
+        {pages.loading(type) ? t("common.loading") : t("search.loadMore")}
       </button>
     </div>
   {/if}
@@ -126,16 +127,16 @@
   <div class="overview" class:with-top={top !== null}>
     {#if top}
       <section class="top" aria-labelledby="search-top">
-        <h3 id="search-top">Top result</h3>
+        <h3 id="search-top">{t("search.topResult")}</h3>
         <SearchTopHit hit={top} {nav} {toasts} />
       </section>
     {/if}
     {#if allTracks.length > 0}
       <section class="tracks" aria-labelledby="search-tracks">
         <div class="list-head">
-          <h3 id="search-tracks">Tracks</h3>
+          <h3 id="search-tracks">{t("route.tracks")}</h3>
           {#if allTracks.length > previewCount}
-            <button type="button" class="view-all" aria-label="See all tracks" onclick={() => onKind("tracks")}>See all</button>
+            <button type="button" class="view-all" aria-label={t("search.seeAllKind", { kind: "tracks" })} onclick={() => onKind("tracks")}>{t("search.seeAll")}</button>
           {/if}
           {@render trackActions()}
         </div>
@@ -160,9 +161,9 @@
   {#each shelves as shelf (shelf)}
     {#if cards[shelf].length > 0}
       <section class="block">
-        <Carousel title={SHELF_TITLES[shelf]}>
+        <Carousel title={t(SHELF_TITLES[shelf])}>
           {#snippet controls()}
-            <button type="button" class="view-all" aria-label={`See all ${shelf}`} onclick={() => onKind(shelf)}>See all</button>
+            <button type="button" class="view-all" aria-label={t("search.seeAllKind", { kind: shelf })} onclick={() => onKind(shelf)}>{t("search.seeAll")}</button>
           {/snippet}
           {#each cards[shelf] as item (item.id)}
             <MediaCard {item} variant="carousel" onclick={open(item)} />
@@ -173,10 +174,10 @@
   {/each}
 {:else if kind === "tracks"}
   {#if allTracks.length === 0}
-    <EmptyState message={`No tracks for “${query}”`} />
+    <EmptyState message={t("search.noKind", { kind: "tracks", query })} />
   {:else}
     <div class="list-head">
-      <h3>Tracks</h3>
+      <h3>{t("route.tracks")}</h3>
       {@render trackActions()}
     </div>
     <TrackTable
@@ -201,7 +202,7 @@
         ? pages.items("albums").map(albumCard)
         : pages.items("playlists").map(playlistCard)}
   {#if items.length === 0}
-    <EmptyState message={`No ${kind} for “${query}”`} />
+    <EmptyState message={t("search.noKind", { kind, query })} />
   {:else}
     <div class="grid pane">
       {#each items as item (item.id)}

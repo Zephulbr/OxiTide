@@ -22,6 +22,7 @@
   import type { PlaylistActions } from "../lib/playlists.svelte";
   import type { Player } from "../lib/player.svelte";
   import type { Toasts } from "../lib/toasts.svelte";
+  import { t, tSplit, type MessageKey } from "../lib/i18n.svelte";
 
   let {
     nav,
@@ -69,12 +70,12 @@
   /// tab, and resets when the search is cleared.
   let kind = $state<SearchKind | "all">("all");
   const pages = createSearchPages((query, type, offset) => api.searchType(query, type, offset));
-  const KIND_LABELS: Record<SearchKind | "all", string> = {
-    all: "All",
-    tracks: "Tracks",
-    albums: "Albums",
-    artists: "Artists",
-    playlists: "Playlists",
+  const KIND_LABELS: Record<SearchKind | "all", MessageKey> = {
+    all: "search.kind.all",
+    tracks: "route.tracks",
+    albums: "route.albums",
+    artists: "route.profiles",
+    playlists: "route.playlists",
   };
   const kinds = $derived(search.results ? kindsWithResults(search.results) : []);
   /// A type the current results lack falls back to the overview.
@@ -308,7 +309,7 @@
      title, the browse rows and the results share the one edge. -->
 <div class="explore">
 <header class="page-head explore-head" class:searching>
-<h2>Explore</h2>
+<h2>{t("route.explore")}</h2>
 <div class="search-block">
 <div class="search-bar">
   <span class="search-icon" aria-hidden="true"><Icon name="search" size={16} /></span>
@@ -327,8 +328,8 @@
       searchFocused = false;
       activeSuggestion = -1;
     }}
-    placeholder="Search TIDAL"
-    aria-label="Search TIDAL"
+    placeholder={t("search.placeholder")}
+    aria-label={t("search.placeholder")}
     autocomplete="off"
     spellcheck="false"
     role="combobox"
@@ -340,23 +341,23 @@
       : undefined}
   />
   {#if search.loading && search.results}
-    <Loading label="Searching…" />
+    <Loading label={t("search.searching")} />
   {/if}
   {#if showSuggestions}
     <div class="suggest">
       <div class="suggest-head">
-        <span>Recent searches</span>
+        <span>{t("search.recent")}</span>
         <button
           type="button"
           class="suggest-clear"
-          aria-label="Clear recent searches"
-          title="Clear recent searches"
+          aria-label={t("search.clearRecent")}
+          title={t("search.clearRecent")}
           onmousedown={(event) => event.preventDefault()}
           onclick={clearHistory}
         ><Icon name="x" size={14} /></button>
       </div>
       <!-- The listbox wraps only the options; focus stays in the combobox. -->
-      <div id="search-suggestions" role="listbox" aria-label="Recent searches">
+      <div id="search-suggestions" role="listbox" aria-label={t("search.recent")}>
         {#each suggestions as suggestion, i (suggestion)}
           <button
             id={`search-suggestion-${i}`}
@@ -379,13 +380,13 @@
   {/if}
 </div>
 {#if ready && !searching && chips.length > 0}
-  <div class="chips" role="group" aria-label="Search suggestions">
+  <div class="chips" role="group" aria-label={t("search.suggestions")}>
     {#each chips as chip (chip.value)}
       <button
         type="button"
         class="chip"
         onclick={() => chooseSuggestion(chip.value)}
-        title={chip.recent ? `Search again for “${chip.value}”` : `Search for ${chip.value}`}
+        title={chip.recent ? t("search.again", { query: chip.value }) : t("search.for", { query: chip.value })}
       >
         <Icon name={chip.recent ? "history" : "user"} size={13} />
         <span>{chip.value}</span>
@@ -395,30 +396,31 @@
 {/if}
 {#if searching && kinds.length > 1}
   <!-- The results' type filter, in the suggestion chips' place. -->
-  <div class="chips kinds" role="group" aria-label="Show results">
+  <div class="chips kinds" role="group" aria-label={t("search.showResults")}>
     {#each ["all", ...kinds] as const as option (option)}
       <button
         type="button"
         class="chip"
         aria-pressed={shownKind === option}
         onclick={() => (kind = option)}
-      >{KIND_LABELS[option]}</button>
+      >{t(KIND_LABELS[option])}</button>
     {/each}
   </div>
 {/if}
 {#if searching && corrected && search.results}
-  <p class="corrected" role="status">Showing results for <strong>{corrected}</strong></p>
+  {@const [before, after] = tSplit("search.corrected", "query")}
+  <p class="corrected" role="status">{before}<strong>{corrected}</strong>{after}</p>
 {/if}
 </div>
 </header>
 
 {#if searching}
   {#if search.loading && !search.results && !search.error}
-    <Loading label="Searching…" />
+    <Loading label={t("search.searching")} />
   {:else if search.error}
     <ErrorState message={search.error} onRetry={() => search.retry()} />
   {:else if noResults}
-    <EmptyState message={`No results for “${search.settledQuery}”`} />
+    <EmptyState message={t("search.noResults", { query: search.settledQuery })} />
   {:else if search.results}
     <SearchResultsView
       results={search.results}
@@ -438,7 +440,7 @@
 {:else}
   {#if newItems.length > 0}
     <section class="shelf reveal">
-      <Carousel title="New to you">
+      <Carousel title={t("explore.newToYou")}>
         {#each newItems as item (item.id)}
           <MediaCard {item} variant="carousel" onclick={open(item)} />
         {/each}
@@ -450,7 +452,7 @@
   {:else if exploreError}
     <ErrorState message={exploreError} onRetry={loadExplore} />
   {:else if arranged.quick.length + arranged.rest.length === 0}
-    <EmptyState message="Nothing to explore yet." />
+    <EmptyState message={t("explore.empty")} />
   {:else}
     <div class="reveal later">
       <PageSections sections={[...arranged.quick, ...arranged.rest]} {nav} {player} {toasts} source="explore" />

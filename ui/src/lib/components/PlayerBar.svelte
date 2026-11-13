@@ -102,7 +102,7 @@
   const from = $derived.by(() => {
     const current = player.state.current;
     if (!current) return null;
-    if (current.autoplay) return { label: "From", name: "Autoplay", open: undefined };
+    if (current.autoplay) return { label: t("playFrom.other"), name: t("queue.autoplay"), open: undefined };
     const source = playSource.fromFor(current.track_id);
     if (source?.name) {
       const route = source.route;
@@ -173,10 +173,10 @@
   const readout = $derived(streamReadout(player.state.stream));
   const outputLabel = $derived(
     player.state.bit_perfect
-      ? "Bit-perfect"
+      ? t("player.bitPerfectBadge")
       : player.state.output_mode === "exclusive"
-        ? "Exclusive output"
-        : "Shared output",
+        ? t("player.exclusiveOutput")
+        : t("player.sharedOutput"),
   );
 
   /// The plate's menu: the streaming tiers (picking one restarts the track at
@@ -190,7 +190,7 @@
           id: `quality-${tier.value}`,
           label: tier.label,
           detail: tier.hint,
-          section: "Streaming quality",
+          section: t("player.streamingQuality"),
           selected: tier.value === preferred,
           icon: tier.value === preferred ? "check" : undefined,
           run: () => {
@@ -202,7 +202,7 @@
         id: "quality-now",
         label: readout
           ? [readout.codec, outputLabel, readout.spec].filter(Boolean).join(", ")
-          : "Nothing streaming yet",
+          : t("player.nothingStreaming"),
         note: true,
         divider: true,
         content: nowPlaying,
@@ -211,7 +211,7 @@
       ...outputItems(),
       {
         id: "quality-settings",
-        label: "Output settings…",
+        label: t("player.outputSettings"),
         icon: "settings",
         divider: true,
         run: () => {
@@ -233,8 +233,8 @@
       return {
         id: `output-${device.id}`,
         label: displayName(device),
-        detail: device.connected ? modeLabel(device) : "Not connected",
-        section: "Output",
+        detail: device.connected ? modeLabel(device) : t("player.notConnected"),
+        section: t("player.output"),
         divider: i === 0,
         selected: current,
         icon: icon ?? undefined,

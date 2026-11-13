@@ -12,6 +12,7 @@
   import Icon from "./Icon.svelte";
   import MediaCard from "./MediaCard.svelte";
   import PageLinkGrid from "./PageLinkGrid.svelte";
+  import { t } from "../i18n.svelte";
 
   let {
     sections,
@@ -132,7 +133,7 @@
     {#if showTitle && section.title.trim()}
       <div class="head"><h3>{section.title}</h3></div>
     {/if}
-    <PageLinkGrid items={section.items} label={section.title || "Explore"} open={activate} />
+    <PageLinkGrid items={section.items} label={section.title || t("route.explore")} open={activate} />
   {:else if effective === "carousel"}
     <Carousel title={section.title}>
       {#each section.items as item, i (item.id || `${item.title}-${i}`)}
@@ -157,8 +158,8 @@
               class="control"
               onclick={() => playAll(tracks, section.title)}
               disabled={busy}
-              aria-label="Play all"
-              title="Play all"
+              aria-label={t("artist.playAll")}
+              title={t("artist.playAll")}
             ><Icon name="play" size={16} /></button>
           {/if}
           {#if capped}
@@ -166,7 +167,7 @@
               type="button"
               class="view-all"
               onclick={() => nav.goto({ name: "section", source, title: section.title })}
-            >View all</button>
+            >{t("artist.viewAll")}</button>
           {/if}
         </div>
       </div>

@@ -8,6 +8,7 @@
   import type { Nav } from "../lib/nav.svelte";
   import { load as loadCached, peek } from "../lib/viewCache";
   import { feedSource } from "../lib/viewData";
+  import { t } from "../lib/i18n.svelte";
 
   let { nav }: { nav: Nav } = $props();
 
@@ -39,7 +40,7 @@
 
 <div class="feed-page">
   <header class="page-head">
-    <h2>Feed</h2>
+    <h2>{t("route.feed")}</h2>
     {#if !loading && !error && activities.length > 0}
       <span class="muted count tnum" class:arrive>{activities.length} {activities.length === 1 ? "release" : "releases"}</span>
     {/if}
@@ -49,7 +50,7 @@
   {:else if error}
     <ErrorState message={error} onRetry={load} />
   {:else if activities.length === 0}
-    <EmptyState message="No updates yet." />
+    <EmptyState message={t("feed.empty")} />
   {:else}
     <div class:arrive><FeedTimeline {activities} {nav} /></div>
   {/if}

@@ -13,6 +13,7 @@
   import SortSelect from "../lib/components/SortSelect.svelte";
   import type { Nav } from "../lib/nav.svelte";
   import { appearance } from "../lib/appearance.svelte";
+  import { t } from "../lib/i18n.svelte";
 
   let { nav }: { nav: Nav } = $props();
 
@@ -114,7 +115,7 @@
       {@render face(card.picture)}
       <span class="caption">
         <span class="title">{card.name}</span>
-        <span class="you">Your profile</span>
+        <span class="you">{t("profile.yours")}</span>
       </span>
     </button>
   {:else}
@@ -122,7 +123,7 @@
       {@render face(card.picture)}
       <span class="caption">
         <span class="title">{card.name}</span>
-        <span class="you">Your profile</span>
+        <span class="you">{t("profile.yours")}</span>
       </span>
     </div>
   {/if}
@@ -132,29 +133,29 @@
   <header class="page-head">
     <!-- The count sits under the title, as on Albums and Playlists. -->
     <div class="title-block">
-      <h2>Profiles</h2>
+      <h2>{t("nav.profiles")}</h2>
       <!-- Space held while loading (no "0 artists" flash, no header reflow). -->
       <span
         class="summary tnum"
         class:arrive={arrive && !loading}
         style:visibility={loading || error ? "hidden" : undefined}
-      >{others.length} {others.length === 1 ? "artist" : "artists"}</span>
+      >{t("profiles.count", { count: others.length })}</span>
     </div>
     <input
       class="search-input filter"
-      placeholder="Search artists"
+      placeholder={t("profiles.search")}
       value={query}
       oninput={(event) => (query = event.currentTarget.value)}
-      aria-label="Search artists"
+      aria-label={t("profiles.search")}
     />
     <SortSelect
       value={sortMode}
       options={[
-        { value: "date", label: "Date added" },
-        { value: "name", label: "Name A–Z" },
-        { value: "name-desc", label: "Name Z–A" },
+        { value: "date", label: t("table.column.added") },
+        { value: "name", label: t("sort.option.nameAz") },
+        { value: "name-desc", label: t("sort.option.nameZa") },
       ]}
-      label="Sort artists"
+      label={t("profiles.sortLabel")}
       onchange={(value) => (sortMode = value as ArtistSort)}
     />
   </header>
@@ -164,9 +165,9 @@
   {:else if error}
     <ErrorState message={error} onRetry={load} />
   {:else if others.length === 0 && !mine}
-    <EmptyState message="No artists yet." />
+    <EmptyState message={t("profiles.empty")} />
   {:else if shown.length === 0 && !mineShown}
-    <p class="muted empty">No artists match “{query.trim()}”.</p>
+    <p class="muted empty">{t("profiles.noMatch", { query: query.trim() })}</p>
   {:else if groups}
     {#if mineShown}
       <div class="grid pane own-row" class:arrive>{@render own(mineShown)}</div>

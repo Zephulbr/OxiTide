@@ -31,6 +31,7 @@
   import type { Toasts } from "../lib/toasts.svelte";
   import type { PlaylistActions } from "../lib/playlists.svelte";
   import type { Player } from "../lib/player.svelte";
+  import { t } from "../lib/i18n.svelte";
   let {
     nav,
     id,
@@ -173,7 +174,7 @@
         playlist.description = renameDescription.trim() || null;
       }
       renaming = false;
-      toasts.show("Playlist renamed", { severity: "success" });
+      toasts.show(t("collection.playlistRenamed"), { severity: "success" });
     } catch (e) {
       toasts.show(errorMessage(e), { severity: "error" });
     }
@@ -188,7 +189,7 @@
       await api.setPlaylistPublic(id, next);
       invalidate(source.key);
       if (playlist) playlist.publicPlaylist = next;
-      toasts.show(next ? "Playlist is now public" : "Playlist is now private", {
+      toasts.show(next ? t("playlist.nowPublic") : t("playlist.nowPrivate"), {
         severity: "success",
       });
     } catch (e) {
@@ -201,7 +202,7 @@
 
   async function share() {
     const copied = await copyText(shareUrl("playlist", id));
-    toasts.show(copied ? "Link copied" : "Couldn't copy link", {
+    toasts.show(copied ? t("card.linkCopied") : t("card.linkCopyFailed"), {
       severity: copied ? "success" : "error",
     });
   }
@@ -211,7 +212,7 @@
     const items: MenuItem[] = [
       {
         id: "refresh",
-        label: "Refresh",
+        label: t("playlist.refresh"),
         icon: "rotate-cw",
         run: () => {
           invalidatePlaylistCovers(id);
@@ -228,13 +229,13 @@
       const title = playlist.title;
       items.push({
         id: "collaborators",
-        label: "Collaborators…",
+        label: t("menu.collaborators"),
         icon: "users",
         run: () => collaboratorsDialog.open({ uuid: id, title }),
       });
       items.push({
         id: "delete",
-        label: "Delete playlist",
+        label: t("playlist.delete"),
         icon: "trash-2",
         danger: true,
         divider: true,
@@ -251,7 +252,7 @@
       invalidate(source.key);
       invalidatePlaylistCovers(id);
       await collection.refresh();
-      toasts.show("Playlist deleted", { severity: "success" });
+      toasts.show(t("playlist.deleted"), { severity: "success" });
       nav.goto({ name: "playlists" });
     } catch (e) {
       toasts.show(errorMessage(e), { severity: "error" });
@@ -262,7 +263,7 @@
     if (busy) return;
     const sourceIndex = view.sourceIndex(index);
     if (sourceIndex < 0) return;
-    await removeSources([sourceIndex], "Removed from playlist");
+    await removeSources([sourceIndex], t("playlist.removedOne"));
   }
 
   /// Remove a multi-row selection (displayed-row indices) in one request.
@@ -274,7 +275,7 @@
     if (sources.length === 0) return;
     await removeSources(
       sources,
-      `Removed ${sources.length} ${sources.length === 1 ? "track" : "tracks"} from playlist`,
+      t("playlist.removedMany", { count: sources.length }),
     );
   }
 
@@ -294,7 +295,7 @@
         severity: "success",
         action:
           rows.length === sources.length
-            ? { label: "Undo", run: () => void undoRemove(rows) }
+            ? { label: t("common.undo"), run: () => void undoRemove(rows) }
             : undefined,
       });
     } catch (e) {
@@ -309,7 +310,7 @@
       await api.restorePlaylistItems(id, rows);
       invalidatePlaylistCovers(id);
       await pager.refresh();
-      toasts.show(rows.length === 1 ? "Track restored" : `${rows.length} tracks restored`, {
+      toasts.show(t("playlist.restored", { count: rows.length }), {
         severity: "success",
       });
     } catch (e) {
@@ -340,7 +341,7 @@
     if (start < 0) return;
     const prepared = await trackFlags.filterPlayable(view.items, start);
     if (!prepared) {
-      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      toasts.show(t("queue.dropHidden"), { severity: "info" });
       return;
     }
     playSource.set(origin, prepared.items.map((t) => t.id));
@@ -352,7 +353,7 @@
     if (pager.error) return;
     const prepared = await trackFlags.filterPlayable(view.items, 0);
     if (!prepared) {
-      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      toasts.show(t("queue.dropHidden"), { severity: "info" });
       return;
     }
     playSource.set(origin, prepared.items.map((t) => t.id));
@@ -364,7 +365,7 @@
     if (pager.error) return;
     const prepared = await trackFlags.filterPlayable(view.items, 0);
     if (!prepared) {
-      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      toasts.show(t("queue.dropHidden"), { severity: "info" });
       return;
     }
     playSource.set(origin, prepared.items.map((t) => t.id));
@@ -401,7 +402,7 @@
             tracks={pager.items}
             size={640}
             radius={12}
-            alt={`${data.title} cover`}
+            alt={t("detail.coverAlt", { title: data.title })}
           />
         {/snippet}
         {#snippet tools()}
@@ -411,41 +412,41 @@
           {#if data.owned}
             <DetailAction
               icon="pencil"
-              label="Edit"
-              title="Edit playlist"
+              label={t("detail.edit")}
+              title={t("playlist.edit")}
               onclick={startRename}
             />
             {#if publicState !== null}
               <DetailAction
                 icon={publicState ? "globe" : "lock"}
-                label={publicState ? "Public" : "Private"}
+                label={publicState ? t("playlist.public") : t("playlist.private")}
                 active={publicState}
                 fill={false}
-                title={publicState ? "Make private" : "Make public"}
+                title={publicState ? t("playlist.makePrivate") : t("playlist.makePublicAction")}
                 disabled={publicBusy}
                 onclick={togglePublic}
               />
             {/if}
           {/if}
-          <DetailAction icon="share-2" label="Share" title="Copy link" onclick={share} />
-          <DetailAction icon="ellipsis" label="More" title="More actions" onclick={openMore} />
+          <DetailAction icon="share-2" label={t("detail.share")} title={t("menu.copyLink")} onclick={share} />
+          <DetailAction icon="ellipsis" label={t("detail.more")} title={t("detail.moreActions")} onclick={openMore} />
         {/snippet}
       </DetailHeader>
     {/if}
     {#if renaming}
-      <Modal title="Edit playlist" onclose={() => (renaming = false)}>
+      <Modal title={t("playlist.edit")} onclose={() => (renaming = false)}>
         <div class="rename-form">
           <label>
-            <span>Name</span>
-            <input class="search-input" bind:value={renameTitle} aria-label="Playlist name" />
+            <span>{t("common.name")}</span>
+            <input class="search-input" bind:value={renameTitle} aria-label={t("playlist.nameLabel")} />
           </label>
           <label>
-            <span>Description</span>
-            <textarea bind:value={renameDescription} aria-label="Playlist description"></textarea>
+            <span>{t("common.description")}</span>
+            <textarea bind:value={renameDescription} aria-label={t("picker.descriptionLabel")}></textarea>
           </label>
           <div class="rename-actions">
-            <button class="ghost" onclick={() => (renaming = false)}>Cancel</button>
-            <button class="primary" onclick={saveRename}>Save</button>
+            <button class="ghost" onclick={() => (renaming = false)}>{t("common.cancel")}</button>
+            <button class="primary" onclick={saveRename}>{t("common.save")}</button>
           </div>
         </div>
       </Modal>
@@ -475,8 +476,8 @@
   </div>
   {#if confirmingDelete}
     <ConfirmDialog
-      title="Delete playlist?"
-      message={`Delete "${playlist?.title ?? "this playlist"}"? This cannot be undone.`}
+      title={t("collection.deletePlaylist")}
+      message={t("collection.deletePlaylistMessage", { name: playlist?.title ?? t("playlist.thisPlaylist") })}
       onconfirm={confirmDelete}
       oncancel={() => (confirmingDelete = false)}
     />

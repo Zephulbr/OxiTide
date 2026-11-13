@@ -1,5 +1,6 @@
 import type { EditableProfile, ProfileEdit, ProfileLink } from "./api";
 import { isHttpUrl, type Brand } from "./artistLinks";
+import { t } from "./i18n.svelte";
 
 /// One row of the editor's Links: a fixed social field (`social` is its
 /// TIDAL link type) or a free link (`social` null, typed by its host).
@@ -133,7 +134,9 @@ export function missingSocials(links: LinkRow[]): Social[] {
 
 /// TIDAL's rule for a username (its `handle`), worded as TIDAL's editor
 /// words it under the field.
-export const USERNAME_RULE = "Use only the letters a-z, numbers 0-9 and underscores.";
+export function usernameRule(): string {
+  return t("profileEdit.usernameRule");
+}
 
 /// The username as it will be saved: trimmed, without a leading "@".
 export function cleanUsername(raw: string): string {
@@ -148,9 +151,9 @@ export function usernameValid(raw: string): boolean {
 function rowProblem(row: LinkRow): string | null {
   const href = rowHref(row);
   if (href === "") return null;
-  if (!isHttpUrl(href)) return `"${href}" isn't a web link.`;
+  if (!isHttpUrl(href)) return t("profileEdit.notWebLink", { href });
   const social = socialFor(row.social);
-  if (social && !onHost(hostOf(href) ?? "", social.hosts)) return `"${href}" isn't a link to ${social.label}.`;
+  if (social && !onHost(hostOf(href) ?? "", social.hosts)) return t("profileEdit.wrongSite", { href, site: social.label });
   return null;
 }
 
@@ -158,9 +161,9 @@ function rowProblem(row: LinkRow): string | null {
 /// username) in the save's dry run. A username that was set can't be
 /// cleared.
 export function draftProblem(draft: ProfileDraft, original?: EditableProfile): string | null {
-  if (draft.name.trim() === "") return "Your profile needs a name.";
-  if (!usernameValid(draft.handle)) return USERNAME_RULE;
-  if (original?.handle && cleanUsername(draft.handle) === "") return "Your profile needs a username.";
+  if (draft.name.trim() === "") return t("profileEdit.needsName");
+  if (!usernameValid(draft.handle)) return usernameRule();
+  if (original?.handle && cleanUsername(draft.handle) === "") return t("profileEdit.needsUsername");
   for (const row of draft.links) {
     const problem = rowProblem(row);
     if (problem) return problem;

@@ -24,6 +24,7 @@
   import Loading from "../lib/components/Loading.svelte";
   import MediaCard from "../lib/components/MediaCard.svelte";
   import PageSections from "../lib/components/PageSections.svelte";
+  import { t } from "../lib/i18n.svelte";
 
   let { nav, player, toasts }: { nav: Nav; player: Player; toasts: Toasts } = $props();
 
@@ -90,7 +91,7 @@
     (suggestions?.similar ?? []).slice(0, 12).map((artist: Artist) => ({
       id: String(artist.id),
       title: artist.name,
-      subtitle: "Artist",
+      subtitle: t("card.artist"),
       item_type: "ARTIST",
       artwork: artist.picture ?? artist.cover_fallback ?? null,
     })),
@@ -202,7 +203,7 @@
   <svelte:boundary onerror={shelfFailed}>
   {#if current || (ready && shortcuts.length > 0)}
     <section class="block" aria-labelledby="home-jump">
-      <h3 id="home-jump">Jump back in</h3>
+      <h3 id="home-jump">{t("home.jumpBackIn")}</h3>
       <!-- The frame is the size container, so the queries below can also
            restyle the grid itself (an element cannot query its own size). -->
       <div class="jump pane">
@@ -235,10 +236,10 @@
   <svelte:boundary onerror={shelfFailed}>
   {#if albumItems.length > 0}
     <section class="block">
-      <Carousel title="Recently played">
+      <Carousel title={t("home.recentlyPlayed")}>
         {#snippet controls()}
           <button type="button" class="view-all" onclick={() => nav.goto({ name: "history", tab: "recent" })}>
-            History
+            {t("route.history")}
           </button>
         {/snippet}
         {#each albumItems as item (item.id)}
@@ -252,7 +253,7 @@
   <svelte:boundary onerror={shelfFailed}>
   {#if mixes.length > 0}
     <section class="block">
-      <Carousel title="Made for you">
+      <Carousel title={t("home.madeForYou")}>
         {#snippet controls()}
           <button type="button" class="view-all" onclick={() => nav.goto({ name: "mixes" })}>See all</button>
         {/snippet}
@@ -267,7 +268,7 @@
   <svelte:boundary onerror={shelfFailed}>
   {#if releaseItems.length > 0}
     <section class="block">
-      <Carousel title={unseen > 0 ? `New from artists you follow · ${unseen} new` : "New from artists you follow"}>
+      <Carousel title={unseen > 0 ? t("home.newFromFollowedCount", { count: unseen }) : t("home.newFromFollowed")}>
         {#snippet controls()}
           <button type="button" class="view-all" onclick={() => nav.goto({ name: "feed" })}>Open feed</button>
         {/snippet}
@@ -282,8 +283,8 @@
   <svelte:boundary onerror={shelfFailed}>
   {#if radios.length > 0}
     <section class="block" aria-labelledby="home-explore">
-      <h3 id="home-explore">Keep exploring</h3>
-      <p class="hint muted">Radio built from what you've been playing.</p>
+      <h3 id="home-explore">{t("home.keepExploring")}</h3>
+      <p class="hint muted">{t("home.keepExploringHint")}</p>
       <div class="radios pane">
         {#each radios as seed (seed.key)}
           <div class="radio">
@@ -305,7 +306,7 @@
   <svelte:boundary onerror={shelfFailed}>
   {#if suggestions?.similarTo && similar.length > 0}
     <section class="block">
-      <Carousel title={`Because you listen to ${suggestions.similarTo.name}`}>
+      <Carousel title={t("home.becauseYouListen", { name: suggestions.similarTo.name })}>
         {#each similar as item (item.id)}
           <MediaCard {item} variant="carousel" onclick={open(item)} />
         {/each}
@@ -322,7 +323,7 @@
       <ErrorState message={error} onRetry={load} />
     {:else if trimmed.length > 0}
       <div class="editorial-body">
-        <p class="eyebrow">From TIDAL</p>
+        <p class="eyebrow">{t("home.fromTidal")}</p>
         <PageSections sections={trimmed} {nav} {player} {toasts} source="home" />
       </div>
     {/if}

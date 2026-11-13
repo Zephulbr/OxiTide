@@ -8,7 +8,7 @@ import {
   missingSocials,
   normalizeLink,
   profileChanges,
-  USERNAME_RULE,
+  usernameRule,
 } from "./profileEdit";
 
 const profile: EditableProfile = {
@@ -108,7 +108,7 @@ describe("draftProblem", () => {
       expect(draftProblem({ ...draftFrom(profile), handle: ok }, profile), ok).toBeNull();
     }
     for (const bad of ["Cheese", "a b", "chée", "a-b", "a.b"]) {
-      expect(draftProblem({ ...draftFrom(profile), handle: bad }, profile), bad).toBe(USERNAME_RULE);
+      expect(draftProblem({ ...draftFrom(profile), handle: bad }, profile), bad).toBe(usernameRule());
     }
   });
 

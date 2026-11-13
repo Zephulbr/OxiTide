@@ -20,6 +20,7 @@
   import type { Nav, Route } from "../lib/nav.svelte";
   import type { Player } from "../lib/player.svelte";
   import { tiltFromPointer } from "../lib/tilt";
+  import { i18n } from "../lib/i18n.svelte";
 
   /// Cover morph (open and close): the artwork travels between the player
   /// bar's thumbnail and the stage, so Now Playing reads as the bar's cover
@@ -294,14 +295,14 @@
 </script>
 
 {#snippet details(t: QueueItem)}
-  <span class="eyebrow">Now playing</span>
+  <span class="eyebrow">{i18n.t("table.nowPlaying")}</span>
   <h2 class="title" title={t.title}>{t.title}</h2>
   <p class="byline"><QueueArtistLinks item={t} {go} />{#if t.album}{" — "}<NameLink label={t.album} onOpen={() => void openAlbum(t)} />{/if}</p>
   <div class="badges">
     {#if quality}<span class="badge" class:max={quality === "MAX"}>{quality}</span>{/if}
-    {#if player.state.bit_perfect}<span class="badge">Bit-perfect</span>{:else if player.state.dsp_active}<span class="badge" title={dspBadgeTitle(player.state.dsp_stages)}>DSP</span>{/if}
+    {#if player.state.bit_perfect}<span class="badge">{i18n.t("player.bitPerfectBadge")}</span>{:else if player.state.dsp_active}<span class="badge" title={dspBadgeTitle(player.state.dsp_stages)}>DSP</span>{/if}
     {#if qualityDetail}<span class="badge muted">{qualityDetail}</span>{/if}
-    {#if scrobbled.trackId === t.track_id}<span class="badge">Scrobbled</span>{/if}
+    {#if scrobbled.trackId === t.track_id}<span class="badge">{i18n.t("nowPlaying.scrobbled")}</span>{/if}
   </div>
 {/snippet}
 
@@ -335,7 +336,7 @@
               out:scale={{ start: 0.98, duration: dur(200), easing: cubicOut }}
             >
               {#if appearance.coverShape === "disc"}
-                <button class="art-disc" onclick={() => nav.closeNowPlaying()} aria-label="Close now playing">
+                <button class="art-disc" onclick={() => nav.closeNowPlaying()} aria-label={i18n.t("nowPlaying.close")}>
                   <DiscArt uuid={track.cover} playing={player.state.playing} />
                 </button>
               {:else}
@@ -344,7 +345,7 @@
                   class:hovering={sleeveHover}
                   class:entering={sleeveEntering}
                   onclick={() => nav.closeNowPlaying()}
-                  aria-label="Close now playing"
+                  aria-label={i18n.t("nowPlaying.close")}
                 >
                   <Cover uuid={track.cover} size={640} radius={0} alt={`${track.title} artwork`} />
                   <span class="art-glare" aria-hidden="true"></span>
@@ -358,7 +359,7 @@
             class="spine"
             role="tablist"
             aria-orientation="vertical"
-            aria-label="Now playing content"
+            aria-label={i18n.t("nowPlaying.content")}
             in:fade={{ duration: dur(200), easing: cubicOut }}
             out:fade={{ duration: dur(160) }}
           >
@@ -372,7 +373,7 @@
               onclick={() => lyrics.setTab("lyrics")}
               onkeydown={(event) => onTabKeydown(event, "lyrics")}
             >
-              Lyrics
+              {i18n.t("nowPlaying.lyrics")}
             </button>
             <button
               id="np-tab-next"
@@ -384,7 +385,7 @@
               onclick={() => lyrics.setTab("next")}
               onkeydown={(event) => onTabKeydown(event, "next")}
             >
-              Next up
+              {i18n.t("nowPlaying.nextUp")}
             </button>
           </div>
         {/if}
@@ -432,7 +433,7 @@
               {/key}
             {/if}
           {:else}
-            <p class="muted loading">Loading lyrics…</p>
+            <p class="muted loading">{i18n.t("nowPlaying.loadingLyrics")}</p>
           {/if}
         </div>
       {:else}
@@ -484,14 +485,14 @@
                 {/each}
               </ul>
             {:else}
-              <p class="muted">Queue is empty</p>
+              <p class="muted">{i18n.t("nowPlaying.queueEmpty")}</p>
             {/if}
           </div>
         </div>
       {/if}
     {:else}
-      <span class="eyebrow">Now playing</span>
-      <p class="muted">Nothing playing</p>
+      <span class="eyebrow">{i18n.t("table.nowPlaying")}</span>
+      <p class="muted">{i18n.t("player.nothingPlaying")}</p>
     {/if}
   </div>
 </div>

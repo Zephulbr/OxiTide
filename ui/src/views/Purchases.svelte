@@ -5,6 +5,7 @@
   import Loading from "../lib/components/Loading.svelte";
   import MediaCard from "../lib/components/MediaCard.svelte";
   import { routeForPageItem, type Nav } from "../lib/nav.svelte";
+  import { t } from "../lib/i18n.svelte";
 
   let { nav }: { nav: Nav } = $props();
 
@@ -29,13 +30,13 @@
   });
 </script>
 
-<h2>Purchases</h2>
+<h2>{t("route.purchases")}</h2>
 {#if loading}
   <Loading />
 {:else if error}
   <ErrorState message={error} onRetry={load} />
 {:else if items.length === 0}
-  <EmptyState message="Nothing purchased on this account." />
+  <EmptyState message={t("purchases.empty")} />
 {:else}
   <div class="purchases">
     {#each items as item (item.id || item.title)}

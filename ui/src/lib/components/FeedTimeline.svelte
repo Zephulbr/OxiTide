@@ -3,6 +3,7 @@
   import { groupActivities } from "../feed";
   import type { Nav } from "../nav.svelte";
   import Cover from "./Cover.svelte";
+  import { t } from "../i18n.svelte";
 
   /// Feed-only renderer: release activities grouped into date buckets, hanging
   /// off a vertical rail (one node per group). Each group is a grid of release
@@ -27,12 +28,12 @@
             <button class="card" onclick={() => nav.goto({ name: "album", id: activity.id })}>
               <span class="art">
                 <Cover uuid={activity.artwork} size={320} radius={0} alt="" />
-                {#if !activity.seen && group.label === "New updates"}<span class="new">New</span>{/if}
+                {#if !activity.seen && group.label === t("feed.group.new")}<span class="new">{t("feed.new")}</span>{/if}
               </span>
               <span class="title-line">
                 <span class="title">{activity.title}</span>
-                {#if activity.explicit}<span class="badge" title="Explicit">E</span>{/if}
-                {#if activity.hires}<span class="badge" title="Hi-Res Lossless">H</span>{/if}
+                {#if activity.explicit}<span class="badge" title={t("table.explicit")}>{t("table.explicitBadge")}</span>{/if}
+                {#if activity.hires}<span class="badge" title={t("feed.hires")}>{t("feed.hiresBadge")}</span>{/if}
               </span>
               <span class="sub">{activity.subtitle}</span>
             </button>

@@ -4,6 +4,7 @@
   import type { Player } from "../player.svelte";
   import { seekByKey, seekRatio } from "../seek";
   import { waveFillPath, wavePath, type WaveTaper } from "../wave";
+  import { t } from "../i18n.svelte";
 
   let {
     player,
@@ -87,7 +88,7 @@
     data-oneko-perch
     role="slider"
     tabindex="0"
-    aria-label="Playback position"
+    aria-label={t("seek.label")}
     aria-valuemin={0}
     aria-valuemax={Math.max(duration, 1)}
     aria-valuenow={Math.round(position)}
