@@ -26,7 +26,7 @@ built by `.github/workflows/release.yml` from a version tag; nothing is uploaded
 
 1. Bump `version` in the workspace `Cargo.toml` (`[workspace.package]`) — the only place the
    version lives — and refresh `Cargo.lock` (any `cargo build`/`cargo check` does it). Commit, push
-   to `main`, and wait for CI to pass. A red run is not noise: if a test is flaky, fix it (or
+   the release branch (`release/1.x` for 1.x, see Branches), and wait for CI to pass. A red run is not noise: if a test is flaky, fix it (or
    record why not) before tagging. The release workflow re-runs the gates on the tag anyway
    (step 3), so a red commit cannot ship.
    - `tauri.conf.json` has no `version` on purpose: Tauri then uses `Cargo.toml`'s, and the Rust
@@ -61,6 +61,13 @@ built by `.github/workflows/release.yml` from a version tag; nothing is uploaded
 - Then **merge `release/1.x` forward into `main`**, never the other way: `main` carries V2 work
   that 1.x must not get. Bookkeeping for a 1.x release (its gate note, retro entries) is also
   committed on `release/1.x` and reaches `main` through the merge.
+- A 1.x **feature** release (a minor bump, `1.Y.0`; v1.1.0 was the first) follows the same path:
+  the work lands on `release/1.x`, the version is bumped and tagged `v1.Y.0` there, and the
+  branch is merged forward. Merge forward early and often while it is in progress (after each
+  plan phase), so V2 work on `main` picks up the new rules (for 1.1, the `t()` rule) before it
+  adds more code that breaks them. A feature release also gets release notes
+  (`docs/release-notes/v1.Y.0.md`) and a gate note in `plans/notes/` that indexes what is
+  open; patch releases on top of it are `v1.Y.z`.
 - CI runs on pushes to `release/**`, the same as on `main`.
 - 2.0 pre-releases are published as GitHub **prereleases**, which the updater endpoint ignores, so
   1.x installs are never offered them (V2-D3).
