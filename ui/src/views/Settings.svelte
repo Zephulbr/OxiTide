@@ -59,7 +59,11 @@
     type CoverShape,
     type TypefaceSetting,
     type UiMode,
+    ZOOM_MAX,
+    ZOOM_MIN,
+    ZOOM_STEP,
   } from "../lib/appearance.svelte";
+  import { formatPercent } from "../lib/format";
   import type { ThemeSetting } from "../lib/theme";
   import {
     CROSSFADE_MAX_MS,
@@ -1133,6 +1137,17 @@
                   {#if customNote}<p class="muted note">{customNote}</p>{/if}
                 </SettingRow>
               {/if}
+              <SettingRow id="zoom" label={t("settings.zoom.label")} description={t("settings.zoom.description")}>
+                <Slider
+                  label={t("settings.zoom.label")}
+                  min={ZOOM_MIN}
+                  max={ZOOM_MAX}
+                  step={ZOOM_STEP}
+                  value={appearance.zoom}
+                  format={formatPercent}
+                  oncommit={(v) => appearance.setZoom(v).catch(apply)}
+                />
+              </SettingRow>
               <SettingRow id="density" label={t("settings.density.label")} description={t("settings.density.description")}>
                 <Segmented
                   label={t("settings.density.label")}
@@ -1935,6 +1950,14 @@
   }
   .tab.active :global(svg) {
     color: var(--accent);
+  }
+  /* Windows contrast themes (A-3): the open tab is framed (its pill tint is
+     dropped). */
+  @media (forced-colors: active) {
+    .tab.active {
+      outline: 1px solid Highlight;
+      outline-offset: -1px;
+    }
   }
   .content {
     min-width: 0;

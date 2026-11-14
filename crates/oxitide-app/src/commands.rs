@@ -3067,6 +3067,13 @@ pub fn set_mini_mode(
             state.take_pre_mini();
         }
     }
+    // The mini player runs at 100 %; the full window gets the stored zoom back.
+    let zoom = if active {
+        crate::config::ZOOM_DEFAULT
+    } else {
+        crate::config::clamp_zoom(state.config().ui.zoom)
+    };
+    crate::window::apply_zoom(&window, zoom);
     Ok(())
 }
 
@@ -3133,6 +3140,25 @@ pub fn set_shell_language(
     state.relabel_tray();
     crate::thumbbar::refresh_text(&app);
     applied
+}
+
+/// Stores the interface zoom (80–150 %, steps of 10) and applies it unless
+/// the mini player is showing (it stays at 100 %). Returns what was stored.
+#[tauri::command]
+pub fn set_zoom(
+    state: State<'_, AppState>,
+    window: tauri::WebviewWindow,
+    percent: u32,
+) -> Result<u32, String> {
+    let mut config = state.config();
+    config.ui.zoom = crate::config::clamp_zoom(percent);
+    let stored = config.ui.zoom;
+    config.save()?;
+    state.set_config(config);
+    if state.pre_mini().is_none() {
+        crate::window::apply_zoom(&window, stored);
+    }
+    Ok(stored)
 }
 
 /// Stores the cat's size clamped to 100–200 % and returns what was stored.
@@ -3642,6 +3668,8 @@ mod tests {
         "set_catjam_scale",
         // A config writer (read-modify-write of the whole config).
         "set_language",
+        // A config writer plus one webview call, ordered with mini enter/exit.
+        "set_zoom",
         // Tray menu relabels are cheap and must keep the order of switches.
         "set_shell_language",
         // An atomic store plus one engine call; ordered with CatJam's mount

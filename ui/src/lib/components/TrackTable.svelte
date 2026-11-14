@@ -1261,6 +1261,25 @@
   .row.selected:not(.playing):hover {
     --row-wash: color-mix(in srgb, var(--selection-bg), var(--surface-2));
   }
+  /* Windows contrast themes (A-3): forced colours drop the row washes, so a
+     selection is a Highlight frame and the playing title takes Highlight.
+     Fill-only marks opt out of forcing and paint in system colours. */
+  @media (forced-colors: active) {
+    .row.selected {
+      outline: 2px solid Highlight;
+      outline-offset: -2px;
+    }
+    .row.playing .title-text,
+    .sort-head.active .sort {
+      color: Highlight;
+    }
+    .drop-line,
+    .rank {
+      forced-color-adjust: none;
+      background: Highlight;
+      color: HighlightText;
+    }
+  }
   .sr-only {
     position: absolute;
     width: 1px;

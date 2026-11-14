@@ -851,6 +851,8 @@ mod tests {
         // Desktop language; the phone follows its own browser's language.
         "set_language",
         "set_shell_language",
+        // Desktop interface zoom; the phone has its own browser zoom.
+        "set_zoom",
         "set_beat_tracking",
         "set_position_feed_live",
         "set_hover_panels",

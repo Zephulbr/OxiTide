@@ -325,6 +325,13 @@
   .media.playing .title {
     color: var(--accent);
   }
+  /* Windows contrast themes (A-3): the playing tint is dropped; a frame. */
+  @media (forced-colors: active) {
+    .media.playing {
+      outline: 2px solid Highlight;
+      outline-offset: -2px;
+    }
+  }
   .media.blocked .title,
   .media.blocked .sub {
     opacity: 0.45;

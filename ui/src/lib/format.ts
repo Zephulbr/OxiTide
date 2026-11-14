@@ -105,6 +105,11 @@ export function formatNumber(n: number, fractionDigits = 0): string {
   }).format(n);
 }
 
+/// A whole percentage (`120` → "120%", German "120 %", Turkish "%120").
+export function formatPercent(percent: number): string {
+  return new Intl.NumberFormat(formatLocale.value, { style: "percent" }).format(percent / 100);
+}
+
 /// Engine notices are lowercase clauses ("exclusive mode unavailable; …") so
 /// Rust can compare and compose them; shown on their own they start a
 /// sentence. Only the first letter changes.

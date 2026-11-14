@@ -7,6 +7,8 @@ import "./styles/fonts.css";
 import "./app.css";
 // Last, so Rack's [data-mode] rewrites win over the light theme's tokens.
 import "./styles/rack.css";
+// Windows contrast themes map the tokens to system colours over every mode.
+import "./styles/forced-colors.css";
 import { installNativeMenuSuppression } from "./lib/nativeContextMenu";
 import { i18n } from "./lib/i18n.svelte";
 import { readLanguageMirror } from "./lib/language.svelte";

@@ -679,6 +679,38 @@ mode") with a "Don't show again" checkbox (`optOutLabel`).
   the keyboard path. Names for the current page stay plain text. Inside rows that are
   themselves play buttons (queue, History) names are pointer-only nested links and the
   row menu carries the "Go to" items (spec `2026-10-15-oxitide-name-links-design.md`).
+- **Windows contrast themes** (`forced-colors: active`; v1.1 A-3). The browser repaints
+  text, surfaces, borders and outlines in the theme's system colours and drops gradients and
+  shadows; `styles/forced-colors.css` (loaded last) maps the semantic tokens to system
+  colours (`--accent` → `Highlight`, `--on-accent` → `HighlightText`, `--line` → `GrayText`,
+  text and muted text → `CanvasText`, surfaces and veils → `Canvas`) with `!important`, so
+  every mode, theme and Rack resolve alike. Rules:
+  - Marks that carry state and are painted as fills (the seek, `Slider`, `VolumeSlider`,
+    `Toggle`, `NowPlayingMark`, drop lines, the sort-rank badge) set `forced-color-adjust:
+    none` on the smallest element and draw from those tokens or system colours directly:
+    played/on/level in `Highlight`, unplayed track framed in `CanvasText` or `GrayText`,
+    knobs and thumbs `ButtonText`, disabled `GrayText`. The seek's thumb shows at rest.
+  - State shown by a tint (selected and current rows, the open sidebar page and playlist,
+    Settings and Now Playing tabs, a playing card, drop targets, Rack's lit keys) becomes a
+    `Highlight` outline drawn inside the box (`outline-offset: -1px`/`-2px`); the chosen
+    `Segmented` segment and `Select`/`SortSelect` option take `Highlight` / `HighlightText`.
+  - Focus rings are `Highlight` outlines. Icons are `currentColor`, so they follow the
+    forced text colour.
+  - Decorative layers go: the cover `Backdrop`, grain, glass blur, dynamic-colour washes,
+    cover tints, the disc's sheen. Rack stays usable without its skin (grain and lamp glows
+    off; lamp `Highlight`, display ink `CanvasText`).
+  - Components never branch on the mode here either; each widget keeps its own
+    `@media (forced-colors: active)` block next to the rule it adjusts.
+- **Track-change announcements** (A-4): a polite, atomic live region (`TrackAnnouncer`,
+  `lib/announce.svelte.ts`) says "Now playing: {title} by {artists}" when the user starts or
+  skips a track (play from a list, next, previous, a queue jump). The desktop `api` marks
+  those commands (`lib/trackIntent.ts`); the engine's next `now_playing` takes the mark, so
+  automatic advances, the phone remote and media keys stay silent. The text clears after 7 s.
+- **Interface zoom** (A-5): Settings → Appearance → Typography & layout → Zoom, 80–150 % in
+  steps of 10, and Ctrl+= / Ctrl+− / Ctrl+0 (also on the sign-in screen and while typing).
+  It is the webview's own zoom (`set_zoom`, `[ui] zoom`), so CSS pixels and every container
+  or media query scale with it; layouts must hold at 150 % at the minimum window size. The
+  mini player always runs at 100 %.
 
 ### 2.5 Performance (PM-D1)
 

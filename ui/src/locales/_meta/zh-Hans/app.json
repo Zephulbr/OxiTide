@@ -444,6 +444,16 @@
     "source": "9cbd714a",
     "draft": "75604c95"
   },
+  "settings.zoom.label": {
+    "status": "machine",
+    "source": "509c517e",
+    "draft": "b762aec7"
+  },
+  "settings.zoom.description": {
+    "status": "machine",
+    "source": "685a9b05",
+    "draft": "8e7ec051"
+  },
   "settings.density.label": {
     "status": "machine",
     "source": "77a283d6",
@@ -1838,6 +1848,11 @@
     "status": "machine",
     "source": "61695cdb",
     "draft": "8f0d9627"
+  },
+  "settings.keywords.zoom": {
+    "status": "machine",
+    "source": "ee4d5bb1",
+    "draft": "dca06be3"
   },
   "settings.keywords.density": {
     "status": "machine",
@@ -4718,6 +4733,26 @@
     "status": "machine",
     "source": "a8640689",
     "draft": "307dca6f"
+  },
+  "shortcuts.zoomKeys": {
+    "status": "machine",
+    "source": "a780fe86",
+    "draft": "a780fe86"
+  },
+  "shortcuts.zoom": {
+    "status": "machine",
+    "source": "1044eb30",
+    "draft": "e2bf1cd1"
+  },
+  "announce.nowPlaying": {
+    "status": "machine",
+    "source": "f99356b2",
+    "draft": "455a9188"
+  },
+  "announce.nowPlayingTitle": {
+    "status": "machine",
+    "source": "1b68d056",
+    "draft": "2a432184"
   },
   "eq.preset.flat": {
     "status": "machine",

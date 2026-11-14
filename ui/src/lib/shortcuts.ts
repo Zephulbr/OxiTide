@@ -53,7 +53,29 @@ export const SHORTCUTS: ShortcutHint[] = [
   { keys: "Ctrl+B", get description() { return t("shortcuts.sidebar"); } },
   { keys: "Q", get description() { return t("shortcuts.queue"); } },
   { keys: "Esc", get description() { return t("shortcuts.escape"); } },
+  { get keys() { return t("shortcuts.zoomKeys"); }, get description() { return t("shortcuts.zoom"); } },
 ];
+
+export type ZoomAction = "zoom-in" | "zoom-out" | "zoom-reset";
+
+/// Ctrl+= (or Ctrl++, numpad +), Ctrl+− and Ctrl+0 (A-5). They work while
+/// typing and before sign-in, like a browser's zoom keys; the webview's own
+/// zoom keys are off (Tauri's default), so these are the only ones.
+export function matchZoomShortcut(event: KeyboardEvent): ZoomAction | null {
+  if (!(event.ctrlKey || event.metaKey) || event.altKey) return null;
+  switch (event.key) {
+    case "=":
+    case "+":
+      return "zoom-in";
+    case "-":
+    case "_":
+      return "zoom-out";
+    case "0":
+      return "zoom-reset";
+    default:
+      return null;
+  }
+}
 
 /// Duck-typed so the matcher stays testable without a DOM environment.
 export function isTypingTarget(target: EventTarget | null): boolean {

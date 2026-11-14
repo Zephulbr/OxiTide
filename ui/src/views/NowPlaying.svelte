@@ -880,6 +880,14 @@
     color: var(--text);
     border-left-color: var(--accent);
   }
+  /* Windows contrast themes (A-3): forcing may paint every tab's side border
+     alike, so the open tab is framed. */
+  @media (forced-colors: active) {
+    .spine button.active {
+      outline: 1px solid Highlight;
+      outline-offset: -1px;
+    }
+  }
   .spine button:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;

@@ -434,6 +434,12 @@
   .card.drop-refused {
     opacity: 0.55;
   }
+  /* Windows contrast themes (A-3): the drop ring is a shadow forcing drops. */
+  @media (forced-colors: active) {
+    .card.drop-target .clip {
+      outline: 3px solid Highlight;
+    }
+  }
   /* An add in flight: a spinning disc over the cover. */
   .adding {
     position: absolute;

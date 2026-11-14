@@ -27,6 +27,7 @@
   import TrackInfoHost from "./lib/components/TrackInfoHost.svelte";
   import CollectionDialogs from "./lib/components/CollectionDialogs.svelte";
   import ToastHost from "./lib/components/ToastHost.svelte";
+  import TrackAnnouncer from "./lib/components/TrackAnnouncer.svelte";
   import DragGhost from "./lib/components/DragGhost.svelte";
   import { dragDrop } from "./lib/dragDrop.svelte";
   import ContextMenu from "./lib/components/ContextMenu.svelte";
@@ -42,6 +43,8 @@
     clampQueueWidth,
     QUEUE_WIDTH_MAX,
     QUEUE_WIDTH_MIN,
+    ZOOM_DEFAULT,
+    ZOOM_STEP,
   } from "./lib/appearance.svelte";
   import { routeTitle } from "./lib/titles";
   import { t } from "./lib/i18n.svelte";
@@ -51,7 +54,10 @@
   import { makeSyntheticTracks } from "./lib/perfFixture";
   import { errorMessage } from "./lib/errors";
   import { menu } from "./lib/menu.svelte";
-  import { escapeTarget, isShortcutHandled, matchShortcut, type ShortcutAction } from "./lib/shortcuts";
+  import {
+    escapeTarget, isShortcutHandled, matchShortcut, matchZoomShortcut, type ShortcutAction,
+    type ZoomAction,
+  } from "./lib/shortcuts";
   import {
     atQueueEdge,
     createHoverIntent,
@@ -740,11 +746,29 @@
     }
   }
 
+  /// The mini player stays at 100 % (Rust ignores the zoom there), so the keys
+  /// do nothing in it rather than change a value nobody can see.
+  function runZoom(action: ZoomAction) {
+    if (mini.active) return;
+    const next =
+      action === "zoom-in" ? appearance.zoom + ZOOM_STEP
+      : action === "zoom-out" ? appearance.zoom - ZOOM_STEP
+      : ZOOM_DEFAULT;
+    appearance.setZoom(next).catch((e) => toasts.show(errorMessage(e), { severity: "error" }));
+  }
+
   function onKeydown(event: KeyboardEvent) {
-    if (!loggedIn) return;
     // A component already handled this key (slider, tabs, menu, row focus):
     // acting on it globally too would double-seek or double-step.
     if (event.defaultPrevented) return;
+    // Zoom also works on the sign-in screen and while typing.
+    const zoom = matchZoomShortcut(event);
+    if (zoom) {
+      event.preventDefault();
+      runZoom(zoom);
+      return;
+    }
+    if (!loggedIn) return;
     const overlayOpen = dialogs.count > 0;
     const action = matchShortcut(event, { overlayOpen });
     if (!action) {
@@ -955,6 +979,7 @@
   onauxclick={onSideButton}
 />
 <ToastHost {toasts} />
+<TrackAnnouncer />
 <DragGhost />
 {#if customChrome}<WindowControls maximizable={!(loggedIn && mini.active)} />{/if}
 <ContextMenu {menu} />

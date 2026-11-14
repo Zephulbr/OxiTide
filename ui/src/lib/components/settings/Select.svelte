@@ -264,4 +264,17 @@
   .panel button.selected {
     font-weight: 600;
   }
+  /* Windows contrast themes (A-3): the chosen option takes the system
+     selection colours, the keyboard-active one a frame. */
+  @media (forced-colors: active) {
+    .panel button.selected {
+      forced-color-adjust: none;
+      background: Highlight;
+      color: HighlightText;
+    }
+    .panel button.active:not(.selected) {
+      outline: 1px solid Highlight;
+      outline-offset: -1px;
+    }
+  }
 </style>

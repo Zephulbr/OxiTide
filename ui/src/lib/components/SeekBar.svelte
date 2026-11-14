@@ -401,4 +401,18 @@
   :global(.app[data-player="floating"]) .seek.edge .seek-line > .seek-fill {
     visibility: hidden;
   }
+  /* Windows contrast themes (A-3): the seek paints its own track, fill,
+     thumb and wave from the system-colour tokens (forced-colors.css). The
+     thumb shows at rest so the position never depends on hover. */
+  @media (forced-colors: active) {
+    .seek {
+      forced-color-adjust: none;
+    }
+    .seek-cap {
+      backdrop-filter: none;
+    }
+    .seek-thumb {
+      transform: translate(-50%, -50%) scale(1);
+    }
+  }
 </style>

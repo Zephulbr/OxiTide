@@ -65,6 +65,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   e("studio-tone", "appearance", "settings.section.lookAndFeel", "settings.studioTone.label", "settings.keywords.studioTone", "studio"),
   e("dynamic-color", "appearance", "settings.section.lookAndFeel", "settings.dynamicColor.label", "settings.keywords.dynamicColor", "notRack"),
   e("typeface", "appearance", "settings.section.typographyAndLayout", "settings.typeface.label", "settings.keywords.typeface"),
+  e("zoom", "appearance", "settings.section.typographyAndLayout", "settings.zoom.label", "settings.keywords.zoom"),
   e("density", "appearance", "settings.section.typographyAndLayout", "settings.density.label", "settings.keywords.density"),
   e("row-separators", "appearance", "settings.section.typographyAndLayout", "settings.rowSeparators.label", "settings.keywords.rowSeparators"),
   e("cover-shape", "appearance", "settings.section.typographyAndLayout", "settings.coverShape.label", "settings.keywords.coverShape"),

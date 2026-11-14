@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { HotkeyAction } from "./hotkeys";
+import { userTrackChange } from "./trackIntent";
 
 /// The maximize button's box in CSS px; `right` is measured from the window's
 /// right edge to the button's left edge (mirrors `titlebar::SnapTarget`).
@@ -547,6 +548,8 @@ export interface Config {
     device_icons?: boolean;
     /// "system" or a catalog code (`de`, `zh-Hant`…); see `lib/language.svelte.ts`.
     language?: string;
+    /// Interface zoom in percent, 80–150 in steps of 10 (default 100); see `lib/zoom.svelte.ts`.
+    zoom?: number;
     window_width: number;
     window_height: number;
     window_x?: number | null;
@@ -726,7 +729,7 @@ export interface BeatClock {
 }
 export type EngineEvent =
   | ({ type: "state" } & StateEvent)
-  | { type: "now_playing"; [k: string]: unknown }
+  | { type: "now_playing"; item: QueueItem | null }
   // lead_ms: how far position_ms runs ahead of what is heard (output buffering).
   | { type: "position"; position_ms: number; duration_ms: number; lead_ms: number }
   | ({ type: "beat" } & BeatClock)
@@ -888,16 +891,17 @@ export const api = {
     invoke<void>("set_favorite_album", { albumId, favorite }),
   setFavoriteArtist: (artistId: number, favorite: boolean) =>
     invoke<void>("set_favorite_artist", { artistId, favorite }),
+  // Track changes the user asks for are announced to screen readers (A-4).
   playTracks: (items: QueueItem[], start: number, shuffle = false) =>
-    invoke<void>("play_tracks", { items, start, shuffle }),
+    userTrackChange(() => invoke<void>("play_tracks", { items, start, shuffle })),
   playTrackIds: (ids: number[], start: number, shuffle = false) =>
-    invoke<void>("play_track_ids", { ids, start, shuffle }),
+    userTrackChange(() => invoke<void>("play_track_ids", { ids, start, shuffle })),
   playPageItems: (items: PageTrackInput[], start: number, shuffle = false) =>
-    invoke<void>("play_page_items", { items, start, shuffle }),
+    userTrackChange(() => invoke<void>("play_page_items", { items, start, shuffle })),
   playPause: () => invoke<void>("play_pause"),
   retry: () => invoke<void>("retry"),
-  next: () => invoke<void>("next"),
-  prev: () => invoke<void>("prev"),
+  next: () => userTrackChange(() => invoke<void>("next")),
+  prev: () => userTrackChange(() => invoke<void>("prev")),
   seek: (positionMs: number) => invoke<void>("seek", { positionMs }),
   setVolume: (volume: number, persist = false) => invoke<void>("set_volume", { volume, persist }),
   fadeAndPause: (durationMs: number) => invoke<void>("fade_and_pause", { durationMs }),
@@ -986,6 +990,8 @@ export const api = {
   /// The resolved language for the tray and taskbar; returns the code applied.
   setShellLanguage: (code: string) => invoke<string>("set_shell_language", { code }),
   setCatjamScale: (percent: number) => invoke<number>("set_catjam_scale", { percent }),
+  /// Interface zoom (80–150 %, steps of 10); returns the stored value.
+  setZoom: (percent: number) => invoke<number>("set_zoom", { percent }),
   setBeatTracking: (enabled: boolean) => invoke<void>("set_beat_tracking", { enabled }),
   /// Position ticks keep reaching the hidden window (end-of-track sleep timer).
   setPositionFeedLive: (live: boolean) => invoke<void>("set_position_feed_live", { live }),

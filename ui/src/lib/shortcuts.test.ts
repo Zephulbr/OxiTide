@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { escapeTarget, isShortcutHandled, isTypingTarget, matchShortcut, SHORTCUTS } from "./shortcuts";
+import {
+  escapeTarget, isShortcutHandled, isTypingTarget, matchShortcut, matchZoomShortcut, SHORTCUTS,
+} from "./shortcuts";
 
 function keyEvent(key: string, overrides: Partial<KeyboardEvent> = {}): KeyboardEvent {
   return {
@@ -80,6 +82,23 @@ describe("matchShortcut", () => {
   });
 });
 
+describe("matchZoomShortcut", () => {
+  it("maps Ctrl+= / Ctrl++ / Ctrl+− / Ctrl+0, also while typing", () => {
+    const input = target("INPUT");
+    expect(matchZoomShortcut(keyEvent("=", { ctrlKey: true }))).toBe("zoom-in");
+    expect(matchZoomShortcut(keyEvent("+", { ctrlKey: true, shiftKey: true }))).toBe("zoom-in");
+    expect(matchZoomShortcut(keyEvent("-", { ctrlKey: true }))).toBe("zoom-out");
+    expect(matchZoomShortcut(keyEvent("0", { ctrlKey: true, target: input }))).toBe("zoom-reset");
+  });
+
+  it("needs Ctrl and no Alt", () => {
+    expect(matchZoomShortcut(keyEvent("="))).toBeNull();
+    expect(matchZoomShortcut(keyEvent("0"))).toBeNull();
+    expect(matchZoomShortcut(keyEvent("=", { ctrlKey: true, altKey: true }))).toBeNull();
+    expect(matchZoomShortcut(keyEvent("b", { ctrlKey: true }))).toBeNull();
+  });
+});
+
 describe("isTypingTarget", () => {
   it("accepts inputs, textareas, selects, and contenteditable", () => {
     expect(isTypingTarget(target("INPUT"))).toBe(true);
@@ -96,8 +115,8 @@ describe("isTypingTarget", () => {
 });
 
 describe("SHORTCUTS", () => {
-  it("documents the ten rows shown in Settings", () => {
-    expect(SHORTCUTS).toHaveLength(10);
+  it("documents the eleven rows shown in Settings", () => {
+    expect(SHORTCUTS).toHaveLength(11);
     for (const hint of SHORTCUTS) {
       expect(hint.keys.length).toBeGreaterThan(0);
       expect(hint.description.length).toBeGreaterThan(0);

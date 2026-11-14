@@ -975,6 +975,22 @@
   .q-row.current .title {
     color: var(--accent);
   }
+  /* Windows contrast themes (A-3): the washes are gone, so the current row
+     is framed and its title and the drop line take Highlight. */
+  @media (forced-colors: active) {
+    .q-row.current {
+      outline: 1px solid Highlight;
+      outline-offset: -1px;
+    }
+    .q-row.current .title,
+    .drop-over .q-empty {
+      color: Highlight;
+    }
+    .q-drop-line {
+      forced-color-adjust: none;
+      background: Highlight;
+    }
+  }
 
   /* Duration at rest; the remove button takes its place on hover/focus. */
   .dur,

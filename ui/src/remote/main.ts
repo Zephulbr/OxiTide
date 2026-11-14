@@ -7,6 +7,7 @@ import "../styles/modes.css";
 import "../styles/themes.css";
 import "../styles/fonts.css";
 import "./remote.css";
+import "../styles/forced-colors.css";
 
 followSystemTheme();
 

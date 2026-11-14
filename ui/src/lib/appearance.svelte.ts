@@ -53,6 +53,19 @@ export function clampQueueWidth(px: number): number {
   return Math.min(QUEUE_WIDTH_MAX, Math.max(QUEUE_WIDTH_MIN, Math.round(px)));
 }
 
+/// Interface zoom (v1.1 spec §12, A-5): 80–150 % in steps of 10.
+export const ZOOM_MIN = 80;
+export const ZOOM_MAX = 150;
+export const ZOOM_STEP = 10;
+export const ZOOM_DEFAULT = 100;
+
+/// Mirrors `clamp_zoom` in `config.rs`: nearest step, then the range.
+export function clampZoom(percent: number): number {
+  if (!Number.isFinite(percent)) return ZOOM_DEFAULT;
+  const rounded = Math.floor((percent + ZOOM_STEP / 2) / ZOOM_STEP) * ZOOM_STEP;
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, rounded));
+}
+
 /// Mode defaults: Manrope in Atmosphere and Rack, Inter in Instrument (spec §4/§6).
 export function resolveTypeface(t: TypefaceSetting, mode: UiMode): Typeface {
   if (t !== "auto") return t;
@@ -126,7 +139,11 @@ export interface Appearance {
   /// Hi-Fi Rack: App mounts `RackShell` instead of the default shell (RK-D1).
   readonly rackShell: boolean;
   readonly rack: RackSettings;
+  /// Interface zoom in percent (the webview's zoom; the mini player stays at 100).
+  readonly zoom: number;
   init(): Promise<void>;
+  /// Stores and applies the zoom; the stored (clamped) value wins.
+  setZoom(percent: number): Promise<void>;
   setRack(patch: Partial<RackSettings>): Promise<void>;
   setMode(mode: UiMode): Promise<void>;
   setTheme(theme: ThemeSetting): Promise<void>;
@@ -180,6 +197,7 @@ export function createAppearance(): Appearance {
   let playerBarStyle = $state<PanelStyle>("docked");
   let queueStyle = $state<PanelStyle>("docked");
   let rack = $state<RackSettings>(defaultRackSettings());
+  let zoom = $state(ZOOM_DEFAULT);
 
   function apply() {
     const root = document.documentElement;
@@ -230,6 +248,7 @@ export function createAppearance(): Appearance {
       if (isPanelStyle(config.ui.player_bar_style)) playerBarStyle = config.ui.player_bar_style;
       if (isPanelStyle(config.ui.queue_style)) queueStyle = config.ui.queue_style;
       if (config.rack) rack = { ...defaultRackSettings(), ...config.rack };
+      zoom = clampZoom(config.ui.zoom ?? ZOOM_DEFAULT);
     } catch {
       // Defaults are fine; a config failure must not block boot.
     }
@@ -357,6 +376,21 @@ export function createAppearance(): Appearance {
     }
   }
 
+  /// Rust applies the zoom to the webview (it knows whether the mini player
+  /// shows); the stored value wins, a failure reverts.
+  async function setZoom(percent: number): Promise<void> {
+    const previous = zoom;
+    zoom = clampZoom(percent);
+    if (zoom === previous) return;
+    try {
+      const stored = await api.setZoom(zoom);
+      if (typeof stored === "number") zoom = clampZoom(stored);
+    } catch (error) {
+      zoom = previous;
+      throw error;
+    }
+  }
+
   /// Local-first; a failed persist reverts so the UI never disagrees with the
   /// stored config. The stored (clamped) value wins on success.
   async function setRack(patch: Partial<RackSettings>): Promise<void> {
@@ -404,8 +438,10 @@ export function createAppearance(): Appearance {
     get vinylRecords() { return mode === "rack"; },
     get rackShell() { return mode === "rack"; },
     get rack() { return rack; },
+    get zoom() { return zoom; },
     init,
     setRack,
+    setZoom,
     setMode: (m) => {
       mode = m;
       writeMirror(themeStorage(), MODE_STORAGE_KEY, m);

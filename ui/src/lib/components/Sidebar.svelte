@@ -578,6 +578,14 @@
     background: color-mix(in srgb, var(--accent) 12%, transparent);
     color: var(--accent);
   }
+  /* Windows contrast themes (A-3): the current page is framed (the tint is
+     dropped). */
+  @media (forced-colors: active) {
+    .nav-item.active {
+      outline: 1px solid Highlight;
+      outline-offset: -1px;
+    }
+  }
   .divider {
     height: 1px;
     background: var(--line);

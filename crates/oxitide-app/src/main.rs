@@ -328,6 +328,8 @@ fn main() {
                     if let Err(e) = window::enter_mini(&window, stash) {
                         tracing::warn!("failed to start in mini player: {e}");
                     }
+                } else if config.ui.zoom != crate::config::ZOOM_DEFAULT {
+                    window::apply_zoom(&window, crate::config::clamp_zoom(config.ui.zoom));
                 }
                 let os_dark = window
                     .theme()
@@ -536,6 +538,7 @@ fn main() {
             commands::set_catjam,
             commands::set_catjam_coat,
             commands::set_language,
+            commands::set_zoom,
             commands::set_shell_language,
             commands::set_catjam_scale,
             commands::set_beat_tracking,

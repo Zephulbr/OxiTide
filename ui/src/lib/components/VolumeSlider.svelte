@@ -159,4 +159,31 @@
   .fixed .track:hover {
     box-shadow: none;
   }
+  /* Windows contrast themes (A-3): the level is a gradient forcing would
+     drop, so the track paints itself: Highlight up to the level, framed. */
+  @media (forced-colors: active) {
+    .track {
+      forced-color-adjust: none;
+      border: 1px solid CanvasText;
+      background: linear-gradient(
+        to right,
+        Highlight var(--level, 100%),
+        Canvas var(--level, 100%)
+      );
+    }
+    .track:hover {
+      box-shadow: none;
+    }
+    .fixed .track {
+      border-color: GrayText;
+      background: GrayText;
+      opacity: 1;
+    }
+    .track:has(input:focus-visible) {
+      outline-color: Highlight;
+    }
+    .mute.on {
+      color: Highlight;
+    }
+  }
 </style>

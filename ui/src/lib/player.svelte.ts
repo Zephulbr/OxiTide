@@ -4,6 +4,7 @@ import { errorMessage } from "./errors";
 import type { Toasts } from "./toasts.svelte";
 import { latestPerFrame } from "./latestPerFrame";
 import { t } from "./i18n.svelte";
+import { announcer } from "./announce.svelte";
 
 export interface PlayerState {
   playing: boolean;
@@ -127,6 +128,7 @@ export function createPlayer(toasts?: Toasts) {
     await listen<EngineEvent>("playback_event", (event) => {
       applyEvent(state, event.payload);
       pendingSeek = reconcileSeek(pendingSeek, event.payload);
+      if (event.payload.type === "now_playing") announcer.trackStarted(event.payload.item);
       if (toasts === undefined) return;
       if (event.payload.type === "error") {
         dismissErrorToast();

@@ -69,6 +69,25 @@ describe("static contrast (dark)", () => {
   });
 });
 
+describe("Windows contrast themes (A-3)", () => {
+  const forced = readFileSync(new URL("../styles/forced-colors.css", import.meta.url), "utf8");
+  const systemColors = /^(Canvas|CanvasText|Highlight|HighlightText|GrayText|ButtonFace|ButtonText|LinkText)$/;
+
+  /// Widgets that opt out of forcing draw with these tokens, so each must
+  /// resolve to a system colour, over every mode (hence `!important`).
+  it("maps every semantic colour token to a system colour", () => {
+    for (const name of [
+      "bg", "text", "text-muted", "accent", "on-accent", "line",
+      "surface-1", "surface-2", "surface-3", "surface-float", "surface-chrome",
+      "selection-bg", "player-veil-top", "player-veil",
+    ]) {
+      const match = forced.match(new RegExp(`--${name}:\\s*([A-Za-z]+) !important;`));
+      expect(match, name).not.toBeNull();
+      expect(match![1], name).toMatch(systemColors);
+    }
+  });
+});
+
 describe("static contrast (light brand pair)", () => {
   it("keeps the light on-accent pair readable", () => {
     expect(

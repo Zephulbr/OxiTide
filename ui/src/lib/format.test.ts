@@ -4,6 +4,7 @@ import {
   formatCount,
   formatDuration,
   formatListenTime,
+  formatPercent,
   formatReleaseDate,
   formatTotalDuration,
   sentenceCase,
@@ -25,6 +26,14 @@ describe("in other languages", () => {
     setFormatLocale("ja");
     expect(formatReleaseDate("2014-02-11")).toBe("2014年2月11日");
     expect(formatCount(12_000)).toBe("1.2万");
+  });
+
+  it("formats percentages the language's way", () => {
+    expect(formatPercent(120)).toBe("120%");
+    setFormatLocale("de");
+    expect(formatPercent(120)).toBe("120 %");
+    setFormatLocale("tr");
+    expect(formatPercent(80)).toBe("%80");
   });
 });
 

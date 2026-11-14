@@ -268,6 +268,12 @@ seek are sliders with value text and full key maps; presets are radios. Meters,
 platter, tonearm, VFD ornament: `aria-hidden`. VFD and screen text meet 4.5:1 for every
 lamp preset at every brightness ≥ 40%. Focus ring as foundation.
 
+Windows contrast themes (v1.1 A-3, foundation `DESIGN.md` §2.4): Rack is usable but its
+skin is not preserved. `rack.css`'s `forced-colors` block drops the grain and lamp glows,
+sets `--rack-lamp` to `Highlight` and the display ink to `CanvasText` on `Canvas`, and
+frames a lit key, an active segment and an open tab with a `Highlight` outline (their lit
+cap is a background, which forcing removes).
+
 ## 10. Do / don't
 
 - Do keep one key style. Don't add round buttons, pills, or flat app buttons.
