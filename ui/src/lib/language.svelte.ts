@@ -66,9 +66,12 @@ function createLanguageSetting() {
 
   /// Applies first (local-first, like the appearance setters), then
   /// persists; a failed persist restores the previous language.
-  async function set(value: string): Promise<void> {
+  /// `onApplied` runs as soon as the new language is live, before the
+  /// persist round-trip (the picker's retype animation hooks in there).
+  async function set(value: string, onApplied?: () => void): Promise<void> {
     const previous = setting;
     await apply(value);
+    onApplied?.();
     // Cached pages may hold text from TIDAL in the old language.
     clearViewCache();
     try {

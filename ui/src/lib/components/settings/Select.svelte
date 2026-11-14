@@ -1,10 +1,14 @@
 <script lang="ts" generics="T extends string">
+  import { filterOptions } from "../../optionFilter";
   import Icon from "../Icon.svelte";
 
   /// A dropdown in the shared field family (same trigger as `SortSelect`,
   /// same floating-panel recipe) for settings with more than a few choices or
   /// choices that need a line of explanation. Full listbox keyboard pattern;
-  /// the panel flips upward near the bottom of the window.
+  /// the panel flips upward near the bottom of the window. With `search`, a
+  /// filter field heads the panel (combobox pattern: focus stays in the
+  /// field, the arrows move through the matches).
+  type Option = { value: T; label: string; hint?: string; disabled?: boolean; keywords?: readonly string[] };
   let {
     value,
     options,
@@ -13,28 +17,37 @@
     placeholder = "",
     width = 220,
     disabled = false,
+    search,
   }: {
     value: T;
-    options: { value: T; label: string; hint?: string; disabled?: boolean }[];
+    options: Option[];
     label: string;
     onchange: (value: T) => void;
     placeholder?: string;
     width?: number;
     disabled?: boolean;
+    /// The filter field's label (also its placeholder) and the no-match text.
+    search?: { label: string; empty: string };
   } = $props();
 
   const uid = $props.id();
   let open = $state(false);
   let active = $state(-1);
   let flipUp = $state(false);
+  let query = $state("");
   let panel = $state<HTMLDivElement | null>(null);
+  let list = $state<HTMLDivElement | null>(null);
+  let field = $state<HTMLInputElement | null>(null);
   let button = $state<HTMLButtonElement | null>(null);
 
   const current = $derived(options.find((option) => option.value === value)?.label ?? placeholder);
+  const visible = $derived(search ? filterOptions(options, query) : options);
+  const activeId = $derived(active >= 0 && visible[active] ? `${uid}-${active}` : undefined);
 
   function close(refocus = true) {
     open = false;
     active = -1;
+    query = "";
     if (refocus) button?.focus();
   }
 
@@ -43,33 +56,46 @@
       close();
       return;
     }
+    query = "";
     active = options.findIndex((option) => option.value === value);
     if (button) {
       const rect = button.getBoundingClientRect();
-      const wanted = Math.min(options.length * 40 + 12, 320);
+      const wanted = Math.min(options.length * 40 + 12, 320) + (search ? 44 : 0);
       const below = window.innerHeight - rect.bottom;
       flipUp = below < wanted && rect.top > below;
     }
     open = true;
   }
 
-  function choose(option: (typeof options)[number]) {
+  function onQuery() {
+    // The first selectable match is active, so Enter picks it.
+    active = visible.findIndex((option) => !option.disabled);
+    if (list) list.scrollTop = 0;
+  }
+
+  function choose(option: Option) {
     if (option.disabled) return;
     onchange(option.value);
     close();
   }
 
   function move(delta: -1 | 1) {
-    if (options.length === 0) return;
+    if (visible.length === 0) return;
     let next = active;
-    for (let i = 0; i < options.length; i += 1) {
-      next = (next + delta + options.length) % options.length;
-      if (!options[next].disabled) break;
+    for (let i = 0; i < visible.length; i += 1) {
+      next = (next + delta + visible.length) % visible.length;
+      if (!visible[next].disabled) break;
     }
     active = next;
+    list?.querySelectorAll<HTMLElement>("[role=option]")[next]?.scrollIntoView({ block: "nearest" });
   }
 
   function onKeydown(event: KeyboardEvent) {
+    // In the filter field, Space, Home and End edit the text.
+    if (event.target === field && (event.key === " " || event.key === "Home" || event.key === "End")) {
+      event.stopPropagation();
+      return;
+    }
     const handled = ["ArrowDown", "ArrowUp", "Home", "End", "Enter", " ", "Escape", "Tab"];
     if (!handled.includes(event.key)) return;
     // The arrows must not reach the global volume/seek shortcuts.
@@ -86,10 +112,10 @@
       move(event.key === "ArrowDown" ? 1 : -1);
     } else if (event.key === "Home" || event.key === "End") {
       event.preventDefault();
-      if (options.length > 0) active = event.key === "Home" ? 0 : options.length - 1;
+      if (visible.length > 0) active = event.key === "Home" ? 0 : visible.length - 1;
     } else if (event.key === "Enter") {
       event.preventDefault();
-      const option = options[active];
+      const option = visible[active];
       if (option) choose(option);
     } else if (event.key === "Escape") {
       event.preventDefault();
@@ -102,9 +128,9 @@
   // Focus the panel so arrows/Enter/Escape stay inside the dropdown, and bring
   // the selected option into view in long lists (output devices).
   $effect(() => {
-    if (!open || !panel) return;
-    panel.focus();
-    panel.querySelector<HTMLElement>(".selected")?.scrollIntoView({ block: "nearest" });
+    if (!open || !list) return;
+    (field ?? list).focus();
+    list.querySelector<HTMLElement>(".selected")?.scrollIntoView({ block: "nearest" });
   });
 
   function onWindowMouseDown(event: MouseEvent) {
@@ -133,37 +159,63 @@
     <span class="chevron" aria-hidden="true"><Icon name="chevron-down" size={14} /></span>
   </button>
   {#if open}
-    <div
-      bind:this={panel}
-      class="panel"
-      class:up={flipUp}
-      role="listbox"
-      tabindex="-1"
-      aria-label={label}
-      aria-activedescendant={active >= 0 && options[active] ? `${uid}-${active}` : undefined}
-      onkeydown={onKeydown}
-    >
-      {#each options as option, i (option.value)}
-        <button
-          id={`${uid}-${i}`}
-          type="button"
-          role="option"
-          tabindex="-1"
-          disabled={option.disabled}
-          aria-selected={option.value === value}
-          class:active={active === i}
-          class:selected={option.value === value}
-          onmouseenter={() => (active = i)}
-          onmouseleave={() => (active = -1)}
-          onclick={() => choose(option)}
-        >
-          <span class="text">
-            <span class="label">{option.label}</span>
-            {#if option.hint}<span class="hint">{option.hint}</span>{/if}
-          </span>
-          {#if option.value === value}<Icon name="check" size={14} />{/if}
-        </button>
-      {/each}
+    <div bind:this={panel} class="panel" class:up={flipUp}>
+      {#if search}
+        <label class="filter">
+          <Icon name="search" size={14} />
+          <input
+            bind:this={field}
+            bind:value={query}
+            type="text"
+            role="combobox"
+            autocomplete="off"
+            spellcheck="false"
+            aria-expanded="true"
+            aria-autocomplete="list"
+            aria-controls={`${uid}-list`}
+            aria-activedescendant={activeId}
+            aria-label={search.label}
+            placeholder={search.label}
+            oninput={onQuery}
+            onkeydown={onKeydown}
+          />
+        </label>
+      {/if}
+      <div
+        bind:this={list}
+        id={`${uid}-list`}
+        class="list"
+        role="listbox"
+        tabindex="-1"
+        aria-label={label}
+        aria-activedescendant={search ? undefined : activeId}
+        onkeydown={onKeydown}
+      >
+        {#each visible as option, i (option.value)}
+          <button
+            id={`${uid}-${i}`}
+            type="button"
+            role="option"
+            tabindex="-1"
+            disabled={option.disabled}
+            aria-selected={option.value === value}
+            class:active={active === i}
+            class:selected={option.value === value}
+            onmouseenter={() => (active = i)}
+            onmouseleave={() => (active = -1)}
+            onclick={() => choose(option)}
+          >
+            <span class="text">
+              <span class="label">{option.label}</span>
+              {#if option.hint}<span class="hint">{option.hint}</span>{/if}
+            </span>
+            {#if option.value === value}<Icon name="check" size={14} />{/if}
+          </button>
+        {/each}
+      </div>
+      {#if search && visible.length === 0}
+        <p class="empty" role="status">{search.empty}</p>
+      {/if}
     </div>
   {/if}
 </div>
@@ -213,8 +265,7 @@
     width: max-content;
     min-width: max(100%, 220px);
     max-width: 380px;
-    max-height: 320px;
-    overflow-y: auto;
+    max-height: 364px;
     padding: 4px;
     border: 1px solid transparent;
     border-radius: var(--radius-control);
@@ -228,6 +279,48 @@
   .panel.up {
     top: auto;
     bottom: calc(100% + 6px);
+  }
+  .list {
+    display: flex;
+    flex-direction: column;
+    max-height: 312px;
+    overflow-y: auto;
+    outline: none;
+  }
+  /* The filter field: a quiet row above the options, not a second input box. */
+  .filter {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--line);
+    color: var(--text-muted);
+    cursor: text;
+  }
+  .filter input {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--text);
+    font: inherit;
+    font-size: 13px;
+    outline: none;
+  }
+  .filter input::placeholder {
+    color: var(--text-muted);
+  }
+  .filter:focus-within {
+    border-bottom-color: var(--accent);
+  }
+  .empty {
+    margin: 0;
+    padding: 8px 10px;
+    color: var(--text-muted);
+    font-size: 12.5px;
   }
   .panel button {
     display: flex;

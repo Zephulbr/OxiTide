@@ -66,6 +66,8 @@
   "settings.language.crossChecked": "Strojový překlad, křížově ověřený",
   "settings.language.pseudo": "Pseudolokalizace (vývoj)",
   "settings.language.helpTranslate": "Pomozte s překladem",
+  "settings.language.search": "Hledat jazyky",
+  "settings.language.noMatch": "Žádný jazyk neodpovídá",
   "settings.section.lookAndFeel": "Vzhled a dojem",
   "settings.theme.label": "Motiv",
   "settings.mode.label": "Režim",

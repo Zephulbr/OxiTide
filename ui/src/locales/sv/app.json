@@ -66,6 +66,8 @@
   "settings.language.crossChecked": "Maskinöversatt, korskontrollerad",
   "settings.language.pseudo": "Pseudospråk (utveckling)",
   "settings.language.helpTranslate": "Hjälp till att översätta",
+  "settings.language.search": "Sök språk",
+  "settings.language.noMatch": "Inget språk matchar",
   "settings.section.lookAndFeel": "Utseende och känsla",
   "settings.theme.label": "Tema",
   "settings.mode.label": "Läge",

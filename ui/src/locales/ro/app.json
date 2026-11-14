@@ -66,6 +66,8 @@
   "settings.language.crossChecked": "Traducere automată, verificată încrucișat",
   "settings.language.pseudo": "Pseudo-limbă (dezvoltare)",
   "settings.language.helpTranslate": "Ajută la traducere",
+  "settings.language.search": "Caută limbi",
+  "settings.language.noMatch": "Nicio limbă nu se potrivește",
   "settings.section.lookAndFeel": "Aspect",
   "settings.theme.label": "Temă",
   "settings.mode.label": "Mod",

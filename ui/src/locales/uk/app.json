@@ -66,6 +66,8 @@
   "settings.language.crossChecked": "Машинний переклад, перехресна перевірка",
   "settings.language.pseudo": "Псевдолокаль (розробка)",
   "settings.language.helpTranslate": "Допомогти з перекладом",
+  "settings.language.search": "Пошук мов",
+  "settings.language.noMatch": "Жодна мова не підходить",
   "settings.section.lookAndFeel": "Вигляд",
   "settings.theme.label": "Тема",
   "settings.mode.label": "Режим",

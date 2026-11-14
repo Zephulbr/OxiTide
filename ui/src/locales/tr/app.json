@@ -66,6 +66,8 @@
   "settings.language.crossChecked": "Makine çevirisi, çapraz kontrollü",
   "settings.language.pseudo": "Sahte yerel ayar (geliştirme)",
   "settings.language.helpTranslate": "Çeviriye yardım et",
+  "settings.language.search": "Dil ara",
+  "settings.language.noMatch": "Eşleşen dil yok",
   "settings.section.lookAndFeel": "Görünüm",
   "settings.theme.label": "Tema",
   "settings.mode.label": "Mod",

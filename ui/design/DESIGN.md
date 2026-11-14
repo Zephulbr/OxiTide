@@ -522,6 +522,11 @@ motion) is the entrance travel for content arriving in place.
   after the same 320 ms a spinning `--text-muted` arc around it (a fade only under
   reduced motion). `lib/bootScreen.ts` fades the screen out over 180 ms once
   `auth_restore` settles; WindowControls stay above it.
+- Language switch (picker only, `lib/retype.ts`): every visible text the switch changed is
+  erased back to the prefix it shares with the new text (220 ms), then typed in the new
+  language (340 ms), all strings together whatever their length, so the layout settles
+  in one go. Live regions, form fields and code are left alone; a text its owner rewrites
+  mid-way (a clock) keeps that text. None under reduced motion; boot never animates.
 - A page whose data is cached (`lib/viewCache.ts`; revisits, or a card or sidebar link
   hovered before the click) renders complete on its first frame and plays the same rise;
   a background refresh that changes something updates in place.

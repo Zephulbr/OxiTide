@@ -334,6 +334,16 @@
     "source": "b425f2e0",
     "draft": "ecd285a6"
   },
+  "settings.language.search": {
+    "status": "machine",
+    "source": "98cdcf4f",
+    "draft": "4144869c"
+  },
+  "settings.language.noMatch": {
+    "status": "machine",
+    "source": "885a77c9",
+    "draft": "f5d9dc37"
+  },
   "settings.section.lookAndFeel": {
     "status": "machine",
     "source": "ce700951",

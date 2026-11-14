@@ -66,6 +66,8 @@
   "settings.language.crossChecked": "Terjemahan mesin, diperiksa silang",
   "settings.language.pseudo": "Pseudo-locale (pengembangan)",
   "settings.language.helpTranslate": "Bantu terjemahkan",
+  "settings.language.search": "Cari bahasa",
+  "settings.language.noMatch": "Tidak ada bahasa yang cocok",
   "settings.section.lookAndFeel": "Tampilan & nuansa",
   "settings.theme.label": "Tema",
   "settings.mode.label": "Mode",

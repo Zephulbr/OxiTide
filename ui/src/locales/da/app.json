@@ -66,6 +66,8 @@
   "settings.language.crossChecked": "Maskinoversat, krydstjekket",
   "settings.language.pseudo": "Pseudosprog (udvikling)",
   "settings.language.helpTranslate": "Hjælp med at oversætte",
+  "settings.language.search": "Søg efter sprog",
+  "settings.language.noMatch": "Intet sprog passer",
   "settings.section.lookAndFeel": "Udseende og stil",
   "settings.theme.label": "Tema",
   "settings.mode.label": "Tilstand",

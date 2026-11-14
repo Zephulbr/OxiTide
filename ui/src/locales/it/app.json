@@ -66,6 +66,8 @@
   "settings.language.crossChecked": "Traduzione automatica, verificata",
   "settings.language.pseudo": "Pseudo-lingua (sviluppo)",
   "settings.language.helpTranslate": "Aiuta a tradurre",
+  "settings.language.search": "Cerca lingue",
+  "settings.language.noMatch": "Nessuna lingua corrisponde",
   "settings.section.lookAndFeel": "Aspetto",
   "settings.theme.label": "Tema",
   "settings.mode.label": "Modalità",

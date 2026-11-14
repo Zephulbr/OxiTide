@@ -70,6 +70,8 @@
   "settings.language.crossChecked": "Tag next to a machine translation that a second model checked (Chinese).",
   "settings.language.pseudo": "Development-only test language with accented, longer text.",
   "settings.language.helpTranslate": "Link to the guide for fixing translations or adding a language.",
+  "settings.language.search": "Placeholder and label of the filter field at the top of the language list. It finds a language by its own name, its name in your language or in English, or its code.",
+  "settings.language.noMatch": "Shown in the language list when the filter finds nothing.",
   "settings.section.lookAndFeel": "Settings section heading.",
   "settings.theme.label": "Settings row label (also a settings search result).",
   "settings.mode.label": "Settings row label (also a settings search result).",

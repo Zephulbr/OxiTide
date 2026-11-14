@@ -66,6 +66,8 @@
   "settings.language.crossChecked": "Tłumaczenie maszynowe, sprawdzone krzyżowo",
   "settings.language.pseudo": "Pseudojęzyk (deweloperski)",
   "settings.language.helpTranslate": "Pomóż w tłumaczeniu",
+  "settings.language.search": "Szukaj języków",
+  "settings.language.noMatch": "Brak pasujących języków",
   "settings.section.lookAndFeel": "Wygląd",
   "settings.theme.label": "Motyw",
   "settings.mode.label": "Tryb",

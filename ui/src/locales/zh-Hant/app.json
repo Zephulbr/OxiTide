@@ -66,6 +66,8 @@
   "settings.language.crossChecked": "機器翻譯，已交叉檢查",
   "settings.language.pseudo": "虛擬語系（開發用）",
   "settings.language.helpTranslate": "協助翻譯",
+  "settings.language.search": "搜尋語言",
+  "settings.language.noMatch": "沒有符合的語言",
   "settings.section.lookAndFeel": "外觀與風格",
   "settings.theme.label": "主題",
   "settings.mode.label": "模式",

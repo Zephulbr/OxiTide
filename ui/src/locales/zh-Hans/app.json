@@ -66,6 +66,8 @@
   "settings.language.crossChecked": "机器翻译，已交叉核对",
   "settings.language.pseudo": "伪语言（开发用）",
   "settings.language.helpTranslate": "帮助翻译",
+  "settings.language.search": "搜索语言",
+  "settings.language.noMatch": "没有匹配的语言",
   "settings.section.lookAndFeel": "外观",
   "settings.theme.label": "主题",
   "settings.mode.label": "模式",

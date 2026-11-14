@@ -66,6 +66,8 @@
   "settings.language.crossChecked": "機械翻訳（クロスチェック済み）",
   "settings.language.pseudo": "疑似ロケール（開発用）",
   "settings.language.helpTranslate": "翻訳に協力する",
+  "settings.language.search": "言語を検索",
+  "settings.language.noMatch": "一致する言語がありません",
   "settings.section.lookAndFeel": "外観",
   "settings.theme.label": "テーマ",
   "settings.mode.label": "モード",

@@ -46,6 +46,43 @@ describe("Select", () => {
     expect(onchange).toHaveBeenCalledWith("lossless");
   });
 
+  it("filters with a search field and picks the first match on Enter", async () => {
+    const onchange = vi.fn();
+    const languages = [
+      { value: "en", label: "English" },
+      { value: "de", label: "Deutsch", keywords: ["German"] },
+      { value: "es", label: "Español", keywords: ["Spanish"] },
+    ];
+    render(Select, {
+      value: "en",
+      options: languages,
+      label: "Language",
+      onchange,
+      search: { label: "Search languages", empty: "No language matches" },
+    });
+    await fireEvent.click(screen.getByRole("button", { name: "Language" }));
+    const field = screen.getByRole("combobox", { name: "Search languages" });
+    expect(document.activeElement).toBe(field);
+    await fireEvent.input(field, { target: { value: "germ" } });
+    expect(screen.getAllByRole("option").map((o) => o.textContent?.trim())).toEqual(["Deutsch"]);
+    await fireEvent.keyDown(field, { key: "Enter" });
+    expect(onchange).toHaveBeenCalledWith("de");
+  });
+
+  it("says so when the search finds nothing", async () => {
+    render(Select, {
+      value: "en",
+      options: [{ value: "en", label: "English" }],
+      label: "Language",
+      onchange: vi.fn(),
+      search: { label: "Search languages", empty: "No language matches" },
+    });
+    await fireEvent.click(screen.getByRole("button", { name: "Language" }));
+    await fireEvent.input(screen.getByRole("combobox"), { target: { value: "xyz" } });
+    expect(screen.queryAllByRole("option")).toHaveLength(0);
+    expect(screen.getByRole("status").textContent).toBe("No language matches");
+  });
+
   it("skips disabled options", async () => {
     const onchange = vi.fn();
     render(Select, { value: "lossless", options, label: "Quality", onchange });

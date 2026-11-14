@@ -66,6 +66,8 @@
   "settings.language.crossChecked": "Gépi fordítás, ellenőrizve",
   "settings.language.pseudo": "Álnyelv (fejlesztés)",
   "settings.language.helpTranslate": "Segíts a fordításban",
+  "settings.language.search": "Nyelvek keresése",
+  "settings.language.noMatch": "Nincs egyező nyelv",
   "settings.section.lookAndFeel": "Megjelenés",
   "settings.theme.label": "Téma",
   "settings.mode.label": "Mód",

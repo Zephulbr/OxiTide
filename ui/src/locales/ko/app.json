@@ -66,6 +66,8 @@
   "settings.language.crossChecked": "기계 번역, 교차 검토됨",
   "settings.language.pseudo": "의사 로캘(개발용)",
   "settings.language.helpTranslate": "번역 돕기",
+  "settings.language.search": "언어 검색",
+  "settings.language.noMatch": "일치하는 언어가 없습니다",
   "settings.section.lookAndFeel": "디자인",
   "settings.theme.label": "테마",
   "settings.mode.label": "모드",

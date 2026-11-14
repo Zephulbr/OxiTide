@@ -66,6 +66,8 @@
   "settings.language.crossChecked": "Konekäännös, ristiintarkistettu",
   "settings.language.pseudo": "Pseudolokaali (kehitys)",
   "settings.language.helpTranslate": "Auta kääntämään",
+  "settings.language.search": "Hae kieliä",
+  "settings.language.noMatch": "Yksikään kieli ei vastaa hakua",
   "settings.section.lookAndFeel": "Ulkoasu ja tuntuma",
   "settings.theme.label": "Teema",
   "settings.mode.label": "Tila",
