@@ -160,26 +160,51 @@ function subfolders(dir) {
 }
 
 /// A translation whose English uses a glossary term should use that term's
-/// rendering for the language (warning only: inflection varies).
+/// rendering for the language (warning only). Renderings may carry a note in
+/// parentheses and alternatives separated by " / " or ";"; any alternative
+/// counts. Words match by stem (the last two letters may change), so declined
+/// and inflected forms ("playlista" → "playlisty") are not misses.
 function glossaryMisses(lang) {
   const glossary = readJson(paths.glossary(), { terms: [] });
   const misses = [];
   for (const term of glossary.terms ?? []) {
     const rendering = term[lang];
     if (!rendering) continue;
+    const alternatives = renderingAlternatives(rendering, lang);
+    if (alternatives.length === 0) continue;
     const pattern = new RegExp(`\\b${term.en.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
     for (const ns of NAMESPACES) {
       const source = catalog(SOURCE, ns);
       const translated = catalog(lang, ns);
       for (const [key, english] of Object.entries(source)) {
         const message = translated[key];
-        if (message && pattern.test(english) && !message.toLowerCase().includes(rendering.toLowerCase())) {
+        // Placeholder names ({artist}) and ICU keywords are not prose.
+        const prose = english.replace(/\{\s*\w+\s*(?:,\s*\w+\s*)?[,}]/g, " ");
+        if (!message || !pattern.test(prose)) continue;
+        const text = message.toLocaleLowerCase(lang);
+        if (!alternatives.some((stems) => stems.every((stem) => text.includes(stem)))) {
           misses.push(`${lang}/${ns}.json ${key}: glossary "${term.en}" → "${rendering}" not used`);
         }
       }
     }
   }
   return misses;
+}
+
+/// The stems of each alternative in a glossary rendering.
+export function renderingAlternatives(rendering, lang) {
+  return rendering
+    .replace(/\([^)]*\)/g, " ")
+    .split(/\s+\/\s+|;/)
+    .map((alt) =>
+      alt
+        .trim()
+        .toLocaleLowerCase(lang)
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((word) => (word.length > 4 ? word.slice(0, -2) : word)),
+    )
+    .filter((stems) => stems.length > 0);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {

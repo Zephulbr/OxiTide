@@ -11,7 +11,7 @@ const ROUTE_KEYS = {
   tracks: "route.tracks",
   later: "route.later",
   mixes: "route.mixes",
-  profiles: "route.profiles",
+  profiles: "nav.profiles",
   purchases: "route.purchases",
   album: "route.album",
   playlist: "route.playlist",

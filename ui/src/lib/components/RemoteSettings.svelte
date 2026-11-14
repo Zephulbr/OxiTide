@@ -184,7 +184,7 @@
   });
 
   const interfaceOptions = $derived([
-    { value: "", label: status?.address ? t("remoteSettings.autoAddress", { address: status.address }) : t("device.icon.auto") },
+    { value: "", label: status?.address ? t("remoteSettings.autoAddress", { address: status.address }) : t("remoteSettings.autoAddressDefault") },
     ...(status?.interfaces ?? []).map((iface) => ({
       value: iface.ip,
       label: `${iface.ip} — ${iface.name}`,
