@@ -1,0 +1,47 @@
+{
+  "tray.showHide": {
+    "status": "machine",
+    "source": "123426f8",
+    "draft": "f625e7d5"
+  },
+  "tray.playPause": {
+    "status": "machine",
+    "source": "6f97fb8c",
+    "draft": "37ed08ce"
+  },
+  "tray.next": {
+    "status": "machine",
+    "source": "1ff57a29",
+    "draft": "c5a0545c"
+  },
+  "tray.previous": {
+    "status": "machine",
+    "source": "a57b08a4",
+    "draft": "cd2d4105"
+  },
+  "tray.quit": {
+    "status": "machine",
+    "source": "b3eb37ac",
+    "draft": "75cd24c3"
+  },
+  "taskbar.previous": {
+    "status": "machine",
+    "source": "a57b08a4",
+    "draft": "cd2d4105"
+  },
+  "taskbar.play": {
+    "status": "machine",
+    "source": "436e6101",
+    "draft": "bdd37eb2"
+  },
+  "taskbar.pause": {
+    "status": "machine",
+    "source": "858e4ba7",
+    "draft": "65530fd4"
+  },
+  "taskbar.next": {
+    "status": "machine",
+    "source": "1ff57a29",
+    "draft": "c5a0545c"
+  }
+}

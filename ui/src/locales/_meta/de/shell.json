@@ -32,12 +32,12 @@
   "taskbar.play": {
     "status": "machine",
     "source": "436e6101",
-    "draft": "033e8fc0"
+    "draft": "fe71cf7b"
   },
   "taskbar.pause": {
     "status": "machine",
     "source": "858e4ba7",
-    "draft": "858e4ba7"
+    "draft": "75a303be"
   },
   "taskbar.next": {
     "status": "machine",

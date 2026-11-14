@@ -1,0 +1,607 @@
+{
+  "common.back": {
+    "status": "machine",
+    "source": "76900f1b",
+    "draft": "e31960df"
+  },
+  "common.cancel": {
+    "status": "machine",
+    "source": "19766ed6",
+    "draft": "c094b977"
+  },
+  "common.retry": {
+    "status": "machine",
+    "source": "942087cc",
+    "draft": "e1aee8c0"
+  },
+  "common.tryAgain": {
+    "status": "machine",
+    "source": "d8b8392e",
+    "draft": "b24daca3"
+  },
+  "common.loading": {
+    "status": "machine",
+    "source": "ba3bbbe1",
+    "draft": "feecc8bf"
+  },
+  "common.empty": {
+    "status": "machine",
+    "source": "2de5247a",
+    "draft": "f4e2f1cf"
+  },
+  "common.trackCount": {
+    "status": "machine",
+    "source": "c8a37004",
+    "draft": "f42a70a0"
+  },
+  "common.itemCount": {
+    "status": "machine",
+    "source": "1eb9964e",
+    "draft": "119cb4ae"
+  },
+  "common.playNamed": {
+    "status": "machine",
+    "source": "64010fec",
+    "draft": "a5a49482"
+  },
+  "tab.playing": {
+    "status": "machine",
+    "source": "deaf6f9d",
+    "draft": "5fe6275b"
+  },
+  "tab.home": {
+    "status": "machine",
+    "source": "3a786953",
+    "draft": "d2278e80"
+  },
+  "tab.search": {
+    "status": "machine",
+    "source": "49c266ba",
+    "draft": "97998793"
+  },
+  "tab.library": {
+    "status": "machine",
+    "source": "dc20b3d5",
+    "draft": "ce9f96a9"
+  },
+  "tab.queue": {
+    "status": "machine",
+    "source": "3b2fe03e",
+    "draft": "a6b4b196"
+  },
+  "tab.sections": {
+    "status": "machine",
+    "source": "9bae918a",
+    "draft": "ab162140"
+  },
+  "pair.failed": {
+    "status": "machine",
+    "source": "6c52d23f",
+    "draft": "c6ebece8"
+  },
+  "pair.newCode": {
+    "status": "machine",
+    "source": "46600334",
+    "draft": "db4ca5b5"
+  },
+  "pair.pairing": {
+    "status": "machine",
+    "source": "ec9f969d",
+    "draft": "1e068195"
+  },
+  "pair.approve": {
+    "status": "machine",
+    "source": "ed9c7624",
+    "draft": "5a4ce041"
+  },
+  "pair.title": {
+    "status": "machine",
+    "source": "8f85ec9d",
+    "draft": "9ac8d723"
+  },
+  "pair.howTo": {
+    "status": "machine",
+    "source": "058f60f8",
+    "draft": "cc7351cb"
+  },
+  "pair.button": {
+    "status": "machine",
+    "source": "31a94a7e",
+    "draft": "cff43999"
+  },
+  "connect.title": {
+    "status": "machine",
+    "source": "125e1216",
+    "draft": "b23d6742"
+  },
+  "connect.hint": {
+    "status": "machine",
+    "source": "51339172",
+    "draft": "3bcad471"
+  },
+  "connect.signIn": {
+    "status": "machine",
+    "source": "2baeaf6e",
+    "draft": "8e671dfd"
+  },
+  "connect.reconnecting": {
+    "status": "machine",
+    "source": "d26a01b9",
+    "draft": "bc2b3ab1"
+  },
+  "session.loggedOut": {
+    "status": "machine",
+    "source": "8805ec4b",
+    "draft": "9ba0140c"
+  },
+  "session.expired": {
+    "status": "machine",
+    "source": "352c3409",
+    "draft": "75d79bb0"
+  },
+  "session.signIn": {
+    "status": "machine",
+    "source": "31e81e5a",
+    "draft": "665c169e"
+  },
+  "error.unauthorized": {
+    "status": "machine",
+    "source": "2ab902af",
+    "draft": "d06aa855"
+  },
+  "error.forbidden": {
+    "status": "machine",
+    "source": "743e5635",
+    "draft": "8aeffb43"
+  },
+  "error.timeout": {
+    "status": "machine",
+    "source": "cdc690b0",
+    "draft": "c5c839d0"
+  },
+  "error.tooLarge": {
+    "status": "machine",
+    "source": "ab24cbae",
+    "draft": "8d8ea9f1"
+  },
+  "error.rateLimited": {
+    "status": "machine",
+    "source": "10246231",
+    "draft": "72472fe3"
+  },
+  "error.busy": {
+    "status": "machine",
+    "source": "5cfaae65",
+    "draft": "83577fca"
+  },
+  "error.offline": {
+    "status": "machine",
+    "source": "f1280497",
+    "draft": "994d00e2"
+  },
+  "error.failed": {
+    "status": "machine",
+    "source": "550c3641",
+    "draft": "0f241d9a"
+  },
+  "toast.addedToCollection": {
+    "status": "machine",
+    "source": "82e91de8",
+    "draft": "5bd25a15"
+  },
+  "toast.removedFromCollection": {
+    "status": "machine",
+    "source": "f50ad300",
+    "draft": "c9a4aaf6"
+  },
+  "toast.queued": {
+    "status": "machine",
+    "source": "29c1da5e",
+    "draft": "fe8958b7"
+  },
+  "toast.noPlaylists": {
+    "status": "machine",
+    "source": "37ed80e6",
+    "draft": "4c176448"
+  },
+  "toast.addedTo": {
+    "status": "machine",
+    "source": "d303c42f",
+    "draft": "ebb861a6"
+  },
+  "menu.addToQueue": {
+    "status": "machine",
+    "source": "34b25c1b",
+    "draft": "9468f30e"
+  },
+  "menu.addToPlaylist": {
+    "status": "machine",
+    "source": "3e93defd",
+    "draft": "43d26df2"
+  },
+  "menu.addToPlaylistTitle": {
+    "status": "machine",
+    "source": "5d020094",
+    "draft": "e83d4cb7"
+  },
+  "menu.trackRadio": {
+    "status": "machine",
+    "source": "4c232fbb",
+    "draft": "0ac85c75"
+  },
+  "menu.goToAlbum": {
+    "status": "machine",
+    "source": "55e6e42d",
+    "draft": "a0a2ce26"
+  },
+  "menu.goToArtist": {
+    "status": "machine",
+    "source": "94e3bd7b",
+    "draft": "3e731626"
+  },
+  "np.label": {
+    "status": "machine",
+    "source": "0906bc70",
+    "draft": "6cbba337"
+  },
+  "np.nothing": {
+    "status": "machine",
+    "source": "9b462b87",
+    "draft": "1959dfdd"
+  },
+  "np.browse": {
+    "status": "machine",
+    "source": "3227aa96",
+    "draft": "1b633f0f"
+  },
+  "np.favorite": {
+    "status": "machine",
+    "source": "7f3c0782",
+    "draft": "852d6ac0"
+  },
+  "np.unfavorite": {
+    "status": "machine",
+    "source": "18720329",
+    "draft": "1301dd03"
+  },
+  "np.explicitBadge": {
+    "status": "machine",
+    "source": "a9f51566",
+    "draft": "a9f51566"
+  },
+  "np.bitPerfect": {
+    "status": "machine",
+    "source": "47c16d71",
+    "draft": "47c16d71"
+  },
+  "np.seek": {
+    "status": "machine",
+    "source": "67ae3405",
+    "draft": "57ec40a8"
+  },
+  "np.positionOf": {
+    "status": "machine",
+    "source": "067ab470",
+    "draft": "ab3c5275"
+  },
+  "np.shuffle": {
+    "status": "machine",
+    "source": "317cb3a7",
+    "draft": "e1ff84ff"
+  },
+  "np.previous": {
+    "status": "machine",
+    "source": "a57b08a4",
+    "draft": "db2f1762"
+  },
+  "np.play": {
+    "status": "machine",
+    "source": "436e6101",
+    "draft": "a8f308b5"
+  },
+  "np.pause": {
+    "status": "machine",
+    "source": "858e4ba7",
+    "draft": "8c390f1c"
+  },
+  "np.next": {
+    "status": "machine",
+    "source": "1ff57a29",
+    "draft": "2f43167c"
+  },
+  "np.repeat": {
+    "status": "machine",
+    "source": "41cefab2",
+    "draft": "646029df"
+  },
+  "np.mute": {
+    "status": "machine",
+    "source": "b8e13af7",
+    "draft": "68dd8338"
+  },
+  "np.unmute": {
+    "status": "machine",
+    "source": "ce4ee4ef",
+    "draft": "57dac4b0"
+  },
+  "np.swipeHint": {
+    "status": "machine",
+    "source": "9defd834",
+    "draft": "3ab9951e"
+  },
+  "np.swipeTip": {
+    "status": "machine",
+    "source": "85c91640",
+    "draft": "5d05cf13"
+  },
+  "np.volumeFixedShort": {
+    "status": "machine",
+    "source": "efa35716",
+    "draft": "edf18c5e"
+  },
+  "np.volumeSwipe": {
+    "status": "machine",
+    "source": "a69b98c3",
+    "draft": "4bdfdbf9"
+  },
+  "np.fadePause": {
+    "status": "machine",
+    "source": "2b72d6a1",
+    "draft": "f6bdc873"
+  },
+  "np.lyrics": {
+    "status": "machine",
+    "source": "e73a4aa7",
+    "draft": "5aeda2f6"
+  },
+  "np.more": {
+    "status": "machine",
+    "source": "d47d7cb0",
+    "draft": "c9482975"
+  },
+  "volume.fixed": {
+    "status": "machine",
+    "source": "898d6391",
+    "draft": "82aaae29"
+  },
+  "mini.open": {
+    "status": "machine",
+    "source": "f51d1e92",
+    "draft": "e39e0b51"
+  },
+  "queue.clearTitle": {
+    "status": "machine",
+    "source": "f250896f",
+    "draft": "4061b95f"
+  },
+  "queue.clearSubtitle": {
+    "status": "machine",
+    "source": "e20380ba",
+    "draft": "0dad6d8d"
+  },
+  "queue.clear": {
+    "status": "machine",
+    "source": "fd1d3b4b",
+    "draft": "b7529a5c"
+  },
+  "queue.clearShort": {
+    "status": "machine",
+    "source": "83b12c22",
+    "draft": "8caa2923"
+  },
+  "queue.showCurrent": {
+    "status": "machine",
+    "source": "88ecf88a",
+    "draft": "525be448"
+  },
+  "queue.empty": {
+    "status": "machine",
+    "source": "5db98180",
+    "draft": "ccd8ce46"
+  },
+  "queue.reorder": {
+    "status": "machine",
+    "source": "f92d886f",
+    "draft": "3059ba0a"
+  },
+  "queue.reorderN": {
+    "status": "machine",
+    "source": "8bc2c3b9",
+    "draft": "28441ccf"
+  },
+  "queue.autoplay": {
+    "status": "machine",
+    "source": "892aead9",
+    "draft": "6242ecc0"
+  },
+  "queue.remove": {
+    "status": "machine",
+    "source": "c8677fd2",
+    "draft": "58cc21ad"
+  },
+  "search.placeholder": {
+    "status": "machine",
+    "source": "8e0b723c",
+    "draft": "78cb7914"
+  },
+  "search.label": {
+    "status": "machine",
+    "source": "64cf3603",
+    "draft": "ac4551f7"
+  },
+  "search.clear": {
+    "status": "machine",
+    "source": "3b7ea517",
+    "draft": "34287c82"
+  },
+  "search.searching": {
+    "status": "machine",
+    "source": "c31723ab",
+    "draft": "2d33ffa5"
+  },
+  "search.noResults": {
+    "status": "machine",
+    "source": "459b1180",
+    "draft": "a10434f7"
+  },
+  "library.tracks": {
+    "status": "machine",
+    "source": "88980154",
+    "draft": "babb9eef"
+  },
+  "library.albums": {
+    "status": "machine",
+    "source": "57bca6e1",
+    "draft": "2dce235e"
+  },
+  "library.artists": {
+    "status": "machine",
+    "source": "94e3e8a4",
+    "draft": "4613adb7"
+  },
+  "library.playlists": {
+    "status": "machine",
+    "source": "dcd0a4d2",
+    "draft": "310d175a"
+  },
+  "library.mixes": {
+    "status": "machine",
+    "source": "9861aad4",
+    "draft": "fd759a91"
+  },
+  "library.recent": {
+    "status": "machine",
+    "source": "452ec9f5",
+    "draft": "cedc8e72"
+  },
+  "list.queueAll": {
+    "status": "machine",
+    "source": "da55125e",
+    "draft": "4419b82e"
+  },
+  "list.playlistAll": {
+    "status": "machine",
+    "source": "f17ff9ef",
+    "draft": "2a916b84"
+  },
+  "list.loadingAll": {
+    "status": "machine",
+    "source": "7004a22d",
+    "draft": "a5c0c782"
+  },
+  "list.retry": {
+    "status": "machine",
+    "source": "a0f859bc",
+    "draft": "56bac90d"
+  },
+  "list.loadingMore": {
+    "status": "machine",
+    "source": "b4530bbe",
+    "draft": "fc3a2490"
+  },
+  "artist.radio": {
+    "status": "machine",
+    "source": "2a7dfeb2",
+    "draft": "17d13ac0"
+  },
+  "artist.topTracks": {
+    "status": "machine",
+    "source": "7580f724",
+    "draft": "e2f3802c"
+  },
+  "artist.singles": {
+    "status": "machine",
+    "source": "d50a2447",
+    "draft": "30f855dc"
+  },
+  "artist.fansAlsoLike": {
+    "status": "machine",
+    "source": "6bbb7df4",
+    "draft": "c2fbb216"
+  },
+  "kind.album": {
+    "status": "machine",
+    "source": "f05e840e",
+    "draft": "2dce235e"
+  },
+  "kind.artist": {
+    "status": "machine",
+    "source": "1d3981ba",
+    "draft": "83c99f92"
+  },
+  "kind.mix": {
+    "status": "machine",
+    "source": "dce6eb44",
+    "draft": "dce6eb44"
+  },
+  "kind.playlist": {
+    "status": "machine",
+    "source": "7af36c50",
+    "draft": "591e7665"
+  },
+  "feed.forYou": {
+    "status": "machine",
+    "source": "565d8d73",
+    "draft": "ad74f308"
+  },
+  "feed.explore": {
+    "status": "machine",
+    "source": "3b73900b",
+    "draft": "3759bbe0"
+  },
+  "feed.browse": {
+    "status": "machine",
+    "source": "3227aa96",
+    "draft": "1b633f0f"
+  },
+  "favorites.noTracks": {
+    "status": "machine",
+    "source": "fccebcde",
+    "draft": "512279ac"
+  },
+  "favorites.noAlbums": {
+    "status": "machine",
+    "source": "c95aa390",
+    "draft": "aaf67b45"
+  },
+  "favorites.noArtists": {
+    "status": "machine",
+    "source": "a5962de4",
+    "draft": "27dd1cec"
+  },
+  "lyrics.loading": {
+    "status": "machine",
+    "source": "d693046c",
+    "draft": "46c80827"
+  },
+  "lyrics.none": {
+    "status": "machine",
+    "source": "62d6aabc",
+    "draft": "c56e2e98"
+  },
+  "lyrics.unavailable": {
+    "status": "machine",
+    "source": "faf253cd",
+    "draft": "2751f3e9"
+  },
+  "row.play": {
+    "status": "machine",
+    "source": "b865f393",
+    "draft": "c5fe9a91"
+  },
+  "row.more": {
+    "status": "machine",
+    "source": "97b51216",
+    "draft": "001f085d"
+  },
+  "history.empty": {
+    "status": "machine",
+    "source": "2fe68c2b",
+    "draft": "78fe509c"
+  },
+  "mixes.empty": {
+    "status": "machine",
+    "source": "92608292",
+    "draft": "9923f88d"
+  }
+}

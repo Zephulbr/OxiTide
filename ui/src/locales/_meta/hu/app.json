@@ -1,0 +1,5827 @@
+{
+  "app.skipToContent": {
+    "status": "machine",
+    "source": "ac576a66",
+    "draft": "1c10ef49"
+  },
+  "app.windowTitle": {
+    "status": "machine",
+    "source": "3abc074d",
+    "draft": "3abc074d"
+  },
+  "app.scrobbleReconnect": {
+    "status": "machine",
+    "source": "991ccd6c",
+    "draft": "dc449f59"
+  },
+  "app.updateAvailable": {
+    "status": "machine",
+    "source": "16e438ca",
+    "draft": "f5e2d365"
+  },
+  "app.openSettings": {
+    "status": "machine",
+    "source": "3f940108",
+    "draft": "c1a856a7"
+  },
+  "app.sessionExpired": {
+    "status": "machine",
+    "source": "cb6c283f",
+    "draft": "3ee2c07d"
+  },
+  "app.queueWidth": {
+    "status": "machine",
+    "source": "cd3cfde2",
+    "draft": "462b2797"
+  },
+  "app.pixels": {
+    "status": "machine",
+    "source": "3a2d5a7f",
+    "draft": "3927aafe"
+  },
+  "route.nowPlaying": {
+    "status": "machine",
+    "source": "0906bc70",
+    "draft": "7400ca5b"
+  },
+  "route.home": {
+    "status": "machine",
+    "source": "3a786953",
+    "draft": "446a706f"
+  },
+  "route.explore": {
+    "status": "machine",
+    "source": "3b73900b",
+    "draft": "d03bca42"
+  },
+  "route.feed": {
+    "status": "machine",
+    "source": "396c3cb1",
+    "draft": "76bf89e6"
+  },
+  "route.history": {
+    "status": "machine",
+    "source": "0e769600",
+    "draft": "0625dba6"
+  },
+  "route.stats": {
+    "status": "machine",
+    "source": "b4a73657",
+    "draft": "96bd8b4b"
+  },
+  "route.playlists": {
+    "status": "machine",
+    "source": "dcd0a4d2",
+    "draft": "b2f6e38a"
+  },
+  "route.folder": {
+    "status": "machine",
+    "source": "74ccd433",
+    "draft": "2b71c6a1"
+  },
+  "route.albums": {
+    "status": "machine",
+    "source": "57bca6e1",
+    "draft": "7e8f3239"
+  },
+  "route.tracks": {
+    "status": "machine",
+    "source": "88980154",
+    "draft": "8fd132c1"
+  },
+  "route.later": {
+    "status": "machine",
+    "source": "1a720e27",
+    "draft": "dad3e9c2"
+  },
+  "route.mixes": {
+    "status": "machine",
+    "source": "0af39985",
+    "draft": "1996828a"
+  },
+  "route.profiles": {
+    "status": "machine",
+    "source": "94e3e8a4",
+    "draft": "ce716e0e"
+  },
+  "route.purchases": {
+    "status": "machine",
+    "source": "a0718ef8",
+    "draft": "12b7013a"
+  },
+  "route.album": {
+    "status": "machine",
+    "source": "f05e840e",
+    "draft": "f05e840e"
+  },
+  "route.playlist": {
+    "status": "machine",
+    "source": "7af36c50",
+    "draft": "daa555a2"
+  },
+  "route.artist": {
+    "status": "machine",
+    "source": "1d3981ba",
+    "draft": "27af2072"
+  },
+  "route.mix": {
+    "status": "machine",
+    "source": "dce6eb44",
+    "draft": "dce6eb44"
+  },
+  "route.radio": {
+    "status": "machine",
+    "source": "4c232fbb",
+    "draft": "cd0eea6b"
+  },
+  "route.settings": {
+    "status": "machine",
+    "source": "74a883a0",
+    "draft": "109d0914"
+  },
+  "player.openNowPlaying": {
+    "status": "machine",
+    "source": "3d5acbb5",
+    "draft": "485b2727"
+  },
+  "player.artwork": {
+    "status": "machine",
+    "source": "c26eca52",
+    "draft": "4455a234"
+  },
+  "player.favorite": {
+    "status": "machine",
+    "source": "ea713ecd",
+    "draft": "b49c8e7e"
+  },
+  "player.unfavorite": {
+    "status": "machine",
+    "source": "5e87a7bd",
+    "draft": "24da8697"
+  },
+  "player.waitingForNetwork": {
+    "status": "machine",
+    "source": "737da798",
+    "draft": "b6839cfb"
+  },
+  "player.shuffle": {
+    "status": "machine",
+    "source": "317cb3a7",
+    "draft": "41033cf6"
+  },
+  "player.shuffleHint": {
+    "status": "machine",
+    "source": "aa30ed56",
+    "draft": "f5749e1a"
+  },
+  "player.previous": {
+    "status": "machine",
+    "source": "a57b08a4",
+    "draft": "07f1e95b"
+  },
+  "player.play": {
+    "status": "machine",
+    "source": "436e6101",
+    "draft": "522a3733"
+  },
+  "player.pause": {
+    "status": "machine",
+    "source": "858e4ba7",
+    "draft": "9c65e253"
+  },
+  "player.next": {
+    "status": "machine",
+    "source": "1ff57a29",
+    "draft": "4dd3ae6b"
+  },
+  "player.repeatOneLabel": {
+    "status": "machine",
+    "source": "8045aa4a",
+    "draft": "1c6aaf71"
+  },
+  "player.repeatOne": {
+    "status": "machine",
+    "source": "b3ca2e81",
+    "draft": "86b1f7d2"
+  },
+  "player.repeatAll": {
+    "status": "machine",
+    "source": "5cf6d2b6",
+    "draft": "85abcf00"
+  },
+  "player.repeatOff": {
+    "status": "machine",
+    "source": "0c1fe378",
+    "draft": "7620dbd2"
+  },
+  "player.queue": {
+    "status": "machine",
+    "source": "3b2fe03e",
+    "draft": "fa353b3e"
+  },
+  "player.queueHint": {
+    "status": "machine",
+    "source": "6e1faeb7",
+    "draft": "c396c03a"
+  },
+  "player.qualityLabel": {
+    "status": "machine",
+    "source": "3c25d8a5",
+    "draft": "17c4461e"
+  },
+  "player.streamingQuality": {
+    "status": "machine",
+    "source": "452f50c3",
+    "draft": "70bdc2bc"
+  },
+  "player.preferredQuality": {
+    "status": "machine",
+    "source": "8992595d",
+    "draft": "3f15bab2"
+  },
+  "player.bitPerfect": {
+    "status": "machine",
+    "source": "582d0866",
+    "draft": "e65b4312"
+  },
+  "player.miniPlayer": {
+    "status": "machine",
+    "source": "4ad4dcc6",
+    "draft": "60c8b675"
+  },
+  "player.nothingStreaming": {
+    "status": "machine",
+    "source": "a9de9064",
+    "draft": "4a6832ae"
+  },
+  "player.nothingPlaying": {
+    "status": "machine",
+    "source": "05aed12e",
+    "draft": "90b39185"
+  },
+  "player.bitPerfectBadge": {
+    "status": "machine",
+    "source": "117b57ed",
+    "draft": "e65b4312"
+  },
+  "player.exclusiveOutput": {
+    "status": "machine",
+    "source": "05ba9c13",
+    "draft": "26aac692"
+  },
+  "player.sharedOutput": {
+    "status": "machine",
+    "source": "23f31180",
+    "draft": "ec81aab2"
+  },
+  "player.outputSettings": {
+    "status": "machine",
+    "source": "37b47a36",
+    "draft": "57417a41"
+  },
+  "player.output": {
+    "status": "machine",
+    "source": "b2439bcb",
+    "draft": "23561e7b"
+  },
+  "player.notConnected": {
+    "status": "machine",
+    "source": "0303e182",
+    "draft": "8678aab6"
+  },
+  "player.dspBadge": {
+    "status": "machine",
+    "source": "66ee3223",
+    "draft": "08b77bd6"
+  },
+  "toast.dismiss": {
+    "status": "machine",
+    "source": "48845bff",
+    "draft": "b567f521"
+  },
+  "settings.language.label": {
+    "status": "machine",
+    "source": "a4fe6526",
+    "draft": "89c50ee4"
+  },
+  "settings.language.description": {
+    "status": "machine",
+    "source": "fb390c37",
+    "draft": "caa498aa"
+  },
+  "settings.language.system": {
+    "status": "machine",
+    "source": "7e99ff9e",
+    "draft": "60d8a198"
+  },
+  "settings.language.machine": {
+    "status": "machine",
+    "source": "f249477a",
+    "draft": "632612ed"
+  },
+  "settings.language.crossChecked": {
+    "status": "machine",
+    "source": "a4b4c692",
+    "draft": "3cf2168f"
+  },
+  "settings.language.pseudo": {
+    "status": "machine",
+    "source": "87dd20dc",
+    "draft": "0fa1ad4a"
+  },
+  "settings.language.helpTranslate": {
+    "status": "machine",
+    "source": "b425f2e0",
+    "draft": "c3cff998"
+  },
+  "settings.section.lookAndFeel": {
+    "status": "machine",
+    "source": "ce700951",
+    "draft": "305f320f"
+  },
+  "settings.theme.label": {
+    "status": "machine",
+    "source": "efb52e71",
+    "draft": "c3efea36"
+  },
+  "settings.mode.label": {
+    "status": "machine",
+    "source": "5e23ec6a",
+    "draft": "d5ae80fd"
+  },
+  "settings.studioTone.label": {
+    "status": "machine",
+    "source": "c2c8b72e",
+    "draft": "9dd160b0"
+  },
+  "settings.dynamicColor.label": {
+    "status": "machine",
+    "source": "71c7275a",
+    "draft": "e1fa0459"
+  },
+  "settings.dynamicColor.description": {
+    "status": "machine",
+    "source": "85c80be9",
+    "draft": "a73679cf"
+  },
+  "settings.section.hiFiRack": {
+    "status": "machine",
+    "source": "24f64519",
+    "draft": "24f64519"
+  },
+  "settings.section.hiFiRack.description": {
+    "status": "machine",
+    "source": "f8db147d",
+    "draft": "aaabb59a"
+  },
+  "settings.rackDeck.label": {
+    "status": "machine",
+    "source": "37bdb131",
+    "draft": "fc39da2a"
+  },
+  "settings.rackDeck.description": {
+    "status": "machine",
+    "source": "8d7b235a",
+    "draft": "f442b93b"
+  },
+  "settings.rackMeters.label": {
+    "status": "machine",
+    "source": "019c6670",
+    "draft": "5a206f1c"
+  },
+  "settings.rackAnalyzer.label": {
+    "status": "machine",
+    "source": "d58c44d7",
+    "draft": "5648fcab"
+  },
+  "settings.rackAnalyzer.description": {
+    "status": "machine",
+    "source": "ae25c61c",
+    "draft": "a8e6f11c"
+  },
+  "settings.rackLamp.label": {
+    "status": "machine",
+    "source": "4c9f606f",
+    "draft": "cf9f24d3"
+  },
+  "settings.rackLamp.description": {
+    "status": "machine",
+    "source": "86c5b61e",
+    "draft": "155633f7"
+  },
+  "settings.rackBrightness.label": {
+    "status": "machine",
+    "source": "d3b36de4",
+    "draft": "7744e00f"
+  },
+  "settings.rackEq.label": {
+    "status": "machine",
+    "source": "6519a8ab",
+    "draft": "9eadbeca"
+  },
+  "settings.section.typographyAndLayout": {
+    "status": "machine",
+    "source": "bb354b75",
+    "draft": "f0bbaa90"
+  },
+  "settings.typeface.label": {
+    "status": "machine",
+    "source": "3a8c1076",
+    "draft": "d21c12c8"
+  },
+  "settings.typeface.description": {
+    "status": "machine",
+    "source": "89991c75",
+    "draft": "9cfe3c6d"
+  },
+  "settings.customFont.label": {
+    "status": "machine",
+    "source": "c039b7e2",
+    "draft": "8cad66ac"
+  },
+  "settings.customFont.description": {
+    "status": "machine",
+    "source": "9cbd714a",
+    "draft": "a7b73154"
+  },
+  "settings.density.label": {
+    "status": "machine",
+    "source": "77a283d6",
+    "draft": "0b83f9ab"
+  },
+  "settings.density.description": {
+    "status": "machine",
+    "source": "dbf8e662",
+    "draft": "ba48fed3"
+  },
+  "settings.rowSeparators.label": {
+    "status": "machine",
+    "source": "079df816",
+    "draft": "2a13a3cd"
+  },
+  "settings.rowSeparators.description": {
+    "status": "machine",
+    "source": "6eb5d838",
+    "draft": "ea654e21"
+  },
+  "settings.coverShape.label": {
+    "status": "machine",
+    "source": "9fe3e459",
+    "draft": "66d47c0e"
+  },
+  "settings.coverShape.description": {
+    "status": "machine",
+    "source": "002e23c3",
+    "draft": "212a0dc6"
+  },
+  "settings.trackSortMemory.label": {
+    "status": "machine",
+    "source": "645646f7",
+    "draft": "de3da5b5"
+  },
+  "settings.playerBarStyle.label": {
+    "status": "machine",
+    "source": "c83f550d",
+    "draft": "bb78ad0a"
+  },
+  "settings.playerBarStyle.description": {
+    "status": "machine",
+    "source": "b8a7b5f3",
+    "draft": "6b8459dd"
+  },
+  "settings.queueStyle.label": {
+    "status": "machine",
+    "source": "3b2fe03e",
+    "draft": "fa353b3e"
+  },
+  "settings.queueStyle.description": {
+    "status": "machine",
+    "source": "6ca84828",
+    "draft": "7b977f89"
+  },
+  "settings.hoverPanels.label": {
+    "status": "machine",
+    "source": "2cdebe8b",
+    "draft": "29ff0192"
+  },
+  "settings.hoverPanels.description": {
+    "status": "machine",
+    "source": "fbc9cde1",
+    "draft": "d33a8358"
+  },
+  "settings.section.cat": {
+    "status": "machine",
+    "source": "48735c4f",
+    "draft": "1da1f0c6"
+  },
+  "settings.cat.label": {
+    "status": "machine",
+    "source": "48735c4f",
+    "draft": "1da1f0c6"
+  },
+  "settings.catjam.label": {
+    "status": "machine",
+    "source": "40a53a85",
+    "draft": "5d0d7d2e"
+  },
+  "settings.catjamCoat.label": {
+    "status": "machine",
+    "source": "1e025c02",
+    "draft": "feaad629"
+  },
+  "settings.catjamSize.label": {
+    "status": "machine",
+    "source": "1af85190",
+    "draft": "fe4366fc"
+  },
+  "settings.credits.label": {
+    "status": "machine",
+    "source": "2a6b24ad",
+    "draft": "4f553a25"
+  },
+  "settings.section.streaming": {
+    "status": "machine",
+    "source": "a951c594",
+    "draft": "f4a88deb"
+  },
+  "settings.quality.label": {
+    "status": "machine",
+    "source": "452f50c3",
+    "draft": "70bdc2bc"
+  },
+  "settings.quality.description": {
+    "status": "machine",
+    "source": "8dc2f505",
+    "draft": "a3cddb40"
+  },
+  "settings.allowFallback.label": {
+    "status": "machine",
+    "source": "74a741ee",
+    "draft": "fe0a1117"
+  },
+  "settings.allowFallback.description": {
+    "status": "machine",
+    "source": "b7543200",
+    "draft": "6f86d3a6"
+  },
+  "settings.qualityBadge.label": {
+    "status": "machine",
+    "source": "6d2df7fb",
+    "draft": "31fddedf"
+  },
+  "settings.qualityBadge.description": {
+    "status": "machine",
+    "source": "e19868f4",
+    "draft": "5221f972"
+  },
+  "settings.section.queue": {
+    "status": "machine",
+    "source": "3b2fe03e",
+    "draft": "fa353b3e"
+  },
+  "settings.autoplay.label": {
+    "status": "machine",
+    "source": "892aead9",
+    "draft": "2a29d85a"
+  },
+  "settings.autoplay.description": {
+    "status": "machine",
+    "source": "ede21b11",
+    "draft": "ae967e49"
+  },
+  "settings.section.output": {
+    "status": "machine",
+    "source": "b2439bcb",
+    "draft": "23561e7b"
+  },
+  "settings.device.label": {
+    "status": "machine",
+    "source": "e30e9717",
+    "draft": "15f825ec"
+  },
+  "settings.device.description": {
+    "status": "machine",
+    "source": "f5b76bb0",
+    "draft": "b9f904d8"
+  },
+  "settings.exclusiveFallback.label": {
+    "status": "machine",
+    "source": "5fc784d0",
+    "draft": "b2f7d1c1"
+  },
+  "settings.exclusiveFallback.description": {
+    "status": "machine",
+    "source": "166cf194",
+    "draft": "44ae6973"
+  },
+  "settings.asioDriver.label": {
+    "status": "machine",
+    "source": "ddaa28af",
+    "draft": "5481640f"
+  },
+  "settings.deviceIcons.label": {
+    "status": "machine",
+    "source": "7aaa5651",
+    "draft": "e46525ea"
+  },
+  "settings.deviceIcons.description": {
+    "status": "machine",
+    "source": "f23e3057",
+    "draft": "ec3bbd79"
+  },
+  "settings.section.volumeLeveling": {
+    "status": "machine",
+    "source": "3bd1f621",
+    "draft": "bc560763"
+  },
+  "settings.section.volumeLeveling.description": {
+    "status": "machine",
+    "source": "159a9e53",
+    "draft": "25c69e22"
+  },
+  "settings.replaygain.label": {
+    "status": "machine",
+    "source": "64d3a660",
+    "draft": "64d3a660"
+  },
+  "settings.rgPreamp.label": {
+    "status": "machine",
+    "source": "700abaf1",
+    "draft": "06aaf78b"
+  },
+  "settings.rgPreamp.description": {
+    "status": "machine",
+    "source": "5acf3e90",
+    "draft": "506aa23c"
+  },
+  "settings.rgUntagged.label": {
+    "status": "machine",
+    "source": "8adce6da",
+    "draft": "654efb0c"
+  },
+  "settings.rgUntagged.description": {
+    "status": "machine",
+    "source": "5cd25376",
+    "draft": "7d4f5fc2"
+  },
+  "settings.rgClipping.label": {
+    "status": "machine",
+    "source": "60288d3b",
+    "draft": "d381bd9d"
+  },
+  "settings.section.equalizer": {
+    "status": "machine",
+    "source": "71255f2b",
+    "draft": "4ec55b61"
+  },
+  "settings.section.equalizer.description": {
+    "status": "machine",
+    "source": "a729a405",
+    "draft": "616dcb18"
+  },
+  "settings.eqPreset.label": {
+    "status": "machine",
+    "source": "7252e7ce",
+    "draft": "293bab13"
+  },
+  "settings.eqBands.label": {
+    "status": "machine",
+    "source": "bf5f54ea",
+    "draft": "54705dcc"
+  },
+  "settings.eqAutoPreamp.label": {
+    "status": "machine",
+    "source": "c27512a3",
+    "draft": "d5cab09b"
+  },
+  "settings.eqAutoPreamp.description": {
+    "status": "machine",
+    "source": "7de96c0a",
+    "draft": "299888d6"
+  },
+  "settings.eqPreamp.label": {
+    "status": "machine",
+    "source": "700abaf1",
+    "draft": "06aaf78b"
+  },
+  "settings.section.crossfade": {
+    "status": "machine",
+    "source": "d5fe512a",
+    "draft": "01d1f5f6"
+  },
+  "settings.crossfade.label": {
+    "status": "machine",
+    "source": "d5fe512a",
+    "draft": "01d1f5f6"
+  },
+  "settings.crossfade.description": {
+    "status": "machine",
+    "source": "1dc98289",
+    "draft": "2cd79fbf"
+  },
+  "settings.gapless.label": {
+    "status": "machine",
+    "source": "102eb7b1",
+    "draft": "2c1776f0"
+  },
+  "settings.gapless.description": {
+    "status": "machine",
+    "source": "94ecbbf5",
+    "draft": "a952f2e8"
+  },
+  "settings.section.automixExperimental": {
+    "status": "machine",
+    "source": "66ce9a19",
+    "draft": "f5d00ba0"
+  },
+  "settings.section.filtersAndLabels": {
+    "status": "machine",
+    "source": "de3c681c",
+    "draft": "4c17a69d"
+  },
+  "settings.blockExplicit.label": {
+    "status": "machine",
+    "source": "f1e08259",
+    "draft": "e896b567"
+  },
+  "settings.blockExplicit.description": {
+    "status": "machine",
+    "source": "db3f4d63",
+    "draft": "b02993ba"
+  },
+  "settings.blockAi.label": {
+    "status": "machine",
+    "source": "1f0347ec",
+    "draft": "0dedfe03"
+  },
+  "settings.blockAi.description": {
+    "status": "machine",
+    "source": "d599fbc2",
+    "draft": "e7367314"
+  },
+  "settings.showLabels.label": {
+    "status": "machine",
+    "source": "55b84626",
+    "draft": "708938f0"
+  },
+  "settings.showLabels.description": {
+    "status": "machine",
+    "source": "65d671b2",
+    "draft": "e6ab6edb"
+  },
+  "settings.section.scrobbling": {
+    "status": "machine",
+    "source": "c3884071",
+    "draft": "a28a409a"
+  },
+  "settings.section.scrobbling.description": {
+    "status": "machine",
+    "source": "34d617ea",
+    "draft": "02ab987b"
+  },
+  "settings.lastfm.label": {
+    "status": "machine",
+    "source": "3825017d",
+    "draft": "3825017d"
+  },
+  "settings.listenbrainz.label": {
+    "status": "machine",
+    "source": "2a3205a5",
+    "draft": "2a3205a5"
+  },
+  "settings.loadingScrobblingStatus.label": {
+    "status": "machine",
+    "source": "f3cbe039",
+    "draft": "972dbe7c"
+  },
+  "settings.section.presenceAndControls": {
+    "status": "machine",
+    "source": "1ca45616",
+    "draft": "cdf7d95c"
+  },
+  "settings.discord.label": {
+    "status": "machine",
+    "source": "855e169e",
+    "draft": "855e169e"
+  },
+  "settings.discord.description": {
+    "status": "machine",
+    "source": "a2fb39d9",
+    "draft": "acda108a"
+  },
+  "settings.mediaControls.label": {
+    "status": "machine",
+    "source": "d07deb83",
+    "draft": "fb5b894f"
+  },
+  "settings.mediaControls.description": {
+    "status": "machine",
+    "source": "5eb2eed0",
+    "draft": "ef32dae4"
+  },
+  "settings.section.cache": {
+    "status": "machine",
+    "source": "a76ce82a",
+    "draft": "ed374abc"
+  },
+  "settings.section.cache.description": {
+    "status": "machine",
+    "source": "4b693df9",
+    "draft": "d4c8bfc7"
+  },
+  "settings.cacheUsage.label": {
+    "status": "machine",
+    "source": "4fe60c10",
+    "draft": "fcf1507e"
+  },
+  "settings.cacheMax.label": {
+    "status": "machine",
+    "source": "5a9f1ffe",
+    "draft": "c85af71d"
+  },
+  "settings.cacheMax.description": {
+    "status": "machine",
+    "source": "f8eab920",
+    "draft": "9df4ac22"
+  },
+  "settings.cacheClearExit.label": {
+    "status": "machine",
+    "source": "9fa05caa",
+    "draft": "80e0ea8f"
+  },
+  "settings.cacheLocation.label": {
+    "status": "machine",
+    "source": "15b61974",
+    "draft": "099ebae6"
+  },
+  "settings.cacheLocation.description": {
+    "status": "machine",
+    "source": "fce02e57",
+    "draft": "5ae7e45b"
+  },
+  "settings.cacheStatusUnavailable.label": {
+    "status": "machine",
+    "source": "c7d433c8",
+    "draft": "b4740475"
+  },
+  "settings.section.listeningHistory": {
+    "status": "machine",
+    "source": "efe6b633",
+    "draft": "8365960f"
+  },
+  "settings.section.listeningHistory.description": {
+    "status": "machine",
+    "source": "4920fae8",
+    "draft": "08ab5ab7"
+  },
+  "settings.historyRecord.label": {
+    "status": "machine",
+    "source": "4f929c5e",
+    "draft": "64e4c956"
+  },
+  "settings.historyMax.label": {
+    "status": "machine",
+    "source": "ebc77567",
+    "draft": "c06a4ce3"
+  },
+  "settings.historyMax.description": {
+    "status": "machine",
+    "source": "19cab16b",
+    "draft": "df564be0"
+  },
+  "settings.historyClear.label": {
+    "status": "machine",
+    "source": "49612149",
+    "draft": "6fab37e0"
+  },
+  "settings.historyClear.description": {
+    "status": "machine",
+    "source": "83979c57",
+    "draft": "b2f859be"
+  },
+  "settings.section.windowAndStartup": {
+    "status": "machine",
+    "source": "d118d903",
+    "draft": "1f5f2989"
+  },
+  "settings.closeToTray.label": {
+    "status": "machine",
+    "source": "c7ba65e5",
+    "draft": "a562430b"
+  },
+  "settings.closeToTray.description": {
+    "status": "machine",
+    "source": "91736b95",
+    "draft": "b5f17477"
+  },
+  "settings.startMini.label": {
+    "status": "machine",
+    "source": "219236d2",
+    "draft": "75cd67e0"
+  },
+  "settings.startMini.description": {
+    "status": "machine",
+    "source": "f18ebd9c",
+    "draft": "e57b7c1a"
+  },
+  "settings.section.globalHotkeys": {
+    "status": "machine",
+    "source": "66a96da6",
+    "draft": "a3dca815"
+  },
+  "settings.section.globalHotkeys.description": {
+    "status": "machine",
+    "source": "60bf9970",
+    "draft": "5a90a897"
+  },
+  "settings.section.keyboardShortcuts": {
+    "status": "machine",
+    "source": "e9bef0b0",
+    "draft": "05318bb5"
+  },
+  "settings.section.keyboardShortcuts.description": {
+    "status": "machine",
+    "source": "affea62c",
+    "draft": "e048d205"
+  },
+  "settings.section.troubleshooting": {
+    "status": "machine",
+    "source": "c3af076f",
+    "draft": "416a17db"
+  },
+  "settings.logs.label": {
+    "status": "machine",
+    "source": "ea2100dc",
+    "draft": "779aea5f"
+  },
+  "settings.diagnostics.label": {
+    "status": "machine",
+    "source": "268f14bb",
+    "draft": "0d5f0bee"
+  },
+  "settings.diagnostics.description": {
+    "status": "machine",
+    "source": "00f54830",
+    "draft": "ac9bf130"
+  },
+  "settings.section.account": {
+    "status": "machine",
+    "source": "7e1b0d56",
+    "draft": "a27153b1"
+  },
+  "settings.logout.label": {
+    "status": "machine",
+    "source": "49616145",
+    "draft": "86de70dc"
+  },
+  "settings.logout.description": {
+    "status": "machine",
+    "source": "98d9ef2f",
+    "draft": "325324e5"
+  },
+  "settings.automixStyle.label": {
+    "status": "machine",
+    "source": "69610f79",
+    "draft": "5bc655b1"
+  },
+  "settings.automixTrim.label": {
+    "status": "machine",
+    "source": "37454e5a",
+    "draft": "a9798499"
+  },
+  "settings.automixTrim.description": {
+    "status": "machine",
+    "source": "043dda4f",
+    "draft": "6c78c22f"
+  },
+  "settings.automixResample.label": {
+    "status": "machine",
+    "source": "b603ac46",
+    "draft": "df2bfb59"
+  },
+  "settings.automixResample.description": {
+    "status": "machine",
+    "source": "a47d02f6",
+    "draft": "7d914b7f"
+  },
+  "settings.automixBeat.label": {
+    "status": "machine",
+    "source": "81ac9a80",
+    "draft": "046b56ae"
+  },
+  "settings.automixBeat.description": {
+    "status": "machine",
+    "source": "a1f880db",
+    "draft": "aec1ddeb"
+  },
+  "settings.tryIt.label": {
+    "status": "machine",
+    "source": "fe695111",
+    "draft": "b2facf30"
+  },
+  "settings.tryIt.description": {
+    "status": "machine",
+    "source": "42f071ff",
+    "draft": "a5db878a"
+  },
+  "settings.lastTransition.label": {
+    "status": "machine",
+    "source": "423886b1",
+    "draft": "bca22974"
+  },
+  "settings.automixReplay.label": {
+    "status": "machine",
+    "source": "9ed439e6",
+    "draft": "32285b79"
+  },
+  "settings.automixReplay.description": {
+    "status": "machine",
+    "source": "0d6d3bd1",
+    "draft": "2e3e61cf"
+  },
+  "settings.section.phoneRemote": {
+    "status": "machine",
+    "source": "8cb73afe",
+    "draft": "4a6e227f"
+  },
+  "settings.section.phoneRemote.description": {
+    "status": "machine",
+    "source": "ca0c390d",
+    "draft": "7cce85e7"
+  },
+  "settings.remoteEnable.label": {
+    "status": "machine",
+    "source": "1c5ce1b0",
+    "draft": "ea3f03a0"
+  },
+  "settings.remotePair.label": {
+    "status": "machine",
+    "source": "31a94a7e",
+    "draft": "71863495"
+  },
+  "settings.remotePair.description": {
+    "status": "machine",
+    "source": "0aca5834",
+    "draft": "47ee0503"
+  },
+  "settings.remoteAddress.label": {
+    "status": "machine",
+    "source": "c451330d",
+    "draft": "75d8b5e6"
+  },
+  "settings.remoteAddress.description": {
+    "status": "machine",
+    "source": "5244b37a",
+    "draft": "b1f1fe49"
+  },
+  "settings.remotePort.label": {
+    "status": "machine",
+    "source": "72e9a59f",
+    "draft": "72e9a59f"
+  },
+  "settings.remoteApprove.label": {
+    "status": "machine",
+    "source": "f6bfbb06",
+    "draft": "51fd4265"
+  },
+  "settings.remoteApprove.description": {
+    "status": "machine",
+    "source": "03391638",
+    "draft": "4cd72a20"
+  },
+  "settings.remoteDevices.label": {
+    "status": "machine",
+    "source": "969733db",
+    "draft": "1b96f276"
+  },
+  "settings.section.updates": {
+    "status": "machine",
+    "source": "22e2bada",
+    "draft": "e3c6817a"
+  },
+  "settings.updatesStart.label": {
+    "status": "machine",
+    "source": "db39bbd4",
+    "draft": "33afc9c9"
+  },
+  "settings.opt.theme.dark": {
+    "status": "machine",
+    "source": "60acc53f",
+    "draft": "1106df36"
+  },
+  "settings.opt.theme.light": {
+    "status": "machine",
+    "source": "dbcd5e7b",
+    "draft": "ee201a67"
+  },
+  "settings.opt.theme.system": {
+    "status": "machine",
+    "source": "6725e7bb",
+    "draft": "a9774e7e"
+  },
+  "settings.opt.mode.atmosphere": {
+    "status": "machine",
+    "source": "402b3d52",
+    "draft": "e0fd611b"
+  },
+  "settings.opt.mode.instrument": {
+    "status": "machine",
+    "source": "0aa91af2",
+    "draft": "b0d04d6a"
+  },
+  "settings.opt.modeHelp.atmosphere": {
+    "status": "machine",
+    "source": "c7dfa130",
+    "draft": "c453a841"
+  },
+  "settings.opt.modeHelp.instrument": {
+    "status": "machine",
+    "source": "045bebca",
+    "draft": "807aafdb"
+  },
+  "settings.opt.modeHelp.rack": {
+    "status": "machine",
+    "source": "ec52e82e",
+    "draft": "41288bf0"
+  },
+  "settings.opt.tone.warm": {
+    "status": "machine",
+    "source": "316f2428",
+    "draft": "559f1569"
+  },
+  "settings.opt.tone.neutral": {
+    "status": "machine",
+    "source": "1c6ac69f",
+    "draft": "b9fec6d4"
+  },
+  "settings.opt.tone.black": {
+    "status": "machine",
+    "source": "c6cfe6e4",
+    "draft": "f7632919"
+  },
+  "settings.opt.toneHelp.warm": {
+    "status": "machine",
+    "source": "310f295c",
+    "draft": "2531f00b"
+  },
+  "settings.opt.toneHelp.neutral": {
+    "status": "machine",
+    "source": "ddfe5364",
+    "draft": "b772a6ff"
+  },
+  "settings.opt.toneHelp.black": {
+    "status": "machine",
+    "source": "986a117c",
+    "draft": "8717d8be"
+  },
+  "settings.opt.dynamic.full": {
+    "status": "machine",
+    "source": "008dacb6",
+    "draft": "93df94d9"
+  },
+  "settings.opt.dynamic.accent": {
+    "status": "machine",
+    "source": "926d4639",
+    "draft": "6a1182cd"
+  },
+  "settings.opt.dynamic.off": {
+    "status": "machine",
+    "source": "ca7981b4",
+    "draft": "b01636bd"
+  },
+  "settings.opt.typeface.auto": {
+    "status": "machine",
+    "source": "21b111cb",
+    "draft": "deb84007"
+  },
+  "settings.opt.typeface.autoHint": {
+    "status": "machine",
+    "source": "19cd384e",
+    "draft": "5fa7f0c7"
+  },
+  "settings.opt.typeface.system": {
+    "status": "machine",
+    "source": "6725e7bb",
+    "draft": "a9774e7e"
+  },
+  "settings.opt.typeface.systemHint": {
+    "status": "machine",
+    "source": "a7542c8c",
+    "draft": "23a5f7ef"
+  },
+  "settings.opt.typeface.custom": {
+    "status": "machine",
+    "source": "c4e69d54",
+    "draft": "12f1e1a1"
+  },
+  "settings.opt.typeface.customHint": {
+    "status": "machine",
+    "source": "034f4081",
+    "draft": "385612e0"
+  },
+  "settings.opt.density.comfortable": {
+    "status": "machine",
+    "source": "459a23a5",
+    "draft": "0bac9b57"
+  },
+  "settings.opt.density.compact": {
+    "status": "machine",
+    "source": "99452646",
+    "draft": "e7cc39b4"
+  },
+  "settings.opt.sortMemory.page": {
+    "status": "machine",
+    "source": "b3a3c9e8",
+    "draft": "08c1ce48"
+  },
+  "settings.opt.sortMemory.session": {
+    "status": "machine",
+    "source": "ada2d863",
+    "draft": "1ab71dbc"
+  },
+  "settings.opt.sortMemory.always": {
+    "status": "machine",
+    "source": "de9f057a",
+    "draft": "e88df6db"
+  },
+  "settings.opt.sortMemoryHelp.page": {
+    "status": "machine",
+    "source": "c5a436e1",
+    "draft": "c82c7793"
+  },
+  "settings.opt.sortMemoryHelp.session": {
+    "status": "machine",
+    "source": "a11f5932",
+    "draft": "5a5d1a4d"
+  },
+  "settings.opt.sortMemoryHelp.always": {
+    "status": "machine",
+    "source": "2bb98340",
+    "draft": "3791d93b"
+  },
+  "settings.opt.cover.disc": {
+    "status": "machine",
+    "source": "0c3ae2c7",
+    "draft": "44149559"
+  },
+  "settings.opt.cover.sleeve": {
+    "status": "machine",
+    "source": "4bad483c",
+    "draft": "e74055b0"
+  },
+  "settings.opt.panelStyle.docked": {
+    "status": "machine",
+    "source": "5e055c3d",
+    "draft": "764a222e"
+  },
+  "settings.opt.panelStyle.floating": {
+    "status": "machine",
+    "source": "56dd6d83",
+    "draft": "dd579bcc"
+  },
+  "settings.opt.deck.transport": {
+    "status": "machine",
+    "source": "aaead4ab",
+    "draft": "b9fdb2f6"
+  },
+  "settings.opt.deck.cd": {
+    "status": "machine",
+    "source": "411da67a",
+    "draft": "2f65716b"
+  },
+  "settings.opt.deck.display": {
+    "status": "machine",
+    "source": "34e108c0",
+    "draft": "3c1a5ece"
+  },
+  "settings.opt.meter.needles": {
+    "status": "machine",
+    "source": "6ee2017d",
+    "draft": "c6c7e014"
+  },
+  "settings.opt.meter.bars": {
+    "status": "machine",
+    "source": "f2c35269",
+    "draft": "54731cb3"
+  },
+  "settings.opt.meter.spectrum": {
+    "status": "machine",
+    "source": "fc457d42",
+    "draft": "da8cf26c"
+  },
+  "settings.opt.analyzer.auto": {
+    "status": "machine",
+    "source": "02862497",
+    "draft": "440ae025"
+  },
+  "settings.opt.analyzer.spectrum": {
+    "status": "machine",
+    "source": "fc457d42",
+    "draft": "da8cf26c"
+  },
+  "settings.opt.analyzer.recorder": {
+    "status": "machine",
+    "source": "b984d066",
+    "draft": "fb62924b"
+  },
+  "settings.opt.analyzer.tuner": {
+    "status": "machine",
+    "source": "fc1d2038",
+    "draft": "75e7ad28"
+  },
+  "settings.opt.lamp.amber": {
+    "status": "machine",
+    "source": "a5cccbce",
+    "draft": "42ada3cf"
+  },
+  "settings.opt.lamp.blue": {
+    "status": "machine",
+    "source": "ec7d56a0",
+    "draft": "cc6cee58"
+  },
+  "settings.opt.lamp.green": {
+    "status": "machine",
+    "source": "d486dfbd",
+    "draft": "bcdb9624"
+  },
+  "settings.opt.lamp.red": {
+    "status": "machine",
+    "source": "ba19e9c3",
+    "draft": "70004fc9"
+  },
+  "settings.opt.lamp.white": {
+    "status": "machine",
+    "source": "3495e757",
+    "draft": "7e315ff1"
+  },
+  "settings.opt.lamp.cover": {
+    "status": "machine",
+    "source": "fa8d8456",
+    "draft": "8204c8f4"
+  },
+  "settings.opt.quality.lossless": {
+    "status": "machine",
+    "source": "4b86dab6",
+    "draft": "f59c7be8"
+  },
+  "settings.opt.quality.losslessHint": {
+    "status": "machine",
+    "source": "3455e71b",
+    "draft": "cce10889"
+  },
+  "settings.opt.quality.max": {
+    "status": "machine",
+    "source": "65f6d15d",
+    "draft": "65f6d15d"
+  },
+  "settings.opt.quality.maxHint": {
+    "status": "machine",
+    "source": "14ffcd21",
+    "draft": "bccf0d29"
+  },
+  "settings.opt.qualityDisplay.compact": {
+    "status": "machine",
+    "source": "99452646",
+    "draft": "e7cc39b4"
+  },
+  "settings.opt.qualityDisplay.detailed": {
+    "status": "machine",
+    "source": "6d46fcd5",
+    "draft": "655121e3"
+  },
+  "settings.opt.replayGain.off": {
+    "status": "machine",
+    "source": "ca7981b4",
+    "draft": "b01636bd"
+  },
+  "settings.opt.replayGain.track": {
+    "status": "machine",
+    "source": "051f01f0",
+    "draft": "751fa860"
+  },
+  "settings.opt.replayGain.album": {
+    "status": "machine",
+    "source": "f05e840e",
+    "draft": "f05e840e"
+  },
+  "settings.opt.fallback.shared": {
+    "status": "machine",
+    "source": "72e0215d",
+    "draft": "6f410a74"
+  },
+  "settings.opt.fallback.warnOnly": {
+    "status": "machine",
+    "source": "8c0c4d31",
+    "draft": "e7838a50"
+  },
+  "settings.categories": {
+    "status": "machine",
+    "source": "b9ed9582",
+    "draft": "d556eede"
+  },
+  "settings.eqCustom": {
+    "status": "machine",
+    "source": "494ca78f",
+    "draft": "5b9f0801"
+  },
+  "settings.lastfmTimedOut": {
+    "status": "machine",
+    "source": "a8af0241",
+    "draft": "fb815894"
+  },
+  "settings.fontNotFound": {
+    "status": "machine",
+    "source": "efdcc2fc",
+    "draft": "2567e030"
+  },
+  "settings.diagnosticsCopied": {
+    "status": "machine",
+    "source": "2c8618c0",
+    "draft": "635acf90"
+  },
+  "settings.diagnosticsCopyFailed": {
+    "status": "machine",
+    "source": "78bf3496",
+    "draft": "781bb4f9"
+  },
+  "settings.reducedMotionPaused": {
+    "status": "machine",
+    "source": "dd817cbc",
+    "draft": "5ca6a12a"
+  },
+  "settings.hotkeyDuplicate": {
+    "status": "machine",
+    "source": "ce02013b",
+    "draft": "1ab68c84"
+  },
+  "settings.hotkeyTaken": {
+    "status": "machine",
+    "source": "be5c2748",
+    "draft": "254b2e15"
+  },
+  "settings.theme.systemHelp": {
+    "status": "machine",
+    "source": "081705ec",
+    "draft": "cbde4961"
+  },
+  "settings.theme.description": {
+    "status": "machine",
+    "source": "d36f6a6f",
+    "draft": "161eaebe"
+  },
+  "settings.studioTone.lightHelp": {
+    "status": "machine",
+    "source": "d318cdf8",
+    "draft": "d2d5eeeb"
+  },
+  "settings.customFont.placeholder": {
+    "status": "machine",
+    "source": "ee4a9c5a",
+    "draft": "398c6c11"
+  },
+  "settings.customFont.field": {
+    "status": "machine",
+    "source": "3dab285a",
+    "draft": "dda218f0"
+  },
+  "settings.customFont.browse": {
+    "status": "machine",
+    "source": "a436990b",
+    "draft": "9ab2fff4"
+  },
+  "settings.customFont.preview": {
+    "status": "machine",
+    "source": "f7c6f8f9",
+    "draft": "3006f405"
+  },
+  "settings.apply": {
+    "status": "machine",
+    "source": "31e392d1",
+    "draft": "23cc68fa"
+  },
+  "settings.reset": {
+    "status": "machine",
+    "source": "daee7606",
+    "draft": "9c29fd69"
+  },
+  "settings.catjamSizeLabel": {
+    "status": "machine",
+    "source": "fd10a3c0",
+    "draft": "d364ced9"
+  },
+  "settings.creditBy": {
+    "status": "machine",
+    "source": "96aa50aa",
+    "draft": "9eace652"
+  },
+  "settings.dspActive": {
+    "status": "machine",
+    "source": "b60ab7ac",
+    "draft": "56690dd7"
+  },
+  "settings.asioNotice": {
+    "status": "machine",
+    "source": "accd2ae9",
+    "draft": "99c06a4e"
+  },
+  "settings.exclusiveVolume.title": {
+    "status": "machine",
+    "source": "85947365",
+    "draft": "1cb5b4d0"
+  },
+  "settings.exclusiveVolume.message": {
+    "status": "machine",
+    "source": "df4accf7",
+    "draft": "6867be06"
+  },
+  "settings.exclusiveVolume.confirm": {
+    "status": "machine",
+    "source": "46fe5855",
+    "draft": "bdc5d3ec"
+  },
+  "settings.dontShowAgain": {
+    "status": "machine",
+    "source": "d16d035f",
+    "draft": "c16fb8a5"
+  },
+  "settings.replaygain.description": {
+    "status": "machine",
+    "source": "51b07d22",
+    "draft": "4ff91f49"
+  },
+  "settings.replaygain.albumHelp": {
+    "status": "machine",
+    "source": "cde633db",
+    "draft": "eba13dda"
+  },
+  "settings.rgClipping.description": {
+    "status": "machine",
+    "source": "93eb0e11",
+    "draft": "9f5eb02f"
+  },
+  "settings.rgClipping.current": {
+    "status": "machine",
+    "source": "662f437c",
+    "draft": "424b98bc"
+  },
+  "settings.eqPresetLabel": {
+    "status": "machine",
+    "source": "6b955446",
+    "draft": "35e4a6dc"
+  },
+  "settings.eqPreampLabel": {
+    "status": "machine",
+    "source": "8dd6e9b9",
+    "draft": "172d1948"
+  },
+  "settings.automix.description": {
+    "status": "machine",
+    "source": "cd1d336a",
+    "draft": "b055d001"
+  },
+  "settings.automix.needsCrossfade": {
+    "status": "machine",
+    "source": "f42d7e7c",
+    "draft": "304d70c4"
+  },
+  "settings.contentNotice": {
+    "status": "machine",
+    "source": "35dc33e0",
+    "draft": "05196aa1"
+  },
+  "settings.blockExplicit.confirm": {
+    "status": "machine",
+    "source": "7ec7a6cd",
+    "draft": "4dff6fd1"
+  },
+  "settings.lastfmWaiting": {
+    "status": "machine",
+    "source": "5abcd6f0",
+    "draft": "2686fccb"
+  },
+  "settings.lastfmAuthorized": {
+    "status": "machine",
+    "source": "54253057",
+    "draft": "abc48251"
+  },
+  "settings.scrobbleTo": {
+    "status": "machine",
+    "source": "1410ef4a",
+    "draft": "d1a78643"
+  },
+  "settings.connect": {
+    "status": "machine",
+    "source": "1a2303ed",
+    "draft": "4ccb345a"
+  },
+  "settings.disconnect": {
+    "status": "machine",
+    "source": "acfc5be7",
+    "draft": "8206ebe5"
+  },
+  "settings.listenbrainzToken": {
+    "status": "machine",
+    "source": "5266b348",
+    "draft": "8f9c65e1"
+  },
+  "settings.listenbrainzTokenHint": {
+    "status": "machine",
+    "source": "92cb475b",
+    "draft": "07b29afb"
+  },
+  "settings.listenbrainzProfile": {
+    "status": "machine",
+    "source": "0445b884",
+    "draft": "f36b5745"
+  },
+  "settings.clearCache": {
+    "status": "machine",
+    "source": "d33461e6",
+    "draft": "f01d5637"
+  },
+  "settings.cacheDisabled": {
+    "status": "machine",
+    "source": "16806613",
+    "draft": "e0db6587"
+  },
+  "settings.cacheFallbackDir": {
+    "status": "machine",
+    "source": "1a9d884b",
+    "draft": "ed98cb6c"
+  },
+  "settings.cacheUsed": {
+    "status": "machine",
+    "source": "49825457",
+    "draft": "d890ffec"
+  },
+  "settings.cacheUsedPending": {
+    "status": "machine",
+    "source": "0a5b4351",
+    "draft": "a97ec462"
+  },
+  "settings.cacheMaxLabel": {
+    "status": "machine",
+    "source": "14732162",
+    "draft": "f42c7b51"
+  },
+  "settings.unitMb": {
+    "status": "machine",
+    "source": "1d09f6fa",
+    "draft": "1d09f6fa"
+  },
+  "settings.historyMaxLabel": {
+    "status": "machine",
+    "source": "15401ad5",
+    "draft": "1b334aaa"
+  },
+  "settings.unitPlays": {
+    "status": "machine",
+    "source": "bdfcc48f",
+    "draft": "b7530db0"
+  },
+  "settings.historyClear.title": {
+    "status": "machine",
+    "source": "0d8c7758",
+    "draft": "2283f31f"
+  },
+  "settings.hotkeyPress": {
+    "status": "machine",
+    "source": "7f342021",
+    "draft": "b8b9554f"
+  },
+  "settings.hotkeyUnset": {
+    "status": "machine",
+    "source": "4895f731",
+    "draft": "eb4eeba0"
+  },
+  "settings.hotkeyRecord": {
+    "status": "machine",
+    "source": "bfdd5106",
+    "draft": "bedb5700"
+  },
+  "settings.hotkeyRecording": {
+    "status": "machine",
+    "source": "7ea93caa",
+    "draft": "b034725a"
+  },
+  "settings.hotkeyConflict.title": {
+    "status": "machine",
+    "source": "e62983b5",
+    "draft": "44a80a6d"
+  },
+  "settings.hotkeyConflict.message": {
+    "status": "machine",
+    "source": "fa4a3ea0",
+    "draft": "f5a42c1b"
+  },
+  "settings.hotkeyConflict.confirm": {
+    "status": "machine",
+    "source": "4591c339",
+    "draft": "a43e1929"
+  },
+  "settings.logsUnavailable": {
+    "status": "machine",
+    "source": "385fe5ec",
+    "draft": "92c6320a"
+  },
+  "settings.openLogs": {
+    "status": "machine",
+    "source": "9d19ac7b",
+    "draft": "a55e3b92"
+  },
+  "settings.copyDiagnostics": {
+    "status": "machine",
+    "source": "46fa69e5",
+    "draft": "86ee4bac"
+  },
+  "settings.logout.title": {
+    "status": "machine",
+    "source": "af1e57fd",
+    "draft": "e863fc34"
+  },
+  "settings.logout.message": {
+    "status": "machine",
+    "source": "bd155c6d",
+    "draft": "92640491"
+  },
+  "settings.tab.appearance": {
+    "status": "machine",
+    "source": "3907fa7f",
+    "draft": "305f320f"
+  },
+  "settings.tab.playback": {
+    "status": "machine",
+    "source": "2db1db07",
+    "draft": "522a3733"
+  },
+  "settings.tab.content": {
+    "status": "machine",
+    "source": "47bd2907",
+    "draft": "3371bc65"
+  },
+  "settings.tab.connections": {
+    "status": "machine",
+    "source": "dc273117",
+    "draft": "ce43a467"
+  },
+  "settings.tab.storage": {
+    "status": "machine",
+    "source": "a69c4dec",
+    "draft": "5e465970"
+  },
+  "settings.tab.system": {
+    "status": "machine",
+    "source": "6725e7bb",
+    "draft": "a9774e7e"
+  },
+  "settings.eqBandsLabel": {
+    "status": "machine",
+    "source": "041df9fa",
+    "draft": "607cee96"
+  },
+  "settings.eqBand": {
+    "status": "machine",
+    "source": "b15c70da",
+    "draft": "b15c70da"
+  },
+  "settings.search": {
+    "status": "machine",
+    "source": "255b076d",
+    "draft": "85f1d55d"
+  },
+  "settings.clearSearch": {
+    "status": "machine",
+    "source": "3b7ea517",
+    "draft": "c31468c3"
+  },
+  "settings.matching": {
+    "status": "machine",
+    "source": "06fb3691",
+    "draft": "93780eba"
+  },
+  "settings.noMatch": {
+    "status": "machine",
+    "source": "dfbe9012",
+    "draft": "03f30607"
+  },
+  "settings.updatesCheck.label": {
+    "status": "machine",
+    "source": "f26f3275",
+    "draft": "7a9a5182"
+  },
+  "settings.keywords.language": {
+    "status": "machine",
+    "source": "4084f5be",
+    "draft": "1d501b72"
+  },
+  "settings.keywords.theme": {
+    "status": "machine",
+    "source": "884111fe",
+    "draft": "efededf5"
+  },
+  "settings.keywords.mode": {
+    "status": "machine",
+    "source": "c1d03755",
+    "draft": "11b0aa7a"
+  },
+  "settings.keywords.studioTone": {
+    "status": "machine",
+    "source": "b7c4d562",
+    "draft": "3320ad8a"
+  },
+  "settings.keywords.dynamicColor": {
+    "status": "machine",
+    "source": "f8e836f6",
+    "draft": "eb9a71e2"
+  },
+  "settings.keywords.typeface": {
+    "status": "machine",
+    "source": "61695cdb",
+    "draft": "6ad91366"
+  },
+  "settings.keywords.density": {
+    "status": "machine",
+    "source": "bd41aa45",
+    "draft": "bdb6b24b"
+  },
+  "settings.keywords.rowSeparators": {
+    "status": "machine",
+    "source": "46bfd7cb",
+    "draft": "cdf2ff46"
+  },
+  "settings.keywords.coverShape": {
+    "status": "machine",
+    "source": "fbf6cd25",
+    "draft": "e19ffe70"
+  },
+  "settings.keywords.trackSortMemory": {
+    "status": "machine",
+    "source": "0c527245",
+    "draft": "a9df8e0c"
+  },
+  "settings.keywords.playerBarStyle": {
+    "status": "machine",
+    "source": "0c85efae",
+    "draft": "d8e8afb7"
+  },
+  "settings.keywords.queueStyle": {
+    "status": "machine",
+    "source": "2549f9a5",
+    "draft": "88a8d07e"
+  },
+  "settings.keywords.hoverPanels": {
+    "status": "machine",
+    "source": "bffdf534",
+    "draft": "5e36fc8b"
+  },
+  "settings.keywords.rackDeck": {
+    "status": "machine",
+    "source": "0db97e8c",
+    "draft": "e8c9c2ee"
+  },
+  "settings.keywords.rackMeters": {
+    "status": "machine",
+    "source": "03b77fa9",
+    "draft": "b1effc8d"
+  },
+  "settings.keywords.rackAnalyzer": {
+    "status": "machine",
+    "source": "9d1299c8",
+    "draft": "f3c2b423"
+  },
+  "settings.keywords.rackLamp": {
+    "status": "machine",
+    "source": "fec054e4",
+    "draft": "1057854f"
+  },
+  "settings.keywords.rackBrightness": {
+    "status": "machine",
+    "source": "faad8735",
+    "draft": "21f69f0f"
+  },
+  "settings.keywords.rackEq": {
+    "status": "machine",
+    "source": "2af589d6",
+    "draft": "fed24d16"
+  },
+  "settings.keywords.cat": {
+    "status": "machine",
+    "source": "3eed5183",
+    "draft": "69fd9183"
+  },
+  "settings.keywords.catjam": {
+    "status": "machine",
+    "source": "3253ec1d",
+    "draft": "9f848703"
+  },
+  "settings.keywords.quality": {
+    "status": "machine",
+    "source": "ba75710f",
+    "draft": "78a220e6"
+  },
+  "settings.keywords.allowFallback": {
+    "status": "machine",
+    "source": "34eb3ee8",
+    "draft": "d78f41c6"
+  },
+  "settings.keywords.qualityBadge": {
+    "status": "machine",
+    "source": "96c32246",
+    "draft": "95744be0"
+  },
+  "settings.keywords.autoplay": {
+    "status": "machine",
+    "source": "037575a0",
+    "draft": "dd92adbb"
+  },
+  "settings.keywords.device": {
+    "status": "machine",
+    "source": "ab299080",
+    "draft": "4a042805"
+  },
+  "settings.keywords.exclusiveFallback": {
+    "status": "machine",
+    "source": "bda96a14",
+    "draft": "091dc919"
+  },
+  "settings.keywords.deviceIcons": {
+    "status": "machine",
+    "source": "88d55dd2",
+    "draft": "4b365988"
+  },
+  "settings.keywords.replaygain": {
+    "status": "machine",
+    "source": "7ca1ff69",
+    "draft": "112097f7"
+  },
+  "settings.keywords.rgPreamp": {
+    "status": "machine",
+    "source": "4b92f41d",
+    "draft": "2c2792f1"
+  },
+  "settings.keywords.rgUntagged": {
+    "status": "machine",
+    "source": "44442730",
+    "draft": "132373f5"
+  },
+  "settings.keywords.rgClipping": {
+    "status": "machine",
+    "source": "23028e69",
+    "draft": "effc6b30"
+  },
+  "settings.keywords.crossfade": {
+    "status": "machine",
+    "source": "14949ee1",
+    "draft": "c2727d0c"
+  },
+  "settings.keywords.gapless": {
+    "status": "machine",
+    "source": "98151d6c",
+    "draft": "dc39b2c0"
+  },
+  "settings.keywords.eqPreset": {
+    "status": "machine",
+    "source": "756f5f91",
+    "draft": "3cf15e70"
+  },
+  "settings.keywords.eqBands": {
+    "status": "machine",
+    "source": "d263e3d3",
+    "draft": "c03d87d6"
+  },
+  "settings.keywords.eqAutoPreamp": {
+    "status": "machine",
+    "source": "655005b6",
+    "draft": "0d9be8fb"
+  },
+  "settings.keywords.eqPreamp": {
+    "status": "machine",
+    "source": "b3c5fcf0",
+    "draft": "88130a75"
+  },
+  "settings.search.automixStyle": {
+    "status": "machine",
+    "source": "c924eacd",
+    "draft": "d0486ad1"
+  },
+  "settings.keywords.automixStyle": {
+    "status": "machine",
+    "source": "8cd44cfc",
+    "draft": "5e915604"
+  },
+  "settings.keywords.automixTrim": {
+    "status": "machine",
+    "source": "a2cefdcf",
+    "draft": "02dc33f4"
+  },
+  "settings.keywords.automixResample": {
+    "status": "machine",
+    "source": "8c9f0ff5",
+    "draft": "f6688c2f"
+  },
+  "settings.keywords.automixBeat": {
+    "status": "machine",
+    "source": "8378727e",
+    "draft": "b05662c4"
+  },
+  "settings.search.automixReplay": {
+    "status": "machine",
+    "source": "05860b64",
+    "draft": "4a639eb7"
+  },
+  "settings.keywords.automixReplay": {
+    "status": "machine",
+    "source": "202bd8a8",
+    "draft": "143a8ea2"
+  },
+  "settings.keywords.blockExplicit": {
+    "status": "machine",
+    "source": "1c1dfce4",
+    "draft": "3a4df6fc"
+  },
+  "settings.keywords.blockAi": {
+    "status": "machine",
+    "source": "70cef737",
+    "draft": "9081d190"
+  },
+  "settings.keywords.showLabels": {
+    "status": "machine",
+    "source": "7e486d38",
+    "draft": "96e0cdfb"
+  },
+  "settings.keywords.lastfm": {
+    "status": "machine",
+    "source": "1e0e3721",
+    "draft": "31b0f6c4"
+  },
+  "settings.keywords.listenbrainz": {
+    "status": "machine",
+    "source": "2c07ffa5",
+    "draft": "d2683b99"
+  },
+  "settings.keywords.discord": {
+    "status": "machine",
+    "source": "adb6a8bc",
+    "draft": "f925ac06"
+  },
+  "settings.keywords.mediaControls": {
+    "status": "machine",
+    "source": "9c7f2a42",
+    "draft": "3343be05"
+  },
+  "settings.keywords.remoteEnable": {
+    "status": "machine",
+    "source": "08a284da",
+    "draft": "05149916"
+  },
+  "settings.keywords.remotePair": {
+    "status": "machine",
+    "source": "4ae72a19",
+    "draft": "f32817c9"
+  },
+  "settings.keywords.remoteAddress": {
+    "status": "machine",
+    "source": "2d3e62e9",
+    "draft": "c69f451f"
+  },
+  "settings.keywords.remotePort": {
+    "status": "machine",
+    "source": "cef0b6ef",
+    "draft": "1b34e9ab"
+  },
+  "settings.keywords.remoteApprove": {
+    "status": "machine",
+    "source": "0a6a0f71",
+    "draft": "e6d778e9"
+  },
+  "settings.keywords.remoteDevices": {
+    "status": "machine",
+    "source": "f1644fce",
+    "draft": "11dfd9f8"
+  },
+  "settings.keywords.cacheUsage": {
+    "status": "machine",
+    "source": "0a607c75",
+    "draft": "c8f96f75"
+  },
+  "settings.keywords.cacheMax": {
+    "status": "machine",
+    "source": "ab343479",
+    "draft": "d5d513f3"
+  },
+  "settings.keywords.cacheClearExit": {
+    "status": "machine",
+    "source": "5e1ecee0",
+    "draft": "2bf91766"
+  },
+  "settings.search.cacheLocation": {
+    "status": "machine",
+    "source": "6565c3ad",
+    "draft": "e30f158c"
+  },
+  "settings.keywords.cacheLocation": {
+    "status": "machine",
+    "source": "1738de32",
+    "draft": "83d9af08"
+  },
+  "settings.keywords.historyRecord": {
+    "status": "machine",
+    "source": "3565a6ff",
+    "draft": "c7f04fb9"
+  },
+  "settings.keywords.historyMax": {
+    "status": "machine",
+    "source": "829ad100",
+    "draft": "0fad6afc"
+  },
+  "settings.keywords.historyClear": {
+    "status": "machine",
+    "source": "f3cd62a0",
+    "draft": "7ec7f7ad"
+  },
+  "settings.keywords.closeToTray": {
+    "status": "machine",
+    "source": "6174831a",
+    "draft": "21f40925"
+  },
+  "settings.keywords.startMini": {
+    "status": "machine",
+    "source": "d256f803",
+    "draft": "f4126a54"
+  },
+  "settings.keywords.updatesCheck": {
+    "status": "machine",
+    "source": "7dd74c80",
+    "draft": "67d63abd"
+  },
+  "settings.keywords.updatesStart": {
+    "status": "machine",
+    "source": "de90e45d",
+    "draft": "96bfc383"
+  },
+  "settings.keywords.shortcuts": {
+    "status": "machine",
+    "source": "6abb639a",
+    "draft": "58d98497"
+  },
+  "settings.keywords.logs": {
+    "status": "machine",
+    "source": "3fe55dc0",
+    "draft": "fe0ad23f"
+  },
+  "settings.keywords.diagnostics": {
+    "status": "machine",
+    "source": "86d02616",
+    "draft": "6bea6399"
+  },
+  "settings.keywords.logout": {
+    "status": "machine",
+    "source": "e681da48",
+    "draft": "bd4811ed"
+  },
+  "settings.section.automix": {
+    "status": "machine",
+    "source": "097c715f",
+    "draft": "097c715f"
+  },
+  "settings.search.hotkey": {
+    "status": "machine",
+    "source": "8cb19a6b",
+    "draft": "a85cf357"
+  },
+  "settings.keywords.hotkey": {
+    "status": "machine",
+    "source": "350fad25",
+    "draft": "501988d3"
+  },
+  "common.cancel": {
+    "status": "machine",
+    "source": "19766ed6",
+    "draft": "626b3248"
+  },
+  "common.confirm": {
+    "status": "machine",
+    "source": "eebdd24a",
+    "draft": "7fd499e7"
+  },
+  "common.close": {
+    "status": "machine",
+    "source": "7d9eb7ac",
+    "draft": "dc1d3dfa"
+  },
+  "common.save": {
+    "status": "machine",
+    "source": "1509f561",
+    "draft": "887f19d3"
+  },
+  "common.create": {
+    "status": "machine",
+    "source": "4759498a",
+    "draft": "39f77eed"
+  },
+  "common.done": {
+    "status": "machine",
+    "source": "11a6767d",
+    "draft": "0bcf639d"
+  },
+  "common.retry": {
+    "status": "machine",
+    "source": "942087cc",
+    "draft": "4b991194"
+  },
+  "common.loading": {
+    "status": "machine",
+    "source": "ba3bbbe1",
+    "draft": "cad97b67"
+  },
+  "common.name": {
+    "status": "machine",
+    "source": "dcd1d522",
+    "draft": "467b5745"
+  },
+  "common.description": {
+    "status": "machine",
+    "source": "526e0087",
+    "draft": "fd358e89"
+  },
+  "common.optional": {
+    "status": "machine",
+    "source": "59be7133",
+    "draft": "842a7b83"
+  },
+  "common.trackCount": {
+    "status": "machine",
+    "source": "c8a37004",
+    "draft": "93563efb"
+  },
+  "common.undo": {
+    "status": "machine",
+    "source": "a8283ade",
+    "draft": "6b058c06"
+  },
+  "window.controls": {
+    "status": "machine",
+    "source": "9cea69fd",
+    "draft": "a2b1f922"
+  },
+  "window.minimize": {
+    "status": "machine",
+    "source": "d72e311c",
+    "draft": "2b96fcfb"
+  },
+  "window.maximize": {
+    "status": "machine",
+    "source": "fba6c2c5",
+    "draft": "ebfc7562"
+  },
+  "window.restore": {
+    "status": "machine",
+    "source": "a76e13b9",
+    "draft": "60c6220e"
+  },
+  "window.close": {
+    "status": "machine",
+    "source": "7d9eb7ac",
+    "draft": "dc1d3dfa"
+  },
+  "nav.newPlaylist": {
+    "status": "machine",
+    "source": "a89d5de4",
+    "draft": "7c645be1"
+  },
+  "nav.newFolder": {
+    "status": "machine",
+    "source": "c75ba807",
+    "draft": "e8653204"
+  },
+  "nav.newPlaylistOrFolder": {
+    "status": "machine",
+    "source": "3a82172f",
+    "draft": "ee47a47c"
+  },
+  "nav.playlistView": {
+    "status": "machine",
+    "source": "1cc95872",
+    "draft": "6f682425"
+  },
+  "nav.playlistViewLabel": {
+    "status": "machine",
+    "source": "9e38a92c",
+    "draft": "6f682425"
+  },
+  "nav.expandSidebar": {
+    "status": "machine",
+    "source": "37a5d648",
+    "draft": "f1d4b412"
+  },
+  "nav.collapseSidebar": {
+    "status": "machine",
+    "source": "aab31cde",
+    "draft": "873ee5c8"
+  },
+  "nav.expandSidebarHint": {
+    "status": "machine",
+    "source": "722e8b40",
+    "draft": "98441d5b"
+  },
+  "nav.collapseSidebarHint": {
+    "status": "machine",
+    "source": "a7863594",
+    "draft": "e9b84348"
+  },
+  "nav.back": {
+    "status": "machine",
+    "source": "76900f1b",
+    "draft": "667a7eee"
+  },
+  "nav.forward": {
+    "status": "machine",
+    "source": "f1c65e14",
+    "draft": "4f4095f6"
+  },
+  "nav.backHint": {
+    "status": "machine",
+    "source": "6d7337ee",
+    "draft": "4cab6015"
+  },
+  "nav.forwardHint": {
+    "status": "machine",
+    "source": "1fb38b58",
+    "draft": "c3bdfe7d"
+  },
+  "nav.myCollection": {
+    "status": "machine",
+    "source": "1c20ce16",
+    "draft": "5eae85ad"
+  },
+  "nav.mixesAndRadio": {
+    "status": "machine",
+    "source": "ca48fa62",
+    "draft": "41552778"
+  },
+  "nav.profiles": {
+    "status": "machine",
+    "source": "535e52e4",
+    "draft": "6b3a8c47"
+  },
+  "nav.showMore": {
+    "status": "machine",
+    "source": "f5c9bd13",
+    "draft": "3fbf17c1"
+  },
+  "nav.showLess": {
+    "status": "machine",
+    "source": "94ea9b1d",
+    "draft": "c6e1a3e3"
+  },
+  "nav.collection.edit": {
+    "status": "machine",
+    "source": "664ee564",
+    "draft": "82b7235e"
+  },
+  "nav.collection.doneLabel": {
+    "status": "machine",
+    "source": "7a774c95",
+    "draft": "87c04f2d"
+  },
+  "nav.collection.reset": {
+    "status": "machine",
+    "source": "bc5b45ae",
+    "draft": "08fe4fff"
+  },
+  "nav.collection.resetLabel": {
+    "status": "machine",
+    "source": "aaf2eeb2",
+    "draft": "d377bb39"
+  },
+  "nav.collection.editHint": {
+    "status": "machine",
+    "source": "89d2544d",
+    "draft": "96dd258e"
+  },
+  "nav.collection.arrange": {
+    "status": "machine",
+    "source": "3625ee7a",
+    "draft": "874d02ed"
+  },
+  "nav.collection.line": {
+    "status": "machine",
+    "source": "7962a892",
+    "draft": "ed269186"
+  },
+  "nav.collection.lineLabel": {
+    "status": "machine",
+    "source": "baf50f6d",
+    "draft": "3ac17227"
+  },
+  "nav.collection.hiddenBelow": {
+    "status": "machine",
+    "source": "1b20afa1",
+    "draft": "ef7fde69"
+  },
+  "nav.collection.rowLabel": {
+    "status": "machine",
+    "source": "f37c1eac",
+    "draft": "7404280f"
+  },
+  "nav.collection.moved": {
+    "status": "machine",
+    "source": "140d5d5f",
+    "draft": "fd53b1b9"
+  },
+  "folder.color.red": {
+    "status": "machine",
+    "source": "ba19e9c3",
+    "draft": "70004fc9"
+  },
+  "folder.color.orange": {
+    "status": "machine",
+    "source": "78e7771b",
+    "draft": "02f42a54"
+  },
+  "folder.color.yellow": {
+    "status": "machine",
+    "source": "19dd83f1",
+    "draft": "d1ee5650"
+  },
+  "folder.color.green": {
+    "status": "machine",
+    "source": "d486dfbd",
+    "draft": "bcdb9624"
+  },
+  "folder.color.teal": {
+    "status": "machine",
+    "source": "fa15a5c1",
+    "draft": "272f087d"
+  },
+  "folder.color.blue": {
+    "status": "machine",
+    "source": "ec7d56a0",
+    "draft": "cc6cee58"
+  },
+  "folder.color.purple": {
+    "status": "machine",
+    "source": "7d465fb9",
+    "draft": "dcb7f576"
+  },
+  "folder.color.pink": {
+    "status": "machine",
+    "source": "bd38ed77",
+    "draft": "6df81410"
+  },
+  "folder.color.default": {
+    "status": "machine",
+    "source": "21b111cb",
+    "draft": "deb84007"
+  },
+  "folder.color.label": {
+    "status": "machine",
+    "source": "9e0cbb9b",
+    "draft": "1d238885"
+  },
+  "keyring.sessionOnly": {
+    "status": "machine",
+    "source": "5d8f2f04",
+    "draft": "fcdcbfae"
+  },
+  "collection.renamePlaylist": {
+    "status": "machine",
+    "source": "b89f2c23",
+    "draft": "112261bc"
+  },
+  "collection.editFolder": {
+    "status": "machine",
+    "source": "fe82f5a5",
+    "draft": "9804c08a"
+  },
+  "collection.newFolder": {
+    "status": "machine",
+    "source": "cf28f49e",
+    "draft": "e8653204"
+  },
+  "collection.folderName": {
+    "status": "machine",
+    "source": "14d34edf",
+    "draft": "bb2d7894"
+  },
+  "collection.color": {
+    "status": "machine",
+    "source": "6b73191a",
+    "draft": "b144e040"
+  },
+  "collection.folderDescriptionHint": {
+    "status": "machine",
+    "source": "90753023",
+    "draft": "d738158f"
+  },
+  "collection.removeFolder": {
+    "status": "machine",
+    "source": "f2a987fb",
+    "draft": "0a388b5f"
+  },
+  "collection.deletePlaylist": {
+    "status": "machine",
+    "source": "f255fdc4",
+    "draft": "857143d0"
+  },
+  "collection.removeFromCollection": {
+    "status": "machine",
+    "source": "4c216ce1",
+    "draft": "848108d8"
+  },
+  "collection.removeFolderMessage": {
+    "status": "machine",
+    "source": "3dfa2699",
+    "draft": "ac4554e8"
+  },
+  "collection.deletePlaylistMessage": {
+    "status": "machine",
+    "source": "f6660687",
+    "draft": "9ef3cf46"
+  },
+  "collection.removeMessage": {
+    "status": "machine",
+    "source": "479df412",
+    "draft": "dd98d796"
+  },
+  "collection.moveTitle": {
+    "status": "machine",
+    "source": "1b03e9d8",
+    "draft": "059e2149"
+  },
+  "collection.loadingFolders": {
+    "status": "machine",
+    "source": "d0aa0da7",
+    "draft": "fedc1dd6"
+  },
+  "collection.removeFromFolder": {
+    "status": "machine",
+    "source": "c6f8b1e1",
+    "draft": "1178a9ac"
+  },
+  "collection.currentFolder": {
+    "status": "machine",
+    "source": "e0d1b682",
+    "draft": "c889b215"
+  },
+  "collection.noFolders": {
+    "status": "machine",
+    "source": "d890b00a",
+    "draft": "08bda175"
+  },
+  "collection.playlistRenamed": {
+    "status": "machine",
+    "source": "b40c0d8b",
+    "draft": "f92abecc"
+  },
+  "collection.folderRenamed": {
+    "status": "machine",
+    "source": "e2fc268e",
+    "draft": "7d4a18ff"
+  },
+  "collection.folderSaved": {
+    "status": "machine",
+    "source": "4ee574e3",
+    "draft": "7c54370f"
+  },
+  "collaborators.title": {
+    "status": "machine",
+    "source": "439c0bdd",
+    "draft": "4f553a25"
+  },
+  "collaborators.copyLink": {
+    "status": "machine",
+    "source": "641dce44",
+    "draft": "26459d5c"
+  },
+  "collaborators.copyLinkHint": {
+    "status": "machine",
+    "source": "8895fe93",
+    "draft": "a27c27f3"
+  },
+  "collaborators.copyFailed": {
+    "status": "machine",
+    "source": "4ccd6f35",
+    "draft": "6f897040"
+  },
+  "collaborators.copied": {
+    "status": "machine",
+    "source": "4ca3e817",
+    "draft": "e6d29055"
+  },
+  "collaborators.renewed": {
+    "status": "machine",
+    "source": "38ac78ff",
+    "draft": "7adcf76d"
+  },
+  "collaborators.loading": {
+    "status": "machine",
+    "source": "027c36b0",
+    "draft": "8192f507"
+  },
+  "collaborators.loadFailed": {
+    "status": "machine",
+    "source": "ef415569",
+    "draft": "2d332887"
+  },
+  "collaborators.members": {
+    "status": "machine",
+    "source": "1044a4c0",
+    "draft": "0c05a64f"
+  },
+  "collaborators.owner": {
+    "status": "machine",
+    "source": "4b1b8aa3",
+    "draft": "4db93253"
+  },
+  "collaborators.resetWarning": {
+    "status": "machine",
+    "source": "2be83dcc",
+    "draft": "5b6d55b7"
+  },
+  "collaborators.resetLink": {
+    "status": "machine",
+    "source": "118ce03d",
+    "draft": "6cf6a845"
+  },
+  "collaborators.linkLifetime": {
+    "status": "machine",
+    "source": "18e1a6e9",
+    "draft": "9dc2e139"
+  },
+  "picker.createTitle": {
+    "status": "machine",
+    "source": "7f097f73",
+    "draft": "3506ced5"
+  },
+  "picker.addTitle": {
+    "status": "machine",
+    "source": "5d020094",
+    "draft": "1c85128a"
+  },
+  "picker.confirmLead": {
+    "status": "machine",
+    "source": "fd23b9a4",
+    "draft": "622f8065"
+  },
+  "picker.from": {
+    "status": "machine",
+    "source": "21819769",
+    "draft": "56f1b193"
+  },
+  "picker.to": {
+    "status": "machine",
+    "source": "f4b06ef6",
+    "draft": "c63a4005"
+  },
+  "picker.adding": {
+    "status": "machine",
+    "source": "c6de6f45",
+    "draft": "e3d92b8e"
+  },
+  "picker.addTracks": {
+    "status": "machine",
+    "source": "a29859cd",
+    "draft": "7b4b95cc"
+  },
+  "picker.newPlaylist": {
+    "status": "machine",
+    "source": "9c879d4f",
+    "draft": "b838bf58"
+  },
+  "picker.noPlaylists": {
+    "status": "machine",
+    "source": "df6747df",
+    "draft": "ecbbe13a"
+  },
+  "picker.comingLater": {
+    "status": "machine",
+    "source": "e3b48f0b",
+    "draft": "633e368a"
+  },
+  "picker.changeImage": {
+    "status": "machine",
+    "source": "87b8b008",
+    "draft": "48704b79"
+  },
+  "picker.titlePlaceholder": {
+    "status": "machine",
+    "source": "7e8cd205",
+    "draft": "dda8af9f"
+  },
+  "picker.titleLabel": {
+    "status": "machine",
+    "source": "7f5db440",
+    "draft": "816b5236"
+  },
+  "picker.descriptionPlaceholder": {
+    "status": "machine",
+    "source": "5104ab19",
+    "draft": "030590a1"
+  },
+  "picker.descriptionLabel": {
+    "status": "machine",
+    "source": "31097624",
+    "draft": "729bd435"
+  },
+  "picker.characterCount": {
+    "status": "machine",
+    "source": "c4214060",
+    "draft": "a2356cea"
+  },
+  "picker.makePublic": {
+    "status": "machine",
+    "source": "20c4d94c",
+    "draft": "7b985153"
+  },
+  "picker.makePublicHint": {
+    "status": "machine",
+    "source": "b47e9b7b",
+    "draft": "32813bfc"
+  },
+  "picker.duplicatesIn": {
+    "status": "machine",
+    "source": "59c44611",
+    "draft": "655b7808"
+  },
+  "picker.duplicatesHere": {
+    "status": "machine",
+    "source": "711ca271",
+    "draft": "24bbcd41"
+  },
+  "picker.duplicatesHint": {
+    "status": "machine",
+    "source": "23da50b2",
+    "draft": "839f6712"
+  },
+  "picker.all": {
+    "status": "machine",
+    "source": "a52ace42",
+    "draft": "a765af77"
+  },
+  "picker.keepOne": {
+    "status": "machine",
+    "source": "e178b99a",
+    "draft": "d5203fca"
+  },
+  "picker.addBoth": {
+    "status": "machine",
+    "source": "e7175c17",
+    "draft": "4ccf33eb"
+  },
+  "picker.duplicateChoice": {
+    "status": "machine",
+    "source": "f5c5fb81",
+    "draft": "f1c4c829"
+  },
+  "picker.allDuplicates": {
+    "status": "machine",
+    "source": "19324877",
+    "draft": "e1a66edb"
+  },
+  "picker.skipDuplicates": {
+    "status": "machine",
+    "source": "17347ab4",
+    "draft": "6ebcddfa"
+  },
+  "picker.addCopies": {
+    "status": "machine",
+    "source": "9e4f49d5",
+    "draft": "8faaff7a"
+  },
+  "menu.play": {
+    "status": "machine",
+    "source": "436e6101",
+    "draft": "522a3733"
+  },
+  "menu.playNow": {
+    "status": "machine",
+    "source": "15463706",
+    "draft": "9c14e950"
+  },
+  "menu.shuffle": {
+    "status": "machine",
+    "source": "317cb3a7",
+    "draft": "41033cf6"
+  },
+  "menu.trackRadio": {
+    "status": "machine",
+    "source": "9a753e29",
+    "draft": "cd0eea6b"
+  },
+  "menu.playNext": {
+    "status": "machine",
+    "source": "994ffab2",
+    "draft": "1aa9456c"
+  },
+  "menu.addToQueue": {
+    "status": "machine",
+    "source": "34b25c1b",
+    "draft": "a93ffb8c"
+  },
+  "menu.addToPlaylist": {
+    "status": "machine",
+    "source": "5d020094",
+    "draft": "1c85128a"
+  },
+  "menu.favorite": {
+    "status": "machine",
+    "source": "ea713ecd",
+    "draft": "b49c8e7e"
+  },
+  "menu.unfavorite": {
+    "status": "machine",
+    "source": "5e87a7bd",
+    "draft": "24da8697"
+  },
+  "menu.copyTitle": {
+    "status": "machine",
+    "source": "6e681ead",
+    "draft": "56f458ff"
+  },
+  "menu.copyLink": {
+    "status": "machine",
+    "source": "dbf362d4",
+    "draft": "1dbf58a3"
+  },
+  "menu.trackInfo": {
+    "status": "machine",
+    "source": "a89fe37c",
+    "draft": "d4e250ec"
+  },
+  "menu.remove": {
+    "status": "machine",
+    "source": "c3812fc4",
+    "draft": "57ea0607"
+  },
+  "menu.open": {
+    "status": "machine",
+    "source": "ed077f3d",
+    "draft": "b738fcd3"
+  },
+  "menu.rename": {
+    "status": "machine",
+    "source": "3064d79a",
+    "draft": "06cd1cdb"
+  },
+  "menu.delete": {
+    "status": "machine",
+    "source": "e2d0a549",
+    "draft": "3f8cd2aa"
+  },
+  "menu.editFolder": {
+    "status": "machine",
+    "source": "2524e2ed",
+    "draft": "b589c378"
+  },
+  "menu.moveToFolder": {
+    "status": "machine",
+    "source": "ca075440",
+    "draft": "86da13cf"
+  },
+  "menu.collaborators": {
+    "status": "machine",
+    "source": "c94d98bd",
+    "draft": "9518e61f"
+  },
+  "menu.removeFromCollection": {
+    "status": "machine",
+    "source": "4c216ce1",
+    "draft": "848108d8"
+  },
+  "menu.laterAdd": {
+    "status": "machine",
+    "source": "ce3cf1fb",
+    "draft": "dad3e9c2"
+  },
+  "menu.laterRemove": {
+    "status": "machine",
+    "source": "c68f75de",
+    "draft": "c51e31d5"
+  },
+  "menu.goToAlbum": {
+    "status": "machine",
+    "source": "55e6e42d",
+    "draft": "18d1c442"
+  },
+  "menu.goToArtist": {
+    "status": "machine",
+    "source": "94e3bd7b",
+    "draft": "0034293a"
+  },
+  "menu.goToNamed": {
+    "status": "machine",
+    "source": "5650d8d7",
+    "draft": "194e7b67"
+  },
+  "menu.selection.playNext": {
+    "status": "machine",
+    "source": "5386605e",
+    "draft": "e1582f6e"
+  },
+  "menu.selection.addToQueue": {
+    "status": "machine",
+    "source": "84d426ce",
+    "draft": "119a9767"
+  },
+  "menu.selection.addToPlaylist": {
+    "status": "machine",
+    "source": "4bdbb485",
+    "draft": "90d78764"
+  },
+  "menu.selection.remove": {
+    "status": "machine",
+    "source": "2af090ef",
+    "draft": "7576c5f2"
+  },
+  "playlists.sortSection": {
+    "status": "machine",
+    "source": "bec69036",
+    "draft": "302c2fd3"
+  },
+  "playlists.filterSection": {
+    "status": "machine",
+    "source": "638e249f",
+    "draft": "2ff38a0d"
+  },
+  "playlists.sort.recent": {
+    "status": "machine",
+    "source": "452ec9f5",
+    "draft": "b1672eda"
+  },
+  "playlists.sort.created": {
+    "status": "machine",
+    "source": "ca5d233a",
+    "draft": "bda7fde7"
+  },
+  "playlists.sort.updated": {
+    "status": "machine",
+    "source": "a6546dd3",
+    "draft": "d463dd6a"
+  },
+  "playlists.sort.alpha": {
+    "status": "machine",
+    "source": "a49d631f",
+    "draft": "cd524d82"
+  },
+  "playlists.filter.all": {
+    "status": "machine",
+    "source": "3531a169",
+    "draft": "751219fc"
+  },
+  "playlists.filter.owned": {
+    "status": "machine",
+    "source": "73f91221",
+    "draft": "e7aba919"
+  },
+  "playlists.filter.followed": {
+    "status": "machine",
+    "source": "28f46044",
+    "draft": "3bc52d69"
+  },
+  "playlists.summaryFolders": {
+    "status": "machine",
+    "source": "14a5bfa2",
+    "draft": "d1d5e719"
+  },
+  "playlists.breadcrumb": {
+    "status": "machine",
+    "source": "2bd873d6",
+    "draft": "728061ca"
+  },
+  "playlists.newPlaylist": {
+    "status": "machine",
+    "source": "b5db7054",
+    "draft": "7c645be1"
+  },
+  "playlists.sortLabel": {
+    "status": "machine",
+    "source": "5fdf0d77",
+    "draft": "5b46fa88"
+  },
+  "playlists.folderEmpty": {
+    "status": "machine",
+    "source": "bd88d713",
+    "draft": "41cf0f1f"
+  },
+  "playlists.folderSub": {
+    "status": "machine",
+    "source": "dc37b9ac",
+    "draft": "f1069d2b"
+  },
+  "table.label": {
+    "status": "machine",
+    "source": "88980154",
+    "draft": "8fd132c1"
+  },
+  "table.columns": {
+    "status": "machine",
+    "source": "53aade77",
+    "draft": "54731cb3"
+  },
+  "table.column.title": {
+    "status": "machine",
+    "source": "7e8cd205",
+    "draft": "dda8af9f"
+  },
+  "table.column.artist": {
+    "status": "machine",
+    "source": "1d3981ba",
+    "draft": "27af2072"
+  },
+  "table.column.album": {
+    "status": "machine",
+    "source": "f05e840e",
+    "draft": "f05e840e"
+  },
+  "table.column.duration": {
+    "status": "machine",
+    "source": "33b93476",
+    "draft": "1aa2d6b1"
+  },
+  "table.column.quality": {
+    "status": "machine",
+    "source": "1b2c08a8",
+    "draft": "18c379b6"
+  },
+  "table.column.added": {
+    "status": "machine",
+    "source": "3321b9f6",
+    "draft": "c9d26fa9"
+  },
+  "table.column.released": {
+    "status": "machine",
+    "source": "bd84924c",
+    "draft": "305f320f"
+  },
+  "table.column.popularity": {
+    "status": "machine",
+    "source": "fe60d851",
+    "draft": "89f55885"
+  },
+  "table.column.plays": {
+    "status": "machine",
+    "source": "725b66fb",
+    "draft": "1aa41c88"
+  },
+  "table.columnHint.added": {
+    "status": "machine",
+    "source": "27138b9d",
+    "draft": "bb62f285"
+  },
+  "table.columnHint.released": {
+    "status": "machine",
+    "source": "910f389e",
+    "draft": "968260d1"
+  },
+  "table.columnHint.popularity": {
+    "status": "machine",
+    "source": "899ce8be",
+    "draft": "ed37066d"
+  },
+  "table.columnHint.plays": {
+    "status": "machine",
+    "source": "7640be6d",
+    "draft": "796ec39f"
+  },
+  "table.sortBy": {
+    "status": "machine",
+    "source": "b9c0482b",
+    "draft": "0ab2174c"
+  },
+  "table.thenSortBy": {
+    "status": "machine",
+    "source": "15f0bab7",
+    "draft": "3e8b191f"
+  },
+  "table.originalOrder": {
+    "status": "machine",
+    "source": "98758775",
+    "draft": "e6a4de2a"
+  },
+  "table.drag.cantMoveMany": {
+    "status": "machine",
+    "source": "fbbe298a",
+    "draft": "b8249f12"
+  },
+  "table.drag.move": {
+    "status": "machine",
+    "source": "6ecc3df6",
+    "draft": "1c21d1f7"
+  },
+  "table.selectionHidden": {
+    "status": "machine",
+    "source": "6efc8c9e",
+    "draft": "bad88a35"
+  },
+  "table.trackHidden": {
+    "status": "machine",
+    "source": "37218382",
+    "draft": "7e304f16"
+  },
+  "table.thisTrack": {
+    "status": "machine",
+    "source": "71ee910b",
+    "draft": "c6f7be5e"
+  },
+  "table.manyPlayNext": {
+    "status": "machine",
+    "source": "05494ec2",
+    "draft": "99dd1eb2"
+  },
+  "table.manyQueued": {
+    "status": "machine",
+    "source": "dd10393d",
+    "draft": "fcdee178"
+  },
+  "table.onePlaysNext": {
+    "status": "machine",
+    "source": "f67e7b3d",
+    "draft": "a099c844"
+  },
+  "table.oneQueued": {
+    "status": "machine",
+    "source": "64fdaa4a",
+    "draft": "9b86d183"
+  },
+  "table.following": {
+    "status": "machine",
+    "source": "344b4271",
+    "draft": "987a2b3a"
+  },
+  "table.nowPlaying": {
+    "status": "machine",
+    "source": "0906bc70",
+    "draft": "7400ca5b"
+  },
+  "table.paused": {
+    "status": "machine",
+    "source": "e159b061",
+    "draft": "31d89a17"
+  },
+  "table.followingHint": {
+    "status": "machine",
+    "source": "17713aed",
+    "draft": "33799393"
+  },
+  "table.locateHint": {
+    "status": "machine",
+    "source": "a2f22967",
+    "draft": "90185e56"
+  },
+  "table.hiddenExplicit": {
+    "status": "machine",
+    "source": "cde14cff",
+    "draft": "572bf003"
+  },
+  "table.hiddenAi": {
+    "status": "machine",
+    "source": "d989134c",
+    "draft": "e96987d9"
+  },
+  "table.explicit": {
+    "status": "machine",
+    "source": "d863c482",
+    "draft": "7b02ee06"
+  },
+  "table.aiGenerated": {
+    "status": "machine",
+    "source": "cc7ff1bf",
+    "draft": "7ce1efbf"
+  },
+  "table.explicitBadge": {
+    "status": "machine",
+    "source": "a9f51566",
+    "draft": "a9f51566"
+  },
+  "table.aiBadge": {
+    "status": "machine",
+    "source": "11fb682b",
+    "draft": "176f7254"
+  },
+  "table.noMatch": {
+    "status": "machine",
+    "source": "49d54664",
+    "draft": "825ec308"
+  },
+  "table.empty": {
+    "status": "machine",
+    "source": "6f38eb30",
+    "draft": "9dfaea2b"
+  },
+  "table.selected": {
+    "status": "machine",
+    "source": "4acdc738",
+    "draft": "c2fd44de"
+  },
+  "queue.summary": {
+    "status": "machine",
+    "source": "55c95b15",
+    "draft": "9efe8cf3"
+  },
+  "queue.summaryPlaying": {
+    "status": "machine",
+    "source": "ba762d54",
+    "draft": "fc7abf45"
+  },
+  "queue.showCurrent": {
+    "status": "machine",
+    "source": "03c846e0",
+    "draft": "af857f81"
+  },
+  "queue.clear": {
+    "status": "machine",
+    "source": "fd1d3b4b",
+    "draft": "62ce076a"
+  },
+  "queue.clearMessage": {
+    "status": "machine",
+    "source": "0f1aa473",
+    "draft": "049eaeea"
+  },
+  "queue.empty": {
+    "status": "machine",
+    "source": "2d9ac91f",
+    "draft": "b7cdb2d8"
+  },
+  "queue.emptyHint": {
+    "status": "machine",
+    "source": "aba65afc",
+    "draft": "e677a1f0"
+  },
+  "queue.autoplay": {
+    "status": "machine",
+    "source": "892aead9",
+    "draft": "2a29d85a"
+  },
+  "queue.row": {
+    "status": "machine",
+    "source": "6cc71bd8",
+    "draft": "14f5ed33"
+  },
+  "queue.rowAutoplay": {
+    "status": "machine",
+    "source": "42bc948b",
+    "draft": "4ec7a931"
+  },
+  "queue.removeTrack": {
+    "status": "machine",
+    "source": "c8677fd2",
+    "draft": "682707b0"
+  },
+  "queue.dropHidden": {
+    "status": "machine",
+    "source": "19a14abf",
+    "draft": "be99ff5d"
+  },
+  "queue.drag.moving": {
+    "status": "machine",
+    "source": "35c179c0",
+    "draft": "d06fcd4a"
+  },
+  "queue.drag.moveHere": {
+    "status": "machine",
+    "source": "56f12477",
+    "draft": "84b38597"
+  },
+  "queue.removed": {
+    "status": "machine",
+    "source": "80c0f5f2",
+    "draft": "a5b879fa"
+  },
+  "sort.label": {
+    "status": "machine",
+    "source": "bec69036",
+    "draft": "302c2fd3"
+  },
+  "sort.sortedBy": {
+    "status": "machine",
+    "source": "ceca3af1",
+    "draft": "06d93be1"
+  },
+  "sort.sortBy": {
+    "status": "machine",
+    "source": "c9129025",
+    "draft": "e7cc5a35"
+  },
+  "sort.thenBy": {
+    "status": "machine",
+    "source": "98f781d8",
+    "draft": "0734bc27"
+  },
+  "sort.chipHint": {
+    "status": "machine",
+    "source": "22edbf84",
+    "draft": "c5136773"
+  },
+  "sort.chipLabel": {
+    "status": "machine",
+    "source": "a7daee80",
+    "draft": "7f4c79e9"
+  },
+  "sort.removeLevel": {
+    "status": "machine",
+    "source": "b07efa0b",
+    "draft": "1bcef744"
+  },
+  "sort.add": {
+    "status": "machine",
+    "source": "6ad8e0b7",
+    "draft": "7e15b001"
+  },
+  "sort.clear": {
+    "status": "machine",
+    "source": "83b12c22",
+    "draft": "3f8cd2aa"
+  },
+  "sort.option.recentlyUpdated": {
+    "status": "machine",
+    "source": "474b2a86",
+    "draft": "45818a17"
+  },
+  "sort.option.recentlyAdded": {
+    "status": "machine",
+    "source": "96ec5d33",
+    "draft": "1c0f52bf"
+  },
+  "sort.option.nameAz": {
+    "status": "machine",
+    "source": "7ed96629",
+    "draft": "7397ac7d"
+  },
+  "sort.option.nameZa": {
+    "status": "machine",
+    "source": "a5b2d1d7",
+    "draft": "d6fe02c9"
+  },
+  "sort.option.titleAz": {
+    "status": "machine",
+    "source": "ab217de6",
+    "draft": "cb883032"
+  },
+  "sort.option.artistAz": {
+    "status": "machine",
+    "source": "e24dae80",
+    "draft": "6dee45d0"
+  },
+  "filter.tracks": {
+    "status": "machine",
+    "source": "a25ad7d1",
+    "draft": "f1e3c87c"
+  },
+  "filter.clear": {
+    "status": "machine",
+    "source": "ba59e2d4",
+    "draft": "2d5d7479"
+  },
+  "filter.close": {
+    "status": "machine",
+    "source": "a7b5eafa",
+    "draft": "74b56058"
+  },
+  "filter.clearAndClose": {
+    "status": "machine",
+    "source": "aaaaee0a",
+    "draft": "8c63a990"
+  },
+  "filter.loadingAll": {
+    "status": "machine",
+    "source": "18124d71",
+    "draft": "920e3a59"
+  },
+  "card.open": {
+    "status": "machine",
+    "source": "7944e5ee",
+    "draft": "2f21f675"
+  },
+  "card.play": {
+    "status": "machine",
+    "source": "64010fec",
+    "draft": "a93f9224"
+  },
+  "card.artist": {
+    "status": "machine",
+    "source": "1d3981ba",
+    "draft": "27af2072"
+  },
+  "card.savedMix": {
+    "status": "machine",
+    "source": "701e602c",
+    "draft": "9565bd5a"
+  },
+  "card.linkCopied": {
+    "status": "machine",
+    "source": "d12860c2",
+    "draft": "ec3f520b"
+  },
+  "card.linkCopyFailed": {
+    "status": "machine",
+    "source": "2b236d11",
+    "draft": "7c4a93cd"
+  },
+  "card.shuffle": {
+    "status": "machine",
+    "source": "0dec296d",
+    "draft": "fe3fed2f"
+  },
+  "tree.empty": {
+    "status": "machine",
+    "source": "23b57991",
+    "draft": "ce61cd20"
+  },
+  "playlist.addedCount": {
+    "status": "machine",
+    "source": "fbcedb45",
+    "draft": "b2862f61"
+  },
+  "playlist.addedOne": {
+    "status": "machine",
+    "source": "36e7289d",
+    "draft": "f889d967"
+  },
+  "playlist.addedMany": {
+    "status": "machine",
+    "source": "0d3ecd7b",
+    "draft": "02f1827d"
+  },
+  "playlist.stillAdding": {
+    "status": "machine",
+    "source": "225510e6",
+    "draft": "c2e158d6"
+  },
+  "playlist.keptDuplicates": {
+    "status": "machine",
+    "source": "29dd0d1e",
+    "draft": "18a172fe"
+  },
+  "playlist.addedCopies": {
+    "status": "machine",
+    "source": "58f2302c",
+    "draft": "b237ffb8"
+  },
+  "playlist.addedCopiesKept": {
+    "status": "machine",
+    "source": "0c84a0d9",
+    "draft": "dd77c981"
+  },
+  "playlist.duplicatesFailed": {
+    "status": "machine",
+    "source": "b7edf91c",
+    "draft": "b7c6fbe5"
+  },
+  "playlist.created": {
+    "status": "machine",
+    "source": "b230d738",
+    "draft": "bb8ebe79"
+  },
+  "playlist.createdWith": {
+    "status": "machine",
+    "source": "00d0d3b2",
+    "draft": "f990a602"
+  },
+  "playlist.createdNotPublic": {
+    "status": "machine",
+    "source": "2f50fc04",
+    "draft": "a93feb1a"
+  },
+  "playlist.createdAddFailed": {
+    "status": "machine",
+    "source": "4f4f8232",
+    "draft": "3ad5780c"
+  },
+  "playlist.drop.notEditable": {
+    "status": "machine",
+    "source": "d798af8b",
+    "draft": "686b42af"
+  },
+  "playlist.drop.alreadyHere": {
+    "status": "machine",
+    "source": "da4a0eec",
+    "draft": "7a4971bd"
+  },
+  "playlist.drop.addTo": {
+    "status": "machine",
+    "source": "50910b3a",
+    "draft": "5663779b"
+  },
+  "playlist.edit": {
+    "status": "machine",
+    "source": "5ccbf250",
+    "draft": "a946e00c"
+  },
+  "playlist.nameLabel": {
+    "status": "machine",
+    "source": "159728ef",
+    "draft": "059fa580"
+  },
+  "playlist.public": {
+    "status": "machine",
+    "source": "591935b1",
+    "draft": "525f8d33"
+  },
+  "playlist.private": {
+    "status": "machine",
+    "source": "c63eb672",
+    "draft": "f8ad09b8"
+  },
+  "playlist.makePrivate": {
+    "status": "machine",
+    "source": "e83dbc0a",
+    "draft": "a44e9e1d"
+  },
+  "playlist.makePublicAction": {
+    "status": "machine",
+    "source": "81f879ea",
+    "draft": "7b985153"
+  },
+  "playlist.nowPublic": {
+    "status": "machine",
+    "source": "c9d9e36f",
+    "draft": "76ff352b"
+  },
+  "playlist.nowPrivate": {
+    "status": "machine",
+    "source": "be45a8b0",
+    "draft": "4414c7c2"
+  },
+  "playlist.refresh": {
+    "status": "machine",
+    "source": "0e916101",
+    "draft": "6c83021e"
+  },
+  "playlist.delete": {
+    "status": "machine",
+    "source": "4d40b83e",
+    "draft": "607648a6"
+  },
+  "playlist.deleted": {
+    "status": "machine",
+    "source": "37117ff8",
+    "draft": "6f5c3631"
+  },
+  "playlist.thisPlaylist": {
+    "status": "machine",
+    "source": "1cfed60b",
+    "draft": "e78fab6e"
+  },
+  "playlist.removedOne": {
+    "status": "machine",
+    "source": "13b289f1",
+    "draft": "b74f59ae"
+  },
+  "playlist.removedMany": {
+    "status": "machine",
+    "source": "c988b1e9",
+    "draft": "d94d9370"
+  },
+  "playlist.restored": {
+    "status": "machine",
+    "source": "1914b247",
+    "draft": "1d043295"
+  },
+  "playFrom.album": {
+    "status": "machine",
+    "source": "1a3f1a8b",
+    "draft": "e0bf4233"
+  },
+  "playFrom.playlist": {
+    "status": "machine",
+    "source": "76e9e4fa",
+    "draft": "7f2a193b"
+  },
+  "playFrom.mix": {
+    "status": "machine",
+    "source": "bf8287a8",
+    "draft": "c3ca91b4"
+  },
+  "playFrom.artist": {
+    "status": "machine",
+    "source": "d51c915a",
+    "draft": "4347e1a9"
+  },
+  "playFrom.search": {
+    "status": "machine",
+    "source": "71b6d9be",
+    "draft": "13cbc32e"
+  },
+  "playFrom.other": {
+    "status": "machine",
+    "source": "21819769",
+    "draft": "02d2ab5f"
+  },
+  "radio.named": {
+    "status": "machine",
+    "source": "03cbc123",
+    "draft": "8a80c2f8"
+  },
+  "radio.artistRadio": {
+    "status": "machine",
+    "source": "9aeee211",
+    "draft": "91158f90"
+  },
+  "radio.noArtistRadio": {
+    "status": "machine",
+    "source": "1dd9e424",
+    "draft": "cdf7ce00"
+  },
+  "radio.noTrackRadio": {
+    "status": "machine",
+    "source": "d4837b33",
+    "draft": "dac0d792"
+  },
+  "radio.unavailable": {
+    "status": "machine",
+    "source": "b6add5f4",
+    "draft": "1baa772d"
+  },
+  "radio.addToPlaylist": {
+    "status": "machine",
+    "source": "206c64c3",
+    "draft": "a5fbe896"
+  },
+  "radio.noTracks": {
+    "status": "machine",
+    "source": "a54ee3cd",
+    "draft": "4838d394"
+  },
+  "radio.notFound": {
+    "status": "machine",
+    "source": "e71a6208",
+    "draft": "c11bd810"
+  },
+  "later.saved": {
+    "status": "machine",
+    "source": "b8e14756",
+    "draft": "af902af3"
+  },
+  "later.removed": {
+    "status": "machine",
+    "source": "62485d63",
+    "draft": "e3cb4cf8"
+  },
+  "later.show": {
+    "status": "machine",
+    "source": "2d670d6c",
+    "draft": "a7e66aeb"
+  },
+  "later.empty": {
+    "status": "machine",
+    "source": "7f0a4003",
+    "draft": "04e0d602"
+  },
+  "later.videosHidden": {
+    "status": "machine",
+    "source": "fc544774",
+    "draft": "c1af2d97"
+  },
+  "favorites.removed": {
+    "status": "machine",
+    "source": "a0a4b596",
+    "draft": "3a168f4e"
+  },
+  "quality.lossless": {
+    "status": "machine",
+    "source": "4b86dab6",
+    "draft": "f59c7be8"
+  },
+  "quality.losslessHint": {
+    "status": "machine",
+    "source": "0c2e938d",
+    "draft": "6b346891"
+  },
+  "quality.max": {
+    "status": "machine",
+    "source": "65f6d15d",
+    "draft": "65f6d15d"
+  },
+  "quality.maxHint": {
+    "status": "machine",
+    "source": "14ffcd21",
+    "draft": "bccf0d29"
+  },
+  "feed.group.new": {
+    "status": "machine",
+    "source": "732cdc50",
+    "draft": "5db2c869"
+  },
+  "feed.group.lastWeek": {
+    "status": "machine",
+    "source": "84c2e09d",
+    "draft": "e9e01a67"
+  },
+  "feed.group.thisMonth": {
+    "status": "machine",
+    "source": "fd787ef3",
+    "draft": "5ffa88c1"
+  },
+  "feed.group.earlier": {
+    "status": "machine",
+    "source": "e10ae990",
+    "draft": "0857d8b9"
+  },
+  "feed.empty": {
+    "status": "machine",
+    "source": "7f36e4b3",
+    "draft": "5f6c7eab"
+  },
+  "feed.new": {
+    "status": "machine",
+    "source": "18fdd549",
+    "draft": "55f5695e"
+  },
+  "feed.hires": {
+    "status": "machine",
+    "source": "0371821c",
+    "draft": "0371821c"
+  },
+  "feed.hiresBadge": {
+    "status": "machine",
+    "source": "44bd7ae6",
+    "draft": "44bd7ae6"
+  },
+  "home.greeting": {
+    "status": "machine",
+    "source": "5b0d0ea5",
+    "draft": "86b81711"
+  },
+  "home.startPrompt": {
+    "status": "machine",
+    "source": "a0181e2b",
+    "draft": "32623607"
+  },
+  "home.jumpBackIn": {
+    "status": "machine",
+    "source": "22c30b25",
+    "draft": "9b4c483f"
+  },
+  "home.recentlyPlayed": {
+    "status": "machine",
+    "source": "452ec9f5",
+    "draft": "b1672eda"
+  },
+  "home.madeForYou": {
+    "status": "machine",
+    "source": "e1212db8",
+    "draft": "12833b65"
+  },
+  "home.newFromFollowed": {
+    "status": "machine",
+    "source": "30f38fcc",
+    "draft": "825f7920"
+  },
+  "home.newFromFollowedCount": {
+    "status": "machine",
+    "source": "d16dbc08",
+    "draft": "f97f6bea"
+  },
+  "home.keepExploring": {
+    "status": "machine",
+    "source": "5dac0b47",
+    "draft": "f3a2eb3a"
+  },
+  "home.keepExploringHint": {
+    "status": "machine",
+    "source": "e50abb79",
+    "draft": "db67729b"
+  },
+  "home.becauseYouListen": {
+    "status": "machine",
+    "source": "ed69bd80",
+    "draft": "bce03c77"
+  },
+  "home.fromTidal": {
+    "status": "machine",
+    "source": "11ce4a41",
+    "draft": "29714ed0"
+  },
+  "home.continueListening": {
+    "status": "machine",
+    "source": "7d9d5852",
+    "draft": "55311cca"
+  },
+  "home.resume": {
+    "status": "machine",
+    "source": "d640c742",
+    "draft": "149ea1b0"
+  },
+  "home.trackProgress": {
+    "status": "machine",
+    "source": "ae930915",
+    "draft": "75a662ed"
+  },
+  "home.playUpNext": {
+    "status": "machine",
+    "source": "1b2a1049",
+    "draft": "a3b3a0a0"
+  },
+  "home.upNext": {
+    "status": "machine",
+    "source": "e31da5b2",
+    "draft": "6f84d0f3"
+  },
+  "profile.yours": {
+    "status": "machine",
+    "source": "528d89ad",
+    "draft": "e5e33950"
+  },
+  "detail.coverAlt": {
+    "status": "machine",
+    "source": "1583ef4c",
+    "draft": "4455a234"
+  },
+  "detail.edit": {
+    "status": "machine",
+    "source": "464c4ffd",
+    "draft": "62e56bf0"
+  },
+  "detail.share": {
+    "status": "machine",
+    "source": "29887a5f",
+    "draft": "cd7e914f"
+  },
+  "detail.more": {
+    "status": "machine",
+    "source": "d47d7cb0",
+    "draft": "69e3d230"
+  },
+  "detail.moreActions": {
+    "status": "machine",
+    "source": "f8d46c25",
+    "draft": "bf88c251"
+  },
+  "detail.favorited": {
+    "status": "machine",
+    "source": "86f5562f",
+    "draft": "3af52c1c"
+  },
+  "detail.save": {
+    "status": "machine",
+    "source": "1509f561",
+    "draft": "887f19d3"
+  },
+  "detail.saved": {
+    "status": "machine",
+    "source": "b5c120b3",
+    "draft": "6c6bd8d3"
+  },
+  "detail.add": {
+    "status": "machine",
+    "source": "9fd728c6",
+    "draft": "6ab25a7d"
+  },
+  "album.favorite": {
+    "status": "machine",
+    "source": "0f77439b",
+    "draft": "2faad27c"
+  },
+  "album.unfavorite": {
+    "status": "machine",
+    "source": "939f0185",
+    "draft": "56a4cc8b"
+  },
+  "album.addToPlaylist": {
+    "status": "machine",
+    "source": "b2de069d",
+    "draft": "afc33ed3"
+  },
+  "album.notFound": {
+    "status": "machine",
+    "source": "67bcbdd0",
+    "draft": "080ccfeb"
+  },
+  "artist.editProfile": {
+    "status": "machine",
+    "source": "15c4aa13",
+    "draft": "6d1b597e"
+  },
+  "artist.editProfileHint": {
+    "status": "machine",
+    "source": "3aafb52c",
+    "draft": "9aca2925"
+  },
+  "artist.radio": {
+    "status": "machine",
+    "source": "2a7dfeb2",
+    "draft": "85305bc7"
+  },
+  "artist.radioHint": {
+    "status": "machine",
+    "source": "47bd549b",
+    "draft": "6355b9f1"
+  },
+  "artist.copyLink": {
+    "status": "machine",
+    "source": "2b0388ec",
+    "draft": "0958402a"
+  },
+  "artist.mix": {
+    "status": "machine",
+    "source": "65634dae",
+    "draft": "217a75b9"
+  },
+  "artist.openMix": {
+    "status": "machine",
+    "source": "cc3199ac",
+    "draft": "0d34df8a"
+  },
+  "artist.mixNamed": {
+    "status": "machine",
+    "source": "e604887c",
+    "draft": "e604887c"
+  },
+  "artist.radioSub": {
+    "status": "machine",
+    "source": "6ba993ad",
+    "draft": "393a1ad2"
+  },
+  "artist.ownEmpty": {
+    "status": "machine",
+    "source": "476bcb09",
+    "draft": "21d36b17"
+  },
+  "artist.topTracks": {
+    "status": "machine",
+    "source": "7580f724",
+    "draft": "c9d04556"
+  },
+  "artist.viewAll": {
+    "status": "machine",
+    "source": "30a64216",
+    "draft": "6cde9ba2"
+  },
+  "artist.singles": {
+    "status": "machine",
+    "source": "9a8e4f3a",
+    "draft": "2531ed4b"
+  },
+  "artist.appearsOn": {
+    "status": "machine",
+    "source": "57b2b808",
+    "draft": "388ee803"
+  },
+  "artist.publicPlaylists": {
+    "status": "machine",
+    "source": "67276fa0",
+    "draft": "0b261d3d"
+  },
+  "artist.similar": {
+    "status": "machine",
+    "source": "5c2033ec",
+    "draft": "d6965fae"
+  },
+  "artist.notFound": {
+    "status": "machine",
+    "source": "73576991",
+    "draft": "5f71a572"
+  },
+  "artist.sections": {
+    "status": "machine",
+    "source": "57179d0c",
+    "draft": "6af586f1"
+  },
+  "artist.tracksUnknown": {
+    "status": "machine",
+    "source": "88980154",
+    "draft": "8fd132c1"
+  },
+  "artist.playAll": {
+    "status": "machine",
+    "source": "12e7b822",
+    "draft": "92c1b15a"
+  },
+  "artist.noTracks": {
+    "status": "machine",
+    "source": "6f00701c",
+    "draft": "5cc2fd1d"
+  },
+  "artist.noReleases": {
+    "status": "machine",
+    "source": "a9f75693",
+    "draft": "502d42fc"
+  },
+  "artist.noPlaylists": {
+    "status": "machine",
+    "source": "b837cc09",
+    "draft": "86eb13f8"
+  },
+  "artist.releaseCount": {
+    "status": "machine",
+    "source": "0c6d1295",
+    "draft": "c104540b"
+  },
+  "artist.playlistCount": {
+    "status": "machine",
+    "source": "3bef87a9",
+    "draft": "ee75b941"
+  },
+  "artist.readMore": {
+    "status": "machine",
+    "source": "83b79414",
+    "draft": "764bcc9f"
+  },
+  "artist.favorite": {
+    "status": "machine",
+    "source": "1fbe6166",
+    "draft": "476e1692"
+  },
+  "artist.unfavorite": {
+    "status": "machine",
+    "source": "c187e430",
+    "draft": "ec852425"
+  },
+  "artist.links": {
+    "status": "machine",
+    "source": "9024c197",
+    "draft": "e0705cd3"
+  },
+  "artist.linksHint": {
+    "status": "machine",
+    "source": "de79a92e",
+    "draft": "f62758fa"
+  },
+  "artist.elsewhere": {
+    "status": "machine",
+    "source": "99ee9ef3",
+    "draft": "4fbe4766"
+  },
+  "artist.about": {
+    "status": "machine",
+    "source": "c200f2ef",
+    "draft": "f08a7ad1"
+  },
+  "artist.website": {
+    "status": "machine",
+    "source": "b5a229ac",
+    "draft": "4ebe9816"
+  },
+  "artist.link": {
+    "status": "machine",
+    "source": "a6a32dbc",
+    "draft": "a6a32dbc"
+  },
+  "search.kind.all": {
+    "status": "machine",
+    "source": "a52ace42",
+    "draft": "6cde9ba2"
+  },
+  "search.placeholder": {
+    "status": "machine",
+    "source": "64cf3603",
+    "draft": "79a16bde"
+  },
+  "search.searching": {
+    "status": "machine",
+    "source": "c31723ab",
+    "draft": "2581bed4"
+  },
+  "search.recent": {
+    "status": "machine",
+    "source": "228c84b5",
+    "draft": "87f104f9"
+  },
+  "search.clearRecent": {
+    "status": "machine",
+    "source": "a32329b7",
+    "draft": "8a8203a3"
+  },
+  "search.suggestions": {
+    "status": "machine",
+    "source": "a39a69dd",
+    "draft": "55da2acd"
+  },
+  "search.again": {
+    "status": "machine",
+    "source": "1ce1624b",
+    "draft": "f5b3c44f"
+  },
+  "search.for": {
+    "status": "machine",
+    "source": "16b10948",
+    "draft": "b077a9ea"
+  },
+  "search.showResults": {
+    "status": "machine",
+    "source": "90efa191",
+    "draft": "0cf4f5b9"
+  },
+  "search.corrected": {
+    "status": "machine",
+    "source": "a7d48559",
+    "draft": "a7c03b22"
+  },
+  "search.noResults": {
+    "status": "machine",
+    "source": "27f5f1fa",
+    "draft": "c33da0a8"
+  },
+  "search.loadMore": {
+    "status": "machine",
+    "source": "ac8991ef",
+    "draft": "de1f6dce"
+  },
+  "search.topResult": {
+    "status": "machine",
+    "source": "25d44829",
+    "draft": "2b69cc68"
+  },
+  "search.seeAll": {
+    "status": "machine",
+    "source": "d7a8c446",
+    "draft": "6cde9ba2"
+  },
+  "search.seeAllKind": {
+    "status": "machine",
+    "source": "d00ada2b",
+    "draft": "b1a7d1fb"
+  },
+  "search.noKind": {
+    "status": "machine",
+    "source": "a54d8b19",
+    "draft": "b1e28c3e"
+  },
+  "search.track": {
+    "status": "machine",
+    "source": "051f01f0",
+    "draft": "751fa860"
+  },
+  "release.ep": {
+    "status": "machine",
+    "source": "dcc9be26",
+    "draft": "dcc9be26"
+  },
+  "release.single": {
+    "status": "machine",
+    "source": "8888a029",
+    "draft": "4d0d8520"
+  },
+  "explore.newToYou": {
+    "status": "machine",
+    "source": "cdaa7e5a",
+    "draft": "eb0a83b0"
+  },
+  "explore.empty": {
+    "status": "machine",
+    "source": "e51c1665",
+    "draft": "8cb4f7ba"
+  },
+  "carousel.left": {
+    "status": "machine",
+    "source": "35dfa104",
+    "draft": "69f7b34f"
+  },
+  "carousel.right": {
+    "status": "machine",
+    "source": "366bd578",
+    "draft": "3807c2b8"
+  },
+  "section.gone": {
+    "status": "machine",
+    "source": "c505a0d9",
+    "draft": "e2ca4a4c"
+  },
+  "section.itemCount": {
+    "status": "machine",
+    "source": "1eb9964e",
+    "draft": "cd26d398"
+  },
+  "section.empty": {
+    "status": "machine",
+    "source": "2de5247a",
+    "draft": "9b82bd77"
+  },
+  "tracks.favorites": {
+    "status": "machine",
+    "source": "c876a426",
+    "draft": "b967b24e"
+  },
+  "tracks.unavailable": {
+    "status": "machine",
+    "source": "2b01120c",
+    "draft": "55d62617"
+  },
+  "tracks.unavailableNote": {
+    "status": "machine",
+    "source": "00c9fe0a",
+    "draft": "c8aa44c4"
+  },
+  "tracks.refreshing": {
+    "status": "machine",
+    "source": "f92e2ad5",
+    "draft": "6c83021e"
+  },
+  "albums.count": {
+    "status": "machine",
+    "source": "3f1b4285",
+    "draft": "c91e1dbd"
+  },
+  "albums.sortLabel": {
+    "status": "machine",
+    "source": "80dba755",
+    "draft": "0fd8f966"
+  },
+  "albums.empty": {
+    "status": "machine",
+    "source": "2433b876",
+    "draft": "c3474491"
+  },
+  "mixes.empty": {
+    "status": "machine",
+    "source": "45d5ab71",
+    "draft": "96ab83c3"
+  },
+  "mixes.favorites": {
+    "status": "machine",
+    "source": "16165577",
+    "draft": "f65f817d"
+  },
+  "profiles.count": {
+    "status": "machine",
+    "source": "4968f8ac",
+    "draft": "64bbfe0c"
+  },
+  "profiles.search": {
+    "status": "machine",
+    "source": "2b7cc56c",
+    "draft": "18f2847c"
+  },
+  "profiles.sortLabel": {
+    "status": "machine",
+    "source": "27526997",
+    "draft": "7b8c6299"
+  },
+  "profiles.empty": {
+    "status": "machine",
+    "source": "2bdeedef",
+    "draft": "231a4705"
+  },
+  "profiles.noMatch": {
+    "status": "machine",
+    "source": "d9be0112",
+    "draft": "b88bb6e1"
+  },
+  "purchases.empty": {
+    "status": "machine",
+    "source": "092dae51",
+    "draft": "47299478"
+  },
+  "mix.addToPlaylist": {
+    "status": "machine",
+    "source": "64f111b1",
+    "draft": "6b0a780b"
+  },
+  "mix.notFound": {
+    "status": "machine",
+    "source": "2b12ef85",
+    "draft": "20c9dc73"
+  },
+  "nowPlaying.scrobbled": {
+    "status": "machine",
+    "source": "10c27722",
+    "draft": "fdf18da8"
+  },
+  "nowPlaying.close": {
+    "status": "machine",
+    "source": "e6e16242",
+    "draft": "e9ee94b9"
+  },
+  "nowPlaying.content": {
+    "status": "machine",
+    "source": "49c79bc2",
+    "draft": "d6d831fa"
+  },
+  "nowPlaying.lyrics": {
+    "status": "machine",
+    "source": "e73a4aa7",
+    "draft": "78693832"
+  },
+  "nowPlaying.nextUp": {
+    "status": "machine",
+    "source": "c5ae6523",
+    "draft": "6f84d0f3"
+  },
+  "nowPlaying.loadingLyrics": {
+    "status": "machine",
+    "source": "d693046c",
+    "draft": "1abbe3f1"
+  },
+  "nowPlaying.queueEmpty": {
+    "status": "machine",
+    "source": "c501c695",
+    "draft": "512e96ad"
+  },
+  "mini.playPause": {
+    "status": "machine",
+    "source": "c9c7c7ec",
+    "draft": "ce3a8f76"
+  },
+  "mini.restore": {
+    "status": "machine",
+    "source": "6388c4c3",
+    "draft": "a7b7b9c2"
+  },
+  "lyrics.jump": {
+    "status": "machine",
+    "source": "c017f7fe",
+    "draft": "dda84dac"
+  },
+  "info.loading": {
+    "status": "machine",
+    "source": "f6afed47",
+    "draft": "d3ad25ec"
+  },
+  "info.artists": {
+    "status": "machine",
+    "source": "94e3e8a4",
+    "draft": "ce716e0e"
+  },
+  "info.duration": {
+    "status": "machine",
+    "source": "4fc52a3c",
+    "draft": "203033a6"
+  },
+  "info.credits": {
+    "status": "machine",
+    "source": "2a6b24ad",
+    "draft": "4f553a25"
+  },
+  "info.noCredits": {
+    "status": "machine",
+    "source": "e2c05420",
+    "draft": "bcc32a4d"
+  },
+  "info.notFound": {
+    "status": "machine",
+    "source": "b98e188f",
+    "draft": "d906d608"
+  },
+  "login.title": {
+    "status": "machine",
+    "source": "bc1a147b",
+    "draft": "daf430d9"
+  },
+  "login.intro": {
+    "status": "machine",
+    "source": "ec1d8870",
+    "draft": "854db924"
+  },
+  "login.waiting": {
+    "status": "machine",
+    "source": "5033d645",
+    "draft": "ea1d28f4"
+  },
+  "login.button": {
+    "status": "machine",
+    "source": "5d18bac8",
+    "draft": "7f2f6963"
+  },
+  "login.fallbackToggle": {
+    "status": "machine",
+    "source": "e6b732bb",
+    "draft": "f44d9c36"
+  },
+  "login.pasteBack": {
+    "status": "machine",
+    "source": "be38bb16",
+    "draft": "a96b1b27"
+  },
+  "login.pasteHint": {
+    "status": "machine",
+    "source": "72741ab1",
+    "draft": "84f46baf"
+  },
+  "login.pastePlaceholder": {
+    "status": "machine",
+    "source": "66ce99ab",
+    "draft": "8951b8af"
+  },
+  "login.complete": {
+    "status": "machine",
+    "source": "5b75b3eb",
+    "draft": "b9e935dc"
+  },
+  "sleep.title": {
+    "status": "machine",
+    "source": "336c84d8",
+    "draft": "79a29351"
+  },
+  "sleep.remaining": {
+    "status": "machine",
+    "source": "c8e0f89a",
+    "draft": "45adcbcf"
+  },
+  "sleep.endOfTrackTitle": {
+    "status": "machine",
+    "source": "e12a83cc",
+    "draft": "830051df"
+  },
+  "sleep.off": {
+    "status": "machine",
+    "source": "ca7981b4",
+    "draft": "b01636bd"
+  },
+  "sleep.minutes": {
+    "status": "machine",
+    "source": "2c2f8339",
+    "draft": "798865a9"
+  },
+  "sleep.custom": {
+    "status": "machine",
+    "source": "c4e69d54",
+    "draft": "12f1e1a1"
+  },
+  "sleep.endOfTrack": {
+    "status": "machine",
+    "source": "ad8fa8db",
+    "draft": "9dc650c4"
+  },
+  "sleep.customLabel": {
+    "status": "machine",
+    "source": "f0b3ea50",
+    "draft": "e8890526"
+  },
+  "sleep.start": {
+    "status": "machine",
+    "source": "4fcf31d4",
+    "draft": "830186a9"
+  },
+  "volume.label": {
+    "status": "machine",
+    "source": "b10fb966",
+    "draft": "7fdd7872"
+  },
+  "volume.mute": {
+    "status": "machine",
+    "source": "8dd6857b",
+    "draft": "dd7a7487"
+  },
+  "volume.unmute": {
+    "status": "machine",
+    "source": "ce4ee4ef",
+    "draft": "3ce96d50"
+  },
+  "volume.fixed": {
+    "status": "machine",
+    "source": "898d6391",
+    "draft": "cd7ebbdd"
+  },
+  "seek.label": {
+    "status": "machine",
+    "source": "c12ff673",
+    "draft": "13cb5a06"
+  },
+  "cover.none": {
+    "status": "machine",
+    "source": "f2f95c14",
+    "draft": "1e7a8c8b"
+  },
+  "profileEdit.usernameRule": {
+    "status": "machine",
+    "source": "805d667f",
+    "draft": "bc330e2f"
+  },
+  "profileEdit.notWebLink": {
+    "status": "machine",
+    "source": "5b488404",
+    "draft": "b45277fa"
+  },
+  "profileEdit.wrongSite": {
+    "status": "machine",
+    "source": "10e63699",
+    "draft": "5fb2c016"
+  },
+  "profileEdit.needsName": {
+    "status": "machine",
+    "source": "d0a0cbd5",
+    "draft": "ee89ec6c"
+  },
+  "profileEdit.needsUsername": {
+    "status": "machine",
+    "source": "d45f2477",
+    "draft": "3e20fec4"
+  },
+  "profileEdit.picture": {
+    "status": "machine",
+    "source": "a7acc4eb",
+    "draft": "46f3dfef"
+  },
+  "profileEdit.banner": {
+    "status": "machine",
+    "source": "b7f4d98f",
+    "draft": "4a9d8b83"
+  },
+  "profileEdit.logo": {
+    "status": "machine",
+    "source": "d707dc2f",
+    "draft": "04d07d3f"
+  },
+  "profileEdit.change": {
+    "status": "machine",
+    "source": "9d558e92",
+    "draft": "9cb2f549"
+  },
+  "profileEdit.add": {
+    "status": "machine",
+    "source": "fe75dfcd",
+    "draft": "2b91f534"
+  },
+  "profileEdit.remove": {
+    "status": "machine",
+    "source": "6b31bc64",
+    "draft": "a2a98b95"
+  },
+  "profileEdit.fileTypes": {
+    "status": "machine",
+    "source": "733a0d20",
+    "draft": "726a1b29"
+  },
+  "profileEdit.saveUsername": {
+    "status": "machine",
+    "source": "7bc86f4f",
+    "draft": "dd3b436e"
+  },
+  "profileEdit.usernameWillBe": {
+    "status": "machine",
+    "source": "0a28fa85",
+    "draft": "668fa015"
+  },
+  "profileEdit.usernameWarning": {
+    "status": "machine",
+    "source": "a4b31c4c",
+    "draft": "997cc91d"
+  },
+  "profileEdit.loading": {
+    "status": "machine",
+    "source": "dc371220",
+    "draft": "ddf79fb2"
+  },
+  "profileEdit.username": {
+    "status": "machine",
+    "source": "e3b89e9d",
+    "draft": "521939cc"
+  },
+  "profileEdit.bio": {
+    "status": "machine",
+    "source": "3933b180",
+    "draft": "c7a0a762"
+  },
+  "profileEdit.firstBio": {
+    "status": "machine",
+    "source": "619ae5d6",
+    "draft": "16c6e769"
+  },
+  "profileEdit.tidalEditor": {
+    "status": "machine",
+    "source": "3f73a4c3",
+    "draft": "e6174db0"
+  },
+  "profileEdit.linkN": {
+    "status": "machine",
+    "source": "8fbbf6ca",
+    "draft": "0eaca066"
+  },
+  "profileEdit.socialPlaceholder": {
+    "status": "machine",
+    "source": "248839dd",
+    "draft": "1f5ee3e6"
+  },
+  "profileEdit.sitePlaceholder": {
+    "status": "machine",
+    "source": "4bc7b413",
+    "draft": "211511ee"
+  },
+  "profileEdit.removeLink": {
+    "status": "machine",
+    "source": "e6a3c4a1",
+    "draft": "34e85f89"
+  },
+  "profileEdit.addLink": {
+    "status": "machine",
+    "source": "dfe9ca4d",
+    "draft": "1879d526"
+  },
+  "profileEdit.addSocial": {
+    "status": "machine",
+    "source": "061fca6d",
+    "draft": "b4f9ad6c"
+  },
+  "profileEdit.saving": {
+    "status": "machine",
+    "source": "23e39291",
+    "draft": "b9a1838d"
+  },
+  "scrobble.notConfigured": {
+    "status": "machine",
+    "source": "f1beb25f",
+    "draft": "6cbe2ae3"
+  },
+  "scrobble.reconnect": {
+    "status": "machine",
+    "source": "2b0211b3",
+    "draft": "317b41cb"
+  },
+  "scrobble.connectedAs": {
+    "status": "machine",
+    "source": "f90e6ca3",
+    "draft": "3f29fd34"
+  },
+  "scrobble.unknownUser": {
+    "status": "machine",
+    "source": "b23a6a84",
+    "draft": "d8090147"
+  },
+  "scrobble.queued": {
+    "status": "machine",
+    "source": "a1602ae9",
+    "draft": "04b12ef3"
+  },
+  "hotkey.playPause": {
+    "status": "machine",
+    "source": "d42bcb22",
+    "draft": "4951895a"
+  },
+  "hotkey.next": {
+    "status": "machine",
+    "source": "f930a5df",
+    "draft": "7f2fc997"
+  },
+  "hotkey.prev": {
+    "status": "machine",
+    "source": "c50a886d",
+    "draft": "e4dca9b6"
+  },
+  "hotkey.volumeUp": {
+    "status": "machine",
+    "source": "81233d97",
+    "draft": "a56934f7"
+  },
+  "hotkey.volumeDown": {
+    "status": "machine",
+    "source": "6ad50765",
+    "draft": "7234b7c0"
+  },
+  "hotkey.showHide": {
+    "status": "machine",
+    "source": "c8d82cdf",
+    "draft": "a75ce3b0"
+  },
+  "shortcuts.playPause": {
+    "status": "machine",
+    "source": "d42bcb22",
+    "draft": "4951895a"
+  },
+  "shortcuts.seek": {
+    "status": "machine",
+    "source": "ed54b45e",
+    "draft": "5b9e31bf"
+  },
+  "shortcuts.track": {
+    "status": "machine",
+    "source": "0ab53aec",
+    "draft": "65ca2d40"
+  },
+  "shortcuts.volume": {
+    "status": "machine",
+    "source": "dbe4e0f6",
+    "draft": "9bde25d2"
+  },
+  "shortcuts.mute": {
+    "status": "machine",
+    "source": "fae01519",
+    "draft": "06c197e9"
+  },
+  "shortcuts.searchKeys": {
+    "status": "machine",
+    "source": "1ba4c47c",
+    "draft": "22b5b1e0"
+  },
+  "shortcuts.search": {
+    "status": "machine",
+    "source": "512c8478",
+    "draft": "ee866b67"
+  },
+  "shortcuts.history": {
+    "status": "machine",
+    "source": "a69100e0",
+    "draft": "e6b2d02b"
+  },
+  "shortcuts.sidebar": {
+    "status": "machine",
+    "source": "28a39d0e",
+    "draft": "5d94e381"
+  },
+  "shortcuts.queue": {
+    "status": "machine",
+    "source": "aa6b8b72",
+    "draft": "3e89df6b"
+  },
+  "shortcuts.escape": {
+    "status": "machine",
+    "source": "a8640689",
+    "draft": "702b48bc"
+  },
+  "eq.preset.flat": {
+    "status": "machine",
+    "source": "9285cedc",
+    "draft": "809bfe78"
+  },
+  "eq.preset.bass": {
+    "status": "machine",
+    "source": "02a4e346",
+    "draft": "7c7317b7"
+  },
+  "eq.preset.bassCut": {
+    "status": "machine",
+    "source": "295e0441",
+    "draft": "fab0cc02"
+  },
+  "eq.preset.treble": {
+    "status": "machine",
+    "source": "f578c443",
+    "draft": "33ef4199"
+  },
+  "eq.preset.vocal": {
+    "status": "machine",
+    "source": "397d4a72",
+    "draft": "1c594e1e"
+  },
+  "eq.preset.loudness": {
+    "status": "machine",
+    "source": "3efdeb9e",
+    "draft": "3efdeb9e"
+  },
+  "automix.style.classic": {
+    "status": "machine",
+    "source": "ae25d648",
+    "draft": "aa70f163"
+  },
+  "automix.style.classicHint": {
+    "status": "machine",
+    "source": "0a4b6298",
+    "draft": "0dadb6ff"
+  },
+  "automix.style.quick": {
+    "status": "machine",
+    "source": "9f49fadb",
+    "draft": "4a632b20"
+  },
+  "automix.style.quickHint": {
+    "status": "machine",
+    "source": "157af6fd",
+    "draft": "0c8dd092"
+  },
+  "automix.style.blend": {
+    "status": "machine",
+    "source": "ee6cfb23",
+    "draft": "41033cf6"
+  },
+  "automix.style.blendHint": {
+    "status": "machine",
+    "source": "744d996b",
+    "draft": "867404d0"
+  },
+  "automix.style.auto": {
+    "status": "machine",
+    "source": "02862497",
+    "draft": "440ae025"
+  },
+  "automix.style.autoHint": {
+    "status": "machine",
+    "source": "9843ab89",
+    "draft": "324482a0"
+  },
+  "automix.kind.crossfade": {
+    "status": "machine",
+    "source": "d5fe512a",
+    "draft": "01d1f5f6"
+  },
+  "automix.kind.beatMatched": {
+    "status": "machine",
+    "source": "f7984f5f",
+    "draft": "3df82919"
+  },
+  "automix.kind.fadeOut": {
+    "status": "machine",
+    "source": "7c64a2a6",
+    "draft": "1c803b71"
+  },
+  "automix.kind.gapless": {
+    "status": "machine",
+    "source": "b5a229bb",
+    "draft": "fee79769"
+  },
+  "automix.styleBeatMatched": {
+    "status": "machine",
+    "source": "97127dda",
+    "draft": "6af31a14"
+  },
+  "automix.autoPicked": {
+    "status": "machine",
+    "source": "61b13d5d",
+    "draft": "11d2888c"
+  },
+  "automix.why": {
+    "status": "machine",
+    "source": "0c2b2042",
+    "draft": "217bf695"
+  },
+  "automix.overlap": {
+    "status": "machine",
+    "source": "4330cf04",
+    "draft": "c4309c86"
+  },
+  "automix.overlapBeats": {
+    "status": "machine",
+    "source": "cc6d3384",
+    "draft": "6a5eefb9"
+  },
+  "automix.trimmed": {
+    "status": "machine",
+    "source": "b3d7c0af",
+    "draft": "e909e04d"
+  },
+  "automix.cut": {
+    "status": "machine",
+    "source": "6187dc84",
+    "draft": "05216c61"
+  },
+  "automix.ride": {
+    "status": "machine",
+    "source": "455d4950",
+    "draft": "d81d122d"
+  },
+  "automix.resampled": {
+    "status": "machine",
+    "source": "08037a00",
+    "draft": "81c0404a"
+  },
+  "automix.noGrid": {
+    "status": "machine",
+    "source": "70abee55",
+    "draft": "dcb15f91"
+  },
+  "automix.bpm": {
+    "status": "machine",
+    "source": "d8796657",
+    "draft": "d8796657"
+  },
+  "automix.tempo": {
+    "status": "machine",
+    "source": "b16a28a6",
+    "draft": "d8b3a00c"
+  },
+  "automix.jumpNearEnd": {
+    "status": "machine",
+    "source": "d73c73b0",
+    "draft": "cac173a2"
+  },
+  "automix.playToTry": {
+    "status": "machine",
+    "source": "bfcc9b52",
+    "draft": "bdea79b5"
+  },
+  "automix.replayGroup": {
+    "status": "machine",
+    "source": "0748fa58",
+    "draft": "e41e1ab0"
+  },
+  "automix.stopReplay": {
+    "status": "machine",
+    "source": "31488f91",
+    "draft": "620f4b8a"
+  },
+  "device.icon.auto": {
+    "status": "machine",
+    "source": "d461a493",
+    "draft": "440ae025"
+  },
+  "device.icon.speaker": {
+    "status": "machine",
+    "source": "a9e0c705",
+    "draft": "fc12cf30"
+  },
+  "device.icon.dac": {
+    "status": "machine",
+    "source": "15b10b7e",
+    "draft": "8471a9b6"
+  },
+  "device.icon.monitor": {
+    "status": "machine",
+    "source": "4c2e1df4",
+    "draft": "4c2e1df4"
+  },
+  "device.icon.tv": {
+    "status": "machine",
+    "source": "ca62d5e0",
+    "draft": "ca62d5e0"
+  },
+  "device.icon.laptop": {
+    "status": "machine",
+    "source": "15af50a0",
+    "draft": "15af50a0"
+  },
+  "device.icon.lines": {
+    "status": "machine",
+    "source": "3b26a542",
+    "draft": "29759e21"
+  },
+  "device.icon.none": {
+    "status": "machine",
+    "source": "27d54c9f",
+    "draft": "f07f7063"
+  },
+  "device.group.wasapi": {
+    "status": "machine",
+    "source": "4d423acf",
+    "draft": "1fab512d"
+  },
+  "device.group.alsa": {
+    "status": "machine",
+    "source": "b258e8f7",
+    "draft": "8c3c1846"
+  },
+  "device.kind.speakers": {
+    "status": "machine",
+    "source": "c92a7237",
+    "draft": "4d78c210"
+  },
+  "device.kind.headphones": {
+    "status": "machine",
+    "source": "86df32cf",
+    "draft": "c3953e2b"
+  },
+  "device.kind.headset": {
+    "status": "machine",
+    "source": "79c61880",
+    "draft": "79c61880"
+  },
+  "device.kind.spdif": {
+    "status": "machine",
+    "source": "74fdbfd9",
+    "draft": "d73a7c3c"
+  },
+  "device.kind.line": {
+    "status": "machine",
+    "source": "b427fe65",
+    "draft": "96a3b290"
+  },
+  "device.kind.virtual": {
+    "status": "machine",
+    "source": "b22fe58f",
+    "draft": "79299d50"
+  },
+  "device.internal": {
+    "status": "machine",
+    "source": "2ea1842b",
+    "draft": "37f096c8"
+  },
+  "device.asioWrapper": {
+    "status": "machine",
+    "source": "0ec59b24",
+    "draft": "3ea01c09"
+  },
+  "device.alwaysExclusive": {
+    "status": "machine",
+    "source": "cb4f48c4",
+    "draft": "ef2f3f91"
+  },
+  "device.upTo": {
+    "status": "machine",
+    "source": "fa73a570",
+    "draft": "1414a340"
+  },
+  "device.upToBits": {
+    "status": "machine",
+    "source": "80bb8fed",
+    "draft": "2a735591"
+  },
+  "device.sharedOnly": {
+    "status": "machine",
+    "source": "ef34fb9b",
+    "draft": "23a216a1"
+  },
+  "device.sharedOnlyRate": {
+    "status": "machine",
+    "source": "e7c63564",
+    "draft": "2f8428cb"
+  },
+  "device.hardwareVolume": {
+    "status": "machine",
+    "source": "edc5b350",
+    "draft": "b2b647dc"
+  },
+  "device.fromPlayback": {
+    "status": "machine",
+    "source": "41773a78",
+    "draft": "588067c8"
+  },
+  "device.mode.shared": {
+    "status": "machine",
+    "source": "e3c4b39d",
+    "draft": "d2b456e5"
+  },
+  "device.mode.exclusive": {
+    "status": "machine",
+    "source": "4883b7df",
+    "draft": "698e0abc"
+  },
+  "device.outputMode": {
+    "status": "machine",
+    "source": "d7ac9455",
+    "draft": "24f2762c"
+  },
+  "device.errorDetail": {
+    "status": "machine",
+    "source": "2aff9ccb",
+    "draft": "2aff9ccb"
+  },
+  "device.errorRetry": {
+    "status": "machine",
+    "source": "fa52eece",
+    "draft": "a457c2f5"
+  },
+  "device.readFailed": {
+    "status": "machine",
+    "source": "63b58cbe",
+    "draft": "cf6eea28"
+  },
+  "device.systemDefault": {
+    "status": "machine",
+    "source": "b0459211",
+    "draft": "4c2b2f3c"
+  },
+  "device.switchFailed": {
+    "status": "machine",
+    "source": "6766ebbb",
+    "draft": "cb8e4236"
+  },
+  "device.saveFailed": {
+    "status": "machine",
+    "source": "e594fcb4",
+    "draft": "2ed1f93d"
+  },
+  "device.edit": {
+    "status": "machine",
+    "source": "2b8a1a00",
+    "draft": "0f76c174"
+  },
+  "device.pin": {
+    "status": "machine",
+    "source": "e814874d",
+    "draft": "0b45a6f2"
+  },
+  "device.unpin": {
+    "status": "machine",
+    "source": "38534f07",
+    "draft": "8314d23e"
+  },
+  "device.pinned": {
+    "status": "machine",
+    "source": "fdf7b9ca",
+    "draft": "af5f2a35"
+  },
+  "device.pinNamed": {
+    "status": "machine",
+    "source": "74c2fb16",
+    "draft": "52287958"
+  },
+  "device.unpinNamed": {
+    "status": "machine",
+    "source": "55a598ec",
+    "draft": "12e00050"
+  },
+  "device.moreFor": {
+    "status": "machine",
+    "source": "f608d334",
+    "draft": "62ece6ff"
+  },
+  "device.showInList": {
+    "status": "machine",
+    "source": "b3f0068c",
+    "draft": "4beeca29"
+  },
+  "device.hide": {
+    "status": "machine",
+    "source": "ac20a57b",
+    "draft": "071725ae"
+  },
+  "device.show": {
+    "status": "machine",
+    "source": "0df6f1ca",
+    "draft": "72dffeae"
+  },
+  "device.showAnyway": {
+    "status": "machine",
+    "source": "3175b05f",
+    "draft": "7666d5bd"
+  },
+  "device.switchFirst": {
+    "status": "machine",
+    "source": "8218f889",
+    "draft": "e7e32393"
+  },
+  "device.follows": {
+    "status": "machine",
+    "source": "39d073b3",
+    "draft": "95cd2125"
+  },
+  "device.followsNow": {
+    "status": "machine",
+    "source": "ff7a6095",
+    "draft": "4fc75949"
+  },
+  "device.hiddenCount": {
+    "status": "machine",
+    "source": "1fa9e2b7",
+    "draft": "079bf59f"
+  },
+  "device.nothingConnected": {
+    "status": "machine",
+    "source": "9df3a6ec",
+    "draft": "3469f958"
+  },
+  "device.editTitle": {
+    "status": "machine",
+    "source": "c268a2ad",
+    "draft": "0ba10168"
+  },
+  "device.nickname": {
+    "status": "machine",
+    "source": "d720f61c",
+    "draft": "9a5dc11b"
+  },
+  "device.nicknameHint": {
+    "status": "machine",
+    "source": "194414d9",
+    "draft": "c9c87d4a"
+  },
+  "device.iconLabel": {
+    "status": "machine",
+    "source": "a35abcd6",
+    "draft": "74402e29"
+  },
+  "remoteSettings.seen.now": {
+    "status": "machine",
+    "source": "7ddb44d8",
+    "draft": "7e147e7a"
+  },
+  "remoteSettings.seen.minutes": {
+    "status": "machine",
+    "source": "6bf264f3",
+    "draft": "c24c106e"
+  },
+  "remoteSettings.seen.hours": {
+    "status": "machine",
+    "source": "921c58d2",
+    "draft": "91dbfc88"
+  },
+  "remoteSettings.seen.days": {
+    "status": "machine",
+    "source": "c49d31a6",
+    "draft": "60da1524"
+  },
+  "remoteSettings.firewallOpen": {
+    "status": "machine",
+    "source": "822122c8",
+    "draft": "3b27b570"
+  },
+  "remoteSettings.firewallBlocks": {
+    "status": "machine",
+    "source": "fdd1ff34",
+    "draft": "0a2cd631"
+  },
+  "remoteSettings.firewallUnknown": {
+    "status": "machine",
+    "source": "57aedb7f",
+    "draft": "0f53dfee"
+  },
+  "remoteSettings.firewallHintLinux": {
+    "status": "machine",
+    "source": "f3395ae2",
+    "draft": "a8d36551"
+  },
+  "remoteSettings.firewallHintWindows": {
+    "status": "machine",
+    "source": "7053ed3d",
+    "draft": "a9d8d110"
+  },
+  "remoteSettings.portRange": {
+    "status": "machine",
+    "source": "001d1363",
+    "draft": "6c106c6f"
+  },
+  "remoteSettings.listening": {
+    "status": "machine",
+    "source": "d7bbf918",
+    "draft": "433de148"
+  },
+  "remoteSettings.off": {
+    "status": "machine",
+    "source": "ad37aff7",
+    "draft": "8b86ca26"
+  },
+  "remoteSettings.autoAddress": {
+    "status": "machine",
+    "source": "483055fe",
+    "draft": "a3118bde"
+  },
+  "remoteSettings.pairRequest": {
+    "status": "machine",
+    "source": "7ecb604d",
+    "draft": "4b2008ce"
+  },
+  "remoteSettings.decline": {
+    "status": "machine",
+    "source": "a2d285b3",
+    "draft": "9fd04cb4"
+  },
+  "remoteSettings.allow": {
+    "status": "machine",
+    "source": "e213c161",
+    "draft": "9119aaa2"
+  },
+  "remoteSettings.notListening": {
+    "status": "machine",
+    "source": "5e7c2d17",
+    "draft": "fa84fd99"
+  },
+  "remoteSettings.portInUse": {
+    "status": "machine",
+    "source": "870573cb",
+    "draft": "ed186286"
+  },
+  "remoteSettings.portHelp": {
+    "status": "machine",
+    "source": "1bdc4fc6",
+    "draft": "d6ab5eca"
+  },
+  "remoteSettings.noDevices": {
+    "status": "machine",
+    "source": "791bfd6b",
+    "draft": "4d8b1324"
+  },
+  "remoteSettings.nameFor": {
+    "status": "machine",
+    "source": "dfd24376",
+    "draft": "58202063"
+  },
+  "remoteSettings.renameNamed": {
+    "status": "machine",
+    "source": "e84e258e",
+    "draft": "1b0308cd"
+  },
+  "remoteSettings.connected": {
+    "status": "machine",
+    "source": "22965568",
+    "draft": "24fc868b"
+  },
+  "remoteSettings.lastSeen": {
+    "status": "machine",
+    "source": "9078e2db",
+    "draft": "b308d3da"
+  },
+  "remoteSettings.revoke": {
+    "status": "machine",
+    "source": "87e6d00b",
+    "draft": "6b058c06"
+  },
+  "remoteSettings.revokeNamed": {
+    "status": "machine",
+    "source": "94939ee4",
+    "draft": "79b09b34"
+  },
+  "remoteSettings.copy": {
+    "status": "machine",
+    "source": "e21f935f",
+    "draft": "f4a87cb4"
+  },
+  "remoteSettings.copied": {
+    "status": "machine",
+    "source": "8d525e5f",
+    "draft": "d8420fb2"
+  },
+  "remoteSettings.footer": {
+    "status": "machine",
+    "source": "59f637fc",
+    "draft": "6bdf9f11"
+  },
+  "remoteSettings.qr": {
+    "status": "machine",
+    "source": "83fcf89d",
+    "draft": "1b6ebd59"
+  },
+  "remoteSettings.scan": {
+    "status": "machine",
+    "source": "b3b070f3",
+    "draft": "86ffb113"
+  },
+  "remoteSettings.expires": {
+    "status": "machine",
+    "source": "48458875",
+    "draft": "316166f3"
+  },
+  "remoteSettings.autoAddressDefault": {
+    "status": "machine",
+    "source": "d461a493",
+    "draft": "440ae025"
+  },
+  "updates.checking": {
+    "status": "machine",
+    "source": "497a1998",
+    "draft": "84fab5c3"
+  },
+  "updates.current": {
+    "status": "machine",
+    "source": "eeced728",
+    "draft": "1f0d8225"
+  },
+  "updates.available": {
+    "status": "machine",
+    "source": "9b632d16",
+    "draft": "2ca67f5f"
+  },
+  "updates.install": {
+    "status": "machine",
+    "source": "b697d4f9",
+    "draft": "430de87a"
+  },
+  "updates.downloading": {
+    "status": "machine",
+    "source": "8afa0c19",
+    "draft": "b1c340d5"
+  },
+  "updates.downloadingPercent": {
+    "status": "machine",
+    "source": "4291740f",
+    "draft": "6f5f7b2b"
+  },
+  "updates.download": {
+    "status": "machine",
+    "source": "1c20b42f",
+    "draft": "afdfe77c"
+  },
+  "updates.confirmTitle": {
+    "status": "machine",
+    "source": "b9b00ee9",
+    "draft": "9361239f"
+  },
+  "updates.confirmMessage": {
+    "status": "machine",
+    "source": "3ebe49cf",
+    "draft": "80ae0848"
+  },
+  "catjam.coat.white": {
+    "status": "machine",
+    "source": "3495e757",
+    "draft": "7e315ff1"
+  },
+  "catjam.coat.black": {
+    "status": "machine",
+    "source": "c6cfe6e4",
+    "draft": "f7632919"
+  },
+  "catjam.coat.ginger": {
+    "status": "machine",
+    "source": "1915542c",
+    "draft": "10777cba"
+  },
+  "catjam.coat.grey": {
+    "status": "machine",
+    "source": "2772d541",
+    "draft": "82c52c4b"
+  },
+  "catjam.coat.tuxedo": {
+    "status": "machine",
+    "source": "d630575d",
+    "draft": "98072d2e"
+  },
+  "catjam.coat.cream": {
+    "status": "machine",
+    "source": "d5398ba4",
+    "draft": "2199efb3"
+  },
+  "history.daysAgo": {
+    "status": "machine",
+    "source": "c49aff42",
+    "draft": "88bb81fc"
+  },
+  "history.today": {
+    "status": "machine",
+    "source": "2b065c7c",
+    "draft": "1bb657fb"
+  },
+  "history.yesterday": {
+    "status": "machine",
+    "source": "56618125",
+    "draft": "4795f302"
+  },
+  "history.playFrom": {
+    "status": "machine",
+    "source": "efe6b633",
+    "draft": "8365960f"
+  },
+  "history.sections": {
+    "status": "machine",
+    "source": "ec049881",
+    "draft": "8fdb2624"
+  },
+  "history.empty": {
+    "status": "machine",
+    "source": "78e3cf0d",
+    "draft": "588d2f58"
+  },
+  "history.playEntry": {
+    "status": "machine",
+    "source": "1d863918",
+    "draft": "0291b72e"
+  },
+  "stats.plays": {
+    "status": "machine",
+    "source": "d4b0f19f",
+    "draft": "a2826834"
+  },
+  "stats.days": {
+    "status": "machine",
+    "source": "52e7b5cd",
+    "draft": "b90a852b"
+  },
+  "stats.word.plays": {
+    "status": "machine",
+    "source": "f0ab5440",
+    "draft": "edab05f1"
+  },
+  "stats.word.tracks": {
+    "status": "machine",
+    "source": "7bbd91fd",
+    "draft": "0377f4ce"
+  },
+  "stats.word.artists": {
+    "status": "machine",
+    "source": "d983c9d7",
+    "draft": "edc61057"
+  },
+  "stats.word.albums": {
+    "status": "machine",
+    "source": "07cec895",
+    "draft": "ae38af16"
+  },
+  "stats.last7": {
+    "status": "machine",
+    "source": "0603deca",
+    "draft": "f05f72b5"
+  },
+  "stats.last30": {
+    "status": "machine",
+    "source": "f8f03fb4",
+    "draft": "e089e192"
+  },
+  "stats.perDay": {
+    "status": "machine",
+    "source": "1bfdaa82",
+    "draft": "9e81c848"
+  },
+  "stats.streak": {
+    "status": "machine",
+    "source": "41db983f",
+    "draft": "277a5f3b"
+  },
+  "stats.bestStreak": {
+    "status": "machine",
+    "source": "7ec345b1",
+    "draft": "30e87734"
+  },
+  "stats.playedThrough": {
+    "status": "machine",
+    "source": "b289af79",
+    "draft": "07513bf3"
+  },
+  "stats.percent": {
+    "status": "machine",
+    "source": "02a35530",
+    "draft": "02a35530"
+  },
+  "stats.completedOf": {
+    "status": "machine",
+    "source": "d596206d",
+    "draft": "4edb4c8a"
+  },
+  "stats.yourTopTracks": {
+    "status": "machine",
+    "source": "522149c0",
+    "draft": "225f7886"
+  },
+  "stats.topArtists": {
+    "status": "machine",
+    "source": "5c6b3cfd",
+    "draft": "bd81c383"
+  },
+  "stats.topTracks": {
+    "status": "machine",
+    "source": "7580f724",
+    "draft": "f637eef7"
+  },
+  "stats.topAlbums": {
+    "status": "machine",
+    "source": "73fdf648",
+    "draft": "f369c19d"
+  },
+  "stats.mostPlayedArtist": {
+    "status": "machine",
+    "source": "1ea5bda1",
+    "draft": "404354fc"
+  },
+  "stats.mostPlayedTrack": {
+    "status": "machine",
+    "source": "34c9b429",
+    "draft": "ecc7c206"
+  },
+  "stats.mostPlayedAlbum": {
+    "status": "machine",
+    "source": "b1f0d7dc",
+    "draft": "63a03a44"
+  },
+  "stats.empty": {
+    "status": "machine",
+    "source": "7d28c994",
+    "draft": "8a064704"
+  },
+  "stats.allTime": {
+    "status": "machine",
+    "source": "9755c8d7",
+    "draft": "910f0d12"
+  },
+  "stats.allTimeLabel": {
+    "status": "machine",
+    "source": "091dc910",
+    "draft": "56af3bcc"
+  },
+  "stats.allTimeCounts": {
+    "status": "machine",
+    "source": "01840202",
+    "draft": "b779d488"
+  },
+  "stats.average": {
+    "status": "machine",
+    "source": "4bdf8be2",
+    "draft": "86052cd5"
+  },
+  "stats.chartValue": {
+    "status": "machine",
+    "source": "a7f08cd1",
+    "draft": "c8fc5fa8"
+  },
+  "stats.time": {
+    "status": "machine",
+    "source": "33b93476",
+    "draft": "1aa2d6b1"
+  },
+  "stats.chartLabel": {
+    "status": "machine",
+    "source": "7911eff7",
+    "draft": "8b68aa34"
+  },
+  "stats.whenYouListen": {
+    "status": "machine",
+    "source": "8ca725b9",
+    "draft": "31a887a0"
+  },
+  "stats.mostly": {
+    "status": "machine",
+    "source": "883d5dff",
+    "draft": "2ede2c72"
+  },
+  "stats.byHour": {
+    "status": "machine",
+    "source": "c33738e9",
+    "draft": "6cd637a3"
+  },
+  "rack.amplifier": {
+    "status": "machine",
+    "source": "c0a9d8b3",
+    "draft": "82604e7e"
+  },
+  "rack.signal": {
+    "status": "machine",
+    "source": "1e9806e4",
+    "draft": "c841db59"
+  },
+  "rack.soundProcessing": {
+    "status": "machine",
+    "source": "16e349bf",
+    "draft": "9e050022"
+  },
+  "rack.queueChanger": {
+    "status": "machine",
+    "source": "3b370787",
+    "draft": "dc3eaa84"
+  },
+  "rack.closeQueue": {
+    "status": "machine",
+    "source": "5433ac0a",
+    "draft": "ee457aba"
+  },
+  "rack.previousDiscs": {
+    "status": "machine",
+    "source": "9a33730c",
+    "draft": "1c047873"
+  },
+  "rack.nextDiscs": {
+    "status": "machine",
+    "source": "2bf9b694",
+    "draft": "383f865a"
+  },
+  "rack.discs": {
+    "status": "machine",
+    "source": "88a7c675",
+    "draft": "825ad26d"
+  },
+  "rack.playDisc": {
+    "status": "machine",
+    "source": "329f5c8f",
+    "draft": "07a56353"
+  },
+  "rack.emptyDisc": {
+    "status": "machine",
+    "source": "7436c33e",
+    "draft": "ecad0fde"
+  },
+  "rack.transport": {
+    "status": "machine",
+    "source": "aaead4ab",
+    "draft": "b9fdb2f6"
+  },
+  "rack.playMode": {
+    "status": "machine",
+    "source": "70295fab",
+    "draft": "d7f72549"
+  },
+  "rack.turntable": {
+    "status": "machine",
+    "source": "0ff34da5",
+    "draft": "2c1fe72a"
+  },
+  "rack.deck": {
+    "status": "machine",
+    "source": "889eacd6",
+    "draft": "889eacd6"
+  },
+  "rack.endOfQueue": {
+    "status": "machine",
+    "source": "5f3c6c9c",
+    "draft": "de588c9b"
+  },
+  "rack.chooseSomething": {
+    "status": "machine",
+    "source": "4ac90063",
+    "draft": "ac0b9b4f"
+  },
+  "rack.graphicEq": {
+    "status": "machine",
+    "source": "db77164f",
+    "draft": "bf9bbeb7"
+  },
+  "rack.pageHistory": {
+    "status": "machine",
+    "source": "0e769600",
+    "draft": "0625dba6"
+  },
+  "rack.source": {
+    "status": "machine",
+    "source": "0e570ca6",
+    "draft": "02d2ab5f"
+  },
+  "rack.extraUnit": {
+    "status": "machine",
+    "source": "1a244fea",
+    "draft": "3b05e7c7"
+  },
+  "rack.syncedLyrics": {
+    "status": "machine",
+    "source": "0d82b0b8",
+    "draft": "3104ddb2"
+  },
+  "rack.nOfTotal": {
+    "status": "machine",
+    "source": "3612e1cd",
+    "draft": "1998363d"
+  },
+  "rack.trackNOfTotal": {
+    "status": "machine",
+    "source": "5a10bd83",
+    "draft": "4303e701"
+  },
+  "rack.length": {
+    "status": "machine",
+    "source": "adc95605",
+    "draft": "203033a6"
+  },
+  "rack.signalPath": {
+    "status": "machine",
+    "source": "6d88a570",
+    "draft": "4d8b56b8"
+  },
+  "rack.bypass": {
+    "status": "machine",
+    "source": "bf26c2ac",
+    "draft": "0c35661f"
+  },
+  "rack.yes": {
+    "status": "machine",
+    "source": "85a39ab3",
+    "draft": "1ab0eef0"
+  },
+  "rack.no": {
+    "status": "machine",
+    "source": "1ea442a1",
+    "draft": "4043fb2d"
+  },
+  "rack.display": {
+    "status": "machine",
+    "source": "34e108c0",
+    "draft": "3c1a5ece"
+  },
+  "rack.library": {
+    "status": "machine",
+    "source": "dc20b3d5",
+    "draft": "f5216651"
+  },
+  "rack.positionOf": {
+    "status": "machine",
+    "source": "067ab470",
+    "draft": "2cf82de7"
+  },
+  "rack.volumeFixed": {
+    "status": "machine",
+    "source": "c1b375c9",
+    "draft": "86070ecd"
+  },
+  "rack.muted": {
+    "status": "machine",
+    "source": "2346f214",
+    "draft": "e2238730"
+  },
+  "rack.volumePercent": {
+    "status": "machine",
+    "source": "771bd549",
+    "draft": "2e904522"
+  },
+  "rack.seek": {
+    "status": "machine",
+    "source": "67ae3405",
+    "draft": "2a9e09d2"
+  },
+  "error.forbidden": {
+    "status": "machine",
+    "source": "876bdd9d",
+    "draft": "9c83bb93"
+  },
+  "error.rateLimited": {
+    "status": "machine",
+    "source": "32f19a5e",
+    "draft": "1d745237"
+  },
+  "error.playlistChanged": {
+    "status": "machine",
+    "source": "e2d2c190",
+    "draft": "871eb9ef"
+  },
+  "error.apiDrift": {
+    "status": "machine",
+    "source": "890d9955",
+    "draft": "a762c3a8"
+  },
+  "error.detail": {
+    "status": "machine",
+    "source": "caf3c2c2",
+    "draft": "b58d59cf"
+  },
+  "notice.deviceUnavailable": {
+    "status": "machine",
+    "source": "7391af36",
+    "draft": "a3a8dd2f"
+  },
+  "notice.exclusiveUnavailable": {
+    "status": "machine",
+    "source": "c77e0fbf",
+    "draft": "239537df"
+  },
+  "notice.softwareVolume": {
+    "status": "machine",
+    "source": "9607fcf2",
+    "draft": "cec7a3e8"
+  },
+  "notice.deviceDisconnected": {
+    "status": "machine",
+    "source": "5c3e683c",
+    "draft": "76208f6a"
+  },
+  "notice.asioLost": {
+    "status": "machine",
+    "source": "a9f0d3e5",
+    "draft": "761b68ed"
+  },
+  "notice.asioUnavailable": {
+    "status": "machine",
+    "source": "62f1f959",
+    "draft": "744dd70f"
+  }
+}

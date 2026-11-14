@@ -27,7 +27,10 @@ macro_rules! catalogs {
     };
 }
 
-const CATALOGS: &[(&str, &str)] = catalogs!["en", "de"];
+const CATALOGS: &[(&str, &str)] = catalogs![
+    "en", "de", "fr", "es", "it", "pt-BR", "nl", "sv", "nb", "da", "fi", "pl", "cs", "hu", "uk",
+    "ru", "ro", "el", "tr", "id", "ja", "ko", "zh-Hans", "zh-Hant"
+];
 
 /// A shell string. Keys match `shell.json`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
