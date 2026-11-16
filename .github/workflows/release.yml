@@ -21,11 +21,17 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v5
+        with:
+          # Full history and the release branches, for check-branch.mjs.
+          fetch-depth: 0
       - uses: actions/setup-node@v5
         with:
           node-version: 24
       - run: node --test scripts/release/release.test.mjs
       - run: node scripts/release/check-version.mjs "$GITHUB_REF_NAME"
+      # A vN.* tag must be on release/N.x (once that branch exists), so a 1.x
+      # release is never built from V2 work on main.
+      - run: node scripts/release/check-branch.mjs "$GITHUB_REF_NAME"
 
   # The same jobs as a push to main (fmt, UI check and tests, Rust tests with
   # flaky reporting, doctests, clippy, script tests), on Windows and Linux.

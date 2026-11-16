@@ -58,6 +58,10 @@ built by `.github/workflows/release.yml` from a version tag; nothing is uploaded
 
 - A 1.x fix goes on `release/1.x` (branch from it, or commit there directly). Bump the version
   there and tag `v1.0.x` on that branch; the release workflow runs on any `v*` tag.
+- The workflow enforces this: `scripts/release/check-branch.mjs` fails a `vN.*` tag whose commit
+  is not on GitHub's `release/N.x`, so push the branch before the tag. A major with no release
+  branch yet (2.0 prereleases from `main`, a `v0.0.0-test` tag) is not checked. The version check
+  cannot catch a wrong branch: a forward merge gives `main` the same `Cargo.toml` version.
 - Then **merge `release/1.x` forward into `main`**, never the other way: `main` carries V2 work
   that 1.x must not get. Bookkeeping for a 1.x release (its gate note, retro entries) is also
   committed on `release/1.x` and reaches `main` through the merge.
