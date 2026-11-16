@@ -74,7 +74,8 @@ built by `.github/workflows/release.yml` from a version tag; nothing is uploaded
   open; patch releases on top of it are `v1.Y.z`.
 - CI runs on pushes to `release/**`, the same as on `main`.
 - 2.0 pre-releases are published as GitHub **prereleases**, which the updater endpoint ignores, so
-  1.x installs are never offered them (V2-D3).
+  1.x installs are never offered them (V2-D3). The workflow marks any suffixed tag
+  (`v2.0.0-beta.1`, `-rc.1`) as a prerelease itself; only a plain `vX.Y.Z` can become Latest.
 
 ## Notes
 

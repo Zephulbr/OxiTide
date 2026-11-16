@@ -140,8 +140,14 @@ jobs:
           if [ -f "docs/release-notes/$GITHUB_REF_NAME.md" ]; then
             notes=(--notes-file "docs/release-notes/$GITHUB_REF_NAME.md")
           fi
+          # A suffixed tag (v2.0.0-beta.1, -rc.1) is a GitHub prerelease: never
+          # "Latest", so the updater's releases/latest/download/latest.json skips it.
+          pre=()
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            pre=(--prerelease)
+          fi
           gh release create "$GITHUB_REF_NAME" \
-            --draft --verify-tag \
+            --draft --verify-tag "${pre[@]}" \
             --title "OxiTide ${GITHUB_REF_NAME#v}" \
             "${notes[@]}" \
             "${files[@]}" out/latest.json out/SHA256SUMS.txt out/PKGBUILD
