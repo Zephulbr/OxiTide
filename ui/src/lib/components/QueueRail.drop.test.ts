@@ -14,7 +14,7 @@ import QueueRail from "./QueueRail.svelte";
 
 vi.mock("../api", () => ({
   api: {
-    playTracks: vi.fn(async () => {}),
+    queueJump: vi.fn(async () => {}),
     queueAdd: vi.fn(async () => {}),
     queueInsert: vi.fn(async () => {}),
     getTrackFlags: vi.fn(async () => []),

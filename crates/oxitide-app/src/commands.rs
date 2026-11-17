@@ -1797,7 +1797,7 @@ pub async fn play_track_ids(
     let cmd = if shuffle.unwrap_or(false) {
         EngineCmd::PlayShuffled { items }
     } else {
-        EngineCmd::PlayTracks { items, start }
+        EngineCmd::PlayContext { items, start }
     };
     crate::perf::note_play_command();
     player.engine.handle(cmd).map_err(|e| e.to_string())
@@ -1834,7 +1834,7 @@ pub async fn play_page_items(
     let cmd = if shuffle.unwrap_or(false) {
         EngineCmd::PlayShuffled { items: queue }
     } else {
-        EngineCmd::PlayTracks {
+        EngineCmd::PlayContext {
             items: queue,
             start,
         }
@@ -1843,21 +1843,47 @@ pub async fn play_page_items(
     player.engine.handle(cmd).map_err(|e| e.to_string())
 }
 
+/// Start playing `items` at `start`. `shuffle` starts a fully shuffled
+/// context; otherwise a new context honours the shuffle flag (the picked track
+/// first, the rest shuffled). `keep_order` is a queue jump: the items are the
+/// queue itself and keep their order.
+///
+/// Returns the queue revision the play left, for `queue_extend_context`.
 #[tauri::command]
 pub fn play_tracks(
     state: State<'_, AppState>,
     items: Vec<QueueItem>,
     start: usize,
     shuffle: Option<bool>,
-) -> Result<(), String> {
+    keep_order: Option<bool>,
+) -> Result<u64, String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
     let cmd = if shuffle.unwrap_or(false) {
         EngineCmd::PlayShuffled { items }
-    } else {
+    } else if keep_order.unwrap_or(false) {
         EngineCmd::PlayTracks { items, start }
+    } else {
+        EngineCmd::PlayContext { items, start }
     };
     crate::perf::note_play_command();
-    player.engine.handle(cmd).map_err(|e| e.to_string())
+    player.engine.handle(cmd).map_err(|e| e.to_string())?;
+    Ok(player.engine.state().queue_rev)
+}
+
+/// Add the rest of a context a play started from its first page (a search
+/// play's artist tracks), only while the queue is still at `rev`, the
+/// revision `play_tracks` returned; with shuffle on they are shuffled in.
+#[tauri::command]
+pub fn queue_extend_context(
+    state: State<'_, AppState>,
+    items: Vec<QueueItem>,
+    rev: u64,
+) -> Result<(), String> {
+    let player = state.player().ok_or_else(|| "not logged in".to_string())?;
+    player
+        .engine
+        .handle(EngineCmd::ExtendContext { items, rev })
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -3622,6 +3648,8 @@ mod tests {
         "queue_clear",
         "retry",
         "queue_add",
+        // Queue edit: ordered after the play whose revision it checks.
+        "queue_extend_context",
         "queue_play_next",
         "queue_insert",
         "restore_session",

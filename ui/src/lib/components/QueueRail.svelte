@@ -155,7 +155,7 @@
   }
 
   function jump(index: number) {
-    if (index >= 0 && index < items.length) void api.playTracks(items, index);
+    if (index >= 0 && index < items.length) void api.queueJump(items, index);
   }
 
   /// "Play next" for a queued row: move it to right after the current track.

@@ -803,7 +803,13 @@
             <td class="thumb-cell" role={roleOf("cell")}>
               <button class="thumb" onclick={() => play(index)} disabled={loadingAll} aria-label={i18n.t("menu.play")} title={i18n.t("menu.play")}>
                 <Cover uuid={t.album?.cover} size={80} radius={0} alt="" />
-                <span class="thumb-play" aria-hidden="true"><Icon name="play" size={14} /></span>
+                <!-- The compact list has no number column, so the playing
+                     row's mark sits on its cover instead. -->
+                {#if compact && playingTrackId !== null && t.id === playingTrackId}
+                  <span class="thumb-mark"><NowPlayingMark playing={playbackRunning} size={20} label={playbackRunning ? i18n.t("table.nowPlaying") : i18n.t("table.paused")} /></span>
+                {:else}
+                  <span class="thumb-play" aria-hidden="true"><Icon name="play" size={14} /></span>
+                {/if}
               </button>
             </td>
             <td class="title-cell" role={roleOf("cell")}><div class="title-text">
@@ -1243,6 +1249,14 @@
   }
   .row:hover .thumb-play {
     opacity: 1;
+  }
+  /* Compact lists: the playing row's mark over its cover, always shown. */
+  .thumb-mark {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: rgba(0, 0, 0, 0.45);
   }
   .row.playing {
     --row-wash: color-mix(in srgb, var(--accent) 18%, transparent);

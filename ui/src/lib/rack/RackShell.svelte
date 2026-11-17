@@ -258,7 +258,7 @@
         <ol class="rk-win slots">
           {#each upcoming as item, i (item.track_id + ":" + i)}
             <li>
-              <button class="slot" onclick={() => api.playTracks(player.state.queue, queueIndex + 1 + i)} title={t("card.play", { title: item.title })}>
+              <button class="slot" onclick={() => api.queueJump(player.state.queue, queueIndex + 1 + i)} title={t("card.play", { title: item.title })}>
                 <span class="num">{String(queueIndex + 2 + i).padStart(2, "0")}</span>
                 <span class="thumb"><Cover uuid={item.cover} size={80} radius={2} alt="" /></span>
                 <span class="meta"><b>{item.title}</b><i>{item.artist}</i></span>

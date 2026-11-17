@@ -892,8 +892,21 @@ export const api = {
   setFavoriteArtist: (artistId: number, favorite: boolean) =>
     invoke<void>("set_favorite_artist", { artistId, favorite }),
   // Track changes the user asks for are announced to screen readers (A-4).
+  /// A new context: with shuffle on, the start track plays first and the
+  /// rest is shuffled. A jump within the current queue is `queueJump`.
+  /// Resolves to the queue revision the play left (for `queueExtendContext`).
   playTracks: (items: QueueItem[], start: number, shuffle = false) =>
-    userTrackChange(() => invoke<void>("play_tracks", { items, start, shuffle })),
+    userTrackChange(() => invoke<number>("play_tracks", { items, start, shuffle })),
+  /// Add the rest of a context a play started from its first page; ignored
+  /// once the queue moved past `rev` (an edit or another play).
+  queueExtendContext: (items: QueueItem[], rev: number) =>
+    invoke<void>("queue_extend_context", { items, rev }),
+  /// Play the queue's own item at `start`, keeping the queue's order even
+  /// with shuffle on (the queue rail, Up next, the changer slots).
+  queueJump: (queue: QueueItem[], start: number) =>
+    userTrackChange(() =>
+      invoke<number>("play_tracks", { items: queue, start, shuffle: false, keepOrder: true }),
+    ),
   playTrackIds: (ids: number[], start: number, shuffle = false) =>
     userTrackChange(() => invoke<void>("play_track_ids", { ids, start, shuffle })),
   playPageItems: (items: PageTrackInput[], start: number, shuffle = false) =>

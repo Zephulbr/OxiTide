@@ -4,6 +4,7 @@
   import { routeForPageItem, type Nav } from "../nav.svelte";
   import type { PlaylistActions } from "../playlists.svelte";
   import type { Player } from "../player.svelte";
+  import { playArtistTracks } from "../artistTracks";
   import { playSource } from "../playSource.svelte";
   import type { SearchPages } from "../searchPages.svelte";
   import {
@@ -69,10 +70,22 @@
     playlists: results.playlists.items.map(playlistCard),
   });
 
-  /// The queue is every loaded result track, starting at the clicked one, so
-  /// playing from the short preview keeps going past it.
+  /// A clicked song plays first, then every other track of its artist (as
+  /// TIDAL does, issue #3). Play all / Shuffle, or a song whose artist list
+  /// cannot load, queue every loaded result track instead.
   async function playFrom(track: Track | undefined, shuffle = false) {
     if (allTracks.length === 0) return;
+    const artist = track?.artists[0];
+    if (track && artist) {
+      try {
+        if (!(await playArtistTracks(artist, track))) {
+          toasts.show(t("queue.dropHidden"), { severity: "info" });
+        }
+        return;
+      } catch {
+        // Fall back to the result list below.
+      }
+    }
     const start = track ? Math.max(0, allTracks.indexOf(track)) : 0;
     const prepared = await trackFlags.filterPlayable(allTracks, start);
     if (!prepared) {

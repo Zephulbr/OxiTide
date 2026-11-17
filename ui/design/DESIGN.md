@@ -126,7 +126,8 @@ another (40ms apart) while its plus pops to 1.3. The heart is the player bar's (
 on hover it takes the accent and beats twice (640ms), favoriting pops it, and
 unfavoriting breaks it. Only the row toggled animates; a row scrolled back into view
 doesn't replay it. A press sinks the glyph to 0.86. All of it is static under reduced motion. The playing row's number gives way to a 20px
-now-playing mark. The Tracks count line ends in a refresh icon
+now-playing mark; compact lists (search's track preview), which have no number column,
+show it on the row's cover over the same dim as the hover play glyph. The Tracks count line ends in a refresh icon
 (spins while loading) and, when TIDAL counts favorites it no longer serves, an
 "N unavailable" info button whose tooltip and toast explain them (they can't be listed).
 

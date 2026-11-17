@@ -77,7 +77,7 @@
           aria-current={slot.state === "current" ? "true" : undefined}
           aria-label={item ? t("rack.playDisc", { n: slot.index + 1, title: item.title }) : t("rack.emptyDisc", { n: slot.index + 1 })}
           title={item ? `${item.title} — ${item.artist}` : undefined}
-          onclick={() => api.playTracks(ps.queue, slot.index)}
+          onclick={() => api.queueJump(ps.queue, slot.index)}
         >
           <span class="lamp"></span><span class="rk-key">{slot.index + 1}</span>
         </button>

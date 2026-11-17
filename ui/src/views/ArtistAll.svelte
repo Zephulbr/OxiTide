@@ -17,7 +17,7 @@
   import MediaCard from "../lib/components/MediaCard.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
   import { routeForPageItem, type ArtistTab, type Nav } from "../lib/nav.svelte";
-  import { createTrackPager } from "../lib/pager.svelte";
+  import { artistTracksPager } from "../lib/artistTracks";
   import { playSource, type PlayFrom } from "../lib/playSource.svelte";
   import { trackFlags } from "../lib/trackFlags.svelte";
   import { playArtistRadio } from "../lib/radio";
@@ -79,11 +79,7 @@
 
   // `{#key id}` in App resets this store when the artist changes, so the
   // initial id is captured once on purpose.
-  const pager = untrack(() =>
-    createTrackPager(`artist:${id}:tracks`, (offset, limit) =>
-      api.getArtistTopTracksPage(id, offset, limit),
-    ),
-  );
+  const pager = untrack(() => artistTracksPager(id));
   const view = untrack(() =>
     createTrackView(
       () => pager.items,

@@ -655,7 +655,7 @@ pub async fn execute<R: Runtime>(
             }
             let items =
                 std::sync::Arc::try_unwrap(queue).unwrap_or_else(|shared| (*shared).clone());
-            json(commands::play_tracks(state, items, index, None))
+            json(commands::play_tracks(state, items, index, None, Some(true)))
         }
         C::GetQueuePage { .. } | C::GetRemoteState => Err("answered by the event hub".to_string()),
         C::Search { query } => json(commands::search(state, query).await),
@@ -764,6 +764,9 @@ mod tests {
         "search_type",
         // Slot drops from the desktop queue rail; the phone has no drag UI.
         "queue_insert",
+        // The desktop search play's second half (an artist's later tracks);
+        // the phone's plays send whole lists.
+        "queue_extend_context",
         // A desktop setting; the phone has no settings page.
         "set_autoplay",
         // Save for Later and playlist collaboration have no phone UI.

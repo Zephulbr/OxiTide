@@ -50,7 +50,7 @@
   }
 
   function playAt(at: number) {
-    void api.playTracks(queue, at).catch((e) => onerror?.(e));
+    void api.queueJump(queue, at).catch((e) => onerror?.(e));
   }
 
   function playNext() {

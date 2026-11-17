@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Track } from "./api";
 import { createTrackPager } from "./pager.svelte";
-import { createTrackView, visibleIndexOf, warmTrackSearch } from "./trackView.svelte";
+import { createTrackView, matchesThenRest, visibleIndexOf, warmTrackSearch } from "./trackView.svelte";
 
 function track(id: number, title: string, duration = 100, artist = "A"): Track {
   return {
@@ -153,6 +153,26 @@ describe("track view filter", () => {
     view.setFilter("mus");
 
     expect(ids(view.items)).toEqual([1, 3]);
+  });
+
+  it("keeps the whole list in view order as unfiltered (issue #3)", () => {
+    const view = createTrackView(() => SOURCE);
+    view.toggleSort("duration");
+
+    view.setFilter("mus");
+
+    expect(ids(view.items)).toEqual([3, 1]);
+    expect(ids(view.unfiltered)).toEqual([2, 3, 1]);
+  });
+
+  it("queues the matches first, then the rest of the list (issue #3)", () => {
+    const view = createTrackView(() => SOURCE);
+    view.toggleSort("duration");
+    expect(ids(matchesThenRest(view))).toEqual([2, 3, 1]);
+
+    view.setFilter("mus");
+
+    expect(ids(matchesThenRest(view))).toEqual([3, 1, 2]);
   });
 
   it("matches the title too", () => {

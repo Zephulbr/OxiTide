@@ -10,7 +10,7 @@
   import { perfHooks } from "../lib/perfHooks";
   import { playSource, type PlayFrom } from "../lib/playSource.svelte";
   import { trackFlags } from "../lib/trackFlags.svelte";
-  import { createTrackView, visibleIndexOf, warmTrackSearch } from "../lib/trackView.svelte";
+  import { createTrackView, matchesThenRest, visibleIndexOf, warmTrackSearch } from "../lib/trackView.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { PlaylistActions } from "../lib/playlists.svelte";
   import type { Player } from "../lib/player.svelte";
@@ -96,13 +96,16 @@
     for (const id of favorites.pendingRemovalsToDrop(loaded)) favoritesPager.removeItem(id);
   });
 
+  /// A play from a filtered list (a search for an artist or album) queues the
+  /// matches and then the rest of the collection, as TIDAL does, so the
+  /// collection carries on instead of autoplay (issue #3).
   async function playFrom(index: number) {
     const clicked = view.items[index];
     await favoritesPager.ensureAll();
     if (favoritesPager.error) return;
     const start = visibleIndexOf(view.items, clicked, index);
     if (start < 0) return;
-    const prepared = await trackFlags.filterPlayable(view.items, start);
+    const prepared = await trackFlags.filterPlayable(matchesThenRest(view), start);
     if (!prepared) {
       toasts.show(t("queue.dropHidden"), { severity: "info" });
       return;
@@ -114,7 +117,7 @@
   async function playAll() {
     await favoritesPager.ensureAll();
     if (favoritesPager.error) return;
-    const prepared = await trackFlags.filterPlayable(view.items, 0);
+    const prepared = await trackFlags.filterPlayable(matchesThenRest(view), 0);
     if (!prepared) {
       toasts.show(t("queue.dropHidden"), { severity: "info" });
       return;

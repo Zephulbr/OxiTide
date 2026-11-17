@@ -128,9 +128,23 @@ pub enum EngineEvent {
 
 #[derive(Debug, Clone)]
 pub enum EngineCmd {
+    /// Replace the queue keeping the given order exactly (queue jumps, a
+    /// pruned queue): the shuffle flag does not reorder it.
     PlayTracks {
         items: Vec<QueueItem>,
         start: usize,
+    },
+    /// Start a new context the user picked (a row, Play all). With shuffle
+    /// on, the start item plays first and the rest is shuffled.
+    PlayContext {
+        items: Vec<QueueItem>,
+        start: usize,
+    },
+    /// Add the rest of a context started from its first page, only while the
+    /// queue is still at `rev` (see `Queue::extend_context`).
+    ExtendContext {
+        items: Vec<QueueItem>,
+        rev: u64,
     },
     /// Replace the queue with a fully shuffled context (header Shuffle).
     PlayShuffled {
@@ -815,6 +829,9 @@ impl Engine {
             EngineCmd::PlayTracks { items, start } => {
                 self.start_context(|q| q.play_context(items, start));
             }
+            EngineCmd::PlayContext { items, start } => {
+                self.start_context(|q| q.play_new_context(items, start));
+            }
             EngineCmd::PlayShuffled { items } => {
                 self.start_context(|q| q.play_context_shuffled(items));
             }
@@ -978,6 +995,11 @@ impl Engine {
             EngineCmd::Remove(index) => {
                 self.inner.queue.lock().unwrap().remove(index);
                 self.emit(EngineEvent::State(self.state()));
+            }
+            EngineCmd::ExtendContext { items, rev } => {
+                if self.inner.queue.lock().unwrap().extend_context(items, rev) {
+                    self.emit(EngineEvent::State(self.state()));
+                }
             }
             EngineCmd::Enqueue { items } => {
                 if !items.is_empty() {
@@ -6782,6 +6804,38 @@ mod tests {
         );
         assert!(!engine.state().playing);
         assert!(output.samples().is_empty());
+    }
+
+    /// Issue #3: with shuffle on, `PlayContext` plays the picked track and
+    /// shuffles the rest; `PlayTracks` (a queue jump) keeps the order.
+    #[test]
+    fn play_context_honours_shuffle_and_play_tracks_keeps_the_order() {
+        let (plan, files) = fixture_plan();
+        let (engine, _output) = engine_with(plan, files);
+        engine.handle(EngineCmd::SetShuffle(true)).unwrap();
+        engine
+            .handle(EngineCmd::PlayContext {
+                items: vec![item(1), item(2), item(3)],
+                start: 1,
+            })
+            .unwrap();
+        // Unpaced: the fixture may play on, so check the order, not `current`.
+        let state = engine.state();
+        assert!(state.shuffle);
+        assert_eq!(state.queue[0].track_id, 2, "the picked track goes first");
+        let mut ids: Vec<u64> = state.queue.iter().map(|i| i.track_id).collect();
+        ids.sort_unstable();
+        assert_eq!(ids, vec![1, 2, 3], "the queue must keep every item");
+
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1), item(2), item(3)],
+                start: 2,
+            })
+            .unwrap();
+        let state = engine.state();
+        let ids: Vec<u64> = state.queue.iter().map(|i| i.track_id).collect();
+        assert_eq!(ids, vec![1, 2, 3], "a jump must not reorder the queue");
     }
 
     /// `PlayShuffled` must load every item, turn the shuffle flag on, and
