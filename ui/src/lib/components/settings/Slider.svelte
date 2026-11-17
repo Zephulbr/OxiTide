@@ -137,6 +137,47 @@
     text-align: right;
   }
 
+  /* Windows contrast themes (A-3): forcing drops the track's gradient and
+     blanks the thumb, so the input paints its own system colours. */
+  @media (forced-colors: active) {
+    input {
+      forced-color-adjust: none;
+    }
+    input::-webkit-slider-runnable-track {
+      border: 1px solid CanvasText;
+      background: linear-gradient(
+        to right,
+        Canvas 0 var(--from),
+        Highlight var(--from) var(--to),
+        Canvas var(--to) 100%
+      );
+    }
+    input::-webkit-slider-thumb {
+      margin-top: -7px;
+      border: 2px solid Canvas;
+      background: ButtonText;
+      box-shadow: none;
+    }
+    input:hover::-webkit-slider-thumb,
+    input:active::-webkit-slider-thumb {
+      background: Highlight;
+      box-shadow: none;
+    }
+    input:focus-visible {
+      outline-color: Highlight;
+    }
+    input:disabled {
+      opacity: 1;
+    }
+    input:disabled::-webkit-slider-runnable-track {
+      border-color: GrayText;
+      background: Canvas;
+    }
+    input:disabled::-webkit-slider-thumb {
+      background: GrayText;
+    }
+  }
+
   /* Vertical: a fixed-height box holding the input rotated a quarter turn. */
   .vertical {
     position: relative;

@@ -1,10 +1,11 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import type { Player } from "../player.svelte";
-  import { sentenceCase } from "../format";
+  import { engineNotice } from "../engineNotices";
   import { clock, currentIndex, repeatAnnunciator } from "./deck";
   import SevenSeg from "./SevenSeg.svelte";
   import VfdSeek from "./VfdSeek.svelte";
+  import { t } from "../i18n.svelte";
 
   /// The deck's VFD (DESIGN §5.4): title and sub line beside the 7-segment
   /// time, the segmented seek bar and the annunciator row. Shared by the deck,
@@ -21,7 +22,7 @@
   const current = $derived(state.current);
   const position = $derived(player.pendingSeek ?? state.position_ms);
   const index = $derived(currentIndex(state));
-  const message = $derived(state.error || sentenceCase(state.bit_perfect_notice ?? ""));
+  const message = $derived(state.error || engineNotice(state.bit_perfect_notice ?? ""));
 </script>
 
 <div class="rk-vfd deckvfd" class:tall>
@@ -30,7 +31,7 @@
     <div class="titles">
       <div class="rk-vfd-text title">{current ? current.title : "No disc"}</div>
       <div class="rk-vfd-text sub" class:warn={message !== ""}>
-        {message !== "" ? message : current ? `${current.artist}, ${current.album}` : "Choose something to play"}
+        {message !== "" ? message : current ? `${current.artist}, ${current.album}` : t("rack.chooseSomething")}
       </div>
     </div>
     <SevenSeg value={clock(position)} height={segHeight} />

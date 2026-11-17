@@ -1,10 +1,12 @@
 <script lang="ts">
-  let { label = "Loading…" }: { label?: string } = $props();
+  import { t } from "../i18n.svelte";
+
+  let { label }: { label?: string } = $props();
 </script>
 
 <span class="loading" role="status">
   <span class="disc" aria-hidden="true"></span>
-  {label}
+  {label ?? t("common.loading")}
 </span>
 
 <style>

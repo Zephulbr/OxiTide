@@ -656,3 +656,24 @@
     transition: none;
   }
 }
+
+/* Windows contrast themes (v1.1 A-3; forced-colors.css): Rack stays usable
+   but its skin goes. The grain and lamp glows are dropped, the lamp and
+   display ink become system colours (the meters and spectrum read them), and
+   a pressed key or open tab is framed, since its lit cap is a background. */
+@media (forced-colors: active) {
+  [data-mode="rack"] {
+    --rack-grain: none !important;
+    --rack-lamp: Highlight !important;
+    --rack-lamp-glow: transparent !important;
+    --rack-vfd: CanvasText !important;
+    --rack-vfd-ghost: transparent !important;
+    --rack-vfd-bg: Canvas !important;
+  }
+  :root[data-mode="rack"] .rack-main .segmented button.active,
+  :root[data-mode="rack"] .rack-main .segmented button[aria-pressed="true"],
+  :root[data-mode="rack"] .rack-main [role="tablist"] [role="tab"][aria-selected="true"] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+}

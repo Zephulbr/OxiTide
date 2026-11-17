@@ -1,0 +1,50 @@
+name: Translation fix
+description: Report wrong, awkward or missing text in a language (no files to edit).
+title: "[translation] "
+labels: ["translation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Most languages were drafted by a machine, so mistakes are expected. Thanks for
+        pointing them out. If you'd rather fix the file yourself, see
+        [Translating](https://github.com/Zephulbr/OxiTide/blob/main/CONTRIBUTING.md#translating).
+  - type: input
+    id: language
+    attributes:
+      label: Language
+      placeholder: "Deutsch (de)"
+    validations:
+      required: true
+  - type: input
+    id: where
+    attributes:
+      label: Where in the app
+      description: The page, menu or dialog, and what you did to see the text.
+      placeholder: "Settings → Playback → Crossfade"
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: Current text
+      description: Copy it exactly as shown, or attach a screenshot.
+    validations:
+      required: true
+  - type: textarea
+    id: suggested
+    attributes:
+      label: Suggested text
+      description: What it should say. A short reason helps (wrong meaning, too formal, cut off…).
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: App
+      options:
+        - Desktop app
+        - Phone remote
+        - Tray menu or taskbar buttons
+    validations:
+      required: false

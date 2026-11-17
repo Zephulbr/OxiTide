@@ -87,4 +87,39 @@
   .disabled input {
     cursor: default;
   }
+  /* Windows contrast themes (A-3): the switch paints itself in system
+     colours (forcing would blank the knob and the on fill). */
+  @media (forced-colors: active) {
+    .switch {
+      forced-color-adjust: none;
+    }
+    .track {
+      border-color: ButtonText;
+      background: ButtonFace;
+    }
+    .knob {
+      background: ButtonText;
+      box-shadow: none;
+    }
+    .on .track {
+      border-color: Highlight;
+      background: Highlight;
+    }
+    .on .knob {
+      background: HighlightText;
+    }
+    input:focus-visible + .track {
+      outline-color: Highlight;
+    }
+    .disabled {
+      opacity: 1;
+    }
+    .disabled .track {
+      border-color: GrayText;
+    }
+    .disabled .knob,
+    .disabled.on .track {
+      background: GrayText;
+    }
+  }
 </style>

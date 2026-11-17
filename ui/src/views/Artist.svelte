@@ -45,6 +45,7 @@
   import type { PlaylistActions } from "../lib/playlists.svelte";
   import type { Player } from "../lib/player.svelte";
   import type { Toasts } from "../lib/toasts.svelte";
+  import { t } from "../lib/i18n.svelte";
 
   let {
     id,
@@ -260,7 +261,7 @@
     if (topTracks.length === 0) return;
     const prepared = await trackFlags.filterPlayable(topTracks, startIndex);
     if (!prepared) {
-      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      toasts.show(t("queue.dropHidden"), { severity: "info" });
       return;
     }
     playSource.set(origin, prepared.items.map((t) => t.id));
@@ -277,7 +278,7 @@
 
   async function share() {
     const copied = await copyText(shareUrl("artist", id));
-    toasts.show(copied ? "Link copied" : "Couldn't copy link", {
+    toasts.show(copied ? t("card.linkCopied") : t("card.linkCopyFailed"), {
       severity: copied ? "success" : "error",
     });
   }
@@ -329,30 +330,30 @@
       {#if mine}
         <DetailAction
           icon="pencil"
-          label="Edit profile"
-          title="Edit your name, handle, bio, links and picture"
+          label={t("artist.editProfile")}
+          title={t("artist.editProfileHint")}
           onclick={() => (editing = true)}
         />
       {/if}
       <DetailAction
         icon="radio"
-        label="Radio"
-        title="Start artist radio"
+        label={t("artist.radio")}
+        title={t("artist.radioHint")}
         onclick={() => void playArtistRadio(artistId, toasts, artist?.name)}
       />
       <DetailAction
         icon={later.has("artist", artistId) ? "bookmark-minus" : "bookmark"}
-        label={later.has("artist", artistId) ? "Saved" : "Save"}
+        label={later.has("artist", artistId) ? t("detail.saved") : t("detail.save")}
         active={later.has("artist", artistId)}
-        title={later.has("artist", artistId) ? "Remove from Save for later" : "Save for later"}
+        title={later.has("artist", artistId) ? t("menu.laterRemove") : t("menu.laterAdd")}
         onclick={() => void later.toggle("artist", artistId)}
       />
-      <DetailAction icon="share-2" label="Share" title="Copy artist link" onclick={() => void share()} />
+      <DetailAction icon="share-2" label={t("detail.share")} title={t("artist.copyLink")} onclick={() => void share()} />
       {#if mixId}
         <DetailAction
           icon="disc-3"
-          label="Artist mix"
-          title="Open artist mix"
+          label={t("artist.mix")}
+          title={t("artist.openMix")}
           onclick={() => nav.goto({ name: "mix", id: mixId })}
         />
       {/if}
@@ -362,7 +363,7 @@
   {#if mine && empty}
     <section class="shelf">
       <EmptyState
-        message="Your profile is empty. Create playlists, add your social profiles or upload a track on TIDAL."
+        message={t("artist.ownEmpty")}
         action={{ label: "Edit profile", run: () => (editing = true) }}
       />
     </section>
@@ -379,9 +380,9 @@
   {#if shown.tracks && topTracks.length > 0}
     <section class="shelf">
       <div class="shelf-head">
-        <h3>Top tracks</h3>
+        <h3>{t("artist.topTracks")}</h3>
         <button class="more" onclick={() => nav.goto({ name: "artist-all", id, tab: "tracks" })}>
-          View all
+          {t("artist.viewAll")}
         </button>
       </div>
       <TrackTable
@@ -399,17 +400,17 @@
     </section>
   {:else if shown.tracks && sectionErrors.tracks}
     <section class="shelf">
-      <div class="shelf-head"><h3>Top tracks</h3></div>
+      <div class="shelf-head"><h3>{t("artist.topTracks")}</h3></div>
       <ErrorState message={sectionErrors.tracks} onRetry={() => retrySection("tracks")} />
     </section>
   {/if}
 
   {#if shown.albums && albums.length > 0}
     <section class="shelf">
-      <Carousel title="Albums">
+      <Carousel title={t("route.albums")}>
         {#snippet controls()}
           <button class="more" onclick={() => nav.goto({ name: "artist-all", id, tab: "albums" })}>
-            View all
+            {t("artist.viewAll")}
           </button>
         {/snippet}
         {#each albums as album (album.id)}
@@ -423,17 +424,17 @@
     </section>
   {:else if shown.albums && sectionErrors.albums}
     <section class="shelf">
-      <div class="shelf-head"><h3>Albums</h3></div>
+      <div class="shelf-head"><h3>{t("route.albums")}</h3></div>
       <ErrorState message={sectionErrors.albums} onRetry={() => retrySection("albums")} />
     </section>
   {/if}
 
   {#if shown.eps && eps.length > 0}
     <section class="shelf">
-      <Carousel title="Singles & EPs">
+      <Carousel title={t("artist.singles")}>
         {#snippet controls()}
           <button class="more" onclick={() => nav.goto({ name: "artist-all", id, tab: "eps" })}>
-            View all
+            {t("artist.viewAll")}
           </button>
         {/snippet}
         {#each eps as album (album.id)}
@@ -447,17 +448,17 @@
     </section>
   {:else if shown.eps && sectionErrors.eps}
     <section class="shelf">
-      <div class="shelf-head"><h3>Singles & EPs</h3></div>
+      <div class="shelf-head"><h3>{t("artist.singles")}</h3></div>
       <ErrorState message={sectionErrors.eps} onRetry={() => retrySection("eps")} />
     </section>
   {/if}
 
   {#if shown.comps && comps.length > 0}
     <section class="shelf">
-      <Carousel title="Appears on">
+      <Carousel title={t("artist.appearsOn")}>
         {#snippet controls()}
           <button class="more" onclick={() => nav.goto({ name: "artist-all", id, tab: "appears" })}>
-            View all
+            {t("artist.viewAll")}
           </button>
         {/snippet}
         {#each comps as album (album.id)}
@@ -471,14 +472,14 @@
     </section>
   {:else if shown.comps && sectionErrors.comps}
     <section class="shelf">
-      <div class="shelf-head"><h3>Appears on</h3></div>
+      <div class="shelf-head"><h3>{t("artist.appearsOn")}</h3></div>
       <ErrorState message={sectionErrors.comps} onRetry={() => retrySection("comps")} />
     </section>
   {/if}
 
   {#if shown.playlists && publicPlaylists.length > 0}
     <section class="shelf">
-      <Carousel title="Public playlists">
+      <Carousel title={t("artist.publicPlaylists")}>
         {#each publicPlaylists as playlist (playlist.uuid)}
           <MediaCard
             variant="carousel"
@@ -490,14 +491,14 @@
     </section>
   {:else if shown.playlists && sectionErrors.playlists}
     <section class="shelf">
-      <div class="shelf-head"><h3>Public playlists</h3></div>
+      <div class="shelf-head"><h3>{t("artist.publicPlaylists")}</h3></div>
       <ErrorState message={sectionErrors.playlists} onRetry={() => retrySection("playlists")} />
     </section>
   {/if}
 
   {#if shown.similar && similar.length > 0}
     <section class="shelf">
-      <Carousel title="Similar artists">
+      <Carousel title={t("artist.similar")}>
         {#each similar as s (s.id)}
           <MediaCard
             variant="carousel"
@@ -509,12 +510,12 @@
     </section>
   {:else if shown.similar && sectionErrors.similar}
     <section class="shelf">
-      <div class="shelf-head"><h3>Similar artists</h3></div>
+      <div class="shelf-head"><h3>{t("artist.similar")}</h3></div>
       <ErrorState message={sectionErrors.similar} onRetry={() => retrySection("similar")} />
     </section>
   {/if}
 {:else}
-  <EmptyState message="Artist not found." />
+  <EmptyState message={t("artist.notFound")} />
 {/if}
 
 <style>

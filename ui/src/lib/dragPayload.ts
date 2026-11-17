@@ -1,6 +1,7 @@
 import { api, type Track } from "./api";
 import type { CardTarget } from "./cardActions";
 import { loadTracks } from "./collectionTracks";
+import { t, type MessageKey } from "./i18n.svelte";
 
 /// Where a drag started, for the refusal rules: a table only reorders its own
 /// rows, and nothing is added back to the playlist it came from.
@@ -18,10 +19,10 @@ export type DragPayload =
   | { kind: "track-id"; id: number; title: string; cover?: string | null; queueIndex?: number }
   | { kind: "collection"; target: CardTarget; cover?: string | null };
 
-const COLLECTION_NOUN: Record<CardTarget["kind"], string> = {
-  album: "Album",
-  playlist: "Playlist",
-  mix: "Mix",
+const COLLECTION_NOUN: Record<CardTarget["kind"], MessageKey> = {
+  album: "route.album",
+  playlist: "route.playlist",
+  mix: "route.mix",
 };
 
 /// The ghost's label: the track or collection name, or a count.
@@ -29,11 +30,11 @@ export function payloadLabel(payload: DragPayload): string {
   switch (payload.kind) {
     case "tracks":
       if (payload.tracks.length === 1) return payload.tracks[0].title;
-      return `${payload.tracks.length} tracks`;
+      return t("common.trackCount", { count: payload.tracks.length });
     case "track-id":
       return payload.title;
     case "collection":
-      return payload.target.title || COLLECTION_NOUN[payload.target.kind];
+      return payload.target.title || t(COLLECTION_NOUN[payload.target.kind]);
   }
 }
 

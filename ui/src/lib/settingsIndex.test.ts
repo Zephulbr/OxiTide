@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { SETTINGS_TABS } from "./settingsTabs";
-import { SETTINGS_INDEX, searchSettings } from "./settingsIndex";
+import { SETTINGS_INDEX, searchSettings, type SettingEntry } from "./settingsIndex";
+import { i18n } from "./i18n.svelte";
 import settingsView from "../views/Settings.svelte?raw";
 import remote from "./components/RemoteSettings.svelte?raw";
 import updates from "./components/UpdatesSection.svelte?raw";
 import autoMix from "./components/settings/AutoMixPanel.svelte?raw";
+import languagePicker from "./components/settings/LanguagePicker.svelte?raw";
 
 const ctx = { rack: false, studio: false, exclusive: false };
 
@@ -18,7 +20,7 @@ describe("settings index", () => {
   // Every result must point at an element the page really renders: the id is
   // a literal `id="…"` on a row/card (hotkey rows build theirs from the action).
   it("only points at ids present in the page sources", () => {
-    const sources = [settingsView, remote, updates, autoMix].join("\n");
+    const sources = [settingsView, remote, updates, autoMix, languagePicker].join("\n");
     const missing = SETTINGS_INDEX.filter(
       (entry) => !entry.id.startsWith("hotkey-") && !sources.includes(`id="${entry.id}"`),
     ).map((entry) => entry.id);
@@ -70,5 +72,25 @@ describe("searchSettings", () => {
 
   it("caps the result count", () => {
     expect(searchSettings("e", ctx).length).toBeLessThanOrEqual(8);
+  });
+
+  it("matches the current language and the English, and CJK by substring", async () => {
+    const entry = (id: string, label: string, en: string): SettingEntry => ({
+      id,
+      tab: "appearance",
+      section: "",
+      label,
+      keywords: "",
+      en: { section: "", label: en, keywords: "" },
+    });
+    const entries = [entry("theme", "Design", "Theme"), entry("density", "表示密度", "Density")];
+    await i18n.setLanguage("de");
+    try {
+      expect(searchSettings("design", ctx, entries).map((e) => e.id)).toEqual(["theme"]);
+      expect(searchSettings("theme", ctx, entries).map((e) => e.id)).toEqual(["theme"]);
+      expect(searchSettings("密度", ctx, entries).map((e) => e.id)).toEqual(["density"]);
+    } finally {
+      await i18n.setLanguage("en");
+    }
   });
 });

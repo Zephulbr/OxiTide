@@ -136,6 +136,22 @@ describe("TrackTable semantics", () => {
     expect(cells[1].querySelector('[role="img"]')?.getAttribute("aria-label")).toBe("Now playing");
   });
 
+  it("marks the playing row on its cover in a compact list (no number column)", () => {
+    const view = {
+      filter: "", levels: [], engaged: false, preparing: false, error: "",
+      items: [track(1), track(2)], setFilter: vi.fn(), toggleSort: vi.fn(), clearSort: vi.fn(),
+      retry: vi.fn(), sourceIndex: (index: number) => index,
+    } as unknown as TrackView;
+    const favorites = { hasTrack: () => false, toggleTrack: vi.fn() } as unknown as Favorites;
+    const toasts = { show: vi.fn() } as unknown as Toasts;
+    render(TrackTable, { view, favorites, toasts, compact: true, onPlay: vi.fn(), playingTrackId: 2, playbackRunning: false });
+
+    expect(document.querySelector("td.num-cell")).toBeNull();
+    const thumbs = document.querySelectorAll("tbody tr.row button.thumb");
+    expect(thumbs[0].querySelector(".thumb-mark")).toBeNull();
+    expect(thumbs[1].querySelector('.thumb-mark [role="img"]')?.getAttribute("aria-label")).toBe("Paused");
+  });
+
   it("offers 'Now playing' only when the playing track is listed and scrolls to it", async () => {
     const view = {
       filter: "", levels: [], engaged: false, preparing: false, error: "",

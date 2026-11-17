@@ -13,6 +13,7 @@
   import SettingRow from "./SettingRow.svelte";
   import Segmented from "./Segmented.svelte";
   import ToggleRow from "./ToggleRow.svelte";
+  import { t } from "../../i18n.svelte";
 
   /// AutoMix (experimental): transition style, the individually toggled
   /// helpers, the "last transition" readout and the replay lab. The replay
@@ -75,13 +76,13 @@
 </script>
 
 <SettingRow
-  id="automix-style" label="Transition style"
+  id="automix-style" label={t("settings.automixStyle.label")}
   description={styleHint}
   {disabled}
   stacked
 >
   <Segmented
-    label="Transition style"
+    label={t("settings.automixStyle.label")}
     {disabled}
     value={crossfade.style}
     options={TRANSITION_STYLES.map((s) => ({ value: s.id, label: s.label, hint: s.hint }))}
@@ -89,30 +90,30 @@
   />
 </SettingRow>
 <ToggleRow
-  id="automix-trim" label="Skip silence at track edges"
-  description="Quick, Blend and Auto always do this."
+  id="automix-trim" label={t("settings.automixTrim.label")}
+  description={t("settings.automixTrim.description")}
   {disabled}
   checked={crossfade.trim_silence}
   onchange={(trim_silence) => onchange({ trim_silence })}
 />
 <ToggleRow
-  id="automix-resample" label="Overlap across sample-rate changes"
-  description="Otherwise the track fades out first."
+  id="automix-resample" label={t("settings.automixResample.label")}
+  description={t("settings.automixResample.description")}
   {disabled}
   checked={crossfade.resample}
   onchange={(resample) => onchange({ resample })}
 />
 <ToggleRow
-  id="automix-beat" label="Beat-match when tempos fit"
-  description="Aligns beats; no tempo stretching yet."
+  id="automix-beat" label={t("settings.automixBeat.label")}
+  description={t("settings.automixBeat.description")}
   {disabled}
   checked={crossfade.beat_match}
   onchange={(beat_match) => onchange({ beat_match })}
 />
 
 <SettingRow
-  label="Try it"
-  description="Transitions that do not fit fall back to the plain crossfade and say why."
+  label={t("settings.tryIt.label")}
+  description={t("settings.tryIt.description")}
   {disabled}
 >
   {#if player.state.current && player.state.duration_ms > 0}
@@ -121,16 +122,16 @@
       {disabled}
       onclick={() => player.seek(nearEndTarget(player.state.duration_ms))}
     >
-      Jump near the end of this track
+      {t("automix.jumpNearEnd")}
     </Button>
   {:else}
-    <span class="muted small">Play a track to try it</span>
+    <span class="muted small">{t("automix.playToTry")}</span>
   {/if}
 </SettingRow>
 
 {#if player.state.last_transition}
   {@const summary = describeTransition(player.state.last_transition)}
-  <SettingRow label="Last transition" stacked>
+  <SettingRow label={t("settings.lastTransition.label")} stacked>
     <div class="report" aria-live="polite">
       <strong>{summary.title}</strong>
       <ul>
@@ -141,19 +142,19 @@
 {/if}
 
 <SettingRow
-  id="automix-replay" label="Replay last transition as"
-  description="Let a track end on its own with AutoMix on, then compare the same pair in each style. Replays pause playback and keep ReplayGain but skip EQ."
+  id="automix-replay" label={t("settings.automixReplay.label")}
+  description={t("settings.automixReplay.description")}
   {disabled}
   stacked
 >
-  <div class="replay" role="group" aria-label="Replay the last transition">
+  <div class="replay" role="group" aria-label={t("automix.replayGroup")}>
     {#each TRANSITION_STYLES as option (option.id)}
       <Button
         icon={replayPlaying === option.id ? "square" : "play"}
         disabled={replayBusy || disabled}
         aria-pressed={replayPlaying === option.id}
         onclick={() => (replayPlaying === option.id ? stopReplay() : playReplay(option.id))}
-      >{replayPlaying === option.id ? `Stop ${option.label}` : option.label}</Button>
+      >{replayPlaying === option.id ? t("automix.stopReplay", { style: option.label }) : option.label}</Button>
     {/each}
   </div>
 </SettingRow>

@@ -42,6 +42,8 @@
   import FavoriteHeart, { toggledFx, type HeartFx } from "./FavoriteHeart.svelte";
   import TrackFilter from "./TrackFilter.svelte";
   import SortBar from "./SortBar.svelte";
+  // `t` is a track throughout this file; messages go through `i18n.t`.
+  import { i18n } from "../i18n.svelte";
   let {
     view,
     favorites,
@@ -129,10 +131,10 @@
   });
 
   const COLUMN_TITLES: Record<OptionalColumn, string> = {
-    added: "When this track was added",
-    released: "The album's release date",
-    popularity: "Popularity on TIDAL (0–100), not your own listening",
-    plays: "Your plays recorded in listening history on this PC",
+    get added() { return i18n.t("table.columnHint.added"); },
+    get released() { return i18n.t("table.columnHint.released"); },
+    get popularity() { return i18n.t("table.columnHint.popularity"); },
+    get plays() { return i18n.t("table.columnHint.plays"); },
   };
 
   function columnMenu(): MenuItem[] {
@@ -140,7 +142,7 @@
     return columnStore.available(kind).map((column) => ({
       id: `column-${column}`,
       label: SORT_LABELS[column],
-      section: "Columns",
+      section: i18n.t("table.columns"),
       selected: chosen.includes(column),
       icon: chosen.includes(column) ? "check" : undefined,
       run: () => columnStore.toggle(kind, column),
@@ -336,8 +338,8 @@
       if (payload.kind !== "tracks" || payload.source?.tableId !== tableId || !canDrag) return null;
       // Moving several rows waits on TIDAL's multi-index move semantics
       // (drag-to-playlist plan Task 1).
-      if (payload.tracks.length > 1) return { ok: false, reason: "Can't move several rows yet" };
-      return { ok: true, hint: "Move" };
+      if (payload.tracks.length > 1) return { ok: false, reason: i18n.t("table.drag.cantMoveMany") };
+      return { ok: true, hint: i18n.t("table.drag.move") };
     },
     hover: (_payload, point) => {
       dropAt = slotAt(point.y);
@@ -365,14 +367,14 @@
   async function queueMany(tracks: Track[], next: boolean) {
     const prepared = await trackFlags.filterPlayable(tracks, 0);
     if (!prepared) {
-      toasts.show("Everything selected is hidden by your content filters.", { severity: "info" });
+      toasts.show(i18n.t("table.selectionHidden"), { severity: "info" });
       return;
     }
     const items = prepared.items.map(trackToQueueItem);
-    const noun = items.length === 1 ? "track" : "tracks";
+    const count = items.length;
     try {
       await (next ? api.queuePlayNext(items) : api.queueAdd(items));
-      toasts.show(next ? `${items.length} ${noun} play next` : `Added ${items.length} ${noun} to the queue`);
+      toasts.show(next ? i18n.t("table.manyPlayNext", { count }) : i18n.t("table.manyQueued", { count }));
     } catch (e) {
       toasts.show(errorMessage(e), { severity: "error" });
     }
@@ -397,10 +399,7 @@
   }
 
   function blockedNotice(title: string) {
-    toasts.show(
-      `"${title}" is hidden by your content filters. Change them in Settings → Content.`,
-      { severity: "info" },
-    );
+    toasts.show(i18n.t("table.trackHidden", { title }), { severity: "info" });
   }
 
   /// Add to the end of the queue, or (`next`) right after the playing track.
@@ -411,7 +410,7 @@
     }
     const items = [trackToQueueItem(t)];
     (next ? api.queuePlayNext(items) : api.queueAdd(items)).then(
-      () => toasts.show(next ? `"${t.title}" plays next` : `Added "${t.title}" to the queue`),
+      () => toasts.show(next ? i18n.t("table.onePlaysNext", { title: t.title }) : i18n.t("table.oneQueued", { title: t.title })),
       (e) => toasts.show(errorMessage(e), { severity: "error" }),
     );
   }
@@ -433,7 +432,7 @@
     }
     const prepared = await trackFlags.filterPlayable(rows, index);
     if (!prepared) {
-      blockedNotice(target?.title ?? "This track");
+      blockedNotice(target?.title ?? i18n.t("table.thisTrack"));
       return;
     }
     await api.playTracks(prepared.items.map(trackToQueueItem), prepared.start);
@@ -636,7 +635,7 @@
         <button
           class="sort"
           disabled={view.preparing}
-          title="Sort by {label} (Shift+click to add as the next level)"
+          title={i18n.t("table.sortBy", { column: label })}
           onclick={(event) => onSortClick(event, key)}
         >
           {label}
@@ -651,8 +650,8 @@
           <button
             class="add-level"
             disabled={view.preparing}
-            aria-label="Then sort by {label}"
-            title="Then sort by {label}"
+            aria-label={i18n.t("table.thenSortBy", { column: label })}
+            title={i18n.t("table.thenSortBy", { column: label })}
             onclick={() => view.addSort(key)}
           ><Icon name="plus" size={12} /></button>
         {/if}
@@ -666,17 +665,17 @@
 {#snippet headRow()}
   <tr use:menuFor={columnMenu} role={roleOf("row")}>
     <th scope="col" role={roleOf("columnheader")} class="num-head" style="text-align:right">
-      <button class="sort" title="Original order" onclick={() => view.clearSort()}>#</button>
+      <button class="sort" title={i18n.t("table.originalOrder")} onclick={() => view.clearSort()}>#</button>
     </th>
     <th scope="col" role={roleOf("columnheader")} class="thumb-head"></th>
-    {@render sortHead("title", "Title", "left")}
-    {@render sortHead("artist", "Artist", "left")}
-    {#if showAlbum}{@render sortHead("album", "Album", "left", "album-col")}{/if}
+    {@render sortHead("title", SORT_LABELS.title, "left")}
+    {@render sortHead("artist", SORT_LABELS.artist, "left")}
+    {#if showAlbum}{@render sortHead("album", SORT_LABELS.album, "left", "album-col")}{/if}
     {#each shownColumns as column (column)}
       {@render sortHead(column, SORT_LABELS[column], column === "added" || column === "released" ? "left" : "right", "opt-col")}
     {/each}
-    {@render sortHead("duration", "Time", "left")}
-    {@render sortHead("quality", "Quality", "left", "quality-col")}
+    {@render sortHead("duration", SORT_LABELS.duration, "left")}
+    {@render sortHead("quality", SORT_LABELS.quality, "left", "quality-col")}
     <th scope="col" role={roleOf("columnheader")} class="actions-head"></th>
   </tr>
 {/snippet}
@@ -706,13 +705,11 @@
         class:following
         type="button"
         aria-pressed={following}
-        title={following
-          ? "Following the current track (double-click to stop)"
-          : "Show the current track (double-click to keep following it)"}
+        title={following ? i18n.t("table.followingHint") : i18n.t("table.locateHint")}
         onclick={scrollToPlaying}
         ondblclick={() => (following = !following)}
       >
-        <Icon name="circle-dot" size={14} /> {following ? "Following" : "Now playing"}
+        <Icon name="circle-dot" size={14} /> {following ? i18n.t("table.following") : i18n.t("table.nowPlaying")}
       </button>
     {/if}
   </div>
@@ -735,7 +732,7 @@
   use:dragSource={dragPayload}
   use:dropZone={reorderZone}
 >
-  <table role={roleOf("presentation")} aria-label={split ? undefined : "Tracks"}>
+  <table role={roleOf("presentation")} aria-label={split ? undefined : i18n.t("table.label")}>
     {#if split}
       {@render columnSizes()}
     {/if}
@@ -797,16 +794,22 @@
             {#if !compact}
               <td class="muted tnum num-cell" role={roleOf("cell")}>
                 {#if playingTrackId !== null && t.id === playingTrackId}
-                  <span class="num-mark"><NowPlayingMark playing={playbackRunning} size={20} label={playbackRunning ? "Now playing" : "Paused"} /></span>
+                  <span class="num-mark"><NowPlayingMark playing={playbackRunning} size={20} label={playbackRunning ? i18n.t("table.nowPlaying") : i18n.t("table.paused")} /></span>
                 {:else}
                   {row.number ?? index + 1}
                 {/if}
               </td>
             {/if}
             <td class="thumb-cell" role={roleOf("cell")}>
-              <button class="thumb" onclick={() => play(index)} disabled={loadingAll} aria-label="Play" title="Play">
+              <button class="thumb" onclick={() => play(index)} disabled={loadingAll} aria-label={i18n.t("menu.play")} title={i18n.t("menu.play")}>
                 <Cover uuid={t.album?.cover} size={80} radius={0} alt="" />
-                <span class="thumb-play" aria-hidden="true"><Icon name="play" size={14} /></span>
+                <!-- The compact list has no number column, so the playing
+                     row's mark sits on its cover instead. -->
+                {#if compact && playingTrackId !== null && t.id === playingTrackId}
+                  <span class="thumb-mark"><NowPlayingMark playing={playbackRunning} size={20} label={playbackRunning ? i18n.t("table.nowPlaying") : i18n.t("table.paused")} /></span>
+                {:else}
+                  <span class="thumb-play" aria-hidden="true"><Icon name="play" size={14} /></span>
+                {/if}
               </button>
             </td>
             <td class="title-cell" role={roleOf("cell")}><div class="title-text">
@@ -817,9 +820,9 @@
                   class:block-badge={reasons.includes(tag)}
                   class:tag-badge={!reasons.includes(tag)}
                   title={reasons.includes(tag)
-                    ? (tag === "explicit" ? "Hidden: explicit" : "Hidden: AI-generated")
-                    : (tag === "explicit" ? "Explicit" : "AI-generated")}
-                >{tag === "explicit" ? "E" : "AI"}</span>
+                    ? (tag === "explicit" ? i18n.t("table.hiddenExplicit") : i18n.t("table.hiddenAi"))
+                    : (tag === "explicit" ? i18n.t("table.explicit") : i18n.t("table.aiGenerated"))}
+                >{tag === "explicit" ? i18n.t("table.explicitBadge") : i18n.t("table.aiBadge")}</span>
               {/each}
             </div>
             {#if compact}
@@ -866,15 +869,15 @@
               <button
                 class="act act-queue reveal"
                 onclick={() => queueOne(t)}
-                aria-label="Add to queue"
-                title="Add to queue"
+                aria-label={i18n.t("menu.addToQueue")}
+                title={i18n.t("menu.addToQueue")}
               ><Icon name="plus" size={18} /></button>
               {#if onAddToPlaylist}
                 <button
                   class="act act-playlist reveal"
                   onclick={() => onAddToPlaylist(t)}
-                  aria-label="Add to playlist"
-                  title="Add to playlist"
+                  aria-label={i18n.t("menu.addToPlaylist")}
+                  title={i18n.t("menu.addToPlaylist")}
                 ><Icon name="list-plus" size={18} /></button>
               {/if}
               <button
@@ -882,8 +885,8 @@
                 class:on={favorites.hasTrack(t.id)}
                 class:reveal={kind === "favorites" && favorites.hasTrack(t.id)}
                 onclick={() => toggleHeart(t.id)}
-                aria-label={favorites.hasTrack(t.id) ? "Unfavorite" : "Favorite"}
-                title={favorites.hasTrack(t.id) ? "Unfavorite" : "Favorite"}
+                aria-label={favorites.hasTrack(t.id) ? i18n.t("menu.unfavorite") : i18n.t("menu.favorite")}
+                title={favorites.hasTrack(t.id) ? i18n.t("menu.unfavorite") : i18n.t("menu.favorite")}
               ><FavoriteHeart fx={heartFx?.id === t.id ? heartFx : null} /></button>
             </td>
           </tr>
@@ -893,7 +896,7 @@
         <tr aria-hidden="true"><td colspan={columns} style="height:{range.padBottom}px;padding:0;border:0"></td></tr>
       {/if}
       {#if rows.length === 0}
-        <tr role={roleOf("row")}><td colspan={columns} role={roleOf("cell")} aria-colspan={split ? columns : undefined} class="muted">{view.filter.trim() ? `No tracks match “${view.filter.trim()}”` : "No tracks"}</td></tr>
+        <tr role={roleOf("row")}><td colspan={columns} role={roleOf("cell")} aria-colspan={split ? columns : undefined} class="muted">{view.filter.trim() ? i18n.t("table.noMatch", { filter: view.filter.trim() }) : i18n.t("table.empty")}</td></tr>
       {/if}
     </tbody>
   </table>
@@ -904,14 +907,14 @@
 {/snippet}
 
 <!-- Multi-select is visual on the rows; this tells screen readers. -->
-<span class="sr-only" aria-live="polite">{selection.size > 1 ? `${selection.size} tracks selected` : ""}</span>
+<span class="sr-only" aria-live="polite">{selection.size > 1 ? i18n.t("table.selected", { count: selection.size }) : ""}</span>
 
 {#if split}
   <div
     class="table-frame pane pane-flush"
     class:fill
     role="table"
-    aria-label="Tracks"
+    aria-label={i18n.t("table.label")}
     aria-rowcount={grouping ? undefined : rows.length + 1}
     style:--num-digits={numDigits}
     style:--actions={actionCount}
@@ -1247,6 +1250,14 @@
   .row:hover .thumb-play {
     opacity: 1;
   }
+  /* Compact lists: the playing row's mark over its cover, always shown. */
+  .thumb-mark {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: rgba(0, 0, 0, 0.45);
+  }
   .row.playing {
     --row-wash: color-mix(in srgb, var(--accent) 18%, transparent);
   }
@@ -1263,6 +1274,25 @@
   }
   .row.selected:not(.playing):hover {
     --row-wash: color-mix(in srgb, var(--selection-bg), var(--surface-2));
+  }
+  /* Windows contrast themes (A-3): forced colours drop the row washes, so a
+     selection is a Highlight frame and the playing title takes Highlight.
+     Fill-only marks opt out of forcing and paint in system colours. */
+  @media (forced-colors: active) {
+    .row.selected {
+      outline: 2px solid Highlight;
+      outline-offset: -2px;
+    }
+    .row.playing .title-text,
+    .sort-head.active .sort {
+      color: Highlight;
+    }
+    .drop-line,
+    .rank {
+      forced-color-adjust: none;
+      background: Highlight;
+      color: HighlightText;
+    }
   }
   .sr-only {
     position: absolute;

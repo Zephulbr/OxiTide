@@ -1,13 +1,19 @@
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+import { i18n } from "./i18n.svelte";
 
-/// Weekday names in the stats' order (Monday first).
-export const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+/// A weekday's name in the stats' order (0 = Monday), in the UI language.
+export function weekdayName(day: number, style: "long" | "short" = "long"): string {
+  // 2024-01-01 was a Monday; UTC keeps the date fixed.
+  return new Intl.DateTimeFormat(i18n.locale, { weekday: style, timeZone: "UTC" }).format(Date.UTC(2024, 0, 1 + day));
+}
 
 /// Axis/tooltip label for a stats day ("2026-09-11" -> "Sep 11"); the date is
-/// already a local calendar day, so it is read as text, never through Date.
+/// already a local calendar day, so it is formatted in UTC, never shifted.
 export function dayTick(date: string): string {
-  const [, month, day] = date.split("-").map(Number);
-  return MONTHS[month - 1] && day ? `${MONTHS[month - 1]} ${day}` : date;
+  const [year, month, day] = date.split("-").map(Number);
+  if (!year || !month || !day || month > 12) return date;
+  return new Intl.DateTimeFormat(i18n.locale, { month: "short", day: "numeric", timeZone: "UTC" }).format(
+    Date.UTC(year, month - 1, day),
+  );
 }
 
 /// Bar heights (percent of the tallest day) for the 30-day plays chart.
@@ -30,13 +36,15 @@ export function hourLabel(hour: number): string {
   return `${String(hour).padStart(2, "0")}:00`;
 }
 
-/// Where in the day an hour falls, phrased to follow "Mostly".
-export function dayPart(hour: number): string {
-  if (hour < 5) return "late at night";
-  if (hour < 12) return "in the morning";
-  if (hour < 17) return "in the afternoon";
-  if (hour < 22) return "in the evening";
-  return "at night";
+export type DayPart = "lateNight" | "morning" | "afternoon" | "evening" | "night";
+
+/// Where in the day an hour falls (`stats.mostly` words it).
+export function dayPart(hour: number): DayPart {
+  if (hour < 5) return "lateNight";
+  if (hour < 12) return "morning";
+  if (hour < 17) return "afternoon";
+  if (hour < 22) return "evening";
+  return "night";
 }
 
 /// Whole percent of `part` in `whole` (0 when there is no whole).

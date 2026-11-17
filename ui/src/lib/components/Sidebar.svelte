@@ -26,6 +26,7 @@
   import Icon from "./Icon.svelte";
   import Logo from "./Logo.svelte";
   import PlaylistTree from "./PlaylistTree.svelte";
+  import { t } from "../i18n.svelte";
 
   let {
     nav,
@@ -129,13 +130,13 @@
     showAtButton(event, [
       {
         id: "new-playlist",
-        label: "New Playlist",
+        label: t("nav.newPlaylist"),
         icon: "list-plus",
         run: () => playlistActions.openCreate(),
       },
       {
         id: "new-folder",
-        label: "New Folder",
+        label: t("nav.newFolder"),
         icon: "folder-plus",
         run: () => actions.openCreateFolder("root"),
       },
@@ -180,12 +181,21 @@
   }
 
   function rowLabel(row: LayoutRow): string {
-    return row === "line" ? "The line" : COLLECTION_ITEMS[row].label;
+    return row === "line" ? t("nav.collection.line") : COLLECTION_ITEMS[row].label;
   }
 
-  function rowState(index: number): string {
-    if (index === lineIndex) return "entries below it are under Show more";
-    return index < lineIndex ? "always shown" : "under Show more";
+  function rowState(index: number): "line" | "shown" | "hidden" {
+    if (index === lineIndex) return "line";
+    return index < lineIndex ? "shown" : "hidden";
+  }
+
+  function movedText(row: LayoutRow, index: number): string {
+    return t("nav.collection.moved", {
+      item: rowLabel(row),
+      position: index + 1,
+      total: rows.length,
+      state: rowState(index),
+    });
   }
 
   async function moveBy(index: number, delta: number) {
@@ -195,7 +205,7 @@
     layout.move(index, to);
     await tick();
     const now = rows.indexOf(row);
-    announce = `${rowLabel(row)} moved to position ${now + 1} of ${rows.length}, ${rowState(now)}`;
+    announce = movedText(row, now);
     listEl?.querySelector<HTMLElement>(`[data-row="${row}"]`)?.focus();
   }
 
@@ -269,7 +279,7 @@
     settling = true;
     requestAnimationFrame(() => requestAnimationFrame(() => (settling = false)));
     layout.move(done.from, done.to);
-    announce = `${rowLabel(row)} moved to position ${done.to + 1} of ${rows.length}, ${rowState(done.to)}`;
+    announce = movedText(row, done.to);
   }
 
   function onEditDragKey(event: KeyboardEvent) {
@@ -326,39 +336,39 @@
         <button
           class="collapse"
           onclick={onToggleRail}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          title={collapsed ? "Expand sidebar (Ctrl+B)" : "Collapse sidebar (Ctrl+B)"}
+          aria-label={collapsed ? t("nav.expandSidebar") : t("nav.collapseSidebar")}
+          title={t(collapsed ? "nav.expandSidebarHint" : "nav.collapseSidebarHint", { key: "Ctrl+B" })}
         ><Icon name={collapsed ? "panel-left-open" : "panel-left-close"} size={18} /></button>
       </div>
     </div>
 
     {#if !rail}
       <div class="history">
-        <button disabled={!nav.canBack} onclick={() => nav.back()} title="Back (Alt+←)" aria-label="Back"><Icon name="chevron-left" /></button>
-        <button disabled={!nav.canForward} onclick={() => nav.forward()} title="Forward (Alt+→)" aria-label="Forward"><Icon name="chevron-right" /></button>
+        <button disabled={!nav.canBack} onclick={() => nav.back()} title={t("nav.backHint", { key: "Alt+←" })} aria-label={t("nav.back")}><Icon name="chevron-left" /></button>
+        <button disabled={!nav.canForward} onclick={() => nav.forward()} title={t("nav.forwardHint", { key: "Alt+→" })} aria-label={t("nav.forward")}><Icon name="chevron-right" /></button>
       </div>
     {/if}
 
-    <button class="nav-item" class:active={nav.route.name === "home"} aria-current={nav.route.name === "home" ? "page" : undefined} onclick={() => nav.goto({ name: "home" })} title="Home" aria-label="Home">
-      <Icon name="home" />{#if !rail}<span>Home</span>{/if}
+    <button class="nav-item" class:active={nav.route.name === "home"} aria-current={nav.route.name === "home" ? "page" : undefined} onclick={() => nav.goto({ name: "home" })} title={t("route.home")} aria-label={t("route.home")}>
+      <Icon name="home" />{#if !rail}<span>{t("route.home")}</span>{/if}
     </button>
-    <button class="nav-item" class:active={nav.route.name === "explore"} aria-current={nav.route.name === "explore" ? "page" : undefined} onclick={() => nav.goto({ name: "explore" })} title="Explore" aria-label="Explore">
-      <Icon name="globe" />{#if !rail}<span>Explore</span>{/if}
+    <button class="nav-item" class:active={nav.route.name === "explore"} aria-current={nav.route.name === "explore" ? "page" : undefined} onclick={() => nav.goto({ name: "explore" })} title={t("nav.exploreHint", { key: "Ctrl+F" })} aria-label={t("route.explore")}>
+      <Icon name="search" />{#if !rail}<span>{t("route.explore")}</span>{/if}
     </button>
-    <button class="nav-item" class:active={nav.route.name === "feed"} aria-current={nav.route.name === "feed" ? "page" : undefined} onclick={() => nav.goto({ name: "feed" })} use:prefetchIntent={{ name: "feed" }} title="Feed" aria-label="Feed">
-      <Icon name="bell" />{#if !rail}<span>Feed</span>{/if}
+    <button class="nav-item" class:active={nav.route.name === "feed"} aria-current={nav.route.name === "feed" ? "page" : undefined} onclick={() => nav.goto({ name: "feed" })} use:prefetchIntent={{ name: "feed" }} title={t("route.feed")} aria-label={t("route.feed")}>
+      <Icon name="bell" />{#if !rail}<span>{t("route.feed")}</span>{/if}
     </button>
-    <button class="nav-item" class:active={nav.route.name === "history"} aria-current={nav.route.name === "history" ? "page" : undefined} onclick={() => nav.goto({ name: "history", tab: "stats" })} title="History" aria-label="History">
-      <Icon name="history" />{#if !rail}<span>History</span>{/if}
+    <button class="nav-item" class:active={nav.route.name === "history"} aria-current={nav.route.name === "history" ? "page" : undefined} onclick={() => nav.goto({ name: "history", tab: "stats" })} title={t("route.history")} aria-label={t("route.history")}>
+      <Icon name="history" />{#if !rail}<span>{t("route.history")}</span>{/if}
     </button>
-    <button class="nav-item" class:active={nav.route.name === "settings"} aria-current={nav.route.name === "settings" ? "page" : undefined} onclick={() => nav.goto({ name: "settings" })} title="Settings" aria-label="Settings">
-      <Icon name="settings" />{#if !rail}<span>Settings</span>{/if}
+    <button class="nav-item" class:active={nav.route.name === "settings"} aria-current={nav.route.name === "settings" ? "page" : undefined} onclick={() => nav.goto({ name: "settings" })} title={t("route.settings")} aria-label={t("route.settings")}>
+      <Icon name="settings" />{#if !rail}<span>{t("route.settings")}</span>{/if}
     </button>
 
     <div class="divider" role="separator"></div>
 
     {#if rail}
-      <button class="nav-item" class:active={isActive("playlists")} aria-current={isActive("playlists") ? "page" : undefined} onclick={() => nav.goto({ name: "playlists" })} use:prefetchIntent={{ name: "playlists" }} title="My Collection" aria-label="My Collection">
+      <button class="nav-item" class:active={isActive("playlists")} aria-current={isActive("playlists") ? "page" : undefined} onclick={() => nav.goto({ name: "playlists" })} use:prefetchIntent={{ name: "playlists" }} title={t("nav.myCollection")} aria-label={t("nav.myCollection")}>
         <Icon name="library" />
       </button>
     {:else}
@@ -366,22 +376,22 @@
       <div class="collection-head" class:editing={edit} onkeydown={onEditKey}>
         {#if !edit && allHidden}
           <button class="section-head" onclick={() => layout.setOpen(!moreOpen)} aria-expanded={moreOpen}>
-            <span>My Collection</span>
+            <span>{t("nav.myCollection")}</span>
             <Icon name={moreOpen ? "chevron-down" : "chevron-right"} size={16} />
           </button>
         {:else}
-          <div class="section-head static"><span>My Collection</span></div>
+          <div class="section-head static"><span>{t("nav.myCollection")}</span></div>
         {/if}
         <div class="head-actions" class:beside-chevron={!edit && allHidden}>
           {#if edit}
-            <button class="mini" onclick={() => layout.reset()} title="Reset to default" aria-label="Reset My Collection to default">
+            <button class="mini" onclick={() => layout.reset()} title={t("nav.collection.reset")} aria-label={t("nav.collection.resetLabel")}>
               <Icon name="undo-2" size={16} />
             </button>
-            <button class="mini done" bind:this={doneButton} onclick={stopEditing} title="Done" aria-label="Done editing My Collection">
+            <button class="mini done" bind:this={doneButton} onclick={stopEditing} title={t("common.done")} aria-label={t("nav.collection.doneLabel")}>
               <Icon name="check" size={16} />
             </button>
           {:else}
-            <button class="mini edit-toggle" bind:this={editButton} onclick={startEditing} title="Edit My Collection" aria-label="Edit My Collection">
+            <button class="mini edit-toggle" bind:this={editButton} onclick={startEditing} title={t("nav.collection.edit")} aria-label={t("nav.collection.edit")}>
               <Icon name="pencil" size={14} />
             </button>
           {/if}
@@ -392,21 +402,21 @@
     {#if edit}
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div class="edit" onkeydown={onEditKey}>
-        <p class="edit-hint" id="collection-edit-hint">Drag to arrange. Entries below the line stay under Show more.</p>
-        <ul class="edit-list" class:settling class:dragging={editDrag !== null} bind:this={listEl} aria-label="Arrange My Collection">
+        <p class="edit-hint" id="collection-edit-hint">{t("nav.collection.editHint")}</p>
+        <ul class="edit-list" class:settling class:dragging={editDrag !== null} bind:this={listEl} aria-label={t("nav.collection.arrange")}>
           {#each rows as row, i (row)}
             <li class="slot" data-slot class:lifted={editDrag?.from === i} style:transform={slotTransform(i)}>
               {#if row === "line"}
                 <button
                   class="edit-row line-row"
                   data-row={row}
-                  aria-label="The line: entries below it are under Show more. Alt+Up or Alt+Down moves it"
+                  aria-label={t("nav.collection.lineLabel")}
                   aria-describedby="collection-edit-hint"
                   onpointerdown={(event) => onRowPointerDown(event, i)}
                   onkeydown={(event) => onRowKey(event, i)}
                 >
                   <span class="rule"></span>
-                  <span class="rule-label">Hidden below</span>
+                  <span class="rule-label">{t("nav.collection.hiddenBelow")}</span>
                   <span class="rule"></span>
                   <Icon name="grip-vertical" size={16} />
                 </button>
@@ -415,7 +425,7 @@
                   class="edit-row"
                   class:below={i > lineIndex}
                   data-row={row}
-                  aria-label={`${COLLECTION_ITEMS[row].label}, ${rowState(i)}. Alt+Up or Alt+Down moves it`}
+                  aria-label={t("nav.collection.rowLabel", { item: COLLECTION_ITEMS[row].label, state: rowState(i) })}
                   aria-describedby="collection-edit-hint"
                   onpointerdown={(event) => onRowPointerDown(event, i)}
                   onkeydown={(event) => onRowKey(event, i)}
@@ -436,12 +446,12 @@
       {/each}
       {#if hidden.length > 0}
         {#if rail}
-          <button class="nav-item" onclick={() => layout.setOpen(!moreOpen)} aria-expanded={moreOpen} title={moreOpen ? "Show less" : "Show more"} aria-label={moreOpen ? "Show less" : "Show more"}>
+          <button class="nav-item" onclick={() => layout.setOpen(!moreOpen)} aria-expanded={moreOpen} title={moreOpen ? t("nav.showLess") : t("nav.showMore")} aria-label={moreOpen ? t("nav.showLess") : t("nav.showMore")}>
             <Icon name={moreOpen ? "chevron-up" : "chevron-down"} />
           </button>
         {:else if !allHidden}
           <button class="section-head sub" onclick={() => layout.setOpen(!moreOpen)} aria-expanded={moreOpen}>
-            <span>{moreOpen ? "Show less" : "Show more"}</span>
+            <span>{moreOpen ? t("nav.showLess") : t("nav.showMore")}</span>
             <Icon name={moreOpen ? "chevron-up" : "chevron-down"} size={16} />
           </button>
         {/if}
@@ -457,20 +467,20 @@
 
     {#if !rail}
       <div class="playlist-head">
-        <span class="playlist-title">Playlists</span>
+        <span class="playlist-title">{t("route.playlists")}</span>
         <button
           class="mini"
           onclick={openCreateMenu}
-          title="New playlist or folder"
-          aria-label="New playlist or folder"
+          title={t("nav.newPlaylistOrFolder")}
+          aria-label={t("nav.newPlaylistOrFolder")}
         >
           <Icon name="plus" size={16} />
         </button>
         <button
           class="mini"
           onclick={openViewMenu}
-          title="Sort & filter playlists"
-          aria-label="Sort and filter playlists"
+          title={t("nav.playlistView")}
+          aria-label={t("nav.playlistViewLabel")}
         >
           <Icon name="sliders-horizontal" size={16} />
         </button>
@@ -567,6 +577,14 @@
   .nav-item.active {
     background: color-mix(in srgb, var(--accent) 12%, transparent);
     color: var(--accent);
+  }
+  /* Windows contrast themes (A-3): the current page is framed (the tint is
+     dropped). */
+  @media (forced-colors: active) {
+    .nav-item.active {
+      outline: 1px solid Highlight;
+      outline-offset: -1px;
+    }
   }
   .divider {
     height: 1px;

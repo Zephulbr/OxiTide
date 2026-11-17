@@ -1,6 +1,7 @@
 import { api } from "./api";
 import { parseRoute, type Route } from "./nav.svelte";
 import { playlistRecency } from "./playlistRecency.svelte";
+import { t, type MessageKey } from "./i18n.svelte";
 
 export type PlaylistRowState = "source" | "active" | "source-active" | "idle";
 
@@ -52,21 +53,21 @@ const KINDS: readonly PlayFromKind[] = [
   "section",
 ];
 
-const KIND_LABELS: Record<PlayFromKind, string> = {
-  album: "From album",
-  playlist: "From playlist",
-  mix: "From mix",
-  artist: "From artist",
-  favorites: "From",
-  history: "From",
-  search: "From search",
-  radio: "From",
-  section: "From",
+const KIND_LABELS: Record<PlayFromKind, MessageKey> = {
+  album: "playFrom.album",
+  playlist: "playFrom.playlist",
+  mix: "playFrom.mix",
+  artist: "playFrom.artist",
+  favorites: "playFrom.other",
+  history: "playFrom.other",
+  search: "playFrom.search",
+  radio: "playFrom.other",
+  section: "playFrom.other",
 };
 
 /// The eyebrow before the source's name ("From album").
 export function playFromLabel(kind: PlayFromKind): string {
-  return KIND_LABELS[kind];
+  return t(KIND_LABELS[kind]);
 }
 
 /// A saved source read back from the session, checked field by field.

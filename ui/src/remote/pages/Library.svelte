@@ -1,25 +1,26 @@
 <script lang="ts">
   import Icon, { type IconName } from "../../lib/components/Icon.svelte";
   import { hrefFor, type RemoteRoute } from "../routes";
+  import { t, type RemoteKey } from "../i18n.svelte";
 
-  const LINKS: { label: string; icon: IconName; route: RemoteRoute }[] = [
-    { label: "Tracks", icon: "heart", route: { name: "favorites", kind: "tracks" } },
-    { label: "Albums", icon: "disc-3", route: { name: "favorites", kind: "albums" } },
-    { label: "Artists", icon: "music", route: { name: "favorites", kind: "artists" } },
-    { label: "Playlists", icon: "list-music", route: { name: "playlists", folder: "root" } },
-    { label: "My Mixes", icon: "radio", route: { name: "mixes" } },
-    { label: "Recently played", icon: "history", route: { name: "history" } },
+  const LINKS: { label: RemoteKey; icon: IconName; route: RemoteRoute }[] = [
+    { label: "library.tracks", icon: "heart", route: { name: "favorites", kind: "tracks" } },
+    { label: "library.albums", icon: "disc-3", route: { name: "favorites", kind: "albums" } },
+    { label: "library.artists", icon: "music", route: { name: "favorites", kind: "artists" } },
+    { label: "library.playlists", icon: "list-music", route: { name: "playlists", folder: "root" } },
+    { label: "library.mixes", icon: "radio", route: { name: "mixes" } },
+    { label: "library.recent", icon: "history", route: { name: "history" } },
   ];
 </script>
 
 <div class="page">
-  <header class="page-head"><h1>Library</h1></header>
+  <header class="page-head"><h1>{t("tab.library")}</h1></header>
   <ul>
     {#each LINKS as link (link.label)}
       <li>
         <a href={hrefFor(link.route)}>
           <Icon name={link.icon} size={22} />
-          <span>{link.label}</span>
+          <span>{t(link.label)}</span>
           <Icon name="chevron-right" size={18} />
         </a>
       </li>

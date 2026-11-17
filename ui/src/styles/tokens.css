@@ -116,7 +116,7 @@
   --rise: 10px;
 
   /* Type (spec §6) */
-  --font-ui: "Manrope", system-ui, sans-serif;
+  --font-ui: "Manrope", var(--font-cjk, system-ui), sans-serif;
   /* One family: display text is the UI face (so it follows the Typeface
      pick), set apart by weight and tight tracking only. */
   --font-display: var(--font-ui);
@@ -180,6 +180,28 @@
   --row-height: 38px;
   --thumb-size: 22px;
   --font-body-size: 13px;
+}
+
+/* CJK text (v1.1 i18n spec §9): no CJK face is bundled (megabytes), so the
+   UI face (Latin, in titles too) falls back to the language's system fonts:
+   Windows first, then Noto Sans CJK on Linux. `<html lang>` picks the stack
+   and the right regional shapes of shared Han characters. Line breaking:
+   strict kinsoku for Japanese; Korean headings break between words. */
+:root:lang(ja) {
+  --font-cjk: "Yu Gothic UI", "Meiryo UI", "Noto Sans CJK JP", system-ui;
+  line-break: strict;
+}
+:root:lang(ko) {
+  --font-cjk: "Malgun Gothic", "Noto Sans CJK KR", system-ui;
+}
+:root:lang(ko) :is(h1, h2, h3) {
+  word-break: keep-all;
+}
+:root:lang(zh-Hans) {
+  --font-cjk: "Microsoft YaHei UI", "Noto Sans CJK SC", system-ui;
+}
+:root:lang(zh-Hant) {
+  --font-cjk: "Microsoft JhengHei UI", "Noto Sans CJK TC", system-ui;
 }
 
 /* prefers-reduced-motion is a hard floor (spec §12): ambient off,

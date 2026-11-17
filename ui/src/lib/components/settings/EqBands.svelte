@@ -1,6 +1,7 @@
 <script lang="ts">
   import { DB_STEP, EQ_BANDS_HZ, EQ_MAX_DB, bandLabel, formatDb, formatDbShort } from "../../dsp";
   import Slider from "./Slider.svelte";
+  import { t } from "../../i18n.svelte";
 
   /// The ten-band graphite-style fader bank. Each fader fills from 0 dB.
   let {
@@ -14,7 +15,7 @@
   } = $props();
 </script>
 
-<div class="bank" role="group" aria-label="Equalizer bands">
+<div class="bank" role="group" aria-label={t("settings.eqBandsLabel")}>
   {#each EQ_BANDS_HZ as hz, index (hz)}
     {@const db = bands[index] ?? 0}
     <div class="band">
@@ -28,7 +29,7 @@
         max={EQ_MAX_DB}
         step={DB_STEP}
         value={db}
-        label={`${bandLabel(hz)} Hz`}
+        label={t("settings.eqBand", { band: bandLabel(hz) })}
         format={formatDb}
         oninput={(value) => onband(index, value)}
       />

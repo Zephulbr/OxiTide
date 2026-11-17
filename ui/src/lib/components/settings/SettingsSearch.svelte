@@ -3,6 +3,7 @@
   import { searchSettings, type SearchContext, type SettingEntry } from "../../settingsIndex";
   import { TAB_META } from "../../settingsView";
   import Icon from "../Icon.svelte";
+  import { t } from "../../i18n.svelte";
 
   /// Page-header search over every setting. A combobox: type, arrow to a
   /// result, Enter (or click) to jump to it; Escape clears.
@@ -79,8 +80,8 @@
     class="search-input"
     type="text"
     role="combobox"
-    placeholder="Search settings"
-    aria-label="Search settings"
+    placeholder={t("settings.search")}
+    aria-label={t("settings.search")}
     aria-autocomplete="list"
     aria-expanded={showing}
     aria-controls={`${uid}-list`}
@@ -95,7 +96,7 @@
     <button
       type="button"
       class="clear"
-      aria-label="Clear search"
+      aria-label={t("settings.clearSearch")}
       onclick={() => {
         query = "";
         input?.focus();
@@ -103,7 +104,7 @@
     ><Icon name="x" size={14} /></button>
   {/if}
   {#if showing}
-    <div class="panel" id={`${uid}-list`} role={results.length > 0 ? "listbox" : undefined} aria-label="Matching settings">
+    <div class="panel" id={`${uid}-list`} role={results.length > 0 ? "listbox" : undefined} aria-label={t("settings.matching")}>
       {#each results as entry, i (entry.id)}
         <button
           id={`${uid}-${i}`}
@@ -124,7 +125,7 @@
         </button>
       {:else}
         <p class="none" role="status">
-          No settings match “{query.trim()}”
+          {t("settings.noMatch", { query: query.trim() })}
         </p>
       {/each}
     </div>

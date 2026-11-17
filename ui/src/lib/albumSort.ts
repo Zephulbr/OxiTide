@@ -1,9 +1,10 @@
 import type { Album } from "./api";
+import { compareText } from "./locale.svelte";
 import { parseTidalTime } from "./playlistSort";
 
 export type AlbumSort = "added" | "released" | "title" | "artist";
 
-const byText = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: "base", numeric: true });
+const byText = compareText;
 const artistOf = (album: Album) => album.artists[0]?.name ?? "";
 
 /// "added" puts the newest favorites first and "released" the newest

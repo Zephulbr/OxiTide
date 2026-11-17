@@ -10,12 +10,13 @@
   import { perfHooks } from "../lib/perfHooks";
   import { playSource, type PlayFrom } from "../lib/playSource.svelte";
   import { trackFlags } from "../lib/trackFlags.svelte";
-  import { createTrackView, visibleIndexOf, warmTrackSearch } from "../lib/trackView.svelte";
+  import { createTrackView, matchesThenRest, visibleIndexOf, warmTrackSearch } from "../lib/trackView.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { PlaylistActions } from "../lib/playlists.svelte";
   import type { Player } from "../lib/player.svelte";
   import type { Toasts } from "../lib/toasts.svelte";
   import type { Nav } from "../lib/nav.svelte";
+  import { t } from "../lib/i18n.svelte";
 
   let {
     nav,
@@ -25,11 +26,10 @@
     toasts,
   }: { nav: Nav; player: Player; favorites: Favorites; playlistActions: PlaylistActions; toasts: Toasts } = $props();
 
-  const UNAVAILABLE_NOTE =
-    "TIDAL still counts these favorites but no longer serves them: they were removed from the catalogue or aren't licensed in your region.";
+  const UNAVAILABLE_NOTE = $derived(t("tracks.unavailableNote"));
 
   /// The player bar's "From" line for plays started here.
-  const FAVORITES: PlayFrom = { kind: "favorites", name: "Favorite tracks", route: { name: "tracks" } };
+  const FAVORITES: PlayFrom = { kind: "favorites", name: t("tracks.favorites"), route: { name: "tracks" } };
 
   const favoritesPager = createTrackPager("favorites", (offset, limit) =>
     api.getFavoriteTracksPage(offset, limit),
@@ -96,15 +96,18 @@
     for (const id of favorites.pendingRemovalsToDrop(loaded)) favoritesPager.removeItem(id);
   });
 
+  /// A play from a filtered list (a search for an artist or album) queues the
+  /// matches and then the rest of the collection, as TIDAL does, so the
+  /// collection carries on instead of autoplay (issue #3).
   async function playFrom(index: number) {
     const clicked = view.items[index];
     await favoritesPager.ensureAll();
     if (favoritesPager.error) return;
     const start = visibleIndexOf(view.items, clicked, index);
     if (start < 0) return;
-    const prepared = await trackFlags.filterPlayable(view.items, start);
+    const prepared = await trackFlags.filterPlayable(matchesThenRest(view), start);
     if (!prepared) {
-      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      toasts.show(t("queue.dropHidden"), { severity: "info" });
       return;
     }
     playSource.set(FAVORITES, prepared.items.map((t) => t.id));
@@ -114,9 +117,9 @@
   async function playAll() {
     await favoritesPager.ensureAll();
     if (favoritesPager.error) return;
-    const prepared = await trackFlags.filterPlayable(view.items, 0);
+    const prepared = await trackFlags.filterPlayable(matchesThenRest(view), 0);
     if (!prepared) {
-      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      toasts.show(t("queue.dropHidden"), { severity: "info" });
       return;
     }
     playSource.set(FAVORITES, prepared.items.map((t) => t.id));
@@ -128,7 +131,7 @@
     if (favoritesPager.error) return;
     const prepared = await trackFlags.filterPlayable(view.items, 0);
     if (!prepared) {
-      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      toasts.show(t("queue.dropHidden"), { severity: "info" });
       return;
     }
     playSource.set(FAVORITES, prepared.items.map((t) => t.id));
@@ -138,40 +141,40 @@
 
 <div class="view-fill">
   <div class="list-head">
-    <h2>Tracks</h2>
+    <h2>{t("route.tracks")}</h2>
     <button
       class="list-action"
       onclick={shuffleAll}
       disabled={view.items.length === 0}
-      aria-label="Shuffle"
-      title="Shuffle"
+      aria-label={t("menu.shuffle")}
+      title={t("menu.shuffle")}
     ><Icon name="shuffle" size={16} /></button>
     <button
       class="list-action"
       onclick={playAll}
       disabled={view.items.length === 0}
-      aria-label="Play all"
-      title="Play all"
+      aria-label={t("artist.playAll")}
+      title={t("artist.playAll")}
     ><Icon name="play" size={16} /></button>
   </div>
   <!-- The count, then Refresh as an icon that spins while a load runs.
        TIDAL counts unavailable favorites but never returns them, so they
        can't be listed; the button explains instead. -->
   <p class="list-meta">
-    <span class="muted">{rows.length} tracks</span>
+    <span class="muted">{t("common.trackCount", { count: rows.length })}</span>
     {#if favoritesPager.unavailable > 0}
       <button
         class="unavailable"
         onclick={() => toasts.show(UNAVAILABLE_NOTE, { severity: "info" })}
         title={UNAVAILABLE_NOTE}
-      ><Icon name="info" size={13} />{favoritesPager.unavailable} unavailable</button>
+      ><Icon name="info" size={13} />{t("tracks.unavailable", { count: favoritesPager.unavailable })}</button>
     {/if}
     <button
       class="refresh"
       class:spinning={favoritesPager.loading}
       onclick={() => favoritesPager.refresh()}
-      aria-label={favoritesPager.loading ? "Refreshing" : "Refresh"}
-      title="Refresh"
+      aria-label={favoritesPager.loading ? t("tracks.refreshing") : t("playlist.refresh")}
+      title={t("playlist.refresh")}
     ><Icon name="refresh-cw" size={14} /></button>
   </p>
   <TrackTable

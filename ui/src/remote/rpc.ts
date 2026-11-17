@@ -1,6 +1,8 @@
 /// The phone remote's transport (spec §6.3): one RPC endpoint and the pairing
 /// call, both same-origin with the device cookie. Never imports Tauri.
 
+import { t } from "./i18n.svelte";
+
 export class RemoteError extends Error {
   constructor(
     readonly code: string,
@@ -18,14 +20,14 @@ export function parseWireError(text: string): { code: string; message: string } 
   return { code: text.slice(0, split), message: text.slice(split + 2) };
 }
 
-/// Human wording for transport-level failures.
+/// Human wording for transport-level failures (getters: the phone's language).
 const STATUS_ERRORS: Record<number, [string, string]> = {
-  401: ["unauthorized", "This phone is not paired with OxiTide."],
-  403: ["forbidden", "OxiTide refused the request."],
-  408: ["timeout", "No answer on the PC. Try again."],
-  413: ["too_large", "That request is too large."],
-  429: ["rate_limited", "Too many failed attempts. Wait a minute and try again."],
-  503: ["busy", "OxiTide is busy. Try again in a moment."],
+  get 401(): [string, string] { return ["unauthorized", t("error.unauthorized")]; },
+  get 403(): [string, string] { return ["forbidden", t("error.forbidden")]; },
+  get 408(): [string, string] { return ["timeout", t("error.timeout")]; },
+  get 413(): [string, string] { return ["too_large", t("error.tooLarge")]; },
+  get 429(): [string, string] { return ["rate_limited", t("error.rateLimited")]; },
+  get 503(): [string, string] { return ["busy", t("error.busy")]; },
 };
 
 export type Call = <T>(method: string, params?: Record<string, unknown>) => Promise<T>;
@@ -48,7 +50,7 @@ export function createClient(fetchImpl: FetchLike = (input, init) => fetch(input
         body: JSON.stringify(body),
       });
     } catch {
-      throw new RemoteError("offline", "Can't reach OxiTide on your PC.");
+      throw new RemoteError("offline", t("error.offline"));
     }
     let payload: { ok?: boolean; result?: unknown; error?: string } | null = null;
     try {
@@ -63,7 +65,7 @@ export function createClient(fetchImpl: FetchLike = (input, init) => fetch(input
       // Prefer friendly wording for transport errors, the server's otherwise.
       throw new RemoteError(code, known && response.status !== 403 ? known[1] : message, response.status);
     }
-    const [code, message] = STATUS_ERRORS[response.status] ?? ["failed", `Request failed (${response.status}).`];
+    const [code, message] = STATUS_ERRORS[response.status] ?? ["failed", t("error.failed", { status: response.status })];
     throw new RemoteError(code, message, response.status);
   }
 

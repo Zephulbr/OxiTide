@@ -5,6 +5,7 @@
   import { useRemote } from "../context";
   import { art } from "../convert";
   import { PagedTracks } from "../paged.svelte";
+  import { t } from "../i18n.svelte";
 
   let { id }: { id: string } = $props();
   const { api } = useRemote();
@@ -24,8 +25,8 @@
       <DetailHead
         image={art(playlist.squareImage ?? playlist.image, 640)}
         title={playlist.title}
-        kind="Playlist"
-        subtitle={`${playlist.numberOfTracks} tracks`}
+        kind={t("kind.playlist")}
+        subtitle={t("common.trackCount", { count: playlist.numberOfTracks })}
       />
       {#if playlist.description}<p class="muted desc">{playlist.description}</p>{/if}
       <TrackList tracks={paged.rows} total={paged.total} more={paged.more} />

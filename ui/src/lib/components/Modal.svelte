@@ -3,6 +3,7 @@
   import { dialogs } from "../dialogs.svelte";
   import { focusTrap } from "../focusTrap";
   import { portal } from "../portal";
+  import { t } from "../i18n.svelte";
   import Icon from "./Icon.svelte";
   let {
     title,
@@ -37,7 +38,7 @@
   >
     <header>
       <strong>{title}</strong>
-      <button onclick={onclose} aria-label="Close"><Icon name="x" size={16} /></button>
+      <button onclick={onclose} aria-label={t("common.close")}><Icon name="x" size={16} /></button>
     </header>
     {@render children()}
   </div>

@@ -5,6 +5,7 @@
   import { useRemote } from "../context";
   import { art } from "../convert";
   import { dropIndex, visibleRange } from "../queueDrag";
+  import { t } from "../i18n.svelte";
 
   const { store, api, actions } = useRemote();
 
@@ -48,9 +49,9 @@
 
   function confirmClear() {
     actions.sheet = {
-      title: "Clear the queue?",
-      subtitle: "Playback stops on the PC.",
-      items: [{ label: "Clear queue", icon: "x", run: () => run(api.queueClear()) }],
+      title: t("queue.clearTitle"),
+      subtitle: t("queue.clearSubtitle"),
+      items: [{ label: t("queue.clear"), icon: "x", run: () => run(api.queueClear()) }],
     };
   }
 
@@ -76,18 +77,18 @@
 
 <div class="page">
   <header class="page-head">
-    <h1>Queue</h1>
+    <h1>{t("tab.queue")}</h1>
     {#if currentIndex !== null}
-      <button class="icon-btn" aria-label="Show current track" onclick={jumpToCurrent}>
+      <button class="icon-btn" aria-label={t("queue.showCurrent")} onclick={jumpToCurrent}>
         <Icon name="circle-dot" size={20} />
       </button>
     {/if}
-    <button class="pill" disabled={total === 0} onclick={confirmClear}>Clear</button>
+    <button class="pill" disabled={total === 0} onclick={confirmClear}>{t("queue.clearShort")}</button>
   </header>
   {#if total === 0}
-    <p class="muted">The queue is empty. Play something from Home, Search, or your Library.</p>
+    <p class="muted">{t("queue.empty")}</p>
   {:else}
-    <p class="muted count">{total === 1 ? "1 track" : `${total} tracks`}</p>
+    <p class="muted count">{t("common.trackCount", { count: total })}</p>
     <ol class="list" bind:this={list} style:height={`${total * ROW}px`}>
       {#each rows as index (index)}
         {@const item = store.queueItem(index)}
@@ -101,7 +102,7 @@
         >
           <button
             class="handle"
-            aria-label={`Reorder ${item?.title ?? `track ${index + 1}`}`}
+            aria-label={item ? t("queue.reorder", { title: item.title }) : t("queue.reorderN", { n: index + 1 })}
             onpointerdown={(e) => startDrag(e, index)}
             onpointermove={moveDrag}
             onpointerup={endDrag}
@@ -110,20 +111,20 @@
             <Icon name="grip-vertical" size={18} />
           </button>
           {#if item}
-            <button class="main" onclick={() => run(api.queueJump(index))} aria-label={`Play ${item.title}`}>
+            <button class="main" onclick={() => run(api.queueJump(index))} aria-label={t("common.playNamed", { title: item.title })}>
               <Art src={art(item.cover, 80)} size={44} />
               <span class="text">
                 <span class="title ellipsis">{item.title}</span>
                 <!-- Paged rows can't find the first suggestion, so each says so. -->
-                <span class="muted ellipsis">{#if item.autoplay}<span class="autoplay">Autoplay</span> · {/if}{item.artist}</span>
+                <span class="muted ellipsis">{#if item.autoplay}<span class="autoplay">{t("queue.autoplay")}</span> · {/if}{item.artist}</span>
               </span>
               <span class="muted time">{formatDuration(item.duration_secs)}</span>
             </button>
-            <button class="icon-btn" aria-label={`Remove ${item.title}`} onclick={() => run(api.queueRemove(index))}>
+            <button class="icon-btn" aria-label={t("queue.remove", { title: item.title })} onclick={() => run(api.queueRemove(index))}>
               <Icon name="x" size={18} />
             </button>
           {:else}
-            <span class="main placeholder muted">Loading…</span>
+            <span class="main placeholder muted">{t("common.loading")}</span>
           {/if}
         </li>
       {/each}

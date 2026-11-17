@@ -126,7 +126,8 @@ another (40ms apart) while its plus pops to 1.3. The heart is the player bar's (
 on hover it takes the accent and beats twice (640ms), favoriting pops it, and
 unfavoriting breaks it. Only the row toggled animates; a row scrolled back into view
 doesn't replay it. A press sinks the glyph to 0.86. All of it is static under reduced motion. The playing row's number gives way to a 20px
-now-playing mark. The Tracks count line ends in a refresh icon
+now-playing mark; compact lists (search's track preview), which have no number column,
+show it on the row's cover over the same dim as the hover play glyph. The Tracks count line ends in a refresh icon
 (spins while loading) and, when TIDAL counts favorites it no longer serves, an
 "N unavailable" info button whose tooltip and toast explain them (they can't be listed).
 
@@ -439,6 +440,16 @@ pill chips the same width (recent searches with the history icon, top artists fr
 listening history with the user icon); chips that would wrap are clipped by the row's
 fixed height. Untitled quick-link rows (New, Top, HiRes, …) follow "New to you".
 
+**Search entry points** (spec `2026-11-17-oxitide-search-discoverability-design.md`): the
+sidebar's Explore item uses the `search` (magnifier) icon, tooltip "Explore and search
+(Ctrl+F)". Home shows the same field (`SearchField.svelte`, `compact`: 40px, 14px text,
+up to 560px) opposite the greeting: the greeting on the content's left edge, the field
+on its right edge, both centred on the title's line (the prompt stays under the title). A
+page under 760px wide (container query on `.home`) stacks it under the greeting. It has
+no panel of its own and no chips. Submitting opens Explore's results. Settings →
+Typography & layout → "Search bar on Home" hides it (on by default). Every mode styles
+both fields through `.search-input`.
+
 **Search results** (`SearchResultsView.svelte`) replace the old all-in-one lists. While a
 search shows results, the suggestion chips give way to type chips (All · Tracks · Albums ·
 Artists · Playlists, only types that have results; the chosen one is accent-filled). The
@@ -483,6 +494,13 @@ A single type shows its full table, or a `minmax(168px, 1fr)` tile grid, and pag
   The sidebar wordmark is fixed Manrope 800 (+0.01em). Rack uses **Manrope 700** for titles.
 - UI: Manrope (default) / Inter (Instrument default) / System / Custom, user-selectable;
   fallback always ends in `system-ui`.
+- Scripts (v1.1): Manrope and Inter ship Latin, Latin Extended, Cyrillic (+ext) and Greek
+  subsets, each a `@font-face` with its `unicode-range`, so a subset loads only when text
+  uses it. CJK is not bundled: the fallback is `var(--font-cjk, system-ui)`, and
+  `:root:lang(ja|ko|zh-Hans|zh-Hant)` in `tokens.css` sets `--font-cjk` to the system CJK
+  faces (Yu Gothic UI / Malgun Gothic / Microsoft YaHei UI / Microsoft JhengHei UI, then
+  Noto Sans CJK). Latin in CJK titles keeps the chosen face. Japanese uses
+  `line-break: strict`; Korean headings `word-break: keep-all`.
 - Weights 400/500/600/700; tabular numerals for all times and readouts.
 
 ### 2.3 Motion
@@ -515,6 +533,11 @@ motion) is the entrance travel for content arriving in place.
   after the same 320 ms a spinning `--text-muted` arc around it (a fade only under
   reduced motion). `lib/bootScreen.ts` fades the screen out over 180 ms once
   `auth_restore` settles; WindowControls stay above it.
+- Language switch (picker only, `lib/retype.ts`): every visible text the switch changed is
+  erased back to the prefix it shares with the new text (220 ms), then typed in the new
+  language (340 ms), all strings together whatever their length, so the layout settles
+  in one go. Live regions, form fields and code are left alone; a text its owner rewrites
+  mid-way (a clock) keeps that text. None under reduced motion; boot never animates.
 - A page whose data is cached (`lib/viewCache.ts`; revisits, or a card or sidebar link
   hovered before the click) renders complete on its first frame and plays the same rise;
   a background refresh that changes something updates in place.
@@ -672,6 +695,38 @@ mode") with a "Don't show again" checkbox (`optOutLabel`).
   the keyboard path. Names for the current page stay plain text. Inside rows that are
   themselves play buttons (queue, History) names are pointer-only nested links and the
   row menu carries the "Go to" items (spec `2026-10-15-oxitide-name-links-design.md`).
+- **Windows contrast themes** (`forced-colors: active`; v1.1 A-3). The browser repaints
+  text, surfaces, borders and outlines in the theme's system colours and drops gradients and
+  shadows; `styles/forced-colors.css` (loaded last) maps the semantic tokens to system
+  colours (`--accent` → `Highlight`, `--on-accent` → `HighlightText`, `--line` → `GrayText`,
+  text and muted text → `CanvasText`, surfaces and veils → `Canvas`) with `!important`, so
+  every mode, theme and Rack resolve alike. Rules:
+  - Marks that carry state and are painted as fills (the seek, `Slider`, `VolumeSlider`,
+    `Toggle`, `NowPlayingMark`, drop lines, the sort-rank badge) set `forced-color-adjust:
+    none` on the smallest element and draw from those tokens or system colours directly:
+    played/on/level in `Highlight`, unplayed track framed in `CanvasText` or `GrayText`,
+    knobs and thumbs `ButtonText`, disabled `GrayText`. The seek's thumb shows at rest.
+  - State shown by a tint (selected and current rows, the open sidebar page and playlist,
+    Settings and Now Playing tabs, a playing card, drop targets, Rack's lit keys) becomes a
+    `Highlight` outline drawn inside the box (`outline-offset: -1px`/`-2px`); the chosen
+    `Segmented` segment and `Select`/`SortSelect` option take `Highlight` / `HighlightText`.
+  - Focus rings are `Highlight` outlines. Icons are `currentColor`, so they follow the
+    forced text colour.
+  - Decorative layers go: the cover `Backdrop`, grain, glass blur, dynamic-colour washes,
+    cover tints, the disc's sheen. Rack stays usable without its skin (grain and lamp glows
+    off; lamp `Highlight`, display ink `CanvasText`).
+  - Components never branch on the mode here either; each widget keeps its own
+    `@media (forced-colors: active)` block next to the rule it adjusts.
+- **Track-change announcements** (A-4): a polite, atomic live region (`TrackAnnouncer`,
+  `lib/announce.svelte.ts`) says "Now playing: {title} by {artists}" when the user starts or
+  skips a track (play from a list, next, previous, a queue jump). The desktop `api` marks
+  those commands (`lib/trackIntent.ts`); the engine's next `now_playing` takes the mark, so
+  automatic advances, the phone remote and media keys stay silent. The text clears after 7 s.
+- **Interface zoom** (A-5): Settings → Appearance → Typography & layout → Zoom, 80–150 % in
+  steps of 10, and Ctrl+= / Ctrl+− / Ctrl+0 (also on the sign-in screen and while typing).
+  It is the webview's own zoom (`set_zoom`, `[ui] zoom`), so CSS pixels and every container
+  or media query scale with it; layouts must hold at 150 % at the minimum window size. The
+  mini player always runs at 100 %.
 
 ### 2.5 Performance (PM-D1)
 

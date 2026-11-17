@@ -1,4 +1,5 @@
 import type { LaterKind, PageItem } from "./api";
+import { t } from "./i18n.svelte";
 
 export const NAV_KEY = "oxitide.nav";
 
@@ -115,7 +116,7 @@ const NUMERIC_ID = /^\d+$/;
 /// videos, and unknown types stay inert.
 export function routeForPageItem(item: PageItem): Route | null {
   if (isPagePath(item.api_path)) {
-    return { name: "page", path: item.api_path, title: item.title || "Explore" };
+    return { name: "page", path: item.api_path, title: item.title || t("route.explore") };
   }
   if (item.id.length === 0) return null;
   const type = item.item_type.toUpperCase();

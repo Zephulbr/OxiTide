@@ -1,4 +1,5 @@
 import type { CollectionEntry, Playlist } from "./api";
+import { compareText } from "./locale.svelte";
 
 /// TIDAL timestamps look like "2026-09-29T20:19:47.004+0000"; the bare
 /// `+0000` offset is not part of the ES date-time format, so normalize it
@@ -60,7 +61,7 @@ export function sortCollectionEntries(
         result = parseTidalTime(a.lastUpdated) - parseTidalTime(b.lastUpdated);
         break;
       case "alpha":
-        result = a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
+        result = compareText(a.title, b.title);
         break;
     }
     return dir === "asc" ? result : -result;

@@ -1,23 +1,24 @@
 import type { PlaylistFilter, PlaylistSortKey } from "./playlistSort";
 import type { MenuItem } from "./menu.svelte";
 import type { PlaylistViewPrefs } from "./playlistView.svelte";
+import { t, type MessageKey } from "./i18n.svelte";
 
 export interface PlaylistViewMenuHandlers {
   setSort(key: PlaylistSortKey): void;
   setFilter(filter: PlaylistFilter): void;
 }
 
-const SORT_ROWS: readonly { key: PlaylistSortKey; label: string }[] = [
-  { key: "recent", label: "Recently played" },
-  { key: "created", label: "Created date" },
-  { key: "updated", label: "Updated date" },
-  { key: "alpha", label: "Alphabetical" },
+const SORT_ROWS: readonly { key: PlaylistSortKey; label: MessageKey }[] = [
+  { key: "recent", label: "playlists.sort.recent" },
+  { key: "created", label: "playlists.sort.created" },
+  { key: "updated", label: "playlists.sort.updated" },
+  { key: "alpha", label: "playlists.sort.alpha" },
 ];
 
-const FILTER_ROWS: readonly { key: PlaylistFilter; label: string }[] = [
-  { key: "all", label: "All playlists" },
-  { key: "owned", label: "Your playlists" },
-  { key: "followed", label: "Followed playlists" },
+const FILTER_ROWS: readonly { key: PlaylistFilter; label: MessageKey }[] = [
+  { key: "all", label: "playlists.filter.all" },
+  { key: "owned", label: "playlists.filter.owned" },
+  { key: "followed", label: "playlists.filter.followed" },
 ];
 
 /// The sidebar header's combined Sort & Filter menu. The active sort row shows
@@ -31,8 +32,8 @@ export function playlistViewMenuItems(
     const selected = prefs.sort === key;
     return {
       id: `sort-${key}`,
-      label,
-      section: "Sort",
+      label: t(label),
+      section: t("playlists.sortSection"),
       selected,
       icon: selected ? "check" : undefined,
       trailing: selected ? (prefs.dir === "desc" ? "arrow-down" : "arrow-up") : undefined,
@@ -42,8 +43,8 @@ export function playlistViewMenuItems(
   const filterItems = FILTER_ROWS.map(
     ({ key, label }): MenuItem => ({
       id: `filter-${key}`,
-      label,
-      section: "Filter",
+      label: t(label),
+      section: t("playlists.filterSection"),
       selected: prefs.filter === key,
       icon: prefs.filter === key ? "check" : undefined,
       run: () => handlers.setFilter(key),

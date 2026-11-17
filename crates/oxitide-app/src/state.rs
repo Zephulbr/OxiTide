@@ -57,6 +57,8 @@ pub struct AppState {
     pub track_flags: Mutex<Option<Arc<crate::track_flags::TrackFlagsStore>>>,
     /// System tray handle; `None` when the tray could not be created.
     pub tray: Mutex<Option<tauri::tray::TrayIcon>>,
+    /// The tray menu's items, relabelled when the shell language changes.
+    pub tray_items: Mutex<crate::tray::TrayItems>,
     /// The process-wide token store chosen at startup (keyring or session-only).
     pub token_store: RwLock<Option<Arc<dyn TokenStore>>>,
     /// Result of the startup keyring probe, exposed to the UI.
@@ -238,8 +240,14 @@ impl AppState {
             .clone()
     }
 
-    pub fn set_tray(&self, tray: tauri::tray::TrayIcon) {
+    pub fn set_tray(&self, tray: tauri::tray::TrayIcon, items: crate::tray::TrayItems) {
         *self.tray.lock().unwrap() = Some(tray);
+        *self.tray_items.lock().unwrap() = items;
+    }
+
+    /// Relabel the tray menu in the current shell language.
+    pub fn relabel_tray(&self) {
+        crate::tray::relabel(&self.tray_items.lock().unwrap());
     }
 
     pub fn tray(&self) -> Option<tauri::tray::TrayIcon> {

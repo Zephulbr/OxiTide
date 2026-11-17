@@ -210,4 +210,23 @@
   .label {
     fill: var(--bg);
   }
+  /* Windows contrast themes (A-3): the mark keeps its shape in system
+     colours; the sheen is a material highlight and goes. */
+  @media (forced-colors: active) {
+    .np-mark {
+      forced-color-adjust: none;
+    }
+    .vinyl {
+      fill: Highlight;
+    }
+    .groove {
+      stroke: Canvas;
+    }
+    .label {
+      fill: Canvas;
+    }
+    .sheen {
+      display: none;
+    }
+  }
 </style>

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildManifest, checksumLines } from "./make-manifest.mjs";
 import { versionProblems, workspaceVersion } from "./check-version.mjs";
+import { branchProblem, releaseBranch } from "./check-branch.mjs";
 import { archPkgver, renderPkgbuild } from "./make-pkgbuild.mjs";
 import { readFileSync } from "node:fs";
 
@@ -127,4 +128,19 @@ test("workspaceVersion reads [workspace.package] only", () => {
   const toml = `[workspace]\nmembers = []\n\n[workspace.package]\nversion = "1.2.3"\nedition = "2021"\n\n[workspace.dependencies]\nfoo = { version = "9" }\n`;
   assert.equal(workspaceVersion(toml), "1.2.3");
   assert.throws(() => workspaceVersion("[package]\nversion = \"1\"\n"), /workspace\.package/);
+});
+
+test("releaseBranch maps a tag's major to its release branch", () => {
+  assert.equal(releaseBranch("v1.1.1"), "release/1.x");
+  assert.equal(releaseBranch("v2.0.0-rc.1"), "release/2.x");
+  assert.equal(releaseBranch("v0.0.0-test"), "release/0.x");
+  assert.equal(releaseBranch("1.1.1"), null);
+  assert.equal(releaseBranch("v1.1"), null);
+});
+
+test("branch check rejects a tag off its existing release branch", () => {
+  assert.equal(branchProblem("v1.1.1", true, true), null);
+  assert.match(branchProblem("v1.1.1", true, false), /not on release\/1\.x; 1\.x releases/);
+  assert.equal(branchProblem("v2.0.0", false, false), null);
+  assert.match(branchProblem("main", false, false), /not of the form/);
 });

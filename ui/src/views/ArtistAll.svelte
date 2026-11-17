@@ -17,7 +17,7 @@
   import MediaCard from "../lib/components/MediaCard.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
   import { routeForPageItem, type ArtistTab, type Nav } from "../lib/nav.svelte";
-  import { createTrackPager } from "../lib/pager.svelte";
+  import { artistTracksPager } from "../lib/artistTracks";
   import { playSource, type PlayFrom } from "../lib/playSource.svelte";
   import { trackFlags } from "../lib/trackFlags.svelte";
   import { playArtistRadio } from "../lib/radio";
@@ -26,6 +26,7 @@
   import type { PlaylistActions } from "../lib/playlists.svelte";
   import type { Player } from "../lib/player.svelte";
   import type { Toasts } from "../lib/toasts.svelte";
+  import { t, type MessageKey } from "../lib/i18n.svelte";
 
   let {
     id,
@@ -45,13 +46,13 @@
     toasts: Toasts;
   } = $props();
 
-  const TABS: { id: ArtistTab; label: string }[] = [
-    { id: "tracks", label: "Tracks" },
-    { id: "albums", label: "Albums" },
-    { id: "eps", label: "Singles & EPs" },
-    { id: "appears", label: "Appears on" },
-    { id: "playlists", label: "Playlists" },
-    { id: "mixes", label: "Mixes" },
+  const TABS: { id: ArtistTab; label: MessageKey }[] = [
+    { id: "tracks", label: "route.tracks" },
+    { id: "albums", label: "route.albums" },
+    { id: "eps", label: "artist.singles" },
+    { id: "appears", label: "artist.appearsOn" },
+    { id: "playlists", label: "route.playlists" },
+    { id: "mixes", label: "route.mixes" },
   ];
 
   type AlbumTab = "albums" | "eps" | "appears";
@@ -78,11 +79,7 @@
 
   // `{#key id}` in App resets this store when the artist changes, so the
   // initial id is captured once on purpose.
-  const pager = untrack(() =>
-    createTrackPager(`artist:${id}:tracks`, (offset, limit) =>
-      api.getArtistTopTracksPage(id, offset, limit),
-    ),
-  );
+  const pager = untrack(() => artistTracksPager(id));
   const view = untrack(() =>
     createTrackView(
       () => pager.items,
@@ -181,7 +178,7 @@
     if (start < 0) return;
     const prepared = await trackFlags.filterPlayable(view.items, start);
     if (!prepared) {
-      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      toasts.show(t("queue.dropHidden"), { severity: "info" });
       return;
     }
     playSource.set(origin, prepared.items.map((t) => t.id));
@@ -193,7 +190,7 @@
     if (pager.error) return;
     const prepared = await trackFlags.filterPlayable(view.items, 0);
     if (!prepared) {
-      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      toasts.show(t("queue.dropHidden"), { severity: "info" });
       return;
     }
     playSource.set(origin, prepared.items.map((t) => t.id));
@@ -203,18 +200,18 @@
 
 <div class="view-fill">
   <div class="catalog-head">
-    <span class="kicker">Artist</span>
+    <span class="kicker">{t("card.artist")}</span>
     <h2>{artist?.name ?? "Artist"}</h2>
   </div>
 
-  <nav class="tabs" aria-label="Artist sections" bind:this={tabsEl}>
+  <nav class="tabs" aria-label={t("artist.sections")} bind:this={tabsEl}>
     {#each TABS as entry (entry.id)}
       <button
         class:active={tab === entry.id}
         data-tab={entry.id}
         aria-current={tab === entry.id ? "page" : undefined}
         onclick={() => nav.replace({ name: "artist-all", id, tab: entry.id })}
-      >{entry.label}</button>
+      >{t(entry.label)}</button>
     {/each}
     {#if indicator.width > 0}
       <span
@@ -228,21 +225,21 @@
 {#if tab === "tracks"}
   <div class="list-head">
     <p class="muted tnum count">
-      {#if pager.total > 0}{pager.total} tracks{:else}tracks{/if}
+      {#if pager.total > 0}{t("common.trackCount", { count: pager.total })}{:else}{t("artist.tracksUnknown")}{/if}
     </p>
     <button
       class="list-action"
       onclick={() => playAll(true)}
       disabled={view.items.length === 0}
-      aria-label="Shuffle"
-      title="Shuffle"
+      aria-label={t("menu.shuffle")}
+      title={t("menu.shuffle")}
     ><Icon name="shuffle" size={16} /></button>
     <button
       class="list-action"
       onclick={() => playAll()}
       disabled={view.items.length === 0}
-      aria-label="Play all"
-      title="Play all"
+      aria-label={t("artist.playAll")}
+      title={t("artist.playAll")}
     ><Icon name="play" size={16} /></button>
   </div>
   {#if pager.error}
@@ -250,7 +247,7 @@
   {:else if pager.items.length === 0 && pager.loading}
     <Loading />
   {:else if pager.items.length === 0 && pager.done}
-    <EmptyState message="No tracks." />
+    <EmptyState message={t("artist.noTracks")} />
   {:else}
     <TrackTable
       {view}
@@ -276,9 +273,9 @@
     {:else if list === null}
       <Loading />
     {:else if list.length === 0}
-      <EmptyState message="No releases." />
+      <EmptyState message={t("artist.noReleases")} />
     {:else}
-      <p class="muted tnum count">{list.length} releases</p>
+      <p class="muted tnum count">{t("artist.releaseCount", { count: list.length })}</p>
       <div class="grid">
         {#each list as release (release.id)}
           <MediaCard
@@ -297,9 +294,9 @@
     {:else if playlists === null}
       <Loading />
     {:else if playlists.length === 0}
-      <EmptyState message="No playlists with this artist." />
+      <EmptyState message={t("artist.noPlaylists")} />
     {:else}
-      <p class="muted tnum count">{playlists.length} playlists</p>
+      <p class="muted tnum count">{t("artist.playlistCount", { count: playlists.length })}</p>
       <div class="grid">
         {#each playlists as entry (entry.id)}
           {@const route = routeForPageItem(entry)}
@@ -326,8 +323,8 @@
             variant="tile"
             item={{
               id: mixId,
-              title: `${artist.name} Mix`,
-              subtitle: "Artist mix",
+              title: t("artist.mixNamed", { name: artist.name }),
+              subtitle: t("artist.mix"),
               item_type: "MIX",
               artwork: artist.picture ?? artist.cover_fallback,
             }}
@@ -336,8 +333,8 @@
         {/if}
         <button class="radio-tile" onclick={() => void playArtistRadio(id, toasts, artist?.name)}>
           <span class="radio-icon" aria-hidden="true"><Icon name="radio" size={30} /></span>
-          <span class="radio-title">Artist Radio</span>
-          <span class="radio-sub muted">Endless station seeded on {artist.name}</span>
+          <span class="radio-title">{t("radio.artistRadio")}</span>
+          <span class="radio-sub muted">{t("artist.radioSub", { name: artist.name })}</span>
         </button>
       </div>
     {/if}

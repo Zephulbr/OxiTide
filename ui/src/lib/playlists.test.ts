@@ -94,7 +94,7 @@ describe("playlist actions store", () => {
 
     expect(api.addPlaylistTracks).toHaveBeenCalledTimes(1);
     expect(actions.open).toBe(false);
-    expect(toasts.calls).toEqual([{ message: "Kept one of the duplicate", severity: "info" }]);
+    expect(toasts.calls).toEqual([{ message: "Skipped the duplicate", severity: "info" }]);
   });
 
   it("sends only the add-both choices with allow_duplicates", async () => {

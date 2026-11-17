@@ -26,6 +26,10 @@ export interface TrackView {
   readonly error: string;
   /// visible rows: source order until ready, then sorted/filtered
   readonly items: Track[];
+  /// `items` without the filter: the whole list in the view's sort order.
+  /// A play from a filtered list queues the rest of it after the matches
+  /// (`matchesThenRest`) instead of letting autoplay take over.
+  readonly unfiltered: Track[];
   setFilter(query: string): void;
   /// Header click: only this key (cycles default → flipped → off), or flip
   /// it in place when it is one of several levels (MS-D6).
@@ -110,6 +114,15 @@ export function visibleIndexOf(
   return items.indexOf(captured);
 }
 
+/// The queue for a play from a filtered list: the matches in view order, then
+/// the rest of the list (in its view order), so the collection carries on
+/// after the matches instead of autoplay. Unfiltered, the matches are the list.
+export function matchesThenRest(view: Pick<TrackView, "filter" | "items" | "unfiltered">): Track[] {
+  if (view.filter.trim() === "") return view.items;
+  const matched = new Set(view.items);
+  return [...view.items, ...view.unfiltered.filter((track) => !matched.has(track))];
+}
+
 /// Sort/filter state over a track source. Engaging a sort (or a filter) first
 /// awaits `ensureAll` so the operation covers the complete list, then any data
 /// the sort keys need (plays, release dates); until then the view reports
@@ -136,12 +149,16 @@ export function createTrackView(
 
   const engaged = $derived(filter.trim() !== "" || levels.length > 0);
 
-  const items = $derived.by(() => {
+  const unfiltered = $derived.by(() => {
     const list = source();
-    if (!engaged || !full) return list;
+    if (!engaged || !full || applied.length === 0) return list;
+    return sortTracks(list, applied, data.context);
+  });
+
+  const items = $derived.by(() => {
+    if (!engaged || !full) return source();
     const needle = filter.trim().toLowerCase();
-    const filtered = needle === "" ? list : list.filter((track) => matches(track, needle));
-    return applied.length === 0 ? filtered : sortTracks(filtered, applied, data.context);
+    return needle === "" ? unfiltered : unfiltered.filter((track) => matches(track, needle));
   });
 
   /// Identity map for `sourceIndex`: O(1) per call instead of an O(n) scan;
@@ -260,6 +277,9 @@ export function createTrackView(
     },
     get items() {
       return items;
+    },
+    get unfiltered() {
+      return unfiltered;
     },
     setFilter,
     toggleSort: (key) => commit(setPrimary(levels, key)),

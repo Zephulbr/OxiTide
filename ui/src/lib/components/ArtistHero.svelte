@@ -13,11 +13,12 @@
   import FavoriteHeart, { toggledFx, type HeartFx } from "./FavoriteHeart.svelte";
   import Icon from "./Icon.svelte";
   import Modal from "./Modal.svelte";
+  import { t } from "../i18n.svelte";
 
   let {
     artist,
     profile,
-    kicker = "Artist",
+    kicker,
     disabled = false,
     favorite,
     onPlay,
@@ -129,7 +130,7 @@
       <Cover uuid={art.uuid} size={art.size} radius={999} alt={artist.name} />
     </span>
     <div class="meta">
-      <span class="kicker">{kicker}</span>
+      <span class="kicker">{kicker ?? t("card.artist")}</span>
       <div class="name-row">
         <h2>{artist.name}</h2>
         {#if fans !== null}
@@ -148,7 +149,7 @@
           aria-haspopup="dialog"
           onclick={() => (bioModal = true)}
         >
-          Read more
+          {t("artist.readMore")}
         </button>
       {/if}
       <!-- One bottom row: transport and Favorite, with the secondary actions
@@ -156,18 +157,18 @@
       <div class="controls">
         <div class="transport">
           <button class="btn-play" onclick={onPlay} {disabled}>
-            <Icon name="play" size={22} /> Play
+            <Icon name="play" size={22} /> {t("menu.play")}
           </button>
           <button class="btn-shuffle" onclick={onShuffle} {disabled}>
-            <Icon name="shuffle" size={22} /> Shuffle
+            <Icon name="shuffle" size={22} /> {t("menu.shuffle")}
           </button>
           {#if favorite}
             <button
               class="btn-favorite"
               class:on={favorite.active}
               aria-pressed={favorite.active}
-              aria-label={favorite.active ? "Unfavorite artist" : "Favorite artist"}
-              title={favorite.active ? "Unfavorite artist" : "Favorite artist"}
+              aria-label={favorite.active ? t("artist.unfavorite") : t("artist.favorite")}
+              title={favorite.active ? t("artist.unfavorite") : t("artist.favorite")}
               onclick={() => {
                 heartFx = toggledFx(heartFx, favorite.active);
                 favorite.onToggle();
@@ -183,8 +184,8 @@
             {#if links.length > 0}
               <DetailAction
                 icon="link"
-                label="Links"
-                title="Artist links"
+                label={t("artist.links")}
+                title={t("artist.linksHint")}
                 onclick={() => (linksModal = true)}
               />
             {/if}
@@ -194,7 +195,7 @@
     </div>
   </div>
   {#if linksModal && links.length > 0}
-    <Modal title={`${artist.name} elsewhere`} onclose={() => (linksModal = false)}>
+    <Modal title={t("artist.elsewhere", { name: artist.name })} onclose={() => (linksModal = false)}>
       <ul class="links">
         {#each links as link (link.url)}
           {@const brand = linkBrand(link.site, link.url)}
@@ -226,7 +227,7 @@
     </Modal>
   {/if}
   {#if bioModal && bioSegments.length > 0}
-    <Modal title={`About ${artist.name}`} onclose={() => (bioModal = false)}>
+    <Modal title={t("artist.about", { name: artist.name })} onclose={() => (bioModal = false)}>
       <div class="bio-full">
         <BioText
           segments={bioSegments}

@@ -1,4 +1,5 @@
 import type { Quality, StreamMeta } from "./api";
+import { t } from "./i18n.svelte";
 
 export type QualityDisplay = "compact" | "detailed";
 
@@ -51,8 +52,8 @@ export function formatQuality(
 export const QUALITY_TIERS: readonly { value: Quality; label: string; hint: string }[] = [
   { value: "low", label: "Low", hint: "HE-AAC 96 kbps" },
   { value: "high", label: "High", hint: "AAC 320 kbps" },
-  { value: "lossless", label: "Lossless", hint: "CD quality, 16-bit / 44.1 kHz" },
-  { value: "max", label: "Max (Hi-Res)", hint: "Highest available, up to 24-bit" },
+  { value: "lossless", get label() { return t("quality.lossless"); }, get hint() { return t("quality.losslessHint"); } },
+  { value: "max", get label() { return t("quality.max"); }, get hint() { return t("quality.maxHint"); } },
 ];
 
 export interface QualityPlate {

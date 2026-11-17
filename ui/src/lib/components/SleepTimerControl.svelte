@@ -4,6 +4,7 @@
   import type { SleepTimer } from "../sleepTimer.svelte";
   import Icon from "./Icon.svelte";
   import Modal from "./Modal.svelte";
+  import { t } from "../i18n.svelte";
 
   let { sleepTimer }: { sleepTimer: SleepTimer } = $props();
 
@@ -27,10 +28,10 @@
 
   const title = $derived(
     sleepTimer.mode === "duration"
-      ? `Sleep timer: ${sleepTimer.totalMinutes} min remaining`
+      ? t("sleep.remaining", { minutes: sleepTimer.totalMinutes ?? 0 })
       : sleepTimer.mode === "end-of-track"
-        ? "Sleep timer: end of current track"
-        : "Sleep timer",
+        ? t("sleep.endOfTrackTitle")
+        : t("sleep.title"),
   );
 
   // The moon rocks like a cradle when its menu opens and again when a timer
@@ -57,13 +58,13 @@
     return [
       {
         id: "off",
-        label: "Off",
+        label: t("sleep.off"),
         selected: sleepTimer.mode === "off",
         run: () => sleepTimer.cancel(),
       },
       ...PRESETS.map((minutes) => ({
         id: `minutes-${minutes}`,
-        label: `${minutes} minutes`,
+        label: t("sleep.minutes", { minutes }),
         selected: sleepTimer.mode === "duration" && sleepTimer.totalMinutes === minutes,
         run: () => {
           sleepTimer.armMinutes(minutes);
@@ -72,7 +73,7 @@
       })),
       {
         id: "custom",
-        label: "Custom…",
+        label: t("sleep.custom"),
         selected:
           sleepTimer.mode === "duration" && !PRESETS.includes(sleepTimer.totalMinutes ?? 0),
         run: () => {
@@ -82,7 +83,7 @@
       },
       {
         id: "end-of-track",
-        label: "End of current track",
+        label: t("sleep.endOfTrack"),
         selected: sleepTimer.mode === "end-of-track",
         run: () => {
           sleepTimer.armEndOfTrack();
@@ -107,18 +108,18 @@
   data-floor
   use:menuButton={openMenu}
   {title}
-  aria-label="Sleep timer"
+  aria-label={t("sleep.title")}
 >
   {#key sways}<span class="moon-ico" class:sway={sways > 0}><Icon name="moon" size={18} /></span>{/key}
   {#if countdown !== null}<span class="count tnum">{countdown}</span>{/if}
 </button>
 
 {#if customOpen}
-  <Modal title="Sleep timer" onclose={() => (customOpen = false)}>
+  <Modal title={t("sleep.title")} onclose={() => (customOpen = false)}>
     <form class="custom" onsubmit={startCustom}>
-      <label for="sleep-minutes">Minutes (1–1440)</label>
+      <label for="sleep-minutes">{t("sleep.customLabel", { min: 1, max: 1440 })}</label>
       <input id="sleep-minutes" type="number" min="1" max="1440" step="1" bind:value={customMinutes} />
-      <button type="submit" disabled={!customValid}>Start timer</button>
+      <button type="submit" disabled={!customValid}>{t("sleep.start")}</button>
     </form>
   </Modal>
 {/if}

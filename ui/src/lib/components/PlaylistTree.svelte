@@ -21,6 +21,7 @@
   import NowPlayingMark from "./NowPlayingMark.svelte";
   import PlaylistCover from "./PlaylistCover.svelte";
   import PlaylistTree from "./PlaylistTree.svelte";
+  import { t } from "../i18n.svelte";
 
   let {
     entries,
@@ -134,7 +135,7 @@
       {#if collection.isLoading(entry.id)}
         <div class="tree-note"><Loading /></div>
       {:else if collection.children(entry.id)?.length === 0}
-        <p class="muted tree-note">No playlists</p>
+        <p class="muted tree-note">{t("tree.empty")}</p>
       {:else if collection.children(entry.id) !== null}
         <div class="nested">
           <PlaylistTree
@@ -269,6 +270,18 @@
   }
   .row.drop-refused {
     opacity: 0.55;
+  }
+  /* Windows contrast themes (A-3): tints and the inset ring are dropped, so
+     the open playlist and a drop target are framed in Highlight. */
+  @media (forced-colors: active) {
+    .row.active {
+      outline: 1px solid Highlight;
+      outline-offset: -1px;
+    }
+    .row.drop-target {
+      outline: 2px solid Highlight;
+      outline-offset: -2px;
+    }
   }
   /* An add in flight: a small spinning disc over the cover. */
   .adding {

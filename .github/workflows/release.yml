@@ -21,11 +21,17 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v5
+        with:
+          # Full history and the release branches, for check-branch.mjs.
+          fetch-depth: 0
       - uses: actions/setup-node@v5
         with:
           node-version: 24
       - run: node --test scripts/release/release.test.mjs
       - run: node scripts/release/check-version.mjs "$GITHUB_REF_NAME"
+      # A vN.* tag must be on release/N.x (once that branch exists), so a 1.x
+      # release is never built from V2 work on main.
+      - run: node scripts/release/check-branch.mjs "$GITHUB_REF_NAME"
 
   # The same jobs as a push to main (fmt, UI check and tests, Rust tests with
   # flaky reporting, doctests, clippy, script tests), on Windows and Linux.
@@ -134,8 +140,14 @@ jobs:
           if [ -f "docs/release-notes/$GITHUB_REF_NAME.md" ]; then
             notes=(--notes-file "docs/release-notes/$GITHUB_REF_NAME.md")
           fi
+          # A suffixed tag (v2.0.0-beta.1, -rc.1) is a GitHub prerelease: never
+          # "Latest", so the updater's releases/latest/download/latest.json skips it.
+          pre=()
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            pre=(--prerelease)
+          fi
           gh release create "$GITHUB_REF_NAME" \
-            --draft --verify-tag \
+            --draft --verify-tag "${pre[@]}" \
             --title "OxiTide ${GITHUB_REF_NAME#v}" \
             "${notes[@]}" \
             "${files[@]}" out/latest.json out/SHA256SUMS.txt out/PKGBUILD

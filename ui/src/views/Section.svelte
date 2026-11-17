@@ -7,6 +7,7 @@
   import type { Nav, SectionSource } from "../lib/nav.svelte";
   import type { Player } from "../lib/player.svelte";
   import type { Toasts } from "../lib/toasts.svelte";
+  import { t } from "../lib/i18n.svelte";
 
   let {
     source,
@@ -57,9 +58,9 @@
 {:else if error}
   <ErrorState message={error} onRetry={load} />
 {:else if !section}
-  <EmptyState message="Section no longer available." />
+  <EmptyState message={t("section.gone")} />
 {:else}
-  <p class="muted count">{section.items.length} items</p>
+  <p class="muted count">{t("section.itemCount", { count: section.items.length })}</p>
   <PageSections sections={[section]} {nav} {player} {toasts} {source} uncapped showTitle={false} />
 {/if}
 

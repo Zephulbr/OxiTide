@@ -18,6 +18,7 @@
   import Icon from "../Icon.svelte";
   import DeviceEditDialog from "./DeviceEditDialog.svelte";
   import Segmented from "./Segmented.svelte";
+  import { t } from "../../i18n.svelte";
 
   /// Settings → Playback → Output: one row per output, grouped by type, with a
   /// mode per device and edit (nickname + icon, in a dialog) / pin / hide in
@@ -62,8 +63,8 @@
   const movedOnce = new Set<string>();
 
   const MODE_OPTIONS: { value: OutputMode; label: string }[] = [
-    { value: "shared", label: "Shared" },
-    { value: "exclusive", label: "Exclusive" },
+    { value: "shared", get label() { return t("device.mode.shared"); } },
+    { value: "exclusive", get label() { return t("device.mode.exclusive"); } },
   ];
 
   const view = $derived(list ? pickerView(list, showHidden, showAbsent) : null);
@@ -85,7 +86,7 @@
       commit(next);
       onlist?.(next);
     } catch (e) {
-      onerror(deviceError("Couldn't read the output devices", e));
+      onerror(deviceError(t("device.readFailed"), e));
     }
   }
 
@@ -121,12 +122,12 @@
   function switchTo(id: string) {
     if (!list || id === list.selected) return;
     const device = list.devices.find((d) => d.id === id);
-    const name = device ? displayName(device) : "System default";
+    const name = device ? displayName(device) : t("device.systemDefault");
     commit({ ...list, selected: id });
     // The row moves to the top of its group (a new element), so focus follows it.
     refocus(id);
     api.setOutputDevice(id).then(load, (e) => {
-      onerror(deviceError(`Couldn't switch to ${name}`, e));
+      onerror(deviceError(t("device.switchFailed", { name }), e));
       void load();
     });
   }
@@ -143,7 +144,7 @@
     else update(id, (d) => ({ ...d, prefs: { ...d.prefs, mode } }));
     onlist?.(list);
     api.setDeviceMode(id, mode).catch((e) => {
-      onerror(deviceError(`Couldn't switch to ${mode === "exclusive" ? "Exclusive" : "Shared"}`, e));
+      onerror(deviceError(t("device.switchFailed", { name: mode === "exclusive" ? t("device.mode.exclusive") : t("device.mode.shared") }), e));
       void load();
     });
   }
@@ -157,7 +158,7 @@
     api.setDevicePrefs(device.id, change).then(
       () => list && onlist?.(list),
       (e) => {
-        onerror(deviceError(`Couldn't save the change to ${displayName(device)}`, e));
+        onerror(deviceError(t("device.saveFailed", { name: displayName(device) }), e));
         void load();
       },
     );
@@ -177,19 +178,19 @@
   function menuItems(device: OutputDevice): MenuItem[] {
     const pinned = device.prefs.pinned;
     return [
-      { id: "edit", label: "Edit…", icon: "pencil", run: () => (editing = device) },
+      { id: "edit", label: t("device.edit"), icon: "pencil", run: () => (editing = device) },
       {
         id: "pin",
-        label: pinned ? "Unpin from the quality menu" : "Pin to the quality menu",
+        label: pinned ? t("device.unpin") : t("device.pin"),
         icon: pinned ? "pin-off" : "pin",
         run: () => patch(device, { pinned: !pinned }),
       },
       {
         id: "hide",
-        label: device.prefs.hidden ? "Show in the list" : "Hide",
+        label: device.prefs.hidden ? t("device.showInList") : t("device.hide"),
         icon: device.prefs.hidden ? "eye" : "eye-off",
         disabled: !device.prefs.hidden && device.id === selected,
-        detail: !device.prefs.hidden && device.id === selected ? "Switch to another device first" : undefined,
+        detail: !device.prefs.hidden && device.id === selected ? t("device.switchFirst") : undefined,
         run: () => patch(device, { hidden: !device.prefs.hidden }),
       },
     ];
@@ -240,9 +241,9 @@
 {#snippet detail(id: string, mode: OutputMode, asio: boolean, supports: string | null)}
   <div class="detail">
     {#if asio}
-      <span class="always">Always exclusive</span>
+      <span class="always">{t("device.alwaysExclusive")}</span>
     {:else}
-      <Segmented label="Output mode" value={mode} options={MODE_OPTIONS} onchange={(m) => setMode(id, m)} />
+      <Segmented label={t("device.outputMode")} value={mode} options={MODE_OPTIONS} onchange={(m) => setMode(id, m)} />
     {/if}
     <!-- What is playing now is the player bar's to say; this is what the device can do. -->
     {#if supports}
@@ -295,8 +296,8 @@
         class="ib pin"
         class:pinned={device.prefs.pinned}
         aria-pressed={device.prefs.pinned}
-        aria-label={device.prefs.pinned ? `Unpin ${displayName(device)}` : `Pin ${displayName(device)} to the quality menu`}
-        title={device.prefs.pinned ? "Pinned to the quality menu" : "Pin to the quality menu"}
+        aria-label={device.prefs.pinned ? t("device.unpinNamed", { name: displayName(device) }) : t("device.pinNamed", { name: displayName(device) })}
+        title={device.prefs.pinned ? t("device.pinned") : t("device.pin")}
         tabindex={tabStop === device.id ? 0 : -1}
         onclick={() => patch(device, { pinned: !device.prefs.pinned })}
       ><Icon name="pin" size={15} /></button>
@@ -304,8 +305,8 @@
         type="button"
         class="ib"
         aria-haspopup="menu"
-        aria-label={`More for ${displayName(device)}`}
-        title="More"
+        aria-label={t("device.moreFor", { name: displayName(device) })}
+        title={t("detail.more")}
         tabindex={tabStop === device.id ? 0 : -1}
         use:menuButton={(button) => openMenu(device, button)}
       ><Icon name="ellipsis" size={16} /></button>
@@ -320,7 +321,7 @@
   <div
     class="picker"
     role="radiogroup"
-    aria-label="Audio device"
+    aria-label={t("settings.device.label")}
     tabindex="-1"
     onkeydown={onListKeydown}
   >
@@ -337,9 +338,9 @@
       >
         {#if icons}<span class="tile" aria-hidden="true"><Icon name="monitor-speaker" size={18} /></span>{/if}
         <span class="text">
-          <span class="name">System default</span>
+          <span class="name">{t("device.systemDefault")}</span>
           <span class="sub">
-            {list.system_default.now ? `Follows the system · now ${list.system_default.now}` : "Follows the system"}
+            {list.system_default.now ? t("device.followsNow", { name: list.system_default.now }) : t("device.follows")}
           </span>
         </span>
       </button>
@@ -367,14 +368,14 @@
     <div class="more">
       {#if view.hiddenCount > 0}
         <span>
-          {view.hiddenCount} hidden ·
-          <button type="button" class="link" onclick={() => (showHidden = !showHidden)}>{showHidden ? "Hide" : "Show"}</button>
+          {t("device.hiddenCount", { count: view.hiddenCount })} ·
+          <button type="button" class="link" onclick={() => (showHidden = !showHidden)}>{showHidden ? t("device.hide") : t("device.show")}</button>
         </span>
       {/if}
       {#if view.absent.length > 0}
         <span>
-          {absentNames}: nothing connected ·
-          <button type="button" class="link" onclick={() => (showAbsent = !showAbsent)}>{showAbsent ? "Hide" : "Show anyway"}</button>
+          {t("device.nothingConnected", { names: absentNames })} ·
+          <button type="button" class="link" onclick={() => (showAbsent = !showAbsent)}>{showAbsent ? t("device.hide") : t("device.showAnyway")}</button>
         </span>
       {/if}
     </div>

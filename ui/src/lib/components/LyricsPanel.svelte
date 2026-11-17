@@ -5,6 +5,7 @@
   import { activeLine, lineWords, LYRICS_LOOKAHEAD_MS } from "../lyrics";
   import type { Player } from "../player.svelte";
   import Icon from "./Icon.svelte";
+  import { t } from "../i18n.svelte";
 
   let { player, dto }: { player: Player; dto: LyricsDto } = $props();
 
@@ -96,7 +97,7 @@
     class="lyrics"
     dir={dto.rtl ? "rtl" : "ltr"}
     role="region"
-    aria-label="Lyrics"
+    aria-label={t("nowPlaying.lyrics")}
     bind:this={scroller}
     onwheel={() => (following = false)}
     onpointerdown={() => (following = false)}
@@ -129,7 +130,7 @@
     {/each}
   </div>
   {#if dto.synced && !following}
-    <button class="jump" onclick={() => (following = true)} aria-label="Jump to current line">
+    <button class="jump" onclick={() => (following = true)} aria-label={t("lyrics.jump")}>
       <Icon name="circle-dot" size={16} />
     </button>
   {/if}

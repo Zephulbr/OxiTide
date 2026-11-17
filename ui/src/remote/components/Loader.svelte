@@ -1,6 +1,7 @@
 <script lang="ts" generics="T">
   import type { Snippet } from "svelte";
   import Icon from "../../lib/components/Icon.svelte";
+  import { t } from "../i18n.svelte";
 
   /// Runs `load` (again whenever `key` changes) and renders loading, error
   /// with Retry, or the result.
@@ -36,12 +37,12 @@
   <div class="state">
     <Icon name="alert-triangle" size={22} />
     <p>{error}</p>
-    <button class="pill" onclick={run}><Icon name="rotate-cw" size={16} /> Retry</button>
+    <button class="pill" onclick={run}><Icon name="rotate-cw" size={16} /> {t("common.retry")}</button>
   </div>
 {:else if result}
   {@render children(result.value, run)}
 {:else}
-  <div class="state muted" aria-busy="true">Loading…</div>
+  <div class="state muted" aria-busy="true">{t("common.loading")}</div>
 {/if}
 
 <style>

@@ -17,6 +17,7 @@
     startPendingGlide,
   } from "./lib/queueTransition";
   import Backdrop from "./lib/components/Backdrop.svelte";
+  import { homeSearch } from "./lib/homeSearch.svelte";
   import Login from "./views/Login.svelte";
   import Mini from "./views/Mini.svelte";
   import RoutedPage from "./lib/RoutedPage.svelte";
@@ -27,6 +28,7 @@
   import TrackInfoHost from "./lib/components/TrackInfoHost.svelte";
   import CollectionDialogs from "./lib/components/CollectionDialogs.svelte";
   import ToastHost from "./lib/components/ToastHost.svelte";
+  import TrackAnnouncer from "./lib/components/TrackAnnouncer.svelte";
   import DragGhost from "./lib/components/DragGhost.svelte";
   import { dragDrop } from "./lib/dragDrop.svelte";
   import ContextMenu from "./lib/components/ContextMenu.svelte";
@@ -42,15 +44,21 @@
     clampQueueWidth,
     QUEUE_WIDTH_MAX,
     QUEUE_WIDTH_MIN,
+    ZOOM_DEFAULT,
+    ZOOM_STEP,
   } from "./lib/appearance.svelte";
   import { routeTitle } from "./lib/titles";
+  import { t } from "./lib/i18n.svelte";
   import { perf } from "./lib/perf.svelte";
   import { dismissBootScreen } from "./lib/bootScreen";
   import { perfHooks } from "./lib/perfHooks";
   import { makeSyntheticTracks } from "./lib/perfFixture";
   import { errorMessage } from "./lib/errors";
   import { menu } from "./lib/menu.svelte";
-  import { escapeTarget, isShortcutHandled, matchShortcut, type ShortcutAction } from "./lib/shortcuts";
+  import {
+    escapeTarget, isShortcutHandled, matchShortcut, matchZoomShortcut, type ShortcutAction,
+    type ZoomAction,
+  } from "./lib/shortcuts";
   import {
     atQueueEdge,
     createHoverIntent,
@@ -340,7 +348,7 @@
   $effect(() => {
     const unlisten = listen<string>(SCROBBLE_AUTH_ERROR_EVENT, (event) => {
       const name = event.payload === "lastfm" ? "Last.fm" : "ListenBrainz";
-      toasts.show(`${name} scrobbling needs reconnecting.`, { severity: "error" });
+      toasts.show(t("app.scrobbleReconnect", { service: name }), { severity: "error" });
     });
     return () => {
       unlisten.then((off) => off());
@@ -349,8 +357,8 @@
 
   $effect(() => {
     const unlisten = listen<UpdateInfo>(UPDATE_AVAILABLE_EVENT, (event) => {
-      toasts.show(`OxiTide ${event.payload.version} is available.`, {
-        action: { label: "Open Settings", run: () => nav.goto({ name: "settings" }) },
+      toasts.show(t("app.updateAvailable", { version: event.payload.version }), {
+        action: { label: t("app.openSettings"), run: () => nav.goto({ name: "settings" }) },
       });
     });
     return () => {
@@ -656,7 +664,9 @@
   let sideButtonAt = 0;
 
   async function focusSearch() {
-    if (nav.route.name !== "explore") nav.goto({ name: "explore" });
+    // Home's field when Home shows one (spec 2026-11-17 SD-D5), else Explore's.
+    const onHomeField = nav.route.name === "home" && homeSearch().shown;
+    if (nav.route.name !== "explore" && !onHomeField) nav.goto({ name: "explore" });
     await tick();
     document.getElementById("search-input")?.focus();
   }
@@ -739,11 +749,29 @@
     }
   }
 
+  /// The mini player stays at 100 % (Rust ignores the zoom there), so the keys
+  /// do nothing in it rather than change a value nobody can see.
+  function runZoom(action: ZoomAction) {
+    if (mini.active) return;
+    const next =
+      action === "zoom-in" ? appearance.zoom + ZOOM_STEP
+      : action === "zoom-out" ? appearance.zoom - ZOOM_STEP
+      : ZOOM_DEFAULT;
+    appearance.setZoom(next).catch((e) => toasts.show(errorMessage(e), { severity: "error" }));
+  }
+
   function onKeydown(event: KeyboardEvent) {
-    if (!loggedIn) return;
     // A component already handled this key (slider, tabs, menu, row focus):
     // acting on it globally too would double-seek or double-step.
     if (event.defaultPrevented) return;
+    // Zoom also works on the sign-in screen and while typing.
+    const zoom = matchZoomShortcut(event);
+    if (zoom) {
+      event.preventDefault();
+      runZoom(zoom);
+      return;
+    }
+    if (!loggedIn) return;
     const overlayOpen = dialogs.count > 0;
     const action = matchShortcut(event, { overlayOpen });
     if (!action) {
@@ -799,7 +827,7 @@
   {#if error}<p style="color:var(--danger);padding:0 24px">{error}</p>{/if}
   <Login
     onLogin={onLogin}
-    message={expired ? "Session expired — sign in to continue" : ""}
+    message={expired ? t("app.sessionExpired") : ""}
     {authError}
   />
 {:else}
@@ -844,11 +872,11 @@
       onkeydown={onQueueResizeKeydown}
       tabindex="0"
       role="slider"
-      aria-label="Queue width"
+      aria-label={t("app.queueWidth")}
       aria-valuemin={QUEUE_WIDTH_MIN}
       aria-valuemax={QUEUE_WIDTH_MAX}
       aria-valuenow={appearance.queueWidth}
-      aria-valuetext={`${appearance.queueWidth} pixels`}
+      aria-valuetext={t("app.pixels", { count: appearance.queueWidth })}
     ></div>
   {/snippet}
   <div
@@ -858,7 +886,7 @@
     data-player={barFloats ? "floating" : "docked"}
     inert={dialogs.count > 0}
   >
-    <a class="skip-link" href="#main">Skip to content</a>
+    <a class="skip-link" href="#main">{t("app.skipToContent")}</a>
     <Sidebar
       {nav}
       rail={sidebarRail}
@@ -954,6 +982,7 @@
   onauxclick={onSideButton}
 />
 <ToastHost {toasts} />
+<TrackAnnouncer />
 <DragGhost />
 {#if customChrome}<WindowControls maximizable={!(loggedIn && mini.active)} />{/if}
 <ContextMenu {menu} />

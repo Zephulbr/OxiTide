@@ -488,6 +488,32 @@ pub fn clamp_catjam_scale(percent: u32) -> u32 {
     percent.clamp(100, 200)
 }
 
+/// `[ui] language` value that follows the operating system's language.
+pub const SYSTEM_LANGUAGE: &str = "system";
+
+/// A storable `[ui] language` value: `"system"` or a short BCP 47 code
+/// (letters, digits, hyphens; at most 16 chars). Whether a catalog exists is
+/// the UI's call; this only keeps junk out of the config.
+pub fn valid_language(value: &str) -> bool {
+    value == SYSTEM_LANGUAGE
+        || (!value.is_empty()
+            && value.len() <= 16
+            && value.starts_with(|c: char| c.is_ascii_alphabetic())
+            && value.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'))
+}
+
+/// Interface zoom bounds and step in percent (v1.1 spec §12, A-5).
+pub const ZOOM_MIN: u32 = 80;
+pub const ZOOM_MAX: u32 = 150;
+pub const ZOOM_STEP: u32 = 10;
+pub const ZOOM_DEFAULT: u32 = 100;
+
+/// Rounds `percent` to the nearest step and clamps it to 80–150 %.
+pub fn clamp_zoom(percent: u32) -> u32 {
+    let rounded = (percent.saturating_add(ZOOM_STEP / 2) / ZOOM_STEP) * ZOOM_STEP;
+    rounded.clamp(ZOOM_MIN, ZOOM_MAX)
+}
+
 /// Spec §7.1: the queue rail docks at 260–420px.
 pub fn clamp_queue_width(px: u32) -> u32 {
     px.clamp(260, 420)
@@ -525,6 +551,12 @@ pub struct UiConfig {
     pub close_to_tray: bool,
     /// Icons on the output picker's rows and the quality menu; default on.
     pub device_icons: bool,
+    /// UI language: `"system"` (follow the OS, resolved by the UI) or a
+    /// catalog code (`de`, `zh-Hant`…). Unknown codes act as `"system"`.
+    pub language: String,
+    /// Interface zoom in percent (80–150, steps of 10; A-5). The mini player
+    /// ignores it.
+    pub zoom: u32,
     pub window_width: u32,
     pub window_height: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -650,6 +682,8 @@ impl Default for UiConfig {
             row_separators: true,
             close_to_tray: true,
             device_icons: true,
+            language: SYSTEM_LANGUAGE.to_string(),
+            zoom: ZOOM_DEFAULT,
             window_width: 1200,
             window_height: 800,
             window_x: None,
@@ -979,6 +1013,8 @@ mod tests {
                 row_separators: false,
                 close_to_tray: true,
                 device_icons: false,
+                language: "el".into(),
+                zoom: 120,
                 window_width: 1280,
                 window_height: 720,
                 window_x: Some(40),
@@ -1504,6 +1540,55 @@ duration_ms = 4000
         assert!(loaded.ui.catjam);
         assert_eq!(loaded.ui.catjam_coat, CatjamCoat::Ginger);
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn language_defaults_to_system_and_round_trips() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        assert_eq!(Config::default().ui.language, SYSTEM_LANGUAGE);
+        let mut config = Config::default();
+        config.ui.language = "zh-Hant".into();
+        config.save_to(&path).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("language = \"zh-Hant\""), "{text}");
+        assert_eq!(Config::load_from(&path).ui.language, "zh-Hant");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn zoom_defaults_to_100_and_round_trips() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        assert_eq!(Config::default().ui.zoom, 100);
+        let mut config = Config::default();
+        config.ui.zoom = 130;
+        config.save_to(&path).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("zoom = 130"), "{text}");
+        assert_eq!(Config::load_from(&path).ui.zoom, 130);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn zoom_is_clamped_to_steps_of_ten() {
+        assert_eq!(clamp_zoom(0), 80);
+        assert_eq!(clamp_zoom(79), 80);
+        assert_eq!(clamp_zoom(100), 100);
+        assert_eq!(clamp_zoom(104), 100);
+        assert_eq!(clamp_zoom(105), 110);
+        assert_eq!(clamp_zoom(150), 150);
+        assert_eq!(clamp_zoom(u32::MAX), 150);
+    }
+
+    #[test]
+    fn language_values_are_checked() {
+        for ok in ["system", "en", "de", "pt-BR", "zh-Hans", "en-XA"] {
+            assert!(valid_language(ok), "{ok}");
+        }
+        for bad in ["", "-de", "de_DE", "../x", "a very long language tag"] {
+            assert!(!valid_language(bad), "{bad}");
+        }
     }
 
     #[test]

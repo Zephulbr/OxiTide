@@ -28,7 +28,9 @@ The UI vendors the following fonts under the SIL Open Font License 1.1:
   (<http://www.keshikan.net>, <https://github.com/keshikan/DSEG>), with Reserved
   Font Name "DSEG"
 
-Font files: `ui/src/assets/fonts/`. The showcase site carries unmodified copies
+Font files: `ui/src/assets/fonts/`. Manrope and Inter are the unmodified Latin,
+Latin Extended, Cyrillic, Cyrillic Extended and Greek subsets of the
+`@fontsource-variable` 5.2.8 packages. The showcase site carries unmodified copies
 of Manrope, Inter and DSEG7 Classic in `site/assets/fonts/`.
 
 ### SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
@@ -131,6 +133,19 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 - **Simple Icons** brand paths (`ui/src/lib/components/BrandIcon.svelte`) —
   copied from simple-icons 16.35.0 (https://simpleicons.org, CC0-1.0). The
   logos themselves remain trademarks of their respective owners.
+
+## UI runtime dependencies (npm)
+
+Bundled into the webview build (`ui/`); dev-only packages (build, test) are not
+shipped.
+
+- `@tauri-apps/api`, `@tauri-apps/plugin-opener` — MIT OR Apache-2.0.
+- `intl-messageformat` 12 — Copyright (c) 2023, Oath Inc. New BSD license
+  (BSD-3-Clause); the full text is `ui/node_modules/intl-messageformat/LICENSE.md`
+  and <https://github.com/formatjs/formatjs/blob/main/LICENSE.md>. Added
+  2026-11-12 for translations (v1.1 i18n). Its dependencies
+  `@formatjs/icu-messageformat-parser`, `@formatjs/icu-skeleton-parser` and
+  `@formatjs/fast-memoize` are MIT.
 
 ## Rust dependencies
 

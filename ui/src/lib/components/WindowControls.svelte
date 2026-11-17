@@ -6,6 +6,7 @@
   // its hover/press/click arrive as `titlebar://snap` events instead of DOM
   // events. `maximizable` is false in the mini player (no maximize, no overlay).
   import { listen } from "@tauri-apps/api/event";
+  import { t } from "../i18n.svelte";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { api } from "../api";
   import Icon from "./Icon.svelte";
@@ -74,8 +75,8 @@
   });
 </script>
 
-<div class="window-controls" role="group" aria-label="Window controls">
-  <button class="cap" onclick={() => void win.minimize()} aria-label="Minimize" title="Minimize">
+<div class="window-controls" role="group" aria-label={t("window.controls")}>
+  <button class="cap" onclick={() => void win.minimize()} aria-label={t("window.minimize")} title={t("window.minimize")}>
     <Icon name="minus" size={16} />
   </button>
   {#if maximizable}
@@ -85,13 +86,13 @@
       class:press={snapPress}
       bind:this={maxButton}
       onclick={toggleMaximize}
-      aria-label={maximized ? "Restore" : "Maximize"}
-      title={maximized ? "Restore" : "Maximize"}
+      aria-label={maximized ? t("window.restore") : t("window.maximize")}
+      title={maximized ? t("window.restore") : t("window.maximize")}
     >
       <Icon name={maximized ? "copy" : "square"} size={maximized ? 14 : 13} />
     </button>
   {/if}
-  <button class="cap close" onclick={() => void win.close()} aria-label="Close" title="Close">
+  <button class="cap close" onclick={() => void win.close()} aria-label={t("window.close")} title={t("window.close")}>
     <Icon name="x" size={17} />
   </button>
 </div>

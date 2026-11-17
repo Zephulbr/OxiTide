@@ -3,6 +3,7 @@ import {
   type RackSettings,
 } from "./api";
 import { DEFAULT_CATJAM_SCALE, DEFAULT_COAT, clampCatjamScale, isCoat } from "./catjamSprite";
+import { language } from "./language.svelte";
 import {
   MODE_STORAGE_KEY, readMirror, readThemeMirror, resolveTheme, TONE_STORAGE_KEY, writeMirror,
   writeThemeMirror, type ResolvedTheme, type ThemeSetting,
@@ -52,6 +53,19 @@ export function clampQueueWidth(px: number): number {
   return Math.min(QUEUE_WIDTH_MAX, Math.max(QUEUE_WIDTH_MIN, Math.round(px)));
 }
 
+/// Interface zoom (v1.1 spec §12, A-5): 80–150 % in steps of 10.
+export const ZOOM_MIN = 80;
+export const ZOOM_MAX = 150;
+export const ZOOM_STEP = 10;
+export const ZOOM_DEFAULT = 100;
+
+/// Mirrors `clamp_zoom` in `config.rs`: nearest step, then the range.
+export function clampZoom(percent: number): number {
+  if (!Number.isFinite(percent)) return ZOOM_DEFAULT;
+  const rounded = Math.floor((percent + ZOOM_STEP / 2) / ZOOM_STEP) * ZOOM_STEP;
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, rounded));
+}
+
 /// Mode defaults: Manrope in Atmosphere and Rack, Inter in Instrument (spec §4/§6).
 export function resolveTypeface(t: TypefaceSetting, mode: UiMode): Typeface {
   if (t !== "auto") return t;
@@ -65,18 +79,22 @@ export function resolveDynamicColor(s: DynamicColorSetting, mode: UiMode): Dynam
   return mode === "rack" ? "off" : s;
 }
 
-/// The fallback chain always ends in system-ui (spec §6).
+/// The fallback after the chosen face: the language's CJK system fonts when
+/// the UI is in Japanese, Korean or Chinese (`--font-cjk`, set per `:lang()`
+/// in tokens.css), then system-ui (spec §6; v1.1 i18n spec §9).
+const FALLBACK = "var(--font-cjk, system-ui), sans-serif";
+
 export function fontStack(typeface: Typeface, custom: string): string {
   switch (typeface) {
     case "manrope":
-      return '"Manrope", system-ui, sans-serif';
+      return `"Manrope", ${FALLBACK}`;
     case "inter":
-      return '"Inter", system-ui, sans-serif';
+      return `"Inter", ${FALLBACK}`;
     case "system":
-      return "system-ui, sans-serif";
+      return FALLBACK;
     case "custom": {
       const name = custom.trim().replace(/["\\]/g, "");
-      return name ? `"${name}", system-ui, sans-serif` : "system-ui, sans-serif";
+      return name ? `"${name}", ${FALLBACK}` : FALLBACK;
     }
   }
 }
@@ -121,7 +139,11 @@ export interface Appearance {
   /// Hi-Fi Rack: App mounts `RackShell` instead of the default shell (RK-D1).
   readonly rackShell: boolean;
   readonly rack: RackSettings;
+  /// Interface zoom in percent (the webview's zoom; the mini player stays at 100).
+  readonly zoom: number;
   init(): Promise<void>;
+  /// Stores and applies the zoom; the stored (clamped) value wins.
+  setZoom(percent: number): Promise<void>;
   setRack(patch: Partial<RackSettings>): Promise<void>;
   setMode(mode: UiMode): Promise<void>;
   setTheme(theme: ThemeSetting): Promise<void>;
@@ -175,6 +197,7 @@ export function createAppearance(): Appearance {
   let playerBarStyle = $state<PanelStyle>("docked");
   let queueStyle = $state<PanelStyle>("docked");
   let rack = $state<RackSettings>(defaultRackSettings());
+  let zoom = $state(ZOOM_DEFAULT);
 
   function apply() {
     const root = document.documentElement;
@@ -203,8 +226,10 @@ export function createAppearance(): Appearance {
     });
     // The mirrored look (and its default typeface) holds until the config lands.
     apply();
+    let savedLanguage: string | undefined;
     try {
       const config = await api.getConfig();
+      savedLanguage = config.ui.language;
       if (UI_MODES.includes(config.ui.mode)) mode = config.ui.mode;
       theme = config.ui.theme;
       if (isInstrumentTone(config.ui.instrument_tone)) instrumentTone = config.ui.instrument_tone;
@@ -223,6 +248,7 @@ export function createAppearance(): Appearance {
       if (isPanelStyle(config.ui.player_bar_style)) playerBarStyle = config.ui.player_bar_style;
       if (isPanelStyle(config.ui.queue_style)) queueStyle = config.ui.queue_style;
       if (config.rack) rack = { ...defaultRackSettings(), ...config.rack };
+      zoom = clampZoom(config.ui.zoom ?? ZOOM_DEFAULT);
     } catch {
       // Defaults are fine; a config failure must not block boot.
     }
@@ -230,6 +256,9 @@ export function createAppearance(): Appearance {
     writeMirror(themeStorage(), MODE_STORAGE_KEY, mode);
     writeMirror(themeStorage(), TONE_STORAGE_KEY, instrumentTone);
     apply();
+    // The config is the source of truth for the language too: this corrects
+    // the boot mirror and tells the shell (tray, taskbar).
+    void language.apply(savedLanguage);
   }
 
   /// Each mode keeps its own Typography & layout and Dynamic color; the
@@ -347,6 +376,21 @@ export function createAppearance(): Appearance {
     }
   }
 
+  /// Rust applies the zoom to the webview (it knows whether the mini player
+  /// shows); the stored value wins, a failure reverts.
+  async function setZoom(percent: number): Promise<void> {
+    const previous = zoom;
+    zoom = clampZoom(percent);
+    if (zoom === previous) return;
+    try {
+      const stored = await api.setZoom(zoom);
+      if (typeof stored === "number") zoom = clampZoom(stored);
+    } catch (error) {
+      zoom = previous;
+      throw error;
+    }
+  }
+
   /// Local-first; a failed persist reverts so the UI never disagrees with the
   /// stored config. The stored (clamped) value wins on success.
   async function setRack(patch: Partial<RackSettings>): Promise<void> {
@@ -394,8 +438,10 @@ export function createAppearance(): Appearance {
     get vinylRecords() { return mode === "rack"; },
     get rackShell() { return mode === "rack"; },
     get rack() { return rack; },
+    get zoom() { return zoom; },
     init,
     setRack,
+    setZoom,
     setMode: (m) => {
       mode = m;
       writeMirror(themeStorage(), MODE_STORAGE_KEY, m);

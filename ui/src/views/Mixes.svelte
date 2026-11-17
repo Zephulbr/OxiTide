@@ -11,6 +11,7 @@
   import type { Nav } from "../lib/nav.svelte";
   import type { Player } from "../lib/player.svelte";
   import type { Toasts } from "../lib/toasts.svelte";
+  import { t } from "../lib/i18n.svelte";
 
   let { nav, player, toasts }: { nav: Nav; player: Player; toasts: Toasts } = $props();
 
@@ -42,20 +43,20 @@
   });
 </script>
 
-<h2>Mixes &amp; Radio</h2>
+<h2>{t("nav.mixesAndRadio")}</h2>
 {#if loading}
   <Loading />
 {:else if error}
   <ErrorState message={error} onRetry={load} />
 {:else if forYou.length === 0 && mixes.length === 0}
-  <EmptyState message="No mixes yet." />
+  <EmptyState message={t("mixes.empty")} />
 {:else}
   <div class:arrive>
   {#if forYou.length > 0}
     <PageSections sections={forYou} {nav} {player} {toasts} source="forYou" />
   {/if}
   {#if mixes.length > 0}
-    <h3>Favorite mixes</h3>
+    <h3>{t("mixes.favorites")}</h3>
     <div class="grid">
       {#each mixes as mix (mix.id)}
         {@const item: PageItem = {

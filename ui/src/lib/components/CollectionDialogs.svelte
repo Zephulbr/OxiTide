@@ -6,6 +6,7 @@
   import { DESCRIPTION_MAX, folderColorCss, folderMeta, type FolderColorId } from "../folderMeta.svelte";
   import FolderColorPicker from "./FolderColorPicker.svelte";
   import Icon from "./Icon.svelte";
+  import { t } from "../i18n.svelte";
 
   let { actions }: { actions: CollectionActions } = $props();
 
@@ -37,15 +38,15 @@
   function removeMessage(): string {
     const target = actions.removeTarget;
     if (!target) return "";
-    if (target.kind === "folder") return `Remove "${target.name}"? Its playlists move back to All playlists.`;
-    if (target.owned) return `Delete "${target.title}"? This cannot be undone.`;
-    return `Remove "${target.title}" from your collection?`;
+    if (target.kind === "folder") return t("collection.removeFolderMessage", { name: target.name });
+    if (target.owned) return t("collection.deletePlaylistMessage", { name: target.title });
+    return t("collection.removeMessage", { name: target.title });
   }
 </script>
 
 {#if actions.renameTarget}
   <Modal
-    title={actions.renameTarget.kind === "playlist" ? "Rename playlist" : "Edit folder"}
+    title={actions.renameTarget.kind === "playlist" ? t("collection.renamePlaylist") : t("collection.editFolder")}
     onclose={() => actions.close()}
   >
     {@const isFolder = actions.renameTarget.kind === "folder"}
@@ -56,36 +57,36 @@
       }}
     >
       <label>
-        Name
-        <input bind:value={name} aria-label="Name" />
+        {t("common.name")}
+        <input bind:value={name} aria-label={t("common.name")} />
       </label>
       {#if isFolder}
         <div class="field">
-          <span>Color</span>
+          <span>{t("collection.color")}</span>
           <FolderColorPicker bind:value={color} />
         </div>
         <label class="desc">
-          Description
+          {t("common.description")}
           <textarea
             bind:value={description}
-            aria-label="Description"
+            aria-label={t("common.description")}
             rows="3"
             maxlength={DESCRIPTION_MAX}
-            placeholder="Optional"
+            placeholder={t("common.optional")}
           ></textarea>
-          <span class="muted hint">Saved on this device only; TIDAL folders keep just a name.</span>
+          <span class="muted hint">{t("collection.folderDescriptionHint")}</span>
         </label>
       {/if}
       <p class="actions">
-        <button type="button" onclick={() => actions.close()}>Cancel</button>
-        <button type="submit" disabled={actions.busy || name.trim() === ""}>Save</button>
+        <button type="button" onclick={() => actions.close()}>{t("common.cancel")}</button>
+        <button type="submit" disabled={actions.busy || name.trim() === ""}>{t("common.save")}</button>
       </p>
     </form>
   </Modal>
 {/if}
 
 {#if actions.createFolderTarget}
-  <Modal title="New folder" onclose={() => actions.close()}>
+  <Modal title={t("collection.newFolder")} onclose={() => actions.close()}>
     <form
       onsubmit={(event) => {
         event.preventDefault();
@@ -93,16 +94,16 @@
       }}
     >
       <label>
-        Name
-        <input bind:value={folderName} aria-label="Folder name" />
+        {t("common.name")}
+        <input bind:value={folderName} aria-label={t("collection.folderName")} />
       </label>
       <div class="field">
-        <span>Color</span>
+        <span>{t("collection.color")}</span>
         <FolderColorPicker bind:value={newColor} />
       </div>
       <p class="actions">
-        <button type="button" onclick={() => actions.close()}>Cancel</button>
-        <button type="submit" disabled={actions.busy || folderName.trim() === ""}>Create</button>
+        <button type="button" onclick={() => actions.close()}>{t("common.cancel")}</button>
+        <button type="submit" disabled={actions.busy || folderName.trim() === ""}>{t("common.create")}</button>
       </p>
     </form>
   </Modal>
@@ -111,10 +112,10 @@
 {#if actions.removeTarget}
   <ConfirmDialog
     title={actions.removeTarget.kind === "folder"
-      ? "Remove folder"
+      ? t("collection.removeFolder")
       : actions.removeTarget.owned
-        ? "Delete playlist?"
-        : "Remove from collection"}
+        ? t("collection.deletePlaylist")
+        : t("collection.removeFromCollection")}
     message={removeMessage()}
     onconfirm={() => void actions.confirmRemove()}
     oncancel={() => actions.close()}
@@ -122,9 +123,9 @@
 {/if}
 
 {#if actions.moveTarget}
-  <Modal title={`Move ${actions.moveTarget.title}`} onclose={() => actions.close()}>
+  <Modal title={t("collection.moveTitle", { name: actions.moveTarget.title })} onclose={() => actions.close()}>
     {#if actions.foldersLoading && actions.folderOptions.length === 0}
-      <Loading label="Loading folders…" />
+      <Loading label={t("collection.loadingFolders")} />
     {/if}
     {@const inFolder = actions.moveFrom !== "root"}
     <ul class="folders">
@@ -133,7 +134,7 @@
       {#if inFolder}
         <li>
           <button class="out" onclick={() => void actions.move("root")}>
-            <Icon name="folder-minus" size={16} /><span>Remove from folder</span>
+            <Icon name="folder-minus" size={16} /><span>{t("collection.removeFromFolder")}</span>
           </button>
         </li>
       {/if}
@@ -146,13 +147,13 @@
               <Icon name="folder" size={16} />
             </span>
             <span>{option.folder.name}</span>
-            {#if current}<span class="muted here">Current</span>{/if}
+            {#if current}<span class="muted here">{t("collection.currentFolder")}</span>{/if}
           </button>
         </li>
       {/each}
     </ul>
     {#if actions.folderOptions.length === 0 && !actions.foldersLoading}
-      <p class="muted">No folders yet.</p>
+      <p class="muted">{t("collection.noFolders")}</p>
     {/if}
   </Modal>
 {/if}

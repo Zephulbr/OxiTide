@@ -1,4 +1,4 @@
-import type { Mix, PageItem, PageTrackInput, Playlist } from "./api";
+import type { PageItem, PageTrackInput } from "./api";
 
 export type CardShape = "artist" | "album" | "playlist" | "mix" | "plain";
 export type SectionTreatment = "tiles" | "carousel" | "list" | "links";
@@ -85,49 +85,4 @@ export function pageTrackInput(item: PageItem): PageTrackInput {
     cover: item.artwork ?? null,
     explicit: item.explicit ?? null,
   };
-}
-
-export interface ShortcutEntry {
-  key: string;
-  item: PageItem;
-  playlist: boolean;
-  route: { name: "playlist"; id: string } | { name: "mix"; id: string };
-}
-
-/// Home's quick-access strip: owned playlists first, then saved mixes.
-export function shortcutEntries(
-  playlists: Playlist[],
-  mixes: Mix[],
-  cap = 6,
-): ShortcutEntry[] {
-  const entries: ShortcutEntry[] = [];
-  for (const p of playlists) {
-    entries.push({
-      key: `playlist-${p.uuid}`,
-      playlist: true,
-      route: { name: "playlist", id: p.uuid },
-      item: {
-        id: p.uuid,
-        title: p.title,
-        subtitle: "Playlist",
-        item_type: "PLAYLIST_LIST",
-        artwork: p.squareImage ?? p.image ?? null,
-      },
-    });
-  }
-  for (const m of mixes) {
-    entries.push({
-      key: `mix-${m.id}`,
-      playlist: false,
-      route: { name: "mix", id: m.id },
-      item: {
-        id: m.id,
-        title: m.title,
-        subtitle: "Saved mix",
-        item_type: "MIX_LIST",
-        artwork: m.image ?? null,
-      },
-    });
-  }
-  return entries.slice(0, cap);
 }

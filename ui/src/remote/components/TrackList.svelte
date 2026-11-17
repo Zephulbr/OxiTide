@@ -4,6 +4,7 @@
   import type { RowTrack } from "../convert";
   import Sentinel from "./Sentinel.svelte";
   import TrackRow from "./TrackRow.svelte";
+  import { t } from "../i18n.svelte";
 
   /// Play / Shuffle / Add-all header plus rows; `numbered` shows album track
   /// numbers. Paged lists (`more` + `total`) load the next page as the end
@@ -67,18 +68,18 @@
 {#if tracks.length > 0}
   <div class="actions">
     <button class="pill primary" disabled={preparing} onclick={() => playAll(0, false)}>
-      <Icon name="play" size={18} /> Play
+      <Icon name="play" size={18} /> {t("np.play")}
     </button>
     <button class="pill" disabled={preparing} onclick={() => playAll(0, true)}>
-      <Icon name="shuffle" size={18} /> Shuffle
+      <Icon name="shuffle" size={18} /> {t("np.shuffle")}
     </button>
-    <button class="icon-btn" aria-label="Add all to queue" onclick={() => actions.enqueue(tracks)}>
+    <button class="icon-btn" aria-label={t("list.queueAll")} onclick={() => actions.enqueue(tracks)}>
       <Icon name="list-plus" size={20} />
     </button>
-    <button class="icon-btn" aria-label="Add all to a playlist" onclick={() => actions.pickPlaylist(tracks)}>
+    <button class="icon-btn" aria-label={t("list.playlistAll")} onclick={() => actions.pickPlaylist(tracks)}>
       <Icon name="plus" size={20} />
     </button>
-    {#if preparing}<span class="muted note" role="status">Loading the whole list…</span>{/if}
+    {#if preparing}<span class="muted note" role="status">{t("list.loadingAll")}</span>{/if}
   </div>
 {/if}
 
@@ -97,10 +98,10 @@
   {#if !failed}<Sentinel onvisible={loadMore} armed={tracks.length} />{/if}
   <div class="tail">
     {#if failed}
-      <button class="pill" onclick={loadMore}>Retry loading</button>
+      <button class="pill" onclick={loadMore}>{t("list.retry")}</button>
     {:else}
       <span class="spinner" aria-hidden="true"></span>
-      <span class="muted" role="status">Loading more ({total! - tracks.length} left)…</span>
+      <span class="muted" role="status">{t("list.loadingMore", { left: total! - tracks.length })}</span>
     {/if}
   </div>
 {/if}

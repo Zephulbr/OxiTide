@@ -26,6 +26,7 @@
   import { hrefFor, parseHash, tabFor } from "./routes";
   import { createClient, guessDeviceName, pairingToken } from "./rpc";
   import { RemoteStore } from "./store.svelte";
+  import { t, tSplit } from "./i18n.svelte";
 
   const client = createClient();
   const api = remoteApi(client.call);
@@ -87,45 +88,40 @@
   <div class="screen">
     <Icon name="disc-3" size={48} />
     {#if pairing.error}
-      <h1>Pairing failed</h1>
+      <h1>{t("pair.failed")}</h1>
       <p class="muted">{pairing.error}</p>
-      <button class="pill primary" onclick={() => pairing && pair(pairing.token)}>Try again</button>
-      <p class="muted small">Or show a new QR code in OxiTide on your PC and scan it again.</p>
+      <button class="pill primary" onclick={() => pairing && pair(pairing.token)}>{t("common.tryAgain")}</button>
+      <p class="muted small">{t("pair.newCode")}</p>
     {:else}
-      <h1>Pairing…</h1>
-      <p class="muted">If OxiTide asks, approve this phone on your PC.</p>
+      <h1>{t("pair.pairing")}</h1>
+      <p class="muted">{t("pair.approve")}</p>
     {/if}
   </div>
 {:else if store.phase === "unpaired"}
+  {@const [before, after] = tSplit("pair.howTo", "button")}
   <div class="screen">
     <Icon name="disc-3" size={48} />
-    <h1>Pair this phone</h1>
-    <p class="muted">
-      On your PC, open OxiTide → Settings → Connections → <strong>Pair a phone</strong>, then scan
-      the QR code with this phone's camera.
-    </p>
+    <h1>{t("pair.title")}</h1>
+    <p class="muted">{before}<strong>{t("pair.button")}</strong>{after}</p>
   </div>
 {:else if !ready}
   <div class="screen" aria-busy="true">
     <Icon name="disc-3" size={48} />
-    <h1>Connecting to OxiTide…</h1>
+    <h1>{t("connect.title")}</h1>
     {#if store.phase === "connecting" && store.state === null}
-      <p class="muted small">
-        Make sure OxiTide is running on your PC with the phone remote on, and that this phone is
-        on the same Wi-Fi.
-      </p>
+      <p class="muted small">{t("connect.hint")}</p>
     {/if}
   </div>
 {:else if signedOut}
   <div class="screen">
     <Icon name="log-out" size={48} />
-    <h1>Sign in on the PC</h1>
+    <h1>{t("connect.signIn")}</h1>
     <p class="muted">{store.session}</p>
   </div>
 {:else}
   <div class="shell">
     {#if store.phase === "reconnecting"}
-      <div class="banner" role="status">Reconnecting to your PC…</div>
+      <div class="banner" role="status">{t("connect.reconnecting")}</div>
     {:else if store.session}
       <div class="banner" role="status">{store.session}</div>
     {/if}

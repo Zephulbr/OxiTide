@@ -13,6 +13,7 @@ import { ARTIST_PICTURE_SIZE, artistArt, coverUrl, type CoverSize } from "../lib
 import { isPlayableTrack, pageTrackInput } from "../lib/media";
 import type { RemoteRoute } from "./routes";
 import { routeForItem } from "./routes";
+import { t } from "./i18n.svelte";
 
 /// One track row, whatever the source (catalogue, feed, history, queue).
 export interface RowTrack {
@@ -165,7 +166,7 @@ export function artistTile(artist: Artist): Tile {
   return {
     key: `artist-${artist.id}`,
     title: artist.name,
-    subtitle: "Artist",
+    subtitle: t("kind.artist"),
     image: artistImage(artist),
     round: true,
     route: { name: "artist", id: artist.id },
@@ -177,7 +178,7 @@ export function playlistTile(playlist: Playlist): Tile {
   return {
     key: `playlist-${playlist.uuid}`,
     title: playlist.title,
-    subtitle: `${playlist.numberOfTracks} tracks`,
+    subtitle: t("common.trackCount", { count: playlist.numberOfTracks }),
     image: art(playlist.squareImage ?? playlist.image),
     round: false,
     route: { name: "playlist", id: playlist.uuid },
@@ -189,7 +190,7 @@ export function mixTile(mix: Mix): Tile {
   return {
     key: `mix-${mix.id}`,
     title: mix.title,
-    subtitle: mix.subTitle ?? "Mix",
+    subtitle: mix.subTitle ?? t("kind.mix"),
     image: art(mix.image),
     round: false,
     route: { name: "mix", id: mix.id },

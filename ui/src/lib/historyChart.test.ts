@@ -15,11 +15,11 @@ describe("peakIndex", () => {
 describe("hour helpers", () => {
   it("labels and phrases hours", () => {
     expect(hourLabel(7)).toBe("07:00");
-    expect(dayPart(2)).toBe("late at night");
-    expect(dayPart(9)).toBe("in the morning");
-    expect(dayPart(14)).toBe("in the afternoon");
-    expect(dayPart(19)).toBe("in the evening");
-    expect(dayPart(23)).toBe("at night");
+    expect(dayPart(2)).toBe("lateNight");
+    expect(dayPart(9)).toBe("morning");
+    expect(dayPart(14)).toBe("afternoon");
+    expect(dayPart(19)).toBe("evening");
+    expect(dayPart(23)).toBe("night");
   });
 
   it("rounds shares and guards an empty whole", () => {

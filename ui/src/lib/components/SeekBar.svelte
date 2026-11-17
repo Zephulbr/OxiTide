@@ -4,6 +4,7 @@
   import type { Player } from "../player.svelte";
   import { seekByKey, seekRatio } from "../seek";
   import { waveFillPath, wavePath, type WaveTaper } from "../wave";
+  import { t } from "../i18n.svelte";
 
   let {
     player,
@@ -87,7 +88,7 @@
     data-oneko-perch
     role="slider"
     tabindex="0"
-    aria-label="Playback position"
+    aria-label={t("seek.label")}
     aria-valuemin={0}
     aria-valuemax={Math.max(duration, 1)}
     aria-valuenow={Math.round(position)}
@@ -399,5 +400,19 @@
   }
   :global(.app[data-player="floating"]) .seek.edge .seek-line > .seek-fill {
     visibility: hidden;
+  }
+  /* Windows contrast themes (A-3): the seek paints its own track, fill,
+     thumb and wave from the system-colour tokens (forced-colors.css). The
+     thumb shows at rest so the position never depends on hover. */
+  @media (forced-colors: active) {
+    .seek {
+      forced-color-adjust: none;
+    }
+    .seek-cap {
+      backdrop-filter: none;
+    }
+    .seek-thumb {
+      transform: translate(-50%, -50%) scale(1);
+    }
   }
 </style>

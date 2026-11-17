@@ -3,6 +3,7 @@ import { api, type Playlist, type Track } from "./api";
 import { errorMessage } from "./errors";
 import { invalidatePlaylistCovers } from "./playlistArt.svelte";
 import type { Toasts } from "./toasts.svelte";
+import { i18n } from "./i18n.svelte";
 
 export interface PlaylistActions {
   readonly open: boolean;
@@ -156,7 +157,7 @@ export function createPlaylistActions(toasts: Toasts): PlaylistActions {
     try {
       const count = await addSkippingDuplicates(playlist);
       if (count !== null) {
-        toasts.show(`${count} added to ${playlist.title}`, { severity: "success" });
+        toasts.show(i18n.t("playlist.addedCount", { count, playlist: playlist.title }), { severity: "success" });
         close();
       }
     } catch (e) {
@@ -176,11 +177,13 @@ export function createPlaylistActions(toasts: Toasts): PlaylistActions {
         return;
       }
       const message =
-        count === 1 ? `Added "${tracks[0].title}" to ${playlist.title}` : `Added ${count} tracks to ${playlist.title}`;
+        count === 1
+          ? i18n.t("playlist.addedOne", { title: tracks[0].title, playlist: playlist.title })
+          : i18n.t("playlist.addedMany", { count, playlist: playlist.title });
       const onOpen = onOpenAfter;
       toasts.show(message, {
         severity: "success",
-        action: onOpen ? { label: "Open", run: onOpen } : undefined,
+        action: onOpen ? { label: i18n.t("menu.open"), run: onOpen } : undefined,
       });
       close();
     } catch (e) {
@@ -196,7 +199,7 @@ export function createPlaylistActions(toasts: Toasts): PlaylistActions {
   ) {
     if (open) return;
     if (busy) {
-      toasts.show("Still adding the last tracks; try again in a moment.", { severity: "info" });
+      toasts.show(i18n.t("playlist.stillAdding"), { severity: "info" });
       return;
     }
     busy = true;
@@ -245,17 +248,16 @@ export function createPlaylistActions(toasts: Toasts): PlaylistActions {
         noteAdded(target.uuid);
       }
       const kept = uniqueDuplicates.length - addBoth.length;
-      const copies = addBoth.length === 1 ? "1 copy" : `${addBoth.length} copies`;
       const message =
         addBoth.length === 0
-          ? `Kept one of ${kept === 1 ? "the duplicate" : `${kept} duplicates`}`
+          ? i18n.t("playlist.keptDuplicates", { kept })
           : kept === 0
-            ? `Added ${copies}`
-            : `Added ${copies}, kept one of ${kept}`;
+            ? i18n.t("playlist.addedCopies", { count: addBoth.length })
+            : i18n.t("playlist.addedCopiesKept", { count: addBoth.length, kept });
       toasts.show(message, { severity: "info" });
       close();
     } catch (e) {
-      toasts.show(`Some tracks were already added, but the duplicate update failed: ${errorMessage(e)}`, {
+      toasts.show(i18n.t("playlist.duplicatesFailed", { error: errorMessage(e) }), {
         severity: "error",
       });
     } finally {
@@ -278,28 +280,27 @@ export function createPlaylistActions(toasts: Toasts): PlaylistActions {
           await api.setPlaylistPublic(created.uuid, true);
         } catch (e) {
           toasts.show(
-            `Created ${created.title}, but making it public failed: ${errorMessage(e)}`,
+            i18n.t("playlist.createdNotPublic", { playlist: created.title, error: errorMessage(e) }),
             { severity: "error" },
           );
         }
       }
       const ids = dedupe(tracks.map((t) => t.id));
       if (ids.length > 0) {
-        const noun = ids.length === 1 ? "track" : "tracks";
         try {
           await api.addPlaylistTracks(created.uuid, ids, false);
           invalidatePlaylistCovers(created.uuid);
-          toasts.show(`Created ${created.title} with ${ids.length} ${noun}`, {
+          toasts.show(i18n.t("playlist.createdWith", { playlist: created.title, count: ids.length }), {
             severity: "success",
           });
         } catch (e) {
           toasts.show(
-            `Created ${created.title}, but adding ${ids.length} ${noun} failed: ${errorMessage(e)}`,
+            i18n.t("playlist.createdAddFailed", { playlist: created.title, count: ids.length, error: errorMessage(e) }),
             { severity: "error" },
           );
         }
       } else {
-        toasts.show(`Created ${created.title}`, { severity: "success" });
+        toasts.show(i18n.t("playlist.created", { playlist: created.title }), { severity: "success" });
       }
       close();
       return created;

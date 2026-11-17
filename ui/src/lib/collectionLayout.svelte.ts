@@ -1,4 +1,5 @@
 import type { IconName } from "./components/Icon.svelte";
+import { t } from "./i18n.svelte";
 
 /// The sidebar's "My Collection" entries. Each key is also its route's name.
 export type CollectionKey =
@@ -11,13 +12,14 @@ export type CollectionKey =
   | "purchases";
 
 export const COLLECTION_ITEMS: Record<CollectionKey, { label: string; icon: IconName }> = {
-  playlists: { label: "Playlists", icon: "list-music" },
-  albums: { label: "Albums", icon: "disc-3" },
-  tracks: { label: "Tracks", icon: "music" },
-  later: { label: "Save for Later", icon: "bookmark" },
-  mixes: { label: "Mixes & Radio", icon: "disc-3" },
-  profiles: { label: "Profiles", icon: "heart" },
-  purchases: { label: "Purchases", icon: "copy" },
+  // Getters, so a language switch relabels the sidebar.
+  playlists: { get label() { return t("route.playlists"); }, icon: "list-music" },
+  albums: { get label() { return t("route.albums"); }, icon: "disc-3" },
+  tracks: { get label() { return t("route.tracks"); }, icon: "music" },
+  later: { get label() { return t("route.later"); }, icon: "bookmark" },
+  mixes: { get label() { return t("nav.mixesAndRadio"); }, icon: "disc-3" },
+  profiles: { get label() { return t("nav.profiles"); }, icon: "heart" },
+  purchases: { get label() { return t("route.purchases"); }, icon: "copy" },
 };
 
 /// The default order; the first `DEFAULT_SPLIT` sit above the line.

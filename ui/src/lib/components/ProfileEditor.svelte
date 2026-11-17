@@ -13,7 +13,7 @@
     normalizeLink,
     profileChanges,
     socialFor,
-    USERNAME_RULE,
+    usernameRule,
     usernameValid,
     type ProfileDraft,
     type SocialKind,
@@ -24,6 +24,7 @@
   import Icon from "./Icon.svelte";
   import Loading from "./Loading.svelte";
   import Modal from "./Modal.svelte";
+  import { t, tSplit, type MessageKey } from "../i18n.svelte";
 
   /// The account's own profile, edited in place: name, username, bio, links,
   /// picture, banner and logo, written to TIDAL (`update_my_profile` and the
@@ -56,11 +57,12 @@
   const emptySlot = (): Slot => ({ file: null, preview: null, remove: false });
   /// One row per slot: `label` is shown (and names its file picker), `noun`
   /// names it in the buttons.
-  const ART_ROWS: { art: ProfileArt; label: string; noun: string }[] = [
-    { art: "picture", label: "Profile picture", noun: "picture" },
-    { art: "banner", label: "Banner", noun: "banner" },
-    { art: "logo", label: "Logo", noun: "logo" },
+  const ART_ROWS: { art: ProfileArt; label: MessageKey }[] = [
+    { art: "picture", label: "profileEdit.picture" },
+    { art: "banner", label: "profileEdit.banner" },
+    { art: "logo", label: "profileEdit.logo" },
   ];
+  const USERNAME_RULE = $derived(usernameRule());
   let slots = $state<Record<ProfileArt, Slot>>({ picture: emptySlot(), banner: emptySlot(), logo: emptySlot() });
   let inputs = $state<Record<ProfileArt, HTMLInputElement | null>>({ picture: null, banner: null, logo: null });
 
@@ -198,23 +200,23 @@
   }
 </script>
 
-<Modal title={confirmingUsername ? "Save username?" : "Edit profile"} {onclose}>
+<Modal title={confirmingUsername ? t("profileEdit.saveUsername") : t("artist.editProfile")} {onclose}>
   {#if confirmingUsername}
     <div class="confirm arrive">
-      <p class="confirm-lead">Your username will be @{cleanUsername(draft.handle)}</p>
-      <p class="muted">If you change your username later, be sure to update links to your profile on other platforms.</p>
+      <p class="confirm-lead">{t("profileEdit.usernameWillBe", { handle: cleanUsername(draft.handle) })}</p>
+      <p class="muted">{t("profileEdit.usernameWarning")}</p>
       <p class="actions">
-        <button type="button" class="btn ghost" onclick={() => (confirmingUsername = false)}>Cancel</button>
-        <button type="button" class="btn primary" onclick={() => void commit()}>Save</button>
+        <button type="button" class="btn ghost" onclick={() => (confirmingUsername = false)}>{t("common.cancel")}</button>
+        <button type="button" class="btn primary" onclick={() => void commit()}>{t("common.save")}</button>
       </p>
     </div>
   {:else if loadError}
     <div class="sized">
       <p class="error" role="alert">{loadError}</p>
-      <p class="actions"><button type="button" class="btn ghost" onclick={onclose}>Close</button></p>
+      <p class="actions"><button type="button" class="btn ghost" onclick={onclose}>{t("common.close")}</button></p>
     </div>
   {:else if !original}
-    <div class="sized loading-box"><Loading label="Loading your profile…" /></div>
+    <div class="sized loading-box"><Loading label={t("profileEdit.loading")} /></div>
   {:else}
     {@const profile = original}
     <form class="arrive" onsubmit={submit}>
@@ -222,10 +224,10 @@
            The banner and logo are uploaded to TIDAL but not shown in
            OxiTide's artist pages yet (they read an API without them). -->
       <div class="media">
-        {#each ART_ROWS as { art, label, noun } (art)}
+        {#each ART_ROWS as { art, label } (art)}
           {@const shown = showsArt(art)}
           {@const src = artSrc(art)}
-          {@const action = `${shown ? "Change" : "Add"} ${noun}`}
+          {@const action = t(shown ? "profileEdit.change" : "profileEdit.add", { art })}
           <div class="media-row">
             <span class="thumb {art}" class:empty={!shown}>
               {#if src}
@@ -239,8 +241,8 @@
               {/if}
             </span>
             <span class="media-text">
-              <span class="media-label">{label}</span>
-              <span class="muted hint">PNG or JPEG</span>
+              <span class="media-label">{t(label)}</span>
+              <span class="muted hint">{t("profileEdit.fileTypes")}</span>
             </span>
             <span class="media-tools">
               <button
@@ -255,8 +257,8 @@
                 <button
                   type="button"
                   class="tool-btn square remove"
-                  aria-label={`Remove ${noun}`}
-                  title={`Remove ${noun}`}
+                  aria-label={t("profileEdit.remove", { art })}
+                  title={t("profileEdit.remove", { art })}
                   onclick={() => clearArt(art)}
                   disabled={saving}><Icon name="trash-2" size={15} /></button
                 >
@@ -267,7 +269,7 @@
               class="file"
               type="file"
               accept="image/jpeg,image/png"
-              aria-label={label}
+              aria-label={t(label)}
               onchange={(e) => pick(art, e)}
             />
           </div>
@@ -275,11 +277,11 @@
       </div>
 
       <div class="field">
-        <label for="profile-name">Name</label>
+        <label for="profile-name">{t("common.name")}</label>
         <input id="profile-name" class="text" bind:value={draft.name} maxlength="100" autocomplete="off" />
       </div>
       <div class="field">
-        <label for="profile-username">Username</label>
+        <label for="profile-username">{t("profileEdit.username")}</label>
         <span class="box" class:invalid={!usernameOk}>
           <span class="at" aria-hidden="true">@</span>
           <input
@@ -300,7 +302,7 @@
         {/if}
       </div>
       <div class="field">
-        <label for="profile-bio">Bio</label>
+        <label for="profile-bio">{t("profileEdit.bio")}</label>
         <textarea
           id="profile-bio"
           class="text"
@@ -310,25 +312,25 @@
           disabled={profile.bioId == null}
         ></textarea>
         {#if profile.bioId == null}
+          {@const [before, after] = tSplit("profileEdit.firstBio", "editor")}
           <span class="muted hint">
-            A first bio can only be added in
-            <button
+            {before}<button
               type="button"
               class="inline-link"
-              onclick={() => void api.openExternal(profileEditUrl(profile.artistId))}>TIDAL's editor</button
-            >; after that it is edited here.
+              onclick={() => void api.openExternal(profileEditUrl(profile.artistId))}>{t("profileEdit.tidalEditor")}</button
+            >{after}
           </span>
         {/if}
       </div>
 
       <div class="field">
-        <span id="profile-links-label" class="label">Links</span>
+        <span id="profile-links-label" class="label">{t("artist.links")}</span>
         {#if draft.links.length > 0}
           <ul class="links" aria-labelledby="profile-links-label">
             {#each draft.links as row, i (i)}
               {@const social = socialFor(row.social)}
               {@const brand = social?.brand ?? linkBrand("", normalizeLink(row.href))}
-              {@const name = social?.label ?? `Link ${i + 1}`}
+              {@const name = social?.label ?? t("profileEdit.linkN", { n: i + 1 })}
               <li class="arrive">
                 <span class="box">
                   <span class="link-mark" aria-hidden="true">
@@ -338,15 +340,15 @@
                     id={`profile-link-${i}`}
                     bind:value={draft.links[i].href}
                     aria-label={name}
-                    placeholder={social ? "Username or link" : "yoursite.com"}
+                    placeholder={social ? t("profileEdit.socialPlaceholder") : t("profileEdit.sitePlaceholder")}
                     spellcheck="false"
                   />
                 </span>
                 <button
                   type="button"
                   class="icon-btn"
-                  aria-label={`Remove ${social ? social.label : `link ${i + 1}`}`}
-                  title="Remove"
+                  aria-label={t("profileEdit.removeLink", { name })}
+                  title={t("menu.remove")}
                   onclick={() => (draft.links = draft.links.filter((_, j) => j !== i))}
                   ><Icon name="x" size={15} /></button
                 >
@@ -357,14 +359,14 @@
         <!-- Add link, then one quick-add per social field the form lacks. -->
         <div class="link-adds">
           <button type="button" class="tool-btn add-link" onclick={() => void addLink(null)}>
-            <Icon name="plus" size={15} /> Add link
+            <Icon name="plus" size={15} /> {t("profileEdit.addLink")}
           </button>
           {#each socialsToAdd as social (social.kind)}
             <button
               type="button"
               class="social-add"
-              aria-label={`Add ${social.label}`}
-              title={`Add ${social.label}`}
+              aria-label={t("profileEdit.addSocial", { site: social.label })}
+              title={t("profileEdit.addSocial", { site: social.label })}
               onclick={() => void addLink(social.kind)}><BrandIcon brand={social.brand} size={17} /></button
             >
           {/each}
@@ -379,9 +381,9 @@
       {/if}
 
       <p class="actions">
-        <button type="button" class="btn ghost" onclick={onclose} disabled={saving}>Cancel</button>
+        <button type="button" class="btn ghost" onclick={onclose} disabled={saving}>{t("common.cancel")}</button>
         <button type="submit" class="btn primary" disabled={saving || !dirty || problem !== null}
-          >{saving ? "Saving…" : "Save"}</button
+          >{saving ? t("profileEdit.saving") : t("common.save")}</button
         >
       </p>
     </form>

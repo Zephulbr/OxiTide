@@ -4,6 +4,7 @@ import {
   appearance,
   clampLampBrightness,
   clampQueueWidth,
+  clampZoom,
   createAppearance,
   defaultRackSettings,
   fontStack,
@@ -19,6 +20,7 @@ vi.mock("./api", () => ({
     setCatjam: vi.fn(),
     setCatjamCoat: vi.fn(),
     setCatjamScale: vi.fn(),
+    setZoom: vi.fn(),
     setTheme: vi.fn(),
     setUiMode: vi.fn(),
     setInstrumentTone: vi.fn(),
@@ -148,25 +150,35 @@ describe("clampQueueWidth", () => {
   });
 });
 
+describe("clampZoom", () => {
+  it("rounds to steps of ten within 80–150 (mirrors clamp_zoom)", () => {
+    expect(clampZoom(0)).toBe(80);
+    expect(clampZoom(104)).toBe(100);
+    expect(clampZoom(105)).toBe(110);
+    expect(clampZoom(999)).toBe(150);
+    expect(clampZoom(Number.NaN)).toBe(100);
+  });
+});
+
 describe("fontStack", () => {
   it("bundled and system picks", () => {
-    expect(fontStack("manrope", "")).toBe('"Manrope", system-ui, sans-serif');
-    expect(fontStack("inter", "")).toBe('"Inter", system-ui, sans-serif');
-    expect(fontStack("system", "")).toBe("system-ui, sans-serif");
+    expect(fontStack("manrope", "")).toBe('"Manrope", var(--font-cjk, system-ui), sans-serif');
+    expect(fontStack("inter", "")).toBe('"Inter", var(--font-cjk, system-ui), sans-serif');
+    expect(fontStack("system", "")).toBe("var(--font-cjk, system-ui), sans-serif");
   });
 
   it("custom names get quoted and fall back to system-ui", () => {
-    expect(fontStack("custom", "Commit Mono")).toBe('"Commit Mono", system-ui, sans-serif');
-    expect(fontStack("custom", "  ")).toBe("system-ui, sans-serif");
+    expect(fontStack("custom", "Commit Mono")).toBe('"Commit Mono", var(--font-cjk, system-ui), sans-serif');
+    expect(fontStack("custom", "  ")).toBe("var(--font-cjk, system-ui), sans-serif");
   });
 
   /// Review Focus: quotes and backslashes in a custom name must not break
   /// out of the CSS value.
   it("strips css-breaking characters from custom names", () => {
     expect(fontStack("custom", 'Evil"; } * { display:none')).toBe(
-      '"Evil; } * { display:none", system-ui, sans-serif',
+      '"Evil; } * { display:none", var(--font-cjk, system-ui), sans-serif',
     );
-    expect(fontStack("custom", "a\\b")).toBe('"ab", system-ui, sans-serif');
+    expect(fontStack("custom", "a\\b")).toBe('"ab", var(--font-cjk, system-ui), sans-serif');
   });
 });
 
@@ -286,6 +298,25 @@ describe("catjam settings", () => {
     vi.mocked(api.setCatjamScale).mockRejectedValueOnce(new Error("disk full"));
     await expect(appearance.setCatjamScale(100)).rejects.toThrow("disk full");
     expect(appearance.catjamScale).toBe(150);
+  });
+
+  it("reads, clamps and persists the interface zoom", async () => {
+    vi.mocked(api.getConfig).mockResolvedValue({ ui: { zoom: 300, theme: "dark" } } as never);
+    vi.mocked(api.setZoom).mockImplementation(async (p: number) => p);
+    const appearance = createAppearance();
+    expect(appearance.zoom).toBe(100);
+    await appearance.init();
+    expect(appearance.zoom).toBe(150);
+    await appearance.setZoom(124);
+    expect(appearance.zoom).toBe(120);
+    expect(api.setZoom).toHaveBeenCalledWith(120);
+    // At a bound, another step is a no-op (no write).
+    await appearance.setZoom(70);
+    await appearance.setZoom(60);
+    expect(api.setZoom).toHaveBeenCalledTimes(2);
+    vi.mocked(api.setZoom).mockRejectedValueOnce(new Error("disk full"));
+    await expect(appearance.setZoom(100)).rejects.toThrow("disk full");
+    expect(appearance.zoom).toBe(80);
   });
 
   it("the setters roll back when persistence fails", async () => {

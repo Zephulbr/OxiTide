@@ -88,4 +88,16 @@
   button.active :global(svg) {
     color: var(--accent);
   }
+  /* Windows contrast themes (A-3): the active tint is a background forcing
+     would blank, so the chosen segment takes the system selection colours. */
+  @media (forced-colors: active) {
+    button.active {
+      forced-color-adjust: none;
+      background: Highlight;
+      color: HighlightText;
+    }
+    button.active :global(svg) {
+      color: HighlightText;
+    }
+  }
 </style>

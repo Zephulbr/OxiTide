@@ -1,15 +1,17 @@
 /// Pure helpers for Settings → Remote (Track 11).
 
+import { t } from "./i18n.svelte";
+
 /// "just now", "5 min ago", "3 h ago", "2 days ago"; never for future stamps.
 export function lastSeenLabel(lastSeenMs: number, nowMs: number): string {
   const age = Math.max(0, nowMs - lastSeenMs);
   const minutes = Math.floor(age / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 1) return t("remoteSettings.seen.now");
+  if (minutes < 60) return t("remoteSettings.seen.minutes", { count: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} h ago`;
+  if (hours < 24) return t("remoteSettings.seen.hours", { count: hours });
   const days = Math.floor(hours / 24);
-  return days === 1 ? "yesterday" : `${days} days ago`;
+  return t("remoteSettings.seen.days", { count: days });
 }
 
 /// `m:ss` for the pairing QR countdown.
@@ -34,17 +36,14 @@ export function firewallNotice(
 ): { ok: boolean; text: string; command: string | null } | null {
   if (!firewall) return null;
   if (firewall.port_open === true) {
-    return { ok: true, text: `${firewall.name} allows port ${port}, so phones on your network can connect.`, command: null };
+    return { ok: true, text: t("remoteSettings.firewallOpen", { firewall: firewall.name, port }), command: null };
   }
-  const unknown =
-    firewall.port_open === null
-      ? " OxiTide cannot read its rules without admin rights, so it may already be allowed."
-      : "";
   return {
     ok: false,
-    text:
-      `${firewall.name} is active on this computer and blocks phones until you allow the remote's port. ` +
-      `A phone on your Wi-Fi connects to OxiTide on TCP port ${port}; run this once in a terminal:${unknown}`,
+    text: t(firewall.port_open === null ? "remoteSettings.firewallUnknown" : "remoteSettings.firewallBlocks", {
+      firewall: firewall.name,
+      port,
+    }),
     command: firewall.command,
   };
 }
@@ -52,7 +51,7 @@ export function firewallNotice(
 /// Firewall guidance for the host OS (spec §6.6).
 export function firewallHint(userAgent: string, port: number): string {
   if (/linux/i.test(userAgent) && !/android/i.test(userAgent)) {
-    return `If a phone cannot connect, allow the port through your firewall (for example: sudo ufw allow ${port}/tcp).`;
+    return t("remoteSettings.firewallHintLinux", { command: `sudo ufw allow ${port}/tcp` });
   }
-  return "Windows may ask to allow OxiTide through the firewall — choose Private networks. If a phone cannot connect, check Windows Security → Firewall & network protection → Allow an app through firewall.";
+  return t("remoteSettings.firewallHintWindows");
 }

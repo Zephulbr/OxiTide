@@ -3,6 +3,7 @@
   import { formatDuration } from "../../lib/format";
   import { art, type RowTrack } from "../convert";
   import Art from "./Art.svelte";
+  import { t } from "../i18n.svelte";
 
   let {
     track,
@@ -24,7 +25,7 @@
 </script>
 
 <div class="row" class:active style:--delay={`${index < 16 ? index * 24 : 0}ms`}>
-  <button class="main" onclick={onplay} aria-label={`Play ${track.title} by ${track.artist}`}>
+  <button class="main" onclick={onplay} aria-label={t("row.play", { title: track.title, artist: track.artist })}>
     {#if number !== null}
       <span class="num muted">{number}</span>
     {:else}
@@ -41,7 +42,7 @@
       <span class="time muted">{formatDuration(track.duration)}</span>
     {/if}
   </button>
-  <button class="icon-btn" onclick={onmenu} aria-label={`More for ${track.title}`}>
+  <button class="icon-btn" onclick={onmenu} aria-label={t("row.more", { title: track.title })}>
     <Icon name="ellipsis" size={20} />
   </button>
 </div>

@@ -2,13 +2,27 @@
 /// the `set_hotkey` command's whitelist; the accelerator format is
 /// `tauri-plugin-global-shortcut`'s (`"Ctrl+Alt+KeyP"`, `"MediaPlayPause"`).
 
+import { t, type MessageKey } from "./i18n.svelte";
+
+/// `label` follows the language; `key` is its message (the settings search
+/// also matches the English).
+function action<const I extends string>(id: I, key: MessageKey) {
+  return {
+    id,
+    key,
+    get label() {
+      return t(key);
+    },
+  };
+}
+
 export const HOTKEY_ACTIONS = [
-  { id: "play_pause", label: "Play / pause" },
-  { id: "next", label: "Next track" },
-  { id: "prev", label: "Previous track" },
-  { id: "volume_up", label: "Volume up" },
-  { id: "volume_down", label: "Volume down" },
-  { id: "show_hide", label: "Show / hide window" },
+  action("play_pause", "hotkey.playPause"),
+  action("next", "hotkey.next"),
+  action("prev", "hotkey.prev"),
+  action("volume_up", "hotkey.volumeUp"),
+  action("volume_down", "hotkey.volumeDown"),
+  action("show_hide", "hotkey.showHide"),
 ] as const;
 
 export type HotkeyAction = (typeof HOTKEY_ACTIONS)[number]["id"];

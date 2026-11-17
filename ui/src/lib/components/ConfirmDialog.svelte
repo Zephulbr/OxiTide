@@ -1,9 +1,10 @@
 <script lang="ts">
+  import { t } from "../i18n.svelte";
   import Modal from "./Modal.svelte";
   let {
     title,
     message,
-    confirmLabel = "Confirm",
+    confirmLabel,
     destructive = true,
     optOutLabel,
     onconfirm,
@@ -33,8 +34,8 @@
     </label>
   {/if}
   <p class="actions">
-    <button class="cancel" onclick={oncancel}>Cancel</button>
-    <button class="confirm" class:safe={!destructive} onclick={() => onconfirm(optedOut)}>{confirmLabel}</button>
+    <button class="cancel" onclick={oncancel}>{t("common.cancel")}</button>
+    <button class="confirm" class:safe={!destructive} onclick={() => onconfirm(optedOut)}>{confirmLabel ?? t("common.confirm")}</button>
   </p>
 </Modal>
 

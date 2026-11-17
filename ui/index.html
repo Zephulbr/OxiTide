@@ -31,6 +31,15 @@
           tone = localStorage.getItem("oxitide.tone");
         } catch (e) {}
         var root = document.documentElement;
+        // The resolved UI language (lib/language.svelte.ts, LANGUAGE_STORAGE_KEY):
+        // screen readers and :lang() font stacks need it from the first frame.
+        var lang = null;
+        try {
+          lang = localStorage.getItem("oxitide.language");
+        } catch (e) {}
+        if (lang && /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(lang)) {
+          root.lang = lang === "en-XA" ? "en" : lang;
+        }
         root.dataset.theme = t;
         root.style.colorScheme = m === "rack" ? "dark" : t;
         if (m === "atmosphere" || m === "instrument" || m === "rack") root.dataset.mode = m;

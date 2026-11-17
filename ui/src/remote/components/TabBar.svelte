@@ -1,22 +1,23 @@
 <script lang="ts">
   import Icon, { type IconName } from "../../lib/components/Icon.svelte";
+  import { t, type RemoteKey } from "../i18n.svelte";
 
   let { active }: { active: "now" | "home" | "search" | "library" | "queue" } = $props();
 
-  const TABS: { id: typeof active; href: string; label: string; icon: IconName }[] = [
-    { id: "now", href: "#/now", label: "Playing", icon: "disc-3" },
-    { id: "home", href: "#/home", label: "Home", icon: "home" },
-    { id: "search", href: "#/search", label: "Search", icon: "search" },
-    { id: "library", href: "#/library", label: "Library", icon: "library" },
-    { id: "queue", href: "#/queue", label: "Queue", icon: "list-music" },
+  const TABS: { id: typeof active; href: string; label: RemoteKey; icon: IconName }[] = [
+    { id: "now", href: "#/now", label: "tab.playing", icon: "disc-3" },
+    { id: "home", href: "#/home", label: "tab.home", icon: "home" },
+    { id: "search", href: "#/search", label: "tab.search", icon: "search" },
+    { id: "library", href: "#/library", label: "tab.library", icon: "library" },
+    { id: "queue", href: "#/queue", label: "tab.queue", icon: "list-music" },
   ];
 </script>
 
-<nav aria-label="Sections">
+<nav aria-label={t("tab.sections")}>
   {#each TABS as tab (tab.id)}
     <a href={tab.href} class:active={active === tab.id} aria-current={active === tab.id ? "page" : undefined}>
       <Icon name={tab.icon} size={22} />
-      <span>{tab.label}</span>
+      <span>{t(tab.label)}</span>
     </a>
   {/each}
 </nav>

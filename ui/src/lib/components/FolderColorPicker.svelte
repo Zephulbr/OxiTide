@@ -1,15 +1,16 @@
 <script lang="ts">
   import { FOLDER_COLORS, folderColorCss, type FolderColorId } from "../folderMeta.svelte";
   import Icon from "./Icon.svelte";
+  import { t } from "../i18n.svelte";
 
   /// Folder colour swatches for the New / Edit folder dialogs: a folder icon
   /// per colour (plus the muted default), one radio group, arrow keys move.
   let { value = $bindable(null) }: { value?: FolderColorId | null } = $props();
 
-  const options = [
-    { id: null, label: "Default", color: null as string | null },
+  const options = $derived([
+    { id: null, label: t("folder.color.default"), color: null as string | null },
     ...FOLDER_COLORS.map((c) => ({ id: c.id as FolderColorId | null, label: c.label, color: folderColorCss(c.hue) })),
-  ];
+  ]);
 
   let buttons: HTMLButtonElement[] = [];
 
@@ -23,8 +24,8 @@
   }
 </script>
 
-<div class="swatches" role="radiogroup" aria-label="Folder color">
-  {#each options as option, i (option.label)}
+<div class="swatches" role="radiogroup" aria-label={t("folder.color.label")}>
+  {#each options as option, i (option.id ?? "default")}
     <button
       type="button"
       class="swatch"

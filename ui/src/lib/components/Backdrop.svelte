@@ -77,6 +77,10 @@
     transition: opacity var(--dur-mood) linear;
   }
   .backdrop img.active { opacity: 1; }
+  /* Windows contrast themes (A-3): decorative, so it goes. */
+  @media (forced-colors: active) {
+    .backdrop { display: none; }
+  }
   /* Structural floor (§5.3): the scrim never drops below 55%. */
   .backdrop::after {
     content: "";

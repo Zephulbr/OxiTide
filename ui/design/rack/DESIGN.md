@@ -51,7 +51,9 @@ content; widely spaced lowercase labels; app-like flat buttons inside the rack.
 | Below 760px tall | Playlists unit hidden |
 | Below 680px tall | deck face windows hidden (VFD + keys stay) |
 
-Selector: sources mirror the default sidebar — Home, Explore (search lives there),
+Selector: sources mirror the default sidebar — Home, Explore (search lives there; Home
+also shows the compact search field unless Settings hides it, styled by the shared
+`.search-input` rules),
 Feed, History, Library (every collection and detail route). Every selector key, sources
 and utility keys alike (Sleep, Mini, Setup), is a lamp above a 34px key on one baseline;
 Power uses the same two rows. The Sleep lamp lights while a timer is armed. The selector
@@ -267,6 +269,12 @@ Keys are buttons with names and `aria-pressed`/`aria-current`; knob, faders and 
 seek are sliders with value text and full key maps; presets are radios. Meters,
 platter, tonearm, VFD ornament: `aria-hidden`. VFD and screen text meet 4.5:1 for every
 lamp preset at every brightness ≥ 40%. Focus ring as foundation.
+
+Windows contrast themes (v1.1 A-3, foundation `DESIGN.md` §2.4): Rack is usable but its
+skin is not preserved. `rack.css`'s `forced-colors` block drops the grain and lamp glows,
+sets `--rack-lamp` to `Highlight` and the display ink to `CanvasText` on `Canvas`, and
+frames a lit key, an active segment and an open tab with a `Highlight` outline (their lit
+cap is a background, which forcing removes).
 
 ## 10. Do / don't
 

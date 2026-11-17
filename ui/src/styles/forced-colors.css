@@ -1,0 +1,60 @@
+/* Windows contrast themes (`forced-colors: active`; v1.1 spec §12, A-3).
+
+   The browser already repaints text, backgrounds, borders and outlines in
+   the theme's system colours and drops gradients and shadows. What it cannot
+   know is which marks carry state, so:
+
+   - The semantic tokens map to system colours here (`!important`: mode,
+     theme and Rack rules are more specific). Widgets that paint their own
+     marks (sliders, the seek, toggles, the now-playing disc) opt out of
+     forcing with `forced-color-adjust: none` in their own styles and so draw
+     with these: accent → Highlight, on-accent → HighlightText, hairline
+     tracks → GrayText.
+   - Decorative layers go: the blurred cover backdrop, glass blur, grain,
+     dynamic colour washes and cover tints (Rack keeps working, but its skin
+     is not preserved).
+   - Rows, segments and tabs that showed state with a tint show it with a
+     Highlight frame or Highlight fill in their component styles.
+
+   Loaded last (main.ts, remote/main.ts). Recorded in ui/design/DESIGN.md. */
+
+@media (forced-colors: active) {
+  :root {
+    --bg: Canvas !important;
+    --text: CanvasText !important;
+    --text-muted: CanvasText !important;
+    --accent: Highlight !important;
+    --on-accent: HighlightText !important;
+    --logo-accent: CanvasText !important;
+    --line: GrayText !important;
+    --surface-1: Canvas !important;
+    --surface-2: Canvas !important;
+    --surface-3: Canvas !important;
+    --surface-float: Canvas !important;
+    --surface-chrome: Canvas !important;
+    --selection-bg: Highlight !important;
+    --player-veil-top: Canvas !important;
+    --player-veil: Canvas !important;
+    --shadow-panel: none !important;
+    --shadow-cover: none !important;
+    --glass-blur: 0px !important;
+    --overlay-blur: 0px !important;
+    --flag-grain: 0 !important;
+    --flag-backdrop-art: 0 !important;
+  }
+
+  /* Focus rings are system-colour outlines everywhere. */
+  :focus-visible {
+    outline-color: Highlight;
+  }
+
+  .grain {
+    display: none;
+  }
+
+  /* A disabled control reads as GrayText, not as a faded copy of itself. */
+  button:disabled {
+    opacity: 1;
+    color: GrayText;
+  }
+}

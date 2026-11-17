@@ -3,6 +3,7 @@
   import { useRemote } from "../context";
   import { art } from "../convert";
   import Art from "./Art.svelte";
+  import { t } from "../i18n.svelte";
 
   const { store, api, actions } = useRemote();
   const current = $derived(store.state?.current ?? null);
@@ -14,7 +15,7 @@
 {#if current}
   <div class="mini">
     <span class="progress" style:transform={`scaleX(${progress})`} aria-hidden="true"></span>
-    <a href="#/now" class="info" aria-label="Open Now Playing">
+    <a href="#/now" class="info" aria-label={t("mini.open")}>
       <Art src={art(current.cover, 80)} size={44} />
       <span class="text">
         <span class="title ellipsis">{current.title}</span>
@@ -23,12 +24,12 @@
     </a>
     <button
       class="icon-btn"
-      aria-label={store.state?.playing ? "Pause" : "Play"}
+      aria-label={store.state?.playing ? t("np.pause") : t("np.play")}
       onclick={() => api.playPause().catch((e) => actions.fail(e))}
     >
       <Icon name={store.state?.playing ? "pause" : "play"} size={24} />
     </button>
-    <button class="icon-btn" aria-label="Next" onclick={() => api.next().catch((e) => actions.fail(e))}>
+    <button class="icon-btn" aria-label={t("np.next")} onclick={() => api.next().catch((e) => actions.fail(e))}>
       <Icon name="skip-forward-solid" size={22} />
     </button>
   </div>

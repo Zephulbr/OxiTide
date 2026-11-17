@@ -12,6 +12,7 @@
   import { levels } from "./levels.svelte";
   import BarMeter from "./meters/BarMeter.svelte";
   import VolumeKnob from "./VolumeKnob.svelte";
+  import { t } from "../i18n.svelte";
 
   /// Rack mini player (Track 9.5c): a compact deck over a compact amp, in the
   /// same hardware language as the full rack — cover in a glass window, the
@@ -26,12 +27,12 @@
 </script>
 
 <div class="rmini">
-  <section class="rk-unit deck" aria-label="Deck">
+  <section class="rk-unit deck" aria-label={t("rack.deck")}>
     <div class="rk-head">
       <h2 class="rk-name">Network transport</h2>
       <div class="headright">
         <span class="rk-silk">{quality}</span>
-        <button class="rk-key sm" onclick={() => void mini.exit()} aria-label="Restore full window" title="Restore full window">
+        <button class="rk-key sm" onclick={() => void mini.exit()} aria-label={t("mini.restore")} title={t("mini.restore")}>
           <Icon name="maximize-2" size={12} />
         </button>
       </div>
@@ -46,7 +47,7 @@
       <DeckKeys {player} {favorites} queueOpen={mini.queueOpen} onQueue={() => mini.toggleQueue()} />
     </div>
   </section>
-  <section class="rk-unit amp" aria-label="Amplifier">
+  <section class="rk-unit amp" aria-label={t("rack.amplifier")}>
     <div class="rk-vfd meter" aria-hidden="true"><BarMeter snapshot={levels.snapshot} header={false} /></div>
     <VolumeKnob {player} scale={0.7} />
   </section>
@@ -55,9 +56,9 @@
     <div class="sheet-backdrop" onclick={() => mini.toggleQueue()} aria-hidden="true"></div>
     <!-- Escape is routed by App.currentEscapeTarget ("mini-queue"); the trap
          restores focus to the Queue key on close. -->
-    <div class="rk-unit sheet" role="dialog" aria-modal="true" aria-label="Queue" tabindex="-1" use:focusTrap>
+    <div class="rk-unit sheet" role="dialog" aria-modal="true" aria-label={t("player.queue")} tabindex="-1" use:focusTrap>
       <div class="rk-head"><h2 class="rk-name">Queue</h2>
-        <button class="rk-key sm" onclick={() => mini.toggleQueue()} aria-label="Close queue" title="Close"><Icon name="x" size={12} /></button>
+        <button class="rk-key sm" onclick={() => mini.toggleQueue()} aria-label={t("rack.closeQueue")} title={t("common.close")}><Icon name="x" size={12} /></button>
       </div>
       <div class="rk-win queuewin"><QueueRail {player} title={false} /></div>
     </div>

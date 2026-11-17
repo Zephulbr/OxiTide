@@ -5,6 +5,7 @@
   import { useRemote } from "../context";
   import { art } from "../convert";
   import { hrefFor } from "../routes";
+  import { t } from "../i18n.svelte";
 
   /// Playlists and folders, read-only (spec §2: no management from the phone).
   let { folder }: { folder: string } = $props();
@@ -14,16 +15,16 @@
 <div class="page">
   <header class="page-head">
     {#if folder !== "root"}
-      <button class="icon-btn" aria-label="Back" onclick={() => history.back()}>
+      <button class="icon-btn" aria-label={t("common.back")} onclick={() => history.back()}>
         <Icon name="chevron-left" size={22} />
       </button>
     {/if}
-    <h1>Playlists</h1>
+    <h1>{t("library.playlists")}</h1>
   </header>
   <Loader load={() => api.getCollectionItems(folder)} key={folder}>
     {#snippet children(entries)}
       {#if entries.length === 0}
-        <p class="muted">Nothing here yet.</p>
+        <p class="muted">{t("common.empty")}</p>
       {/if}
       <ul>
         {#each entries as entry (entry.kind === "folder" ? `f-${entry.id}` : `p-${entry.uuid}`)}
@@ -33,7 +34,7 @@
                 <span class="folder"><Icon name="folder" size={22} /></span>
                 <span class="text">
                   <span class="title ellipsis">{entry.name}</span>
-                  <span class="muted">{entry.totalNumberOfItems} items</span>
+                  <span class="muted">{t("common.itemCount", { count: entry.totalNumberOfItems })}</span>
                 </span>
               </a>
             {:else}
@@ -41,7 +42,7 @@
                 <Art src={art(entry.squareImage ?? entry.image, 160)} size={52} />
                 <span class="text">
                   <span class="title ellipsis">{entry.title}</span>
-                  <span class="muted">{entry.numberOfTracks} tracks</span>
+                  <span class="muted">{t("common.trackCount", { count: entry.numberOfTracks })}</span>
                 </span>
               </a>
             {/if}

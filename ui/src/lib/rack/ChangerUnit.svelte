@@ -9,6 +9,7 @@
   import type { Toasts } from "../toasts.svelte";
   import { changerSlots, changerStart, clampChangerStart, clock, currentIndex, remainingMs, CHANGER_SLOTS } from "./deck";
   import SevenSeg from "./SevenSeg.svelte";
+  import { t } from "../i18n.svelte";
 
   /// Queue changer (Track 9.5c): the queue as a column unit instead of a
   /// drawer. A disc changer front — a VFD with the disc number and the queue's
@@ -46,9 +47,9 @@
   const disc = $derived(String(Math.max(0, index + 1)).padStart(2, " "));
 </script>
 
-<section class="rk-unit changerunit" aria-label="Queue changer">
+<section class="rk-unit changerunit" aria-label={t("rack.queueChanger")}>
   <div class="rk-head"><h2 class="rk-name">Queue changer</h2>
-    <button class="rk-key sm" onclick={onClose} aria-label="Close queue" title="Close"><Icon name="x" size={12} /></button>
+    <button class="rk-key sm" onclick={onClose} aria-label={t("rack.closeQueue")} title={t("common.close")}><Icon name="x" size={12} /></button>
   </div>
   <div class="rk-vfd readout" aria-hidden="true">
     <div class="cell">
@@ -65,8 +66,8 @@
     </div>
   </div>
   <div class="discs">
-    <button class="rk-key sm page" onclick={() => (browse = first - CHANGER_SLOTS)} disabled={first === 0} aria-label="Previous discs"><Icon name="chevron-left" size={12} /></button>
-    <div class="rk-tray slots" role="group" aria-label="Discs">
+    <button class="rk-key sm page" onclick={() => (browse = first - CHANGER_SLOTS)} disabled={first === 0} aria-label={t("rack.previousDiscs")}><Icon name="chevron-left" size={12} /></button>
+    <div class="rk-tray slots" role="group" aria-label={t("rack.discs")}>
       {#each slots as slot (slot.index)}
         {@const item = ps.queue[slot.index]}
         <button
@@ -74,15 +75,15 @@
           class:lit={slot.state === "current"}
           disabled={slot.state === "empty"}
           aria-current={slot.state === "current" ? "true" : undefined}
-          aria-label={item ? `Play disc ${slot.index + 1}: ${item.title}` : `Disc ${slot.index + 1}, empty`}
+          aria-label={item ? t("rack.playDisc", { n: slot.index + 1, title: item.title }) : t("rack.emptyDisc", { n: slot.index + 1 })}
           title={item ? `${item.title} — ${item.artist}` : undefined}
-          onclick={() => api.playTracks(ps.queue, slot.index)}
+          onclick={() => api.queueJump(ps.queue, slot.index)}
         >
           <span class="lamp"></span><span class="rk-key">{slot.index + 1}</span>
         </button>
       {/each}
     </div>
-    <button class="rk-key sm page" onclick={() => (browse = first + CHANGER_SLOTS)} disabled={first + CHANGER_SLOTS >= length} aria-label="Next discs"><Icon name="chevron-right" size={12} /></button>
+    <button class="rk-key sm page" onclick={() => (browse = first + CHANGER_SLOTS)} disabled={first + CHANGER_SLOTS >= length} aria-label={t("rack.nextDiscs")}><Icon name="chevron-right" size={12} /></button>
   </div>
   <div class="rk-win queuewin"><QueueRail {player} {toasts} {favorites} {playlistActions} title={false} {go} /></div>
 </section>

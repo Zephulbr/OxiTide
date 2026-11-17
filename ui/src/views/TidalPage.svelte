@@ -8,6 +8,7 @@
   import { withoutVideoLinks } from "../lib/pageLinks";
   import type { Player } from "../lib/player.svelte";
   import type { Toasts } from "../lib/toasts.svelte";
+  import { t } from "../lib/i18n.svelte";
 
   /// A TIDAL page a page link opens (a genre, mood or decade from Explore).
   /// Same rows/modules shape as Explore, so it renders through PageSections;
@@ -56,7 +57,7 @@
 {:else if error}
   <ErrorState message={error} onRetry={load} />
 {:else if sections.length === 0}
-  <EmptyState message="Nothing here yet." />
+  <EmptyState message={t("section.empty")} />
 {:else}
   <PageSections {sections} {nav} {player} {toasts} source={path} />
 {/if}

@@ -1,5 +1,6 @@
 import type { FeedActivity, PageItem, PageSection } from "./api";
 import { shapeForItemType } from "./media";
+import { t } from "./i18n.svelte";
 
 type DayPart = "morning" | "afternoon" | "evening" | "night";
 
@@ -12,13 +13,13 @@ function dayPart(hour: number): DayPart {
 
 /// Time-of-day greeting for the Home hero (local hour, 0-23).
 export function greeting(hour: number): string {
-  return `Good ${dayPart(hour)}`;
+  return t("home.greeting", { part: dayPart(hour) });
 }
 
 /// The hero's line under the greeting while nothing is playing, in step with
 /// it (it used to say "the night" all day).
 export function startPrompt(hour: number): string {
-  return `Pick something to start the ${dayPart(hour)}.`;
+  return t("home.startPrompt", { part: dayPart(hour) });
 }
 
 /// "Made for you": the mix cards from the For You feed (daily/discovery/

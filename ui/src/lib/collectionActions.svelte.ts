@@ -4,6 +4,7 @@ import { folderMeta, type FolderColorId } from "./folderMeta.svelte";
 import type { CollectionTree } from "./collection.svelte";
 import type { Toasts } from "./toasts.svelte";
 import { invalidate } from "./viewCache";
+import { t } from "./i18n.svelte";
 
 export type RenameTarget =
   | { kind: "playlist"; playlist: Playlist }
@@ -142,7 +143,7 @@ export function createCollectionActions(
       if (target.kind === "playlist") {
         await api.renamePlaylist(target.playlist.uuid, name, target.playlist.description ?? "");
         invalidate(`playlist:${target.playlist.uuid}`);
-        toasts.show("Playlist renamed", { severity: "success" });
+        toasts.show(t("collection.playlistRenamed"), { severity: "success" });
       } else {
         // Only a changed name goes to TIDAL; the description is local.
         const renamed = name !== target.folder.name;
@@ -151,7 +152,7 @@ export function createCollectionActions(
           folderMeta().setDescription(target.folder.id, details.description);
           folderMeta().setColor(target.folder.id, details.color);
         }
-        toasts.show(renamed ? "Folder renamed" : "Folder saved", { severity: "success" });
+        toasts.show(renamed ? t("collection.folderRenamed") : t("collection.folderSaved"), { severity: "success" });
       }
       revision += 1;
       close();

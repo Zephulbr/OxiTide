@@ -18,6 +18,7 @@
   import type { Player } from "../lib/player.svelte";
   import type { PlaylistActions } from "../lib/playlists.svelte";
   import type { Toasts } from "../lib/toasts.svelte";
+  import { t } from "../lib/i18n.svelte";
 
   let {
     nav,
@@ -37,7 +38,7 @@
   } = $props();
 
   /// The player bar's "From" line for plays started here.
-  const FROM: PlayFrom = { kind: "section", name: "Save for Later", route: { name: "later" } };
+  const FROM: PlayFrom = { kind: "section", name: t("route.later"), route: { name: "later" } };
 
   // Spec SL-D6: the list is edited by the user, so every visit walks it fresh
   // (newest first) and pages render as they arrive.
@@ -111,7 +112,7 @@
   async function playTracks(list: readonly Track[], start: number) {
     const prepared = await trackFlags.filterPlayable([...list], start);
     if (!prepared) {
-      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      toasts.show(t("queue.dropHidden"), { severity: "info" });
       return;
     }
     playSource.set(FROM, prepared.items.map((t) => t.id));
@@ -143,7 +144,7 @@
   function cellMenu(entry: LaterEntry): MenuItem[] {
     const remove: MenuItem = {
       id: "later",
-      label: "Remove from Save for later",
+      label: t("menu.laterRemove"),
       icon: "bookmark-minus",
       divider: true,
       run: () => void later.toggle(entry.kind, laterId(entry)),
@@ -151,22 +152,22 @@
     if (entry.kind === "track") {
       const track = entry.item;
       const items: MenuItem[] = [
-        { id: "play", label: "Play", icon: "play", run: () => playTrack(track) },
+        { id: "play", label: t("menu.play"), icon: "play", run: () => playTrack(track) },
         {
           id: "add-playlist",
-          label: "Add to playlist",
+          label: t("menu.addToPlaylist"),
           icon: "list-plus",
           run: () => playlistActions.openPicker([track]),
         },
       ];
       if (track.album) {
         const albumId = track.album.id;
-        items.push({ id: "go-album", label: "Go to album", icon: "disc-3", divider: true, run: () => nav.goto({ name: "album", id: albumId }) });
+        items.push({ id: "go-album", label: t("menu.goToAlbum"), icon: "disc-3", divider: true, run: () => nav.goto({ name: "album", id: albumId }) });
       }
       for (const [i, artist] of track.artists.entries()) {
         items.push({
           id: `go-artist-${i}`,
-          label: track.artists.length === 1 ? "Go to artist" : `Go to ${artist.name}`,
+          label: track.artists.length === 1 ? t("menu.goToArtist") : t("menu.goToNamed", { name: artist.name }),
           icon: "user",
           divider: i === 0 && !track.album,
           run: () => nav.goto({ name: "artist", id: artist.id }),
@@ -176,7 +177,7 @@
     }
     const artistId = entry.kind === "artist" ? entry.item.id : 0;
     return [
-      { id: "open", label: "Open", icon: "external-link", run: () => nav.goto({ name: "artist", id: artistId }) },
+      { id: "open", label: t("menu.open"), icon: "external-link", run: () => nav.goto({ name: "artist", id: artistId }) },
       remove,
     ];
   }
@@ -187,15 +188,15 @@
 <div class="later" class:view-fill={active === "track"}>
   <header class="page-head">
     <div class="title-block">
-      <h2>Save for Later</h2>
+      <h2>{t("route.later")}</h2>
       {#if !loading && !error && total > 0}
-        <span class="summary tnum">{total} {total === 1 ? "item" : "items"}</span>
+        <span class="summary tnum">{t("section.itemCount", { count: total })}</span>
       {/if}
     </div>
   </header>
   {#if chips.length > 1}
-    <div class="chips" role="group" aria-label="Show saved">
-      <button type="button" class="chip" aria-pressed={active === undefined} onclick={() => choose(undefined)}>All</button>
+    <div class="chips" role="group" aria-label={t("later.show")}>
+      <button type="button" class="chip" aria-pressed={active === undefined} onclick={() => choose(undefined)}>{t("search.kind.all")}</button>
       {#each chips as chip (chip.kind)}
         <button type="button" class="chip" aria-pressed={active === chip.kind} onclick={() => choose(chip.kind)}>
           {chip.label}
@@ -208,7 +209,7 @@
   {:else if error && shown.length === 0}
     <ErrorState message={error} onRetry={load} />
   {:else if shown.length === 0}
-    <EmptyState message="Nothing saved yet. Use Save for later in any track, album, artist, playlist or mix menu." />
+    <EmptyState message={t("later.empty")} />
   {:else if active === "track"}
     <TrackTable
       {view}
@@ -228,7 +229,7 @@
         {@const item: PageItem = laterPageItem(entry)}
         {#if entry.kind === "track" || entry.kind === "artist"}
           <div class="cell" role="listitem" use:menuFor={() => cellMenu(entry)}>
-            {#if entry.kind === "track"}<span class="type-badge" aria-hidden="true">Track</span>{/if}
+            {#if entry.kind === "track"}<span class="type-badge" aria-hidden="true">{t("search.track")}</span>{/if}
             <MediaCard
               {item}
               variant="tile"
@@ -254,7 +255,7 @@
   {/if}
   {#if videos > 0}
     <p class="footnote muted">
-      {videos} {videos === 1 ? "video" : "videos"} saved in TIDAL {videos === 1 ? "isn't" : "aren't"} shown here.
+      {t("later.videosHidden", { count: videos })}
     </p>
   {/if}
 </div>

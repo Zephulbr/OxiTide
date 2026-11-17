@@ -13,6 +13,7 @@ import type { PlaylistActions } from "./playlists.svelte";
 import { shareUrl } from "./share";
 import type { Toasts } from "./toasts.svelte";
 import { trackFlags } from "./trackFlags.svelte";
+import { t } from "./i18n.svelte";
 
 /// What a collection card (album, playlist, mix) opens and plays. `title`
 /// names it in the player bar's "From …" line.
@@ -56,14 +57,13 @@ export interface CardDeps {
 /// Card play/queue/menu behaviour, shared by every page through context so
 /// cards stay self-contained (no per-view wiring).
 export function createCardActions({ nav, toasts, favorites, playlistActions }: CardDeps): CardActions {
-  const HIDDEN = "Everything here is hidden by your content filters.";
 
   /// The collection's playable tracks, or null after telling the user why not.
   async function playable(target: CardTarget): Promise<Track[] | null> {
     try {
       const prepared = await trackFlags.filterPlayable(await loadTracks(target), 0);
       if (!prepared) {
-        toasts.show(HIDDEN, { severity: "info" });
+        toasts.show(t("queue.dropHidden"), { severity: "info" });
         return null;
       }
       return prepared.items;
@@ -90,7 +90,7 @@ export function createCardActions({ nav, toasts, favorites, playlistActions }: C
     const items = tracks.map(trackToQueueItem);
     try {
       await (next ? api.queuePlayNext(items) : api.queueAdd(items));
-      toasts.show(next ? `"${title}" plays next` : `Added "${title}" to the queue`);
+      toasts.show(next ? t("table.onePlaysNext", { title }) : t("table.oneQueued", { title }));
     } catch (e) {
       toasts.show(errorMessage(e), { severity: "error" });
     }
@@ -107,7 +107,7 @@ export function createCardActions({ nav, toasts, favorites, playlistActions }: C
 
   async function copyLink(target: CardTarget) {
     const copied = await copyText(shareUrl(target.kind, target.id));
-    toasts.show(copied ? "Link copied" : "Couldn't copy link", {
+    toasts.show(copied ? t("card.linkCopied") : t("card.linkCopyFailed"), {
       severity: copied ? "success" : "error",
     });
   }

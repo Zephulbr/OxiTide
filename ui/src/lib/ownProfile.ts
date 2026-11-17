@@ -1,4 +1,5 @@
 import type { Artist, UserProfile } from "./api";
+import { t } from "./i18n.svelte";
 
 /// What `myProfileSource` loads: the account's profile and the artist that
 /// is its page. TIDAL keeps no separate user page; a profile is an artist
@@ -23,7 +24,7 @@ export function ownCard(me: OwnProfile | null | undefined): OwnCard | null {
   if (!profile) return null;
   const artist = me.artist;
   return {
-    name: artist?.name || profile.name || profile.handle || "Your profile",
+    name: artist?.name || profile.name || profile.handle || t("profile.yours"),
     picture: artist?.picture ?? artist?.cover_fallback ?? profile.picture ?? null,
     artistId: profile.artistId ?? null,
   };

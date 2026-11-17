@@ -1797,7 +1797,7 @@ pub async fn play_track_ids(
     let cmd = if shuffle.unwrap_or(false) {
         EngineCmd::PlayShuffled { items }
     } else {
-        EngineCmd::PlayTracks { items, start }
+        EngineCmd::PlayContext { items, start }
     };
     crate::perf::note_play_command();
     player.engine.handle(cmd).map_err(|e| e.to_string())
@@ -1834,7 +1834,7 @@ pub async fn play_page_items(
     let cmd = if shuffle.unwrap_or(false) {
         EngineCmd::PlayShuffled { items: queue }
     } else {
-        EngineCmd::PlayTracks {
+        EngineCmd::PlayContext {
             items: queue,
             start,
         }
@@ -1843,21 +1843,47 @@ pub async fn play_page_items(
     player.engine.handle(cmd).map_err(|e| e.to_string())
 }
 
+/// Start playing `items` at `start`. `shuffle` starts a fully shuffled
+/// context; otherwise a new context honours the shuffle flag (the picked track
+/// first, the rest shuffled). `keep_order` is a queue jump: the items are the
+/// queue itself and keep their order.
+///
+/// Returns the queue revision the play left, for `queue_extend_context`.
 #[tauri::command]
 pub fn play_tracks(
     state: State<'_, AppState>,
     items: Vec<QueueItem>,
     start: usize,
     shuffle: Option<bool>,
-) -> Result<(), String> {
+    keep_order: Option<bool>,
+) -> Result<u64, String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;
     let cmd = if shuffle.unwrap_or(false) {
         EngineCmd::PlayShuffled { items }
-    } else {
+    } else if keep_order.unwrap_or(false) {
         EngineCmd::PlayTracks { items, start }
+    } else {
+        EngineCmd::PlayContext { items, start }
     };
     crate::perf::note_play_command();
-    player.engine.handle(cmd).map_err(|e| e.to_string())
+    player.engine.handle(cmd).map_err(|e| e.to_string())?;
+    Ok(player.engine.state().queue_rev)
+}
+
+/// Add the rest of a context a play started from its first page (a search
+/// play's artist tracks), only while the queue is still at `rev`, the
+/// revision `play_tracks` returned; with shuffle on they are shuffled in.
+#[tauri::command]
+pub fn queue_extend_context(
+    state: State<'_, AppState>,
+    items: Vec<QueueItem>,
+    rev: u64,
+) -> Result<(), String> {
+    let player = state.player().ok_or_else(|| "not logged in".to_string())?;
+    player
+        .engine
+        .handle(EngineCmd::ExtendContext { items, rev })
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -3067,6 +3093,13 @@ pub fn set_mini_mode(
             state.take_pre_mini();
         }
     }
+    // The mini player runs at 100 %; the full window gets the stored zoom back.
+    let zoom = if active {
+        crate::config::ZOOM_DEFAULT
+    } else {
+        crate::config::clamp_zoom(state.config().ui.zoom)
+    };
+    crate::window::apply_zoom(&window, zoom);
     Ok(())
 }
 
@@ -3104,6 +3137,54 @@ pub fn set_catjam_coat(state: State<'_, AppState>, coat: CatjamCoat) -> Result<(
     config.save()?;
     state.set_config(config);
     Ok(())
+}
+
+/// Stores the UI language (`"system"` or a catalog code). The UI applies it
+/// and reports the resolved code through `set_shell_language`.
+#[tauri::command]
+pub fn set_language(state: State<'_, AppState>, language: String) -> Result<(), String> {
+    if !crate::config::valid_language(&language) {
+        return Err(format!("invalid language: {language}"));
+    }
+    let mut config = state.config();
+    config.ui.language = language;
+    config.save()?;
+    state.set_config(config);
+    Ok(())
+}
+
+/// The language the UI resolved: relabels the tray menu and the taskbar
+/// buttons (spec §10.1). Not persisted; returns the code now in effect
+/// (English when the shell has no text for `code`).
+#[tauri::command]
+pub fn set_shell_language(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    code: String,
+) -> &'static str {
+    let applied = crate::shell_text::set_language(&code);
+    state.relabel_tray();
+    crate::thumbbar::refresh_text(&app);
+    applied
+}
+
+/// Stores the interface zoom (80–150 %, steps of 10) and applies it unless
+/// the mini player is showing (it stays at 100 %). Returns what was stored.
+#[tauri::command]
+pub fn set_zoom(
+    state: State<'_, AppState>,
+    window: tauri::WebviewWindow,
+    percent: u32,
+) -> Result<u32, String> {
+    let mut config = state.config();
+    config.ui.zoom = crate::config::clamp_zoom(percent);
+    let stored = config.ui.zoom;
+    config.save()?;
+    state.set_config(config);
+    if state.pre_mini().is_none() {
+        crate::window::apply_zoom(&window, stored);
+    }
+    Ok(stored)
 }
 
 /// Stores the cat's size clamped to 100–200 % and returns what was stored.
@@ -3567,6 +3648,8 @@ mod tests {
         "queue_clear",
         "retry",
         "queue_add",
+        // Queue edit: ordered after the play whose revision it checks.
+        "queue_extend_context",
         "queue_play_next",
         "queue_insert",
         "restore_session",
@@ -3611,6 +3694,12 @@ mod tests {
         "set_catjam",
         "set_catjam_coat",
         "set_catjam_scale",
+        // A config writer (read-modify-write of the whole config).
+        "set_language",
+        // A config writer plus one webview call, ordered with mini enter/exit.
+        "set_zoom",
+        // Tray menu relabels are cheap and must keep the order of switches.
+        "set_shell_language",
         // An atomic store plus one engine call; ordered with CatJam's mount
         // and unmount so a quick remount cannot end with tracking off.
         "set_beat_tracking",

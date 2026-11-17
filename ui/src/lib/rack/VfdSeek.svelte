@@ -2,6 +2,7 @@
   import type { Player } from "../player.svelte";
   import { seekByKey, seekRatio } from "../seek";
   import { clock } from "./deck";
+  import { t } from "../i18n.svelte";
 
   /// Segmented VFD seek bar (DESIGN §5.4): dim segments, the elapsed part
   /// glows. A real slider — drag, arrows ±5 s, Page keys ±10 %, Home/End.
@@ -47,11 +48,11 @@
   bind:this={el}
   role="slider"
   tabindex={disabled ? -1 : 0}
-  aria-label="Seek"
+  aria-label={t("rack.seek")}
   aria-valuemin={0}
   aria-valuemax={Math.round(duration / 1000)}
   aria-valuenow={Math.round(position / 1000)}
-  aria-valuetext={`${clock(position)} of ${clock(duration)}`}
+  aria-valuetext={t("rack.positionOf", { position: clock(position), duration: clock(duration) })}
   aria-disabled={disabled}
   style:--p={fraction}
   onpointerdown={onPointerDown}

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use rand::seq::SliceRandom;
-use rand::Rng;
+use rand::{Rng, RngExt};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -126,6 +126,26 @@ impl Queue {
         }
     }
 
+    /// Start a new context picked by the user (a row, Play all). With shuffle
+    /// on, the picked item plays first and every other item, earlier ones
+    /// included, follows in a shuffled order; with it off this is
+    /// `play_context`. Queue jumps keep the order and use `play_context`.
+    pub fn play_new_context(&mut self, items: Vec<QueueItem>, start: usize) {
+        self.play_new_context_with(items, start, &mut rand::rng());
+    }
+
+    fn play_new_context_with<R: Rng + ?Sized>(
+        &mut self,
+        items: Vec<QueueItem>,
+        start: usize,
+        rng: &mut R,
+    ) {
+        self.play_context(items, start);
+        if self.shuffle {
+            self.shuffle_around_current_with(rng);
+        }
+    }
+
     /// Start a fully shuffled context: the whole list (including its first
     /// item) is shuffled once, the shuffle flag turns on, and playback starts
     /// at the top of the shuffled order.
@@ -153,7 +173,7 @@ impl Queue {
 
     /// Restore a saved context exactly as persisted: the item order is kept
     /// (even with shuffle on — unlike `set_shuffle`, which re-shuffles the
-    /// tail), the start index is clamped, and playback starts paused.
+    /// list), the start index is clamped, and playback starts paused.
     pub fn restore(
         &mut self,
         items: Vec<QueueItem>,
@@ -324,6 +344,39 @@ impl Queue {
         self.items_mut().extend(items);
     }
 
+    /// Add the rest of a context that started from its first page (a search
+    /// play queues an artist's first tracks, then the others once loaded).
+    /// Applies only while the queue is still at revision `rev`, the one the
+    /// play left it at: an edit or a new context in between drops it. With
+    /// shuffle on, each item lands at a random upcoming slot, so the whole
+    /// context stays one uniform shuffle; otherwise they append in order.
+    pub fn extend_context(&mut self, items: Vec<QueueItem>, rev: u64) -> bool {
+        self.extend_context_with(items, rev, &mut rand::rng())
+    }
+
+    fn extend_context_with<R: Rng + ?Sized>(
+        &mut self,
+        items: Vec<QueueItem>,
+        rev: u64,
+        rng: &mut R,
+    ) -> bool {
+        if self.rev != rev || items.is_empty() {
+            return false;
+        }
+        let first_upcoming = self.current.map_or(0, |current| current + 1);
+        let shuffle = self.shuffle;
+        let list = self.items_mut();
+        if shuffle {
+            for item in items {
+                let at = rng.random_range(first_upcoming..=list.len());
+                list.insert(at, item);
+            }
+        } else {
+            list.extend(items);
+        }
+        true
+    }
+
     /// Insert items right after the current track ("Play next"), keeping
     /// their order; with no current track they append. The current track and
     /// the playing state are untouched.
@@ -374,20 +427,29 @@ impl Queue {
         }
     }
 
-    /// Enabling shuffles the items after the current index once; disabling
-    /// leaves the shuffled order in place. The current item never moves.
+    /// Enabling shuffles the whole list once (the items before the current
+    /// one too, not only those after it): the current item moves to the top
+    /// and keeps playing, the rest follow in a shuffled order. Disabling
+    /// leaves the shuffled order in place. Enabling it when it is already on
+    /// changes nothing (a repeated command must not rescramble the queue).
     pub fn set_shuffle(&mut self, on: bool) {
-        if on {
-            self.shuffle_tail_with(&mut rand::rng());
+        if on && !self.shuffle {
+            self.shuffle_around_current_with(&mut rand::rng());
         }
         self.shuffle = on;
     }
 
-    /// One Fisher–Yates shuffle of the tail. Seeded by tests via `StdRng`.
-    fn shuffle_tail_with<R: Rng + ?Sized>(&mut self, rng: &mut R) {
+    /// One Fisher–Yates shuffle of every item but the current one, which
+    /// moves to index 0 (it is still current). Without a current item the
+    /// whole list shuffles. Seeded by tests via `StdRng`.
+    fn shuffle_around_current_with<R: Rng + ?Sized>(&mut self, rng: &mut R) {
         match self.current {
-            Some(current) if current + 1 < self.items.len() => {
-                self.items_mut()[current + 1..].shuffle(rng);
+            Some(current) if self.items.len() > 1 => {
+                let items = self.items_mut();
+                let item = items.remove(current);
+                items.shuffle(rng);
+                items.insert(0, item);
+                self.current = Some(0);
             }
             Some(_) => {}
             None => self.items_mut().shuffle(rng),
@@ -791,56 +853,167 @@ mod tests {
         }
     }
 
+    /// Issue #3: shuffling from the middle of a list must take in the tracks
+    /// before the current one too, not only those after it.
     #[test]
-    fn set_shuffle_moves_only_the_tail() {
+    fn shuffle_from_the_middle_takes_in_the_earlier_tracks() {
         use rand::SeedableRng;
         let mut q = queue(8);
-        q.next(); // current = index 1
-        let head: Vec<u64> = q.items()[..=1].iter().map(|i| i.track_id).collect();
-        let tail_before: Vec<u64> = q.items()[2..].iter().map(|i| i.track_id).collect();
-        q.shuffle_tail_with(&mut rand::rngs::StdRng::seed_from_u64(7));
-        let head_after: Vec<u64> = q.items()[..=1].iter().map(|i| i.track_id).collect();
-        let tail_after: Vec<u64> = q.items()[2..].iter().map(|i| i.track_id).collect();
+        q.play_context((1..=8).map(item).collect(), 4); // current = track 5
+        q.shuffle_around_current_with(&mut rand::rngs::StdRng::seed_from_u64(7));
         assert_eq!(
-            head_after, head,
-            "shuffle moved the current item or the head"
+            q.current_index(),
+            Some(0),
+            "the current item moves to the top"
         );
-        let mut sorted_before = tail_before.clone();
-        sorted_before.sort();
-        let mut sorted_after = tail_after.clone();
-        sorted_after.sort();
-        assert_eq!(
-            sorted_after, sorted_before,
-            "shuffle changed the tail's items"
-        );
+        assert_eq!(q.current().unwrap().track_id, 5, "the current item changed");
+        assert!(q.is_playing());
+        let order = ids(&q);
+        let mut sorted = order.clone();
+        sorted.sort_unstable();
+        assert_eq!(sorted, (1..=8).collect::<Vec<_>>(), "not a permutation");
+        // Every track plays after the current one, the earlier ones included.
+        let upcoming: Vec<u64> = order[1..].to_vec();
+        for earlier in 1..5 {
+            assert!(
+                upcoming.contains(&earlier),
+                "track {earlier} was left behind"
+            );
+        }
         assert_ne!(
-            tail_after, tail_before,
+            upcoming,
+            vec![1, 2, 3, 4, 6, 7, 8],
             "seed 7 produced the identity order; pick another seed"
         );
     }
 
     #[test]
-    fn set_shuffle_flag_and_tail() {
+    fn set_shuffle_keeps_the_current_track_playing() {
         let mut q = queue(8);
         q.next();
-        let head: Vec<u64> = q.items()[..=1].iter().map(|i| i.track_id).collect();
         q.set_shuffle(true);
         assert!(q.shuffle());
-        assert_eq!(
-            q.items()[..=1]
-                .iter()
-                .map(|i| i.track_id)
-                .collect::<Vec<_>>(),
-            head
-        );
+        assert_eq!(q.current_index(), Some(0));
         assert_eq!(q.current().unwrap().track_id, 2);
+        assert_eq!(q.items().len(), 8);
+    }
+
+    #[test]
+    fn enabling_shuffle_twice_keeps_the_order() {
+        let mut q = queue(8);
+        q.next();
+        q.set_shuffle(true);
+        let order = ids(&q);
+        let rev = q.rev();
+        q.set_shuffle(true);
+        assert_eq!(ids(&q), order);
+        assert_eq!(q.rev(), rev);
+    }
+
+    #[test]
+    fn set_shuffle_on_a_single_item_keeps_it() {
+        let mut q = queue(1);
+        q.set_shuffle(true);
+        assert_eq!(ids(&q), vec![1]);
+        assert_eq!(q.current_index(), Some(0));
+    }
+
+    /// Issue #3: a new context started while shuffle is on plays the picked
+    /// track first and shuffles everything else.
+    #[test]
+    fn a_new_context_with_shuffle_on_starts_at_the_pick_and_shuffles_the_rest() {
+        use rand::SeedableRng;
+        let mut q = queue(3);
+        q.set_shuffle(true);
+        q.play_new_context_with(
+            (10..=17).map(item).collect(),
+            5,
+            &mut rand::rngs::StdRng::seed_from_u64(7),
+        );
+        assert!(q.shuffle(), "the shuffle flag stays on");
+        assert!(q.is_playing());
+        assert_eq!(q.current_index(), Some(0));
+        assert_eq!(q.current().unwrap().track_id, 15, "the picked track plays");
+        let mut sorted = ids(&q);
+        sorted.sort_unstable();
+        assert_eq!(sorted, (10..=17).collect::<Vec<_>>(), "not a permutation");
+        assert_ne!(
+            ids(&q),
+            vec![15, 10, 11, 12, 13, 14, 16, 17],
+            "seed 7 produced the identity order; pick another seed"
+        );
+    }
+
+    #[test]
+    fn extend_context_appends_in_order_at_the_play_revision() {
+        let mut q = Queue::default();
+        q.play_new_context((1..=3).map(item).collect(), 0);
+        let rev = q.rev();
+        assert!(q.extend_context(vec![item(4), item(5)], rev));
+        assert_eq!(ids(&q), vec![1, 2, 3, 4, 5]);
+        assert_eq!(q.current_index(), Some(0));
+        assert!(q.rev() > rev);
+    }
+
+    #[test]
+    fn extend_context_is_dropped_after_any_queue_edit() {
+        let mut q = Queue::default();
+        q.play_new_context((1..=3).map(item).collect(), 0);
+        let rev = q.rev();
+        q.push(vec![item(9)]);
+        assert!(!q.extend_context(vec![item(4)], rev));
+        assert_eq!(ids(&q), vec![1, 2, 3, 9]);
+        q.play_new_context(vec![item(7)], 0);
+        assert!(!q.extend_context(vec![item(4)], rev));
+        assert_eq!(ids(&q), vec![7]);
+    }
+
+    #[test]
+    fn extend_context_with_shuffle_scatters_after_the_current_track() {
+        use rand::SeedableRng;
+        let mut q = Queue::default();
+        q.set_shuffle(true);
+        q.play_new_context((1..=4).map(item).collect(), 2);
+        let current = q.current().unwrap().track_id;
+        let rev = q.rev();
+        assert!(q.extend_context_with(
+            (10..=19).map(item).collect(),
+            rev,
+            &mut rand::rngs::StdRng::seed_from_u64(7),
+        ));
+        assert_eq!(q.current_index(), Some(0));
+        assert_eq!(
+            q.current().unwrap().track_id,
+            current,
+            "the playing track stays"
+        );
+        let mut sorted = ids(&q);
+        sorted.sort_unstable();
+        let mut expected: Vec<u64> = (1..=4).chain(10..=19).collect();
+        expected.sort_unstable();
+        assert_eq!(sorted, expected);
+        let tail: Vec<u64> = ids(&q).into_iter().filter(|id| *id >= 10).collect();
+        assert_ne!(
+            tail,
+            (10..=19).collect::<Vec<_>>(),
+            "seed 7 kept the late tracks in order; pick another seed"
+        );
+    }
+
+    #[test]
+    fn a_new_context_with_shuffle_off_keeps_the_order() {
+        let mut q = Queue::default();
+        q.play_new_context((1..=5).map(item).collect(), 2);
+        assert_eq!(ids(&q), vec![1, 2, 3, 4, 5]);
+        assert_eq!(q.current_index(), Some(2));
+        assert!(!q.shuffle());
     }
 
     #[test]
     fn disabling_shuffle_keeps_the_order() {
         use rand::SeedableRng;
         let mut q = queue(6);
-        q.shuffle_tail_with(&mut rand::rngs::StdRng::seed_from_u64(3));
+        q.shuffle_around_current_with(&mut rand::rngs::StdRng::seed_from_u64(3));
         let shuffled: Vec<u64> = q.items().iter().map(|i| i.track_id).collect();
         q.set_shuffle(false);
         assert!(!q.shuffle());
@@ -855,7 +1028,7 @@ mod tests {
         use rand::SeedableRng;
         let mut q = Queue::default();
         q.push((1..=8).map(item).collect());
-        q.shuffle_tail_with(&mut rand::rngs::StdRng::seed_from_u64(5));
+        q.shuffle_around_current_with(&mut rand::rngs::StdRng::seed_from_u64(5));
         let mut ids: Vec<u64> = q.items().iter().map(|i| i.track_id).collect();
         ids.sort();
         assert_eq!(ids, (1..=8).collect::<Vec<_>>());

@@ -15,6 +15,7 @@
   import Icon from "./Icon.svelte";
   import NameLink from "./NameLink.svelte";
   import PlaylistCover from "./PlaylistCover.svelte";
+  import { t } from "../i18n.svelte";
 
   let {
     item,
@@ -181,14 +182,14 @@
     <span class="art" style:--thumb="{thumb}px">
       <!-- The cover is the card's tab stop; the title repeats its target, so
            it stays out of the tab order. -->
-      <button type="button" class="cover-hit" aria-label={`Open ${item.title}`} onclick={open}>
+      <button type="button" class="cover-hit" aria-label={t("card.open", { title: item.title })} onclick={open}>
         {@render artwork()}
       </button>
       <button
         type="button"
         class="play-glyph"
-        aria-label={`Play ${item.title}`}
-        title="Play"
+        aria-label={t("card.play", { title: item.title })}
+        title={t("menu.play")}
         onclick={() => void actions.play(collection)}
       >
         <Icon name="play" size={variant === "row" ? 14 : 18} />
@@ -216,7 +217,7 @@
     onpointerenter={intentStart}
     onpointerleave={intentEnd}
     onfocus={intentStart}
-    aria-label={showPlay ? `Play ${item.title}` : undefined}
+    aria-label={showPlay ? t("card.play", { title: item.title }) : undefined}
     use:dragSource={dragPayload}
   >{@render body()}</button>
 {:else}
@@ -323,6 +324,13 @@
   }
   .media.playing .title {
     color: var(--accent);
+  }
+  /* Windows contrast themes (A-3): the playing tint is dropped; a frame. */
+  @media (forced-colors: active) {
+    .media.playing {
+      outline: 2px solid Highlight;
+      outline-offset: -2px;
+    }
   }
   .media.blocked .title,
   .media.blocked .sub {

@@ -29,6 +29,7 @@
   import type { Player } from "../lib/player.svelte";
   import type { Toasts } from "../lib/toasts.svelte";
   import type { Nav } from "../lib/nav.svelte";
+  import { t } from "../lib/i18n.svelte";
   let {
     id,
     nav,
@@ -113,7 +114,7 @@
   async function playFrom(index: number) {
     const prepared = await trackFlags.filterPlayable(view.items, index);
     if (!prepared) {
-      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      toasts.show(t("queue.dropHidden"), { severity: "info" });
       return;
     }
     playSource.set(origin, prepared.items.map((t) => t.id));
@@ -124,7 +125,7 @@
     if (view.items.length === 0) return;
     const prepared = await trackFlags.filterPlayable(view.items, 0);
     if (!prepared) {
-      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      toasts.show(t("queue.dropHidden"), { severity: "info" });
       return;
     }
     playSource.set(origin, prepared.items.map((t) => t.id));
@@ -135,7 +136,7 @@
     if (view.items.length === 0) return;
     const prepared = await trackFlags.filterPlayable(view.items, 0);
     if (!prepared) {
-      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      toasts.show(t("queue.dropHidden"), { severity: "info" });
       return;
     }
     playSource.set(origin, prepared.items.map((t) => t.id));
@@ -144,7 +145,7 @@
 
   async function share() {
     const copied = await copyText(shareUrl("album", id));
-    toasts.show(copied ? "Link copied" : "Couldn't copy link", {
+    toasts.show(copied ? t("card.linkCopied") : t("card.linkCopyFailed"), {
       severity: copied ? "success" : "error",
     });
   }
@@ -175,15 +176,15 @@
           uuid={data.cover}
           size={640}
           radius={isAlbumRelease(data.type) ? 0 : 12}
-          alt={`${data.title} cover`}
+          alt={t("detail.coverAlt", { title: data.title })}
         />
       {/snippet}
       {#snippet actions()}
         <DetailAction
           icon="heart"
-          label={favorites.hasAlbum(albumId) ? "Favorited" : "Favorite"}
+          label={favorites.hasAlbum(albumId) ? t("detail.favorited") : t("menu.favorite")}
           active={favorites.hasAlbum(albumId)}
-          title={favorites.hasAlbum(albumId) ? "Unfavorite album" : "Favorite album"}
+          title={favorites.hasAlbum(albumId) ? t("album.unfavorite") : t("album.favorite")}
           {heartFx}
           onclick={() => {
             heartFx = toggledFx(heartFx, favorites.hasAlbum(albumId));
@@ -192,18 +193,18 @@
         />
         <DetailAction
           icon={later.has("album", albumId) ? "bookmark-minus" : "bookmark"}
-          label={later.has("album", albumId) ? "Saved" : "Save"}
+          label={later.has("album", albumId) ? t("detail.saved") : t("detail.save")}
           active={later.has("album", albumId)}
-          title={later.has("album", albumId) ? "Remove from Save for later" : "Save for later"}
+          title={later.has("album", albumId) ? t("menu.laterRemove") : t("menu.laterAdd")}
           onclick={() => void later.toggle("album", albumId)}
         />
         <DetailAction
           icon="list-plus"
-          label="Add"
-          title="Add album to playlist"
+          label={t("detail.add")}
+          title={t("album.addToPlaylist")}
           onclick={() => playlistActions.openPicker(tracks)}
         />
-        <DetailAction icon="share-2" label="Share" title="Copy link" onclick={share} />
+        <DetailAction icon="share-2" label={t("detail.share")} title={t("menu.copyLink")} onclick={share} />
       {/snippet}
     </DetailHeader>
     <TrackTable
@@ -223,5 +224,5 @@
     />
   </div>
 {:else}
-  <EmptyState message="Album not found." />
+  <EmptyState message={t("album.notFound")} />
 {/if}

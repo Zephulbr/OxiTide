@@ -7,6 +7,7 @@
   import Cover from "./Cover.svelte";
   import Icon from "./Icon.svelte";
   import Modal from "./Modal.svelte";
+  import { t } from "../i18n.svelte";
 
   /// The Collaborators dialog (spec 2026-10-22, §6.3): copy the playlist's
   /// invitation link and see who is on it. Mounted once in App.
@@ -55,8 +56,8 @@
       collaboratorsDialog.markLink(current.uuid);
       if (target?.uuid === current.uuid) hasLink = true;
       const copied = await copyText(invite.url);
-      if (!copied) toasts.show("Couldn't copy the invitation link", { severity: "error" });
-      else toasts.show(renew ? "New invitation link copied. The old one no longer works." : "Invitation link copied", { severity: "success" });
+      if (!copied) toasts.show(t("collaborators.copyFailed"), { severity: "error" });
+      else toasts.show(renew ? t("collaborators.renewed") : t("collaborators.copied"), { severity: "success" });
     } catch (e) {
       toasts.show(errorMessage(e), { severity: "error" });
     } finally {
@@ -66,7 +67,7 @@
 </script>
 
 {#if target}
-  <Modal title="Collaborators" onclose={() => collaboratorsDialog.close()}>
+  <Modal title={t("collaborators.title")} onclose={() => collaboratorsDialog.close()}>
     <div class="collab">
       <p class="playlist muted">{target.title}</p>
       <button type="button" class="row invite" onclick={() => void copy(false)} disabled={copying} aria-busy={copying}>
@@ -74,17 +75,17 @@
           {#if copying}<span class="spinner"></span>{:else}<Icon name="copy" size={18} />{/if}
         </span>
         <span class="text">
-          <span class="name">Copy invitation link</span>
-          <span class="sub muted">Invite others by sharing the link</span>
+          <span class="name">{t("collaborators.copyLink")}</span>
+          <span class="sub muted">{t("collaborators.copyLinkHint")}</span>
         </span>
       </button>
 
       {#if membersLoading}
-        <p class="status muted">Loading members…</p>
+        <p class="status muted">{t("collaborators.loading")}</p>
       {:else if membersError}
-        <p class="status muted">Couldn't load the members: {membersError}</p>
+        <p class="status muted">{t("collaborators.loadFailed", { error: membersError })}</p>
       {:else}
-        <ul class="members" aria-label="Members">
+        <ul class="members" aria-label={t("collaborators.members")}>
           {#each members as member (member.id)}
             <li class="row">
               <span class="avatar" aria-hidden="true">
@@ -96,7 +97,7 @@
               </span>
               <span class="text">
                 <span class="name">{member.name}</span>
-                {#if member.owner}<span class="sub muted">Owner</span>{/if}
+                {#if member.owner}<span class="sub muted">{t("collaborators.owner")}</span>{/if}
               </span>
             </li>
           {/each}
@@ -105,16 +106,16 @@
 
       <footer>
         {#if confirmingReset}
-          <span class="note">The current link will stop working.</span>
+          <span class="note">{t("collaborators.resetWarning")}</span>
           <span class="actions">
-            <button type="button" class="text-button" onclick={() => (confirmingReset = false)}>Cancel</button>
-            <button type="button" class="text-button danger" onclick={() => void copy(true)}>Reset link</button>
+            <button type="button" class="text-button" onclick={() => (confirmingReset = false)}>{t("common.cancel")}</button>
+            <button type="button" class="text-button danger" onclick={() => void copy(true)}>{t("collaborators.resetLink")}</button>
           </span>
         {:else}
-          <span class="note muted">Links work for 7 days. People who join keep access.</span>
+          <span class="note muted">{t("collaborators.linkLifetime")}</span>
           {#if hasLink}
             <button type="button" class="text-button" onclick={() => (confirmingReset = true)} disabled={copying}>
-              Reset link
+              {t("collaborators.resetLink")}
             </button>
           {/if}
         {/if}

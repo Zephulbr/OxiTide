@@ -26,7 +26,7 @@ built by `.github/workflows/release.yml` from a version tag; nothing is uploaded
 
 1. Bump `version` in the workspace `Cargo.toml` (`[workspace.package]`) — the only place the
    version lives — and refresh `Cargo.lock` (any `cargo build`/`cargo check` does it). Commit, push
-   to `main`, and wait for CI to pass. A red run is not noise: if a test is flaky, fix it (or
+   the release branch (`release/1.x` for 1.x, see Branches), and wait for CI to pass. A red run is not noise: if a test is flaky, fix it (or
    record why not) before tagging. The release workflow re-runs the gates on the tag anyway
    (step 3), so a red commit cannot ship.
    - `tauri.conf.json` has no `version` on purpose: Tauri then uses `Cargo.toml`'s, and the Rust
@@ -58,12 +58,24 @@ built by `.github/workflows/release.yml` from a version tag; nothing is uploaded
 
 - A 1.x fix goes on `release/1.x` (branch from it, or commit there directly). Bump the version
   there and tag `v1.0.x` on that branch; the release workflow runs on any `v*` tag.
+- The workflow enforces this: `scripts/release/check-branch.mjs` fails a `vN.*` tag whose commit
+  is not on GitHub's `release/N.x`, so push the branch before the tag. A major with no release
+  branch yet (2.0 prereleases from `main`, a `v0.0.0-test` tag) is not checked. The version check
+  cannot catch a wrong branch: a forward merge gives `main` the same `Cargo.toml` version.
 - Then **merge `release/1.x` forward into `main`**, never the other way: `main` carries V2 work
   that 1.x must not get. Bookkeeping for a 1.x release (its gate note, retro entries) is also
   committed on `release/1.x` and reaches `main` through the merge.
+- A 1.x **feature** release (a minor bump, `1.Y.0`; v1.1.0 was the first) follows the same path:
+  the work lands on `release/1.x`, the version is bumped and tagged `v1.Y.0` there, and the
+  branch is merged forward. Merge forward early and often while it is in progress (after each
+  plan phase), so V2 work on `main` picks up the new rules (for 1.1, the `t()` rule) before it
+  adds more code that breaks them. A feature release also gets release notes
+  (`docs/release-notes/v1.Y.0.md`) and a gate note in `plans/notes/` that indexes what is
+  open; patch releases on top of it are `v1.Y.z`.
 - CI runs on pushes to `release/**`, the same as on `main`.
 - 2.0 pre-releases are published as GitHub **prereleases**, which the updater endpoint ignores, so
-  1.x installs are never offered them (V2-D3).
+  1.x installs are never offered them (V2-D3). The workflow marks any suffixed tag
+  (`v2.0.0-beta.1`, `-rc.1`) as a prerelease itself; only a plain `vX.Y.Z` can become Latest.
 
 ## Notes
 

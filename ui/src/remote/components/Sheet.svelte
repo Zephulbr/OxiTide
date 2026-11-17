@@ -1,6 +1,7 @@
 <script lang="ts">
   import Icon from "../../lib/components/Icon.svelte";
   import { useRemote } from "../context";
+  import { t } from "../i18n.svelte";
 
   const { actions } = useRemote();
   let panel = $state<HTMLDivElement | null>(null);
@@ -34,7 +35,7 @@
         </li>
       {/each}
     </ul>
-    <button class="cancel" onclick={() => (actions.sheet = null)}>Cancel</button>
+    <button class="cancel" onclick={() => (actions.sheet = null)}>{t("common.cancel")}</button>
   </div>
 {/if}
 

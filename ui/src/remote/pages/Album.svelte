@@ -6,6 +6,7 @@
   import { useRemote } from "../context";
   import { art, fromTrack } from "../convert";
   import { hrefFor } from "../routes";
+  import { t } from "../i18n.svelte";
 
   let { id }: { id: number } = $props();
   const { api, actions } = useRemote();
@@ -23,10 +24,10 @@
       <DetailHead
         image={art(album.cover, 640)}
         title={album.title}
-        kind="Album"
+        kind={t("kind.album")}
         subtitle={[
           album.releaseDate?.slice(0, 4),
-          `${album.numberOfTracks} tracks`,
+          t("common.trackCount", { count: album.numberOfTracks }),
           formatTotalDuration(album.duration),
         ]
           .filter(Boolean)

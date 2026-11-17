@@ -6,7 +6,7 @@ import { api } from "../api";
 import ChangerUnit from "./ChangerUnit.svelte";
 
 vi.mock("../api", () => ({
-  api: { playTracks: vi.fn(async () => {}) },
+  api: { queueJump: vi.fn(async () => {}) },
 }));
 
 // jsdom has no ResizeObserver; QueueRail's `bind:clientHeight` only needs it to exist.
@@ -34,7 +34,7 @@ describe("ChangerUnit", () => {
     render(ChangerUnit, { player: fakePlayer({ queue, current: queue[5], current_index: 5 }), onClose: vi.fn() });
     await fireEvent.click(screen.getByRole("button", { name: "Previous discs" }));
     await fireEvent.click(screen.getByRole("button", { name: "Play disc 2: Track 2" }));
-    expect(api.playTracks).toHaveBeenCalledWith(queue, 1);
+    expect(api.queueJump).toHaveBeenCalledWith(queue, 1);
   });
 
   it("closes from its head key", async () => {

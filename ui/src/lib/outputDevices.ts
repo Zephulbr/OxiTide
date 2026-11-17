@@ -2,29 +2,30 @@
 // Pure: OutputDevicePicker.svelte and the player bar's quality menu render from it.
 import type { DeviceGroup, DeviceKind, OutputDevice, OutputDeviceList } from "./api";
 import type { IconName } from "./components/Icon.svelte";
+import { t, type MessageKey } from "./i18n.svelte";
 
 /** Fired by the backend when devices change or capability checks finish. */
 export const OUTPUT_DEVICES_CHANGED_EVENT = "output_devices_changed";
 
 /** Icon choices offered in a row's menu ("" = from the device type). */
 export const DEVICE_ICON_CHOICES: { value: string; label: string; icon?: IconName }[] = [
-  { value: "", label: "Automatic" },
-  { value: "speaker", label: "Speaker", icon: "speaker" },
-  { value: "headphones", label: "Headphones", icon: "headphones" },
-  { value: "radio-receiver", label: "DAC / Amp", icon: "radio-receiver" },
-  { value: "monitor", label: "Monitor", icon: "monitor" },
-  { value: "tv", label: "TV", icon: "tv" },
-  { value: "laptop", label: "Laptop", icon: "laptop" },
+  { value: "", get label() { return t("device.icon.auto"); } },
+  { value: "speaker", get label() { return t("device.icon.speaker"); }, icon: "speaker" },
+  { value: "headphones", get label() { return t("device.kind.headphones"); }, icon: "headphones" },
+  { value: "radio-receiver", get label() { return t("device.icon.dac"); }, icon: "radio-receiver" },
+  { value: "monitor", get label() { return t("device.icon.monitor"); }, icon: "monitor" },
+  { value: "tv", get label() { return t("device.icon.tv"); }, icon: "tv" },
+  { value: "laptop", get label() { return t("device.icon.laptop"); }, icon: "laptop" },
   { value: "usb", label: "USB", icon: "usb" },
   { value: "bluetooth", label: "Bluetooth", icon: "bluetooth" },
-  { value: "audio-lines", label: "Lines", icon: "audio-lines" },
-  { value: "none", label: "No icon" },
+  { value: "audio-lines", get label() { return t("device.icon.lines"); }, icon: "audio-lines" },
+  { value: "none", get label() { return t("device.icon.none"); } },
 ];
 
 const GROUP_LABELS: Record<DeviceGroup, string> = {
-  wasapi: "Windows audio",
+  get wasapi() { return t("device.group.wasapi"); },
   asio: "ASIO",
-  alsa: "Sound cards",
+  get alsa() { return t("device.group.alsa"); },
 };
 
 const GROUP_ORDER: DeviceGroup[] = ["wasapi", "alsa", "asio"];
@@ -69,21 +70,21 @@ export function deviceIcon(device: OutputDevice): IconName | null {
 }
 
 const KIND_LABELS: Partial<Record<DeviceKind, string>> = {
-  speakers: "Speakers",
-  headphones: "Headphones",
-  headset: "Headset",
+  get speakers() { return t("device.kind.speakers"); },
+  get headphones() { return t("device.kind.headphones"); },
+  get headset() { return t("device.kind.headset"); },
   hdmi: "HDMI",
-  spdif: "Digital (S/PDIF)",
-  line: "Line out",
+  get spdif() { return t("device.kind.spdif"); },
+  get line() { return t("device.kind.line"); },
   bluetooth: "Bluetooth",
   usb: "USB",
-  virtual: "Virtual device",
+  get virtual() { return t("device.kind.virtual"); },
 };
 
 /** The row's muted second line: how the device is connected. */
 export function connectionLabel(device: OutputDevice): string {
-  if (!device.connected) return "Not connected";
-  if (device.group === "asio") return device.wrapper ? "Wrapper over Windows audio" : "Always exclusive";
+  if (!device.connected) return t("player.notConnected");
+  if (device.group === "asio") return device.wrapper ? t("device.asioWrapper") : t("device.alwaysExclusive");
   switch (device.transport) {
     case "usb":
       return "USB";
@@ -92,9 +93,9 @@ export function connectionLabel(device: OutputDevice): string {
     case "hdmi":
       return "HDMI";
     case "internal":
-      return device.kind === "spdif" ? "Digital (S/PDIF)" : "Internal";
+      return device.kind === "spdif" ? t("device.kind.spdif") : t("device.internal");
     case "virtual":
-      return "Virtual device";
+      return t("device.kind.virtual");
     default:
       return KIND_LABELS[device.kind] ?? "";
   }
@@ -112,12 +113,16 @@ export function supportsLine(device: OutputDevice): string | null {
   if (!caps) return null;
   const parts: string[] = [];
   if (caps.exclusive && caps.max_rate) {
-    parts.push(`Up to ${formatRate(caps.max_rate)}${caps.max_bits ? ` · ${caps.max_bits}-bit` : ""}`);
+    parts.push(
+      caps.max_bits
+        ? t("device.upToBits", { rate: formatRate(caps.max_rate), bits: caps.max_bits })
+        : t("device.upTo", { rate: formatRate(caps.max_rate) }),
+    );
   } else if (!caps.exclusive && caps.source === "probed") {
-    parts.push(caps.shared_rate ? `Shared only · ${formatRate(caps.shared_rate)}` : "Shared only");
+    parts.push(caps.shared_rate ? t("device.sharedOnlyRate", { rate: formatRate(caps.shared_rate) }) : t("device.sharedOnly"));
   }
-  if (caps.hw_volume === true) parts.push("hardware volume");
-  if (caps.source === "played" && parts.length > 0) parts.push("from playback");
+  if (caps.hw_volume === true) parts.push(t("device.hardwareVolume"));
+  if (caps.source === "played" && parts.length > 0) parts.push(t("device.fromPlayback"));
   return parts.length ? parts.join(", ") : null;
 }
 
@@ -135,7 +140,7 @@ export function numberRuns(text: string): { text: string; number: boolean }[] {
 /** The mode label of a device in the quality menu. */
 export function modeLabel(device: OutputDevice): string {
   if (device.group === "asio") return "ASIO";
-  return device.prefs.mode === "exclusive" ? "Exclusive" : "Shared";
+  return device.prefs.mode === "exclusive" ? t("device.mode.exclusive") : t("device.mode.shared");
 }
 
 /** Whether output `id` ("" = System default) plays exclusive: ASIO always,
@@ -208,9 +213,9 @@ export function pickerView(list: OutputDeviceList, showHidden: boolean, showAbse
  * what failed and the details go to the console.
  */
 export function deviceError(action: string, error: unknown): string {
-  if (typeof error === "string" && error.trim()) return `${action}: ${error}`;
+  if (typeof error === "string" && error.trim()) return t("device.errorDetail", { action, error });
   console.error(action, error);
-  return `${action}. Reopen Settings to try again.`;
+  return t("device.errorRetry", { action });
 }
 
 /** The quality menu's Output section: pinned devices in pin order. */

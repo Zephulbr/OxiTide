@@ -297,6 +297,15 @@ pub fn enter_mini(window: &WebviewWindow, stash: FullGeometry) -> tauri::Result<
     Ok(())
 }
 
+/// Sets the webview's zoom to `percent` (A-5). The mini player always runs at
+/// 100 % (its fixed size has no room for larger text), so callers pass 100
+/// while it shows. A failure only logs: zoom is cosmetic.
+pub fn apply_zoom(window: &WebviewWindow, percent: u32) {
+    if let Err(e) = window.set_zoom(f64::from(percent) / 100.0) {
+        tracing::warn!("failed to set the interface zoom: {e}");
+    }
+}
+
 /// Leave the mini window: restore the full minimum, then the stash when there
 /// is one (a defensive `None` leaves size/position untouched).
 pub fn exit_mini(window: &WebviewWindow, stash: Option<FullGeometry>) -> tauri::Result<()> {

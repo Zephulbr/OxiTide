@@ -1,0 +1,11 @@
+{
+  "tray.showHide": "System tray menu item: shows the window, or hides it when it is visible. Plain text, no placeholders.",
+  "tray.playPause": "System tray menu item: toggles playback.",
+  "tray.next": "System tray menu item: next track.",
+  "tray.previous": "System tray menu item: previous track.",
+  "tray.quit": "System tray menu item: exits the app.",
+  "taskbar.previous": "Tooltip of the Windows taskbar preview's previous-track button.",
+  "taskbar.play": "Tooltip of the taskbar preview's play button (verb).",
+  "taskbar.pause": "Tooltip of the taskbar preview's pause button (verb).",
+  "taskbar.next": "Tooltip of the taskbar preview's next-track button."
+}

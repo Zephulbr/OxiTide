@@ -6,7 +6,7 @@ import QueueRail from "./QueueRail.svelte";
 import { api } from "../api";
 
 vi.mock("../api", () => ({
-  api: { playTracks: vi.fn(async () => {}) },
+  api: { queueJump: vi.fn(async () => {}) },
 }));
 
 // jsdom has no ResizeObserver; `bind:clientHeight` only needs it to exist.
@@ -43,7 +43,7 @@ describe("QueueRail", () => {
 
     await fireEvent.click(screen.getByRole("button", { name: "Track 2 — Artist" }));
 
-    expect(api.playTracks).toHaveBeenCalledWith(queue, 1);
+    expect(api.queueJump).toHaveBeenCalledWith(queue, 1);
   });
 
   it("marks only the engine's current position when a track is queued twice", () => {
@@ -74,7 +74,7 @@ describe("QueueRail", () => {
     expect(go).toHaveBeenCalledWith({ name: "artist", id: 7 });
     await fireEvent.click(screen.getByText("Track 2"));
     await vi.waitFor(() => expect(go).toHaveBeenLastCalledWith({ name: "album", id: 9 }));
-    expect(api.playTracks).not.toHaveBeenCalled();
+    expect(api.queueJump).not.toHaveBeenCalled();
     // Nested in the play button: pointer-only spans, never a link role.
     expect(screen.queryAllByRole("link")).toHaveLength(0);
   });

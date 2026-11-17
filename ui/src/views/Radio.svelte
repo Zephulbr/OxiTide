@@ -21,6 +21,7 @@
   import type { Player } from "../lib/player.svelte";
   import type { Toasts } from "../lib/toasts.svelte";
   import type { Nav } from "../lib/nav.svelte";
+  import { t } from "../lib/i18n.svelte";
 
   /// A track radio, laid out like a mix: the seed track's cover and artists
   /// in the header, the station below. Nothing plays until asked.
@@ -74,7 +75,7 @@
     if (view.items.length === 0) return;
     const prepared = await trackFlags.filterPlayable(view.items, index);
     if (!prepared) {
-      toasts.show("Everything here is hidden by your content filters.", { severity: "info" });
+      toasts.show(t("queue.dropHidden"), { severity: "info" });
       return;
     }
     playSource.set(origin, prepared.items.map((t) => t.id));
@@ -107,14 +108,14 @@
       {#snippet actions()}
         <DetailAction
           icon="list-plus"
-          label="Add"
-          title="Add radio to playlist"
+          label={t("detail.add")}
+          title={t("radio.addToPlaylist")}
           onclick={() => playlistActions.openPicker(view.items)}
         />
       {/snippet}
     </DetailHeader>
     {#if data[1].length === 0}
-      <EmptyState message="No radio tracks available." />
+      <EmptyState message={t("radio.noTracks")} />
     {:else}
       <TrackTable
         {view}
@@ -133,5 +134,5 @@
     {/if}
   </div>
 {:else}
-  <EmptyState message="Radio not found." />
+  <EmptyState message={t("radio.notFound")} />
 {/if}

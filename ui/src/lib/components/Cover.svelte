@@ -1,6 +1,7 @@
 <script lang="ts">
   import { coverUrl, type CoverSize } from "../artwork";
   import Icon from "./Icon.svelte";
+  import { t } from "../i18n.svelte";
 
   let {
     uuid,
@@ -28,7 +29,7 @@
     onerror={() => (failed = true)}
   />
 {:else}
-  <div class="cover fallback" style:border-radius="{radius}px" role="img" aria-label={alt || "No artwork"}>
+  <div class="cover fallback" style:border-radius="{radius}px" role="img" aria-label={alt || t("cover.none")}>
     <Icon name="music" size={20} />
   </div>
 {/if}

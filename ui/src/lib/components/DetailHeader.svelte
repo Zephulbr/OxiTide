@@ -4,6 +4,7 @@
   import type { DragPayload } from "../dragPayload";
   import { marquee } from "../marquee";
   import Icon from "./Icon.svelte";
+  import { t } from "../i18n.svelte";
 
   let {
     kicker,
@@ -64,10 +65,10 @@
       </div>
       <div class="transport">
         <button class="btn-play" onclick={onPlay} {disabled}>
-          <Icon name="play" size={20} /> Play
+          <Icon name="play" size={20} /> {t("menu.play")}
         </button>
         <button class="btn-shuffle" onclick={onShuffle} {disabled}>
-          <Icon name="shuffle" size={20} /> Shuffle
+          <Icon name="shuffle" size={20} /> {t("menu.shuffle")}
         </button>
         {#if tools}
           <span class="tools">{@render tools()}</span>

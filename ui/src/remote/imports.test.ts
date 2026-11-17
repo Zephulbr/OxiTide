@@ -16,14 +16,19 @@ const SHARED = new Set([
   "src/lib/artwork.ts",
   "src/lib/coverPalette.ts",
   "src/lib/format.ts",
+  // The translation core and language list; the remote's catalog is
+  // remote.json (src/remote/i18n.svelte.ts), never the app's.
+  "src/lib/i18nCore.svelte.ts",
+  "src/lib/languages.ts",
+  "src/lib/locale.svelte.ts",
   "src/lib/lyrics.ts",
   "src/lib/media.ts",
-  "src/lib/volume.ts",
+
   "src/lib/components/Icon.svelte",
   // The favorite heart's motion; it imports only svelte and Icon.
   "src/lib/components/FavoriteHeart.svelte",
 ]);
-const BARE = new Set(["svelte", "svelte/reactivity", "svelte/transition"]);
+const BARE = new Set(["svelte", "svelte/reactivity", "svelte/transition", "intl-messageformat"]);
 
 const IMPORT = /^\s*import\s+(type\s+)?(?:[\w*{}\s,$]+?\s+from\s+)?["']([^"']+)["']/gm;
 
@@ -67,6 +72,11 @@ function walk(): { files: string[]; violations: string[] } {
         continue;
       }
       if (spec.endsWith(".css")) continue;
+      // Catalogs are data; app.json is caught by name.
+      if (spec.endsWith(".json")) {
+        if (spec.endsWith("/app.json")) violations.push(`${file} imports ${spec}`);
+        continue;
+      }
       const target = resolveImport(file, spec);
       if (!target.startsWith("src/remote/") && !SHARED.has(target)) {
         violations.push(`${file} imports ${target} at runtime`);

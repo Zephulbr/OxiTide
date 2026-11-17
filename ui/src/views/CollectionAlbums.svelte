@@ -13,6 +13,7 @@
   import type { Nav } from "../lib/nav.svelte";
   import { load as loadCached, peek } from "../lib/viewCache";
   import { favoriteAlbumsSource } from "../lib/viewData";
+  import { t } from "../lib/i18n.svelte";
 
   let { nav }: { nav: Nav } = $props();
 
@@ -49,20 +50,20 @@
 <header class="page-head">
   <!-- The count sits under the title rather than beside the tools, as on Playlists. -->
   <div class="title-block">
-    <h2>Albums</h2>
+    <h2>{t("route.albums")}</h2>
     {#if !loading && !error && albums.length > 0}
-      <span class="summary tnum">{albums.length} {albums.length === 1 ? "album" : "albums"}</span>
+      <span class="summary tnum">{t("albums.count", { count: albums.length })}</span>
     {/if}
   </div>
   <SortSelect
     value={sortMode}
     options={[
-      { value: "added", label: "Recently added" },
-      { value: "released", label: "Release date" },
-      { value: "title", label: "Title A–Z" },
-      { value: "artist", label: "Artist A–Z" },
+      { value: "added", label: t("sort.option.recentlyAdded") },
+      { value: "released", label: t("table.column.released") },
+      { value: "title", label: t("sort.option.titleAz") },
+      { value: "artist", label: t("sort.option.artistAz") },
     ]}
-    label="Sort albums"
+    label={t("albums.sortLabel")}
     onchange={(value) => (sortMode = value as AlbumSort)}
   />
 </header>
@@ -71,7 +72,7 @@
 {:else if error}
   <ErrorState message={error} onRetry={load} />
 {:else if albums.length === 0}
-  <EmptyState message="No albums yet." />
+  <EmptyState message={t("albums.empty")} />
 {:else}
   <div class="grid pane" class:arrive role="list">
     {#each rows as album (album.id)}

@@ -127,7 +127,13 @@ mod tests {
             true
         });
         assert!(emitter.is_running());
-        std::thread::sleep(TICK * 5);
+        // Wait for the first tick rather than a fixed sleep: under a loaded
+        // parallel test run the thread can be scheduled late (it failed a
+        // full `cargo test --workspace` once with a 5-tick sleep).
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while ticks.load(Ordering::SeqCst) == 0 && std::time::Instant::now() < deadline {
+            std::thread::sleep(TICK);
+        }
         emitter.stop();
         assert!(!emitter.is_running());
         let seen = ticks.load(Ordering::SeqCst);

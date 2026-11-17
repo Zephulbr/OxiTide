@@ -1,4 +1,5 @@
 import type { Album, Artist, PageItem, Playlist, SearchKind, SearchResults, TopHit } from "./api";
+import { t } from "./i18n.svelte";
 
 /// Search results as the shared card's items (MediaCard), so the result rows
 /// open, play and offer the same menu as Home's.
@@ -18,7 +19,7 @@ export function artistCard(artist: Artist): PageItem {
   return {
     id: String(artist.id),
     title: artist.name,
-    subtitle: "Artist",
+    subtitle: t("card.artist"),
     item_type: "ARTIST",
     artwork: artist.picture ?? artist.cover_fallback ?? null,
   };

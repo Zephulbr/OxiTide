@@ -14,6 +14,7 @@
   import SettingRow from "./settings/SettingRow.svelte";
   import SettingsSection from "./settings/SettingsSection.svelte";
   import ToggleRow from "./settings/ToggleRow.svelte";
+  import { t } from "../i18n.svelte";
 
   type Phase = "idle" | "checking" | "current" | "available" | "installing";
 
@@ -83,25 +84,25 @@
   const message = $derived.by(() => {
     if (!support) return "";
     if (!support.supported) return support.reason ?? "";
-    if (phase === "checking") return "Checking for updates…";
-    if (phase === "current") return "You are on the latest version.";
-    if (phase === "available" && update) return `Version ${update.version} is available.`;
+    if (phase === "checking") return t("updates.checking");
+    if (phase === "current") return t("updates.current");
+    if (phase === "available" && update) return t("updates.available", { version: update.version });
     return "";
   });
 </script>
 
-<SettingsSection title="Updates" icon="download">
+<SettingsSection title={t("settings.section.updates")} icon="download">
   {#if support}
     <SettingRow id="updates-check" label={`OxiTide ${support.current_version}`} description={message}>
       {#if support.supported}
         {#if phase === "available"}
-          <Button variant="primary" icon="download" onclick={() => (confirming = true)}>Download and install</Button>
+          <Button variant="primary" icon="download" onclick={() => (confirming = true)}>{t("updates.install")}</Button>
         {:else}
           <Button
             icon="refresh-cw"
             disabled={phase === "checking" || phase === "installing"}
             onclick={check}
-          >Check for updates</Button>
+          >{t("settings.updatesCheck.label")}</Button>
         {/if}
       {/if}
       {#snippet below()}
@@ -110,15 +111,15 @@
         {/if}
         {#if phase === "installing"}
           <span class="installing" role="status">
-            Downloading{percent === null ? "…" : ` ${percent}%`} — OxiTide restarts when it finishes.
+            {percent === null ? t("updates.downloading") : t("updates.downloadingPercent", { percent })}
           </span>
-          <progress max="100" value={percent ?? undefined} aria-label="Update download"></progress>
+          <progress max="100" value={percent ?? undefined} aria-label={t("updates.download")}></progress>
         {/if}
       {/snippet}
     </SettingRow>
     {#if support.supported}
       <ToggleRow
-        id="updates-start" label="Check for updates when OxiTide starts"
+        id="updates-start" label={t("settings.updatesStart.label")}
         checked={support.check_on_start}
         onchange={setCheckOnStart}
       />
@@ -130,9 +131,9 @@
 </SettingsSection>
 {#if confirming && update}
   <ConfirmDialog
-    title={`Install OxiTide ${update.version}?`}
-    message="OxiTide will download this version from its GitHub releases (github.com/Zephulbr/OxiTide), check its signature, then run the installer and restart. Nothing is downloaded until you confirm."
-    confirmLabel="Download and install"
+    title={t("updates.confirmTitle", { version: update.version })}
+    message={t("updates.confirmMessage")}
+    confirmLabel={t("updates.install")}
     destructive={false}
     onconfirm={install}
     oncancel={() => (confirming = false)}

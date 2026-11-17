@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import Icon from "./Icon.svelte";
+  import { t } from "../i18n.svelte";
 
   let {
     title,
@@ -45,16 +46,16 @@
       class="control"
       onclick={() => step(-1)}
       disabled={!canLeft}
-      aria-label="Scroll left"
-      title="Scroll left"
+      aria-label={t("carousel.left")}
+      title={t("carousel.left")}
     ><Icon name="chevron-left" size={16} /></button>
     <button
       type="button"
       class="control"
       onclick={() => step(1)}
       disabled={!canRight}
-      aria-label="Scroll right"
-      title="Scroll right"
+      aria-label={t("carousel.right")}
+      title={t("carousel.right")}
     ><Icon name="chevron-right" size={16} /></button>
     {@render controls?.()}
   </div>

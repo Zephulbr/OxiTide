@@ -2,6 +2,7 @@ import { SvelteSet } from "svelte/reactivity";
 import { api, type LaterKind } from "./api";
 import { errorMessage } from "./errors";
 import type { Toasts } from "./toasts.svelte";
+import { t } from "./i18n.svelte";
 
 /// TIDAL's Save for Later list for the signed-in account (spec
 /// 2026-10-22-oxitide-save-for-later-collaborators). Saved ids are hydrated
@@ -89,15 +90,15 @@ export function createLater(): Later {
       revision += 1;
       if (next) {
         const go = open;
-        toasts?.show("Saved for later", {
+        toasts?.show(t("later.saved"), {
           severity: "success",
-          action: go ? { label: "Open", run: go } : undefined,
+          action: go ? { label: t("menu.open"), run: go } : undefined,
         });
       } else {
-        toasts?.show("Removed from Save for later", {
+        toasts?.show(t("later.removed"), {
           severity: "success",
           action: {
-            label: "Undo",
+            label: t("common.undo"),
             run: () => {
               if (!set.has(id)) void toggle(kind, id);
             },
