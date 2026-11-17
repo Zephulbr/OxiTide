@@ -352,8 +352,8 @@
     <button class="nav-item" class:active={nav.route.name === "home"} aria-current={nav.route.name === "home" ? "page" : undefined} onclick={() => nav.goto({ name: "home" })} title={t("route.home")} aria-label={t("route.home")}>
       <Icon name="home" />{#if !rail}<span>{t("route.home")}</span>{/if}
     </button>
-    <button class="nav-item" class:active={nav.route.name === "explore"} aria-current={nav.route.name === "explore" ? "page" : undefined} onclick={() => nav.goto({ name: "explore" })} title={t("route.explore")} aria-label={t("route.explore")}>
-      <Icon name="globe" />{#if !rail}<span>{t("route.explore")}</span>{/if}
+    <button class="nav-item" class:active={nav.route.name === "explore"} aria-current={nav.route.name === "explore" ? "page" : undefined} onclick={() => nav.goto({ name: "explore" })} title={t("nav.exploreHint", { key: "Ctrl+F" })} aria-label={t("route.explore")}>
+      <Icon name="search" />{#if !rail}<span>{t("route.explore")}</span>{/if}
     </button>
     <button class="nav-item" class:active={nav.route.name === "feed"} aria-current={nav.route.name === "feed" ? "page" : undefined} onclick={() => nav.goto({ name: "feed" })} use:prefetchIntent={{ name: "feed" }} title={t("route.feed")} aria-label={t("route.feed")}>
       <Icon name="bell" />{#if !rail}<span>{t("route.feed")}</span>{/if}

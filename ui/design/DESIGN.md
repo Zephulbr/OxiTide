@@ -439,6 +439,14 @@ pill chips the same width (recent searches with the history icon, top artists fr
 listening history with the user icon); chips that would wrap are clipped by the row's
 fixed height. Untitled quick-link rows (New, Top, HiRes, …) follow "New to you".
 
+**Search entry points** (spec `2026-11-17-oxitide-search-discoverability-design.md`): the
+sidebar's Explore item uses the `search` (magnifier) icon, tooltip "Explore and search
+(Ctrl+F)". Home shows the same field (`SearchField.svelte`, `compact`: 40px, 14px text,
+`min(560px, 100%)`) under the greeting, left-aligned with it, 14px below the prompt; it
+has no panel of its own and no chips. Submitting opens Explore's results. Settings →
+Typography & layout → "Search bar on Home" hides it (on by default). Every mode styles
+both fields through `.search-input`.
+
 **Search results** (`SearchResultsView.svelte`) replace the old all-in-one lists. While a
 search shows results, the suggestion chips give way to type chips (All · Tracks · Albums ·
 Artists · Playlists, only types that have results; the chosen one is accent-filled). The

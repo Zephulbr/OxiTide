@@ -40,6 +40,7 @@
   import Notice from "../lib/components/settings/Notice.svelte";
   import Segmented from "../lib/components/settings/Segmented.svelte";
   import { sortMemory, type SortMemoryMode } from "../lib/sortMemory.svelte";
+  import { homeSearch } from "../lib/homeSearch.svelte";
   import Select from "../lib/components/settings/Select.svelte";
   import LanguagePicker from "../lib/components/settings/LanguagePicker.svelte";
   import SettingRow from "../lib/components/settings/SettingRow.svelte";
@@ -200,6 +201,7 @@
     get always() { return t("settings.opt.sortMemoryHelp.always"); },
   };
   const sortMemoryStore = sortMemory();
+  const homeSearchFlag = homeSearch();
   const COVER_OPTIONS: { value: CoverShape; label: string }[] = [
     { value: "disc", get label() { return t("settings.opt.cover.disc"); } },
     { value: "sleeve", get label() { return t("settings.opt.cover.sleeve"); } },
@@ -1184,6 +1186,12 @@
                   />
                 </SettingRow>
               {/if}
+              <ToggleRow
+                id="home-search" label={t("settings.homeSearch.label")}
+                description={t("settings.homeSearch.description")}
+                checked={homeSearchFlag.shown}
+                onchange={(enabled) => homeSearchFlag.setShown(enabled)}
+              />
               {#if appearance.mode !== "rack"}
                 <SettingRow
                   id="player-bar-style"

@@ -24,9 +24,14 @@
   import Loading from "../lib/components/Loading.svelte";
   import MediaCard from "../lib/components/MediaCard.svelte";
   import PageSections from "../lib/components/PageSections.svelte";
+  import SearchField from "../lib/components/SearchField.svelte";
+  import { homeSearch } from "../lib/homeSearch.svelte";
   import { t } from "../lib/i18n.svelte";
 
   let { nav, player, toasts }: { nav: Nav; player: Player; toasts: Toasts } = $props();
+
+  const searchShown = homeSearch();
+  let query = $state("");
 
   // Every source reads through the page cache (lib/viewCache.ts). The
   // personal ones change with each play, so they always revalidate in the
@@ -195,6 +200,21 @@
   <header class="masthead">
     <h2>{hello}</h2>
     {#if !current}<p class="muted">{prompt}</p>{/if}
+    {#if searchShown.shown}
+      <!-- A launcher: a submitted search opens Explore with the results
+           (spec 2026-11-17 SD-D2); Home never shows results itself. -->
+      <div class="home-search">
+        <SearchField
+          compact
+          value={query}
+          oninput={(value) => (query = value)}
+          onsearch={(value) => {
+            const q = value.trim();
+            if (q) nav.goto({ name: "explore", q });
+          }}
+        />
+      </div>
+    {/if}
   </header>
 
   <!-- Jump back in shows at once when there is a track to resume (its tiles
@@ -347,6 +367,12 @@
   }
   .masthead p {
     margin: 4px 0 0;
+  }
+  /* Under the greeting, on its left edge; capped so it reads as a field,
+     not a banner. */
+  .home-search {
+    width: min(560px, 100%);
+    margin-top: 14px;
   }
   .block {
     margin-bottom: 18px;

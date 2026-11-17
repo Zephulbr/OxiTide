@@ -51,7 +51,9 @@ content; widely spaced lowercase labels; app-like flat buttons inside the rack.
 | Below 760px tall | Playlists unit hidden |
 | Below 680px tall | deck face windows hidden (VFD + keys stay) |
 
-Selector: sources mirror the default sidebar — Home, Explore (search lives there),
+Selector: sources mirror the default sidebar — Home, Explore (search lives there; Home
+also shows the compact search field unless Settings hides it, styled by the shared
+`.search-input` rules),
 Feed, History, Library (every collection and detail route). Every selector key, sources
 and utility keys alike (Sleep, Mini, Setup), is a lamp above a 34px key on one baseline;
 Power uses the same two rows. The Sleep lamp lights while a timer is armed. The selector

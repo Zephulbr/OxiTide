@@ -484,6 +484,16 @@
     "source": "6eb5d838",
     "draft": "cd0dc226"
   },
+  "settings.homeSearch.label": {
+    "status": "machine",
+    "source": "fd7ea46a",
+    "draft": "02d673cd"
+  },
+  "settings.homeSearch.description": {
+    "status": "machine",
+    "source": "fb380519",
+    "draft": "9243e27a"
+  },
   "settings.coverShape.label": {
     "status": "machine",
     "source": "9fe3e459",
@@ -1874,6 +1884,11 @@
     "source": "46bfd7cb",
     "draft": "03263e49"
   },
+  "settings.keywords.homeSearch": {
+    "status": "machine",
+    "source": "72bf2f2b",
+    "draft": "1c0eaa69"
+  },
   "settings.keywords.coverShape": {
     "status": "machine",
     "source": "fbf6cd25",
@@ -2368,6 +2383,11 @@
     "status": "machine",
     "source": "6d7337ee",
     "draft": "8c8d28e8"
+  },
+  "nav.exploreHint": {
+    "status": "machine",
+    "source": "8a639f53",
+    "draft": "18d97ede"
   },
   "nav.forwardHint": {
     "status": "machine",

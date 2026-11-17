@@ -17,6 +17,7 @@
     startPendingGlide,
   } from "./lib/queueTransition";
   import Backdrop from "./lib/components/Backdrop.svelte";
+  import { homeSearch } from "./lib/homeSearch.svelte";
   import Login from "./views/Login.svelte";
   import Mini from "./views/Mini.svelte";
   import RoutedPage from "./lib/RoutedPage.svelte";
@@ -663,7 +664,9 @@
   let sideButtonAt = 0;
 
   async function focusSearch() {
-    if (nav.route.name !== "explore") nav.goto({ name: "explore" });
+    // Home's field when Home shows one (spec 2026-11-17 SD-D5), else Explore's.
+    const onHomeField = nav.route.name === "home" && homeSearch().shown;
+    if (nav.route.name !== "explore" && !onHomeField) nav.goto({ name: "explore" });
     await tick();
     document.getElementById("search-input")?.focus();
   }

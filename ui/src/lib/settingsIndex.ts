@@ -70,6 +70,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   e("row-separators", "appearance", "settings.section.typographyAndLayout", "settings.rowSeparators.label", "settings.keywords.rowSeparators"),
   e("cover-shape", "appearance", "settings.section.typographyAndLayout", "settings.coverShape.label", "settings.keywords.coverShape"),
   e("track-sort-memory", "appearance", "settings.section.typographyAndLayout", "settings.trackSortMemory.label", "settings.keywords.trackSortMemory"),
+  e("home-search", "appearance", "settings.section.typographyAndLayout", "settings.homeSearch.label", "settings.keywords.homeSearch"),
   e("player-bar-style", "appearance", "settings.section.typographyAndLayout", "settings.playerBarStyle.label", "settings.keywords.playerBarStyle", "notRack"),
   e("queue-style", "appearance", "settings.section.typographyAndLayout", "settings.queueStyle.label", "settings.keywords.queueStyle", "notRack"),
   e("hover-panels", "appearance", "settings.section.typographyAndLayout", "settings.hoverPanels.label", "settings.keywords.hoverPanels", "notRack"),
