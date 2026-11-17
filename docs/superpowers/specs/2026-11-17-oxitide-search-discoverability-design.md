@@ -22,7 +22,7 @@ focused, but no visible text mentions them.
 | SD-D3 | One component, `lib/components/SearchField.svelte`, draws the field and its recent-searches dropdown (combobox, arrow keys, Escape, clear) for both pages. It takes the value, an input callback and a search callback; Explore passes its live search, Home its launcher. Explore's look and search behaviour are unchanged; one small difference: Enter now also closes the recent-searches list. |
 | SD-D4 | The field is on by default and can be hidden: Settings → Appearance → Typography & layout → "Search bar on Home" (`home-search`, in the settings search index). The choice is UI-only, so it lives in localStorage (`oxitide.home-search`, `lib/homeSearch.svelte.ts`), like the track sort memory. |
 | SD-D5 | `Ctrl+F` and `/` focus Home's field when Home shows it; elsewhere they open Explore and focus its field, as before. Both fields keep the `search-input` id (only one page is mounted at a time), so `focusSearch` finds either. |
-| SD-D6 | Home's field is narrower than Explore's hero (40px tall, 560px max, left-aligned with the greeting) so the greeting stays the page's lead; it uses the same tokens, so every mode (Hi-Fi Rack included) styles it through its existing `.search-input` rules. |
+| SD-D6 | Home's field is smaller than Explore's hero (40px tall, 560px max). It mirrors the greeting (owner, after the first look): greeting on the content's left edge, field on its right edge, both centred on the title's line, so the two sit the same distance from their edges; under 760px of page width it stacks below the greeting (container query); it uses the same tokens, so every mode (Hi-Fi Rack included) styles it through its existing `.search-input` rules. |
 
 ## 3. Out of scope
 

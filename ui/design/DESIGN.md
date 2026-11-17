@@ -442,8 +442,10 @@ fixed height. Untitled quick-link rows (New, Top, HiRes, …) follow "New to you
 **Search entry points** (spec `2026-11-17-oxitide-search-discoverability-design.md`): the
 sidebar's Explore item uses the `search` (magnifier) icon, tooltip "Explore and search
 (Ctrl+F)". Home shows the same field (`SearchField.svelte`, `compact`: 40px, 14px text,
-`min(560px, 100%)`) under the greeting, left-aligned with it, 14px below the prompt; it
-has no panel of its own and no chips. Submitting opens Explore's results. Settings →
+up to 560px) opposite the greeting: the greeting on the content's left edge, the field
+on its right edge, both centred on the title's line (the prompt stays under the title). A
+page under 760px wide (container query on `.home`) stacks it under the greeting. It has
+no panel of its own and no chips. Submitting opens Explore's results. Settings →
 Typography & layout → "Search bar on Home" hides it (on by default). Every mode styles
 both fields through `.search-input`.
 

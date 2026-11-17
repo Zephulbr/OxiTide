@@ -12,7 +12,9 @@
 
 - [ ] Sidebar: Explore shows the magnifier; hovering it reads "Explore and search (Ctrl+F)";
       the collapsed rail shows the magnifier too.
-- [ ] Home: the field sits under the greeting; type a query, Enter → Explore with results;
+- [ ] Home: the field sits top right, level with the greeting, the same distance from the
+      right edge as the greeting is from the left; a narrow window stacks it under the
+      greeting. Type a query, Enter → Explore with results;
       Back returns to Home.
 - [ ] Home: focus the empty field → recent searches drop down over "Jump back in" (not under
       it); pick one → Explore with its results.

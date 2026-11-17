@@ -197,7 +197,7 @@
 </script>
 
 <div class="home">
-  <header class="masthead">
+  <header class="masthead" class:with-search={searchShown.shown}>
     <h2>{hello}</h2>
     {#if !current}<p class="muted">{prompt}</p>{/if}
     {#if searchShown.shown}
@@ -368,11 +368,40 @@
   .masthead p {
     margin: 4px 0 0;
   }
-  /* Under the greeting, on its left edge; capped so it reads as a field,
-     not a banner. */
+  /* The search field mirrors the greeting: the greeting on the content's
+     left edge, the field on its right edge, both centred on the title's
+     line (the prompt stays under the title). The page is the size
+     container, so a narrow page stacks the field under the greeting in the
+     same layout pass (CSS, not a measured width: the queue glide). */
+  .home {
+    container: home / inline-size;
+  }
+  .masthead.with-search {
+    display: grid;
+    grid-template-columns: auto minmax(0, 560px);
+    justify-content: space-between;
+    align-items: center;
+    column-gap: 32px;
+  }
+  .with-search h2 {
+    grid-area: 1 / 1;
+  }
+  .with-search p {
+    grid-area: 2 / 1;
+  }
   .home-search {
-    width: min(560px, 100%);
-    margin-top: 14px;
+    grid-area: 1 / 2;
+    min-width: 0;
+  }
+  @container home (width < 760px) {
+    .masthead.with-search {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .home-search {
+      grid-area: auto;
+      width: min(560px, 100%);
+      margin-top: 14px;
+    }
   }
   .block {
     margin-bottom: 18px;
