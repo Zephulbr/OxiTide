@@ -123,6 +123,8 @@ impl Queue {
         } else {
             self.current = Some(start.min(self.items.len() - 1));
             self.playing = true;
+            // A queue jump straight to the last track.
+            self.prepare_next_pass();
         }
     }
 
@@ -209,6 +211,7 @@ impl Queue {
         if cur + 1 < self.items.len() {
             self.current = Some(cur + 1);
             self.playing = true;
+            self.prepare_next_pass();
             true
         } else if self.repeat == RepeatMode::All {
             self.current = Some(0);
@@ -217,6 +220,28 @@ impl Queue {
         } else {
             self.playing = false;
             false
+        }
+    }
+
+    /// Shuffle with Repeat All: once the last track is current, the tracks
+    /// before it take a new order, so every pass plays differently. Done now
+    /// rather than at the wrap so the next pass's first track is known while
+    /// the last one plays (the engine preloads it for a gapless loop), and the
+    /// track that just played never starts the next pass. Lists of two or
+    /// fewer have no other order to take.
+    fn prepare_next_pass(&mut self) {
+        self.prepare_next_pass_with(&mut rand::rng());
+    }
+
+    fn prepare_next_pass_with<R: Rng + ?Sized>(&mut self, rng: &mut R) {
+        if !self.shuffle || self.repeat != RepeatMode::All {
+            return;
+        }
+        match self.current {
+            Some(last) if last >= 2 && last + 1 == self.items.len() => {
+                self.items_mut()[..last].shuffle(rng);
+            }
+            _ => {}
         }
     }
 
@@ -261,6 +286,9 @@ impl Queue {
             Some(index) => {
                 self.current = Some(index);
                 self.playing = true;
+                if self.repeat != RepeatMode::One {
+                    self.prepare_next_pass();
+                }
                 Some(index)
             }
             // End of queue with repeat off: stop, keep the last item current.
@@ -282,6 +310,7 @@ impl Queue {
         if cur + 1 < self.items.len() {
             self.current = Some(cur + 1);
             self.playing = true;
+            self.prepare_next_pass();
             Some(cur + 1)
         } else if self.repeat == RepeatMode::All {
             self.current = Some(0);
@@ -457,7 +486,12 @@ impl Queue {
     }
 
     pub fn set_repeat(&mut self, mode: RepeatMode) {
+        let was = self.repeat;
         self.repeat = mode;
+        // Repeat All turned on while the last track plays.
+        if was != RepeatMode::All {
+            self.prepare_next_pass();
+        }
     }
 }
 
@@ -998,6 +1032,113 @@ mod tests {
             (10..=19).collect::<Vec<_>>(),
             "seed 7 kept the late tracks in order; pick another seed"
         );
+    }
+
+    /// Shuffle + Repeat All: reaching the last track reorders the tracks before
+    /// it, so the next pass differs and its first track is known in advance.
+    #[test]
+    fn the_last_track_of_a_shuffled_repeat_pass_reshuffles_the_next_pass() {
+        use rand::SeedableRng;
+        let mut q = Queue::default();
+        q.play_context((1..=8).map(item).collect(), 7); // flags off: in order
+        q.shuffle = true;
+        q.repeat = RepeatMode::All;
+        let before = ids(&q);
+        q.prepare_next_pass_with(&mut rand::rngs::StdRng::seed_from_u64(7));
+        let after = ids(&q);
+        assert_eq!(after[7], 8, "the playing last track stays last");
+        assert_eq!(q.current_index(), Some(7));
+        assert_ne!(
+            after[..7],
+            before[..7],
+            "seed 7 kept the order; pick another seed"
+        );
+        let mut sorted = after.clone();
+        sorted.sort_unstable();
+        assert_eq!(sorted, (1..=8).collect::<Vec<_>>());
+        // The wrap then starts the new order, never the track that just ended.
+        assert_eq!(q.peek_next_index(), Some(0));
+        assert_ne!(q.items()[0].track_id, 8);
+    }
+
+    #[test]
+    fn every_path_onto_the_last_track_prepares_the_next_pass() {
+        fn shuffled_repeat() -> Queue {
+            let mut q = Queue::default();
+            q.play_context((1..=12).map(item).collect(), 10);
+            q.shuffle = true;
+            q.repeat = RepeatMode::All;
+            q
+        }
+        type Path = (&'static str, fn(&mut Queue));
+        let paths: [Path; 4] = [
+            ("track ended", |q| {
+                q.on_track_ended();
+            }),
+            ("next", |q| {
+                q.next();
+            }),
+            ("skip", |q| {
+                q.skip_current();
+            }),
+            ("jump", |q| {
+                let items = q.items().to_vec();
+                q.play_context(items, 11);
+            }),
+        ];
+        for (name, path) in paths {
+            let mut q = shuffled_repeat();
+            let rev = q.rev();
+            path(&mut q);
+            assert_eq!(q.current_index(), Some(11), "{name}");
+            assert!(q.rev() > rev, "{name}: the pass was not reshuffled");
+        }
+    }
+
+    #[test]
+    fn turning_repeat_all_on_at_the_last_track_prepares_the_next_pass() {
+        let mut q = Queue::default();
+        q.play_context((1..=12).map(item).collect(), 11);
+        q.shuffle = true;
+        let rev = q.rev();
+        q.set_repeat(RepeatMode::All);
+        assert!(q.rev() > rev);
+    }
+
+    #[test]
+    fn no_reshuffle_without_shuffle_or_repeat_all_or_before_the_last_track() {
+        for (shuffle, repeat, start) in [
+            (false, RepeatMode::All, 10),
+            (true, RepeatMode::Off, 10),
+            (true, RepeatMode::One, 11),
+            (true, RepeatMode::All, 9),
+        ] {
+            let mut q = Queue::default();
+            q.play_context((1..=12).map(item).collect(), start);
+            q.shuffle = shuffle;
+            q.repeat = repeat;
+            let order = ids(&q);
+            q.on_track_ended();
+            assert_eq!(ids(&q), order, "{shuffle} {repeat:?} {start}");
+        }
+    }
+
+    #[test]
+    fn the_wrap_itself_keeps_the_prepared_order() {
+        let mut q = Queue::default();
+        q.play_context((1..=12).map(item).collect(), 10);
+        q.shuffle = true;
+        q.repeat = RepeatMode::All;
+        q.on_track_ended(); // onto the last track: next pass prepared
+        let prepared = ids(&q);
+        let first = q.items()[0].track_id;
+        assert_eq!(q.on_track_ended(), Some(0));
+        assert_eq!(
+            ids(&q),
+            prepared,
+            "the preloaded first track must stay first"
+        );
+        assert_eq!(q.current().unwrap().track_id, first);
     }
 
     #[test]
