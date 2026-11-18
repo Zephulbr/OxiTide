@@ -7,7 +7,7 @@ import { t } from "./i18n.svelte";
 
 export interface SheetItem {
   label: string;
-  icon: "list-plus" | "plus" | "heart" | "disc-3" | "music" | "radio" | "x";
+  icon: "skip-forward" | "list-plus" | "plus" | "heart" | "disc-3" | "music" | "radio" | "x";
   run: () => void | Promise<void>;
 }
 
@@ -108,6 +108,16 @@ export class RemoteActions {
     }
   }
 
+  /// Right after the current track, in order (`queue_play_next`).
+  async playNext(rows: RowTrack[]) {
+    try {
+      await this.api.queuePlayNext(rows.slice(0, MAX_TRACKS).map(toQueueItem));
+      this.notify(t("toast.playsNext", { count: rows.length }));
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
   async radio(row: RowTrack) {
     try {
       const tracks = await this.api.getTrackRadio(row.id);
@@ -117,10 +127,11 @@ export class RemoteActions {
     }
   }
 
-  /// The per-row menu (spec §6.5): queue, playlist, favorite, go to.
+  /// The per-row menu (spec §6.5): play next, queue, playlist, favorite, go to.
   openTrack(row: RowTrack) {
     void this.ensureFavorites();
     const items: SheetItem[] = [
+      { label: t("menu.playNext"), icon: "skip-forward", run: () => this.playNext([row]) },
       { label: t("menu.addToQueue"), icon: "list-plus", run: () => this.enqueue([row]) },
       { label: t("menu.addToPlaylist"), icon: "plus", run: () => this.pickPlaylist([row]) },
       {

@@ -1,6 +1,6 @@
 # Shuffle and queue fixes (GitHub issue #3) — owner smoke
 
-**Status:** Ships in v1.1.2 (gate note `2026-11-17-v1.1.2-release.md`). The last three checks (the first-page play's follow-up and the search now-playing mark) were not reported before the release.
+**Status:** Ships in v1.1.2 (gate note `2026-11-17-v1.1.2-release.md`). Owner ticked every check through the search now-playing mark; the repeat reshuffle check (added after v1.1.2 was published; ships in the next release) is open.
 
 - Issue: https://github.com/Zephulbr/OxiTide/issues/3 ("Shuffle, search and queue not working properly").
 - What changed:
@@ -26,6 +26,9 @@
     tracks when shuffle is on).
   - Compact track lists (search's preview) show the now-playing mark on the playing row's cover;
     they have no number column, where other tables show it.
+  - Shuffle + Repeat All: each pass plays a new order. When the last track becomes current, the
+    tracks before it are reshuffled (`Queue::prepare_next_pass`), so the next pass's first track
+    is preloaded as usual and the loop stays gapless.
 - Local gates, 2026-11-17: `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`,
   `cargo fmt --all -- --check`, svelte-check and vitest; results in the commit.
 
@@ -48,9 +51,12 @@
       "From artist".
 - [x] Same from the Top result when it is a song, and when it is the artist (all their tracks).
 - [x] With shuffle on: the clicked song plays first, the artist's other tracks follow shuffled.
-- [ ] A big artist (hundreds of tracks): the song starts about as fast as any other play; a few
+- [x] A big artist (hundreds of tracks): the song starts about as fast as any other play; a few
       seconds later the queue grows to the artist's full list (shuffled in when shuffle is on).
-- [ ] Right after such a play, add a song to the queue (or start another play) before the rest
+- [x] Right after such a play, add a song to the queue (or start another play) before the rest
       arrives: the late tracks do not land in the changed queue.
-- [ ] Search page: the playing song's row shows the spinning mark on its cover (still when
+- [x] Search page: the playing song's row shows the spinning mark on its cover (still when
       paused), in both the overview preview and See all.
+- [ ] Shuffle + Repeat All on a short list (an album): when the last track starts, the queue's
+      earlier rows take a new order; at the end the loop carries on without a gap, into a
+      different first track than the one that just ended, and the second pass's order differs.

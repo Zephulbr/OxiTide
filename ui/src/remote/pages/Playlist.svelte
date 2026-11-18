@@ -29,7 +29,7 @@
         subtitle={t("common.trackCount", { count: playlist.numberOfTracks })}
       />
       {#if playlist.description}<p class="muted desc">{playlist.description}</p>{/if}
-      <TrackList tracks={paged.rows} total={paged.total} more={paged.more} />
+      <TrackList tracks={paged.rows} total={paged.total} more={paged.more} filterable />
     {/snippet}
   </Loader>
 </div>

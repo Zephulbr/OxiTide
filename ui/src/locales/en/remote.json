@@ -47,7 +47,9 @@
   "toast.queued": "{count, plural, one {Added to queue} other {Added # tracks to queue}}",
   "toast.noPlaylists": "You have no playlists of your own yet.",
   "toast.addedTo": "Added to {playlist}",
+  "toast.playsNext": "{count, plural, one {# track plays next} other {# tracks play next}}",
 
+  "menu.playNext": "Play next",
   "menu.addToQueue": "Add to queue",
   "menu.addToPlaylist": "Add to playlist…",
   "menu.addToPlaylistTitle": "Add to playlist",
@@ -113,6 +115,16 @@
   "list.loadingAll": "Loading the whole list…",
   "list.retry": "Retry loading",
   "list.loadingMore": "Loading more ({left} left)…",
+
+  "filter.tracks": "Filter tracks",
+  "filter.clear": "Clear filter",
+  "filter.loadingAll": "Loading all tracks…",
+  "filter.noMatch": "No tracks match “{filter}”",
+  "filter.albums": "Filter albums",
+  "filter.artists": "Filter artists",
+  "filter.playlists": "Filter playlists",
+  "filter.mixes": "Filter mixes",
+  "filter.noItems": "Nothing matches “{filter}”",
 
   "artist.radio": "Radio",
   "artist.topTracks": "Top tracks",

@@ -41,6 +41,7 @@ export function remoteApi(call: Call) {
     playTrackIds: (ids: number[], start: number, shuffle = false) =>
       call<void>("play_track_ids", { ids, start, shuffle }),
     queueAdd: (items: QueueItem[]) => call<void>("queue_add", { items }),
+    queuePlayNext: (items: QueueItem[]) => call<void>("queue_play_next", { items }),
     queueRemove: (index: number) => call<void>("queue_remove", { index }),
     queueReorder: (from: number, to: number) => call<void>("queue_reorder", { from, to }),
     queueClear: () => call<void>("queue_clear"),

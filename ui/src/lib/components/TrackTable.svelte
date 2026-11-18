@@ -402,7 +402,8 @@
     toasts.show(i18n.t("table.trackHidden", { title }), { severity: "info" });
   }
 
-  /// Add to the end of the queue, or (`next`) right after the playing track.
+  /// Add to the queue (after the current track and any tracks added before),
+  /// or (`next`) right after the playing track.
   function queueOne(t: Track, next = false) {
     if (trackFlags.isBlocked(t)) {
       blockedNotice(t.title);

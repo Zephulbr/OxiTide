@@ -2299,6 +2299,9 @@ pub fn retry(state: State<'_, AppState>) -> Result<(), String> {
     player.engine.retry().map_err(|e| e.to_string())
 }
 
+/// "Add to queue": after the tracks added earlier that are still to play, else
+/// right after the current track (`Queue::push`). Use `queue_insert` with the
+/// queue length to append at the very end.
 #[tauri::command]
 pub fn queue_add(state: State<'_, AppState>, items: Vec<QueueItem>) -> Result<(), String> {
     let player = state.player().ok_or_else(|| "not logged in".to_string())?;

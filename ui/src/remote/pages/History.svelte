@@ -35,7 +35,7 @@
       {#if total === 0}
         <p class="muted">{t("history.empty")}</p>
       {:else}
-        <TrackList tracks={rows} {total} {more} />
+        <TrackList tracks={rows} {total} {more} filterable />
       {/if}
     {/snippet}
   </Loader>
