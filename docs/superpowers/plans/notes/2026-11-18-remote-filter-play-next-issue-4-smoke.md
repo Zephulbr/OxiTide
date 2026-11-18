@@ -62,7 +62,7 @@ play) is left for V2 and builds on the same marker.
 - [ ] Drag a track from a list onto the queue rail below its last row: it lands at the very end.
 - [ ] Phone remote: "Add to queue" and "Play next" place tracks the same way.
 
-## Follow-up: filters on more phone lists (after the v1.1.4 draft; not in it)
+## Follow-up: filters on more phone lists (ships in v1.1.5, `2026-11-18-v1.1.5-release.md`)
 
 The filter box (`remote/components/FilterBox.svelte`) now shows on any long list, from 20 items
 (`FILTER_MIN`; shorter lists, including short playlists, show none): Mix and Album track lists
