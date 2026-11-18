@@ -1,6 +1,6 @@
 <script lang="ts">
   import Loader from "../components/Loader.svelte";
-  import Shelf from "../components/Shelf.svelte";
+  import TileGrid from "../components/TileGrid.svelte";
   import { useRemote } from "../context";
   import { mixTile } from "../convert";
   import { t } from "../i18n.svelte";
@@ -15,7 +15,7 @@
       {#if mixes.length === 0}
         <p class="muted">{t("mixes.empty")}</p>
       {:else}
-        <Shelf tiles={mixes.map(mixTile)} grid />
+        <TileGrid tiles={mixes.map(mixTile)} label={t("filter.mixes")} />
       {/if}
     {/snippet}
   </Loader>

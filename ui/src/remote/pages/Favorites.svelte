@@ -1,6 +1,6 @@
 <script lang="ts">
   import Loader from "../components/Loader.svelte";
-  import Shelf from "../components/Shelf.svelte";
+  import TileGrid from "../components/TileGrid.svelte";
   import TrackList from "../components/TrackList.svelte";
   import { useRemote } from "../context";
   import { albumTile, artistTile } from "../convert";
@@ -29,14 +29,14 @@
     <Loader load={api.getFavoriteAlbums} key={kind}>
       {#snippet children(albums)}
         {#if albums.length === 0}<p class="muted">{t("favorites.noAlbums")}</p>{/if}
-        <Shelf tiles={albums.map(albumTile)} grid />
+        <TileGrid tiles={albums.map(albumTile)} label={t("filter.albums")} />
       {/snippet}
     </Loader>
   {:else}
     <Loader load={api.getFavoriteArtists} key={kind}>
       {#snippet children(artists)}
         {#if artists.length === 0}<p class="muted">{t("favorites.noArtists")}</p>{/if}
-        <Shelf tiles={artists.map(artistTile)} grid />
+        <TileGrid tiles={artists.map(artistTile)} label={t("filter.artists")} subtitle={false} />
       {/snippet}
     </Loader>
   {/if}

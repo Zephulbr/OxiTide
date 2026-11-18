@@ -120,6 +120,11 @@
   "filter.clear": "Clear filter",
   "filter.loadingAll": "Loading all tracks…",
   "filter.noMatch": "No tracks match “{filter}”",
+  "filter.albums": "Filter albums",
+  "filter.artists": "Filter artists",
+  "filter.playlists": "Filter playlists",
+  "filter.mixes": "Filter mixes",
+  "filter.noItems": "Nothing matches “{filter}”",
 
   "artist.radio": "Radio",
   "artist.topTracks": "Top tracks",

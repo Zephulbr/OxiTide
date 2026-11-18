@@ -780,11 +780,15 @@ The phone page served by the LAN remote is a separate entry, not a fourth mode.
   (mini bar `--remote-minibar` + five-tab bar `--remote-tabbar` with an accent pill behind
   the active tab), safe-area insets respected; feeds render as horizontal shelves, track
   lists as 60px rows. Long lists load the next page as the end scrolls into view.
-- **List filter** (2026-11-18, issue #4): Playlist and Library → Tracks put a pill filter box
-  (the Search box's look, not sticky, 44px) above the list. It matches title or artist like
-  the desktop filter, loads the rest of the list first, and the Play/Shuffle/Add-all header
-  then acts on the matches (Play queues matches, then the rest; Shuffle only the matches).
-  Row menus lead with **Play next** (`skip-forward`).
+- **List filter** (2026-11-18, issue #4): long lists put a pill filter box
+  (`remote/components/FilterBox.svelte`: the Search box's look, not sticky, 44px) above the
+  list, once it has 20 items (`FILTER_MIN`; shorter lists show none). Track lists (Playlist,
+  Library → Tracks, Mix, Album, Recently played) match title or artist like the desktop filter,
+  load the rest of the list first, and the Play/Shuffle/Add-all header then acts on the matches
+  (Play queues matches, then the rest; Shuffle only the matches); album rows keep their track
+  numbers. Library → Albums / Artists / My Mixes (`TileGrid.svelte`) match the tile title and,
+  for albums and mixes, the subtitle; Playlists matches names within the open folder. Row menus
+  lead with **Play next** (`skip-forward`).
 - **Volume:** phone hardware keys cannot reach a web page, so Now Playing has no volume bar.
   Swiping up/down on the artwork changes the PC's volume (full cover height = 100%,
   6px dead zone so taps never change it) with a level overlay; the artwork is a keyboard /

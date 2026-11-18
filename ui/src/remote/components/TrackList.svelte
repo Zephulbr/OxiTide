@@ -3,7 +3,8 @@
   import Icon from "../../lib/components/Icon.svelte";
   import { useRemote } from "../context";
   import type { RowTrack } from "../convert";
-  import { filterRows, matchesThenRest } from "../filter";
+  import { FILTER_MIN, filterRows, matchesThenRest } from "../filter";
+  import FilterBox from "./FilterBox.svelte";
   import Sentinel from "./Sentinel.svelte";
   import TrackRow from "./TrackRow.svelte";
   import { t } from "../i18n.svelte";
@@ -11,8 +12,9 @@
   /// Play / Shuffle / Add-all header plus rows; `numbered` shows album track
   /// numbers. Paged lists (`more` + `total`) load the next page as the end
   /// scrolls into view, and Play/Shuffle fetch the rest first. `filterable`
-  /// adds a filter box (title or artist); a filter loads the whole list so it
-  /// covers every track, and the header actions then work on the matches.
+  /// adds a filter box (title or artist) once the list has `FILTER_MIN`
+  /// tracks; a filter loads the whole list so it covers every track, and the
+  /// header actions then work on the matches.
   let {
     tracks,
     numbered = false,
@@ -44,6 +46,7 @@
   /// Each row's place in the whole list: a stable key while the filter
   /// changes, so kept rows are not rebuilt (and do not replay their rise-in).
   const place = $derived(new Map(tracks.map((row, i) => [row, i])));
+  const showFilter = $derived(filterable && (filtered || Math.max(total ?? 0, tracks.length) >= FILTER_MIN));
 
   /// One page load at a time: the scroll sentinel, Play and the filter all
   /// page through `more`, which fetches from the current length, so two
@@ -117,24 +120,7 @@
   }
 </script>
 
-{#if filterable && (tracks.length > 0 || filtered)}
-  <div class="filter" role="search">
-    <Icon name="search" size={18} />
-    <input
-      bind:value={query}
-      type="search"
-      placeholder={t("filter.tracks")}
-      aria-label={t("filter.tracks")}
-      enterkeyhint="search"
-      autocomplete="off"
-    />
-    {#if query}
-      <button type="button" class="icon-btn" aria-label={t("filter.clear")} onclick={() => (query = "")}>
-        <Icon name="x" size={18} />
-      </button>
-    {/if}
-  </div>
-{/if}
+{#if showFilter}<FilterBox bind:value={query} label={t("filter.tracks")} />{/if}
 
 {#if shown.length > 0}
   <div class="actions">
@@ -158,7 +144,7 @@
   <TrackRow
     track={row}
     index={i}
-    number={numbered ? i + 1 : null}
+    number={numbered ? (place.get(row) ?? i) + 1 : null}
     active={row.id === playingId}
     onplay={() => playRow(i)}
     onmenu={() => actions.openTrack(row)}
@@ -198,32 +184,6 @@
   }
   .note {
     font-size: 12px;
-  }
-  .filter {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 0 4px 0 14px;
-    margin: 0 0 12px;
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    background: var(--surface-float);
-    backdrop-filter: blur(var(--glass-blur));
-    -webkit-backdrop-filter: blur(var(--glass-blur));
-    color: var(--text-muted);
-  }
-  .filter input {
-    flex: 1;
-    min-width: 0;
-    height: 44px;
-    border: none;
-    background: none;
-    color: var(--text);
-    font-size: 16px;
-    outline: none;
-  }
-  .filter input::-webkit-search-cancel-button {
-    display: none;
   }
   .tail {
     display: flex;

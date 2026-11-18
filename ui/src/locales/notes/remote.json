@@ -120,6 +120,11 @@
   "filter.clear": "Button. Same wording as the desktop app.",
   "filter.loadingAll": "Status while the rest of the list loads so the filter covers every track. Same wording as the desktop app.",
   "filter.noMatch": "Empty filtered list. {filter} is the text typed. Same wording as the desktop app's table.noMatch.",
+  "filter.albums": "Placeholder and accessible name of the box that filters Library → Albums by title or artist. Word it like filter.tracks.",
+  "filter.artists": "Placeholder and accessible name of the box that filters Library → Artists by name. Word it like filter.tracks.",
+  "filter.playlists": "Placeholder and accessible name of the box that filters the Playlists list (playlists and folders) by name. Word it like filter.tracks.",
+  "filter.mixes": "Placeholder and accessible name of the box that filters My Mixes by name. Mix is TIDAL's term (kind.mix). Word it like filter.tracks.",
+  "filter.noItems": "Empty filtered Library list (albums, artists, playlists or mixes). {filter} is the text typed. Word it like filter.noMatch.",
 
   "artist.radio": "Button: the artist's radio.",
   "artist.topTracks": "Heading.",

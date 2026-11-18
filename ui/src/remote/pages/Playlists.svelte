@@ -1,15 +1,27 @@
 <script lang="ts">
   import Icon from "../../lib/components/Icon.svelte";
+  import type { CollectionEntry } from "../../lib/api";
   import Art from "../components/Art.svelte";
+  import FilterBox from "../components/FilterBox.svelte";
   import Loader from "../components/Loader.svelte";
   import { useRemote } from "../context";
   import { art } from "../convert";
+  import { FILTER_MIN, filterByName } from "../filter";
   import { hrefFor } from "../routes";
   import { t } from "../i18n.svelte";
 
   /// Playlists and folders, read-only (spec §2: no management from the phone).
+  /// The filter covers this folder's entries (names), not nested folders.
   let { folder }: { folder: string } = $props();
   const { api } = useRemote();
+
+  let query = $state("");
+  // Another folder starts unfiltered.
+  $effect(() => {
+    void folder;
+    query = "";
+  });
+  const nameOf = (entry: CollectionEntry) => (entry.kind === "folder" ? entry.name : entry.title);
 </script>
 
 <div class="page">
@@ -23,11 +35,16 @@
   </header>
   <Loader load={() => api.getCollectionItems(folder)} key={folder}>
     {#snippet children(entries)}
+      {@const shown = filterByName(entries, query, nameOf)}
       {#if entries.length === 0}
         <p class="muted">{t("common.empty")}</p>
       {/if}
+      {#if entries.length >= FILTER_MIN || query}<FilterBox bind:value={query} label={t("filter.playlists")} />{/if}
+      {#if query.trim() && shown.length === 0}
+        <p class="muted">{t("filter.noItems", { filter: query.trim() })}</p>
+      {/if}
       <ul>
-        {#each entries as entry (entry.kind === "folder" ? `f-${entry.id}` : `p-${entry.uuid}`)}
+        {#each shown as entry (entry.kind === "folder" ? `f-${entry.id}` : `p-${entry.uuid}`)}
           <li>
             {#if entry.kind === "folder"}
               <a href={hrefFor({ name: "playlists", folder: entry.id })}>

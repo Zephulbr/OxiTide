@@ -41,7 +41,7 @@
           <a href={hrefFor({ name: "artist", id: artist.id })}>{artist.name}</a>
         {/each}
       </p>
-      <TrackList tracks={rows} numbered />
+      <TrackList tracks={rows} numbered filterable />
     {/snippet}
   </Loader>
 </div>

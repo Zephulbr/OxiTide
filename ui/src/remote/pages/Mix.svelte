@@ -19,7 +19,7 @@
   <Loader {load} key={id}>
     {#snippet children({ mix, rows })}
       <DetailHead image={art(mix.artwork, 640)} title={mix.title} kind={t("kind.mix")} subtitle={t("common.trackCount", { count: rows.length })} />
-      <TrackList tracks={rows} />
+      <TrackList tracks={rows} filterable />
     {/snippet}
   </Loader>
 </div>

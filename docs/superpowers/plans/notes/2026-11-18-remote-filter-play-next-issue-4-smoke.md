@@ -61,3 +61,20 @@ play) is left for V2 and builds on the same marker.
       the suggestions.
 - [ ] Drag a track from a list onto the queue rail below its last row: it lands at the very end.
 - [ ] Phone remote: "Add to queue" and "Play next" place tracks the same way.
+
+## Follow-up: filters on more phone lists (after the v1.1.4 draft; not in it)
+
+The filter box (`remote/components/FilterBox.svelte`) now shows on any long list, from 20 items
+(`FILTER_MIN`; shorter lists, including short playlists, show none): Mix and Album track lists
+and Recently played (same behaviour as the playlist filter; album rows keep their track numbers),
+and Library → Albums (title, artists, year), Artists (name), My Mixes (title, description) and
+Playlists (names in the open folder, not nested ones). Five new `remote.json` strings, machine
+drafts in all shipped languages.
+
+- [ ] A playlist with fewer than 20 tracks shows no filter; one with more does.
+- [ ] Library → Albums: type an artist's name; their albums remain. Clear it with the x.
+- [ ] Library → Artists: typing "artist" matches only artists with it in their name.
+- [ ] Playlists: filter the root, open a folder: the folder starts unfiltered.
+- [ ] My Mixes, a long Mix, a long album (a compilation) and Recently played filter as expected;
+      the album's matches keep their own track numbers.
+- [ ] A filter with no matches on a Library grid shows "Nothing matches “…”".

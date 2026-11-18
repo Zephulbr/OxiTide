@@ -529,6 +529,31 @@
     "source": "49d54664",
     "draft": "0fc8ea76"
   },
+  "filter.albums": {
+    "status": "machine",
+    "source": "c1544c79",
+    "draft": "d77d44a5"
+  },
+  "filter.artists": {
+    "status": "machine",
+    "source": "2a97ec80",
+    "draft": "ce9d8962"
+  },
+  "filter.playlists": {
+    "status": "machine",
+    "source": "c9e532ca",
+    "draft": "701e9359"
+  },
+  "filter.mixes": {
+    "status": "machine",
+    "source": "3f8100a2",
+    "draft": "14ee1508"
+  },
+  "filter.noItems": {
+    "status": "machine",
+    "source": "bb98ccdc",
+    "draft": "3a2bf21e"
+  },
   "artist.radio": {
     "status": "machine",
     "source": "2a7dfeb2",
