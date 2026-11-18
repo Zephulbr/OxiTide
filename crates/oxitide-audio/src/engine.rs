@@ -172,6 +172,9 @@ pub enum EngineCmd {
         to: usize,
     },
     Remove(usize),
+    /// "Add to queue": after the user-added tracks still to play, else right
+    /// after the current track (`Queue::push`); Autoplay's items append. Like
+    /// any queue edit, the prefetch re-targets at the new next track.
     Enqueue {
         items: Vec<QueueItem>,
     },
@@ -8795,6 +8798,35 @@ mod tests {
         assert!(
             output.samples().len() < 176_400,
             "the inserted track must be prefetched while track 1 still plays"
+        );
+        wait_for(|| !engine.state().playing && output.samples().len() >= 3 * 176_400);
+        assert_eq!(output.samples().len(), 3 * 176_400);
+    }
+
+    /// "Add to queue" now lands right after the current track when nothing
+    /// was added before, so it replaces the prefetched next track like Play
+    /// next does: 1 → 3 → 2, gapless.
+    #[test]
+    fn add_to_queue_retargets_a_stale_prefetch() {
+        let (engine, output, order) = queue_edit_engine(&[1, 2, 3], 10);
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1), item(2)],
+                start: 0,
+            })
+            .unwrap();
+        wait_for(|| order.lock().unwrap().contains(&2));
+        engine
+            .handle(EngineCmd::Enqueue {
+                items: vec![item(3)],
+            })
+            .unwrap();
+        let ids: Vec<u64> = engine.state().queue.iter().map(|i| i.track_id).collect();
+        assert_eq!(ids, vec![1, 3, 2]);
+        wait_for(|| order.lock().unwrap().contains(&3));
+        assert!(
+            output.samples().len() < 176_400,
+            "the added track must be prefetched while track 1 still plays"
         );
         wait_for(|| !engine.state().playing && output.samples().len() >= 3 * 176_400);
         assert_eq!(output.samples().len(), 3 * 176_400);

@@ -93,17 +93,21 @@ describe("QueueRail drops", () => {
     expect(toasts.show).toHaveBeenCalledWith("Added 2 tracks to the queue");
   });
 
+  // Below the last row is an explicit slot at the end: "Add to queue" would
+  // place the tracks after the current one instead.
   it("appends below the last row", async () => {
     const { source } = setup(2);
     await dropAt(source, 5000);
-    await vi.waitFor(() => expect(api.queueAdd).toHaveBeenCalled());
-    expect(api.queueInsert).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(api.queueInsert).toHaveBeenCalled());
+    expect(api.queueInsert).toHaveBeenCalledWith(2, expect.any(Array));
+    expect(api.queueAdd).not.toHaveBeenCalled();
   });
 
   it("appends to an empty queue", async () => {
     const { source } = setup(0);
     await dropAt(source, 0);
-    await vi.waitFor(() => expect(api.queueAdd).toHaveBeenCalled());
+    await vi.waitFor(() => expect(api.queueInsert).toHaveBeenCalledWith(0, expect.any(Array)));
+    expect(api.queueAdd).not.toHaveBeenCalled();
   });
 
   it("hands a row dragged out of the rail to the app drag, and moves it when brought back", async () => {

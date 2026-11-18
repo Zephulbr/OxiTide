@@ -209,6 +209,16 @@
     "source": "d303c42f",
     "draft": "36a32e2e"
   },
+  "toast.playsNext": {
+    "status": "machine",
+    "source": "05494ec2",
+    "draft": "054213b4"
+  },
+  "menu.playNext": {
+    "status": "machine",
+    "source": "994ffab2",
+    "draft": "50748a65"
+  },
   "menu.addToQueue": {
     "status": "machine",
     "source": "34b25c1b",
@@ -498,6 +508,26 @@
     "status": "machine",
     "source": "b4530bbe",
     "draft": "6ea5cbd0"
+  },
+  "filter.tracks": {
+    "status": "machine",
+    "source": "a25ad7d1",
+    "draft": "5013a5b4"
+  },
+  "filter.clear": {
+    "status": "machine",
+    "source": "ba59e2d4",
+    "draft": "41b9e299"
+  },
+  "filter.loadingAll": {
+    "status": "machine",
+    "source": "18124d71",
+    "draft": "911f0b2b"
+  },
+  "filter.noMatch": {
+    "status": "machine",
+    "source": "49d54664",
+    "draft": "aa403588"
   },
   "artist.radio": {
     "status": "machine",

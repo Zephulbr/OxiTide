@@ -55,6 +55,14 @@ pub struct Queue {
     /// flags), so listeners can skip re-sending an unchanged list.
     rev: u64,
     current: Option<usize>,
+    /// One past the last track the user added with Play next / Add to queue
+    /// that has not played yet: those tracks sit right after the current one,
+    /// and the next "Add to queue" lands here, so added tracks play before the
+    /// rest of the context and in the order they were added. A positional
+    /// marker: edits shift it like an index; it is spent (ignored) once the
+    /// current track reaches it, and cleared by a new context, a clear, a
+    /// restore, or a Repeat All wrap. Not persisted.
+    added_end: Option<usize>,
     playing: bool,
     shuffle: bool,
     repeat: RepeatMode,
@@ -67,6 +75,7 @@ impl Default for Queue {
             items: Arc::new(Vec::new()),
             rev: 0,
             current: None,
+            added_end: None,
             playing: false,
             shuffle: false,
             repeat: RepeatMode::Off,
@@ -115,7 +124,34 @@ impl Queue {
         self.volume
     }
 
+    /// Where the run of user-added tracks ends: after the added tracks still
+    /// to play, else right after the current track. `None` without a current
+    /// track.
+    fn added_boundary(&self) -> Option<usize> {
+        let after = self.current? + 1;
+        let end = self.added_end.map_or(after, |end| end.max(after));
+        Some(end.min(self.items.len()))
+    }
+
+    /// Forget the added run once nothing of it is left to play.
+    fn settle_added(&mut self) {
+        if let (Some(end), Some(cur)) = (self.added_end, self.current) {
+            if end <= cur + 1 {
+                self.added_end = None;
+            }
+        }
+    }
+
+    /// Play `items` from `start` in their order. A queue jump re-sends the
+    /// queue itself (`EngineCmd::PlayTracks`): when the track list is the same,
+    /// the added-tracks marker survives the jump.
     pub fn play_context(&mut self, items: Vec<QueueItem>, start: usize) {
+        let same = items.len() == self.items.len()
+            && items
+                .iter()
+                .zip(self.items.iter())
+                .all(|(a, b)| a.track_id == b.track_id);
+        self.added_end = if same { self.added_end } else { None };
         self.replace_items(items);
         if self.items.is_empty() {
             self.current = None;
@@ -123,6 +159,7 @@ impl Queue {
         } else {
             self.current = Some(start.min(self.items.len() - 1));
             self.playing = true;
+            self.settle_added();
             // A queue jump straight to the last track.
             self.prepare_next_pass();
         }
@@ -143,6 +180,8 @@ impl Queue {
         rng: &mut R,
     ) {
         self.play_context(items, start);
+        // A new context, even the same list again, starts with nothing added.
+        self.added_end = None;
         if self.shuffle {
             self.shuffle_around_current_with(rng);
         }
@@ -163,6 +202,7 @@ impl Queue {
     ) {
         items.shuffle(rng);
         self.replace_items(items);
+        self.added_end = None;
         self.shuffle = true;
         if self.items.is_empty() {
             self.current = None;
@@ -184,6 +224,7 @@ impl Queue {
         repeat: RepeatMode,
     ) {
         self.replace_items(items);
+        self.added_end = None;
         self.shuffle = shuffle;
         self.repeat = repeat;
         if self.items.is_empty() {
@@ -211,11 +252,13 @@ impl Queue {
         if cur + 1 < self.items.len() {
             self.current = Some(cur + 1);
             self.playing = true;
+            self.settle_added();
             self.prepare_next_pass();
             true
         } else if self.repeat == RepeatMode::All {
             self.current = Some(0);
             self.playing = true;
+            self.added_end = None;
             true
         } else {
             self.playing = false;
@@ -240,6 +283,8 @@ impl Queue {
         match self.current {
             Some(last) if last >= 2 && last + 1 == self.items.len() => {
                 self.items_mut()[..last].shuffle(rng);
+                // Nothing added is left after the last track.
+                self.added_end = None;
             }
             _ => {}
         }
@@ -284,8 +329,14 @@ impl Queue {
     pub fn on_track_ended(&mut self) -> Option<usize> {
         match self.peek_next_index() {
             Some(index) => {
+                let wrapped = self.current.is_some_and(|cur| index < cur);
                 self.current = Some(index);
                 self.playing = true;
+                if wrapped {
+                    self.added_end = None;
+                } else {
+                    self.settle_added();
+                }
                 if self.repeat != RepeatMode::One {
                     self.prepare_next_pass();
                 }
@@ -310,11 +361,13 @@ impl Queue {
         if cur + 1 < self.items.len() {
             self.current = Some(cur + 1);
             self.playing = true;
+            self.settle_added();
             self.prepare_next_pass();
             Some(cur + 1)
         } else if self.repeat == RepeatMode::All {
             self.current = Some(0);
             self.playing = true;
+            self.added_end = None;
             Some(0)
         } else {
             self.playing = false;
@@ -329,6 +382,15 @@ impl Queue {
         let items = self.items_mut();
         let item = items.remove(from);
         items.insert(to, item);
+        // The marker moves like a remove at `from`, then an insert at `to`: a
+        // track dragged into the added run joins it, one dragged out leaves it.
+        // A track moved within the run stays in it, its last slot included.
+        if let Some(end) = self.added_end {
+            let in_run = self.current.is_some_and(|cur| cur < from) && from < end;
+            let end = if from < end { end - 1 } else { end };
+            let joins = if in_run { to <= end } else { to < end };
+            self.added_end = Some(if joins { end + 1 } else { end });
+        }
         if let Some(cur) = self.current {
             if cur == from {
                 self.current = Some(to);
@@ -346,6 +408,11 @@ impl Queue {
             return false;
         }
         self.items_mut().remove(index);
+        if let Some(end) = self.added_end {
+            if index < end {
+                self.added_end = Some(end - 1);
+            }
+        }
         match self.current {
             None => {}
             Some(cur) if index < cur => self.current = Some(cur - 1),
@@ -365,12 +432,29 @@ impl Queue {
     pub fn clear(&mut self) {
         self.replace_items(Vec::new());
         self.current = None;
+        self.added_end = None;
         self.playing = false;
     }
 
-    /// Append items without touching the current track or the playing state.
+    /// "Add to queue": the items go after the tracks the user added earlier
+    /// that are still to play, else right after the current track, so added
+    /// tracks play before the rest of the context, in the order they were
+    /// added (like TIDAL's and Spotify's queues). Without a current track, and
+    /// for Autoplay's suggestions, they append. The current track and the
+    /// playing state are untouched.
     pub fn push(&mut self, items: Vec<QueueItem>) {
-        self.items_mut().extend(items);
+        if items.is_empty() {
+            return;
+        }
+        let suggested = items.iter().all(|item| item.autoplay);
+        match self.added_boundary() {
+            Some(at) if !suggested => {
+                let count = items.len();
+                self.items_mut().splice(at..at, items);
+                self.added_end = Some(at + count);
+            }
+            _ => self.items_mut().extend(items),
+        }
     }
 
     /// Add the rest of a context that started from its first page (a search
@@ -407,15 +491,21 @@ impl Queue {
     }
 
     /// Insert items right after the current track ("Play next"), keeping
-    /// their order; with no current track they append. The current track and
-    /// the playing state are untouched.
+    /// their order; with no current track they append. They join the added
+    /// run (ahead of earlier added tracks), so a later "Add to queue" still
+    /// lands after them. The current track and the playing state are untouched.
     pub fn insert_next(&mut self, items: Vec<QueueItem>) {
-        match self.current {
-            Some(cur) => {
+        if items.is_empty() {
+            return;
+        }
+        match (self.current, self.added_boundary()) {
+            (Some(cur), Some(end)) => {
                 let at = (cur + 1).min(self.items.len());
+                let count = items.len();
                 self.items_mut().splice(at..at, items);
+                self.added_end = Some(end + count);
             }
-            None => self.items_mut().extend(items),
+            _ => self.items_mut().extend(items),
         }
     }
 
@@ -429,6 +519,12 @@ impl Queue {
         let at = index.min(self.items.len());
         let count = items.len();
         self.items_mut().splice(at..at, items);
+        // A drop inside the added run joins it; at its end or later it does not.
+        if let Some(end) = self.added_end {
+            if at < end {
+                self.added_end = Some(end + count);
+            }
+        }
         if let Some(cur) = self.current {
             if at <= cur {
                 self.current = Some(cur + count);
@@ -469,16 +565,23 @@ impl Queue {
     }
 
     /// One Fisher–Yates shuffle of every item but the current one, which
-    /// moves to index 0 (it is still current). Without a current item the
-    /// whole list shuffles. Seeded by tests via `StdRng`.
+    /// moves to index 0 (it is still current). Tracks the user added that are
+    /// still to play are not shuffled: they follow the current one in their
+    /// order. Without a current item the whole list shuffles. Seeded by tests
+    /// via `StdRng`.
     fn shuffle_around_current_with<R: Rng + ?Sized>(&mut self, rng: &mut R) {
         match self.current {
             Some(current) if self.items.len() > 1 => {
+                let end = self.added_boundary().unwrap_or(current + 1);
                 let items = self.items_mut();
+                let added: Vec<QueueItem> = items.drain(current + 1..end).collect();
                 let item = items.remove(current);
                 items.shuffle(rng);
                 items.insert(0, item);
+                let count = added.len();
+                items.splice(1..1, added);
                 self.current = Some(0);
+                self.added_end = (count > 0).then_some(1 + count);
             }
             Some(_) => {}
             None => self.items_mut().shuffle(rng),
@@ -758,6 +861,168 @@ mod tests {
         q.items().iter().map(|i| i.track_id).collect()
     }
 
+    fn suggested(id: u64) -> QueueItem {
+        QueueItem {
+            autoplay: true,
+            ..item(id)
+        }
+    }
+
+    #[test]
+    fn add_to_queue_plays_before_the_rest_of_the_context() {
+        let mut q = queue(4); // playing 1
+        q.push(vec![item(8)]);
+        assert_eq!(ids(&q), vec![1, 8, 2, 3, 4]);
+        assert_eq!(q.current_index(), Some(0));
+        assert!(q.is_playing());
+    }
+
+    #[test]
+    fn later_adds_follow_earlier_ones_in_order() {
+        let mut q = queue(3);
+        q.push(vec![item(8)]);
+        q.push(vec![item(9), item(10)]);
+        assert_eq!(ids(&q), vec![1, 8, 9, 10, 2, 3]);
+    }
+
+    #[test]
+    fn play_next_jumps_the_added_run_and_later_adds_go_after_it() {
+        let mut q = queue(3);
+        q.push(vec![item(8)]);
+        q.insert_next(vec![item(7)]);
+        assert_eq!(ids(&q), vec![1, 7, 8, 2, 3]);
+        q.push(vec![item(9)]);
+        assert_eq!(ids(&q), vec![1, 7, 8, 9, 2, 3]);
+    }
+
+    #[test]
+    fn the_added_run_shrinks_as_it_plays() {
+        let mut q = queue(3);
+        q.push(vec![item(8), item(9)]);
+        q.next(); // 8 plays; 9 still added
+        q.push(vec![item(10)]);
+        assert_eq!(ids(&q), vec![1, 8, 9, 10, 2, 3]);
+        q.next(); // 9
+        q.next(); // 10: the run is spent
+        q.push(vec![item(11)]);
+        assert_eq!(ids(&q), vec![1, 8, 9, 10, 11, 2, 3]);
+        q.next(); // 11
+        q.next(); // 2: back in the context
+        q.push(vec![item(12)]);
+        assert_eq!(ids(&q), vec![1, 8, 9, 10, 11, 2, 12, 3]);
+    }
+
+    #[test]
+    fn add_to_queue_on_the_last_track_or_with_nothing_current_appends() {
+        let mut q = queue(2);
+        q.next(); // last track
+        q.push(vec![item(8)]);
+        assert_eq!(ids(&q), vec![1, 2, 8]);
+        let mut empty = Queue::default();
+        empty.push(vec![item(1), item(2)]);
+        assert_eq!(ids(&empty), vec![1, 2]);
+        assert_eq!(empty.current_index(), None);
+    }
+
+    #[test]
+    fn autoplay_appends_and_user_adds_go_before_it() {
+        let mut q = queue(2);
+        q.next(); // last track: Autoplay fills
+        q.push(vec![suggested(50), suggested(51)]);
+        assert_eq!(ids(&q), vec![1, 2, 50, 51]);
+        q.push(vec![item(8)]);
+        assert_eq!(ids(&q), vec![1, 2, 8, 50, 51]);
+        // Suggestions never extend the added run.
+        q.push(vec![suggested(52)]);
+        q.push(vec![item(9)]);
+        assert_eq!(ids(&q), vec![1, 2, 8, 9, 50, 51, 52]);
+    }
+
+    #[test]
+    fn a_new_context_or_clear_forgets_the_added_run() {
+        let mut q = queue(3);
+        q.push(vec![item(8)]);
+        q.play_new_context((1..=3).map(item).collect(), 0);
+        q.push(vec![item(9)]);
+        assert_eq!(ids(&q), vec![1, 9, 2, 3]);
+        q.clear();
+        q.play_context((1..=3).map(item).collect(), 0);
+        q.push(vec![item(10)]);
+        assert_eq!(ids(&q), vec![1, 10, 2, 3]);
+    }
+
+    #[test]
+    fn a_queue_jump_keeps_the_added_run() {
+        let mut q = queue(4);
+        q.push(vec![item(8), item(9)]); // 1 8 9 2 3 4
+        let same = q.items().to_vec();
+        q.play_context(same, 1); // jump to 8 (the UI re-sends the queue)
+        q.push(vec![item(10)]);
+        assert_eq!(ids(&q), vec![1, 8, 9, 10, 2, 3, 4]);
+    }
+
+    #[test]
+    fn edits_shift_the_added_run() {
+        let mut q = queue(4);
+        q.push(vec![item(8), item(9)]); // 1 8 9 2 3 4, run ends at 3
+        q.remove(1); // 1 9 2 3 4
+        q.push(vec![item(10)]);
+        assert_eq!(ids(&q), vec![1, 9, 10, 2, 3, 4]);
+        q.reorder(4, 1); // drag 3 into the run: 1 3 9 10 2 4
+        q.push(vec![item(11)]);
+        assert_eq!(ids(&q), vec![1, 3, 9, 10, 11, 2, 4]);
+        q.reorder(1, 6); // drag 3 out to the end: 1 9 10 11 2 4 3
+        q.insert_at(2, vec![item(12)]); // dropped inside the run
+        q.push(vec![item(13)]);
+        assert_eq!(ids(&q), vec![1, 9, 12, 10, 11, 13, 2, 4, 3]);
+        q.insert_at(6, vec![item(14)]); // at the run's end: not added
+        q.push(vec![item(15)]);
+        assert_eq!(ids(&q), vec![1, 9, 12, 10, 11, 13, 15, 14, 2, 4, 3]);
+    }
+
+    #[test]
+    fn reordering_within_the_added_run_keeps_it_whole() {
+        let mut q = queue(3);
+        q.push(vec![item(8), item(9)]); // 1 8 9 2 3
+        q.reorder(1, 2); // 1 9 8 2 3
+        q.push(vec![item(10)]);
+        assert_eq!(ids(&q), vec![1, 9, 8, 10, 2, 3]);
+        q.reorder(3, 1); // 1 10 9 8 2 3
+        q.push(vec![item(11)]);
+        assert_eq!(ids(&q), vec![1, 10, 9, 8, 11, 2, 3]);
+    }
+
+    #[test]
+    fn shuffle_keeps_the_added_run_next_and_in_order() {
+        use rand::SeedableRng;
+        let mut q = queue(8);
+        q.next(); // playing 2
+        q.push(vec![item(20), item(21)]);
+        q.shuffle_around_current_with(&mut rand::rngs::StdRng::seed_from_u64(5));
+        assert_eq!(q.current_index(), Some(0));
+        assert_eq!(&ids(&q)[..3], &[2, 20, 21]);
+        let mut rest = ids(&q)[3..].to_vec();
+        rest.sort_unstable();
+        assert_eq!(rest, vec![1, 3, 4, 5, 6, 7, 8]);
+        // The run is still the added run.
+        q.push(vec![item(22)]);
+        assert_eq!(&ids(&q)[..4], &[2, 20, 21, 22]);
+    }
+
+    #[test]
+    fn after_a_repeat_all_wrap_adds_go_right_after_the_current_track() {
+        let mut q = queue(2);
+        q.set_repeat(RepeatMode::All);
+        q.next(); // 2 (last)
+        q.insert_at(1, vec![item(8)]); // before the current one: 1 8 2
+        q.push(vec![item(9)]); // 1 8 2 9, run ends after 9
+        assert_eq!(ids(&q), vec![1, 8, 2, 9]);
+        q.next(); // 9
+        assert_eq!(q.on_track_ended(), Some(0)); // wrap to 1
+        q.push(vec![item(10)]);
+        assert_eq!(ids(&q), vec![1, 10, 8, 2, 9]);
+    }
+
     #[test]
     fn insert_at_before_current_keeps_it_playing() {
         let mut q = queue(3);
@@ -996,7 +1261,7 @@ mod tests {
         let rev = q.rev();
         q.push(vec![item(9)]);
         assert!(!q.extend_context(vec![item(4)], rev));
-        assert_eq!(ids(&q), vec![1, 2, 3, 9]);
+        assert_eq!(ids(&q), vec![1, 9, 2, 3]);
         q.play_new_context(vec![item(7)], 0);
         assert!(!q.extend_context(vec![item(4)], rev));
         assert_eq!(ids(&q), vec![7]);

@@ -282,8 +282,9 @@
         return;
       }
       const queued = prepared.items.map(trackToQueueItem);
-      if (slot >= items.length) await api.queueAdd(queued);
-      else await api.queueInsert(slot, queued);
+      // An explicit slot even below the last row: "Add to queue" would put
+      // them after the current track (and earlier added ones), not at the end.
+      await api.queueInsert(slot, queued);
       toasts?.show(
         queued.length === 1
           ? t("table.oneQueued", { title: queued[0].title })

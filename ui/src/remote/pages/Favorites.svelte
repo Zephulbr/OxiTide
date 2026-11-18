@@ -21,7 +21,7 @@
         {#if paged.total === 0}
           <p class="muted">{t("favorites.noTracks")}</p>
         {:else}
-          <TrackList tracks={paged.rows} total={paged.total} more={paged.more} />
+          <TrackList tracks={paged.rows} total={paged.total} more={paged.more} filterable />
         {/if}
       {/snippet}
     </Loader>

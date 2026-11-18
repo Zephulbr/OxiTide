@@ -1,24 +1,30 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import Icon from "../../lib/components/Icon.svelte";
   import { useRemote } from "../context";
   import type { RowTrack } from "../convert";
+  import { filterRows, matchesThenRest } from "../filter";
   import Sentinel from "./Sentinel.svelte";
   import TrackRow from "./TrackRow.svelte";
   import { t } from "../i18n.svelte";
 
   /// Play / Shuffle / Add-all header plus rows; `numbered` shows album track
   /// numbers. Paged lists (`more` + `total`) load the next page as the end
-  /// scrolls into view, and Play/Shuffle fetch the rest first.
+  /// scrolls into view, and Play/Shuffle fetch the rest first. `filterable`
+  /// adds a filter box (title or artist); a filter loads the whole list so it
+  /// covers every track, and the header actions then work on the matches.
   let {
     tracks,
     numbered = false,
     more = null,
     total = null,
+    filterable = false,
   }: {
     tracks: RowTrack[];
     numbered?: boolean;
     more?: (() => Promise<void>) | null;
     total?: number | null;
+    filterable?: boolean;
   } = $props();
 
   const { actions, store } = useRemote();
@@ -28,16 +34,41 @@
 
   let loadingMore = $state(false);
   let preparing = $state(false);
+  let filling = $state(false);
   let failed = $state(false);
+  let query = $state("");
 
   const hasMore = $derived(!!more && total !== null && total > tracks.length);
+  const filtered = $derived(query.trim() !== "");
+  const shown = $derived(filterRows(tracks, query));
+  /// Each row's place in the whole list: a stable key while the filter
+  /// changes, so kept rows are not rebuilt (and do not replay their rise-in).
+  const place = $derived(new Map(tracks.map((row, i) => [row, i])));
+
+  /// One page load at a time: the scroll sentinel, Play and the filter all
+  /// page through `more`, which fetches from the current length, so two
+  /// overlapping calls would append the same page twice.
+  let inflight: Promise<void> | null = null;
+  function step(): Promise<void> {
+    inflight ??= more!().finally(() => (inflight = null));
+    return inflight;
+  }
+
+  /// Load pages until `cap` tracks (or the whole list) are in.
+  async function fill(cap: number) {
+    while (more && total !== null && tracks.length < Math.min(total, cap)) {
+      const before = tracks.length;
+      await step();
+      if (tracks.length === before) break;
+    }
+  }
 
   async function loadMore() {
     if (!more || loadingMore || !hasMore) return;
     loadingMore = true;
     failed = false;
     try {
-      await more();
+      await step();
     } catch (e) {
       failed = true;
       actions.fail(e);
@@ -46,55 +77,106 @@
     }
   }
 
-  /// Load the remaining pages (bounded by the play cap), then play.
-  async function playAll(start: number, shuffle: boolean) {
+  /// A filter covers the whole list, not just the pages scrolled so far.
+  async function fillForFilter() {
+    if (filling || !hasMore) return;
+    filling = true;
+    failed = false;
+    try {
+      await fill(Infinity);
+    } catch (e) {
+      failed = true;
+      actions.fail(e);
+    } finally {
+      filling = false;
+    }
+  }
+
+  $effect(() => {
+    if (filtered) untrack(() => void fillForFilter());
+  });
+
+  /// Load the remaining pages (bounded by the play cap), then play. Filtered:
+  /// Play queues the matches then the rest; Shuffle shuffles the matches.
+  async function playAll(shuffle: boolean) {
     if (preparing) return;
     preparing = true;
     try {
-      while (more && total !== null && tracks.length < Math.min(total, PLAY_CAP)) {
-        const before = tracks.length;
-        await more();
-        if (tracks.length === before) break;
-      }
-      await actions.play(tracks, start, shuffle);
+      await fill(PLAY_CAP);
+      const rows = !filtered ? tracks : shuffle ? shown : matchesThenRest(shown, tracks);
+      await actions.play(rows, 0, shuffle);
     } catch (e) {
       actions.fail(e);
     } finally {
       preparing = false;
     }
   }
+
+  function playRow(i: number) {
+    void actions.play(filtered ? matchesThenRest(shown, tracks) : tracks, i);
+  }
 </script>
 
-{#if tracks.length > 0}
+{#if filterable && (tracks.length > 0 || filtered)}
+  <div class="filter" role="search">
+    <Icon name="search" size={18} />
+    <input
+      bind:value={query}
+      type="search"
+      placeholder={t("filter.tracks")}
+      aria-label={t("filter.tracks")}
+      enterkeyhint="search"
+      autocomplete="off"
+    />
+    {#if query}
+      <button type="button" class="icon-btn" aria-label={t("filter.clear")} onclick={() => (query = "")}>
+        <Icon name="x" size={18} />
+      </button>
+    {/if}
+  </div>
+{/if}
+
+{#if shown.length > 0}
   <div class="actions">
-    <button class="pill primary" disabled={preparing} onclick={() => playAll(0, false)}>
+    <button class="pill primary" disabled={preparing} onclick={() => playAll(false)}>
       <Icon name="play" size={18} /> {t("np.play")}
     </button>
-    <button class="pill" disabled={preparing} onclick={() => playAll(0, true)}>
+    <button class="pill" disabled={preparing} onclick={() => playAll(true)}>
       <Icon name="shuffle" size={18} /> {t("np.shuffle")}
     </button>
-    <button class="icon-btn" aria-label={t("list.queueAll")} onclick={() => actions.enqueue(tracks)}>
+    <button class="icon-btn" aria-label={t("list.queueAll")} onclick={() => actions.enqueue(shown)}>
       <Icon name="list-plus" size={20} />
     </button>
-    <button class="icon-btn" aria-label={t("list.playlistAll")} onclick={() => actions.pickPlaylist(tracks)}>
+    <button class="icon-btn" aria-label={t("list.playlistAll")} onclick={() => actions.pickPlaylist(shown)}>
       <Icon name="plus" size={20} />
     </button>
     {#if preparing}<span class="muted note" role="status">{t("list.loadingAll")}</span>{/if}
   </div>
 {/if}
 
-{#each tracks as row, i (`${row.id}-${i}`)}
+{#each shown as row, i (`${row.id}-${place.get(row)}`)}
   <TrackRow
     track={row}
     index={i}
     number={numbered ? i + 1 : null}
     active={row.id === playingId}
-    onplay={() => actions.play(tracks, i)}
+    onplay={() => playRow(i)}
     onmenu={() => actions.openTrack(row)}
   />
 {/each}
 
-{#if hasMore}
+{#if filtered}
+  {#if filling}
+    <div class="tail">
+      <span class="spinner" aria-hidden="true"></span>
+      <span class="muted" role="status">{t("filter.loadingAll")}</span>
+    </div>
+  {:else if failed && hasMore}
+    <div class="tail"><button class="pill" onclick={fillForFilter}>{t("list.retry")}</button></div>
+  {:else if shown.length === 0}
+    <p class="muted">{t("filter.noMatch", { filter: query.trim() })}</p>
+  {/if}
+{:else if hasMore}
   {#if !failed}<Sentinel onvisible={loadMore} armed={tracks.length} />{/if}
   <div class="tail">
     {#if failed}
@@ -116,6 +198,32 @@
   }
   .note {
     font-size: 12px;
+  }
+  .filter {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 4px 0 14px;
+    margin: 0 0 12px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--surface-float);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    color: var(--text-muted);
+  }
+  .filter input {
+    flex: 1;
+    min-width: 0;
+    height: 44px;
+    border: none;
+    background: none;
+    color: var(--text);
+    font-size: 16px;
+    outline: none;
+  }
+  .filter input::-webkit-search-cancel-button {
+    display: none;
   }
   .tail {
     display: flex;
