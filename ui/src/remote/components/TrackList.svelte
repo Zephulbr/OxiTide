@@ -112,8 +112,23 @@
     }
   }
 
-  function playRow(i: number) {
-    void actions.play(filtered ? matchesThenRest(shown, tracks) : tracks, i);
+  /// A tapped row plays with the rest of the list after it, not only the
+  /// pages scrolled so far: with shuffle on, those would shuffle just the
+  /// newest favorites (issue #7). Loads the rest first, as Play does.
+  async function playRow(i: number) {
+    if (preparing) return;
+    const row = shown[i];
+    preparing = true;
+    try {
+      await fill(PLAY_CAP);
+      // The fill can add matches above the tapped row, so find it again.
+      const rows = filtered ? matchesThenRest(shown, tracks) : tracks;
+      await actions.play(rows, Math.max(0, rows.indexOf(row)));
+    } catch (e) {
+      actions.fail(e);
+    } finally {
+      preparing = false;
+    }
   }
 
   /// "Add all" means the whole list (or every match), not the pages scrolled

@@ -143,6 +143,35 @@ describe("paged lists", () => {
     expect(new Set(rows.map((row) => row.id)).size).toBe(rows.length);
   });
 
+  // Issue #7: a tap queued only the pages scrolled so far, so with shuffle on
+  // the queue was the newest favorites mixed up.
+  it("a tapped row plays the whole list, not the pages scrolled so far", { timeout: 20_000 }, async () => {
+    const gap = new Set(Array.from({ length: 40 }, (_, k) => 150 + k));
+    const { fetch } = tidalList(450, gap, (i) => `Song ${i}`);
+    const playPageItems = vi.fn(async () => {});
+    const { context } = setup({ getFavoriteTracksPage: fetch, playPageItems });
+    render(Favorites, { props: { kind: "tracks" }, context });
+    await fireEvent.click(await screen.findByRole("button", { name: "Play Song 10 by Artist" }));
+    await waitFor(() => expect(playPageItems).toHaveBeenCalledTimes(1), { timeout: 15_000 });
+    const [items, start, shuffle] = playPageItems.mock.calls[0] as unknown as [{ id: number }[], number, boolean];
+    expect(items).toHaveLength(450 - 40);
+    expect(items[start].id).toBe(11);
+    expect(shuffle).toBe(false);
+  });
+
+  it("a tapped filter match plays it, then the rest of the list", { timeout: 20_000 }, async () => {
+    const { fetch } = tidalList(450, new Set(), veilTitle);
+    const playPageItems = vi.fn(async () => {});
+    const { context } = setup({ getFavoriteTracksPage: fetch, playPageItems });
+    render(Favorites, { props: { kind: "tracks" }, context });
+    await fireEvent.input(await screen.findByRole("searchbox"), { target: { value: "veil" } });
+    await fireEvent.click(await screen.findByRole("button", { name: "Play Veil 5 by Artist" }));
+    await waitFor(() => expect(playPageItems).toHaveBeenCalledTimes(1), { timeout: 15_000 });
+    const [items, start] = playPageItems.mock.calls[0] as unknown as [{ id: number }[], number];
+    expect(items).toHaveLength(450);
+    expect(items[start].id).toBe(6);
+  });
+
   it("a playlist keeps a track that is in it twice", async () => {
     const getPlaylistTracksPage = vi.fn(async (_id: string, offset: number, limit: number) => ({
       items: offset === 0 ? [track(1, "Twice"), track(2, "Once"), track(1, "Twice")] : [],
@@ -156,6 +185,40 @@ describe("paged lists", () => {
     await screen.findByText("Once");
     expect(screen.getAllByText("Twice")).toHaveLength(2);
     expect(getPlaylistTracksPage).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("play", () => {
+  const rows = (count: number) =>
+    Array.from({ length: count }, (_, i) => ({
+      id: i + 1,
+      title: `Song ${i}`,
+      artist: "Artist",
+      album: "Album",
+      cover: null,
+      duration: 200,
+      explicit: false,
+      artistId: 9,
+      albumId: 7,
+    }));
+
+  it("keeps a start past the 5,000-track cap on the tapped track", async () => {
+    const playPageItems = vi.fn(async () => {});
+    const actions = new RemoteActions({ playPageItems } as unknown as RemoteApi);
+    await actions.play(rows(7000), 6000);
+    const [items, start] = playPageItems.mock.calls[0] as unknown as [{ id: number }[], number];
+    expect(items).toHaveLength(5000);
+    expect(items[start].id).toBe(6001);
+  });
+
+  it("sends the first 5,000 for a start inside the cap", async () => {
+    const playPageItems = vi.fn(async () => {});
+    const actions = new RemoteActions({ playPageItems } as unknown as RemoteApi);
+    await actions.play(rows(7000), 10);
+    const [items, start] = playPageItems.mock.calls[0] as unknown as [{ id: number }[], number];
+    expect(items[0].id).toBe(1);
+    expect(items).toHaveLength(5000);
+    expect(start).toBe(10);
   });
 });
 

@@ -89,11 +89,14 @@ export class RemoteActions {
     return this.toggle(this.favArtists, id, (f) => this.api.setFavoriteArtist(id, f));
   }
 
+  /// The PC takes at most `MAX_TRACKS` per call. A start past them moves the
+  /// window to hold it, so the tapped track is still the one that plays.
   async play(rows: RowTrack[], start = 0, shuffle = false) {
     if (rows.length === 0) return;
-    const window = rows.slice(0, MAX_TRACKS);
+    const from = start < MAX_TRACKS ? 0 : Math.min(start, rows.length - MAX_TRACKS);
+    const window = rows.slice(from, from + MAX_TRACKS);
     try {
-      await this.api.playPageItems(window.map(toPageInput), Math.min(start, window.length - 1), shuffle);
+      await this.api.playPageItems(window.map(toPageInput), Math.min(start - from, window.length - 1), shuffle);
     } catch (e) {
       this.fail(e);
     }
