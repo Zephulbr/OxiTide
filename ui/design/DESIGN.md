@@ -106,6 +106,12 @@ to `--surface-2`, adds the `--line` border, lifts the text to `--text` and turns
 (label "Following", `aria-pressed`, styled like the primary sort chip: accent border 55%,
 accent 16% fill) and re-centres it on every track change until double-clicked again.
 
+**Track table plays.** Rows never go disabled while a play waits for its list (2026-11-20,
+issue #7): in Tracks, a playlist and an artist's All tracks, a click plays the loaded rows at
+once and the rest joins the queue as it loads; a Shuffle or a filtered or sorted order waits for
+the whole list, and any desktop play started meanwhile wins (a play from the phone remote does
+not count yet). If the load fails, the list's Retry also adds the rest to the queue.
+
 **Track table columns.** Every column but the number, cover and actions takes a share of the
 width (title 21%, artist 19%, album 18%, optional columns 14%, time and quality 8%), so the
 date, time and quality spread across the row instead of packing at the right edge (time is

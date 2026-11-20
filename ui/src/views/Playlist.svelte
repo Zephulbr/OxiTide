@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import { api, trackToQueueItem, type Playlist as PlaylistT } from "../lib/api";
+  import { api, type Playlist as PlaylistT } from "../lib/api";
   import ConfirmDialog from "../lib/components/ConfirmDialog.svelte";
   import DetailAction from "../lib/components/DetailAction.svelte";
   import DetailHeader from "../lib/components/DetailHeader.svelte";
@@ -17,8 +17,8 @@
   import { later } from "../lib/later.svelte";
   import { collaboratorsDialog } from "../lib/collaborators.svelte";
   import { createTrackPager } from "../lib/pager.svelte";
-  import { playSource, type PlayFrom } from "../lib/playSource.svelte";
-  import { trackFlags } from "../lib/trackFlags.svelte";
+  import { claimPlay, createEarlyPlays, startPlay, startsEarly, type StartResult } from "../lib/contextPlay";
+  import type { PlayFrom } from "../lib/playSource.svelte";
   import { invalidatePlaylistCovers } from "../lib/playlistArt.svelte";
   import { shareUrl } from "../lib/share";
   import { createTrackView, visibleIndexOf, warmTrackSearch } from "../lib/trackView.svelte";
@@ -333,43 +333,45 @@
     }
   }
 
+  function report(result: StartResult) {
+    if (result === "hidden") toasts.show(t("queue.dropHidden"), { severity: "info" });
+  }
+
+  /// While the playlist loads in its own order, a play starts from the rows
+  /// loaded so far and the rest joins once loaded (issue #7). A filter, a
+  /// sort or Shuffle waits for the whole list; any play made meanwhile wins.
+  const early = createEarlyPlays();
+
   async function playFrom(index: number) {
-    const clicked = view.items[index];
-    await pager.ensureAll();
-    if (pager.error) return;
-    const start = visibleIndexOf(view.items, clicked, index);
-    if (start < 0) return;
-    const prepared = await trackFlags.filterPlayable(view.items, start);
-    if (!prepared) {
-      toasts.show(t("queue.dropHidden"), { severity: "info" });
+    const isLatest = claimPlay();
+    if (startsEarly(pager, view)) {
+      report(await early.play(pager, origin, view.items, index, isLatest));
       return;
     }
-    playSource.set(origin, prepared.items.map((t) => t.id));
-    void api.playTracks(prepared.items.map(trackToQueueItem), prepared.start);
+    const clicked = view.items[index];
+    await pager.ensureAll();
+    if (pager.error || !isLatest()) return;
+    const start = visibleIndexOf(view.items, clicked, index);
+    if (start < 0) return;
+    report(await startPlay(origin, view.items, start, { isLatest }));
   }
 
   async function playAll() {
-    await pager.ensureAll();
-    if (pager.error) return;
-    const prepared = await trackFlags.filterPlayable(view.items, 0);
-    if (!prepared) {
-      toasts.show(t("queue.dropHidden"), { severity: "info" });
+    const isLatest = claimPlay();
+    if (startsEarly(pager, view)) {
+      report(await early.play(pager, origin, view.items, 0, isLatest));
       return;
     }
-    playSource.set(origin, prepared.items.map((t) => t.id));
-    void api.playTracks(prepared.items.map(trackToQueueItem), prepared.start);
+    await pager.ensureAll();
+    if (pager.error || !isLatest()) return;
+    report(await startPlay(origin, view.items, 0, { isLatest }));
   }
 
   async function shuffleAll() {
+    const isLatest = claimPlay();
     await pager.ensureAll();
-    if (pager.error) return;
-    const prepared = await trackFlags.filterPlayable(view.items, 0);
-    if (!prepared) {
-      toasts.show(t("queue.dropHidden"), { severity: "info" });
-      return;
-    }
-    playSource.set(origin, prepared.items.map((t) => t.id));
-    void api.playTracks(prepared.items.map(trackToQueueItem), 0, true);
+    if (pager.error || !isLatest()) return;
+    report(await startPlay(origin, view.items, 0, { shuffle: true, isLatest }));
   }
 </script>
 
@@ -471,7 +473,7 @@
         : undefined}
     />
     {#if pager.error}
-      <ErrorState message={pager.error} onRetry={() => pager.loadMore()} />
+      <ErrorState message={pager.error} onRetry={() => early.retry(pager)} />
     {/if}
   </div>
   {#if confirmingDelete}

@@ -5,7 +5,7 @@ vi.mock("./api", () => ({
   api: {
     getArtistTopTracksPage: vi.fn(),
     playTracks: vi.fn(async () => 41),
-    queueExtendContext: vi.fn(async () => {}),
+    queueExtendContext: vi.fn(async () => true),
   },
   trackToQueueItem: (t: Track) => ({ track_id: t.id }),
 }));
@@ -85,7 +85,7 @@ describe("playArtistTracks (issue #3)", () => {
     expect(playSource.set).toHaveBeenCalledWith(FROM, [3, 1, 2]);
   });
 
-  it("starts on the first page, then adds the rest at the play's revision", async () => {
+  it("starts on the first page, then adds the rest to the play's context", async () => {
     serve(250);
 
     await playArtistTracks(BAND, track(180));
@@ -94,8 +94,8 @@ describe("playArtistTracks (issue #3)", () => {
     expect(head[0]).toBe(180);
     expect(head).toHaveLength(FIRST_PAGE + 1);
     await vi.waitFor(() => expect(api.queueExtendContext).toHaveBeenCalled());
-    const [items, rev] = vi.mocked(api.queueExtendContext).mock.calls[0];
-    expect(rev).toBe(41);
+    const [items, context] = vi.mocked(api.queueExtendContext).mock.calls[0];
+    expect(context).toBe(41);
     const rest = items.map((item) => item.track_id);
     expect(rest).not.toContain(180);
     expect(new Set([...head, ...rest]).size).toBe(250);

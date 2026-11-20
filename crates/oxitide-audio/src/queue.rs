@@ -54,6 +54,11 @@ pub struct Queue {
     /// Bumped on every change to the items (not to the current index or the
     /// flags), so listeners can skip re-sending an unchanged list.
     rev: u64,
+    /// Bumped when a new context replaces the list (a play, a restore, a
+    /// clear); a queue jump over the same list and ordinary edits keep it.
+    /// `extend_context` adds a context's late-loaded rest only while it is
+    /// still the one queued.
+    context: u64,
     current: Option<usize>,
     /// One past the last track the user added with Play next / Add to queue
     /// that has not played yet: those tracks sit right after the current one,
@@ -74,6 +79,7 @@ impl Default for Queue {
         Self {
             items: Arc::new(Vec::new()),
             rev: 0,
+            context: 0,
             current: None,
             added_end: None,
             playing: false,
@@ -95,6 +101,10 @@ impl Queue {
     /// Revision of the item list; changes whenever the items do.
     pub fn rev(&self) -> u64 {
         self.rev
+    }
+    /// The context the list belongs to (see `extend_context`).
+    pub fn context(&self) -> u64 {
+        self.context
     }
     /// The items for an edit; marks the list changed.
     fn items_mut(&mut self) -> &mut Vec<QueueItem> {
@@ -144,7 +154,7 @@ impl Queue {
 
     /// Play `items` from `start` in their order. A queue jump re-sends the
     /// queue itself (`EngineCmd::PlayTracks`): when the track list is the same,
-    /// the added-tracks marker survives the jump.
+    /// the added-tracks marker and the context survive the jump.
     pub fn play_context(&mut self, items: Vec<QueueItem>, start: usize) {
         let same = items.len() == self.items.len()
             && items
@@ -152,6 +162,9 @@ impl Queue {
                 .zip(self.items.iter())
                 .all(|(a, b)| a.track_id == b.track_id);
         self.added_end = if same { self.added_end } else { None };
+        if !same {
+            self.context += 1;
+        }
         self.replace_items(items);
         if self.items.is_empty() {
             self.current = None;
@@ -180,8 +193,10 @@ impl Queue {
         rng: &mut R,
     ) {
         self.play_context(items, start);
-        // A new context, even the same list again, starts with nothing added.
+        // A new context, even the same list again, starts with nothing added,
+        // and the rest of an earlier play of that list must not join it.
         self.added_end = None;
+        self.context += 1;
         if self.shuffle {
             self.shuffle_around_current_with(rng);
         }
@@ -203,6 +218,7 @@ impl Queue {
         items.shuffle(rng);
         self.replace_items(items);
         self.added_end = None;
+        self.context += 1;
         self.shuffle = true;
         if self.items.is_empty() {
             self.current = None;
@@ -225,6 +241,7 @@ impl Queue {
     ) {
         self.replace_items(items);
         self.added_end = None;
+        self.context += 1;
         self.shuffle = shuffle;
         self.repeat = repeat;
         if self.items.is_empty() {
@@ -431,6 +448,7 @@ impl Queue {
 
     pub fn clear(&mut self) {
         self.replace_items(Vec::new());
+        self.context += 1;
         self.current = None;
         self.added_end = None;
         self.playing = false;
@@ -457,35 +475,47 @@ impl Queue {
         }
     }
 
-    /// Add the rest of a context that started from its first page (a search
-    /// play queues an artist's first tracks, then the others once loaded).
-    /// Applies only while the queue is still at revision `rev`, the one the
-    /// play left it at: an edit or a new context in between drops it. With
-    /// shuffle on, each item lands at a random upcoming slot, so the whole
-    /// context stays one uniform shuffle; otherwise they append in order.
-    pub fn extend_context(&mut self, items: Vec<QueueItem>, rev: u64) -> bool {
-        self.extend_context_with(items, rev, &mut rand::rng())
+    /// Add the rest of a context that started from the rows already loaded (a
+    /// search play queues an artist's first tracks, a Tracks play the loaded
+    /// favorites, then the others once loaded; issues #3 and #7). Applies
+    /// only while `context` (the one the play returned) is still queued: a new
+    /// play, a restore or a clear drops it, an edit does not, so adding a song
+    /// while the rest loads keeps the whole list. The items go after the
+    /// tracks the user added and before Autoplay's suggestions. With shuffle
+    /// on, they are shuffled and merged into that range at random slots (the
+    /// upcoming tracks keep their order), so the context stays one uniform
+    /// shuffle; otherwise they go there in order. Linear: a Tracks play can
+    /// send ~10k items, and this runs on the main thread.
+    pub fn extend_context(&mut self, items: Vec<QueueItem>, context: u64) -> bool {
+        self.extend_context_with(items, context, &mut rand::rng())
     }
 
     fn extend_context_with<R: Rng + ?Sized>(
         &mut self,
         items: Vec<QueueItem>,
-        rev: u64,
+        context: u64,
         rng: &mut R,
     ) -> bool {
-        if self.rev != rev || items.is_empty() {
+        if self.context != context || items.is_empty() {
             return false;
         }
-        let first_upcoming = self.current.map_or(0, |current| current + 1);
+        let Some(start) = self.added_boundary() else {
+            return false;
+        };
+        let end = self.items[start..]
+            .iter()
+            .position(|item| item.autoplay)
+            .map_or(self.items.len(), |offset| start + offset);
         let shuffle = self.shuffle;
         let list = self.items_mut();
         if shuffle {
-            for item in items {
-                let at = rng.random_range(first_upcoming..=list.len());
-                list.insert(at, item);
-            }
+            let mut items = items;
+            items.shuffle(rng);
+            let upcoming: Vec<QueueItem> = list.drain(start..end).collect();
+            let merged = merge_at_random(upcoming, items, rng);
+            list.splice(start..start, merged);
         } else {
-            list.extend(items);
+            list.splice(end..end, items);
         }
         true
     }
@@ -596,6 +626,26 @@ impl Queue {
             self.prepare_next_pass();
         }
     }
+}
+
+/// Interleave `b` into `a` at uniformly random slots, keeping each list's own
+/// order: every interleaving is equally likely (each next slot takes from a
+/// list with the odds of its remaining share). With `b` shuffled first this
+/// matches inserting each of `b` at a random slot one by one, in linear time.
+fn merge_at_random<T, R: Rng + ?Sized>(a: Vec<T>, b: Vec<T>, rng: &mut R) -> Vec<T> {
+    let (mut left_a, mut left_b) = (a.len(), b.len());
+    let mut merged = Vec::with_capacity(left_a + left_b);
+    let (mut a, mut b) = (a.into_iter(), b.into_iter());
+    while left_a + left_b > 0 {
+        if rng.random_range(0..left_a + left_b) < left_b {
+            merged.extend(b.next());
+            left_b -= 1;
+        } else {
+            merged.extend(a.next());
+            left_a -= 1;
+        }
+    }
+    merged
 }
 
 #[cfg(test)]
@@ -1244,27 +1294,146 @@ mod tests {
     }
 
     #[test]
-    fn extend_context_appends_in_order_at_the_play_revision() {
+    fn extend_context_appends_in_order_to_the_play_context() {
         let mut q = Queue::default();
         q.play_new_context((1..=3).map(item).collect(), 0);
         let rev = q.rev();
-        assert!(q.extend_context(vec![item(4), item(5)], rev));
+        assert!(q.extend_context(vec![item(4), item(5)], q.context()));
         assert_eq!(ids(&q), vec![1, 2, 3, 4, 5]);
         assert_eq!(q.current_index(), Some(0));
         assert!(q.rev() > rev);
     }
 
+    /// Issue #7: a song added while the rest of Tracks loads must not leave
+    /// the queue holding only the first page.
     #[test]
-    fn extend_context_is_dropped_after_any_queue_edit() {
+    fn extend_context_survives_queue_edits_after_the_added_tracks() {
+        let mut q = Queue::default();
+        q.play_new_context((1..=4).map(item).collect(), 0);
+        let context = q.context();
+        q.push(vec![item(9)]);
+        assert_eq!(ids(&q), vec![1, 9, 2, 3, 4]);
+        assert!(q.remove(4));
+        assert!(q.extend_context(vec![item(5), item(6)], context));
+        assert_eq!(ids(&q), vec![1, 9, 2, 3, 5, 6]);
+        assert_eq!(q.current_index(), Some(0));
+        // The added run is intact: the next "Add to queue" still follows it.
+        q.push(vec![item(8)]);
+        assert_eq!(ids(&q), vec![1, 9, 8, 2, 3, 5, 6]);
+    }
+
+    #[test]
+    fn extend_context_lands_before_autoplay_suggestions() {
+        let mut q = Queue::default();
+        q.play_new_context((1..=2).map(item).collect(), 1);
+        let context = q.context();
+        q.push(vec![suggested(20), suggested(21)]);
+        assert!(q.extend_context(vec![item(3), item(4)], context));
+        assert_eq!(ids(&q), vec![1, 2, 3, 4, 20, 21]);
+    }
+
+    #[test]
+    fn extend_context_is_dropped_by_a_new_context() {
         let mut q = Queue::default();
         q.play_new_context((1..=3).map(item).collect(), 0);
-        let rev = q.rev();
-        q.push(vec![item(9)]);
-        assert!(!q.extend_context(vec![item(4)], rev));
-        assert_eq!(ids(&q), vec![1, 9, 2, 3]);
+        let context = q.context();
         q.play_new_context(vec![item(7)], 0);
-        assert!(!q.extend_context(vec![item(4)], rev));
+        assert!(!q.extend_context(vec![item(4)], context));
         assert_eq!(ids(&q), vec![7]);
+
+        let context = q.context();
+        q.play_context_shuffled(vec![item(7), item(8)]);
+        assert!(!q.extend_context(vec![item(4)], context));
+
+        let context = q.context();
+        q.restore(vec![item(7)], 0, false, RepeatMode::Off);
+        assert!(!q.extend_context(vec![item(4)], context));
+
+        let context = q.context();
+        q.clear();
+        q.push(vec![item(7)]);
+        assert!(!q.extend_context(vec![item(4)], context));
+        assert_eq!(ids(&q), vec![7]);
+    }
+
+    /// Two clicks in a list that is still loading send the same rows twice;
+    /// the first play's rest must not join the second's on top of its own.
+    #[test]
+    fn replaying_the_same_list_starts_a_new_context() {
+        let mut q = Queue::default();
+        q.play_new_context((1..=3).map(item).collect(), 0);
+        let first = q.context();
+        q.play_new_context((1..=3).map(item).collect(), 2);
+        assert!(!q.extend_context(vec![item(4)], first));
+        assert!(q.extend_context(vec![item(4)], q.context()));
+        assert_eq!(ids(&q), vec![1, 2, 3, 4]);
+    }
+
+    /// The queue rail's jump re-sends the queue itself: the rest still loading
+    /// for that queue still joins it.
+    #[test]
+    fn a_queue_jump_keeps_the_context() {
+        let mut q = Queue::default();
+        q.play_new_context((1..=3).map(item).collect(), 0);
+        let context = q.context();
+        q.play_context((1..=3).map(item).collect(), 2);
+        assert!(q.extend_context(vec![item(4)], context));
+        assert_eq!(ids(&q), vec![1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn merge_at_random_keeps_both_orders_and_draws_every_interleaving() {
+        use rand::SeedableRng;
+        let mut rng = rand::rngs::StdRng::seed_from_u64(3);
+        let mut counts = std::collections::HashMap::new();
+        for _ in 0..6000 {
+            let merged = merge_at_random(vec![1, 2], vec![10, 20], &mut rng);
+            let a: Vec<i32> = merged.iter().copied().filter(|v| *v < 10).collect();
+            let b: Vec<i32> = merged.iter().copied().filter(|v| *v >= 10).collect();
+            assert_eq!((a, b), (vec![1, 2], vec![10, 20]));
+            *counts.entry(merged).or_insert(0) += 1;
+        }
+        // C(4, 2) = 6 interleavings, ~1000 each.
+        assert_eq!(counts.len(), 6);
+        assert!(
+            counts.values().all(|n| (850..=1150).contains(n)),
+            "{counts:?}"
+        );
+    }
+
+    /// A Tracks play while the favorites load: ~100 rows, then the rest.
+    #[test]
+    fn extend_context_takes_a_whole_collection_in_one_go() {
+        let mut q = Queue::default();
+        q.set_shuffle(true);
+        q.play_new_context((1..=100).map(item).collect(), 0);
+        let context = q.context();
+        assert!(q.extend_context((101..=10_000).map(item).collect(), context));
+        let mut sorted = ids(&q);
+        assert_eq!(sorted.len(), 10_000);
+        sorted.sort_unstable();
+        assert_eq!(sorted, (1..=10_000).collect::<Vec<_>>());
+        assert_eq!(q.current_index(), Some(0));
+    }
+
+    #[test]
+    fn extend_context_with_shuffle_keeps_added_tracks_next() {
+        use rand::SeedableRng;
+        let mut q = Queue::default();
+        q.set_shuffle(true);
+        q.play_new_context((1..=4).map(item).collect(), 0);
+        let context = q.context();
+        q.push(vec![item(9)]);
+        q.push(vec![suggested(20)]);
+        assert!(q.extend_context_with(
+            (10..=19).map(item).collect(),
+            context,
+            &mut rand::rngs::StdRng::seed_from_u64(7),
+        ));
+        let order = ids(&q);
+        assert_eq!(order[..2], [1, 9], "the current track, then the added one");
+        assert_eq!(*order.last().unwrap(), 20, "the suggestion stays last");
+        assert_eq!(order.len(), 4 + 1 + 1 + 10);
     }
 
     #[test]
@@ -1274,10 +1443,10 @@ mod tests {
         q.set_shuffle(true);
         q.play_new_context((1..=4).map(item).collect(), 2);
         let current = q.current().unwrap().track_id;
-        let rev = q.rev();
+        let context = q.context();
         assert!(q.extend_context_with(
             (10..=19).map(item).collect(),
-            rev,
+            context,
             &mut rand::rngs::StdRng::seed_from_u64(7),
         ));
         assert_eq!(q.current_index(), Some(0));

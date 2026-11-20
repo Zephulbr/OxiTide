@@ -764,8 +764,9 @@ mod tests {
         "search_type",
         // Slot drops from the desktop queue rail; the phone has no drag UI.
         "queue_insert",
-        // The desktop search play's second half (an artist's later tracks);
-        // the phone's plays send whole lists.
+        // The second half of a desktop play started from loaded rows (a
+        // search play's later artist tracks, the rest of Tracks); the
+        // phone's plays send whole lists.
         "queue_extend_context",
         // A desktop setting; the phone has no settings page.
         "set_autoplay",
