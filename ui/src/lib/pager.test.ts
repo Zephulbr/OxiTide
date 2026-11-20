@@ -187,7 +187,9 @@ describe("track pager", () => {
 
     expect(ids(pager.items)).toEqual([1, 2]);
     expect(pager.done).toBe(true);
-    expect(load).toHaveBeenCalledTimes(3);
+    // Each window once, up to the reported total: the empty pages still
+    // report it, so they are unavailable rows, not the end (issue #4).
+    expect(load.mock.calls.map(([offset]) => offset)).toEqual([0, 2, 4, 6, 8]);
   });
 
   /// Review Focus: `ensureAll` must await an in-flight page, not spin on the
@@ -294,21 +296,57 @@ describe("track pager", () => {
     expect(pager.done).toBe(true);
   });
 
-  it("stops on an empty page when the total overstates the list", async () => {
-    // The empty page carries no total (0): it must end the walk without
-    // erasing the last known total.
-    const load = vi.fn(async (offset: number, limit: number) =>
-      offset === 0 ? page([track(1), track(2)], offset, limit, 10) : page([], offset, limit, 0),
-    );
+  it("reads to the known total past empty pages that report none", async () => {
+    // Empty pages with no total (0) are either unavailable tracks or a total
+    // that overstates the list; either way the walk reads to the last known
+    // total (a few empty requests at worst) and keeps that total.
+    const load = vi.fn(async (offset: number, limit: number) => {
+      if (offset === 0) return page([track(1), track(2)], offset, limit, 10);
+      if (offset === 6) return page([track(7)], offset, limit, 0);
+      return page([], offset, limit, 0);
+    });
     const pager = createTrackPager("stale-total", load, { pageSize: 2, prefetch: false });
 
     await pager.ensureAll();
 
-    expect(ids(pager.items)).toEqual([1, 2]);
+    expect(ids(pager.items)).toEqual([1, 2, 7]);
     expect(pager.total).toBe(10);
-    expect(pager.unavailable).toBe(8);
+    expect(pager.unavailable).toBe(7);
     expect(pager.done).toBe(true);
-    expect(load).toHaveBeenCalledTimes(2);
+    expect(load.mock.calls.map(([offset]) => offset)).toEqual([0, 2, 4, 6, 8]);
+  });
+
+  /// Issue #4: a window made only of unavailable tracks comes back empty but
+  /// still reports the total; the tracks after it must load.
+  it("walks past an empty page that still reports the total", async () => {
+    const load = vi.fn(async (offset: number, limit: number) => {
+      if (offset === 0) return page([track(1), track(2)], offset, limit, 7);
+      if (offset === 6) return page([track(7)], offset, limit, 7);
+      return page([], offset, limit, 7);
+    });
+    const pager = createTrackPager("empty-window", load, { pageSize: 2, prefetch: false });
+
+    await pager.ensureAll();
+
+    expect(ids(pager.items)).toEqual([1, 2, 7]);
+    expect(load.mock.calls.map(([offset]) => offset)).toEqual([0, 2, 4, 6]);
+    expect(pager.unavailable).toBe(4);
+    expect(pager.done).toBe(true);
+  });
+
+  it("bursts past an empty window that still reports the total", async () => {
+    const load = vi.fn(async (offset: number, limit: number) =>
+      offset === 100
+        ? page([], offset, limit, 350)
+        : page(range(offset + 1, Math.min(offset + limit, 350)).map(track), offset, limit, 350),
+    );
+    const pager = createTrackPager("empty-burst", load, { prefetchWindow: 100, concurrency: 1 });
+
+    await pager.ensureAll();
+
+    expect(ids(pager.items)).toEqual([...range(1, 100), ...range(201, 350)]);
+    expect(pager.unavailable).toBe(100);
+    expect(pager.done).toBe(true);
   });
 
   it("uses the short-page rule when the server reports no total", async () => {

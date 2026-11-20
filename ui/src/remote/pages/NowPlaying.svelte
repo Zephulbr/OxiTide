@@ -33,9 +33,13 @@
     return () => clearInterval(tick);
   });
 
+  /// Each state event replaces `current` (a pause, a volume step); the id
+  /// only changes with the song.
+  const currentId = $derived(current?.trackId);
+
   // Ids for the artist/album links (queue items carry names only).
   $effect(() => {
-    const id = current?.trackId;
+    const id = currentId;
     details = null;
     if (id === undefined) return;
     void api
@@ -232,7 +236,7 @@
       <div class="error" role="alert">
         <Icon name="alert-triangle" size={18} />
         <span>{store.playbackError}</span>
-        <button class="pill" onclick={() => run(api.retry())}>Retry</button>
+        <button class="pill" onclick={() => run(api.retry())}>{t("common.retry")}</button>
       </div>
     {/if}
 

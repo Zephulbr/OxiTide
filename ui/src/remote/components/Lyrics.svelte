@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import type { LyricsDto, RemoteTrack } from "../../lib/api";
   import { activeLine } from "../../lib/lyrics";
   import { useRemote } from "../context";
@@ -11,12 +12,17 @@
   let status = $state<"loading" | "none" | "ready" | "error">("loading");
   let list = $state<HTMLOListElement | null>(null);
 
+  /// Every state event (pause, volume) brings a new `track` object for the
+  /// same song; only a new id refetches.
+  const trackId = $derived(track.trackId);
+
   $effect(() => {
-    const id = track.trackId;
+    const id = trackId;
+    const { title, artist, album, durationSecs } = untrack(() => track);
     status = "loading";
     lyrics = null;
     api
-      .getLyrics(id, track.title, track.artist, track.album, track.durationSecs)
+      .getLyrics(id, title, artist, album, durationSecs)
       .then((found) => {
         if (id !== track.trackId) return;
         lyrics = found;

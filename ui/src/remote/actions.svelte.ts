@@ -89,11 +89,14 @@ export class RemoteActions {
     return this.toggle(this.favArtists, id, (f) => this.api.setFavoriteArtist(id, f));
   }
 
+  /// The PC takes at most `MAX_TRACKS` per call. A start past them moves the
+  /// window to hold it, so the tapped track is still the one that plays.
   async play(rows: RowTrack[], start = 0, shuffle = false) {
     if (rows.length === 0) return;
-    const window = rows.slice(0, MAX_TRACKS);
+    const from = start < MAX_TRACKS ? 0 : Math.min(start, rows.length - MAX_TRACKS);
+    const window = rows.slice(from, from + MAX_TRACKS);
     try {
-      await this.api.playPageItems(window.map(toPageInput), Math.min(start, window.length - 1), shuffle);
+      await this.api.playPageItems(window.map(toPageInput), Math.min(start - from, window.length - 1), shuffle);
     } catch (e) {
       this.fail(e);
     }
@@ -101,8 +104,9 @@ export class RemoteActions {
 
   async enqueue(rows: RowTrack[]) {
     try {
-      await this.api.queueAdd(rows.slice(0, MAX_TRACKS).map(toQueueItem));
-      this.notify(t("toast.queued", { count: rows.length }));
+      const window = rows.slice(0, MAX_TRACKS);
+      await this.api.queueAdd(window.map(toQueueItem));
+      this.notify(t("toast.queued", { count: window.length }));
     } catch (e) {
       this.fail(e);
     }
@@ -111,8 +115,9 @@ export class RemoteActions {
   /// Right after the current track, in order (`queue_play_next`).
   async playNext(rows: RowTrack[]) {
     try {
-      await this.api.queuePlayNext(rows.slice(0, MAX_TRACKS).map(toQueueItem));
-      this.notify(t("toast.playsNext", { count: rows.length }));
+      const window = rows.slice(0, MAX_TRACKS);
+      await this.api.queuePlayNext(window.map(toQueueItem));
+      this.notify(t("toast.playsNext", { count: window.length }));
     } catch (e) {
       this.fail(e);
     }
@@ -152,8 +157,10 @@ export class RemoteActions {
     this.sheet = { title: row.title, subtitle: row.artist, items };
   }
 
-  /// Owned playlists, then "add" (duplicates skipped by the PC).
-  async pickPlaylist(rows: RowTrack[]) {
+  /// Owned playlists, then "add" (duplicates skipped by the PC). One call
+  /// carries at most `MAX_TRACKS` ids (the PC refuses more).
+  async pickPlaylist(all: RowTrack[]) {
+    const rows = all.slice(0, MAX_TRACKS);
     try {
       this.playlists ??= (await this.api.getUserPlaylists()).filter((p) => p.owned);
     } catch (e) {

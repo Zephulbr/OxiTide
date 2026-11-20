@@ -416,6 +416,11 @@ impl TidalClient {
     /// and are fetched [`PAGE_CONCURRENCY`] at a time, appended in offset
     /// order (Track 13: a 2 000-track playlist is 20 round trips, no longer
     /// 20 sequential ones). Without a total the walk stays sequential.
+    ///
+    /// With a total, every window up to it is read, empty ones included: a
+    /// run of `page_size` unavailable rows comes back empty (issue #4), and
+    /// whatever total such a window reports, it is not trusted as the end. A
+    /// total that overstates the list costs a few empty requests, never rows.
     pub async fn get_all_pages<T: DeserializeOwned>(
         &self,
         path: &str,
@@ -432,9 +437,6 @@ impl TidalClient {
         let received = first.items.len() as u32;
         let total = first.total_number_of_items;
         let mut all: Vec<T> = first.items;
-        if received == 0 {
-            return Ok(all);
-        }
         if total > 0 {
             let offsets: Vec<u32> = (1..)
                 .map(|i: u32| i.saturating_mul(page_size))
@@ -444,15 +446,8 @@ impl TidalClient {
                 let pages =
                     futures_util::future::try_join_all(group.iter().map(|&offset| fetch(offset)))
                         .await?;
-                let mut empty = false;
                 for page in pages {
-                    empty |= page.items.is_empty();
                     all.extend(page.items);
-                }
-                // Same stop rule as the sequential walk: an empty window
-                // means the server has nothing further.
-                if empty {
-                    break;
                 }
             }
             return Ok(all);
@@ -1513,6 +1508,85 @@ mod tests {
         assert_eq!(things[0].value, 1);
         assert_eq!(things[1].value, 2);
         assert_eq!(things[2].value, 3);
+    }
+
+    /// Mount one `/things` window per `(offset, values, total)`.
+    async fn things_server(windows: &[(u32, &[u32], u32)]) -> MockServer {
+        let server = MockServer::start().await;
+        for &(offset, values, total) in windows {
+            let items: Vec<_> = values
+                .iter()
+                .map(|v| serde_json::json!({ "value": v }))
+                .collect();
+            Mock::given(method("GET"))
+                .and(path("/things"))
+                .and(query_param("offset", offset.to_string()))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "items": items, "totalNumberOfItems": total, "limit": 2, "offset": offset
+                })))
+                .mount(&server)
+                .await;
+        }
+        server
+    }
+
+    async fn walk_things(server: &MockServer) -> Vec<u32> {
+        let client = TidalClient::new(
+            reqwest::Client::new(),
+            server.uri(),
+            format!("{}/token", server.uri()),
+            session(),
+            tokens(),
+            Arc::new(MemoryStore::default()),
+        );
+        let things: Vec<Thing> = client.get_all_pages("things", &[], 2).await.unwrap();
+        things.iter().map(|t| t.value).collect()
+    }
+
+    /// Issue #4: a window made only of unavailable rows comes back empty but
+    /// still reports the total; the rows after it must not be lost.
+    #[tokio::test]
+    async fn get_all_pages_walks_past_an_empty_window_that_reports_the_total() {
+        let server =
+            things_server(&[(0, &[1, 2], 7), (2, &[], 7), (4, &[], 7), (6, &[7], 7)]).await;
+        assert_eq!(walk_things(&server).await, vec![1, 2, 7]);
+    }
+
+    #[tokio::test]
+    async fn get_all_pages_walks_past_an_empty_first_window() {
+        let server = things_server(&[(0, &[], 3), (2, &[3], 3)]).await;
+        assert_eq!(walk_things(&server).await, vec![3]);
+    }
+
+    /// An empty window may report no total (0); it is still read past, up to
+    /// the first page's total, so neither a run of unavailable rows nor a
+    /// stale total loses rows. Every window is requested once.
+    #[tokio::test]
+    async fn get_all_pages_reads_to_the_total_past_empty_windows_without_one() {
+        let server = things_server(&[
+            (0, &[1, 2], 12),
+            (2, &[], 0),
+            (4, &[], 0),
+            (6, &[], 0),
+            (8, &[9], 0),
+            (10, &[], 0),
+        ])
+        .await;
+        assert_eq!(walk_things(&server).await, vec![1, 2, 9]);
+        let mut offsets: Vec<String> = server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .filter_map(|r| {
+                r.url
+                    .query_pairs()
+                    .find(|(k, _)| k == "offset")
+                    .map(|(_, v)| v.into_owned())
+            })
+            .collect();
+        offsets.sort_by_key(|o| o.parse::<u32>().unwrap());
+        assert_eq!(offsets, ["0", "2", "4", "6", "8", "10"]);
     }
 
     /// Track 13: windows after the first run concurrently (later ones answer

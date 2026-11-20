@@ -3,7 +3,7 @@
   import Loader from "../components/Loader.svelte";
   import TrackList from "../components/TrackList.svelte";
   import { useRemote } from "../context";
-  import { art } from "../convert";
+  import { art, fromTrack } from "../convert";
   import { PagedTracks } from "../paged.svelte";
   import { t } from "../i18n.svelte";
 
@@ -13,7 +13,8 @@
   async function load() {
     const [playlist, paged] = await Promise.all([
       api.getPlaylist(id),
-      new PagedTracks((offset, limit) => api.getPlaylistTracksPage(id, offset, limit)).first(),
+      // No dedupe: a track added twice plays twice.
+      new PagedTracks((offset, limit) => api.getPlaylistTracksPage(id, offset, limit), fromTrack).first(),
     ]);
     return { playlist, paged };
   }
@@ -29,7 +30,7 @@
         subtitle={t("common.trackCount", { count: playlist.numberOfTracks })}
       />
       {#if playlist.description}<p class="muted desc">{playlist.description}</p>{/if}
-      <TrackList tracks={paged.rows} total={paged.total} more={paged.more} filterable />
+      <TrackList tracks={paged.rows} paging={paged} filterable />
     {/snippet}
   </Loader>
 </div>

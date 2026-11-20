@@ -150,11 +150,12 @@ export function createTrackPager(
       if (dedupe) for (const t of incoming) loadedIds.add(t.id);
     }
     if (page.total > 0) total = page.total;
-    const received = page.items.length;
     nextOffset = offset + limit;
-    done =
-      received === 0 ||
-      (total > 0 ? nextOffset >= total : received < limit);
+    // With a known total the list ends there, whatever this window holds or
+    // reports: a run of `limit` unavailable tracks comes back empty (issue
+    // #4), maybe with no total. A total that overstates the list costs a few
+    // empty requests, never rows. Without any total, a short window ends it.
+    done = total > 0 ? nextOffset >= total : page.items.length < limit;
   }
 
   function applyRemoval(id: number) {
@@ -208,10 +209,7 @@ export function createTrackPager(
         group.map((offset) => load(offset, prefetchWindow)),
       );
       group.forEach((offset, index) => applyWindow(pages[index], offset, prefetchWindow));
-      if (done || pages.some((page) => page.items.length === 0)) {
-        done = true;
-        break;
-      }
+      if (done) break;
     }
     if (nextOffset >= total) done = true;
     publish();

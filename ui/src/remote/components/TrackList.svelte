@@ -4,28 +4,27 @@
   import { useRemote } from "../context";
   import type { RowTrack } from "../convert";
   import { FILTER_MIN, filterRows, matchesThenRest } from "../filter";
+  import type { TrackPaging } from "../paged.svelte";
   import FilterBox from "./FilterBox.svelte";
   import Sentinel from "./Sentinel.svelte";
   import TrackRow from "./TrackRow.svelte";
   import { t } from "../i18n.svelte";
 
   /// Play / Shuffle / Add-all header plus rows; `numbered` shows album track
-  /// numbers. Paged lists (`more` + `total`) load the next page as the end
-  /// scrolls into view, and Play/Shuffle fetch the rest first. `filterable`
+  /// numbers. Paged lists (`paging`) load the next page as the end scrolls
+  /// into view, and the header actions fetch the rest first. `filterable`
   /// adds a filter box (title or artist) once the list has `FILTER_MIN`
   /// tracks; a filter loads the whole list so it covers every track, and the
   /// header actions then work on the matches.
   let {
     tracks,
     numbered = false,
-    more = null,
-    total = null,
+    paging = null,
     filterable = false,
   }: {
     tracks: RowTrack[];
     numbered?: boolean;
-    more?: (() => Promise<void>) | null;
-    total?: number | null;
+    paging?: TrackPaging | null;
     filterable?: boolean;
   } = $props();
 
@@ -40,34 +39,32 @@
   let failed = $state(false);
   let query = $state("");
 
-  const hasMore = $derived(!!more && total !== null && total > tracks.length);
+  const hasMore = $derived(!!paging && !paging.done);
   const filtered = $derived(query.trim() !== "");
   const shown = $derived(filterRows(tracks, query));
   /// Each row's place in the whole list: a stable key while the filter
   /// changes, so kept rows are not rebuilt (and do not replay their rise-in).
   const place = $derived(new Map(tracks.map((row, i) => [row, i])));
-  const showFilter = $derived(filterable && (filtered || Math.max(total ?? 0, tracks.length) >= FILTER_MIN));
+  const showFilter = $derived(filterable && (filtered || tracks.length + (paging?.left ?? 0) >= FILTER_MIN));
 
-  /// One page load at a time: the scroll sentinel, Play and the filter all
-  /// page through `more`, which fetches from the current length, so two
-  /// overlapping calls would append the same page twice.
+  /// One page load at a time: the scroll sentinel, the header actions and the
+  /// filter all page through `paging.more`, which reads from the pager's next
+  /// offset, so two overlapping calls would read the same page twice.
   let inflight: Promise<void> | null = null;
   function step(): Promise<void> {
-    inflight ??= more!().finally(() => (inflight = null));
+    inflight ??= paging!.more().finally(() => (inflight = null));
     return inflight;
   }
 
-  /// Load pages until `cap` tracks (or the whole list) are in.
+  /// Load pages until `cap` tracks are in or the list is read to its end.
+  /// Every page moves the pager on (a page of unavailable tracks brings no
+  /// rows but is not the end), so this always finishes.
   async function fill(cap: number) {
-    while (more && total !== null && tracks.length < Math.min(total, cap)) {
-      const before = tracks.length;
-      await step();
-      if (tracks.length === before) break;
-    }
+    while (paging && !paging.done && tracks.length < cap) await step();
   }
 
   async function loadMore() {
-    if (!more || loadingMore || !hasMore) return;
+    if (loadingMore || !hasMore) return;
     loadingMore = true;
     failed = false;
     try {
@@ -115,8 +112,38 @@
     }
   }
 
-  function playRow(i: number) {
-    void actions.play(filtered ? matchesThenRest(shown, tracks) : tracks, i);
+  /// A tapped row plays with the rest of the list after it, not only the
+  /// pages scrolled so far: with shuffle on, those would shuffle just the
+  /// newest favorites (issue #7). Loads the rest first, as Play does.
+  async function playRow(i: number) {
+    if (preparing) return;
+    const row = shown[i];
+    preparing = true;
+    try {
+      await fill(PLAY_CAP);
+      // The fill can add matches above the tapped row, so find it again.
+      const rows = filtered ? matchesThenRest(shown, tracks) : tracks;
+      await actions.play(rows, Math.max(0, rows.indexOf(row)));
+    } catch (e) {
+      actions.fail(e);
+    } finally {
+      preparing = false;
+    }
+  }
+
+  /// "Add all" means the whole list (or every match), not the pages scrolled
+  /// so far: load the rest first, as Play does.
+  async function addAll(add: (rows: RowTrack[]) => Promise<void>) {
+    if (preparing) return;
+    preparing = true;
+    try {
+      await fill(PLAY_CAP);
+      await add(shown);
+    } catch (e) {
+      actions.fail(e);
+    } finally {
+      preparing = false;
+    }
   }
 </script>
 
@@ -130,10 +157,10 @@
     <button class="pill" disabled={preparing} onclick={() => playAll(true)}>
       <Icon name="shuffle" size={18} /> {t("np.shuffle")}
     </button>
-    <button class="icon-btn" aria-label={t("list.queueAll")} onclick={() => actions.enqueue(shown)}>
+    <button class="icon-btn" aria-label={t("list.queueAll")} disabled={preparing} onclick={() => addAll((rows) => actions.enqueue(rows))}>
       <Icon name="list-plus" size={20} />
     </button>
-    <button class="icon-btn" aria-label={t("list.playlistAll")} onclick={() => actions.pickPlaylist(shown)}>
+    <button class="icon-btn" aria-label={t("list.playlistAll")} disabled={preparing} onclick={() => addAll((rows) => actions.pickPlaylist(rows))}>
       <Icon name="plus" size={20} />
     </button>
     {#if preparing}<span class="muted note" role="status">{t("list.loadingAll")}</span>{/if}
@@ -163,13 +190,14 @@
     <p class="muted">{t("filter.noMatch", { filter: query.trim() })}</p>
   {/if}
 {:else if hasMore}
-  {#if !failed}<Sentinel onvisible={loadMore} armed={tracks.length} />{/if}
+  <!-- Armed on `left`, which moves every page: a page of unavailable tracks adds no rows. -->
+  {#if !failed}<Sentinel onvisible={loadMore} armed={paging!.left} />{/if}
   <div class="tail">
     {#if failed}
       <button class="pill" onclick={loadMore}>{t("list.retry")}</button>
     {:else}
       <span class="spinner" aria-hidden="true"></span>
-      <span class="muted" role="status">{t("list.loadingMore", { left: total! - tracks.length })}</span>
+      <span class="muted" role="status">{t("list.loadingMore", { left: paging!.left })}</span>
     {/if}
   </div>
 {/if}

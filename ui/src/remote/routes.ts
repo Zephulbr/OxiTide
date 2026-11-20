@@ -23,7 +23,13 @@ const NUMERIC = /^\d+$/;
 const TOKEN = /^[A-Za-z0-9_-]{1,80}$/;
 
 export function parseHash(hash: string): RemoteRoute {
-  const parts = hash.replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
+  let parts: string[];
+  try {
+    parts = hash.replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
+  } catch {
+    // A malformed escape (`#/playlist/%E0`) must not stop the page from starting.
+    return { name: "now" };
+  }
   const [head = "now", arg] = parts;
   if ((SIMPLE as readonly string[]).includes(head) && parts.length === 1) {
     return { name: head as (typeof SIMPLE)[number] };

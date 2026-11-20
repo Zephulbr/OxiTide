@@ -9,7 +9,9 @@ export interface Remote {
   actions: RemoteActions;
 }
 
-const KEY = Symbol("oxitide-remote");
+/// Exported for component tests (`render(..., { context })`).
+export const REMOTE_KEY = Symbol("oxitide-remote");
+const KEY = REMOTE_KEY;
 
 export function provideRemote(remote: Remote) {
   setContext(KEY, remote);

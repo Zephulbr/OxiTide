@@ -1,6 +1,7 @@
 # Phone remote filter, Play next, and added-track order (GitHub issue #4) — owner smoke
 
-**Status:** Implemented on `release/1.x`, not yet released; owner smoke open. Part 2b is done the
+**Status:** Shipped in v1.1.4 and v1.1.5; the unavailable-track paging fix (last section) is on
+`release/1.x`, not yet released; owner smoke open. Part 2b is done the
 cheap way (added tracks play before the rest of the context, in order; see below). A real second
 queue (its own section in the queue view, added tracks dropped once played, kept across a new
 play) is left for V2 and builds on the same marker.
@@ -36,31 +37,31 @@ play) is left for V2 and builds on the same marker.
 
 ## Checks (dev build, a real account, phone on the same Wi-Fi)
 
-- [ ] A long playlist (several hundred tracks): open it and type in the filter before scrolling.
+- [x] A long playlist (several hundred tracks): open it and type in the filter before scrolling.
       "Loading all tracks…" shows briefly, then matches from the end of the playlist appear.
-- [ ] Library → Tracks with a big collection: type one letter, then more. Typing stays responsive
+- [x] Library → Tracks with a big collection: type one letter, then more. Typing stays responsive
       and kept rows do not re-animate on each keystroke.
-- [ ] Filter by an artist, tap the second match: it plays; the queue holds the other matches, then
+- [x] Filter by an artist, tap the second match: it plays; the queue holds the other matches, then
       the rest of the list. No duplicate tracks from the paging.
-- [ ] Filtered Play starts at the first match (same order); filtered Shuffle plays only matches.
-- [ ] A filter with no matches shows "No tracks match “…”"; the x clears it and the full list is
+- [x] Filtered Play starts at the first match (same order); filtered Shuffle plays only matches.
+- [x] A filter with no matches shows "No tracks match “…”"; the x clears it and the full list is
       back.
-- [ ] Track menu → Play next while something plays: the toast shows, and the phone's Queue tab (and
+- [x] Track menu → Play next while something plays: the toast shows, and the phone's Queue tab (and
       the desktop rail) list the track right after the current one.
-- [ ] One non-English phone language (e.g. German): the filter and Play next text are translated.
-- [ ] Desktop: play an album from track 1, "Add to queue" song A, then song B. The queue rail shows
+- [x] One non-English phone language (e.g. German): the filter and Play next text are translated.
+- [x] Desktop: play an album from track 1, "Add to queue" song A, then song B. The queue rail shows
       A, B right after the playing track, then the rest of the album; they play in that order.
-- [ ] Then "Play next" song C: C sits right after the playing track, before A; another "Add to
+- [x] Then "Play next" song C: C sits right after the playing track, before A; another "Add to
       queue" D lands after B.
-- [ ] Let A play, then add E: E lands after B (and D), not right after A.
-- [ ] Turn shuffle on with added tracks waiting: they stay next, in order; the album is shuffled
+- [x] Let A play, then add E: E lands after B (and D), not right after A.
+- [x] Turn shuffle on with added tracks waiting: they stay next, in order; the album is shuffled
       after them; the playing track keeps playing without a gap.
-- [ ] Click a later row in the queue rail, then add a song: it lands after the added tracks still
+- [x] Click a later row in the queue rail, then add a song: it lands after the added tracks still
       ahead (or right after the new current track when none are left).
-- [ ] Let the queue run out so Autoplay adds suggestions, then "Add to queue": the song goes before
+- [x] Let the queue run out so Autoplay adds suggestions, then "Add to queue": the song goes before
       the suggestions.
-- [ ] Drag a track from a list onto the queue rail below its last row: it lands at the very end.
-- [ ] Phone remote: "Add to queue" and "Play next" place tracks the same way.
+- [x] Drag a track from a list onto the queue rail below its last row: it lands at the very end.
+- [x] Phone remote: "Add to queue" and "Play next" place tracks the same way.
 
 ## Follow-up: filters on more phone lists (ships in v1.1.5, `2026-11-18-v1.1.5-release.md`)
 
@@ -78,3 +79,46 @@ drafts in all shipped languages.
 - [ ] My Mixes, a long Mix, a long album (a compilation) and Recently played filter as expected;
       the album's matches keep their own track numbers.
 - [ ] A filter with no matches on a Library grid shows "Nothing matches “…”".
+
+## Follow-up: unavailable tracks cut phone lists short (issue #4 reply, 2026-11-20)
+
+Reported on issue #4: filtering Library → Tracks for "veil" found 6 tracks on the desktop and 1
+on the phone, in a collection of 3,119 tracks with 248 unavailable. TIDAL leaves unavailable
+tracks out of a page's `items` but counts them in `total`. The phone's pager
+(`remote/paged.svelte.ts`) asked for the next page at the number of rows received and took an
+empty page as the end, so 100 or more unavailable tracks in a row ended the list silently (and
+smaller gaps re-read rows, which could repeat). It now advances by the page size and ends at
+`total`, like the desktop pager and `get_all_pages`; Library → Tracks drops repeated ids,
+playlists keep a track that is in them twice. `TrackList` follows the pager's `done`/`left`
+instead of comparing `total` with the rows, and "Add all to queue / to a playlist" load the rest
+of the list first, as Play does. Recently played uses the same pager.
+
+Found in the same pass over the phone remote, fixed with tests (`remote/views.test.ts`):
+
+- A state event for the same song (pause, volume) refetched the lyrics (blanking them to
+  "Loading…") and Now Playing's artist/album link ids.
+- Clearing the search box while a search was in flight brought its results back.
+- Now Playing's playback-error Retry button was hard-coded English (now `common.retry`).
+- "Add to a playlist" with more than 5,000 tracks was refused by the PC; it now sends the first
+  5,000, as Add to queue does; their toasts count what was sent.
+- A malformed `%` escape in the page address threw while the page started; it now opens Now
+  Playing.
+
+Owner smoke, 2026-11-20: passed as a whole on the local 1.1.6 installer (setup SHA-256
+`0F94E574…EF53C3`, `2026-11-20-v1.1.6-release.md`), the seven checks below plus the gate note's
+issue #7 and desktop-shuffle checks.
+
+- [x] Library → Tracks on an account with unavailable favorites: the filter finds matches older
+      than the unavailable ones (the reporter's case: all six "veil" tracks).
+- [x] Scroll Library → Tracks to the end without a filter: no track shows twice, the spinner
+      stops, and the list does not end early.
+- [x] A playlist with unavailable tracks: scroll and filter reach its last track.
+- [x] Library → Tracks, unfiltered, before scrolling: Add all to queue; the toast's count equals
+      the desktop Tracks header's count (playable tracks; at most 5,000).
+- [x] Recently played: scroll to the end and filter; no play shows twice, and the spinner stops.
+- [x] Desktop: a playlist with unavailable tracks shows its last tracks and the "N unavailable"
+      count; Play all queues through to the end. (The desktop pager, the phone pager and
+      `get_all_pages` read every window up to the last known total, empty ones included,
+      whatever total an empty window reports; only a list that never reports a total ends at
+      a short page.)
+- [x] Lyrics open on the phone: pause, resume, and change the volume; the lyrics stay put.
