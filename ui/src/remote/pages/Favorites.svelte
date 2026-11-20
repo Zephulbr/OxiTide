@@ -3,7 +3,7 @@
   import TileGrid from "../components/TileGrid.svelte";
   import TrackList from "../components/TrackList.svelte";
   import { useRemote } from "../context";
-  import { albumTile, artistTile } from "../convert";
+  import { albumTile, artistTile, fromTrack } from "../convert";
   import { PagedTracks } from "../paged.svelte";
   import { t } from "../i18n.svelte";
 
@@ -16,12 +16,12 @@
 <div class="page">
   <header class="page-head"><h1>{t(TITLES[kind])}</h1></header>
   {#if kind === "tracks"}
-    <Loader load={() => new PagedTracks(api.getFavoriteTracksPage).first()} key={kind}>
+    <Loader load={() => new PagedTracks(api.getFavoriteTracksPage, fromTrack, { dedupe: true }).first()} key={kind}>
       {#snippet children(paged)}
         {#if paged.total === 0}
           <p class="muted">{t("favorites.noTracks")}</p>
         {:else}
-          <TrackList tracks={paged.rows} total={paged.total} more={paged.more} filterable />
+          <TrackList tracks={paged.rows} paging={paged} filterable />
         {/if}
       {/snippet}
     </Loader>

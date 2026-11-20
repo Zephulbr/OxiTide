@@ -1,6 +1,7 @@
 # Phone remote filter, Play next, and added-track order (GitHub issue #4) — owner smoke
 
-**Status:** Implemented on `release/1.x`, not yet released; owner smoke open. Part 2b is done the
+**Status:** Shipped in v1.1.4 and v1.1.5; the unavailable-track paging fix (last section) is on
+`release/1.x`, not yet released; owner smoke open. Part 2b is done the
 cheap way (added tracks play before the rest of the context, in order; see below). A real second
 queue (its own section in the queue view, added tracks dropped once played, kept across a new
 play) is left for V2 and builds on the same marker.
@@ -78,3 +79,35 @@ drafts in all shipped languages.
 - [ ] My Mixes, a long Mix, a long album (a compilation) and Recently played filter as expected;
       the album's matches keep their own track numbers.
 - [ ] A filter with no matches on a Library grid shows "Nothing matches “…”".
+
+## Follow-up: unavailable tracks cut phone lists short (issue #4 reply, 2026-11-20)
+
+Reported on issue #4: filtering Library → Tracks for "veil" found 6 tracks on the desktop and 1
+on the phone, in a collection of 3,119 tracks with 248 unavailable. TIDAL leaves unavailable
+tracks out of a page's `items` but counts them in `total`. The phone's pager
+(`remote/paged.svelte.ts`) asked for the next page at the number of rows received and took an
+empty page as the end, so 100 or more unavailable tracks in a row ended the list silently (and
+smaller gaps re-read rows, which could repeat). It now advances by the page size and ends at
+`total`, like the desktop pager and `get_all_pages`; Library → Tracks drops repeated ids,
+playlists keep a track that is in them twice. `TrackList` follows the pager's `done`/`left`
+instead of comparing `total` with the rows, and "Add all to queue / to a playlist" load the rest
+of the list first, as Play does. Recently played uses the same pager.
+
+Found in the same pass over the phone remote, fixed with tests (`remote/views.test.ts`):
+
+- A state event for the same song (pause, volume) refetched the lyrics (blanking them to
+  "Loading…") and Now Playing's artist/album link ids.
+- Clearing the search box while a search was in flight brought its results back.
+- Now Playing's playback-error Retry button was hard-coded English (now `common.retry`).
+- "Add to a playlist" with more than 5,000 tracks was refused by the PC; it now sends the first
+  5,000, as Add to queue does; their toasts count what was sent.
+- A malformed `%` escape in the page address threw while the page started; it now opens Now
+  Playing.
+
+- [ ] Library → Tracks on an account with unavailable favorites: the filter finds matches older
+      than the unavailable ones (the reporter's case: all six "veil" tracks).
+- [ ] Scroll Library → Tracks to the end without a filter: no track shows twice, the spinner
+      stops, and the list does not end early.
+- [ ] A playlist with unavailable tracks: scroll and filter reach its last track.
+- [ ] Unfiltered list, scrolled one page: Add all to queue adds the whole list (toast count).
+- [ ] Lyrics open on the phone: pause, resume, and change the volume; the lyrics stay put.

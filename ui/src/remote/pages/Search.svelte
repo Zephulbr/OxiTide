@@ -20,12 +20,14 @@
   $effect(() => {
     const q = query.trim();
     sessionStorage.setItem("oxi.search", query);
+    // Each query (an empty one too) retires the replies still in flight.
+    const mine = ++token;
     if (!q) {
       results = null;
       error = "";
+      busy = false;
       return;
     }
-    const mine = ++token;
     const timer = setTimeout(async () => {
       busy = true;
       try {

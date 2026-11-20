@@ -62,6 +62,7 @@ describe("routes", () => {
     expect(parseHash("#/album/abc")).toEqual({ name: "now" });
     expect(parseHash("#/nope")).toEqual({ name: "now" });
     expect(parseHash("#p=token")).toEqual({ name: "now" });
+    expect(parseHash("#/playlist/%E0%A4%A")).toEqual({ name: "now" });
   });
 
   it("maps feed items and tabs", () => {
