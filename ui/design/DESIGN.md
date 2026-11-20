@@ -779,7 +779,10 @@ The phone page served by the LAN remote is a separate entry, not a fourth mode.
 - **Layout:** mobile-first single column, 16px gutter (`--remote-gutter`), fixed bottom dock
   (mini bar `--remote-minibar` + five-tab bar `--remote-tabbar` with an accent pill behind
   the active tab), safe-area insets respected; feeds render as horizontal shelves, track
-  lists as 60px rows. Long lists load the next page as the end scrolls into view.
+  lists as 60px rows. Long lists load the next page as the end scrolls into view; Play,
+  Shuffle and both Add-all buttons first load the rest of the list (the header buttons are
+  disabled and "Loading the whole list…" shows meanwhile). Unavailable TIDAL tracks are counted
+  but never sent, so a list ends at its reported total, not at a page with no rows.
 - **List filter** (2026-11-18, issue #4): long lists put a pill filter box
   (`remote/components/FilterBox.svelte`: the Search box's look, not sticky, 44px) above the
   list, once it has 20 items (`FILTER_MIN`; shorter lists show none). Track lists (Playlist,

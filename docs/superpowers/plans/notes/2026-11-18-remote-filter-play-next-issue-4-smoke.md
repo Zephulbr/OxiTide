@@ -109,5 +109,7 @@ Found in the same pass over the phone remote, fixed with tests (`remote/views.te
 - [ ] Scroll Library → Tracks to the end without a filter: no track shows twice, the spinner
       stops, and the list does not end early.
 - [ ] A playlist with unavailable tracks: scroll and filter reach its last track.
-- [ ] Unfiltered list, scrolled one page: Add all to queue adds the whole list (toast count).
+- [ ] Library → Tracks, unfiltered, before scrolling: Add all to queue; the toast's count equals
+      the desktop Tracks header's count (playable tracks; at most 5,000).
+- [ ] Recently played: scroll to the end and filter; no play shows twice, and the spinner stops.
 - [ ] Lyrics open on the phone: pause, resume, and change the volume; the lyrics stay put.
