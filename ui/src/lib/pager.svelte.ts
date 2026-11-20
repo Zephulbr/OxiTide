@@ -151,15 +151,11 @@ export function createTrackPager(
     }
     if (page.total > 0) total = page.total;
     nextOffset = offset + limit;
-    done = windowEnds(page, nextOffset, limit);
-  }
-
-  /// A window that reports the total ends the list once the offsets reach
-  /// it, even when it came back empty: a run of `limit` unavailable tracks
-  /// does (issue #4). Without a total (an empty page past a stale total
-  /// reports 0), a short or empty window is the end.
-  function windowEnds(page: TrackPage, next: number, limit: number): boolean {
-    return page.total > 0 ? next >= page.total : page.items.length < limit;
+    // With a known total the list ends there, whatever this window holds or
+    // reports: a run of `limit` unavailable tracks comes back empty (issue
+    // #4), maybe with no total. A total that overstates the list costs a few
+    // empty requests, never rows. Without any total, a short window ends it.
+    done = total > 0 ? nextOffset >= total : page.items.length < limit;
   }
 
   function applyRemoval(id: number) {
@@ -213,10 +209,7 @@ export function createTrackPager(
         group.map((offset) => load(offset, prefetchWindow)),
       );
       group.forEach((offset, index) => applyWindow(pages[index], offset, prefetchWindow));
-      if (done || pages.some((page) => page.items.length === 0 && page.total === 0)) {
-        done = true;
-        break;
-      }
+      if (done) break;
     }
     if (nextOffset >= total) done = true;
     publish();

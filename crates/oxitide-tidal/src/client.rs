@@ -417,10 +417,10 @@ impl TidalClient {
     /// order (Track 13: a 2 000-track playlist is 20 round trips, no longer
     /// 20 sequential ones). Without a total the walk stays sequential.
     ///
-    /// An empty window is not the end while it still reports the total: a run
-    /// of `page_size` unavailable rows comes back as one (issue #4). Only an
-    /// empty window that no longer reports a total (the list shrank below a
-    /// stale total) ends the walk early.
+    /// With a total, every window up to it is read, empty ones included: a
+    /// run of `page_size` unavailable rows comes back empty (issue #4), and
+    /// whatever total such a window reports, it is not trusted as the end. A
+    /// total that overstates the list costs a few empty requests, never rows.
     pub async fn get_all_pages<T: DeserializeOwned>(
         &self,
         path: &str,
@@ -446,13 +446,8 @@ impl TidalClient {
                 let pages =
                     futures_util::future::try_join_all(group.iter().map(|&offset| fetch(offset)))
                         .await?;
-                let mut ended = false;
                 for page in pages {
-                    ended |= page.items.is_empty() && page.total_number_of_items == 0;
                     all.extend(page.items);
-                }
-                if ended {
-                    break;
                 }
             }
             return Ok(all);
@@ -1563,26 +1558,35 @@ mod tests {
         assert_eq!(walk_things(&server).await, vec![3]);
     }
 
-    /// A stale total: windows past the real end come back empty with no total.
+    /// An empty window may report no total (0); it is still read past, up to
+    /// the first page's total, so neither a run of unavailable rows nor a
+    /// stale total loses rows. Every window is requested once.
     #[tokio::test]
-    async fn get_all_pages_stops_at_an_empty_window_without_a_total() {
+    async fn get_all_pages_reads_to_the_total_past_empty_windows_without_one() {
         let server = things_server(&[
-            (0, &[1, 2], 20),
-            (2, &[3], 20),
+            (0, &[1, 2], 12),
+            (2, &[], 0),
             (4, &[], 0),
             (6, &[], 0),
-            (8, &[], 0),
+            (8, &[9], 0),
             (10, &[], 0),
-            (12, &[], 0),
         ])
         .await;
-        assert_eq!(walk_things(&server).await, vec![1, 2, 3]);
-        let requests = server.received_requests().await.unwrap();
-        assert!(
-            requests.len() <= 1 + PAGE_CONCURRENCY,
-            "stopped after the first group with an ended window, got {} requests",
-            requests.len()
-        );
+        assert_eq!(walk_things(&server).await, vec![1, 2, 9]);
+        let mut offsets: Vec<String> = server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .filter_map(|r| {
+                r.url
+                    .query_pairs()
+                    .find(|(k, _)| k == "offset")
+                    .map(|(_, v)| v.into_owned())
+            })
+            .collect();
+        offsets.sort_by_key(|o| o.parse::<u32>().unwrap());
+        assert_eq!(offsets, ["0", "2", "4", "6", "8", "10"]);
     }
 
     /// Track 13: windows after the first run concurrently (later ones answer

@@ -114,6 +114,7 @@ Found in the same pass over the phone remote, fixed with tests (`remote/views.te
 - [ ] Recently played: scroll to the end and filter; no play shows twice, and the spinner stops.
 - [ ] Desktop: a playlist with unavailable tracks shows its last tracks and the "N unavailable"
       count; Play all queues through to the end. (The desktop pager, the phone pager and
-      `get_all_pages` now keep walking past an empty window that still reports the total; an
-      empty window with no total still ends the walk.)
+      `get_all_pages` read every window up to the last known total, empty ones included,
+      whatever total an empty window reports; only a list that never reports a total ends at
+      a short page.)
 - [ ] Lyrics open on the phone: pause, resume, and change the volume; the lyrics stay put.

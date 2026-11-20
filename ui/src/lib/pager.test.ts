@@ -296,21 +296,24 @@ describe("track pager", () => {
     expect(pager.done).toBe(true);
   });
 
-  it("stops on an empty page when the total overstates the list", async () => {
-    // The empty page carries no total (0): it must end the walk without
-    // erasing the last known total.
-    const load = vi.fn(async (offset: number, limit: number) =>
-      offset === 0 ? page([track(1), track(2)], offset, limit, 10) : page([], offset, limit, 0),
-    );
+  it("reads to the known total past empty pages that report none", async () => {
+    // Empty pages with no total (0) are either unavailable tracks or a total
+    // that overstates the list; either way the walk reads to the last known
+    // total (a few empty requests at worst) and keeps that total.
+    const load = vi.fn(async (offset: number, limit: number) => {
+      if (offset === 0) return page([track(1), track(2)], offset, limit, 10);
+      if (offset === 6) return page([track(7)], offset, limit, 0);
+      return page([], offset, limit, 0);
+    });
     const pager = createTrackPager("stale-total", load, { pageSize: 2, prefetch: false });
 
     await pager.ensureAll();
 
-    expect(ids(pager.items)).toEqual([1, 2]);
+    expect(ids(pager.items)).toEqual([1, 2, 7]);
     expect(pager.total).toBe(10);
-    expect(pager.unavailable).toBe(8);
+    expect(pager.unavailable).toBe(7);
     expect(pager.done).toBe(true);
-    expect(load).toHaveBeenCalledTimes(2);
+    expect(load.mock.calls.map(([offset]) => offset)).toEqual([0, 2, 4, 6, 8]);
   });
 
   /// Issue #4: a window made only of unavailable tracks comes back empty but
