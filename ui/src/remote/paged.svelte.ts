@@ -61,9 +61,10 @@ export class PagedTracks<I> implements TrackPaging {
       incoming = incoming.filter((row) => !seen.has(row.id) && (seen.add(row.id), true));
     }
     if (incoming.length > 0) this.rows = [...this.rows, ...incoming];
-    this.total = page.total;
+    // An empty page past a stale total reports 0: keep the last known total.
+    if (page.total > 0) this.total = page.total;
     this.next = offset + TRACK_PAGE;
-    // Without a total, a short page is the only end marker.
+    // Without a total, a short (or empty) page is the only end marker.
     this.done = page.total > 0 ? this.next >= page.total : page.items.length < TRACK_PAGE;
   };
 }

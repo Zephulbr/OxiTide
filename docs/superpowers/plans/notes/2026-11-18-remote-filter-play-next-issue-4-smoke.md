@@ -112,4 +112,8 @@ Found in the same pass over the phone remote, fixed with tests (`remote/views.te
 - [ ] Library → Tracks, unfiltered, before scrolling: Add all to queue; the toast's count equals
       the desktop Tracks header's count (playable tracks; at most 5,000).
 - [ ] Recently played: scroll to the end and filter; no play shows twice, and the spinner stops.
+- [ ] Desktop: a playlist with unavailable tracks shows its last tracks and the "N unavailable"
+      count; Play all queues through to the end. (The desktop pager, the phone pager and
+      `get_all_pages` now keep walking past an empty window that still reports the total; an
+      empty window with no total still ends the walk.)
 - [ ] Lyrics open on the phone: pause, resume, and change the volume; the lyrics stay put.
