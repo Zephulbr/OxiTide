@@ -33,19 +33,19 @@ follow-ups for 1.1.7").
 
 ## Checks (installer, a real account, phone on the same Wi-Fi)
 
-- [ ] Phone Queue tab while a song plays: the playing row stands out (wash, accent bar, disc over
+- [x] Phone Queue tab while a song plays: the playing row stands out (wash, accent bar, disc over
       the cover), the disc turns; pause on the PC: the disc stops.
-- [ ] Rows above the playing one are faded; rows below are not.
-- [ ] A song with a black-and-white cover (low-colour accent): the playing row is still easy to
+- [x] Rows above the playing one are faded; rows below are not.
+- [x] A song with a black-and-white cover (low-colour accent): the playing row is still easy to
       find.
-- [ ] Open the Queue tab with the playing track far down the queue: it opens on that track, not at
+- [x] Open the Queue tab with the playing track far down the queue: it opens on that track, not at
       the top.
-- [ ] Leave the Queue tab open while a track ends: the view follows to the next track.
-- [ ] Scroll away from the playing row, let a track end: the view stays where you scrolled. The
+- [x] Leave the Queue tab open while a track ends: the view follows to the next track.
+- [x] Scroll away from the playing row, let a track end: the view stays where you scrolled. The
       "Show the current track" button still brings it back.
-- [ ] Desktop Library → Tracks: "AC DC", "ac dc" and "acdc" each find AC/DC tracks; a playlist's
+- [x] Desktop Library → Tracks: "AC DC", "ac dc" and "acdc" each find AC/DC tracks; a playlist's
       filter does the same.
-- [ ] Desktop Library → Artists: "ac dc" finds AC/DC; an accented artist is found without the
+- [x] Desktop Library → Artists: "ac dc" finds AC/DC; an accented artist is found without the
       accent.
-- [ ] Phone Library → Tracks and a playlist: "ac dc" finds AC/DC.
-- [ ] A filter for a plain word still behaves as before (no surprising extra matches).
+- [x] Phone Library → Tracks and a playlist: "ac dc" finds AC/DC.
+- [x] A filter for a plain word still behaves as before (no surprising extra matches).

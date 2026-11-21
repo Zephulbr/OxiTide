@@ -48,28 +48,28 @@ so only the first play of a run paid for the download. It is not specific to a P
 
 ## Checks (installer, a real account with a large Liked Songs)
 
-- [ ] Quit the app fully (tray too), reopen, open Library → Tracks and click a song straight
+- [x] Quit the app fully (tray too), reopen, open Library → Tracks and click a song straight
       away, while the refresh icon still spins: it plays at once, and the other rows stay
       clickable.
-- [ ] Once the refresh icon stops, the queue (desktop rail) holds the whole collection: old
+- [x] Once the refresh icon stops, the queue (desktop rail) holds the whole collection: old
       favorites at the end, in list order with shuffle off.
-- [ ] Same with shuffle on in the player bar: the clicked song plays first, and old favorites
+- [x] Same with shuffle on in the player bar: the clicked song plays first, and old favorites
       appear among the upcoming tracks once the list has loaded.
-- [ ] Reopen the app, click a song at once, then "Add to queue" another song before the refresh
+- [x] Reopen the app, click a song at once, then "Add to queue" another song before the refresh
       icon stops: the added song plays next, and the queue still grows to the whole collection.
-- [ ] Reopen the app and press the Shuffle button at once: nothing plays until the list has
+- [x] Reopen the app and press the Shuffle button at once: nothing plays until the list has
       loaded, then a shuffle of the whole collection plays (the first track is not always a recent
       favorite). Click a row while it waits: the row plays, and the shuffle does not replace it.
-- [ ] Reopen, type a filter in Tracks at once and click a match: it plays the matches, then the
+- [x] Reopen, type a filter in Tracks at once and click a match: it plays the matches, then the
       rest of the collection (issue #3's order).
-- [ ] Search → a song (the artist play): the song plays at once, and the artist's other tracks
+- [x] Search → a song (the artist play): the song plays at once, and the artist's other tracks
       join the queue as before.
-- [ ] A large playlist (a few thousand tracks), a row clicked at once after opening it: it plays
+- [x] A large playlist (a few thousand tracks), a row clicked at once after opening it: it plays
       at once, and the queue grows to the whole playlist, in order with shuffle off.
-- [ ] The same playlist's Shuffle, pressed at once: it waits for the list, then shuffles all of
+- [x] The same playlist's Shuffle, pressed at once: it waits for the list, then shuffles all of
       it; a row clicked while it waits wins.
-- [ ] An artist's All tracks, a row clicked at once: it plays at once, and the artist's other
+- [x] An artist's All tracks, a row clicked at once: it plays at once, and the artist's other
       tracks join the queue.
-- [ ] Reopen, click a song in Tracks at once, then turn the network off before the refresh icon
+- [x] Reopen, click a song in Tracks at once, then turn the network off before the refresh icon
       stops: the song keeps playing and Tracks shows the error. Network back on, Retry: the
       queue grows to the whole collection.

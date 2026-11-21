@@ -1,6 +1,7 @@
 # Shuffle off restores the order — owner smoke
 
-**Status:** Implemented on `release/1.x` for v1.1.8, not yet released; owner smoke open.
+**Status:** Implemented on `release/1.x` (`42e514b9`), shipping in v1.1.8; owner smoke passed
+(all 7 checks, 2026-11-21).
 
 From the reporter's third comment on https://github.com/Zephulbr/OxiTide/issues/7: on the phone,
 the shuffled tracks stayed in the queue after shuffle was turned off. The desktop did the same:
@@ -32,16 +33,16 @@ the shuffled tracks stayed in the queue after shuffle was turned off. The deskto
 
 ## Checks (installer, a real account)
 
-- [ ] Play a playlist in order from its third song, turn shuffle on, skip a few tracks, turn
+- [x] Play a playlist in order from its third song, turn shuffle on, skip a few tracks, turn
       shuffle off: the queue is the playlist in order, the song playing keeps playing, and the
       next one is the one after it in the playlist.
-- [ ] Same with Liked Songs' Shuffle button (a fully shuffled start), then shuffle off.
-- [ ] With shuffle on, "Add to queue" two songs, then turn shuffle off: the two songs still
+- [x] Same with Liked Songs' Shuffle button (a fully shuffled start), then shuffle off.
+- [x] With shuffle on, "Add to queue" two songs, then turn shuffle off: the two songs still
       play next, in the order added.
-- [ ] With shuffle on, click a later song in the queue rail (a queue jump), then shuffle off:
+- [x] With shuffle on, click a later song in the queue rail (a queue jump), then shuffle off:
       the order comes back.
-- [ ] Shuffle on, quit the app, reopen, shuffle off: the order comes back.
-- [ ] From the phone remote: shuffle on, then off: the phone's queue shows the playlist order
+- [x] Shuffle on, quit the app, reopen, shuffle off: the order comes back.
+- [x] From the phone remote: shuffle on, then off: the phone's queue shows the playlist order
       and marks the playing song.
-- [ ] Autoplay on, let a list run out so suggestions join, shuffle on then off: the suggestions
+- [x] Autoplay on, let a list run out so suggestions join, shuffle on then off: the suggestions
       are still at the end.
