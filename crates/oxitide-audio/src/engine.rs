@@ -4106,6 +4106,7 @@ mod tests {
             artist_refs: Vec::new(),
             album_id: None,
             autoplay: false,
+            ordinal: None,
         }
     }
 
@@ -8863,6 +8864,54 @@ mod tests {
         );
         wait_for(|| !engine.state().playing && output.samples().len() >= 3 * 176_400);
         assert_eq!(output.samples().len(), 3 * 176_400);
+    }
+
+    /// Shuffle off (issue #7) changes the next track under a prefetch: the
+    /// original successor plays, gapless.
+    #[test]
+    fn shuffle_off_retargets_a_stale_prefetch() {
+        let (engine, output, order) = queue_edit_engine(&[1, 2, 3], 10);
+        let played = Arc::new(Mutex::new(Vec::new()));
+        let played_ref = played.clone();
+        engine.subscribe(Arc::new(move |e| {
+            if let EngineEvent::NowPlaying(Some(item)) = e {
+                played_ref.lock().unwrap().push(item.track_id);
+            }
+        }));
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1), item(2), item(3)],
+                start: 0,
+            })
+            .unwrap();
+        wait_for(|| order.lock().unwrap().contains(&2));
+        engine.handle(EngineCmd::SetShuffle(true)).unwrap();
+        // Make the shuffled order 1 3 2, so 3 is prefetched.
+        let at = engine
+            .state()
+            .queue
+            .iter()
+            .position(|i| i.track_id == 3)
+            .unwrap();
+        if at != 1 {
+            engine
+                .handle(EngineCmd::Reorder { from: at, to: 1 })
+                .unwrap();
+        }
+        wait_for(|| order.lock().unwrap().contains(&3));
+        engine.handle(EngineCmd::SetShuffle(false)).unwrap();
+        let ids: Vec<u64> = engine.state().queue.iter().map(|i| i.track_id).collect();
+        assert_eq!(ids, vec![1, 2, 3]);
+        assert!(
+            output.samples().len() < 176_400,
+            "the order must come back while track 1 still plays"
+        );
+        wait_for(|| !engine.state().playing && output.samples().len() >= 3 * 176_400);
+        assert_eq!(output.samples().len(), 3 * 176_400);
+        let played: Vec<u64> = played.lock().unwrap().clone();
+        let mut runs = played.clone();
+        runs.dedup();
+        assert_eq!(runs, vec![1, 2, 3], "{played:?}");
     }
 
     /// With crossfade on, a track appended mid-track is crossed into like

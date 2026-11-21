@@ -571,6 +571,7 @@ pub(crate) mod tests {
             artist_refs: Vec::new(),
             album_id: None,
             autoplay: false,
+            ordinal: None,
         }
     }
 

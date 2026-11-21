@@ -1613,6 +1613,7 @@ impl PageTrackDto {
             artist_refs: Vec::new(),
             album_id: None,
             autoplay: false,
+            ordinal: None,
         })
     }
 }
@@ -1678,6 +1679,7 @@ pub(crate) fn queue_item_from_track(track: &Track) -> QueueItem {
             .collect(),
         album_id: track.album.as_ref().map(|a| a.id),
         autoplay: false,
+        ordinal: None,
     }
 }
 
@@ -4372,6 +4374,7 @@ mod tests {
             artist_refs: Vec::new(),
             album_id: None,
             autoplay: false,
+            ordinal: None,
         }];
         let result = perf_queue_build_items(items, 0);
         assert!(
@@ -4627,6 +4630,7 @@ mod tests {
             artist_refs: Vec::new(),
             album_id: None,
             autoplay: false,
+            ordinal: None,
         }
     }
 

@@ -26,6 +26,13 @@ pub struct QueueItem {
     /// Appended by Autoplay when the queue ran out, not queued by the user.
     #[serde(default, skip_serializing_if = "is_false")]
     pub autoplay: bool,
+    /// The track's place in its context's original order (the list a play
+    /// started, then the rest `extend_context` added), so turning shuffle off
+    /// can put it back. `None` for tracks the user added, Autoplay's
+    /// suggestions and sessions saved before it. Owned by the queue and never
+    /// sent over IPC: a queue jump's re-sent list takes it from the queued one.
+    #[serde(skip)]
+    pub ordinal: Option<u32>,
 }
 
 fn is_false(value: &bool) -> bool {
@@ -154,16 +161,23 @@ impl Queue {
 
     /// Play `items` from `start` in their order. A queue jump re-sends the
     /// queue itself (`EngineCmd::PlayTracks`): when the track list is the same,
-    /// the added-tracks marker and the context survive the jump.
-    pub fn play_context(&mut self, items: Vec<QueueItem>, start: usize) {
+    /// the added-tracks marker, the context and the tracks' original places
+    /// survive the jump. Another list starts a context in the order given.
+    pub fn play_context(&mut self, mut items: Vec<QueueItem>, start: usize) {
         let same = items.len() == self.items.len()
             && items
                 .iter()
                 .zip(self.items.iter())
                 .all(|(a, b)| a.track_id == b.track_id);
         self.added_end = if same { self.added_end } else { None };
-        if !same {
+        if same {
+            // The UI's copy carries no places (`ordinal` is not sent).
+            for (new, old) in items.iter_mut().zip(self.items.iter()) {
+                new.ordinal = new.ordinal.or(old.ordinal);
+            }
+        } else {
             self.context += 1;
+            number_context(&mut items, 0);
         }
         self.replace_items(items);
         if self.items.is_empty() {
@@ -188,10 +202,13 @@ impl Queue {
 
     fn play_new_context_with<R: Rng + ?Sized>(
         &mut self,
-        items: Vec<QueueItem>,
+        mut items: Vec<QueueItem>,
         start: usize,
         rng: &mut R,
     ) {
+        // The order given is the original one, even for the same list again
+        // (`play_context` keeps the places an item already has).
+        number_context(&mut items, 0);
         self.play_context(items, start);
         // A new context, even the same list again, starts with nothing added,
         // and the rest of an earlier play of that list must not join it.
@@ -215,6 +232,7 @@ impl Queue {
         mut items: Vec<QueueItem>,
         rng: &mut R,
     ) {
+        number_context(&mut items, 0);
         items.shuffle(rng);
         self.replace_items(items);
         self.added_end = None;
@@ -492,13 +510,21 @@ impl Queue {
 
     fn extend_context_with<R: Rng + ?Sized>(
         &mut self,
-        items: Vec<QueueItem>,
+        mut items: Vec<QueueItem>,
         context: u64,
         rng: &mut R,
     ) -> bool {
         if self.context != context || items.is_empty() {
             return false;
         }
+        // The rest follows the loaded rows in the original order.
+        let next = self
+            .items
+            .iter()
+            .filter_map(|item| item.ordinal)
+            .max()
+            .map_or(0, |last| last + 1);
+        number_context(&mut items, next);
         let Some(start) = self.added_boundary() else {
             return false;
         };
@@ -585,13 +611,85 @@ impl Queue {
     /// Enabling shuffles the whole list once (the items before the current
     /// one too, not only those after it): the current item moves to the top
     /// and keeps playing, the rest follow in a shuffled order. Disabling
-    /// leaves the shuffled order in place. Enabling it when it is already on
-    /// changes nothing (a repeated command must not rescramble the queue).
+    /// puts the context back in its original order (`unshuffle`). Setting
+    /// the flag it already has changes nothing (a repeated command must not
+    /// rescramble the queue).
     pub fn set_shuffle(&mut self, on: bool) {
         if on && !self.shuffle {
             self.shuffle_around_current_with(&mut rand::rng());
+        } else if !on && self.shuffle {
+            self.unshuffle();
         }
         self.shuffle = on;
+    }
+
+    /// Turning shuffle off (issue #7): the context's tracks go back to their
+    /// original order, and playback goes on from the current track's place
+    /// in it, as in Spotify. Tracks without a place travel
+    /// with the context track before them (a track dropped in with
+    /// `insert_at` stays after the one it followed); the added run stays
+    /// right after the current track, in its order; Autoplay's suggestions
+    /// stay at the end. The current track keeps playing; when it has no
+    /// place either (an added track that shuffling moved to the top), it and
+    /// its run stay at the top and the whole context follows. A list without
+    /// places (a session saved before them) keeps its order.
+    fn unshuffle(&mut self) {
+        if self.items.iter().all(|item| item.ordinal.is_none()) {
+            return;
+        }
+        let run = self
+            .current
+            .map(|cur| cur + 1..self.added_boundary().unwrap_or(cur + 1));
+        let in_run = |index: usize| run.as_ref().is_some_and(|run| run.contains(&index));
+        // Each item sorts by (a suggestion, the place of the context track it
+        // travels with); items before any context track keep the front.
+        let mut anchor = None;
+        let mut keys = Vec::with_capacity(self.items.len());
+        for (index, item) in self.items.iter().enumerate() {
+            let key = if in_run(index) {
+                // Set below: the run travels with the current track.
+                (false, None)
+            } else if item.autoplay {
+                (true, None)
+            } else {
+                if item.ordinal.is_some() {
+                    anchor = item.ordinal;
+                }
+                (false, anchor)
+            };
+            keys.push(key);
+        }
+        // The whole key, so the run stays with a current suggestion too, and
+        // a track dragged into the run stays in it.
+        if let (Some(cur), Some(run)) = (self.current, &run) {
+            let key = keys[cur];
+            keys[run.clone()].fill(key);
+        }
+        let mut order: Vec<usize> = (0..self.items.len()).collect();
+        order.sort_by_key(|&index| keys[index]);
+        if order.iter().enumerate().all(|(at, &index)| at == index) {
+            return;
+        }
+        let items = self.items_mut();
+        let mut taken: Vec<Option<QueueItem>> = items.drain(..).map(Some).collect();
+        items.extend(
+            order
+                .iter()
+                .map(|&index| taken[index].take().expect("each index once")),
+        );
+        let Some(cur) = self.current else {
+            return;
+        };
+        let now = order
+            .iter()
+            .position(|&index| index == cur)
+            .expect("the current item is kept");
+        self.current = Some(now);
+        // The run sorted with the current track, so it still follows it.
+        self.added_end = self
+            .added_end
+            .filter(|&end| end > cur + 1)
+            .map(|end| now + (end - cur));
     }
 
     /// One Fisher–Yates shuffle of every item but the current one, which
@@ -625,6 +723,18 @@ impl Queue {
         if was != RepeatMode::All {
             self.prepare_next_pass();
         }
+    }
+}
+
+/// Give a context's tracks their places, in the order given, from `first`.
+/// Autoplay's suggestions are not part of it.
+fn number_context(items: &mut [QueueItem], first: u32) {
+    let mut next = first;
+    for item in items {
+        item.ordinal = (!item.autoplay).then(|| {
+            next += 1;
+            next - 1
+        });
     }
 }
 
@@ -663,6 +773,7 @@ mod tests {
             artist_refs: Vec::new(),
             album_id: None,
             autoplay: false,
+            ordinal: None,
         }
     }
 
@@ -1265,6 +1376,178 @@ mod tests {
         q.set_shuffle(true);
         assert_eq!(ids(&q), vec![1]);
         assert_eq!(q.current_index(), Some(0));
+    }
+
+    /// Issue #7: turning shuffle off puts the list back in order and goes on
+    /// from the current track's place in it.
+    #[test]
+    fn shuffle_off_restores_the_original_order() {
+        let mut q = queue(8);
+        q.next(); // 2
+        q.set_shuffle(true);
+        q.next();
+        q.next();
+        let playing = q.current().unwrap().track_id;
+        q.set_shuffle(false);
+        assert!(!q.shuffle());
+        assert_eq!(ids(&q), (1..=8).collect::<Vec<_>>());
+        assert_eq!(q.current().unwrap().track_id, playing);
+        assert_eq!(q.current_index(), Some(playing as usize - 1));
+        assert!(q.is_playing());
+    }
+
+    #[test]
+    fn shuffle_off_after_a_shuffled_play_restores_the_order() {
+        use rand::SeedableRng;
+        let mut q = Queue::default();
+        q.play_context_shuffled_with(
+            (1..=6).map(item).collect(),
+            &mut rand::rngs::StdRng::seed_from_u64(3),
+        );
+        let playing = q.current().unwrap().track_id;
+        q.set_shuffle(false);
+        assert_eq!(ids(&q), (1..=6).collect::<Vec<_>>());
+        assert_eq!(q.current().unwrap().track_id, playing);
+    }
+
+    #[test]
+    fn shuffle_off_keeps_the_added_run_after_the_current_track() {
+        let mut q = queue(6);
+        q.next(); // 2
+        q.push(vec![item(20), item(21)]);
+        q.set_shuffle(true);
+        assert_eq!(&ids(&q)[..3], &[2, 20, 21]);
+        q.set_shuffle(false);
+        assert_eq!(ids(&q), vec![1, 2, 20, 21, 3, 4, 5, 6]);
+        assert_eq!(q.current_index(), Some(1));
+        // Still the added run: the next add goes after it.
+        q.push(vec![item(22)]);
+        assert_eq!(ids(&q), vec![1, 2, 20, 21, 22, 3, 4, 5, 6]);
+    }
+
+    #[test]
+    fn shuffle_off_keeps_dropped_tracks_and_suggestions_in_their_places() {
+        let mut q = queue(6);
+        q.set_shuffle(true);
+        let before = q.items()[2].track_id;
+        q.insert_at(3, vec![item(9)]); // dropped after `before`
+        q.push(vec![suggested(50), suggested(51)]);
+        q.set_shuffle(false);
+        let order = ids(&q);
+        let at = order.iter().position(|&id| id == before).unwrap();
+        assert_eq!(order[at + 1], 9, "{order:?}");
+        assert_eq!(&order[order.len() - 2..], &[50, 51], "{order:?}");
+        let context: Vec<u64> = order.into_iter().filter(|&id| id <= 6).collect();
+        assert_eq!(context, (1..=6).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn shuffle_off_on_a_suggestion_keeps_the_added_run_after_it() {
+        let mut q = queue(3);
+        q.next();
+        q.next(); // 3, the last: Autoplay fills
+        q.push(vec![suggested(50), suggested(51)]);
+        q.next(); // 50
+        q.push(vec![item(20), item(21)]); // 1 2 3 50 20 21 51
+        q.set_shuffle(true);
+        q.set_shuffle(false);
+        assert_eq!(ids(&q), vec![1, 2, 3, 50, 20, 21, 51]);
+        assert_eq!(q.current().unwrap().track_id, 50);
+        q.push(vec![item(22)]);
+        assert_eq!(ids(&q), vec![1, 2, 3, 50, 20, 21, 22, 51]);
+    }
+
+    /// Shuffle on moved the added track to the top, away from any context
+    /// track, so the whole context follows it and its run.
+    #[test]
+    fn shuffle_off_on_an_added_track_keeps_it_and_its_run_together() {
+        let mut q = queue(5);
+        q.next(); // 2
+        q.push(vec![item(20), item(21), item(22)]);
+        q.next(); // 20, an added track without a place; 21 22 still added
+        q.set_shuffle(true);
+        q.set_shuffle(false);
+        assert_eq!(ids(&q), vec![20, 21, 22, 1, 2, 3, 4, 5]);
+        assert_eq!(q.current_index(), Some(0));
+        q.push(vec![item(23)]);
+        assert_eq!(ids(&q), vec![20, 21, 22, 23, 1, 2, 3, 4, 5]);
+    }
+
+    /// Turned off without shuffling in between, an added track keeps its
+    /// neighbours.
+    #[test]
+    fn shuffle_off_keeps_an_added_track_after_its_context_track() {
+        let mut q = queue(5);
+        q.set_shuffle(true);
+        let before = q.items()[1].track_id;
+        q.next(); // `before`
+        q.push(vec![item(20), item(21)]);
+        q.next(); // 20
+        q.set_shuffle(false);
+        let order = ids(&q);
+        let at = order.iter().position(|&id| id == before).unwrap();
+        assert_eq!(&order[at + 1..at + 3], &[20, 21], "{order:?}");
+        assert_eq!(q.current().unwrap().track_id, 20);
+        q.push(vec![item(22)]);
+        assert_eq!(ids(&q)[at + 3], 22);
+    }
+
+    /// The UI re-sends the queue for a jump without the places.
+    #[test]
+    fn shuffle_off_after_a_queue_jump_restores_the_order() {
+        let mut q = queue(6);
+        q.set_shuffle(true);
+        let resent: Vec<QueueItem> = q
+            .items()
+            .iter()
+            .map(|i| QueueItem {
+                ordinal: None,
+                ..i.clone()
+            })
+            .collect();
+        let target = resent[3].track_id;
+        q.play_context(resent, 3);
+        q.set_shuffle(false);
+        assert_eq!(ids(&q), (1..=6).collect::<Vec<_>>());
+        assert_eq!(q.current().unwrap().track_id, target);
+    }
+
+    #[test]
+    fn shuffle_off_takes_in_the_late_loaded_rest_in_order() {
+        let mut q = Queue::default();
+        q.set_shuffle(true);
+        q.play_new_context((1..=3).map(item).collect(), 1);
+        assert!(q.extend_context((4..=8).map(item).collect(), q.context()));
+        q.set_shuffle(false);
+        assert_eq!(ids(&q), (1..=8).collect::<Vec<_>>());
+        assert_eq!(q.current().unwrap().track_id, 2);
+    }
+
+    /// A session saved before the places restores without them.
+    #[test]
+    fn shuffle_off_without_places_keeps_the_order() {
+        let mut q = Queue::default();
+        q.restore(
+            [3, 1, 2].into_iter().map(item).collect(),
+            1,
+            true,
+            RepeatMode::Off,
+        );
+        let rev = q.rev();
+        q.set_shuffle(false);
+        assert!(!q.shuffle());
+        assert_eq!(ids(&q), vec![3, 1, 2]);
+        assert_eq!(q.rev(), rev);
+    }
+
+    #[test]
+    fn places_are_not_sent_over_ipc() {
+        let placed = QueueItem {
+            ordinal: Some(4),
+            ..item(1)
+        };
+        let json = serde_json::to_value(&placed).unwrap();
+        assert!(json.get("ordinal").is_none());
     }
 
     /// Issue #3: a new context started while shuffle is on plays the picked
