@@ -69,7 +69,9 @@ new section containers so they join the Rack's look for free.
 (Playlists, Profiles, History, Feed) open with `header.page-head`: the `h2` title on the
 left; a muted `.count` and the tools on the right, all 38px tall. Tools come from the field
 family — `.search-input` for search/filter, `SortSelect` for sort, `.tool-btn` (icon +
-label) for actions — never mixed with round icon buttons in the same row. Rack skins
+label) for actions — never mixed with round icon buttons in the same row. In-list filters
+(track lists, Artists) fold case, accents and punctuation (`lib/searchText.ts`): "ac dc"
+finds AC/DC. Rack skins
 `.page-head > h2` as a printed label and `.tool-btn` as a light-bar key.
 
 **List edges** (`.edge-fade` in app.css, lengths from `lib/edgeFade.ts`). Scrolling lists never
@@ -103,6 +105,12 @@ to `--surface-2`, adds the `--line` border, lifts the text to `--text` and turns
 `--accent`; press scales to 0.97. Double-clicking Now playing follows the playing track
 (label "Following", `aria-pressed`, styled like the primary sort chip: accent border 55%,
 accent 16% fill) and re-centres it on every track change until double-clicked again.
+
+**Track table plays.** Rows never go disabled while a play waits for its list (2026-11-20,
+issue #7): in Tracks, a playlist and an artist's All tracks, a click plays the loaded rows at
+once and the rest joins the queue as it loads; a Shuffle or a filtered or sorted order waits for
+the whole list, and any desktop play started meanwhile wins (a play from the phone remote does
+not count yet). If the load fails, the list's Retry also adds the rest to the queue.
 
 **Track table columns.** Every column but the number, cover and actions takes a share of the
 width (title 21%, artist 19%, album 18%, optional columns 14%, time and quality 8%), so the
@@ -791,7 +799,16 @@ The phone page served by the LAN remote is a separate entry, not a fourth mode.
   (Play queues matches, then the rest; Shuffle only the matches); album rows keep their track
   numbers. Library → Albums / Artists / My Mixes (`TileGrid.svelte`) match the tile title and,
   for albums and mixes, the subtitle; Playlists matches names within the open folder. Row menus
-  lead with **Play next** (`skip-forward`).
+  lead with **Play next** (`skip-forward`). Matching folds case, accents and punctuation on both
+  sides (`lib/searchText.ts`, shared with the desktop's track and artist filters): "ac dc",
+  "acdc" and "ac/dc" all find AC/DC, "beyonce" finds Beyoncé.
+- **Queue** (`remote/pages/Queue.svelte`, 2026-11-20): opens scrolled to the playing row (one row
+  of context above it), and follows it to the next track only while that row was on screen, as
+  the desktop rail does; a listener who scrolled away is left there. The playing row has a
+  `--surface-2` wash, a 3px accent bar on its left edge, an accent title and the `disc-3` mark
+  over its cover on a `--bg` scrim (turning in 60 steps a turn while the PC plays, still when
+  paused or with reduced motion). Played rows fade to 50% (cover, text, time), like the desktop
+  rail's played rows.
 - **Volume:** phone hardware keys cannot reach a web page, so Now Playing has no volume bar.
   Swiping up/down on the artwork changes the PC's volume (full cover height = 100%,
   6px dead zone so taps never change it) with a level overlay; the artwork is a keyboard /

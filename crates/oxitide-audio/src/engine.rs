@@ -140,11 +140,12 @@ pub enum EngineCmd {
         items: Vec<QueueItem>,
         start: usize,
     },
-    /// Add the rest of a context started from its first page, only while the
-    /// queue is still at `rev` (see `Queue::extend_context`).
+    /// Add the rest of a context started from its loaded rows, only while
+    /// `context` (from `Engine::play`) is still queued (see
+    /// `Queue::extend_context`).
     ExtendContext {
         items: Vec<QueueItem>,
-        rev: u64,
+        context: u64,
     },
     /// Replace the queue with a fully shuffled context (header Shuffle).
     PlayShuffled {
@@ -803,12 +804,13 @@ impl Engine {
     }
 
     /// Replace the playback context via `mutate` and announce the new queue
-    /// and current track to listeners.
-    fn start_context(&self, mutate: impl FnOnce(&mut Queue)) {
+    /// and current track to listeners. Returns the context it started, read
+    /// under the same lock as the change.
+    fn start_context(&self, mutate: impl FnOnce(&mut Queue)) -> u64 {
         // Starting a new context is an explicit user action; end any fade.
         self.cancel_fade();
         *self.inner.stream_meta.lock().unwrap() = None;
-        let item = self.mutate_playing_queue(|q| {
+        let (item, context) = self.mutate_playing_queue(|q| {
             mutate(q);
             // A new context plays from the start, unpaused. Both are set
             // here (under the playback lock the worker reads them with), not
@@ -820,23 +822,56 @@ impl Engine {
             *self.inner.seek_target.lock().unwrap() = None;
             self.inner.paused.store(false, Ordering::SeqCst);
             self.inner.ended.store(false, Ordering::SeqCst);
-            q.current().cloned()
+            (q.current().cloned(), q.context())
         });
         self.inner.notify_worker();
         self.emit(EngineEvent::NowPlaying(item.clone()));
         self.emit(EngineEvent::State(self.state()));
+        context
+    }
+
+    /// Run `cmd` and return the queue's context afterwards: for a play
+    /// (`PlayTracks`, `PlayContext`, `PlayShuffled`) the one it started, for
+    /// `EngineCmd::ExtendContext` to add the rest of that list to.
+    pub fn play(&self, cmd: EngineCmd) -> Result<u64> {
+        match cmd {
+            EngineCmd::PlayTracks { items, start } => {
+                Ok(self.start_context(|q| q.play_context(items, start)))
+            }
+            EngineCmd::PlayContext { items, start } => {
+                Ok(self.start_context(|q| q.play_new_context(items, start)))
+            }
+            EngineCmd::PlayShuffled { items } => {
+                Ok(self.start_context(|q| q.play_context_shuffled(items)))
+            }
+            other => {
+                self.handle(other)?;
+                Ok(self.inner.queue.lock().unwrap().context())
+            }
+        }
+    }
+
+    /// `EngineCmd::ExtendContext`, reporting whether the items joined the
+    /// queue (false once another play replaced `context`).
+    pub fn extend_context(&self, items: Vec<QueueItem>, context: u64) -> bool {
+        let applied = self
+            .inner
+            .queue
+            .lock()
+            .unwrap()
+            .extend_context(items, context);
+        if applied {
+            self.emit(EngineEvent::State(self.state()));
+        }
+        applied
     }
 
     pub fn handle(&self, cmd: EngineCmd) -> Result<()> {
         match cmd {
-            EngineCmd::PlayTracks { items, start } => {
-                self.start_context(|q| q.play_context(items, start));
-            }
-            EngineCmd::PlayContext { items, start } => {
-                self.start_context(|q| q.play_new_context(items, start));
-            }
-            EngineCmd::PlayShuffled { items } => {
-                self.start_context(|q| q.play_context_shuffled(items));
+            cmd @ (EngineCmd::PlayTracks { .. }
+            | EngineCmd::PlayContext { .. }
+            | EngineCmd::PlayShuffled { .. }) => {
+                self.play(cmd)?;
             }
             EngineCmd::RestoreSession {
                 items,
@@ -999,10 +1034,8 @@ impl Engine {
                 self.inner.queue.lock().unwrap().remove(index);
                 self.emit(EngineEvent::State(self.state()));
             }
-            EngineCmd::ExtendContext { items, rev } => {
-                if self.inner.queue.lock().unwrap().extend_context(items, rev) {
-                    self.emit(EngineEvent::State(self.state()));
-                }
+            EngineCmd::ExtendContext { items, context } => {
+                self.extend_context(items, context);
             }
             EngineCmd::Enqueue { items } => {
                 if !items.is_empty() {
@@ -4073,6 +4106,7 @@ mod tests {
             artist_refs: Vec::new(),
             album_id: None,
             autoplay: false,
+            ordinal: None,
         }
     }
 
@@ -8830,6 +8864,54 @@ mod tests {
         );
         wait_for(|| !engine.state().playing && output.samples().len() >= 3 * 176_400);
         assert_eq!(output.samples().len(), 3 * 176_400);
+    }
+
+    /// Shuffle off (issue #7) changes the next track under a prefetch: the
+    /// original successor plays, gapless.
+    #[test]
+    fn shuffle_off_retargets_a_stale_prefetch() {
+        let (engine, output, order) = queue_edit_engine(&[1, 2, 3], 10);
+        let played = Arc::new(Mutex::new(Vec::new()));
+        let played_ref = played.clone();
+        engine.subscribe(Arc::new(move |e| {
+            if let EngineEvent::NowPlaying(Some(item)) = e {
+                played_ref.lock().unwrap().push(item.track_id);
+            }
+        }));
+        engine
+            .handle(EngineCmd::PlayTracks {
+                items: vec![item(1), item(2), item(3)],
+                start: 0,
+            })
+            .unwrap();
+        wait_for(|| order.lock().unwrap().contains(&2));
+        engine.handle(EngineCmd::SetShuffle(true)).unwrap();
+        // Make the shuffled order 1 3 2, so 3 is prefetched.
+        let at = engine
+            .state()
+            .queue
+            .iter()
+            .position(|i| i.track_id == 3)
+            .unwrap();
+        if at != 1 {
+            engine
+                .handle(EngineCmd::Reorder { from: at, to: 1 })
+                .unwrap();
+        }
+        wait_for(|| order.lock().unwrap().contains(&3));
+        engine.handle(EngineCmd::SetShuffle(false)).unwrap();
+        let ids: Vec<u64> = engine.state().queue.iter().map(|i| i.track_id).collect();
+        assert_eq!(ids, vec![1, 2, 3]);
+        assert!(
+            output.samples().len() < 176_400,
+            "the order must come back while track 1 still plays"
+        );
+        wait_for(|| !engine.state().playing && output.samples().len() >= 3 * 176_400);
+        assert_eq!(output.samples().len(), 3 * 176_400);
+        let played: Vec<u64> = played.lock().unwrap().clone();
+        let mut runs = played.clone();
+        runs.dedup();
+        assert_eq!(runs, vec![1, 2, 3], "{played:?}");
     }
 
     /// With crossfade on, a track appended mid-track is crossed into like

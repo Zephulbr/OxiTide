@@ -23,6 +23,8 @@ const SHARED = new Set([
   "src/lib/locale.svelte.ts",
   "src/lib/lyrics.ts",
   "src/lib/media.ts",
+  // List-filter text folding ("ac dc" finds AC/DC), shared with the desktop.
+  "src/lib/searchText.ts",
 
   "src/lib/components/Icon.svelte",
   // The favorite heart's motion; it imports only svelte and Icon.

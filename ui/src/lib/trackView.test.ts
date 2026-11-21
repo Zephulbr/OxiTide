@@ -183,6 +183,18 @@ describe("track view filter", () => {
     expect(ids(view.items)).toEqual([2]);
   });
 
+  it("folds punctuation and accents: AC DC finds AC/DC", () => {
+    const list = [track(1, "Thunderstruck", 100, "AC/DC"), track(2, "Halo", 100, "Beyoncé"), track(3, "Accept")];
+    const view = createTrackView(() => list);
+
+    view.setFilter("AC DC");
+    expect(ids(view.items)).toEqual([1]);
+    view.setFilter("acdc");
+    expect(ids(view.items)).toEqual([1]);
+    view.setFilter("beyonce");
+    expect(ids(view.items)).toEqual([2]);
+  });
+
   it("trims the filter and ignores an empty one", () => {
     const view = createTrackView(() => SOURCE);
 
@@ -410,7 +422,8 @@ describe("track view live updates", () => {
 describe("warmTrackSearch", () => {
   it("fills the caches in chunks so a later filter does not rebuild them", async () => {
     const tracks = [track(1, "Alpha"), track(2, "Beta"), track(3, "Gamma")];
-    const spy = vi.spyOn(String.prototype, "toLowerCase");
+    // Folding (`lib/searchText.ts`) normalizes each field once, and the query.
+    const spy = vi.spyOn(String.prototype, "normalize");
     const warm = warmTrackSearch(tracks, 2);
     await warm.done;
     const warmCalls = spy.mock.calls.length;
@@ -428,7 +441,7 @@ describe("warmTrackSearch", () => {
 
   it("stops warming when cancelled", async () => {
     const tracks = [track(1, "Alpha"), track(2, "Beta"), track(3, "Gamma")];
-    const spy = vi.spyOn(String.prototype, "toLowerCase");
+    const spy = vi.spyOn(String.prototype, "normalize");
     const warm = warmTrackSearch(tracks, 1);
     warm.cancel();
     await warm.done;

@@ -31,6 +31,13 @@ describe("visibleArtists", () => {
     ]);
   });
 
+  it("folds punctuation and accents: AC DC finds AC/DC, bjork finds Björk", () => {
+    const list = [...artists, artist(4, "AC/DC")];
+    expect(visibleArtists(list, "AC DC", "date").map((a) => a.name)).toEqual(["AC/DC"]);
+    expect(visibleArtists(list, "acdc", "date").map((a) => a.name)).toEqual(["AC/DC"]);
+    expect(visibleArtists(list, "bjork", "date").map((a) => a.name)).toEqual(["Björk"]);
+  });
+
   it("returns nothing when the query matches nothing", () => {
     expect(visibleArtists(artists, "zzz", "name")).toEqual([]);
   });

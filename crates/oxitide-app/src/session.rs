@@ -41,6 +41,11 @@ pub struct SessionItem {
     /// An Autoplay suggestion (`QueueItem::autoplay`).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub autoplay: bool,
+    /// The place in the context's original order (`QueueItem::ordinal`), so
+    /// a restored shuffled queue can still be unshuffled; absent in sessions
+    /// saved before it (that queue keeps its order when shuffle goes off).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ordinal: Option<u32>,
 }
 
 impl From<&QueueItem> for SessionItem {
@@ -57,6 +62,7 @@ impl From<&QueueItem> for SessionItem {
             artist_refs: item.artist_refs.clone(),
             album_id: item.album_id,
             autoplay: item.autoplay,
+            ordinal: item.ordinal,
         }
     }
 }
@@ -73,6 +79,7 @@ impl From<SessionItem> for QueueItem {
             artist_refs: item.artist_refs,
             album_id: item.album_id,
             autoplay: item.autoplay,
+            ordinal: item.ordinal,
         }
     }
 }
@@ -584,6 +591,7 @@ mod tests {
             artist_refs: Vec::new(),
             album_id: None,
             autoplay: false,
+            ordinal: None,
         }
     }
 
@@ -757,6 +765,21 @@ mod tests {
         assert!(!plain.contains("autoplay"));
     }
 
+    /// A restored shuffled queue can still be unshuffled (issue #7).
+    #[test]
+    fn the_original_place_survives_a_save() {
+        let placed = QueueItem {
+            ordinal: Some(7),
+            ..QueueItem::from(item(1))
+        };
+        let json = serde_json::to_string(&SessionItem::from(&placed)).unwrap();
+        assert!(json.contains(r#""ordinal":7"#));
+        let restored = QueueItem::from(serde_json::from_str::<SessionItem>(&json).unwrap());
+        assert_eq!(restored, placed);
+        let plain = serde_json::to_string(&SessionItem::from(&QueueItem::from(item(1)))).unwrap();
+        assert!(!plain.contains("ordinal"));
+    }
+
     /// A version 1 file as 0.4 wrote it: bare-number ids, `{ id, name }` links.
     #[test]
     fn a_version_1_session_loads_and_saves_back_as_refs() {
@@ -859,6 +882,7 @@ mod tests {
                 artist_refs: Vec::new(),
                 album_id: None,
                 autoplay: false,
+                ordinal: None,
             })
             .collect();
         PlaybackState {

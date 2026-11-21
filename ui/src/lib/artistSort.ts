@@ -1,9 +1,11 @@
 import type { Artist } from "./api";
 import { compareText } from "./locale.svelte";
+import { formsMatch, searchForms, searchNeedle } from "./searchText";
 
 export type ArtistSort = "date" | "name" | "name-desc";
 
-/// Filter favorite artists by a case-insensitive name query, then sort them.
+/// Filter favorite artists by name (case, accents and punctuation folded:
+/// "ac dc" finds AC/DC; `lib/searchText.ts`), then sort them.
 /// "date" keeps the API's own order (newest first: `all_favorite_artists`
 /// asks for it, since TIDAL's default is by name). Returns a new array; the
 /// input is never mutated.
@@ -12,9 +14,9 @@ export function visibleArtists(
   query: string,
   mode: ArtistSort,
 ): Artist[] {
-  const needle = query.trim().toLowerCase();
+  const needle = searchNeedle(query);
   const filtered =
-    needle === "" ? [...artists] : artists.filter((a) => a.name.toLowerCase().includes(needle));
+    needle === "" ? [...artists] : artists.filter((a) => formsMatch(searchForms(a.name), needle));
   if (mode === "date") return filtered;
   const byName = (a: Artist, b: Artist) =>
     compareText(a.name, b.name);

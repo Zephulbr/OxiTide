@@ -1,6 +1,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import { api, trackToQueueItem, type Track } from "../lib/api";
+  import { api, type Track } from "../lib/api";
+  import { claimPlay, createEarlyPlays, startPlay, startsEarly, type StartResult } from "../lib/contextPlay";
   import ErrorState from "../lib/components/ErrorState.svelte";
   import Icon from "../lib/components/Icon.svelte";
   import TrackTable from "../lib/components/TrackTable.svelte";
@@ -8,8 +9,7 @@
   import { perf } from "../lib/perf.svelte";
   import { makeSyntheticTracks } from "../lib/perfFixture";
   import { perfHooks } from "../lib/perfHooks";
-  import { playSource, type PlayFrom } from "../lib/playSource.svelte";
-  import { trackFlags } from "../lib/trackFlags.svelte";
+  import type { PlayFrom } from "../lib/playSource.svelte";
   import { createTrackView, matchesThenRest, visibleIndexOf, warmTrackSearch } from "../lib/trackView.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
   import type { PlaylistActions } from "../lib/playlists.svelte";
@@ -96,46 +96,55 @@
     for (const id of favorites.pendingRemovalsToDrop(loaded)) favoritesPager.removeItem(id);
   });
 
+  function report(result: StartResult) {
+    if (result === "hidden") toasts.show(t("queue.dropHidden"), { severity: "info" });
+  }
+
+  /// While the list is still loading and shown in its own order, a play
+  /// starts from the rows loaded so far and the rest joins the queue once
+  /// loaded, so a click never waits for the whole collection (issue #7).
+  const early = createEarlyPlays();
+
+  function playsEarly(): boolean {
+    return synthetic === null && startsEarly(favoritesPager, view);
+  }
+
   /// A play from a filtered list (a search for an artist or album) queues the
   /// matches and then the rest of the collection, as TIDAL does, so the
-  /// collection carries on instead of autoplay (issue #3).
+  /// collection carries on instead of autoplay (issue #3). That order needs
+  /// the whole list, so it waits for it.
   async function playFrom(index: number) {
-    const clicked = view.items[index];
-    await favoritesPager.ensureAll();
-    if (favoritesPager.error) return;
-    const start = visibleIndexOf(view.items, clicked, index);
-    if (start < 0) return;
-    const prepared = await trackFlags.filterPlayable(matchesThenRest(view), start);
-    if (!prepared) {
-      toasts.show(t("queue.dropHidden"), { severity: "info" });
+    const isLatest = claimPlay();
+    if (playsEarly()) {
+      report(await early.play(favoritesPager, FAVORITES, view.items, index, isLatest));
       return;
     }
-    playSource.set(FAVORITES, prepared.items.map((t) => t.id));
-    void api.playTracks(prepared.items.map(trackToQueueItem), prepared.start);
+    const clicked = view.items[index];
+    await favoritesPager.ensureAll();
+    if (favoritesPager.error || !isLatest()) return;
+    const start = visibleIndexOf(view.items, clicked, index);
+    if (start < 0) return;
+    report(await startPlay(FAVORITES, matchesThenRest(view), start, { isLatest }));
   }
 
   async function playAll() {
-    await favoritesPager.ensureAll();
-    if (favoritesPager.error) return;
-    const prepared = await trackFlags.filterPlayable(matchesThenRest(view), 0);
-    if (!prepared) {
-      toasts.show(t("queue.dropHidden"), { severity: "info" });
+    const isLatest = claimPlay();
+    if (playsEarly()) {
+      report(await early.play(favoritesPager, FAVORITES, view.items, 0, isLatest));
       return;
     }
-    playSource.set(FAVORITES, prepared.items.map((t) => t.id));
-    void api.playTracks(prepared.items.map(trackToQueueItem), prepared.start);
+    await favoritesPager.ensureAll();
+    if (favoritesPager.error || !isLatest()) return;
+    report(await startPlay(FAVORITES, matchesThenRest(view), 0, { isLatest }));
   }
 
+  /// A shuffle draws its first track from the whole collection, so it waits
+  /// for the list: started early it would open on a recent favorite (#7).
   async function shuffleAll() {
+    const isLatest = claimPlay();
     await favoritesPager.ensureAll();
-    if (favoritesPager.error) return;
-    const prepared = await trackFlags.filterPlayable(view.items, 0);
-    if (!prepared) {
-      toasts.show(t("queue.dropHidden"), { severity: "info" });
-      return;
-    }
-    playSource.set(FAVORITES, prepared.items.map((t) => t.id));
-    void api.playTracks(prepared.items.map(trackToQueueItem), 0, true);
+    if (favoritesPager.error || !isLatest()) return;
+    report(await startPlay(FAVORITES, view.items, 0, { shuffle: true, isLatest }));
   }
 </script>
 
@@ -192,7 +201,7 @@
     playbackRunning={player.state.playing}
   />
   {#if favoritesPager.error}
-    <ErrorState message={favoritesPager.error} onRetry={() => favoritesPager.loadMore()} />
+    <ErrorState message={favoritesPager.error} onRetry={() => early.retry(favoritesPager)} />
   {/if}
 </div>
 

@@ -364,6 +364,7 @@ mod tests {
             }],
             album_id: None,
             autoplay: false,
+            ordinal: None,
         }
     }
 

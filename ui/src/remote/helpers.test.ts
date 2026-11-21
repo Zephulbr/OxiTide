@@ -4,7 +4,7 @@ import { fromPageItem, fromTrack, toPageInput, toQueueItem } from "./convert";
 import { clock, nextRepeat, qualityBadges, stepVolume, volumeFromDrag } from "./nowPlaying";
 import { isCoverId } from "./motion";
 import { QUEUE_PAGE, QueueCache } from "./queueCache";
-import { dropIndex, visibleRange } from "./queueDrag";
+import { dropIndex, rowOnScreen, scrollTopFor, visibleRange } from "./queueDrag";
 import { hrefFor, parseHash, routeForItem, tabFor, type RemoteRoute } from "./routes";
 
 describe("queue cache", () => {
@@ -35,6 +35,20 @@ describe("queue drag and window", () => {
     expect(visibleRange(0, 640, 64, 10_000, 4)).toEqual({ from: 0, to: 14 });
     expect(visibleRange(64_000, 640, 64, 10_000, 4)).toEqual({ from: 996, to: 1014 });
     expect(visibleRange(-300, 640, 64, 5, 4)).toEqual({ from: 0, to: 5 });
+  });
+
+  it("opens with the current row near the top, one row above it", () => {
+    expect(scrollTopFor(10, 64, 120)).toBe(120 + 9 * 64);
+    expect(scrollTopFor(0, 64, 120)).toBe(56);
+    expect(scrollTopFor(0, 64, 20)).toBe(0);
+  });
+
+  it("tells whether a row is on screen above the dock", () => {
+    // List at 100px, 800px window, 124px dock: rows show between 0 and 676.
+    expect(rowOnScreen(5, 64, 100, 0, 800, 124)).toBe(true);
+    expect(rowOnScreen(9, 64, 100, 0, 800, 124)).toBe(false);
+    expect(rowOnScreen(5, 64, 100, 1000, 800, 124)).toBe(false);
+    expect(rowOnScreen(20, 64, 100, 1000, 800, 124)).toBe(true);
   });
 });
 

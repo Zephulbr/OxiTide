@@ -1,5 +1,6 @@
 import { untrack } from "svelte";
 import type { Track } from "./api";
+import { formsMatch, searchForms, searchNeedle } from "./searchText";
 import { sortData as appSortData, type SortData } from "./sortData.svelte";
 import { sortMemory, type SortMemory } from "./sortMemory.svelte";
 import {
@@ -54,24 +55,23 @@ export interface TrackViewOptions {
   data?: SortData;
 }
 
-/// Per-track lower-cased title/artist parts. Track objects are stable while a
-/// list is mounted, so a keystroke reuses them instead of lower-casing every
-/// row again.
+/// Per-track folded title/artist forms (`lib/searchText.ts`: case, accents and
+/// punctuation folded, so "ac dc" finds AC/DC). Track objects are stable while
+/// a list is mounted, so a keystroke reuses them instead of folding every row
+/// again.
 const searchParts = new WeakMap<Track, string[]>();
 
 function searchable(track: Track): string[] {
   let parts = searchParts.get(track);
   if (parts === undefined) {
-    parts = [track.title, ...track.artists.map((artist) => artist.name)].map((value) =>
-      value.toLowerCase(),
-    );
+    parts = [track.title, ...track.artists.map((artist) => artist.name)].flatMap(searchForms);
     searchParts.set(track, parts);
   }
   return parts;
 }
 
 function matches(track: Track, needle: string): boolean {
-  return searchable(track).some((part) => part.includes(needle));
+  return formsMatch(searchable(track), needle);
 }
 
 /// Fill the per-track search cache in small macrotask chunks so the first
@@ -157,7 +157,7 @@ export function createTrackView(
 
   const items = $derived.by(() => {
     if (!engaged || !full) return source();
-    const needle = filter.trim().toLowerCase();
+    const needle = searchNeedle(filter);
     return needle === "" ? unfiltered : unfiltered.filter((track) => matches(track, needle));
   });
 

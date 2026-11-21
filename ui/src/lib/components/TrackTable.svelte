@@ -194,7 +194,6 @@
 
   let scrollTop = $state(0);
   let viewport = $state(0);
-  let loadingAll = $state(false);
 
   const rows = $derived(view.items);
   const grouping = $derived(sections !== undefined && !view.engaged ? sections : null);
@@ -422,13 +421,10 @@
       blockedNotice(target.title);
       return;
     }
+    // The rows stay live while a page's play waits for its list: the page
+    // lets a newer click win (`lib/contextPlay.ts`), issue #7.
     if (onPlay) {
-      loadingAll = true;
-      try {
-        await onPlay(index);
-      } finally {
-        loadingAll = false;
-      }
+      await onPlay(index);
       return;
     }
     const prepared = await trackFlags.filterPlayable(rows, index);
@@ -440,7 +436,6 @@
   }
 
   function onRowDoubleClick(event: MouseEvent, index: number) {
-    if (loadingAll) return;
     const target = event.target;
     if (target instanceof Element && target.closest("button, a, input, select, textarea, [role='link']")) return;
     void play(index);
@@ -612,7 +607,7 @@
       void focusRow(target);
       return;
     }
-    if ((event.key === "Enter" || event.key === " ") && !loadingAll) {
+    if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       event.stopPropagation();
       void play(index);
@@ -802,7 +797,7 @@
               </td>
             {/if}
             <td class="thumb-cell" role={roleOf("cell")}>
-              <button class="thumb" onclick={() => play(index)} disabled={loadingAll} aria-label={i18n.t("menu.play")} title={i18n.t("menu.play")}>
+              <button class="thumb" onclick={() => play(index)} aria-label={i18n.t("menu.play")} title={i18n.t("menu.play")}>
                 <Cover uuid={t.album?.cover} size={80} radius={0} alt="" />
                 <!-- The compact list has no number column, so the playing
                      row's mark sits on its cover instead. -->

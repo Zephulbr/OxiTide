@@ -2,7 +2,6 @@
   import { untrack } from "svelte";
   import {
     api,
-    trackToQueueItem,
     type Album,
     type Artist,
     type PageItem,
@@ -18,8 +17,8 @@
   import TrackTable from "../lib/components/TrackTable.svelte";
   import { routeForPageItem, type ArtistTab, type Nav } from "../lib/nav.svelte";
   import { artistTracksPager } from "../lib/artistTracks";
-  import { playSource, type PlayFrom } from "../lib/playSource.svelte";
-  import { trackFlags } from "../lib/trackFlags.svelte";
+  import { claimPlay, createEarlyPlays, startPlay, startsEarly, type StartResult } from "../lib/contextPlay";
+  import type { PlayFrom } from "../lib/playSource.svelte";
   import { playArtistRadio } from "../lib/radio";
   import { createTrackView, visibleIndexOf } from "../lib/trackView.svelte";
   import type { Favorites } from "../lib/favorites.svelte";
@@ -170,31 +169,38 @@
     void loadPlaylists();
   });
 
+  function report(result: StartResult) {
+    if (result === "hidden") toasts.show(t("queue.dropHidden"), { severity: "info" });
+  }
+
+  /// While the list loads in its own order, a play starts from the rows
+  /// loaded so far and the rest joins once loaded (issue #7). A filter, a
+  /// sort or Shuffle waits for the whole list; any play made meanwhile wins.
+  const early = createEarlyPlays();
+
   async function playFrom(index: number) {
-    const clicked = view.items[index];
-    await pager.ensureAll();
-    if (pager.error) return;
-    const start = visibleIndexOf(view.items, clicked, index);
-    if (start < 0) return;
-    const prepared = await trackFlags.filterPlayable(view.items, start);
-    if (!prepared) {
-      toasts.show(t("queue.dropHidden"), { severity: "info" });
+    const isLatest = claimPlay();
+    if (startsEarly(pager, view)) {
+      report(await early.play(pager, origin, view.items, index, isLatest));
       return;
     }
-    playSource.set(origin, prepared.items.map((t) => t.id));
-    void api.playTracks(prepared.items.map(trackToQueueItem), prepared.start);
+    const clicked = view.items[index];
+    await pager.ensureAll();
+    if (pager.error || !isLatest()) return;
+    const start = visibleIndexOf(view.items, clicked, index);
+    if (start < 0) return;
+    report(await startPlay(origin, view.items, start, { isLatest }));
   }
 
   async function playAll(shuffle = false) {
-    await pager.ensureAll();
-    if (pager.error) return;
-    const prepared = await trackFlags.filterPlayable(view.items, 0);
-    if (!prepared) {
-      toasts.show(t("queue.dropHidden"), { severity: "info" });
+    const isLatest = claimPlay();
+    if (!shuffle && startsEarly(pager, view)) {
+      report(await early.play(pager, origin, view.items, 0, isLatest));
       return;
     }
-    playSource.set(origin, prepared.items.map((t) => t.id));
-    void api.playTracks(prepared.items.map(trackToQueueItem), 0, shuffle);
+    await pager.ensureAll();
+    if (pager.error || !isLatest()) return;
+    report(await startPlay(origin, view.items, 0, { shuffle, isLatest }));
   }
 </script>
 
@@ -243,7 +249,7 @@
     ><Icon name="play" size={16} /></button>
   </div>
   {#if pager.error}
-    <ErrorState message={pager.error} onRetry={() => pager.loadMore()} />
+    <ErrorState message={pager.error} onRetry={() => early.retry(pager)} />
   {:else if pager.items.length === 0 && pager.loading}
     <Loading />
   {:else if pager.items.length === 0 && pager.done}

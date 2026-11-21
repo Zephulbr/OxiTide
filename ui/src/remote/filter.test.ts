@@ -53,6 +53,22 @@ describe("filterRows", () => {
   it("does not match the album", () => {
     expect(filterRows(rows, "album")).toEqual([]);
   });
+
+  it("ignores punctuation and accents in the artist or title", () => {
+    const list = [row(4, "Thunderstruck", "AC/DC"), row(5, "Halo", "Beyoncé"), row(6, "Take On Me", "a-ha")];
+    expect(filterRows(list, "AC DC").map((r) => r.id)).toEqual([4]);
+    expect(filterRows(list, "acdc").map((r) => r.id)).toEqual([4]);
+    expect(filterRows(list, "beyonce").map((r) => r.id)).toEqual([5]);
+    expect(filterRows(list, "a ha").map((r) => r.id)).toEqual([6]);
+  });
+});
+
+describe("Library grids fold punctuation too", () => {
+  it("finds AC/DC by AC DC", () => {
+    const artists = [tile("x", "AC/DC", "Artist"), tile("y", "Accept", "Artist")];
+    expect(filterTiles(artists, "ac dc", { subtitle: false }).map((x) => x.key)).toEqual(["x"]);
+    expect(filterByName([{ n: "Guns N' Roses Mix" }], "guns n roses", (e) => e.n)).toHaveLength(1);
+  });
 });
 
 describe("matchesThenRest", () => {

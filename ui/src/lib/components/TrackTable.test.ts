@@ -238,6 +238,23 @@ describe("TrackTable semantics", () => {
     await waitFor(() => expect(document.activeElement).toBe(rows[0]));
   });
 
+  /// Issue #7: a play waiting for its list (Tracks loading) used to disable
+  /// every row until it started.
+  it("keeps the rows playable while a play waits", async () => {
+    const { onPlay } = setup();
+    onPlay.mockImplementation(() => new Promise(() => {}));
+    const thumbs = document.querySelectorAll<HTMLButtonElement>("tbody button.thumb");
+
+    await fireEvent.click(thumbs[0]);
+    expect(thumbs[1].disabled).toBe(false);
+    await fireEvent.click(thumbs[1]);
+    const rows = document.querySelectorAll<HTMLTableRowElement>("tbody tr.row");
+    rows[2].focus();
+    await fireEvent.keyDown(rows[2], { key: "Enter" });
+
+    expect(onPlay.mock.calls.map(([index]) => index)).toEqual([0, 1, 2]);
+  });
+
   it("plays the focused row on Enter but leaves keys on row buttons alone", async () => {
     const { onPlay } = setup();
     const rows = document.querySelectorAll<HTMLTableRowElement>("tbody tr.row");

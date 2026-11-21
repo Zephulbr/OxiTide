@@ -4,8 +4,10 @@
   import Art from "../components/Art.svelte";
   import { useRemote } from "../context";
   import { art } from "../convert";
-  import { dropIndex, visibleRange } from "../queueDrag";
+  import { motion } from "../motion";
+  import { dropIndex, rowOnScreen, scrollTopFor, visibleRange } from "../queueDrag";
   import { t } from "../i18n.svelte";
+  import { untrack } from "svelte";
 
   const { store, api, actions } = useRemote();
 
@@ -18,10 +20,58 @@
 
   const total = $derived(store.state?.queueLen ?? 0);
   const currentIndex = $derived(store.state?.currentIndex ?? null);
+  const currentId = $derived(store.state?.current?.trackId ?? null);
+  const playing = $derived(store.state?.playing ?? false);
+
+  /// The list's top in page coordinates. Summed offsets, not the bounding
+  /// box: the page flies in with a transform when it opens.
+  function pageTop(el: HTMLElement): number {
+    let top = 0;
+    for (let node: HTMLElement | null = el; node; node = node.offsetParent as HTMLElement | null) {
+      top += node.offsetTop;
+    }
+    return top;
+  }
 
   $effect(() => {
     void total;
-    if (list) listTop = list.getBoundingClientRect().top + window.scrollY;
+    if (list) listTop = pageTop(list);
+  });
+
+  /// Height of the dock (mini bar + tab bar) over the bottom of the window.
+  function dockHeight(): number {
+    const style = getComputedStyle(document.documentElement);
+    return (
+      (parseFloat(style.getPropertyValue("--remote-tabbar")) || 0) +
+      (parseFloat(style.getPropertyValue("--remote-minibar")) || 0)
+    );
+  }
+
+  function scrollToRow(index: number, smooth: boolean) {
+    const top = scrollTopFor(index, ROW, listTop);
+    window.scrollTo({ top, behavior: smooth && motion(1) > 0 ? "smooth" : "auto" });
+  }
+
+  // Open on the current track (like the desktop queue rail); afterwards
+  // follow it to the next track only while its row was on screen, so a
+  // listener who scrolled away to browse is left where they are.
+  let followed: { index: number; id: number | null } | null = null;
+  $effect(() => {
+    const index = currentIndex;
+    const id = currentId;
+    const top = listTop;
+    if (!list || index === null || top === 0) return;
+    untrack(() => {
+      if (followed === null) scrollToRow(index, false);
+      else if (
+        (index !== followed.index || id !== followed.id) &&
+        drag === null &&
+        rowOnScreen(followed.index, ROW, top, window.scrollY, window.innerHeight, dockHeight())
+      ) {
+        scrollToRow(index, true);
+      }
+      followed = { index, id };
+    });
   });
 
   const range = $derived(visibleRange(scrollY - listTop, innerHeight, ROW, total));
@@ -43,8 +93,7 @@
   }
 
   function jumpToCurrent() {
-    if (currentIndex === null) return;
-    window.scrollTo({ top: listTop + currentIndex * ROW - innerHeight / 3, behavior: "smooth" });
+    if (currentIndex !== null) scrollToRow(currentIndex, true);
   }
 
   function confirmClear() {
@@ -96,6 +145,8 @@
         <li
           class="row"
           class:current={index === currentIndex}
+          class:played={currentIndex !== null && index < currentIndex}
+          aria-current={index === currentIndex ? "true" : undefined}
           class:dragging
           style:top={`${index * ROW}px`}
           style:transform={dragging && drag ? `translateY(${drag.dy}px)` : undefined}
@@ -112,7 +163,13 @@
           </button>
           {#if item}
             <button class="main" onclick={() => run(api.queueJump(index))} aria-label={t("common.playNamed", { title: item.title })}>
-              <Art src={art(item.cover, 80)} size={44} />
+              <span class="cover">
+                <Art src={art(item.cover, 80)} size={44} />
+                {#if index === currentIndex}
+                  <!-- The desktop's now-playing disc: turns while the PC plays. -->
+                  <span class="now" class:spinning={playing} aria-hidden="true"><Icon name="disc-3" size={22} /></span>
+                {/if}
+              </span>
               <span class="text">
                 <span class="title ellipsis">{item.title}</span>
                 <!-- Paged rows can't find the first suggestion, so each says so. -->
@@ -184,8 +241,61 @@
     font-size: 15px;
     font-weight: 600;
   }
+  /* The playing row: a wash and an accent bar (a dynamic accent can be
+     near-grey on a black-and-white cover, so colour alone is not enough). */
+  .row.current {
+    border-radius: var(--radius-control);
+    background: var(--surface-2);
+  }
+  .row.current::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 12px;
+    bottom: 12px;
+    width: 3px;
+    border-radius: 2px;
+    background: var(--accent);
+  }
   .current .title {
     color: var(--accent);
+  }
+  /* Played rows fade back, as in the desktop queue. */
+  .played .cover,
+  .played .text,
+  .played .time {
+    opacity: 0.5;
+  }
+  .cover {
+    position: relative;
+    flex: none;
+    display: grid;
+  }
+  .now {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    border-radius: var(--radius-card-sharp);
+    background: color-mix(in srgb, var(--bg) 55%, transparent);
+    color: var(--accent);
+  }
+  .now :global(svg) {
+    animation: turn 2s steps(60) infinite;
+    animation-play-state: paused;
+  }
+  .now.spinning :global(svg) {
+    animation-play-state: running;
+  }
+  @keyframes turn {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .now :global(svg) {
+      animation: none;
+    }
   }
   .autoplay {
     font-weight: 600;

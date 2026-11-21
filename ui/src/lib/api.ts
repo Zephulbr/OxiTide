@@ -1,6 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { HotkeyAction } from "./hotkeys";
+import { claimPlay } from "./playClaims";
 import { userTrackChange } from "./trackIntent";
+
+/// A play the user asked for: announced (A-4), and the newest play, so a
+/// page's play still waiting for its list gives way to it (`playClaims.ts`).
+function userPlay<T>(run: () => Promise<T>): Promise<T> {
+  claimPlay();
+  return userTrackChange(run);
+}
 
 /// The maximize button's box in CSS px; `right` is measured from the window's
 /// right edge to the button's left edge (mirrors `titlebar::SnapTarget`).
@@ -894,23 +902,24 @@ export const api = {
   // Track changes the user asks for are announced to screen readers (A-4).
   /// A new context: with shuffle on, the start track plays first and the
   /// rest is shuffled. A jump within the current queue is `queueJump`.
-  /// Resolves to the queue revision the play left (for `queueExtendContext`).
+  /// Resolves to the context the play started (for `queueExtendContext`).
   playTracks: (items: QueueItem[], start: number, shuffle = false) =>
-    userTrackChange(() => invoke<number>("play_tracks", { items, start, shuffle })),
-  /// Add the rest of a context a play started from its first page; ignored
-  /// once the queue moved past `rev` (an edit or another play).
-  queueExtendContext: (items: QueueItem[], rev: number) =>
-    invoke<void>("queue_extend_context", { items, rev }),
+    userPlay(() => invoke<number>("play_tracks", { items, start, shuffle })),
+  /// Add the rest of a context a play started from the rows it had loaded.
+  /// Resolves to false when another play, a restore or a clear had replaced
+  /// `context` (queue edits keep it).
+  queueExtendContext: (items: QueueItem[], context: number) =>
+    invoke<boolean>("queue_extend_context", { items, context }),
   /// Play the queue's own item at `start`, keeping the queue's order even
   /// with shuffle on (the queue rail, Up next, the changer slots).
   queueJump: (queue: QueueItem[], start: number) =>
-    userTrackChange(() =>
+    userPlay(() =>
       invoke<number>("play_tracks", { items: queue, start, shuffle: false, keepOrder: true }),
     ),
   playTrackIds: (ids: number[], start: number, shuffle = false) =>
-    userTrackChange(() => invoke<void>("play_track_ids", { ids, start, shuffle })),
+    userPlay(() => invoke<void>("play_track_ids", { ids, start, shuffle })),
   playPageItems: (items: PageTrackInput[], start: number, shuffle = false) =>
-    userTrackChange(() => invoke<void>("play_page_items", { items, start, shuffle })),
+    userPlay(() => invoke<void>("play_page_items", { items, start, shuffle })),
   playPause: () => invoke<void>("play_pause"),
   retry: () => invoke<void>("retry"),
   next: () => userTrackChange(() => invoke<void>("next")),
