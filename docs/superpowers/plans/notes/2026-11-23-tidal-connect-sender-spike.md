@@ -1,9 +1,10 @@
 # TIDAL Connect sender spike: casting from OxiTide to a Connect device (issue #11)
 
 - **Date:** 2026-11-23
-- **Status:** Open. The protocol is mapped and the queue server accepts OxiTide's token; the
-  one remaining risk (does a receiver accept our token, §5) needs the receiver-binary test bench
-  or a real device. No spec yet; Connect stays parked in the roadmap and V2 scope.
+- **Status:** Open. The protocol is mapped, the queue server accepts OxiTide's token, and the
+  probe tool (`tools/connect-probe`, branch `spike/connect-probe`) passed the local bench
+  against TIDAL's own receiver binary (§bench). Waiting on a real-device run (issue #11's
+  author, WiiM Pro). No spec yet; Connect stays parked in the roadmap and V2 scope.
 - **Trigger:** GitHub issue #11 ("TIDAL Connect so I can use my WiiM Pro").
 - **Related:** `2026-10-09-tidal-connect-receiver-spike.md` (the opposite direction).
 
@@ -123,6 +124,44 @@ id>}`, `loadCloudQueue` with `connectqueue.tidal.com/v1/queues` and
 token** too, sending no `updateServerInfo`. It logs in with a **user-supplied developer-portal
 client id** (PKCE or device flow), so `switch_client` apparently accepts tokens from non-official
 client ids. That is a strong hint for §5.1, not proof: the README names no tested devices.
+
+## Bench: the probe against TIDAL's receiver binary (2026-11-23)
+
+`tools/connect-probe` (README there) was run against `tidal_connect_application.exe` from
+TIDAL desktop 2.48.0 on `127.0.0.1:2019`, with the probe's `bench-host` standing in for TIDAL
+desktop on `:9000`. Logs stayed in the session scratchpad.
+
+- **TLS:** the binary's TIDAL-issued leaf verifies against the embedded CA bundle (byte-identical
+  to `websocket.js`) with webpki, server-auth usage, no name check.
+- **Session:** `startSession` (user id credential) → `notifySessionStarted`; a second run after
+  a killed one came back `joined: true` and resumed.
+- **Cloud queue:** `loadCloudQueue` with OxiTide's access token and no refresh token →
+  `notifyQueueChanged` with our queue id, `notifyMediaChanged` with our first item, the host got
+  `prepare` for the first track id; `notifyRequestResult` `resultCode 0` for every request. On
+  `next` the binary produced queue item 2's id, which only the queue server knows, so it read the
+  cloud queue with our token. No `notify*ServerError` in five runs.
+- **Transport:** `pause` → PAUSED, `play` → PLAYING, `next` → track 2; `endSession
+  {stopCasting:true}` → `notifySessionEnded` (with a `suspended` key) and a close frame.
+- **Autoplay** is inconsistent on this receiver: `autoplay: true` started playback in some runs
+  and not others (the binary told its host `pause`). The probe sends an explicit `play` after
+  10 s without PLAYING.
+- Not shown by the bench: whether this receiver ran `switch_client` (its `-l 6` log stayed
+  empty, and its host plays the audio, so it never needs stream access itself). A hardware
+  receiver streams on its own, which is what §5.1 is about.
+- Leak check: the real token, user id, API session id and country code appear in none of the
+  probe's logs.
+- Discovery: `mdns-selftest` showed a multi-homed host resolving once per address set; the probe
+  now merges by service name and prefers a private LAN address. Multicast from *another* host
+  is unverified here: browsing `_googlecast`, `_airplay`, `_spotify-connect` and `_ipp` found
+  nothing on the owner's LAN, though Windows Firewall had Allow rules for the exe.
+- Interrupts: after a killed run the receiver resumed the old session (`joined: true`), so a
+  dropped controller does not end it. Ctrl+C, Ctrl+Break and closing the window now run
+  `endSession` and the queue delete; a timer-triggered interrupt at 14 s did both on the bench.
+- The release exe (static CRT, Windows system DLLs only) passed the same bench run; its logs and
+  the interrupt run's passed the leak check.
+- A rejection is still possible on a real device for reasons the bench cannot show: rustls/webpki
+  are stricter than TIDAL's Node/OpenSSL check (it fails closed, logging the chain), and the
+  device may refuse `switch_client` for OxiTide's client id (§5.1).
 
 ## 5. Open questions
 

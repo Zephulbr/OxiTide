@@ -1,0 +1,4 @@
+# The probe goes to a tester's PC: link the C runtime statically so the exe
+# does not depend on the Visual C++ redistributable (VCRUNTIME140.dll).
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
