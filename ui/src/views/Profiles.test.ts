@@ -6,6 +6,9 @@ import { clearViewCache } from "../lib/viewCache";
 import Profiles from "./Profiles.svelte";
 
 const me = vi.hoisted(() => ({ profile: null as Record<string, unknown> | null }));
+/// How the favorites answer: the list, never (a load that does not settle),
+/// or an error.
+const favorites = vi.hoisted(() => ({ mode: "list" as "list" | "never" | "fail" }));
 
 vi.mock("../lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/api")>();
@@ -14,10 +17,14 @@ vi.mock("../lib/api", async (importOriginal) => {
     {
       get: (_t, name) => {
         if (name === "getFavoriteArtists")
-          return async () => [
-            { id: 3, name: "Artist One", picture: null },
-            { id: 7, name: "Own Artist", picture: null },
-          ];
+          return async () => {
+            if (favorites.mode === "never") return new Promise(() => {});
+            if (favorites.mode === "fail") throw new Error("api error 500: down");
+            return [
+              { id: 3, name: "Artist One", picture: null },
+              { id: 7, name: "Own Artist", picture: null },
+            ];
+          };
         if (name === "getMyProfile") return async () => me.profile;
         if (name === "getArtist") return async (id: number) => ({ id, name: "Own Artist", picture: "pic" });
         return async () => [];
@@ -27,7 +34,10 @@ vi.mock("../lib/api", async (importOriginal) => {
   return { ...actual, api };
 });
 
-beforeEach(() => clearViewCache());
+beforeEach(() => {
+  clearViewCache();
+  favorites.mode = "list";
+});
 afterEach(cleanup);
 
 const nav = () => ({ goto: vi.fn(), route: { name: "profiles" } }) as unknown as Nav & { goto: ReturnType<typeof vi.fn> };
@@ -63,6 +73,24 @@ describe("Profiles: the own profile", () => {
     render(Profiles, { nav: nav() });
     await screen.findByText("Artist One");
     await waitFor(() => expect(screen.queryByText("Your profile")).toBeNull());
+  });
+
+  it("shows while the favorites are still loading (issue #10)", async () => {
+    me.profile = { userId: 42, name: "Vee", artistId: 7 };
+    favorites.mode = "never";
+    render(Profiles, { nav: nav() });
+    const caption = await screen.findByText("Your profile");
+    expect(caption.closest(".card")?.tagName).toBe("BUTTON");
+    expect(screen.getByRole("status")).toBeTruthy();
+    expect(screen.queryByText("Artist One")).toBeNull();
+  });
+
+  it("shows over the error when the favorites fail", async () => {
+    me.profile = { userId: 42, name: "Vee", artistId: 7 };
+    favorites.mode = "fail";
+    render(Profiles, { nav: nav() });
+    await screen.findByText(/api error 500/);
+    expect(screen.getByText("Your profile")).toBeTruthy();
   });
 
   it("follows the search filter", async () => {

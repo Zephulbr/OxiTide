@@ -371,7 +371,9 @@ tile padding and caption type) and draw each artist as a round portrait; in Rack
 and underlines the name like a `NameLink` (no card wash or lift). In name order, letter groups are crate dividers.
 The account's **own profile** leads the page: the same record, captioned with the name over
 a muted 12px "Your profile" line. It is first in the grid in date order and on its own row
-above the dividers in name order. It opens the artist that is the profile's page. TIDAL
+above the dividers in name order. It does not wait on the favorites: while they load, or
+if they fail, it stands in that same first place with the `Loading` line or the error 18px
+below it. It opens the artist that is the profile's page. TIDAL
 keeps no separate user page, so an account without one gets a static card that does not
 react to hover. That artist page's hero kicker reads "Your profile". An "Edit profile"
 action (pencil) takes the place of the Favorite heart and opens the **profile editor**

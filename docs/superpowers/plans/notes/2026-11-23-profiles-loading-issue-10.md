@@ -47,6 +47,12 @@ Issue: https://github.com/Zephulbr/OxiTide/issues/10 (reporter on 1.1.8, Windows
 - The UI pager and the phone pager keep the read-to-total rule: they read
   ahead eagerly only up to a 10,000 total and page on scroll above it.
 
+- Profiles shows the own card while the favorites load or after they fail
+  (it used to wait behind "Loading…" with them).
+- `viewCache` shares a running fetch for `JOIN_MS` (60 s) only; past it a
+  visit starts its own, so a fetch that never settles no longer holds every
+  revisit until a restart.
+
 ## Reading the reporter's 1.1.9 log
 
 - "stopped reading users/*/favorites/artists …": candidate 1, now fixed;
@@ -63,9 +69,3 @@ Whether it turns into an error after ~3 minutes; whether Albums and Tracks
 load; roughly how many artists they follow and whether Profiles worked on
 1.1.5 or older; VPN/proxy/antivirus HTTPS scanning; the full log from opening
 Profiles to 3 minutes later.
-
-## Not done (owner's call)
-
-- `viewCache`'s in-flight dedupe keeps every revisit on a fetch that never
-  settles until restart.
-- Profiles hides the own card while the favorites load.

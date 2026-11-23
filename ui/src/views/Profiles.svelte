@@ -30,7 +30,9 @@
 
   // The account's own profile leads the page: it is never a favorite (TIDAL
   // has no following yourself), so the favorites list alone never shows it.
-  // Optional: the page shows the favorites while it loads or if it fails.
+  // Each half waits on nothing but itself: the favorites show while the
+  // profile loads or if it fails, and the own card shows while the favorites
+  // load or if they fail (issue #10).
   const meSource = myProfileSource();
   let me = $state<OwnProfile | null>(peek(meSource) ?? null);
   // A picture just changed in the editor shows before TIDAL's record follows.
@@ -160,10 +162,20 @@
     />
   </header>
 
-  {#if loading}
-    <Loading />
-  {:else if error}
-    <ErrorState message={error} onRetry={load} />
+  <!-- The own card does not wait on the favorites: it holds its place (first,
+       top left) over the loading or error line, and the grid fills in around
+       it. -->
+  {#if loading || error}
+    {#if mineShown}
+      <div class="grid pane own-row">{@render own(mineShown)}</div>
+    {/if}
+    <div class="status">
+      {#if loading}
+        <Loading />
+      {:else}
+        <ErrorState message={error} onRetry={load} />
+      {/if}
+    </div>
   {:else if others.length === 0 && !mine}
     <EmptyState message={t("profiles.empty")} />
   {:else if shown.length === 0 && !mineShown}
@@ -421,5 +433,9 @@
   /* Name order: the own card on its own row above the crate dividers. */
   .own-row + .divider {
     margin-top: 28px;
+  }
+  /* The loading or error line under the own card while the favorites load. */
+  .own-row + .status {
+    margin-top: 18px;
   }
 </style>

@@ -8,7 +8,9 @@
 ///
 /// Bounded (LRU, `MAX_ENTRIES`), in memory only, cleared on sign-in/out.
 /// Concurrent requests for one key share a single fetch, so a hover prefetch
-/// and the click that follows it never double up.
+/// and the click that follows it never double up. A fetch is shared only for
+/// `JOIN_MS`; after that a visit starts its own, so one that never settles
+/// cannot hold every revisit on "Loading…" until a restart (issue #10).
 
 export interface Source<T> {
   key: string;
@@ -21,14 +23,23 @@ export interface Source<T> {
 export const DEFAULT_FRESH_MS = 60_000;
 export const STALE_MS = 30 * 60_000;
 export const MAX_ENTRIES = 80;
+/// How long a running fetch is joined by later requests for its key. Longer
+/// than a large list takes to load; a fetch still running past it is more
+/// likely stuck than slow, and a new one costs only a duplicate request.
+export const JOIN_MS = 60_000;
 
 interface Entry {
   value: unknown;
   at: number;
 }
 
+interface Running {
+  request: Promise<unknown>;
+  at: number;
+}
+
 const entries = new Map<string, Entry>();
-const inflight = new Map<string, Promise<unknown>>();
+const inflight = new Map<string, Running>();
 /// Bumped by `clearViewCache`/`invalidate`: a fetch started before it must not
 /// write its (possibly pre-logout or pre-edit) result back.
 let generation = 0;
@@ -57,21 +68,28 @@ function store(key: string, value: unknown) {
   }
 }
 
-/// Fetch through the cache: one request per key at a time; the result is stored.
+/// The running fetch for `key`, while it is young enough to join.
+function joinable(key: string): Promise<unknown> | undefined {
+  const running = inflight.get(key);
+  return running && now() - running.at < JOIN_MS ? running.request : undefined;
+}
+
+/// Fetch through the cache: one request per key at a time (see `JOIN_MS`);
+/// the result is stored.
 export function fetchShared<T>(source: Source<T>): Promise<T> {
-  const running = inflight.get(source.key);
+  const running = joinable(source.key);
   if (running) return running as Promise<T>;
   const started = generation;
-  const request = source
+  const request: Promise<T> = source
     .fetch()
     .then((value) => {
       if (started === generation) store(source.key, value);
       return value;
     })
     .finally(() => {
-      if (inflight.get(source.key) === request) inflight.delete(source.key);
+      if (inflight.get(source.key)?.request === request) inflight.delete(source.key);
     });
-  inflight.set(source.key, request);
+  inflight.set(source.key, { request, at: now() });
   return request;
 }
 
@@ -110,7 +128,7 @@ export async function load<T>(source: Source<T>, apply: (value: T) => void): Pro
 export function prefetch(source: Source<unknown>) {
   const entry = servable(source.key);
   if (entry && isFresh(source, entry)) return;
-  if (inflight.has(source.key)) return;
+  if (joinable(source.key)) return;
   fetchShared(source).catch(() => {});
 }
 
