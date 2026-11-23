@@ -21,6 +21,13 @@ pub const PAGE_CONCURRENCY: usize = 4;
 /// (issue #10).
 const LONG_WALK_WINDOWS: u32 = 10;
 
+/// A walk with a known total stops after this many empty windows in a row
+/// (1,000 rows at the usual 100 a window). A run of unavailable rows empties
+/// a window or two (issue #4: 248 of 3,119, some runs past 100); a total far
+/// above the list empties every window after it, and was read to the end,
+/// one silent request after another (issue #10).
+const MAX_EMPTY_RUN: u32 = 10;
+
 /// `path` with every segment that holds a digit masked
 /// (`users/*/favorites/artists`): logs are pasted into public issues, and
 /// account and playlist ids do not belong there.
@@ -439,14 +446,16 @@ impl TidalClient {
     /// order (Track 13: a 2 000-track playlist is 20 round trips, no longer
     /// 20 sequential ones). Without a total the walk stays sequential.
     ///
-    /// With a total, every window up to it is read, empty ones included: a
-    /// run of `page_size` unavailable rows comes back empty (issue #4), and
-    /// whatever total such a window reports, it is not trusted as the end. A
-    /// total that overstates the list costs a few empty requests, never rows.
+    /// With a total, windows up to it are read, empty ones included: a run of
+    /// `page_size` unavailable rows comes back empty (issue #4), and whatever
+    /// total such a window reports, it is not trusted as the end. The walk
+    /// stops early only after [`MAX_EMPTY_RUN`] empty windows in a row, so a
+    /// total that overstates the list costs a few empty requests, not one per
+    /// window up to it (issue #10); that stop is logged as a warning.
     ///
     /// Every walk logs one line when it ends (items, windows, empty windows,
     /// TIDAL's total, time), and a long one also logs the total before it
-    /// starts (issue #10). Ids in the path are masked ([`log_path`]).
+    /// starts. Ids in the path are masked ([`log_path`]).
     pub async fn get_all_pages<T: DeserializeOwned>(
         &self,
         path: &str,
@@ -475,17 +484,39 @@ impl TidalClient {
                     log_path(path)
                 );
             }
-            let offsets: Vec<u32> = (1..)
-                .map(|i: u32| i.saturating_mul(page_size))
-                .take_while(|offset| *offset < total)
-                .collect();
-            for group in offsets.chunks(PAGE_CONCURRENCY) {
+            // Offsets are made a group at a time: a total in the billions
+            // must not allocate its whole offset list up front.
+            let mut next = Some(page_size).filter(|offset| *offset < total);
+            let mut empty_run = u32::from(received == 0);
+            while let Some(start) = next {
+                if empty_run >= MAX_EMPTY_RUN {
+                    tracing::warn!(
+                        "stopped reading {} at offset {start} of TIDAL's {total}: \
+                         {empty_run} empty windows in a row",
+                        log_path(path)
+                    );
+                    break;
+                }
+                let group: Vec<u32> =
+                    std::iter::successors(Some(start), |offset| offset.checked_add(page_size))
+                        .take_while(|offset| *offset < total)
+                        .take(PAGE_CONCURRENCY)
+                        .collect();
+                next = group
+                    .last()
+                    .and_then(|offset| offset.checked_add(page_size))
+                    .filter(|offset| *offset < total);
                 let pages =
                     futures_util::future::try_join_all(group.iter().map(|&offset| fetch(offset)))
                         .await?;
                 for page in pages {
                     windows += 1;
-                    empty += u32::from(page.items.is_empty());
+                    if page.items.is_empty() {
+                        empty += 1;
+                        empty_run += 1;
+                    } else {
+                        empty_run = 0;
+                    }
                     all.extend(page.items);
                 }
             }
@@ -1648,6 +1679,43 @@ mod tests {
             .collect();
         offsets.sort_by_key(|o| o.parse::<u32>().unwrap());
         assert_eq!(offsets, ["0", "2", "4", "6", "8", "10"]);
+    }
+
+    /// Issue #10: a total far above the list no longer walks every window up
+    /// to it; the walk stops after `MAX_EMPTY_RUN` empty windows in a row
+    /// (at most one concurrent group past it).
+    #[tokio::test]
+    async fn get_all_pages_stops_after_a_long_run_of_empty_windows() {
+        let server = things_server(&[(0, &[1, 2], 1_000_000)]).await;
+        // Every other window: empty, still reporting the inflated total.
+        Mock::given(method("GET"))
+            .and(path("/things"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [], "totalNumberOfItems": 1_000_000, "limit": 2
+            })))
+            .mount(&server)
+            .await;
+        assert_eq!(walk_things(&server).await, vec![1, 2]);
+        let requests = server.received_requests().await.unwrap().len();
+        let most = 1 + (MAX_EMPTY_RUN as usize) + PAGE_CONCURRENCY;
+        assert!(
+            requests <= most,
+            "{requests} requests; at most {most} expected"
+        );
+    }
+
+    /// A run of empty windows one short of the cap is read past (issue #4).
+    #[tokio::test]
+    async fn get_all_pages_reads_past_a_run_of_empty_windows_below_the_cap() {
+        let run = MAX_EMPTY_RUN - 1;
+        let last = 2 + run * 2;
+        let total = last + 1;
+        let mut windows: Vec<(u32, &[u32], u32)> = vec![(0, &[1, 2], total)];
+        windows.extend((0..run).map(|i| (2 + i * 2, &[][..], total)));
+        let tail = [total];
+        windows.push((last, &tail, total));
+        let server = things_server(&windows).await;
+        assert_eq!(walk_things(&server).await, vec![1, 2, total]);
     }
 
     /// Track 13: windows after the first run concurrently (later ones answer

@@ -1,6 +1,7 @@
 # Profiles stuck on "Loading…" (issue #10)
 
-**Status:** Open. Waiting on the reporter; 1.1.9 adds walk logging to settle it.
+**Status:** Open. 1.1.9 bounds the walk (candidate 1) and logs every walk;
+waiting on the reporter to confirm on 1.1.9.
 
 Issue: https://github.com/Zephulbr/OxiTide/issues/10 (reporter on 1.1.8, Windows).
 
@@ -37,6 +38,24 @@ Issue: https://github.com/Zephulbr/OxiTide/issues/10 (reporter on 1.1.8, Windows
 - `get_all_pages` logs one line per walk when it ends (items, windows, empty
   windows, TIDAL's total, ms), and a walk of 10+ more windows logs the total
   before it starts. Path ids are masked (`users/*/favorites/artists`).
+- Candidate 1: a walk with a known total stops after `MAX_EMPTY_RUN` (10)
+  empty windows in a row, 1,000 rows at 100 a window, ten times issue #4's
+  runs, with a WARN ("stopped reading … empty windows in a row"). Offsets are
+  made a group at a time, so a huge total allocates nothing up front.
+- Candidate 2 needs no code: a stalled GET already ends in an error with
+  Retry after ~91 s, and its retries log WARNs.
+- The UI pager and the phone pager keep the read-to-total rule: they read
+  ahead eagerly only up to a 10,000 total and page on scroll above it.
+
+## Reading the reporter's 1.1.9 log
+
+- "stopped reading users/*/favorites/artists …": candidate 1, now fixed;
+  the list shows.
+- "GET … failed (…); retrying": candidate 2, their network.
+- A "read users/*/favorites/artists" line while the page still spins: the
+  Rust side finished; look at the IPC/UI side.
+- No line at all for it: the call never reached or never left
+  `get_all_pages` (e.g. stuck before the first window).
 
 ## Asked of the reporter
 
@@ -49,5 +68,4 @@ Profiles to 3 minutes later.
 
 - `viewCache`'s in-flight dedupe keeps every revisit on a fetch that never
   settles until restart.
-- A total in the billions would also allocate the offsets list up front
-  (~170 MB at `u32::MAX`); no cap on windows exists.
+- Profiles hides the own card while the favorites load.
