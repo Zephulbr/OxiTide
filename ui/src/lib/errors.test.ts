@@ -35,6 +35,18 @@ describe("errorMessage", () => {
     expect(errorMessage("not found: /tracks/1")).toBe("not found: /tracks/1");
   });
 
+  it("explains a failed secure connection (issue #10)", () => {
+    const message =
+      "Couldn't connect securely to TIDAL — something on your network may be interfering, such as antivirus HTTPS scanning, a proxy or a VPN";
+    expect(
+      errorMessage(
+        "tls error: error sending request for url (https://api.tidal.com/v1/users/1/favorites/artists): client error (Connect): received corrupt message of type InvalidContentType",
+      ),
+    ).toBe(message);
+    expect(errorMessage("tidal error: tls error: invalid peer certificate: UnknownIssuer")).toBe(message);
+    expect(errorMessage("http error: connection reset")).toBe("http error: connection reset");
+  });
+
   it("falls back to String for non-string errors", () => {
     expect(errorMessage(new Error("offline"))).toBe("Error: offline");
     expect(errorMessage(undefined)).toBe("undefined");

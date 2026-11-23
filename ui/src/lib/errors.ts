@@ -9,6 +9,9 @@ export function errorMessage(e: unknown): string {
   if (raw === "forbidden") return t("error.forbidden");
   if (raw === "rate limited") return t("error.rateLimited");
   if (raw.startsWith("api error 412")) return t("error.playlistChanged");
+  // `oxitide-tidal`'s `Error::Tls`, possibly behind a command prefix: the
+  // secure connection itself failed (issue #10). The details are in the log.
+  if (raw.includes("tls error:")) return t("error.secureConnection");
   if (isApiDrift(raw)) return apiDriftMessage();
   return t("error.detail", { detail: raw });
 }

@@ -1236,6 +1236,7 @@
   "error.rateLimited": "TIDAL is rate-limiting requests — try again in a moment",
   "error.playlistChanged": "The playlist changed on TIDAL — refresh and try again",
   "error.apiDrift": "TIDAL changed something on its side — check for an OxiTide update (Settings → System)",
+  "error.secureConnection": "Couldn't connect securely to TIDAL — something on your network may be interfering, such as antivirus HTTPS scanning, a proxy or a VPN",
   "error.detail": "{detail}",
 
   "notice.deviceUnavailable": "Selected output device unavailable; using system default",

@@ -1170,6 +1170,7 @@
   "error.rateLimited": "TIDAL 正在限制请求频率，请稍后再试",
   "error.playlistChanged": "播放列表在 TIDAL 上已被更改，请刷新后重试",
   "error.apiDrift": "TIDAL 在其一侧做了改动，请检查 OxiTide 是否有更新（设置 → 系统）",
+  "error.secureConnection": "无法安全连接到 TIDAL，你的网络中可能有某些东西在干扰，例如杀毒软件的 HTTPS 扫描、代理或 VPN",
   "error.detail": "出错了：{detail}",
   "notice.deviceUnavailable": "所选输出设备不可用，已改用系统默认设备",
   "notice.exclusiveUnavailable": "独占模式不可用，已改用共享输出",

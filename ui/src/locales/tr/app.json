@@ -1170,6 +1170,7 @@
   "error.rateLimited": "TIDAL istekleri sınırlıyor — birazdan tekrar dene",
   "error.playlistChanged": "Çalma listesi TIDAL’da değişti — yenile ve tekrar dene",
   "error.apiDrift": "TIDAL kendi tarafında bir şeyi değiştirdi — OxiTide için güncelleme var mı diye bak (Ayarlar → Sistem)",
+  "error.secureConnection": "TIDAL'a güvenli bağlantı kurulamadı — ağındaki bir şey, örneğin antivirüsün HTTPS taraması, bir proxy ya da VPN, bağlantıyı engelliyor olabilir",
   "error.detail": "Bir şeyler ters gitti: {detail}",
   "notice.deviceUnavailable": "Seçilen çıkış aygıtı kullanılamıyor; sistem varsayılanı kullanılıyor",
   "notice.exclusiveUnavailable": "Özel mod kullanılamıyor; paylaşılan çıkış kullanılıyor",

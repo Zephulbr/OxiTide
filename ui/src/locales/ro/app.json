@@ -1170,6 +1170,7 @@
   "error.rateLimited": "TIDAL limitează cererile — încearcă din nou peste câteva momente",
   "error.playlistChanged": "Playlistul s-a schimbat pe TIDAL — reîmprospătează și încearcă din nou",
   "error.apiDrift": "TIDAL a schimbat ceva din partea sa — caută o actualizare OxiTide (Setări → Sistem)",
+  "error.secureConnection": "Nu s-a putut stabili o conexiune securizată cu TIDAL — ceva din rețeaua ta ar putea interfera, de exemplu scanarea HTTPS a unui antivirus, un proxy sau un VPN",
   "error.detail": "A apărut o eroare: {detail}",
   "notice.deviceUnavailable": "Dispozitivul de ieșire selectat nu este disponibil; se folosește dispozitivul implicit al sistemului",
   "notice.exclusiveUnavailable": "Modul exclusiv nu este disponibil; se folosește ieșirea partajată",

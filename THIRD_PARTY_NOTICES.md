@@ -193,6 +193,10 @@ Added since: `realfft` and `rubato` (MIT, 2026-10-08, Track 7b AutoMix resamplin
 and `rusty_aac` 1.1.0 (Apache-2.0, 2026-10-16, AAC-LC / HE-AAC packet decoding).
 The latter is pure Rust and adds no native codec library or runtime dependency.
 Source and license: <https://crates.io/crates/rusty_aac/1.1.0>.
+Since 1.1.9 (2026-11-23) the HTTP client also trusts the system certificate
+store through `rustls-native-certs` 0.8 (Apache-2.0 OR ISC OR MIT), with
+`schannel` (MIT) on Windows and `openssl-probe` (MIT OR Apache-2.0) on Linux.
+All three were already in `Cargo.lock` through the updater; no new package.
 
 HE-AAC test media is self-generated mathematical audio; provenance and encoder
 regeneration instructions are in `crates/oxitide-audio/tests/fixtures/README.md`.

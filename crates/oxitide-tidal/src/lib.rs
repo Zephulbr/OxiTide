@@ -20,5 +20,5 @@ pub mod shares;
 pub mod stream;
 pub mod token_store;
 
-pub use client::{http_client, TidalClient};
+pub use client::{build_client, http_client, TidalClient};
 pub use error::{Error, Result};

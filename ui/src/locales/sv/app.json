@@ -1170,6 +1170,7 @@
   "error.rateLimited": "TIDAL begränsar antalet förfrågningar – försök igen om en stund",
   "error.playlistChanged": "Spellistan har ändrats på TIDAL – uppdatera och försök igen",
   "error.apiDrift": "TIDAL har ändrat något på sin sida – sök efter en uppdatering av OxiTide (Inställningar → System)",
+  "error.secureConnection": "Det gick inte att ansluta säkert till TIDAL – något i ditt nätverk kan störa, till exempel HTTPS-skanning i ett antivirusprogram, en proxy eller ett VPN",
   "error.detail": "Något gick fel: {detail}",
   "notice.deviceUnavailable": "Den valda ljudenheten är inte tillgänglig; använder systemstandard",
   "notice.exclusiveUnavailable": "Exklusivt läge är inte tillgängligt; använder delad utgång",

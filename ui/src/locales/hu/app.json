@@ -1170,6 +1170,7 @@
   "error.rateLimited": "A TIDAL korlátozza a kérések számát – próbáld újra egy pillanat múlva",
   "error.playlistChanged": "A lejátszási lista megváltozott a TIDAL-on – frissítsd, és próbáld újra",
   "error.apiDrift": "A TIDAL módosított valamit a saját oldalán – keress OxiTide-frissítést (Beállítások → Rendszer)",
+  "error.secureConnection": "Nem sikerült biztonságos kapcsolatot létesíteni a TIDAL-lal – lehet, hogy valami zavarja a hálózatodon, például a vírusirtó HTTPS-szűrése, egy proxy vagy egy VPN",
   "error.detail": "Hiba történt: {detail}",
   "notice.deviceUnavailable": "A kiválasztott kimeneti eszköz nem érhető el; a rendszer alapértelmezett eszköze szól",
   "notice.exclusiveUnavailable": "A kizárólagos mód nem érhető el; megosztott kimenet használata",

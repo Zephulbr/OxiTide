@@ -1170,6 +1170,7 @@
   "error.rateLimited": "TIDAL omezuje počet požadavků – zkuste to za chvíli",
   "error.playlistChanged": "Playlist se v TIDAL změnil – obnovte ho a zkuste to znovu",
   "error.apiDrift": "TIDAL na své straně něco změnil – zkontrolujte aktualizaci OxiTide (Nastavení → Systém)",
+  "error.secureConnection": "Nepodařilo se bezpečně připojit k TIDAL – připojení může narušovat něco ve vaší síti, například kontrola HTTPS v antiviru, proxy nebo VPN",
   "error.detail": "Něco se pokazilo: {detail}",
   "notice.deviceUnavailable": "Zvolené výstupní zařízení není k dispozici; používá se výchozí systémové",
   "notice.exclusiveUnavailable": "Exkluzivní režim není k dispozici; používá se sdílený výstup",

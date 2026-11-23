@@ -1170,6 +1170,7 @@
   "error.rateLimited": "TIDAL ogranicza liczbę zapytań — spróbuj ponownie za chwilę",
   "error.playlistChanged": "Playlista zmieniła się w TIDAL — odśwież i spróbuj ponownie",
   "error.apiDrift": "TIDAL coś zmienił po swojej stronie — sprawdź, czy jest aktualizacja OxiTide (Ustawienia → System)",
+  "error.secureConnection": "Nie udało się bezpiecznie połączyć z TIDAL — coś w twojej sieci może zakłócać połączenie, np. skanowanie HTTPS w programie antywirusowym, serwer proxy lub VPN",
   "error.detail": "Coś poszło nie tak: {detail}",
   "notice.deviceUnavailable": "Wybrane urządzenie wyjściowe jest niedostępne; używane jest domyślne systemowe",
   "notice.exclusiveUnavailable": "Tryb wyłączny niedostępny; używane jest wyjście współdzielone",

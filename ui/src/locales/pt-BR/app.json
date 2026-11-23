@@ -1170,6 +1170,7 @@
   "error.rateLimited": "O TIDAL está limitando as solicitações — tente de novo em instantes",
   "error.playlistChanged": "A playlist mudou no TIDAL — atualize e tente de novo",
   "error.apiDrift": "O TIDAL mudou algo do lado dele — procure uma atualização do OxiTide (Configurações → Sistema)",
+  "error.secureConnection": "Não foi possível conectar com segurança ao TIDAL — algo na sua rede pode estar interferindo, como a verificação HTTPS de um antivírus, um proxy ou uma VPN",
   "error.detail": "Algo deu errado: {detail}",
   "notice.deviceUnavailable": "O dispositivo de saída selecionado não está disponível; usando o padrão do sistema",
   "notice.exclusiveUnavailable": "Modo exclusivo indisponível; usando a saída compartilhada",

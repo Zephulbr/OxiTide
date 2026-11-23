@@ -28,13 +28,30 @@ impl HttpFetcher {
         // Idle sockets are retired before routers/NATs silently drop them
         // (see `oxitide_tidal::http_client`). One `get` is one attempt; the
         // callers own retries (`retry::Backoff`).
-        let client = reqwest::blocking::Client::builder()
-            .connect_timeout(Duration::from_secs(10))
-            .timeout(Duration::from_secs(30))
-            .pool_idle_timeout(Duration::from_secs(30))
-            .tcp_keepalive(Duration::from_secs(30))
-            .build()
-            .map_err(|e| Error::Fetch(describe(e)))?;
+        // Roots: the bundled set plus the OS store (workspace `Cargo.toml`);
+        // an OS store reqwest cannot read falls back to the bundled set, as
+        // `oxitide_tidal::build_client` does.
+        let builder = || {
+            reqwest::blocking::Client::builder()
+                .connect_timeout(Duration::from_secs(10))
+                .timeout(Duration::from_secs(30))
+                .pool_idle_timeout(Duration::from_secs(30))
+                .tcp_keepalive(Duration::from_secs(30))
+        };
+        let client = match builder().build() {
+            Ok(client) => client,
+            Err(e) => {
+                tracing::warn!(
+                    "the system certificate store could not be used ({}); \
+                     trusting the bundled roots only",
+                    describe(e)
+                );
+                builder()
+                    .tls_built_in_native_certs(false)
+                    .build()
+                    .map_err(|e| Error::Fetch(describe(e)))?
+            }
+        };
         Ok(Self { client })
     }
 }

@@ -53,11 +53,23 @@ Issue: https://github.com/Zephulbr/OxiTide/issues/10 (reporter on 1.1.8, Windows
   visit starts its own, so a fetch that never settles no longer holds every
   revisit until a restart.
 
+- The startup `InvalidContentType` (owner's call, held the tag):
+  - Every client trusts the OS certificate store as well as the bundled roots, so
+    HTTPS-scanning antivirus and corporate proxies that install their root in Windows work
+    (they failed with `UnknownIssuer` before). This may not be the reporter's case:
+    `InvalidContentType` is a reply that is not TLS at all.
+  - A TLS failure is `Error::Tls`: not retried per request, shown as "Couldn't connect
+    securely to TIDAL — something on your network may be interfering…", and the startup
+    offline line names the likely interference. Still transient for the offline paths.
+
 ## Reading the reporter's 1.1.9 log
 
 - "stopped reading users/*/favorites/artists …": candidate 1, now fixed;
   the list shows.
 - "GET … failed (…); retrying": candidate 2, their network.
+- "tls error: …" (UI: "Couldn't connect securely to TIDAL") or "the secure connection
+  failed … intercepting it" at startup: something in their path answers TLS with non-TLS
+  (captive portal, filter, proxy). Ask what security software, VPN or proxy they run.
 - A "read users/*/favorites/artists" line while the page still spins: the
   Rust side finished; look at the IPC/UI side.
 - No line at all for it: the call never reached or never left

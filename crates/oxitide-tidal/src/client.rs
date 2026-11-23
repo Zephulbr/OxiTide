@@ -5,7 +5,7 @@ use serde::de::DeserializeOwned;
 use tokio::sync::Mutex;
 
 use crate::auth::{self, SessionInfo};
-use crate::error::{display_chain, is_transport, Error, Result};
+use crate::error::{display_chain, is_tls, is_transport, Error, Result};
 use crate::models::ItemPage;
 use crate::token_store::{TokenSet, TokenStore};
 
@@ -57,13 +57,42 @@ const GET_ATTEMPTS: u32 = 3;
 /// 30 s, TCP keepalive holds NAT entries open for the ones in use, and every
 /// request has a deadline so a dead socket cannot stall the stream resolver.
 pub fn http_client() -> reqwest::Client {
-    reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(10))
-        .timeout(Duration::from_secs(30))
-        .pool_idle_timeout(Duration::from_secs(30))
-        .tcp_keepalive(Duration::from_secs(30))
-        .build()
-        .unwrap_or_else(|_| reqwest::Client::new())
+    build_client(|builder| {
+        builder
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(30))
+            .pool_idle_timeout(Duration::from_secs(30))
+            .tcp_keepalive(Duration::from_secs(30))
+    })
+}
+
+/// Build a client from `configure`. It trusts the bundled roots and the OS
+/// certificate store (workspace `Cargo.toml`, issue #10). reqwest refuses
+/// to build when the OS store holds certificates but none it can parse;
+/// the client is then built on the bundled roots alone, and that is
+/// logged. Never panics where the plain build would not.
+pub fn build_client(
+    configure: impl Fn(reqwest::ClientBuilder) -> reqwest::ClientBuilder,
+) -> reqwest::Client {
+    match configure(reqwest::Client::builder()).build() {
+        Ok(client) => client,
+        Err(e) => {
+            tracing::warn!(
+                "the system certificate store could not be used ({}); \
+                 trusting the bundled roots only",
+                display_chain(&e)
+            );
+            configure(reqwest::Client::builder())
+                .tls_built_in_native_certs(false)
+                .build()
+                .unwrap_or_else(|_| {
+                    reqwest::Client::builder()
+                        .tls_built_in_native_certs(false)
+                        .build()
+                        .expect("an HTTP client with the bundled roots")
+                })
+        }
+    }
 }
 
 /// Wait before GET attempt `attempt + 1`: 250 ms, then 750 ms.
@@ -751,8 +780,9 @@ impl TidalClient {
         };
         match send().await {
             // Writes are not idempotent: retry only when the connection never
-            // opened, so the server cannot have seen the request.
-            Err(e) if e.is_connect() => {
+            // opened, so the server cannot have seen the request. A TLS
+            // failure is not retried: the same network answers the same way.
+            Err(e) if e.is_connect() && !is_tls(&e) => {
                 let wait = get_backoff(1);
                 tracing::warn!(
                     "{method} {path} could not connect ({}); retrying in {wait:?}",
@@ -804,7 +834,8 @@ impl TidalClient {
             // `400 invalid_grant` for a revoked refresh token). Surface it as
             // `Unauthorized` so the UI offers a re-login instead of a raw API
             // error with a Retry that can never succeed.
-            Err(e @ (Error::Http(_) | Error::Io(_))) => return Err(e),
+            // A TLS failure is the network, not a revoked login (issue #10).
+            Err(e @ (Error::Http(_) | Error::Io(_) | Error::Tls(_))) => return Err(e),
             Err(_) => return Err(Error::Unauthorized),
         };
         *self.tokens.write().unwrap() = new_tokens.clone();
@@ -1786,6 +1817,29 @@ mod tests {
             things.iter().map(|t| t.value).collect::<Vec<_>>(),
             vec![1, 2, 3, 4, 5]
         );
+    }
+
+    /// Issue #10: a TLS failure fails at once, for a read and for a write,
+    /// instead of being retried like a dropped connection.
+    #[tokio::test]
+    async fn a_tls_failure_is_not_retried() {
+        use std::sync::atomic::Ordering;
+        let (port, connections) = crate::error::tests::plain_text_server();
+        let base = format!("https://127.0.0.1:{port}");
+        let client = TidalClient::new(
+            http_client(),
+            base.clone(),
+            format!("{base}/token"),
+            session(),
+            tokens(),
+            Arc::new(MemoryStore::default()),
+        );
+        let err = client.get::<Thing>("tracks/1", &[]).await.unwrap_err();
+        assert!(matches!(err, Error::Tls(_)), "got {err:?}");
+        assert_eq!(connections.load(Ordering::SeqCst), 1, "a read was retried");
+        let err = client.post_form("playlists/p", &[]).await.unwrap_err();
+        assert!(matches!(err, Error::Tls(_)), "got {err:?}");
+        assert_eq!(connections.load(Ordering::SeqCst), 2, "a write was retried");
     }
 
     #[tokio::test]
