@@ -16,6 +16,28 @@ pub const DEFAULT_PAGE_SIZE: u32 = 100;
 /// (the UI pager uses the same bound against the same API).
 pub const PAGE_CONCURRENCY: usize = 4;
 
+/// A paginated walk with at least this many windows after the first is logged
+/// before it starts, so a walk that never ends still shows TIDAL's total
+/// (issue #10).
+const LONG_WALK_WINDOWS: u32 = 10;
+
+/// `path` with every segment that holds a digit masked
+/// (`users/*/favorites/artists`): logs are pasted into public issues, and
+/// account and playlist ids do not belong there.
+fn log_path(path: &str) -> String {
+    path.trim_matches('/')
+        .split('/')
+        .map(|segment| {
+            if segment.chars().any(|c| c.is_ascii_digit()) {
+                "*"
+            } else {
+                segment
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 /// Attempts for one GET when the network fails before a response arrives or
 /// a gateway answers 502/503/504. GETs are idempotent, so this is safe.
 const GET_ATTEMPTS: u32 = 3;
@@ -421,12 +443,17 @@ impl TidalClient {
     /// run of `page_size` unavailable rows comes back empty (issue #4), and
     /// whatever total such a window reports, it is not trusted as the end. A
     /// total that overstates the list costs a few empty requests, never rows.
+    ///
+    /// Every walk logs one line when it ends (items, windows, empty windows,
+    /// TIDAL's total, time), and a long one also logs the total before it
+    /// starts (issue #10). Ids in the path are masked ([`log_path`]).
     pub async fn get_all_pages<T: DeserializeOwned>(
         &self,
         path: &str,
         base_params: &[(&str, String)],
         page_size: u32,
     ) -> Result<Vec<T>> {
+        let started = std::time::Instant::now();
         let fetch = |offset: u32| {
             let mut params: Vec<(&str, String)> = base_params.to_vec();
             params.push(("limit", page_size.to_string()));
@@ -437,7 +464,17 @@ impl TidalClient {
         let received = first.items.len() as u32;
         let total = first.total_number_of_items;
         let mut all: Vec<T> = first.items;
+        let mut windows: u32 = 1;
+        let mut empty: u32 = u32::from(received == 0);
         if total > 0 {
+            // Windows after the first: every multiple of `page_size` below `total`.
+            let more = (total - 1) / page_size.max(1);
+            if more >= LONG_WALK_WINDOWS {
+                tracing::info!(
+                    "reading {}: TIDAL reports {total} items, {more} more windows of {page_size}",
+                    log_path(path)
+                );
+            }
             let offsets: Vec<u32> = (1..)
                 .map(|i: u32| i.saturating_mul(page_size))
                 .take_while(|offset| *offset < total)
@@ -447,20 +484,30 @@ impl TidalClient {
                     futures_util::future::try_join_all(group.iter().map(|&offset| fetch(offset)))
                         .await?;
                 for page in pages {
+                    windows += 1;
+                    empty += u32::from(page.items.is_empty());
                     all.extend(page.items);
                 }
             }
-            return Ok(all);
+        } else {
+            // No total reported: walk until a short page.
+            let mut offset = page_size;
+            let mut last = received;
+            while last == page_size {
+                let page = fetch(offset).await?;
+                last = page.items.len() as u32;
+                windows += 1;
+                empty += u32::from(page.items.is_empty());
+                all.extend(page.items);
+                offset = offset.saturating_add(page_size);
+            }
         }
-        // No total reported: walk until a short page.
-        let mut offset = page_size;
-        let mut last = received;
-        while last == page_size {
-            let page = fetch(offset).await?;
-            last = page.items.len() as u32;
-            all.extend(page.items);
-            offset = offset.saturating_add(page_size);
-        }
+        tracing::info!(
+            "read {}: {} items from {windows} windows ({empty} empty), TIDAL reported {total}, in {} ms",
+            log_path(path),
+            all.len(),
+            started.elapsed().as_millis()
+        );
         Ok(all)
     }
 
@@ -1466,6 +1513,20 @@ mod tests {
             .post_form_with_etag("playlists/p/items", &[], Some("\"e1\""))
             .await
             .unwrap();
+    }
+
+    #[test]
+    fn log_path_masks_every_segment_with_an_id() {
+        assert_eq!(
+            log_path("users/123456/favorites/artists"),
+            "users/*/favorites/artists"
+        );
+        assert_eq!(
+            log_path("/playlists/3f2b1c9e-aa01-4c2d-9e8f-0123456789ab/tracks"),
+            "playlists/*/tracks"
+        );
+        assert_eq!(log_path("artists/42/albums"), "artists/*/albums");
+        assert_eq!(log_path("things"), "things");
     }
 
     #[tokio::test]
