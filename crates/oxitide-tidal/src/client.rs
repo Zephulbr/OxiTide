@@ -5,7 +5,7 @@ use serde::de::DeserializeOwned;
 use tokio::sync::Mutex;
 
 use crate::auth::{self, SessionInfo};
-use crate::error::{display_chain, is_transport, Error, Result};
+use crate::error::{display_chain, is_tls, is_transport, Error, Result};
 use crate::models::ItemPage;
 use crate::token_store::{TokenSet, TokenStore};
 
@@ -15,6 +15,35 @@ pub const DEFAULT_PAGE_SIZE: u32 = 100;
 /// Windows of a paginated walk in flight at once once the total is known
 /// (the UI pager uses the same bound against the same API).
 pub const PAGE_CONCURRENCY: usize = 4;
+
+/// A paginated walk with at least this many windows after the first is logged
+/// before it starts, so a walk that never ends still shows TIDAL's total
+/// (issue #10).
+const LONG_WALK_WINDOWS: u32 = 10;
+
+/// A walk with a known total stops after this many empty windows in a row
+/// (1,000 rows at the usual 100 a window). A run of unavailable rows empties
+/// a window or two (issue #4: 248 of 3,119, some runs past 100); a total far
+/// above the list empties every window after it, and was read to the end,
+/// one silent request after another (issue #10).
+const MAX_EMPTY_RUN: u32 = 10;
+
+/// `path` with every segment that holds a digit masked
+/// (`users/*/favorites/artists`): logs are pasted into public issues, and
+/// account and playlist ids do not belong there.
+fn log_path(path: &str) -> String {
+    path.trim_matches('/')
+        .split('/')
+        .map(|segment| {
+            if segment.chars().any(|c| c.is_ascii_digit()) {
+                "*"
+            } else {
+                segment
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
 
 /// Attempts for one GET when the network fails before a response arrives or
 /// a gateway answers 502/503/504. GETs are idempotent, so this is safe.
@@ -28,13 +57,42 @@ const GET_ATTEMPTS: u32 = 3;
 /// 30 s, TCP keepalive holds NAT entries open for the ones in use, and every
 /// request has a deadline so a dead socket cannot stall the stream resolver.
 pub fn http_client() -> reqwest::Client {
-    reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(10))
-        .timeout(Duration::from_secs(30))
-        .pool_idle_timeout(Duration::from_secs(30))
-        .tcp_keepalive(Duration::from_secs(30))
-        .build()
-        .unwrap_or_else(|_| reqwest::Client::new())
+    build_client(|builder| {
+        builder
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(30))
+            .pool_idle_timeout(Duration::from_secs(30))
+            .tcp_keepalive(Duration::from_secs(30))
+    })
+}
+
+/// Build a client from `configure`. It trusts the bundled roots and the OS
+/// certificate store (workspace `Cargo.toml`, issue #10). reqwest refuses
+/// to build when the OS store holds certificates but none it can parse;
+/// the client is then built on the bundled roots alone, and that is
+/// logged. Never panics where the plain build would not.
+pub fn build_client(
+    configure: impl Fn(reqwest::ClientBuilder) -> reqwest::ClientBuilder,
+) -> reqwest::Client {
+    match configure(reqwest::Client::builder()).build() {
+        Ok(client) => client,
+        Err(e) => {
+            tracing::warn!(
+                "the system certificate store could not be used ({}); \
+                 trusting the bundled roots only",
+                display_chain(&e)
+            );
+            configure(reqwest::Client::builder())
+                .tls_built_in_native_certs(false)
+                .build()
+                .unwrap_or_else(|_| {
+                    reqwest::Client::builder()
+                        .tls_built_in_native_certs(false)
+                        .build()
+                        .expect("an HTTP client with the bundled roots")
+                })
+        }
+    }
 }
 
 /// Wait before GET attempt `attempt + 1`: 250 ms, then 750 ms.
@@ -417,16 +475,23 @@ impl TidalClient {
     /// order (Track 13: a 2 000-track playlist is 20 round trips, no longer
     /// 20 sequential ones). Without a total the walk stays sequential.
     ///
-    /// With a total, every window up to it is read, empty ones included: a
-    /// run of `page_size` unavailable rows comes back empty (issue #4), and
-    /// whatever total such a window reports, it is not trusted as the end. A
-    /// total that overstates the list costs a few empty requests, never rows.
+    /// With a total, windows up to it are read, empty ones included: a run of
+    /// `page_size` unavailable rows comes back empty (issue #4), and whatever
+    /// total such a window reports, it is not trusted as the end. The walk
+    /// stops early only after [`MAX_EMPTY_RUN`] empty windows in a row, so a
+    /// total that overstates the list costs a few empty requests, not one per
+    /// window up to it (issue #10); that stop is logged as a warning.
+    ///
+    /// Every walk logs one line when it ends (items, windows, empty windows,
+    /// TIDAL's total, time), and a long one also logs the total before it
+    /// starts. Ids in the path are masked ([`log_path`]).
     pub async fn get_all_pages<T: DeserializeOwned>(
         &self,
         path: &str,
         base_params: &[(&str, String)],
         page_size: u32,
     ) -> Result<Vec<T>> {
+        let started = std::time::Instant::now();
         let fetch = |offset: u32| {
             let mut params: Vec<(&str, String)> = base_params.to_vec();
             params.push(("limit", page_size.to_string()));
@@ -437,30 +502,72 @@ impl TidalClient {
         let received = first.items.len() as u32;
         let total = first.total_number_of_items;
         let mut all: Vec<T> = first.items;
+        let mut windows: u32 = 1;
+        let mut empty: u32 = u32::from(received == 0);
         if total > 0 {
-            let offsets: Vec<u32> = (1..)
-                .map(|i: u32| i.saturating_mul(page_size))
-                .take_while(|offset| *offset < total)
-                .collect();
-            for group in offsets.chunks(PAGE_CONCURRENCY) {
+            // Windows after the first: every multiple of `page_size` below `total`.
+            let more = (total - 1) / page_size.max(1);
+            if more >= LONG_WALK_WINDOWS {
+                tracing::info!(
+                    "reading {}: TIDAL reports {total} items, {more} more windows of {page_size}",
+                    log_path(path)
+                );
+            }
+            // Offsets are made a group at a time: a total in the billions
+            // must not allocate its whole offset list up front.
+            let mut next = Some(page_size).filter(|offset| *offset < total);
+            let mut empty_run = u32::from(received == 0);
+            while let Some(start) = next {
+                if empty_run >= MAX_EMPTY_RUN {
+                    tracing::warn!(
+                        "stopped reading {} at offset {start} of TIDAL's {total}: \
+                         {empty_run} empty windows in a row",
+                        log_path(path)
+                    );
+                    break;
+                }
+                let group: Vec<u32> =
+                    std::iter::successors(Some(start), |offset| offset.checked_add(page_size))
+                        .take_while(|offset| *offset < total)
+                        .take(PAGE_CONCURRENCY)
+                        .collect();
+                next = group
+                    .last()
+                    .and_then(|offset| offset.checked_add(page_size))
+                    .filter(|offset| *offset < total);
                 let pages =
                     futures_util::future::try_join_all(group.iter().map(|&offset| fetch(offset)))
                         .await?;
                 for page in pages {
+                    windows += 1;
+                    if page.items.is_empty() {
+                        empty += 1;
+                        empty_run += 1;
+                    } else {
+                        empty_run = 0;
+                    }
                     all.extend(page.items);
                 }
             }
-            return Ok(all);
+        } else {
+            // No total reported: walk until a short page.
+            let mut offset = page_size;
+            let mut last = received;
+            while last == page_size {
+                let page = fetch(offset).await?;
+                last = page.items.len() as u32;
+                windows += 1;
+                empty += u32::from(page.items.is_empty());
+                all.extend(page.items);
+                offset = offset.saturating_add(page_size);
+            }
         }
-        // No total reported: walk until a short page.
-        let mut offset = page_size;
-        let mut last = received;
-        while last == page_size {
-            let page = fetch(offset).await?;
-            last = page.items.len() as u32;
-            all.extend(page.items);
-            offset = offset.saturating_add(page_size);
-        }
+        tracing::info!(
+            "read {}: {} items from {windows} windows ({empty} empty), TIDAL reported {total}, in {} ms",
+            log_path(path),
+            all.len(),
+            started.elapsed().as_millis()
+        );
         Ok(all)
     }
 
@@ -673,8 +780,9 @@ impl TidalClient {
         };
         match send().await {
             // Writes are not idempotent: retry only when the connection never
-            // opened, so the server cannot have seen the request.
-            Err(e) if e.is_connect() => {
+            // opened, so the server cannot have seen the request. A TLS
+            // failure is not retried: the same network answers the same way.
+            Err(e) if e.is_connect() && !is_tls(&e) => {
                 let wait = get_backoff(1);
                 tracing::warn!(
                     "{method} {path} could not connect ({}); retrying in {wait:?}",
@@ -726,7 +834,8 @@ impl TidalClient {
             // `400 invalid_grant` for a revoked refresh token). Surface it as
             // `Unauthorized` so the UI offers a re-login instead of a raw API
             // error with a Retry that can never succeed.
-            Err(e @ (Error::Http(_) | Error::Io(_))) => return Err(e),
+            // A TLS failure is the network, not a revoked login (issue #10).
+            Err(e @ (Error::Http(_) | Error::Io(_) | Error::Tls(_))) => return Err(e),
             Err(_) => return Err(Error::Unauthorized),
         };
         *self.tokens.write().unwrap() = new_tokens.clone();
@@ -1468,6 +1577,20 @@ mod tests {
             .unwrap();
     }
 
+    #[test]
+    fn log_path_masks_every_segment_with_an_id() {
+        assert_eq!(
+            log_path("users/123456/favorites/artists"),
+            "users/*/favorites/artists"
+        );
+        assert_eq!(
+            log_path("/playlists/3f2b1c9e-aa01-4c2d-9e8f-0123456789ab/tracks"),
+            "playlists/*/tracks"
+        );
+        assert_eq!(log_path("artists/42/albums"), "artists/*/albums");
+        assert_eq!(log_path("things"), "things");
+    }
+
     #[tokio::test]
     async fn get_all_pages_advances_by_the_requested_window_not_the_received_count() {
         let server = MockServer::start().await;
@@ -1589,6 +1712,43 @@ mod tests {
         assert_eq!(offsets, ["0", "2", "4", "6", "8", "10"]);
     }
 
+    /// Issue #10: a total far above the list no longer walks every window up
+    /// to it; the walk stops after `MAX_EMPTY_RUN` empty windows in a row
+    /// (at most one concurrent group past it).
+    #[tokio::test]
+    async fn get_all_pages_stops_after_a_long_run_of_empty_windows() {
+        let server = things_server(&[(0, &[1, 2], 1_000_000)]).await;
+        // Every other window: empty, still reporting the inflated total.
+        Mock::given(method("GET"))
+            .and(path("/things"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [], "totalNumberOfItems": 1_000_000, "limit": 2
+            })))
+            .mount(&server)
+            .await;
+        assert_eq!(walk_things(&server).await, vec![1, 2]);
+        let requests = server.received_requests().await.unwrap().len();
+        let most = 1 + (MAX_EMPTY_RUN as usize) + PAGE_CONCURRENCY;
+        assert!(
+            requests <= most,
+            "{requests} requests; at most {most} expected"
+        );
+    }
+
+    /// A run of empty windows one short of the cap is read past (issue #4).
+    #[tokio::test]
+    async fn get_all_pages_reads_past_a_run_of_empty_windows_below_the_cap() {
+        let run = MAX_EMPTY_RUN - 1;
+        let last = 2 + run * 2;
+        let total = last + 1;
+        let mut windows: Vec<(u32, &[u32], u32)> = vec![(0, &[1, 2], total)];
+        windows.extend((0..run).map(|i| (2 + i * 2, &[][..], total)));
+        let tail = [total];
+        windows.push((last, &tail, total));
+        let server = things_server(&windows).await;
+        assert_eq!(walk_things(&server).await, vec![1, 2, total]);
+    }
+
     /// Track 13: windows after the first run concurrently (later ones answer
     /// first here) yet land in offset order, and each is requested once.
     #[tokio::test]
@@ -1657,6 +1817,29 @@ mod tests {
             things.iter().map(|t| t.value).collect::<Vec<_>>(),
             vec![1, 2, 3, 4, 5]
         );
+    }
+
+    /// Issue #10: a TLS failure fails at once, for a read and for a write,
+    /// instead of being retried like a dropped connection.
+    #[tokio::test]
+    async fn a_tls_failure_is_not_retried() {
+        use std::sync::atomic::Ordering;
+        let (port, connections) = crate::error::tests::plain_text_server();
+        let base = format!("https://127.0.0.1:{port}");
+        let client = TidalClient::new(
+            http_client(),
+            base.clone(),
+            format!("{base}/token"),
+            session(),
+            tokens(),
+            Arc::new(MemoryStore::default()),
+        );
+        let err = client.get::<Thing>("tracks/1", &[]).await.unwrap_err();
+        assert!(matches!(err, Error::Tls(_)), "got {err:?}");
+        assert_eq!(connections.load(Ordering::SeqCst), 1, "a read was retried");
+        let err = client.post_form("playlists/p", &[]).await.unwrap_err();
+        assert!(matches!(err, Error::Tls(_)), "got {err:?}");
+        assert_eq!(connections.load(Ordering::SeqCst), 2, "a write was retried");
     }
 
     #[tokio::test]

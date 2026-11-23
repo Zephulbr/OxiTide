@@ -1170,6 +1170,7 @@
   "error.rateLimited": "TIDAL 正在限制請求頻率，請稍後再試",
   "error.playlistChanged": "播放清單已在 TIDAL 上變更，請重新整理後再試",
   "error.apiDrift": "TIDAL 在其端做了變更，請檢查 OxiTide 更新（設定 → 系統）",
+  "error.secureConnection": "無法安全連線到 TIDAL，你的網路中可能有東西在干擾，例如防毒軟體的 HTTPS 掃描、代理伺服器或 VPN",
   "error.detail": "發生錯誤：{detail}",
   "notice.deviceUnavailable": "所選的輸出裝置無法使用，改用系統預設",
   "notice.exclusiveUnavailable": "無法使用獨佔模式，改用共用輸出",

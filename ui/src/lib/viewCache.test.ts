@@ -4,6 +4,7 @@ import {
   DEFAULT_FRESH_MS,
   fetchShared,
   invalidate,
+  JOIN_MS,
   load,
   MAX_ENTRIES,
   peek,
@@ -104,6 +105,31 @@ describe("viewCache", () => {
     await visit;
     expect(src.fetch).toHaveBeenCalledTimes(1);
     expect(peek(src)).toBe(7);
+  });
+
+  it("stops sharing a request older than JOIN_MS, so a stuck one does not hold every visit", async () => {
+    const resolvers: ((v: number) => void)[] = [];
+    const src = { key: "a", fetch: vi.fn(() => new Promise<number>((r) => resolvers.push(r))) };
+    const stuck = fetchShared(src);
+    // Still young: a prefetch and a second request join it.
+    vi.advanceTimersByTime(JOIN_MS - 1);
+    prefetch(src);
+    expect(fetchShared(src)).toBe(stuck);
+    expect(src.fetch).toHaveBeenCalledTimes(1);
+    // Past JOIN_MS a visit starts its own request.
+    vi.advanceTimersByTime(2);
+    const seen: number[] = [];
+    const visit = load(src, (v) => seen.push(v));
+    expect(src.fetch).toHaveBeenCalledTimes(2);
+    // The old request settling late leaves the new one's slot alone.
+    resolvers[0](7);
+    await stuck;
+    void fetchShared(src);
+    expect(src.fetch).toHaveBeenCalledTimes(2);
+    resolvers[1](8);
+    await visit;
+    expect(seen).toEqual([8]);
+    expect(peek(src)).toBe(8);
   });
 
   it("prefetch skips fresh entries", async () => {

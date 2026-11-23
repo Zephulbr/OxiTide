@@ -1170,6 +1170,7 @@
   "error.rateLimited": "TIDAL membatasi jumlah permintaan — coba lagi sebentar lagi",
   "error.playlistChanged": "Playlist berubah di TIDAL — muat ulang lalu coba lagi",
   "error.apiDrift": "TIDAL mengubah sesuatu di sisinya — periksa pembaruan OxiTide (Pengaturan → Sistem)",
+  "error.secureConnection": "Tidak dapat terhubung dengan aman ke TIDAL — mungkin ada yang mengganggu di jaringanmu, seperti pemindaian HTTPS antivirus, proxy, atau VPN",
   "error.detail": "Terjadi kesalahan: {detail}",
   "notice.deviceUnavailable": "Perangkat output yang dipilih tidak tersedia; memakai bawaan sistem",
   "notice.exclusiveUnavailable": "Mode eksklusif tidak tersedia; memakai output bersama",

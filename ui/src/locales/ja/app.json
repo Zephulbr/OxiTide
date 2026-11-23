@@ -1170,6 +1170,7 @@
   "error.rateLimited": "TIDALがリクエストを制限しています。しばらくしてからもう一度お試しください",
   "error.playlistChanged": "TIDAL上でプレイリストが変更されました。更新してからもう一度お試しください",
   "error.apiDrift": "TIDAL側で変更がありました。OxiTideのアップデートを確認してください（設定 → システム）",
+  "error.secureConnection": "TIDALに安全に接続できませんでした。ウイルス対策ソフトのHTTPSスキャン、プロキシ、VPNなど、ネットワーク上の何かが干渉している可能性があります",
   "error.detail": "エラーが発生しました：{detail}",
   "notice.deviceUnavailable": "選択した出力デバイスを使用できないため、システムの既定を使用しています",
   "notice.exclusiveUnavailable": "排他モードを使用できないため、共有出力を使用しています",

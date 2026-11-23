@@ -177,12 +177,12 @@ fn main() {
     perf::mark("cache_ready");
     // One client (one connection pool and TLS setup) for the side services:
     // cover palettes, lyrics and scrobbling (Track 13). Clones share it.
-    let services_http = reqwest::Client::builder()
-        .connect_timeout(std::time::Duration::from_secs(10))
-        .timeout(std::time::Duration::from_secs(15))
-        .pool_idle_timeout(std::time::Duration::from_secs(30))
-        .build()
-        .unwrap_or_else(|_| reqwest::Client::new());
+    let services_http = oxitide_tidal::build_client(|builder| {
+        builder
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .timeout(std::time::Duration::from_secs(15))
+            .pool_idle_timeout(std::time::Duration::from_secs(30))
+    });
     state.set_artwork(artwork::ArtworkService::new(
         services_http.clone(),
         "https://resources.tidal.com/images".into(),

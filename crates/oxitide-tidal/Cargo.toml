@@ -16,6 +16,9 @@ base64 = "0.22"
 sha2 = "0.10"
 getrandom = "0.3"
 futures-util = "0.3"
+# Only to recognize a TLS failure in reqwest's error chain (`error::is_tls`);
+# the same 0.23 that reqwest's rustls backend already builds.
+rustls = { version = "0.23", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 wiremock = "0.6"

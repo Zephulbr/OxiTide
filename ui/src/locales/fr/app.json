@@ -1170,6 +1170,7 @@
   "error.rateLimited": "TIDAL limite le nombre de requêtes — réessayez dans un instant",
   "error.playlistChanged": "La playlist a été modifiée sur TIDAL — actualisez et réessayez",
   "error.apiDrift": "TIDAL a modifié quelque chose de son côté — vérifiez si une mise à jour d’OxiTide est disponible (Paramètres → Système)",
+  "error.secureConnection": "Impossible de se connecter à TIDAL de façon sécurisée — un élément de votre réseau interfère peut-être, comme l’analyse HTTPS d’un antivirus, un proxy ou un VPN",
   "error.detail": "Une erreur s’est produite : {detail}",
   "notice.deviceUnavailable": "Périphérique de sortie sélectionné indisponible ; utilisation du périphérique par défaut du système",
   "notice.exclusiveUnavailable": "Mode exclusif indisponible ; utilisation de la sortie partagée",

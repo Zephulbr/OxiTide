@@ -1170,6 +1170,7 @@
   "error.rateLimited": "TIDAL begrænser antallet af forespørgsler – prøv igen om lidt",
   "error.playlistChanged": "Playlisten er ændret på TIDAL – opdater, og prøv igen",
   "error.apiDrift": "TIDAL har ændret noget på sin side – søg efter en opdatering af OxiTide (Indstillinger → System)",
+  "error.secureConnection": "Kunne ikke oprette en sikker forbindelse til TIDAL – noget på dit netværk forstyrrer måske, f.eks. HTTPS-scanning i et antivirusprogram, en proxy eller en VPN",
   "error.detail": "Noget gik galt: {detail}",
   "notice.deviceUnavailable": "Den valgte outputenhed er ikke tilgængelig; bruger systemstandard",
   "notice.exclusiveUnavailable": "Eksklusiv tilstand er ikke tilgængelig; bruger delt output",

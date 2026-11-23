@@ -3,13 +3,19 @@ resolver = "2"
 members = ["crates/oxitide-tidal", "crates/oxitide-audio", "crates/oxitide-app"]
 
 [workspace.package]
-version = "1.1.8"
+version = "1.1.9"
 edition = "2021"
 license = "AGPL-3.0-or-later"
 
 [workspace.dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time", "net"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking"] }
+# Roots: the bundled Mozilla set (`rustls-tls`) plus the OS certificate store
+# (`rustls-tls-native-roots`; reqwest merges both). HTTPS-scanning antivirus
+# and corporate proxies re-sign with a root they add to the OS store, which
+# browsers and TIDAL's app trust (issue #10). The bundled set stays for a
+# Windows store that has not fetched a root yet. Builders fall back to the
+# bundled set alone when the OS store cannot be read (`build_client`).
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "rustls-tls-native-roots", "blocking"] }
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 thiserror = "2"

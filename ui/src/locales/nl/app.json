@@ -1170,6 +1170,7 @@
   "error.rateLimited": "TIDAL beperkt het aantal verzoeken — probeer het zo opnieuw",
   "error.playlistChanged": "De playlist is op TIDAL gewijzigd — vernieuw en probeer het opnieuw",
   "error.apiDrift": "TIDAL heeft aan zijn kant iets gewijzigd — controleer of er een update van OxiTide is (Instellingen → Systeem)",
+  "error.secureConnection": "Kan geen beveiligde verbinding maken met TIDAL — mogelijk stoort iets op je netwerk, zoals de HTTPS-scan van een virusscanner, een proxy of een VPN",
   "error.detail": "Er is iets misgegaan: {detail}",
   "notice.deviceUnavailable": "Gekozen uitvoerapparaat niet beschikbaar; systeemstandaard wordt gebruikt",
   "notice.exclusiveUnavailable": "Exclusieve modus niet beschikbaar; gedeelde uitvoer wordt gebruikt",

@@ -1170,6 +1170,7 @@
   "error.rateLimited": "TIDAL begrenser antall forespørsler – prøv igjen om et øyeblikk",
   "error.playlistChanged": "Spillelisten er endret på TIDAL – oppdater og prøv igjen",
   "error.apiDrift": "TIDAL har endret noe på sin side – se etter en OxiTide-oppdatering (Innstillinger → System)",
+  "error.secureConnection": "Kunne ikke koble til TIDAL på en sikker måte – noe på nettverket ditt forstyrrer kanskje, for eksempel HTTPS-skanning i et antivirusprogram, en proxy eller en VPN",
   "error.detail": "Noe gikk galt: {detail}",
   "notice.deviceUnavailable": "Den valgte utgangsenheten er utilgjengelig; bruker systemstandard",
   "notice.exclusiveUnavailable": "Eksklusiv modus er utilgjengelig; bruker delt utgang",

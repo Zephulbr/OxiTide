@@ -332,7 +332,16 @@ async fn restore_tokens(
     // login must still lead to the sign-in screen.
     let offline = |e: &Error, tokens: TokenSet| {
         if e.is_transient() || matches!(e, Error::Io(_)) {
-            tracing::warn!("TIDAL unreachable at startup ({e}); starting offline");
+            if matches!(e, Error::Tls(_)) {
+                // Issue #10: name the likely culprit, not just the error.
+                tracing::warn!(
+                    "TIDAL unreachable at startup: the secure connection failed, so something \
+                     on this network may be intercepting it (antivirus HTTPS scanning, a \
+                     proxy or VPN, a captive portal) ({e}); starting offline"
+                );
+            } else {
+                tracing::warn!("TIDAL unreachable at startup ({e}); starting offline");
+            }
             saved
                 .clone()
                 .map(|session| Restored::Offline(session, tokens))

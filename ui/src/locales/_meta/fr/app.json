@@ -5854,6 +5854,11 @@
     "source": "890d9955",
     "draft": "67e9c642"
   },
+  "error.secureConnection": {
+    "status": "machine",
+    "source": "d7345607",
+    "draft": "e208d634"
+  },
   "error.detail": {
     "status": "machine",
     "source": "caf3c2c2",

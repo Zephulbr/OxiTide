@@ -1170,6 +1170,7 @@
   "error.rateLimited": "TIDAL rajoittaa pyyntöjä – yritä hetken päästä uudelleen",
   "error.playlistChanged": "Soittolista muuttui TIDAL-palvelussa – päivitä ja yritä uudelleen",
   "error.apiDrift": "TIDAL muutti jotain omalla puolellaan – tarkista, onko OxiTide-päivitystä saatavilla (Asetukset → Järjestelmä)",
+  "error.secureConnection": "Suojattua yhteyttä TIDALiin ei saatu – jokin verkossasi saattaa häiritä sitä, esimerkiksi virustorjunnan HTTPS-tarkistus, välityspalvelin tai VPN",
   "error.detail": "Jokin meni vikaan: {detail}",
   "notice.deviceUnavailable": "Valittu ulostulolaite ei ole käytettävissä; käytetään järjestelmän oletusta",
   "notice.exclusiveUnavailable": "Yksinoikeustila ei ole käytettävissä; käytetään jaettua ulostuloa",

@@ -1236,6 +1236,7 @@
   "error.rateLimited": "Error.",
   "error.playlistChanged": "Error: someone changed the playlist meanwhile.",
   "error.apiDrift": "Error. \"Settings → System\" names the settings tab; use the app's own words for it.",
+  "error.secureConnection": "Error: the encrypted (TLS) connection to TIDAL failed, usually because security software, a proxy or a VPN intercepts it. Keep \"TIDAL\", \"HTTPS\" and \"VPN\" as they are; \"antivirus HTTPS scanning\" is the antivirus feature that inspects encrypted web traffic.",
   "error.detail": "An error the app has no sentence for. {detail} is the technical message and stays English. The English shows the detail alone; translations should put a short headline before it, e.g. \"Something went wrong: {detail}\".",
 
   "notice.deviceUnavailable": "Audio output notice.",
