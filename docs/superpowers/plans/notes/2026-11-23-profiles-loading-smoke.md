@@ -17,6 +17,19 @@ Investigation: `2026-11-23-profiles-loading-issue-10.md`. Live account, Windows.
       unavailable tracks still shows its last tracks (issue #4 unchanged).
 - [ ] Albums, an artist page and Home load as before (shared page cache).
 
+## Repeated favorites and the page boundary (after v1.1.9, unreleased)
+
+`460575ff`: favorites drop repeated rows, and every page sits in a `svelte:boundary`.
+
+- [ ] Profiles, Albums, Tracks: same counts as before; today's log has no `dropped N repeated
+      rows` line on an account without repeats.
+- [ ] Every page still enters with its animation and restores its scroll on Back, in the
+      default shell and in Hi-Fi Rack (the boundary wraps every routed page); Now Playing still
+      covers and uncovers the page as it was.
+- [ ] A page that throws (dev build: throw from a page's template) shows the error with Retry in
+      its place; the sidebar still navigates; the log has `page <route> failed to draw: …`
+      with the route name only, no id; Copy diagnostics lists it under "Recent problems".
+
 ## Network (TLS roots and TLS errors)
 
 Every connection now trusts the OS certificate store as well as the bundled roots.

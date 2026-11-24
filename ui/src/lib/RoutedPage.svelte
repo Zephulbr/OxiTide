@@ -148,8 +148,10 @@
   /// restart (issue #10).
   function pageFailed(error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`page ${pageKey} failed to draw`, error);
-    api.logPageError(pageKey, message).catch(() => {});
+    // The route's name only: the log keeps ids out (pageKey carries them).
+    const page = nav.route.name;
+    console.error(`page ${page} failed to draw`, error);
+    api.logPageError(page, message).catch(() => {});
   }
 </script>
 
