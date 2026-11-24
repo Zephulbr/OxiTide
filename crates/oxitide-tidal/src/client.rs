@@ -49,6 +49,14 @@ fn log_path(path: &str) -> String {
 /// a gateway answers 502/503/504. GETs are idempotent, so this is safe.
 const GET_ATTEMPTS: u32 = 3;
 
+/// Attempts for one GET whose secure connection fails (`Error::Tls`). The
+/// #10 reporter's interference comes and goes: on 1.1.8 a GET that failed
+/// with `InvalidContentType` went through on its retry, and 1.1.9's
+/// fail-at-once turned those into errors. One quick retry keeps both: a
+/// passing glitch is absorbed, a network that always tampers still fails
+/// fast with the clear message. Writes are not retried.
+const TLS_GET_ATTEMPTS: u32 = 2;
+
 /// The HTTP client for TIDAL API calls.
 ///
 /// Playback leaves the API idle for a whole track, and routers/NATs and
@@ -606,19 +614,20 @@ impl TidalClient {
                 .query(&query)
                 .send()
                 .await;
-            let reason = match &result {
-                Err(e) if is_transport(e) => display_chain(e),
+            let (reason, attempts) = match &result {
+                Err(e) if is_transport(e) => (display_chain(e), GET_ATTEMPTS),
+                Err(e) if is_tls(e) => (display_chain(e), TLS_GET_ATTEMPTS),
                 Ok(resp) if matches!(resp.status().as_u16(), 502..=504) => {
-                    format!("status {}", resp.status())
+                    (format!("status {}", resp.status()), GET_ATTEMPTS)
                 }
                 _ => return Ok(result?),
             };
-            if attempt >= GET_ATTEMPTS {
+            if attempt >= attempts {
                 return Ok(result?);
             }
             let wait = get_backoff(attempt);
             tracing::warn!(
-                "GET {path} failed ({reason}); retrying in {wait:?} ({attempt}/{GET_ATTEMPTS})"
+                "GET {path} failed ({reason}); retrying in {wait:?} ({attempt}/{attempts})"
             );
             tokio::time::sleep(wait).await;
             attempt += 1;
@@ -781,7 +790,8 @@ impl TidalClient {
         match send().await {
             // Writes are not idempotent: retry only when the connection never
             // opened, so the server cannot have seen the request. A TLS
-            // failure is not retried: the same network answers the same way.
+            // failure is not retried here (a GET gets one retry,
+            // `TLS_GET_ATTEMPTS`): a write stays conservative.
             Err(e) if e.is_connect() && !is_tls(&e) => {
                 let wait = get_backoff(1);
                 tracing::warn!(
@@ -1819,10 +1829,11 @@ mod tests {
         );
     }
 
-    /// Issue #10: a TLS failure fails at once, for a read and for a write,
-    /// instead of being retried like a dropped connection.
+    /// Issue #10: a read whose secure connection fails gets one quick retry
+    /// (the reporter's interference comes and goes), not the three a dropped
+    /// connection gets; a write is not retried.
     #[tokio::test]
-    async fn a_tls_failure_is_not_retried() {
+    async fn a_tls_failure_is_retried_once_for_a_read_never_for_a_write() {
         use std::sync::atomic::Ordering;
         let (port, connections) = crate::error::tests::plain_text_server();
         let base = format!("https://127.0.0.1:{port}");
@@ -1836,10 +1847,18 @@ mod tests {
         );
         let err = client.get::<Thing>("tracks/1", &[]).await.unwrap_err();
         assert!(matches!(err, Error::Tls(_)), "got {err:?}");
-        assert_eq!(connections.load(Ordering::SeqCst), 1, "a read was retried");
+        assert_eq!(
+            connections.load(Ordering::SeqCst),
+            TLS_GET_ATTEMPTS as usize,
+            "a read gets exactly one retry"
+        );
         let err = client.post_form("playlists/p", &[]).await.unwrap_err();
         assert!(matches!(err, Error::Tls(_)), "got {err:?}");
-        assert_eq!(connections.load(Ordering::SeqCst), 2, "a write was retried");
+        assert_eq!(
+            connections.load(Ordering::SeqCst),
+            TLS_GET_ATTEMPTS as usize + 1,
+            "a write was retried"
+        );
     }
 
     #[tokio::test]

@@ -119,6 +119,24 @@ Fix (1.1.10):
   `log_page_error` command writes `page <route> failed to draw: …` at ERROR,
   so Copy diagnostics' "Recent problems" carries it.
 
+### 1.1.9's TLS fail-fast: a regression (1.1.11 candidate)
+
+The reporter's 1.1.8 log has `InvalidContentType` WARNs ending "retrying in
+250ms (1/3)" with no later failure for those calls: the retry went through,
+so their interference is intermittent. 1.1.9 stopped retrying `Error::Tls`,
+which turns each such glitch into an error (their own artist page's Top
+tracks: "Couldn't connect securely to TIDAL"). Fix on `release/1.x` after
+`v1.1.10`, not released: a GET gets one quick retry on a TLS failure
+(`TLS_GET_ATTEMPTS` = 2, 250 ms); writes unchanged; a network that always
+tampers still fails within ~250 ms with the clear message.
+
+Still open (owner-approved angles, 2026-11-24): test the duplicate theory
+against the live API by hand (follow a batch at once, read
+`favorites/artists?order=DATE&orderDirection=DESC` in windows of 100, look
+for repeats); reproduce "Profiles does nothing until restart" in a dev build
+with and without the boundary; the own card's doubled "Your profile" when
+neither the profile nor the artist has a name (cosmetic).
+
 ## Asked of the reporter
 
 Whether it turns into an error after ~3 minutes; whether Albums and Tracks
