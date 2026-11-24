@@ -1,6 +1,7 @@
 # Profiles loading and network smoke (issue #10, v1.1.9)
 
-**Status:** Pending (owner, on the v1.1.9 draft's installer, before publishing).
+**Status:** Pending (owner, on the v1.1.9 draft's installer, before publishing). The
+"Repeated favorites and the page boundary" section: on the v1.1.10 draft's installer.
 
 Investigation: `2026-11-23-profiles-loading-issue-10.md`. Live account, Windows.
 
@@ -17,7 +18,7 @@ Investigation: `2026-11-23-profiles-loading-issue-10.md`. Live account, Windows.
       unavailable tracks still shows its last tracks (issue #4 unchanged).
 - [ ] Albums, an artist page and Home load as before (shared page cache).
 
-## Repeated favorites and the page boundary (after v1.1.9, unreleased)
+## Repeated favorites and the page boundary (v1.1.10)
 
 `460575ff`: favorites drop repeated rows, and every page sits in a `svelte:boundary`.
 

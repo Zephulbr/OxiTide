@@ -1,8 +1,8 @@
 # Profiles stuck on "Loading…" (issue #10)
 
 **Status:** Open. 1.1.9 bounds the walk (candidate 1) and logs every walk.
-The reporter's 1.1.9 answer points at the UI (candidate 3 below); a fix is
-on `release/1.x`, unreleased, waiting to ship and be confirmed.
+The reporter's 1.1.9 answer points at the UI (candidate 3 below); the fix
+ships in 1.1.10 (`2026-11-24-v1.1.10-release.md`), waiting to be confirmed.
 
 Issue: https://github.com/Zephulbr/OxiTide/issues/10 (reporter on 1.1.8, Windows).
 
@@ -108,7 +108,7 @@ Not confirmed on the reporter's machine: reproduced in a component test
 (the same throw, the page stuck), and the fix logs both halves, so the next
 report shows it.
 
-Fix (unreleased):
+Fix (1.1.10):
 - `all_favorite_artists`, `…_albums` and `…_tracks` keep the first row of
   each id and log a WARN when they drop any (`favorite artists: dropped N
   repeated rows`). Not in `get_all_pages`: playlists legitimately repeat
