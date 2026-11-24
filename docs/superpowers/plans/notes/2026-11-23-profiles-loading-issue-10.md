@@ -1,8 +1,8 @@
 # Profiles stuck on "Loading…" (issue #10)
 
-**Status:** Open. 1.1.9 bounds the walk (candidate 1) and logs every walk.
-The reporter's 1.1.9 answer points at the UI (candidate 3 below); the fix
-ships in 1.1.10 (`2026-11-24-v1.1.10-release.md`), waiting to be confirmed.
+**Status:** Profiles fixed in 1.1.10, confirmed by the reporter
+(2026-11-24): candidate 3 below. Open: whether the 30 repeats hide 30
+artists (see "Confirmed on 1.1.10"), and the TLS retry (1.1.11 candidate).
 
 Issue: https://github.com/Zephulbr/OxiTide/issues/10 (reporter on 1.1.8, Windows).
 
@@ -118,6 +118,21 @@ Fix (1.1.10):
   while drawing shows the error with Retry in its place, and the new
   `log_page_error` command writes `page <route> failed to draw: …` at ERROR,
   so Copy diagnostics' "Recent problems" carries it.
+
+### Confirmed on 1.1.10 (2026-11-24)
+
+The reporter: "it works now!" Their diagnostics carry
+`favorite artists: dropped 30 repeated rows (194 kept)`, six times in a
+minute, the same count each time. TIDAL reported 224 rows; 30 were repeats.
+
+Open question: the count never varies, so either TIDAL's list really holds
+30 repeats (194 artists followed), or the overlap between windows is
+deterministic and the 30 rows it pushes out are never read (224 followed,
+30 missing from Profiles). Telling them apart: how many artists the
+official TIDAL app lists for them, or the owner's live check (read the
+list in windows of 100 and once at a larger limit, compare the id sets).
+If artists go missing, the walk needs a tie-free order or sequential reads,
+not just the dedupe.
 
 ### 1.1.9's TLS fail-fast: a regression (1.1.11 candidate)
 
