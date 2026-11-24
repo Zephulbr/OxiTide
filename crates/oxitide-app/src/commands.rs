@@ -3537,6 +3537,18 @@ pub fn open_logs_folder(app: tauri::AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// A page that failed to draw (`RoutedPage`'s boundary) writes the error to
+/// the log, where Copy diagnostics' "Recent problems" picks it up: a webview
+/// exception otherwise leaves no trace in a report (issue #10).
+#[tauri::command(async)]
+pub fn log_page_error(page: String, message: String) {
+    // One bounded line: "Recent problems" reads the log line by line.
+    let page: String = page.chars().take(80).collect();
+    let message: String = message.chars().take(2000).collect();
+    let message = message.replace(['\r', '\n'], " | ");
+    tracing::error!("page {page} failed to draw: {message}");
+}
+
 /// Settings → Troubleshooting → Copy diagnostics: a redacted plain-text report
 /// (`diagnostics.rs`). Async: it reads the log and runs `ver` on Windows.
 #[tauri::command(async)]

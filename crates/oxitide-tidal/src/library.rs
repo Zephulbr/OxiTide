@@ -30,6 +30,28 @@ fn favorited_album(fav: Favorited<Album>) -> Album {
     album
 }
 
+/// Keep the first row of each id. Favorites are sets, but TIDAL's offset
+/// windows over a date order can hand the same row out twice when dates tie
+/// (a bulk import favorites hundreds at once), and the UI keys its grids by
+/// id: a repeat made Profiles throw and stay on "Loading…" (issue #10).
+/// Drops are logged, so a report shows whether it happened.
+fn first_of_each_id<T>(rows: Vec<T>, id: impl Fn(&T) -> u64, list: &str) -> Vec<T> {
+    let before = rows.len();
+    let mut seen = std::collections::HashSet::with_capacity(before);
+    let kept: Vec<T> = rows
+        .into_iter()
+        .filter(|row| seen.insert(id(row)))
+        .collect();
+    if kept.len() < before {
+        tracing::warn!(
+            "favorite {list}: dropped {} repeated rows ({} kept)",
+            before - kept.len(),
+            kept.len()
+        );
+    }
+    kept
+}
+
 /// Window used when hydrating favorite ids; the favorites endpoint is known to
 /// honor 1000-row requests.
 const FAVORITE_ID_PAGE_SIZE: u32 = 1000;
@@ -102,7 +124,8 @@ impl TidalClient {
                 DEFAULT_PAGE_SIZE,
             )
             .await?;
-        Ok(favs.into_iter().map(favorited_track).collect())
+        let tracks = favs.into_iter().map(favorited_track).collect();
+        Ok(first_of_each_id(tracks, |t: &Track| t.id, "tracks"))
     }
 
     /// Walk every page of the user's favorite albums.
@@ -114,7 +137,8 @@ impl TidalClient {
                 DEFAULT_PAGE_SIZE,
             )
             .await?;
-        Ok(favs.into_iter().map(favorited_album).collect())
+        let albums = favs.into_iter().map(favorited_album).collect();
+        Ok(first_of_each_id(albums, |a: &Album| a.id, "albums"))
     }
 
     /// Walk every page of the user's favorite artists (newest first).
@@ -126,7 +150,8 @@ impl TidalClient {
                 DEFAULT_PAGE_SIZE,
             )
             .await?;
-        Ok(favs.into_iter().map(|f| f.item).collect())
+        let artists = favs.into_iter().map(|f| f.item).collect();
+        Ok(first_of_each_id(artists, |a: &Artist| a.id, "artists"))
     }
 
     /// Favorite mixes & radio (v2). The envelope varies by account/endpoint, so
@@ -439,6 +464,39 @@ mod tests {
             .await;
         let artists = client(&server).all_favorite_artists().await.unwrap();
         assert_eq!(artists.iter().map(|a| a.id).collect::<Vec<_>>(), vec![5, 4]);
+    }
+
+    /// Issue #10: windows over a date order with ties can repeat a row; each
+    /// artist comes back once, at its first (newest) place.
+    #[tokio::test]
+    async fn all_favorite_artists_lists_a_repeated_artist_once() {
+        let server = MockServer::start().await;
+        let items: Vec<_> = [5, 4, 4, 3, 5]
+            .iter()
+            .map(|id| serde_json::json!({"item": {"id": id, "name": format!("A{id}")}}))
+            .collect();
+        Mock::given(method("GET"))
+            .and(path("/users/42/favorites/artists"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": items, "totalNumberOfItems": 5, "limit": 100, "offset": 0
+            })))
+            .mount(&server)
+            .await;
+        let artists = client(&server).all_favorite_artists().await.unwrap();
+        assert_eq!(
+            artists.iter().map(|a| a.id).collect::<Vec<_>>(),
+            vec![5, 4, 3]
+        );
+    }
+
+    #[test]
+    fn first_of_each_id_keeps_order_and_first_occurrence() {
+        let kept = first_of_each_id(
+            vec![(1, "a"), (2, "b"), (1, "c"), (3, "d"), (2, "e")],
+            |r| r.0,
+            "test",
+        );
+        assert_eq!(kept, vec![(1, "a"), (2, "b"), (3, "d")]);
     }
 
     #[tokio::test]

@@ -1036,6 +1036,8 @@ export const api = {
   setSnapTarget: (target: SnapTarget | null) => invoke<void>("set_snap_target", { target }),
   getLogsDir: () => invoke<string>("get_logs_dir"),
   openLogsFolder: () => invoke<void>("open_logs_folder"),
+  /// Write a page's render failure to the app log (RoutedPage's boundary).
+  logPageError: (page: string, message: string) => invoke<void>("log_page_error", { page, message }),
   /// A redacted plain-text report for bug reports (Settings → Troubleshooting).
   getDiagnostics: () => invoke<string>("get_diagnostics"),
   analyzeCover: (uuid: string, theme: "dark" | "light") =>

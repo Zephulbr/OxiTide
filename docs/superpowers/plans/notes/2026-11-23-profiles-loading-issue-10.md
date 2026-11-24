@@ -1,7 +1,8 @@
 # Profiles stuck on "Loading…" (issue #10)
 
-**Status:** Open. 1.1.9 bounds the walk (candidate 1) and logs every walk;
-waiting on the reporter to confirm on 1.1.9.
+**Status:** Open. 1.1.9 bounds the walk (candidate 1) and logs every walk.
+The reporter's 1.1.9 answer points at the UI (candidate 3 below); a fix is
+on `release/1.x`, unreleased, waiting to ship and be confirmed.
 
 Issue: https://github.com/Zephulbr/OxiTide/issues/10 (reporter on 1.1.8, Windows).
 
@@ -74,6 +75,49 @@ Issue: https://github.com/Zephulbr/OxiTide/issues/10 (reporter on 1.1.8, Windows
   Rust side finished; look at the IPC/UI side.
 - No line at all for it: the call never reached or never left
   `get_all_pages` (e.g. stuck before the first window).
+
+## The reporter's 1.1.9 answer (2026-11-23)
+
+- Profiles: the own card ("Your profile", no picture), then "Loading…" that
+  never ends. The log at the same time: `read users/*/favorites/artists: 224
+  items from 3 windows (0 empty), TIDAL reported 224, in 215 ms`. The Rust
+  side finished in a fraction of a second; the page never drew the list.
+- Opening Profiles again from another page "does nothing" until a restart.
+- The own card opens the own artist page, whose Top tracks shows
+  `error.secureConnection`: the TLS interference goes on under 1.1.9 (the OS
+  store could not help; `InvalidContentType` is a non-TLS reply). The
+  reporter has not said what antivirus, VPN or proxy they run.
+- The 16:xx retry WARNs in their diagnostics predate the update (their 1.1.8
+  diagnostics were posted at 16:09).
+
+### Candidate 3: a repeated artist breaks the grid
+
+Profiles' grid is a keyed `{#each … (artist.id)}`. A repeated id makes
+Svelte throw `each_key_duplicate`, in production builds too, and nothing
+caught it: the page stays on its last frame ("Loading…") and later
+navigation can break until a restart. Nothing reaches the log (webview
+exceptions were never forwarded), which fits the clean log.
+
+How a favorites list can repeat a row: `get_all_pages` reads offset windows
+over `order=DATE`, concurrently. Favorites added in one batch (an import
+from another service) share a date, and an order with ties is not stable
+between requests, so one row can come back in two windows (and another in
+none). The 224 = 224 count does not rule it out.
+
+Not confirmed on the reporter's machine: reproduced in a component test
+(the same throw, the page stuck), and the fix logs both halves, so the next
+report shows it.
+
+Fix (unreleased):
+- `all_favorite_artists`, `…_albums` and `…_tracks` keep the first row of
+  each id and log a WARN when they drop any (`favorite artists: dropped N
+  repeated rows`). Not in `get_all_pages`: playlists legitimately repeat
+  tracks.
+- Profiles draws each artist once whatever it is given.
+- `RoutedPage` wraps every page in a `svelte:boundary`: a page that throws
+  while drawing shows the error with Retry in its place, and the new
+  `log_page_error` command writes `page <route> failed to draw: …` at ERROR,
+  so Copy diagnostics' "Recent problems" carries it.
 
 ## Asked of the reporter
 

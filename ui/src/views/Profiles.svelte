@@ -43,9 +43,13 @@
         : me,
     ),
   );
+  // Each artist once: the grid is keyed by id, and a repeated row (TIDAL's
+  // windows can repeat one; the backend drops them too) made it throw and
+  // stay on "Loading…" (issue #10).
   const others = $derived.by(() => {
-    const ownId = mine?.artistId ?? null;
-    return ownId === null ? artists : artists.filter((artist) => artist.id !== ownId);
+    const seen = new Set<number>();
+    if (mine?.artistId != null) seen.add(mine.artistId);
+    return artists.filter((artist) => !seen.has(artist.id) && seen.add(artist.id));
   });
   const mineShown = $derived(
     mine && mine.name.toLowerCase().includes(query.trim().toLowerCase()) ? mine : null,
