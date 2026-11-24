@@ -21,6 +21,8 @@
   import Section from "../views/Section.svelte";
   import TidalPage from "../views/TidalPage.svelte";
   import { untrack } from "svelte";
+  import { api } from "./api";
+  import ErrorState from "./components/ErrorState.svelte";
   import { createCardActions, setCardActions } from "./cardActions";
   import { applySnapshot, createScrollMemory, snapshotScroll, type ScrollSnapshot } from "./scrollMemory";
   import type { Nav } from "./nav.svelte";
@@ -139,11 +141,30 @@
     const el = scroller?.();
     if (el && pageEl) memory.restore(nav.entry, el, pageEl);
   }
+
+  /// A page that throws while drawing shows an error with Retry in its place
+  /// and writes the error to the app log. Unbounded, the throw froze the page
+  /// on its last frame ("Loading…") and broke later navigation until a
+  /// restart (issue #10).
+  function pageFailed(error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    // The route's name only: the log keeps ids out (pageKey carries them).
+    const page = nav.route.name;
+    console.error(`page ${page} failed to draw`, error);
+    api.logPageError(page, message).catch(() => {});
+  }
 </script>
+
+{#snippet failed(error: unknown, retry: () => void)}
+  <div class="page-failed">
+    <ErrorState message={error instanceof Error ? error.message : String(error)} onRetry={retry} />
+  </div>
+{/snippet}
 
 {#each nowPlayingKeys as key (key)}<NowPlaying {player} {nav} {qualityDisplay} />{/each}
 {#key pageKey}
   <div class="page" class:covered bind:this={pageEl} inert={covered}>
+    <svelte:boundary onerror={pageFailed} {failed}>
     {#if nav.route.name === "home"}<Home {nav} {player} {toasts} />
     {:else if nav.route.name === "explore"}<Explore {nav} {player} {favorites} {playlistActions} {toasts} />
     {:else if nav.route.name === "feed"}<Feed {nav} />
@@ -165,5 +186,12 @@
     {:else if nav.route.name === "artist"}<Artist id={nav.route.id} {nav} {player} {favorites} {playlistActions} {toasts} />
     {:else if nav.route.name === "artist-all"}{#key nav.route.id}<ArtistAll id={nav.route.id} tab={nav.route.tab} {nav} {player} {favorites} {playlistActions} {toasts} />{/key}
     {:else if nav.route.name === "settings"}<Settings {player} {toasts} {onLogout} {onQualityDisplay} />{/if}
+    </svelte:boundary>
   </div>
 {/key}
+
+<style>
+  .page-failed {
+    padding: 32px 24px;
+  }
+</style>

@@ -563,6 +563,7 @@ fn main() {
             commands::set_snap_target,
             commands::get_logs_dir,
             commands::open_logs_folder,
+            commands::log_page_error,
             commands::get_diagnostics,
             commands::perf_mark,
             commands::perf_quit,

@@ -8,7 +8,7 @@ import Profiles from "./Profiles.svelte";
 const me = vi.hoisted(() => ({ profile: null as Record<string, unknown> | null }));
 /// How the favorites answer: the list, never (a load that does not settle),
 /// or an error.
-const favorites = vi.hoisted(() => ({ mode: "list" as "list" | "never" | "fail" }));
+const favorites = vi.hoisted(() => ({ mode: "list" as "list" | "never" | "fail" | "repeat" }));
 
 vi.mock("../lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/api")>();
@@ -20,6 +20,12 @@ vi.mock("../lib/api", async (importOriginal) => {
           return async () => {
             if (favorites.mode === "never") return new Promise(() => {});
             if (favorites.mode === "fail") throw new Error("api error 500: down");
+            if (favorites.mode === "repeat")
+              return [
+                { id: 3, name: "Artist One", picture: null },
+                { id: 5, name: "Artist Two", picture: null },
+                { id: 3, name: "Artist One", picture: null },
+              ];
             return [
               { id: 3, name: "Artist One", picture: null },
               { id: 7, name: "Own Artist", picture: null },
@@ -91,6 +97,19 @@ describe("Profiles: the own profile", () => {
     render(Profiles, { nav: nav() });
     await screen.findByText(/api error 500/);
     expect(screen.getByText("Your profile")).toBeTruthy();
+  });
+
+  /// Issue #10: TIDAL's pages can repeat an artist (offset windows over a
+  /// date order with ties). A repeated key made the grid throw, leaving the
+  /// page on "Loading…" and every later visit dead.
+  it("draws a list that repeats an artist, once each", async () => {
+    me.profile = null;
+    favorites.mode = "repeat";
+    render(Profiles, { nav: nav() });
+    await screen.findByText("Artist Two");
+    expect(screen.getAllByText("Artist One")).toHaveLength(1);
+    expect(screen.getByText("2 artists")).toBeTruthy();
+    expect(screen.queryByRole("status")).toBeNull();
   });
 
   it("follows the search filter", async () => {
