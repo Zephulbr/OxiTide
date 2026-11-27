@@ -3,7 +3,7 @@
   import { flip } from "svelte/animate";
   import { cubicOut } from "svelte/easing";
   import type { Album, PageItem } from "../lib/api";
-  import { sortAlbums, type AlbumSort } from "../lib/albumSort";
+  import { filterAlbums, sortAlbums, type AlbumSort } from "../lib/albumSort";
   import { appearance } from "../lib/appearance.svelte";
   import MediaCard from "../lib/components/MediaCard.svelte";
   import EmptyState from "../lib/components/EmptyState.svelte";
@@ -27,7 +27,9 @@
   let error = $state("");
 
   let sortMode = $state<AlbumSort>("added");
-  const rows = $derived(sortAlbums(albums, sortMode));
+  /// The filter box: title or artist (issue #14).
+  let query = $state("");
+  const rows = $derived(sortAlbums(filterAlbums(albums, query), sortMode));
 
   async function load() {
     if (peek(source) === undefined) loading = true;
@@ -55,6 +57,13 @@
       <span class="summary tnum">{t("albums.count", { count: albums.length })}</span>
     {/if}
   </div>
+  <input
+    class="search-input page-filter"
+    placeholder={t("albums.search")}
+    value={query}
+    oninput={(event) => (query = event.currentTarget.value)}
+    aria-label={t("albums.search")}
+  />
   <SortSelect
     value={sortMode}
     options={[
@@ -73,6 +82,8 @@
   <ErrorState message={error} onRetry={load} />
 {:else if albums.length === 0}
   <EmptyState message={t("albums.empty")} />
+{:else if rows.length === 0}
+  <p class="muted no-match">{t("albums.noMatch", { query: query.trim() })}</p>
 {:else}
   <div class="grid pane" class:arrive role="list">
     {#each rows as album (album.id)}
@@ -133,6 +144,9 @@
   }
   .cell {
     min-width: 0;
+  }
+  .no-match {
+    margin-top: 48px;
   }
   .title-block {
     display: flex;

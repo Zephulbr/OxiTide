@@ -93,6 +93,18 @@ export function fetchShared<T>(source: Source<T>): Promise<T> {
   return request;
 }
 
+/// Current data without repeating a request the page just made: joins a
+/// running fetch, else serves a value stored under `maxAgeMs` ago, else
+/// fetches. The Playlists filter walks folders this way, and the grid's
+/// folder covers have usually just loaded the top level.
+export function fetchRecent<T>(source: Source<T>, maxAgeMs: number): Promise<T> {
+  const running = joinable(source.key);
+  if (running) return running as Promise<T>;
+  const entry = servable(source.key);
+  if (entry && now() - entry.at < maxAgeMs) return Promise.resolve(entry.value as T);
+  return fetchShared(source);
+}
+
 /// The cached value when one may be shown (synchronous; for initial state).
 export function peek<T>(source: Source<T>): T | undefined {
   return servable(source.key)?.value as T | undefined;

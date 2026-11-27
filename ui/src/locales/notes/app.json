@@ -624,6 +624,11 @@
   "playlists.sortLabel": "Accessible name of the sort menu.",
   "playlists.folderEmpty": "Empty folder.",
   "playlists.folderSub": "Subtitle of a folder card.",
+  "playlists.search": "Filter box on the Playlists page; it also searches inside folders.",
+  "playlists.noMatch": "The filter matched nothing. {query} is what the person typed.",
+  "playlists.inFolder": "Subtitle of a playlist card found by the filter inside another folder. {folder} is that folder's name.",
+  "playlists.searchingFolders": "Shown under the filter results while the folders are still being searched.",
+  "playlists.searchIncomplete": "Shown under the filter results when some folders could not be loaded.",
 
   "table.label": "Accessible name of a track table.",
   "table.columns": "Section heading of the column header's right-click menu (which optional columns to show).",
@@ -892,6 +897,8 @@
   "albums.count": "Count under the Albums heading.",
   "albums.sortLabel": "Accessible name of the sort menu.",
   "albums.empty": "Empty list.",
+  "albums.search": "Filter box on the Albums page; matches album titles and artist names.",
+  "albums.noMatch": "The filter matched nothing. {query} is what the person typed.",
 
   "mixes.empty": "Empty page.",
   "mixes.favorites": "Section heading.",

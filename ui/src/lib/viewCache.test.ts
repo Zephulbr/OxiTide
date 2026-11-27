@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearViewCache,
   DEFAULT_FRESH_MS,
+  fetchRecent,
   fetchShared,
   invalidate,
   JOIN_MS,
@@ -38,6 +39,20 @@ describe("viewCache", () => {
     await load(src, (v) => seen.push(v));
     expect(seen).toEqual([1, 1]);
     expect(src.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("fetchRecent joins a running fetch, reuses a recent value and refetches an older one", async () => {
+    const src = source("f", [1, 2, 3], 0);
+    const running = fetchShared(src);
+    expect(await fetchRecent(src, 30_000)).toBe(1);
+    await running;
+    expect(src.fetch).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(29_000);
+    expect(await fetchRecent(src, 30_000)).toBe(1);
+    expect(src.fetch).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(2_000);
+    expect(await fetchRecent(src, 30_000)).toBe(2);
+    expect(src.fetch).toHaveBeenCalledTimes(2);
   });
 
   it("applies a cached value synchronously", async () => {

@@ -5,9 +5,17 @@
   import type { CollectionEntry } from "../lib/api";
   import { appearance } from "../lib/appearance.svelte";
   import { getCardActions } from "../lib/cardActions";
-  import { fetchShared, load as loadCached, peek } from "../lib/viewCache";
+  import { fetchRecent, fetchShared, load as loadCached, peek } from "../lib/viewCache";
   import { collectionSource } from "../lib/viewData";
   import { sortEntries, type CollectionSort } from "../lib/collectionSort";
+  import {
+    entryKey,
+    matchCollection,
+    walkCollection,
+    type CollectionWalk,
+    type FoundEntry,
+  } from "../lib/collectionSearch";
+  import { searchNeedle } from "../lib/searchText";
   import EmptyState from "../lib/components/EmptyState.svelte";
   import ErrorState from "../lib/components/ErrorState.svelte";
   import FolderArt from "../lib/components/FolderArt.svelte";
@@ -66,7 +74,65 @@
   let actionsSeen = untrack(() => actions.revision);
   let createSeen = untrack(() => playlistActions.revision);
 
-  const rows = $derived(sortEntries(entries, sortMode, (uuid) => recency.rank(uuid)));
+  /// The filter box (issue #14). A query searches this folder and every
+  /// folder beneath it, so a playlist filed away is found from All
+  /// playlists; until those folders load, it searches this level.
+  let query = $state("");
+  const searching = $derived(searchNeedle(query) !== "");
+  let walk = $state.raw<CollectionWalk | null>(null);
+  let walking = $state(false);
+  let walkToken = 0;
+  /// How old a folder list the walk takes from the cache.
+  const WALK_REUSE_MS = 30_000;
+
+  const rank = (uuid: string) => recency.rank(uuid);
+  /// Rows carry the folder they sit in: a match from a folder below says so,
+  /// and Move starts from it.
+  const placed = (list: readonly CollectionEntry[]): FoundEntry[] =>
+    list.map((entry) => ({ entry, parentId: folderId ?? "root", parentName: null }));
+  const rows = $derived.by((): FoundEntry[] => {
+    if (!searching) return placed(sortEntries(entries, sortMode, rank));
+    const matches = matchCollection(walk?.found ?? placed(entries), query);
+    const byKey = new Map(matches.map((found) => [entryKey(found.entry), found]));
+    return sortEntries(
+      matches.map((found) => found.entry),
+      sortMode,
+      rank,
+    ).map((entry) => byKey.get(entryKey(entry))!);
+  });
+
+  /// Current folder lists (a move or rename elsewhere must show), once per
+  /// visit and kept for later keystrokes. `fetchRecent` reuses what the
+  /// folder covers just loaded instead of asking again. Started when the box
+  /// takes focus, so it is usually in before typing.
+  async function startWalk() {
+    if (walk !== null || walking || loading || error) return;
+    const token = ++walkToken;
+    walking = true;
+    const result = await walkCollection(
+      { id: folderId ?? "root", name: null, entries },
+      (id) => fetchRecent(collectionSource(id, undefined), WALK_REUSE_MS),
+    );
+    if (token !== walkToken) return;
+    walk = result;
+    walking = false;
+  }
+
+  // A reload (an edit, a sort change, another folder) walks again.
+  $effect(() => {
+    entries;
+    untrack(() => {
+      walkToken += 1;
+      walk = null;
+      walking = false;
+    });
+  });
+
+  $effect(() => {
+    if (!searching || walk !== null || loading) return;
+    untrack(() => void startWalk());
+  });
+
   const summary = $derived.by(() => {
     const folders = entries.filter((entry) => entry.kind === "folder").length;
     const playlists = entries.length - folders;
@@ -137,9 +203,17 @@
 <header class="page-head">
   <!-- The count sits under the title rather than beside the tools. -->
   <div class="title-block">
-    <h2>{folderId ? folderLabel || "Folder" : "All playlists"}</h2>
+    <h2>{folderId ? folderLabel || t("route.folder") : t("playlists.filter.all")}</h2>
     {#if !loading && !error && entries.length > 0}<span class="summary tnum">{summary}</span>{/if}
   </div>
+  <input
+    class="search-input page-filter"
+    placeholder={t("playlists.search")}
+    value={query}
+    oninput={(event) => (query = event.currentTarget.value)}
+    onfocus={() => void startWalk()}
+    aria-label={t("playlists.search")}
+  />
   <button class="tool-btn" onclick={() => playlistActions.openCreate()}>
     <Icon name="plus" size={15} />{t("playlists.newPlaylist")}
   </button>
@@ -165,11 +239,15 @@
   <Loading />
 {:else if error}
   <ErrorState message={error} onRetry={load} />
+{:else if searching && rows.length === 0}
+  {#if !walking}
+    <p class="muted no-match">{t("playlists.noMatch", { query: query.trim() })}</p>
+  {/if}
 {:else if rows.length === 0}
   <EmptyState message={folderId ? t("playlists.folderEmpty") : t("picker.noPlaylists")} />
 {:else}
   <div class="grid pane" class:arrive role="list">
-    {#each rows as entry (entry.kind === "folder" ? `f:${entry.id}` : `p:${entry.uuid}`)}
+    {#each rows as { entry, parentId, parentName } (entryKey(entry))}
       <div
         class="cell"
         role="listitem"
@@ -187,7 +265,7 @@
                 open: () => openPlaylist(entry.uuid),
                 rename: () => actions.openRenamePlaylist(entry),
                 remove: () => actions.openRemove(entry),
-                move: () => actions.openMove(entry, folderId ?? "root"),
+                move: () => actions.openMove(entry, parentId),
                 later: { active: later.has("playlist", entry.uuid), toggle: () => void later.toggle("playlist", entry.uuid) },
                 collaborators: () => collaboratorsDialog.open({ uuid: entry.uuid, title: entry.title }),
               })}
@@ -269,13 +347,24 @@
             </span>
             <span class="title"><NameLink label={entry.title} onOpen={() => openPlaylist(entry.uuid)} focusable={false} /></span>
             <span class="sub tnum">
-              {t("common.trackCount", { count: entry.numberOfTracks })}
+              {#if parentName}
+                {t("playlists.inFolder", { folder: parentName, count: entry.numberOfTracks })}
+              {:else}
+                {t("common.trackCount", { count: entry.numberOfTracks })}
+              {/if}
             </span>
           </div>
         {/if}
       </div>
     {/each}
   </div>
+{/if}
+{#if searching && !loading && !error}
+  {#if walking}
+    <p class="muted search-note" role="status">{t("playlists.searchingFolders")}</p>
+  {:else if walk && !walk.complete}
+    <p class="muted search-note" role="status">{t("playlists.searchIncomplete")}</p>
+  {/if}
 {/if}
 </div>
 
@@ -357,6 +446,13 @@
   }
   .cell {
     min-width: 0;
+  }
+  .no-match {
+    margin-top: 48px;
+  }
+  .search-note {
+    margin: 16px 0 0;
+    font-size: 13px;
   }
   .card {
     display: flex;

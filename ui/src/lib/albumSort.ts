@@ -1,11 +1,35 @@
 import type { Album } from "./api";
 import { compareText } from "./locale.svelte";
 import { parseTidalTime } from "./playlistSort";
+import { formsMatch, searchForms, searchNeedle } from "./searchText";
 
 export type AlbumSort = "added" | "released" | "title" | "artist";
 
 const byText = compareText;
 const artistOf = (album: Album) => album.artists[0]?.name ?? "";
+
+/// Folded title and artist forms per album. Album objects are stable while
+/// the page shows them, so a keystroke reuses these instead of folding a
+/// large collection again.
+const formsCache = new WeakMap<Album, string[]>();
+
+function albumForms(album: Album): string[] {
+  let forms = formsCache.get(album);
+  if (!forms) {
+    forms = [album.title, ...album.artists.map((artist) => artist.name)].flatMap(searchForms);
+    formsCache.set(album, forms);
+  }
+  return forms;
+}
+
+/// Albums whose title or any credited artist matches `query` (case, accents
+/// and punctuation folded: "beyonce" finds Beyoncé; `lib/searchText.ts`), in
+/// their given order. A query with nothing to match returns them all.
+export function filterAlbums(albums: readonly Album[], query: string): readonly Album[] {
+  const needle = searchNeedle(query);
+  if (needle === "") return albums;
+  return albums.filter((album) => formsMatch(albumForms(album), needle));
+}
 
 /// "added" puts the newest favorites first and "released" the newest
 /// releases; albums without the date keep the API's order at the end (the

@@ -624,6 +624,11 @@
   "playlists.sortLabel": "Sort playlists",
   "playlists.folderEmpty": "This folder is empty.",
   "playlists.folderSub": "{count, plural, one {Folder · # playlist} other {Folder · # playlists}}",
+  "playlists.search": "Search playlists",
+  "playlists.noMatch": "No playlists or folders match “{query}”.",
+  "playlists.inFolder": "{folder} · {count, plural, one {# track} other {# tracks}}",
+  "playlists.searchingFolders": "Searching folders…",
+  "playlists.searchIncomplete": "Some folders couldn't be searched, so a match may be missing.",
 
   "table.label": "Tracks",
   "table.columns": "Columns",
@@ -892,6 +897,8 @@
   "albums.count": "{count, plural, one {# album} other {# albums}}",
   "albums.sortLabel": "Sort albums",
   "albums.empty": "No albums yet.",
+  "albums.search": "Search albums",
+  "albums.noMatch": "No albums match “{query}”.",
 
   "mixes.empty": "No mixes yet.",
   "mixes.favorites": "Favorite mixes",

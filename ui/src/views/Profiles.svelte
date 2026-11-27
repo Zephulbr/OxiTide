@@ -148,7 +148,7 @@
       >{t("profiles.count", { count: others.length })}</span>
     </div>
     <input
-      class="search-input filter"
+      class="search-input page-filter"
       placeholder={t("profiles.search")}
       value={query}
       oninput={(event) => (query = event.currentTarget.value)}
@@ -224,13 +224,6 @@
   .summary {
     color: color-mix(in srgb, var(--text) 62%, transparent);
     font-size: 14px;
-  }
-  /* The shared page head, scrolling with the page as on Albums and
-     Playlists, so the search and sort fields always sit on the page
-     background, never over the portraits. */
-  .filter {
-    flex: 0 1 240px;
-    min-width: 140px;
   }
   .empty {
     margin-top: 48px;
