@@ -3054,6 +3054,31 @@
     "source": "dc37b9ac",
     "draft": "23a8891f"
   },
+  "playlists.search": {
+    "status": "machine",
+    "source": "86a82e61",
+    "draft": "edb9cde2"
+  },
+  "playlists.noMatch": {
+    "status": "machine",
+    "source": "1ca0709b",
+    "draft": "fb25d668"
+  },
+  "playlists.inFolder": {
+    "status": "machine",
+    "source": "43b91ad6",
+    "draft": "ad413327"
+  },
+  "playlists.searchingFolders": {
+    "status": "machine",
+    "source": "04739075",
+    "draft": "98879096"
+  },
+  "playlists.searchIncomplete": {
+    "status": "machine",
+    "source": "81b577b2",
+    "draft": "9df196e3"
+  },
   "table.label": {
     "status": "machine",
     "source": "88980154",
@@ -4268,6 +4293,16 @@
     "status": "machine",
     "source": "2433b876",
     "draft": "46c6dbc5"
+  },
+  "albums.search": {
+    "status": "machine",
+    "source": "c42893de",
+    "draft": "61eddca4"
+  },
+  "albums.noMatch": {
+    "status": "machine",
+    "source": "926a8695",
+    "draft": "1604800c"
   },
   "mixes.empty": {
     "status": "machine",

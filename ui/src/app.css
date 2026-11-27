@@ -408,6 +408,12 @@ body.dragging [data-drop-refused] * {
 .page-head .select {
   height: 38px;
 }
+/* A collection page's filter box (Albums, Playlists, Profiles), beside the
+   sort menu: it gives way first as the header narrows. */
+.page-head > .search-input.page-filter {
+  flex: 0 1 240px;
+  min-width: 140px;
+}
 .page-head > .count {
   margin-right: 6px;
   font-size: 13px;

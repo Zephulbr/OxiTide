@@ -70,8 +70,15 @@ new section containers so they join the Rack's look for free.
 left; a muted `.count` and the tools on the right, all 38px tall. Tools come from the field
 family — `.search-input` for search/filter, `SortSelect` for sort, `.tool-btn` (icon +
 label) for actions — never mixed with round icon buttons in the same row. In-list filters
-(track lists, Artists) fold case, accents and punctuation (`lib/searchText.ts`): "ac dc"
-finds AC/DC. Rack skins
+(track lists, Artists, Albums, Playlists) fold case, accents and punctuation
+(`lib/searchText.ts`): "ac dc" finds AC/DC. The collection grids (Albums, Playlists,
+Profiles) put their filter box (`.search-input.page-filter`, 240px, giving way first down to
+140px) just before the sort menu; the count under the title stays the collection's, and a
+query that matches nothing shows a muted line in the grid's place. Albums match title or
+any artist (issue #14). Playlists match playlist and folder names in the page's folder and
+every folder below it (`lib/collectionSearch.ts`): a match from a deeper folder names that
+folder in its subtitle ("Gym · 12 tracks"), and a muted line under the grid says when the
+folders are still being searched or one failed to load. Rack skins
 `.page-head > h2` as a printed label and `.tool-btn` as a light-bar key.
 
 **List edges** (`.edge-fade` in app.css, lengths from `lib/edgeFade.ts`). Scrolling lists never
