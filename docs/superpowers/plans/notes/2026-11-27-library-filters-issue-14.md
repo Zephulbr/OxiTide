@@ -1,6 +1,7 @@
 # Albums and Playlists filters (issue #14)
 
-**Status:** Code and tests done on `release/1.x` for v1.1.11; the owner smoke below is open.
+**Status:** Done on `release/1.x` (`a355ffd6`), ships in v1.1.11; owner smoke passed
+2026-11-27 on a local build of `a355ffd6`.
 
 Issue: https://github.com/Zephulbr/OxiTide/issues/14 (a filter box on Albums, as in TIDAL's
 own app).
@@ -28,13 +29,13 @@ own app).
 On a build of this branch, signed in, with at least one folder holding a playlist (ideally a
 folder inside a folder):
 
-- [ ] Albums: type part of an album title, then an artist name with its accent left out
+- [x] Albums: type part of an album title, then an artist name with its accent left out
       ("beyonce"); the grid narrows, and the count under the title stays the total. Type
       nonsense: "No albums match …". Clear it: the whole grid is back, in the chosen sort.
-- [ ] Playlists (All playlists): type part of the name of a playlist that lives in a folder.
+- [x] Playlists (All playlists): type part of the name of a playlist that lives in a folder.
       It shows with "<folder> · N tracks" under it; open it, play it from its cover, and
       check its menu's Move dialog starts from that folder.
-- [ ] Playlists: a folder name matches too and opens the folder.
-- [ ] Inside a folder: the box searches that folder (and any below it) only.
-- [ ] Rename or move a playlist, then search for it: the new name/folder shows.
-- [ ] Hi-Fi Rack mode: the box takes the Rack field skin on both pages.
+- [x] Playlists: a folder name matches too and opens the folder.
+- [x] Inside a folder: the box searches that folder (and any below it) only.
+- [x] Rename or move a playlist, then search for it: the new name/folder shows.
+- [x] Hi-Fi Rack mode: the box takes the Rack field skin on both pages.

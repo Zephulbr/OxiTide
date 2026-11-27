@@ -1,6 +1,7 @@
 # reg.exe error on sign-out or restart (issue #15)
 
-**Status:** Fixed on `release/1.x` (`44eb4531`) for v1.1.11; the owner smoke below is open.
+**Status:** Fixed on `release/1.x` (`44eb4531`), ships in v1.1.11; owner smoke passed
+2026-11-27 on a local build of `a355ffd6`. Open: the reporter's confirmation.
 
 Issue: https://github.com/Zephulbr/OxiTide/issues/15 (Windows 11 Home: signing out or
 restarting with OxiTide open shows a "reg.exe - Application Error" dialog).
@@ -37,12 +38,12 @@ behind.
 On a release-identity build of this branch, with the official TIDAL app installed (it owns
 `tidal://` before OxiTide starts):
 
-- [ ] Start OxiTide, then sign out of Windows (and once: restart). No "reg.exe" dialog.
-- [ ] Signed back in, before starting OxiTide:
+- [x] Start OxiTide, then sign out of Windows (and once: restart). No "reg.exe" dialog.
+- [x] Signed back in, before starting OxiTide:
       `reg query HKCU\Software\Classes\tidal\shell\open\command /ve` names TIDAL's exe, and
       `HKCU\Software\OxiTide\tidal-scheme-backup` is gone.
-- [ ] Quit OxiTide from the tray: the same two checks.
-- [ ] Sign in to TIDAL in OxiTide (the paste-back redirect) still works while it runs.
-- [ ] Migration, if a 1.1.10 sign-out left `tidal-scheme.reg` in the config folder (next to
+- [x] Quit OxiTide from the tray: the same two checks.
+- [x] Sign in to TIDAL in OxiTide (the paste-back redirect) still works while it runs.
+- [x] Migration, if a 1.1.10 sign-out left `tidal-scheme.reg` in the config folder (next to
       `config.toml`): start the new build; the file is gone and the official handler comes
       back on the next quit.
